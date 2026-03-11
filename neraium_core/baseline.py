@@ -6,8 +6,8 @@ BASELINE_SYSTEM = SystemDefinition(
     system_id="baseline",
 
     signals=[
-        SignalDefinition(name="cpu_usage", unit="percent"),
-        SignalDefinition(name="memory_usage", unit="percent"),
+        SignalDefinition(name="cpu_usage"),
+        SignalDefinition(name="memory_usage"),
     ],
 
     inference_window_seconds=60,
