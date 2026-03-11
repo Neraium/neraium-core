@@ -7,13 +7,13 @@ BASELINE_SYSTEM = SystemDefinition(
     signals=[
         SignalDefinition(
             name="cpu_usage",
-            type="float64",  # Changed from dtype
+            dtype="float64",
             unit="percent",
             required_for_scoring=True,
         ),
         SignalDefinition(
             name="memory_usage",
-            type="float64",  # Changed from dtype
+            dtype="float64",
             unit="percent",
             required_for_scoring=True,
         ),
