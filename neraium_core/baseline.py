@@ -1,6 +1,5 @@
 from neraium_core.models import SystemDefinition, SignalDefinition
 
-
 BASELINE_SYSTEM = SystemDefinition(
     schema_version="1",
     system_id="baseline",
@@ -8,13 +7,13 @@ BASELINE_SYSTEM = SystemDefinition(
     signals=[
         SignalDefinition(
             name="cpu_usage",
-            dtype="float",
+            type="float64",  # Changed from dtype
             unit="percent",
             required_for_scoring=True,
         ),
         SignalDefinition(
             name="memory_usage",
-            dtype="float",
+            type="float64",  # Changed from dtype
             unit="percent",
             required_for_scoring=True,
         ),
