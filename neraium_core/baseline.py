@@ -1,3 +1,6 @@
+from neraium_core.models import SystemDefinition, SignalDefinition
+
+
 BASELINE_SYSTEM = SystemDefinition(
     schema_version="1",
     system_id="baseline",
