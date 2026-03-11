@@ -1,16 +1,22 @@
-from neraium_core.models import SystemDefinition
+from neraium_core.models import SystemDefinition, SignalDefinition
+
 
 BASELINE_SYSTEM = SystemDefinition(
-    schema_version=1,
+    schema_version="1",
     system_id="baseline",
 
     signals=[
-        "cpu_usage",
-        "memory_usage",
+        SignalDefinition(
+            name="cpu_usage",
+            unit="percent"
+        ),
+        SignalDefinition(
+            name="memory_usage",
+            unit="percent"
+        ),
     ],
 
     inference_window_seconds=60,
-
     raw_sample_period_seconds=5,
 
     vector_order=[
@@ -19,6 +25,5 @@ BASELINE_SYSTEM = SystemDefinition(
     ],
 
     max_forward_fill_windows=3,
-
     max_missing_signal_fraction=0.5,
 )
