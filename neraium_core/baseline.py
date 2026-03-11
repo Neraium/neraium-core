@@ -1,6 +1,4 @@
-cat > neraium_core/baseline.py <<'EOF'
 from neraium_core.models import SystemDefinition, SignalDefinition
-
 
 BASELINE_SYSTEM = SystemDefinition(
     schema_version="1",
@@ -28,4 +26,3 @@ BASELINE_SYSTEM = SystemDefinition(
     max_forward_fill_windows=3,
     max_missing_signal_fraction=0.5,
 )
-EOF
