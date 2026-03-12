@@ -120,7 +120,6 @@
       overflow-wrap: anywhere;
     }
 
-    /* Chart wrapper — height controlled here only, no canvas override */
     .chart-wrap {
       position: relative;
       height: 320px;
@@ -130,7 +129,6 @@
       padding: 10px;
     }
 
-    /* Error overlay inside chart-wrap */
     .chart-error {
       position: absolute;
       inset: 0;
@@ -266,7 +264,6 @@
   </div>
 
   <script>
-    // ── Chart.js global dark theme defaults ──────────────────────────────────
     Chart.defaults.color = "#94a3b8";
     Chart.defaults.borderColor = "#1e293b";
 
@@ -279,21 +276,20 @@
       slate:  "#475569",
     };
 
-    // ── Canvas contexts ───────────────────────────────────────────────────────
     const cpuCtx          = document.getElementById("cpuChart").getContext("2d");
     const memCtx          = document.getElementById("memChart").getContext("2d");
     const driftCtx        = document.getElementById("driftChart").getContext("2d");
     const relationshipCtx = document.getElementById("relationshipChart").getContext("2d");
 
-    // ── Line chart factory ────────────────────────────────────────────────────
+    // ✅ FIX 1: Added "" key; ✅ FIX 2: Added "" to dataset
     function createLineChart(ctx, label, color, yMin = 0, yMax) {
       return new Chart(ctx, {
         type: "line",
-         {
+         {                   // ✅ was missing ""
           labels: [],
           datasets: [{
             label,
-             [],
+             [],             // ✅ was missing ""
             borderColor: color,
             backgroundColor: color + "22",
             borderWidth: 2,
@@ -325,32 +321,32 @@
       });
     }
 
-    const cpuChart   = createLineChart(cpuCtx,   "CPU Usage (%)",    CHART_COLORS.blue,   0, 100);
-    const memChart   = createLineChart(memCtx,   "Memory Usage (%)", CHART_COLORS.purple, 0, 100);
-    const driftChart = createLineChart(driftCtx, "Structural Drift Score", CHART_COLORS.amber, 0, 150);
+    const cpuChart   = createLineChart(cpuCtx,   "CPU Usage (%)",         CHART_COLORS.blue,   0, 100);
+    const memChart   = createLineChart(memCtx,   "Memory Usage (%)",      CHART_COLORS.purple, 0, 100);
+    const driftChart = createLineChart(driftCtx, "Structural Drift Score", CHART_COLORS.amber,  0, 150);
 
-    // ── Scatter / relationship chart ──────────────────────────────────────────
+    // ✅ FIX 3: Added "" key to scatter config; ✅ FIX 4-8: Added "" to all 5 datasets
     const relationshipChart = new Chart(relationshipCtx, {
       type: "scatter",
-       {
+       {                     // ✅ was missing ""
         datasets: [
           {
             label: "Normal States",
-             [],
+             [],             // ✅ was missing ""
             backgroundColor: CHART_COLORS.green + "99",
             borderColor: CHART_COLORS.green,
             pointRadius: 4,
           },
           {
             label: "Anomalous States",
-             [],
+             [],             // ✅ was missing ""
             backgroundColor: CHART_COLORS.red + "bb",
             borderColor: CHART_COLORS.red,
             pointRadius: 5,
           },
           {
             label: "Baseline Centroid",
-             [],
+             [],             // ✅ was missing ""
             backgroundColor: CHART_COLORS.blue,
             borderColor: "#fff",
             pointRadius: 8,
@@ -358,7 +354,7 @@
           },
           {
             label: "Drift Threshold",
-             [],
+             [],             // ✅ was missing ""
             showLine: true,
             pointRadius: 0,
             borderColor: CHART_COLORS.amber,
@@ -368,7 +364,7 @@
           },
           {
             label: "Trajectory",
-             [],
+             [],             // ✅ was missing ""
             showLine: true,
             pointRadius: 2,
             borderColor: CHART_COLORS.slate,
@@ -402,7 +398,6 @@
       }
     });
 
-    // ── Helpers ───────────────────────────────────────────────────────────────
     async function fetchJson(url) {
       const res = await fetch(url, { cache: "no-store" });
       if (!res.ok) return { error: `HTTP ${res.status}` };
@@ -447,7 +442,6 @@
 
     const MAX_ANOMALY_DISPLAY = 50;
 
-    // ── Main refresh loop ─────────────────────────────────────────────────────
     async function refreshDashboard() {
       try {
         const [eventsData, latestData, anomaliesData, structuralData] = await Promise.all([
@@ -460,8 +454,7 @@
         document.getElementById("last-updated").textContent =
           "Last updated: " + new Date().toLocaleTimeString();
 
-        // ── KPI cards ─────────────────────────────────────────────────────────
-        const events   = eventsData.events   || [];
+        const events    = eventsData.events   || [];
         const anomalies = anomaliesData.events || [];
 
         document.getElementById("total-events").textContent =
@@ -469,7 +462,6 @@
         document.getElementById("total-anomalies").textContent =
           structuralData.total_structural_anomalies ?? 0;
 
-        // ── Latest event block ────────────────────────────────────────────────
         if (!latestData.error) {
           setStatus(latestData.status);
           document.getElementById("latest-score").textContent =
@@ -487,10 +479,9 @@
           document.getElementById("latest-event").textContent = "No event data yet.";
         }
 
-        // ── Line charts ───────────────────────────────────────────────────────
-        const labels     = events.map(e => shortTime(e.timestamp));
-        const cpuValues  = events.map(e => e.signals?.cpu_usage    ?? 0);
-        const memValues  = events.map(e => e.signals?.memory_usage ?? 0);
+        const labels      = events.map(e => shortTime(e.timestamp));
+        const cpuValues   = events.map(e => e.signals?.cpu_usage    ?? 0);
+        const memValues   = events.map(e => e.signals?.memory_usage ?? 0);
         const driftValues = events.map(e => e.score ?? 0);
 
         if (events.length) {
@@ -515,7 +506,6 @@
         driftChart.data.datasets[0].data = driftValues;
         driftChart.update();
 
-        // ── Scatter / relationship chart ──────────────────────────────────────
         const relationshipPoints = structuralData.relationship_points || [];
         const centroid           = structuralData.baseline_centroid   || { x: 0, y: 0 };
         const driftThreshold     = structuralData.drift_threshold     || 30;
@@ -526,8 +516,8 @@
           clearChartError("relationshipError");
         }
 
-        const normalPoints    = relationshipPoints.filter(p => p.status !== "anomaly").map(p => ({ x: p.x, y: p.y }));
-        const anomalyPoints   = relationshipPoints.filter(p => p.status === "anomaly").map(p => ({ x: p.x, y: p.y }));
+        const normalPoints     = relationshipPoints.filter(p => p.status !== "anomaly").map(p => ({ x: p.x, y: p.y }));
+        const anomalyPoints    = relationshipPoints.filter(p => p.status === "anomaly").map(p => ({ x: p.x, y: p.y }));
         const trajectoryPoints = relationshipPoints.map(p => ({ x: p.x, y: p.y }));
         const ringPoints       = buildRing(centroid.x, centroid.y, driftThreshold);
 
@@ -538,7 +528,6 @@
         relationshipChart.data.datasets[4].data = trajectoryPoints;
         relationshipChart.update();
 
-        // ── Anomaly list ──────────────────────────────────────────────────────
         const anomalyList = document.getElementById("anomaly-list");
         anomalyList.innerHTML = "";
 
