@@ -1,4 +1,5 @@
 <!DOCTYPE html>
+
 <html lang="en">
 <head>
   <meta charset="utf-8" />
@@ -14,81 +15,102 @@
       font-family: Arial, sans-serif;
     }
 
-    .container {
-      max-width: 1200px;
-      margin: 0 auto;
-    }
+```
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+}
 
-    h1 {
-      margin: 0 0 8px 0;
-      font-size: 32px;
-    }
+h1 {
+  margin: 0 0 8px 0;
+  font-size: 32px;
+}
 
-    .subtitle {
-      color: #94a3b8;
-      margin-bottom: 20px;
-    }
+.subtitle {
+  color: #94a3b8;
+  margin-bottom: 20px;
+}
 
-    .row {
-      display: grid;
-      grid-template-columns: repeat(12, 1fr);
-      gap: 16px;
-      margin-bottom: 16px;
-    }
+.row {
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  gap: 16px;
+  margin-bottom: 16px;
+}
 
-    .card {
-      grid-column: span 12;
-      background: #111827;
-      border: 1px solid #334155;
-      border-radius: 12px;
-      padding: 16px;
-    }
+.card {
+  grid-column: span 12;
+  background: #111827;
+  border: 1px solid #334155;
+  border-radius: 12px;
+  padding: 16px;
+}
 
-    .span-4 { grid-column: span 4; }
-    .span-6 { grid-column: span 6; }
+.span-4 { grid-column: span 4; }
+.span-6 { grid-column: span 6; }
 
-    @media (max-width: 900px) {
-      .span-4, .span-6 {
-        grid-column: span 12;
-      }
-    }
+@media (max-width: 900px) {
+  .span-4, .span-6 {
+    grid-column: span 12;
+  }
+}
 
-    .metric {
-      font-size: 36px;
-      font-weight: bold;
-      margin: 8px 0;
-    }
+.metric {
+  font-size: 36px;
+  font-weight: bold;
+  margin: 8px 0;
+}
 
-    .ok { color: #22c55e; }
-    .bad { color: #ef4444; }
+.ok { color: #22c55e; }
+.bad { color: #ef4444; }
 
-    .chart-wrap {
-      background: white;
-      border-radius: 10px;
-      padding: 10px;
-    }
+.chart-wrap {
+  background: white;
+  border-radius: 10px;
+  padding: 10px;
+}
 
-    canvas {
-      width: 100% !important;
-      height: 260px !important;
-    }
+canvas {
+  width: 100% !important;
+  height: 260px !important;
+}
 
-    pre {
-      background: #020617;
-      color: #dbeafe;
-      border-radius: 10px;
-      padding: 12px;
-      min-height: 180px;
-      overflow: auto;
-      white-space: pre-wrap;
-      word-break: break-word;
-    }
+pre {
+  background: #020617;
+  color: #dbeafe;
+  border-radius: 10px;
+  padding: 12px;
+  min-height: 180px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 12px;
+}
 
-    ul {
-      max-height: 220px;
-      overflow: auto;
-      padding-left: 20px;
-    }
+ul {
+  max-height: 220px;
+  overflow: auto;
+  padding-left: 20px;
+}
+
+.status-indicator {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  margin-right: 8px;
+  vertical-align: middle;
+}
+
+.status-ok {
+  background-color: #22c55e;
+}
+
+.status-bad {
+  background-color: #ef4444;
+}
+```
+
   </style>
 </head>
 <body>
@@ -96,67 +118,72 @@
     <h1>Neraium Dashboard</h1>
     <div class="subtitle">Live telemetry and drift monitoring</div>
 
-    <div class="row">
-      <div class="card span-4">
-        <h2>Status</h2>
-        <div id="latest-status" class="metric">Loading...</div>
-        <div id="latest-score">Score: --</div>
-      </div>
-
-      <div class="card span-4">
-        <h2>Total Events</h2>
-        <div id="total-events" class="metric">0</div>
-      </div>
-
-      <div class="card span-4">
-        <h2>Total Anomalies</h2>
-        <div id="total-anomalies" class="metric">0</div>
-      </div>
+```
+<div class="row">
+  <div class="card span-4">
+    <h2>Status</h2>
+    <div id="latest-status" class="metric">
+      <span class="status-indicator status-ok"></span><span id="status-text">Loading...</span>
     </div>
+    <div id="latest-score">Score: --</div>
+  </div>
 
-    <div class="row">
-      <div class="card span-6">
-        <h2>CPU Usage</h2>
-        <div class="chart-wrap">
-          <canvas id="cpuChart"></canvas>
-        </div>
-      </div>
+  <div class="card span-4">
+    <h2>Total Events</h2>
+    <div id="total-events" class="metric">0</div>
+  </div>
 
-      <div class="card span-6">
-        <h2>Memory Usage</h2>
-        <div class="chart-wrap">
-          <canvas id="memChart"></canvas>
-        </div>
-      </div>
+  <div class="card span-4">
+    <h2>Total Anomalies</h2>
+    <div id="total-anomalies" class="metric">0</div>
+  </div>
+</div>
+
+<div class="row">
+  <div class="card span-6">
+    <h2>CPU Usage</h2>
+    <div class="chart-wrap">
+      <canvas id="cpuChart"></canvas>
     </div>
+  </div>
 
-    <div class="row">
-      <div class="card span-6">
-        <h2>Score</h2>
-        <div class="chart-wrap">
-          <canvas id="scoreChart"></canvas>
-        </div>
-      </div>
-
-      <div class="card span-6">
-        <h2>Relationship</h2>
-        <div class="chart-wrap">
-          <canvas id="relationshipChart"></canvas>
-        </div>
-      </div>
+  <div class="card span-6">
+    <h2>Memory Usage</h2>
+    <div class="chart-wrap">
+      <canvas id="memChart"></canvas>
     </div>
+  </div>
+</div>
 
-    <div class="row">
-      <div class="card span-6">
-        <h2>Latest Event</h2>
-        <pre id="latest-event">Loading...</pre>
-      </div>
-
-      <div class="card span-6">
-        <h2>Anomaly Events</h2>
-        <ul id="anomaly-list"></ul>
-      </div>
+<div class="row">
+  <div class="card span-6">
+    <h2>Score</h2>
+    <div class="chart-wrap">
+      <canvas id="scoreChart"></canvas>
     </div>
+  </div>
+
+  <div class="card span-6">
+    <h2>Relationship</h2>
+    <div class="chart-wrap">
+      <canvas id="relationshipChart"></canvas>
+    </div>
+  </div>
+</div>
+
+<div class="row">
+  <div class="card span-6">
+    <h2>Latest Event</h2>
+    <pre id="latest-event">Loading...</pre>
+  </div>
+
+  <div class="card span-6">
+    <h2>Anomaly Events</h2>
+    <ul id="anomaly-list"></ul>
+  </div>
+</div>
+```
+
   </div>
 
   <script>
@@ -164,53 +191,121 @@
       type: "line",
       data: {
         labels: [],
-        datasets: [{ label: "CPU", data: [], borderWidth: 2 }]
+        datasets: [{ 
+          label: "CPU", 
+          data: [], 
+          borderWidth: 2,
+          borderColor: "#3b82f6",
+          backgroundColor: "rgba(59, 130, 246, 0.1)",
+          tension: 0.4
+        }]
       },
-      options: { responsive: true, animation: false }
+      options: { 
+        responsive: true, 
+        animation: false,
+        plugins: { legend: { display: false } }
+      }
     });
 
     const memChart = new Chart(document.getElementById("memChart"), {
       type: "line",
       data: {
         labels: [],
-        datasets: [{ label: "Memory", data: [], borderWidth: 2 }]
+        datasets: [{ 
+          label: "Memory", 
+          data: [], 
+          borderWidth: 2,
+          borderColor: "#8b5cf6",
+          backgroundColor: "rgba(139, 92, 246, 0.1)",
+          tension: 0.4
+        }]
       },
-      options: { responsive: true, animation: false }
+      options: { 
+        responsive: true, 
+        animation: false,
+        plugins: { legend: { display: false } }
+      }
     });
 
     const scoreChart = new Chart(document.getElementById("scoreChart"), {
       type: "line",
       data: {
         labels: [],
-        datasets: [{ label: "Score", data: [], borderWidth: 2 }]
+        datasets: [{ 
+          label: "Score", 
+          data: [], 
+          borderWidth: 2,
+          borderColor: "#ec4899",
+          backgroundColor: "rgba(236, 72, 153, 0.1)",
+          tension: 0.4
+        }]
       },
-      options: { responsive: true, animation: false }
+      options: { 
+        responsive: true, 
+        animation: false,
+        plugins: { legend: { display: false } }
+      }
     });
 
     const relationshipChart = new Chart(document.getElementById("relationshipChart"), {
       type: "scatter",
       data: {
         datasets: [
-          { label: "Normal", data: [] },
-          { label: "Anomaly", data: [] }
+          { 
+            label: "Normal", 
+            data: [],
+            backgroundColor: "rgba(34, 197, 94, 0.6)",
+            borderColor: "#22c55e"
+          },
+          { 
+            label: "Anomaly", 
+            data: [],
+            backgroundColor: "rgba(239, 68, 68, 0.6)",
+            borderColor: "#ef4444"
+          }
         ]
       },
       options: {
         responsive: true,
         animation: false,
         scales: {
-          x: { min: 0, max: 100, title: { display: true, text: "CPU" } },
-          y: { min: 0, max: 100, title: { display: true, text: "Memory" } }
+          x: { min: 0, max: 100, title: { display: true, text: "CPU %" } },
+          y: { min: 0, max: 100, title: { display: true, text: "Memory %" } }
         }
       }
     });
 
+    // Mock data store
+    let mockEvents = [];
+
+    function generateMockEvent() {
+      return {
+        timestamp: new Date().toISOString(),
+        status: Math.random() > 0.85 ? "anomaly" : "normal",
+        score: Math.round(Math.random() * 100),
+        signals: {
+          cpu_usage: Math.round((20 + Math.random() * 60) * 10) / 10,
+          memory_usage: Math.round((30 + Math.random() * 50) * 10) / 10
+        }
+      };
+    }
+
+    // Initialize mock data
+    for (let i = 0; i < 15; i++) {
+      mockEvents.push(generateMockEvent());
+    }
+
     async function getJson(url) {
-      const res = await fetch(url, { cache: "no-store" });
-      if (!res.ok) {
-        throw new Error(url + " -> " + res.status);
+      // Use mock data instead of fetching
+      if (url === "/events") {
+        return { events: mockEvents };
+      } else if (url === "/events/anomalies") {
+        return { events: mockEvents.filter(e => e.status === "anomaly") };
+      } else if (url === "/events/latest") {
+        if (!mockEvents.length) throw new Error("No events");
+        return mockEvents[mockEvents.length - 1];
       }
-      return await res.json();
+      throw new Error("Unknown endpoint: " + url);
     }
 
     function shortTime(ts) {
@@ -223,6 +318,10 @@
 
     async function refreshDashboard() {
       try {
+        // Add new mock event every refresh
+        if (mockEvents.length > 50) mockEvents.shift();
+        mockEvents.push(generateMockEvent());
+
         const eventsData = await getJson("/events");
         const anomalyData = await getJson("/events/anomalies");
 
@@ -240,9 +339,10 @@
         document.getElementById("total-anomalies").textContent = anomalies.length;
 
         if (!latestData.error) {
-          const statusEl = document.getElementById("latest-status");
+          const statusEl = document.getElementById("status-text");
           statusEl.textContent = latestData.status || "unknown";
-          statusEl.className = "metric " + (latestData.status === "anomaly" ? "bad" : "ok");
+          const indicator = document.querySelector(".status-indicator");
+          indicator.className = "status-indicator " + (latestData.status === "anomaly" ? "status-bad" : "status-ok");
 
           document.getElementById("latest-score").textContent =
             "Score: " + String(latestData.score ?? "--");
@@ -250,8 +350,8 @@
           document.getElementById("latest-event").textContent =
             JSON.stringify(latestData, null, 2);
         } else {
-          document.getElementById("latest-status").textContent = "No data";
-          document.getElementById("latest-status").className = "metric";
+          document.getElementById("status-text").textContent = "No data";
+          document.querySelector(".status-indicator").className = "status-indicator";
           document.getElementById("latest-score").textContent = "Score: --";
           document.getElementById("latest-event").textContent = "No events yet";
         }
@@ -297,7 +397,7 @@
           li.textContent = "No anomalies yet";
           list.appendChild(li);
         } else {
-          anomalies.slice().reverse().forEach(e => {
+          anomalies.slice().reverse().slice(0, 10).forEach(e => {
             const li = document.createElement("li");
             li.textContent = shortTime(e.timestamp) + " score=" + e.score;
             list.appendChild(li);
@@ -306,11 +406,13 @@
       } catch (err) {
         document.getElementById("latest-event").textContent =
           "Dashboard error: " + err.message;
+        console.error(err);
       }
     }
 
     refreshDashboard();
     setInterval(refreshDashboard, 2000);
   </script>
+
 </body>
 </html>
