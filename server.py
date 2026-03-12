@@ -16,7 +16,6 @@ STATIC_DIR = BASE_DIR / "static"
 
 
 class NeraiumHandler(BaseHTTPRequestHandler):
-
     def send_json(self, code, payload):
         body = json.dumps(payload).encode()
         self.send_response(code)
@@ -38,7 +37,6 @@ class NeraiumHandler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def do_GET(self):
-
         if self.path == "/health":
             self.send_json(200, {"status": "ok", "service": "neraium"})
             return
@@ -63,10 +61,13 @@ class NeraiumHandler(BaseHTTPRequestHandler):
             self.send_json(200, {"events": store.anomalies()})
             return
 
+        if self.path == "/structural/summary":
+            self.send_json(200, store.structural_summary())
+            return
+
         self.send_json(404, {"error": "not found"})
 
     def do_POST(self):
-
         if self.path != "/telemetry":
             self.send_json(404, {"error": "not found"})
             return
@@ -85,9 +86,7 @@ class NeraiumHandler(BaseHTTPRequestHandler):
             )
 
             result = pipeline.process(payload)
-
             store.add(result)
-
             self.send_json(200, result)
 
         except Exception as e:
@@ -103,6 +102,7 @@ def main():
     print("GET /events")
     print("GET /events/latest")
     print("GET /events/anomalies")
+    print("GET /structural/summary")
     print("POST /telemetry")
 
     server.serve_forever()
