@@ -1,24 +1,23 @@
-from neraium_core.baseline import BASELINE_SYSTEM, DEMO_BASELINE
-from neraium_core.pipeline import NeraiumPipeline
-from neraium_core.replay import load_replay_file
+from datetime import datetime
+from neraium_core.pipeline import TelemetryPipeline
+from neraium_core.telemetry import TelemetryPayload
 
 
 def main():
-    print("Neraium Alignment Engine initialized.")
-    print("System:", BASELINE_SYSTEM.system_id)
+    pipeline = TelemetryPipeline()
 
-    pipeline = NeraiumPipeline(BASELINE_SYSTEM, DEMO_BASELINE)
-    payloads = load_replay_file("data/sample_telemetry.json")
+    payload = TelemetryPayload(
+        timestamp=datetime.utcnow(),
+        signals={
+            "cpu_usage": 42.5,
+            "memory_usage": 71.2,
+        },
+    )
 
-    for payload in payloads:
-        results = pipeline.ingest(payload)
-        for result in results:
-            print("\n[window emitted]")
-            print("window_end=", result.window_end)
-            print("vector=", result.vector)
-            print("accepted_for_scoring=", result.accepted_for_scoring)
-            print("score=", result.score)
-            print("reason=", result.reason)
+    result = pipeline.process(payload)
+
+    print("Neraium Telemetry Result:")
+    print(result)
 
 
 if __name__ == "__main__":
