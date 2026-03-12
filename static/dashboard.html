@@ -3,64 +3,30 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Neraium Structural Intelligence Dashboard</title>
+  <title>Neraium Dashboard</title>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
-
   <style>
-    :root {
-      --bg: #0f172a;
-      --panel: #111827;
-      --panel-2: #0b1220;
-      --border: #334155;
-      --text: #e2e8f0;
-      --muted: #94a3b8;
-      --good: #22c55e;
-      --bad: #ef4444;
-      --warn: #f59e0b;
-      --shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
-      --radius: 16px;
-    }
-
-    * { box-sizing: border-box; }
-
     body {
       margin: 0;
       padding: 16px;
-      background:
-        radial-gradient(circle at top left, rgba(59, 130, 246, 0.12), transparent 25%),
-        radial-gradient(circle at top right, rgba(168, 85, 247, 0.10), transparent 22%),
-        var(--bg);
-      color: var(--text);
+      background: #0f172a;
+      color: #e2e8f0;
       font-family: Arial, sans-serif;
     }
 
-    .container { max-width: 1400px; margin: 0 auto; }
-
-    .header-row {
-      display: flex;
-      align-items: flex-end;
-      justify-content: space-between;
-      flex-wrap: wrap;
-      gap: 8px;
-      margin-bottom: 20px;
+    .container {
+      max-width: 1200px;
+      margin: 0 auto;
     }
 
     h1 {
-      margin: 0;
-      font-size: 42px;
-      line-height: 1.1;
+      margin: 0 0 8px 0;
+      font-size: 32px;
     }
 
     .subtitle {
-      margin: 4px 0 0 0;
-      color: var(--muted);
-      font-size: 18px;
-    }
-
-    #last-updated {
-      color: var(--muted);
-      font-size: 13px;
-      white-space: nowrap;
+      color: #94a3b8;
+      margin-bottom: 20px;
     }
 
     .row {
@@ -72,140 +38,79 @@
 
     .card {
       grid-column: span 12;
-      background: linear-gradient(180deg, rgba(17, 24, 39, 0.96), rgba(11, 18, 32, 0.96));
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
+      background: #111827;
+      border: 1px solid #334155;
+      border-radius: 12px;
       padding: 16px;
-      box-shadow: var(--shadow);
-      min-width: 0;
     }
 
     .span-4 { grid-column: span 4; }
     .span-6 { grid-column: span 6; }
 
-    @media (max-width: 1050px) {
-      .span-4, .span-6 { grid-column: span 12; }
-      h1 { font-size: 32px; }
+    @media (max-width: 900px) {
+      .span-4, .span-6 {
+        grid-column: span 12;
+      }
     }
-
-    h2 { margin: 0 0 12px 0; font-size: 20px; }
 
     .metric {
-      font-size: 42px;
-      font-weight: 700;
-      margin: 8px 0 4px 0;
-      line-height: 1;
-      word-break: break-word;
+      font-size: 36px;
+      font-weight: bold;
+      margin: 8px 0;
     }
 
-    .metric-sub { color: var(--muted); font-size: 15px; }
-
-    .ok   { color: var(--good); }
-    .bad  { color: var(--bad); }
-    .warn { color: var(--warn); }
-    .err  { color: #f472b6; }
-
-    .status-block { display: flex; flex-direction: column; gap: 8px; }
-
-    .pill {
-      display: inline-block;
-      border: 1px solid var(--border);
-      border-radius: 999px;
-      padding: 6px 12px;
-      font-size: 13px;
-      color: var(--muted);
-      background: rgba(255,255,255,0.03);
-      width: fit-content;
-      max-width: 100%;
-      overflow-wrap: anywhere;
-    }
+    .ok { color: #22c55e; }
+    .bad { color: #ef4444; }
 
     .chart-wrap {
-      position: relative;
-      height: 320px;
-      background: var(--panel-2);
-      border: 1px solid var(--border);
-      border-radius: 12px;
+      background: white;
+      border-radius: 10px;
       padding: 10px;
     }
 
-    .chart-error {
-      position: absolute;
-      inset: 0;
-      display: none;
-      align-items: center;
-      justify-content: center;
-      background: rgba(11, 18, 32, 0.85);
-      border-radius: 12px;
-      color: var(--bad);
-      font-size: 14px;
-      text-align: center;
-      padding: 16px;
-      z-index: 10;
+    canvas {
+      width: 100% !important;
+      height: 260px !important;
     }
 
-    .chart-error.visible { display: flex; }
-
-    .subtle { color: var(--muted); font-size: 14px; margin-bottom: 10px; }
-
     pre {
-      margin: 0;
+      background: #020617;
+      color: #dbeafe;
+      border-radius: 10px;
+      padding: 12px;
+      min-height: 180px;
+      overflow: auto;
       white-space: pre-wrap;
       word-break: break-word;
-      background: #020617;
-      border: 1px solid #1e293b;
-      padding: 14px;
-      border-radius: 12px;
-      overflow-x: auto;
-      max-height: 280px;
-      overflow-y: auto;
-      color: #dbeafe;
-      font-size: 14px;
     }
 
     ul {
-      margin: 0;
-      padding-left: 18px;
-      max-height: 280px;
-      overflow-y: auto;
+      max-height: 220px;
+      overflow: auto;
+      padding-left: 20px;
     }
-
-    li { margin-bottom: 8px; color: #e5e7eb; }
-
-    .footer-note { margin-top: 6px; color: var(--muted); font-size: 13px; }
   </style>
 </head>
 <body>
   <div class="container">
-
-    <div class="header-row">
-      <div>
-        <h1>Neraium Structural Intelligence Dashboard</h1>
-        <p class="subtitle">Live structural telemetry, baseline-relative drift scoring, trajectory monitoring, and relationship geometry.</p>
-      </div>
-      <div id="last-updated">Last updated: --</div>
-    </div>
+    <h1>Neraium Dashboard</h1>
+    <div class="subtitle">Live telemetry and drift monitoring</div>
 
     <div class="row">
       <div class="card span-4">
-        <h2>Latest Structural Status</h2>
-        <div class="status-block">
-          <div id="latest-status" class="metric">Loading...</div>
-          <div id="latest-score" class="metric-sub">Structural Drift Score: --</div>
-          <div id="latest-vector" class="pill" title="">Latest vector: --</div>
-        </div>
+        <h2>Status</h2>
+        <div id="latest-status" class="metric">Loading...</div>
+        <div id="latest-score">Score: --</div>
       </div>
 
       <div class="card span-4">
         <h2>Total Events</h2>
         <div id="total-events" class="metric">0</div>
-        <div class="metric-sub">Captured system states</div>
       </div>
 
       <div class="card span-4">
-        <h2>Total Structural Anomalies</h2>
+        <h2>Total Anomalies</h2>
         <div id="total-anomalies" class="metric">0</div>
-        <div class="metric-sub">Baseline-relative drift events</div>
       </div>
     </div>
 
@@ -214,7 +119,6 @@
         <h2>CPU Usage</h2>
         <div class="chart-wrap">
           <canvas id="cpuChart"></canvas>
-          <div class="chart-error" id="cpuError">No CPU data available</div>
         </div>
       </div>
 
@@ -222,27 +126,22 @@
         <h2>Memory Usage</h2>
         <div class="chart-wrap">
           <canvas id="memChart"></canvas>
-          <div class="chart-error" id="memError">No memory data available</div>
         </div>
       </div>
     </div>
 
     <div class="row">
       <div class="card span-6">
-        <h2>Structural Drift Score</h2>
-        <div class="subtle">Distance from recent baseline system geometry</div>
+        <h2>Score</h2>
         <div class="chart-wrap">
-          <canvas id="driftChart"></canvas>
-          <div class="chart-error" id="driftError">No drift data available</div>
+          <canvas id="scoreChart"></canvas>
         </div>
       </div>
 
       <div class="card span-6">
-        <h2>Relationship Geometry + Trajectory</h2>
-        <div class="subtle">State-space view with centroid, threshold ring, and motion vectors</div>
+        <h2>Relationship</h2>
         <div class="chart-wrap">
           <canvas id="relationshipChart"></canvas>
-          <div class="chart-error" id="relationshipError">No structural summary available</div>
         </div>
       </div>
     </div>
@@ -251,302 +150,162 @@
       <div class="card span-6">
         <h2>Latest Event</h2>
         <pre id="latest-event">Loading...</pre>
-        <div class="footer-note">Most recent full event payload.</div>
       </div>
 
       <div class="card span-6">
-        <h2>Structural Anomaly Events</h2>
+        <h2>Anomaly Events</h2>
         <ul id="anomaly-list"></ul>
-        <div class="footer-note">Recent structural drift events.</div>
       </div>
     </div>
-
   </div>
 
   <script>
-    Chart.defaults.color = "#94a3b8";
-    Chart.defaults.borderColor = "#1e293b";
+    const cpuChart = new Chart(document.getElementById("cpuChart"), {
+      type: "line",
+      data: {
+        labels: [],
+        datasets: [{ label: "CPU", data: [], borderWidth: 2 }]
+      },
+      options: { responsive: true, animation: false }
+    });
 
-    const CHART_COLORS = {
-      blue:   "#3b82f6",
-      purple: "#a855f7",
-      green:  "#22c55e",
-      red:    "#ef4444",
-      amber:  "#f59e0b",
-      slate:  "#475569",
-    };
+    const memChart = new Chart(document.getElementById("memChart"), {
+      type: "line",
+      data: {
+        labels: [],
+        datasets: [{ label: "Memory", data: [], borderWidth: 2 }]
+      },
+      options: { responsive: true, animation: false }
+    });
 
-    const cpuCtx          = document.getElementById("cpuChart").getContext("2d");
-    const memCtx          = document.getElementById("memChart").getContext("2d");
-    const driftCtx        = document.getElementById("driftChart").getContext("2d");
-    const relationshipCtx = document.getElementById("relationshipChart").getContext("2d");
+    const scoreChart = new Chart(document.getElementById("scoreChart"), {
+      type: "line",
+      data: {
+        labels: [],
+        datasets: [{ label: "Score", data: [], borderWidth: 2 }]
+      },
+      options: { responsive: true, animation: false }
+    });
 
-    // ✅ FIX 1: Added "" key; ✅ FIX 2: Added "" to dataset
-    function createLineChart(ctx, label, color, yMin = 0, yMax) {
-      return new Chart(ctx, {
-        type: "line",
-         {                   // ✅ was missing ""
-          labels: [],
-          datasets: [{
-            label,
-             [],             // ✅ was missing ""
-            borderColor: color,
-            backgroundColor: color + "22",
-            borderWidth: 2,
-            tension: 0.25,
-            fill: true,
-            pointRadius: 2,
-          }]
-        },
-        options: {
-          responsive: true,
-          maintainAspectRatio: false,
-          animation: false,
-          plugins: {
-            legend: { display: true, labels: { color: "#94a3b8" } }
-          },
-          scales: {
-            x: {
-              ticks: { color: "#64748b", maxTicksLimit: 8 },
-              grid:  { color: "#1e293b" }
-            },
-            y: {
-              min: yMin,
-              ...(yMax !== undefined ? { max: yMax } : {}),
-              ticks: { color: "#64748b" },
-              grid:  { color: "#1e293b" }
-            }
-          }
-        }
-      });
-    }
-
-    const cpuChart   = createLineChart(cpuCtx,   "CPU Usage (%)",         CHART_COLORS.blue,   0, 100);
-    const memChart   = createLineChart(memCtx,   "Memory Usage (%)",      CHART_COLORS.purple, 0, 100);
-    const driftChart = createLineChart(driftCtx, "Structural Drift Score", CHART_COLORS.amber,  0, 150);
-
-    // ✅ FIX 3: Added "" key to scatter config; ✅ FIX 4-8: Added "" to all 5 datasets
-    const relationshipChart = new Chart(relationshipCtx, {
+    const relationshipChart = new Chart(document.getElementById("relationshipChart"), {
       type: "scatter",
-       {                     // ✅ was missing ""
+      data: {
         datasets: [
-          {
-            label: "Normal States",
-             [],             // ✅ was missing ""
-            backgroundColor: CHART_COLORS.green + "99",
-            borderColor: CHART_COLORS.green,
-            pointRadius: 4,
-          },
-          {
-            label: "Anomalous States",
-             [],             // ✅ was missing ""
-            backgroundColor: CHART_COLORS.red + "bb",
-            borderColor: CHART_COLORS.red,
-            pointRadius: 5,
-          },
-          {
-            label: "Baseline Centroid",
-             [],             // ✅ was missing ""
-            backgroundColor: CHART_COLORS.blue,
-            borderColor: "#fff",
-            pointRadius: 8,
-            pointStyle: "crossRot",
-          },
-          {
-            label: "Drift Threshold",
-             [],             // ✅ was missing ""
-            showLine: true,
-            pointRadius: 0,
-            borderColor: CHART_COLORS.amber,
-            borderWidth: 1.5,
-            borderDash: [4, 4],
-            backgroundColor: "transparent",
-          },
-          {
-            label: "Trajectory",
-             [],             // ✅ was missing ""
-            showLine: true,
-            pointRadius: 2,
-            borderColor: CHART_COLORS.slate,
-            borderWidth: 1.5,
-            backgroundColor: "transparent",
-            tension: 0,
-          }
+          { label: "Normal", data: [] },
+          { label: "Anomaly", data: [] }
         ]
       },
       options: {
         responsive: true,
-        maintainAspectRatio: false,
         animation: false,
-        plugins: {
-          legend: { display: true, labels: { color: "#94a3b8" } }
-        },
         scales: {
-          x: {
-            min: 0, max: 100,
-            title: { display: true, text: "CPU Usage", color: "#64748b" },
-            ticks: { color: "#64748b" },
-            grid:  { color: "#1e293b" }
-          },
-          y: {
-            min: 0, max: 100,
-            title: { display: true, text: "Memory Usage", color: "#64748b" },
-            ticks: { color: "#64748b" },
-            grid:  { color: "#1e293b" }
-          }
+          x: { min: 0, max: 100, title: { display: true, text: "CPU" } },
+          y: { min: 0, max: 100, title: { display: true, text: "Memory" } }
         }
       }
     });
 
-    async function fetchJson(url) {
+    async function getJson(url) {
       const res = await fetch(url, { cache: "no-store" });
-      if (!res.ok) return { error: `HTTP ${res.status}` };
-      return res.json();
+      if (!res.ok) {
+        throw new Error(url + " -> " + res.status);
+      }
+      return await res.json();
     }
 
     function shortTime(ts) {
-      try { return new Date(ts).toLocaleTimeString(); }
-      catch { return ts; }
-    }
-
-    function setStatus(statusValue) {
-      const el = document.getElementById("latest-status");
-      el.textContent = statusValue || "unknown";
-      el.className = "metric";
-      if      (statusValue === "anomaly") el.classList.add("bad");
-      else if (statusValue === "normal")  el.classList.add("ok");
-      else if (statusValue === "error")   el.classList.add("err");
-      else                                el.classList.add("warn");
-    }
-
-    function showChartError(id, msg) {
-      const el = document.getElementById(id);
-      if (!el) return;
-      el.textContent = msg || "No data available";
-      el.classList.add("visible");
-    }
-
-    function clearChartError(id) {
-      const el = document.getElementById(id);
-      if (el) el.classList.remove("visible");
-    }
-
-    function buildRing(cx, cy, radius, steps = 60) {
-      const ring = [];
-      for (let i = 0; i <= steps; i++) {
-        const angle = (2 * Math.PI * i) / steps;
-        ring.push({ x: cx + radius * Math.cos(angle), y: cy + radius * Math.sin(angle) });
+      try {
+        return new Date(ts).toLocaleTimeString();
+      } catch {
+        return ts;
       }
-      return ring;
     }
-
-    const MAX_ANOMALY_DISPLAY = 50;
 
     async function refreshDashboard() {
       try {
-        const [eventsData, latestData, anomaliesData, structuralData] = await Promise.all([
-          fetchJson("/events"),
-          fetchJson("/events/latest"),
-          fetchJson("/events/anomalies"),
-          fetchJson("/structural/summary")
-        ]);
+        const eventsData = await getJson("/events");
+        const anomalyData = await getJson("/events/anomalies");
 
-        document.getElementById("last-updated").textContent =
-          "Last updated: " + new Date().toLocaleTimeString();
+        let latestData;
+        try {
+          latestData = await getJson("/events/latest");
+        } catch {
+          latestData = { error: "no events" };
+        }
 
-        const events    = eventsData.events   || [];
-        const anomalies = anomaliesData.events || [];
+        const events = eventsData.events || [];
+        const anomalies = anomalyData.events || [];
 
-        document.getElementById("total-events").textContent =
-          structuralData.total_events ?? 0;
-        document.getElementById("total-anomalies").textContent =
-          structuralData.total_structural_anomalies ?? 0;
+        document.getElementById("total-events").textContent = events.length;
+        document.getElementById("total-anomalies").textContent = anomalies.length;
 
         if (!latestData.error) {
-          setStatus(latestData.status);
+          const statusEl = document.getElementById("latest-status");
+          statusEl.textContent = latestData.status || "unknown";
+          statusEl.className = "metric " + (latestData.status === "anomaly" ? "bad" : "ok");
+
           document.getElementById("latest-score").textContent =
-            "Structural Drift Score: " + (latestData.score ?? "--");
-          const vectorStr = JSON.stringify(latestData.aligned ?? []);
-          const vectorEl  = document.getElementById("latest-vector");
-          vectorEl.textContent = "Latest vector: " + vectorStr;
-          vectorEl.title       = vectorStr;
+            "Score: " + String(latestData.score ?? "--");
+
           document.getElementById("latest-event").textContent =
             JSON.stringify(latestData, null, 2);
         } else {
-          setStatus("no data");
-          document.getElementById("latest-score").textContent = "Structural Drift Score: --";
-          document.getElementById("latest-vector").textContent = "Latest vector: --";
-          document.getElementById("latest-event").textContent = "No event data yet.";
+          document.getElementById("latest-status").textContent = "No data";
+          document.getElementById("latest-status").className = "metric";
+          document.getElementById("latest-score").textContent = "Score: --";
+          document.getElementById("latest-event").textContent = "No events yet";
         }
 
-        const labels      = events.map(e => shortTime(e.timestamp));
-        const cpuValues   = events.map(e => e.signals?.cpu_usage    ?? 0);
-        const memValues   = events.map(e => e.signals?.memory_usage ?? 0);
-        const driftValues = events.map(e => e.score ?? 0);
-
-        if (events.length) {
-          clearChartError("cpuError");
-          clearChartError("memError");
-          clearChartError("driftError");
-        } else {
-          showChartError("cpuError",   "No event data yet");
-          showChartError("memError",   "No event data yet");
-          showChartError("driftError", "No event data yet");
-        }
+        const labels = events.map(e => shortTime(e.timestamp));
+        const cpu = events.map(e => e.signals?.cpu_usage ?? 0);
+        const mem = events.map(e => e.signals?.memory_usage ?? 0);
+        const score = events.map(e => e.score ?? 0);
 
         cpuChart.data.labels = labels;
-        cpuChart.data.datasets[0].data = cpuValues;
+        cpuChart.data.datasets[0].data = cpu;
         cpuChart.update();
 
         memChart.data.labels = labels;
-        memChart.data.datasets[0].data = memValues;
+        memChart.data.datasets[0].data = mem;
         memChart.update();
 
-        driftChart.data.labels = labels;
-        driftChart.data.datasets[0].data = driftValues;
-        driftChart.update();
+        scoreChart.data.labels = labels;
+        scoreChart.data.datasets[0].data = score;
+        scoreChart.update();
 
-        const relationshipPoints = structuralData.relationship_points || [];
-        const centroid           = structuralData.baseline_centroid   || { x: 0, y: 0 };
-        const driftThreshold     = structuralData.drift_threshold     || 30;
+        relationshipChart.data.datasets[0].data = events
+          .filter(e => e.status !== "anomaly")
+          .map(e => ({
+            x: e.signals?.cpu_usage ?? 0,
+            y: e.signals?.memory_usage ?? 0
+          }));
 
-        if (structuralData.error) {
-          showChartError("relationshipError", "Structural summary unavailable");
-        } else {
-          clearChartError("relationshipError");
-        }
+        relationshipChart.data.datasets[1].data = events
+          .filter(e => e.status === "anomaly")
+          .map(e => ({
+            x: e.signals?.cpu_usage ?? 0,
+            y: e.signals?.memory_usage ?? 0
+          }));
 
-        const normalPoints     = relationshipPoints.filter(p => p.status !== "anomaly").map(p => ({ x: p.x, y: p.y }));
-        const anomalyPoints    = relationshipPoints.filter(p => p.status === "anomaly").map(p => ({ x: p.x, y: p.y }));
-        const trajectoryPoints = relationshipPoints.map(p => ({ x: p.x, y: p.y }));
-        const ringPoints       = buildRing(centroid.x, centroid.y, driftThreshold);
-
-        relationshipChart.data.datasets[0].data = normalPoints;
-        relationshipChart.data.datasets[1].data = anomalyPoints;
-        relationshipChart.data.datasets[2].data = [{ x: centroid.x, y: centroid.y }];
-        relationshipChart.data.datasets[3].data = ringPoints;
-        relationshipChart.data.datasets[4].data = trajectoryPoints;
         relationshipChart.update();
 
-        const anomalyList = document.getElementById("anomaly-list");
-        anomalyList.innerHTML = "";
+        const list = document.getElementById("anomaly-list");
+        list.innerHTML = "";
 
         if (!anomalies.length) {
           const li = document.createElement("li");
-          li.textContent = "No structural anomalies yet";
-          anomalyList.appendChild(li);
+          li.textContent = "No anomalies yet";
+          list.appendChild(li);
         } else {
-          anomalies.slice(-MAX_ANOMALY_DISPLAY).reverse().forEach(event => {
+          anomalies.slice().reverse().forEach(e => {
             const li = document.createElement("li");
-            li.textContent =
-              `${shortTime(event.timestamp)} | drift=${event.score} | cpu=${event.signals?.cpu_usage} | mem=${event.signals?.memory_usage}`;
-            anomalyList.appendChild(li);
+            li.textContent = shortTime(e.timestamp) + " score=" + e.score;
+            list.appendChild(li);
           });
         }
-
       } catch (err) {
-        document.getElementById("latest-event").textContent = "Dashboard error: " + String(err);
-        setStatus("error");
+        document.getElementById("latest-event").textContent =
+          "Dashboard error: " + err.message;
       }
     }
 
