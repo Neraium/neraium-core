@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Neraium Dashboard</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 24px;
+      background: #0f172a;
+      color: #e2e8f0;
+    }
+
+    h1, h2 {
+      margin-bottom: 8px;
+    }
+
+    .row {
+      display: flex;
+      gap: 24px;
+      flex-wrap: wrap;
+      margin-bottom: 24px;
+    }
+
+    .card {
+      background: #111827;
+      border: 1px solid #334155;
+      border-radius: 12px;
+      padding: 16px;
+      min-width: 280px;
+      flex: 1;
+    }
+
+    .metric {
+      font-size: 28px;
+      font-weight: bold;
+      margin-top: 8px;
+    }
+
+    .ok {
+      color: #22c55e;
+    }
+
+    .bad {
+      color: #ef4444;
+    }
+
+    canvas {
+      background: #ffffff;
+      border-radius: 8px;
+      padding: 8px;
+    }
+
+    pre {
+      white-space: pre-wrap;
+      word-wrap: break-word;
+      background: #020617;
+      padding: 12px;
+      border-radius: 8px;
+      overflow-x: auto;
+    }
+
+    ul {
+      padding-left: 20px;
+    }
+  </style>
+</head>
+<body>
+  <h1>Neraium Live Dashboard</h1>
+  <p>Live telemetry, scoring, and anomaly monitoring.</p>
+
+  <div class="row">
+    <div class="card">
+      <h2>Latest Status</h2>
+      <div id="latest-status" class="metric">Loading...</div>
+      <div id="latest-score">Score: --</div>
+    </div>
+
+    <div class="card">
+      <h2>Total Events</h2>
+      <div id="total-events" class="metric">0</div>
+    </div>
+
+    <div class="card">
+      <h2>Total Anomalies</h2>
+      <div id="total-anomalies" class="metric">0</div>
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="card">
+      <h2>CPU Usage</h2>
+      <canvas id="cpuChart" height="120"></canvas>
+    </div>
+
+    <div class="card">
+      <h2>Memory Usage</h2>
+      <canvas id="memChart" height="120"></canvas>
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="card">
+      <h2>Latest Event</h2>
+      <pre id="latest-event">Loading...</pre>
+    </div>
+
+    <div class="card">
+      <h2>Anomaly Events</h2>
+      <ul id="anomaly-list"></ul>
+    </div>
+  </div>
+
+  <script>
+    const cpuCtx = document.getElementById("cpuChart").getContext("2d");
+    const memCtx = document.getElementById("memChart").getContext("2d");
+
+    const cpuChart = new Chart(cpuCtx, {
+      type: "line",
+      data: {
+        labels: [],
+        datasets: [
+          {
+            label: "CPU Usage",
+            data: [],
+            borderWidth: 2,
+            tension: 0.2
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        animation: false,
+        scales: {
+          y: {
+            min: 0,
+            max: 100
+          }
+        }
+      }
+    });
+
+    const memChart = new Chart(memCtx, {
+      type: "line",
+      data: {
+        labels: [],
+        datasets: [
+          {
+            label: "Memory Usage",
+            data: [],
+            borderWidth: 2,
+            tension: 0.2
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        animation: false,
+        scales: {
+          y: {
+            min: 0,
+            max: 100
+          }
+        }
+      }
+    });
+
+    async function fetchJson(url) {
+      const res = await fetch(url);
+      return await res.json();
+    }
+
+    function shortTime(ts) {
+      try {
+        return new Date(ts).toLocaleTimeString();
+      } catch {
+        return ts;
+      }
+    }
+
+    async function refreshDashboard() {
+      try {
+        const eventsData = await fetchJson("/events");
+        const latestData = await fetchJson("/events/latest");
+        const anomalyData = await fetchJson("/events/anomalies");
+
+        const events = eventsData.events || [];
+        const anomalies = anomalyData.events || [];
+
+        document.getElementById("total-events").textContent = events.length;
+        document.getElementById("total-anomalies").textContent = anomalies.length;
+
+        if (!latestData.error) {
+          const latestStatus = document.getElementById("latest-status");
+          latestStatus.textContent = latestData.status || "unknown";
+          latestStatus.className = "metric " + (latestData.status === "anomaly" ? "bad" : "ok");
+
+          document.getElementById("latest-score").textContent =
+            "Score: " + latestData.score;
+
+          document.getElementById("latest-event").textContent =
+            JSON.stringify(latestData, null, 2);
+        }
+
+        const labels = events.map(e => shortTime(e.timestamp));
+        const cpuValues = events.map(e => e.signals.cpu_usage);
+        const memValues = events.map(e => e.signals.memory_usage);
+
+        cpuChart.data.labels = labels;
+        cpuChart.data.datasets[0].data = cpuValues;
+        cpuChart.update();
+
+        memChart.data.labels = labels;
+        memChart.data.datasets[0].data = memValues;
+        memChart.update();
+
+        const anomalyList = document.getElementById("anomaly-list");
+        anomalyList.innerHTML = "";
+
+        if (anomalies.length === 0) {
+          const li = document.createElement("li");
+          li.textContent = "No anomalies yet";
+          anomalyList.appendChild(li);
+        } else {
+          anomalies.slice().reverse().forEach(event => {
+            const li = document.createElement("li");
+            li.textContent =
+              `${shortTime(event.timestamp)} | score=${event.score} | cpu=${event.signals.cpu_usage} | mem=${event.signals.memory_usage}`;
+            anomalyList.appendChild(li);
+          });
+        }
+      } catch (err) {
+        document.getElementById("latest-event").textContent =
+          "Dashboard error: " + err;
+      }
+    }
+
+    refreshDashboard();
+    setInterval(refreshDashboard, 2000);
+  </script>
+</body>
+</html>
