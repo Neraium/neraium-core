@@ -1,4 +1,5 @@
 <!DOCTYPE html>
+HEAD
 
 <html lang="en">
 <head>
@@ -112,8 +113,43 @@ ul {
 ```
 
   </style>
+=======
+<html>
+<head>
+
+<title>Neraium Structural Map</title>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.158.0/build/three.min.js"></script>
+
+<style>
+
+body{
+background:#0f172a;
+color:white;
+font-family:Arial;
+padding:20px;
+}
+
+.panel{
+background:#1e293b;
+padding:20px;
+border-radius:8px;
+margin-bottom:20px;
+}
+
+canvas{
+background:#020617;
+border-radius:8px;
+}
+
+</style>
+
+d4e7856 (Working Neraium telemetry engine with dashboard)
 </head>
+
 <body>
+HEAD
   <div class="container">
     <h1>Neraium Dashboard</h1>
     <div class="subtitle">Live telemetry and drift monitoring</div>
@@ -184,8 +220,33 @@ ul {
 </div>
 ```
 
-  </div>
+<h1>Neraium Structural Intelligence</h1>
 
+<div class="panel">
+
+<h2>Live Metrics</h2>
+
+CPU: <span id="cpu">--</span>%<br>
+Memory: <span id="memory">--</span>%<br>
+Score: <span id="score">--</span><br>
+Status: <span id="status">--</span>
+
+</div>
+
+<div class="panel">
+
+<h2>Telemetry Chart</h2>
+
+<canvas id="chart"></canvas>
+
+</div>
+
+<div class="panel">
+d4e7856 (Working Neraium telemetry engine with dashboard)
+
+<h2>Structural Geometry Map</h2>
+
+HEAD
   <script>
     const cpuChart = new Chart(document.getElementById("cpuChart"), {
       type: "line",
@@ -414,5 +475,135 @@ ul {
     setInterval(refreshDashboard, 2000);
   </script>
 
+
+<canvas id="map"></canvas>
+
+</div>
+
+<script>
+
+let cpuData=[]
+let memData=[]
+let labels=[]
+
+const chart = new Chart(
+document.getElementById("chart"),
+{
+type:"line",
+data:{
+labels:labels,
+datasets:[
+{
+label:"CPU",
+data:cpuData,
+borderColor:"#38bdf8"
+},
+{
+label:"Memory",
+data:memData,
+borderColor:"#f59e0b"
+}
+]
+},
+options:{animation:false}
+}
+)
+
+const scene = new THREE.Scene()
+
+const camera = new THREE.PerspectiveCamera(
+75,
+2,
+0.1,
+1000
+)
+
+const renderer = new THREE.WebGLRenderer({
+canvas:document.getElementById("map")
+})
+
+renderer.setSize(500,300)
+
+camera.position.z = 20
+
+const points=[]
+
+function addPoint(x,y,z,anomaly){
+
+const geometry = new THREE.SphereGeometry(0.2)
+
+const material = new THREE.MeshBasicMaterial({
+color: anomaly ? 0xff0000 : 0x22c55e
+})
+
+const sphere = new THREE.Mesh(geometry,material)
+
+sphere.position.set(x,y,z)
+
+scene.add(sphere)
+
+points.push(sphere)
+
+if(points.length>200){
+
+scene.remove(points.shift())
+
+}
+
+}
+
+async function update(){
+
+let r = await fetch("/events/latest")
+let data = await r.json()
+
+let cpu = data.signals.cpu_usage
+let mem = data.signals.memory_usage
+let score = data.score
+
+document.getElementById("cpu").innerText = cpu
+document.getElementById("memory").innerText = mem
+document.getElementById("score").innerText = score.toFixed(2)
+
+let status = data.status
+
+let statusEl=document.getElementById("status")
+
+statusEl.innerText=status
+statusEl.style.color =
+status==="anomaly" ? "#ef4444" : "#22c55e"
+
+labels.push(new Date().toLocaleTimeString())
+cpuData.push(cpu)
+memData.push(mem)
+
+if(labels.length>30){
+
+labels.shift()
+cpuData.shift()
+memData.shift()
+
+}
+
+chart.update()
+
+addPoint(
+cpu/5,
+mem/5,
+score,
+status==="anomaly"
+)
+
+renderer.render(scene,camera)
+
+}
+
+setInterval(update,2000)
+
+update()
+
+</script>
+
+d4e7856 (Working Neraium telemetry engine with dashboard)
 </body>
 </html>
