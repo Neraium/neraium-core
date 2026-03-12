@@ -1,33 +1,43 @@
 from datetime import datetime, timezone
 
 from neraium_core.alignment import AlignmentEngine
-from neraium_core.models import SystemDefinition, TelemetryPayload
+from neraium_core.models import SystemDefinition
+from neraium_core.telemetry import TelemetryPayload
 
 
 def test_alignment_basic():
-
     definition = SystemDefinition(
+        schema_version="1",
         system_id="sys_1",
-        schema_version="1.0",
-        raw_sample_period_seconds=1,
-        inference_window_seconds=5,
-        max_forward_fill_windows=1,
-        max_missing_signal_fraction=1.0,
         signals=[
-            {"name": "a", "dtype": "float64", "unit": "x", "required_for_scoring": True},
-            {"name": "b", "dtype": "int64", "unit": "x", "required_for_scoring": True},
+            {
+                "name": "a",
+                "dtype": "float64",
+                "unit": "x",
+                "required_for_scoring": True,
+            },
+            {
+                "name": "b",
+                "dtype": "float64",
+                "unit": "x",
+                "required_for_scoring": True,
+            },
         ],
+        inference_window_seconds=60,
+        raw_sample_period_seconds=5,
         vector_order=["a", "b"],
+        max_forward_fill_windows=3,
+        max_missing_signal_fraction=0.5,
     )
 
     engine = AlignmentEngine(definition)
 
     payload = TelemetryPayload(
-        system_id="sys_1",
+
         timestamp=datetime(2026, 1, 1, tzinfo=timezone.utc),
-        signals={"a": 1.0, "b": 2},
+        signals={"a": 1.0, "b": 2.0},
     )
 
-    windows = engine.ingest(payload)
+    aligned = engine.align(payload.signals)
 
-    assert isinstance(windows, list)
+    assert aligned == [1.0, 2.0]

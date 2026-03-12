@@ -7,6 +7,7 @@ from neraium_core.telemetry import TelemetryPayload
 
 
 class TelemetryPipeline:
+
     def __init__(self):
         self.engine = AlignmentEngine(BASELINE_SYSTEM)
         self.buffer = SignalBuffer()
@@ -14,10 +15,13 @@ class TelemetryPipeline:
         self.detector = RollingAnomalyDetector()
 
     def process(self, payload: TelemetryPayload):
+
         self.buffer.add(payload.signals)
 
         aligned = self.engine.align(payload.signals)
+
         score_result = self.scorer.score(aligned)
+
         anomaly = self.detector.detect(self.buffer.window())
 
         return {
@@ -27,4 +31,5 @@ class TelemetryPipeline:
             "score": score_result.score,
             "status": score_result.status,
             "anomaly": anomaly,
+
         }
