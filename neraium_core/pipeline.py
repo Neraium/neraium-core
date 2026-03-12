@@ -21,9 +21,10 @@ class TelemetryPipeline:
         anomaly = self.detector.detect(self.buffer.window())
 
         return {
+            "timestamp": payload.timestamp.isoformat(),
+            "signals": payload.signals,
             "aligned": aligned,
             "score": score_result.score,
             "status": score_result.status,
             "anomaly": anomaly,
-
         }
