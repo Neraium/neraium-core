@@ -17,32 +17,45 @@ STATIC_DIR = BASE_DIR / "static"
 
 class NeraiumHandler(BaseHTTPRequestHandler):
     def send_json(self, code, payload):
-        body = json.dumps(payload).encode()
+        body = json.dumps(payload).encode("utf-8")
         self.send_response(code)
         self.send_header("Content-Type", "application/json")
+        self.send_header("Cache-Control", "no-store")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
 
-    def send_html(self, path):
+    def send_html(self, filename):
+        path = STATIC_DIR / filename
         if not path.exists():
-            self.send_json(404, {"error": "not found"})
+            self.send_json(404, {"error": f"{filename} not found"})
             return
 
         body = path.read_bytes()
         self.send_response(200)
-        self.send_header("Content-Type", "text/html")
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Cache-Control", "no-store")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)
 
     def do_GET(self):
+        if self.path == "/":
+            self.send_response(302)
+            self.send_header("Location", "/dashboard")
+            self.end_headers()
+            return
+
         if self.path == "/health":
             self.send_json(200, {"status": "ok", "service": "neraium"})
             return
 
         if self.path == "/dashboard":
-            self.send_html(STATIC_DIR / "dashboard.html")
+            self.send_html("dashboard.html")
+            return
+
+        if self.path == "/events/recent":
+            self.send_json(200, {"events": store.all()[-100:]})
             return
 
         if self.path == "/events":
@@ -75,18 +88,19 @@ class NeraiumHandler(BaseHTTPRequestHandler):
         try:
             length = int(self.headers.get("Content-Length", 0))
             body = self.rfile.read(length)
-            data = json.loads(body.decode())
+            data = json.loads(body.decode("utf-8"))
 
             payload = TelemetryPayload(
                 timestamp=datetime.now(timezone.utc),
                 signals={
                     "cpu_usage": float(data["cpu_usage"]),
-                    "memory_usage": float(data["memory_usage"])
-                }
+                    "memory_usage": float(data["memory_usage"]),
+                },
             )
 
             result = pipeline.process(payload)
             store.add(result)
+
             self.send_json(200, result)
 
         except Exception as e:
@@ -97,12 +111,14 @@ def main():
     server = HTTPServer(("127.0.0.1", 8000), NeraiumHandler)
 
     print("Neraium running at http://127.0.0.1:8000")
-    print("GET /health")
-    print("GET /dashboard")
-    print("GET /events")
-    print("GET /events/latest")
-    print("GET /events/anomalies")
-    print("GET /structural/summary")
+    print("GET  /")
+    print("GET  /dashboard")
+    print("GET  /health")
+    print("GET  /events")
+    print("GET  /events/recent")
+    print("GET  /events/latest")
+    print("GET  /events/anomalies")
+    print("GET  /structural/summary")
     print("POST /telemetry")
 
     server.serve_forever()
@@ -110,3 +126,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+

@@ -1,34 +1,85 @@
-from neraium_core.alignment import AlignmentEngine
-from neraium_core.anomaly import RollingAnomalyDetector
-from neraium_core.baseline import BASELINE_SYSTEM
-from neraium_core.buffer import SignalBuffer
-from neraium_core.scoring import ScoringEngine
-from neraium_core.telemetry import TelemetryPayload
+from datetime import datetime, timezone
+import numpy as np
+
+from neraium_core.features import MicroFeatureEngine
 
 
 class TelemetryPipeline:
+
     def __init__(self):
-        self.engine = AlignmentEngine(BASELINE_SYSTEM)
-        self.buffer = SignalBuffer()
-        self.scorer = ScoringEngine()
-        self.detector = RollingAnomalyDetector()
 
-    def process(self, payload: TelemetryPayload):
-        self.buffer.add(payload.signals)
+        self.features = MicroFeatureEngine()
 
-        aligned = self.engine.align(payload.signals)
+        self.history = []
+        self.baseline_mean = None
+        self.baseline_cov = None
 
-        score_result = self.scorer.score(aligned, payload.signals)
+        self.training_samples = 50
 
-        anomaly = self.detector.detect(self.buffer.window())
+    def _update_baseline(self, vector):
+
+        self.history.append(vector)
+
+        if len(self.history) < self.training_samples:
+            return
+
+        data = np.array(self.history[-self.training_samples:])
+
+        self.baseline_mean = np.mean(data, axis=0)
+        self.baseline_cov = np.cov(data, rowvar=False)
+
+    def _mahalanobis(self, vector):
+
+        if self.baseline_mean is None:
+            return 0
+
+        x = np.array(vector)
+
+        diff = x - self.baseline_mean
+
+        try:
+            inv_cov = np.linalg.pinv(self.baseline_cov)
+        except:
+            return 0
+
+        score = np.sqrt(diff.T @ inv_cov @ diff)
+
+        return float(score)
+
+    def process(self, payload):
+
+        cpu = payload.signals["cpu_usage"]
+        mem = payload.signals["memory_usage"]
+
+        f = self.features.compute(cpu, mem)
+
+        vector = [
+            f["cpu"],
+            f["memory"],
+            f["cpu_delta"],
+            f["mem_delta"],
+            f["cpu_std"],
+            f["mem_std"]
+        ]
+
+        self._update_baseline(vector)
+
+        score = self._mahalanobis(vector)
+
+        if score > 4:
+            status = "anomaly"
+        else:
+            status = "normal"
 
         event = {
-            "timestamp": payload.timestamp.isoformat(),
-            "signals": payload.signals,
-            "aligned": aligned,
-            "score": score_result["score"],
-            "status": score_result["status"],
-            "anomaly": anomaly,
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "signals": {
+                "cpu_usage": cpu,
+                "memory_usage": mem
+            },
+            "score": score,
+
+            "status": status
         }
 
         return event

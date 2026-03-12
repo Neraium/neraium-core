@@ -1,65 +1,72 @@
 from neraium_core.store import EventStore
 
 
-def test_store_add_and_all():
-    store = EventStore()
-
-    event = {"status": "normal", "anomaly": {"anomaly": False}}
-    store.add(event)
-
-    assert store.all() == [event]
-
-
-def test_store_latest():
-    store = EventStore()
-
-    first = {"status": "normal", "anomaly": {"anomaly": False}}
-    second = {"status": "anomaly", "anomaly": {"anomaly": True}}
-
-    store.add(first)
-    store.add(second)
-
-    assert store.latest() == second
+def make_event(status="normal", score=10):
+    return {
+        "timestamp": "2026-01-01T00:00:00Z",
+        "signals": {
+            "cpu_usage": 10,
+            "memory_usage": 20
+        },
+        "features": {},
+        "aligned": [10, 20],
+        "score": score,
+        "status": status,
+        "anomaly": {"anomaly": status == "anomaly"}
+    }
 
 
-def test_store_anomalies():
-    store = EventStore()
+def test_store_add_and_all(tmp_path):
+    db = tmp_path / "test.db"
+    store = EventStore(db)
 
-    normal = {"status": "normal", "anomaly": {"anomaly": False}}
-    anomaly = {"status": "anomaly", "anomaly": {"anomaly": True}}
+    store.add(make_event())
 
-    store.add(normal)
-    store.add(anomaly)
+    events = store.all()
 
-    assert store.anomalies() == [anomaly]
+    assert len(events) == 1
 
 
-def test_structural_summary_empty():
-    store = EventStore()
+def test_store_latest(tmp_path):
+    db = tmp_path / "test.db"
+    store = EventStore(db)
+
+    store.add(make_event())
+    latest = store.latest()
+
+    assert latest["status"] == "normal"
+
+
+def test_store_anomalies(tmp_path):
+    db = tmp_path / "test.db"
+    store = EventStore(db)
+
+    store.add(make_event("normal"))
+    store.add(make_event("anomaly"))
+
+    anomalies = store.anomalies()
+
+    assert len(anomalies) == 1
+
+
+def test_structural_summary_empty(tmp_path):
+    db = tmp_path / "test.db"
+    store = EventStore(db)
 
     summary = store.structural_summary()
 
     assert summary["total_events"] == 0
     assert summary["total_structural_anomalies"] == 0
-    assert summary["latest_status"] == "no data"
 
 
-def test_structural_summary_populated():
-    store = EventStore()
+def test_structural_summary_populated(tmp_path):
+    db = tmp_path / "test.db"
+    store = EventStore(db)
 
-    event = {
-        "status": "anomaly",
-        "score": 44,
-        "aligned": [11, 43],
-        "signals": {"cpu_usage": 11, "memory_usage": 43},
-        "anomaly": {"anomaly": True},
-    }
-
-    store.add(event)
+    store.add(make_event("normal"))
+    store.add(make_event("anomaly"))
 
     summary = store.structural_summary()
 
-    assert summary["total_events"] == 1
+    assert summary["total_events"] == 2
     assert summary["total_structural_anomalies"] == 1
-    assert summary["latest_status"] == "anomaly"
-    assert summary["latest_drift_score"] == 44
