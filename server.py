@@ -131,7 +131,30 @@ def telemetry_loop():
         if not paused:
             generate_event()
         time.sleep(2)
+if path == "/api/pause":
+    paused = True
+    return self.send_json({"ok": True, "paused": True})
 
+if path == "/api/resume":
+    paused = False
+    return self.send_json({"ok": True, "paused": False})
+
+if path == "/api/reset":
+    events.clear()
+    last_drift = None
+    return self.send_json({"ok": True, "reset": True})
+
+if path == "/api/scenario/normal":
+    scenario = "normal"
+    return self.send_json({"ok": True, "scenario": scenario})
+
+if path == "/api/scenario/degrading":
+    scenario = "degrading"
+    return self.send_json({"ok": True, "scenario": scenario})
+
+if path == "/api/scenario/incident":
+    scenario = "incident"
+    return self.send_json({"ok": True, "scenario": scenario})
 
 DASHBOARD_HTML = r"""<!doctype html>
 <html lang="en">
