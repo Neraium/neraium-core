@@ -3,181 +3,123 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Neraium — Systemic Infrastructure Intelligence</title>
-  <link rel="stylesheet" href="/static/styles.css">
+  <title>Neraium SII</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body { margin: 0; font-family: Arial, sans-serif; background: #08111f; color: #e8f1ff; padding: 16px; }
+    .wrap { max-width: 1200px; margin: 0 auto; }
+    .top { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 16px; }
+    .pill, button { border: 1px solid #334155; background: #10203a; color: #e8f1ff; border-radius: 999px; padding: 10px 14px; }
+    button { cursor: pointer; }
+    .hero, .card { background: #0d1d36; border: 1px solid #223b63; border-radius: 16px; padding: 16px; }
+    .hero { margin-bottom: 16px; }
+    .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px; }
+    .metric { font-size: 30px; font-weight: 700; margin-top: 8px; }
+    .small { font-size: 18px; }
+    .charts { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px; }
+    .chart-box { background: #0d1d36; border: 1px solid #223b63; border-radius: 16px; padding: 16px; }
+    .chart-wrap { height: 260px; }
+    .controls, .scenarios { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { text-align: left; padding: 10px; border-bottom: 1px solid #223b63; }
+    .state-stable { color: #7ef0a0; }
+    .state-watch { color: #ffd56a; }
+    .state-alert { color: #ff6c86; }
+    pre { background: #06101e; padding: 12px; border-radius: 12px; overflow: auto; }
+    .hidden { display: none; }
+    @media (max-width: 900px) {
+      .grid { grid-template-columns: 1fr 1fr; }
+      .charts { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 600px) {
+      .grid { grid-template-columns: 1fr; }
+      .top { flex-direction: column; align-items: flex-start; }
+    }
+  </style>
 </head>
 <body>
-  <div class="app-shell">
-    <header class="topbar">
+  <div class="wrap">
+    <div class="top">
       <div>
-        <div class="brand-row">
-          <span class="brand-dot"></span>
-          <h1>NERAIUM SII</h1>
-        </div>
-        <p class="subtitle">
-          Systemic Infrastructure Intelligence for detecting structural drift and emerging instability across complex infrastructure systems.
-        </p>
-        <p class="investor-blurb">
-          Detect changes in sensor relationships before threshold alarms, model failure, or operational breakdown.
-        </p>
+        <h1 style="margin:0;">NERAIUM SII</h1>
+        <div style="color:#9db2d1;">Systemic Infrastructure Intelligence</div>
       </div>
+      <div id="connectionText" class="pill">Connecting...</div>
+    </div>
 
-      <div class="topbar-actions">
-        <div id="connectionText" class="pill">Connecting...</div>
-        <button id="refreshBtn" class="refresh-btn" type="button">Refresh</button>
+    <div class="scenarios">
+      <button class="scenario-btn" data-scenario="normal">Normal</button>
+      <button class="scenario-btn" data-scenario="degrading">Degrading</button>
+      <button class="scenario-btn" data-scenario="incident">Incident</button>
+    </div>
+
+    <div class="controls">
+      <button id="refreshBtn">Refresh</button>
+      <button id="pauseBtn">Pause</button>
+      <button id="resumeBtn">Resume</button>
+      <button id="resetBtn">Reset</button>
+      <button id="detailsBtn">Technical Details</button>
+    </div>
+
+    <div class="hero">
+      <div style="font-size:12px; color:#9db2d1;">System State</div>
+      <div id="systemState" class="metric">UNKNOWN</div>
+      <div id="assetBadge">Asset: -</div>
+      <div id="siteLine">Site: -</div>
+      <div id="lastTimestamp">Last update: -</div>
+      <div id="storyText" style="margin-top:8px;">Initializing structural telemetry...</div>
+      <div id="impactText" style="margin-top:8px; color:#59d4ff;">Predicted impact: —</div>
+    </div>
+
+    <div class="grid">
+      <div class="card"><div>Confidence</div><div id="confidenceValue" class="metric">—</div></div>
+      <div class="card"><div>Events Tracked</div><div id="eventsTracked" class="metric">0</div></div>
+      <div class="card"><div>Structural Drift</div><div id="driftValue" class="metric">0.00</div></div>
+      <div class="card"><div>Relational Stability</div><div id="stabilityValue" class="metric">0.00</div></div>
+      <div class="card"><div>Lead Time</div><div id="leadTimeValue" class="metric">—</div></div>
+      <div class="card"><div>Lead Confidence</div><div id="leadConfidenceValue" class="metric">—</div></div>
+      <div class="card"><div>Drift Velocity</div><div id="driftVelocityValue" class="metric">—</div></div>
+      <div class="card"><div>Structural Driver</div><div id="structuralDriverValue" class="metric small">-</div></div>
+      <div class="card"><div>Early Warning Horizon</div><div id="warningValue" class="metric">—</div></div>
+      <div class="card"><div>Latest Event Type</div><div id="eventTypeValue" class="metric small">-</div></div>
+    </div>
+
+    <div class="charts">
+      <div class="chart-box">
+        <h3>Structural Drift Trend</h3>
+        <div class="chart-wrap"><canvas id="driftChart"></canvas></div>
       </div>
-    </header>
-
-    <section class="hero">
-      <div class="hero-main">
-        <div class="label">System State</div>
-        <div class="state-row">
-          <div id="systemState" class="hero-state">UNKNOWN</div>
-          <div id="assetBadge" class="zone-badge">Asset: -</div>
-        </div>
-        <div id="siteLine" class="hero-meta">Site: -</div>
-        <div id="lastTimestamp" class="hero-meta">Last update: None</div>
-        <div id="storyText" class="story-text">Initializing structural telemetry...</div>
-        <div id="impactText" class="impact-text">Predicted impact: —</div>
+      <div class="chart-box">
+        <h3>Relational Stability Trend</h3>
+        <div class="chart-wrap"><canvas id="stabilityChart"></canvas></div>
       </div>
+    </div>
 
-      <div class="hero-side">
-        <div class="hero-stat">
-          <span class="label">Confidence</span>
-          <span id="confidenceValue" class="hero-stat-value">—</span>
-        </div>
-        <div class="hero-stat">
-          <span class="label">Events Tracked</span>
-          <span id="eventsTracked" class="hero-stat-value">0</span>
-        </div>
-      </div>
-    </section>
+    <div class="card" style="margin-bottom:16px;">
+      <h3>Recent Structural Events</h3>
+      <table>
+        <thead>
+          <tr>
+            <th>ID</th>
+            <th>Event</th>
+            <th>Site</th>
+            <th>Asset</th>
+            <th>Timestamp</th>
+            <th>State</th>
+          </tr>
+        </thead>
+        <tbody id="eventsTableBody">
+          <tr><td colspan="6">Loading...</td></tr>
+        </tbody>
+      </table>
+    </div>
 
-    <section class="scenario-panel">
-      <div>
-        <div class="label">Demo Scenario</div>
-        <div class="scenario-subtitle">
-          Demonstrate stable structure, gradual drift, or active instability.
-        </div>
-        <div class="sim-note">Simulated live investor demo.</div>
-      </div>
-
-      <div class="scenario-buttons">
-        <button class="scenario-btn active" data-scenario="normal" type="button">Normal Structure</button>
-        <button class="scenario-btn" data-scenario="degrading" type="button">Gradual Drift</button>
-        <button class="scenario-btn" data-scenario="incident" type="button">Critical Instability</button>
-      </div>
-    </section>
-
-    <section class="control-panel panel">
-      <div class="panel-head">
-        <div>
-          <h2>Demo Controls</h2>
-          <p>Guide the investor through scenario progression and live replay.</p>
-        </div>
-      </div>
-      <div class="control-buttons">
-        <button id="pauseBtn" class="control-btn" type="button">Pause Feed</button>
-        <button id="resumeBtn" class="control-btn" type="button">Resume Feed</button>
-        <button id="resetBtn" class="control-btn" type="button">Reset Demo</button>
-        <button id="detailsBtn" class="control-btn" type="button">Technical Details</button>
-      </div>
-    </section>
-
-    <section class="stats-grid">
-      <article class="metric-card">
-        <div class="label">Structural Drift</div>
-        <div id="driftValue" class="metric-value">0.00</div>
-      </article>
-
-      <article class="metric-card">
-        <div class="label">Relational Stability</div>
-        <div id="stabilityValue" class="metric-value">0.00</div>
-      </article>
-
-      <article class="metric-card">
-        <div class="label">Early Warning Horizon</div>
-        <div id="warningValue" class="metric-value">0h</div>
-      </article>
-
-      <article class="metric-card">
-        <div class="label">Latest Event Type</div>
-        <div id="eventTypeValue" class="metric-value small-metric">-</div>
-      </article>
-    </section>
-
-    <section class="charts-grid">
-      <article class="panel">
-        <div class="panel-head">
-          <div>
-            <h2>Structural Drift Trend</h2>
-            <p>How fast the system’s sensor geometry is changing</p>
-          </div>
-        </div>
-        <div class="chart-wrap">
-          <canvas id="driftChart"></canvas>
-        </div>
-      </article>
-
-      <article class="panel">
-        <div class="panel-head">
-          <div>
-            <h2>Relational Stability Trend</h2>
-            <p>Persistence of structural coherence across the network</p>
-          </div>
-        </div>
-        <div class="chart-wrap">
-          <canvas id="stabilityChart"></canvas>
-        </div>
-      </article>
-    </section>
-
-    <section class="table-panel panel">
-      <div class="panel-head">
-        <div>
-          <h2>Recent Structural Events</h2>
-          <p>Latest site / asset frames and structural changes</p>
-        </div>
-      </div>
-
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>ID</th>
-              <th>Event</th>
-              <th>Site</th>
-              <th>Asset</th>
-              <th>Timestamp</th>
-              <th>State</th>
-            </tr>
-          </thead>
-          <tbody id="eventsTableBody">
-            <tr>
-              <td colspan="6">Loading...</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-    </section>
-
-    <section id="detailsPanel" class="details-panel panel hidden">
-      <div class="panel-head">
-        <div>
-          <h2>Technical Details</h2>
-          <p>Latest structural frame payload for technical review.</p>
-        </div>
-      </div>
+    <div id="detailsPanel" class="card hidden">
+      <h3>Technical Details</h3>
       <pre id="detailsPre">Loading...</pre>
-    </section>
-
-    <footer class="footer">
-      <span>Neraium SII investor demo</span>
-      <span>Contact: craig@neraium.com</span>
-    </footer>
+    </div>
   </div>
 
- <script src="/static/app.js?v=13"></script>
+  <script src="/static/app.js"></script>
 </body>
 </html>
