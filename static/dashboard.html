@@ -3,121 +3,33 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Neraium SII</title>
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <title>Neraium Telemetry Test</title>
   <style>
-    body { margin: 0; font-family: Arial, sans-serif; background: #08111f; color: #e8f1ff; padding: 16px; }
-    .wrap { max-width: 1200px; margin: 0 auto; }
-    .top { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 16px; }
-    .pill, button { border: 1px solid #334155; background: #10203a; color: #e8f1ff; border-radius: 999px; padding: 10px 14px; }
-    button { cursor: pointer; }
-    .hero, .card { background: #0d1d36; border: 1px solid #223b63; border-radius: 16px; padding: 16px; }
-    .hero { margin-bottom: 16px; }
-    .grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px; }
-    .metric { font-size: 30px; font-weight: 700; margin-top: 8px; }
-    .small { font-size: 18px; }
-    .charts { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 16px; }
-    .chart-box { background: #0d1d36; border: 1px solid #223b63; border-radius: 16px; padding: 16px; }
-    .chart-wrap { height: 260px; }
-    .controls, .scenarios { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
-    table { width: 100%; border-collapse: collapse; }
-    th, td { text-align: left; padding: 10px; border-bottom: 1px solid #223b63; }
-    .state-stable { color: #7ef0a0; }
-    .state-watch { color: #ffd56a; }
-    .state-alert { color: #ff6c86; }
-    pre { background: #06101e; padding: 12px; border-radius: 12px; overflow: auto; }
-    .hidden { display: none; }
-    @media (max-width: 900px) {
-      .grid { grid-template-columns: 1fr 1fr; }
-      .charts { grid-template-columns: 1fr; }
-    }
-    @media (max-width: 600px) {
-      .grid { grid-template-columns: 1fr; }
-      .top { flex-direction: column; align-items: flex-start; }
-    }
+    body { font-family: Arial, sans-serif; background:#08111f; color:#e8f1ff; padding:20px; }
+    .card { background:#10203a; border:1px solid #223b63; border-radius:12px; padding:16px; margin-bottom:16px; }
+    .big { font-size:32px; font-weight:700; margin-top:8px; }
+    pre { background:#06101e; padding:12px; border-radius:8px; overflow:auto; white-space:pre-wrap; }
   </style>
 </head>
 <body>
-  <div class="wrap">
-    <div class="top">
-      <div>
-        <h1 style="margin:0;">NERAIUM SII</h1>
-        <div style="color:#9db2d1;">Systemic Infrastructure Intelligence</div>
-      </div>
-      <div id="connectionText" class="pill">Connecting...</div>
-    </div>
+  <div class="card">
+    <div>State</div>
+    <div id="systemState" class="big">Loading...</div>
+  </div>
 
-    <div class="scenarios">
-      <button class="scenario-btn" data-scenario="normal">Normal</button>
-      <button class="scenario-btn" data-scenario="degrading">Degrading</button>
-      <button class="scenario-btn" data-scenario="incident">Incident</button>
-    </div>
+  <div class="card">
+    <div>Structural Drift</div>
+    <div id="driftValue" class="big">Loading...</div>
+  </div>
 
-    <div class="controls">
-      <button id="refreshBtn">Refresh</button>
-      <button id="pauseBtn">Pause</button>
-      <button id="resumeBtn">Resume</button>
-      <button id="resetBtn">Reset</button>
-      <button id="detailsBtn">Technical Details</button>
-    </div>
+  <div class="card">
+    <div>Lead Time</div>
+    <div id="leadTimeValue" class="big">Loading...</div>
+  </div>
 
-    <div class="hero">
-      <div style="font-size:12px; color:#9db2d1;">System State</div>
-      <div id="systemState" class="metric">UNKNOWN</div>
-      <div id="assetBadge">Asset: -</div>
-      <div id="siteLine">Site: -</div>
-      <div id="lastTimestamp">Last update: -</div>
-      <div id="storyText" style="margin-top:8px;">Initializing structural telemetry...</div>
-      <div id="impactText" style="margin-top:8px; color:#59d4ff;">Predicted impact: —</div>
-    </div>
-
-    <div class="grid">
-      <div class="card"><div>Confidence</div><div id="confidenceValue" class="metric">—</div></div>
-      <div class="card"><div>Events Tracked</div><div id="eventsTracked" class="metric">0</div></div>
-      <div class="card"><div>Structural Drift</div><div id="driftValue" class="metric">0.00</div></div>
-      <div class="card"><div>Relational Stability</div><div id="stabilityValue" class="metric">0.00</div></div>
-      <div class="card"><div>Lead Time</div><div id="leadTimeValue" class="metric">—</div></div>
-      <div class="card"><div>Lead Confidence</div><div id="leadConfidenceValue" class="metric">—</div></div>
-      <div class="card"><div>Drift Velocity</div><div id="driftVelocityValue" class="metric">—</div></div>
-      <div class="card"><div>Structural Driver</div><div id="structuralDriverValue" class="metric small">-</div></div>
-      <div class="card"><div>Early Warning Horizon</div><div id="warningValue" class="metric">—</div></div>
-      <div class="card"><div>Latest Event Type</div><div id="eventTypeValue" class="metric small">-</div></div>
-    </div>
-
-    <div class="charts">
-      <div class="chart-box">
-        <h3>Structural Drift Trend</h3>
-        <div class="chart-wrap"><canvas id="driftChart"></canvas></div>
-      </div>
-      <div class="chart-box">
-        <h3>Relational Stability Trend</h3>
-        <div class="chart-wrap"><canvas id="stabilityChart"></canvas></div>
-      </div>
-    </div>
-
-    <div class="card" style="margin-bottom:16px;">
-      <h3>Recent Structural Events</h3>
-      <table>
-        <thead>
-          <tr>
-            <th>ID</th>
-            <th>Event</th>
-            <th>Site</th>
-            <th>Asset</th>
-            <th>Timestamp</th>
-            <th>State</th>
-          </tr>
-        </thead>
-        <tbody id="eventsTableBody">
-          <tr><td colspan="6">Loading...</td></tr>
-        </tbody>
-      </table>
-    </div>
-
-    <div id="detailsPanel" class="card hidden">
-      <h3>Technical Details</h3>
-      <pre id="detailsPre">Loading...</pre>
-    </div>
+  <div class="card">
+    <div>Latest Raw Status</div>
+    <pre id="debugStatus">Loading...</pre>
   </div>
 
   <script src="/static/app.js"></script>
