@@ -3,49 +3,141 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Neraium Telemetry</title>
+  <title>Neraium MVP</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
+    * {
+      box-sizing: border-box;
+    }
+
     body {
+      margin: 0;
+      padding: 20px;
       font-family: Arial, sans-serif;
       background: #08111f;
       color: #e8f1ff;
-      padding: 20px;
-      margin: 0;
     }
+
     .wrap {
-      max-width: 1000px;
+      max-width: 1200px;
       margin: 0 auto;
     }
+
+    .header {
+      margin-bottom: 18px;
+    }
+
+    .header h1 {
+      margin: 0 0 6px 0;
+      font-size: 32px;
+    }
+
+    .header p {
+      margin: 0;
+      color: #9fb4d3;
+    }
+
+    .charts {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+
     .card {
       background: #10203a;
       border: 1px solid #223b63;
-      border-radius: 12px;
+      border-radius: 14px;
       padding: 16px;
-      margin-bottom: 16px;
     }
-    .grid {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 12px;
+
+    .card h2 {
+      margin: 0 0 6px 0;
+      font-size: 20px;
     }
-    .big {
-      font-size: 32px;
-      font-weight: 700;
-      margin-top: 8px;
-    }
-    .small {
+
+    .card p {
+      margin: 0 0 12px 0;
       color: #9fb4d3;
-      margin-top: 8px;
+      font-size: 14px;
     }
-    pre {
-      background: #06101e;
-      padding: 12px;
-      border-radius: 8px;
-      overflow: auto;
-      white-space: pre-wrap;
+
+    .chart-wrap {
+      position: relative;
+      height: 280px;
+      width: 100%;
     }
-    @media (max-width: 700px) {
-      .grid {
+
+    canvas {
+      display: block;
+      width: 100% !important;
+      height: 100% !important;
+    }
+
+    .table-card {
+      background: #10203a;
+      border: 1px solid #223b63;
+      border-radius: 14px;
+      padding: 16px;
+    }
+
+    .table-card h2 {
+      margin: 0 0 6px 0;
+      font-size: 20px;
+    }
+
+    .table-card p {
+      margin: 0 0 12px 0;
+      color: #9fb4d3;
+      font-size: 14px;
+    }
+
+    .table-wrap {
+      overflow-x: auto;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    th, td {
+      text-align: left;
+      padding: 12px 10px;
+      border-bottom: 1px solid #223b63;
+      font-size: 14px;
+    }
+
+    th {
+      color: #9fb4d3;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    .state-stable {
+      color: #7ef0a0;
+      font-weight: 700;
+    }
+
+    .state-watch {
+      color: #ffd56a;
+      font-weight: 700;
+    }
+
+    .state-alert {
+      color: #ff6c86;
+      font-weight: 700;
+    }
+
+    .status-line {
+      margin-top: 14px;
+      color: #9fb4d3;
+      font-size: 13px;
+    }
+
+    @media (max-width: 900px) {
+      .charts {
         grid-template-columns: 1fr;
       }
     }
@@ -53,55 +145,55 @@
 </head>
 <body>
   <div class="wrap">
-    <div class="card">
-      <div>Status</div>
-      <div id="systemState" class="big">Loading...</div>
-      <div id="connectionText" class="small">Connecting...</div>
-      <div id="storyText" class="small">Waiting for telemetry...</div>
-      <div id="impactText" class="small">-</div>
+    <div class="header">
+      <h1>Neraium MVP</h1>
+      <p>Structural drift, relational stability, and recent structural events</p>
     </div>
 
-    <div class="grid">
-      <div class="card">
-        <div>Structural Drift</div>
-        <div id="driftValue" class="big">-</div>
-      </div>
+    <div class="charts">
+      <section class="card">
+        <h2>Structural Drift Trend</h2>
+        <p>Rolling structural drift from incoming telemetry frames.</p>
+        <div class="chart-wrap">
+          <canvas id="driftChart"></canvas>
+        </div>
+      </section>
 
-      <div class="card">
-        <div>Relational Stability</div>
-        <div id="stabilityValue" class="big">-</div>
-      </div>
-
-      <div class="card">
-        <div>Lead Time</div>
-        <div id="leadTimeValue" class="big">-</div>
-      </div>
-
-      <div class="card">
-        <div>Early Warning Horizon</div>
-        <div id="warningValue" class="big">-</div>
-      </div>
-
-      <div class="card">
-        <div>Latest Event Type</div>
-        <div id="eventTypeValue" class="big">-</div>
-      </div>
-
-      <div class="card">
-        <div>Confidence</div>
-        <div id="confidenceValue" class="big">-</div>
-      </div>
-
-      <div class="card">
-        <div>Events Tracked</div>
-        <div id="eventsTracked" class="big">-</div>
-      </div>
+      <section class="card">
+        <h2>Relational Stability Trend</h2>
+        <p>Rolling stability score based on sensor relationships.</p>
+        <div class="chart-wrap">
+          <canvas id="stabilityChart"></canvas>
+        </div>
+      </section>
     </div>
 
-    <div class="card">
-      <div>Raw API Status</div>
-      <pre id="debugStatus">Loading...</pre>
-    </div>
+    <section class="table-card">
+      <h2>Recent Structural Events</h2>
+      <p>Latest processed events from the structural engine.</p>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Event</th>
+              <th>Site</th>
+              <th>Asset</th>
+              <th>Timestamp</th>
+              <th>State</th>
+            </tr>
+          </thead>
+          <tbody id="eventsTableBody">
+            <tr>
+              <td colspan="6">Loading...</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div id="statusLine" class="status-line">Connecting...</div>
+    </section>
   </div>
 
   <script src="/static/app.js"></script>
