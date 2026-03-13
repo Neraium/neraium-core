@@ -232,4 +232,3 @@ if __name__ == "__main__":
     print("Server running at http://0.0.0.0:8000")
     print("Fake telemetry simulator feeding data every 2 seconds")
     server.serve_forever()
-    server = HTTPServer(("0.0.0.0", 8000), Handler)
