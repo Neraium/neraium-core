@@ -5,6 +5,7 @@ import time
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
+from urllib.parse import urlparse
 
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
@@ -14,250 +15,253 @@ scenario = "normal"
 paused = False
 
 MAX_EVENTS = 200
+last_drift = None
+
 
 def now():
     return datetime.now(timezone.utc).isoformat()
 
-SITES = ["Reservoir East","North Loop","South Basin"]
-ASSETS = ["Pump Station 1","District Main B","Distribution Node 7"]
 
-SENSOR_NAMES = (
-    "pressure",
-    "flow",
-    "tank",
-    "quality",
-    "vibration",
-)
+def structural_drift(values):
+    base = [60, 125, 75, 97, 0.2]
+    drift = 0.0
+    for i, v in enumerate(values):
+        drift += abs(v - base[i]) / abs(base[i])
+    return drift
+
+
+def relational_stability(values):
+    pressure, flow, tank, quality, vibration = values
+
+    stability = 1 - (
+        abs((pressure / flow) - 0.5) * 0.4 +
+        abs((tank / pressure) - 1.2) * 0.3 +
+        vibration * 0.3
+    )
+
+    return max(0, min(1, stability))
+
+
+def lead_time(drift, velocity):
+    boundary = 4.0
+    if velocity <= 0:
+        return None
+    return (boundary - drift) / velocity
+
 
 def build_sensor_values():
-
     if scenario == "normal":
         return (
-            random.uniform(58,64),
-            random.uniform(118,134),
-            random.uniform(70,78),
-            random.uniform(95,99),
-            random.uniform(0.15,0.25)
+            random.uniform(58, 64),
+            random.uniform(118, 134),
+            random.uniform(70, 78),
+            random.uniform(95, 99),
+            random.uniform(0.15, 0.25),
         )
 
     if scenario == "degrading":
         return (
-            random.uniform(48,60),
-            random.uniform(100,125),
-            random.uniform(60,75),
-            random.uniform(85,96),
-            random.uniform(0.20,0.45)
+            random.uniform(48, 60),
+            random.uniform(100, 125),
+            random.uniform(60, 75),
+            random.uniform(85, 96),
+            random.uniform(0.20, 0.45),
         )
 
     return (
-        random.uniform(35,52),
-        random.uniform(80,105),
-        random.uniform(50,65),
-        random.uniform(70,85),
-        random.uniform(0.30,0.70)
+        random.uniform(35, 52),
+        random.uniform(80, 105),
+        random.uniform(50, 65),
+        random.uniform(70, 85),
+        random.uniform(0.30, 0.70),
     )
 
-def structural_drift(values):
-
-    base = [60,125,75,97,0.2]
-
-    drift = 0
-
-    for i,v in enumerate(values):
-        drift += abs(v-base[i])/abs(base[i])
-
-    return drift
-
-def relational_stability(values):
-
-    pressure,flow,tank,quality,vibration = values
-
-    stability = 1 - (
-        abs((pressure/flow)-0.5)*0.4 +
-        abs((tank/pressure)-1.2)*0.3 +
-        vibration*0.3
-    )
-
-    return max(0,min(1,stability))
-
-def lead_time(drift,velocity):
-
-    boundary = 4.0
-
-    if velocity <= 0:
-        return None
-
-    return (boundary-drift)/velocity
-
-last_drift = None
 
 def generate_event():
-
     global last_drift
 
-    site = random.choice(SITES)
-    asset = random.choice(ASSETS)
+    zone = random.choice([
+        "Reservoir East",
+        "North Loop",
+        "South Basin",
+        "West Feed Main",
+    ])
+
+    asset = random.choice([
+        "Pump Station 1",
+        "District Main B",
+        "Distribution Node 7",
+    ])
 
     timestamp = now()
-
     values = build_sensor_values()
 
     drift = structural_drift(values)
-
     stability = relational_stability(values)
 
-    velocity = 0
-
+    velocity = 0.0
     if last_drift is not None:
-        velocity = drift-last_drift
-
+        velocity = drift - last_drift
     last_drift = drift
 
-    lt = lead_time(drift,velocity)
-
-    state = "STABLE"
+    lt = lead_time(drift, velocity)
 
     if drift > 3:
         state = "ALERT"
     elif drift > 1.5:
         state = "WATCH"
+    else:
+        state = "STABLE"
 
     event = {
-
-        "id": len(events)+1,
+        "id": len(events) + 1,
+        "event_type": random.choice([
+            "baseline_structure",
+            "stable_correlation",
+            "relational_observation",
+            "gradual_drift",
+            "correlation_shift",
+            "instability_escalation",
+        ]),
         "timestamp": timestamp,
-
-        "site_id": site,
+        "site_id": zone,
         "asset_id": asset,
-
+        "zone": zone,
         "state": state,
-        "confidence": round(random.uniform(0.9,0.99),2),
-
-        "structural_drift_score": round(drift,3),
-        "relational_stability_score": round(stability,3),
-
-        "drift_velocity": round(velocity,3),
-
-        "lead_time_hours": None if lt is None else round(lt,1),
-        "lead_time_confidence": round(random.uniform(0.7,0.95),2),
-
+        "confidence": round(random.uniform(0.90, 0.99), 2),
+        "structural_drift_score": round(drift, 3),
+        "relational_stability_score": round(stability, 3),
+        "drift_velocity": round(velocity, 3),
+        "lead_time_hours": None if lt is None else round(lt, 1),
+        "lead_time_confidence": round(random.uniform(0.70, 0.95), 2),
         "structural_driver": "pressure-flow imbalance",
-
-        "sensor_values":{
-            "pressure":values[0],
-            "flow":values[1],
-            "tank":values[2],
-            "quality":values[3],
-            "vibration":values[4],
+        "sensor_values": {
+            "pressure": round(values[0], 2),
+            "flow": round(values[1], 2),
+            "tank": round(values[2], 2),
+            "quality": round(values[3], 2),
+            "vibration": round(values[4], 3),
         },
-
-        "explanation":"SII analyzing structural geometry of the sensor network",
-        "predicted_impact":"Potential instability developing in system"
+        "explanation": "SII analyzing structural geometry of the sensor network.",
+        "predicted_impact": "Potential instability developing in system.",
     }
 
     events.append(event)
 
-    if len(events)>MAX_EVENTS:
+    if len(events) > MAX_EVENTS:
         events.pop(0)
 
+
 def telemetry_loop():
-
     while True:
-
         if not paused:
             generate_event()
-
         time.sleep(2)
 
+
 class Handler(BaseHTTPRequestHandler):
-
-    def send_json(self,data):
-
-        payload=json.dumps(data).encode()
-
-        self.send_response(200)
-        self.send_header("Content-Type","application/json")
-        self.send_header("Content-Length",str(len(payload)))
+    def send_json(self, data, status=200):
+        payload = json.dumps(data).encode("utf-8")
+        self.send_response(status)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(payload)))
         self.end_headers()
-
         self.wfile.write(payload)
 
-    def serve_static(self,file):
+    def serve_static(self, filename):
+        path = STATIC_DIR / filename
 
-        path=STATIC_DIR/file
-
-        if not path.exists():
+        if not path.exists() or not path.is_file():
             self.send_error(404)
             return
 
-        data=path.read_bytes()
+        data = path.read_bytes()
 
         self.send_response(200)
-
-        if file.endswith(".js"):
-            self.send_header("Content-Type","application/javascript")
-        elif file.endswith(".css"):
-            self.send_header("Content-Type","text/css")
+        if filename.endswith(".js"):
+            self.send_header("Content-Type", "application/javascript")
+        elif filename.endswith(".css"):
+            self.send_header("Content-Type", "text/css")
         else:
-            self.send_header("Content-Type","text/html")
-
-        self.send_header("Content-Length",str(len(data)))
+            self.send_header("Content-Type", "text/html")
+        self.send_header("Content-Length", str(len(data)))
         self.end_headers()
-
         self.wfile.write(data)
 
     def do_GET(self):
+        global scenario, paused
 
-        if self.path=="/":
+        parsed = urlparse(self.path)
+        path = parsed.path
+
+        if path == "/":
             return self.serve_static("index.html")
 
-        if self.path.startswith("/static/"):
-            return self.serve_static(self.path.replace("/static/",""))
+        if path.startswith("/static/"):
+            return self.serve_static(path.replace("/static/", ""))
 
-        if self.path=="/api/events":
+        if path == "/api/events":
             return self.send_json(events)
 
-        if self.path=="/api/status":
-
-            latest=events[-1] if events else {}
+        if path == "/api/status":
+            latest = events[-1] if events else {}
 
             return self.send_json({
-
-                "state":latest.get("state"),
-                "site_id":latest.get("site_id"),
-                "asset_id":latest.get("asset_id"),
-
-                "confidence":latest.get("confidence"),
-
-                "structural_drift_score":latest.get("structural_drift_score"),
-                "relational_stability_score":latest.get("relational_stability_score"),
-
-                "lead_time_hours":latest.get("lead_time_hours"),
-                "lead_time_confidence":latest.get("lead_time_confidence"),
-
-                "drift_velocity":latest.get("drift_velocity"),
-                "structural_driver":latest.get("structural_driver"),
-
-                "events_tracked":len(events),
-
-                "last_timestamp":latest.get("timestamp"),
-
-                "predicted_impact":latest.get("predicted_impact"),
-                "explanation":latest.get("explanation"),
+                "state": latest.get("state", "UNKNOWN"),
+                "site_id": latest.get("site_id", "-"),
+                "asset_id": latest.get("asset_id", "-"),
+                "confidence": latest.get("confidence", 0),
+                "structural_drift_score": latest.get("structural_drift_score", 0),
+                "relational_stability_score": latest.get("relational_stability_score", 0),
+                "lead_time_hours": latest.get("lead_time_hours"),
+                "lead_time_confidence": latest.get("lead_time_confidence", 0),
+                "drift_velocity": latest.get("drift_velocity", 0),
+                "structural_driver": latest.get("structural_driver", "-"),
+                "events_tracked": len(events),
+                "last_timestamp": latest.get("timestamp", ""),
+                "predicted_impact": latest.get("predicted_impact", ""),
+                "explanation": latest.get("explanation", ""),
+                "paused": paused,
+                "scenario": scenario,
             })
+
+        if path == "/api/pause":
+            paused = True
+            return self.send_json({"status": "ok", "paused": True})
+
+        if path == "/api/resume":
+            paused = False
+            return self.send_json({"status": "ok", "paused": False})
+
+        if path == "/api/reset":
+            events.clear()
+            return self.send_json({"status": "ok", "reset": True})
+
+        if path.startswith("/api/scenario"):
+            query = parsed.query
+            if "mode=degrading" in query:
+                scenario = "degrading"
+            elif "mode=incident" in query:
+                scenario = "incident"
+            else:
+                scenario = "normal"
+            return self.send_json({"status": "ok", "scenario": scenario})
 
         self.send_error(404)
 
+    def log_message(self, format, *args):
+        return
+
+
 def run():
+    server = HTTPServer(("0.0.0.0", 8000), Handler)
+    print("Server running on http://localhost:8000")
 
-    server=HTTPServer(("0.0.0.0",8000),Handler)
-
-    print("Server running http://localhost:8000")
-
-    thread=threading.Thread(target=telemetry_loop,daemon=True)
+    thread = threading.Thread(target=telemetry_loop, daemon=True)
     thread.start()
 
     server.serve_forever()
 
-if __name__=="__main__":
+
+if __name__ == "__main__":
     run()
