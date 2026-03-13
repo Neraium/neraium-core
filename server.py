@@ -164,6 +164,24 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/":
             return self._send_file(STATIC_DIR / "index.html", "text/html; charset=utf-8")
 
+if path == "/api/scenario":
+    mode = query.get("mode", ["normal"])[0].lower()
+    set_scenario(mode)
+    return self.send_json({"status": "ok", "scenario": SCENARIO})
+
+if path == "/api/pause":
+    global PAUSED
+    PAUSED = True
+    return self.send_json({"status": "ok", "paused": True})
+
+if path == "/api/resume":
+    global PAUSED
+    PAUSED = False
+    return self.send_json({"status": "ok", "paused": False})
+
+if path == "/api/reset":
+    reset_demo()
+    return self.send_json({"status": "ok"})
         if path == "/static/styles.css":
             return self._send_file(STATIC_DIR / "styles.css", "text/css; charset=utf-8")
 
