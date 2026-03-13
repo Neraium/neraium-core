@@ -1,85 +1,70 @@
+import csv
 from datetime import datetime, timezone
-import numpy as np
+from io import StringIO
+from typing import Dict, List
 
-from neraium_core.features import MicroFeatureEngine
+
+def now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
 
 
-class TelemetryPipeline:
+def normalize_rest_payload(payload: Dict) -> Dict:
+    timestamp = payload.get("timestamp") or now_iso()
+    site_id = payload.get("site_id", "default-site")
+    asset_id = payload.get("asset_id", "default-asset")
+    sensor_values = payload.get("sensor_values", {})
 
-    def __init__(self):
+    if not isinstance(sensor_values, dict):
+        raise ValueError("sensor_values must be an object")
 
-        self.features = MicroFeatureEngine()
+    normalized = {
+        "timestamp": timestamp,
+        "site_id": str(site_id),
+        "asset_id": str(asset_id),
+        "sensor_values": {},
+    }
 
-        self.history = []
-        self.baseline_mean = None
-        self.baseline_cov = None
-
-        self.training_samples = 50
-
-    def _update_baseline(self, vector):
-
-        self.history.append(vector)
-
-        if len(self.history) < self.training_samples:
-            return
-
-        data = np.array(self.history[-self.training_samples:])
-
-        self.baseline_mean = np.mean(data, axis=0)
-        self.baseline_cov = np.cov(data, rowvar=False)
-
-    def _mahalanobis(self, vector):
-
-        if self.baseline_mean is None:
-            return 0
-
-        x = np.array(vector)
-
-        diff = x - self.baseline_mean
-
+    for key, value in sensor_values.items():
         try:
-            inv_cov = np.linalg.pinv(self.baseline_cov)
-        except:
-            return 0
+            normalized["sensor_values"][str(key)] = float(value)
+        except (TypeError, ValueError):
+            normalized["sensor_values"][str(key)] = 0.0
 
-        score = np.sqrt(diff.T @ inv_cov @ diff)
+    return normalized
 
-        return float(score)
 
-    def process(self, payload):
+def parse_csv_text(csv_text: str) -> List[Dict]:
+    reader = csv.DictReader(StringIO(csv_text))
+    rows = list(reader)
 
-        cpu = payload.signals["cpu_usage"]
-        mem = payload.signals["memory_usage"]
+    if not rows:
+        return []
 
-        f = self.features.compute(cpu, mem)
+    required = {"timestamp", "site_id", "asset_id"}
+    headers = set(rows[0].keys())
 
-        vector = [
-            f["cpu"],
-            f["memory"],
-            f["cpu_delta"],
-            f["mem_delta"],
-            f["cpu_std"],
-            f["mem_std"]
-        ]
+    if not required.issubset(headers):
+        raise ValueError("CSV must include timestamp, site_id, asset_id columns")
 
-        self._update_baseline(vector)
+    sensor_columns = [h for h in rows[0].keys() if h not in required]
 
-        score = self._mahalanobis(vector)
+    frames: List[Dict] = []
 
-        if score > 4:
-            status = "anomaly"
-        else:
-            status = "normal"
-
-        event = {
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "signals": {
-                "cpu_usage": cpu,
-                "memory_usage": mem
-            },
-            "score": score,
-
-            "status": status
+    for row in rows:
+        frame = {
+            "timestamp": row.get("timestamp") or now_iso(),
+            "site_id": row.get("site_id") or "default-site",
+            "asset_id": row.get("asset_id") or "default-asset",
+            "sensor_values": {},
         }
 
-        return event
+        for col in sensor_columns:
+            raw = row.get(col, "")
+            try:
+                frame["sensor_values"][col] = float(raw)
+            except (TypeError, ValueError):
+                frame["sensor_values"][col] = 0.0
+
+        frames.append(frame)
+
+    return frames
