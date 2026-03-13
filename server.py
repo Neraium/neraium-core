@@ -27,6 +27,11 @@ def add_event(event):
         events.pop(0)
 
 
+def calculate_early_warning_horizon(drift):
+    drift = max(0.0, min(1.0, float(drift)))
+    return max(0, int((1 - drift) * 72))
+
+
 def generate_event():
     global scenario
 
@@ -40,18 +45,37 @@ def generate_event():
     if scenario == "normal":
         state = "STABLE"
         drift = round(random.uniform(0.05, 0.25), 2)
-        persistence = round(random.uniform(0.85, 0.98), 2)
+        persistence = round(random.uniform(0.80, 0.96), 2)
+        leak_risk = round(random.uniform(0.03, 0.15), 2)
+        flow_rate = round(random.uniform(118, 136), 1)
+        line_pressure = round(random.uniform(58, 66), 1)
+        water_quality_index = round(random.uniform(94, 99), 1)
+        tank_level = round(random.uniform(66, 80), 1)
+        predicted_impact = "No near term service disruption expected."
+
     elif scenario == "degrading":
         state = "WATCH"
         drift = round(random.uniform(0.25, 0.65), 2)
-        persistence = round(random.uniform(0.55, 0.90), 2)
+        persistence = round(random.uniform(0.30, 0.75), 2)
+        leak_risk = round(random.uniform(0.15, 0.45), 2)
+        flow_rate = round(random.uniform(88, 118), 1)
+        line_pressure = round(random.uniform(45, 58), 1)
+        water_quality_index = round(random.uniform(74, 90), 1)
+        tank_level = round(random.uniform(55, 72), 1)
+        predicted_impact = "Early degradation detected. Maintenance window recommended."
+
     else:
         state = "ALERT"
         drift = round(random.uniform(0.65, 0.98), 2)
         persistence = round(random.uniform(0.70, 0.95), 2)
+        leak_risk = round(random.uniform(0.50, 0.95), 2)
+        flow_rate = round(random.uniform(60, 95), 1)
+        line_pressure = round(random.uniform(28, 45), 1)
+        water_quality_index = round(random.uniform(58, 78), 1)
+        tank_level = round(random.uniform(42, 65), 1)
+        predicted_impact = "Potential localized service disruption within 1 to 2 hours."
 
-    # Early warning horizon in hours
-    early_warning = max(0, int((1 - drift) * 72))
+    early_warning_horizon_hours = calculate_early_warning_horizon(drift)
 
     event = {
         "id": len(events) + 1,
@@ -65,21 +89,16 @@ def generate_event():
         "zone": zone,
         "timestamp": now(),
         "state": state,
-        "confidence": round(random.uniform(0.90, 0.98), 2),
+        "confidence": round(random.uniform(0.88, 0.98), 2),
         "network_drift_score": drift,
         "quality_persistence_score": persistence,
-        "early_warning_horizon_hours": early_warning,
-        "flow_rate": round(random.uniform(60, 140), 1),
-        "line_pressure": round(random.uniform(28, 70), 1),
-        "water_quality_index": round(random.uniform(58, 99), 1),
-        "tank_level": round(random.uniform(42, 80), 1),
-        "predicted_impact": (
-            "No near term service disruption expected."
-            if state == "STABLE"
-            else "Early instability developing."
-            if state == "WATCH"
-            else "Potential localized service disruption within 1 to 2 hours."
-        )
+        "early_warning_horizon_hours": early_warning_horizon_hours,
+        "leak_risk": leak_risk,
+        "flow_rate": flow_rate,
+        "line_pressure": line_pressure,
+        "water_quality_index": water_quality_index,
+        "tank_level": tank_level,
+        "predicted_impact": predicted_impact
     }
 
     add_event(event)
@@ -93,7 +112,6 @@ def telemetry_loop():
 
 
 class Handler(BaseHTTPRequestHandler):
-
     def send_json(self, data):
         payload = json.dumps(data).encode("utf-8")
         self.send_response(200)
@@ -150,6 +168,7 @@ class Handler(BaseHTTPRequestHandler):
                     "network_drift_score": 0,
                     "quality_persistence_score": 0,
                     "early_warning_horizon_hours": 0,
+                    "leak_risk": 0,
                     "flow_rate": 0,
                     "line_pressure": 0,
                     "water_quality_index": 0,
@@ -158,23 +177,30 @@ class Handler(BaseHTTPRequestHandler):
                     "last_timestamp": ""
                 })
 
+            drift = latest.get("network_drift_score", 0)
+            early_warning_horizon_hours = latest.get(
+                "early_warning_horizon_hours",
+                calculate_early_warning_horizon(drift)
+            )
+
             response = {
                 "connected": True,
                 "scenario": scenario,
                 "paused": paused,
                 "events_tracked": len(events),
-                "state": latest["state"],
-                "zone": latest["zone"],
-                "confidence": latest["confidence"],
-                "network_drift_score": latest["network_drift_score"],
-                "quality_persistence_score": latest["quality_persistence_score"],
-                "early_warning_horizon_hours": latest["early_warning_horizon_hours"],
-                "flow_rate": latest["flow_rate"],
-                "line_pressure": latest["line_pressure"],
-                "water_quality_index": latest["water_quality_index"],
-                "tank_level": latest["tank_level"],
-                "predicted_impact": latest["predicted_impact"],
-                "last_timestamp": latest["timestamp"]
+                "state": latest.get("state", "UNKNOWN"),
+                "zone": latest.get("zone", "-"),
+                "confidence": latest.get("confidence", 0),
+                "network_drift_score": latest.get("network_drift_score", 0),
+                "quality_persistence_score": latest.get("quality_persistence_score", 0),
+                "early_warning_horizon_hours": early_warning_horizon_hours,
+                "leak_risk": latest.get("leak_risk", 0),
+                "flow_rate": latest.get("flow_rate", 0),
+                "line_pressure": latest.get("line_pressure", 0),
+                "water_quality_index": latest.get("water_quality_index", 0),
+                "tank_level": latest.get("tank_level", 0),
+                "predicted_impact": latest.get("predicted_impact", ""),
+                "last_timestamp": latest.get("timestamp", "")
             }
 
             return self.send_json(response)
