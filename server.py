@@ -18,57 +18,56 @@ MAX_EVENTS = 300
 engine = StructuralEngine(baseline_window=24, recent_window=8)
 lock = threading.Lock()
 
+SITES = ["Reservoir East", "North Loop", "South Basin", "West Feed Main"]
+ASSETS = ["Pump Station 1", "District Main B", "Distribution Node 7"]
+
 
 def now_iso():
     return datetime.now(timezone.utc).isoformat()
 
 
-SITES = ["Reservoir East", "North Loop", "South Basin", "West Feed Main"]
-ASSETS = ["Pump Station 1", "District Main B", "Distribution Node 7"]
-
-
 def build_sensor_values():
-    base_pressure = 60
-    base_flow = 125
-    base_tank = 75
-    base_quality = 97
+    base_pressure  = 60
+    base_flow      = 125
+    base_tank      = 75
+    base_quality   = 97
     base_vibration = 0.20
 
     if scenario == "normal":
         return {
-            "pressure": random.uniform(base_pressure - 3, base_pressure + 3),
-            "flow": random.uniform(base_flow - 4, base_flow + 4),
-            "tank_level": random.uniform(base_tank - 3, base_tank + 3),
-            "quality": random.uniform(base_quality - 1.5, base_quality + 1.5),
-            "vibration": random.uniform(0.18, 0.24),
+            "pressure":   random.uniform(base_pressure - 3,  base_pressure + 3),
+            "flow":       random.uniform(base_flow - 4,      base_flow + 4),
+            "tank_level": random.uniform(base_tank - 3,      base_tank + 3),
+            "quality":    random.uniform(base_quality - 1.5, base_quality + 1.5),
+            "vibration":  random.uniform(0.18, 0.24),
         }
 
     if scenario == "degrading":
         drift = random.uniform(0.5, 1.5)
         return {
-            "pressure": base_pressure - drift * 6 + random.uniform(-2, 2),
-            "flow": base_flow - drift * 10 + random.uniform(-3, 3),
-            "tank_level": base_tank - drift * 6 + random.uniform(-2, 2),
-            "quality": base_quality - drift * 4 + random.uniform(-1, 1),
-            "vibration": base_vibration + drift * 0.35,
+            "pressure":   base_pressure  - drift * 6  + random.uniform(-2, 2),
+            "flow":       base_flow      - drift * 10 + random.uniform(-3, 3),
+            "tank_level": base_tank      - drift * 6  + random.uniform(-2, 2),
+            "quality":    base_quality   - drift * 4  + random.uniform(-1, 1),
+            "vibration":  base_vibration + drift * 0.35,
         }
 
     # incident
     spike = random.uniform(2.5, 4.0)
     return {
-        "pressure": base_pressure - spike * 10 + random.uniform(-4, 4),
-        "flow": base_flow - spike * 15 + random.uniform(-6, 6),
-        "tank_level": base_tank - spike * 8 + random.uniform(-4, 4),
-        "quality": base_quality - spike * 6 + random.uniform(-2, 2),
-        "vibration": base_vibration + spike * 0.5,
+        "pressure":   base_pressure  - spike * 10 + random.uniform(-4, 4),
+        "flow":       base_flow      - spike * 15 + random.uniform(-6, 6),
+        "tank_level": base_tank      - spike * 8  + random.uniform(-4, 4),
+        "quality":    base_quality   - spike * 6  + random.uniform(-2, 2),
+        "vibration":  base_vibration + spike * 0.5,
     }
 
 
 def generate_event():
     frame = {
-        "timestamp": now_iso(),
-        "site_id": random.choice(SITES),
-        "asset_id": random.choice(ASSETS),
+        "timestamp":     now_iso(),
+        "site_id":       random.choice(SITES),
+        "asset_id":      random.choice(ASSETS),
         "sensor_values": build_sensor_values(),
     }
 
@@ -76,7 +75,6 @@ def generate_event():
 
     with lock:
         result["id"] = len(events) + 1
-        # Flatten sensor values into result for dashboard consumption
         for k, v in frame["sensor_values"].items():
             result[k] = round(v, 3)
         events.append(result)
@@ -95,6 +93,7 @@ def telemetry_loop():
 
 
 class Handler(BaseHTTPRequestHandler):
+
     def send_json(self, data, status=200):
         payload = json.dumps(data).encode("utf-8")
         self.send_response(status)
@@ -121,14 +120,12 @@ class Handler(BaseHTTPRequestHandler):
         global paused, scenario
 
         parsed = urlparse(self.path)
-        path = parsed.path
+        path   = parsed.path
 
         if path in ("/", "/dashboard"):
             return self.serve_file("static/dashboard.html", "text/html; charset=utf-8")
-
         if path == "/static/app.js":
             return self.serve_file("static/app.js", "application/javascript; charset=utf-8")
-
         if path == "/static/styles.css":
             return self.serve_file("static/styles.css", "text/css; charset=utf-8")
 
@@ -153,8 +150,8 @@ class Handler(BaseHTTPRequestHandler):
                         "explanation": "Initializing structural telemetry...",
                     }
                 out["events_tracked"] = len(events)
-                out["paused"] = paused
-                out["scenario"] = scenario
+                out["paused"]    = paused
+                out["scenario"]  = scenario
                 out["connected"] = True
             return self.send_json(out)
 
@@ -176,11 +173,12 @@ class Handler(BaseHTTPRequestHandler):
             with lock:
                 events.clear()
                 paused = False
+                scenario = "normal"          # ← always reset to normal
             engine.frames.clear()
-            engine.prev_drift = None
+            engine.prev_drift    = None
             engine.latest_result = None
-            engine.sensor_order = []
-            return self.send_json({"ok": True, "reset": True})
+            engine.sensor_order  = []
+            return self.send_json({"ok": True, "reset": True, "scenario": "normal"})
 
         if path == "/api/scenario/normal":
             with lock:
