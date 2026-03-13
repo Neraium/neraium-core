@@ -7,13 +7,15 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from urllib.parse import urlparse
 
+from structural_engine import StructuralEngine
+
 BASE_DIR = Path(__file__).resolve().parent
 
 events = []
 paused = False
 scenario = "normal"
 MAX_EVENTS = 300
-last_drift = None
+engine = StructuralEngine(baseline_window=24, recent_window=8)
 lock = threading.Lock()
 
 
@@ -21,35 +23,11 @@ def now_iso():
     return datetime.now(timezone.utc).isoformat()
 
 
-def structural_drift(values):
-    base = [60.0, 125.0, 75.0, 97.0, 0.20]
-    total = 0.0
-    for i, v in enumerate(values):
-        total += abs(v - base[i]) / abs(base[i])
-    return total
-
-
-def relational_stability(values):
-    pressure, flow, tank, quality, vibration = values
-    score = 1 - (
-        abs((pressure / max(flow, 1e-6)) - 0.5) * 0.4
-        + abs((tank / max(pressure, 1e-6)) - 1.2) * 0.3
-        + vibration * 0.3
-    )
-    return max(0.0, min(1.0, score))
-
-
-def lead_time(drift, velocity):
-    boundary = 4.0
-    if velocity <= 0:
-        return None
-    hours = (boundary - drift) / velocity
-    return max(0.0, round(hours, 1))
+SITES = ["Reservoir East", "North Loop", "South Basin", "West Feed Main"]
+ASSETS = ["Pump Station 1", "District Main B", "Distribution Node 7"]
 
 
 def build_sensor_values():
-    global scenario
-
     base_pressure = 60
     base_flow = 125
     base_tank = 75
@@ -57,90 +35,51 @@ def build_sensor_values():
     base_vibration = 0.20
 
     if scenario == "normal":
-        return (
-            random.uniform(base_pressure - 3, base_pressure + 3),
-            random.uniform(base_flow - 4, base_flow + 4),
-            random.uniform(base_tank - 3, base_tank + 3),
-            random.uniform(base_quality - 1.5, base_quality + 1.5),
-            random.uniform(0.18, 0.24),
-        )
+        return {
+            "pressure": random.uniform(base_pressure - 3, base_pressure + 3),
+            "flow": random.uniform(base_flow - 4, base_flow + 4),
+            "tank_level": random.uniform(base_tank - 3, base_tank + 3),
+            "quality": random.uniform(base_quality - 1.5, base_quality + 1.5),
+            "vibration": random.uniform(0.18, 0.24),
+        }
 
     if scenario == "degrading":
         drift = random.uniform(0.5, 1.5)
-        return (
-            base_pressure - drift * 6 + random.uniform(-2, 2),
-            base_flow - drift * 10 + random.uniform(-3, 3),
-            base_tank - drift * 6 + random.uniform(-2, 2),
-            base_quality - drift * 4 + random.uniform(-1, 1),
-            base_vibration + drift * 0.35,
-        )
+        return {
+            "pressure": base_pressure - drift * 6 + random.uniform(-2, 2),
+            "flow": base_flow - drift * 10 + random.uniform(-3, 3),
+            "tank_level": base_tank - drift * 6 + random.uniform(-2, 2),
+            "quality": base_quality - drift * 4 + random.uniform(-1, 1),
+            "vibration": base_vibration + drift * 0.35,
+        }
 
+    # incident
     spike = random.uniform(2.5, 4.0)
-    return (
-        base_pressure - spike * 10 + random.uniform(-4, 4),
-        base_flow - spike * 15 + random.uniform(-6, 6),
-        base_tank - spike * 8 + random.uniform(-4, 4),
-        base_quality - spike * 6 + random.uniform(-2, 2),
-        base_vibration + spike * 0.5,
-    )
+    return {
+        "pressure": base_pressure - spike * 10 + random.uniform(-4, 4),
+        "flow": base_flow - spike * 15 + random.uniform(-6, 6),
+        "tank_level": base_tank - spike * 8 + random.uniform(-4, 4),
+        "quality": base_quality - spike * 6 + random.uniform(-2, 2),
+        "vibration": base_vibration + spike * 0.5,
+    }
 
 
 def generate_event():
-    global last_drift
-
-    site = random.choice(["Reservoir East", "North Loop", "South Basin", "West Feed Main"])
-    asset = random.choice(["Pump Station 1", "District Main B", "Distribution Node 7"])
-    timestamp = now_iso()
-
-    values = build_sensor_values()
-    drift = structural_drift(values)
-    stability = relational_stability(values)
-
-    velocity = 0.0
-    if last_drift is not None:
-        velocity = drift - last_drift
-    last_drift = drift
-
-    lt = lead_time(drift, velocity)
-
-    if drift > 3.0:
-        state = "ALERT"
-        event_type = "instability_escalation"
-        predicted_impact = "Potential localized service disruption within 1 to 2 hours."
-    elif drift > 1.5:
-        state = "WATCH"
-        event_type = "gradual_drift"
-        predicted_impact = "Early degradation detected. Maintenance window recommended."
-    else:
-        state = "STABLE"
-        event_type = "baseline_structure"
-        predicted_impact = "No near term operational disruption expected."
-
-    event = {
-        "id": len(events) + 1,
-        "event_type": event_type,
-        "timestamp": timestamp,
-        "site_id": site,
-        "asset_id": asset,
-        "state": state,
-        "confidence": round(random.uniform(0.90, 0.99), 2),
-        "structural_drift_score": round(drift, 3),
-        "relational_stability_score": round(stability, 3),
-        "drift_velocity": round(velocity, 3),
-        "lead_time_hours": lt,
-        "lead_time_confidence": round(random.uniform(0.70, 0.95), 2),
-        "structural_driver": "pressure-flow imbalance",
-        "predicted_impact": predicted_impact,
-        "explanation": "SII analyzing structural geometry of the sensor network.",
-        "pressure": round(values[0], 2),
-        "flow": round(values[1], 2),
-        "tank_level": round(values[2], 2),
-        "quality": round(values[3], 2),
-        "vibration": round(values[4], 3),
+    frame = {
+        "timestamp": now_iso(),
+        "site_id": random.choice(SITES),
+        "asset_id": random.choice(ASSETS),
+        "sensor_values": build_sensor_values(),
     }
 
+    result = engine.process_frame(frame)
+
     with lock:
-        events.append(event)
+        result["id"] = len(events) + 1
+        # Flatten sensor values into result for dashboard consumption
+        for k, v in frame["sensor_values"].items():
+            result[k] = round(v, 3)
+        events.append(result)
         if len(events) > MAX_EVENTS:
             events.pop(0)
 
@@ -149,7 +88,9 @@ def telemetry_loop():
     generate_event()
     while True:
         time.sleep(2)
-        if not paused:
+        with lock:
+            is_paused = paused
+        if not is_paused:
             generate_event()
 
 
@@ -168,7 +109,6 @@ class Handler(BaseHTTPRequestHandler):
         if not path.exists():
             self.send_error(404, "File not found.")
             return
-
         data = path.read_bytes()
         self.send_response(200)
         self.send_header("Content-Type", content_type)
@@ -178,12 +118,12 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(data)
 
     def do_GET(self):
-        global paused, scenario, last_drift
+        global paused, scenario
 
         parsed = urlparse(self.path)
         path = parsed.path
 
-        if path == "/" or path == "/dashboard":
+        if path in ("/", "/dashboard"):
             return self.serve_file("static/dashboard.html", "text/html; charset=utf-8")
 
         if path == "/static/app.js":
@@ -194,26 +134,28 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/api/status":
             with lock:
-                latest = events[-1] if events else {
-                    "state": "UNKNOWN",
-                    "timestamp": "-",
-                    "site_id": "—",
-                    "asset_id": "—",
-                    "structural_drift_score": 0.0,
-                    "relational_stability_score": 0.0,
-                    "lead_time_hours": None,
-                    "lead_time_confidence": 0.0,
-                    "drift_velocity": 0.0,
-                    "structural_driver": "—",
-                    "predicted_impact": "—",
-                    "explanation": "Initializing structural telemetry...",
-                }
-                out = dict(latest)
+                if events:
+                    out = dict(events[-1])
+                else:
+                    out = {
+                        "state": "UNKNOWN",
+                        "timestamp": "-",
+                        "site_id": "—",
+                        "asset_id": "—",
+                        "structural_drift_score": 0.0,
+                        "relational_stability_score": 0.0,
+                        "system_health": 100,
+                        "lead_time_hours": None,
+                        "lead_time_confidence": 0.0,
+                        "drift_velocity": 0.0,
+                        "structural_driver": "—",
+                        "predicted_impact": "—",
+                        "explanation": "Initializing structural telemetry...",
+                    }
                 out["events_tracked"] = len(events)
                 out["paused"] = paused
                 out["scenario"] = scenario
                 out["connected"] = True
-
             return self.send_json(out)
 
         if path == "/api/events":
@@ -221,29 +163,38 @@ class Handler(BaseHTTPRequestHandler):
                 return self.send_json(list(events))
 
         if path == "/api/pause":
-            paused = True
+            with lock:
+                paused = True
             return self.send_json({"ok": True, "paused": True})
 
         if path == "/api/resume":
-            paused = False
+            with lock:
+                paused = False
             return self.send_json({"ok": True, "paused": False})
 
         if path == "/api/reset":
             with lock:
                 events.clear()
-            last_drift = None
+                paused = False
+            engine.frames.clear()
+            engine.prev_drift = None
+            engine.latest_result = None
+            engine.sensor_order = []
             return self.send_json({"ok": True, "reset": True})
 
         if path == "/api/scenario/normal":
-            scenario = "normal"
+            with lock:
+                scenario = "normal"
             return self.send_json({"ok": True, "scenario": scenario})
 
         if path == "/api/scenario/degrading":
-            scenario = "degrading"
+            with lock:
+                scenario = "degrading"
             return self.send_json({"ok": True, "scenario": scenario})
 
         if path == "/api/scenario/incident":
-            scenario = "incident"
+            with lock:
+                scenario = "incident"
             return self.send_json({"ok": True, "scenario": scenario})
 
         self.send_error(404, "File not found.")
@@ -255,7 +206,7 @@ class Handler(BaseHTTPRequestHandler):
 def run():
     server = HTTPServer(("0.0.0.0", 8000), Handler)
     print("NERAIUM WATER PLATFORM DEMO ACTIVE")
-    print("Server running at http://0.0.0.0:8000")
+    print("Server: http://0.0.0.0:8000")
     threading.Thread(target=telemetry_loop, daemon=True).start()
     server.serve_forever()
 
