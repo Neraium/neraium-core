@@ -14,6 +14,12 @@ EVENTS = []
 MAX_EVENTS = 240
 SCENARIO = "normal"
 
+def set_scenario(value):
+    global SCENARIO
+    if value in {"normal", "degrading", "incident"}:
+        SCENARIO = value
+    else:
+        SCENARIO = "normal"
 
 def now_iso():
     return datetime.now(timezone.utc).isoformat()
