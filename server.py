@@ -12,6 +12,7 @@ paused = False
 scenario = “normal”
 MAX_EVENTS = 300
 last_drift = None
+lock = threading.Lock()
 
 def now_iso():
 return datetime.now(timezone.utc).isoformat()
@@ -40,6 +41,7 @@ hours = (boundary - drift) / velocity
 return max(0.0, round(hours, 1))
 
 def build_sensor_values():
+global scenario
 if scenario == “normal”:
 return (
 random.uniform(58, 64),
@@ -118,13 +120,18 @@ event = {
     "explanation": "SII analyzing structural geometry of the sensor network."
 }
 
-events.append(event)
-if len(events) > MAX_EVENTS:
-    events.pop(0)
+with lock:
+    events.append(event)
+    if len(events) > MAX_EVENTS:
+        events.pop(0)
 ```
 
 def telemetry_loop():
+global paused
 while True:
+with lock:
+if not paused:
+pass
 if not paused:
 generate_event()
 time.sleep(2)
@@ -135,170 +142,400 @@ DASHBOARD_HTML = r”””<!doctype html>
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Neraium Dashboard</title>
+  <title>NERAIUM // SYSTEMIC INFRASTRUCTURE INTELLIGENCE</title>
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600;700&display=swap" rel="stylesheet">
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
-    * { box-sizing: border-box; }
-    body {
+    * {
+      box-sizing: border-box;
       margin: 0;
-      padding: 20px;
-      font-family: Arial, sans-serif;
-      background: #08111f;
-      color: #e8f1ff;
+      padding: 0;
     }
-    .wrap { max-width: 1200px; margin: 0 auto; }
-    .card {
-      background: #10203a;
-      border: 1px solid #223b63;
-      border-radius: 16px;
-      padding: 18px;
-      margin-bottom: 16px;
-    }
-    .hero {
-      display: flex;
-      justify-content: space-between;
-      gap: 20px;
-    }
-    .hero-state {
-      font-size: 72px;
-      font-weight: 800;
-      margin: 8px 0;
-    }
-    .state-stable { color: #ffffff; }
-    .state-watch { color: #ffd56a; }
-    .state-alert { color: #ff6c86; }
-    .metric-grid {
-      display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 14px;
-      margin-bottom: 16px;
-    }
-    .metric-value {
-      font-size: 38px;
-      font-weight: 800;
-      color: #8cf0ff;
-      margin-top: 8px;
-    }
-    .controls {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 10px;
-      margin-bottom: 16px;
-    }
-    button {
-      border: 1px solid #35537e;
-      background: #0e1c33;
-      color: white;
-      border-radius: 999px;
-      padding: 10px 16px;
-      cursor: pointer;
-      font-size: 16px;
-    }
-    .charts {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 16px;
-      margin-bottom: 16px;
-    }
-    .chart-wrap {
-      position: relative;
-      height: 280px;
-      width: 100%;
-    }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-    }
-    th, td {
-      text-align: left;
-      padding: 10px;
-      border-bottom: 1px solid #223b63;
-      font-size: 14px;
-    }
-    th {
-      color: #9fb4d3;
-      font-size: 12px;
-      text-transform: uppercase;
-    }
-    .pill {
-      display: inline-block;
-      padding: 8px 12px;
-      border-radius: 999px;
-      border: 1px solid #35537e;
-      margin-top: 12px;
-    }
-    @media (max-width: 900px) {
-      .metric-grid { grid-template-columns: 1fr 1fr; }
-      .charts { grid-template-columns: 1fr; }
-      .hero { flex-direction: column; }
-      .hero-state { font-size: 52px; }
-    }
+
+```
+html, body {
+  width: 100%;
+  height: 100%;
+  overflow-x: hidden;
+}
+
+body {
+  font-family: 'IBM Plex Mono', monospace;
+  background: #000000;
+  color: #00FF41;
+  font-size: 13px;
+  line-height: 1.6;
+  letter-spacing: 0.05em;
+  background-image: 
+    repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 1px,
+      rgba(0, 255, 65, 0.03) 1px,
+      rgba(0, 255, 65, 0.03) 2px
+    ),
+    repeating-linear-gradient(
+      90deg,
+      transparent,
+      transparent 1px,
+      rgba(0, 255, 65, 0.03) 1px,
+      rgba(0, 255, 65, 0.03) 2px
+    );
+  background-size: 40px 40px;
+  position: relative;
+}
+
+body::before {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  pointer-events: none;
+  background-image: 
+    repeating-linear-gradient(
+      0deg,
+      transparent 0px,
+      transparent 2px,
+      rgba(0, 255, 65, 0.02) 2px,
+      rgba(0, 255, 65, 0.02) 4px
+    );
+  animation: scanlines 8s linear infinite;
+  z-index: 1;
+}
+
+@keyframes scanlines {
+  0% { transform: translateY(0); }
+  100% { transform: translateY(10px); }
+}
+
+.wrap {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 40px;
+  position: relative;
+  z-index: 2;
+  border: 1px solid #00FF41;
+  border-width: 1px 0;
+  min-height: 100vh;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 40px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid #00FF41;
+}
+
+.header-title {
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+}
+
+.header-stamp {
+  font-size: 10px;
+  text-align: right;
+  letter-spacing: 1px;
+  opacity: 0.6;
+}
+
+.hero {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 40px;
+  margin-bottom: 40px;
+  border: 1px solid #00FF41;
+  padding: 30px;
+  background: rgba(0, 255, 65, 0.01);
+}
+
+.hero-state {
+  font-size: 96px;
+  font-weight: 700;
+  line-height: 1;
+  margin-bottom: 20px;
+  letter-spacing: -0.02em;
+}
+
+.state-stable { color: #00FF41; }
+.state-watch { color: #FFFF00; }
+.state-alert { color: #FF4141; }
+
+.hero-meta {
+  font-size: 12px;
+  opacity: 0.8;
+  margin-bottom: 12px;
+}
+
+.hero-value {
+  font-size: 28px;
+  font-weight: 600;
+  margin-bottom: 24px;
+  color: #00FF41;
+}
+
+.metrics {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 1px;
+  margin-bottom: 40px;
+  background: #00FF41;
+  padding: 1px;
+}
+
+.metric-card {
+  background: #000000;
+  padding: 20px;
+  border: 1px solid #00FF41;
+  min-height: 120px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.metric-label {
+  font-size: 11px;
+  letter-spacing: 1.5px;
+  opacity: 0.7;
+  text-transform: uppercase;
+  margin-bottom: 12px;
+}
+
+.metric-value {
+  font-size: 36px;
+  font-weight: 700;
+  color: #00FF41;
+  font-variant-numeric: tabular-nums;
+}
+
+.controls {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 1px;
+  margin-bottom: 40px;
+  background: #00FF41;
+  padding: 1px;
+}
+
+button {
+  background: #000000;
+  border: 1px solid #00FF41;
+  color: #00FF41;
+  padding: 12px 16px;
+  cursor: pointer;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 11px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  font-weight: 600;
+  transition: all 100ms linear;
+  position: relative;
+}
+
+button:hover {
+  background: #00FF41;
+  color: #000000;
+}
+
+button:active {
+  transform: scale(0.98);
+}
+
+.charts-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 40px;
+  margin-bottom: 40px;
+}
+
+.chart-card {
+  border: 1px solid #00FF41;
+  padding: 20px;
+  background: rgba(0, 255, 65, 0.01);
+}
+
+.chart-title {
+  font-size: 12px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  margin-bottom: 20px;
+  opacity: 0.8;
+}
+
+.chart-wrap {
+  position: relative;
+  height: 280px;
+  width: 100%;
+}
+
+.events-card {
+  border: 1px solid #00FF41;
+  padding: 20px;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+th {
+  text-align: left;
+  padding: 12px 8px;
+  border-bottom: 1px solid #00FF41;
+  font-size: 11px;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  font-weight: 600;
+  opacity: 0.8;
+}
+
+td {
+  padding: 12px 8px;
+  border-bottom: 1px solid rgba(0, 255, 65, 0.3);
+}
+
+tr:last-child td {
+  border-bottom: none;
+}
+
+.status-badge {
+  display: inline-block;
+  padding: 4px 8px;
+  border: 1px solid currentColor;
+  font-size: 10px;
+  letter-spacing: 1px;
+}
+
+.status-stable {
+  color: #00FF41;
+  border-color: #00FF41;
+}
+
+.status-watch {
+  color: #FFFF00;
+  border-color: #FFFF00;
+}
+
+.status-alert {
+  color: #FF4141;
+  border-color: #FF4141;
+}
+
+.connection-indicator {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  background: #00FF41;
+  margin-right: 8px;
+  animation: pulse 2s infinite;
+}
+
+.connection-indicator.disconnected {
+  background: #FF4141;
+  animation: none;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+@media (max-width: 1200px) {
+  .charts-grid { grid-template-columns: 1fr; }
+  .hero { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 768px) {
+  .metrics { grid-template-columns: repeat(2, 1fr); }
+  .controls { grid-template-columns: repeat(2, 1fr); }
+  .wrap { padding: 20px; }
+}
+```
+
   </style>
 </head>
 <body>
   <div class="wrap">
-    <div class="card hero">
-      <div>
-        <div style="font-size:12px;color:#9fb4d3;letter-spacing:2px;text-transform:uppercase;">System State</div>
-        <div id="systemState" class="hero-state">UNKNOWN</div>
-        <div id="siteLine">Site: -</div>
-        <div id="lastTimestamp" style="margin-top:8px;">Last update: none</div>
-        <div id="storyText" style="margin-top:14px;font-size:20px;">Initializing structural telemetry...</div>
-        <div id="impactText" style="margin-top:8px;color:#8cf0ff;">Predicted impact: —</div>
+    <div class="header">
+      <div class="header-title">◇ NERAIUM SII DASHBOARD ◇</div>
+      <div class="header-stamp">
+        <div>CLASSIFIED</div>
+        <div style="font-size: 9px; margin-top: 4px;">TELEMETRY ANALYSIS</div>
       </div>
+    </div>
 
 ```
+<div class="hero">
   <div>
-    <div style="font-size:12px;color:#9fb4d3;letter-spacing:2px;text-transform:uppercase;">Confidence</div>
-    <div id="confidenceValue" class="metric-value">—</div>
-    <div style="font-size:12px;color:#9fb4d3;letter-spacing:2px;text-transform:uppercase;margin-top:20px;">Events Tracked</div>
-    <div id="eventsTracked" class="metric-value">0</div>
-    <div id="assetBadge" class="pill">Asset: -</div>
-    <div id="connectionText" style="margin-top:12px;">Connecting...</div>
+    <div class="hero-meta">▸ SYSTEM STATE</div>
+    <div id="systemState" class="hero-state state-stable">UNKNOWN</div>
+    <div style="font-size: 12px; margin-bottom: 20px;">
+      <div id="siteLine" style="margin-bottom: 8px;">Site: —</div>
+      <div id="assetLine" style="margin-bottom: 8px;">Asset: —</div>
+      <div id="lastTimestamp">Updated: —</div>
+    </div>
+    <div id="impactText" style="opacity: 0.8; font-size: 13px;">—</div>
+  </div>
+
+  <div>
+    <div class="hero-meta">▸ CONFIDENCE</div>
+    <div class="hero-value" id="confidenceValue">—</div>
+    <div class="hero-meta" style="margin-top: 20px;">▸ EVENTS TRACKED</div>
+    <div class="hero-value" id="eventsTracked">0</div>
+    <div style="display: flex; align-items: center; font-size: 12px;">
+      <div class="connection-indicator" id="connectionDot"></div>
+      <span id="connectionText">Initializing...</span>
+    </div>
+  </div>
+</div>
+
+<div class="metrics">
+  <div class="metric-card">
+    <div class="metric-label">Structural Drift</div>
+    <div class="metric-value" id="driftValue">0.000</div>
+  </div>
+  <div class="metric-card">
+    <div class="metric-label">Relational Stability</div>
+    <div class="metric-value" id="stabilityValue">0.000</div>
+  </div>
+  <div class="metric-card">
+    <div class="metric-label">Drift Velocity</div>
+    <div class="metric-value" id="velocityValue">0.000</div>
+  </div>
+  <div class="metric-card">
+    <div class="metric-label">Warning Horizon</div>
+    <div class="metric-value" id="leadValue">—</div>
   </div>
 </div>
 
 <div class="controls">
-  <button onclick="hit('/api/pause')">Pause Feed</button>
-  <button onclick="hit('/api/resume')">Resume Feed</button>
-  <button onclick="hit('/api/reset')">Reset Demo</button>
-  <button onclick="hit('/api/scenario/normal')">Normal</button>
-  <button onclick="hit('/api/scenario/degrading')">Degrading</button>
-  <button onclick="hit('/api/scenario/incident')">Incident</button>
+  <button onclick="hit('/api/pause')">⏸ Pause</button>
+  <button onclick="hit('/api/resume')">▶ Resume</button>
+  <button onclick="hit('/api/reset')">↻ Reset</button>
+  <button onclick="hit('/api/scenario/normal')">⬜ Normal</button>
+  <button onclick="hit('/api/scenario/degrading')">🟡 Degrade</button>
+  <button onclick="hit('/api/scenario/incident')">🔴 Incident</button>
 </div>
 
-<div class="metric-grid">
-  <div class="card">
-    <div>Structural Drift</div>
-    <div id="driftValue" class="metric-value">0.00</div>
-  </div>
-  <div class="card">
-    <div>Relational Stability</div>
-    <div id="stabilityValue" class="metric-value">0.00</div>
-  </div>
-  <div class="card">
-    <div>Early Warning Horizon</div>
-    <div id="leadValue" class="metric-value">—</div>
-  </div>
-  <div class="card">
-    <div>Latest Event Type</div>
-    <div id="eventTypeValue" class="metric-value" style="font-size:26px;">-</div>
-  </div>
-</div>
-
-<div class="charts">
-  <div class="card">
-    <h3>Structural Drift Trend</h3>
+<div class="charts-grid">
+  <div class="chart-card">
+    <div class="chart-title">▸ Structural Drift Trend</div>
     <div class="chart-wrap"><canvas id="driftChart"></canvas></div>
   </div>
-  <div class="card">
-    <h3>Relational Stability Trend</h3>
+  <div class="chart-card">
+    <div class="chart-title">▸ Relational Stability Trend</div>
     <div class="chart-wrap"><canvas id="stabilityChart"></canvas></div>
   </div>
 </div>
 
-<div class="card">
-  <h3>Recent Structural Events</h3>
+<div class="events-card">
+  <div class="chart-title">▸ Recent Structural Events</div>
   <table>
     <thead>
       <tr>
@@ -311,7 +548,7 @@ DASHBOARD_HTML = r”””<!doctype html>
       </tr>
     </thead>
     <tbody id="eventsTableBody">
-      <tr><td colspan="6">Loading...</td></tr>
+      <tr><td colspan="6" style="text-align: center; padding: 20px;">Loading telemetry...</td></tr>
     </tbody>
   </table>
 </div>
@@ -330,6 +567,13 @@ function stateClass(state) {
   return "state-stable";
 }
 
+function statusClass(state) {
+  const s = String(state || "").toUpperCase();
+  if (s === "ALERT") return "status-alert";
+  if (s === "WATCH") return "status-watch";
+  return "status-stable";
+}
+
 function setText(id, value) {
   const el = document.getElementById(id);
   if (el) el.textContent = value;
@@ -342,7 +586,7 @@ function pct(v) {
 
 function fmt(v) {
   const n = Number(v);
-  return Number.isFinite(n) ? n.toFixed(2) : "—";
+  return Number.isFinite(n) ? n.toFixed(3) : "—";
 }
 
 function lead(v) {
@@ -353,86 +597,134 @@ function lead(v) {
 
 async function api(url) {
   const res = await fetch(url, { cache: "no-store" });
-  if (!res.ok) throw new Error("HTTP " + res.status + " for " + url);
+  if (!res.ok) throw new Error("HTTP " + res.status);
   return res.json();
 }
 
 async function hit(url) {
   await fetch(url, { cache: "no-store" });
+  await new Promise(r => setTimeout(r, 100));
   await refresh();
 }
 
 function buildCharts() {
+  const chartOpts = {
+    responsive: true,
+    maintainAspectRatio: false,
+    animation: false,
+    plugins: {
+      legend: { display: false },
+      filler: { propagate: false }
+    },
+    scales: {
+      x: { display: false },
+      y: { display: false, grid: { display: false } }
+    }
+  };
+
   driftChart = new Chart(document.getElementById("driftChart"), {
     type: "line",
-    data: { labels: [], datasets: [{ data: [], borderWidth: 2, tension: 0.35, pointRadius: 0, fill: false }] },
-    options: { responsive: true, maintainAspectRatio: false, animation: false }
+    data: {
+      labels: [],
+      datasets: [{
+        data: [],
+        borderColor: "#00FF41",
+        backgroundColor: "rgba(0, 255, 65, 0.1)",
+        borderWidth: 2,
+        tension: 0.4,
+        pointRadius: 0,
+        pointHoverRadius: 0,
+        fill: true
+      }]
+    },
+    options: chartOpts
   });
 
   stabilityChart = new Chart(document.getElementById("stabilityChart"), {
     type: "line",
-    data: { labels: [], datasets: [{ data: [], borderWidth: 2, tension: 0.35, pointRadius: 0, fill: false }] },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      animation: false,
-      scales: { y: { min: 0, max: 1 } }
-    }
+    data: {
+      labels: [],
+      datasets: [{
+        data: [],
+        borderColor: "#00FF41",
+        backgroundColor: "rgba(0, 255, 65, 0.1)",
+        borderWidth: 2,
+        tension: 0.4,
+        pointRadius: 0,
+        pointHoverRadius: 0,
+        fill: true
+      }]
+    },
+    options: { ...chartOpts, scales: { ...chartOpts.scales, y: { min: 0, max: 1, display: false, grid: { display: false } } } }
   });
 }
 
 async function refresh() {
   try {
-    const [status, events] = await Promise.all([
+    const [status, eventList] = await Promise.all([
       api("/api/status"),
       api("/api/events")
     ]);
 
-    const latest = events.length ? events[events.length - 1] : null;
+    const latest = eventList.length ? eventList[eventList.length - 1] : null;
 
     const stateEl = document.getElementById("systemState");
     stateEl.textContent = status.state || "UNKNOWN";
     stateEl.className = "hero-state " + stateClass(status.state);
 
-    setText("siteLine", "Site: " + (status.site_id || "-"));
-    setText("assetBadge", "Asset: " + (status.asset_id || "-"));
-    setText("lastTimestamp", "Last update: " + (status.timestamp || "-"));
-    setText("storyText", status.explanation || "Telemetry connected.");
-    setText("impactText", "Predicted impact: " + (status.predicted_impact || "—"));
+    setText("siteLine", "Site: " + (status.site_id || "—"));
+    setText("assetLine", "Asset: " + (status.asset_id || "—"));
+    setText("lastTimestamp", "Updated: " + (status.timestamp ? status.timestamp.slice(11, 19) : "—"));
+    setText("impactText", status.predicted_impact || "—");
     setText("confidenceValue", pct(status.lead_time_confidence));
-    setText("eventsTracked", String(events.length));
-    setText("connectionText", status.paused ? "Paused" : "Connected");
+    setText("eventsTracked", String(eventList.length));
+
+    const dot = document.getElementById("connectionDot");
+    const connText = document.getElementById("connectionText");
+    if (status.paused) {
+      dot.classList.add("disconnected");
+      connText.textContent = "PAUSED";
+    } else {
+      dot.classList.remove("disconnected");
+      connText.textContent = "CONNECTED";
+    }
 
     setText("driftValue", fmt(status.structural_drift_score));
     setText("stabilityValue", fmt(status.relational_stability_score));
+    setText("velocityValue", fmt(status.drift_velocity));
     setText("leadValue", lead(status.lead_time_hours));
-    setText("eventTypeValue", latest ? (latest.event_type || "-") : "-");
 
-    const recent = events.slice(-40);
-    driftChart.data.labels = recent.map((_, i) => i + 1);
-    driftChart.data.datasets[0].data = recent.map(e => Number(e.structural_drift_score || 0));
-    driftChart.update("none");
+    const recent = eventList.slice(-40);
+    if (driftChart) {
+      driftChart.data.labels = recent.map((_, i) => i + 1);
+      driftChart.data.datasets[0].data = recent.map(e => Number(e.structural_drift_score || 0));
+      driftChart.update("none");
+    }
 
-    stabilityChart.data.labels = recent.map((_, i) => i + 1);
-    stabilityChart.data.datasets[0].data = recent.map(e => Number(e.relational_stability_score || 0));
-    stabilityChart.update("none");
+    if (stabilityChart) {
+      stabilityChart.data.labels = recent.map((_, i) => i + 1);
+      stabilityChart.data.datasets[0].data = recent.map(e => Number(e.relational_stability_score || 0));
+      stabilityChart.update("none");
+    }
 
     const tbody = document.getElementById("eventsTableBody");
     tbody.innerHTML = "";
-    events.slice(-10).reverse().forEach((e) => {
+    eventList.slice(-10).reverse().forEach((e) => {
       const tr = document.createElement("tr");
       tr.innerHTML =
         "<td>" + e.id + "</td>" +
         "<td>" + e.event_type + "</td>" +
-        "<td>" + e.timestamp + "</td>" +
+        "<td>" + e.timestamp.slice(11, 19) + "</td>" +
         "<td>" + e.site_id + "</td>" +
         "<td>" + e.asset_id + "</td>" +
-        "<td class='" + stateClass(e.state) + "'>" + e.state + "</td>";
+        "<td><div class='status-badge " + statusClass(e.state) + "'>" + e.state + "</div></td>";
       tbody.appendChild(tr);
     });
   } catch (err) {
     console.error(err);
-    setText("connectionText", "Disconnected");
+    const dot = document.getElementById("connectionDot");
+    dot.classList.add("disconnected");
+    setText("connectionText", "DISCONNECTED");
   }
 }
 
@@ -466,7 +758,7 @@ def send_html(self, html, status=200):
     self.wfile.write(payload)
 
 def do_GET(self):
-    global paused, scenario, last_drift
+    global paused, scenario, last_drift, events
 
     parsed = urlparse(self.path)
     path = parsed.path
@@ -475,28 +767,30 @@ def do_GET(self):
         return self.send_html(DASHBOARD_HTML)
 
     if path == "/api/status":
-        latest = events[-1] if events else {
-            "state": "UNKNOWN",
-            "timestamp": "-",
-            "site_id": "-",
-            "asset_id": "-",
-            "structural_drift_score": 0.0,
-            "relational_stability_score": 0.0,
-            "lead_time_hours": None,
-            "lead_time_confidence": 0.0,
-            "drift_velocity": 0.0,
-            "structural_driver": "-",
-            "predicted_impact": "—",
-            "explanation": "Initializing structural telemetry..."
-        }
-        out = dict(latest)
-        out["events_tracked"] = len(events)
-        out["paused"] = paused
-        out["scenario"] = scenario
+        with lock:
+            latest = events[-1] if events else {
+                "state": "UNKNOWN",
+                "timestamp": "-",
+                "site_id": "-",
+                "asset_id": "-",
+                "structural_drift_score": 0.0,
+                "relational_stability_score": 0.0,
+                "lead_time_hours": None,
+                "lead_time_confidence": 0.0,
+                "drift_velocity": 0.0,
+                "structural_driver": "-",
+                "predicted_impact": "—",
+                "explanation": "Initializing structural telemetry..."
+            }
+            out = dict(latest)
+            out["events_tracked"] = len(events)
+            out["paused"] = paused
+            out["scenario"] = scenario
         return self.send_json(out)
 
     if path == "/api/events":
-        return self.send_json(events)
+        with lock:
+            return self.send_json(list(events))
 
     if path == "/api/pause":
         paused = True
@@ -507,7 +801,8 @@ def do_GET(self):
         return self.send_json({"ok": True, "paused": False})
 
     if path == "/api/reset":
-        events.clear()
+        with lock:
+            events.clear()
         last_drift = None
         return self.send_json({"ok": True, "reset": True})
 
