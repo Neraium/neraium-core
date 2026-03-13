@@ -128,13 +128,12 @@ with lock:
 
 def telemetry_loop():
 global paused
+# Generate first event immediately
+generate_event()
 while True:
-with lock:
-if not paused:
-pass
+time.sleep(2)
 if not paused:
 generate_event()
-time.sleep(2)
 
 DASHBOARD_HTML = r”””<!doctype html>
 
