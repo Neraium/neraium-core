@@ -9,154 +9,128 @@ from urllib.parse import urlparse
 
 events = []
 paused = False
-scenario = "normal"
+scenario = “normal”
 MAX_EVENTS = 300
 last_drift = None
 
-
 def now_iso():
-    return datetime.now(timezone.utc).isoformat()
-
+return datetime.now(timezone.utc).isoformat()
 
 def structural_drift(values):
-    base = [60.0, 125.0, 75.0, 97.0, 0.20]
-    total = 0.0
-    for i, v in enumerate(values):
-        total += abs(v - base[i]) / abs(base[i])
-    return total
-
+base = [60.0, 125.0, 75.0, 97.0, 0.20]
+total = 0.0
+for i, v in enumerate(values):
+total += abs(v - base[i]) / abs(base[i])
+return total
 
 def relational_stability(values):
-    pressure, flow, tank, quality, vibration = values
-    score = 1 - (
-        abs((pressure / max(flow, 1e-6)) - 0.5) * 0.4 +
-        abs((tank / max(pressure, 1e-6)) - 1.2) * 0.3 +
-        vibration * 0.3
-    )
-    return max(0.0, min(1.0, score))
-
+pressure, flow, tank, quality, vibration = values
+score = 1 - (
+abs((pressure / max(flow, 1e-6)) - 0.5) * 0.4 +
+abs((tank / max(pressure, 1e-6)) - 1.2) * 0.3 +
+vibration * 0.3
+)
+return max(0.0, min(1.0, score))
 
 def lead_time(drift, velocity):
-    boundary = 4.0
-    if velocity <= 0:
-        return None
-    hours = (boundary - drift) / velocity
-    return max(0.0, round(hours, 1))
-
+boundary = 4.0
+if velocity <= 0:
+return None
+hours = (boundary - drift) / velocity
+return max(0.0, round(hours, 1))
 
 def build_sensor_values():
-    if scenario == "normal":
-        return (
-            random.uniform(58, 64),
-            random.uniform(118, 134),
-            random.uniform(70, 78),
-            random.uniform(95, 99),
-            random.uniform(0.15, 0.25),
-        )
+if scenario == “normal”:
+return (
+random.uniform(58, 64),
+random.uniform(118, 134),
+random.uniform(70, 78),
+random.uniform(95, 99),
+random.uniform(0.15, 0.25),
+)
 
-    if scenario == "degrading":
-        return (
-            random.uniform(48, 60),
-            random.uniform(100, 125),
-            random.uniform(60, 75),
-            random.uniform(85, 96),
-            random.uniform(0.20, 0.45),
-        )
-
+```
+if scenario == "degrading":
     return (
-        random.uniform(35, 52),
-        random.uniform(80, 105),
-        random.uniform(50, 65),
-        random.uniform(70, 85),
-        random.uniform(0.30, 0.70),
+        random.uniform(48, 60),
+        random.uniform(100, 125),
+        random.uniform(60, 75),
+        random.uniform(85, 96),
+        random.uniform(0.20, 0.45),
     )
 
+return (
+    random.uniform(35, 52),
+    random.uniform(80, 105),
+    random.uniform(50, 65),
+    random.uniform(70, 85),
+    random.uniform(0.30, 0.70),
+)
+```
 
 def generate_event():
-    global last_drift
+global last_drift
 
-    site = random.choice(["Reservoir East", "North Loop", "South Basin", "West Feed Main"])
-    asset = random.choice(["Pump Station 1", "District Main B", "Distribution Node 7"])
-    timestamp = now_iso()
+```
+site = random.choice(["Reservoir East", "North Loop", "South Basin", "West Feed Main"])
+asset = random.choice(["Pump Station 1", "District Main B", "Distribution Node 7"])
+timestamp = now_iso()
 
-    values = build_sensor_values()
-    drift = structural_drift(values)
-    stability = relational_stability(values)
+values = build_sensor_values()
+drift = structural_drift(values)
+stability = relational_stability(values)
 
-    velocity = 0.0
-    if last_drift is not None:
-        velocity = drift - last_drift
-    last_drift = drift
+velocity = 0.0
+if last_drift is not None:
+    velocity = drift - last_drift
+last_drift = drift
 
-    lt = lead_time(drift, velocity)
+lt = lead_time(drift, velocity)
 
-    if drift > 3.0:
-        state = "ALERT"
-        event_type = "instability_escalation"
-        predicted_impact = "Potential localized service disruption within 1 to 2 hours."
-    elif drift > 1.5:
-        state = "WATCH"
-        event_type = "gradual_drift"
-        predicted_impact = "Early degradation detected. Maintenance window recommended."
-    else:
-        state = "STABLE"
-        event_type = "baseline_structure"
-        predicted_impact = "No near term operational disruption expected."
+if drift > 3.0:
+    state = "ALERT"
+    event_type = "instability_escalation"
+    predicted_impact = "Potential localized service disruption within 1 to 2 hours."
+elif drift > 1.5:
+    state = "WATCH"
+    event_type = "gradual_drift"
+    predicted_impact = "Early degradation detected. Maintenance window recommended."
+else:
+    state = "STABLE"
+    event_type = "baseline_structure"
+    predicted_impact = "No near term operational disruption expected."
 
-    event = {
-        "id": len(events) + 1,
-        "event_type": event_type,
-        "timestamp": timestamp,
-        "site_id": site,
-        "asset_id": asset,
-        "state": state,
-        "confidence": round(random.uniform(0.90, 0.99), 2),
-        "structural_drift_score": round(drift, 3),
-        "relational_stability_score": round(stability, 3),
-        "drift_velocity": round(velocity, 3),
-        "lead_time_hours": lt,
-        "lead_time_confidence": round(random.uniform(0.70, 0.95), 2),
-        "structural_driver": "pressure-flow imbalance",
-        "predicted_impact": predicted_impact,
-        "explanation": "SII analyzing structural geometry of the sensor network."
-    }
+event = {
+    "id": len(events) + 1,
+    "event_type": event_type,
+    "timestamp": timestamp,
+    "site_id": site,
+    "asset_id": asset,
+    "state": state,
+    "confidence": round(random.uniform(0.90, 0.99), 2),
+    "structural_drift_score": round(drift, 3),
+    "relational_stability_score": round(stability, 3),
+    "drift_velocity": round(velocity, 3),
+    "lead_time_hours": lt,
+    "lead_time_confidence": round(random.uniform(0.70, 0.95), 2),
+    "structural_driver": "pressure-flow imbalance",
+    "predicted_impact": predicted_impact,
+    "explanation": "SII analyzing structural geometry of the sensor network."
+}
 
-    events.append(event)
-    if len(events) > MAX_EVENTS:
-        events.pop(0)
-
+events.append(event)
+if len(events) > MAX_EVENTS:
+    events.pop(0)
+```
 
 def telemetry_loop():
-    while True:
-        if not paused:
-            generate_event()
-        time.sleep(2)
-if path == "/api/pause":
-    paused = True
-    return self.send_json({"ok": True, "paused": True})
+while True:
+if not paused:
+generate_event()
+time.sleep(2)
 
-if path == "/api/resume":
-    paused = False
-    return self.send_json({"ok": True, "paused": False})
+DASHBOARD_HTML = r”””<!doctype html>
 
-if path == "/api/reset":
-    events.clear()
-    last_drift = None
-    return self.send_json({"ok": True, "reset": True})
-
-if path == "/api/scenario/normal":
-    scenario = "normal"
-    return self.send_json({"ok": True, "scenario": scenario})
-
-if path == "/api/scenario/degrading":
-    scenario = "degrading"
-    return self.send_json({"ok": True, "scenario": scenario})
-
-if path == "/api/scenario/incident":
-    scenario = "incident"
-    return self.send_json({"ok": True, "scenario": scenario})
-
-DASHBOARD_HTML = r"""<!doctype html>
 <html lang="en">
 <head>
   <meta charset="UTF-8">
@@ -273,73 +247,76 @@ DASHBOARD_HTML = r"""<!doctype html>
         <div id="impactText" style="margin-top:8px;color:#8cf0ff;">Predicted impact: —</div>
       </div>
 
-      <div>
-        <div style="font-size:12px;color:#9fb4d3;letter-spacing:2px;text-transform:uppercase;">Confidence</div>
-        <div id="confidenceValue" class="metric-value">—</div>
-        <div style="font-size:12px;color:#9fb4d3;letter-spacing:2px;text-transform:uppercase;margin-top:20px;">Events Tracked</div>
-        <div id="eventsTracked" class="metric-value">0</div>
-        <div id="assetBadge" class="pill">Asset: -</div>
-        <div id="connectionText" style="margin-top:12px;">Connecting...</div>
-      </div>
-    </div>
+```
+  <div>
+    <div style="font-size:12px;color:#9fb4d3;letter-spacing:2px;text-transform:uppercase;">Confidence</div>
+    <div id="confidenceValue" class="metric-value">—</div>
+    <div style="font-size:12px;color:#9fb4d3;letter-spacing:2px;text-transform:uppercase;margin-top:20px;">Events Tracked</div>
+    <div id="eventsTracked" class="metric-value">0</div>
+    <div id="assetBadge" class="pill">Asset: -</div>
+    <div id="connectionText" style="margin-top:12px;">Connecting...</div>
+  </div>
+</div>
 
-    <div class="controls">
-      <button onclick="hit('/api/pause')">Pause Feed</button>
-      <button onclick="hit('/api/resume')">Resume Feed</button>
-      <button onclick="hit('/api/reset')">Reset Demo</button>
-      <button onclick="hit('/api/scenario/normal')">Normal</button>
-      <button onclick="hit('/api/scenario/degrading')">Degrading</button>
-      <button onclick="hit('/api/scenario/incident')">Incident</button>
-    </div>
+<div class="controls">
+  <button onclick="hit('/api/pause')">Pause Feed</button>
+  <button onclick="hit('/api/resume')">Resume Feed</button>
+  <button onclick="hit('/api/reset')">Reset Demo</button>
+  <button onclick="hit('/api/scenario/normal')">Normal</button>
+  <button onclick="hit('/api/scenario/degrading')">Degrading</button>
+  <button onclick="hit('/api/scenario/incident')">Incident</button>
+</div>
 
-    <div class="metric-grid">
-      <div class="card">
-        <div>Structural Drift</div>
-        <div id="driftValue" class="metric-value">0.00</div>
-      </div>
-      <div class="card">
-        <div>Relational Stability</div>
-        <div id="stabilityValue" class="metric-value">0.00</div>
-      </div>
-      <div class="card">
-        <div>Early Warning Horizon</div>
-        <div id="leadValue" class="metric-value">—</div>
-      </div>
-      <div class="card">
-        <div>Latest Event Type</div>
-        <div id="eventTypeValue" class="metric-value" style="font-size:26px;">-</div>
-      </div>
-    </div>
+<div class="metric-grid">
+  <div class="card">
+    <div>Structural Drift</div>
+    <div id="driftValue" class="metric-value">0.00</div>
+  </div>
+  <div class="card">
+    <div>Relational Stability</div>
+    <div id="stabilityValue" class="metric-value">0.00</div>
+  </div>
+  <div class="card">
+    <div>Early Warning Horizon</div>
+    <div id="leadValue" class="metric-value">—</div>
+  </div>
+  <div class="card">
+    <div>Latest Event Type</div>
+    <div id="eventTypeValue" class="metric-value" style="font-size:26px;">-</div>
+  </div>
+</div>
 
-    <div class="charts">
-      <div class="card">
-        <h3>Structural Drift Trend</h3>
-        <div class="chart-wrap"><canvas id="driftChart"></canvas></div>
-      </div>
-      <div class="card">
-        <h3>Relational Stability Trend</h3>
-        <div class="chart-wrap"><canvas id="stabilityChart"></canvas></div>
-      </div>
-    </div>
+<div class="charts">
+  <div class="card">
+    <h3>Structural Drift Trend</h3>
+    <div class="chart-wrap"><canvas id="driftChart"></canvas></div>
+  </div>
+  <div class="card">
+    <h3>Relational Stability Trend</h3>
+    <div class="chart-wrap"><canvas id="stabilityChart"></canvas></div>
+  </div>
+</div>
 
-    <div class="card">
-      <h3>Recent Structural Events</h3>
-      <table>
-        <thead>
-          <tr>
-            <th>ID</th>
-            <th>Type</th>
-            <th>Timestamp</th>
-            <th>Site</th>
-            <th>Asset</th>
-            <th>State</th>
-          </tr>
-        </thead>
-        <tbody id="eventsTableBody">
-          <tr><td colspan="6">Loading...</td></tr>
-        </tbody>
-      </table>
-    </div>
+<div class="card">
+  <h3>Recent Structural Events</h3>
+  <table>
+    <thead>
+      <tr>
+        <th>ID</th>
+        <th>Type</th>
+        <th>Timestamp</th>
+        <th>Site</th>
+        <th>Asset</th>
+        <th>State</th>
+      </tr>
+    </thead>
+    <tbody id="eventsTableBody">
+      <tr><td colspan="6">Loading...</td></tr>
+    </tbody>
+  </table>
+</div>
+```
+
   </div>
 
 <script>
@@ -465,106 +442,99 @@ window.addEventListener("load", () => {
   setInterval(refresh, 2000);
 });
 </script>
+
 </body>
 </html>
 """
 
-
 class Handler(BaseHTTPRequestHandler):
-    def send_json(self, data, status=200):
-        payload = json.dumps(data).encode("utf-8")
-        self.send_response(status)
-        self.send_header("Content-Type", "application/json")
-        self.send_header("Content-Length", str(len(payload)))
-        self.end_headers()
-        self.wfile.write(payload)
+def send_json(self, data, status=200):
+payload = json.dumps(data).encode(“utf-8”)
+self.send_response(status)
+self.send_header(“Content-Type”, “application/json”)
+self.send_header(“Content-Length”, str(len(payload)))
+self.end_headers()
+self.wfile.write(payload)
 
-    def send_html(self, html, status=200):
-        payload = html.encode("utf-8")
-        self.send_response(status)
-        self.send_header("Content-Type", "text/html; charset=utf-8")
-        self.send_header("Content-Length", str(len(payload)))
-        self.end_headers()
-        self.wfile.write(payload)
+```
+def send_html(self, html, status=200):
+    payload = html.encode("utf-8")
+    self.send_response(status)
+    self.send_header("Content-Type", "text/html; charset=utf-8")
+    self.send_header("Content-Length", str(len(payload)))
+    self.end_headers()
+    self.wfile.write(payload)
 
-    def do_GET(self):
-        global paused, scenario, last_drift
+def do_GET(self):
+    global paused, scenario, last_drift
 
-        parsed = urlparse(self.path)
-        path = parsed.path
+    parsed = urlparse(self.path)
+    path = parsed.path
 
-        if path == "/" or path == "/dashboard":
-            return self.send_html(DASHBOARD_HTML)
+    if path == "/" or path == "/dashboard":
+        return self.send_html(DASHBOARD_HTML)
 
-        if path == "/api/status":
-            latest = events[-1] if events else {
-                "state": "UNKNOWN",
-                "timestamp": "-",
-                "site_id": "-",
-                "asset_id": "-",
-                "structural_drift_score": 0.0,
-                "relational_stability_score": 0.0,
-                "lead_time_hours": None,
-                "lead_time_confidence": 0.0,
-                "drift_velocity": 0.0,
-                "structural_driver": "-",
-                "predicted_impact": "—",
-                "explanation": "Initializing structural telemetry..."
-            }
-            out = dict(latest)
-            out["events_tracked"] = len(events)
-            out["paused"] = paused
-            out["scenario"] = scenario
-            return self.send_json(out)
+    if path == "/api/status":
+        latest = events[-1] if events else {
+            "state": "UNKNOWN",
+            "timestamp": "-",
+            "site_id": "-",
+            "asset_id": "-",
+            "structural_drift_score": 0.0,
+            "relational_stability_score": 0.0,
+            "lead_time_hours": None,
+            "lead_time_confidence": 0.0,
+            "drift_velocity": 0.0,
+            "structural_driver": "-",
+            "predicted_impact": "—",
+            "explanation": "Initializing structural telemetry..."
+        }
+        out = dict(latest)
+        out["events_tracked"] = len(events)
+        out["paused"] = paused
+        out["scenario"] = scenario
+        return self.send_json(out)
 
-        if path == "/api/events":
-            return self.send_json(events)
+    if path == "/api/events":
+        return self.send_json(events)
 
-        if path == "/api/pause":
-            paused = True
-            return self.send_json({"ok": True, "paused": True})
+    if path == "/api/pause":
+        paused = True
+        return self.send_json({"ok": True, "paused": True})
 
-        if path == "/api/resume":
-            paused = False
-            return self.send_json({"ok": True, "paused": False})
+    if path == "/api/resume":
+        paused = False
+        return self.send_json({"ok": True, "paused": False})
 
-        if path == "/api/reset":
-            events.clear()
-            last_drift = None
-            return self.send_json({"ok": True, "reset": True})
+    if path == "/api/reset":
+        events.clear()
+        last_drift = None
+        return self.send_json({"ok": True, "reset": True})
 
-        if path == "/api/scenario/normal":
-            scenario = "normal"
-            return self.send_json({"ok": True, "scenario": scenario})
+    if path == "/api/scenario/normal":
+        scenario = "normal"
+        return self.send_json({"ok": True, "scenario": scenario})
 
-        if path == "/api/scenario/degrading":
-            scenario = "degrading"
-            return self.send_json({"ok": True, "scenario": scenario})
+    if path == "/api/scenario/degrading":
+        scenario = "degrading"
+        return self.send_json({"ok": True, "scenario": scenario})
 
-        if path == "/api/scenario/incident":
-            scenario = "incident"
-            return self.send_json({"ok": True, "scenario": scenario})
+    if path == "/api/scenario/incident":
+        scenario = "incident"
+        return self.send_json({"ok": True, "scenario": scenario})
 
-        self.send_error(404)
+    self.send_error(404)
 
-    def log_message(self, format, *args):
-        return
-
+def log_message(self, format, *args):
+    return
+```
 
 def run():
-    server = HTTPServer(("0.0.0.0", 8000), Handler)
-    print("NERAIUM WATER PLATFORM DEMO ACTIVE")
-    print("Server running at http://0.0.0.0:8000")
-    threading.Thread(target=telemetry_loop, daemon=True).start()
-    server.serve_forever()
+server = HTTPServer((“0.0.0.0”, 8000), Handler)
+print(“NERAIUM WATER PLATFORM DEMO ACTIVE”)
+print(“Server running at http://0.0.0.0:8000”)
+threading.Thread(target=telemetry_loop, daemon=True).start()
+server.serve_forever()
 
-
-if __name__ == "__main__":
-    run()
-    <button id="pauseBtn">Pause Feed</button>
-<button id="resumeBtn">Resume Feed</button>
-<button id="resetBtn">Reset Demo</button>
-<button id="detailsBtn">Technical Details</button>
-<button id="normalBtn">Normal</button>
-<button id="degradingBtn">Degrading</button>
-<button id="incidentBtn">Incident</button>
+if **name** == “**main**”:
+run()
