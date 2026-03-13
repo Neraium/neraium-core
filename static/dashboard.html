@@ -1,488 +1,143 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Neraium Dashboard</title>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
-  <style>
-    body {
-      margin: 0;
-      padding: 16px;
-      background: #0f172a;
-      color: #e2e8f0;
-      font-family: Arial, sans-serif;
-    }
-
-    .container {
-      max-width: 1200px;
-      margin: 0 auto;
-    }
-
-    h1 {
-      margin: 0 0 8px 0;
-      font-size: 32px;
-    }
-
-    .subtitle {
-      color: #94a3b8;
-      margin-bottom: 20px;
-    }
-
-    .row {
-      display: grid;
-      grid-template-columns: repeat(12, 1fr);
-      gap: 16px;
-      margin-bottom: 16px;
-    }
-
-    .card {
-      grid-column: span 12;
-      background: #111827;
-      border: 1px solid #334155;
-      border-radius: 12px;
-      padding: 16px;
-    }
-
-    .span-4 { grid-column: span 4; }
-    .span-6 { grid-column: span 6; }
-
-    @media (max-width: 900px) {
-      .span-4, .span-6 {
-        grid-column: span 12;
-      }
-    }
-
-    .metric {
-      font-size: 36px;
-      font-weight: bold;
-      margin: 8px 0;
-    }
-
-    .chart-wrap {
-      background: #ffffff;
-      border-radius: 10px;
-      padding: 10px;
-    }
-
-    canvas {
-      width: 100% !important;
-      height: 260px !important;
-    }
-
-    pre {
-      background: #020617;
-      color: #dbeafe;
-      border-radius: 10px;
-      padding: 12px;
-      min-height: 180px;
-      overflow: auto;
-      white-space: pre-wrap;
-      word-break: break-word;
-      font-size: 12px;
-    }
-
-    ul {
-      max-height: 220px;
-      overflow: auto;
-      padding-left: 20px;
-    }
-
-    .status-indicator {
-      display: inline-block;
-      width: 10px;
-      height: 10px;
-      border-radius: 50%;
-      margin-right: 8px;
-      vertical-align: middle;
-    }
-
-    .status-ok {
-      background-color: #22c55e;
-    }
-
-    .status-bad {
-      background-color: #ef4444;
-    }
-
-    .status-watch {
-      background-color: #f59e0b;
-    }
-
-    .toolbar {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 16px;
-      gap: 12px;
-      flex-wrap: wrap;
-    }
-
-    .pill {
-      background: #111827;
-      border: 1px solid #334155;
-      border-radius: 999px;
-      padding: 8px 14px;
-      color: #cbd5e1;
-      font-size: 14px;
-    }
-
-    .muted {
-      color: #94a3b8;
-      font-size: 13px;
-    }
-
-    button {
-      background: #2563eb;
-      color: white;
-      border: none;
-      border-radius: 8px;
-      padding: 10px 14px;
-      cursor: pointer;
-      font-size: 14px;
-    }
-
-    button:hover {
-      background: #1d4ed8;
-    }
-  </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Neraium — Infrastructure Intelligence Demo</title>
+  <link rel="stylesheet" href="/static/styles.css">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
-  <div class="container">
-    <div class="toolbar">
+  <div class="app-shell">
+    <header class="topbar">
       <div>
-        <h1>Neraium Dashboard</h1>
-        <div class="subtitle">Live telemetry and drift monitoring</div>
-      </div>
-      <div style="display:flex; gap:10px; align-items:center;">
-        <div class="pill" id="connection-pill">Simulated feed active</div>
-        <button id="refresh-btn" type="button">Refresh now</button>
-      </div>
-    </div>
-
-    <div class="row">
-      <div class="card span-4">
-        <h2>Status</h2>
-        <div id="latest-status" class="metric">
-          <span class="status-indicator status-ok"></span><span id="status-text">Loading...</span>
+        <div class="brand-row">
+          <span class="brand-dot"></span>
+          <h1>NERAIUM</h1>
         </div>
-        <div id="latest-score">Score: --</div>
-        <div class="muted" id="latest-time">Time: --</div>
+        <p class="subtitle">Infrastructure intelligence for detecting structural drift and operational anomalies in real time.</p>
       </div>
 
-      <div class="card span-4">
-        <h2>Total Events</h2>
-        <div id="total-events" class="metric">0</div>
+      <div class="topbar-actions">
+        <div id="connectionText" class="pill">Connecting...</div>
+        <button id="refreshBtn" class="refresh-btn" type="button">Refresh</button>
+      </div>
+    </header>
+
+    <section class="hero">
+      <div class="hero-main">
+        <div class="label">Current System State</div>
+        <div id="systemState" class="hero-state">UNKNOWN</div>
+        <div id="lastTimestamp" class="hero-meta">Last update: None</div>
+        <div id="storyText" class="story-text">Initializing demo telemetry...</div>
       </div>
 
-      <div class="card span-4">
-        <h2>Total Anomalies</h2>
-        <div id="total-anomalies" class="metric">0</div>
+      <div class="hero-side">
+        <div class="hero-stat">
+          <span class="label">Confidence</span>
+          <span id="confidenceValue" class="hero-stat-value">—</span>
+        </div>
+        <div class="hero-stat">
+          <span class="label">Events Tracked</span>
+          <span id="eventsTracked" class="hero-stat-value">0</span>
+        </div>
       </div>
-    </div>
+    </section>
 
-    <div class="row">
-      <div class="card span-6">
-        <h2>CPU Usage</h2>
+    <section class="scenario-panel">
+      <div>
+        <div class="label">Demo Scenario</div>
+        <div class="scenario-subtitle">Choose the operating condition you want to demonstrate.</div>
+      </div>
+      <div class="scenario-buttons">
+        <button class="scenario-btn active" data-scenario="normal" type="button">Normal Operations</button>
+        <button class="scenario-btn" data-scenario="degrading" type="button">Degrading System</button>
+        <button class="scenario-btn" data-scenario="incident" type="button">Active Incident</button>
+      </div>
+    </section>
+
+    <section class="stats-grid">
+      <article class="metric-card">
+        <div class="label">SII Score</div>
+        <div id="siiScoreValue" class="metric-value">0.00</div>
+      </article>
+
+      <article class="metric-card">
+        <div class="label">EWMA Score</div>
+        <div id="ewmaScoreValue" class="metric-value">0.00</div>
+      </article>
+
+      <article class="metric-card">
+        <div class="label">CPU Usage</div>
+        <div id="cpuValue" class="metric-value">0.0%</div>
+      </article>
+
+      <article class="metric-card">
+        <div class="label">Memory Usage</div>
+        <div id="memoryValue" class="metric-value">0.0%</div>
+      </article>
+    </section>
+
+    <section class="charts-grid">
+      <article class="panel">
+        <div class="panel-head">
+          <div>
+            <h2>Drift Detection Trend</h2>
+            <p>Mahalanobis-style structural deviation score</p>
+          </div>
+        </div>
         <div class="chart-wrap">
-          <canvas id="cpuChart"></canvas>
+          <canvas id="siiChart"></canvas>
         </div>
-      </div>
+      </article>
 
-      <div class="card span-6">
-        <h2>Memory Usage</h2>
+      <article class="panel">
+        <div class="panel-head">
+          <div>
+            <h2>Escalation Persistence</h2>
+            <p>EWMA-based sustained anomaly tracking</p>
+          </div>
+        </div>
         <div class="chart-wrap">
-          <canvas id="memChart"></canvas>
+          <canvas id="ewmaChart"></canvas>
+        </div>
+      </article>
+    </section>
+
+    <section class="table-panel panel">
+      <div class="panel-head">
+        <div>
+          <h2>Recent Events</h2>
+          <p>Latest telemetry observations and state transitions</p>
         </div>
       </div>
-    </div>
 
-    <div class="row">
-      <div class="card span-6">
-        <h2>Score</h2>
-        <div class="chart-wrap">
-          <canvas id="scoreChart"></canvas>
-        </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Type</th>
+              <th>Timestamp</th>
+              <th>State</th>
+              <th>Confidence</th>
+            </tr>
+          </thead>
+          <tbody id="eventsTableBody">
+            <tr>
+              <td colspan="5">Loading...</td>
+            </tr>
+          </tbody>
+        </table>
       </div>
+    </section>
 
-      <div class="card span-6">
-        <h2>CPU vs Memory Relationship</h2>
-        <div class="chart-wrap">
-          <canvas id="relationshipChart"></canvas>
-        </div>
-      </div>
-    </div>
-
-    <div class="row">
-      <div class="card span-6">
-        <h2>Latest Event</h2>
-        <pre id="latest-event">Loading...</pre>
-      </div>
-
-      <div class="card span-6">
-        <h2>Anomaly Events</h2>
-        <ul id="anomaly-list"></ul>
-      </div>
-    </div>
+    <footer class="footer">
+      <span>Neraium investor demo</span>
+      <span>Contact: craig@neraium.com</span>
+    </footer>
   </div>
 
-<script>
-  const cpuChart = new Chart(document.getElementById("cpuChart"), {
-    type: "line",
-    data: {
-      labels: [],
-      datasets: [{
-        label: "CPU",
-        data: [],
-        borderWidth: 2,
-        borderColor: "#3b82f6",
-        backgroundColor: "rgba(59, 130, 246, 0.1)",
-        tension: 0.4,
-        fill: true
-      }]
-    },
-    options: {
-      responsive: true,
-      animation: false,
-      plugins: { legend: { display: false } },
-      scales: { y: { min: 0, max: 100 } }
-    }
-  });
-
-  const memChart = new Chart(document.getElementById("memChart"), {
-    type: "line",
-    data: {
-      labels: [],
-      datasets: [{
-        label: "Memory",
-        data: [],
-        borderWidth: 2,
-        borderColor: "#8b5cf6",
-        backgroundColor: "rgba(139, 92, 246, 0.1)",
-        tension: 0.4,
-        fill: true
-      }]
-    },
-    options: {
-      responsive: true,
-      animation: false,
-      plugins: { legend: { display: false } },
-      scales: { y: { min: 0, max: 100 } }
-    }
-  });
-
-  const scoreChart = new Chart(document.getElementById("scoreChart"), {
-    type: "line",
-    data: {
-      labels: [],
-      datasets: [{
-        label: "Score",
-        data: [],
-        borderWidth: 2,
-        borderColor: "#ec4899",
-        backgroundColor: "rgba(236, 72, 153, 0.1)",
-        tension: 0.4,
-        fill: true
-      }]
-    },
-    options: {
-      responsive: true,
-      animation: false,
-      plugins: { legend: { display: false } },
-      scales: { y: { min: 0, max: 100 } }
-    }
-  });
-
-  const relationshipChart = new Chart(document.getElementById("relationshipChart"), {
-    type: "scatter",
-    data: {
-      datasets: [
-        {
-          label: "Normal",
-          data: [],
-          backgroundColor: "rgba(34, 197, 94, 0.6)",
-          borderColor: "#22c55e"
-        },
-        {
-          label: "Anomaly",
-          data: [],
-          backgroundColor: "rgba(239, 68, 68, 0.6)",
-          borderColor: "#ef4444"
-        }
-      ]
-    },
-    options: {
-      responsive: true,
-      animation: false,
-      scales: {
-        x: { min: 0, max: 100, title: { display: true, text: "CPU %" } },
-        y: { min: 0, max: 100, title: { display: true, text: "Memory %" } }
-      }
-    }
-  });
-
-  function shortTime(ts) {
-    try {
-      return new Date(ts).toLocaleTimeString();
-    } catch {
-      return ts;
-    }
-  }
-
-  function normalizeStatus(event) {
-    const raw = String(event.state || event.status || "unknown").toLowerCase();
-    if (raw === "alert" || raw === "anomaly") return "anomaly";
-    if (raw === "watch") return "watch";
-    return "normal";
-  }
-
-  function cpuFromEvent(event) {
-    if (event.signals && typeof event.signals.cpu_usage === "number") {
-      return event.signals.cpu_usage;
-    }
-    if (typeof event.cpu_usage === "number") {
-      return event.cpu_usage;
-    }
-    const fallback = Number(event.velocity ?? 0) * 100;
-    return Math.max(0, Math.min(100, fallback));
-  }
-
-  function memFromEvent(event) {
-    if (event.signals && typeof event.signals.memory_usage === "number") {
-      return event.signals.memory_usage;
-    }
-    if (typeof event.memory_usage === "number") {
-      return event.memory_usage;
-    }
-    const fallback = Number(event.drift_vector ?? 0) * 100;
-    return Math.max(0, Math.min(100, fallback));
-  }
-
-  function scoreFromEvent(event) {
-    if (typeof event.score === "number") {
-      return event.score;
-    }
-    if (typeof event.sii_score === "number") {
-      return Math.round(event.sii_score * 100);
-    }
-    return 0;
-  }
-
-  function updateStatusDisplay(event, totalEvents, totalAnomalies) {
-    const status = normalizeStatus(event);
-    const statusEl = document.getElementById("status-text");
-    const indicator = document.querySelector(".status-indicator");
-
-    statusEl.textContent = status;
-
-    if (status === "anomaly") {
-      indicator.className = "status-indicator status-bad";
-    } else if (status === "watch") {
-      indicator.className = "status-indicator status-watch";
-    } else {
-      indicator.className = "status-indicator status-ok";
-    }
-
-    document.getElementById("latest-score").textContent =
-      "Score: " + String(scoreFromEvent(event) ?? "--");
-
-    document.getElementById("latest-time").textContent =
-      "Time: " + shortTime(event.timestamp);
-
-    document.getElementById("total-events").textContent = totalEvents;
-    document.getElementById("total-anomalies").textContent = totalAnomalies;
-    document.getElementById("connection-pill").textContent = "Live API connected";
-  }
-
-  async function refreshDashboard() {
-    try {
-      const [eventsRes, statusRes] = await Promise.all([
-        fetch("/api/events", { cache: "no-store" }),
-        fetch("/api/status", { cache: "no-store" })
-      ]);
-
-      if (!eventsRes.ok || !statusRes.ok) {
-        throw new Error("API request failed");
-      }
-
-      const events = await eventsRes.json();
-      const status = await statusRes.json();
-
-      const safeEvents = Array.isArray(events) ? events : [];
-      const anomalies = safeEvents.filter(e => {
-        const s = normalizeStatus(e);
-        return s === "anomaly";
-      });
-
-      const latestEvent = safeEvents.length ? safeEvents[safeEvents.length - 1] : null;
-
-      if (latestEvent) {
-        updateStatusDisplay(latestEvent, safeEvents.length, anomalies.length);
-        document.getElementById("latest-event").textContent =
-          JSON.stringify(latestEvent, null, 2);
-      } else {
-        document.getElementById("status-text").textContent = status.state || "No data";
-        document.querySelector(".status-indicator").className = "status-indicator";
-        document.getElementById("latest-score").textContent = "Score: --";
-        document.getElementById("latest-time").textContent = "Time: --";
-        document.getElementById("latest-event").textContent = "No events yet";
-        document.getElementById("total-events").textContent = "0";
-        document.getElementById("total-anomalies").textContent = "0";
-      }
-
-      const labels = safeEvents.map(e => shortTime(e.timestamp));
-      const cpu = safeEvents.map(cpuFromEvent);
-      const mem = safeEvents.map(memFromEvent);
-      const score = safeEvents.map(scoreFromEvent);
-
-      cpuChart.data.labels = labels;
-      cpuChart.data.datasets[0].data = cpu;
-      cpuChart.update();
-
-      memChart.data.labels = labels;
-      memChart.data.datasets[0].data = mem;
-      memChart.update();
-
-      scoreChart.data.labels = labels;
-      scoreChart.data.datasets[0].data = score;
-      scoreChart.update();
-
-      relationshipChart.data.datasets[0].data = safeEvents
-        .filter(e => normalizeStatus(e) !== "anomaly")
-        .map(e => ({ x: cpuFromEvent(e), y: memFromEvent(e) }));
-
-      relationshipChart.data.datasets[1].data = safeEvents
-        .filter(e => normalizeStatus(e) === "anomaly")
-        .map(e => ({ x: cpuFromEvent(e), y: memFromEvent(e) }));
-
-      relationshipChart.update();
-
-      const list = document.getElementById("anomaly-list");
-      list.innerHTML = "";
-
-      if (!anomalies.length) {
-        const li = document.createElement("li");
-        li.textContent = "No anomalies yet";
-        list.appendChild(li);
-      } else {
-        anomalies.slice().reverse().slice(0, 10).forEach(e => {
-          const li = document.createElement("li");
-          li.textContent = shortTime(e.timestamp) + "  score=" + scoreFromEvent(e);
-          list.appendChild(li);
-        });
-      }
-    } catch (err) {
-      document.getElementById("latest-event").textContent =
-        "Dashboard error: " + err.message;
-      document.getElementById("connection-pill").textContent = "API disconnected";
-      console.error(err);
-    }
-  }
-
-  document.getElementById("refresh-btn").addEventListener("click", refreshDashboard);
-
-  refreshDashboard();
-  setInterval(refreshDashboard, 2000);
-</script>
+  <script src="/static/app.js"></script>
 </body>
 </html>
