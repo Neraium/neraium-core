@@ -51,30 +51,7 @@ class Handler(BaseHTTPRequestHandler):
         if not path.exists() or not path.is_file():
             self.send_error(404)
             return
-def do_POST(self):
-    parsed = urlparse(self.path)
-    path = parsed.path
 
-    if path == "/api/ingest":
-        length = int(self.headers.get("Content-Length", 0))
-        raw = self.rfile.read(length)
-
-        try:
-            payload = json.loads(raw.decode("utf-8"))
-        except Exception:
-            self.send_error(400)
-            return
-
-        normalized = normalize_rest_payload(payload)
-
-        result = engine.process(normalized)
-
-        add_event(result)
-
-        self.send_json({"status": "ok"})
-        return
-
-    self.send_error(404)
         data = path.read_bytes()
 
         if filename.endswith(".js"):
@@ -94,7 +71,9 @@ def do_POST(self):
         parsed = urlparse(self.path)
         path = parsed.path
 
-        if path == "/":
+        if path == "/" or path == "/dashboard":
+            if (STATIC_DIR / "dashboard.html").exists():
+                return self.serve_static("dashboard.html")
             return self.serve_static("index.html")
 
         if path.startswith("/static/"):
@@ -102,7 +81,7 @@ def do_POST(self):
 
         if path == "/api/status":
             latest = engine.latest_result or {
-                "state": "STABLE",
+                "state": "UNKNOWN",
                 "structural_drift_score": 0.0,
                 "relational_stability_score": 1.0,
                 "system_health": 100,
@@ -110,6 +89,10 @@ def do_POST(self):
                 "site_id": "-",
                 "asset_id": "-",
                 "timestamp": "-",
+                "lead_time_hours": None,
+                "lead_time_confidence": 0.0,
+                "drift_velocity": 0.0,
+                "structural_driver": "-",
             }
             return self.send_json(latest)
 
@@ -118,34 +101,6 @@ def do_POST(self):
 
         self.send_error(404)
 
-def do_POST(self):
-    parsed = urlparse(self.path)
-    path = parsed.path
-
-    if path == "/telemetry":
-        length = int(self.headers.get("Content-Length", 0))
-        raw = self.rfile.read(length)
-
-        try:
-            payload = json.loads(raw.decode("utf-8"))
-        except Exception:
-            self.send_error(400)
-            return
-
-        # normalize incoming telemetry
-        normalized = normalize_rest_payload(payload)
-
-        # process through engine
-        result = engine.process(normalized)
-
-        # store event
-        add_event(result)
-
-        self.send_json({"status": "ok"})
-        return
-
-    self.send_error(404)
-    
     def do_POST(self):
         parsed = urlparse(self.path)
         path = parsed.path
@@ -154,7 +109,7 @@ def do_POST(self):
             if path == "/api/ingest":
                 payload = self.read_json_body()
                 frame = normalize_rest_payload(payload)
-                result = engine.process_frame(frame)
+                result = engine.process(frame)
                 add_event(result)
                 return self.send_json({"ok": True, "result": result})
 
@@ -164,7 +119,7 @@ def do_POST(self):
 
                 results = []
                 for frame in frames:
-                    result = engine.process_frame(frame)
+                    result = engine.process(frame)
                     add_event(result)
                     results.append(result)
 
@@ -185,7 +140,8 @@ def do_POST(self):
 
 def run():
     server = HTTPServer(("0.0.0.0", 8000), Handler)
-    print("Neraium MVP running at http://0.0.0.0:8000")
+    print("NERAIUM WATER PLATFORM DEMO ACTIVE")
+    print("Server running at http://0.0.0.0:8000")
     server.serve_forever()
 
 
