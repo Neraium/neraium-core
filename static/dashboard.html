@@ -3,13 +3,10 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Neraium MVP</title>
+  <title>Neraium — Systemic Infrastructure</title>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
-    * {
-      box-sizing: border-box;
-    }
-
+    * { box-sizing: border-box; }
     body {
       margin: 0;
       padding: 20px;
@@ -17,185 +14,115 @@
       background: #08111f;
       color: #e8f1ff;
     }
-
-    .wrap {
-      max-width: 1200px;
-      margin: 0 auto;
+    .wrap { max-width: 1200px; margin: 0 auto; }
+    .hero, .card, .table-card {
+      background: #10203a;
+      border: 1px solid #223b63;
+      border-radius: 18px;
+      padding: 18px;
+      margin-bottom: 16px;
     }
-
-    .header {
-      margin-bottom: 18px;
+    .hero-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 16px;
     }
-
-    .header h1 {
-      margin: 0 0 6px 0;
-      font-size: 32px;
+    .hero-state-label, .mini-label {
+      color: #b3c8e5;
+      font-size: 12px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
     }
-
-    .header p {
-      margin: 0;
-      color: #9fb4d3;
+    .hero-state {
+      font-size: 84px;
+      font-weight: 800;
+      line-height: 1;
+      margin: 8px 0 12px;
     }
-
+    .state-stable { color: #ffffff; }
+    .state-watch { color: #ffd56a; }
+    .state-alert { color: #ff6c86; }
+    .pill {
+      display: inline-block;
+      padding: 10px 16px;
+      border-radius: 999px;
+      border: 1px solid #35537e;
+      background: rgba(255,255,255,0.04);
+      margin-left: 8px;
+    }
+    .metrics {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+      margin-bottom: 16px;
+    }
+    .metric-value {
+      font-size: 52px;
+      font-weight: 800;
+      margin-top: 10px;
+      color: #8cf0ff;
+    }
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+    button {
+      border: 1px solid #35537e;
+      background: rgba(255,255,255,0.04);
+      color: #e8f1ff;
+      border-radius: 999px;
+      padding: 12px 18px;
+      font-size: 18px;
+      cursor: pointer;
+    }
     .charts {
       display: grid;
       grid-template-columns: 1fr 1fr;
       gap: 16px;
       margin-bottom: 16px;
     }
-
-    .card {
-      background: #10203a;
-      border: 1px solid #223b63;
-      border-radius: 14px;
-      padding: 16px;
-    }
-
-    .card h2 {
-      margin: 0 0 6px 0;
-      font-size: 20px;
-    }
-
-    .card p {
-      margin: 0 0 12px 0;
-      color: #9fb4d3;
-      font-size: 14px;
-    }
-
     .chart-wrap {
       position: relative;
       height: 280px;
       width: 100%;
     }
-
     canvas {
-      display: block;
       width: 100% !important;
       height: 100% !important;
     }
-
-    .table-card {
-      background: #10203a;
-      border: 1px solid #223b63;
-      border-radius: 14px;
-      padding: 16px;
-    }
-
-    .table-card h2 {
-      margin: 0 0 6px 0;
-      font-size: 20px;
-    }
-
-    .table-card p {
-      margin: 0 0 12px 0;
-      color: #9fb4d3;
-      font-size: 14px;
-    }
-
-    .table-wrap {
-      overflow-x: auto;
-    }
-
     table {
       width: 100%;
       border-collapse: collapse;
     }
-
     th, td {
       text-align: left;
       padding: 12px 10px;
       border-bottom: 1px solid #223b63;
       font-size: 14px;
     }
-
     th {
       color: #9fb4d3;
       font-size: 12px;
       text-transform: uppercase;
       letter-spacing: 1px;
     }
-
-    .state-stable {
-      color: #7ef0a0;
-      font-weight: 700;
+    .hidden { display: none; }
+    pre {
+      background: #08111f;
+      color: #dbe8ff;
+      border-radius: 12px;
+      padding: 14px;
+      overflow: auto;
+      white-space: pre-wrap;
     }
-
-    .state-watch {
-      color: #ffd56a;
-      font-weight: 700;
-    }
-
-    .state-alert {
-      color: #ff6c86;
-      font-weight: 700;
-    }
-
-    .status-line {
-      margin-top: 14px;
-      color: #9fb4d3;
-      font-size: 13px;
-    }
-
     @media (max-width: 900px) {
-      .charts {
-        grid-template-columns: 1fr;
-      }
+      .hero-top, .charts, .metrics { grid-template-columns: 1fr; display: block; }
+      .hero-state { font-size: 58px; }
     }
   </style>
 </head>
 <body>
-  <div class="wrap">
-    <div class="header">
-      <h1>Neraium MVP</h1>
-      <p>Structural drift, relational stability, and recent structural events</p>
-    </div>
-
-    <div class="charts">
-      <section class="card">
-        <h2>Structural Drift Trend</h2>
-        <p>Rolling structural drift from incoming telemetry frames.</p>
-        <div class="chart-wrap">
-          <canvas id="driftChart"></canvas>
-        </div>
-      </section>
-
-      <section class="card">
-        <h2>Relational Stability Trend</h2>
-        <p>Rolling stability score based on sensor relationships.</p>
-        <div class="chart-wrap">
-          <canvas id="stabilityChart"></canvas>
-        </div>
-      </section>
-    </div>
-
-    <section class="table-card">
-      <h2>Recent Structural Events</h2>
-      <p>Latest processed events from the structural engine.</p>
-
-      <div class="table-wrap">
-        <table>
-          <thead>
-            <tr>
-              <th>ID</th>
-              <th>Event</th>
-              <th>Site</th>
-              <th>Asset</th>
-              <th>Timestamp</th>
-              <th>State</th>
-            </tr>
-          </thead>
-          <tbody id="eventsTableBody">
-            <tr>
-              <td colspan="6">Loading...</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-
-      <div id="statusLine" class="status-line">Connecting...</div>
-    </section>
-  </div>
-
-  <script src="/static/app.js"></script>
-</body>
-</html>
+  <div class
