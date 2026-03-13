@@ -41,17 +41,47 @@ hours = (boundary - drift) / velocity
 return max(0.0, round(hours, 1))
 
 def build_sensor_values():
-global scenario
-if scenario == “normal”:
-return (
-random.uniform(58, 64),
-random.uniform(118, 134),
-random.uniform(70, 78),
-random.uniform(95, 99),
-random.uniform(0.15, 0.25),
-)
+    global scenario
 
-```
+    base_pressure = 60
+    base_flow = 125
+    base_tank = 75
+    base_quality = 97
+    base_vibration = 0.20
+
+    if scenario == "normal":
+        # Stable system — small noise
+        return (
+            random.uniform(base_pressure - 2, base_pressure + 2),
+            random.uniform(base_flow - 3, base_flow + 3),
+            random.uniform(base_tank - 2, base_tank + 2),
+            random.uniform(base_quality - 1, base_quality + 1),
+            random.uniform(0.18, 0.22),
+        )
+
+    if scenario == "degrading":
+        # Slow structural drift
+        drift = random.uniform(0.1, 0.8)
+
+        return (
+            base_pressure - drift * 5 + random.uniform(-2, 2),
+            base_flow - drift * 8 + random.uniform(-3, 3),
+            base_tank - drift * 4 + random.uniform(-2, 2),
+            base_quality - drift * 3 + random.uniform(-1, 1),
+            base_vibration + drift * 0.25,
+        )
+
+    if scenario == "incident":
+        # Severe instability spike
+        spike = random.uniform(1.5, 3.5)
+
+        return (
+            base_pressure - spike * 10 + random.uniform(-5, 5),
+            base_flow - spike * 15 + random.uniform(-8, 8),
+            base_tank - spike * 8 + random.uniform(-4, 4),
+            base_quality - spike * 6 + random.uniform(-2, 2),
+            base_vibration + spike * 0.4,
+        )
 if scenario == "degrading":
     return (
         random.uniform(48, 60),
