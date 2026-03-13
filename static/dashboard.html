@@ -3,33 +3,105 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Neraium Telemetry Test</title>
+  <title>Neraium Telemetry</title>
   <style>
-    body { font-family: Arial, sans-serif; background:#08111f; color:#e8f1ff; padding:20px; }
-    .card { background:#10203a; border:1px solid #223b63; border-radius:12px; padding:16px; margin-bottom:16px; }
-    .big { font-size:32px; font-weight:700; margin-top:8px; }
-    pre { background:#06101e; padding:12px; border-radius:8px; overflow:auto; white-space:pre-wrap; }
+    body {
+      font-family: Arial, sans-serif;
+      background: #08111f;
+      color: #e8f1ff;
+      padding: 20px;
+      margin: 0;
+    }
+    .wrap {
+      max-width: 1000px;
+      margin: 0 auto;
+    }
+    .card {
+      background: #10203a;
+      border: 1px solid #223b63;
+      border-radius: 12px;
+      padding: 16px;
+      margin-bottom: 16px;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+    }
+    .big {
+      font-size: 32px;
+      font-weight: 700;
+      margin-top: 8px;
+    }
+    .small {
+      color: #9fb4d3;
+      margin-top: 8px;
+    }
+    pre {
+      background: #06101e;
+      padding: 12px;
+      border-radius: 8px;
+      overflow: auto;
+      white-space: pre-wrap;
+    }
+    @media (max-width: 700px) {
+      .grid {
+        grid-template-columns: 1fr;
+      }
+    }
   </style>
 </head>
 <body>
-  <div class="card">
-    <div>State</div>
-    <div id="systemState" class="big">Loading...</div>
-  </div>
+  <div class="wrap">
+    <div class="card">
+      <div>Status</div>
+      <div id="systemState" class="big">Loading...</div>
+      <div id="connectionText" class="small">Connecting...</div>
+      <div id="storyText" class="small">Waiting for telemetry...</div>
+      <div id="impactText" class="small">-</div>
+    </div>
 
-  <div class="card">
-    <div>Structural Drift</div>
-    <div id="driftValue" class="big">Loading...</div>
-  </div>
+    <div class="grid">
+      <div class="card">
+        <div>Structural Drift</div>
+        <div id="driftValue" class="big">-</div>
+      </div>
 
-  <div class="card">
-    <div>Lead Time</div>
-    <div id="leadTimeValue" class="big">Loading...</div>
-  </div>
+      <div class="card">
+        <div>Relational Stability</div>
+        <div id="stabilityValue" class="big">-</div>
+      </div>
 
-  <div class="card">
-    <div>Latest Raw Status</div>
-    <pre id="debugStatus">Loading...</pre>
+      <div class="card">
+        <div>Lead Time</div>
+        <div id="leadTimeValue" class="big">-</div>
+      </div>
+
+      <div class="card">
+        <div>Early Warning Horizon</div>
+        <div id="warningValue" class="big">-</div>
+      </div>
+
+      <div class="card">
+        <div>Latest Event Type</div>
+        <div id="eventTypeValue" class="big">-</div>
+      </div>
+
+      <div class="card">
+        <div>Confidence</div>
+        <div id="confidenceValue" class="big">-</div>
+      </div>
+
+      <div class="card">
+        <div>Events Tracked</div>
+        <div id="eventsTracked" class="big">-</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div>Raw API Status</div>
+      <pre id="debugStatus">Loading...</pre>
+    </div>
   </div>
 
   <script src="/static/app.js"></script>
