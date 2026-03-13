@@ -538,3 +538,10 @@ def run():
 
 if __name__ == "__main__":
     run()
+    <button id="pauseBtn">Pause Feed</button>
+<button id="resumeBtn">Resume Feed</button>
+<button id="resetBtn">Reset Demo</button>
+<button id="detailsBtn">Technical Details</button>
+<button id="normalBtn">Normal</button>
+<button id="degradingBtn">Degrading</button>
+<button id="incidentBtn">Incident</button>
