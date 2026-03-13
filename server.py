@@ -46,7 +46,7 @@ def lead_time(drift, velocity):
     hours = (boundary - drift) / velocity
     if hours < 0:
         return 0.0
-    return hours
+    return round(hours, 1)
 
 
 def build_sensor_values():
@@ -102,14 +102,6 @@ def generate_event():
 
     event = {
         "id": len(events) + 1,
-        "event_type": random.choice([
-            "baseline_structure",
-            "stable_correlation",
-            "relational_observation",
-            "gradual_drift",
-            "correlation_shift",
-            "instability_escalation",
-        ]),
         "timestamp": timestamp,
         "site_id": site,
         "asset_id": asset,
@@ -118,17 +110,11 @@ def generate_event():
         "structural_drift_score": round(drift, 3),
         "relational_stability_score": round(stability, 3),
         "drift_velocity": round(velocity, 3),
-        "lead_time_hours": None if lt is None else round(lt, 1),
-        "lead_time_confidence": round(random.uniform(0.70, 0.95), 2),
+        "lead_time_hours": lt,
+        "early_warning_horizon_hours": None if lt is None else int(round(lt)),
         "structural_driver": "pressure-flow imbalance",
-        "predicted_impact": (
-            "No near term operational disruption expected."
-            if state == "STABLE"
-            else "Early instability developing."
-            if state == "WATCH"
-            else "Potential localized service disruption within 1 to 2 hours."
-        ),
-        "explanation": "SII analyzing structural geometry of the sensor network.",
+        "predicted_impact": "Potential instability developing in system.",
+        "explanation": "SII analyzing structural geometry of the sensor network."
     }
 
     events.append(event)
@@ -162,8 +148,6 @@ class Handler(BaseHTTPRequestHandler):
         self.send_response(200)
         if filename.endswith(".js"):
             self.send_header("Content-Type", "application/javascript")
-        elif filename.endswith(".css"):
-            self.send_header("Content-Type", "text/css")
         else:
             self.send_header("Content-Type", "text/html")
         self.send_header("Content-Length", str(len(data)))
@@ -183,9 +167,6 @@ class Handler(BaseHTTPRequestHandler):
         if path.startswith("/static/"):
             return self.serve_static(path.replace("/static/", ""))
 
-        if path == "/api/events":
-            return self.send_json(events)
-
         if path == "/api/status":
             latest = events[-1] if events else {}
             return self.send_json({
@@ -196,7 +177,7 @@ class Handler(BaseHTTPRequestHandler):
                 "structural_drift_score": latest.get("structural_drift_score", 0),
                 "relational_stability_score": latest.get("relational_stability_score", 0),
                 "lead_time_hours": latest.get("lead_time_hours"),
-                "lead_time_confidence": latest.get("lead_time_confidence", 0),
+                "early_warning_horizon_hours": latest.get("early_warning_horizon_hours"),
                 "drift_velocity": latest.get("drift_velocity", 0),
                 "structural_driver": latest.get("structural_driver", "-"),
                 "events_tracked": len(events),
@@ -206,6 +187,9 @@ class Handler(BaseHTTPRequestHandler):
                 "paused": paused,
                 "scenario": scenario,
             })
+
+        if path == "/api/events":
+            return self.send_json(events)
 
         if path == "/api/pause":
             paused = True
