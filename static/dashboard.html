@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Neraium — Infrastructure Intelligence Demo</title>
+  <title>Neraium — Systemic Infrastructure Intelligence</title>
   <link rel="stylesheet" href="/static/styles.css">
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
@@ -13,9 +13,14 @@
       <div>
         <div class="brand-row">
           <span class="brand-dot"></span>
-          <h1>NERAIUM</h1>
+          <h1>NERAIUM SII</h1>
         </div>
-        <p class="subtitle">Infrastructure intelligence for detecting structural drift and operational anomalies in real time.</p>
+        <p class="subtitle">
+          Systemic Infrastructure Intelligence for detecting structural drift and emerging instability across complex infrastructure systems.
+        </p>
+        <p class="investor-blurb">
+          Detect changes in sensor relationships before threshold alarms, model failure, or operational breakdown.
+        </p>
       </div>
 
       <div class="topbar-actions">
@@ -26,10 +31,15 @@
 
     <section class="hero">
       <div class="hero-main">
-        <div class="label">Current System State</div>
-        <div id="systemState" class="hero-state">UNKNOWN</div>
+        <div class="label">System State</div>
+        <div class="state-row">
+          <div id="systemState" class="hero-state">UNKNOWN</div>
+          <div id="assetBadge" class="zone-badge">Asset: -</div>
+        </div>
+        <div id="siteLine" class="hero-meta">Site: -</div>
         <div id="lastTimestamp" class="hero-meta">Last update: None</div>
-        <div id="storyText" class="story-text">Initializing demo telemetry...</div>
+        <div id="storyText" class="story-text">Initializing structural telemetry...</div>
+        <div id="impactText" class="impact-text">Predicted impact: —</div>
       </div>
 
       <div class="hero-side">
@@ -47,34 +57,53 @@
     <section class="scenario-panel">
       <div>
         <div class="label">Demo Scenario</div>
-        <div class="scenario-subtitle">Choose the operating condition you want to demonstrate.</div>
+        <div class="scenario-subtitle">
+          Demonstrate stable structure, gradual drift, or active instability.
+        </div>
+        <div class="sim-note">Simulated live investor demo.</div>
       </div>
+
       <div class="scenario-buttons">
-        <button class="scenario-btn active" data-scenario="normal" type="button">Normal Operations</button>
-        <button class="scenario-btn" data-scenario="degrading" type="button">Degrading System</button>
-        <button class="scenario-btn" data-scenario="incident" type="button">Active Incident</button>
+        <button class="scenario-btn active" data-scenario="normal" type="button">Normal Structure</button>
+        <button class="scenario-btn" data-scenario="degrading" type="button">Gradual Drift</button>
+        <button class="scenario-btn" data-scenario="incident" type="button">Critical Instability</button>
+      </div>
+    </section>
+
+    <section class="control-panel panel">
+      <div class="panel-head">
+        <div>
+          <h2>Demo Controls</h2>
+          <p>Guide the investor through scenario progression and live replay.</p>
+        </div>
+      </div>
+      <div class="control-buttons">
+        <button id="pauseBtn" class="control-btn" type="button">Pause Feed</button>
+        <button id="resumeBtn" class="control-btn" type="button">Resume Feed</button>
+        <button id="resetBtn" class="control-btn" type="button">Reset Demo</button>
+        <button id="detailsBtn" class="control-btn" type="button">Technical Details</button>
       </div>
     </section>
 
     <section class="stats-grid">
       <article class="metric-card">
-        <div class="label">SII Score</div>
-        <div id="siiScoreValue" class="metric-value">0.00</div>
+        <div class="label">Structural Drift</div>
+        <div id="driftValue" class="metric-value">0.00</div>
       </article>
 
       <article class="metric-card">
-        <div class="label">EWMA Score</div>
-        <div id="ewmaScoreValue" class="metric-value">0.00</div>
+        <div class="label">Relational Stability</div>
+        <div id="stabilityValue" class="metric-value">0.00</div>
       </article>
 
       <article class="metric-card">
-        <div class="label">CPU Usage</div>
-        <div id="cpuValue" class="metric-value">0.0%</div>
+        <div class="label">Early Warning Horizon</div>
+        <div id="warningValue" class="metric-value">0h</div>
       </article>
 
       <article class="metric-card">
-        <div class="label">Memory Usage</div>
-        <div id="memoryValue" class="metric-value">0.0%</div>
+        <div class="label">Latest Event Type</div>
+        <div id="eventTypeValue" class="metric-value small-metric">-</div>
       </article>
     </section>
 
@@ -82,24 +111,24 @@
       <article class="panel">
         <div class="panel-head">
           <div>
-            <h2>Drift Detection Trend</h2>
-            <p>Mahalanobis-style structural deviation score</p>
+            <h2>Structural Drift Trend</h2>
+            <p>How fast the system’s sensor geometry is changing</p>
           </div>
         </div>
         <div class="chart-wrap">
-          <canvas id="siiChart"></canvas>
+          <canvas id="driftChart"></canvas>
         </div>
       </article>
 
       <article class="panel">
         <div class="panel-head">
           <div>
-            <h2>Escalation Persistence</h2>
-            <p>EWMA-based sustained anomaly tracking</p>
+            <h2>Relational Stability Trend</h2>
+            <p>Persistence of structural coherence across the network</p>
           </div>
         </div>
         <div class="chart-wrap">
-          <canvas id="ewmaChart"></canvas>
+          <canvas id="stabilityChart"></canvas>
         </div>
       </article>
     </section>
@@ -107,8 +136,8 @@
     <section class="table-panel panel">
       <div class="panel-head">
         <div>
-          <h2>Recent Events</h2>
-          <p>Latest telemetry observations and state transitions</p>
+          <h2>Recent Structural Events</h2>
+          <p>Latest site / asset frames and structural changes</p>
         </div>
       </div>
 
@@ -117,27 +146,38 @@
           <thead>
             <tr>
               <th>ID</th>
-              <th>Type</th>
+              <th>Event</th>
+              <th>Site</th>
+              <th>Asset</th>
               <th>Timestamp</th>
               <th>State</th>
-              <th>Confidence</th>
             </tr>
           </thead>
           <tbody id="eventsTableBody">
             <tr>
-              <td colspan="5">Loading...</td>
+              <td colspan="6">Loading...</td>
             </tr>
           </tbody>
         </table>
       </div>
     </section>
 
+    <section id="detailsPanel" class="details-panel panel hidden">
+      <div class="panel-head">
+        <div>
+          <h2>Technical Details</h2>
+          <p>Latest structural frame payload for technical review.</p>
+        </div>
+      </div>
+      <pre id="detailsPre">Loading...</pre>
+    </section>
+
     <footer class="footer">
-      <span>Neraium investor demo</span>
+      <span>Neraium SII investor demo</span>
       <span>Contact: craig@neraium.com</span>
     </footer>
   </div>
 
-<script src="/static/app.js?v=10"></script>
+  <script src="/static/app.js?v=11"></script>
 </body>
 </html>
