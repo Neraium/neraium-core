@@ -37,22 +37,20 @@ def generate_event():
         "South Basin"
     ])
 
-    drift = round(random.uniform(0.05, 0.98), 2)
-    persistence = round(random.uniform(0.05, 0.95), 2)
-
     if scenario == "normal":
         state = "STABLE"
-        drift = random.uniform(0.05, 0.25)
+        drift = round(random.uniform(0.05, 0.25), 2)
+        persistence = round(random.uniform(0.85, 0.98), 2)
     elif scenario == "degrading":
         state = "WATCH"
-        drift = random.uniform(0.25, 0.65)
+        drift = round(random.uniform(0.25, 0.65), 2)
+        persistence = round(random.uniform(0.55, 0.90), 2)
     else:
         state = "ALERT"
-        drift = random.uniform(0.65, 0.98)
+        drift = round(random.uniform(0.65, 0.98), 2)
+        persistence = round(random.uniform(0.70, 0.95), 2)
 
-    drift = round(drift, 2)
-
-    # Early warning calculation
+    # Early warning horizon in hours
     early_warning = max(0, int((1 - drift) * 72))
 
     event = {
@@ -61,19 +59,20 @@ def generate_event():
             "flow_observation",
             "quality_observation",
             "pressure_frame",
-            "telemetry_frame"
+            "telemetry_frame",
+            "leak_signature"
         ]),
         "zone": zone,
         "timestamp": now(),
         "state": state,
-        "confidence": round(random.uniform(0.9, 0.98), 2),
+        "confidence": round(random.uniform(0.90, 0.98), 2),
         "network_drift_score": drift,
         "quality_persistence_score": persistence,
         "early_warning_horizon_hours": early_warning,
         "flow_rate": round(random.uniform(60, 140), 1),
-        "line_pressure": round(random.uniform(55, 70), 1),
-        "water_quality_index": round(random.uniform(94, 99), 1),
-        "tank_level": round(random.uniform(60, 80), 1),
+        "line_pressure": round(random.uniform(28, 70), 1),
+        "water_quality_index": round(random.uniform(58, 99), 1),
+        "tank_level": round(random.uniform(42, 80), 1),
         "predicted_impact": (
             "No near term service disruption expected."
             if state == "STABLE"
@@ -96,10 +95,12 @@ def telemetry_loop():
 class Handler(BaseHTTPRequestHandler):
 
     def send_json(self, data):
+        payload = json.dumps(data).encode("utf-8")
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(payload)))
         self.end_headers()
-        self.wfile.write(json.dumps(data).encode())
+        self.wfile.write(payload)
 
     def serve_static(self, path):
         file_path = STATIC_DIR / path
@@ -117,8 +118,10 @@ class Handler(BaseHTTPRequestHandler):
         else:
             self.send_header("Content-Type", "text/html")
 
+        data = file_path.read_bytes()
+        self.send_header("Content-Length", str(len(data)))
         self.end_headers()
-        self.wfile.write(file_path.read_bytes())
+        self.wfile.write(data)
 
     def do_GET(self):
         global scenario, paused
@@ -133,18 +136,27 @@ class Handler(BaseHTTPRequestHandler):
             return self.serve_static(path.replace("/static/", ""))
 
         if path == "/api/status":
-
             latest = events[-1] if events else None
 
             if not latest:
-                self.send_json({
+                return self.send_json({
                     "connected": True,
                     "scenario": scenario,
                     "paused": paused,
                     "events_tracked": 0,
-                    "state": "UNKNOWN"
+                    "state": "UNKNOWN",
+                    "zone": "-",
+                    "confidence": 0,
+                    "network_drift_score": 0,
+                    "quality_persistence_score": 0,
+                    "early_warning_horizon_hours": 0,
+                    "flow_rate": 0,
+                    "line_pressure": 0,
+                    "water_quality_index": 0,
+                    "tank_level": 0,
+                    "predicted_impact": "",
+                    "last_timestamp": ""
                 })
-                return
 
             response = {
                 "connected": True,
@@ -172,22 +184,25 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/api/pause":
             paused = True
-            return self.send_json({"paused": True})
+            return self.send_json({"status": "ok", "paused": True})
 
         if path == "/api/resume":
             paused = False
-            return self.send_json({"paused": False})
+            return self.send_json({"status": "ok", "paused": False})
 
         if path == "/api/reset":
             events.clear()
-            return self.send_json({"reset": True})
+            return self.send_json({"status": "ok", "reset": True})
 
         if path == "/api/scenario":
             params = parse_qs(parsed.query)
             scenario = params.get("mode", ["normal"])[0]
-            return self.send_json({"scenario": scenario})
+            return self.send_json({"status": "ok", "scenario": scenario})
 
         self.send_error(404)
+
+    def log_message(self, format, *args):
+        return
 
 
 def run():
