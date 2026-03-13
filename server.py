@@ -95,6 +95,34 @@ class Handler(BaseHTTPRequestHandler):
 
         self.send_error(404)
 
+def do_POST(self):
+    parsed = urlparse(self.path)
+    path = parsed.path
+
+    if path == "/telemetry":
+        length = int(self.headers.get("Content-Length", 0))
+        raw = self.rfile.read(length)
+
+        try:
+            payload = json.loads(raw.decode("utf-8"))
+        except Exception:
+            self.send_error(400)
+            return
+
+        # normalize incoming telemetry
+        normalized = normalize_rest_payload(payload)
+
+        # process through engine
+        result = engine.process(normalized)
+
+        # store event
+        add_event(result)
+
+        self.send_json({"status": "ok"})
+        return
+
+    self.send_error(404)
+    
     def do_POST(self):
         parsed = urlparse(self.path)
         path = parsed.path
