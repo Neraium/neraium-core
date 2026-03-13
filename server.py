@@ -101,6 +101,25 @@ class Handler(BaseHTTPRequestHandler):
 
         self.send_error(404)
 
+def do_POST(self):
+    parsed = urlparse(self.path)
+    path = parsed.path
+
+    if path == "/api/ingest":
+        length = int(self.headers.get("Content-Length", "0"))
+        raw = self.rfile.read(length) if length > 0 else b"{}"
+
+        try:
+            payload = json.loads(raw.decode("utf-8"))
+            frame = normalize_rest_payload(payload)
+            result = engine.process_frame(frame)
+            add_event(result)
+            return self.send_json({"ok": True, "result": result})
+        except Exception as e:
+            return self.send_json({"ok": False, "error": str(e)}, status=400)
+
+    self.send_error(404)
+    
     def do_POST(self):
         parsed = urlparse(self.path)
         path = parsed.path
