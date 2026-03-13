@@ -7,6 +7,8 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs
 
+from lead_time_engine import HybridSIIDetector
+
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
 
@@ -15,6 +17,29 @@ scenario = "normal"
 paused = False
 
 MAX_EVENTS = 300
+
+detector = HybridSIIDetector()
+
+SITES = [
+    "alpha-water-grid",
+    "reservoir-east",
+    "north-loop"
+]
+
+ASSETS = [
+    "pump-station-1",
+    "district-main-b",
+    "distribution-node-7"
+]
+
+SENSOR_NAMES = (
+    "pressure_inlet",
+    "pressure_outlet",
+    "flow_rate",
+    "tank_level",
+    "quality_index",
+    "pump_vibration",
+)
 
 
 def now():
@@ -27,78 +52,136 @@ def add_event(event):
         events.pop(0)
 
 
-def calculate_early_warning_horizon(drift):
-    drift = max(0.0, min(1.0, float(drift)))
-    return max(0, int((1 - drift) * 72))
+def build_sensor_values():
+    if scenario == "normal":
+        return (
+            round(random.uniform(60, 65), 2),   # pressure_inlet
+            round(random.uniform(56, 61), 2),   # pressure_outlet
+            round(random.uniform(118, 136), 2), # flow_rate
+            round(random.uniform(68, 78), 2),   # tank_level
+            round(random.uniform(94, 99), 2),   # quality_index
+            round(random.uniform(0.16, 0.30), 3) # pump_vibration
+        )
+
+    if scenario == "degrading":
+        return (
+            round(random.uniform(48, 60), 2),
+            round(random.uniform(42, 56), 2),
+            round(random.uniform(95, 124), 2),
+            round(random.uniform(56, 73), 2),
+            round(random.uniform(82, 95), 2),
+            round(random.uniform(0.22, 0.48), 3)
+        )
+
+    return (
+        round(random.uniform(34, 52), 2),
+        round(random.uniform(28, 47), 2),
+        round(random.uniform(70, 108), 2),
+        round(random.uniform(46, 66), 2),
+        round(random.uniform(64, 84), 2),
+        round(random.uniform(0.35, 0.82), 3)
+    )
+
+
+def predicted_impact_from_state(state, lead_time_hours):
+    if state == "ALERT":
+        if lead_time_hours is None:
+            return "Critical structural instability detected."
+        return f"Critical instability detected. Estimated intervention window: {round(lead_time_hours, 1)}h."
+    if state == "WATCH":
+        if lead_time_hours is None:
+            return "Early degradation detected. Monitoring recommended."
+        return f"Early structural drift detected. Estimated warning horizon: {round(lead_time_hours, 1)}h."
+    return "No near term operational disruption expected."
+
+
+def event_type_from_state(state):
+    if state == "ALERT":
+        return random.choice([
+            "relational_break",
+            "structural_drift_spike",
+            "instability_escalation",
+            "cross_sensor_divergence"
+        ])
+    if state == "WATCH":
+        return random.choice([
+            "gradual_drift",
+            "correlation_shift",
+            "relational_variance",
+            "stability_decay"
+        ])
+    return random.choice([
+        "baseline_structure",
+        "stable_correlation",
+        "normal_telemetry_frame",
+        "relational_observation"
+    ])
 
 
 def generate_event():
-    global scenario
+    site = random.choice(SITES)
+    asset = random.choice(ASSETS)
+    timestamp = now()
+    sensor_values = build_sensor_values()
 
-    zone = random.choice([
-        "Reservoir East",
-        "West Feed Main",
-        "North Loop",
-        "South Basin"
-    ])
-
-    if scenario == "normal":
-        state = "STABLE"
-        drift = round(random.uniform(0.05, 0.25), 2)
-        persistence = round(random.uniform(0.80, 0.96), 2)
-        leak_risk = round(random.uniform(0.03, 0.15), 2)
-        flow_rate = round(random.uniform(118, 136), 1)
-        line_pressure = round(random.uniform(58, 66), 1)
-        water_quality_index = round(random.uniform(94, 99), 1)
-        tank_level = round(random.uniform(66, 80), 1)
-        predicted_impact = "No near term service disruption expected."
-
-    elif scenario == "degrading":
-        state = "WATCH"
-        drift = round(random.uniform(0.25, 0.65), 2)
-        persistence = round(random.uniform(0.30, 0.75), 2)
-        leak_risk = round(random.uniform(0.15, 0.45), 2)
-        flow_rate = round(random.uniform(88, 118), 1)
-        line_pressure = round(random.uniform(45, 58), 1)
-        water_quality_index = round(random.uniform(74, 90), 1)
-        tank_level = round(random.uniform(55, 72), 1)
-        predicted_impact = "Early degradation detected. Maintenance window recommended."
-
-    else:
-        state = "ALERT"
-        drift = round(random.uniform(0.65, 0.98), 2)
-        persistence = round(random.uniform(0.70, 0.95), 2)
-        leak_risk = round(random.uniform(0.50, 0.95), 2)
-        flow_rate = round(random.uniform(60, 95), 1)
-        line_pressure = round(random.uniform(28, 45), 1)
-        water_quality_index = round(random.uniform(58, 78), 1)
-        tank_level = round(random.uniform(42, 65), 1)
-        predicted_impact = "Potential localized service disruption within 1 to 2 hours."
-
-    early_warning_horizon_hours = calculate_early_warning_horizon(drift)
+    result = detector.update(
+        site_id=site,
+        asset_id=asset,
+        timestamp=timestamp,
+        sensor_names=SENSOR_NAMES,
+        sensor_values=sensor_values,
+        missing_fraction=0.0,
+    )
 
     event = {
         "id": len(events) + 1,
-        "type": random.choice([
-            "flow_observation",
-            "quality_observation",
-            "pressure_frame",
-            "telemetry_frame",
-            "leak_signature"
-        ]),
-        "zone": zone,
-        "timestamp": now(),
-        "state": state,
-        "confidence": round(random.uniform(0.88, 0.98), 2),
-        "network_drift_score": drift,
-        "quality_persistence_score": persistence,
-        "early_warning_horizon_hours": early_warning_horizon_hours,
-        "leak_risk": leak_risk,
-        "flow_rate": flow_rate,
-        "line_pressure": line_pressure,
-        "water_quality_index": water_quality_index,
-        "tank_level": tank_level,
-        "predicted_impact": predicted_impact
+        "event_type": event_type_from_state(result.state),
+        "site_id": site,
+        "asset_id": asset,
+        "zone": site,  # compatibility with older frontend code
+        "timestamp": timestamp,
+        "state": result.state,
+        "confidence": round(max(0.88, result.lead_time_confidence), 2),
+
+        # SII fields
+        "structural_drift_score": result.structural_drift_score,
+        "smoothed_drift_score": result.smoothed_drift_score,
+        "drift_velocity": result.drift_velocity,
+        "drift_acceleration": result.drift_acceleration,
+        "relational_stability_score": result.relational_stability_score,
+        "lead_time_hours": result.lead_time_hours,
+        "lead_time_lower_hours": result.lead_time_lower_hours,
+        "lead_time_upper_hours": result.lead_time_upper_hours,
+        "lead_time_confidence": result.lead_time_confidence,
+        "structural_driver": result.structural_driver,
+
+        # compatibility fields for existing UI
+        "network_drift_score": result.structural_drift_score,
+        "quality_persistence_score": result.relational_stability_score,
+        "early_warning_horizon_hours": (
+            None if result.lead_time_hours is None else int(round(result.lead_time_hours))
+        ),
+
+        # raw telemetry
+        "sensor_names": list(SENSOR_NAMES),
+        "sensor_values": {
+            SENSOR_NAMES[i]: sensor_values[i] for i in range(len(SENSOR_NAMES))
+        },
+
+        # older water metrics for compatibility
+        "flow_rate": sensor_values[2],
+        "tank_level": sensor_values[3],
+        "water_quality_index": sensor_values[4],
+        "line_pressure": sensor_values[1],
+        "pump_vibration": sensor_values[5],
+        "predicted_impact": predicted_impact_from_state(result.state, result.lead_time_hours),
+        "explanation": (
+            "SII is detecting active structural instability across the sensor network."
+            if result.state == "ALERT"
+            else "SII is detecting gradual relational drift before conventional threshold failure."
+            if result.state == "WATCH"
+            else "SII is observing stable structural relationships across the monitored system."
+        ),
     }
 
     add_event(event)
@@ -112,9 +195,9 @@ def telemetry_loop():
 
 
 class Handler(BaseHTTPRequestHandler):
-    def send_json(self, data):
+    def send_json(self, data, status=200):
         payload = json.dumps(data).encode("utf-8")
-        self.send_response(200)
+        self.send_response(status)
         self.send_header("Content-Type", "application/json")
         self.send_header("Content-Length", str(len(payload)))
         self.end_headers()
@@ -163,25 +246,24 @@ class Handler(BaseHTTPRequestHandler):
                     "paused": paused,
                     "events_tracked": 0,
                     "state": "UNKNOWN",
+                    "site_id": "-",
+                    "asset_id": "-",
                     "zone": "-",
                     "confidence": 0,
+                    "structural_drift_score": 0,
+                    "relational_stability_score": 0,
+                    "lead_time_hours": None,
+                    "lead_time_confidence": 0,
+                    "structural_driver": "-",
+                    "drift_velocity": 0,
+                    "drift_acceleration": 0,
                     "network_drift_score": 0,
                     "quality_persistence_score": 0,
-                    "early_warning_horizon_hours": 0,
-                    "leak_risk": 0,
-                    "flow_rate": 0,
-                    "line_pressure": 0,
-                    "water_quality_index": 0,
-                    "tank_level": 0,
+                    "early_warning_horizon_hours": None,
                     "predicted_impact": "",
+                    "explanation": "",
                     "last_timestamp": ""
                 })
-
-            drift = latest.get("network_drift_score", 0)
-            early_warning_horizon_hours = latest.get(
-                "early_warning_horizon_hours",
-                calculate_early_warning_horizon(drift)
-            )
 
             response = {
                 "connected": True,
@@ -189,17 +271,28 @@ class Handler(BaseHTTPRequestHandler):
                 "paused": paused,
                 "events_tracked": len(events),
                 "state": latest.get("state", "UNKNOWN"),
+                "site_id": latest.get("site_id", "-"),
+                "asset_id": latest.get("asset_id", "-"),
                 "zone": latest.get("zone", "-"),
                 "confidence": latest.get("confidence", 0),
+
+                # new SII fields
+                "structural_drift_score": latest.get("structural_drift_score", 0),
+                "relational_stability_score": latest.get("relational_stability_score", 0),
+                "lead_time_hours": latest.get("lead_time_hours"),
+                "lead_time_confidence": latest.get("lead_time_confidence", 0),
+                "structural_driver": latest.get("structural_driver", "-"),
+                "drift_velocity": latest.get("drift_velocity", 0),
+                "drift_acceleration": latest.get("drift_acceleration", 0),
+
+                # compatibility fields
                 "network_drift_score": latest.get("network_drift_score", 0),
                 "quality_persistence_score": latest.get("quality_persistence_score", 0),
-                "early_warning_horizon_hours": early_warning_horizon_hours,
-                "leak_risk": latest.get("leak_risk", 0),
-                "flow_rate": latest.get("flow_rate", 0),
-                "line_pressure": latest.get("line_pressure", 0),
-                "water_quality_index": latest.get("water_quality_index", 0),
-                "tank_level": latest.get("tank_level", 0),
+                "early_warning_horizon_hours": latest.get("early_warning_horizon_hours"),
+
+                # existing extras
                 "predicted_impact": latest.get("predicted_impact", ""),
+                "explanation": latest.get("explanation", ""),
                 "last_timestamp": latest.get("timestamp", "")
             }
 
