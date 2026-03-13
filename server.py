@@ -51,7 +51,30 @@ class Handler(BaseHTTPRequestHandler):
         if not path.exists() or not path.is_file():
             self.send_error(404)
             return
+def do_POST(self):
+    parsed = urlparse(self.path)
+    path = parsed.path
 
+    if path == "/api/ingest":
+        length = int(self.headers.get("Content-Length", 0))
+        raw = self.rfile.read(length)
+
+        try:
+            payload = json.loads(raw.decode("utf-8"))
+        except Exception:
+            self.send_error(400)
+            return
+
+        normalized = normalize_rest_payload(payload)
+
+        result = engine.process(normalized)
+
+        add_event(result)
+
+        self.send_json({"status": "ok"})
+        return
+
+    self.send_error(404)
         data = path.read_bytes()
 
         if filename.endswith(".js"):
