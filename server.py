@@ -5,12 +5,14 @@ import time
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
+from urllib.parse import parse_qs, urlparse
 
 BASE_DIR = Path(__file__).resolve().parent
 STATIC_DIR = BASE_DIR / "static"
 
 EVENTS = []
-MAX_EVENTS = 200
+MAX_EVENTS = 240
+SCENARIO = "normal"
 
 
 def now_iso():
@@ -35,6 +37,16 @@ def latest_event():
     return EVENTS[-1] if EVENTS else None
 
 
+def current_scenario():
+    return SCENARIO
+
+
+def set_scenario(value):
+    global SCENARIO
+    allowed = {"normal", "degrading", "incident"}
+    SCENARIO = value if value in allowed else "normal"
+
+
 def make_event(payload):
     return {
         "id": payload.get("id", next_id()),
@@ -51,9 +63,57 @@ def make_event(payload):
     }
 
 
-def simulator_loop():
-    phase = "stable"
+def generate_metrics(prev, scenario):
+    sii = float(prev.get("sii_score", 0.20))
+    ewma = float(prev.get("ewma_score", 0.12))
+    velocity = float(prev.get("velocity", 0.08))
+    drift_vector = float(prev.get("drift_vector", 0.06))
+    cpu = float(prev.get("cpu_usage", 35.0))
+    memory = float(prev.get("memory_usage", 42.0))
 
+    if scenario == "normal":
+        sii = clamp(sii + random.uniform(-0.02, 0.02), 0.08, 0.28)
+        ewma = clamp(ewma + random.uniform(-0.015, 0.015), 0.05, 0.22)
+        velocity = clamp(velocity + random.uniform(-0.015, 0.015), 0.03, 0.18)
+        drift_vector = clamp(drift_vector + random.uniform(-0.015, 0.015), 0.02, 0.16)
+        cpu = clamp(cpu + random.uniform(-4, 4), 18, 58)
+        memory = clamp(memory + random.uniform(-3, 3), 25, 66)
+        confidence = clamp(random.uniform(0.88, 0.96), 0, 1)
+        state = "STABLE"
+
+    elif scenario == "degrading":
+        sii = clamp(sii + random.uniform(0.01, 0.045), 0.22, 0.58)
+        ewma = clamp(ewma + random.uniform(0.01, 0.04), 0.16, 0.46)
+        velocity = clamp(velocity + random.uniform(0.005, 0.03), 0.08, 0.34)
+        drift_vector = clamp(drift_vector + random.uniform(0.005, 0.03), 0.07, 0.30)
+        cpu = clamp(cpu + random.uniform(1, 6), 35, 82)
+        memory = clamp(memory + random.uniform(1, 5), 40, 82)
+        confidence = clamp(random.uniform(0.80, 0.91), 0, 1)
+        state = "WATCH" if sii < 0.52 else "ALERT"
+
+    else:  # incident
+        sii = clamp(sii + random.uniform(0.02, 0.08), 0.55, 0.98)
+        ewma = clamp(ewma + random.uniform(0.02, 0.07), 0.40, 0.92)
+        velocity = clamp(velocity + random.uniform(0.01, 0.06), 0.22, 0.75)
+        drift_vector = clamp(drift_vector + random.uniform(0.01, 0.06), 0.18, 0.72)
+        cpu = clamp(cpu + random.uniform(2, 10), 60, 98)
+        memory = clamp(memory + random.uniform(2, 9), 58, 98)
+        confidence = clamp(random.uniform(0.84, 0.97), 0, 1)
+        state = "ALERT"
+
+    return {
+        "state": state,
+        "confidence": round(confidence, 2),
+        "sii_score": round(sii, 2),
+        "ewma_score": round(ewma, 2),
+        "velocity": round(velocity, 2),
+        "drift_vector": round(drift_vector, 2),
+        "cpu_usage": round(cpu, 1),
+        "memory_usage": round(memory, 1),
+    }
+
+
+def simulator_loop():
     while True:
         prev = latest_event() or {
             "sii_score": 0.20,
@@ -64,65 +124,14 @@ def simulator_loop():
             "memory_usage": 42.0,
         }
 
-        sii = float(prev.get("sii_score", 0.20))
-        ewma = float(prev.get("ewma_score", 0.12))
-        velocity = float(prev.get("velocity", 0.08))
-        drift_vector = float(prev.get("drift_vector", 0.06))
-        cpu = float(prev.get("cpu_usage", 35.0))
-        memory = float(prev.get("memory_usage", 42.0))
+        metrics = generate_metrics(prev, current_scenario())
 
-        roll = random.random()
-        if phase == "stable" and roll < 0.12:
-            phase = "watch"
-        elif phase == "watch" and roll < 0.18:
-            phase = "alert"
-        elif phase == "alert" and roll < 0.35:
-            phase = "watch"
-        elif phase == "watch" and roll < 0.22:
-            phase = "stable"
-
-        if phase == "stable":
-            sii = clamp(sii + random.uniform(-0.03, 0.03), 0.08, 0.35)
-            ewma = clamp(ewma + random.uniform(-0.02, 0.02), 0.05, 0.25)
-            velocity = clamp(velocity + random.uniform(-0.02, 0.02), 0.03, 0.22)
-            drift_vector = clamp(drift_vector + random.uniform(-0.02, 0.02), 0.02, 0.20)
-            cpu = clamp(cpu + random.uniform(-5, 5), 18, 65)
-            memory = clamp(memory + random.uniform(-4, 4), 25, 70)
-            confidence = clamp(random.uniform(0.87, 0.96), 0, 1)
-            state = "STABLE"
-        elif phase == "watch":
-            sii = clamp(sii + random.uniform(0.01, 0.06), 0.30, 0.62)
-            ewma = clamp(ewma + random.uniform(0.01, 0.05), 0.20, 0.50)
-            velocity = clamp(velocity + random.uniform(0.01, 0.04), 0.12, 0.40)
-            drift_vector = clamp(drift_vector + random.uniform(0.01, 0.04), 0.10, 0.34)
-            cpu = clamp(cpu + random.uniform(2, 8), 40, 82)
-            memory = clamp(memory + random.uniform(2, 7), 40, 84)
-            confidence = clamp(random.uniform(0.78, 0.90), 0, 1)
-            state = "WATCH"
-        else:
-            sii = clamp(sii + random.uniform(0.04, 0.10), 0.60, 0.98)
-            ewma = clamp(ewma + random.uniform(0.03, 0.08), 0.45, 0.90)
-            velocity = clamp(velocity + random.uniform(0.02, 0.07), 0.25, 0.75)
-            drift_vector = clamp(drift_vector + random.uniform(0.02, 0.07), 0.20, 0.70)
-            cpu = clamp(cpu + random.uniform(4, 10), 65, 98)
-            memory = clamp(memory + random.uniform(4, 9), 60, 98)
-            confidence = clamp(random.uniform(0.82, 0.97), 0, 1)
-            state = "ALERT"
-
-        event = make_event({
+        add_event(make_event({
             "type": "telemetry",
             "timestamp": now_iso(),
-            "state": state,
-            "confidence": round(confidence, 2),
-            "sii_score": round(sii, 2),
-            "ewma_score": round(ewma, 2),
-            "velocity": round(velocity, 2),
-            "drift_vector": round(drift_vector, 2),
-            "cpu_usage": round(cpu, 1),
-            "memory_usage": round(memory, 1),
-        })
+            **metrics,
+        }))
 
-        add_event(event)
         time.sleep(2)
 
 
@@ -148,7 +157,9 @@ class Handler(BaseHTTPRequestHandler):
         print("%s - - [%s] %s" % (self.address_string(), self.log_date_time_string(), format % args))
 
     def do_GET(self):
-        path = self.path.split("?", 1)[0]
+        parsed = urlparse(self.path)
+        path = parsed.path
+        query = parse_qs(parsed.query)
 
         if path == "/":
             return self._send_file(STATIC_DIR / "index.html", "text/html; charset=utf-8")
@@ -166,6 +177,7 @@ class Handler(BaseHTTPRequestHandler):
             latest = latest_event()
             payload = {
                 "connected": True,
+                "scenario": current_scenario(),
                 "events_tracked": len(EVENTS),
                 "state": latest.get("state", "UNKNOWN") if latest else "UNKNOWN",
                 "confidence": latest.get("confidence", 0) if latest else 0,
@@ -179,6 +191,11 @@ class Handler(BaseHTTPRequestHandler):
             }
             return self._send_json(payload)
 
+        if path == "/api/scenario":
+            scenario = query.get("mode", ["normal"])[0].lower()
+            set_scenario(scenario)
+            return self._send_json({"status": "ok", "scenario": current_scenario()})
+
         if path == "/favicon.ico":
             self.send_response(204)
             self.end_headers()
@@ -187,7 +204,7 @@ class Handler(BaseHTTPRequestHandler):
         self.send_error(404, "Not found")
 
     def do_POST(self):
-        path = self.path.split("?", 1)[0]
+        path = urlparse(self.path).path
 
         if path == "/api/ingest":
             content_length = int(self.headers.get("Content-Length", 0))
@@ -229,6 +246,7 @@ if __name__ == "__main__":
     sim_thread.start()
 
     server = HTTPServer(("0.0.0.0", 8000), Handler)
+    print("NERAIUM INVESTOR DEMO ACTIVE")
     print("Server running at http://0.0.0.0:8000")
-    print("Fake telemetry simulator feeding data every 2 seconds")
+    print("Scenarios: normal | degrading | incident")
     server.serve_forever()
