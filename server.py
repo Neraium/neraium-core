@@ -11,14 +11,14 @@ from structural_engine import StructuralEngine
 
 BASE_DIR = Path(__file__).resolve().parent
 
-events = []
-paused = False
+events   = []
+paused   = False
 scenario = "normal"
 MAX_EVENTS = 300
-engine = StructuralEngine(baseline_window=24, recent_window=8)
-lock = threading.Lock()
+engine   = StructuralEngine(baseline_window=24, recent_window=8)
+lock     = threading.Lock()
 
-SITES = ["Reservoir East", "North Loop", "South Basin", "West Feed Main"]
+SITES  = ["Reservoir East", "North Loop", "South Basin", "West Feed Main"]
 ASSETS = ["Pump Station 1", "District Main B", "Distribution Node 7"]
 
 
@@ -52,7 +52,6 @@ def build_sensor_values():
             "vibration":  base_vibration + drift * 0.35,
         }
 
-    # incident
     spike = random.uniform(2.5, 4.0)
     return {
         "pressure":   base_pressure  - spike * 10 + random.uniform(-4, 4),
@@ -172,8 +171,8 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/reset":
             with lock:
                 events.clear()
-                paused = False
-                scenario = "normal"          # ← always reset to normal
+                paused   = False
+                scenario = "normal"
             engine.frames.clear()
             engine.prev_drift    = None
             engine.latest_result = None
