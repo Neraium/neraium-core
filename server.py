@@ -13,13 +13,29 @@ STATIC_DIR = BASE_DIR / "static"
 EVENTS = []
 MAX_EVENTS = 240
 SCENARIO = "normal"
+PAUSED = False
 
-def set_scenario(value):
-    global SCENARIO
-    if value in {"normal", "degrading", "incident"}:
-        SCENARIO = value
-    else:
-        SCENARIO = "normal"
+SITES = ["alpha-water-grid", "reservoir-east", "north-loop"]
+ASSETS = ["pump-station-1", "district-main-b", "distribution-node-7"]
+
+SENSOR_NAMES = [
+    "pressure_inlet",
+    "pressure_outlet",
+    "flow_rate",
+    "tank_level",
+    "quality_index",
+    "pump_vibration",
+]
+
+BASE_SENSOR_VALUES = {
+    "pressure_inlet": 62.0,
+    "pressure_outlet": 58.0,
+    "flow_rate": 128.0,
+    "tank_level": 73.0,
+    "quality_index": 96.0,
+    "pump_vibration": 0.22,
+}
+
 
 def now_iso():
     return datetime.now(timezone.utc).isoformat()
@@ -43,182 +59,249 @@ def latest_event():
     return EVENTS[-1] if EVENTS else None
 
 
-def current_scenario():
-    return SCENARIO
-
-
 def set_scenario(value):
     global SCENARIO
-    allowed = {"normal", "degrading", "incident"}
-    SCENARIO = value if value in allowed else "normal"
+    if value in {"normal", "degrading", "incident"}:
+        SCENARIO = value
+    else:
+        SCENARIO = "normal"
 
 
-def make_event(payload):
+def reset_demo():
+    EVENTS.clear()
+    add_event(make_startup_event())
+
+
+def make_startup_event():
     return {
-        "id": payload.get("id", next_id()),
-        "type": payload.get("type", "telemetry"),
-        "timestamp": payload.get("timestamp", now_iso()),
-        "state": str(payload.get("state", "UNKNOWN")).upper(),
-        "confidence": float(payload.get("confidence", 0)),
-        "sii_score": float(payload.get("sii_score", 0)),
-        "ewma_score": float(payload.get("ewma_score", 0)),
-        "velocity": float(payload.get("velocity", 0)),
-        "drift_vector": float(payload.get("drift_vector", 0)),
-        "cpu_usage": float(payload.get("cpu_usage", 0)),
-        "memory_usage": float(payload.get("memory_usage", 0)),
+        "id": 1,
+        "event_type": "startup",
+        "site_id": "alpha-water-grid",
+        "asset_id": "pump-station-1",
+        "timestamp": now_iso(),
+        "state": "STABLE",
+        "confidence": 0.93,
+        "structural_drift_score": 0.14,
+        "relational_stability_score": 0.92,
+        "early_warning_horizon_hours": 72,
+        "predicted_impact": "No near term operational disruption expected.",
+        "sensor_names": SENSOR_NAMES,
+        "sensor_values": {
+            "pressure_inlet": 62.0,
+            "pressure_outlet": 58.0,
+            "flow_rate": 128.0,
+            "tank_level": 73.0,
+            "quality_index": 96.0,
+            "pump_vibration": 0.22,
+        },
+        "sensor_quality_flags": {name: "ok" for name in SENSOR_NAMES},
+        "explanation": "Baseline structural relationships remain stable across the monitored sensor network.",
     }
 
 
-def generate_metrics(prev, scenario):
-    sii = float(prev.get("sii_score", 0.20))
-    ewma = float(prev.get("ewma_score", 0.12))
-    velocity = float(prev.get("velocity", 0.08))
-    drift_vector = float(prev.get("drift_vector", 0.06))
-    cpu = float(prev.get("cpu_usage", 35.0))
-    memory = float(prev.get("memory_usage", 42.0))
+def event_type_for_state(state, scenario):
+    if state == "ALERT":
+        return random.choice([
+            "relational_break",
+            "structural_drift_spike",
+            "instability_escalation",
+            "cross_sensor_divergence",
+        ])
+    if scenario == "degrading":
+        return random.choice([
+            "gradual_drift",
+            "correlation_shift",
+            "relational_variance",
+            "stability_decay",
+        ])
+    return random.choice([
+        "baseline_structure",
+        "stable_correlation",
+        "normal_telemetry_frame",
+        "relational_observation",
+    ])
+
+
+def explanation_for_state(state):
+    if state == "ALERT":
+        return "SII is detecting a material change in structural relationships between sensors, indicating active system instability."
+    if state == "WATCH":
+        return "SII is detecting gradual relational drift before threshold-level failure."
+    return "Sensor relationships remain structurally consistent with healthy operating behavior."
+
+
+def predicted_impact(state, early_warning_horizon_hours):
+    if state == "ALERT":
+        return "Intervention likely required if relational drift continues to compound."
+    if state == "WATCH":
+        return f"Early instability detected with approximately {early_warning_horizon_hours} hours of warning."
+    return "No near term operational disruption expected."
+
+
+def build_sensor_values(prev_values, scenario):
+    vals = dict(prev_values)
 
     if scenario == "normal":
-        sii = clamp(sii + random.uniform(-0.02, 0.02), 0.08, 0.28)
-        ewma = clamp(ewma + random.uniform(-0.015, 0.015), 0.05, 0.22)
-        velocity = clamp(velocity + random.uniform(-0.015, 0.015), 0.03, 0.18)
-        drift_vector = clamp(drift_vector + random.uniform(-0.015, 0.015), 0.02, 0.16)
-        cpu = clamp(cpu + random.uniform(-4, 4), 18, 58)
-        memory = clamp(memory + random.uniform(-3, 3), 25, 66)
-        confidence = clamp(random.uniform(0.88, 0.96), 0, 1)
-        state = "STABLE"
+        vals["pressure_inlet"] = clamp(vals["pressure_inlet"] + random.uniform(-1.0, 1.0), 59, 65)
+        vals["pressure_outlet"] = clamp(vals["pressure_outlet"] + random.uniform(-1.0, 1.0), 55, 61)
+        vals["flow_rate"] = clamp(vals["flow_rate"] + random.uniform(-5, 5), 118, 136)
+        vals["tank_level"] = clamp(vals["tank_level"] + random.uniform(-1.2, 1.2), 68, 77)
+        vals["quality_index"] = clamp(vals["quality_index"] + random.uniform(-0.8, 0.8), 93, 99)
+        vals["pump_vibration"] = clamp(vals["pump_vibration"] + random.uniform(-0.03, 0.03), 0.16, 0.30)
 
     elif scenario == "degrading":
-        sii = clamp(sii + random.uniform(0.01, 0.045), 0.22, 0.58)
-        ewma = clamp(ewma + random.uniform(0.01, 0.04), 0.16, 0.46)
-        velocity = clamp(velocity + random.uniform(0.005, 0.03), 0.08, 0.34)
-        drift_vector = clamp(drift_vector + random.uniform(0.005, 0.03), 0.07, 0.30)
-        cpu = clamp(cpu + random.uniform(1, 6), 35, 82)
-        memory = clamp(memory + random.uniform(1, 5), 40, 82)
-        confidence = clamp(random.uniform(0.80, 0.91), 0, 1)
-        state = "WATCH" if sii < 0.52 else "ALERT"
+        vals["pressure_inlet"] = clamp(vals["pressure_inlet"] + random.uniform(-2.2, 0.3), 50, 63)
+        vals["pressure_outlet"] = clamp(vals["pressure_outlet"] + random.uniform(-2.5, 0.2), 44, 59)
+        vals["flow_rate"] = clamp(vals["flow_rate"] + random.uniform(-8, 2), 98, 132)
+        vals["tank_level"] = clamp(vals["tank_level"] + random.uniform(-2.2, 0.4), 58, 76)
+        vals["quality_index"] = clamp(vals["quality_index"] + random.uniform(-2.8, 0.2), 82, 97)
+        vals["pump_vibration"] = clamp(vals["pump_vibration"] + random.uniform(0.00, 0.06), 0.20, 0.48)
 
-    else:  # incident
-        sii = clamp(sii + random.uniform(0.02, 0.08), 0.55, 0.98)
-        ewma = clamp(ewma + random.uniform(0.02, 0.07), 0.40, 0.92)
-        velocity = clamp(velocity + random.uniform(0.01, 0.06), 0.22, 0.75)
-        drift_vector = clamp(drift_vector + random.uniform(0.01, 0.06), 0.18, 0.72)
-        cpu = clamp(cpu + random.uniform(2, 10), 60, 98)
-        memory = clamp(memory + random.uniform(2, 9), 58, 98)
-        confidence = clamp(random.uniform(0.84, 0.97), 0, 1)
+    else:
+        vals["pressure_inlet"] = clamp(vals["pressure_inlet"] + random.uniform(-4.5, -1.0), 35, 58)
+        vals["pressure_outlet"] = clamp(vals["pressure_outlet"] + random.uniform(-5.0, -1.5), 28, 54)
+        vals["flow_rate"] = clamp(vals["flow_rate"] + random.uniform(-15, -2), 72, 120)
+        vals["tank_level"] = clamp(vals["tank_level"] + random.uniform(-3.0, 0.2), 48, 72)
+        vals["quality_index"] = clamp(vals["quality_index"] + random.uniform(-5.0, -0.8), 64, 90)
+        vals["pump_vibration"] = clamp(vals["pump_vibration"] + random.uniform(0.03, 0.10), 0.28, 0.85)
+
+    return vals
+
+
+def generate_event(prev):
+    prev_drift = float(prev.get("structural_drift_score", 0.14))
+    prev_stability = float(prev.get("relational_stability_score", 0.92))
+    prev_warning = int(prev.get("early_warning_horizon_hours", 72))
+    prev_values = prev.get("sensor_values", BASE_SENSOR_VALUES)
+
+    sensor_values = build_sensor_values(prev_values, SCENARIO)
+
+    if SCENARIO == "normal":
+        drift = clamp(prev_drift + random.uniform(-0.02, 0.02), 0.08, 0.24)
+        stability = clamp(prev_stability + random.uniform(-0.02, 0.02), 0.86, 0.97)
+        warning = clamp(prev_warning + random.randint(-4, 4), 48, 120)
+        confidence = round(random.uniform(0.90, 0.97), 2)
+        state = "STABLE"
+
+    elif SCENARIO == "degrading":
+        drift = clamp(prev_drift + random.uniform(0.01, 0.05), 0.20, 0.62)
+        stability = clamp(prev_stability + random.uniform(-0.05, -0.01), 0.52, 0.86)
+        warning = clamp(prev_warning + random.randint(-8, -2), 18, 72)
+        confidence = round(random.uniform(0.84, 0.94), 2)
+        state = "WATCH" if drift < 0.50 else "ALERT"
+
+    else:
+        drift = clamp(prev_drift + random.uniform(0.03, 0.08), 0.55, 0.98)
+        stability = clamp(prev_stability + random.uniform(-0.08, -0.03), 0.20, 0.62)
+        warning = clamp(prev_warning + random.randint(-12, -4), 4, 36)
+        confidence = round(random.uniform(0.87, 0.98), 2)
         state = "ALERT"
 
     return {
+        "id": next_id(),
+        "event_type": event_type_for_state(state, SCENARIO),
+        "site_id": random.choice(SITES),
+        "asset_id": random.choice(ASSETS),
+        "timestamp": now_iso(),
         "state": state,
-        "confidence": round(confidence, 2),
-        "sii_score": round(sii, 2),
-        "ewma_score": round(ewma, 2),
-        "velocity": round(velocity, 2),
-        "drift_vector": round(drift_vector, 2),
-        "cpu_usage": round(cpu, 1),
-        "memory_usage": round(memory, 1),
+        "confidence": confidence,
+        "structural_drift_score": round(drift, 2),
+        "relational_stability_score": round(stability, 2),
+        "early_warning_horizon_hours": int(warning),
+        "predicted_impact": predicted_impact(state, int(warning)),
+        "sensor_names": SENSOR_NAMES,
+        "sensor_values": sensor_values,
+        "sensor_quality_flags": {name: "ok" for name in SENSOR_NAMES},
+        "explanation": explanation_for_state(state),
     }
 
 
 def simulator_loop():
     while True:
-        prev = latest_event() or {
-            "sii_score": 0.20,
-            "ewma_score": 0.12,
-            "velocity": 0.08,
-            "drift_vector": 0.06,
-            "cpu_usage": 35.0,
-            "memory_usage": 42.0,
-        }
-
-        metrics = generate_metrics(prev, current_scenario())
-
-        add_event(make_event({
-            "type": "telemetry",
-            "timestamp": now_iso(),
-            **metrics,
-        }))
-
-        time.sleep(2)
+        try:
+            if not PAUSED:
+                prev = latest_event() or {}
+                add_event(generate_event(prev))
+            time.sleep(2)
+        except Exception as e:
+            print("SIMULATOR ERROR:", e)
+            time.sleep(2)
 
 
 class Handler(BaseHTTPRequestHandler):
-    def _send_bytes(self, payload: bytes, content_type: str, status: int = 200):
+    def send_json(self, data, status=200):
+        payload = json.dumps(data).encode("utf-8")
         self.send_response(status)
-        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(payload)))
         self.end_headers()
         self.wfile.write(payload)
 
-    def _send_json(self, data, status: int = 200):
-        payload = json.dumps(data).encode("utf-8")
-        self._send_bytes(payload, "application/json; charset=utf-8", status)
-
-    def _send_file(self, path: Path, content_type: str):
+    def send_file(self, path, content_type):
         if not path.exists() or not path.is_file():
             self.send_error(404, "File not found")
             return
-        self._send_bytes(path.read_bytes(), content_type)
-
-    def log_message(self, format, *args):
-        print("%s - - [%s] %s" % (self.address_string(), self.log_date_time_string(), format % args))
+        data = path.read_bytes()
+        self.send_response(200)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
 
     def do_GET(self):
+        global PAUSED
+
         parsed = urlparse(self.path)
         path = parsed.path
         query = parse_qs(parsed.query)
 
         if path == "/":
-            return self._send_file(STATIC_DIR / "index.html", "text/html; charset=utf-8")
+            return self.send_file(STATIC_DIR / "index.html", "text/html; charset=utf-8")
 
-if path == "/api/scenario":
-    mode = query.get("mode", ["normal"])[0].lower()
-    set_scenario(mode)
-    return self.send_json({"status": "ok", "scenario": SCENARIO})
-
-if path == "/api/pause":
-    global PAUSED
-    PAUSED = True
-    return self.send_json({"status": "ok", "paused": True})
-
-if path == "/api/resume":
-    global PAUSED
-    PAUSED = False
-    return self.send_json({"status": "ok", "paused": False})
-
-if path == "/api/reset":
-    reset_demo()
-    return self.send_json({"status": "ok"})
         if path == "/static/styles.css":
-            return self._send_file(STATIC_DIR / "styles.css", "text/css; charset=utf-8")
+            return self.send_file(STATIC_DIR / "styles.css", "text/css; charset=utf-8")
 
         if path == "/static/app.js":
-            return self._send_file(STATIC_DIR / "app.js", "application/javascript; charset=utf-8")
+            return self.send_file(STATIC_DIR / "app.js", "application/javascript; charset=utf-8")
 
         if path == "/api/events":
-            return self._send_json(EVENTS)
+            return self.send_json(EVENTS)
 
         if path == "/api/status":
-            latest = latest_event()
-            payload = {
+            latest = latest_event() or {}
+            return self.send_json({
                 "connected": True,
-                "scenario": current_scenario(),
+                "scenario": SCENARIO,
+                "paused": PAUSED,
                 "events_tracked": len(EVENTS),
-                "state": latest.get("state", "UNKNOWN") if latest else "UNKNOWN",
-                "confidence": latest.get("confidence", 0) if latest else 0,
-                "sii_score": latest.get("sii_score", 0) if latest else 0,
-                "ewma_score": latest.get("ewma_score", 0) if latest else 0,
-                "velocity": latest.get("velocity", 0) if latest else 0,
-                "drift_vector": latest.get("drift_vector", 0) if latest else 0,
-                "cpu_usage": latest.get("cpu_usage", 0) if latest else 0,
-                "memory_usage": latest.get("memory_usage", 0) if latest else 0,
-                "last_timestamp": latest.get("timestamp", "None") if latest else "None",
-            }
-            return self._send_json(payload)
+                "state": latest.get("state", "UNKNOWN"),
+                "site_id": latest.get("site_id", "-"),
+                "asset_id": latest.get("asset_id", "-"),
+                "confidence": latest.get("confidence", 0),
+                "structural_drift_score": latest.get("structural_drift_score", 0),
+                "relational_stability_score": latest.get("relational_stability_score", 0),
+                "early_warning_horizon_hours": latest.get("early_warning_horizon_hours", 0),
+                "predicted_impact": latest.get("predicted_impact", ""),
+                "explanation": latest.get("explanation", ""),
+                "last_timestamp": latest.get("timestamp", "None"),
+            })
 
         if path == "/api/scenario":
-            scenario = query.get("mode", ["normal"])[0].lower()
-            set_scenario(scenario)
-            return self._send_json({"status": "ok", "scenario": current_scenario()})
+            mode = query.get("mode", ["normal"])[0].lower()
+            set_scenario(mode)
+            return self.send_json({"status": "ok", "scenario": SCENARIO})
+
+        if path == "/api/pause":
+            PAUSED = True
+            return self.send_json({"status": "ok", "paused": True})
+
+        if path == "/api/resume":
+            PAUSED = False
+            return self.send_json({"status": "ok", "paused": False})
+
+        if path == "/api/reset":
+            reset_demo()
+            return self.send_json({"status": "ok"})
 
         if path == "/favicon.ico":
             self.send_response(204)
@@ -227,50 +310,14 @@ if path == "/api/reset":
 
         self.send_error(404, "Not found")
 
-    def do_POST(self):
-        path = urlparse(self.path).path
-
-        if path == "/api/ingest":
-            content_length = int(self.headers.get("Content-Length", 0))
-            body = self.rfile.read(content_length)
-
-            try:
-                payload = json.loads(body.decode("utf-8"))
-                if not isinstance(payload, dict):
-                    return self._send_json({"error": "JSON body must be an object"}, 400)
-
-                event = make_event(payload)
-                add_event(event)
-                return self._send_json({"status": "ok", "event": event}, 200)
-
-            except json.JSONDecodeError:
-                return self._send_json({"error": "Invalid JSON"}, 400)
-
-            except Exception as e:
-                return self._send_json({"error": str(e)}, 400)
-
-        self.send_error(404, "Not found")
+    def log_message(self, format, *args):
+        print("%s - - [%s] %s" % (self.address_string(), self.log_date_time_string(), format % args))
 
 
 if __name__ == "__main__":
-    add_event(make_event({
-        "type": "startup",
-        "timestamp": now_iso(),
-        "state": "STABLE",
-        "confidence": 0.91,
-        "sii_score": 0.22,
-        "ewma_score": 0.14,
-        "velocity": 0.09,
-        "drift_vector": 0.07,
-        "cpu_usage": 34.0,
-        "memory_usage": 41.0,
-    }))
-
-    sim_thread = threading.Thread(target=simulator_loop, daemon=True)
-    sim_thread.start()
-
+    reset_demo()
+    threading.Thread(target=simulator_loop, daemon=True).start()
     server = HTTPServer(("0.0.0.0", 8000), Handler)
-    print("NERAIUM INVESTOR DEMO ACTIVE")
+    print("NERAIUM SII DEMO ACTIVE")
     print("Server running at http://0.0.0.0:8000")
-    print("Scenarios: normal | degrading | incident")
     server.serve_forever()
