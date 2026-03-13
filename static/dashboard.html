@@ -226,258 +226,263 @@
     </div>
   </div>
 
-  <script>
-    const cpuChart = new Chart(document.getElementById("cpuChart"), {
-      type: "line",
-      data: {
-        labels: [],
-        datasets: [{
-          label: "CPU",
+<script>
+  const cpuChart = new Chart(document.getElementById("cpuChart"), {
+    type: "line",
+    data: {
+      labels: [],
+      datasets: [{
+        label: "CPU",
+        data: [],
+        borderWidth: 2,
+        borderColor: "#3b82f6",
+        backgroundColor: "rgba(59, 130, 246, 0.1)",
+        tension: 0.4,
+        fill: true
+      }]
+    },
+    options: {
+      responsive: true,
+      animation: false,
+      plugins: { legend: { display: false } },
+      scales: { y: { min: 0, max: 100 } }
+    }
+  });
+
+  const memChart = new Chart(document.getElementById("memChart"), {
+    type: "line",
+    data: {
+      labels: [],
+      datasets: [{
+        label: "Memory",
+        data: [],
+        borderWidth: 2,
+        borderColor: "#8b5cf6",
+        backgroundColor: "rgba(139, 92, 246, 0.1)",
+        tension: 0.4,
+        fill: true
+      }]
+    },
+    options: {
+      responsive: true,
+      animation: false,
+      plugins: { legend: { display: false } },
+      scales: { y: { min: 0, max: 100 } }
+    }
+  });
+
+  const scoreChart = new Chart(document.getElementById("scoreChart"), {
+    type: "line",
+    data: {
+      labels: [],
+      datasets: [{
+        label: "Score",
+        data: [],
+        borderWidth: 2,
+        borderColor: "#ec4899",
+        backgroundColor: "rgba(236, 72, 153, 0.1)",
+        tension: 0.4,
+        fill: true
+      }]
+    },
+    options: {
+      responsive: true,
+      animation: false,
+      plugins: { legend: { display: false } },
+      scales: { y: { min: 0, max: 100 } }
+    }
+  });
+
+  const relationshipChart = new Chart(document.getElementById("relationshipChart"), {
+    type: "scatter",
+    data: {
+      datasets: [
+        {
+          label: "Normal",
           data: [],
-          borderWidth: 2,
-          borderColor: "#3b82f6",
-          backgroundColor: "rgba(59, 130, 246, 0.1)",
-          tension: 0.4,
-          fill: true
-        }]
-      },
-      options: {
-        responsive: true,
-        animation: false,
-        plugins: { legend: { display: false } },
-        scales: {
-          y: { min: 0, max: 100 }
-        }
-      }
-    });
-
-    const memChart = new Chart(document.getElementById("memChart"), {
-      type: "line",
-      data: {
-        labels: [],
-        datasets: [{
-          label: "Memory",
+          backgroundColor: "rgba(34, 197, 94, 0.6)",
+          borderColor: "#22c55e"
+        },
+        {
+          label: "Anomaly",
           data: [],
-          borderWidth: 2,
-          borderColor: "#8b5cf6",
-          backgroundColor: "rgba(139, 92, 246, 0.1)",
-          tension: 0.4,
-          fill: true
-        }]
-      },
-      options: {
-        responsive: true,
-        animation: false,
-        plugins: { legend: { display: false } },
-        scales: {
-          y: { min: 0, max: 100 }
+          backgroundColor: "rgba(239, 68, 68, 0.6)",
+          borderColor: "#ef4444"
         }
-      }
-    });
-
-    const scoreChart = new Chart(document.getElementById("scoreChart"), {
-      type: "line",
-      data: {
-        labels: [],
-        datasets: [{
-          label: "Score",
-          data: [],
-          borderWidth: 2,
-          borderColor: "#ec4899",
-          backgroundColor: "rgba(236, 72, 153, 0.1)",
-          tension: 0.4,
-          fill: true
-        }]
-      },
-      options: {
-        responsive: true,
-        animation: false,
-        plugins: { legend: { display: false } },
-        scales: {
-          y: { min: 0, max: 100 }
-        }
-      }
-    });
-
-    const relationshipChart = new Chart(document.getElementById("relationshipChart"), {
-      type: "scatter",
-      data: {
-        datasets: [
-          {
-            label: "Normal",
-            data: [],
-            backgroundColor: "rgba(34, 197, 94, 0.6)",
-            borderColor: "#22c55e"
-          },
-          {
-            label: "Anomaly",
-            data: [],
-            backgroundColor: "rgba(239, 68, 68, 0.6)",
-            borderColor: "#ef4444"
-          }
-        ]
-      },
-      options: {
-        responsive: true,
-        animation: false,
-        scales: {
-          x: {
-            min: 0,
-            max: 100,
-            title: { display: true, text: "CPU %" }
-          },
-          y: {
-            min: 0,
-            max: 100,
-            title: { display: true, text: "Memory %" }
-          }
-        }
-      }
-    });
-
-    let mockEvents = [];
-
-    function generateMockEvent() {
-      const cpu = Math.round((20 + Math.random() * 60) * 10) / 10;
-      const memory = Math.round((30 + Math.random() * 50) * 10) / 10;
-      const score = Math.round((cpu * 0.45 + memory * 0.35 + Math.random() * 20));
-
-      let status = "normal";
-      if (score > 80 || cpu > 78 || memory > 82) {
-        status = "anomaly";
-      } else if (score > 65) {
-        status = "watch";
-      }
-
-      return {
-        timestamp: new Date().toISOString(),
-        status,
-        score: Math.min(score, 100),
-        signals: {
-          cpu_usage: cpu,
-          memory_usage: memory
-        }
-      };
-    }
-
-    for (let i = 0; i < 15; i++) {
-      mockEvents.push(generateMockEvent());
-    }
-
-    function shortTime(ts) {
-      try {
-        return new Date(ts).toLocaleTimeString();
-      } catch {
-        return ts;
+      ]
+    },
+    options: {
+      responsive: true,
+      animation: false,
+      scales: {
+        x: { min: 0, max: 100, title: { display: true, text: "CPU %" } },
+        y: { min: 0, max: 100, title: { display: true, text: "Memory %" } }
       }
     }
+  });
 
-    function updateStatusDisplay(event) {
-      const statusEl = document.getElementById("status-text");
-      const indicator = document.querySelector(".status-indicator");
+  function shortTime(ts) {
+    try {
+      return new Date(ts).toLocaleTimeString();
+    } catch {
+      return ts;
+    }
+  }
 
-      statusEl.textContent = event.status || "unknown";
+  function normalizeStatus(event) {
+    const raw = String(event.state || event.status || "unknown").toLowerCase();
+    if (raw === "alert" || raw === "anomaly") return "anomaly";
+    if (raw === "watch") return "watch";
+    return "normal";
+  }
 
-      if (event.status === "anomaly") {
-        indicator.className = "status-indicator status-bad";
-      } else if (event.status === "watch") {
-        indicator.className = "status-indicator status-watch";
-      } else {
-        indicator.className = "status-indicator status-ok";
-      }
+  function cpuFromEvent(event) {
+    if (event.signals && typeof event.signals.cpu_usage === "number") {
+      return event.signals.cpu_usage;
+    }
+    if (typeof event.cpu_usage === "number") {
+      return event.cpu_usage;
+    }
+    const fallback = Number(event.velocity ?? 0) * 100;
+    return Math.max(0, Math.min(100, fallback));
+  }
 
-      document.getElementById("latest-score").textContent =
-        "Score: " + String(event.score ?? "--");
+  function memFromEvent(event) {
+    if (event.signals && typeof event.signals.memory_usage === "number") {
+      return event.signals.memory_usage;
+    }
+    if (typeof event.memory_usage === "number") {
+      return event.memory_usage;
+    }
+    const fallback = Number(event.drift_vector ?? 0) * 100;
+    return Math.max(0, Math.min(100, fallback));
+  }
 
-      document.getElementById("latest-time").textContent =
-        "Time: " + shortTime(event.timestamp);
+  function scoreFromEvent(event) {
+    if (typeof event.score === "number") {
+      return event.score;
+    }
+    if (typeof event.sii_score === "number") {
+      return Math.round(event.sii_score * 100);
+    }
+    return 0;
+  }
+
+  function updateStatusDisplay(event, totalEvents, totalAnomalies) {
+    const status = normalizeStatus(event);
+    const statusEl = document.getElementById("status-text");
+    const indicator = document.querySelector(".status-indicator");
+
+    statusEl.textContent = status;
+
+    if (status === "anomaly") {
+      indicator.className = "status-indicator status-bad";
+    } else if (status === "watch") {
+      indicator.className = "status-indicator status-watch";
+    } else {
+      indicator.className = "status-indicator status-ok";
     }
 
-    function refreshDashboard() {
-      try {
-        if (mockEvents.length > 50) {
-          mockEvents.shift();
-        }
+    document.getElementById("latest-score").textContent =
+      "Score: " + String(scoreFromEvent(event) ?? "--");
 
-        mockEvents.push(generateMockEvent());
+    document.getElementById("latest-time").textContent =
+      "Time: " + shortTime(event.timestamp);
 
-        const events = mockEvents;
-        const anomalies = mockEvents.filter(e => e.status === "anomaly");
-        const latestData = mockEvents[mockEvents.length - 1];
+    document.getElementById("total-events").textContent = totalEvents;
+    document.getElementById("total-anomalies").textContent = totalAnomalies;
+    document.getElementById("connection-pill").textContent = "Live API connected";
+  }
 
-        document.getElementById("total-events").textContent = events.length;
-        document.getElementById("total-anomalies").textContent = anomalies.length;
+  async function refreshDashboard() {
+    try {
+      const [eventsRes, statusRes] = await Promise.all([
+        fetch("/api/events", { cache: "no-store" }),
+        fetch("/api/status", { cache: "no-store" })
+      ]);
 
-        if (latestData) {
-          updateStatusDisplay(latestData);
-          document.getElementById("latest-event").textContent =
-            JSON.stringify(latestData, null, 2);
-        } else {
-          document.getElementById("status-text").textContent = "No data";
-          document.querySelector(".status-indicator").className = "status-indicator";
-          document.getElementById("latest-score").textContent = "Score: --";
-          document.getElementById("latest-time").textContent = "Time: --";
-          document.getElementById("latest-event").textContent = "No events yet";
-        }
+      if (!eventsRes.ok || !statusRes.ok) {
+        throw new Error("API request failed");
+      }
 
-        const labels = events.map(e => shortTime(e.timestamp));
-        const cpu = events.map(e => e.signals?.cpu_usage ?? 0);
-        const mem = events.map(e => e.signals?.memory_usage ?? 0);
-        const score = events.map(e => e.score ?? 0);
+      const events = await eventsRes.json();
+      const status = await statusRes.json();
 
-        cpuChart.data.labels = labels;
-        cpuChart.data.datasets[0].data = cpu;
-        cpuChart.update();
+      const safeEvents = Array.isArray(events) ? events : [];
+      const anomalies = safeEvents.filter(e => {
+        const s = normalizeStatus(e);
+        return s === "anomaly";
+      });
 
-        memChart.data.labels = labels;
-        memChart.data.datasets[0].data = mem;
-        memChart.update();
+      const latestEvent = safeEvents.length ? safeEvents[safeEvents.length - 1] : null;
 
-        scoreChart.data.labels = labels;
-        scoreChart.data.datasets[0].data = score;
-        scoreChart.update();
-
-        relationshipChart.data.datasets[0].data = events
-          .filter(e => e.status === "normal" || e.status === "watch")
-          .map(e => ({
-            x: e.signals?.cpu_usage ?? 0,
-            y: e.signals?.memory_usage ?? 0
-          }));
-
-        relationshipChart.data.datasets[1].data = events
-          .filter(e => e.status === "anomaly")
-          .map(e => ({
-            x: e.signals?.cpu_usage ?? 0,
-            y: e.signals?.memory_usage ?? 0
-          }));
-
-        relationshipChart.update();
-
-        const list = document.getElementById("anomaly-list");
-        list.innerHTML = "";
-
-        if (!anomalies.length) {
-          const li = document.createElement("li");
-          li.textContent = "No anomalies yet";
-          list.appendChild(li);
-        } else {
-          anomalies.slice().reverse().slice(0, 10).forEach(e => {
-            const li = document.createElement("li");
-            li.textContent = shortTime(e.timestamp) + "  score=" + e.score;
-            list.appendChild(li);
-          });
-        }
-      } catch (err) {
+      if (latestEvent) {
+        updateStatusDisplay(latestEvent, safeEvents.length, anomalies.length);
         document.getElementById("latest-event").textContent =
-          "Dashboard error: " + err.message;
-        console.error(err);
+          JSON.stringify(latestEvent, null, 2);
+      } else {
+        document.getElementById("status-text").textContent = status.state || "No data";
+        document.querySelector(".status-indicator").className = "status-indicator";
+        document.getElementById("latest-score").textContent = "Score: --";
+        document.getElementById("latest-time").textContent = "Time: --";
+        document.getElementById("latest-event").textContent = "No events yet";
+        document.getElementById("total-events").textContent = "0";
+        document.getElementById("total-anomalies").textContent = "0";
       }
+
+      const labels = safeEvents.map(e => shortTime(e.timestamp));
+      const cpu = safeEvents.map(cpuFromEvent);
+      const mem = safeEvents.map(memFromEvent);
+      const score = safeEvents.map(scoreFromEvent);
+
+      cpuChart.data.labels = labels;
+      cpuChart.data.datasets[0].data = cpu;
+      cpuChart.update();
+
+      memChart.data.labels = labels;
+      memChart.data.datasets[0].data = mem;
+      memChart.update();
+
+      scoreChart.data.labels = labels;
+      scoreChart.data.datasets[0].data = score;
+      scoreChart.update();
+
+      relationshipChart.data.datasets[0].data = safeEvents
+        .filter(e => normalizeStatus(e) !== "anomaly")
+        .map(e => ({ x: cpuFromEvent(e), y: memFromEvent(e) }));
+
+      relationshipChart.data.datasets[1].data = safeEvents
+        .filter(e => normalizeStatus(e) === "anomaly")
+        .map(e => ({ x: cpuFromEvent(e), y: memFromEvent(e) }));
+
+      relationshipChart.update();
+
+      const list = document.getElementById("anomaly-list");
+      list.innerHTML = "";
+
+      if (!anomalies.length) {
+        const li = document.createElement("li");
+        li.textContent = "No anomalies yet";
+        list.appendChild(li);
+      } else {
+        anomalies.slice().reverse().slice(0, 10).forEach(e => {
+          const li = document.createElement("li");
+          li.textContent = shortTime(e.timestamp) + "  score=" + scoreFromEvent(e);
+          list.appendChild(li);
+        });
+      }
+    } catch (err) {
+      document.getElementById("latest-event").textContent =
+        "Dashboard error: " + err.message;
+      document.getElementById("connection-pill").textContent = "API disconnected";
+      console.error(err);
     }
+  }
 
-    document.getElementById("refresh-btn").addEventListener("click", refreshDashboard);
+  document.getElementById("refresh-btn").addEventListener("click", refreshDashboard);
 
-    refreshDashboard();
-    setInterval(refreshDashboard, 2000);
-  </script>
+  refreshDashboard();
+  setInterval(refreshDashboard, 2000);
+</script>
 </body>
 </html>
