@@ -48,7 +48,7 @@ def subsystem_spectral_measures(corr: ArrayLike, threshold: float = 0.7) -> dict
     matrix = np.asarray(corr, dtype=float)
     components = discover_subsystems(matrix, threshold=threshold)
     if not components:
-        return {"subsystem_count": 0.0, "max_subsystem_radius": 0.0, "subsystem_instability": 0.0}
+        return {"subsystem_count": 0.0, "max_subsystem_radius": 0.0, "subsystem_instability": 0.0, "max_instability": 0.0}
 
     radii = []
     for component in components:
@@ -60,4 +60,5 @@ def subsystem_spectral_measures(corr: ArrayLike, threshold: float = 0.7) -> dict
         "subsystem_count": float(len(components)),
         "max_subsystem_radius": max_radius,
         "subsystem_instability": max_radius,
+        "max_instability": max_radius,
     }

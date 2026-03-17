@@ -42,5 +42,6 @@ def directional_metrics(matrix: ArrayLike) -> dict[str, float]:
         "causal_energy": energy,
         "causal_asymmetry": asymmetry,
         "causal_divergence": divergence,
+        "divergence": divergence,
         "proxy_only": 1.0,
     }
