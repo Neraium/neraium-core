@@ -27,3 +27,13 @@ def spectral_gap(matrix: ArrayLike) -> float:
     if eigenvalues.size < 2:
         return 0.0
     return float(eigenvalues[0] - eigenvalues[1])
+
+
+def dominant_mode_loadings(matrix: ArrayLike) -> np.ndarray:
+    """Return normalized absolute loadings for the dominant eigenvector."""
+    _, eigenvectors = eigendecomposition(matrix)
+    dominant = np.abs(eigenvectors[:, 0])
+    total = float(dominant.sum())
+    if total <= 0:
+        return np.zeros_like(dominant)
+    return dominant / total

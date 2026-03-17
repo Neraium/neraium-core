@@ -41,3 +41,26 @@ def relational_structure(corr: ArrayLike) -> dict[str, np.ndarray | float]:
         "centrality": centrality,
         "relational_energy": relational_energy,
     }
+
+
+def relational_drift(current_corr: ArrayLike, baseline_corr: ArrayLike) -> dict[str, float]:
+    """Measure baseline-relative drift between two correlation structures."""
+    current = np.asarray(current_corr, dtype=float)
+    baseline = np.asarray(baseline_corr, dtype=float)
+    if current.shape != baseline.shape:
+        raise ValueError("Current and baseline correlation matrices must share shape")
+
+    delta = current - baseline
+    fro_norm = float(np.linalg.norm(delta, ord="fro"))
+    mean_abs = float(np.mean(np.abs(delta)))
+    max_abs = float(np.max(np.abs(delta)))
+
+    baseline_scale = float(np.linalg.norm(baseline, ord="fro"))
+    relative_drift = fro_norm / baseline_scale if baseline_scale > 0 else fro_norm
+
+    return {
+        "frobenius_drift": fro_norm,
+        "mean_abs_drift": mean_abs,
+        "max_abs_drift": max_abs,
+        "relative_drift": relative_drift,
+    }

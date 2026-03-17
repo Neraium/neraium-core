@@ -4,10 +4,11 @@ from typing import Dict, List, Optional
 
 import numpy as np
 
-from neraium_core.directional import directional_metrics, lagged_correlation_matrix
+from neraium_core.directional import directional_metrics, lagged_directional_matrix
 from neraium_core.early_warning import early_warning_metrics
 from neraium_core.entropy import interaction_entropy
-from neraium_core.geometry import correlation_matrix
+from neraium_core.forecasting import instability_trend, time_to_instability
+from neraium_core.geometry import correlation_matrix, relational_drift
 from neraium_core.scoring import composite_instability_score
 from neraium_core.spectral import spectral_gap, spectral_radius
 from neraium_core.subsystems import subsystem_spectral_measures
@@ -20,6 +21,7 @@ class StructuralEngine:
         self.frames = deque(maxlen=500)
         self.sensor_order: List[str] = []
         self.latest_result: Optional[Dict] = None
+        self._instability_history = deque(maxlen=60)
 
     def _vector_from_frame(self, frame: Dict) -> np.ndarray:
         sensor_values = frame["sensor_values"]
@@ -145,24 +147,45 @@ class StructuralEngine:
 
         if len(self.frames) >= max(self.recent_window, 3):
             recent_vectors = np.vstack([f["_vector"] for f in list(self.frames)[-self.recent_window :]])
+            baseline_vectors = np.vstack([f["_vector"] for f in list(self.frames)[: self.baseline_window]])
+
             corr = correlation_matrix(recent_vectors)
-            directional = directional_metrics(lagged_correlation_matrix(recent_vectors, lag=1))
+            baseline_corr = correlation_matrix(baseline_vectors)
+            drift = relational_drift(corr, baseline_corr)
+            directional = directional_metrics(lagged_directional_matrix(recent_vectors, lag=1))
             warning = early_warning_metrics(recent_vectors)
             subsystem = subsystem_spectral_measures(corr)
 
+            trend = instability_trend(self._instability_history)
+            tti = time_to_instability(self._instability_history, threshold=3.0)
+            forecast_value = max(0.0, trend) + (0.0 if tti is None else (1.0 / (1.0 + tti)))
+
             components = {
-                "drift": float(drift_score),
+                "relational_drift": drift["relative_drift"],
                 "spectral": spectral_radius(corr) + max(0.0, 1.0 - spectral_gap(corr)),
-                "directional": directional["causal_divergence"],
+                "directional_divergence": directional["causal_divergence"],
                 "entropy": interaction_entropy(corr),
-                "early_warning": warning["variance"] + max(0.0, warning["lag1_autocorrelation"]),
+                "early_warning": warning["critical_slowing_indicator"],
                 "subsystem_instability": subsystem["subsystem_instability"],
+                "forecast": forecast_value,
             }
+            composite_score = composite_instability_score(components)
+            self._instability_history.append(composite_score)
+
             result["experimental_analytics"] = {
+                "relational_drift": drift,
                 "directional": directional,
-                "early_warning": warning,
+                "early_warning": {
+                    "variance": warning["variance"],
+                    "lag1_autocorrelation": warning["lag1_autocorrelation"],
+                    "critical_slowing_indicator": warning["critical_slowing_indicator"],
+                },
                 "subsystems": subsystem,
-                "composite_instability": round(composite_instability_score(components), 4),
+                "forecast": {
+                    "instability_trend": trend,
+                    "time_to_instability": tti,
+                },
+                "composite_instability": round(composite_score, 4),
             }
 
         self.latest_result = result

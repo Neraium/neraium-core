@@ -13,7 +13,7 @@ def instability_trend(history: Iterable[float]) -> float:
     return float(np.polyfit(x, values, 1)[0])
 
 
-def smooth_drift_velocity(history: Iterable[float], window: int = 3) -> float:
+def drift_velocity_smoothing(history: Iterable[float], window: int = 3) -> float:
     values = np.asarray(list(history), dtype=float)
     if values.size < 2:
         return 0.0
@@ -24,12 +24,17 @@ def smooth_drift_velocity(history: Iterable[float], window: int = 3) -> float:
     return float(np.mean(diffs[-span:]))
 
 
+def smooth_drift_velocity(history: Iterable[float], window: int = 3) -> float:
+    """Backward compatible alias for drift_velocity_smoothing."""
+    return drift_velocity_smoothing(history, window=window)
+
+
 def time_to_instability(history: Iterable[float], threshold: float) -> float | None:
     values = np.asarray(list(history), dtype=float)
     if values.size == 0:
         return None
 
-    velocity = smooth_drift_velocity(values)
+    velocity = drift_velocity_smoothing(values)
     if velocity <= 0:
         return None
 

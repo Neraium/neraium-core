@@ -8,7 +8,7 @@ import numpy as np
 ArrayLike = Any
 
 
-def lagged_correlation_matrix(observations: ArrayLike, lag: int = 1) -> np.ndarray:
+def lagged_directional_matrix(observations: ArrayLike, lag: int = 1) -> np.ndarray:
     data = np.asarray(observations, dtype=float)
     if data.ndim != 2:
         raise ValueError("Expected 2D observations")
@@ -27,6 +27,22 @@ def lagged_correlation_matrix(observations: ArrayLike, lag: int = 1) -> np.ndarr
     return np.nan_to_num(result, nan=0.0, posinf=0.0, neginf=0.0)
 
 
+def lagged_correlation_matrix(observations: ArrayLike, lag: int = 1) -> np.ndarray:
+    """Backward compatible alias for lagged directional matrix."""
+    return lagged_directional_matrix(observations, lag=lag)
+
+
+def likely_failure_origin(matrix: ArrayLike) -> int:
+    directional = np.asarray(matrix, dtype=float)
+    if directional.ndim != 2 or directional.shape[0] != directional.shape[1]:
+        raise ValueError("Directional matrix must be square")
+
+    outbound = np.sum(np.abs(directional), axis=1)
+    inbound = np.sum(np.abs(directional), axis=0)
+    asymmetry = outbound - inbound
+    return int(np.argmax(asymmetry))
+
+
 def directional_metrics(matrix: ArrayLike) -> dict[str, float]:
     lagged = np.asarray(matrix, dtype=float)
     if lagged.ndim != 2 or lagged.shape[0] != lagged.shape[1]:
@@ -41,4 +57,5 @@ def directional_metrics(matrix: ArrayLike) -> dict[str, float]:
         "causal_energy": energy,
         "causal_asymmetry": asymmetry,
         "causal_divergence": divergence,
+        "likely_failure_origin": float(likely_failure_origin(lagged)),
     }
