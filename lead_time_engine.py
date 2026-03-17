@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from collections import deque, defaultdict
 from dataclasses import dataclass
-from typing import Deque, Dict, List, Mapping, Optional, Tuple
+from typing import Deque, Dict, List, Optional, Tuple
 import math
 import numpy as np
 
