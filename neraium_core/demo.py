@@ -48,22 +48,23 @@ def _trend_arrow(history: deque[float], lookback: int = 8) -> str:
         return "→"
 
     recent = list(history)[-lookback:]
-    half = max(len(recent) // 2, 1)
-    early_avg = float(np.mean(recent[:half]))
-    late_avg = float(np.mean(recent[half:]))
-    delta = late_avg - early_avg
+    x = np.arange(len(recent), dtype=float)
+    slope, _ = np.polyfit(x, np.asarray(recent, dtype=float), 1)
+    threshold = max(0.04, 0.03 * float(np.mean(recent)))
 
-    if delta > 0.03:
+    if slope > threshold:
         return "↑"
-    if delta < -0.03:
+    if slope < -threshold:
         return "↓"
     return "→"
 
 
 def _risk_and_message(drift: float, instability: float, trend: str) -> tuple[str, str]:
-    if drift >= 1.8 and instability >= 1.0 and trend == "↑":
-        return "HIGH", "System entering unstable regime"
-    if drift >= 0.9 or instability >= 0.65 or trend == "↑":
+    if drift >= 4.0 or instability >= 2.6 or (drift >= 3.4 and instability >= 2.1 and trend != "↓"):
+        return "HIGH", "System unstable: intervention recommended"
+    if drift >= 2.0 or instability >= 1.2 or trend == "↑":
+        if trend == "↑":
+            return "MEDIUM", "Instability increasing; investigate drift"
         return "MEDIUM", "Structural relationships shifting"
     return "LOW", "System stable"
 
