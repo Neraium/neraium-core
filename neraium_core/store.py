@@ -1,10 +1,14 @@
 from __future__ import annotations
 
 import json
+import logging
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+
+logger = logging.getLogger(__name__)
 
 
 def _utc_now() -> str:
@@ -47,11 +51,13 @@ class ResultStore:
             )
 
     def reset(self) -> None:
+        logger.info("persistence reset db_path=%s", self.db_path)
         with self._conn() as conn:
             conn.execute("DELETE FROM events")
             conn.execute("DELETE FROM results")
 
     def save_result(self, result: dict[str, Any]) -> None:
+        logger.info("persistence write result db_path=%s", self.db_path)
         with self._conn() as conn:
             conn.execute(
                 "INSERT INTO results (created_at, result_json) VALUES (?, ?)",
@@ -68,6 +74,7 @@ class ResultStore:
         return json.loads(row["result_json"])
 
     def save_event(self, payload: dict[str, Any], result: dict[str, Any]) -> None:
+        logger.info("persistence write event db_path=%s", self.db_path)
         with self._conn() as conn:
             conn.execute(
                 """
