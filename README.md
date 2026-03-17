@@ -104,6 +104,18 @@ This helps reveal structural change earlier in the degradation path.
 - Regime awareness is currently a minimal scaffold using a signature vector `[mu_1..mu_n, sigma_1..sigma_n]` with nearest-signature lookup.
 - Forecasting is heuristic extrapolation based on instability trend and velocity (time-to-instability estimate), not a guaranteed failure-time predictor.
 
+
+## Signal Evaluation (Current)
+
+Neraium currently includes a temporary, explicit decision layer that interprets raw SII outputs for operator-facing signaling.
+
+- It is **rule-based and deterministic**: no learned model, no opaque weighting.
+- It evaluates recent `composite_instability`, `structural_drift_score`, and `phase` progression to decide whether to emit a signal.
+- It suppresses noisy patterns (for example, sharp instability spike-and-drop behavior or unstable/stable oscillation).
+- It returns structured decision output (`signal_emitted`, `signal_strength`, `confidence`, `reason`, `phase`, `risk_level`) for clear downstream reporting.
+
+This layer is temporary and will be replaced when formal interpretive governance is implemented.
+
 ## Planned Future Extensions
 
 Interpretive governance and formal assurance layers are planned for a later funded phase.
