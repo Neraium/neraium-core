@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 from typing import Any
 
 from fastapi import Depends, FastAPI, Header, HTTPException, status
@@ -30,6 +31,18 @@ class HealthResponse(BaseModel):
     version: str
     latest_result_exists: bool
     auth_configured: bool
+    persistence_available: bool
+
+
+def _persistence_available(db_path: str) -> bool:
+    try:
+        db_file = Path(db_path)
+        db_file.parent.mkdir(parents=True, exist_ok=True)
+        with db_file.open("a", encoding="utf-8"):
+            pass
+        return True
+    except OSError:
+        return False
 
 
 def is_api_key_valid(configured_key: str | None, provided_key: str | None) -> bool:
@@ -43,6 +56,7 @@ def create_app(service: StructuralMonitoringService | None = None) -> FastAPI:
     db_path = os.getenv("NERAIUM_DB_PATH", "neraium.db")
 
     app = FastAPI(title="Neraium SII API", version="0.1.0")
+    persistence_available = _persistence_available(db_path)
     service_instance = service or StructuralMonitoringService(store=ResultStore(db_path=db_path))
 
     def require_api_key(x_api_key: str | None = Header(default=None)) -> None:
@@ -55,10 +69,11 @@ def create_app(service: StructuralMonitoringService | None = None) -> FastAPI:
     @app.get("/health", response_model=HealthResponse)
     def health() -> HealthResponse:
         return HealthResponse(
-            status="ok",
+            status="ok" if persistence_available else "degraded",
             version=app.version,
             latest_result_exists=service_instance.get_latest_result() is not None,
             auth_configured=bool(api_key),
+            persistence_available=persistence_available,
         )
 
     @app.post("/ingest")
