@@ -9,6 +9,7 @@ from pathlib import Path
 from statistics import mean
 from typing import Any
 
+from neraium_core.decision_layer import evaluate_signal
 from neraium_core.fd004_synthetic import Fd004RiskEscalator
 from neraium_core.fd004_plotting import (
     generate_fd004_subset_plots,
@@ -289,6 +290,10 @@ def run_fd004_real_evaluation(
                 },
             }
         )
+
+        unit_rows = [row for row in all_rows if row["asset_id"] == asset_id]
+        decision = evaluate_signal(unit_rows, unit_summaries[-1])
+        unit_summaries[-1].update(decision)
 
     valid_windows = [
         summary["early_warning_window"]
