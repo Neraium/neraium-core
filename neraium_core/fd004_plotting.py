@@ -12,6 +12,47 @@ PHASE_COLORS = {
 PHASE_ORDER = ("stable", "drift", "unstable")
 
 
+def select_hero_unit(
+    unit_summaries: list[dict[str, Any]],
+    timeseries: list[dict[str, Any]],
+) -> str | None:
+    """Select one presentation-ready unit with clear MEDIUM->HIGH progression and smooth instability."""
+    by_unit: dict[str, list[dict[str, Any]]] = {}
+    for row in timeseries:
+        by_unit.setdefault(str(row.get("asset_id", "")), []).append(row)
+
+    candidates: list[tuple[tuple[int, float, int, float], str]] = []
+    for summary in unit_summaries:
+        asset_id = str(summary.get("asset_id", ""))
+        rows = sorted(by_unit.get(asset_id, []), key=lambda item: int(item.get("cycle", 0)))
+        if not rows:
+            continue
+
+        medium_step = summary.get("first_MEDIUM_step")
+        high_step = summary.get("first_HIGH_step")
+        has_progression = isinstance(medium_step, int) and isinstance(high_step, int) and medium_step < high_step
+
+        instability = [float(row.get("composite_instability", 0.0)) for row in rows]
+        smoothness_penalty = sum(abs(curr - prev) for prev, curr in zip(instability, instability[1:]))
+
+        phases = [str(row.get("phase", "stable")) for row in rows]
+        phase_switches = sum(1 for prev, curr in zip(phases, phases[1:]) if prev != curr)
+        peak_instability = float(summary.get("peak_instability", max(instability) if instability else 0.0))
+
+        # Lower rank is better.
+        rank = (
+            0 if has_progression else 1,
+            smoothness_penalty,
+            phase_switches,
+            -peak_instability,
+        )
+        candidates.append((rank, asset_id))
+
+    if not candidates:
+        return None
+    return sorted(candidates)[0][1]
+
+
 def select_representative_units(
     unit_summaries: list[dict[str, Any]],
     max_units: int = 3,
@@ -82,10 +123,10 @@ def plot_fd004_unit_timeseries(
     for index in range(1, len(cycles)):
         if phases[index] == current_phase:
             continue
-        ax.axvspan(run_start, cycles[index], color=PHASE_COLORS.get(current_phase, "#EFEFEF"), alpha=0.4)
+        ax.axvspan(run_start, cycles[index], color=PHASE_COLORS.get(current_phase, "#EFEFEF"), alpha=0.22)
         run_start = cycles[index]
         current_phase = phases[index]
-    ax.axvspan(run_start, cycles[-1], color=PHASE_COLORS.get(current_phase, "#EFEFEF"), alpha=0.4)
+    ax.axvspan(run_start, cycles[-1], color=PHASE_COLORS.get(current_phase, "#EFEFEF"), alpha=0.22)
 
     drift_line = ax.plot(
         cycles,
@@ -119,7 +160,7 @@ def plot_fd004_unit_timeseries(
         legend_handles.append(rul_line)
 
     phase_handles = [
-        Patch(facecolor=PHASE_COLORS[name], alpha=0.4, edgecolor="none", label=f"Phase: {name}")
+        Patch(facecolor=PHASE_COLORS[name], alpha=0.22, edgecolor="none", label=f"Phase: {name}")
         for name in PHASE_ORDER
     ]
     legend_handles.extend(phase_handles)
@@ -136,6 +177,35 @@ def plot_fd004_unit_timeseries(
     fig.savefig(output, dpi=160)
     plt.close(fig)
 
+
+
+
+def generate_fd004_hero_plot(
+    timeseries: list[dict[str, Any]],
+    unit_summaries: list[dict[str, Any]],
+    *,
+    output_path: str | Path,
+    include_rul_curve: bool = True,
+) -> tuple[str | None, bool]:
+    """Generate a single hero plot and return selected unit id and plot status."""
+    hero_asset_id = select_hero_unit(unit_summaries, timeseries)
+    if not hero_asset_id:
+        return None, False
+
+    print(f"Selected hero unit: {hero_asset_id}")
+    hero_rows = [row for row in timeseries if str(row.get("asset_id", "")) == hero_asset_id]
+    try:
+        plot_fd004_unit_timeseries(
+            hero_rows,
+            output_path,
+            include_rul_curve=include_rul_curve,
+            title="Structural Degradation Progression (SII)",
+        )
+    except ImportError as exc:
+        print(f"Skipping hero FD004 plot because matplotlib is unavailable: {exc}")
+        return hero_asset_id, False
+
+    return hero_asset_id, True
 
 def generate_fd004_subset_plots(
     timeseries: list[dict[str, Any]],
