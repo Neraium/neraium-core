@@ -46,8 +46,8 @@ def test_ingest_malformed_payload_returns_422(tmp_path) -> None:
         },
     )
 
-    # FastAPI/Pydantic rejects payloads that fail request-schema validation
-    # before endpoint logic executes, so malformed body types return 422.
+    # 422 = FastAPI/Pydantic schema validation before handler execution.
+    # 400 = service/business validation after request passes schema validation.
     assert response.status_code == 422
     assert response.status_code != 500
     assert "sensor_values" in str(response.json()["detail"])

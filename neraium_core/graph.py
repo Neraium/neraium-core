@@ -17,7 +17,7 @@ def thresholded_adjacency(corr: ArrayLike, threshold: float = 0.6) -> np.ndarray
     return adj
 
 
-def graph_metrics(adjacency: ArrayLike) -> dict[str, float]:
+def graph_metrics(adjacency: ArrayLike, corr: ArrayLike | None = None) -> dict[str, float]:
     adj = np.asarray(adjacency, dtype=float)
     if adj.ndim != 2 or adj.shape[0] != adj.shape[1]:
         raise ValueError("Adjacency matrix must be square")
@@ -31,8 +31,22 @@ def graph_metrics(adjacency: ArrayLike) -> dict[str, float]:
     triplets = float(np.sum(degree * (degree - 1)) / 2.0)
     clustering = float((3.0 * triangles / triplets) if triplets > 0 else 0.0)
 
-    return {
+    connected = 0.0
+    if n:
+        reachability = np.linalg.matrix_power(adj + np.eye(n), max(n - 1, 1))
+        connected = float(np.all(reachability > 0))
+
+    metrics = {
         "mean_degree": float(np.mean(degree) if n else 0.0),
         "density": density,
         "clustering": clustering,
+        "connectivity": connected,
     }
+
+    if corr is not None:
+        corr_matrix = np.asarray(corr, dtype=float)
+        if corr_matrix.shape != adj.shape:
+            raise ValueError("corr must have the same shape as adjacency")
+        metrics["mean_absolute_connectivity"] = float(np.mean(np.abs(corr_matrix - np.eye(n))) if n else 0.0)
+
+    return metrics
