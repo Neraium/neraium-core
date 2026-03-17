@@ -1,0 +1,23 @@
+[project]
+name = "neraium-core"
+version = "0.1.0"
+description = "Infrastructure telemetry drift detection engine"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy",
+    "pandas"
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "ruff"
+]
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
