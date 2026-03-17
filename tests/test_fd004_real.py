@@ -74,4 +74,30 @@ def test_run_fd004_real_evaluation_generates_outputs(tmp_path):
     assert (tmp_path / "fd004_real_report.json").exists()
     assert (tmp_path / "fd004_real_timeseries.csv").exists()
     assert (tmp_path / "plots").exists()
+    assert (tmp_path / "hero_unit_timeseries.csv").exists()
+    assert report["proof_summary"] == "reports/fd004_proof_summary.md"
+    assert report["hero_unit"]["asset_id"].startswith("unit_")
 
+
+
+def test_run_fd004_real_evaluation_hero_csv_schema(tmp_path):
+    train = tmp_path / "train_FD004.txt"
+    test = tmp_path / "test_FD004.txt"
+    rul = tmp_path / "RUL_FD004.txt"
+
+    train.write_text(
+        "\n".join([_sample_row(1, 1), _sample_row(1, 2), _sample_row(1, 3)]),
+        encoding="utf-8",
+    )
+    test.write_text(_sample_row(1, 1), encoding="utf-8")
+    rul.write_text("5\n", encoding="utf-8")
+
+    run_fd004_real_evaluation(
+        train_path=str(train),
+        test_path=str(test),
+        rul_path=str(rul),
+        output_dir=str(tmp_path),
+    )
+
+    hero_csv = (tmp_path / "hero_unit_timeseries.csv").read_text(encoding="utf-8").splitlines()[0]
+    assert hero_csv == "timestamp,drift,instability,phase,risk_level,estimated_rul"
