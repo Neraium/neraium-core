@@ -35,12 +35,23 @@ def _connected_components(adjacency: np.ndarray) -> list[list[int]]:
 
 
 def discover_subsystems(corr: ArrayLike, threshold: float = 0.7) -> list[list[int]]:
-    adjacency = thresholded_adjacency(corr, threshold=threshold)
+    matrix = np.asarray(corr, dtype=float)
+    if matrix.ndim != 2 or matrix.shape[0] != matrix.shape[1]:
+        raise ValueError("Correlation matrix must be square")
+    if matrix.shape[0] < 2:
+        return []
+
+    adjacency = thresholded_adjacency(matrix, threshold=threshold)
     return _connected_components(adjacency)
 
 
 def subsystem_spectral_measures(corr: ArrayLike, threshold: float = 0.7) -> dict[str, float]:
     matrix = np.asarray(corr, dtype=float)
+    if matrix.ndim != 2 or matrix.shape[0] != matrix.shape[1]:
+        raise ValueError("Correlation matrix must be square")
+    if matrix.shape[0] < 2:
+        return {"subsystem_count": 0.0, "max_subsystem_radius": 0.0, "subsystem_instability": 0.0}
+
     components = discover_subsystems(matrix, threshold=threshold)
     if not components:
         return {"subsystem_count": 0.0, "max_subsystem_radius": 0.0, "subsystem_instability": 0.0}

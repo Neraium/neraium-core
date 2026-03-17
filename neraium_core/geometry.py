@@ -20,6 +20,9 @@ def _as_2d_array(values: ArrayLike) -> np.ndarray:
 def correlation_matrix(observations: ArrayLike) -> np.ndarray:
     """Compute a correlation matrix from row-wise observations."""
     data = _as_2d_array(observations)
+    n_signals = data.shape[1]
+    if n_signals < 2:
+        return np.zeros((n_signals, n_signals), dtype=float)
     corr = np.corrcoef(data, rowvar=False)
     corr = np.nan_to_num(corr, nan=0.0, posinf=0.0, neginf=0.0)
     np.fill_diagonal(corr, 1.0)

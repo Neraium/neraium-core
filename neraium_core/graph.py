@@ -23,6 +23,8 @@ def graph_metrics(adjacency: ArrayLike) -> dict[str, float]:
         raise ValueError("Adjacency matrix must be square")
 
     n = adj.shape[0]
+    if n < 2:
+        return {"mean_degree": 0.0, "density": 0.0, "clustering": 0.0}
     degree = adj.sum(axis=1)
     max_edges = n * (n - 1)
     density = float(adj.sum() / max_edges) if max_edges else 0.0

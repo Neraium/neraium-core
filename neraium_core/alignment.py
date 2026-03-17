@@ -43,6 +43,8 @@ class StructuralEngine:
 
         baseline_frames = list(self.frames)[: self.baseline_window]
         X = np.vstack([f["_vector"] for f in baseline_frames])
+        if X.shape[1] == 0:
+            return None
 
         mean = X.mean(axis=0)
         cov = np.cov(X, rowvar=False)
@@ -60,6 +62,8 @@ class StructuralEngine:
         }
 
     def _mahalanobis(self, x: np.ndarray, mean: np.ndarray, inv_cov: np.ndarray) -> float:
+        if x.size == 0 or mean.size == 0:
+            return 0.0
         delta = x - mean
         return float(math.sqrt(delta.T @ inv_cov @ delta))
 
@@ -72,6 +76,8 @@ class StructuralEngine:
 
         Xb = np.vstack([f["_vector"] for f in baseline_frames])
         Xr = np.vstack([f["_vector"] for f in recent_frames])
+        if Xb.shape[1] < 2 or Xr.shape[1] < 2:
+            return 1.0
 
         cov_b = np.cov(Xb, rowvar=False)
         cov_r = np.cov(Xr, rowvar=False)
@@ -103,6 +109,20 @@ class StructuralEngine:
 
     def process_frame(self, frame: Dict) -> Dict:
         vector = self._vector_from_frame(frame)
+        raw_sensor_values = frame.get("sensor_values", {})
+        n_signals = 0
+        for name in self.sensor_order:
+            raw_value = raw_sensor_values.get(name)
+            if raw_value is None:
+                continue
+            try:
+                value = float(raw_value)
+            except (TypeError, ValueError):
+                continue
+            if np.isfinite(value):
+                n_signals += 1
+
+        structural_valid = n_signals >= 2
 
         stored = dict(frame)
         stored["_vector"] = vector
@@ -145,19 +165,33 @@ class StructuralEngine:
 
         if len(self.frames) >= max(self.recent_window, 3):
             recent_vectors = np.vstack([f["_vector"] for f in list(self.frames)[-self.recent_window :]])
-            corr = correlation_matrix(recent_vectors)
-            directional = directional_metrics(lagged_correlation_matrix(recent_vectors, lag=1))
             warning = early_warning_metrics(recent_vectors)
-            subsystem = subsystem_spectral_measures(corr)
-
-            components = {
+            components: Dict[str, float | None] = {
                 "drift": float(drift_score),
-                "spectral": spectral_radius(corr) + max(0.0, 1.0 - spectral_gap(corr)),
-                "directional": directional["causal_divergence"],
-                "entropy": interaction_entropy(corr),
+                "spectral": None,
+                "directional": None,
+                "entropy": None,
                 "early_warning": warning["variance"] + max(0.0, warning["lag1_autocorrelation"]),
-                "subsystem_instability": subsystem["subsystem_instability"],
+                "subsystem_instability": None,
             }
+
+            if structural_valid:
+                corr = correlation_matrix(recent_vectors)
+                if corr.shape[0] >= 2:
+                    directional = directional_metrics(lagged_correlation_matrix(recent_vectors, lag=1))
+                    subsystem = subsystem_spectral_measures(corr)
+
+                    components["spectral"] = spectral_radius(corr) + max(0.0, 1.0 - spectral_gap(corr))
+                    components["directional"] = directional["causal_divergence"]
+                    components["entropy"] = interaction_entropy(corr)
+                    components["subsystem_instability"] = subsystem["subsystem_instability"]
+                else:
+                    directional = {"causal_energy": 0.0, "causal_asymmetry": 0.0, "causal_divergence": 0.0}
+                    subsystem = {"subsystem_count": 0.0, "max_subsystem_radius": 0.0, "subsystem_instability": 0.0}
+            else:
+                directional = {"causal_energy": 0.0, "causal_asymmetry": 0.0, "causal_divergence": 0.0}
+                subsystem = {"subsystem_count": 0.0, "max_subsystem_radius": 0.0, "subsystem_instability": 0.0}
+
             result["experimental_analytics"] = {
                 "directional": directional,
                 "early_warning": warning,
