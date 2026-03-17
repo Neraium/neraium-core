@@ -13,6 +13,16 @@ import numpy as np
 from neraium_core.service import StructuralMonitoringService
 
 
+MED_THRESHOLD = 0.16
+HIGH_THRESHOLD = 0.28
+MED_HIT = 0.02
+HIGH_HIT = 0.03
+MED_CONSECUTIVE_STEPS = 2
+HIGH_CONSECUTIVE_STEPS = 3
+POST_REGIME_CHANGE_GRACE = 2
+EMA_ALPHA = 0.25
+
+
 @dataclass
 class UnitConfig:
     unit_id: str
@@ -21,6 +31,72 @@ class UnitConfig:
     stable_end: int
     degrade_end: int
     regime_schedule: list[int]
+
+
+@dataclass
+class Fd004RiskEscalator:
+    med_threshold: float = MED_THRESHOLD
+    high_threshold: float = HIGH_THRESHOLD
+    med_hit: float = MED_HIT
+    high_hit: float = HIGH_HIT
+    med_consecutive_steps: int = MED_CONSECUTIVE_STEPS
+    high_consecutive_steps: int = HIGH_CONSECUTIVE_STEPS
+    post_regime_change_grace: int = POST_REGIME_CHANGE_GRACE
+    ema_alpha: float = EMA_ALPHA
+    ema_instability: float | None = None
+    med_streak: int = 0
+    high_streak: int = 0
+    current_risk: str = "LOW"
+    current_regime: int | None = None
+    regime_grace_remaining: int = 0
+
+    def update(self, raw_instability: float, regime_index: int) -> tuple[str, float]:
+        if self.ema_instability is None:
+            self.ema_instability = raw_instability
+        else:
+            self.ema_instability = (self.ema_alpha * raw_instability) + (
+                (1.0 - self.ema_alpha) * self.ema_instability
+            )
+
+        if self.current_regime is None:
+            self.current_regime = regime_index
+        elif regime_index != self.current_regime:
+            self.current_regime = regime_index
+            self.regime_grace_remaining = self.post_regime_change_grace
+
+        med_gate = self.med_threshold + self.med_hit
+        high_gate = self.high_threshold + self.high_hit
+        self.med_streak = self.med_streak + 1 if self.ema_instability >= med_gate else 0
+        self.high_streak = self.high_streak + 1 if self.ema_instability >= high_gate else 0
+
+        med_triggered = self.med_streak >= self.med_consecutive_steps
+        high_triggered = self.high_streak >= self.high_consecutive_steps
+
+        next_risk = self.current_risk
+        if high_triggered:
+            next_risk = "HIGH"
+        elif med_triggered and self.current_risk == "LOW":
+            next_risk = "MEDIUM"
+
+        if (
+            next_risk == "HIGH"
+            and self.current_risk == "LOW"
+            and self.regime_grace_remaining > 0
+        ):
+            next_risk = "MEDIUM" if med_triggered else "LOW"
+
+        self.current_risk = next_risk
+        if self.regime_grace_remaining > 0:
+            self.regime_grace_remaining -= 1
+        return self.current_risk, self.ema_instability
+
+
+def _fd004_operator_message(risk_level: str) -> str:
+    if risk_level == "HIGH":
+        return "High instability detected after sustained escalation. Immediate operator review advised."
+    if risk_level == "MEDIUM":
+        return "Instability is persistently elevated. Monitor closely for continued escalation."
+    return "System appears stable based on current heuristic interpretation."
 
 
 def _regime_signal_profiles(num_sensors: int, num_regimes: int, rng: np.random.Generator) -> np.ndarray:
@@ -185,6 +261,7 @@ def run_fd004_evaluation(
 
     for asset_id, unit_frames in by_unit.items():
         service = StructuralMonitoringService()
+        escalator = Fd004RiskEscalator()
         cfg = unit_configs[asset_id]
         transitions = {"MEDIUM": None, "HIGH": None}
         instabilities: list[float] = []
@@ -200,19 +277,21 @@ def run_fd004_evaluation(
             }
             result = service.ingest_payload(payload)
             step = int(frame["_meta"]["step"])
+            regime_index = int(frame["_meta"]["regime_index"])
             analytics = result.get("experimental_analytics", {})
             instability = float(analytics.get("composite_instability", 0.0))
+            risk_level, smoothed_instability = escalator.update(instability, regime_index)
 
             row = {
                 "asset_id": asset_id,
                 "step": step,
                 "fault_mode": cfg.fault_mode,
-                "regime_index": frame["_meta"]["regime_index"],
+                "regime_index": regime_index,
                 "structural_drift_score": float(result.get("structural_drift_score", 0.0)),
                 "composite_instability": instability,
                 "trend": result.get("trend", "UNKNOWN"),
-                "risk_level": result.get("risk_level", "LOW"),
-                "operator_message": result.get("operator_message", ""),
+                "risk_level": risk_level,
+                "operator_message": _fd004_operator_message(risk_level),
                 "structural_analysis_available": bool(
                     result.get("structural_analysis_available", False)
                 ),
@@ -223,7 +302,7 @@ def run_fd004_evaluation(
             if risk in transitions and transitions[risk] is None:
                 transitions[risk] = step
 
-            instabilities.append(instability)
+            instabilities.append(smoothed_instability)
             drifts.append(float(row["structural_drift_score"]))
             risk_levels.append(risk)
 
