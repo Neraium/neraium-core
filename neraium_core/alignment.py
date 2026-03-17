@@ -4,6 +4,14 @@ from typing import Dict, List, Optional
 
 import numpy as np
 
+from neraium_core.directional import directional_metrics, lagged_correlation_matrix
+from neraium_core.early_warning import early_warning_metrics
+from neraium_core.entropy import interaction_entropy
+from neraium_core.geometry import correlation_matrix
+from neraium_core.scoring import composite_instability_score
+from neraium_core.spectral import spectral_gap, spectral_radius
+from neraium_core.subsystems import subsystem_spectral_measures
+
 
 class StructuralEngine:
     def __init__(self, baseline_window: int = 50, recent_window: int = 12):
@@ -134,6 +142,28 @@ class StructuralEngine:
             "drift_alert": alert,
             "sensor_relationships": self.sensor_order,
         }
+
+        if len(self.frames) >= max(self.recent_window, 3):
+            recent_vectors = np.vstack([f["_vector"] for f in list(self.frames)[-self.recent_window :]])
+            corr = correlation_matrix(recent_vectors)
+            directional = directional_metrics(lagged_correlation_matrix(recent_vectors, lag=1))
+            warning = early_warning_metrics(recent_vectors)
+            subsystem = subsystem_spectral_measures(corr)
+
+            components = {
+                "drift": float(drift_score),
+                "spectral": spectral_radius(corr) + max(0.0, 1.0 - spectral_gap(corr)),
+                "directional": directional["causal_divergence"],
+                "entropy": interaction_entropy(corr),
+                "early_warning": warning["variance"] + max(0.0, warning["lag1_autocorrelation"]),
+                "subsystem_instability": subsystem["subsystem_instability"],
+            }
+            result["experimental_analytics"] = {
+                "directional": directional,
+                "early_warning": warning,
+                "subsystems": subsystem,
+                "composite_instability": round(composite_instability_score(components), 4),
+            }
 
         self.latest_result = result
         return result
