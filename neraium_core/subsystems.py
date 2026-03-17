@@ -35,7 +35,12 @@ def _connected_components(adjacency: np.ndarray) -> list[list[int]]:
 
 
 def discover_subsystems(corr: ArrayLike, threshold: float = 0.7) -> list[list[int]]:
-    adjacency = thresholded_adjacency(corr, threshold=threshold)
+    matrix = np.asarray(corr, dtype=float)
+    if matrix.ndim != 2 or matrix.shape[0] != matrix.shape[1]:
+        raise ValueError("Correlation matrix must be square")
+    if matrix.shape[0] < 2:
+        return []
+    adjacency = thresholded_adjacency(matrix, threshold=threshold)
     return _connected_components(adjacency)
 
 
