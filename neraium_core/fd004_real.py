@@ -15,6 +15,8 @@ from neraium_core.service import StructuralMonitoringService
 EXPECTED_FD004_COLUMNS = 26
 FD004_SENSOR_COUNT = 21
 TARGET_SENSOR_COUNT = 24
+RISK_PHASE_MAP = {"LOW": "stable", "MEDIUM": "drift", "HIGH": "unstable"}
+RUL_THRESHOLDS = (100, 50, 30)
 
 
 @dataclass(frozen=True)
@@ -108,12 +110,21 @@ def run_fd004_real_evaluation(
 
     all_rows: list[dict[str, Any]] = []
     unit_summaries: list[dict[str, Any]] = []
+    rul_mapping: dict[str, int] = {}
+    if Path(rul_path).exists():
+        rul_mapping = load_fd004_rul(rul_path)
 
     for asset_id, unit_records in by_unit.items():
         service = StructuralMonitoringService()
         escalator = Fd004RiskEscalator()
         transitions = {"MEDIUM": None, "HIGH": None}
         instabilities: list[float] = []
+        drift_scores: list[float] = []
+        per_cycle_instability: list[tuple[int, float]] = []
+        per_cycle_drift: list[tuple[int, float]] = []
+        max_cycle = max(record["_meta"]["cycle"] for record in unit_records)
+        baseline_rul = rul_mapping.get(asset_id, 0)
+        threshold_increase_windows: dict[int, bool] = {}
 
         for record in sorted(unit_records, key=lambda r: r["_meta"]["cycle"]):
             result = service.ingest_payload(
@@ -126,37 +137,80 @@ def run_fd004_real_evaluation(
             )
             cycle = int(record["_meta"]["cycle"])
             instability = float(result.get("experimental_analytics", {}).get("composite_instability", 0.0))
+            drift_score = float(result.get("structural_drift_score", 0.0))
             risk_level, smoothed = escalator.update(instability, regime_index=0)
+            phase = RISK_PHASE_MAP.get(risk_level, "stable")
+            cycle_rul = max_cycle - cycle + baseline_rul
 
             row = {
                 "asset_id": asset_id,
                 "cycle": cycle,
-                "structural_drift_score": float(result.get("structural_drift_score", 0.0)),
+                "structural_drift_score": drift_score,
                 "composite_instability": instability,
-                "trend": result.get("trend", "UNKNOWN"),
+                "trend": phase,
+                "phase": phase,
                 "risk_level": risk_level,
+                "estimated_rul": cycle_rul,
                 "operator_message": result.get("operator_message", ""),
                 "structural_analysis_available": bool(result.get("structural_analysis_available", False)),
             }
             all_rows.append(row)
             instabilities.append(smoothed)
+            drift_scores.append(drift_score)
+            per_cycle_instability.append((cycle_rul, smoothed))
+            per_cycle_drift.append((cycle_rul, drift_score))
 
             if risk_level in transitions and transitions[risk_level] is None:
                 transitions[risk_level] = cycle
 
+        for threshold in RUL_THRESHOLDS:
+            below_index = next(
+                (index for index, (rul_value, _) in enumerate(per_cycle_instability) if rul_value < threshold),
+                None,
+            )
+            if below_index is None or below_index < 2:
+                threshold_increase_windows[threshold] = False
+                continue
+
+            window_start = max(0, below_index - 10)
+            window = [value for _, value in per_cycle_instability[window_start:below_index]]
+            threshold_increase_windows[threshold] = window[-1] > window[0] if len(window) >= 2 else False
+
+        early_warning_window = None
+        if transitions["MEDIUM"] is not None and transitions["HIGH"] is not None:
+            early_warning_window = transitions["HIGH"] - transitions["MEDIUM"]
+
+        instability_rul_correlation = _pearson_correlation(
+            [float(rul_value) for rul_value, _ in per_cycle_instability],
+            [value for _, value in per_cycle_instability],
+        )
+        drift_rul_correlation = _pearson_correlation(
+            [float(rul_value) for rul_value, _ in per_cycle_drift],
+            [value for _, value in per_cycle_drift],
+        )
+
         unit_summaries.append(
             {
                 "asset_id": asset_id,
-                "first_medium_cycle": transitions["MEDIUM"],
-                "first_high_cycle": transitions["HIGH"],
+                "first_MEDIUM_step": transitions["MEDIUM"],
+                "first_HIGH_step": transitions["HIGH"],
+                "early_warning_window": early_warning_window,
                 "peak_instability": round(max(instabilities) if instabilities else 0.0, 4),
                 "average_instability": round(mean(instabilities) if instabilities else 0.0, 4),
+                "average_drift": round(mean(drift_scores) if drift_scores else 0.0, 4),
+                "instability_vs_rul_correlation": instability_rul_correlation,
+                "drift_vs_rul_correlation": drift_rul_correlation,
+                "instability_increases_before_rul_thresholds": {
+                    str(threshold): threshold_increase_windows[threshold] for threshold in RUL_THRESHOLDS
+                },
             }
         )
 
-    rul_mapping: dict[str, int] = {}
-    if Path(rul_path).exists():
-        rul_mapping = load_fd004_rul(rul_path)
+    valid_windows = [
+        summary["early_warning_window"]
+        for summary in unit_summaries
+        if summary["early_warning_window"] is not None
+    ]
 
     overall_summary = {
         "units_total": len(by_unit),
@@ -164,6 +218,7 @@ def run_fd004_real_evaluation(
         "train_path": train_path,
         "test_path": test_path,
         "rul_path": rul_path,
+        "average_early_warning_window": round(mean(valid_windows), 2) if valid_windows else None,
     }
 
     output = {
@@ -202,6 +257,21 @@ def run_fd004_real_evaluation(
         print(f"Saved RUL map JSON: {rul_json_path}")
 
     return output
+
+
+def _pearson_correlation(xs: list[float], ys: list[float]) -> float | None:
+    if len(xs) != len(ys) or len(xs) < 2:
+        return None
+
+    x_mean = mean(xs)
+    y_mean = mean(ys)
+    numerator = sum((x_value - x_mean) * (y_value - y_mean) for x_value, y_value in zip(xs, ys, strict=True))
+    denominator_x = sum((x_value - x_mean) ** 2 for x_value in xs)
+    denominator_y = sum((y_value - y_mean) ** 2 for y_value in ys)
+    denominator = (denominator_x * denominator_y) ** 0.5
+    if denominator == 0:
+        return None
+    return round(numerator / denominator, 4)
 
 
 def _build_arg_parser() -> argparse.ArgumentParser:
