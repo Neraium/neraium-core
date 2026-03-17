@@ -11,12 +11,15 @@ requires-python = ">=3.10"
 dependencies = [
   "numpy",
   "pydantic>=2",
+  "fastapi>=0.110",
+  "uvicorn>=0.29",
 ]
 
 [project.optional-dependencies]
 dev = [
   "pytest",
   "ruff",
+  "httpx",
 ]
 
 [tool.setuptools]
