@@ -63,18 +63,27 @@ def create_app(service: StructuralMonitoringService | None = None) -> FastAPI:
 
     @app.post("/ingest")
     def ingest(payload: IngestRequest, _: None = Depends(require_api_key)) -> dict[str, Any]:
-        return service_instance.ingest_payload(payload.model_dump(exclude_none=True))
+        try:
+            return service_instance.ingest_payload(payload.model_dump(exclude_none=True))
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
 
     @app.post("/ingest/batch")
     def ingest_batch(payload: BatchIngestRequest, _: None = Depends(require_api_key)) -> dict[str, Any]:
-        results = service_instance.ingest_batch(
-            [item.model_dump(exclude_none=True) for item in payload.items]
-        )
+        try:
+            results = service_instance.ingest_batch(
+                [item.model_dump(exclude_none=True) for item in payload.items]
+            )
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
         return {"count": len(results), "results": results}
 
     @app.post("/ingest/csv")
     def ingest_csv(payload: CsvIngestRequest, _: None = Depends(require_api_key)) -> dict[str, Any]:
-        results = service_instance.ingest_csv(payload.csv_text)
+        try:
+            results = service_instance.ingest_csv(payload.csv_text)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
         return {"count": len(results), "results": results}
 
     @app.post("/reset")
