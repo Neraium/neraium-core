@@ -42,11 +42,43 @@ class StructuralMonitoringService:
             "operator_message": "System appears stable based on current heuristic interpretation.",
         }
 
+    def _structural_analysis_metadata(self, result: dict[str, Any]) -> dict[str, Any]:
+        signals = result.get("sensor_relationships")
+        signal_count = len(signals) if isinstance(signals, list) else 0
+        if signal_count < 2:
+            return {
+                "structural_analysis_available": False,
+                "skipped_reason": "insufficient signal dimensionality",
+            }
+
+        analytics = result.get("experimental_analytics")
+        if not isinstance(analytics, dict):
+            return {
+                "structural_analysis_available": False,
+                "skipped_reason": "insufficient history",
+            }
+
+        if bool(analytics.get("relational_metrics_skipped")):
+            return {
+                "structural_analysis_available": False,
+                "skipped_reason": "insufficient signal dimensionality",
+            }
+
+        return {
+            "structural_analysis_available": True,
+            "skipped_reason": None,
+        }
+
     def _decorate_result(self, result: dict[str, Any]) -> dict[str, Any]:
         enriched = dict(result)
+        interpretation = self._interpret(result)
+        structural = self._structural_analysis_metadata(result)
+
+        enriched.update(interpretation)
+        enriched.update(structural)
         enriched["interpretation"] = {
             "heuristic": True,
-            **self._interpret(result),
+            **interpretation,
         }
         return enriched
 
