@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from neraium_core.alignment import StructuralEngine
 from neraium_core.pipeline import normalize_rest_payload, parse_csv_text
 from neraium_core.store import ResultStore
+
+
+logger = logging.getLogger(__name__)
 
 
 class StructuralMonitoringService:
@@ -42,6 +46,26 @@ class StructuralMonitoringService:
             "operator_message": "System appears stable based on current heuristic interpretation.",
         }
 
+    def _operator_trend(self, result: dict[str, Any]) -> str:
+        analytics = result.get("experimental_analytics")
+        if not isinstance(analytics, dict):
+            return "UNKNOWN"
+
+        forecasting = analytics.get("forecasting")
+        if not isinstance(forecasting, dict):
+            return "UNKNOWN"
+
+        trend_score = float(forecasting.get("trend", 0.0))
+        if trend_score > 0.05:
+            return "RISING"
+        if trend_score < -0.05:
+            return "FALLING"
+        return "STABLE"
+
+    def _operator_confidence(self, result: dict[str, Any]) -> float:
+        stability = float(result.get("relational_stability_score", 0.0))
+        return round(max(0.0, min(stability, 1.0)), 4)
+
     def _structural_analysis_metadata(self, result: dict[str, Any]) -> dict[str, Any]:
         signals = result.get("sensor_relationships")
         signal_count = len(signals) if isinstance(signals, list) else 0
@@ -76,13 +100,22 @@ class StructuralMonitoringService:
 
         enriched.update(interpretation)
         enriched.update(structural)
+        enriched["trend"] = self._operator_trend(result)
+        enriched["confidence"] = self._operator_confidence(result)
         enriched["interpretation"] = {
             "heuristic": True,
             **interpretation,
+            "trend": enriched["trend"],
+            "confidence": enriched["confidence"],
         }
         return enriched
 
     def ingest_payload(self, payload: dict[str, Any]) -> dict[str, Any]:
+        logger.info(
+            "ingest_payload called site_id=%s asset_id=%s",
+            payload.get("site_id"),
+            payload.get("asset_id"),
+        )
         frame = normalize_rest_payload(payload)
         result = self._decorate_result(self.engine.process_frame(frame))
         self.store.save_result(result)
@@ -109,6 +142,7 @@ class StructuralMonitoringService:
         return self.store.list_recent_results(limit=limit)
 
     def reset(self) -> None:
+        logger.info("reset called")
         self.engine = StructuralEngine(
             baseline_window=self.engine.baseline_window,
             recent_window=self.engine.recent_window,
