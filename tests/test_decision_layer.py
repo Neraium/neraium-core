@@ -23,6 +23,7 @@ def test_evaluate_signal_stable_system_no_signal():
 
     assert result["signal_emitted"] is False
     assert result["signal_strength"] == "low"
+    assert "No material structural instability" in result["operator_message"]
 
 
 def test_evaluate_signal_gradual_instability_emits_signal():
@@ -39,6 +40,7 @@ def test_evaluate_signal_gradual_instability_emits_signal():
     assert result["signal_emitted"] is True
     assert result["signal_strength"] in {"medium", "high"}
     assert result["confidence"] in {"medium", "high"}
+    assert "human review" in result["operator_message"]
 
 
 def test_evaluate_signal_noisy_data_suppresses_signal():
@@ -54,3 +56,20 @@ def test_evaluate_signal_noisy_data_suppresses_signal():
 
     assert result["signal_emitted"] is False
     assert any("suppressed" in reason for reason in result["reason"])
+    assert "did not satisfy consistency requirements" in result["operator_message"]
+
+
+def test_evaluate_signal_message_avoids_prohibited_terms():
+    timeseries = [
+        _row(1, 0.20, 0.10, "stable", "LOW"),
+        _row(2, 0.82, 0.35, "drift", "MEDIUM"),
+        _row(3, 0.85, 0.42, "unstable", "HIGH"),
+        _row(4, 0.50, 0.36, "stable", "LOW"),
+        _row(5, 0.83, 0.44, "unstable", "HIGH"),
+        _row(6, 0.55, 0.38, "stable", "LOW"),
+    ]
+    result = evaluate_signal(timeseries, {"peak_instability": 0.85})
+    message = result["operator_message"].lower()
+
+    for prohibited in ["intervene", "shut down", "must", "required", "failure imminent", "take action"]:
+        assert prohibited not in message

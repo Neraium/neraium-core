@@ -12,6 +12,13 @@ def evaluate_signal(timeseries: list[dict[str, Any]], unit_summary: dict[str, An
 
     ordered = sorted(timeseries, key=lambda row: int(row.get("cycle", 0)))
     if not ordered:
+        operator_message = _generate_operator_message(
+            signal_emitted=False,
+            signal_strength="low",
+            confidence="low",
+            phase="stable",
+            reasons=["no data available"],
+        )
         return {
             "signal_emitted": False,
             "signal_strength": "low",
@@ -19,6 +26,7 @@ def evaluate_signal(timeseries: list[dict[str, Any]], unit_summary: dict[str, An
             "reason": ["no data available"],
             "phase": "stable",
             "risk_level": "LOW",
+            "operator_message": operator_message,
         }
 
     instability = [float(row.get("composite_instability", 0.0)) for row in ordered]
@@ -66,14 +74,79 @@ def evaluate_signal(timeseries: list[dict[str, Any]], unit_summary: dict[str, An
         signal_strength = "low"
         confidence = "low" if suppress_reasons else "medium"
 
+    resolved_reasons = reasons or ["insufficient evidence for a stable signal"]
+    operator_message = _generate_operator_message(
+        signal_emitted=emit_signal,
+        signal_strength=signal_strength,
+        confidence=confidence,
+        phase=latest_phase,
+        reasons=resolved_reasons,
+    )
+
     return {
         "signal_emitted": emit_signal,
         "signal_strength": signal_strength,
         "confidence": confidence,
-        "reason": reasons or ["insufficient evidence for a stable signal"],
+        "reason": resolved_reasons,
         "phase": latest_phase,
         "risk_level": latest_risk,
+        "operator_message": operator_message,
     }
+
+
+def _generate_operator_message(
+    *,
+    signal_emitted: bool,
+    signal_strength: str,
+    confidence: str,
+    phase: str,
+    reasons: list[str],
+) -> str:
+    has_suppression = any("suppressed:" in reason for reason in reasons)
+    has_oscillation = any("oscillating" in reason for reason in reasons)
+
+    phase_fragment = ""
+    if phase == "unstable":
+        phase_fragment = " with a transition toward an unstable regime"
+    elif phase == "drift":
+        phase_fragment = " and departure from a previously stable regime"
+
+    if has_suppression:
+        noisy_fragment = " including inconsistent oscillation" if has_oscillation else ""
+        return (
+            "Instability-related patterns were observed"
+            f"{noisy_fragment} but did not satisfy consistency requirements for signal admission. "
+            "No material instability signal is being surfaced at this time. "
+            "Outputs are observational decision-support artifacts for human review."
+        )
+
+    if signal_emitted and signal_strength == "high":
+        return (
+            "Persistent structural instability has been detected"
+            f"{phase_fragment}, with increasing drift. "
+            "This output is intended for human review. "
+            "Neraium does not perform control or automated actuation."
+        )
+
+    if signal_emitted and signal_strength == "medium":
+        return (
+            "Elevated instability patterns have been observed with consistent structural drift"
+            f"{phase_fragment}. "
+            "This output is intended for human review and remains observational decision support only."
+        )
+
+    if not signal_emitted and phase == "stable":
+        return (
+            "No material structural instability has been detected under the current evaluation logic. "
+            "The system appears to remain within a stable operating regime. "
+            "Outputs are observational decision-support artifacts."
+        )
+
+    return (
+        "Minor structural instability signals have been observed. "
+        "Current evidence remains limited and should be interpreted as observational only. "
+        "This output is intended for human review."
+    )
 
 
 def _is_sustained_instability(values: list[float], window: int = 4) -> bool:

@@ -116,6 +116,17 @@ Neraium currently includes a temporary, explicit decision layer that interprets 
 
 This layer is temporary and will be replaced when formal interpretive governance is implemented.
 
+## Operator Messages
+
+Neraium emits `operator_message` text from deterministic decision-layer logic.
+
+- Messages are observational and intended for human review.
+- Messages do not direct maintenance or operational actions.
+- Neraium does not perform infrastructure control or automated actuation.
+- Outputs are read-only decision-support artifacts and should be interpreted with the same scope as the underlying signal logic.
+
+This messaging layer is a temporary interpretive wrapper pending future formal interpretive governance work.
+
 ## Planned Future Extensions
 
 Interpretive governance and formal assurance layers are planned for a later funded phase.

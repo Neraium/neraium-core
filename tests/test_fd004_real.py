@@ -81,6 +81,7 @@ def test_run_fd004_real_evaluation_generates_outputs(tmp_path):
     assert report["unit_summaries"][0]["signal_strength"] in {"low", "medium", "high"}
     assert report["unit_summaries"][0]["confidence"] in {"low", "medium", "high"}
     assert isinstance(report["unit_summaries"][0]["reason"], list)
+    assert isinstance(report["unit_summaries"][0]["operator_message"], str)
 
 
 
