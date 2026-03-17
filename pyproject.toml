@@ -11,12 +11,15 @@ requires-python = ">=3.10"
 dependencies = [
   "numpy",
   "pydantic>=2",
+  "fastapi>=0.110",
+  "uvicorn>=0.27",
 ]
 
 [project.optional-dependencies]
 dev = [
   "pytest",
   "ruff",
+  "httpx",
 ]
 
 [tool.setuptools]
@@ -25,7 +28,7 @@ include-package-data = true
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["neraium_core*"]
-exclude = ["apps*", "tests*", "scripts*", "sii*"]
+exclude = ["tests*", "scripts*", "sii*"]
 
 [tool.pytest.ini_options]
 pythonpath = ["."]
