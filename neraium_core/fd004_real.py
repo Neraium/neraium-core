@@ -10,7 +10,10 @@ from statistics import mean
 from typing import Any
 
 from neraium_core.fd004_synthetic import Fd004RiskEscalator
-from neraium_core.fd004_plotting import generate_fd004_subset_plots, plot_fd004_unit_timeseries
+from neraium_core.fd004_plotting import (
+    generate_fd004_subset_plots,
+    generate_fd004_hero_plot,
+)
 from neraium_core.service import StructuralMonitoringService
 
 EXPECTED_FD004_COLUMNS = 26
@@ -94,52 +97,6 @@ def load_fd004_rul(path: str | Path) -> dict[str, int]:
         mapping[f"unit_{idx:03d}"] = int(float(line.split()[0]))
     return mapping
 
-
-def _phase_switch_count(rows: list[dict[str, Any]]) -> int:
-    ordered = sorted(rows, key=lambda row: int(row["cycle"]))
-    if not ordered:
-        return 0
-    switches = 0
-    current = str(ordered[0].get("phase", "stable"))
-    for row in ordered[1:]:
-        next_phase = str(row.get("phase", "stable"))
-        if next_phase != current:
-            switches += 1
-            current = next_phase
-    return switches
-
-
-def select_hero_unit(
-    unit_summaries: list[dict[str, Any]],
-    timeseries: list[dict[str, Any]],
-) -> str | None:
-    by_unit: dict[str, list[dict[str, Any]]] = {}
-    for row in timeseries:
-        by_unit.setdefault(str(row.get("asset_id", "")), []).append(row)
-
-    candidates: list[tuple[tuple[int, int, int, int, float], str]] = []
-    for summary in unit_summaries:
-        asset_id = str(summary.get("asset_id", ""))
-        medium_step = summary.get("first_MEDIUM_step")
-        high_step = summary.get("first_HIGH_step")
-        valid_transition = isinstance(medium_step, int) and isinstance(high_step, int) and medium_step < high_step
-        warning_window = int(summary.get("early_warning_window") or 0)
-        phase_switches = _phase_switch_count(by_unit.get(asset_id, []))
-        peak_instability = float(summary.get("peak_instability", 0.0))
-
-        # Lower tuple values are better.
-        rank = (
-            0 if valid_transition else 1,
-            0 if warning_window >= 3 else 1,
-            phase_switches,
-            -warning_window,
-            -peak_instability,
-        )
-        candidates.append((rank, asset_id))
-
-    if not candidates:
-        return None
-    return sorted(candidates)[0][1]
 
 
 def write_fd004_proof_summary(
@@ -397,22 +354,15 @@ def run_fd004_real_evaluation(
     if rul_mapping:
         print(f"Saved RUL map JSON: {rul_json_path}")
 
-    hero_asset_id = select_hero_unit(output["unit_summaries"], all_rows)
+    hero_plot_path = plots_dir / "hero_unit.png"
+    hero_asset_id, hero_plot_generated = generate_fd004_hero_plot(
+        all_rows,
+        output["unit_summaries"],
+        output_path=hero_plot_path,
+        include_rul_curve=True,
+    )
     if hero_asset_id:
         hero_rows = [row for row in all_rows if row.get("asset_id") == hero_asset_id]
-        hero_plot_path = plots_dir / "hero_unit.png"
-        hero_plot_generated = False
-        try:
-            plot_fd004_unit_timeseries(
-                hero_rows,
-                hero_plot_path,
-                include_rul_curve=True,
-                title="Structural Degradation Progression (SII)",
-            )
-            hero_plot_generated = True
-        except ImportError as exc:
-            print(f"Skipping hero FD004 plot because matplotlib is unavailable: {exc}")
-
         hero_csv_path = out_dir / "hero_unit_timeseries.csv"
         hero_columns = ["timestamp", "drift", "instability", "phase", "risk_level", "estimated_rul"]
         with hero_csv_path.open("w", encoding="utf-8", newline="") as hero_csv:
