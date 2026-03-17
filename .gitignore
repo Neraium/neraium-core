@@ -1,7 +1,9 @@
+*.db
+*.sqlite
+*.sqlite3
 __pycache__/
 *.pyc
-*.pyo
-*.pyd
+.env
 .venv/
 venv/
 dist/
@@ -10,6 +12,3 @@ build/
 .pytest_cache/
 .DS_Store
 Thumbs.db
-__pycache__/
-*.pyc
-.pytest_cache/
