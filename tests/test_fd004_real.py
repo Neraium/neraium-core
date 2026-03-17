@@ -64,5 +64,12 @@ def test_run_fd004_real_evaluation_generates_outputs(tmp_path):
     assert report["overall_summary"]["units_total"] == 2
     assert report["overall_summary"]["rows_processed"] == 3
     assert report["rul_by_unit"]["unit_001"] == 123
+    assert report["overall_summary"]["average_early_warning_window"] is None
+    assert report["unit_summaries"][0]["first_MEDIUM_step"] is None
+    assert report["unit_summaries"][0]["first_HIGH_step"] is None
+    assert report["unit_summaries"][0]["instability_vs_rul_correlation"] is None
+    assert report["timeseries"][0]["phase"] == "stable"
+    assert report["timeseries"][0]["trend"] == "stable"
+    assert "estimated_rul" in report["timeseries"][0]
     assert (tmp_path / "fd004_real_report.json").exists()
     assert (tmp_path / "fd004_real_timeseries.csv").exists()
