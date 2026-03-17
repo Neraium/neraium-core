@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import pytest
+
+pytest.importorskip("httpx")
+
 from fastapi.testclient import TestClient
 
 from apps.api.main import create_app, is_api_key_valid
