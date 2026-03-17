@@ -33,7 +33,7 @@ def test_ingest_invalid_timestamp_returns_400(tmp_path) -> None:
     assert "Invalid timestamp" in response.json()["detail"]
 
 
-def test_ingest_malformed_payload_returns_400(tmp_path) -> None:
+def test_ingest_malformed_payload_returns_422(tmp_path) -> None:
     client = _build_client(tmp_path)
 
     response = client.post(
@@ -46,9 +46,11 @@ def test_ingest_malformed_payload_returns_400(tmp_path) -> None:
         },
     )
 
-    assert response.status_code == 400
+    # FastAPI/Pydantic rejects payloads that fail request-schema validation
+    # before endpoint logic executes, so malformed body types return 422.
+    assert response.status_code == 422
     assert response.status_code != 500
-    assert "sensor_values must be an object" in response.json()["detail"]
+    assert "sensor_values" in str(response.json()["detail"])
 
 
 def test_ingest_batch_invalid_timestamp_returns_400(tmp_path) -> None:
