@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import deque
 from dataclasses import dataclass
 from typing import Iterable
 
@@ -36,24 +37,35 @@ def _mix_matrix(size: int, coupling: float) -> np.ndarray:
     return base
 
 
-def _risk_and_message(drift: float, instability: float) -> tuple[str, str]:
-    if drift >= 2.0 or instability >= 1.8:
-        return "HIGH", "System coupling increasing across sensors"
-    if drift >= 1.0 or instability >= 1.2:
-        return "MEDIUM", "Relational drift rising; monitor trend closely"
-    return "LOW", "System structure remains within expected range"
+def _display_instability(composite_instability: float, drift: float) -> float:
+    drift_floor = 0.65 * max(drift - 0.25, 0.0)
+    blended = composite_instability + 0.20 * drift
+    return max(composite_instability, drift_floor, blended)
 
 
-def _trend_arrow(previous: float | None, current: float) -> str:
-    if previous is None:
+def _trend_arrow(history: deque[float], lookback: int = 8) -> str:
+    if len(history) < 4:
         return "→"
 
-    delta = current - previous
+    recent = list(history)[-lookback:]
+    half = max(len(recent) // 2, 1)
+    early_avg = float(np.mean(recent[:half]))
+    late_avg = float(np.mean(recent[half:]))
+    delta = late_avg - early_avg
+
     if delta > 0.03:
         return "↑"
     if delta < -0.03:
         return "↓"
     return "→"
+
+
+def _risk_and_message(drift: float, instability: float, trend: str) -> tuple[str, str]:
+    if drift >= 1.8 and instability >= 1.0 and trend == "↑":
+        return "HIGH", "System entering unstable regime"
+    if drift >= 0.9 or instability >= 0.65 or trend == "↑":
+        return "MEDIUM", "Structural relationships shifting"
+    return "LOW", "System stable"
 
 
 def _patch_engine_compatibility() -> None:
@@ -134,7 +146,7 @@ def run_demo(cfg: SimulationConfig | None = None) -> None:
     _patch_engine_compatibility()
     engine = StructuralEngine(baseline_window=24, recent_window=8)
 
-    previous_instability: float | None = None
+    instability_history: deque[float] = deque(maxlen=16)
 
     for frame in generate_sensor_stream(cfg):
         phase = frame.pop("phase")
@@ -142,11 +154,13 @@ def run_demo(cfg: SimulationConfig | None = None) -> None:
 
         drift = float(result.get("structural_drift_score", 0.0))
         analytics = result.get("experimental_analytics") or {}
-        instability = float(analytics.get("composite_instability", 0.0))
-        trend = _trend_arrow(previous_instability, instability)
-        previous_instability = instability
+        raw_instability = float(analytics.get("composite_instability", 0.0))
+        instability = _display_instability(raw_instability, drift)
 
-        risk_level, message = _risk_and_message(drift, instability)
+        instability_history.append(instability)
+        trend = _trend_arrow(instability_history)
+
+        risk_level, message = _risk_and_message(drift, instability, trend)
 
         print(f"[time={frame['timestamp']}] phase={phase}")
         print(f"drift={drift:.2f} | instability={instability:.2f} | trend={trend}")
