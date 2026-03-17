@@ -31,6 +31,12 @@ def directional_metrics(matrix: ArrayLike) -> dict[str, float]:
     lagged = np.asarray(matrix, dtype=float)
     if lagged.ndim != 2 or lagged.shape[0] != lagged.shape[1]:
         raise ValueError("Directional matrix must be square")
+    if lagged.shape[0] < 2:
+        return {
+            "causal_energy": 0.0,
+            "causal_asymmetry": 0.0,
+            "causal_divergence": 0.0,
+        }
 
     abs_matrix = np.abs(lagged)
     energy = float(np.mean(abs_matrix))

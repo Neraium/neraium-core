@@ -12,6 +12,9 @@ def thresholded_adjacency(corr: ArrayLike, threshold: float = 0.6) -> np.ndarray
     matrix = np.asarray(corr, dtype=float)
     if matrix.ndim != 2 or matrix.shape[0] != matrix.shape[1]:
         raise ValueError("Correlation matrix must be square")
+    if matrix.shape[0] < 2:
+        return np.zeros_like(matrix, dtype=int)
+
     adj = (np.abs(matrix) >= threshold).astype(int)
     np.fill_diagonal(adj, 0)
     return adj
@@ -23,6 +26,12 @@ def graph_metrics(adjacency: ArrayLike) -> dict[str, float]:
         raise ValueError("Adjacency matrix must be square")
 
     n = adj.shape[0]
+    if n < 2:
+        return {
+            "mean_degree": 0.0,
+            "density": 0.0,
+            "clustering": 0.0,
+        }
     degree = adj.sum(axis=1)
     max_edges = n * (n - 1)
     density = float(adj.sum() / max_edges) if max_edges else 0.0

@@ -1,6 +1,6 @@
 import math
 from collections import deque
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 import numpy as np
 
@@ -45,13 +45,18 @@ class StructuralEngine:
         X = np.vstack([f["_vector"] for f in baseline_frames])
 
         mean = X.mean(axis=0)
-        cov = np.cov(X, rowvar=False)
 
-        if cov.ndim == 0:
-            cov = np.array([[float(cov)]], dtype=float)
+        if X.shape[1] == 0:
+            cov = np.zeros((0, 0), dtype=float)
+            inv_cov = np.zeros((0, 0), dtype=float)
+        else:
+            cov = np.cov(X, rowvar=False)
 
-        cov = cov + np.eye(cov.shape[0]) * 1e-6
-        inv_cov = np.linalg.pinv(cov)
+            if cov.ndim == 0:
+                cov = np.array([[float(cov)]], dtype=float)
+
+            cov = cov + np.eye(cov.shape[0]) * 1e-6
+            inv_cov = np.linalg.pinv(cov)
 
         return {
             "mean": mean,
@@ -101,8 +106,39 @@ class StructuralEngine:
     def _drift_alert(self, drift_score: float) -> bool:
         return drift_score > 1.5
 
+    def _count_valid_signals(self, frame: Dict[str, Any]) -> int:
+        valid_signals = 0
+        for value in frame.get("sensor_values", {}).values():
+            try:
+                numeric_value = float(value)
+            except (TypeError, ValueError):
+                continue
+
+            if np.isfinite(numeric_value):
+                valid_signals += 1
+
+        return valid_signals
+
+    def _empty_relational_analytics(self) -> Dict[str, Any]:
+        directional = {
+            "causal_energy": 0.0,
+            "causal_asymmetry": 0.0,
+            "causal_divergence": 0.0,
+        }
+        return {
+            "directional": directional,
+            "early_warning": {"variance": 0.0, "lag1_autocorrelation": 0.0},
+            "subsystems": {
+                "subsystem_count": 0.0,
+                "max_subsystem_radius": 0.0,
+                "subsystem_instability": 0.0,
+            },
+            "composite_instability": 0.0,
+        }
+
     def process_frame(self, frame: Dict) -> Dict:
         vector = self._vector_from_frame(frame)
+        n_signals = self._count_valid_signals(frame)
 
         stored = dict(frame)
         stored["_vector"] = vector
@@ -117,16 +153,17 @@ class StructuralEngine:
                 "asset_id": frame["asset_id"],
                 "state": "STABLE",
                 "structural_drift_score": 0.0,
-                "relational_stability_score": 1.0,
+                "relational_stability_score": 1.0 if n_signals >= 2 else 0.0,
                 "system_health": 100,
                 "drift_alert": False,
                 "sensor_relationships": self.sensor_order,
+                "n_signals": n_signals,
             }
             self.latest_result = result
             return result
 
         drift_score = self._mahalanobis(vector, baseline["mean"], baseline["inv_cov"])
-        stability_score = self._relational_stability()
+        stability_score = self._relational_stability() if n_signals >= 2 else 0.0
         health = self._system_health(drift_score, stability_score)
         state = self._alert_state(drift_score)
         alert = self._drift_alert(drift_score)
@@ -141,7 +178,13 @@ class StructuralEngine:
             "system_health": health,
             "drift_alert": alert,
             "sensor_relationships": self.sensor_order,
+            "n_signals": n_signals,
         }
+
+        if n_signals < 2:
+            result["experimental_analytics"] = self._empty_relational_analytics()
+            self.latest_result = result
+            return result
 
         if len(self.frames) >= max(self.recent_window, 3):
             recent_vectors = np.vstack([f["_vector"] for f in list(self.frames)[-self.recent_window :]])
@@ -153,10 +196,10 @@ class StructuralEngine:
             components = {
                 "drift": float(drift_score),
                 "spectral": spectral_radius(corr) + max(0.0, 1.0 - spectral_gap(corr)),
-                "directional": directional["causal_divergence"],
+                "directional": directional.get("causal_divergence"),
                 "entropy": interaction_entropy(corr),
-                "early_warning": warning["variance"] + max(0.0, warning["lag1_autocorrelation"]),
-                "subsystem_instability": subsystem["subsystem_instability"],
+                "early_warning": warning.get("variance", 0.0) + max(0.0, warning.get("lag1_autocorrelation", 0.0)),
+                "subsystem_instability": subsystem.get("subsystem_instability"),
             }
             result["experimental_analytics"] = {
                 "directional": directional,

@@ -3,9 +3,12 @@ from __future__ import annotations
 from typing import Mapping
 
 
+NumberLike = float | int
+
+
 def composite_instability_score(
-    components: Mapping[str, float],
-    weights: Mapping[str, float] | None = None,
+    components: Mapping[str, NumberLike | None],
+    weights: Mapping[str, NumberLike] | None = None,
 ) -> float:
     default_weights = {
         "drift": 0.22,
@@ -16,4 +19,24 @@ def composite_instability_score(
         "subsystem_instability": 0.18,
     }
     active_weights = dict(weights) if weights is not None else default_weights
-    return float(sum(float(components.get(name, 0.0)) * weight for name, weight in active_weights.items()))
+
+    weighted_sum = 0.0
+    weight_sum = 0.0
+
+    for name, weight in active_weights.items():
+        value = components.get(name)
+        if value is None:
+            continue
+
+        value_f = float(value)
+        if not (value_f == value_f):
+            continue
+
+        weight_f = float(weight)
+        weighted_sum += value_f * weight_f
+        weight_sum += weight_f
+
+    if weight_sum <= 0.0:
+        return 0.0
+
+    return float(weighted_sum / weight_sum)

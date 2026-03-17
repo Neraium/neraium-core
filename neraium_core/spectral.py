@@ -18,12 +18,22 @@ def eigendecomposition(matrix: ArrayLike) -> tuple[np.ndarray, np.ndarray]:
 
 
 def spectral_radius(matrix: ArrayLike) -> float:
-    eigenvalues, _ = eigendecomposition(matrix)
+    values = np.asarray(matrix, dtype=float)
+    if values.ndim != 2 or values.shape[0] != values.shape[1]:
+        raise ValueError("Matrix must be square")
+    if values.shape[0] < 2:
+        return 0.0
+
+    eigenvalues, _ = eigendecomposition(values)
     return float(np.max(np.abs(eigenvalues)))
 
 
 def spectral_gap(matrix: ArrayLike) -> float:
-    eigenvalues, _ = eigendecomposition(matrix)
-    if eigenvalues.size < 2:
+    values = np.asarray(matrix, dtype=float)
+    if values.ndim != 2 or values.shape[0] != values.shape[1]:
+        raise ValueError("Matrix must be square")
+    if values.shape[0] < 2:
         return 0.0
+
+    eigenvalues, _ = eigendecomposition(values)
     return float(eigenvalues[0] - eigenvalues[1])
