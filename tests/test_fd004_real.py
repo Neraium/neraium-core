@@ -77,6 +77,10 @@ def test_run_fd004_real_evaluation_generates_outputs(tmp_path):
     assert (tmp_path / "hero_unit_timeseries.csv").exists()
     assert report["proof_summary"] == "reports/fd004_proof_summary.md"
     assert report["hero_unit"]["asset_id"].startswith("unit_")
+    assert report["unit_summaries"][0]["signal_emitted"] is False
+    assert report["unit_summaries"][0]["signal_strength"] in {"low", "medium", "high"}
+    assert report["unit_summaries"][0]["confidence"] in {"low", "medium", "high"}
+    assert isinstance(report["unit_summaries"][0]["reason"], list)
 
 
 
