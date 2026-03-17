@@ -22,7 +22,12 @@ from neraium_core.subsystems import subsystem_spectral_measures
 
 
 class StructuralEngine:
-    def __init__(self, baseline_window: int = 50, recent_window: int = 12, window_stride: int = 1):
+    def __init__(
+        self,
+        baseline_window: int = 50,
+        recent_window: int = 12,
+        window_stride: int = 1,
+    ):
         self.baseline_window = baseline_window
         self.recent_window = recent_window
         self.window_stride = max(1, window_stride)
@@ -54,14 +59,26 @@ class StructuralEngine:
     def _get_recent_window(self) -> Optional[np.ndarray]:
         if len(self.frames) < self.recent_window:
             return None
+
         vectors = np.vstack([f["_vector"] for f in list(self.frames)[-self.recent_window :]])
-        return vectors[:: self.window_stride]
+        vectors = vectors[:: self.window_stride]
+
+        if vectors.shape[0] < 2:
+            return None
+
+        return vectors
 
     def _get_baseline_window(self) -> Optional[np.ndarray]:
         if len(self.frames) < self.baseline_window:
             return None
+
         vectors = np.vstack([f["_vector"] for f in list(self.frames)[: self.baseline_window]])
-        return vectors[:: self.window_stride]
+        vectors = vectors[:: self.window_stride]
+
+        if vectors.shape[0] < 2:
+            return None
+
+        return vectors
 
     def _system_health(self, drift_score: float, stability_score: float) -> int:
         health = 100.0 - min(drift_score * 20.0, 85.0)
@@ -82,10 +99,12 @@ class StructuralEngine:
     def _nearest_regime(self, signature: np.ndarray) -> dict[str, float] | None:
         if not self.regime_signatures:
             return None
+
         distances = []
         for regime in self.regime_signatures:
             centroid = np.asarray(regime["signature"], dtype=float)
             distances.append((float(np.linalg.norm(signature - centroid)), str(regime["name"])))
+
         distances.sort(key=lambda x: x[0])
         return {"name": distances[0][1], "distance": distances[0][0]}
 
@@ -151,8 +170,10 @@ class StructuralEngine:
         if valid_signal_count >= 2:
             z_base_valid = z_baseline[:, valid_mask]
             z_recent_valid = z_recent[:, valid_mask]
+
             corr_baseline = correlation_matrix(z_base_valid)
             corr_recent = correlation_matrix(z_recent_valid)
+
             drift_score = structural_drift(corr_recent, corr_baseline, norm="fro")
             stability_score = 1.0 / (1.0 + drift_score)
 
@@ -167,17 +188,18 @@ class StructuralEngine:
                 **dominant_mode_loading(corr_recent),
             }
 
-            components.update(
-                canonicalize_components(
-                    {
-                        "drift": drift_score,
-                        "spectral": spectral["radius"] + max(0.0, 1.0 - spectral["gap"]),
-                        "directional": directional["causal_divergence"],
-                        "entropy": interaction_entropy(corr_recent),
-                        "subsystem_instability": subsystem["subsystem_instability"],
-                    }
-                )
-            )
+            raw_components = {
+                "drift": drift_score,
+                "spectral": spectral["radius"],
+                "directional": directional["divergence"],
+                "entropy": interaction_entropy(corr_recent),
+                "subsystem_instability": subsystem["max_instability"],
+            }
+
+            canonical = canonicalize_components(raw_components)
+            canonical.update(components)
+            components = canonical
+
             result.update(
                 {
                     "structural_drift_score": round(drift_score, 4),
@@ -205,6 +227,7 @@ class StructuralEngine:
 
         composite = composite_instability_score(components)
         self.score_history.append(composite)
+
         forecast = {
             "heuristic": True,
             "trend": float(instability_trend(self.score_history)),
@@ -214,8 +237,11 @@ class StructuralEngine:
         signature = np.asarray(analytics["regime_signature"]["current"], dtype=float)
         nearest = self._nearest_regime(signature)
         analytics["regime_signature"]["nearest"] = nearest
+
         if nearest is None:
-            self.regime_signatures.append({"name": "bootstrap_regime", "signature": signature.tolist()})
+            self.regime_signatures.append(
+                {"name": "bootstrap_regime", "signature": signature.tolist()}
+            )
 
         analytics["composite_instability"] = round(float(composite), 4)
         analytics["composite_components"] = components
