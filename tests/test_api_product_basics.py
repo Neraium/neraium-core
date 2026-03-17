@@ -57,3 +57,39 @@ def test_api_endpoints_registered(tmp_path) -> None:
     assert "/reset" in paths
     assert "/results/latest" in paths
     assert "/results/recent" in paths
+
+
+def test_operator_fields_present_and_structural_skip_for_single_signal(tmp_path) -> None:
+    service = _build_service(tmp_path)
+
+    result = service.ingest_payload(
+        {
+            "timestamp": "2026-01-01T00:00:00+00:00",
+            "site_id": "s1",
+            "asset_id": "a1",
+            "sensor_values": {"pressure": 50.0},
+        }
+    )
+
+    assert result["risk_level"] == "LOW"
+    assert result["action_state"] == "STABLE"
+    assert isinstance(result["operator_message"], str)
+    assert result["structural_analysis_available"] is False
+    assert result["skipped_reason"] == "insufficient signal dimensionality"
+
+
+def test_health_includes_runtime_configuration_flags(tmp_path) -> None:
+    from fastapi.testclient import TestClient
+
+    app = create_app(service=_build_service(tmp_path))
+    client = TestClient(app)
+
+    response = client.get("/health")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["status"] == "ok"
+    assert "version" in body
+    assert body["latest_result_exists"] is False
+    assert "auth_configured" in body
+    assert "persistence_available" in body
