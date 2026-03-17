@@ -59,12 +59,39 @@ def _trend_arrow(history: deque[float], lookback: int = 8) -> str:
     return "→"
 
 
+def _estimate_time_to_instability(
+    history: deque[float],
+    current_instability: float,
+    threshold: float = 2.5,
+    lookback: int = 8,
+    previous_estimate: float | None = None,
+) -> float | None:
+    if current_instability >= threshold:
+        return 0.0
+
+    if len(history) < 5:
+        return None
+
+    recent = list(history)[-lookback:]
+    x = np.arange(len(recent), dtype=float)
+    y = np.asarray(recent, dtype=float)
+    slope, _ = np.polyfit(x, y, 1)
+
+    if slope <= 1e-6:
+        return None
+
+    eta = float(np.clip((threshold - current_instability) / slope, 0.0, 100.0))
+    if previous_estimate is None:
+        return eta
+    return float(np.clip(0.65 * previous_estimate + 0.35 * eta, 0.0, 100.0))
+
+
 def _risk_and_message(drift: float, instability: float, trend: str) -> tuple[str, str]:
     if drift >= 4.0 or instability >= 2.6 or (drift >= 3.4 and instability >= 2.1 and trend != "↓"):
         return "HIGH", "System unstable: intervention recommended"
+    if instability >= 1.2 and trend == "↑":
+        return "MEDIUM", "Instability increasing — monitor system"
     if drift >= 2.0 or instability >= 1.2 or trend == "↑":
-        if trend == "↑":
-            return "MEDIUM", "Instability increasing; investigate drift"
         return "MEDIUM", "Structural relationships shifting"
     return "LOW", "System stable"
 
@@ -148,6 +175,10 @@ def run_demo(cfg: SimulationConfig | None = None) -> None:
     engine = StructuralEngine(baseline_window=24, recent_window=8)
 
     instability_history: deque[float] = deque(maxlen=16)
+    peak_instability = 0.0
+    threshold_step: int | None = None
+    instability_threshold = 2.5
+    last_eta: float | None = None
 
     for frame in generate_sensor_stream(cfg):
         phase = frame.pop("phase")
@@ -159,15 +190,35 @@ def run_demo(cfg: SimulationConfig | None = None) -> None:
         instability = _display_instability(raw_instability, drift)
 
         instability_history.append(instability)
+        peak_instability = max(peak_instability, instability)
         trend = _trend_arrow(instability_history)
+        time_to_instability = _estimate_time_to_instability(
+            instability_history,
+            current_instability=instability,
+            threshold=instability_threshold,
+            previous_estimate=last_eta,
+        )
+        if time_to_instability is not None:
+            last_eta = time_to_instability
+        if threshold_step is None and instability >= instability_threshold:
+            threshold_step = int(frame["timestamp"])
 
         risk_level, message = _risk_and_message(drift, instability, trend)
 
         print(f"[time={frame['timestamp']}] phase={phase}")
         print(f"drift={drift:.2f} | instability={instability:.2f} | trend={trend}")
         print(f"risk={risk_level}")
+        eta_display = "∞" if time_to_instability is None else f"{time_to_instability:.1f}"
+        print(f"time_to_instability={eta_display}")
         print(f"message={message}")
         print("-" * 56)
+
+    print("Simulation complete:")
+    print(f"- peak instability: {peak_instability:.2f}")
+    if threshold_step is None:
+        print("- time to instability reached: not reached")
+    else:
+        print(f"- time to instability reached: step {threshold_step}")
 
 
 if __name__ == "__main__":
