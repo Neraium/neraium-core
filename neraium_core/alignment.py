@@ -145,25 +145,42 @@ class StructuralEngine:
 
         if len(self.frames) >= max(self.recent_window, 3):
             recent_vectors = np.vstack([f["_vector"] for f in list(self.frames)[-self.recent_window :]])
-            corr = correlation_matrix(recent_vectors)
-            directional = directional_metrics(lagged_correlation_matrix(recent_vectors, lag=1))
-            warning = early_warning_metrics(recent_vectors)
-            subsystem = subsystem_spectral_measures(corr)
+            n_signals = int(recent_vectors.shape[1]) if recent_vectors.ndim == 2 else 0
+            corr = None
 
+            warning = early_warning_metrics(recent_vectors)
             components = {
                 "drift": float(drift_score),
-                "spectral": spectral_radius(corr) + max(0.0, 1.0 - spectral_gap(corr)),
-                "directional": directional["causal_divergence"],
-                "entropy": interaction_entropy(corr),
                 "early_warning": warning["variance"] + max(0.0, warning["lag1_autocorrelation"]),
-                "subsystem_instability": subsystem["subsystem_instability"],
             }
-            result["experimental_analytics"] = {
-                "directional": directional,
+
+            analytics = {
                 "early_warning": warning,
-                "subsystems": subsystem,
-                "composite_instability": round(composite_instability_score(components), 4),
+                "relational_metrics_skipped": n_signals < 2,
             }
+
+            if n_signals >= 2:
+                corr = correlation_matrix(recent_vectors)
+                directional = directional_metrics(lagged_correlation_matrix(recent_vectors, lag=1))
+                subsystem = subsystem_spectral_measures(corr)
+
+                components.update(
+                    {
+                        "spectral": spectral_radius(corr) + max(0.0, 1.0 - spectral_gap(corr)),
+                        "directional": directional["causal_divergence"],
+                        "entropy": interaction_entropy(corr),
+                        "subsystem_instability": subsystem["subsystem_instability"],
+                    }
+                )
+                analytics.update(
+                    {
+                        "directional": directional,
+                        "subsystems": subsystem,
+                    }
+                )
+
+            analytics["composite_instability"] = round(composite_instability_score(components), 4)
+            result["experimental_analytics"] = analytics
 
         self.latest_result = result
         return result
