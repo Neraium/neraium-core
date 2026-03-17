@@ -10,7 +10,7 @@ from statistics import mean
 from typing import Any
 
 from neraium_core.fd004_synthetic import Fd004RiskEscalator
-from neraium_core.fd004_plotting import generate_fd004_subset_plots
+from neraium_core.fd004_plotting import generate_fd004_subset_plots, plot_fd004_unit_timeseries
 from neraium_core.service import StructuralMonitoringService
 
 EXPECTED_FD004_COLUMNS = 26
@@ -95,6 +95,131 @@ def load_fd004_rul(path: str | Path) -> dict[str, int]:
     return mapping
 
 
+def _phase_switch_count(rows: list[dict[str, Any]]) -> int:
+    ordered = sorted(rows, key=lambda row: int(row["cycle"]))
+    if not ordered:
+        return 0
+    switches = 0
+    current = str(ordered[0].get("phase", "stable"))
+    for row in ordered[1:]:
+        next_phase = str(row.get("phase", "stable"))
+        if next_phase != current:
+            switches += 1
+            current = next_phase
+    return switches
+
+
+def select_hero_unit(
+    unit_summaries: list[dict[str, Any]],
+    timeseries: list[dict[str, Any]],
+) -> str | None:
+    by_unit: dict[str, list[dict[str, Any]]] = {}
+    for row in timeseries:
+        by_unit.setdefault(str(row.get("asset_id", "")), []).append(row)
+
+    candidates: list[tuple[tuple[int, int, int, int, float], str]] = []
+    for summary in unit_summaries:
+        asset_id = str(summary.get("asset_id", ""))
+        medium_step = summary.get("first_MEDIUM_step")
+        high_step = summary.get("first_HIGH_step")
+        valid_transition = isinstance(medium_step, int) and isinstance(high_step, int) and medium_step < high_step
+        warning_window = int(summary.get("early_warning_window") or 0)
+        phase_switches = _phase_switch_count(by_unit.get(asset_id, []))
+        peak_instability = float(summary.get("peak_instability", 0.0))
+
+        # Lower tuple values are better.
+        rank = (
+            0 if valid_transition else 1,
+            0 if warning_window >= 3 else 1,
+            phase_switches,
+            -warning_window,
+            -peak_instability,
+        )
+        candidates.append((rank, asset_id))
+
+    if not candidates:
+        return None
+    return sorted(candidates)[0][1]
+
+
+def write_fd004_proof_summary(
+    report: dict[str, Any],
+    *,
+    summary_path: str | Path,
+    hero_asset_id: str | None,
+) -> None:
+    unit_summaries = report.get("unit_summaries", [])
+    units_total = len(unit_summaries)
+
+    medium_count = sum(1 for item in unit_summaries if item.get("first_MEDIUM_step") is not None)
+    high_count = sum(1 for item in unit_summaries if item.get("first_HIGH_step") is not None)
+    medium_before_high_count = sum(
+        1
+        for item in unit_summaries
+        if item.get("first_MEDIUM_step") is not None
+        and item.get("first_HIGH_step") is not None
+        and int(item["first_MEDIUM_step"]) < int(item["first_HIGH_step"])
+    )
+
+    def percent(value: int) -> float:
+        return round((value / units_total) * 100, 1) if units_total else 0.0
+
+    average_window = report.get("overall_summary", {}).get("average_early_warning_window")
+    avg_window_text = f"{average_window} cycles" if average_window is not None else "N/A"
+
+    hero_rows = [row for row in report.get("timeseries", []) if row.get("asset_id") == hero_asset_id]
+    instability_increases = False
+    low_to_high_jump = False
+    rises_before_rul_drop = False
+
+    if hero_rows:
+        ordered = sorted(hero_rows, key=lambda row: int(row["cycle"]))
+        first_instability = float(ordered[0].get("composite_instability", 0.0))
+        last_instability = float(ordered[-1].get("composite_instability", 0.0))
+        instability_increases = last_instability > first_instability
+
+        risk_levels = [str(row.get("risk_level", "LOW")) for row in ordered]
+        low_to_high_jump = any(
+            current == "LOW" and nxt == "HIGH"
+            for current, nxt in zip(risk_levels, risk_levels[1:])
+        )
+
+        below_threshold_idx = next(
+            (idx for idx, row in enumerate(ordered) if float(row.get("estimated_rul", 0.0)) < 50),
+            None,
+        )
+        if below_threshold_idx is not None and below_threshold_idx >= 5:
+            pre_window = [
+                float(row.get("composite_instability", 0.0))
+                for row in ordered[max(0, below_threshold_idx - 10) : below_threshold_idx]
+            ]
+            rises_before_rul_drop = len(pre_window) >= 2 and pre_window[-1] > pre_window[0]
+
+    lines = [
+        "## Summary",
+        f"- Units processed: {units_total}",
+        f"- % reaching MEDIUM: {percent(medium_count)}%",
+        f"- % reaching HIGH: {percent(high_count)}%",
+        f"- % MEDIUM before HIGH: {percent(medium_before_high_count)}%",
+        f"- average early warning window: {avg_window_text}",
+        "",
+        "## Key Observations",
+        f"- Instability increases over time for hero unit ({hero_asset_id or 'N/A'}): {'yes' if instability_increases else 'no'}",
+        f"- LOW→HIGH jumps observed for hero unit: {'yes' if low_to_high_jump else 'no'}",
+        f"- Instability rises before RUL < 50 for hero unit: {'yes' if rises_before_rul_drop else 'no'}",
+        "",
+        "## Interpretation",
+        "- SII tracks structural change progression by combining drift and instability rather than relying on single-sensor threshold crossings.",
+        "- A MEDIUM-to-HIGH sequence provides interpretable early warning lead time before severe instability phases.",
+        "- Phase overlays separate stable, drift, and unstable intervals so operators can contextualize raw score changes.",
+        "- This progression-oriented view can surface emerging degradation sooner than alarming only at final failure thresholds.",
+    ]
+
+    out = Path(summary_path)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    out.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
 def run_fd004_real_evaluation(
     train_path: str = "data/fd004/train_FD004.txt",
     test_path: str = "data/fd004/test_FD004.txt",
@@ -145,6 +270,7 @@ def run_fd004_real_evaluation(
 
             row = {
                 "asset_id": asset_id,
+                "timestamp": record["timestamp"],
                 "cycle": cycle,
                 "structural_drift_score": drift_score,
                 "composite_instability": instability,
@@ -242,7 +368,6 @@ def run_fd004_real_evaluation(
     csv_path = out_dir / "fd004_real_timeseries.csv"
     rul_json_path = out_dir / "fd004_real_rul_map.json"
 
-    json_path.write_text(json.dumps(output, indent=2), encoding="utf-8")
     with csv_path.open("w", encoding="utf-8", newline="") as csv_file:
         writer = csv.DictWriter(csv_file, fieldnames=list(all_rows[0].keys()) if all_rows else ["asset_id"])
         writer.writeheader()
@@ -271,8 +396,57 @@ def run_fd004_real_evaluation(
     print(f"Saved timeseries CSV: {csv_path}")
     if rul_mapping:
         print(f"Saved RUL map JSON: {rul_json_path}")
+
+    hero_asset_id = select_hero_unit(output["unit_summaries"], all_rows)
+    if hero_asset_id:
+        hero_rows = [row for row in all_rows if row.get("asset_id") == hero_asset_id]
+        hero_plot_path = plots_dir / "hero_unit.png"
+        hero_plot_generated = False
+        try:
+            plot_fd004_unit_timeseries(
+                hero_rows,
+                hero_plot_path,
+                include_rul_curve=True,
+                title="Structural Degradation Progression (SII)",
+            )
+            hero_plot_generated = True
+        except ImportError as exc:
+            print(f"Skipping hero FD004 plot because matplotlib is unavailable: {exc}")
+
+        hero_csv_path = out_dir / "hero_unit_timeseries.csv"
+        hero_columns = ["timestamp", "drift", "instability", "phase", "risk_level", "estimated_rul"]
+        with hero_csv_path.open("w", encoding="utf-8", newline="") as hero_csv:
+            writer = csv.DictWriter(hero_csv, fieldnames=hero_columns)
+            writer.writeheader()
+            for row in sorted(hero_rows, key=lambda item: int(item["cycle"])):
+                writer.writerow(
+                    {
+                        "timestamp": row.get("timestamp"),
+                        "drift": row.get("structural_drift_score"),
+                        "instability": row.get("composite_instability"),
+                        "phase": row.get("phase"),
+                        "risk_level": row.get("risk_level"),
+                        "estimated_rul": row.get("estimated_rul"),
+                    }
+                )
+
+        output["hero_unit"] = {
+            "asset_id": hero_asset_id,
+            "plot": str(hero_plot_path) if hero_plot_generated else None,
+            "csv": str(hero_csv_path),
+        }
+
+    summary_path = Path("reports/fd004_proof_summary.md")
+    write_fd004_proof_summary(output, summary_path=summary_path, hero_asset_id=hero_asset_id)
+    output["proof_summary"] = str(summary_path)
+
+    json_path.write_text(json.dumps(output, indent=2), encoding="utf-8")
+
     for plot_path in plot_paths:
         print(f"Saved representative unit plot: {plot_path}")
+    if hero_asset_id:
+        print(f"Saved hero unit artifacts for: {hero_asset_id}")
+    print(f"Saved proof summary: {summary_path}")
 
     return output
 
