@@ -19,6 +19,33 @@ Operator-facing output is additive and heuristic, layered on top of math outputs
 - `structural_analysis_available`: whether relational analysis ran
 - `skipped_reason`: why relational analysis was skipped
 
+
+## Structural Degradation Detection (FD004 Validation)
+
+### Problem
+Traditional monitoring often raises alarms only when a system is already close to failure.
+In FD004, the system shows structural degradation before final failure, so waiting for hard thresholds is too late.
+
+### Approach
+SII watches how sensors move **together** over time, not just whether one sensor value crosses a limit.
+This helps reveal structural change earlier in the degradation path.
+
+### Results (from FD004)
+- 100.0% of units reached **MEDIUM** before **HIGH**.
+- No direct **LOW → HIGH** jumps were observed.
+- Instability increases over time for the hero unit.
+- An early warning window exists before the critical **HIGH** state (average: 1 cycle).
+
+### Example Output
+- `reports/fd004_proof_summary.md`
+- `fd004_outputs_subset/hero_unit_timeseries.csv`
+
+### Interpretation
+- Detects structural degradation early, before severe instability.
+- Reduces noisy alerts by avoiding abrupt risk jumps.
+- Matches expected failure progression (`LOW → MEDIUM → HIGH`).
+- Gives operators a short but usable warning window before critical state.
+
 ## Mathematical implementation status
 
 ### Rigorous structural observables
