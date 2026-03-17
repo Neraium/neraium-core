@@ -1,0 +1,38 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "neraium-core"
+version = "0.1.0"
+description = "Structural telemetry drift monitoring prototype"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+  "numpy",
+  "pandas",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest",
+  "ruff",
+]
+
+[tool.setuptools.packages.find]
+include = ["neraium_core*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py310"
+extend-exclude = [
+  "sii",
+  "nano plot_fd004_results.py",
+  "server.py",
+  "run_fd004_test.py",
+  "lead_time_engine.py",
+  "simulator.py",
+]
