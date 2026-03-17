@@ -1,10 +1,14 @@
 from __future__ import annotations
 
 import json
+import logging
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
+
+
+logger = logging.getLogger(__name__)
 
 
 def _utc_now() -> str:
@@ -57,6 +61,7 @@ class ResultStore:
                 "INSERT INTO results (created_at, result_json) VALUES (?, ?)",
                 (_utc_now(), json.dumps(result)),
             )
+        logger.info("persistence write complete for result timestamp=%s", result.get("timestamp"))
 
     def get_latest_result(self) -> dict[str, Any] | None:
         with self._conn() as conn:
@@ -82,6 +87,7 @@ class ResultStore:
                     result.get("timestamp"),
                 ),
             )
+        logger.info("persistence write complete for event timestamp=%s", payload.get("timestamp"))
 
     def list_recent_results(self, limit: int = 100) -> list[dict[str, Any]]:
         safe_limit = max(1, min(int(limit), 1000))

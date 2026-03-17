@@ -2,9 +2,14 @@ from __future__ import annotations
 
 from typing import Any
 
+import logging
+
 from neraium_core.alignment import StructuralEngine
 from neraium_core.pipeline import normalize_rest_payload, parse_csv_text
 from neraium_core.store import ResultStore
+
+
+logger = logging.getLogger(__name__)
 
 
 class StructuralMonitoringService:
@@ -18,7 +23,7 @@ class StructuralMonitoringService:
         self.engine = engine or StructuralEngine(baseline_window=24, recent_window=8)
         self.store = store or ResultStore()
 
-    def _interpret(self, result: dict[str, Any]) -> dict[str, str]:
+    def _interpret(self, result: dict[str, Any]) -> dict[str, str | float]:
         drift = float(result.get("structural_drift_score", 0.0))
         state = str(result.get("state", "STABLE")).upper()
 
@@ -26,6 +31,8 @@ class StructuralMonitoringService:
             return {
                 "risk_level": "HIGH",
                 "action_state": "ALERT",
+                "trend": "escalating",
+                "confidence": 0.9,
                 "operator_message": "High instability detected. Immediate operator review advised.",
             }
 
@@ -33,12 +40,16 @@ class StructuralMonitoringService:
             return {
                 "risk_level": "MEDIUM",
                 "action_state": "WATCH",
+                "trend": "watch",
+                "confidence": 0.75,
                 "operator_message": "Drift is elevated. Monitor closely for trend continuation.",
             }
 
         return {
             "risk_level": "LOW",
             "action_state": "STABLE",
+            "trend": "stable",
+            "confidence": 0.7,
             "operator_message": "System appears stable based on current heuristic interpretation.",
         }
 
@@ -83,6 +94,7 @@ class StructuralMonitoringService:
         return enriched
 
     def ingest_payload(self, payload: dict[str, Any]) -> dict[str, Any]:
+        logger.info("normalizing ingest payload")
         frame = normalize_rest_payload(payload)
         result = self._decorate_result(self.engine.process_frame(frame))
         self.store.save_result(result)
@@ -109,6 +121,7 @@ class StructuralMonitoringService:
         return self.store.list_recent_results(limit=limit)
 
     def reset(self) -> None:
+        logger.info("resetting structural monitoring service")
         self.engine = StructuralEngine(
             baseline_window=self.engine.baseline_window,
             recent_window=self.engine.recent_window,

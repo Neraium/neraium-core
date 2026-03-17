@@ -16,10 +16,14 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+test = [
+  "pytest",
+  "httpx",
+]
 dev = [
   "pytest",
-  "ruff",
   "httpx",
+  "ruff",
 ]
 
 [tool.setuptools]

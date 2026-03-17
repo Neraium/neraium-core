@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import logging
 from pathlib import Path
 from typing import Any
 
@@ -29,9 +30,21 @@ class CsvIngestRequest(BaseModel):
 class HealthResponse(BaseModel):
     status: str
     version: str
-    latest_result_exists: bool
+    latest_result_available: bool
     auth_configured: bool
     persistence_available: bool
+
+
+logger = logging.getLogger(__name__)
+
+
+def build_results_envelope(results: list[dict[str, Any]]) -> dict[str, Any]:
+    latest = results[0] if results else None
+    return {
+        "latest": latest,
+        "count": len(results),
+        "results": results,
+    }
 
 
 def _persistence_available(db_path: str) -> bool:
@@ -71,52 +84,58 @@ def create_app(service: StructuralMonitoringService | None = None) -> FastAPI:
         return HealthResponse(
             status="ok" if persistence_available else "degraded",
             version=app.version,
-            latest_result_exists=service_instance.get_latest_result() is not None,
+            latest_result_available=service_instance.get_latest_result() is not None,
             auth_configured=bool(api_key),
             persistence_available=persistence_available,
         )
 
     @app.post("/ingest")
     def ingest(payload: IngestRequest, _: None = Depends(require_api_key)) -> dict[str, Any]:
+        logger.info("ingest call received")
         try:
-            return service_instance.ingest_payload(payload.model_dump(exclude_none=True))
+            result = service_instance.ingest_payload(payload.model_dump(exclude_none=True))
+            return build_results_envelope([result])
         except ValueError as e:
+            logger.warning("ingest validation failure: %s", e)
             raise HTTPException(status_code=400, detail=str(e))
 
     @app.post("/ingest/batch")
     def ingest_batch(payload: BatchIngestRequest, _: None = Depends(require_api_key)) -> dict[str, Any]:
+        logger.info("ingest batch call received with %s items", len(payload.items))
         try:
             results = service_instance.ingest_batch(
                 [item.model_dump(exclude_none=True) for item in payload.items]
             )
         except ValueError as e:
+            logger.warning("ingest batch validation failure: %s", e)
             raise HTTPException(status_code=400, detail=str(e))
-        return {"count": len(results), "results": results}
+        return build_results_envelope(results)
 
     @app.post("/ingest/csv")
     def ingest_csv(payload: CsvIngestRequest, _: None = Depends(require_api_key)) -> dict[str, Any]:
+        logger.info("ingest csv call received")
         try:
             results = service_instance.ingest_csv(payload.csv_text)
         except ValueError as e:
+            logger.warning("ingest csv validation failure: %s", e)
             raise HTTPException(status_code=400, detail=str(e))
-        return {"count": len(results), "results": results}
+        return build_results_envelope(results)
 
     @app.post("/reset")
     def reset(_: None = Depends(require_api_key)) -> dict[str, bool]:
+        logger.info("reset call received")
         service_instance.reset()
         return {"ok": True}
 
     @app.get("/results/latest")
     def get_latest() -> dict[str, Any]:
         latest = service_instance.get_latest_result()
-        if latest is None:
-            return {"result": None}
-        return {"result": latest}
+        return build_results_envelope([latest] if latest else [])
 
     @app.get("/results/recent")
     def get_recent(limit: int = 100) -> dict[str, Any]:
         results = service_instance.list_recent_results(limit=limit)
-        return {"count": len(results), "results": results}
+        return build_results_envelope(results)
 
     return app
 
