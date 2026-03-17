@@ -17,18 +17,17 @@ class StructuralEngine:
     def __init__(self, baseline_window: int = 50, recent_window: int = 12):
         self.baseline_window = baseline_window
         self.recent_window = recent_window
-        self.frames = deque(maxlen=500)
-        self.sensor_order: List[str] = []
-        self.latest_result: Optional[Dict] = None
+        self._frames = deque(maxlen=500)
+        self._sensor_order: List[str] = []
 
     def _vector_from_frame(self, frame: Dict) -> np.ndarray:
         sensor_values = frame["sensor_values"]
 
-        if not self.sensor_order:
-            self.sensor_order = sorted(sensor_values.keys())
+        if not self._sensor_order:
+            self._sensor_order = sorted(sensor_values.keys())
 
         values = []
-        for name in self.sensor_order:
+        for name in self._sensor_order:
             v = sensor_values.get(name, 0.0)
             try:
                 values.append(float(v))
@@ -38,10 +37,10 @@ class StructuralEngine:
         return np.array(values, dtype=float)
 
     def _baseline_stats(self) -> Optional[Dict]:
-        if len(self.frames) < max(5, self.baseline_window):
+        if len(self._frames) < max(5, self.baseline_window):
             return None
 
-        baseline_frames = list(self.frames)[: self.baseline_window]
+        baseline_frames = list(self._frames)[: self.baseline_window]
         X = np.vstack([f["_vector"] for f in baseline_frames])
 
         mean = X.mean(axis=0)
@@ -55,7 +54,6 @@ class StructuralEngine:
 
         return {
             "mean": mean,
-            "cov": cov,
             "inv_cov": inv_cov,
         }
 
@@ -64,11 +62,11 @@ class StructuralEngine:
         return float(math.sqrt(delta.T @ inv_cov @ delta))
 
     def _relational_stability(self) -> float:
-        if len(self.frames) < max(self.baseline_window + self.recent_window, 10):
+        if len(self._frames) < max(self.baseline_window + self.recent_window, 10):
             return 1.0
 
-        baseline_frames = list(self.frames)[: self.baseline_window]
-        recent_frames = list(self.frames)[-self.recent_window :]
+        baseline_frames = list(self._frames)[: self.baseline_window]
+        recent_frames = list(self._frames)[-self.recent_window :]
 
         Xb = np.vstack([f["_vector"] for f in baseline_frames])
         Xr = np.vstack([f["_vector"] for f in recent_frames])
@@ -85,85 +83,67 @@ class StructuralEngine:
         score = 1.0 / (1.0 + diff)
         return max(0.0, min(1.0, float(score)))
 
-    def _system_health(self, drift_score: float, stability_score: float) -> int:
-        health = 100.0 - min(drift_score * 18.0, 80.0)
-        health += stability_score * 20.0
-        health = max(0.0, min(100.0, health))
-        return int(round(health))
-
-    def _alert_state(self, drift_score: float) -> str:
-        if drift_score > 3.0:
-            return "ALERT"
-        if drift_score > 1.5:
-            return "WATCH"
-        return "STABLE"
-
-    def _drift_alert(self, drift_score: float) -> bool:
-        return drift_score > 1.5
-
     def process_frame(self, frame: Dict) -> Dict:
         vector = self._vector_from_frame(frame)
 
         stored = dict(frame)
         stored["_vector"] = vector
-        self.frames.append(stored)
+        self._frames.append(stored)
 
         baseline = self._baseline_stats()
 
-        if baseline is None:
-            result = {
-                "timestamp": frame["timestamp"],
-                "site_id": frame["site_id"],
-                "asset_id": frame["asset_id"],
-                "state": "STABLE",
-                "structural_drift_score": 0.0,
-                "relational_stability_score": 1.0,
-                "system_health": 100,
-                "drift_alert": False,
-                "sensor_relationships": self.sensor_order,
-            }
-            self.latest_result = result
-            return result
+        drift_score = 0.0
+        if baseline is not None:
+            drift_score = self._mahalanobis(vector, baseline["mean"], baseline["inv_cov"])
 
-        drift_score = self._mahalanobis(vector, baseline["mean"], baseline["inv_cov"])
         stability_score = self._relational_stability()
-        health = self._system_health(drift_score, stability_score)
-        state = self._alert_state(drift_score)
-        alert = self._drift_alert(drift_score)
 
         result = {
-            "timestamp": frame["timestamp"],
-            "site_id": frame["site_id"],
-            "asset_id": frame["asset_id"],
-            "state": state,
-            "structural_drift_score": round(drift_score, 4),
-            "relational_stability_score": round(stability_score, 4),
-            "system_health": health,
-            "drift_alert": alert,
-            "sensor_relationships": self.sensor_order,
+            "drift": round(float(drift_score), 4),
+            "spectral": 0.0,
+            "directional": 0.0,
+            "entropy": 0.0,
+            "early_warning": 0.0,
+            "subsystem": 0.0,
+            "composite_score": 0.0,
         }
 
-        if len(self.frames) >= max(self.recent_window, 3):
-            recent_vectors = np.vstack([f["_vector"] for f in list(self.frames)[-self.recent_window :]])
+        if len(self._frames) >= max(self.recent_window, 3):
+            recent_vectors = np.vstack([f["_vector"] for f in list(self._frames)[-self.recent_window :]])
             corr = correlation_matrix(recent_vectors)
             directional = directional_metrics(lagged_correlation_matrix(recent_vectors, lag=1))
             warning = early_warning_metrics(recent_vectors)
             subsystem = subsystem_spectral_measures(corr)
 
+            spectral_value = spectral_radius(corr) + max(0.0, 1.0 - spectral_gap(corr))
+            directional_value = directional["causal_divergence"]
+            entropy_value = interaction_entropy(corr)
+            warning_value = warning["variance"] + max(0.0, warning["lag1_autocorrelation"])
+            subsystem_value = subsystem["subsystem_instability"]
+
             components = {
                 "drift": float(drift_score),
-                "spectral": spectral_radius(corr) + max(0.0, 1.0 - spectral_gap(corr)),
-                "directional": directional["causal_divergence"],
-                "entropy": interaction_entropy(corr),
-                "early_warning": warning["variance"] + max(0.0, warning["lag1_autocorrelation"]),
-                "subsystem_instability": subsystem["subsystem_instability"],
-            }
-            result["experimental_analytics"] = {
-                "directional": directional,
-                "early_warning": warning,
-                "subsystems": subsystem,
-                "composite_instability": round(composite_instability_score(components), 4),
+                "spectral": spectral_value,
+                "directional": directional_value,
+                "entropy": entropy_value,
+                "early_warning": warning_value,
+                "subsystem_instability": subsystem_value,
             }
 
-        self.latest_result = result
+            result.update(
+                {
+                    "spectral": round(float(spectral_value), 4),
+                    "directional": round(float(directional_value), 4),
+                    "entropy": round(float(entropy_value), 4),
+                    "early_warning": round(float(warning_value), 4),
+                    "subsystem": round(float(subsystem_value), 4),
+                    "composite_score": round(composite_instability_score(components), 4),
+                }
+            )
+
+        result["relational_stability"] = round(float(stability_score), 4)
         return result
+
+    def reset(self) -> None:
+        self._frames.clear()
+        self._sensor_order = []

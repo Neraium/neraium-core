@@ -19,3 +19,36 @@ Included modules:
 - `neraium_core.subsystems`: subsystem discovery + subsystem spectral instability
 - `neraium_core.forecasting`: instability trend and time-to-instability proxies
 - `neraium_core.scoring`: composite instability score over core analytical channels
+
+## Using Neraium Core
+
+Use `StructuralIntelligenceService` as the primary integration entry point. It handles payload normalization, validation, orchestration of the structural engine, and exposes typed results.
+
+```python
+from neraium_core.service import StructuralIntelligenceService
+
+service = StructuralIntelligenceService()
+
+result = service.ingest_payload(
+    {
+        "timestamp": "2026-01-01T00:00:00Z",
+        "site_id": "site-01",
+        "asset_id": "pump-03",
+        "sensor_values": {
+            "temperature": 82.4,
+            "pressure": 11.7,
+            "vibration": 0.034,
+        },
+    }
+)
+
+print(result.composite_score)
+
+batch_results = service.ingest_batch([
+    {"timestamp": "2026-01-01T00:01:00Z", "sensor_values": {"temperature": 82.9}},
+    {"timestamp": "2026-01-01T00:02:00Z", "sensor_values": {"temperature": 83.1}},
+])
+
+latest = service.latest_result()
+service.reset()
+```

@@ -28,3 +28,13 @@ class TelemetryPayload(BaseModel):
     system_id: str
     timestamp: datetime
     signals: dict[str, float | int | None]
+
+
+class StructuralResult(BaseModel):
+    drift: float
+    spectral: float
+    directional: float
+    entropy: float
+    early_warning: float
+    subsystem: float
+    composite_score: float
