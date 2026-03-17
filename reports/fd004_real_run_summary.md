@@ -1,3 +1,7 @@
+## Scope note
+- This report describes the current read-only Neraium analytics layer.
+- Results are decision-support outputs for human operators; no automated control or actuation is performed.
+
 # FD004 Real Pipeline Run Summary
 
 ## Execution

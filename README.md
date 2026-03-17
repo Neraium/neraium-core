@@ -1,6 +1,44 @@
 # neraium-core
 
-`neraium-core` is a structural monitoring engine and FastAPI service for ingesting telemetry, estimating relational drift, and presenting operator-facing status for pilot operations.
+`neraium-core` is a deployable, **read-only structural instability instrumentation system**.
+It ingests multivariate telemetry, computes Systemic Infrastructure Intelligence (SII) metrics, and returns operator-facing evidence outputs.
+
+Neraium is intentionally constrained for current deployments:
+- **Read-only analytics** over telemetry and CSV/streaming inputs
+- **Human-in-the-loop decision support only**
+- **No infrastructure control path**
+- **No automated actuation**
+
+## Current Product Scope
+
+Neraium today is a system stability instrumentation layer for detecting structural degradation and instability.
+It does not write back into operational systems and does not execute control actions.
+
+### Input
+- Multivariate telemetry from API ingest
+- Batch CSV uploads
+- Time-ordered streaming-like updates via repeated ingest calls
+
+### Processing
+- Systemic Infrastructure Intelligence (SII)
+- Structural relationship analysis over time (baseline vs recent windows)
+- Phase detection: `stable`, `drift`, `unstable`
+
+### Output
+- `structural_drift_score`
+- `composite_instability`
+- `phase`
+- `trend`
+- `risk_level`
+- `operator_message`
+- Proof artifacts / reports where available (for example FD004 summaries, CSV timelines, and plots)
+
+## Current-State Architecture
+
+Operational systems / telemetry sources  
+→ One-way data access (ingest only)  
+→ Systemic Infrastructure Intelligence (read-only computation)  
+→ Human operators and evidence outputs (API results, CSV, reports)
 
 ## What the system does
 
@@ -18,7 +56,6 @@ Operator-facing output is additive and heuristic, layered on top of math outputs
 - `operator_message`: plain-language guidance
 - `structural_analysis_available`: whether relational analysis ran
 - `skipped_reason`: why relational analysis was skipped
-
 
 ## Structural Degradation Detection (FD004 Validation)
 
@@ -66,6 +103,18 @@ This helps reveal structural change earlier in the degradation path.
 - Directional lagged structure `C_ij = corr(x_i(t), x_j(t+1))` and derived causal energy/asymmetry/divergence are **proxy indicators**, not formal causal proof.
 - Regime awareness is currently a minimal scaffold using a signature vector `[mu_1..mu_n, sigma_1..sigma_n]` with nearest-signature lookup.
 - Forecasting is heuristic extrapolation based on instability trend and velocity (time-to-instability estimate), not a guaranteed failure-time predictor.
+
+## Planned Future Extensions
+
+Interpretive governance and formal assurance layers are planned for a later funded phase.
+They are **not** part of the required definition of the currently working Neraium core platform.
+
+Planned future work includes:
+- Interpretive governance guardrails around operator interpretation and escalation pathways
+- Formal schematic and assurance guardrails for higher-assurance deployments
+- External assurance collaboration discussions with Dr. Chason Coelho and NCC Group / Adelard
+
+These roadmap items are not current operational dependencies for running `neraium-core` today.
 
 ## How to run
 
