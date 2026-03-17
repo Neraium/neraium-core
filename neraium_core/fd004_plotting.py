@@ -58,6 +58,7 @@ def plot_fd004_unit_timeseries(
     output_path: str | Path,
     *,
     include_rul_curve: bool = True,
+    title: str | None = None,
 ) -> None:
     """Plot drift and instability with phase overlays for one FD004 unit."""
     if not rows:
@@ -123,7 +124,7 @@ def plot_fd004_unit_timeseries(
     ]
     legend_handles.extend(phase_handles)
 
-    ax.set_title(f"FD004 SII evaluation: {asset_id}")
+    ax.set_title(title or f"FD004 SII evaluation: {asset_id}")
     ax.set_xlabel("Cycle")
     ax.set_ylabel("Score")
     ax.grid(True, axis="y", linestyle=":", alpha=0.5)
