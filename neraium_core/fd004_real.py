@@ -126,6 +126,10 @@ def write_fd004_proof_summary(
     avg_window_text = f"{average_window} cycles" if average_window is not None else "N/A"
 
     hero_rows = [row for row in report.get("timeseries", []) if row.get("asset_id") == hero_asset_id]
+    hero_summary = next(
+        (item for item in unit_summaries if item.get("asset_id") == hero_asset_id),
+        None,
+    )
     instability_increases = False
     low_to_high_jump = False
     rises_before_rul_drop = False
@@ -172,6 +176,15 @@ def write_fd004_proof_summary(
         "- Phase overlays separate stable, drift, and unstable intervals so operators can contextualize raw score changes.",
         "- This progression-oriented view can surface emerging degradation sooner than alarming only at final failure thresholds.",
     ]
+
+    if hero_summary and hero_summary.get("operator_message"):
+        lines.extend(
+            [
+                "",
+                "## Operator-Facing Message",
+                f"- {hero_summary['operator_message']}",
+            ]
+        )
 
     out = Path(summary_path)
     out.parent.mkdir(parents=True, exist_ok=True)
