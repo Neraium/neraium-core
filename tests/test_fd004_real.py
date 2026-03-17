@@ -73,3 +73,5 @@ def test_run_fd004_real_evaluation_generates_outputs(tmp_path):
     assert "estimated_rul" in report["timeseries"][0]
     assert (tmp_path / "fd004_real_report.json").exists()
     assert (tmp_path / "fd004_real_timeseries.csv").exists()
+    assert (tmp_path / "plots").exists()
+
