@@ -10,6 +10,7 @@ from statistics import mean
 from typing import Any
 
 from neraium_core.fd004_synthetic import Fd004RiskEscalator
+from neraium_core.fd004_plotting import generate_fd004_subset_plots
 from neraium_core.service import StructuralMonitoringService
 
 EXPECTED_FD004_COLUMNS = 26
@@ -251,10 +252,27 @@ def run_fd004_real_evaluation(
     if rul_mapping:
         rul_json_path.write_text(json.dumps(rul_mapping, indent=2), encoding="utf-8")
 
+    plots_dir = out_dir / "plots"
+    plots_dir.mkdir(parents=True, exist_ok=True)
+
+    plot_paths: list[Path] = []
+    try:
+        plot_paths = generate_fd004_subset_plots(
+            all_rows,
+            unit_summaries,
+            output_dir=out_dir,
+            max_units=3,
+            include_rul_curve=True,
+        )
+    except ImportError as exc:
+        print(f"Skipping FD004 plots because matplotlib is unavailable: {exc}")
+
     print(f"Saved report JSON: {json_path}")
     print(f"Saved timeseries CSV: {csv_path}")
     if rul_mapping:
         print(f"Saved RUL map JSON: {rul_json_path}")
+    for plot_path in plot_paths:
+        print(f"Saved representative unit plot: {plot_path}")
 
     return output
 
