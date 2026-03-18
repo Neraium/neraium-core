@@ -5,19 +5,18 @@ from typing import Mapping
 import math
 
 
-# Legacy keys -> canonical keys
 LEGACY_KEYS: dict[str, str] = {
     "drift": "relational_drift",
     "directional": "directional_divergence",
+    "causal": "directional_divergence",
     "subsystem": "subsystem_instability",
     "subsystem_max": "subsystem_instability",
-    "causal": "directional_divergence",
 }
 
 
-# Canonical default component set
 DEFAULT_COMPONENTS: dict[str, float] = {
     "relational_drift": 0.0,
+    "regime_drift": 0.0,
     "spectral": 0.0,
     "directional_divergence": 0.0,
     "entropy": 0.0,
@@ -26,9 +25,9 @@ DEFAULT_COMPONENTS: dict[str, float] = {
 }
 
 
-# Default weights for composite instability score
 DEFAULT_WEIGHTS: dict[str, float] = {
     "relational_drift": 1.0,
+    "regime_drift": 0.8,
     "spectral": 0.8,
     "directional_divergence": 0.8,
     "entropy": 0.5,
@@ -38,7 +37,6 @@ DEFAULT_WEIGHTS: dict[str, float] = {
 
 
 def _coerce_float(value: object, default: float = 0.0) -> float:
-    """Safely coerce a value to float."""
     try:
         v = float(value)  # type: ignore[arg-type]
         if math.isnan(v) or math.isinf(v):
@@ -52,20 +50,17 @@ def normalize_keys(values: Mapping[str, object]) -> dict[str, float]:
     """
     Normalize raw component or weight keys to canonical names.
 
-    Rules:
-    - legacy names are mapped through LEGACY_KEYS
-    - canonical names take precedence over legacy aliases
-    - unknown keys are preserved if numeric, to avoid silent loss
-    - non-numeric values are ignored
+    Canonical keys win over legacy aliases.
+    Unknown numeric keys are preserved.
     """
     normalized: dict[str, float] = {}
 
-    # Pass 1: preserve canonical keys first so they win
+    # canonical first so they win
     for key, value in values.items():
         if key in DEFAULT_COMPONENTS or key in DEFAULT_WEIGHTS:
             normalized[key] = _coerce_float(value)
 
-    # Pass 2: map legacy / other keys
+    # map legacy names after
     for key, value in values.items():
         mapped = LEGACY_KEYS.get(key, key)
         if mapped in normalized:
@@ -76,12 +71,6 @@ def normalize_keys(values: Mapping[str, object]) -> dict[str, float]:
 
 
 def canonicalize_components(components: Mapping[str, object] | None = None) -> dict[str, float]:
-    """
-    Return a complete canonical component dictionary.
-
-    Any missing known components are filled with defaults.
-    Unknown numeric keys are preserved.
-    """
     result = dict(DEFAULT_COMPONENTS)
 
     if not components:
@@ -93,12 +82,6 @@ def canonicalize_components(components: Mapping[str, object] | None = None) -> d
 
 
 def canonicalize_weights(weights: Mapping[str, object] | None = None) -> dict[str, float]:
-    """
-    Return a canonical weight dictionary.
-
-    Missing known weights are filled with defaults.
-    Unknown numeric keys are preserved.
-    """
     result = dict(DEFAULT_WEIGHTS)
 
     if not weights:
@@ -113,13 +96,6 @@ def available_components(
     components: Mapping[str, object],
     weights: Mapping[str, object] | None = None,
 ) -> dict[str, tuple[float, float]]:
-    """
-    Return the components that should participate in scoring.
-
-    A component participates if:
-    - it has a finite numeric value
-    - it has a positive weight
-    """
     canonical_components = canonicalize_components(components)
     canonical_weights = canonicalize_weights(weights)
 
@@ -137,16 +113,6 @@ def composite_instability_score(
     weights: Mapping[str, object] | None = None,
     normalize: bool = True,
 ) -> float:
-    """
-    Compute the composite instability score.
-
-    Behavior:
-    - maps legacy keys to canonical names
-    - canonical keys take precedence
-    - ignores unknown weights that do not map to present components
-    - if normalize=True, divides by sum of active weights
-    - if no active components, returns 0.0
-    """
     active = available_components(components, weights)
 
     if not active:
