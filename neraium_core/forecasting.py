@@ -1,40 +1,49 @@
 from __future__ import annotations
 
-from typing import Iterable
+from collections.abc import Sequence
 
 import numpy as np
 
 
-def instability_trend(history: Iterable[float]) -> float:
-    values = np.asarray(list(history), dtype=float)
-    if values.size < 2:
+def instability_trend_regression(series: Sequence[float]) -> float:
+    """Linear trend estimate for instability series."""
+    y = np.asarray(list(series), dtype=float)
+
+    if len(y) < 5:
         return 0.0
-    x = np.arange(values.size, dtype=float)
-    return float(np.polyfit(x, values, 1)[0])
+
+    x = np.arange(len(y), dtype=float)
+    A = np.vstack([x, np.ones(len(x))]).T
+    slope, _ = np.linalg.lstsq(A, y, rcond=None)[0]
+    return float(slope)
 
 
-def smooth_drift_velocity(history: Iterable[float], window: int = 3) -> float:
-    values = np.asarray(list(history), dtype=float)
-    if values.size < 2:
-        return 0.0
-    diffs = np.diff(values)
-    if window <= 1:
-        return float(diffs[-1])
-    span = min(window, diffs.size)
-    return float(np.mean(diffs[-span:]))
+def time_to_instability_regression(
+    series: Sequence[float],
+    threshold: float = 1.5,
+) -> float | None:
+    """Project time to threshold crossing from linear regression."""
+    y = np.asarray(list(series), dtype=float)
 
-
-def time_to_instability(history: Iterable[float], threshold: float) -> float | None:
-    values = np.asarray(list(history), dtype=float)
-    if values.size == 0:
+    if len(y) < 5:
         return None
 
-    velocity = smooth_drift_velocity(values)
-    if velocity <= 0:
+    x = np.arange(len(y), dtype=float)
+    A = np.vstack([x, np.ones(len(x))]).T
+    slope, _ = np.linalg.lstsq(A, y, rcond=None)[0]
+
+    current = float(y[-1])
+    if slope <= 0:
         return None
 
-    remaining = threshold - values[-1]
-    if remaining <= 0:
-        return 0.0
+    tti = (float(threshold) - current) / float(slope)
+    return float(max(0.0, tti))
 
-    return float(remaining / velocity)
+
+# Backward-compatible wrappers
+def instability_trend(series: Sequence[float]) -> float:
+    return instability_trend_regression(series)
+
+
+def time_to_instability(series: Sequence[float], threshold: float = 1.5) -> float | None:
+    return time_to_instability_regression(series, threshold=threshold)
