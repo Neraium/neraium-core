@@ -6,6 +6,7 @@ from typing import Dict, List, Optional
 import numpy as np
 
 from neraium_core.causal import causal_metrics, granger_causality_matrix
+from neraium_core.decion_layer import decision_output  # ✅ FIXED IMPORT
 from neraium_core.directional import directional_metrics, lagged_correlation_matrix
 from neraium_core.early_warning import early_warning_metrics
 from neraium_core.entropy import interaction_entropy
@@ -49,10 +50,7 @@ class StructuralEngine:
         for name in self.sensor_order:
             v = sensor_values.get(name)
             try:
-                if v is None:
-                    values.append(np.nan)
-                else:
-                    values.append(float(v))
+                values.append(float(v) if v is not None else np.nan)
             except (TypeError, ValueError):
                 values.append(np.nan)
 
@@ -85,8 +83,7 @@ class StructuralEngine:
     def _system_health(self, drift_score: float, stability_score: float) -> int:
         health = 100.0 - min(drift_score * 20.0, 85.0)
         health += stability_score * 20.0
-        health = max(0.0, min(100.0, health))
-        return int(round(health))
+        return int(round(max(0.0, min(100.0, health))))
 
     def _alert_state(self, drift_score: float) -> str:
         if drift_score > 3.0:
@@ -131,22 +128,12 @@ class StructuralEngine:
         valid_signal_count = int(np.sum(valid_mask))
 
         warning = early_warning_metrics(np.nan_to_num(recent_window, nan=0.0))
-        signature = build_regime_signature(recent_mean, recent_std)
 
+        signature = build_regime_signature(recent_mean, recent_std)
         assigned_regime = assign_regime(signature, self.regime_signatures)
         self.regime_signatures = update_regime_library(signature, self.regime_signatures)
 
         analytics: dict[str, object] = {
-            "normalization": {
-                "window": "zscore",
-                "means": [float(v) for v in recent_mean],
-                "std": [float(v) for v in recent_std],
-            },
-            "windowing": {
-                "baseline_window": self.baseline_window,
-                "recent_window": self.recent_window,
-                "stride": self.window_stride,
-            },
             "early_warning": warning,
             "relational_metrics_skipped": valid_signal_count < 2,
             "regime_signature": {
@@ -173,15 +160,16 @@ class StructuralEngine:
             drift_score = structural_drift(corr_recent, corr_baseline, norm="fro")
             stability_score = 1.0 / (1.0 + drift_score)
 
-            signal_importance = signal_structural_importance(corr_recent)
             adjacency = thresholded_adjacency(corr_recent, threshold=0.6)
             graph = graph_metrics(adjacency, corr=corr_recent)
 
             directional = directional_metrics(lagged_correlation_matrix(z_recent_valid, lag=1))
-            causal_matrix = granger_causality_matrix(z_recent_valid, lag=1)
+
+            causal_matrix = granger_causality_matrix(z_recent_valid)
             causal = causal_metrics(causal_matrix)
 
             subsystem = subsystem_spectral_measures(corr_recent)
+
             spectral = {
                 "radius": spectral_radius(corr_recent),
                 "gap": spectral_gap(corr_recent),
@@ -199,9 +187,7 @@ class StructuralEngine:
                 "subsystem_instability": float(subsystem["max_instability"]),
             }
 
-            canonical = canonicalize_components(raw_components)
-            canonical.update(components)
-            components = canonical
+            components = canonicalize_components(raw_components | components)
 
             result.update(
                 {
@@ -215,11 +201,6 @@ class StructuralEngine:
 
             analytics.update(
                 {
-                    "correlation_geometry": {
-                        "baseline": corr_baseline.tolist(),
-                        "current": corr_recent.tolist(),
-                    },
-                    "signal_structural_importance": [float(v) for v in signal_importance],
                     "graph": graph,
                     "directional": directional,
                     "causal": causal,
@@ -235,13 +216,17 @@ class StructuralEngine:
         forecast = {
             "method": "regression",
             "trend": float(instability_trend(self.score_history)),
-            "time_to_instability": time_to_instability(self.score_history, threshold=1.5),
+            "time_to_instability": time_to_instability(self.score_history),
         }
 
+        decision = decision_output(composite, components, forecast)
+        result.update(decision)
+
         analytics["composite_instability"] = round(float(composite), 4)
-        analytics["composite_components"] = components
         analytics["forecasting"] = forecast
+        analytics["components"] = components
 
         result["experimental_analytics"] = analytics
         self.latest_result = result
+
         return result
