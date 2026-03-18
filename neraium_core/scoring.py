@@ -47,20 +47,12 @@ def _coerce_float(value: object, default: float = 0.0) -> float:
 
 
 def normalize_keys(values: Mapping[str, object]) -> dict[str, float]:
-    """
-    Normalize raw component or weight keys to canonical names.
-
-    Canonical keys win over legacy aliases.
-    Unknown numeric keys are preserved.
-    """
     normalized: dict[str, float] = {}
 
-    # canonical first so they win
     for key, value in values.items():
         if key in DEFAULT_COMPONENTS or key in DEFAULT_WEIGHTS:
             normalized[key] = _coerce_float(value)
 
-    # map legacy names after
     for key, value in values.items():
         mapped = LEGACY_KEYS.get(key, key)
         if mapped in normalized:
