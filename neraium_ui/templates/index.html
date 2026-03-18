@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Neraium Operator View</title>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <style>
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: #0f172a;
+      color: #e2e8f0;
+    }
+
+    .container {
+      max-width: 1180px;
+      margin: auto;
+      padding: 24px;
+    }
+
+    h1 {
+      margin-bottom: 6px;
+    }
+
+    .subtitle {
+      color: #94a3b8;
+      margin-bottom: 12px;
+    }
+
+    .banner {
+      background: rgba(245, 158, 11, 0.15);
+      border: 1px solid rgba(245, 158, 11, 0.4);
+      color: #fde68a;
+      padding: 12px;
+      border-radius: 8px;
+      margin-bottom: 14px;
+      font-size: 0.9rem;
+    }
+
+    .info-bar {
+      background: #1e293b;
+      border: 1px solid rgba(148, 163, 184, 0.18);
+      color: #cbd5e1;
+      padding: 12px;
+      border-radius: 8px;
+      margin-bottom: 18px;
+      font-size: 0.9rem;
+      line-height: 1.6;
+    }
+
+    .toggle-bar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 20px;
+      flex-wrap: wrap;
+    }
+
+    .toggle-label {
+      color: #94a3b8;
+      font-size: 0.9rem;
+      font-weight: bold;
+    }
+
+    .toggle-link {
+      text-decoration: none;
+      padding: 8px 14px;
+      border-radius: 999px;
+      font-size: 0.85rem;
+      font-weight: bold;
+      border: 1px solid #475569;
+      color: #e2e8f0;
+      background: #1e293b;
+    }
+
+    .toggle-link.active {
+      background: rgba(56, 189, 248, 0.2);
+      border-color: #38bdf8;
+      color: #bae6fd;
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    .card {
+      background: #1e293b;
+      padding: 16px;
+      border-radius: 10px;
+    }
+
+    .card h2 {
+      margin: 0 0 8px;
+      font-size: 0.9rem;
+      color: #94a3b8;
+    }
+
+    .value {
+      font-size: 1.45rem;
+      font-weight: bold;
+      margin-bottom: 6px;
+      word-break: break-word;
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 999px;
+      font-size: 0.75rem;
+      font-weight: bold;
+    }
+
+    .low {
+      background: rgba(34, 197, 94, 0.2);
+      border: 1px solid #22c55e;
+      color: #bbf7d0;
+    }
+
+    .moderate {
+      background: rgba(250, 204, 21, 0.2);
+      border: 1px solid #facc15;
+      color: #fef08a;
+    }
+
+    .elevated,
+    .medium {
+      background: rgba(245, 158, 11, 0.2);
+      border: 1px solid #f59e0b;
+      color: #fde68a;
+    }
+
+    .high {
+      background: rgba(239, 68, 68, 0.2);
+      border: 1px solid #ef4444;
+      color: #fecaca;
+    }
+
+    .neutral {
+      background: rgba(148, 163, 184, 0.2);
+      border: 1px solid #94a3b8;
+      color: #e2e8f0;
+    }
+
+    .info {
+      background: rgba(56, 189, 248, 0.2);
+      border: 1px solid #38bdf8;
+      color: #bae6fd;
+    }
+
+    .message {
+      background: #1e293b;
+      padding: 18px;
+      border-radius: 10px;
+      margin-bottom: 24px;
+      border-left: 4px solid #38bdf8;
+    }
+
+    .message h2 {
+      margin-top: 0;
+      color: #94a3b8;
+      font-size: 1rem;
+    }
+
+    .message p {
+      margin: 0;
+      font-size: 1.05rem;
+      line-height: 1.6;
+      font-weight: bold;
+    }
+
+    .note {
+      font-size: 0.85rem;
+      color: #94a3b8;
+      margin-top: 10px;
+    }
+
+    .chart {
+      background: #1e293b;
+      padding: 16px;
+      border-radius: 10px;
+      margin-bottom: 20px;
+    }
+
+    .footer {
+      background: #1e293b;
+      padding: 14px;
+      border-radius: 10px;
+      font-size: 0.9rem;
+      color: #94a3b8;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="container">
+    <h1>Neraium Operator View</h1>
+    <div class="subtitle">Read-only structural instability instrumentation</div>
+
+    <div class="banner">
+      Outputs are observational signals intended for human interpretation only and do not constitute operational instruction, control, or required action.
+    </div>
+
+    <div class="info-bar">
+      Mode: <strong>{{ source_info["mode"] }}</strong>
+      |
+      Source: <strong>{{ source_info["source"] }}</strong>
+      {% if source_info["fd004_dir"] %}
+        | FD004 Path: <strong>{{ source_info["fd004_dir"] }}</strong>
+      {% endif %}
+      {% if source_info["using_mock"] and mode == "real" %}
+        | Real artifacts not found, using fallback demo data.
+      {% endif %}
+    </div>
+
+    <div class="toggle-bar">
+      <div class="toggle-label">Mode:</div>
+      <a href="/?mode=stable" class="toggle-link {% if mode == 'stable' %}active{% endif %}">Stable</a>
+      <a href="/?mode=unstable" class="toggle-link {% if mode == 'unstable' %}active{% endif %}">Unstable</a>
+      <a href="/?mode=real" class="toggle-link {% if mode == 'real' %}active{% endif %}">Real</a>
+    </div>
+
+    <div class="grid">
+      <div class="card">
+        <h2>Phase</h2>
+        <div class="value">{{ status["phase"] }}</div>
+        <span class="badge neutral">Current State</span>
+      </div>
+
+      <div class="card">
+        <h2>Risk Level</h2>
+        <div class="value">{{ status["risk_level"] }}</div>
+        <span class="badge {% if status['risk_level'] == 'LOW' %}low{% elif status['risk_level'] == 'MODERATE' %}moderate{% elif status['risk_level'] in ['MEDIUM', 'ELEVATED'] %}medium{% else %}high{% endif %}">
+          {{ status["risk_level"] }}
+        </span>
+      </div>
+
+      <div class="card">
+        <h2>Signal Emitted</h2>
+        <div class="value">{{ "YES" if status["signal_emitted"] else "NO" }}</div>
+        <span class="badge {% if status['signal_emitted'] %}info{% else %}neutral{% endif %}">
+          {{ "Signal Detected" if status["signal_emitted"] else "No Signal Surfaced" }}
+        </span>
+      </div>
+
+      <div class="card">
+        <h2>Signal Strength</h2>
+        <div class="value">{{ status["signal_strength"] }}</div>
+      </div>
+
+      <div class="card">
+        <h2>Confidence</h2>
+        <div class="value">{{ status["confidence"] }}</div>
+      </div>
+
+      <div class="card">
+        <h2>Latest Drift</h2>
+        <div class="value">{{ status["latest_drift"] }}</div>
+      </div>
+
+      <div class="card">
+        <h2>Latest Instability</h2>
+        <div class="value">{{ status["latest_instability"] }}</div>
+      </div>
+
+      <div class="card">
+        <h2>Assigned Regime</h2>
+        <div class="value">{{ status["regime_name"] or "unknown" }}</div>
+      </div>
+
+      <div class="card">
+        <h2>Regime Distance</h2>
+        <div class="value">{{ status["regime_distance"] if status["regime_distance"] is not none else "n/a" }}</div>
+      </div>
+
+      <div class="card">
+        <h2>Regime Drift</h2>
+        <div class="value">{{ status["regime_drift"] }}</div>
+      </div>
+    </div>
+
+    <div class="message">
+      <h2>System Interpretation</h2>
+      <p>{{ status["operator_message"] }}</p>
+      <div class="note">
+        Interpretation is derived from structural signal relationships and should be evaluated within operational context.
+      </div>
+    </div>
+
+    <div class="chart">
+      <h2 style="color:#94a3b8;">Structural Trend</h2>
+      <p style="color:#94a3b8; font-size:0.85rem;">Read-only view of drift, instability, and regime-relative drift over time</p>
+      <canvas id="chart"></canvas>
+    </div>
+
+    <div class="footer">
+      <strong>Scope note:</strong> This interface presents structural analysis outputs for human interpretation. Neraium does not issue operational commands, does not perform control, and does not automate infrastructure actuation.
+    </div>
+  </div>
+
+  <script>
+    async function loadChart() {
+      const currentMode = "{{ mode }}";
+      const res = await fetch(`/timeseries?mode=${currentMode}`);
+      const data = await res.json();
+
+      const labels = data.map(d => d.timestamp);
+      const drift = data.map(d => d.drift);
+      const instability = data.map(d => d.instability);
+      const regimeDrift = data.map(d => d.regime_drift || 0);
+
+      new Chart(document.getElementById('chart'), {
+        type: 'line',
+        data: {
+          labels,
+          datasets: [
+            {
+              label: 'Structural Drift',
+              data: drift,
+              borderColor: '#67e8f9',
+              backgroundColor: 'rgba(103, 232, 249, 0.15)',
+              tension: 0.25
+            },
+            {
+              label: 'Composite Instability',
+              data: instability,
+              borderColor: '#f9a8d4',
+              backgroundColor: 'rgba(249, 168, 212, 0.15)',
+              tension: 0.25
+            },
+            {
+              label: 'Regime Drift',
+              data: regimeDrift,
+              borderColor: '#facc15',
+              backgroundColor: 'rgba(250, 204, 21, 0.15)',
+              tension: 0.25
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          plugins: {
+            legend: {
+              labels: { color: '#e2e8f0' }
+            }
+          },
+          scales: {
+            x: {
+              ticks: { color: '#cbd5e1' }
+            },
+            y: {
+              ticks: { color: '#cbd5e1' }
+            }
+          }
+        }
+      });
+    }
+
+    loadChart();
+  </script>
+</body>
+</html>
