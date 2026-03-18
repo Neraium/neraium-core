@@ -6,7 +6,7 @@ from typing import Dict, List, Optional
 import numpy as np
 
 from neraium_core.causal import causal_metrics, granger_causality_matrix
-from neraium_core.decion_layer import decision_output  # ✅ FIXED IMPORT
+from neraium_core.decision_layer import decision_output
 from neraium_core.directional import directional_metrics, lagged_correlation_matrix
 from neraium_core.early_warning import early_warning_metrics
 from neraium_core.entropy import interaction_entropy
@@ -39,6 +39,7 @@ class StructuralEngine:
         self.latest_result: Optional[Dict] = None
         self.score_history: deque[float] = deque(maxlen=120)
         self.regime_signatures: list[dict[str, object]] = []
+        self.regime_baselines: dict[str, dict[str, object]] = {}
 
     def _vector_from_frame(self, frame: Dict) -> np.ndarray:
         sensor_values = frame["sensor_values"]
@@ -133,12 +134,15 @@ class StructuralEngine:
         assigned_regime = assign_regime(signature, self.regime_signatures)
         self.regime_signatures = update_regime_library(signature, self.regime_signatures)
 
+        regime_name = assigned_regime["name"] if assigned_regime else None
+
         analytics: dict[str, object] = {
             "early_warning": warning,
             "relational_metrics_skipped": valid_signal_count < 2,
             "regime_signature": {
                 "current": [float(v) for v in signature],
                 "nearest": assigned_regime,
+                "assigned_name": regime_name,
                 "library_size": len(self.regime_signatures),
             },
         }
@@ -146,6 +150,7 @@ class StructuralEngine:
         components = canonicalize_components(
             {
                 "drift": 0.0,
+                "regime_drift": 0.0,
                 "early_warning": warning["variance"] + max(0.0, warning["lag1_autocorrelation"]),
             }
         )
@@ -160,6 +165,22 @@ class StructuralEngine:
             drift_score = structural_drift(corr_recent, corr_baseline, norm="fro")
             stability_score = 1.0 / (1.0 + drift_score)
 
+            regime_drift = 0.0
+            if regime_name is not None:
+                if regime_name not in self.regime_baselines:
+                    self.regime_baselines[regime_name] = {
+                        "signature": signature.tolist(),
+                        "correlation": corr_recent.tolist(),
+                        "count": 1,
+                    }
+                else:
+                    regime_corr = np.asarray(self.regime_baselines[regime_name]["correlation"], dtype=float)
+                    regime_drift = structural_drift(corr_recent, regime_corr, norm="fro")
+                    self.regime_baselines[regime_name]["count"] = int(
+                        self.regime_baselines[regime_name].get("count", 0)
+                    ) + 1
+
+            signal_importance = signal_structural_importance(corr_recent)
             adjacency = thresholded_adjacency(corr_recent, threshold=0.6)
             graph = graph_metrics(adjacency, corr=corr_recent)
 
@@ -178,6 +199,7 @@ class StructuralEngine:
 
             raw_components = {
                 "drift": drift_score,
+                "regime_drift": regime_drift,
                 "spectral": spectral["radius"],
                 "directional": max(
                     float(directional.get("divergence", 0.0)),
@@ -187,7 +209,9 @@ class StructuralEngine:
                 "subsystem_instability": float(subsystem["max_instability"]),
             }
 
-            components = canonicalize_components(raw_components | components)
+            canonical = canonicalize_components(raw_components)
+            canonical.update(components)
+            components = canonical
 
             result.update(
                 {
@@ -201,12 +225,18 @@ class StructuralEngine:
 
             analytics.update(
                 {
+                    "correlation_geometry": {
+                        "baseline": corr_baseline.tolist(),
+                        "current": corr_recent.tolist(),
+                    },
+                    "signal_structural_importance": [float(v) for v in signal_importance],
                     "graph": graph,
                     "directional": directional,
                     "causal": causal,
                     "subsystems": subsystem,
                     "spectral": spectral,
                     "entropy": float(interaction_entropy(corr_recent)),
+                    "regime_drift": float(regime_drift),
                 }
             )
 
@@ -219,7 +249,11 @@ class StructuralEngine:
             "time_to_instability": time_to_instability(self.score_history),
         }
 
-        decision = decision_output(composite, components, forecast)
+        decision = decision_output(
+            composite_score=float(composite),
+            components=components,
+            forecast=forecast,
+        )
         result.update(decision)
 
         analytics["composite_instability"] = round(float(composite), 4)
