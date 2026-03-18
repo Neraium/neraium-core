@@ -1,64 +1,65 @@
 from __future__ import annotations
 
-from typing import Any
-
 import numpy as np
-
-from neraium_core.graph import thresholded_adjacency
-from neraium_core.spectral import spectral_radius
+from numpy.linalg import eigvals, eig
 
 
-ArrayLike = Any
+def spectral_clustering_subsystems(corr: np.ndarray, k: int = 3) -> list[list[int]]:
+    """
+    Lightweight subsystem discovery using eigenvector embedding.
 
+    This is a practical approximation, not a full clustering framework.
+    """
+    corr = np.asarray(corr, dtype=float)
 
-def _connected_components(adjacency: np.ndarray) -> list[list[int]]:
-    n = adjacency.shape[0]
-    seen = set()
-    components: list[list[int]] = []
-
-    for root in range(n):
-        if root in seen:
-            continue
-        stack = [root]
-        comp: list[int] = []
-        while stack:
-            node = stack.pop()
-            if node in seen:
-                continue
-            seen.add(node)
-            comp.append(node)
-            neighbors = np.where(adjacency[node] > 0)[0].tolist()
-            stack.extend(neighbors)
-        components.append(sorted(comp))
-
-    return components
-
-
-def discover_subsystems(corr: ArrayLike, threshold: float = 0.7) -> list[list[int]]:
-    matrix = np.asarray(corr, dtype=float)
-    if matrix.ndim != 2 or matrix.shape[0] != matrix.shape[1]:
-        raise ValueError("Correlation matrix must be square")
-    if matrix.shape[0] < 2:
+    if corr.ndim != 2 or corr.shape[0] != corr.shape[1] or corr.shape[0] < 2:
         return []
-    adjacency = thresholded_adjacency(matrix, threshold=threshold)
-    return _connected_components(adjacency)
+
+    vals, vecs = eig(corr)
+    idx = np.argsort(-np.abs(vals))[: min(k, corr.shape[0])]
+    embedding = np.real(vecs[:, idx])
+
+    labels = np.argmax(np.abs(embedding), axis=1)
+
+    clusters: dict[int, list[int]] = {}
+    for i, label in enumerate(labels):
+        clusters.setdefault(int(label), []).append(i)
+
+    return list(clusters.values())
 
 
-def subsystem_spectral_measures(corr: ArrayLike, threshold: float = 0.7) -> dict[str, float]:
-    matrix = np.asarray(corr, dtype=float)
-    components = discover_subsystems(matrix, threshold=threshold)
-    if not components:
-        return {"subsystem_count": 0.0, "max_subsystem_radius": 0.0, "subsystem_instability": 0.0, "max_instability": 0.0}
+def subsystem_spectral_measures(corr: np.ndarray, k: int = 3) -> dict[str, object]:
+    """
+    Compute subsystem-local dominant spectral instability.
 
-    radii = []
-    for component in components:
-        block = matrix[np.ix_(component, component)]
-        radii.append(spectral_radius(block))
+    Returns both the discovered clusters and the max subsystem instability.
+    """
+    corr = np.asarray(corr, dtype=float)
 
-    max_radius = float(max(radii) if radii else 0.0)
+    if corr.ndim != 2 or corr.shape[0] != corr.shape[1] or corr.shape[0] < 2:
+        return {
+            "clusters": [],
+            "subsystem_instability": 0.0,
+            "max_instability": 0.0,
+            "subsystem_count": 0,
+        }
+
+    clusters = spectral_clustering_subsystems(corr, k=k)
+    instabilities: list[float] = []
+
+    for cluster in clusters:
+        if len(cluster) < 2:
+            continue
+
+        sub = corr[np.ix_(cluster, cluster)]
+        vals = eigvals(sub)
+        instabilities.append(float(np.max(np.abs(vals))))
+
+    max_instability = float(max(instabilities)) if instabilities else 0.0
+
     return {
-        "subsystem_count": float(len(components)),
-        "max_subsystem_radius": max_radius,
-        "subsystem_instability": max_radius,
-        "max_instability": max_radius,
+        "clusters": clusters,
+        "subsystem_instability": max_instability,
+        "max_instability": max_instability,
+        "subsystem_count": len(clusters),
     }
