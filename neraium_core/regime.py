@@ -11,7 +11,7 @@ def build_regime_signature(mean: np.ndarray, std: np.ndarray) -> np.ndarray:
 
 
 def regime_distance(a: np.ndarray, b: np.ndarray) -> float:
-    """Euclidean distance between regime signatures."""
+    """Euclidean distance between two regime signatures."""
     return float(np.linalg.norm(np.asarray(a, dtype=float) - np.asarray(b, dtype=float)))
 
 
@@ -40,7 +40,6 @@ def update_regime_library(
 
     If no regime exists, bootstrap one.
     If the nearest regime is farther than threshold, add a new regime.
-    Otherwise keep the existing library unchanged.
     """
     if not regimes:
         regimes.append({"name": "regime_0", "signature": signature.tolist()})
