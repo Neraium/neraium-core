@@ -4,85 +4,81 @@ from typing import Dict, Any
 
 
 def _risk_level(score: float) -> str:
-    if score >= 2.5:
+    if score > 2.5:
         return "HIGH"
-    if score >= 1.5:
-        return "MEDIUM"
+    if score > 1.5:
+        return "ELEVATED"
+    if score > 0.7:
+        return "MODERATE"
     return "LOW"
 
 
-def _signal_strength(score: float, trend: float) -> str:
-    if score > 2.5 and trend > 0:
-        return "high"
-    if score > 1.5:
-        return "medium"
-    return "low"
+def _confidence(components: Dict[str, float]) -> float:
+    # Confidence increases when multiple signals agree
+    active = [v for v in components.values() if abs(v) > 1e-6]
+    return round(min(1.0, len(active) / 6.0), 3)
 
 
-def _confidence(score: float, components: dict[str, float]) -> str:
-    active = [v for v in components.values() if v > 0]
+def _interpret_state(
+    relational_drift: float,
+    regime_drift: float,
+    directional: float,
+    spectral: float,
+) -> str:
+    """
+    Core logic separating:
+    - regime change vs instability
+    """
 
-    if score > 2.0 and len(active) >= 4:
-        return "high"
-    if score > 1.0:
-        return "medium"
-    return "low"
+    # --- Case 1: Regime shift (structure changed but matches known pattern)
+    if relational_drift > 1.2 and regime_drift < 0.8:
+        return "REGIME_SHIFT_OBSERVED"
 
+    # --- Case 2: True instability (structure deviates from known regime)
+    if relational_drift > 1.2 and regime_drift >= 0.8:
+        return "STRUCTURAL_INSTABILITY_OBSERVED"
 
-def _phase(score: float, trend: float) -> str:
-    if score < 0.5:
-        return "stable"
-    if trend > 0.05:
-        return "degrading"
-    if trend < -0.05:
-        return "recovering"
-    return "transitional"
+    # --- Case 3: directional/coupling instability
+    if directional > 1.0 or spectral > 1.2:
+        return "COUPLING_INSTABILITY_OBSERVED"
+
+    return "NOMINAL_STRUCTURE"
 
 
 def _operator_message(
-    score: float,
-    trend: float,
-    tti: float | None,
+    state: str,
+    risk: str,
+    drift: float,
+    regime_drift: float,
 ) -> str:
     """
-    MUST remain observational.
-    No control, no directives, no prescriptions.
+    IMPORTANT:
+    - No control language
+    - No prescriptions
+    - Observational only (legally safe)
     """
 
-    if score < 0.5:
+    if state == "STRUCTURAL_INSTABILITY_OBSERVED":
         return (
-            "Observed structural relationships remain consistent with a stable operating regime "
-            "under current analysis."
+            "Observed structural relationships are diverging from previously seen system patterns. "
+            "Current configuration exhibits elevated instability characteristics."
         )
 
-    if score < 1.5:
+    if state == "REGIME_SHIFT_OBSERVED":
         return (
-            "Observed structural patterns indicate mild deviation from baseline relational geometry, "
-            "without clear evidence of escalating instability at this time."
+            "Observed system relationships indicate a transition into a different structural regime. "
+            "Current behavior differs from prior baseline but remains internally consistent."
         )
 
-    if score < 2.5:
-        if trend > 0:
-            return (
-                "Observed structural patterns indicate increasing deviation from baseline relational "
-                "geometry, with emerging instability characteristics under current analysis."
-            )
+    if state == "COUPLING_INSTABILITY_OBSERVED":
         return (
-            "Observed structural patterns indicate sustained deviation from baseline relational geometry, "
-            "with mixed indications of progression under current analysis."
-        )
-
-    # HIGH
-    if tti is not None:
-        return (
-            "Observed structural patterns indicate significant deviation from baseline relational geometry, "
-            "with characteristics consistent with escalating instability under current analysis. "
-            f"Current trend projection suggests continued progression over approximately {round(tti, 1)} time units."
+            "Observed coupling and directional interactions between signals show elevated variability. "
+            "System coordination patterns appear less stable than baseline."
         )
 
     return (
-        "Observed structural patterns indicate significant deviation from baseline relational geometry, "
-        "with characteristics consistent with escalating instability under current analysis."
+        "System relationships remain consistent with previously observed baseline behavior. "
+        "No significant structural deviation detected."
     )
 
 
@@ -92,33 +88,48 @@ def decision_output(
     forecast: Dict[str, Any],
 ) -> Dict[str, Any]:
     """
-    Convert structural analytics into operator-safe decision output.
+    Final decision layer.
 
-    This layer:
-    - does NOT control anything
-    - does NOT prescribe actions
-    - only describes observed structural conditions
+    Produces:
+    - risk level
+    - interpreted state
+    - operator-safe message
     """
 
-    trend = float(forecast.get("trend", 0.0))
-    tti = forecast.get("time_to_instability")
+    relational_drift = float(components.get("relational_drift", 0.0))
+    regime_drift = float(components.get("regime_drift", 0.0))
+    directional = float(components.get("directional_divergence", 0.0))
+    spectral = float(components.get("spectral", 0.0))
+
+    state = _interpret_state(
+        relational_drift=relational_drift,
+        regime_drift=regime_drift,
+        directional=directional,
+        spectral=spectral,
+    )
 
     risk = _risk_level(composite_score)
-    strength = _signal_strength(composite_score, trend)
-    confidence = _confidence(composite_score, components)
-    phase = _phase(composite_score, trend)
 
-    signal_emitted = composite_score > 1.5
+    confidence = _confidence(components)
+
+    message = _operator_message(
+        state=state,
+        risk=risk,
+        drift=relational_drift,
+        regime_drift=regime_drift,
+    )
 
     return {
-        "phase": phase,
-        "risk_level": risk,
-        "signal_emitted": signal_emitted,
-        "signal_strength": strength,
-        "confidence": confidence,
-        "operator_message": _operator_message(
-            composite_score,
-            trend,
-            tti,
-        ),
+        "status": {
+            "state": state,
+            "risk_level": risk,
+            "confidence": confidence,
+            "operator_message": message,
+        },
+        "scores": {
+            "composite_instability": round(float(composite_score), 4),
+            "relational_drift": round(relational_drift, 4),
+            "regime_drift": round(regime_drift, 4),
+        },
+        "forecast": forecast,
     }
