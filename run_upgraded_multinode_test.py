@@ -255,6 +255,13 @@ def summarize_run(results: list[dict[str, Any]]) -> dict[str, Any]:
         if "valid_signal_count" in dq:
             dq_valid.append(int(dq["valid_signal_count"]))
 
+    # "Deviation" hits: interpreted structural states that are not nominal.
+    # This is an episode-level proxy used by the benchmark suite.
+    deviation_hits = sum(1 for s in interpreted if s != "NOMINAL_STRUCTURE")
+    deviation_hit_rate = (
+        float(deviation_hits) / float(len(interpreted)) if interpreted else None
+    )
+
     # Volatility: std of score over run (or 0 if single/few points)
     volatility = float(np.std(scores)) if len(scores) > 1 else 0.0
 
@@ -281,6 +288,8 @@ def summarize_run(results: list[dict[str, Any]]) -> dict[str, Any]:
     return {
         "state_counts": dict(Counter(states)),
         "interpreted_state_counts": dict(Counter(interpreted)),
+        "deviation_hit_count": int(deviation_hits),
+        "deviation_hit_rate": float(deviation_hit_rate) if deviation_hit_rate is not None else None,
         "mean_score": float(np.mean(scores)) if scores else None,
         "max_score": float(max(scores)) if scores else None,
         "min_score": float(min(scores)) if scores else None,
@@ -343,6 +352,9 @@ def print_console_summary(payload: dict[str, Any]) -> None:
             round(dist.get("mean_score"), 4) if dist.get("mean_score") is not None else "-")
         row("max_score", round(coh.get("max_score"), 4) if coh.get("max_score") is not None else "-",
             round(dist.get("max_score"), 4) if dist.get("max_score") is not None else "-")
+        row("deviation_hit_count", coh.get("deviation_hit_count"), dist.get("deviation_hit_count"))
+        row("deviation_hit_rate", round(coh.get("deviation_hit_rate"), 4) if coh.get("deviation_hit_rate") is not None else "-",
+            round(dist.get("deviation_hit_rate"), 4) if dist.get("deviation_hit_rate") is not None else "-")
         row("mean_confidence", round(coh.get("mean_confidence"), 4) if coh.get("mean_confidence") is not None else "-",
             round(dist.get("mean_confidence"), 4) if dist.get("mean_confidence") is not None else "-")
         row("volatility", round(coh.get("volatility"), 4) if coh.get("volatility") is not None else "-",
