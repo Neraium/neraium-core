@@ -166,3 +166,101 @@ def decision_output(
         "operator_message": operator_message,
         "interpreted_state": state,
     }
+
+
+def evaluate_signal(timeseries: list[dict[str, Any]], config: dict[str, Any]) -> dict[str, Any]:
+    """
+    Backward-compatible decision helper used by the test suite.
+
+    This function evaluates a short time-series summary and returns an
+    operator-safe decision-like payload. It is observational only and does
+    not prescribe control actions.
+    """
+    if not timeseries:
+        return {
+            "signal_emitted": False,
+            "signal_strength": "low",
+            "confidence": "low",
+            "operator_message": "No material structural instability detected.",
+            "reason": [],
+        }
+
+    peak_instability = float(config.get("peak_instability", 1.5))
+
+    phases = [str(row.get("phase", "") or "").lower().strip() for row in timeseries]
+    all_stable = bool(phases) and all(p == "stable" for p in phases)
+
+    values = []
+    for row in timeseries:
+        try:
+            values.append(float(row.get("composite_instability", 0.0)))
+        except (TypeError, ValueError):
+            values.append(0.0)
+
+    latest_instability = float(values[-1])
+    max_instability = max(values) if values else 0.0
+
+    # Consistency rule: require a small run of elevated instability at the end
+    # of the series, rather than a single noisy spike.
+    required_cycles = min(3, len(values))
+    high_cut = peak_instability * 0.85
+
+    consecutive_high = 0
+    for v in reversed(values):
+        if v >= high_cut:
+            consecutive_high += 1
+        else:
+            break
+
+    consistency_ok = consecutive_high >= required_cycles
+
+    # If everything is explicitly stable, keep the message minimal.
+    if all_stable:
+        return {
+            "signal_emitted": False,
+            "signal_strength": "low",
+            "confidence": "low",
+            "operator_message": "No material structural instability detected.",
+            "reason": [],
+        }
+
+    if max_instability < peak_instability:
+        return {
+            "signal_emitted": False,
+            "signal_strength": "low",
+            "confidence": "low",
+            "operator_message": "No material structural instability detected.",
+            "reason": [],
+        }
+
+    if consistency_ok:
+        # Strength tier based on how close we are to the configured peak.
+        if latest_instability >= peak_instability:
+            signal_strength = "high"
+        else:
+            signal_strength = "medium"
+
+        confidence = "high" if consecutive_high >= required_cycles else "medium"
+        return {
+            "signal_emitted": True,
+            "signal_strength": signal_strength,
+            "confidence": confidence,
+            "operator_message": (
+                "Elevated structural instability characteristics observed; "
+                "human review for confirmation is appropriate."
+            ),
+            "reason": [],
+        }
+
+    # Suppress signal when the configured peak was hit but the evidence was not consistent.
+    return {
+        "signal_emitted": False,
+        "signal_strength": "low",
+        "confidence": "low",
+        "reason": [
+            "Signal suppressed because it did not satisfy consistency requirements.",
+        ],
+        "operator_message": (
+            "Observed instability did not satisfy consistency requirements for emission."
+        ),
+    }
