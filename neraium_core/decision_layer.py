@@ -31,6 +31,15 @@ def _confidence(components: dict[str, float]) -> str:
     return "low"
 
 
+def _confidence_categorical_from_score(score: float) -> str:
+    """Map a [0, 1] confidence score to categorical for backward compatibility."""
+    if score >= 0.7:
+        return "high"
+    if score >= 0.4:
+        return "medium"
+    return "low"
+
+
 def _phase(score: float, trend: float) -> str:
     if score < 0.7:
         return "stable"
@@ -47,15 +56,19 @@ def _interpret_state(
     directional: float,
     spectral: float,
     early_warning: float,
+    entropy: float,
     trend: float,
     persistence: dict[str, float] | None,
 ) -> str:
     """
-    Interpret structural state with constrained-coherence handling and persistence.
+    Interpret structural state with clear separation of conditions.
 
-    Key distinction:
-    - Motion (structure moving) is not automatically breakdown.
-    - Escalation requires sustained, multi-indicator confirmation.
+    - REGIME_SHIFT_OBSERVED: relational geometry has moved into a different regime
+      without strong directional/coupling breakdown or sustained instability.
+    - COUPLING_INSTABILITY_OBSERVED: directional/interaction (and spectral) breakdown
+      dominates; depends more strongly on directional + spectral evidence.
+    - STRUCTURAL_INSTABILITY_OBSERVED: relational drift + entropy + regime drift
+      with sustained, multi-indicator confirmation.
     """
     persistence = persistence or {}
     history_len = float(persistence.get("history_len", 0.0))
@@ -71,33 +84,40 @@ def _interpret_state(
 
     motion = relational_drift > 1.2
     regime_departure = regime_drift >= 0.8
-    coupling_instability = directional > 1.0 or spectral > 1.2
+    # Coupling instability: depends more strongly on directional and spectral interaction breakdown.
+    directional_breakdown = directional > 1.0
+    spectral_breakdown = spectral > 1.2
+    coupling_instability = directional_breakdown or spectral_breakdown
 
-    # Constrained coherence: structure is moving and correction-like activity exists,
-    # but there is no clear breakdown pattern (no strong degradation trend and no sustained highs).
-    correction_present = early_warning > 0.9 or coupling_instability
     bounded_persistence = consecutive_high < 2 and consecutive_elevated < 4 and rolling_mean < 2.0
     no_degradation_trend = abs(trend) <= 0.06
+    sustained = consecutive_high >= 2 or consecutive_elevated >= 5 or rolling_mean >= 2.2
+    # Slightly lower bar for coupling: directional/spectral breakdown can persist with less elevation.
+    sustained_coupling = consecutive_high >= 1 or consecutive_elevated >= 3 or rolling_mean >= 1.7
 
-    if motion and correction_present and bounded_persistence and no_degradation_trend:
-        return "COHERENCE_UNDER_CONSTRAINT"
+    # Coupling instability first: sustained directional/spectral breakdown (interaction-focused).
+    if coupling_instability and sustained_coupling:
+        return "COUPLING_INSTABILITY_OBSERVED"
 
-    # Regime shift: structure changed but does not show sustained breakdown evidence.
+    # Regime shift only: structure moved, no strong coupling/directional breakdown, bounded.
     if motion and not coupling_instability and bounded_persistence and no_degradation_trend:
         return "REGIME_SHIFT_OBSERVED"
 
-    # Structural instability: require sustained evidence and multiple indicators.
-    sustained = consecutive_high >= 2 or consecutive_elevated >= 5 or rolling_mean >= 2.2
-    multi_indicator_confirmed = (motion and regime_departure) or (motion and coupling_instability) or (
-        coupling_instability and early_warning > 1.1
+    # Constrained coherence: motion with correction-like activity but no sustained breakdown.
+    correction_present = early_warning > 0.9 or coupling_instability
+    if motion and correction_present and bounded_persistence and no_degradation_trend:
+        return "COHERENCE_UNDER_CONSTRAINT"
+
+    # Structural instability: depends more strongly on relational drift + entropy + regime drift.
+    entropy_elevated = entropy > 0.8
+    structural_evidence = (motion and regime_departure) or (motion and entropy_elevated)
+    multi_indicator = structural_evidence or (regime_departure and entropy_elevated) or (
+        motion and coupling_instability and early_warning > 1.1
     )
     degrading = trend > 0.06
 
-    if sustained and multi_indicator_confirmed and (degrading or regime_departure):
+    if sustained and multi_indicator and (degrading or regime_departure):
         return "STRUCTURAL_INSTABILITY_OBSERVED"
-
-    if coupling_instability and sustained:
-        return "COUPLING_INSTABILITY_OBSERVED"
 
     return "NOMINAL_STRUCTURE"
 
@@ -161,8 +181,11 @@ def _operator_message(
 
 def decision_output(
     composite_score: float,
-    components: dict[str, float],
+    components: dict[str, Any],
     forecast: dict[str, Any],
+    *,
+    confidence_score: float | None = None,
+    classification_stability: float | None = None,
 ) -> dict[str, Any]:
     """
     Convert structural analytics into operator-safe decision output.
@@ -175,6 +198,7 @@ def decision_output(
     directional = float(components.get("directional_divergence", 0.0))
     spectral = float(components.get("spectral", 0.0))
     early_warning = float(components.get("early_warning", 0.0))
+    entropy = float(components.get("entropy", 0.0))
 
     trend = float(forecast.get("trend", 0.0))
     persistence = forecast.get("persistence") if isinstance(forecast.get("persistence"), dict) else None
@@ -188,13 +212,21 @@ def decision_output(
         directional=directional,
         spectral=spectral,
         early_warning=early_warning,
+        entropy=entropy,
         trend=trend,
         persistence=persistence,
     )
 
     risk_level = _risk_level(composite_score)
     signal_strength = _signal_strength(composite_score, trend)
-    confidence = _confidence(components)
+    conf_val = confidence_score if confidence_score is not None else components.get("_confidence_score")
+    if conf_val is not None:
+        try:
+            confidence = _confidence_categorical_from_score(float(conf_val))
+        except (TypeError, ValueError):
+            confidence = _confidence({k: v for k, v in components.items() if not k.startswith("_")})
+    else:
+        confidence = _confidence({k: v for k, v in components.items() if not k.startswith("_")})
     phase = _phase(composite_score, trend)
 
     signal_emitted = composite_score >= 1.5 or state in {
@@ -209,7 +241,7 @@ def decision_output(
         time_to_instability=time_to_instability,
     )
 
-    return {
+    out: dict[str, Any] = {
         "phase": phase,
         "risk_level": risk_level,
         "signal_emitted": signal_emitted,
@@ -218,6 +250,9 @@ def decision_output(
         "operator_message": operator_message,
         "interpreted_state": state,
     }
+    if classification_stability is not None:
+        out["classification_stability"] = round(classification_stability, 4)
+    return out
 
 
 def evaluate_signal(timeseries: list[dict[str, Any]], config: dict[str, Any]) -> dict[str, Any]:
