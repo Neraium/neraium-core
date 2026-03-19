@@ -23,7 +23,7 @@ from neraium_core.geometry import (
 from neraium_core.graph import graph_metrics, thresholded_adjacency
 from neraium_core.regime import build_regime_signature, assign_regime, update_regime_library
 from neraium_core.regime_store import RegimeStore
-from neraium_core.scoring import canonicalize_components, composite_instability_score
+from neraium_core.scoring import canonicalize_components, composite_instability_score_normalized
 from neraium_core.spectral import dominant_mode_loading, spectral_gap, spectral_radius
 from neraium_core.subsystems import subsystem_spectral_measures
 
@@ -285,7 +285,7 @@ class StructuralEngine:
                 }
             )
 
-        composite = composite_instability_score(components)
+        composite = composite_instability_score_normalized(components)
         self.score_history.append(float(composite))
 
         forecast = {

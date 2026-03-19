@@ -38,7 +38,7 @@ frame
        → result updated (drift_score, system_health, state, regime_*, etc.)
        → analytics updated (correlation_geometry, graph, directional, causal, ...)
 
-  → composite = composite_instability_score(components)   ← scoring.py
+  → composite = composite_instability_score_normalized(components)   ← scoring.py
   → score_history.append(composite)
   → forecast = { trend, time_to_instability, ar1_* }
   → decision = decision_output(composite_score, components, forecast)  ← decision_layer.py

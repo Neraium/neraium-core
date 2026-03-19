@@ -100,6 +100,17 @@ def available_components(
     return active
 
 
+# Winsorization cap for normalized composite (keeps scale compatible with decision thresholds)
+DEFAULT_WINSORIZE_CAP = 3.0
+
+
+def _winsorize(value: float, low: float = 0.0, high: float = DEFAULT_WINSORIZE_CAP) -> float:
+    """Clip value to [low, high] for robust composite scoring."""
+    if math.isnan(value) or math.isinf(value):
+        return low
+    return max(low, min(high, value))
+
+
 def composite_instability_score(
     components: Mapping[str, object],
     weights: Mapping[str, object] | None = None,
@@ -115,5 +126,31 @@ def composite_instability_score(
 
     if not normalize or weight_sum <= 0.0:
         return float(weighted_sum)
+
+    return float(weighted_sum / weight_sum)
+
+
+def composite_instability_score_normalized(
+    components: Mapping[str, object],
+    weights: Mapping[str, object] | None = None,
+    winsorize_cap: float = DEFAULT_WINSORIZE_CAP,
+) -> float:
+    """
+    Composite instability score with robust per-component winsorization.
+    Each component value is clipped to [0, winsorize_cap] before weighted average,
+    so the result stays on a scale compatible with existing decision thresholds.
+    """
+    active = available_components(components, weights)
+
+    if not active:
+        return 0.0
+
+    weighted_sum = sum(
+        _winsorize(value, high=winsorize_cap) * weight for value, weight in active.values()
+    )
+    weight_sum = sum(weight for _, weight in active.values())
+
+    if weight_sum <= 0.0:
+        return 0.0
 
     return float(weighted_sum / weight_sum)
