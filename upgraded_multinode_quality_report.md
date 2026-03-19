@@ -30,3 +30,8 @@
 - coherent_time: A=0.0000, B=0.0000, C=0.9450, D=0.0400
 - disturbed_time: A=0.0000, B=0.0000, C=0.9425, D=0.0475
 
+## Phase-Aware Confusion Artifact
+
+- CSV: `upgraded_multinode_phase_confusion.csv`
+- Contains TP/FP/TN/FN and derived rates for each (condition, node, phase).
+

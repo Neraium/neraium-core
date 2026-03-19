@@ -41,6 +41,7 @@ OUTPUT_TIMESERIES_CSV = "upgraded_multinode_test_timeseries.csv"
 OUTPUT_NODE_SUMMARY_CSV = "upgraded_multinode_test_node_summary.csv"
 OUTPUT_METRICS_CSV = "upgraded_multinode_test_metrics.csv"
 OUTPUT_REPORT_MD = "upgraded_multinode_quality_report.md"
+OUTPUT_PHASE_CONFUSION_CSV = "upgraded_multinode_phase_confusion.csv"
 
 INTERPRETED_STATE_ALLOWED = {
     "NOMINAL_STRUCTURE",
@@ -462,6 +463,11 @@ def write_markdown_report(
             f"D={row['node_D_pert_alert_rate_mean']:.4f}"
         )
     lines.append("")
+    lines.append("## Phase-Aware Confusion Artifact")
+    lines.append("")
+    lines.append(f"- CSV: `{OUTPUT_PHASE_CONFUSION_CSV}`")
+    lines.append("- Contains TP/FP/TN/FN and derived rates for each (condition, node, phase).")
+    lines.append("")
     Path(path).write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
@@ -508,6 +514,70 @@ def summarize_node_counts(df_timeseries: pd.DataFrame, cfg: dict[str, Any]) -> l
     return out
 
 
+def build_phase_confusion_rows(df_timeseries: pd.DataFrame, cfg: dict[str, Any]) -> list[dict[str, Any]]:
+    """
+    Build phase-aware confusion rows per (condition, node, phase).
+
+    Ground truth:
+      - positive only for target node C during perturbation.
+      - all other node/phase slices are negatives.
+    Prediction:
+      - state in {WATCH, ALERT}.
+    """
+    target_node = str(cfg["metrics"]["target_node"])
+    rows: list[dict[str, Any]] = []
+
+    for condition in cfg["conditions"]:
+        for node in cfg["nodes"]:
+            for phase in ["baseline", "perturbation", "recovery"]:
+                sub = df_timeseries[
+                    (df_timeseries["condition"] == condition)
+                    & (df_timeseries["node"] == node)
+                    & (df_timeseries["phase"] == phase)
+                ]
+                if sub.empty:
+                    continue
+
+                is_positive_slice = node == target_node and phase == "perturbation"
+                pred_pos = sub["state"].isin(["WATCH", "ALERT"])
+
+                if is_positive_slice:
+                    tp = int(pred_pos.sum())
+                    fn = int(len(sub) - tp)
+                    fp = 0
+                    tn = 0
+                else:
+                    fp = int(pred_pos.sum())
+                    tn = int(len(sub) - fp)
+                    tp = 0
+                    fn = 0
+
+                precision = _safe_rate(tp, tp + fp)
+                recall = _safe_rate(tp, tp + fn)
+                specificity = _safe_rate(tn, tn + fp) if (tn + fp) > 0 else 0.0
+                fpr = _safe_rate(fp, fp + tn) if (fp + tn) > 0 else 0.0
+                accuracy = _safe_rate(tp + tn, len(sub))
+
+                rows.append(
+                    {
+                        "condition": condition,
+                        "node": node,
+                        "phase": phase,
+                        "support": int(len(sub)),
+                        "tp": tp,
+                        "fp": fp,
+                        "tn": tn,
+                        "fn": fn,
+                        "precision": precision,
+                        "recall": recall,
+                        "specificity": specificity,
+                        "false_positive_rate": fpr,
+                        "accuracy": accuracy,
+                    }
+                )
+    return rows
+
+
 def main() -> int:
     cfg = load_config(CONFIG_PATH)
     seeds: list[int] = [int(s) for s in cfg["seeds"]]
@@ -537,6 +607,8 @@ def main() -> int:
     node_summary_rows = summarize_node_counts(df_timeseries, cfg)
     pd.DataFrame(node_summary_rows).to_csv(OUTPUT_NODE_SUMMARY_CSV, index=False)
     df_seed_metrics.to_csv(OUTPUT_METRICS_CSV, index=False)
+    phase_confusion_rows = build_phase_confusion_rows(df_timeseries, cfg)
+    pd.DataFrame(phase_confusion_rows).to_csv(OUTPUT_PHASE_CONFUSION_CSV, index=False)
 
     # JSON summary
     out_json = {
@@ -556,6 +628,7 @@ def main() -> int:
             "node_summary_csv": OUTPUT_NODE_SUMMARY_CSV,
             "metrics_csv": OUTPUT_METRICS_CSV,
             "report_md": OUTPUT_REPORT_MD,
+            "phase_confusion_csv": OUTPUT_PHASE_CONFUSION_CSV,
         },
     }
     Path(OUTPUT_JSON).write_text(json.dumps(out_json, indent=2), encoding="utf-8")
@@ -577,6 +650,7 @@ def main() -> int:
     print(f"- {OUTPUT_NODE_SUMMARY_CSV}")
     print(f"- {OUTPUT_METRICS_CSV}")
     print(f"- {OUTPUT_REPORT_MD}")
+    print(f"- {OUTPUT_PHASE_CONFUSION_CSV}")
     return 0
 
 

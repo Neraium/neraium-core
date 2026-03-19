@@ -47,5 +47,6 @@ jobs:
             upgraded_multinode_test_node_summary.csv
             upgraded_multinode_test_metrics.csv
             upgraded_multinode_quality_report.md
+            upgraded_multinode_phase_confusion.csv
           if-no-files-found: error
 
