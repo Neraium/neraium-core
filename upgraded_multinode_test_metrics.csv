@@ -1,3 +1,3 @@
 condition,alert_precision,alert_recall,baseline_stability_rate,d_vs_b_localization_distance
 coherent_time,1.0,0.8625,1.0,0.1505848083333333
-disturbed_time,0.8791208791208791,1.0,1.0,0.09207425416666666
+disturbed_time,0.8791208791208791,1.0,1.0,0.09207409583333333
