@@ -1,0 +1,376 @@
+{
+  "description": "4-node A/B persistence test with coherent_time vs disturbed_time",
+  "nodes": [
+    "A",
+    "B",
+    "C",
+    "D"
+  ],
+  "conditions": [
+    "coherent_time",
+    "disturbed_time"
+  ],
+  "t_start": 0,
+  "t_end": 140,
+  "baseline_window": 50,
+  "recent_window": 12,
+  "seed": 42,
+  "gal2_api_configured": true,
+  "gal2_time_url": "https://api-v2.gal-2.com/time",
+  "gal2_used_for_disturbed_time": false,
+  "runs": {
+    "A": {
+      "coherent_time": {
+        "state_counts": {
+          "STABLE": 140
+        },
+        "interpreted_state_counts": {
+          "NOMINAL_STRUCTURE": 91
+        },
+        "mean_score": 0.6268864285714285,
+        "max_score": 1.1873,
+        "min_score": 0.0,
+        "final_state": "STABLE",
+        "final_interpreted_state": "NOMINAL_STRUCTURE",
+        "mean_confidence": 0.8211923076923077,
+        "confidence_std": 0.007236556019696424,
+        "classification_stability_mean": 1.0,
+        "classification_stability_final": 1.0,
+        "volatility": 0.4615813547253637,
+        "missing_sensor_count_mean": 0.0,
+        "missing_sensor_count_max": 0,
+        "active_sensor_count_mean": 1.95,
+        "active_sensor_count_min": 0,
+        "dominant_driver_final": "s3",
+        "dominant_driver_sample": [
+          "s3"
+        ],
+        "causal_attribution_summary": {
+          "top_drivers": [
+            "s3",
+            "s2",
+            "s1"
+          ],
+          "driver_count": 3
+        },
+        "data_quality_summary": {
+          "gate_passed_rate": 1.0,
+          "mean_valid_signal_count": 3.0,
+          "min_valid_signal_count": 3,
+          "max_valid_signal_count": 3
+        },
+        "n_frames": 140
+      },
+      "disturbed_time": {
+        "state_counts": {
+          "STABLE": 140
+        },
+        "interpreted_state_counts": {
+          "NOMINAL_STRUCTURE": 91
+        },
+        "mean_score": 0.6268864285714285,
+        "max_score": 1.1873,
+        "min_score": 0.0,
+        "final_state": "STABLE",
+        "final_interpreted_state": "NOMINAL_STRUCTURE",
+        "mean_confidence": 0.8211923076923077,
+        "confidence_std": 0.007236556019696424,
+        "classification_stability_mean": 1.0,
+        "classification_stability_final": 1.0,
+        "volatility": 0.4615813547253637,
+        "missing_sensor_count_mean": 0.0,
+        "missing_sensor_count_max": 0,
+        "active_sensor_count_mean": 1.95,
+        "active_sensor_count_min": 0,
+        "dominant_driver_final": "s3",
+        "dominant_driver_sample": [
+          "s3"
+        ],
+        "causal_attribution_summary": {
+          "top_drivers": [
+            "s3",
+            "s2",
+            "s1"
+          ],
+          "driver_count": 3
+        },
+        "data_quality_summary": {
+          "gate_passed_rate": 1.0,
+          "mean_valid_signal_count": 3.0,
+          "min_valid_signal_count": 3,
+          "max_valid_signal_count": 3
+        },
+        "n_frames": 140
+      }
+    },
+    "B": {
+      "coherent_time": {
+        "state_counts": {
+          "STABLE": 140
+        },
+        "interpreted_state_counts": {
+          "NOMINAL_STRUCTURE": 90,
+          "COHERENCE_UNDER_CONSTRAINT": 1
+        },
+        "mean_score": 0.6454585714285714,
+        "max_score": 1.3923,
+        "min_score": 0.0,
+        "final_state": "STABLE",
+        "final_interpreted_state": "NOMINAL_STRUCTURE",
+        "mean_confidence": 0.8262351648351648,
+        "confidence_std": 0.021463751060525612,
+        "classification_stability_mean": 0.9890054945054947,
+        "classification_stability_final": 1.0,
+        "volatility": 0.47785777366817217,
+        "missing_sensor_count_mean": 0.0,
+        "missing_sensor_count_max": 0,
+        "active_sensor_count_mean": 1.95,
+        "active_sensor_count_min": 0,
+        "dominant_driver_final": "s3",
+        "dominant_driver_sample": [
+          "s3"
+        ],
+        "causal_attribution_summary": {
+          "top_drivers": [
+            "s3",
+            "s2",
+            "s1"
+          ],
+          "driver_count": 3
+        },
+        "data_quality_summary": {
+          "gate_passed_rate": 1.0,
+          "mean_valid_signal_count": 3.0,
+          "min_valid_signal_count": 3,
+          "max_valid_signal_count": 3
+        },
+        "n_frames": 140
+      },
+      "disturbed_time": {
+        "state_counts": {
+          "STABLE": 140
+        },
+        "interpreted_state_counts": {
+          "NOMINAL_STRUCTURE": 90,
+          "COHERENCE_UNDER_CONSTRAINT": 1
+        },
+        "mean_score": 0.6454585714285714,
+        "max_score": 1.3923,
+        "min_score": 0.0,
+        "final_state": "STABLE",
+        "final_interpreted_state": "NOMINAL_STRUCTURE",
+        "mean_confidence": 0.8262351648351648,
+        "confidence_std": 0.021463751060525612,
+        "classification_stability_mean": 0.9890054945054947,
+        "classification_stability_final": 1.0,
+        "volatility": 0.47785777366817217,
+        "missing_sensor_count_mean": 0.0,
+        "missing_sensor_count_max": 0,
+        "active_sensor_count_mean": 1.95,
+        "active_sensor_count_min": 0,
+        "dominant_driver_final": "s3",
+        "dominant_driver_sample": [
+          "s3"
+        ],
+        "causal_attribution_summary": {
+          "top_drivers": [
+            "s3",
+            "s2",
+            "s1"
+          ],
+          "driver_count": 3
+        },
+        "data_quality_summary": {
+          "gate_passed_rate": 1.0,
+          "mean_valid_signal_count": 3.0,
+          "min_valid_signal_count": 3,
+          "max_valid_signal_count": 3
+        },
+        "n_frames": 140
+      }
+    },
+    "C": {
+      "coherent_time": {
+        "state_counts": {
+          "STABLE": 75,
+          "WATCH": 60,
+          "ALERT": 5
+        },
+        "interpreted_state_counts": {
+          "NOMINAL_STRUCTURE": 18,
+          "COHERENCE_UNDER_CONSTRAINT": 48,
+          "COUPLING_INSTABILITY_OBSERVED": 25
+        },
+        "mean_score": 0.9739492857142857,
+        "max_score": 2.0844,
+        "min_score": 0.0,
+        "final_state": "ALERT",
+        "final_interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
+        "mean_confidence": 0.8250923076923077,
+        "confidence_std": 0.05195987723164195,
+        "classification_stability_mean": 0.7598758241758239,
+        "classification_stability_final": 0.6,
+        "volatility": 0.7541668193156157,
+        "missing_sensor_count_mean": 0.0,
+        "missing_sensor_count_max": 0,
+        "active_sensor_count_mean": 1.95,
+        "active_sensor_count_min": 0,
+        "dominant_driver_final": "s1",
+        "dominant_driver_sample": [
+          "s1"
+        ],
+        "causal_attribution_summary": {
+          "top_drivers": [
+            "s1",
+            "s2",
+            "s3"
+          ],
+          "driver_count": 3
+        },
+        "data_quality_summary": {
+          "gate_passed_rate": 1.0,
+          "mean_valid_signal_count": 3.0,
+          "min_valid_signal_count": 3,
+          "max_valid_signal_count": 3
+        },
+        "n_frames": 140
+      },
+      "disturbed_time": {
+        "state_counts": {
+          "STABLE": 76,
+          "WATCH": 63,
+          "ALERT": 1
+        },
+        "interpreted_state_counts": {
+          "NOMINAL_STRUCTURE": 17,
+          "COHERENCE_UNDER_CONSTRAINT": 66,
+          "COUPLING_INSTABILITY_OBSERVED": 8
+        },
+        "mean_score": 0.9166192857142856,
+        "max_score": 2.0542,
+        "min_score": 0.0,
+        "final_state": "WATCH",
+        "final_interpreted_state": "COHERENCE_UNDER_CONSTRAINT",
+        "mean_confidence": 0.8498406593406593,
+        "confidence_std": 0.04083785675840757,
+        "classification_stability_mean": 0.834945054945055,
+        "classification_stability_final": 0.8667,
+        "volatility": 0.7003282618985011,
+        "missing_sensor_count_mean": 0.0,
+        "missing_sensor_count_max": 0,
+        "active_sensor_count_mean": 1.95,
+        "active_sensor_count_min": 0,
+        "dominant_driver_final": "s1",
+        "dominant_driver_sample": [
+          "s1"
+        ],
+        "causal_attribution_summary": {
+          "top_drivers": [
+            "s1",
+            "s2",
+            "s3"
+          ],
+          "driver_count": 3
+        },
+        "data_quality_summary": {
+          "gate_passed_rate": 1.0,
+          "mean_valid_signal_count": 3.0,
+          "min_valid_signal_count": 3,
+          "max_valid_signal_count": 3
+        },
+        "n_frames": 140
+      }
+    },
+    "D": {
+      "coherent_time": {
+        "state_counts": {
+          "STABLE": 122,
+          "WATCH": 18
+        },
+        "interpreted_state_counts": {
+          "NOMINAL_STRUCTURE": 86,
+          "COHERENCE_UNDER_CONSTRAINT": 4,
+          "COUPLING_INSTABILITY_OBSERVED": 1
+        },
+        "mean_score": 0.7247750000000001,
+        "max_score": 1.6432,
+        "min_score": 0.0,
+        "final_state": "STABLE",
+        "final_interpreted_state": "NOMINAL_STRUCTURE",
+        "mean_confidence": 0.7582373626373626,
+        "confidence_std": 0.12659560661816957,
+        "classification_stability_mean": 0.9450604395604394,
+        "classification_stability_final": 1.0,
+        "volatility": 0.5541165205113194,
+        "missing_sensor_count_mean": 0.09285714285714286,
+        "missing_sensor_count_max": 1,
+        "active_sensor_count_mean": 1.95,
+        "active_sensor_count_min": 0,
+        "dominant_driver_final": "s3",
+        "dominant_driver_sample": [
+          "s3"
+        ],
+        "causal_attribution_summary": {
+          "top_drivers": [
+            "s3",
+            "s2",
+            "s1"
+          ],
+          "driver_count": 3
+        },
+        "data_quality_summary": {
+          "gate_passed_rate": 1.0,
+          "mean_valid_signal_count": 3.0,
+          "min_valid_signal_count": 3,
+          "max_valid_signal_count": 3
+        },
+        "n_frames": 140
+      },
+      "disturbed_time": {
+        "state_counts": {
+          "STABLE": 122,
+          "WATCH": 18
+        },
+        "interpreted_state_counts": {
+          "NOMINAL_STRUCTURE": 86,
+          "COHERENCE_UNDER_CONSTRAINT": 4,
+          "COUPLING_INSTABILITY_OBSERVED": 1
+        },
+        "mean_score": 0.7247750000000001,
+        "max_score": 1.6432,
+        "min_score": 0.0,
+        "final_state": "STABLE",
+        "final_interpreted_state": "NOMINAL_STRUCTURE",
+        "mean_confidence": 0.7582373626373626,
+        "confidence_std": 0.12659560661816957,
+        "classification_stability_mean": 0.9450604395604394,
+        "classification_stability_final": 1.0,
+        "volatility": 0.5541165205113194,
+        "missing_sensor_count_mean": 0.09285714285714286,
+        "missing_sensor_count_max": 1,
+        "active_sensor_count_mean": 1.95,
+        "active_sensor_count_min": 0,
+        "dominant_driver_final": "s3",
+        "dominant_driver_sample": [
+          "s3"
+        ],
+        "causal_attribution_summary": {
+          "top_drivers": [
+            "s3",
+            "s2",
+            "s1"
+          ],
+          "driver_count": 3
+        },
+        "data_quality_summary": {
+          "gate_passed_rate": 1.0,
+          "mean_valid_signal_count": 3.0,
+          "min_valid_signal_count": 3,
+          "max_valid_signal_count": 3
+        },
+        "n_frames": 140
+      }
+    }
+  },
+  "output_path": "upgraded_multinode_test_results.json"
+}
