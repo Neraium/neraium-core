@@ -2,7 +2,8 @@
 """
 Architectural SII benchmark runner (single-file, Colab-friendly).
 
-This script implements a modular SII runtime pipeline with explicit stages:
+Pipeline stages live in ``neraium_core.staged_pipeline`` (shared with production).
+This script wires a 4-node benchmark onto that modular SII runtime:
   1) preprocessing / data quality
   2) feature extraction
   3) structural drift modeling
@@ -27,26 +28,25 @@ import math
 import os
 import tempfile
 import urllib.request
-from collections import Counter, deque
-from dataclasses import dataclass, field
+from collections import deque
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
 import numpy as np
 from neraium_core.staged_pipeline import (
-    AttributionStage as SharedAttributionStage,
-    ConfidenceStage as SharedConfidenceStage,
-    DataQualityStage as SharedDataQualityStage,
-    DecisionStage as SharedDecisionStage,
-    FeatureExtractionStage as SharedFeatureExtractionStage,
-    LocalizationStage as SharedLocalizationStage,
-    NodeBaselineProfile as SharedNodeBaselineProfile,
-    NodeRuntime as SharedNodeRuntime,
-    RegimeMemory as SharedRegimeMemory,
-    RegimeStage as SharedRegimeStage,
-    RelationalInstabilityStage as SharedRelationalInstabilityStage,
-    StructuralDriftStage as SharedStructuralDriftStage,
-    TemporalCoherenceStage as SharedTemporalCoherenceStage,
+    AttributionStage,
+    ConfidenceStage,
+    DataQualityStage,
+    DecisionStage,
+    FeatureExtractionStage,
+    LocalizationStage,
+    NodeRuntime,
+    RegimeStage,
+    RelationalInstabilityStage,
+    StructuralDriftStage,
+    TemporalCoherenceStage,
+    clamp,
+    safe_float,
 )
 
 try:
@@ -113,20 +113,6 @@ NODE_VARIANTS = {
 # -----------------------------------------------------------------------------
 # Utility helpers
 # -----------------------------------------------------------------------------
-def clamp(v: float, lo: float, hi: float) -> float:
-    return max(lo, min(hi, v))
-
-
-def safe_float(v: Any, default: float = 0.0) -> float:
-    try:
-        x = float(v)
-        if math.isnan(x) or math.isinf(x):
-            return default
-        return x
-    except (TypeError, ValueError):
-        return default
-
-
 def phase_for_step(step: int) -> str:
     if step <= BASELINE_END:
         return "baseline"
@@ -177,371 +163,6 @@ def parse_ts(ts: str) -> float:
     return safe_float(ts, 0.0)
 
 
-def corr_from_matrix(mat: np.ndarray) -> np.ndarray:
-    if mat.shape[0] < 2:
-        return np.eye(mat.shape[1], dtype=float)
-    c = np.corrcoef(mat, rowvar=False)
-    c = np.nan_to_num(c, nan=0.0, posinf=0.0, neginf=0.0)
-    np.fill_diagonal(c, 1.0)
-    return c
-
-
-def flatten_upper_tri(mat: np.ndarray) -> np.ndarray:
-    idx = np.triu_indices(mat.shape[0], k=1)
-    return mat[idx]
-
-
-def z_norm(v: float, mean: float, std: float, eps: float = 1e-6) -> float:
-    return (v - mean) / (std + eps)
-
-
-def bounded_z(v: float, mean: float, std: float, cap: float = 4.0) -> float:
-    return clamp(z_norm(v, mean, std), 0.0, cap)
-
-
-# -----------------------------------------------------------------------------
-# Data structures
-# -----------------------------------------------------------------------------
-@dataclass
-class NodeBaselineProfile:
-    corr_baseline: np.ndarray | None = None
-    corr_drift_mean: float = 0.0
-    corr_drift_std: float = 0.1
-    relational_mean: float = 0.0
-    relational_std: float = 0.1
-    temporal_gap_mean: float = 1.0
-    temporal_gap_std: float = 0.1
-    instability_mean: float = 0.0
-    instability_std: float = 0.1
-    finalized: bool = False
-
-
-@dataclass
-class RegimeMemory:
-    centroids: list[np.ndarray] = field(default_factory=list)
-    threshold: float = 2.0
-
-    def nearest_distance(self, signature: np.ndarray) -> float:
-        if not self.centroids:
-            return 0.0
-        dists = [float(np.linalg.norm(signature - c)) for c in self.centroids if c.shape == signature.shape]
-        if not dists:
-            return 0.0
-        return float(min(dists))
-
-    def update(self, signature: np.ndarray) -> float:
-        if not self.centroids:
-            self.centroids.append(signature.copy())
-            return 0.0
-        nearest = self.nearest_distance(signature)
-        if nearest > self.threshold:
-            self.centroids.append(signature.copy())
-        return nearest
-
-
-@dataclass
-class NodeRuntime:
-    node: str
-    variant: str
-    sensor_names: list[str]
-    baseline_window: int
-    recent_window: int
-    values_history: deque[np.ndarray] = field(default_factory=lambda: deque(maxlen=500))
-    timestamp_history: deque[float] = field(default_factory=lambda: deque(maxlen=500))
-    score_history: deque[float] = field(default_factory=lambda: deque(maxlen=120))
-    interpreted_history: deque[str] = field(default_factory=lambda: deque(maxlen=20))
-    baseline_profile: NodeBaselineProfile = field(default_factory=NodeBaselineProfile)
-    regime_memory: RegimeMemory = field(default_factory=RegimeMemory)
-
-    # Baseline collectors
-    _baseline_corr_drift: list[float] = field(default_factory=list)
-    _baseline_relational: list[float] = field(default_factory=list)
-    _baseline_gap: list[float] = field(default_factory=list)
-    _baseline_instability: list[float] = field(default_factory=list)
-
-    def push(self, ts: float, sensors: dict[str, float]) -> np.ndarray:
-        vec = np.array([safe_float(sensors.get(s), np.nan) for s in self.sensor_names], dtype=float)
-        self.values_history.append(vec)
-        self.timestamp_history.append(ts)
-        return vec
-
-    def recent_matrix(self) -> np.ndarray | None:
-        if len(self.values_history) < self.recent_window:
-            return None
-        m = np.vstack(list(self.values_history)[-self.recent_window :])
-        # impute NaN with column means
-        if np.isnan(m).any():
-            col_mean = np.nanmean(m, axis=0)
-            col_mean = np.nan_to_num(col_mean, nan=0.0)
-            inds = np.where(np.isnan(m))
-            m[inds] = np.take(col_mean, inds[1])
-        return m
-
-    def baseline_matrix(self) -> np.ndarray | None:
-        if len(self.values_history) < self.baseline_window:
-            return None
-        m = np.vstack(list(self.values_history)[: self.baseline_window])
-        if np.isnan(m).any():
-            col_mean = np.nanmean(m, axis=0)
-            col_mean = np.nan_to_num(col_mean, nan=0.0)
-            inds = np.where(np.isnan(m))
-            m[inds] = np.take(col_mean, inds[1])
-        return m
-
-    def recent_timestamps(self) -> list[float] | None:
-        if len(self.timestamp_history) < self.recent_window:
-            return None
-        return list(self.timestamp_history)[-self.recent_window :]
-
-    def baseline_timestamps(self) -> list[float] | None:
-        if len(self.timestamp_history) < self.baseline_window:
-            return None
-        return list(self.timestamp_history)[: self.baseline_window]
-
-
-# -----------------------------------------------------------------------------
-# Pipeline stages
-# -----------------------------------------------------------------------------
-class DataQualityStage:
-    @staticmethod
-    def evaluate(baseline: np.ndarray, recent: np.ndarray, ts_base: list[float] | None, ts_recent: list[float] | None) -> dict[str, float | bool | list[str]]:
-        n_total = int(recent.size)
-        miss = int(np.isnan(recent).sum())
-        missingness_rate = float(miss / max(1, n_total))
-
-        std_recent = np.nanstd(recent, axis=0)
-        std_recent = np.nan_to_num(std_recent, nan=0.0)
-        flatlined = int(np.sum(std_recent <= 1e-12))
-        valid_signal_count = int(np.sum(std_recent > 1e-12))
-        total_sensors = int(recent.shape[1])
-        sensor_coverage = float(valid_signal_count / max(1, total_sensors))
-
-        timestamp_irregularity = 0.0
-        if ts_recent is not None and len(ts_recent) >= 3:
-            gaps = np.diff(np.array(ts_recent, dtype=float))
-            if np.all(gaps > 0):
-                timestamp_irregularity = float(np.std(gaps) / (np.mean(gaps) + 1e-9))
-        timestamp_irregularity = float(clamp(timestamp_irregularity, 0.0, 1.0))
-
-        statuses: list[str] = []
-        if missingness_rate > 0.5:
-            statuses.append("DATA_QUALITY_LIMITED")
-        if sensor_coverage < 0.5:
-            statuses.append("LOW_SENSOR_COVERAGE")
-        if timestamp_irregularity > 0.5:
-            statuses.append("TIMESTAMP_IRREGULAR")
-
-        gate_passed = bool(missingness_rate <= 0.5 and sensor_coverage >= 0.5 and valid_signal_count >= 2)
-        return {
-            "missingness_rate": missingness_rate,
-            "timestamp_irregularity": timestamp_irregularity,
-            "flatlined_sensor_count": flatlined,
-            "valid_signal_count": valid_signal_count,
-            "total_sensors": total_sensors,
-            "sensor_coverage": sensor_coverage,
-            "statuses": statuses,
-            "gate_passed": gate_passed,
-        }
-
-
-class FeatureExtractionStage:
-    @staticmethod
-    def extract(baseline: np.ndarray, recent: np.ndarray) -> dict[str, Any]:
-        base_mean = np.mean(baseline, axis=0)
-        rec_mean = np.mean(recent, axis=0)
-        base_std = np.std(baseline, axis=0)
-        rec_std = np.std(recent, axis=0)
-
-        corr_base = corr_from_matrix(baseline)
-        corr_recent = corr_from_matrix(recent)
-        rel_vec_base = flatten_upper_tri(corr_base)
-        rel_vec_recent = flatten_upper_tri(corr_recent)
-
-        signature = np.concatenate([rec_mean, rec_std, rel_vec_recent])
-        return {
-            "base_mean": base_mean,
-            "rec_mean": rec_mean,
-            "base_std": base_std,
-            "rec_std": rec_std,
-            "corr_base": corr_base,
-            "corr_recent": corr_recent,
-            "rel_vec_base": rel_vec_base,
-            "rel_vec_recent": rel_vec_recent,
-            "signature": signature,
-        }
-
-
-class StructuralDriftStage:
-    @staticmethod
-    def score(features: dict[str, Any], baseline_profile: NodeBaselineProfile) -> tuple[float, float]:
-        corr_recent = features["corr_recent"]
-        corr_ref = baseline_profile.corr_baseline if baseline_profile.corr_baseline is not None else features["corr_base"]
-        raw = float(np.linalg.norm(corr_recent - corr_ref, ord="fro"))
-        normalized = raw
-        if baseline_profile.finalized:
-            normalized = bounded_z(raw, baseline_profile.corr_drift_mean, baseline_profile.corr_drift_std, cap=4.0)
-        return raw, normalized
-
-
-class RelationalInstabilityStage:
-    @staticmethod
-    def score(features: dict[str, Any], baseline_profile: NodeBaselineProfile) -> tuple[float, float]:
-        delta = features["rel_vec_recent"] - features["rel_vec_base"]
-        raw = float(np.mean(np.abs(delta))) if delta.size else 0.0
-        normalized = raw
-        if baseline_profile.finalized:
-            normalized = bounded_z(raw, baseline_profile.relational_mean, baseline_profile.relational_std, cap=4.0)
-        return raw, normalized
-
-
-class TemporalCoherenceStage:
-    @staticmethod
-    def score(ts_recent: list[float] | None, baseline_profile: NodeBaselineProfile) -> tuple[float, float]:
-        if ts_recent is None or len(ts_recent) < 3:
-            return 0.0, 0.0
-        gaps = np.diff(np.array(ts_recent, dtype=float))
-        if not np.all(gaps > 0):
-            return 1.0, 3.0
-        cv = float(np.std(gaps) / (np.mean(gaps) + 1e-9))
-        raw = float(clamp(cv, 0.0, 5.0))
-        normalized = raw
-        if baseline_profile.finalized:
-            normalized = bounded_z(raw, baseline_profile.temporal_gap_mean, baseline_profile.temporal_gap_std, cap=4.0)
-        return raw, normalized
-
-
-class RegimeStage:
-    @staticmethod
-    def distance(runtime: NodeRuntime, signature: np.ndarray) -> float:
-        return runtime.regime_memory.update(signature)
-
-
-class ConfidenceStage:
-    @staticmethod
-    def score(
-        dq: dict[str, Any],
-        component_scores: dict[str, float],
-        score_history: deque[float],
-        baseline_profile: NodeBaselineProfile,
-    ) -> float:
-        quality = (1.0 - float(dq["missingness_rate"])) * float(dq["sensor_coverage"]) * (1.0 - float(dq["timestamp_irregularity"]))
-        quality = clamp(quality, 0.0, 1.0)
-
-        # consistency across recent windows
-        if len(score_history) >= 6:
-            recent = np.array(list(score_history)[-6:], dtype=float)
-            persistence = float(np.mean(recent > 1.0))
-            volatility = float(np.std(recent))
-        else:
-            persistence = 0.0
-            volatility = 0.0
-
-        # component agreement (lower spread -> more agreement)
-        vals = np.array(list(component_scores.values()), dtype=float)
-        spread = float(np.std(vals) / (np.mean(vals) + 1e-6)) if vals.size else 1.0
-        agreement = clamp(1.0 - 0.5 * spread, 0.0, 1.0)
-
-        # distance from baseline relative spread
-        if baseline_profile.finalized:
-            baseline_std = max(0.05, baseline_profile.instability_std)
-            distance_factor = clamp(float(np.mean(vals)) / (2.0 * baseline_std + 1e-6), 0.0, 1.0)
-        else:
-            distance_factor = 0.3
-
-        conf = (
-            0.35 * quality
-            + 0.20 * agreement
-            + 0.20 * clamp(1.0 - volatility, 0.0, 1.0)
-            + 0.15 * clamp(persistence, 0.0, 1.0)
-            + 0.10 * distance_factor
-        )
-        return clamp(conf, 0.0, 1.0)
-
-    @staticmethod
-    def categorical(conf: float) -> str:
-        if conf >= 0.70:
-            return "high"
-        if conf >= 0.40:
-            return "medium"
-        return "low"
-
-
-class LocalizationStage:
-    @staticmethod
-    def compute(anomaly_evidence_by_node: dict[str, float]) -> dict[str, float]:
-        vals = np.array([max(0.0, float(v)) for v in anomaly_evidence_by_node.values()], dtype=float)
-        s = float(np.sum(vals))
-        if s <= 1e-9:
-            return {k: 0.0 for k in anomaly_evidence_by_node.keys()}
-        shares = {k: float(v) / s for k, v in anomaly_evidence_by_node.items()}
-        concentration = float(np.max(vals) / (s + 1e-9))
-        # Penalize diffuse activations network-wide.
-        return {k: clamp(shares[k] * concentration * 2.0, 0.0, 1.0) for k in anomaly_evidence_by_node.keys()}
-
-
-class DecisionStage:
-    @staticmethod
-    def interpreted_state(
-        structural: float,
-        relational: float,
-        regime_distance: float,
-        temporal_distortion: float,
-        localization: float,
-        trend: float,
-    ) -> str:
-        motion = structural > 1.2 or relational > 1.0
-        strong_coupling_break = relational > 1.4
-        regime_shift = regime_distance > 0.8
-        temporal_only = temporal_distortion > 1.2 and not motion
-        sustained_degrading = trend > 0.03
-
-        if strong_coupling_break and localization > 0.25:
-            return "COUPLING_INSTABILITY_OBSERVED"
-        if motion and regime_shift and sustained_degrading and localization > 0.20:
-            return "STRUCTURAL_INSTABILITY_OBSERVED"
-        if motion and regime_shift and not sustained_degrading:
-            return "REGIME_SHIFT_OBSERVED"
-        # Temporal distortion alone should generally reduce confidence rather than
-        # force a non-nominal interpreted state. Reserve this class for bounded
-        # motion under temporal constraint.
-        if (motion and temporal_distortion > 1.0 and localization < 0.20):
-            return "COHERENCE_UNDER_CONSTRAINT"
-        return "NOMINAL_STRUCTURE"
-
-    @staticmethod
-    def state_from_score(instability: float, confidence: float, localization: float) -> str:
-        # Strongly penalize diffuse activation so spillover does not dominate.
-        loc_gate = 0.40 + 0.60 * localization
-        conf_gate = 0.55 + 0.45 * confidence
-        adjusted = instability * loc_gate * conf_gate
-
-        # Conservative guardrail: low-localization + low-confidence evidence should
-        # not escalate aggressively even when raw scores are noisy.
-        if localization < 0.16 and confidence < 0.55 and adjusted < 2.6:
-            return "STABLE"
-
-        if adjusted >= 2.0:
-            return "ALERT"
-        if adjusted >= 1.0:
-            return "WATCH"
-        return "STABLE"
-
-
-class AttributionStage:
-    @staticmethod
-    def explain(components: dict[str, float], state: str) -> tuple[str, dict[str, float]]:
-        total = sum(max(0.0, v) for v in components.values()) + 1e-9
-        contrib = {k: max(0.0, v) / total for k, v in components.items()}
-        ranked = sorted(contrib.items(), key=lambda kv: kv[1], reverse=True)
-        top = [k for k, _ in ranked[:3]]
-        msg = (
-            f"{state}: dominated by {', '.join(top)}."
-            if top
-            else f"{state}: no dominant structural drivers."
-        )
-        return msg, contrib
-
-
 # -----------------------------------------------------------------------------
 # Node enhancement behavior (A/B/C/D distinct)
 # -----------------------------------------------------------------------------
@@ -585,23 +206,6 @@ def apply_variant_adjustments(
         # to true localized anomalies.
         out["_instability_scale"] = 0.62
     return out
-
-
-# Rebind benchmark stage/runtime symbols to shared core implementations so
-# benchmark and production execute the same stage logic path.
-NodeBaselineProfile = SharedNodeBaselineProfile
-RegimeMemory = SharedRegimeMemory
-NodeRuntime = SharedNodeRuntime
-DataQualityStage = SharedDataQualityStage
-FeatureExtractionStage = SharedFeatureExtractionStage
-StructuralDriftStage = SharedStructuralDriftStage
-RelationalInstabilityStage = SharedRelationalInstabilityStage
-TemporalCoherenceStage = SharedTemporalCoherenceStage
-RegimeStage = SharedRegimeStage
-ConfidenceStage = SharedConfidenceStage
-LocalizationStage = SharedLocalizationStage
-DecisionStage = SharedDecisionStage
-AttributionStage = SharedAttributionStage
 
 
 # -----------------------------------------------------------------------------
