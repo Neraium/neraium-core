@@ -7,10 +7,10 @@ coherent_time,B,perturbation,80,0,0,80,0,0.0,0.0,1.0,0.0,1.0
 coherent_time,B,recovery,80,0,0,80,0,0.0,0.0,1.0,0.0,1.0
 coherent_time,C,baseline,80,0,0,80,0,0.0,0.0,1.0,0.0,1.0
 coherent_time,C,perturbation,80,69,0,0,11,1.0,0.8625,0.0,0.0,0.8625
-coherent_time,C,recovery,80,0,0,80,0,0.0,0.0,1.0,0.0,1.0
+coherent_time,C,recovery,80,0,3,77,0,0.0,0.0,0.9625,0.0375,0.9625
 coherent_time,D,baseline,80,0,0,80,0,0.0,0.0,1.0,0.0,1.0
-coherent_time,D,perturbation,80,0,0,80,0,0.0,0.0,1.0,0.0,1.0
-coherent_time,D,recovery,80,0,0,80,0,0.0,0.0,1.0,0.0,1.0
+coherent_time,D,perturbation,80,0,80,0,0,0.0,0.0,0.0,1.0,0.0
+coherent_time,D,recovery,80,0,11,69,0,0.0,0.0,0.8625,0.1375,0.8625
 disturbed_time,A,baseline,80,0,0,80,0,0.0,0.0,1.0,0.0,1.0
 disturbed_time,A,perturbation,80,0,0,80,0,0.0,0.0,1.0,0.0,1.0
 disturbed_time,A,recovery,80,0,0,80,0,0.0,0.0,1.0,0.0,1.0
@@ -18,8 +18,8 @@ disturbed_time,B,baseline,80,0,0,80,0,0.0,0.0,1.0,0.0,1.0
 disturbed_time,B,perturbation,80,0,0,80,0,0.0,0.0,1.0,0.0,1.0
 disturbed_time,B,recovery,80,0,0,80,0,0.0,0.0,1.0,0.0,1.0
 disturbed_time,C,baseline,80,0,0,80,0,0.0,0.0,1.0,0.0,1.0
-disturbed_time,C,perturbation,80,80,0,0,0,1.0,1.0,0.0,0.0,1.0
-disturbed_time,C,recovery,80,0,11,69,0,0.0,0.0,0.8625,0.1375,0.8625
+disturbed_time,C,perturbation,80,73,0,0,7,1.0,0.9125,0.0,0.0,0.9125
+disturbed_time,C,recovery,80,0,3,77,0,0.0,0.0,0.9625,0.0375,0.9625
 disturbed_time,D,baseline,80,0,0,80,0,0.0,0.0,1.0,0.0,1.0
-disturbed_time,D,perturbation,80,0,0,80,0,0.0,0.0,1.0,0.0,1.0
-disturbed_time,D,recovery,80,0,0,80,0,0.0,0.0,1.0,0.0,1.0
+disturbed_time,D,perturbation,80,0,73,7,0,0.0,0.0,0.0875,0.9125,0.0875
+disturbed_time,D,recovery,80,0,11,69,0,0.0,0.0,0.8625,0.1375,0.8625
