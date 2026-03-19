@@ -11,14 +11,17 @@
     body {
       margin: 0;
       font-family: Arial, sans-serif;
-      background: #0f172a;
+      background:
+        radial-gradient(circle at 20% 10%, rgba(56, 189, 248, 0.16), transparent 45%),
+        radial-gradient(circle at 80% 0%, rgba(245, 158, 11, 0.14), transparent 40%),
+        linear-gradient(180deg, #0b1224, #0f172a);
       color: #e2e8f0;
     }
 
     .container {
       max-width: 1180px;
       margin: auto;
-      padding: 24px;
+      padding: 28px 22px;
     }
 
     h1 {
@@ -90,22 +93,45 @@
     }
 
     .card {
-      background: #1e293b;
-      padding: 16px;
-      border-radius: 10px;
+      background: rgba(30, 41, 59, 0.58);
+      padding: 18px;
+      border-radius: 12px;
+      border: 1px solid rgba(148, 163, 184, 0.18);
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.22);
+      transition:
+        transform 160ms ease,
+        box-shadow 160ms ease,
+        border-color 160ms ease,
+        background 160ms ease;
     }
 
-    .card h2 {
-      margin: 0 0 8px;
-      font-size: 0.9rem;
+    .card:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 16px 45px rgba(0, 0, 0, 0.28);
+      border-color: rgba(56, 189, 248, 0.35);
+      background: rgba(30, 41, 59, 0.72);
+    }
+
+    .metric-label {
       color: #94a3b8;
+      font-size: 0.85rem;
+      font-weight: 700;
+      margin-bottom: 10px;
+      letter-spacing: 0.01em;
     }
 
-    .value {
-      font-size: 1.45rem;
-      font-weight: bold;
-      margin-bottom: 6px;
+    .metric-value {
+      font-size: 1.75rem;
+      font-weight: 900;
+      line-height: 1.1;
+      margin-bottom: 12px;
       word-break: break-word;
+    }
+
+    .metric-value--secondary {
+      font-size: 1.2rem;
+      font-weight: 800;
+      margin-bottom: 10px;
     }
 
     .badge {
@@ -114,6 +140,8 @@
       border-radius: 999px;
       font-size: 0.75rem;
       font-weight: bold;
+      text-transform: uppercase;
+      letter-spacing: 0.02em;
     }
 
     .low {
@@ -147,6 +175,28 @@
       color: #e2e8f0;
     }
 
+    .regime-stable {
+      background: rgba(34, 197, 94, 0.16);
+      border: 1px solid #22c55e;
+      color: #bbf7d0;
+    }
+
+    .regime-transitional {
+      background: linear-gradient(
+        90deg,
+        rgba(56, 189, 248, 0.18),
+        rgba(251, 146, 60, 0.14)
+      );
+      border: 1px solid rgba(56, 189, 248, 0.65);
+      color: #bae6fd;
+    }
+
+    .regime-unstable {
+      background: rgba(239, 68, 68, 0.16);
+      border: 1px solid #ef4444;
+      color: #fecaca;
+    }
+
     .info {
       background: rgba(56, 189, 248, 0.2);
       border: 1px solid #38bdf8;
@@ -156,7 +206,7 @@
     .message {
       background: #1e293b;
       padding: 18px;
-      border-radius: 10px;
+      border-radius: 12px;
       margin-bottom: 24px;
       border-left: 4px solid #38bdf8;
     }
@@ -183,16 +233,103 @@
     .chart {
       background: #1e293b;
       padding: 16px;
-      border-radius: 10px;
+      border-radius: 12px;
       margin-bottom: 20px;
     }
 
     .footer {
       background: #1e293b;
       padding: 14px;
-      border-radius: 10px;
+      border-radius: 12px;
       font-size: 0.9rem;
       color: #94a3b8;
+    }
+
+    .metrics-key-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+
+    .metrics-secondary-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 16px;
+      margin-bottom: 18px;
+    }
+
+    .details {
+      background: rgba(30, 41, 59, 0.35);
+      border: 1px solid rgba(148, 163, 184, 0.18);
+      border-radius: 12px;
+      padding: 10px 14px 14px;
+      margin-bottom: 18px;
+      overflow: hidden;
+    }
+
+    .details summary {
+      cursor: pointer;
+      font-weight: 900;
+      color: #e2e8f0;
+      user-select: none;
+      outline: none;
+    }
+
+    .details-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 16px;
+      padding-top: 12px;
+    }
+
+    .metrics-key-grid .card {
+      padding: 22px 20px;
+    }
+
+    .metrics-key-grid .metric-value {
+      font-size: 2rem;
+    }
+
+    .secondary-card {
+      box-shadow: none;
+      background: rgba(17, 24, 39, 0.22);
+      border-color: rgba(148, 163, 184, 0.14);
+    }
+
+    .secondary-card:hover {
+      transform: none;
+      box-shadow: none;
+      border-color: rgba(148, 163, 184, 0.22);
+      background: rgba(17, 24, 39, 0.32);
+    }
+
+    .details-card {
+      box-shadow: none;
+      background: rgba(17, 24, 39, 0.35);
+      border-color: rgba(148, 163, 184, 0.14);
+    }
+
+    .details-card:hover {
+      transform: none;
+      box-shadow: none;
+      border-color: rgba(148, 163, 184, 0.22);
+      background: rgba(17, 24, 39, 0.42);
+    }
+
+    .details-code {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
+        "Liberation Mono", "Courier New", monospace;
+      font-size: 0.95rem;
+      line-height: 1.35;
+    }
+
+    @media (max-width: 980px) {
+      .metrics-key-grid,
+      .metrics-secondary-grid,
+      .details-grid {
+        grid-template-columns: 1fr;
+      }
     }
   </style>
 </head>
@@ -225,69 +362,106 @@
       <a href="/?mode=real" class="toggle-link {% if mode == 'real' %}active{% endif %}">Real</a>
     </div>
 
-    <div class="grid">
-      <div class="card">
-        <h2>Phase</h2>
-        <div class="value">{{ status["phase"] }}</div>
-        <span class="badge neutral">Current State</span>
-      </div>
+    {% macro fmt2(v) -%}
+      {%- if v is none -%}
+        n/a
+      {%- else -%}
+        {{ '%.2f'|format(v|float) }}
+      {%- endif -%}
+    {%- endmacro %}
 
+    {% set assigned_regime = status["assigned_regime"] or "unknown" %}
+    {% set risk_key = (status["risk_level"] or "UNKNOWN") | string | upper %}
+    {% if risk_key in ["MEDIUM", "MODERATE", "ELEVATED"] %}
+      {% set risk_badge = "MODERATE" %}
+    {% else %}
+      {% set risk_badge = risk_key %}
+    {% endif %}
+
+    <div class="metrics-key-grid">
       <div class="card">
-        <h2>Risk Level</h2>
-        <div class="value">{{ status["risk_level"] }}</div>
-        <span class="badge {% if status['risk_level'] == 'LOW' %}low{% elif status['risk_level'] == 'MODERATE' %}moderate{% elif status['risk_level'] in ['MEDIUM', 'ELEVATED'] %}medium{% else %}high{% endif %}">
-          {{ status["risk_level"] }}
+        <div class="metric-label">Assigned Regime</div>
+        <div class="metric-value">{{ assigned_regime|title }}</div>
+        <span
+          class="badge
+          {% if assigned_regime == 'stable' %}regime-stable
+          {% elif assigned_regime == 'transitional' %}regime-transitional
+          {% elif assigned_regime == 'unstable' %}regime-unstable
+          {% else %}neutral{% endif %}">
+          {{ assigned_regime|upper }}
         </span>
       </div>
 
       <div class="card">
-        <h2>Signal Emitted</h2>
-        <div class="value">{{ "YES" if status["signal_emitted"] else "NO" }}</div>
-        <span class="badge {% if status['signal_emitted'] %}info{% else %}neutral{% endif %}">
-          {{ "Signal Detected" if status["signal_emitted"] else "No Signal Surfaced" }}
+        <div class="metric-label">Risk Level</div>
+        <div class="metric-value">{{ risk_badge|lower|title }}</div>
+        <span
+          class="badge
+          {% if risk_badge == 'LOW' %}low
+          {% elif risk_badge == 'MODERATE' %}moderate
+          {% elif risk_badge == 'HIGH' %}high
+          {% else %}neutral{% endif %}">
+          {{ risk_badge }}
         </span>
       </div>
 
       <div class="card">
-        <h2>Signal Strength</h2>
-        <div class="value">{{ status["signal_strength"] }}</div>
-      </div>
-
-      <div class="card">
-        <h2>Confidence</h2>
-        <div class="value">{{ status["confidence"] }}</div>
-      </div>
-
-      <div class="card">
-        <h2>Latest Drift</h2>
-        <div class="value">{{ status["latest_drift"] }}</div>
-      </div>
-
-      <div class="card">
-        <h2>Latest Instability</h2>
-        <div class="value">{{ status["latest_instability"] }}</div>
-      </div>
-
-      <div class="card">
-        <h2>Assigned Regime</h2>
-        <div class="value">{{ status["assigned_regime"] or "unknown" }}</div>
-      </div>
-
-      <div class="card">
-        <h2>Regime Distance</h2>
-        <div class="value">{{ status["regime_distance"] if status["regime_distance"] is not none else "n/a" }}</div>
-      </div>
-
-      <div class="card">
-        <h2>Regime Drift</h2>
-        <div class="value">{{ status["regime_drift"] }}</div>
-      </div>
-
-      <div class="card">
-        <h2>Interpreted State</h2>
-        <div class="value">{{ status["interpreted_state"] }}</div>
+        <div class="metric-label">Phase</div>
+        <div class="metric-value">{{ status["phase"]|lower|replace('_',' ')|title }}</div>
       </div>
     </div>
+
+    <div class="metrics-secondary-grid">
+      <div class="card secondary-card">
+        <div class="metric-label">Signal Emitted</div>
+        <div class="metric-value metric-value--secondary">{{ "Yes" if status["signal_emitted"] else "No" }}</div>
+        <span class="badge {% if status['signal_emitted'] %}info{% else %}neutral{% endif %}">
+          {{ "Signal Detected" if status["signal_emitted"] else "No Signal" }}
+        </span>
+      </div>
+
+      <div class="card secondary-card">
+        <div class="metric-label">Signal Strength</div>
+        <div class="metric-value metric-value--secondary">{{ status["signal_strength"]|default("low")|lower|title }}</div>
+      </div>
+
+      <div class="card secondary-card">
+        <div class="metric-label">Confidence</div>
+        <div class="metric-value metric-value--secondary">{{ status["confidence"]|default("low")|lower|title }}</div>
+      </div>
+    </div>
+
+    <details class="details">
+      <summary>Show Details</summary>
+      <div class="details-grid">
+        <div class="card details-card">
+          <div class="metric-label">Interpreted State</div>
+          <div class="metric-value details-code" style="font-size: 1.15rem;">
+            {{ status["interpreted_state"]|default("")|lower|replace('_',' ')|title }}
+          </div>
+        </div>
+
+        <div class="card details-card">
+          <div class="metric-label">Regime Distance</div>
+          <div class="metric-value metric-value--secondary">{{ fmt2(status["regime_distance"]) }}</div>
+        </div>
+
+        <div class="card details-card">
+          <div class="metric-label">Latest Drift</div>
+          <div class="metric-value metric-value--secondary">{{ fmt2(status["latest_drift"]) }}</div>
+        </div>
+
+        <div class="card details-card">
+          <div class="metric-label">Latest Instability</div>
+          <div class="metric-value metric-value--secondary">{{ fmt2(status["latest_instability"]) }}</div>
+        </div>
+
+        <div class="card details-card">
+          <div class="metric-label">Regime Drift</div>
+          <div class="metric-value metric-value--secondary">{{ fmt2(status["regime_drift"]) }}</div>
+        </div>
+      </div>
+    </details>
 
     <div class="message">
       <h2>System Interpretation</h2>
@@ -315,9 +489,14 @@
       const data = await res.json();
 
       const labels = data.map(d => d.timestamp);
-      const drift = data.map(d => d.drift);
-      const instability = data.map(d => d.instability);
-      const regimeDrift = data.map(d => d.regime_drift || 0);
+      const to2 = (v) => {
+        const n = Number(v);
+        if (!Number.isFinite(n)) return 0;
+        return Math.round(n * 100) / 100;
+      };
+      const drift = data.map(d => to2(d.drift));
+      const instability = data.map(d => to2(d.instability));
+      const regimeDrift = data.map(d => to2(d.regime_drift || 0));
 
       new Chart(document.getElementById('chart'), {
         type: 'line',
@@ -352,6 +531,14 @@
           plugins: {
             legend: {
               labels: { color: '#e2e8f0' }
+            },
+            tooltip: {
+              callbacks: {
+                label: (ctx) => {
+                  const y = Number(ctx.parsed.y);
+                  return `${ctx.dataset.label}: ${Number.isFinite(y) ? y.toFixed(2) : y}`;
+                }
+              }
             }
           },
           scales: {
@@ -359,7 +546,10 @@
               ticks: { color: '#cbd5e1' }
             },
             y: {
-              ticks: { color: '#cbd5e1' }
+              ticks: {
+                color: '#cbd5e1',
+                callback: (val) => Number(val).toFixed(2)
+              }
             }
           }
         }
