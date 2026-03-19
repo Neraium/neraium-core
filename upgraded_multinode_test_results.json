@@ -1,5 +1,13 @@
 {
-  "description": "Credible 4-node SII structural perturbation benchmark (baseline/perturbation/recovery) with GAL-2 time substrate.",
+  "description": "Credible 4-node SII structural perturbation benchmark with multi-seed calibration.",
+  "config_path": "benchmark_calibration.json",
+  "seeds": [
+    42,
+    43,
+    44,
+    45,
+    46
+  ],
   "nodes": [
     "A",
     "B",
@@ -10,240 +18,87 @@
     "coherent_time",
     "disturbed_time"
   ],
-  "t_start": 0,
-  "t_end": 240,
   "phase_windows": {
-    "baseline": [
-      0,
-      79
-    ],
-    "perturbation": [
-      80,
-      159
-    ],
-    "recovery": [
-      160,
-      239
-    ]
+    "baseline_end": 79,
+    "perturbation_start": 80,
+    "perturbation_end": 159,
+    "recovery_start": 160
   },
-  "engine_config": {
+  "engine": {
     "baseline_window": 50,
     "recent_window": 12
   },
   "gal2_api_configured": false,
   "gal2_time_url": null,
   "gal2_used_for_disturbed_time": false,
-  "metrics_by_condition": {
-    "coherent_time": {
-      "alert_precision": 0.8043478260869565,
-      "alert_recall": 0.925,
-      "tp": 74,
-      "fp": 18,
-      "fn": 6,
-      "baseline_stability_rate": 0.990625,
-      "false_positive_rate": 0.016666666666666666,
-      "recovery_success_rate": 0.85,
-      "peak_separation": 0.4537000000000002,
-      "c_perturbation_alert_rate": 0.925,
-      "c_peak_instability": 2.1695,
-      "others_peak_instability": 1.7158
+  "aggregate_metrics": [
+    {
+      "condition": "coherent_time",
+      "alert_precision_mean": 0.8134898827,
+      "alert_precision_std": 0.0397299135,
+      "alert_recall_mean": 0.945,
+      "alert_recall_std": 0.0563194016,
+      "tp_mean": 75.6,
+      "tp_std": 4.5055521304,
+      "fp_mean": 17.4,
+      "fp_std": 4.1593268686,
+      "fn_mean": 4.4,
+      "fn_std": 4.5055521304,
+      "baseline_stability_rate_mean": 0.990625,
+      "baseline_stability_rate_std": 0.0,
+      "false_positive_rate_mean": 0.0133333333,
+      "false_positive_rate_std": 0.0154222963,
+      "recovery_success_rate_mean": 0.86,
+      "recovery_success_rate_std": 0.0104582503,
+      "peak_separation_mean": 0.66916,
+      "peak_separation_std": 0.2381709953,
+      "c_perturbation_alert_rate_mean": 0.945,
+      "c_perturbation_alert_rate_std": 0.0563194016,
+      "node_A_pert_alert_rate_mean": 0.0,
+      "node_A_pert_alert_rate_std": 0.0,
+      "node_B_pert_alert_rate_mean": 0.0,
+      "node_B_pert_alert_rate_std": 0.0,
+      "node_C_pert_alert_rate_mean": 0.945,
+      "node_C_pert_alert_rate_std": 0.0563194016,
+      "node_D_pert_alert_rate_mean": 0.04,
+      "node_D_pert_alert_rate_std": 0.0462668888
     },
-    "disturbed_time": {
-      "alert_precision": 0.79,
-      "alert_recall": 0.9875,
-      "tp": 79,
-      "fp": 21,
-      "fn": 1,
-      "baseline_stability_rate": 0.990625,
-      "false_positive_rate": 0.041666666666666664,
-      "recovery_success_rate": 0.8875,
-      "peak_separation": 0.32120000000000015,
-      "c_perturbation_alert_rate": 0.9875,
-      "c_peak_instability": 2.2804,
-      "others_peak_instability": 1.9592
-    },
-    "comparison": {
-      "disturbed_minus_coherent_peak_separation": -0.13250000000000006
+    {
+      "condition": "disturbed_time",
+      "alert_precision_mean": 0.8249843198,
+      "alert_precision_std": 0.0362127643,
+      "alert_recall_mean": 0.9425,
+      "alert_recall_std": 0.0527375578,
+      "tp_mean": 75.4,
+      "tp_std": 4.2190046219,
+      "fp_mean": 16.0,
+      "fp_std": 3.3166247904,
+      "fn_mean": 4.6,
+      "fn_std": 4.2190046219,
+      "baseline_stability_rate_mean": 0.99125,
+      "baseline_stability_rate_std": 0.0013975425,
+      "false_positive_rate_mean": 0.0158333333,
+      "false_positive_rate_std": 0.0129770096,
+      "recovery_success_rate_mean": 0.8675,
+      "recovery_success_rate_std": 0.0111803399,
+      "peak_separation_mean": 0.8533,
+      "peak_separation_std": 0.2185924175,
+      "c_perturbation_alert_rate_mean": 0.9425,
+      "c_perturbation_alert_rate_std": 0.0527375578,
+      "node_A_pert_alert_rate_mean": 0.0,
+      "node_A_pert_alert_rate_std": 0.0,
+      "node_B_pert_alert_rate_mean": 0.0,
+      "node_B_pert_alert_rate_std": 0.0,
+      "node_C_pert_alert_rate_mean": 0.9425,
+      "node_C_pert_alert_rate_std": 0.0527375578,
+      "node_D_pert_alert_rate_mean": 0.0475,
+      "node_D_pert_alert_rate_std": 0.0389310288
     }
-  },
+  ],
   "artifacts": {
     "timeseries_csv": "upgraded_multinode_test_timeseries.csv",
     "node_summary_csv": "upgraded_multinode_test_node_summary.csv",
-    "metrics_csv": "upgraded_multinode_test_metrics.csv"
-  },
-  "seed": 42,
-  "node_condition_summaries": [
-    {
-      "node": "A",
-      "condition": "coherent_time",
-      "state_counts": {
-        "STABLE": 240
-      },
-      "interpreted_state_counts": {
-        "NOMINAL_STRUCTURE": 240
-      },
-      "deviation_hit_count": 0,
-      "deviation_hit_rate": 0.0,
-      "alert_hit_count": 0,
-      "alert_hit_rate": 0.0,
-      "peak_instability": 1.1677,
-      "mean_instability": 0.7406587499999999,
-      "baseline_stable_rate": 1.0,
-      "recovery_nominal_rate": 1.0,
-      "data_quality_gate_pass_rate": 1.0
-    },
-    {
-      "node": "B",
-      "condition": "coherent_time",
-      "state_counts": {
-        "STABLE": 237,
-        "WATCH": 3
-      },
-      "interpreted_state_counts": {
-        "NOMINAL_STRUCTURE": 237,
-        "COHERENCE_UNDER_CONSTRAINT": 2,
-        "COUPLING_INSTABILITY_OBSERVED": 1
-      },
-      "deviation_hit_count": 3,
-      "deviation_hit_rate": 0.0125,
-      "alert_hit_count": 3,
-      "alert_hit_rate": 0.0125,
-      "peak_instability": 1.9643,
-      "mean_instability": 0.7601820833333333,
-      "baseline_stable_rate": 0.98125,
-      "recovery_nominal_rate": 0.9625,
-      "data_quality_gate_pass_rate": 1.0
-    },
-    {
-      "node": "C",
-      "condition": "coherent_time",
-      "state_counts": {
-        "STABLE": 155,
-        "WATCH": 75,
-        "ALERT": 10
-      },
-      "interpreted_state_counts": {
-        "NOMINAL_STRUCTURE": 151,
-        "COHERENCE_UNDER_CONSTRAINT": 70,
-        "COUPLING_INSTABILITY_OBSERVED": 14,
-        "REGIME_SHIFT_OBSERVED": 5
-      },
-      "deviation_hit_count": 89,
-      "deviation_hit_rate": 0.37083333333333335,
-      "alert_hit_count": 85,
-      "alert_hit_rate": 0.3541666666666667,
-      "peak_instability": 2.1695,
-      "mean_instability": 0.94793375,
-      "baseline_stable_rate": 0.925,
-      "recovery_nominal_rate": 0.85,
-      "data_quality_gate_pass_rate": 1.0
-    },
-    {
-      "node": "D",
-      "condition": "coherent_time",
-      "state_counts": {
-        "STABLE": 236,
-        "WATCH": 4
-      },
-      "interpreted_state_counts": {
-        "NOMINAL_STRUCTURE": 224,
-        "COHERENCE_UNDER_CONSTRAINT": 16
-      },
-      "deviation_hit_count": 16,
-      "deviation_hit_rate": 0.06666666666666667,
-      "alert_hit_count": 4,
-      "alert_hit_rate": 0.016666666666666666,
-      "peak_instability": 1.7158,
-      "mean_instability": 0.8015075,
-      "baseline_stable_rate": 0.98125,
-      "recovery_nominal_rate": 0.9625,
-      "data_quality_gate_pass_rate": 1.0
-    },
-    {
-      "node": "A",
-      "condition": "disturbed_time",
-      "state_counts": {
-        "STABLE": 240
-      },
-      "interpreted_state_counts": {
-        "NOMINAL_STRUCTURE": 240
-      },
-      "deviation_hit_count": 0,
-      "deviation_hit_rate": 0.0,
-      "alert_hit_count": 0,
-      "alert_hit_rate": 0.0,
-      "peak_instability": 1.1643,
-      "mean_instability": 0.7367283333333333,
-      "baseline_stable_rate": 1.0,
-      "recovery_nominal_rate": 1.0,
-      "data_quality_gate_pass_rate": 1.0
-    },
-    {
-      "node": "B",
-      "condition": "disturbed_time",
-      "state_counts": {
-        "STABLE": 238,
-        "WATCH": 2
-      },
-      "interpreted_state_counts": {
-        "NOMINAL_STRUCTURE": 237,
-        "COHERENCE_UNDER_CONSTRAINT": 3
-      },
-      "deviation_hit_count": 3,
-      "deviation_hit_rate": 0.0125,
-      "alert_hit_count": 2,
-      "alert_hit_rate": 0.008333333333333333,
-      "peak_instability": 1.8563,
-      "mean_instability": 0.7545241666666667,
-      "baseline_stable_rate": 0.98125,
-      "recovery_nominal_rate": 0.9625,
-      "data_quality_gate_pass_rate": 1.0
-    },
-    {
-      "node": "C",
-      "condition": "disturbed_time",
-      "state_counts": {
-        "STABLE": 153,
-        "WATCH": 85,
-        "ALERT": 2
-      },
-      "interpreted_state_counts": {
-        "NOMINAL_STRUCTURE": 151,
-        "COHERENCE_UNDER_CONSTRAINT": 83,
-        "COUPLING_INSTABILITY_OBSERVED": 3,
-        "REGIME_SHIFT_OBSERVED": 3
-      },
-      "deviation_hit_count": 89,
-      "deviation_hit_rate": 0.37083333333333335,
-      "alert_hit_count": 87,
-      "alert_hit_rate": 0.3625,
-      "peak_instability": 2.2804,
-      "mean_instability": 0.92809,
-      "baseline_stable_rate": 0.94375,
-      "recovery_nominal_rate": 0.8875,
-      "data_quality_gate_pass_rate": 1.0
-    },
-    {
-      "node": "D",
-      "condition": "disturbed_time",
-      "state_counts": {
-        "STABLE": 229,
-        "WATCH": 11
-      },
-      "interpreted_state_counts": {
-        "NOMINAL_STRUCTURE": 224,
-        "COHERENCE_UNDER_CONSTRAINT": 12,
-        "COUPLING_INSTABILITY_OBSERVED": 4
-      },
-      "deviation_hit_count": 16,
-      "deviation_hit_rate": 0.06666666666666667,
-      "alert_hit_count": 11,
-      "alert_hit_rate": 0.04583333333333333,
-      "peak_instability": 1.9592,
-      "mean_instability": 0.8195975,
-      "baseline_stable_rate": 0.9875,
-      "recovery_nominal_rate": 0.975,
-      "data_quality_gate_pass_rate": 1.0
-    }
-  ]
+    "metrics_csv": "upgraded_multinode_test_metrics.csv",
+    "report_md": "upgraded_multinode_quality_report.md"
+  }
 }

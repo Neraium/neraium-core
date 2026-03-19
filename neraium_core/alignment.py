@@ -159,6 +159,28 @@ class StructuralEngine:
 
         return vectors
 
+    def _get_recent_timestamps(self) -> Optional[list[float]]:
+        if len(self.frames) < self.recent_window:
+            return None
+        ts_vals: list[float] = []
+        for f in list(self.frames)[-self.recent_window:]:
+            try:
+                ts_vals.append(float(f.get("timestamp")))
+            except (TypeError, ValueError):
+                continue
+        return ts_vals if len(ts_vals) >= 2 else None
+
+    def _get_baseline_timestamps(self) -> Optional[list[float]]:
+        if len(self.frames) < self.baseline_window:
+            return None
+        ts_vals: list[float] = []
+        for f in list(self.frames)[: self.baseline_window]:
+            try:
+                ts_vals.append(float(f.get("timestamp")))
+            except (TypeError, ValueError):
+                continue
+        return ts_vals if len(ts_vals) >= 2 else None
+
     def _system_health(self, drift_score: float, stability_score: float) -> int:
         health = 100.0 - min(drift_score * 20.0, 85.0)
         health += stability_score * 20.0
@@ -215,6 +237,8 @@ class StructuralEngine:
             baseline_window,
             recent_window,
             sensor_names=self.sensor_order,
+            timestamps_baseline=self._get_baseline_timestamps(),
+            timestamps_recent=self._get_recent_timestamps(),
         )
         result["data_quality"] = data_quality_report.to_dict()
         dq_summary = data_quality_summary(data_quality_report)
