@@ -249,6 +249,7 @@ def _coerce_status(summary: dict[str, Any]) -> dict[str, Any]:
 
     assigned_regime: str | None = None
     interpreted_state_str = str(interpreted_state or "").upper().strip()
+    print("DEBUG interpreted_state_str =", repr(interpreted_state_str))
 
     if "INSTABILITY" in interpreted_state_str:
         assigned_regime = "unstable"
