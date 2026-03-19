@@ -1,5 +1,5 @@
 {
-  "_comment": "Full JSON structures for the Neraium intelligence layer. Use as schema reference.",
+  "_comment": "Schema reference for Neraium intelligence layer runtime outputs and upgraded multinode benchmark artifacts.",
   "process_frame_output": {
     "timestamp": "string (from input frame)",
     "site_id": "string",
@@ -92,57 +92,134 @@
       "components": {}
     }
   },
-  "upgraded_multinode_test_results": {
-    "description": "4-node A/B persistence test with coherent_time vs disturbed_time",
+  "benchmark_calibration_json": {
     "nodes": ["A", "B", "C", "D"],
     "conditions": ["coherent_time", "disturbed_time"],
-    "t_start": 0,
-    "t_end": 140,
-    "baseline_window": 50,
-    "recent_window": 12,
-    "seed": 42,
+    "seeds": [42, 43, 44, 45, 46],
+    "time": { "start": 0, "end": 240 },
+    "phases": {
+      "baseline_end": 79,
+      "perturbation_start": 80,
+      "perturbation_end": 159,
+      "recovery_start": 160
+    },
+    "engine": {
+      "baseline_window": 50,
+      "recent_window": 12
+    },
+    "disturbed_time": {
+      "jitter_small": 0.55,
+      "jitter_gap_low": 0.75,
+      "jitter_gap_high": 1.75,
+      "jitter_gap_count": 20
+    },
+    "calibration": {
+      "latent": {
+        "amplitude": 0.20,
+        "w1": 0.09817477042468103,
+        "w2": 0.2731819698773733,
+        "phi2": 0.6
+      },
+      "nominal": { "a1": 1.0, "a2": 0.9, "a3": 1.05 },
+      "node_b": { "s2_scale": 1.07, "s2_offset": 0.03 },
+      "node_c": {
+        "s2_noise_amplitude": 0.30,
+        "s3_residual": 0.0,
+        "s3_noise_amplitude": 1.60,
+        "disturbed_time_noise_multiplier": 1.28
+      },
+      "node_d": { "s3_noise_amplitude": 0.05, "missing_prob": 0.015 }
+    },
+    "metrics": { "target_node": "C" },
+    "assertion_floors": {
+      "alert_precision": { "coherent_time": 0.40, "disturbed_time": 0.40 },
+      "alert_recall": { "coherent_time": 0.90, "disturbed_time": 0.94 },
+      "baseline_stability_rate": { "coherent_time": 0.75, "disturbed_time": 0.75 },
+      "recovery_success_rate": { "coherent_time": 0.80, "disturbed_time": 0.80 },
+      "false_positive_rate_max": { "coherent_time": 0.35, "disturbed_time": 0.35 },
+      "peak_separation_min": { "coherent_time": 0.20, "disturbed_time": 0.20 }
+    },
+    "node_role_bounds": {
+      "A_pert_alert_rate_max": { "coherent_time": 0.10, "disturbed_time": 0.12 },
+      "B_pert_alert_rate_max": { "coherent_time": 0.25, "disturbed_time": 0.28 },
+      "D_pert_alert_rate_max": { "coherent_time": 0.20, "disturbed_time": 0.25 },
+      "C_pert_alert_rate_min": { "coherent_time": 0.90, "disturbed_time": 0.94 }
+    }
+  },
+  "upgraded_multinode_test_results_v2": {
+    "description": "Credible 4-node SII structural perturbation benchmark with multi-seed calibration.",
+    "config_path": "benchmark_calibration.json",
+    "seeds": [42, 43, 44, 45, 46],
+    "nodes": ["A", "B", "C", "D"],
+    "conditions": ["coherent_time", "disturbed_time"],
+    "phase_windows": {
+      "baseline_end": 79,
+      "perturbation_start": 80,
+      "perturbation_end": 159,
+      "recovery_start": 160
+    },
+    "engine": {
+      "baseline_window": 50,
+      "recent_window": 12
+    },
     "gal2_api_configured": true,
     "gal2_time_url": "https://api-v2.gal-2.com/time",
-    "gal2_used_for_disturbed_time": false,
-    "output_path": "upgraded_multinode_test_results.json",
-    "runs": {
-      "A": {
-        "coherent_time": {
-          "state_counts": { "STABLE": 140 },
-          "interpreted_state_counts": { "NOMINAL_STRUCTURE": 91 },
-          "mean_score": 0.6269,
-          "max_score": 1.1873,
-          "min_score": 0.0,
-          "final_state": "STABLE",
-          "final_interpreted_state": "NOMINAL_STRUCTURE",
-          "mean_confidence": 0.8212,
-          "confidence_std": 0.007,
-          "classification_stability_mean": 1.0,
-          "classification_stability_final": 1.0,
-          "volatility": 0.4616,
-          "missing_sensor_count_mean": 0.0,
-          "missing_sensor_count_max": 0,
-          "active_sensor_count_mean": 1.95,
-          "active_sensor_count_min": 0,
-          "dominant_driver_final": "s3",
-          "dominant_driver_sample": ["s3"],
-          "causal_attribution_summary": {
-            "top_drivers": ["s3", "s2", "s1"],
-            "driver_count": 3
-          },
-          "data_quality_summary": {
-            "gate_passed_rate": 1.0,
-            "mean_valid_signal_count": 3.0,
-            "min_valid_signal_count": 3,
-            "max_valid_signal_count": 3
-          },
-          "n_frames": 140
-        },
-        "disturbed_time": {}
-      },
-      "B": { "coherent_time": {}, "disturbed_time": {} },
-      "C": { "coherent_time": {}, "disturbed_time": {} },
-      "D": { "coherent_time": {}, "disturbed_time": {} }
+    "gal2_used_for_disturbed_time": true,
+    "aggregate_metrics": [
+      {
+        "condition": "coherent_time",
+        "alert_precision_mean": 0.81,
+        "alert_precision_std": 0.03,
+        "alert_recall_mean": 0.94,
+        "alert_recall_std": 0.04,
+        "tp_mean": 75.6,
+        "tp_std": 4.8,
+        "fp_mean": 17.4,
+        "fp_std": 4.0,
+        "fn_mean": 4.4,
+        "fn_std": 4.8,
+        "baseline_stability_rate_mean": 0.99,
+        "baseline_stability_rate_std": 0.00,
+        "false_positive_rate_mean": 0.01,
+        "false_positive_rate_std": 0.01,
+        "recovery_success_rate_mean": 0.86,
+        "recovery_success_rate_std": 0.01,
+        "peak_separation_mean": 0.67,
+        "peak_separation_std": 0.23,
+        "c_perturbation_alert_rate_mean": 0.95,
+        "c_perturbation_alert_rate_std": 0.04,
+        "node_A_pert_alert_rate_mean": 0.00,
+        "node_A_pert_alert_rate_std": 0.00,
+        "node_B_pert_alert_rate_mean": 0.00,
+        "node_B_pert_alert_rate_std": 0.00,
+        "node_C_pert_alert_rate_mean": 0.95,
+        "node_C_pert_alert_rate_std": 0.04,
+        "node_D_pert_alert_rate_mean": 0.04,
+        "node_D_pert_alert_rate_std": 0.04
+      }
+    ],
+    "artifacts": {
+      "timeseries_csv": "upgraded_multinode_test_timeseries.csv",
+      "node_summary_csv": "upgraded_multinode_test_node_summary.csv",
+      "metrics_csv": "upgraded_multinode_test_metrics.csv",
+      "report_md": "upgraded_multinode_quality_report.md",
+      "phase_confusion_csv": "upgraded_multinode_phase_confusion.csv"
     }
-  }
+  },
+  "phase_confusion_csv_columns": [
+    "condition",
+    "node",
+    "phase",
+    "support",
+    "tp",
+    "fp",
+    "tn",
+    "fn",
+    "precision",
+    "recall",
+    "specificity",
+    "false_positive_rate",
+    "accuracy"
+  ]
 }
+
