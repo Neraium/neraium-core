@@ -46,17 +46,57 @@ def _interpret_state(
     regime_drift: float,
     directional: float,
     spectral: float,
+    early_warning: float,
+    trend: float,
+    persistence: dict[str, float] | None,
 ) -> str:
-    # Structure changed, but current structure still fits known regime
-    if relational_drift > 1.2 and regime_drift < 0.8:
+    """
+    Interpret structural state with constrained-coherence handling and persistence.
+
+    Key distinction:
+    - Motion (structure moving) is not automatically breakdown.
+    - Escalation requires sustained, multi-indicator confirmation.
+    """
+    persistence = persistence or {}
+    history_len = float(persistence.get("history_len", 0.0))
+    consecutive_elevated = float(persistence.get("consecutive_elevated", 0.0))
+    consecutive_high = float(persistence.get("consecutive_high", 0.0))
+    rolling_mean = float(persistence.get("rolling_mean", 0.0))
+
+    # Warmup/hysteresis: avoid jumping straight into strong instability classes.
+    if history_len < 8:
+        if relational_drift > 1.2:
+            return "REGIME_SHIFT_OBSERVED"
+        return "NOMINAL_STRUCTURE"
+
+    motion = relational_drift > 1.2
+    regime_departure = regime_drift >= 0.8
+    coupling_instability = directional > 1.0 or spectral > 1.2
+
+    # Constrained coherence: structure is moving and correction-like activity exists,
+    # but there is no clear breakdown pattern (no strong degradation trend and no sustained highs).
+    correction_present = early_warning > 0.9 or coupling_instability
+    bounded_persistence = consecutive_high < 2 and consecutive_elevated < 4 and rolling_mean < 2.0
+    no_degradation_trend = abs(trend) <= 0.06
+
+    if motion and correction_present and bounded_persistence and no_degradation_trend:
+        return "COHERENCE_UNDER_CONSTRAINT"
+
+    # Regime shift: structure changed but does not show sustained breakdown evidence.
+    if motion and not coupling_instability and bounded_persistence and no_degradation_trend:
         return "REGIME_SHIFT_OBSERVED"
 
-    # Structure changed and also departs from assigned regime
-    if relational_drift > 1.2 and regime_drift >= 0.8:
+    # Structural instability: require sustained evidence and multiple indicators.
+    sustained = consecutive_high >= 2 or consecutive_elevated >= 5 or rolling_mean >= 2.2
+    multi_indicator_confirmed = (motion and regime_departure) or (motion and coupling_instability) or (
+        coupling_instability and early_warning > 1.1
+    )
+    degrading = trend > 0.06
+
+    if sustained and multi_indicator_confirmed and (degrading or regime_departure):
         return "STRUCTURAL_INSTABILITY_OBSERVED"
 
-    # Elevated interaction instability even without strong global drift
-    if directional > 1.0 or spectral > 1.2:
+    if coupling_instability and sustained:
         return "COUPLING_INSTABILITY_OBSERVED"
 
     return "NOMINAL_STRUCTURE"
@@ -100,6 +140,13 @@ def _operator_message(
             "than baseline under current analysis."
         )
 
+    if state == "COHERENCE_UNDER_CONSTRAINT":
+        return (
+            "Observed structure is moving under apparent correction activity. "
+            "Current relationships remain bounded and internally coherent under current analysis, "
+            "without clear evidence of coordinated structural breakdown."
+        )
+
     if trend > 0.0:
         return (
             "Observed structural patterns remain broadly consistent with previously "
@@ -127,8 +174,10 @@ def decision_output(
     regime_drift = float(components.get("regime_drift", 0.0))
     directional = float(components.get("directional_divergence", 0.0))
     spectral = float(components.get("spectral", 0.0))
+    early_warning = float(components.get("early_warning", 0.0))
 
     trend = float(forecast.get("trend", 0.0))
+    persistence = forecast.get("persistence") if isinstance(forecast.get("persistence"), dict) else None
     time_to_instability = forecast.get("ar1_time_to_instability")
     if time_to_instability is None:
         time_to_instability = forecast.get("time_to_instability")
@@ -138,6 +187,9 @@ def decision_output(
         regime_drift=regime_drift,
         directional=directional,
         spectral=spectral,
+        early_warning=early_warning,
+        trend=trend,
+        persistence=persistence,
     )
 
     risk_level = _risk_level(composite_score)

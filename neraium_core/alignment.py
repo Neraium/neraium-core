@@ -57,6 +57,48 @@ class StructuralEngine:
             }
         )
 
+    def _persistence_features(self) -> dict[str, float]:
+        """
+        Lightweight persistence/hysteresis helpers derived from composite history.
+
+        This does not change analytics; it provides decision-layer context so
+        transient motion does not escalate into persistent instability.
+        """
+        values = [float(v) for v in self.score_history]
+        if not values:
+            return {
+                "history_len": 0.0,
+                "rolling_mean": 0.0,
+                "rolling_std": 0.0,
+                "consecutive_elevated": 0.0,
+                "consecutive_high": 0.0,
+            }
+
+        window = values[-min(len(values), 12) :]
+        rolling_mean = float(np.mean(window)) if window else 0.0
+        rolling_std = float(np.std(window)) if window else 0.0
+
+        consecutive_elevated = 0
+        consecutive_high = 0
+        for v in reversed(values):
+            if v >= 1.5:
+                consecutive_elevated += 1
+            else:
+                break
+        for v in reversed(values):
+            if v >= 2.5:
+                consecutive_high += 1
+            else:
+                break
+
+        return {
+            "history_len": float(len(values)),
+            "rolling_mean": float(rolling_mean),
+            "rolling_std": float(rolling_std),
+            "consecutive_elevated": float(consecutive_elevated),
+            "consecutive_high": float(consecutive_high),
+        }
+
     def _vector_from_frame(self, frame: Dict) -> np.ndarray:
         sensor_values = frame["sensor_values"]
 
@@ -355,12 +397,15 @@ class StructuralEngine:
         composite = composite_instability_score_normalized(components, weights=weights_for_composite)
         self.score_history.append(float(composite))
 
+        persistence = self._persistence_features()
+
         forecast = {
             "method": "regression+ar1",
             "trend": float(instability_trend(self.score_history)),
             "time_to_instability": time_to_instability(self.score_history),
             "ar1_next": forecast_next(self.score_history),
             "ar1_time_to_instability": time_to_threshold_ar1(self.score_history),
+            "persistence": persistence,
         }
 
         decision = decision_output(
