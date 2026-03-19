@@ -10,6 +10,8 @@ from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 from starlette.requests import Request
 
+from neraium_core.decision_layer import decision_output
+
 BASE_DIR = Path(__file__).resolve().parent.parent
 TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
 
@@ -113,6 +115,12 @@ def _coerce_status(summary: dict[str, Any]) -> dict[str, Any]:
         except (TypeError, ValueError):
             return default_value
 
+    # FD004 "real" unit summaries often provide averages instead of "latest_*".
+    fd004_avg_instability = pick("average_instability")
+    fd004_avg_drift = pick("average_drift")
+    has_fd004_avg_instability = fd004_avg_instability is not None
+    has_fd004_avg_drift = fd004_avg_drift is not None
+
     phase = pick("phase") or "unknown"
 
     risk_level = pick("risk_level")
@@ -126,14 +134,42 @@ def _coerce_status(summary: dict[str, Any]) -> dict[str, Any]:
         signal_emitted = bool(signal_emitted)
 
     signal_strength = pick("signal_strength") or "low"
-    confidence = pick("confidence") or "low"
+    confidence = pick("confidence")
+    if confidence is None:
+        # If the real FD004 unit summary only provides averages, use a neutral mid-confidence.
+        confidence = "medium" if has_fd004_avg_instability else "low"
 
-    interpreted_state = pick("interpreted_state") or default["interpreted_state"]
+    interpreted_state = pick("interpreted_state")
+    # For real mode we should not hardcode a structural interpretation if the report
+    # does not provide one (e.g., older report schemas). If possible, we derive it
+    # via the decision layer using the limited FD004 average inputs.
+    if interpreted_state is None:
+        if has_fd004_avg_drift:
+            try:
+                relational_drift = float(fd004_avg_drift or 0.0)
+                regime_drift = relational_drift * 0.3
+                interpreted_state = decision_output(
+                    composite_score=0.0,
+                    components={
+                        "relational_drift": relational_drift,
+                        "regime_drift": regime_drift,
+                        "directional_divergence": 0.0,
+                        "spectral": 0.0,
+                    },
+                    forecast={"trend": 0.0},
+                ).get("interpreted_state")
+            except Exception:
+                interpreted_state = None
+
+        if interpreted_state is None:
+            interpreted_state = "unknown"
     operator_message = pick("operator_message") or default["operator_message"]
 
     latest_drift = pick("latest_drift")
     if latest_drift is None:
         latest_drift = pick("structural_drift_score")
+    if latest_drift is None and has_fd004_avg_drift:
+        latest_drift = fd004_avg_drift
     if latest_drift is None:
         latest_drift = 0.0
     try:
@@ -141,7 +177,15 @@ def _coerce_status(summary: dict[str, Any]) -> dict[str, Any]:
     except (TypeError, ValueError):
         latest_drift = 0.0
 
-    latest_instability = pick_float("latest_instability", 0.0)
+    latest_instability = pick("latest_instability")
+    if latest_instability is None and has_fd004_avg_instability:
+        latest_instability = fd004_avg_instability
+    if latest_instability is None:
+        latest_instability = 0.0
+    try:
+        latest_instability = float(latest_instability)
+    except (TypeError, ValueError):
+        latest_instability = 0.0
 
     regime_name = pick("regime_name")
 
@@ -154,7 +198,16 @@ def _coerce_status(summary: dict[str, Any]) -> dict[str, Any]:
         except (TypeError, ValueError):
             regime_distance = None
 
-    regime_drift = pick_float("regime_drift", 0.0)
+    regime_drift = pick("regime_drift")
+    if regime_drift is None and has_fd004_avg_drift:
+        # Mapping requested for FD004 real schema.
+        regime_drift = fd004_avg_drift * 0.3
+    if regime_drift is None:
+        regime_drift = 0.0
+    try:
+        regime_drift = float(regime_drift)
+    except (TypeError, ValueError):
+        regime_drift = 0.0
 
     return {
         "phase": phase,
