@@ -35,8 +35,9 @@ from neraium_intelligence_core import StructuralEngine
 # Config and API
 # ---------------------------------------------------------------------------
 
-API_KEY = os.getenv("GAL2_API_KEY", "3HmbRNXkma4MONC9hLs3e76jZ7KygJru5UvBXOmR")
-GAL2_TIME_URL = "https://api-v2.gal-2.com/time"
+# GAL-2 API: set GAL2_API_KEY in environment (never commit the key).
+API_KEY = os.getenv("GAL2_API_KEY")
+GAL2_TIME_URL = os.getenv("GAL2_TIME_URL", "https://api-v2.gal-2.com/time")
 
 SEED = 42
 random.seed(SEED)
@@ -47,6 +48,8 @@ NODES = ["A", "B", "C", "D"]
 
 
 def get_gal2_time() -> float:
+    if not API_KEY:
+        return time.time()
     try:
         r = requests.get(
             GAL2_TIME_URL,
