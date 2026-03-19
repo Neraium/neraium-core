@@ -21,11 +21,18 @@ def assign_regime(signature: np.ndarray, regimes: list[dict[str, Any]]) -> dict[
         return None
 
     distances: list[tuple[float, str]] = []
+    sig = np.asarray(signature, dtype=float)
     for regime in regimes:
         centroid = np.asarray(regime["signature"], dtype=float)
-        distances.append((regime_distance(signature, centroid), str(regime["name"])))
+        # Sensor sets/window configuration can change signature dimensionality over
+        # time. Skip incompatible regimes instead of failing with broadcasting.
+        if centroid.shape != sig.shape:
+            continue
+        distances.append((regime_distance(sig, centroid), str(regime["name"])))
 
     distances.sort(key=lambda x: x[0])
+    if not distances:
+        return None
     nearest_distance, nearest_name = distances[0]
     return {"name": nearest_name, "distance": float(nearest_distance)}
 

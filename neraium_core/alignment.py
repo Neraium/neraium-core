@@ -23,7 +23,7 @@ from neraium_core.geometry import (
 from neraium_core.graph import graph_metrics, thresholded_adjacency
 from neraium_core.regime import build_regime_signature, assign_regime, update_regime_library
 from neraium_core.regime_store import RegimeStore
-from neraium_core.scoring import canonicalize_components, composite_instability_score_normalized
+from neraium_core.scoring import canonicalize_components, canonicalize_weights, composite_instability_score_normalized
 from neraium_core.spectral import dominant_mode_loading, spectral_gap, spectral_radius
 from neraium_core.subsystems import subsystem_spectral_measures
 
@@ -285,7 +285,74 @@ class StructuralEngine:
                 }
             )
 
-        composite = composite_instability_score_normalized(components)
+        # Per-component confidence: down-weight or fully suppress evidence when the
+        # data quality gate indicates unreliable inputs. Production alerts should
+        # be driven by Tier-1 components only.
+        tier1_components = {"relational_drift", "regime_drift", "spectral", "early_warning"}
+
+        # Evidence quality in [0, 1]
+        missingness_factor = max(0.0, 1.0 - float(data_quality_report.missingness_rate))
+        variability_factor = max(0.0, min(1.0, float(data_quality_report.variability_coverage)))
+        coverage_factor = max(0.0, min(1.0, float(data_quality_report.sensor_coverage)))
+        sample_factor = 0.0
+        if data_quality_report.total_sensors > 0:
+            sample_factor = float(data_quality_report.valid_signal_count) / float(max(1, data_quality_report.total_sensors))
+        sample_factor = max(0.0, min(1.0, sample_factor))
+
+        evidence_conf = (
+            missingness_factor
+            * (0.4 + 0.6 * variability_factor)
+            * (0.4 + 0.6 * coverage_factor)
+            * (0.5 + 0.5 * sample_factor)
+        )
+        if not bool(data_quality_report.gate_passed):
+            evidence_conf *= 0.25
+        evidence_conf = max(0.0, min(1.0, evidence_conf))
+
+        correlation_ready = valid_signal_count >= 2
+
+        # Regime baseline confidence depends on how much history exists for the
+        # assigned regime. If we don't yet have baseline correlation samples,
+        # the regime drift evidence is treated as unreliable.
+        regime_count = 0
+        if regime_name is not None:
+            entry = self.regime_baselines.get(regime_name)
+            if isinstance(entry, dict):
+                try:
+                    regime_count = int(entry.get("count", 0) or 0)
+                except (TypeError, ValueError):
+                    regime_count = 0
+
+        regime_factor = min(1.0, float(regime_count) / 5.0) if regime_count > 0 else 0.0
+
+        component_confidence: dict[str, float] = {k: 0.0 for k in components.keys()}
+
+        # Tier-1
+        component_confidence["relational_drift"] = evidence_conf if correlation_ready else 0.0
+        component_confidence["spectral"] = evidence_conf if correlation_ready else 0.0
+        component_confidence["early_warning"] = evidence_conf
+        component_confidence["regime_drift"] = evidence_conf * regime_factor if correlation_ready else 0.0
+
+        # Suppress non-Tier-1 components explicitly (keeps production composite Tier-1 only)
+        for k in list(component_confidence.keys()):
+            if k not in tier1_components:
+                component_confidence[k] = 0.0
+
+        analytics["component_confidence"] = component_confidence
+
+        # Confidence-weighted composite: use confidence as a scaling on component weights
+        # so that unreliable evidence doesn't dilute the Tier-1 score.
+        base_weights = canonicalize_weights()
+        weights_for_composite: dict[str, float] = {}
+        for k, w in base_weights.items():
+            weights_for_composite[k] = float(w) * float(component_confidence.get(k, 0.0))
+
+        components_for_decision = {
+            k: float(v) * float(component_confidence.get(k, 0.0)) if k in component_confidence else float(v)
+            for k, v in components.items()
+        }
+
+        composite = composite_instability_score_normalized(components, weights=weights_for_composite)
         self.score_history.append(float(composite))
 
         forecast = {
@@ -298,7 +365,7 @@ class StructuralEngine:
 
         decision = decision_output(
             composite_score=float(composite),
-            components=components,
+            components=components_for_decision,
             forecast=forecast,
         )
         result.update(decision)
@@ -307,6 +374,7 @@ class StructuralEngine:
         analytics["composite_instability"] = round(float(composite), 4)
         analytics["forecasting"] = forecast
         analytics["components"] = components
+        result["component_confidence"] = component_confidence
 
         result["experimental_analytics"] = analytics
         self.latest_result = result
