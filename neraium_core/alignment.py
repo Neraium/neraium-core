@@ -218,8 +218,12 @@ class StructuralEngine:
             "regime_drift": 0.0,
             "latest_drift": 0.0,
             "latest_instability": 0.0,
+            "relational_instability_score": 0.0,
+            "temporal_distortion_score": 0.0,
+            "localization_score": 0.0,
             "causal_attribution": {"top_drivers": [], "driver_scores": {}},
             "dominant_driver": None,
+            "explanation": "Warmup: awaiting sufficient window history.",
             "baseline_mode": None,
             "data_quality_summary": {},
             "active_sensor_count": 0,
@@ -546,6 +550,9 @@ class StructuralEngine:
         result.update(decision)
         result["confidence_score"] = round(stabilized_confidence, 4)
         result["latest_instability"] = round(float(composite), 4)
+        result["relational_instability_score"] = round(float(components.get("relational_drift", 0.0)), 4)
+        result["temporal_distortion_score"] = round(float(data_quality_report.timestamp_irregularity), 4)
+        result["localization_score"] = 0.0
 
         self._state_history.append(decision.get("interpreted_state", "NOMINAL_STRUCTURE"))
 
@@ -564,6 +571,22 @@ class StructuralEngine:
         analytics["composite_instability"] = round(float(composite), 4)
         analytics["forecasting"] = forecast
         analytics["components"] = components
+        sorted_components = sorted(
+            (
+                ("structural_drift_score", float(result.get("structural_drift_score", 0.0))),
+                ("relational_instability_score", float(result.get("relational_instability_score", 0.0))),
+                ("regime_distance", float(result.get("regime_distance", 0.0) or 0.0)),
+                ("temporal_distortion_score", float(result.get("temporal_distortion_score", 0.0))),
+            ),
+            key=lambda item: item[1],
+            reverse=True,
+        )
+        top_names = [name for name, _ in sorted_components[:3]]
+        result["explanation"] = (
+            f"{result.get('state', 'STABLE')}: dominated by "
+            + ", ".join(top_names)
+            + "."
+        )
         result["component_confidence"] = component_confidence
 
         result["experimental_analytics"] = analytics

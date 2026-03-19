@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 from typing import Any
 
 from neraium_core.alignment import StructuralEngine
@@ -19,8 +20,60 @@ class StructuralMonitoringService:
         engine: StructuralEngine | None = None,
         store: ResultStore | None = None,
     ):
+        # Template engine config; runtime engines are isolated per (site_id, asset_id)
+        # so each asset gets its own baseline/model memory.
         self.engine = engine or StructuralEngine(baseline_window=24, recent_window=8)
         self.store = store or ResultStore()
+        self._engines_by_asset: dict[tuple[str, str], StructuralEngine] = {}
+        self._localization_by_site: dict[str, dict[str, float]] = {}
+
+    def _engine_for_frame(self, frame: dict[str, Any]) -> StructuralEngine:
+        site_id = str(frame.get("site_id", "default-site"))
+        asset_id = str(frame.get("asset_id", "default-asset"))
+        key = (site_id, asset_id)
+        existing = self._engines_by_asset.get(key)
+        if existing is not None:
+            return existing
+
+        # Reuse the initially provided engine for the first asset to preserve
+        # backwards compatibility with tests/injection.
+        if not self._engines_by_asset:
+            self._engines_by_asset[key] = self.engine
+            return self.engine
+
+        # Clone config for additional assets with isolated regime memory file.
+        template = self.engine
+        regime_path = "regime_library.json"
+        try:
+            base_path = Path(template.regime_store.path)
+            safe_site = site_id.replace("/", "_").replace("\\", "_").replace(":", "_")
+            safe_asset = asset_id.replace("/", "_").replace("\\", "_").replace(":", "_")
+            regime_path = str(base_path.with_name(f"{base_path.stem}_{safe_site}_{safe_asset}{base_path.suffix}"))
+        except Exception:
+            regime_path = f"regime_library_{site_id}_{asset_id}.json"
+
+        new_engine = StructuralEngine(
+            baseline_window=template.baseline_window,
+            recent_window=template.recent_window,
+            window_stride=template.window_stride,
+            regime_store_path=regime_path,
+            baseline_adaptation_alpha=template.baseline_adaptation_alpha,
+        )
+        self._engines_by_asset[key] = new_engine
+        return new_engine
+
+    def _localization_score(self, result: dict[str, Any]) -> float:
+        site_id = str(result.get("site_id", "default-site"))
+        asset_id = str(result.get("asset_id", "default-asset"))
+        latest_instability = float(result.get("latest_instability", 0.0))
+        site_map = self._localization_by_site.setdefault(site_id, {})
+        site_map[asset_id] = max(0.0, latest_instability)
+        total = sum(site_map.values())
+        if total <= 1e-9:
+            return 0.0
+        share = latest_instability / total
+        concentration = max(site_map.values()) / (total + 1e-9)
+        return round(max(0.0, min(1.0, share * concentration * 2.0)), 4)
 
     def _interpret(self, result: dict[str, Any]) -> dict[str, str]:
         drift = float(result.get("structural_drift_score", 0.0))
@@ -104,16 +157,19 @@ class StructuralMonitoringService:
         enriched = dict(result)
         interpretation = self._interpret(result)
         structural = self._structural_analysis_metadata(result)
+        localization_score = self._localization_score(result)
 
         enriched.update(interpretation)
         enriched.update(structural)
         enriched["trend"] = self._operator_trend(result)
         enriched["confidence"] = self._operator_confidence(result)
+        enriched["localization_score"] = localization_score
         enriched["interpretation"] = {
             "heuristic": True,
             **interpretation,
             "trend": enriched["trend"],
             "confidence": enriched["confidence"],
+            "localization_score": localization_score,
         }
         return enriched
 
@@ -124,7 +180,8 @@ class StructuralMonitoringService:
             payload.get("asset_id"),
         )
         frame = normalize_rest_payload(payload)
-        result = self._decorate_result(self.engine.process_frame(frame))
+        engine = self._engine_for_frame(frame)
+        result = self._decorate_result(engine.process_frame(frame))
         self.store.save_result(result)
         self.store.save_event(frame, result)
         return result
@@ -137,7 +194,8 @@ class StructuralMonitoringService:
         return [self._ingest_normalized(frame) for frame in frames]
 
     def _ingest_normalized(self, frame: dict[str, Any]) -> dict[str, Any]:
-        result = self._decorate_result(self.engine.process_frame(frame))
+        engine = self._engine_for_frame(frame)
+        result = self._decorate_result(engine.process_frame(frame))
         self.store.save_result(result)
         self.store.save_event(frame, result)
         return result
@@ -153,5 +211,9 @@ class StructuralMonitoringService:
         self.engine = StructuralEngine(
             baseline_window=self.engine.baseline_window,
             recent_window=self.engine.recent_window,
+            window_stride=self.engine.window_stride,
+            baseline_adaptation_alpha=self.engine.baseline_adaptation_alpha,
         )
+        self._engines_by_asset = {}
+        self._localization_by_site = {}
         self.store.reset()
