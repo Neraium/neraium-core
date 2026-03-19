@@ -11,7 +11,7 @@ from fastapi.templating import Jinja2Templates
 from starlette.requests import Request
 
 from neraium_core.decision_layer import decision_output
-from neraium_core.scoring import composite_instability_score
+from neraium_core.scoring import composite_instability_score_normalized
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
@@ -167,7 +167,7 @@ def _coerce_status(summary: dict[str, Any]) -> dict[str, Any]:
                 "subsystem_instability": 0.0,
                 "early_warning": 0.0,
             }
-            composite_score = composite_instability_score(components_for_decision)
+            composite_score = composite_instability_score_normalized(components_for_decision)
             decision = decision_output(
                 composite_score=composite_score,
                 components=components_for_decision,
