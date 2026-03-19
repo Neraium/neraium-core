@@ -42,7 +42,7 @@
       "alert_precision": 0.8791208791,
       "alert_recall": 1.0,
       "baseline_stability_rate": 1.0,
-      "d_vs_b_localization_distance": 0.0920742542
+      "d_vs_b_localization_distance": 0.0920740958
     }
   ],
   "artifacts": {

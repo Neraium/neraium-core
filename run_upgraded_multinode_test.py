@@ -33,6 +33,21 @@ from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
 import numpy as np
+from neraium_core.staged_pipeline import (
+    AttributionStage as SharedAttributionStage,
+    ConfidenceStage as SharedConfidenceStage,
+    DataQualityStage as SharedDataQualityStage,
+    DecisionStage as SharedDecisionStage,
+    FeatureExtractionStage as SharedFeatureExtractionStage,
+    LocalizationStage as SharedLocalizationStage,
+    NodeBaselineProfile as SharedNodeBaselineProfile,
+    NodeRuntime as SharedNodeRuntime,
+    RegimeMemory as SharedRegimeMemory,
+    RegimeStage as SharedRegimeStage,
+    RelationalInstabilityStage as SharedRelationalInstabilityStage,
+    StructuralDriftStage as SharedStructuralDriftStage,
+    TemporalCoherenceStage as SharedTemporalCoherenceStage,
+)
 
 try:
     import pandas as pd
@@ -570,6 +585,23 @@ def apply_variant_adjustments(
         # to true localized anomalies.
         out["_instability_scale"] = 0.62
     return out
+
+
+# Rebind benchmark stage/runtime symbols to shared core implementations so
+# benchmark and production execute the same stage logic path.
+NodeBaselineProfile = SharedNodeBaselineProfile
+RegimeMemory = SharedRegimeMemory
+NodeRuntime = SharedNodeRuntime
+DataQualityStage = SharedDataQualityStage
+FeatureExtractionStage = SharedFeatureExtractionStage
+StructuralDriftStage = SharedStructuralDriftStage
+RelationalInstabilityStage = SharedRelationalInstabilityStage
+TemporalCoherenceStage = SharedTemporalCoherenceStage
+RegimeStage = SharedRegimeStage
+ConfidenceStage = SharedConfidenceStage
+LocalizationStage = SharedLocalizationStage
+DecisionStage = SharedDecisionStage
+AttributionStage = SharedAttributionStage
 
 
 # -----------------------------------------------------------------------------

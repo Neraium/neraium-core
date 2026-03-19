@@ -31,6 +31,16 @@ from neraium_core.regime import build_regime_signature, assign_regime, update_re
 from neraium_core.regime_store import RegimeStore
 from neraium_core.scoring import canonicalize_components, canonicalize_weights, composite_instability_score_normalized
 from neraium_core.spectral import dominant_mode_loading, spectral_gap, spectral_radius
+from neraium_core.staged_pipeline import (
+    AttributionStage,
+    DecisionStage,
+    FeatureExtractionStage,
+    NodeBaselineProfile,
+    RelationalInstabilityStage,
+    StructuralDriftStage,
+    TemporalCoherenceStage,
+    flatten_upper_tri,
+)
 from neraium_core.subsystems import subsystem_spectral_measures
 
 
@@ -63,6 +73,7 @@ class StructuralEngine:
         self._rolling_baseline_corr: Optional[np.ndarray] = None
         # Recent interpreted states for classification stability.
         self._state_history: deque[str] = deque(maxlen=CLASSIFICATION_STABILITY_WINDOW)
+        self._stage_baseline_profile = NodeBaselineProfile()
 
         self.regime_store = RegimeStore(regime_store_path)
         persisted = self.regime_store.load()
@@ -296,6 +307,7 @@ class StructuralEngine:
         if valid_signal_count >= 2:
             z_base_valid = z_baseline[:, valid_mask]
             z_recent_valid = z_recent[:, valid_mask]
+            stage_features = FeatureExtractionStage.extract(z_base_valid, z_recent_valid)
 
             corr_baseline = correlation_matrix(z_base_valid)
             corr_recent = correlation_matrix(z_recent_valid)
@@ -310,7 +322,16 @@ class StructuralEngine:
                 baseline_corr_used = self._rolling_baseline_corr
                 baseline_mode = "rolling"
 
+            self._stage_baseline_profile.corr_baseline = np.array(baseline_corr_used, dtype=float, copy=True)
+            stage_structural_raw, _ = StructuralDriftStage.score(stage_features, self._stage_baseline_profile)
+            stage_relational_raw, _ = RelationalInstabilityStage.score(stage_features, self._stage_baseline_profile)
+            temporal_raw, _ = TemporalCoherenceStage.score(self._get_recent_timestamps(), self._stage_baseline_profile)
+            # Preserve production sensitivity by keeping legacy drift geometry while
+            # binding stage outputs into runtime diagnostics.
             drift_score = structural_drift(corr_recent, baseline_corr_used, norm="fro")
+            rel_delta_legacy = flatten_upper_tri(corr_recent) - flatten_upper_tri(baseline_corr_used)
+            relational_raw = float(np.mean(np.abs(rel_delta_legacy))) if rel_delta_legacy.size else 0.0
+            relational_raw = max(relational_raw, stage_relational_raw, 0.5 * stage_structural_raw)
             stability_score = 1.0 / (1.0 + drift_score)
 
             regime_drift = 0.0
@@ -365,6 +386,7 @@ class StructuralEngine:
 
             raw_components = {
                 "drift": drift_score,
+                "relational_drift": relational_raw,
                 "regime_drift": regime_drift,
                 "spectral": spectral["radius"],
                 "directional": max(
@@ -373,6 +395,7 @@ class StructuralEngine:
                 ),
                 "entropy": interaction_entropy(corr_recent),
                 "subsystem_instability": float(subsystem["max_instability"]),
+                "temporal_distortion": temporal_raw,
             }
 
             # Merge order matters: preserve early_warning computed from the
@@ -548,10 +571,32 @@ class StructuralEngine:
             classification_stability=classification_stability,
         )
         result.update(decision)
+        stage_interpreted = DecisionStage.interpreted_state(
+            structural=float(components.get("drift", 0.0)),
+            relational=float(components.get("relational_drift", 0.0)),
+            regime_distance=float(components.get("regime_drift", 0.0)),
+            temporal_distortion=float(components.get("temporal_distortion", 0.0)),
+            localization=1.0,
+            trend=float(forecast.get("trend", 0.0)),
+        )
+        if (
+            str(result.get("interpreted_state", "NOMINAL_STRUCTURE")) == "NOMINAL_STRUCTURE"
+            and stage_interpreted != "NOMINAL_STRUCTURE"
+        ):
+            result["interpreted_state"] = stage_interpreted
+        elif str(result.get("interpreted_state", "NOMINAL_STRUCTURE")) == "NOMINAL_STRUCTURE":
+            # Single-node runtime fallback: preserve legacy structural/coupling detection
+            # semantics when multi-node localization context is unavailable.
+            rel = float(components.get("relational_drift", 0.0))
+            drf = float(components.get("drift", 0.0))
+            if rel > 0.9:
+                result["interpreted_state"] = "COUPLING_INSTABILITY_OBSERVED"
+            elif drf > 1.1:
+                result["interpreted_state"] = "STRUCTURAL_INSTABILITY_OBSERVED"
         result["confidence_score"] = round(stabilized_confidence, 4)
         result["latest_instability"] = round(float(composite), 4)
         result["relational_instability_score"] = round(float(components.get("relational_drift", 0.0)), 4)
-        result["temporal_distortion_score"] = round(float(data_quality_report.timestamp_irregularity), 4)
+        result["temporal_distortion_score"] = round(float(components.get("temporal_distortion", data_quality_report.timestamp_irregularity)), 4)
         result["localization_score"] = 0.0
 
         self._state_history.append(decision.get("interpreted_state", "NOMINAL_STRUCTURE"))
@@ -571,21 +616,19 @@ class StructuralEngine:
         analytics["composite_instability"] = round(float(composite), 4)
         analytics["forecasting"] = forecast
         analytics["components"] = components
-        sorted_components = sorted(
-            (
-                ("structural_drift_score", float(result.get("structural_drift_score", 0.0))),
-                ("relational_instability_score", float(result.get("relational_instability_score", 0.0))),
-                ("regime_distance", float(result.get("regime_distance", 0.0) or 0.0)),
-                ("temporal_distortion_score", float(result.get("temporal_distortion_score", 0.0))),
-            ),
-            key=lambda item: item[1],
-            reverse=True,
-        )
-        top_names = [name for name, _ in sorted_components[:3]]
-        result["explanation"] = (
-            f"{result.get('state', 'STABLE')}: dominated by "
-            + ", ".join(top_names)
-            + "."
+        explain_components = {
+            "structural_drift_score": float(result.get("structural_drift_score", 0.0)),
+            "relational_instability_score": float(result.get("relational_instability_score", 0.0)),
+            "regime_distance": float(result.get("regime_distance", 0.0) or 0.0),
+            "temporal_distortion_score": float(result.get("temporal_distortion_score", 0.0)),
+        }
+        msg, contrib = AttributionStage.explain(explain_components, str(result.get("state", "STABLE")))
+        result["explanation"] = msg
+        analytics["component_contributions"] = contrib
+        result["dominant_driver"] = (
+            max(contrib.items(), key=lambda item: item[1])[0]
+            if contrib
+            else result.get("dominant_driver")
         )
         result["component_confidence"] = component_confidence
 

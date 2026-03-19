@@ -3,7 +3,7 @@ coherent_time,A,user_only,0,0,240,1.0,0.0,1.0,0.06928459999999999
 coherent_time,B,gal2_only,0,0,240,1.0,0.0,0.8625,0.08786244583333333
 coherent_time,C,baseline_only,5,64,171,1.0,0.8625,0.8625,0.3215346958333332
 coherent_time,D,user_plus_gal2,0,0,240,1.0,0.0,0.9875,0.19665058750000003
-disturbed_time,A,user_only,0,0,240,1.0,0.0,1.0,0.11137060833333336
-disturbed_time,B,gal2_only,0,0,240,1.0,0.0,0.8625,0.10161094166666666
-disturbed_time,C,baseline_only,60,31,149,1.0,1.0,0.8625,0.38724602083333337
-disturbed_time,D,user_plus_gal2,0,0,240,1.0,0.0,0.8625,0.14524717083333333
+disturbed_time,A,user_only,0,0,240,1.0,0.0,1.0,0.11137072916666667
+disturbed_time,B,gal2_only,0,0,240,1.0,0.0,0.8625,0.10161094583333333
+disturbed_time,C,baseline_only,60,31,149,1.0,1.0,0.8625,0.3872460125
+disturbed_time,D,user_plus_gal2,0,0,240,1.0,0.0,0.8625,0.14524708333333336
