@@ -49,15 +49,21 @@ def _coerce_float(value: object, default: float = 0.0) -> float:
 def normalize_keys(values: Mapping[str, object]) -> dict[str, float]:
     normalized: dict[str, float] = {}
 
-    for key, value in values.items():
-        if key in DEFAULT_COMPONENTS or key in DEFAULT_WEIGHTS:
-            normalized[key] = _coerce_float(value)
+    def norm_key(key: object) -> str:
+        return str(key).strip().lower()
 
     for key, value in values.items():
-        mapped = LEGACY_KEYS.get(key, key)
+        k = norm_key(key)
+        if k in DEFAULT_COMPONENTS or k in DEFAULT_WEIGHTS:
+            normalized[k] = _coerce_float(value)
+
+    for key, value in values.items():
+        k = norm_key(key)
+        mapped = LEGACY_KEYS.get(k, k)
         if mapped in normalized:
             continue
-        normalized[mapped] = _coerce_float(value)
+        if mapped in DEFAULT_COMPONENTS or mapped in DEFAULT_WEIGHTS:
+            normalized[mapped] = _coerce_float(value)
 
     return normalized
 
@@ -66,10 +72,16 @@ def canonicalize_components(components: Mapping[str, object] | None = None) -> d
     result = dict(DEFAULT_COMPONENTS)
 
     if not components:
+        # Backward-compatible aliases
+        result["drift"] = result["relational_drift"]
+        result["directional"] = result["directional_divergence"]
         return result
 
     normalized = normalize_keys(components)
     result.update(normalized)
+    # Backward-compatible aliases (tests and older callers may use these keys)
+    result["drift"] = result.get("relational_drift", 0.0)
+    result["directional"] = result.get("directional_divergence", 0.0)
     return result
 
 
