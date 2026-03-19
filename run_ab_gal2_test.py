@@ -26,6 +26,40 @@ from neraium_core.alignment import StructuralEngine
 NODES: List[str] = ["A", "B", "C", "D"]
 
 
+def get_gal2_time(base_url: str = "https://api-v2.gal-2.com/time") -> float:
+    """
+    Return current time from GAL-2 API (requires GAL2_API_KEY in environment).
+    On any failure (missing key, network error, etc.) fall back to local monotonic time.
+    No API keys are hardcoded; key must be supplied via GAL2_API_KEY.
+    """
+    import time
+
+    api_key = os.getenv("GAL2_API_KEY")
+    if not api_key:
+        raise ValueError("GAL2_API_KEY not set")
+
+    try:
+        import requests
+
+        headers = {"x-api-key": api_key}
+        r = requests.get(base_url, headers=headers, timeout=3)
+        r.raise_for_status()
+        data = r.json()
+        return float(data.get("time") or data)
+    except Exception:
+        return time.time()
+
+
+def _use_gal2_from_config_and_env(config: Dict[str, Any]) -> bool:
+    """Resolve USE_GAL2: env USE_GAL2 overrides config use_gal2. No API keys read here."""
+    env_val = os.getenv("USE_GAL2", "").strip().lower()
+    if env_val in ("1", "true", "yes"):
+        return True
+    if env_val in ("0", "false", "no"):
+        return False
+    return bool(config.get("use_gal2", False))
+
+
 def _parse_iso_to_epoch_seconds(ts: str) -> float:
     # Accept common RFC3339 forms like "...Z" and timezone-aware ISO strings.
     if ts.endswith("Z"):
@@ -113,7 +147,12 @@ def _js_divergence(p: np.ndarray, q: np.ndarray, eps: float = 1e-12) -> float:
     return 0.5 * kl(p, m) + 0.5 * kl(q, m)
 
 
-def build_base_frames(config: Dict[str, Any], seed: int) -> Dict[str, List[Dict[str, Any]]]:
+def build_base_frames(
+    config: Dict[str, Any],
+    seed: int,
+    use_gal2: bool = False,
+    gal2_base_url: str = "https://api-v2.gal-2.com/time",
+) -> Dict[str, List[Dict[str, Any]]]:
     """
     Build identical underlying base telemetry for all conditions.
 
@@ -122,6 +161,9 @@ def build_base_frames(config: Dict[str, Any], seed: int) -> Dict[str, List[Dict[
       - Node B: sustained load asymmetry after t=60
       - Node C: partition-style jitter/noise after t=60
       - Node D: dropout/rejoin between t=60–80 (implemented as dropped frames)
+
+    When use_gal2 is True, frame timestamps come from get_gal2_time(gal2_base_url).
+    When False, timestamps are simulated from config (start_timestamp, dt_seconds).
     """
     rng = np.random.default_rng(seed)
 
@@ -226,7 +268,10 @@ def build_base_frames(config: Dict[str, Any], seed: int) -> Dict[str, List[Dict[
             node_values["D"] = d_vals
 
         # Materialize frames for nodes produced at this t.
-        epoch_seconds = base_epoch + t * dt_seconds
+        if use_gal2:
+            epoch_seconds = get_gal2_time(gal2_base_url)
+        else:
+            epoch_seconds = base_epoch + t * dt_seconds
         ts_iso = _epoch_seconds_to_iso_z(epoch_seconds)
 
         for node, values in node_values.items():
@@ -555,12 +600,17 @@ def main() -> int:
 
     out_path = Path("ab_gal2_comparison.json")
 
+    USE_GAL2 = _use_gal2_from_config_and_env(config)
+    gal2_base_url = str(config.get("gal2_time_url", "https://api-v2.gal-2.com/time"))
+
     results: Dict[str, Any] = {"standard_time": {"runs": []}, "coherent_time": {"runs": []}}
 
     # Use a single temporary directory per entire experiment so regime files don't collide.
     with tempfile.TemporaryDirectory(prefix="neraium_ab_gal2_") as tmp_dir:
         for run_i, seed in enumerate(seeds):
-            base_node_frames = build_base_frames(config, seed=seed)
+            base_node_frames = build_base_frames(
+                config, seed=seed, use_gal2=USE_GAL2, gal2_base_url=gal2_base_url
+            )
 
             std_run = run_condition(
                 config=config,
