@@ -10,22 +10,27 @@
   <style>
     body {
       margin: 0;
-      font-family: Arial, sans-serif;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
       background:
         radial-gradient(circle at 20% 10%, rgba(56, 189, 248, 0.16), transparent 45%),
         radial-gradient(circle at 80% 0%, rgba(245, 158, 11, 0.14), transparent 40%),
         linear-gradient(180deg, #0b1224, #0f172a);
       color: #e2e8f0;
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
     }
 
     .container {
       max-width: 1180px;
       margin: auto;
-      padding: 28px 22px;
+      padding: 30px 22px;
     }
 
     h1 {
       margin-bottom: 6px;
+      font-size: 1.95rem;
+      font-weight: 950;
+      letter-spacing: -0.02em;
     }
 
     .subtitle {
@@ -93,11 +98,11 @@
     }
 
     .card {
-      background: rgba(30, 41, 59, 0.58);
-      padding: 18px;
-      border-radius: 12px;
-      border: 1px solid rgba(148, 163, 184, 0.18);
-      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.22);
+      background: rgba(30, 41, 59, 0.56);
+      padding: 22px;
+      border-radius: 16px;
+      border: 1px solid rgba(148, 163, 184, 0.16);
+      box-shadow: 0 12px 34px rgba(0, 0, 0, 0.22);
       transition:
         transform 160ms ease,
         box-shadow 160ms ease,
@@ -112,36 +117,53 @@
       background: rgba(30, 41, 59, 0.72);
     }
 
+    .card-content {
+      display: flex;
+      flex-direction: column;
+      height: 100%;
+    }
+
+    .card-footer-row {
+      margin-top: auto;
+      display: flex;
+      align-items: center;
+      min-height: 26px;
+    }
+
+    .badge--invisible {
+      visibility: hidden;
+    }
+
     .metric-label {
       color: #94a3b8;
-      font-size: 0.85rem;
-      font-weight: 700;
-      margin-bottom: 10px;
+      font-size: 0.82rem;
+      font-weight: 850;
+      margin-bottom: 8px;
       letter-spacing: 0.01em;
     }
 
     .metric-value {
-      font-size: 1.75rem;
+      font-size: 1.85rem;
       font-weight: 900;
       line-height: 1.1;
-      margin-bottom: 12px;
       word-break: break-word;
     }
 
     .metric-value--secondary {
-      font-size: 1.2rem;
-      font-weight: 800;
-      margin-bottom: 10px;
+      font-size: 1.25rem;
+      font-weight: 850;
     }
 
     .badge {
-      display: inline-block;
-      padding: 4px 10px;
+      display: inline-flex;
+      align-items: center;
+      padding: 6px 12px;
       border-radius: 999px;
-      font-size: 0.75rem;
-      font-weight: bold;
-      text-transform: uppercase;
-      letter-spacing: 0.02em;
+      font-size: 0.76rem;
+      font-weight: 900;
+      text-transform: none;
+      letter-spacing: 0.01em;
+      line-height: 1;
     }
 
     .low {
@@ -233,14 +255,14 @@
     .chart {
       background: #1e293b;
       padding: 16px;
-      border-radius: 12px;
+      border-radius: 16px;
       margin-bottom: 20px;
     }
 
     .footer {
       background: #1e293b;
       padding: 14px;
-      border-radius: 12px;
+      border-radius: 16px;
       font-size: 0.9rem;
       color: #94a3b8;
     }
@@ -248,53 +270,103 @@
     .metrics-key-grid {
       display: grid;
       grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 16px;
-      margin-bottom: 16px;
+      gap: 18px;
+      margin-bottom: 18px;
+      align-items: stretch;
     }
 
     .metrics-secondary-grid {
       display: grid;
       grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 16px;
-      margin-bottom: 18px;
+      gap: 18px;
+      margin-bottom: 20px;
+      align-items: stretch;
     }
 
     .details {
-      background: rgba(30, 41, 59, 0.35);
-      border: 1px solid rgba(148, 163, 184, 0.18);
-      border-radius: 12px;
-      padding: 10px 14px 14px;
+      background: rgba(30, 41, 59, 0.28);
+      border: 1px solid rgba(148, 163, 184, 0.16);
+      border-radius: 16px;
+      padding: 12px 14px 14px;
       margin-bottom: 18px;
       overflow: hidden;
     }
 
     .details summary {
       cursor: pointer;
-      font-weight: 900;
-      color: #e2e8f0;
       user-select: none;
       outline: none;
+      font-weight: 950;
+      color: #e2e8f0;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 10px 12px;
+      border-radius: 14px;
+      background: rgba(15, 23, 42, 0.35);
+      border: 1px solid rgba(148, 163, 184, 0.14);
+      transition: background 160ms ease, border-color 160ms ease;
+    }
+
+    .details summary:hover {
+      background: rgba(15, 23, 42, 0.48);
+      border-color: rgba(56, 189, 248, 0.28);
+    }
+
+    .details summary::-webkit-details-marker {
+      display: none;
+    }
+
+    .details-chevron {
+      width: 10px;
+      height: 10px;
+      border-right: 2px solid #cbd5e1;
+      border-bottom: 2px solid #cbd5e1;
+      transform: rotate(45deg);
+      transition: transform 260ms ease;
+      margin-left: 8px;
+      flex: 0 0 auto;
+    }
+
+    details[open] .details-chevron {
+      transform: rotate(-135deg);
+    }
+
+    .details-content {
+      overflow: hidden;
+      max-height: 0px;
+      opacity: 0;
+      transform: translateY(-3px);
+      transition: max-height 260ms ease, opacity 200ms ease, transform 220ms ease;
+    }
+
+    details[open] .details-content {
+      opacity: 1;
+      transform: translateY(0);
     }
 
     .details-grid {
       display: grid;
       grid-template-columns: repeat(3, minmax(0, 1fr));
       gap: 16px;
-      padding-top: 12px;
+      padding-top: 14px;
     }
 
     .metrics-key-grid .card {
-      padding: 22px 20px;
+      padding: 24px 22px;
+      min-height: 160px;
     }
 
     .metrics-key-grid .metric-value {
-      font-size: 2rem;
+      font-size: 2.03rem;
     }
 
     .secondary-card {
       box-shadow: none;
-      background: rgba(17, 24, 39, 0.22);
+      background: rgba(17, 24, 39, 0.26);
       border-color: rgba(148, 163, 184, 0.14);
+      min-height: 140px;
     }
 
     .secondary-card:hover {
@@ -308,6 +380,7 @@
       box-shadow: none;
       background: rgba(17, 24, 39, 0.35);
       border-color: rgba(148, 163, 184, 0.14);
+      min-height: 120px;
     }
 
     .details-card:hover {
@@ -320,8 +393,57 @@
     .details-code {
       font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
         "Liberation Mono", "Courier New", monospace;
-      font-size: 0.95rem;
+      font-size: 1.15rem;
       line-height: 1.35;
+    }
+
+    .accent-stable {
+      border-color: rgba(34, 197, 94, 0.5) !important;
+      background: rgba(34, 197, 94, 0.06) !important;
+      box-shadow: 0 18px 48px rgba(34, 197, 94, 0.08) !important;
+    }
+
+    .accent-transitional {
+      border-color: rgba(56, 189, 248, 0.35) !important;
+      background: rgba(56, 189, 248, 0.07) !important;
+      box-shadow: 0 18px 48px rgba(56, 189, 248, 0.08) !important;
+    }
+
+    .accent-unstable {
+      border-color: rgba(239, 68, 68, 0.45) !important;
+      background: rgba(239, 68, 68, 0.05) !important;
+      box-shadow: 0 18px 48px rgba(239, 68, 68, 0.08) !important;
+    }
+
+    .accent-neutral {
+      border-color: rgba(148, 163, 184, 0.26) !important;
+      background: rgba(148, 163, 184, 0.04) !important;
+      box-shadow: 0 18px 48px rgba(148, 163, 184, 0.08) !important;
+    }
+
+    .assigned-regime-card .metric-value {
+      font-size: 2.28rem;
+      font-weight: 950;
+    }
+
+    .chart-title {
+      color: #94a3b8;
+      margin-top: 0;
+      margin-bottom: 8px;
+      font-size: 1.05rem;
+    }
+
+    .chart-subtitle {
+      color: #94a3b8;
+      font-size: 0.85rem;
+      margin: 0 0 12px;
+      line-height: 1.4;
+    }
+
+    .na {
+      color: rgba(148, 163, 184, 0.95);
+      font-weight: 850;
+      letter-spacing: 0.01em;
     }
 
     @media (max-width: 980px) {
@@ -364,13 +486,13 @@
 
     {% macro fmt2(v) -%}
       {%- if v is none -%}
-        n/a
+        <span class="na">n/a</span>
       {%- else -%}
         {{ '%.2f'|format(v|float) }}
       {%- endif -%}
     {%- endmacro %}
 
-    {% set assigned_regime = status["assigned_regime"] or "unknown" %}
+    {% set assigned_regime = (status["assigned_regime"] or "unknown")|lower %}
     {% set risk_key = (status["risk_level"] or "UNKNOWN") | string | upper %}
     {% if risk_key in ["MEDIUM", "MODERATE", "ELEVATED"] %}
       {% set risk_badge = "MODERATE" %}
@@ -378,87 +500,154 @@
       {% set risk_badge = risk_key %}
     {% endif %}
 
+    {% if assigned_regime == 'stable' %}
+      {% set assigned_accent = 'accent-stable' %}
+    {% elif assigned_regime == 'transitional' %}
+      {% set assigned_accent = 'accent-transitional' %}
+    {% elif assigned_regime == 'unstable' %}
+      {% set assigned_accent = 'accent-unstable' %}
+    {% else %}
+      {% set assigned_accent = 'accent-neutral' %}
+    {% endif %}
+
     <div class="metrics-key-grid">
-      <div class="card">
-        <div class="metric-label">Assigned Regime</div>
-        <div class="metric-value">{{ assigned_regime|title }}</div>
-        <span
-          class="badge
-          {% if assigned_regime == 'stable' %}regime-stable
-          {% elif assigned_regime == 'transitional' %}regime-transitional
-          {% elif assigned_regime == 'unstable' %}regime-unstable
-          {% else %}neutral{% endif %}">
-          {{ assigned_regime|upper }}
-        </span>
+      <div class="card assigned-regime-card hero-card {{ assigned_accent }}">
+        <div class="card-content">
+          <div class="metric-label">Assigned Regime</div>
+          <div class="metric-value">{{ assigned_regime|replace('_',' ')|title }}</div>
+          <div class="card-footer-row">
+            <span
+              class="badge
+              {% if assigned_regime == 'stable' %}regime-stable
+              {% elif assigned_regime == 'transitional' %}regime-transitional
+              {% elif assigned_regime == 'unstable' %}regime-unstable
+              {% else %}neutral{% endif %}">
+              {{ assigned_regime|replace('_',' ')|title }}
+            </span>
+          </div>
+        </div>
       </div>
 
-      <div class="card">
-        <div class="metric-label">Risk Level</div>
-        <div class="metric-value">{{ risk_badge|lower|title }}</div>
-        <span
-          class="badge
-          {% if risk_badge == 'LOW' %}low
-          {% elif risk_badge == 'MODERATE' %}moderate
-          {% elif risk_badge == 'HIGH' %}high
-          {% else %}neutral{% endif %}">
-          {{ risk_badge }}
-        </span>
+      <div class="card hero-card">
+        <div class="card-content">
+          <div class="metric-label">Risk Level</div>
+          <div class="metric-value">{{ risk_badge|lower|title }}</div>
+          <div class="card-footer-row">
+            <span
+              class="badge
+              {% if risk_badge == 'LOW' %}low
+              {% elif risk_badge == 'MODERATE' %}moderate
+              {% elif risk_badge == 'HIGH' %}high
+              {% else %}neutral{% endif %}">
+              {{ risk_badge|lower|title }}
+            </span>
+          </div>
+        </div>
       </div>
 
-      <div class="card">
-        <div class="metric-label">Phase</div>
-        <div class="metric-value">{{ status["phase"]|lower|replace('_',' ')|title }}</div>
+      <div class="card hero-card">
+        <div class="card-content">
+          <div class="metric-label">Phase</div>
+          <div class="metric-value">{{ status["phase"]|lower|replace('_',' ')|title }}</div>
+          <div class="card-footer-row">
+            <span class="badge badge--invisible">Phase</span>
+          </div>
+        </div>
       </div>
     </div>
 
     <div class="metrics-secondary-grid">
       <div class="card secondary-card">
-        <div class="metric-label">Signal Emitted</div>
-        <div class="metric-value metric-value--secondary">{{ "Yes" if status["signal_emitted"] else "No" }}</div>
-        <span class="badge {% if status['signal_emitted'] %}info{% else %}neutral{% endif %}">
-          {{ "Signal Detected" if status["signal_emitted"] else "No Signal" }}
-        </span>
+        <div class="card-content">
+          <div class="metric-label">Signal Emitted</div>
+          <div class="metric-value metric-value--secondary">{{ "Yes" if status["signal_emitted"] else "No" }}</div>
+          <div class="card-footer-row">
+            <span class="badge {% if status['signal_emitted'] %}info{% else %}neutral{% endif %}">
+              {{ "Signal Detected" if status["signal_emitted"] else "No Signal" }}
+            </span>
+          </div>
+        </div>
       </div>
 
       <div class="card secondary-card">
-        <div class="metric-label">Signal Strength</div>
-        <div class="metric-value metric-value--secondary">{{ status["signal_strength"]|default("low")|lower|title }}</div>
+        <div class="card-content">
+          <div class="metric-label">Confidence</div>
+          <div class="metric-value metric-value--secondary">{{ status["confidence"]|default("low")|lower|title }}</div>
+          <div class="card-footer-row">
+            <span class="badge badge--invisible">Confidence</span>
+          </div>
+        </div>
       </div>
 
       <div class="card secondary-card">
-        <div class="metric-label">Confidence</div>
-        <div class="metric-value metric-value--secondary">{{ status["confidence"]|default("low")|lower|title }}</div>
+        <div class="card-content">
+          <div class="metric-label">Signal Strength</div>
+          <div class="metric-value metric-value--secondary">{{ status["signal_strength"]|default("low")|lower|title }}</div>
+          <div class="card-footer-row">
+            <span class="badge badge--invisible">Strength</span>
+          </div>
+        </div>
       </div>
     </div>
 
-    <details class="details">
-      <summary>Show Details</summary>
-      <div class="details-grid">
-        <div class="card details-card">
-          <div class="metric-label">Interpreted State</div>
-          <div class="metric-value details-code" style="font-size: 1.15rem;">
-            {{ status["interpreted_state"]|default("")|lower|replace('_',' ')|title }}
+    <details class="details" id="details-panel">
+      <summary>
+        <span id="details-toggle-text">Show Details</span>
+        <span class="details-chevron" aria-hidden="true"></span>
+      </summary>
+      <div class="details-content" id="details-content">
+        <div class="details-grid">
+          <div class="card details-card">
+            <div class="card-content">
+              <div class="metric-label">Interpreted State</div>
+              <div class="metric-value details-code">
+                {{ status["interpreted_state"]|default("")|lower|replace('_',' ')|title }}
+              </div>
+              <div class="card-footer-row">
+                <span class="badge badge--invisible">Details</span>
+              </div>
+            </div>
           </div>
-        </div>
 
-        <div class="card details-card">
-          <div class="metric-label">Regime Distance</div>
-          <div class="metric-value metric-value--secondary">{{ fmt2(status["regime_distance"]) }}</div>
-        </div>
+          <div class="card details-card">
+            <div class="card-content">
+              <div class="metric-label">Regime Distance</div>
+              <div class="metric-value metric-value--secondary">{{ fmt2(status["regime_distance"]) }}</div>
+              <div class="card-footer-row">
+                <span class="badge badge--invisible">Details</span>
+              </div>
+            </div>
+          </div>
 
-        <div class="card details-card">
-          <div class="metric-label">Latest Drift</div>
-          <div class="metric-value metric-value--secondary">{{ fmt2(status["latest_drift"]) }}</div>
-        </div>
+          <div class="card details-card">
+            <div class="card-content">
+              <div class="metric-label">Latest Drift</div>
+              <div class="metric-value metric-value--secondary">{{ fmt2(status["latest_drift"]) }}</div>
+              <div class="card-footer-row">
+                <span class="badge badge--invisible">Details</span>
+              </div>
+            </div>
+          </div>
 
-        <div class="card details-card">
-          <div class="metric-label">Latest Instability</div>
-          <div class="metric-value metric-value--secondary">{{ fmt2(status["latest_instability"]) }}</div>
-        </div>
+          <div class="card details-card">
+            <div class="card-content">
+              <div class="metric-label">Latest Instability</div>
+              <div class="metric-value metric-value--secondary">{{ fmt2(status["latest_instability"]) }}</div>
+              <div class="card-footer-row">
+                <span class="badge badge--invisible">Details</span>
+              </div>
+            </div>
+          </div>
 
-        <div class="card details-card">
-          <div class="metric-label">Regime Drift</div>
-          <div class="metric-value metric-value--secondary">{{ fmt2(status["regime_drift"]) }}</div>
+          <div class="card details-card">
+            <div class="card-content">
+              <div class="metric-label">Regime Drift</div>
+              <div class="metric-value metric-value--secondary">{{ fmt2(status["regime_drift"]) }}</div>
+              <div class="card-footer-row">
+                <span class="badge badge--invisible">Details</span>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </details>
@@ -472,8 +661,8 @@
     </div>
 
     <div class="chart">
-      <h2 style="color:#94a3b8;">Structural Trend</h2>
-      <p style="color:#94a3b8; font-size:0.85rem;">Read-only view of drift, instability, and regime-relative drift over time</p>
+      <h2 class="chart-title">Structural Trend</h2>
+      <p class="chart-subtitle">Read-only view of drift, instability, and regime-relative drift over time</p>
       <canvas id="chart"></canvas>
     </div>
 
@@ -483,6 +672,20 @@
   </div>
 
   <script>
+    // Animated default-collapsed "Show Details / Hide Details" section.
+    const detailsPanel = document.getElementById("details-panel");
+    const detailsContent = document.getElementById("details-content");
+    const detailsToggleText = document.getElementById("details-toggle-text");
+    if (detailsPanel && detailsContent && detailsToggleText) {
+      const setOpenState = () => {
+        const isOpen = detailsPanel.open;
+        detailsToggleText.textContent = isOpen ? "Hide Details" : "Show Details";
+        detailsContent.style.maxHeight = isOpen ? detailsContent.scrollHeight + "px" : "0px";
+      };
+      detailsPanel.addEventListener("toggle", () => setOpenState());
+      setOpenState();
+    }
+
     async function loadChart() {
       const currentMode = "{{ mode }}";
       const res = await fetch(`/timeseries?mode=${currentMode}`);
