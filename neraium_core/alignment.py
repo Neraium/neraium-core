@@ -234,9 +234,16 @@ class StructuralEngine:
                 "subsystem_instability": float(subsystem["max_instability"]),
             }
 
-            canonical = canonicalize_components(raw_components)
-            canonical.update(components)
-            components = canonical
+            # Merge order matters: preserve early_warning computed from the
+            # latest signal window, while ensuring freshly computed relational
+            # drift / regime drift / spectral / divergence / entropy /
+            # subsystem instability are not clobbered by stale base defaults.
+            base_components = components
+            raw_canonical = canonicalize_components(raw_components)
+            raw_canonical["early_warning"] = float(base_components.get("early_warning", 0.0))
+
+            base_components.update(raw_canonical)
+            components = base_components
 
             result.update(
                 {

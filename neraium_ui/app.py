@@ -51,6 +51,7 @@ def _mock_status(mode: str) -> dict[str, Any]:
             "signal_emitted": True,
             "signal_strength": "medium",
             "confidence": "medium",
+            "interpreted_state": "STRUCTURAL_INSTABILITY_OBSERVED",
             "operator_message": (
                 "Observed structural patterns indicate deviation from a stable regime "
                 "with emerging instability under current analysis."
@@ -68,6 +69,7 @@ def _mock_status(mode: str) -> dict[str, Any]:
         "signal_emitted": False,
         "signal_strength": "low",
         "confidence": "low",
+        "interpreted_state": "NOMINAL_STRUCTURE",
         "operator_message": (
             "Observed structural patterns are consistent with a stable regime under "
             "current analysis."
@@ -77,6 +79,96 @@ def _mock_status(mode: str) -> dict[str, Any]:
         "regime_name": "regime_demo_stable",
         "regime_distance": 0.18,
         "regime_drift": 0.07,
+    }
+
+def _coerce_status(summary: dict[str, Any]) -> dict[str, Any]:
+    """
+    Normalize unit-summary shapes for the UI.
+
+    Supports either:
+    A) flat unit summary fields, or
+    B) nested under `status` and/or `scores`.
+    """
+
+    default = _mock_status("stable")
+    status_block = summary.get("status", {}) if isinstance(summary.get("status"), dict) else {}
+    scores_block = summary.get("scores", {}) if isinstance(summary.get("scores"), dict) else {}
+
+    def pick(key: str) -> Any:
+        # Presence checks matter: `False` is meaningful for `signal_emitted`.
+        if key in status_block:
+            return status_block.get(key)
+        if key in scores_block:
+            return scores_block.get(key)
+        if key in summary:
+            return summary.get(key)
+        return None
+
+    def pick_float(key: str, default_value: float) -> float:
+        v = pick(key)
+        if v is None:
+            return default_value
+        try:
+            return float(v)
+        except (TypeError, ValueError):
+            return default_value
+
+    phase = pick("phase") or "unknown"
+
+    risk_level = pick("risk_level")
+    if risk_level is None:
+        risk_level = "UNKNOWN"
+
+    signal_emitted = pick("signal_emitted")
+    if signal_emitted is None:
+        signal_emitted = False
+    else:
+        signal_emitted = bool(signal_emitted)
+
+    signal_strength = pick("signal_strength") or "low"
+    confidence = pick("confidence") or "low"
+
+    interpreted_state = pick("interpreted_state") or default["interpreted_state"]
+    operator_message = pick("operator_message") or default["operator_message"]
+
+    latest_drift = pick("latest_drift")
+    if latest_drift is None:
+        latest_drift = pick("structural_drift_score")
+    if latest_drift is None:
+        latest_drift = 0.0
+    try:
+        latest_drift = float(latest_drift)
+    except (TypeError, ValueError):
+        latest_drift = 0.0
+
+    latest_instability = pick_float("latest_instability", 0.0)
+
+    regime_name = pick("regime_name")
+
+    regime_distance_raw = pick("regime_distance")
+    if regime_distance_raw is None:
+        regime_distance = None
+    else:
+        try:
+            regime_distance = float(regime_distance_raw)
+        except (TypeError, ValueError):
+            regime_distance = None
+
+    regime_drift = pick_float("regime_drift", 0.0)
+
+    return {
+        "phase": phase,
+        "risk_level": risk_level,
+        "signal_emitted": signal_emitted,
+        "signal_strength": signal_strength,
+        "confidence": confidence,
+        "interpreted_state": interpreted_state,
+        "operator_message": operator_message,
+        "latest_drift": latest_drift,
+        "latest_instability": latest_instability,
+        "regime_name": regime_name,
+        "regime_distance": regime_distance,
+        "regime_drift": regime_drift,
     }
 
 
@@ -140,22 +232,10 @@ def _get_latest_unit_summary(mode: str) -> dict[str, Any]:
         return _mock_status("stable")
 
     summary = unit_summaries[0]
-    return {
-        "phase": summary.get("phase", "unknown"),
-        "risk_level": summary.get("risk_level", "UNKNOWN"),
-        "signal_emitted": bool(summary.get("signal_emitted", False)),
-        "signal_strength": summary.get("signal_strength", "low"),
-        "confidence": summary.get("confidence", "low"),
-        "operator_message": summary.get(
-            "operator_message",
-            _mock_status("stable")["operator_message"],
-        ),
-        "latest_drift": float(summary.get("latest_drift", summary.get("structural_drift_score", 0.0))),
-        "latest_instability": float(summary.get("latest_instability", 0.0)),
-        "regime_name": summary.get("regime_name"),
-        "regime_distance": summary.get("regime_distance"),
-        "regime_drift": float(summary.get("regime_drift", 0.0)),
-    }
+    if not isinstance(summary, dict):
+        return _mock_status("stable")
+
+    return _coerce_status(summary)
 
 
 def _load_timeseries(mode: str) -> list[dict[str, Any]]:
