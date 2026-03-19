@@ -7,6 +7,7 @@ import numpy as np
 
 from neraium_core.causal import causal_metrics, granger_causality_matrix
 from neraium_core.causal_graph import causal_graph_metrics
+from neraium_core.data_quality import compute_data_quality
 from neraium_core.decision_layer import decision_output
 from neraium_core.directional import directional_metrics, lagged_correlation_matrix
 from neraium_core.early_warning import early_warning_metrics
@@ -141,6 +142,13 @@ class StructuralEngine:
         if baseline_window is None or recent_window is None:
             self.latest_result = result
             return result
+
+        data_quality_report = compute_data_quality(
+            baseline_window,
+            recent_window,
+            sensor_names=self.sensor_order,
+        )
+        result["data_quality"] = data_quality_report.to_dict()
 
         z_baseline, baseline_mean, baseline_std = normalize_window(baseline_window)
         z_recent, recent_mean, recent_std = normalize_window(recent_window)
