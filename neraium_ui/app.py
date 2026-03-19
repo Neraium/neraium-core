@@ -11,6 +11,7 @@ from fastapi.templating import Jinja2Templates
 from starlette.requests import Request
 
 from neraium_core.decision_layer import decision_output
+from neraium_core.scoring import composite_instability_score
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
@@ -121,49 +122,86 @@ def _coerce_status(summary: dict[str, Any]) -> dict[str, Any]:
     has_fd004_avg_instability = fd004_avg_instability is not None
     has_fd004_avg_drift = fd004_avg_drift is not None
 
-    phase = pick("phase") or "unknown"
+    phase_value = pick("phase")
+    phase_missing = phase_value is None
+    phase = phase_value if phase_value is not None else "unknown"
 
-    risk_level = pick("risk_level")
-    if risk_level is None:
-        risk_level = "UNKNOWN"
+    risk_value = pick("risk_level")
+    risk_missing = risk_value is None
+    risk_level = risk_value if risk_value is not None else "UNKNOWN"
 
-    signal_emitted = pick("signal_emitted")
-    if signal_emitted is None:
-        signal_emitted = False
-    else:
-        signal_emitted = bool(signal_emitted)
+    signal_emitted_value = pick("signal_emitted")
+    signal_emitted_missing = signal_emitted_value is None
+    signal_emitted = bool(signal_emitted_value) if signal_emitted_value is not None else False
 
-    signal_strength = pick("signal_strength") or "low"
-    confidence = pick("confidence")
+    signal_strength_value = pick("signal_strength")
+    signal_strength_missing = signal_strength_value is None
+    signal_strength = signal_strength_value if signal_strength_value is not None else "low"
+
+    confidence_value = pick("confidence")
+    confidence = confidence_value
     if confidence is None:
         # If the real FD004 unit summary only provides averages, use a neutral mid-confidence.
         confidence = "medium" if has_fd004_avg_instability else "low"
 
-    interpreted_state = pick("interpreted_state")
-    # For real mode we should not hardcode a structural interpretation if the report
-    # does not provide one (e.g., older report schemas). If possible, we derive it
-    # via the decision layer using the limited FD004 average inputs.
-    if interpreted_state is None:
-        if has_fd004_avg_drift:
-            try:
-                relational_drift = float(fd004_avg_drift or 0.0)
-                regime_drift = relational_drift * 0.3
-                interpreted_state = decision_output(
-                    composite_score=0.0,
-                    components={
-                        "relational_drift": relational_drift,
-                        "regime_drift": regime_drift,
-                        "directional_divergence": 0.0,
-                        "spectral": 0.0,
-                    },
-                    forecast={"trend": 0.0},
-                ).get("interpreted_state")
-            except Exception:
-                interpreted_state = None
+    interpreted_state_value = pick("interpreted_state")
+    interpreted_state_missing = interpreted_state_value is None
+    interpreted_state = interpreted_state_value
 
-        if interpreted_state is None:
-            interpreted_state = "unknown"
-    operator_message = pick("operator_message") or default["operator_message"]
+    operator_message_value = pick("operator_message")
+    operator_message_missing = operator_message_value is None
+    operator_message = operator_message_value if operator_message_value is not None else default["operator_message"]
+
+    # If the report doesn't include decision-layer outputs (common for FD004 real
+    # `unit_summaries`), compute them from the available averages via the decision layer.
+    if interpreted_state_missing:
+        try:
+            relational_drift_for_decision = float(fd004_avg_drift or 0.0)
+            regime_drift_for_decision = relational_drift_for_decision * 0.3
+            components_for_decision = {
+                "relational_drift": relational_drift_for_decision,
+                "regime_drift": regime_drift_for_decision,
+                "directional_divergence": 0.0,
+                "spectral": 0.0,
+                "entropy": 0.0,
+                "subsystem_instability": 0.0,
+                "early_warning": 0.0,
+            }
+            composite_score = composite_instability_score(components_for_decision)
+            decision = decision_output(
+                composite_score=composite_score,
+                components=components_for_decision,
+                forecast={"trend": 0.0},
+            )
+
+            interpreted_state = decision.get("interpreted_state")
+            if phase_missing:
+                phase = decision.get("phase", phase)
+            if risk_missing:
+                risk_level = decision.get("risk_level", risk_level)
+            if signal_emitted_missing:
+                signal_emitted = bool(decision.get("signal_emitted", signal_emitted))
+            if signal_strength_missing:
+                signal_strength = decision.get("signal_strength", signal_strength)
+            if operator_message_missing:
+                operator_message = decision.get("operator_message", operator_message)
+        except Exception:
+            # Last-resort: fall back to the default mock values rather than propagating
+            # a literal unknown state into the UI.
+            if interpreted_state is None:
+                try:
+                    interpreted_state = decision_output(
+                        composite_score=0.0,
+                        components={
+                            "relational_drift": 0.0,
+                            "regime_drift": 0.0,
+                            "directional_divergence": 0.0,
+                            "spectral": 0.0,
+                        },
+                        forecast={"trend": 0.0},
+                    ).get("interpreted_state")
+                except Exception:
+                    interpreted_state = default["interpreted_state"]
 
     latest_drift = pick("latest_drift")
     if latest_drift is None:
@@ -209,6 +247,19 @@ def _coerce_status(summary: dict[str, Any]) -> dict[str, Any]:
     except (TypeError, ValueError):
         regime_drift = 0.0
 
+    assigned_regime: str | None = None
+    if has_fd004_avg_drift or has_fd004_avg_instability:
+        interpreted_state_str = interpreted_state if isinstance(interpreted_state, str) else ""
+        interpreted_state_upper = interpreted_state_str.upper()
+        if "INSTABILITY" in interpreted_state_upper:
+            assigned_regime = "unstable"
+        elif "NOMINAL" in interpreted_state_upper:
+            assigned_regime = "stable"
+        elif "TRANSITION" in interpreted_state_upper:
+            assigned_regime = "transitional"
+        else:
+            assigned_regime = "unknown"
+
     return {
         "phase": phase,
         "risk_level": risk_level,
@@ -216,6 +267,7 @@ def _coerce_status(summary: dict[str, Any]) -> dict[str, Any]:
         "signal_strength": signal_strength,
         "confidence": confidence,
         "interpreted_state": interpreted_state,
+        "assigned_regime": assigned_regime,
         "operator_message": operator_message,
         "latest_drift": latest_drift,
         "latest_instability": latest_instability,
