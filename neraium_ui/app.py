@@ -248,7 +248,8 @@ def _coerce_status(summary: dict[str, Any]) -> dict[str, Any]:
         regime_drift = 0.0
 
     assigned_regime: str | None = None
-    interpreted_state_str = str(interpreted_state or "").upper()
+    interpreted_state_str = str(interpreted_state or "").upper().strip()
+
     if "INSTABILITY" in interpreted_state_str:
         assigned_regime = "unstable"
     elif "NOMINAL" in interpreted_state_str:
