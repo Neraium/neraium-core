@@ -28,6 +28,18 @@ def spectral_clustering_subsystems(corr: np.ndarray, k: int = 3) -> list[list[in
     return list(clusters.values())
 
 
+def discover_subsystems(corr: np.ndarray, k: int = 3) -> list[list[int]]:
+    """
+    Backward-compatible subsystem discovery wrapper.
+
+    The test suite expects:
+    - for a single-sensor correlation matrix, no subsystems are discovered.
+    """
+    clusters = spectral_clustering_subsystems(corr, k=k)
+    # Only subsystems with at least 2 sensors are meaningful for spectral measures.
+    return [cluster for cluster in clusters if len(cluster) >= 2]
+
+
 def subsystem_spectral_measures(corr: np.ndarray, k: int = 3) -> dict[str, object]:
     """
     Compute subsystem-local dominant spectral instability.

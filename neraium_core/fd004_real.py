@@ -406,7 +406,8 @@ def run_fd004_real_evaluation(
 
     summary_path = Path("reports/fd004_proof_summary.md")
     write_fd004_proof_summary(output, summary_path=summary_path, hero_asset_id=hero_asset_id)
-    output["proof_summary"] = str(summary_path)
+    # Normalize path separators for stable test expectations across OSes.
+    output["proof_summary"] = summary_path.as_posix()
 
     json_path.write_text(json.dumps(output, indent=2), encoding="utf-8")
 
