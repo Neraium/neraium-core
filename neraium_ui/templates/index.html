@@ -293,30 +293,35 @@
     }
 
     .message {
-      background: #1e293b;
-      padding: 18px;
-      border-radius: 12px;
-      margin-bottom: 24px;
-      border-left: 4px solid rgba(59, 130, 246, 0.35);
+      background: rgba(30, 41, 59, 0.58);
+      padding: 22px;
+      border-radius: 16px;
+      margin-bottom: 22px;
+      border: 1px solid rgba(148, 163, 184, 0.14);
+      border-left: 4px solid rgba(148, 163, 184, 0.35);
+      box-shadow: 0 10px 26px rgba(0, 0, 0, 0.14);
     }
 
     .message h2 {
       margin-top: 0;
       color: #94a3b8;
-      font-size: 1rem;
+      font-size: 1.08rem;
+      font-weight: 860;
+      line-height: 1.4;
     }
 
     .message p {
       margin: 0;
-      font-size: 1.05rem;
+      font-size: 1.12rem;
       line-height: 1.6;
-      font-weight: 760;
+      font-weight: 780;
     }
 
     .note {
       font-size: 0.85rem;
       color: #94a3b8;
-      margin-top: 10px;
+      margin-top: 12px;
+      line-height: 1.45;
     }
 
     .chart {
@@ -326,6 +331,14 @@
       border: 1px solid rgba(148, 163, 184, 0.12);
       box-shadow: 0 12px 30px rgba(0, 0, 0, 0.14);
       margin-bottom: 20px;
+    }
+
+    .chart-context {
+      color: #94a3b8;
+      font-size: 0.82rem;
+      font-weight: 800;
+      letter-spacing: 0.01em;
+      margin-bottom: 6px;
     }
 
     .chart canvas {
@@ -343,9 +356,9 @@
 
     .metrics-key-grid {
       display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 18px;
-      margin-bottom: 18px;
+      grid-template-columns: 1.35fr 0.8fr 0.8fr;
+      gap: 20px;
+      margin-bottom: 22px;
       align-items: stretch;
     }
 
@@ -433,7 +446,28 @@
     }
 
     .metrics-key-grid .metric-value {
-      font-size: 1.78rem;
+      font-size: 1.6rem;
+    }
+
+    .metrics-key-grid .system-state-card {
+      min-height: 210px;
+      padding: 26px 22px;
+    }
+
+    .metrics-key-grid .support-state-card {
+      min-height: 170px;
+      padding: 20px 22px;
+    }
+
+    .metrics-key-grid .support-state-card .metric-label {
+      font-size: 0.78rem;
+      font-weight: 760;
+      opacity: 0.92;
+    }
+
+    .metrics-key-grid .support-state-card .metric-value {
+      font-size: 1.28rem;
+      font-weight: 820;
     }
 
     .secondary-card {
@@ -506,6 +540,10 @@
     .card.assigned-regime-card::before {
       width: 6px;
       opacity: 0.92;
+    }
+
+    .card.support-state-card::before {
+      opacity: 0.35;
     }
 
     .assigned-regime-card .metric-value {
@@ -644,9 +682,9 @@
     {% endif %}
 
     <div class="metrics-key-grid">
-      <div class="card assigned-regime-card hero-card {{ assigned_accent }}">
+      <div class="card assigned-regime-card hero-card {{ assigned_accent }} system-state-card">
         <div class="card-content">
-          <div class="metric-label">Assigned Regime</div>
+          <div class="metric-label">System State</div>
           <div class="metric-value">{{ assigned_regime|replace('_',' ')|title }}</div>
           <div class="card-footer-row">
             <span
@@ -661,7 +699,7 @@
         </div>
       </div>
 
-      <div class="card hero-card {{ assigned_accent }}">
+      <div class="card hero-card {{ assigned_accent }} support-state-card">
         <div class="card-content">
           <div class="metric-label">Risk Level</div>
           <div class="metric-value">{{ risk_badge|lower|title }}</div>
@@ -678,7 +716,7 @@
         </div>
       </div>
 
-      <div class="card hero-card {{ assigned_accent }}">
+      <div class="card hero-card {{ assigned_accent }} support-state-card">
         <div class="card-content">
           <div class="metric-label">Phase</div>
           <div class="metric-value">{{ status["phase"]|lower|replace('_',' ')|title }}</div>
@@ -696,7 +734,7 @@
           <div class="metric-value metric-value--secondary">{{ "Yes" if status["signal_emitted"] else "No" }}</div>
           <div class="card-footer-row">
             <span class="badge {% if status['signal_emitted'] %}info{% else %}neutral{% endif %}">
-              {{ "Signal Detected" if status["signal_emitted"] else "No Signal" }}
+              {{ "Detected" if status["signal_emitted"] else "Not detected" }}
             </span>
           </div>
         </div>
@@ -723,6 +761,21 @@
       </div>
     </div>
 
+    <div class="message">
+      <h2>System Interpretation</h2>
+      <p>{{ status["operator_message"] }}</p>
+      <div class="note">
+        Generated from structural signal relationships. Use within operational context.
+      </div>
+    </div>
+
+    <div class="chart">
+      <div class="chart-context">Observed signal behavior over time</div>
+      <h2 class="chart-title">Structural Trend</h2>
+      <p class="chart-subtitle">Read-only view of drift, instability, and regime-relative drift over time</p>
+      <canvas id="chart"></canvas>
+    </div>
+
     <details class="details" id="details-panel">
       <summary>
         <span class="details-summary-left">
@@ -738,12 +791,12 @@
         <div class="details-grid">
           <div class="card details-card">
             <div class="card-content">
-              <div class="metric-label">System Interpretation</div>
+              <div class="metric-label">Interpreted State</div>
               <div class="metric-value details-code">
                 {{ status["interpreted_state"]|default("")|lower|replace('_',' ')|title }}
               </div>
               <div class="card-footer-row">
-                <span class="badge badge--invisible">Details</span>
+                <span class="badge badge--invisible">Evidence</span>
               </div>
             </div>
           </div>
@@ -753,7 +806,7 @@
               <div class="metric-label">Regime Distance</div>
               <div class="metric-value metric-value--secondary">{{ fmt2(status["regime_distance"]) }}</div>
               <div class="card-footer-row">
-                <span class="badge badge--invisible">Details</span>
+                <span class="badge badge--invisible">Evidence</span>
               </div>
             </div>
           </div>
@@ -763,7 +816,7 @@
               <div class="metric-label">Latest Drift</div>
               <div class="metric-value metric-value--secondary">{{ fmt2(status["latest_drift"]) }}</div>
               <div class="card-footer-row">
-                <span class="badge badge--invisible">Details</span>
+                <span class="badge badge--invisible">Evidence</span>
               </div>
             </div>
           </div>
@@ -773,7 +826,7 @@
               <div class="metric-label">Latest Instability</div>
               <div class="metric-value metric-value--secondary">{{ fmt2(status["latest_instability"]) }}</div>
               <div class="card-footer-row">
-                <span class="badge badge--invisible">Details</span>
+                <span class="badge badge--invisible">Evidence</span>
               </div>
             </div>
           </div>
@@ -783,27 +836,13 @@
               <div class="metric-label">Regime Drift</div>
               <div class="metric-value metric-value--secondary">{{ fmt2(status["regime_drift"]) }}</div>
               <div class="card-footer-row">
-                <span class="badge badge--invisible">Details</span>
+                <span class="badge badge--invisible">Evidence</span>
               </div>
             </div>
           </div>
         </div>
       </div>
     </details>
-
-    <div class="message">
-      <h2>System Interpretation</h2>
-      <p>{{ status["operator_message"] }}</p>
-      <div class="note">
-        Interpretation is derived from structural signal relationships and should be evaluated within operational context.
-      </div>
-    </div>
-
-    <div class="chart">
-      <h2 class="chart-title">Structural Trend</h2>
-      <p class="chart-subtitle">Read-only view of drift, instability, and regime-relative drift over time</p>
-      <canvas id="chart"></canvas>
-    </div>
 
     <div class="footer">
       <strong>Scope note:</strong> This interface presents structural analysis outputs for human interpretation. Neraium does not issue operational commands, does not perform control, and does not automate infrastructure actuation.
