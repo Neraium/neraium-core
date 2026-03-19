@@ -1,0 +1,3 @@
+condition,alert_precision,alert_recall,baseline_stability_rate,false_positive_rate,recovery_success_rate,peak_separation,c_perturbation_alert_rate,c_peak_instability,others_peak_instability,tp,fp,fn
+coherent_time,0.8043478260869565,0.925,0.990625,0.016666666666666666,0.85,0.4537000000000002,0.925,2.1695,1.7158,74,18,6
+disturbed_time,0.79,0.9875,0.990625,0.041666666666666664,0.8875,0.32120000000000015,0.9875,2.2804,1.9592,79,21,1
