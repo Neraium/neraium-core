@@ -177,3 +177,85 @@ def compute_data_quality(
         and report.variability_coverage >= min_variability_coverage
     )
     return report
+
+
+def data_quality_summary(report: DataQualityReport) -> dict:
+    """
+    Compact summary for experiment-friendly output and downstream confidence.
+    Includes active_sensor_count, missing_sensor_count, and degradation flags.
+    """
+    # Count sensors that are stale or flatlined (union so we count each once)
+    stale_set = set(report.stale_sensors)
+    flat_set = set(report.flatlined_sensors)
+    missing_sensor_count = len(stale_set | flat_set)
+    return {
+        "gate_passed": report.gate_passed,
+        "missingness_rate": report.missingness_rate,
+        "valid_signal_count": report.valid_signal_count,
+        "total_sensors": report.total_sensors,
+        "stale_sensor_count": len(report.stale_sensors),
+        "flatlined_sensor_count": len(report.flatlined_sensors),
+        "missing_sensor_count": missing_sensor_count,
+        "statuses": list(report.statuses),
+        "sensor_coverage": report.sensor_coverage,
+        "variability_coverage": report.variability_coverage,
+    }
+
+
+# Threshold above which we do not attempt fallback analytics (too much data missing)
+DEFAULT_DEGRADED_MAX_MISSINGNESS = 0.85
+
+
+def should_use_degraded_analytics(
+    report: DataQualityReport,
+    *,
+    max_missingness_for_fallback: float = DEFAULT_DEGRADED_MAX_MISSINGNESS,
+    min_sensors_for_fallback: int = 1,
+) -> bool:
+    """
+    True if we should still produce meaningful output with degraded confidence
+    (e.g. when gate failed but data is not catastrophically missing).
+    """
+    if report.gate_passed:
+        return False
+    if report.missingness_rate > max_missingness_for_fallback:
+        return False
+    if report.valid_signal_count < min_sensors_for_fallback:
+        return False
+    return report.total_sensors >= 1
+
+
+def impute_missing_simple(
+    matrix: np.ndarray,
+    *,
+    axis: int = 0,
+    method: str = "column_mean",
+) -> np.ndarray:
+    """
+    Simple observational imputation for missing values so analytics can still run
+    with degraded confidence. Use only when gate failed but degraded path is allowed.
+
+    method: "column_mean" fills NaNs with column mean; "zero" fills with 0.
+    """
+    data = np.asarray(matrix, dtype=float, copy=True)
+    if not np.any(np.isnan(data)):
+        return data
+    if method == "zero":
+        return np.nan_to_num(data, nan=0.0, posinf=0.0, neginf=0.0)
+    if method == "column_mean":
+        if axis == 0:
+            col_mean = np.nanmean(data, axis=0)
+            col_mean = np.nan_to_num(col_mean, nan=0.0)
+            for j in range(data.shape[1]):
+                mask = np.isnan(data[:, j])
+                if np.any(mask):
+                    data[mask, j] = col_mean[j]
+        else:
+            row_mean = np.nanmean(data, axis=1)
+            row_mean = np.nan_to_num(row_mean, nan=0.0)
+            for i in range(data.shape[0]):
+                mask = np.isnan(data[i, :])
+                if np.any(mask):
+                    data[i, mask] = row_mean[i]
+        return np.nan_to_num(data, nan=0.0, posinf=0.0, neginf=0.0)
+    return np.nan_to_num(data, nan=0.0, posinf=0.0, neginf=0.0)

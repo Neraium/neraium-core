@@ -63,6 +63,13 @@ class StructuralMonitoringService:
         return "STABLE"
 
     def _operator_confidence(self, result: dict[str, Any]) -> float:
+        # Prefer stabilized confidence_score from engine when present.
+        score = result.get("confidence_score")
+        if score is not None:
+            try:
+                return round(max(0.0, min(float(score), 1.0)), 4)
+            except (TypeError, ValueError):
+                pass
         stability = float(result.get("relational_stability_score", 0.0))
         return round(max(0.0, min(stability, 1.0)), 4)
 

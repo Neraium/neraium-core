@@ -1,13 +1,19 @@
 from __future__ import annotations
 
-from collections import deque
+from collections import Counter, deque
 from typing import Dict, List, Optional
 
 import numpy as np
 
 from neraium_core.causal import causal_metrics, granger_causality_matrix
+from neraium_core.causal_attribution import causal_attribution
 from neraium_core.causal_graph import causal_graph_metrics
-from neraium_core.data_quality import compute_data_quality
+from neraium_core.data_quality import (
+    compute_data_quality,
+    data_quality_summary,
+    impute_missing_simple,
+    should_use_degraded_analytics,
+)
 from neraium_core.decision_layer import decision_output
 from neraium_core.directional import directional_metrics, lagged_correlation_matrix
 from neraium_core.early_warning import early_warning_metrics
@@ -28,6 +34,14 @@ from neraium_core.spectral import dominant_mode_loading, spectral_gap, spectral_
 from neraium_core.subsystems import subsystem_spectral_measures
 
 
+# How slowly the rolling baseline adapts (only when nominal); avoid absorbing instability.
+DEFAULT_BASELINE_ADAPTATION_ALPHA = 0.92
+# Composite below this and nominal state required to update rolling baseline.
+BASELINE_UPDATE_MAX_COMPOSITE = 0.85
+# Number of recent interpreted states to compute classification stability.
+CLASSIFICATION_STABILITY_WINDOW = 15
+
+
 class StructuralEngine:
     def __init__(
         self,
@@ -35,6 +49,7 @@ class StructuralEngine:
         recent_window: int = 12,
         window_stride: int = 1,
         regime_store_path: str = "regime_library.json",
+        baseline_adaptation_alpha: float = DEFAULT_BASELINE_ADAPTATION_ALPHA,
     ):
         self.baseline_window = baseline_window
         self.recent_window = recent_window
@@ -43,6 +58,11 @@ class StructuralEngine:
         self.sensor_order: List[str] = []
         self.latest_result: Optional[Dict] = None
         self.score_history: deque[float] = deque(maxlen=120)
+        self.baseline_adaptation_alpha = baseline_adaptation_alpha
+        # Rolling baseline: updated only when system is nominal and composite low.
+        self._rolling_baseline_corr: Optional[np.ndarray] = None
+        # Recent interpreted states for classification stability.
+        self._state_history: deque[str] = deque(maxlen=CLASSIFICATION_STABILITY_WINDOW)
 
         self.regime_store = RegimeStore(regime_store_path)
         persisted = self.regime_store.load()
@@ -176,6 +196,12 @@ class StructuralEngine:
             "regime_drift": 0.0,
             "latest_drift": 0.0,
             "latest_instability": 0.0,
+            "causal_attribution": {"top_drivers": [], "driver_scores": {}},
+            "dominant_driver": None,
+            "baseline_mode": None,
+            "data_quality_summary": {},
+            "active_sensor_count": 0,
+            "missing_sensor_count": 0,
         }
 
         baseline_window = self._get_baseline_window()
@@ -191,6 +217,18 @@ class StructuralEngine:
             sensor_names=self.sensor_order,
         )
         result["data_quality"] = data_quality_report.to_dict()
+        dq_summary = data_quality_summary(data_quality_report)
+        result["data_quality_summary"] = dq_summary
+        result["active_sensor_count"] = dq_summary["valid_signal_count"]
+        result["missing_sensor_count"] = dq_summary["missing_sensor_count"]
+
+        use_degraded = (not data_quality_report.gate_passed) and should_use_degraded_analytics(
+            data_quality_report
+        )
+        # Optional imputation when gate failed but we still want meaningful degraded output.
+        if not data_quality_report.gate_passed and use_degraded:
+            baseline_window = impute_missing_simple(baseline_window, method="column_mean")
+            recent_window = impute_missing_simple(recent_window, method="column_mean")
 
         z_baseline, baseline_mean, baseline_std = normalize_window(baseline_window)
         z_recent, recent_mean, recent_std = normalize_window(recent_window)
@@ -234,7 +272,17 @@ class StructuralEngine:
             corr_baseline = correlation_matrix(z_base_valid)
             corr_recent = correlation_matrix(z_recent_valid)
 
-            drift_score = structural_drift(corr_recent, corr_baseline, norm="fro")
+            # Adaptive baseline: use rolling baseline when available to avoid static reference.
+            baseline_corr_used = corr_baseline
+            baseline_mode = "fixed"
+            if (
+                self._rolling_baseline_corr is not None
+                and self._rolling_baseline_corr.shape == corr_recent.shape
+            ):
+                baseline_corr_used = self._rolling_baseline_corr
+                baseline_mode = "rolling"
+
+            drift_score = structural_drift(corr_recent, baseline_corr_used, norm="fro")
             stability_score = 1.0 / (1.0 + drift_score)
 
             regime_drift = 0.0
@@ -248,6 +296,10 @@ class StructuralEngine:
                 else:
                     regime_corr = np.asarray(self.regime_baselines[regime_name]["correlation"], dtype=float)
                     regime_drift = structural_drift(corr_recent, regime_corr, norm="fro")
+                    # Regime-specific baseline: EMA update so we gradually adapt inside stable regime.
+                    alpha = 0.88
+                    updated = alpha * regime_corr + (1.0 - alpha) * corr_recent
+                    self.regime_baselines[regime_name]["correlation"] = updated.tolist()
                     self.regime_baselines[regime_name]["count"] = int(
                         self.regime_baselines[regime_name].get("count", 0)
                     ) + 1
@@ -263,6 +315,17 @@ class StructuralEngine:
             causal_matrix = granger_causality_matrix(z_recent_valid)
             causal = causal_metrics(causal_matrix)
             causal_graph = causal_graph_metrics(causal_matrix, threshold=0.1)
+
+            valid_sensor_names = [self.sensor_order[i] for i in range(len(valid_mask)) if valid_mask[i]]
+            attr = causal_attribution(
+                baseline_corr_used,
+                corr_recent,
+                causal_matrix,
+                valid_sensor_names,
+                top_k=10,
+            )
+            result["causal_attribution"] = attr
+            result["dominant_driver"] = attr["top_drivers"][0] if attr["top_drivers"] else None
 
             subsystem = subsystem_spectral_measures(corr_recent)
 
@@ -306,8 +369,19 @@ class StructuralEngine:
                     "regime_distance": round(regime_distance, 4) if regime_distance is not None else None,
                     "regime_drift": round(float(regime_drift), 4),
                     "latest_drift": round(float(drift_score), 4),
+                    "baseline_mode": baseline_mode,
                 }
             )
+            regime_memory_state = {
+                "regime_name": regime_name,
+                "library_size": len(self.regime_signatures),
+                "baseline_count": (
+                    int(self.regime_baselines.get(regime_name, {}).get("count", 0))
+                    if regime_name
+                    else None
+                ),
+            }
+            result["regime_memory_state"] = regime_memory_state
 
             analytics.update(
                 {
@@ -326,6 +400,12 @@ class StructuralEngine:
                     "regime_drift": float(regime_drift),
                 }
             )
+        else:
+            result["regime_memory_state"] = {
+                "regime_name": regime_name,
+                "library_size": len(self.regime_signatures),
+                "baseline_count": None,
+            }
 
         # Per-component confidence: down-weight or fully suppress evidence when the
         # data quality gate indicates unreliable inputs. Production alerts should
@@ -349,9 +429,33 @@ class StructuralEngine:
         )
         if not bool(data_quality_report.gate_passed):
             evidence_conf *= 0.25
+        if use_degraded:
+            evidence_conf *= 0.5  # Explicit degraded confidence when using fallback analytics
         evidence_conf = max(0.0, min(1.0, evidence_conf))
 
         correlation_ready = valid_signal_count >= 2
+
+        # Classification stability: how consistent recent interpreted states have been.
+        state_history_list = list(self._state_history)
+        if len(state_history_list) >= 2:
+            counts = Counter(state_history_list)
+            most_common_count = max(counts.values()) if counts else 0
+            classification_stability = float(most_common_count) / float(len(state_history_list))
+        else:
+            classification_stability = 1.0
+
+        # Metric disagreement: high std across components slightly reduces confidence.
+        comp_vals = [float(components.get(k, 0.0)) for k in tier1_components if k in components]
+        if comp_vals:
+            mean_c = sum(comp_vals) / len(comp_vals)
+            std_c = (sum((x - mean_c) ** 2 for x in comp_vals) / len(comp_vals)) ** 0.5
+            disagreement = std_c / (mean_c + 1e-6)
+            disagreement_factor = max(0.7, 1.0 - disagreement * 0.15)
+        else:
+            disagreement_factor = 1.0
+
+        stabilized_confidence = evidence_conf * (0.6 + 0.4 * classification_stability) * disagreement_factor
+        stabilized_confidence = max(0.0, min(1.0, stabilized_confidence))
 
         # Regime baseline confidence depends on how much history exists for the
         # assigned regime. If we don't yet have baseline correlation samples,
@@ -412,9 +516,26 @@ class StructuralEngine:
             composite_score=float(composite),
             components=components_for_decision,
             forecast=forecast,
+            confidence_score=stabilized_confidence,
+            classification_stability=classification_stability,
         )
         result.update(decision)
+        result["confidence_score"] = round(stabilized_confidence, 4)
         result["latest_instability"] = round(float(composite), 4)
+
+        self._state_history.append(decision.get("interpreted_state", "NOMINAL_STRUCTURE"))
+
+        # Rolling baseline: update only when nominal and composite low (avoid absorbing instability).
+        if (
+            valid_signal_count >= 2
+            and decision.get("interpreted_state") == "NOMINAL_STRUCTURE"
+            and float(composite) < BASELINE_UPDATE_MAX_COMPOSITE
+        ):
+            if self._rolling_baseline_corr is None or self._rolling_baseline_corr.shape != corr_recent.shape:
+                self._rolling_baseline_corr = np.array(corr_recent, dtype=float, copy=True)
+            else:
+                alpha = self.baseline_adaptation_alpha
+                self._rolling_baseline_corr = alpha * self._rolling_baseline_corr + (1.0 - alpha) * corr_recent
 
         analytics["composite_instability"] = round(float(composite), 4)
         analytics["forecasting"] = forecast
