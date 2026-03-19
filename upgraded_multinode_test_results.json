@@ -99,6 +99,7 @@
     "timeseries_csv": "upgraded_multinode_test_timeseries.csv",
     "node_summary_csv": "upgraded_multinode_test_node_summary.csv",
     "metrics_csv": "upgraded_multinode_test_metrics.csv",
-    "report_md": "upgraded_multinode_quality_report.md"
+    "report_md": "upgraded_multinode_quality_report.md",
+    "phase_confusion_csv": "upgraded_multinode_phase_confusion.csv"
   }
 }
