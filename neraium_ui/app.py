@@ -11,7 +11,7 @@ from fastapi.templating import Jinja2Templates
 from starlette.requests import Request
 
 from neraium_core.decision_layer import decision_output
-from neraium_core.scoring import composite_instability_score_normalized
+from neraium_core.scoring import canonicalize_weights, composite_instability_score_normalized
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 TEMPLATES_DIR = Path(__file__).resolve().parent / "templates"
@@ -158,6 +158,33 @@ def _coerce_status(summary: dict[str, Any]) -> dict[str, Any]:
         try:
             relational_drift_for_decision = float(fd004_avg_drift or 0.0)
             regime_drift_for_decision = relational_drift_for_decision * 0.3
+
+            # FD004 real reports often only provide a coarse confidence label.
+            # Approximate it into an evidence-quality factor to down-weight
+            # Tier-1 components when confidence is low.
+            if isinstance(confidence, str):
+                conf_lower = confidence.lower().strip()
+                if conf_lower == "high":
+                    evidence_conf = 1.0
+                elif conf_lower == "medium":
+                    evidence_conf = 0.6
+                else:
+                    evidence_conf = 0.25
+            else:
+                # If somehow numeric, clamp to [0, 1]
+                try:
+                    evidence_conf = float(confidence)
+                except (TypeError, ValueError):
+                    evidence_conf = 0.25
+                evidence_conf = max(0.0, min(1.0, evidence_conf))
+
+            component_confidence = {
+                "relational_drift": evidence_conf,
+                "regime_drift": evidence_conf,
+                "spectral": evidence_conf,
+                "early_warning": evidence_conf,
+            }
+
             components_for_decision = {
                 "relational_drift": relational_drift_for_decision,
                 "regime_drift": regime_drift_for_decision,
@@ -167,10 +194,27 @@ def _coerce_status(summary: dict[str, Any]) -> dict[str, Any]:
                 "subsystem_instability": 0.0,
                 "early_warning": 0.0,
             }
-            composite_score = composite_instability_score_normalized(components_for_decision)
+
+            # Confidence-weighted composite: mirror backend by scaling weights
+            # per component (then pass confidence-weighted components into the
+            # decision layer for interpreted_state/explanations).
+            base_weights = canonicalize_weights()
+            weights_for_composite: dict[str, float] = {}
+            for k, w in base_weights.items():
+                weights_for_composite[k] = float(w) * float(component_confidence.get(k, 0.0))
+
+            composite_score = composite_instability_score_normalized(
+                components_for_decision,
+                weights=weights_for_composite,
+            )
+
+            components_for_decision_scaled = {
+                k: float(v) * float(component_confidence.get(k, 0.0)) if k in component_confidence else float(v)
+                for k, v in components_for_decision.items()
+            }
             decision = decision_output(
                 composite_score=composite_score,
-                components=components_for_decision,
+                components=components_for_decision_scaled,
                 forecast={"trend": 0.0},
             )
 
