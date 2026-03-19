@@ -248,17 +248,15 @@ def _coerce_status(summary: dict[str, Any]) -> dict[str, Any]:
         regime_drift = 0.0
 
     assigned_regime: str | None = None
-    if has_fd004_avg_drift or has_fd004_avg_instability:
-        interpreted_state_str = interpreted_state if isinstance(interpreted_state, str) else ""
-        interpreted_state_upper = interpreted_state_str.upper()
-        if "INSTABILITY" in interpreted_state_upper:
-            assigned_regime = "unstable"
-        elif "NOMINAL" in interpreted_state_upper:
-            assigned_regime = "stable"
-        elif "TRANSITION" in interpreted_state_upper:
-            assigned_regime = "transitional"
-        else:
-            assigned_regime = "unknown"
+    interpreted_state_str = str(interpreted_state or "").upper()
+    if "INSTABILITY" in interpreted_state_str:
+        assigned_regime = "unstable"
+    elif "NOMINAL" in interpreted_state_str:
+        assigned_regime = "stable"
+    elif "TRANSITION" in interpreted_state_str:
+        assigned_regime = "transitional"
+    else:
+        assigned_regime = "unknown"
 
     return {
         "phase": phase,
