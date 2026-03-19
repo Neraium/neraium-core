@@ -1,5 +1,5 @@
 {
-  "description": "Architectural SII benchmark with modular node-specific intelligence pipeline.",
+  "description": "Neraium SII comparative benchmark with node-specific nominal modeling and GAL-2 isolation.",
   "nodes": [
     "A",
     "B",
@@ -7,10 +7,10 @@
     "D"
   ],
   "node_variants": {
-    "A": "user_only",
-    "B": "gal2_only",
-    "C": "baseline_only",
-    "D": "user_plus_gal2"
+    "A": "control_sii",
+    "B": "gal2_temporal",
+    "C": "raw_telemetry",
+    "D": "combined_fusion"
   },
   "conditions": [
     "coherent_time",
@@ -32,17 +32,27 @@
   "metrics": [
     {
       "condition": "coherent_time",
-      "alert_precision": 1.0,
+      "alert_precision": 0.4233128834,
       "alert_recall": 0.8625,
       "baseline_stability_rate": 1.0,
-      "d_vs_b_localization_distance": 0.1505848083
+      "d_vs_b_localization_distance": 0.1504189417,
+      "stability_discriminability_across_nodes": 0.027658573,
+      "recall_A_control": 0.0,
+      "recall_B_gal2": 0.0,
+      "recall_C_raw": 0.8625,
+      "recall_D_combined": 1.0
     },
     {
       "condition": "disturbed_time",
-      "alert_precision": 0.8791208791,
-      "alert_recall": 1.0,
+      "alert_precision": 0.45625,
+      "alert_recall": 0.9125,
       "baseline_stability_rate": 1.0,
-      "d_vs_b_localization_distance": 0.0920740958
+      "d_vs_b_localization_distance": 0.1162954458,
+      "stability_discriminability_across_nodes": 0.0260899028,
+      "recall_A_control": 0.0,
+      "recall_B_gal2": 0.0,
+      "recall_C_raw": 0.9125,
+      "recall_D_combined": 0.9125
     }
   ],
   "artifacts": {
