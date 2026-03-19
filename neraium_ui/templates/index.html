@@ -35,15 +35,84 @@
 
     .subtitle {
       color: #94a3b8;
-      margin-bottom: 12px;
+      margin-bottom: 0;
+      font-size: 1rem;
+      line-height: 1.45;
+    }
+
+    .top-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 16px;
+      margin-bottom: 16px;
+    }
+
+    .top-header h1 {
+      margin: 0;
+      font-size: 1.75rem;
+      font-weight: 950;
+      letter-spacing: -0.02em;
+    }
+
+    .brand {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      min-width: 0;
+    }
+
+    .status-pill {
+      background: rgba(15, 23, 42, 0.55);
+      border: 1px solid rgba(148, 163, 184, 0.18);
+      border-radius: 999px;
+      padding: 10px 12px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.12);
+      max-width: 520px;
+    }
+
+    .status-pill-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+      color: #cbd5e1;
+      font-size: 0.92rem;
+      line-height: 1.35;
+    }
+
+    .status-pill-label {
+      color: #94a3b8;
+      font-weight: 850;
+      font-size: 0.86rem;
+      letter-spacing: 0.01em;
+    }
+
+    .status-pill-sep {
+      color: rgba(148, 163, 184, 0.55);
+      font-weight: 900;
+    }
+
+    .status-pill-extra {
+      color: rgba(226, 232, 240, 0.95);
+      font-size: 0.9rem;
+      margin-left: 2px;
+    }
+
+    .status-pill-note {
+      color: rgba(226, 232, 240, 0.92);
+      margin-top: 6px;
+      font-size: 0.85rem;
+      line-height: 1.35;
+      letter-spacing: 0.01em;
     }
 
     .banner {
-      background: rgba(245, 158, 11, 0.15);
-      border: 1px solid rgba(245, 158, 11, 0.4);
-      color: #fde68a;
+      background: rgba(148, 163, 184, 0.10);
+      border: 1px solid rgba(148, 163, 184, 0.24);
+      color: rgba(226, 232, 240, 0.92);
       padding: 12px;
-      border-radius: 8px;
+      border-radius: 14px;
       margin-bottom: 14px;
       font-size: 0.9rem;
     }
@@ -112,9 +181,9 @@
 
     .card:hover {
       transform: translateY(-1px);
-      box-shadow: 0 16px 45px rgba(0, 0, 0, 0.28);
-      border-color: rgba(56, 189, 248, 0.35);
-      background: rgba(30, 41, 59, 0.72);
+      box-shadow: 0 16px 45px rgba(0, 0, 0, 0.26);
+      border-color: rgba(56, 189, 248, 0.28);
+      background: rgba(30, 41, 59, 0.66);
     }
 
     .card-content {
@@ -253,10 +322,17 @@
     }
 
     .chart {
-      background: #1e293b;
-      padding: 16px;
+      background: rgba(30, 41, 59, 0.42);
+      padding: 18px 20px;
       border-radius: 16px;
+      border: 1px solid rgba(148, 163, 184, 0.16);
+      box-shadow: 0 16px 40px rgba(0, 0, 0, 0.18);
       margin-bottom: 20px;
+    }
+
+    .chart canvas {
+      display: block;
+      margin-top: 8px;
     }
 
     .footer {
@@ -398,27 +474,51 @@
     }
 
     .accent-stable {
-      border-color: rgba(34, 197, 94, 0.5) !important;
-      background: rgba(34, 197, 94, 0.06) !important;
-      box-shadow: 0 18px 48px rgba(34, 197, 94, 0.08) !important;
+      border-color: rgba(34, 197, 94, 0.42);
+      background: rgba(34, 197, 94, 0.04);
+      box-shadow: 0 18px 48px rgba(34, 197, 94, 0.06);
     }
 
     .accent-transitional {
-      border-color: rgba(56, 189, 248, 0.35) !important;
-      background: rgba(56, 189, 248, 0.07) !important;
-      box-shadow: 0 18px 48px rgba(56, 189, 248, 0.08) !important;
+      border-color: rgba(56, 189, 248, 0.32);
+      background: rgba(56, 189, 248, 0.05);
+      box-shadow: 0 18px 48px rgba(56, 189, 248, 0.06);
     }
 
     .accent-unstable {
-      border-color: rgba(239, 68, 68, 0.45) !important;
-      background: rgba(239, 68, 68, 0.05) !important;
-      box-shadow: 0 18px 48px rgba(239, 68, 68, 0.08) !important;
+      border-color: rgba(239, 68, 68, 0.42);
+      background: rgba(239, 68, 68, 0.05);
+      box-shadow: 0 18px 48px rgba(239, 68, 68, 0.06);
     }
 
     .accent-neutral {
-      border-color: rgba(148, 163, 184, 0.26) !important;
-      background: rgba(148, 163, 184, 0.04) !important;
-      box-shadow: 0 18px 48px rgba(148, 163, 184, 0.08) !important;
+      border-color: rgba(148, 163, 184, 0.22);
+      background: rgba(148, 163, 184, 0.04);
+      box-shadow: 0 18px 48px rgba(148, 163, 184, 0.06);
+    }
+
+    .assigned-regime-card.accent-stable {
+      border-color: rgba(34, 197, 94, 0.70);
+      background: rgba(34, 197, 94, 0.06);
+      box-shadow: 0 22px 64px rgba(34, 197, 94, 0.12);
+    }
+
+    .assigned-regime-card.accent-transitional {
+      border-color: rgba(56, 189, 248, 0.55);
+      background: rgba(56, 189, 248, 0.07);
+      box-shadow: 0 22px 64px rgba(56, 189, 248, 0.12);
+    }
+
+    .assigned-regime-card.accent-unstable {
+      border-color: rgba(239, 68, 68, 0.78);
+      background: rgba(239, 68, 68, 0.06);
+      box-shadow: 0 22px 70px rgba(239, 68, 68, 0.14);
+    }
+
+    .assigned-regime-card.accent-neutral {
+      border-color: rgba(148, 163, 184, 0.38);
+      background: rgba(148, 163, 184, 0.05);
+      box-shadow: 0 22px 64px rgba(148, 163, 184, 0.10);
     }
 
     .assigned-regime-card .metric-value {
@@ -444,6 +544,7 @@
       color: rgba(148, 163, 184, 0.95);
       font-weight: 850;
       letter-spacing: 0.01em;
+      opacity: 0.9;
     }
 
     @media (max-width: 980px) {
@@ -453,28 +554,72 @@
         grid-template-columns: 1fr;
       }
     }
+
+    .details-title {
+      font-size: 0.98rem;
+      font-weight: 950;
+      color: #e2e8f0;
+    }
+
+    .details-subtitle {
+      font-size: 0.82rem;
+      font-weight: 850;
+      color: #94a3b8;
+      margin-top: 2px;
+      line-height: 1.25;
+      letter-spacing: 0.01em;
+    }
+
+    .details-summary-left {
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+      min-width: 0;
+    }
+
+    .details-summary-right {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex: 0 0 auto;
+    }
+
+    .details summary {
+      padding: 10px 14px;
+    }
+
+    .details-content {
+      padding-top: 0;
+    }
   </style>
 </head>
 
 <body>
   <div class="container">
-    <h1>Neraium Operator View</h1>
-    <div class="subtitle">Read-only structural instability instrumentation</div>
+    <div class="top-header">
+      <div class="brand">
+        <h1>Neraium Operator View</h1>
+        <div class="subtitle">Structural state monitoring for systemic infrastructure intelligence</div>
+      </div>
+      <div class="status-pill">
+        <div class="status-pill-row">
+          <span class="status-pill-label">Mode</span>
+          <strong>{{ source_info["mode"] }}</strong>
+          <span class="status-pill-sep">•</span>
+          <span class="status-pill-label">Source</span>
+          <strong>{{ source_info["source"] }}</strong>
+          {% if source_info["fd004_dir"] %}
+            <span class="status-pill-extra">FD004: <strong>{{ source_info["fd004_dir"] }}</strong></span>
+          {% endif %}
+        </div>
+        {% if source_info["using_mock"] and mode == "real" %}
+          <div class="status-pill-note">Real artifacts not found, using fallback demo data.</div>
+        {% endif %}
+      </div>
+    </div>
 
     <div class="banner">
       Outputs are observational signals intended for human interpretation only and do not constitute operational instruction, control, or required action.
-    </div>
-
-    <div class="info-bar">
-      Mode: <strong>{{ source_info["mode"] }}</strong>
-      |
-      Source: <strong>{{ source_info["source"] }}</strong>
-      {% if source_info["fd004_dir"] %}
-        | FD004 Path: <strong>{{ source_info["fd004_dir"] }}</strong>
-      {% endif %}
-      {% if source_info["using_mock"] and mode == "real" %}
-        | Real artifacts not found, using fallback demo data.
-      {% endif %}
     </div>
 
     <div class="toggle-bar">
@@ -528,7 +673,7 @@
         </div>
       </div>
 
-      <div class="card hero-card">
+      <div class="card hero-card {{ assigned_accent }}">
         <div class="card-content">
           <div class="metric-label">Risk Level</div>
           <div class="metric-value">{{ risk_badge|lower|title }}</div>
@@ -545,7 +690,7 @@
         </div>
       </div>
 
-      <div class="card hero-card">
+      <div class="card hero-card {{ assigned_accent }}">
         <div class="card-content">
           <div class="metric-label">Phase</div>
           <div class="metric-value">{{ status["phase"]|lower|replace('_',' ')|title }}</div>
@@ -559,7 +704,7 @@
     <div class="metrics-secondary-grid">
       <div class="card secondary-card">
         <div class="card-content">
-          <div class="metric-label">Signal Emitted</div>
+          <div class="metric-label">Signal</div>
           <div class="metric-value metric-value--secondary">{{ "Yes" if status["signal_emitted"] else "No" }}</div>
           <div class="card-footer-row">
             <span class="badge {% if status['signal_emitted'] %}info{% else %}neutral{% endif %}">
@@ -581,7 +726,7 @@
 
       <div class="card secondary-card">
         <div class="card-content">
-          <div class="metric-label">Signal Strength</div>
+          <div class="metric-label">Strength</div>
           <div class="metric-value metric-value--secondary">{{ status["signal_strength"]|default("low")|lower|title }}</div>
           <div class="card-footer-row">
             <span class="badge badge--invisible">Strength</span>
@@ -592,14 +737,20 @@
 
     <details class="details" id="details-panel">
       <summary>
-        <span id="details-toggle-text">Show Details</span>
-        <span class="details-chevron" aria-hidden="true"></span>
+        <span class="details-summary-left">
+          <span class="details-title">Supporting Evidence</span>
+          <span class="details-subtitle">Diagnostics supporting the current assessment</span>
+        </span>
+        <span class="details-summary-right">
+          <span id="details-toggle-text">Show Evidence</span>
+          <span class="details-chevron" aria-hidden="true"></span>
+        </span>
       </summary>
       <div class="details-content" id="details-content">
         <div class="details-grid">
           <div class="card details-card">
             <div class="card-content">
-              <div class="metric-label">Interpreted State</div>
+              <div class="metric-label">System Interpretation</div>
               <div class="metric-value details-code">
                 {{ status["interpreted_state"]|default("")|lower|replace('_',' ')|title }}
               </div>
@@ -679,7 +830,7 @@
     if (detailsPanel && detailsContent && detailsToggleText) {
       const setOpenState = () => {
         const isOpen = detailsPanel.open;
-        detailsToggleText.textContent = isOpen ? "Hide Details" : "Show Details";
+        detailsToggleText.textContent = isOpen ? "Hide Evidence" : "Show Evidence";
         detailsContent.style.maxHeight = isOpen ? detailsContent.scrollHeight + "px" : "0px";
       };
       detailsPanel.addEventListener("toggle", () => setOpenState());
@@ -709,22 +860,28 @@
             {
               label: 'Structural Drift',
               data: drift,
-              borderColor: '#67e8f9',
-              backgroundColor: 'rgba(103, 232, 249, 0.15)',
+              borderColor: '#38bdf8',
+              backgroundColor: 'rgba(56, 189, 248, 0.10)',
+              borderWidth: 2,
+              pointRadius: 0,
               tension: 0.25
             },
             {
               label: 'Composite Instability',
               data: instability,
-              borderColor: '#f9a8d4',
-              backgroundColor: 'rgba(249, 168, 212, 0.15)',
+              borderColor: '#f472b6',
+              backgroundColor: 'rgba(244, 114, 182, 0.10)',
+              borderWidth: 2,
+              pointRadius: 0,
               tension: 0.25
             },
             {
               label: 'Regime Drift',
               data: regimeDrift,
-              borderColor: '#facc15',
-              backgroundColor: 'rgba(250, 204, 21, 0.15)',
+              borderColor: '#fbbf24',
+              backgroundColor: 'rgba(251, 191, 36, 0.10)',
+              borderWidth: 2,
+              pointRadius: 0,
               tension: 0.25
             }
           ]
@@ -733,9 +890,21 @@
           responsive: true,
           plugins: {
             legend: {
-              labels: { color: '#e2e8f0' }
+              align: 'start',
+              labels: {
+                color: '#e2e8f0',
+                font: { size: 12, weight: '800' },
+                padding: 16,
+                boxWidth: 10
+              }
             },
             tooltip: {
+              backgroundColor: 'rgba(15, 23, 42, 0.96)',
+              borderColor: 'rgba(148, 163, 184, 0.22)',
+              borderWidth: 1,
+              titleColor: '#e2e8f0',
+              bodyColor: '#e2e8f0',
+              caretSize: 8,
               callbacks: {
                 label: (ctx) => {
                   const y = Number(ctx.parsed.y);
@@ -746,13 +915,15 @@
           },
           scales: {
             x: {
-              ticks: { color: '#cbd5e1' }
+              ticks: { color: '#cbd5e1' },
+              grid: { color: 'rgba(148, 163, 184, 0.12)' }
             },
             y: {
               ticks: {
                 color: '#cbd5e1',
                 callback: (val) => Number(val).toFixed(2)
-              }
+              },
+              grid: { color: 'rgba(148, 163, 184, 0.12)' }
             }
           }
         }
