@@ -95,8 +95,9 @@ class StructuralEngine:
         This does not change analytics; it provides decision-layer context so
         transient motion does not escalate into persistent instability.
         """
-        values = [float(v) for v in self.score_history]
-        if not values:
+        values_arr = np.asarray(list(self.score_history), dtype=float)
+        n = int(values_arr.size)
+        if n == 0:
             return {
                 "history_len": 0.0,
                 "rolling_mean": 0.0,
@@ -105,25 +106,27 @@ class StructuralEngine:
                 "consecutive_high": 0.0,
             }
 
-        window = values[-min(len(values), 12) :]
-        rolling_mean = float(np.mean(window)) if window else 0.0
-        rolling_std = float(np.std(window)) if window else 0.0
+        window = values_arr[-min(n, 12) :]
+        rolling_mean = float(np.mean(window)) if window.size else 0.0
+        rolling_std = float(np.std(window)) if window.size else 0.0
 
         consecutive_elevated = 0
         consecutive_high = 0
-        for v in reversed(values):
+        for i in range(n - 1, -1, -1):
+            v = float(values_arr[i])
             if v >= 1.5:
                 consecutive_elevated += 1
             else:
                 break
-        for v in reversed(values):
+        for i in range(n - 1, -1, -1):
+            v = float(values_arr[i])
             if v >= 2.5:
                 consecutive_high += 1
             else:
                 break
 
         return {
-            "history_len": float(len(values)),
+            "history_len": float(n),
             "rolling_mean": float(rolling_mean),
             "rolling_std": float(rolling_std),
             "consecutive_elevated": float(consecutive_elevated),
@@ -146,11 +149,13 @@ class StructuralEngine:
 
         return np.array(values, dtype=float)
 
-    def _get_recent_window(self) -> Optional[np.ndarray]:
-        if len(self.frames) < self.recent_window:
+    def _get_recent_window(self, frames_list: list[dict] | None = None) -> Optional[np.ndarray]:
+        """Use ``frames_list`` when available to avoid repeated ``list(deque)`` copies per step."""
+        fl = frames_list if frames_list is not None else list(self.frames)
+        if len(fl) < self.recent_window:
             return None
 
-        vectors = np.vstack([f["_vector"] for f in list(self.frames)[-self.recent_window:]])
+        vectors = np.stack([f["_vector"] for f in fl[-self.recent_window :]], axis=0)
         vectors = vectors[:: self.window_stride]
 
         if vectors.shape[0] < 2:
@@ -158,11 +163,12 @@ class StructuralEngine:
 
         return vectors
 
-    def _get_baseline_window(self) -> Optional[np.ndarray]:
-        if len(self.frames) < self.baseline_window:
+    def _get_baseline_window(self, frames_list: list[dict] | None = None) -> Optional[np.ndarray]:
+        fl = frames_list if frames_list is not None else list(self.frames)
+        if len(fl) < self.baseline_window:
             return None
 
-        vectors = np.vstack([f["_vector"] for f in list(self.frames)[: self.baseline_window]])
+        vectors = np.stack([f["_vector"] for f in fl[: self.baseline_window]], axis=0)
         vectors = vectors[:: self.window_stride]
 
         if vectors.shape[0] < 2:
@@ -170,22 +176,24 @@ class StructuralEngine:
 
         return vectors
 
-    def _get_recent_timestamps(self) -> Optional[list[float]]:
-        if len(self.frames) < self.recent_window:
+    def _get_recent_timestamps(self, frames_list: list[dict] | None = None) -> Optional[list[float]]:
+        fl = frames_list if frames_list is not None else list(self.frames)
+        if len(fl) < self.recent_window:
             return None
         ts_vals: list[float] = []
-        for f in list(self.frames)[-self.recent_window:]:
+        for f in fl[-self.recent_window :]:
             try:
                 ts_vals.append(float(f.get("timestamp")))
             except (TypeError, ValueError):
                 continue
         return ts_vals if len(ts_vals) >= 2 else None
 
-    def _get_baseline_timestamps(self) -> Optional[list[float]]:
-        if len(self.frames) < self.baseline_window:
+    def _get_baseline_timestamps(self, frames_list: list[dict] | None = None) -> Optional[list[float]]:
+        fl = frames_list if frames_list is not None else list(self.frames)
+        if len(fl) < self.baseline_window:
             return None
         ts_vals: list[float] = []
-        for f in list(self.frames)[: self.baseline_window]:
+        for f in fl[: self.baseline_window]:
             try:
                 ts_vals.append(float(f.get("timestamp")))
             except (TypeError, ValueError):
@@ -241,19 +249,28 @@ class StructuralEngine:
             "missing_sensor_count": 0,
         }
 
-        baseline_window = self._get_baseline_window()
-        recent_window = self._get_recent_window()
+        # Skip deque→list snapshot during warmup (saves O(n) per frame until windows fill).
+        if len(self.frames) < self.baseline_window or len(self.frames) < self.recent_window:
+            self.latest_result = result
+            return result
+
+        frames_list = list(self.frames)
+        baseline_window = self._get_baseline_window(frames_list)
+        recent_window = self._get_recent_window(frames_list)
 
         if baseline_window is None or recent_window is None:
             self.latest_result = result
             return result
 
+        ts_baseline = self._get_baseline_timestamps(frames_list)
+        ts_recent = self._get_recent_timestamps(frames_list)
+
         data_quality_report = compute_data_quality(
             baseline_window,
             recent_window,
             sensor_names=self.sensor_order,
-            timestamps_baseline=self._get_baseline_timestamps(),
-            timestamps_recent=self._get_recent_timestamps(),
+            timestamps_baseline=ts_baseline,
+            timestamps_recent=ts_recent,
         )
         result["data_quality"] = data_quality_report.to_dict()
         dq_summary = data_quality_summary(data_quality_report)
@@ -278,7 +295,6 @@ class StructuralEngine:
         warning = early_warning_metrics(np.nan_to_num(recent_window, nan=0.0))
 
         signature = build_regime_signature(recent_mean, recent_std)
-        assigned_regime = assign_regime(signature, self.regime_signatures)
         self.regime_signatures = update_regime_library(signature, self.regime_signatures)
         assigned_regime = assign_regime(signature, self.regime_signatures)
 
@@ -325,7 +341,7 @@ class StructuralEngine:
             self._stage_baseline_profile.corr_baseline = np.array(baseline_corr_used, dtype=float, copy=True)
             stage_structural_raw, _ = StructuralDriftStage.score(stage_features, self._stage_baseline_profile)
             stage_relational_raw, _ = RelationalInstabilityStage.score(stage_features, self._stage_baseline_profile)
-            temporal_raw, _ = TemporalCoherenceStage.score(self._get_recent_timestamps(), self._stage_baseline_profile)
+            temporal_raw, _ = TemporalCoherenceStage.score(ts_recent, self._stage_baseline_profile)
             # Preserve production sensitivity by keeping legacy drift geometry while
             # binding stage outputs into runtime diagnostics.
             drift_score = structural_drift(corr_recent, baseline_corr_used, norm="fro")
@@ -384,6 +400,7 @@ class StructuralEngine:
                 **dominant_mode_loading(corr_recent),
             }
 
+            entropy_score = float(interaction_entropy(corr_recent))
             raw_components = {
                 "drift": drift_score,
                 "relational_drift": relational_raw,
@@ -393,7 +410,7 @@ class StructuralEngine:
                     float(directional.get("divergence", 0.0)),
                     float(causal.get("causal_divergence", 0.0)),
                 ),
-                "entropy": interaction_entropy(corr_recent),
+                "entropy": entropy_score,
                 "subsystem_instability": float(subsystem["max_instability"]),
                 "temporal_distortion": temporal_raw,
             }
@@ -447,7 +464,7 @@ class StructuralEngine:
                     "causal_graph": causal_graph,
                     "subsystems": subsystem,
                     "spectral": spectral,
-                    "entropy": float(interaction_entropy(corr_recent)),
+                    "entropy": entropy_score,
                     "regime_drift": float(regime_drift),
                 }
             )
@@ -498,8 +515,9 @@ class StructuralEngine:
         # Metric disagreement: high std across components slightly reduces confidence.
         comp_vals = [float(components.get(k, 0.0)) for k in tier1_components if k in components]
         if comp_vals:
-            mean_c = sum(comp_vals) / len(comp_vals)
-            std_c = (sum((x - mean_c) ** 2 for x in comp_vals) / len(comp_vals)) ** 0.5
+            arr_c = np.asarray(comp_vals, dtype=float)
+            mean_c = float(np.mean(arr_c))
+            std_c = float(np.std(arr_c))
             disagreement = std_c / (mean_c + 1e-6)
             disagreement_factor = max(0.7, 1.0 - disagreement * 0.15)
         else:

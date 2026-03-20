@@ -28,6 +28,9 @@ class ResultStore:
 
     def _init_db(self) -> None:
         with self._conn() as conn:
+            # WAL + relaxed sync: fewer fsyncs, better read/write concurrency for API workloads.
+            conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute("PRAGMA synchronous=NORMAL")
             conn.execute(
                 """
                 CREATE TABLE IF NOT EXISTS events (
@@ -57,12 +60,65 @@ class ResultStore:
             conn.execute("DELETE FROM results")
 
     def save_result(self, result: dict[str, Any]) -> None:
-        logger.info("persistence write result db_path=%s", self.db_path)
+        logger.debug("persistence write result db_path=%s", self.db_path)
         with self._conn() as conn:
             conn.execute(
                 "INSERT INTO results (created_at, result_json) VALUES (?, ?)",
                 (_utc_now(), json.dumps(result)),
             )
+
+    def save_ingestion(self, payload: dict[str, Any], result: dict[str, Any]) -> None:
+        """Persist frame + result in a single transaction (half the connect/commit overhead)."""
+        logger.debug("persistence write ingestion db_path=%s", self.db_path)
+        now = _utc_now()
+        payload_json = json.dumps(payload)
+        result_json = json.dumps(result)
+        with self._conn() as conn:
+            conn.execute(
+                "INSERT INTO results (created_at, result_json) VALUES (?, ?)",
+                (now, result_json),
+            )
+            conn.execute(
+                """
+                INSERT INTO events (timestamp, site_id, asset_id, payload_json, result_timestamp)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (
+                    payload.get("timestamp", now),
+                    payload.get("site_id"),
+                    payload.get("asset_id"),
+                    payload_json,
+                    result.get("timestamp"),
+                ),
+            )
+
+    def save_ingestion_batch(self, pairs: list[tuple[dict[str, Any], dict[str, Any]]]) -> None:
+        """Batch CSV / multi-row ingest: one transaction for all rows."""
+        if not pairs:
+            return
+        logger.debug(
+            "persistence batch write count=%s db_path=%s", len(pairs), self.db_path
+        )
+        with self._conn() as conn:
+            for payload, result in pairs:
+                now = _utc_now()
+                conn.execute(
+                    "INSERT INTO results (created_at, result_json) VALUES (?, ?)",
+                    (now, json.dumps(result)),
+                )
+                conn.execute(
+                    """
+                    INSERT INTO events (timestamp, site_id, asset_id, payload_json, result_timestamp)
+                    VALUES (?, ?, ?, ?, ?)
+                    """,
+                    (
+                        payload.get("timestamp", now),
+                        payload.get("site_id"),
+                        payload.get("asset_id"),
+                        json.dumps(payload),
+                        result.get("timestamp"),
+                    ),
+                )
 
     def get_latest_result(self) -> dict[str, Any] | None:
         with self._conn() as conn:
@@ -74,7 +130,7 @@ class ResultStore:
         return json.loads(row["result_json"])
 
     def save_event(self, payload: dict[str, Any], result: dict[str, Any]) -> None:
-        logger.info("persistence write event db_path=%s", self.db_path)
+        logger.debug("persistence write event db_path=%s", self.db_path)
         with self._conn() as conn:
             conn.execute(
                 """
