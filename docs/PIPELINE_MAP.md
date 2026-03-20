@@ -14,6 +14,13 @@
 
 ---
 
+## Demo / Presentation Code Location
+
+- Demo and presentation code is kept under `examples/` (for example, `examples/demo/` and `examples/fd004/`).
+- Production/pilot execution remains confined to `neraium_core/` engine + service + API wiring.
+
+---
+
 ## Current data flow inside `process_frame`
 
 ```
