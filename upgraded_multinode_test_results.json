@@ -1,5 +1,5 @@
 {
-  "description": "Neraium SII comparative benchmark with node-specific nominal modeling and GAL-2 isolation.",
+  "description": "Neraium SII comparative benchmark: node-specific nominal modeling, GAL-2 isolation, and operational_stability_index computed from observed nominal-window behavior (no per-variant anchor hacks).",
   "nodes": [
     "A",
     "B",
@@ -29,30 +29,37 @@
   "gal2_api_configured": false,
   "gal2_time_url": "https://api-v2.gal-2.com/time",
   "gal2_used_for_disturbed_time": false,
+  "coherent_vs_disturbed_mean_operational_stability_gap": 0.01657995302647064,
   "metrics": [
     {
       "condition": "coherent_time",
-      "alert_precision": 0.4233128834,
+      "alert_precision": 0.3467336683,
       "alert_recall": 0.8625,
-      "baseline_stability_rate": 1.0,
-      "d_vs_b_localization_distance": 0.1504189417,
-      "stability_discriminability_across_nodes": 0.027658573,
+      "baseline_stability_rate": 0.93125,
+      "mean_operational_stability_index": 0.6811788435,
+      "cross_variant_operational_stability_spread": 0.0454610675,
+      "mean_false_positive_burden_nominal": 0.0796875,
+      "mean_regime_distance": 0.406220874,
+      "d_vs_b_localization_distance": 0.2307077625,
       "recall_A_control": 0.0,
       "recall_B_gal2": 0.0,
       "recall_C_raw": 0.8625,
-      "recall_D_combined": 1.0
+      "recall_D_combined": 0.9875
     },
     {
       "condition": "disturbed_time",
-      "alert_precision": 0.45625,
-      "alert_recall": 0.9125,
-      "baseline_stability_rate": 1.0,
-      "d_vs_b_localization_distance": 0.1162954458,
-      "stability_discriminability_across_nodes": 0.0260899028,
+      "alert_precision": 0.4378698225,
+      "alert_recall": 0.925,
+      "baseline_stability_rate": 0.9625,
+      "mean_operational_stability_index": 0.6977587965,
+      "cross_variant_operational_stability_spread": 0.0340547603,
+      "mean_false_positive_burden_nominal": 0.0265625,
+      "mean_regime_distance": 0.3903964073,
+      "d_vs_b_localization_distance": 0.190062,
       "recall_A_control": 0.0,
       "recall_B_gal2": 0.0,
-      "recall_C_raw": 0.9125,
-      "recall_D_combined": 0.9125
+      "recall_C_raw": 0.925,
+      "recall_D_combined": 0.975
     }
   ],
   "artifacts": {
