@@ -88,7 +88,8 @@ def build_frame(
     "site_id": site_id,
     "asset_id": asset_id,
     "signals": sensor_values,
-    "aligned": [],   # ✅ CORRECT PLACE
+    "aligned": [],  
+    "anomoly": False, # ✅ CORRECT PLACE
 }
 
 
