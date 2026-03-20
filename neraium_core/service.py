@@ -182,23 +182,32 @@ class StructuralMonitoringService:
         frame = normalize_rest_payload(payload)
         engine = self._engine_for_frame(frame)
         result = self._decorate_result(engine.process_frame(frame))
-        self.store.save_result(result)
-        self.store.save_event(frame, result)
+        self.store.save_ingestion(frame, result)
         return result
 
     def ingest_batch(self, payloads: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        return [self.ingest_payload(payload) for payload in payloads]
+        pairs: list[tuple[dict[str, Any], dict[str, Any]]] = []
+        results: list[dict[str, Any]] = []
+        for payload in payloads:
+            frame = normalize_rest_payload(payload)
+            engine = self._engine_for_frame(frame)
+            result = self._decorate_result(engine.process_frame(frame))
+            results.append(result)
+            pairs.append((frame, result))
+        self.store.save_ingestion_batch(pairs)
+        return results
 
     def ingest_csv(self, csv_text: str) -> list[dict[str, Any]]:
         frames = parse_csv_text(csv_text)
-        return [self._ingest_normalized(frame) for frame in frames]
-
-    def _ingest_normalized(self, frame: dict[str, Any]) -> dict[str, Any]:
-        engine = self._engine_for_frame(frame)
-        result = self._decorate_result(engine.process_frame(frame))
-        self.store.save_result(result)
-        self.store.save_event(frame, result)
-        return result
+        pairs: list[tuple[dict[str, Any], dict[str, Any]]] = []
+        results: list[dict[str, Any]] = []
+        for frame in frames:
+            engine = self._engine_for_frame(frame)
+            result = self._decorate_result(engine.process_frame(frame))
+            results.append(result)
+            pairs.append((frame, result))
+        self.store.save_ingestion_batch(pairs)
+        return results
 
     def get_latest_result(self) -> dict[str, Any] | None:
         return self.store.get_latest_result()
