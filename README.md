@@ -204,6 +204,37 @@ Environment variables:
 - `NERAIUM_API_KEY` (optional)  
 - `NERAIUM_DB_PATH` (optional, default: `neraium.db`)  
 
+### Pilot hardening mode (optional)
+
+For pilot deployments, enable stricter validation and a stable, traceable response schema **in addition to** existing fields:
+
+| Variable | Effect |
+|----------|--------|
+| `NERAIUM_PILOT_HARDENING=1` | Strict sensor typing in the pipeline; append pilot keys on each ingest result: `timestamp`, `signals`, `score`, `status`, `aligned`, `anomaly`. |
+| `NERAIUM_DEBUG_PILOT=1` | Extra structured logs (still redacted; no raw secrets). |
+| `NERAIUM_PILOT_CONFIG_PATH` | Optional JSON file with `drift_high_threshold` / `drift_watch_threshold` (operator heuristic). |
+| `NERAIUM_PILOT_DRIFT_HIGH_THRESHOLD` / `NERAIUM_PILOT_DRIFT_WATCH_THRESHOLD` | Env overrides for the same thresholds. |
+
+**Pilot field meanings (append-only):**
+
+- **`signals`**: normalized sensor map from the request (`float` or `null` for missing / NaN in pilot mode).  
+- **`score`**: `latest_instability` (composite instability used for decisions).  
+- **`status`**: same family as `action_state` (`STABLE` / `WATCH` / `ALERT`).  
+- **`aligned`**: `data_quality_summary.gate_passed` (input alignment / quality gate).  
+- **`anomaly`**: `true` when `status` is `WATCH` or `ALERT`.  
+
+**CLI (sample JSON → pilot schema JSON):**
+
+The runner sets `NERAIUM_PILOT_HARDENING=1` for you.
+
+```bash
+python examples/pilot/run_pilot.py --input examples/pilot/sample_payload.json
+```
+
+Example files: `examples/pilot/sample_payload.json`, `examples/pilot/sample_output.json`.
+
+**Known limitations:** timestamp parsing and windowing affect irregularity-style features; single-frame scores may be `0.0` until history fills baseline/recent windows.
+
 ---
 
 ## API consistency
