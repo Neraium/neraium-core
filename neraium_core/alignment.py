@@ -8,7 +8,11 @@ import numpy as np
 
 from neraium_core.causal import causal_metrics, granger_causality_matrix
 from neraium_core.causal_attribution import causal_attribution
-from neraium_core.causal_graph import causal_graph_metrics, causal_propagation_spread
+from neraium_core.causal_graph import (
+    causal_graph_metrics,
+    causal_propagation_spread,
+    causal_root_cause_chains,
+)
 from neraium_core.data_quality import (
     compute_data_quality,
     data_quality_summary,
@@ -393,6 +397,7 @@ class StructuralEngine:
             valid_sensor_names = [self.sensor_order[i] for i in range(len(valid_mask)) if valid_mask[i]]
             causal_prop = None
             dominant_causal_source = None
+            causal_chains = None
             if _env_enabled("NERAIUM_CAUSAL_INTELLIGENCE", default="1"):
                 try:
                     causal_prop = causal_propagation_spread(
@@ -408,6 +413,18 @@ class StructuralEngine:
                             dominant_causal_source = valid_sensor_names[top_idx]
                 except Exception:
                     causal_prop = None
+
+            if _env_enabled("NERAIUM_CAUSAL_ROOT_CAUSE_CHAINS", default="1"):
+                try:
+                    causal_chains = causal_root_cause_chains(
+                        causal_matrix,
+                        valid_sensor_names,
+                        threshold=0.1,
+                        max_depth=3,
+                        chain_count=2,
+                    )
+                except Exception:
+                    causal_chains = None
             attr = causal_attribution(
                 baseline_corr_used,
                 corr_recent,
@@ -419,6 +436,16 @@ class StructuralEngine:
             result["dominant_driver"] = attr["top_drivers"][0] if attr["top_drivers"] else None
             if dominant_causal_source is not None:
                 result["dominant_causal_source"] = dominant_causal_source
+            if causal_chains:
+                result["causal_root_cause_chains"] = causal_chains
+                analytics["causal_root_cause_chains"] = causal_chains
+                try:
+                    best = max(causal_chains, key=lambda x: float(x.get("chain_score", 0.0)))
+                    chain_nodes = best.get("chain_nodes") if isinstance(best, dict) else None
+                    if isinstance(chain_nodes, list) and chain_nodes:
+                        result["root_cause_narrative"] = " -> ".join([str(n) for n in chain_nodes])
+                except Exception:
+                    pass
 
             subsystem = subsystem_spectral_measures(corr_recent)
 
@@ -491,6 +518,7 @@ class StructuralEngine:
                     "causal": causal,
                     "causal_graph": causal_graph,
                     "causal_propagation": causal_prop,
+                    "causal_root_cause_chains": causal_chains,
                     "subsystems": subsystem,
                     "spectral": spectral,
                     "entropy": entropy_score,
@@ -554,6 +582,30 @@ class StructuralEngine:
 
         stabilized_confidence = evidence_conf * (0.6 + 0.4 * classification_stability) * disagreement_factor
         stabilized_confidence = max(0.0, min(1.0, stabilized_confidence))
+
+        # Surface an uncertainty block for operator trust.
+        # This is intended to answer: "how sure are we" + "what limited the evidence".
+        uncertainty: dict[str, object] = {
+            "confidence_score": round(float(stabilized_confidence), 4),
+            "evidence_confidence": round(float(evidence_conf), 4),
+            "gate_passed": bool(data_quality_report.gate_passed),
+            "data_quality_summary": dict(dq_summary),
+            "classification_stability": round(float(classification_stability), 4),
+            "what_could_change": [],
+        }
+
+        try:
+            missing_count = int(dq_summary.get("missing_sensor_count", 0))
+            if missing_count > 0:
+                uncertainty["what_could_change"].append(
+                    "Reducing missing/flatlined sensors can increase evidence quality."
+                )
+            if not bool(dq_summary.get("gate_passed", True)):
+                uncertainty["what_could_change"].append(
+                    "Improving telemetry reliability to pass the data-quality gate can raise confidence."
+                )
+        except Exception:
+            pass
 
         # Regime baseline confidence depends on how much history exists for the
         # assigned regime. If we don't yet have baseline correlation samples,
@@ -665,6 +717,8 @@ class StructuralEngine:
             classification_stability=classification_stability,
         )
         result.update(decision)
+
+        result["uncertainty"] = uncertainty
         stage_interpreted = DecisionStage.interpreted_state(
             structural=float(components.get("drift", 0.0)),
             relational=float(components.get("relational_drift", 0.0)),

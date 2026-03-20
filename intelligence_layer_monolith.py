@@ -732,6 +732,99 @@ def causal_graph_metrics(C: np.ndarray, threshold: float = 0.1) -> dict[str, flo
     }
 
 
+def causal_root_cause_chains(
+    C: np.ndarray,
+    sensor_names: list[str],
+    *,
+    threshold: float = 0.1,
+    max_depth: int = 3,
+    chain_count: int = 2,
+) -> list[dict[str, object]]:
+    """
+    Build propagation-like root-cause chains from an observational causal matrix.
+
+    This is a *proxy narrative* over the Granger-style causal weights:
+    - Directed edge i->j exists when |C[i,j]| >= threshold
+    - Starting nodes are chosen by outbound strength
+    - Each next hop is the strongest outgoing neighbor from the current node
+
+    Returns a list of chains with node names and edge weights for explanation.
+    """
+    if C is None:
+        return []
+
+    C = np.asarray(C, dtype=float)
+    if C.ndim != 2 or C.shape[0] != C.shape[1] or C.size == 0:
+        return []
+
+    n = C.shape[0]
+    if n < 2:
+        return []
+
+    if len(sensor_names) < n:
+        # Fall back to generic node labels.
+        names = [sensor_names[i] if i < len(sensor_names) else f"node_{i}" for i in range(n)]
+    else:
+        names = sensor_names[:n]
+
+    max_depth = max(1, int(max_depth))
+    chain_count = max(1, int(chain_count))
+
+    absC = np.abs(C)
+    # Outbound strength for starting nodes.
+    outbound = np.sum(absC, axis=1)
+    start_order = np.argsort(-outbound)[: min(chain_count, n)]
+
+    # Build thresholded boolean reachability / allowed edges.
+    allowed = absC >= float(threshold)
+    np.fill_diagonal(allowed, False)
+
+    chains: list[dict[str, object]] = []
+    for s in start_order:
+        chain_nodes: list[str] = [names[int(s)]]
+        chain_edges: list[dict[str, object]] = []
+
+        current = int(s)
+        visited = {current}
+        for _ in range(max_depth - 1):
+            # Candidates: allowed outgoing edges not already in chain.
+            cand_mask = allowed[current, :].copy()
+            if visited:
+                for v in visited:
+                    cand_mask[v] = False
+            if not bool(np.any(cand_mask)):
+                break
+
+            cand_idx = np.where(cand_mask)[0]
+            # Choose strongest outgoing edge.
+            next_i = int(cand_idx[int(np.argmax(absC[current, cand_idx]))])
+            w = float(absC[current, next_i])
+
+            chain_edges.append(
+                {
+                    "src": names[current],
+                    "dst": names[next_i],
+                    "edge_weight_abs": w,
+                }
+            )
+            chain_nodes.append(names[next_i])
+            visited.add(next_i)
+            current = next_i
+
+        chain_score = float(np.mean([float(e["edge_weight_abs"]) for e in chain_edges])) if chain_edges else 0.0
+        chains.append(
+            {
+                "chain_nodes": chain_nodes,
+                "chain_edges": chain_edges,
+                "chain_score": chain_score,
+            }
+        )
+
+    # Sort by chain_score desc and return top chain_count
+    chains.sort(key=lambda x: float(x.get("chain_score", 0.0)), reverse=True)
+    return chains[:chain_count]
+
+
 def causal_propagation_spread(
     C: np.ndarray,
     *,
@@ -806,7 +899,7 @@ def causal_propagation_spread(
     }
 
 
-__all__ = ["causal_graph_metrics", "causal_propagation_spread"]
+__all__ = ["causal_graph_metrics", "causal_propagation_spread", "causal_root_cause_chains"]
 
 
 
@@ -1396,17 +1489,59 @@ def _response_recommendations(
     """
     Operator-facing recommendations only (no control authority / no actuation).
     """
+    def risk_score(level: str) -> float:
+        # Map risk_level categories to a conservative [0,1] "escalation urgency" score.
+        mapping = {"HIGH": 0.95, "ELEVATED": 0.75, "MODERATE": 0.45, "LOW": 0.15}
+        return float(mapping.get(level, 0.3))
+
+    def action_cost_tier(action_type: str) -> float:
+        # Non-monetary cost tier in [0,1]: higher means more operational overhead.
+        cost_map = {
+            "maintenance_scheduling": 0.55,
+            "failover_routing_planning": 0.45,
+            "load_redistribution_planning": 0.40,
+            "configuration_sanity_check": 0.20,
+            "sensor_calibration_verify": 0.25,
+            "throttling_consideration": 0.15,
+            "increase_monitoring_cadence": 0.08,
+            "urgent_readiness_check": 0.05,
+            "human_approval_required": 0.00,
+            "continue_observation": 0.00,
+        }
+        return float(cost_map.get(action_type, 0.20))
+
+    def time_impact_tier(action_type: str) -> float:
+        # Time impact tier in [0,1], higher means longer lead-time.
+        t_map = {
+            "maintenance_scheduling": 0.70,
+            "failover_routing_planning": 0.55,
+            "load_redistribution_planning": 0.50,
+            "configuration_sanity_check": 0.15,
+            "sensor_calibration_verify": 0.35,
+            "throttling_consideration": 0.20,
+            "increase_monitoring_cadence": 0.10,
+            "urgent_readiness_check": 0.05,
+            "human_approval_required": 0.00,
+            "continue_observation": 0.00,
+        }
+        return float(t_map.get(action_type, 0.25))
+
     actions: list[dict[str, Any]] = []
 
     horizon_urgent = time_to_instability is not None and time_to_instability <= 12.0
 
     # Core, structurally grounded suggestions mapped to typical control-system themes.
+    base_risk = risk_score(risk_level)
     if state == "STRUCTURAL_INSTABILITY_OBSERVED":
         actions.append(
             {
                 "action_type": "maintenance_scheduling",
                 "integration_trigger": "SCHEDULE_MAINTENANCE",
                 "rationale": "Observed multi-indicator structural instability suggests risk of near-term transition.",
+                "rank_hint": 1,
+                "risk": base_risk,
+                "cost_tier": action_cost_tier("maintenance_scheduling"),
+                "time_impact_tier": time_impact_tier("maintenance_scheduling"),
             }
         )
         actions.append(
@@ -1414,6 +1549,10 @@ def _response_recommendations(
                 "action_type": "failover_routing_planning",
                 "integration_trigger": "FAILOVER_ROUTING_PREP",
                 "rationale": "Prepare routing safeguards for coordination loss across infrastructure signals.",
+                "rank_hint": 2,
+                "risk": base_risk,
+                "cost_tier": action_cost_tier("failover_routing_planning"),
+                "time_impact_tier": time_impact_tier("failover_routing_planning"),
             }
         )
         actions.append(
@@ -1421,6 +1560,10 @@ def _response_recommendations(
                 "action_type": "configuration_sanity_check",
                 "integration_trigger": "VERIFY_CONTROL_SETPOINTS",
                 "rationale": "Structural regime divergence can be amplified by recent configuration changes.",
+                "rank_hint": 3,
+                "risk": base_risk * 0.8,
+                "cost_tier": action_cost_tier("configuration_sanity_check"),
+                "time_impact_tier": time_impact_tier("configuration_sanity_check"),
             }
         )
     elif state == "COUPLING_INSTABILITY_OBSERVED":
@@ -1429,6 +1572,10 @@ def _response_recommendations(
                 "action_type": "throttling_consideration",
                 "integration_trigger": "THROTTLING_PREP",
                 "rationale": "Coupling/directional breakdown implies higher coordination volatility; reduce stress until stable.",
+                "rank_hint": 1,
+                "risk": base_risk * 0.9,
+                "cost_tier": action_cost_tier("throttling_consideration"),
+                "time_impact_tier": time_impact_tier("throttling_consideration"),
             }
         )
         actions.append(
@@ -1436,6 +1583,10 @@ def _response_recommendations(
                 "action_type": "load_redistribution_planning",
                 "integration_trigger": "LOAD_REDISTRIBUTION_PREP",
                 "rationale": "Propagation-aware causal proxy suggests some signals can dominate system motion.",
+                "rank_hint": 2,
+                "risk": base_risk * 0.85,
+                "cost_tier": action_cost_tier("load_redistribution_planning"),
+                "time_impact_tier": time_impact_tier("load_redistribution_planning"),
             }
         )
     elif state == "REGIME_SHIFT_OBSERVED":
@@ -1444,6 +1595,10 @@ def _response_recommendations(
                 "action_type": "sensor_calibration_verify",
                 "integration_trigger": "VERIFY_SENSOR_CALIBRATION",
                 "rationale": "A regime shift may reflect operational reconfiguration or instrumentation change; verify both.",
+                "rank_hint": 1,
+                "risk": base_risk * 0.7,
+                "cost_tier": action_cost_tier("sensor_calibration_verify"),
+                "time_impact_tier": time_impact_tier("sensor_calibration_verify"),
             }
         )
         actions.append(
@@ -1451,6 +1606,10 @@ def _response_recommendations(
                 "action_type": "increase_monitoring_cadence",
                 "integration_trigger": "ALERTING_CADENCE_UP",
                 "rationale": "Regime transitions benefit from faster operator review windows.",
+                "rank_hint": 2,
+                "risk": base_risk * 0.55,
+                "cost_tier": action_cost_tier("increase_monitoring_cadence"),
+                "time_impact_tier": time_impact_tier("increase_monitoring_cadence"),
             }
         )
     else:
@@ -1459,6 +1618,10 @@ def _response_recommendations(
                 "action_type": "continue_observation",
                 "integration_trigger": "NO_ACTUATION",
                 "rationale": "System state is consistent with baseline under current analysis.",
+                "rank_hint": 1,
+                "risk": base_risk * 0.2,
+                "cost_tier": action_cost_tier("continue_observation"),
+                "time_impact_tier": time_impact_tier("continue_observation"),
             }
         )
 
@@ -1469,6 +1632,10 @@ def _response_recommendations(
                 "action_type": "urgent_readiness_check",
                 "integration_trigger": "HUMAN_APPROVAL_REQUIRED",
                 "rationale": f"Projected time-to-threshold is short (~{round(time_to_instability, 1)} time units). Escalate readiness.",
+                "rank_hint": 0,
+                "risk": min(1.0, base_risk * 1.05),
+                "cost_tier": action_cost_tier("urgent_readiness_check"),
+                "time_impact_tier": time_impact_tier("urgent_readiness_check"),
             }
         )
 
@@ -1478,8 +1645,21 @@ def _response_recommendations(
             "action_type": "human_approval_required",
             "integration_trigger": "OPERATOR_REVIEW_ONLY",
             "rationale": "Neraium emits recommendations as decision-support; no automated actuation is executed from this layer.",
+            "rank_hint": 999,
+            "risk": 0.0,
+            "cost_tier": action_cost_tier("human_approval_required"),
+            "time_impact_tier": time_impact_tier("human_approval_required"),
         }
     )
+
+    # Rank by rank_hint if present; stable tie-break by original order.
+    for i, a in enumerate(actions):
+        if "rank_hint" not in a:
+            a["rank_hint"] = 100 + i
+    actions.sort(key=lambda a: (float(a.get("rank_hint", 100.0)),))
+    for rank, a in enumerate(actions, start=1):
+        a["rank"] = rank
+        a.pop("rank_hint", None)
 
     return actions
 
@@ -2588,6 +2768,7 @@ class StructuralEngine:
             valid_sensor_names = [self.sensor_order[i] for i in range(len(valid_mask)) if valid_mask[i]]
             causal_prop = None
             dominant_causal_source = None
+            causal_chains = None
             if _env_enabled("NERAIUM_CAUSAL_INTELLIGENCE", default="1"):
                 try:
                     causal_prop = causal_propagation_spread(
@@ -2603,6 +2784,18 @@ class StructuralEngine:
                             dominant_causal_source = valid_sensor_names[top_idx]
                 except Exception:
                     causal_prop = None
+
+            if _env_enabled("NERAIUM_CAUSAL_ROOT_CAUSE_CHAINS", default="1"):
+                try:
+                    causal_chains = causal_root_cause_chains(
+                        causal_matrix,
+                        valid_sensor_names,
+                        threshold=0.1,
+                        max_depth=3,
+                        chain_count=2,
+                    )
+                except Exception:
+                    causal_chains = None
             attr = causal_attribution(
                 baseline_corr_used,
                 corr_recent,
@@ -2614,6 +2807,16 @@ class StructuralEngine:
             result["dominant_driver"] = attr["top_drivers"][0] if attr["top_drivers"] else None
             if dominant_causal_source is not None:
                 result["dominant_causal_source"] = dominant_causal_source
+            if causal_chains:
+                result["causal_root_cause_chains"] = causal_chains
+                analytics["causal_root_cause_chains"] = causal_chains
+                try:
+                    best = max(causal_chains, key=lambda x: float(x.get("chain_score", 0.0)))
+                    chain_nodes = best.get("chain_nodes") if isinstance(best, dict) else None
+                    if isinstance(chain_nodes, list) and chain_nodes:
+                        result["root_cause_narrative"] = " -> ".join([str(n) for n in chain_nodes])
+                except Exception:
+                    pass
 
             subsystem = subsystem_spectral_measures(corr_recent)
 
@@ -2686,6 +2889,7 @@ class StructuralEngine:
                     "causal": causal,
                     "causal_graph": causal_graph,
                     "causal_propagation": causal_prop,
+                    "causal_root_cause_chains": causal_chains,
                     "subsystems": subsystem,
                     "spectral": spectral,
                     "entropy": entropy_score,
@@ -2749,6 +2953,30 @@ class StructuralEngine:
 
         stabilized_confidence = evidence_conf * (0.6 + 0.4 * classification_stability) * disagreement_factor
         stabilized_confidence = max(0.0, min(1.0, stabilized_confidence))
+
+        # Surface an uncertainty block for operator trust.
+        # This is intended to answer: "how sure are we" + "what limited the evidence".
+        uncertainty: dict[str, object] = {
+            "confidence_score": round(float(stabilized_confidence), 4),
+            "evidence_confidence": round(float(evidence_conf), 4),
+            "gate_passed": bool(data_quality_report.gate_passed),
+            "data_quality_summary": dict(dq_summary),
+            "classification_stability": round(float(classification_stability), 4),
+            "what_could_change": [],
+        }
+
+        try:
+            missing_count = int(dq_summary.get("missing_sensor_count", 0))
+            if missing_count > 0:
+                uncertainty["what_could_change"].append(
+                    "Reducing missing/flatlined sensors can increase evidence quality."
+                )
+            if not bool(dq_summary.get("gate_passed", True)):
+                uncertainty["what_could_change"].append(
+                    "Improving telemetry reliability to pass the data-quality gate can raise confidence."
+                )
+        except Exception:
+            pass
 
         # Regime baseline confidence depends on how much history exists for the
         # assigned regime. If we don't yet have baseline correlation samples,
@@ -2860,6 +3088,8 @@ class StructuralEngine:
             classification_stability=classification_stability,
         )
         result.update(decision)
+
+        result["uncertainty"] = uncertainty
         stage_interpreted = DecisionStage.interpreted_state(
             structural=float(components.get("drift", 0.0)),
             relational=float(components.get("relational_drift", 0.0)),

@@ -72,17 +72,59 @@ def _response_recommendations(
     """
     Operator-facing recommendations only (no control authority / no actuation).
     """
+    def risk_score(level: str) -> float:
+        # Map risk_level categories to a conservative [0,1] "escalation urgency" score.
+        mapping = {"HIGH": 0.95, "ELEVATED": 0.75, "MODERATE": 0.45, "LOW": 0.15}
+        return float(mapping.get(level, 0.3))
+
+    def action_cost_tier(action_type: str) -> float:
+        # Non-monetary cost tier in [0,1]: higher means more operational overhead.
+        cost_map = {
+            "maintenance_scheduling": 0.55,
+            "failover_routing_planning": 0.45,
+            "load_redistribution_planning": 0.40,
+            "configuration_sanity_check": 0.20,
+            "sensor_calibration_verify": 0.25,
+            "throttling_consideration": 0.15,
+            "increase_monitoring_cadence": 0.08,
+            "urgent_readiness_check": 0.05,
+            "human_approval_required": 0.00,
+            "continue_observation": 0.00,
+        }
+        return float(cost_map.get(action_type, 0.20))
+
+    def time_impact_tier(action_type: str) -> float:
+        # Time impact tier in [0,1], higher means longer lead-time.
+        t_map = {
+            "maintenance_scheduling": 0.70,
+            "failover_routing_planning": 0.55,
+            "load_redistribution_planning": 0.50,
+            "configuration_sanity_check": 0.15,
+            "sensor_calibration_verify": 0.35,
+            "throttling_consideration": 0.20,
+            "increase_monitoring_cadence": 0.10,
+            "urgent_readiness_check": 0.05,
+            "human_approval_required": 0.00,
+            "continue_observation": 0.00,
+        }
+        return float(t_map.get(action_type, 0.25))
+
     actions: list[dict[str, Any]] = []
 
     horizon_urgent = time_to_instability is not None and time_to_instability <= 12.0
 
     # Core, structurally grounded suggestions mapped to typical control-system themes.
+    base_risk = risk_score(risk_level)
     if state == "STRUCTURAL_INSTABILITY_OBSERVED":
         actions.append(
             {
                 "action_type": "maintenance_scheduling",
                 "integration_trigger": "SCHEDULE_MAINTENANCE",
                 "rationale": "Observed multi-indicator structural instability suggests risk of near-term transition.",
+                "rank_hint": 1,
+                "risk": base_risk,
+                "cost_tier": action_cost_tier("maintenance_scheduling"),
+                "time_impact_tier": time_impact_tier("maintenance_scheduling"),
             }
         )
         actions.append(
@@ -90,6 +132,10 @@ def _response_recommendations(
                 "action_type": "failover_routing_planning",
                 "integration_trigger": "FAILOVER_ROUTING_PREP",
                 "rationale": "Prepare routing safeguards for coordination loss across infrastructure signals.",
+                "rank_hint": 2,
+                "risk": base_risk,
+                "cost_tier": action_cost_tier("failover_routing_planning"),
+                "time_impact_tier": time_impact_tier("failover_routing_planning"),
             }
         )
         actions.append(
@@ -97,6 +143,10 @@ def _response_recommendations(
                 "action_type": "configuration_sanity_check",
                 "integration_trigger": "VERIFY_CONTROL_SETPOINTS",
                 "rationale": "Structural regime divergence can be amplified by recent configuration changes.",
+                "rank_hint": 3,
+                "risk": base_risk * 0.8,
+                "cost_tier": action_cost_tier("configuration_sanity_check"),
+                "time_impact_tier": time_impact_tier("configuration_sanity_check"),
             }
         )
     elif state == "COUPLING_INSTABILITY_OBSERVED":
@@ -105,6 +155,10 @@ def _response_recommendations(
                 "action_type": "throttling_consideration",
                 "integration_trigger": "THROTTLING_PREP",
                 "rationale": "Coupling/directional breakdown implies higher coordination volatility; reduce stress until stable.",
+                "rank_hint": 1,
+                "risk": base_risk * 0.9,
+                "cost_tier": action_cost_tier("throttling_consideration"),
+                "time_impact_tier": time_impact_tier("throttling_consideration"),
             }
         )
         actions.append(
@@ -112,6 +166,10 @@ def _response_recommendations(
                 "action_type": "load_redistribution_planning",
                 "integration_trigger": "LOAD_REDISTRIBUTION_PREP",
                 "rationale": "Propagation-aware causal proxy suggests some signals can dominate system motion.",
+                "rank_hint": 2,
+                "risk": base_risk * 0.85,
+                "cost_tier": action_cost_tier("load_redistribution_planning"),
+                "time_impact_tier": time_impact_tier("load_redistribution_planning"),
             }
         )
     elif state == "REGIME_SHIFT_OBSERVED":
@@ -120,6 +178,10 @@ def _response_recommendations(
                 "action_type": "sensor_calibration_verify",
                 "integration_trigger": "VERIFY_SENSOR_CALIBRATION",
                 "rationale": "A regime shift may reflect operational reconfiguration or instrumentation change; verify both.",
+                "rank_hint": 1,
+                "risk": base_risk * 0.7,
+                "cost_tier": action_cost_tier("sensor_calibration_verify"),
+                "time_impact_tier": time_impact_tier("sensor_calibration_verify"),
             }
         )
         actions.append(
@@ -127,6 +189,10 @@ def _response_recommendations(
                 "action_type": "increase_monitoring_cadence",
                 "integration_trigger": "ALERTING_CADENCE_UP",
                 "rationale": "Regime transitions benefit from faster operator review windows.",
+                "rank_hint": 2,
+                "risk": base_risk * 0.55,
+                "cost_tier": action_cost_tier("increase_monitoring_cadence"),
+                "time_impact_tier": time_impact_tier("increase_monitoring_cadence"),
             }
         )
     else:
@@ -135,6 +201,10 @@ def _response_recommendations(
                 "action_type": "continue_observation",
                 "integration_trigger": "NO_ACTUATION",
                 "rationale": "System state is consistent with baseline under current analysis.",
+                "rank_hint": 1,
+                "risk": base_risk * 0.2,
+                "cost_tier": action_cost_tier("continue_observation"),
+                "time_impact_tier": time_impact_tier("continue_observation"),
             }
         )
 
@@ -145,6 +215,10 @@ def _response_recommendations(
                 "action_type": "urgent_readiness_check",
                 "integration_trigger": "HUMAN_APPROVAL_REQUIRED",
                 "rationale": f"Projected time-to-threshold is short (~{round(time_to_instability, 1)} time units). Escalate readiness.",
+                "rank_hint": 0,
+                "risk": min(1.0, base_risk * 1.05),
+                "cost_tier": action_cost_tier("urgent_readiness_check"),
+                "time_impact_tier": time_impact_tier("urgent_readiness_check"),
             }
         )
 
@@ -154,8 +228,21 @@ def _response_recommendations(
             "action_type": "human_approval_required",
             "integration_trigger": "OPERATOR_REVIEW_ONLY",
             "rationale": "Neraium emits recommendations as decision-support; no automated actuation is executed from this layer.",
+            "rank_hint": 999,
+            "risk": 0.0,
+            "cost_tier": action_cost_tier("human_approval_required"),
+            "time_impact_tier": time_impact_tier("human_approval_required"),
         }
     )
+
+    # Rank by rank_hint if present; stable tie-break by original order.
+    for i, a in enumerate(actions):
+        if "rank_hint" not in a:
+            a["rank_hint"] = 100 + i
+    actions.sort(key=lambda a: (float(a.get("rank_hint", 100.0)),))
+    for rank, a in enumerate(actions, start=1):
+        a["rank"] = rank
+        a.pop("rank_hint", None)
 
     return actions
 
