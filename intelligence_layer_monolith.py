@@ -1949,6 +1949,61 @@ class DecisionStage:
             return "WATCH"
         return "STABLE"
 
+    @staticmethod
+    def adjusted_instability(instability: float, confidence: float, localization: float) -> float:
+        """Same inner product as state_from_score (instability × loc_gate × conf_gate), exposed for calibration."""
+        loc_gate = 0.40 + 0.60 * float(localization)
+        conf_gate = 0.55 + 0.45 * float(confidence)
+        return float(max(0.0, float(instability) * loc_gate * conf_gate))
+
+
+# Minimum baseline samples before switching from global DecisionStage to per-node quantile triage.
+MIN_BASELINE_SAMPLES_FOR_CALIBRATION = 28
+
+
+def decision_adjusted_score(instability: float, confidence: float, localization: float) -> float:
+    """Alias for DecisionStage.adjusted_instability — benchmark / diagnostics naming."""
+    return DecisionStage.adjusted_instability(instability, confidence, localization)
+
+
+def state_from_node_quantiles(dec_adj: float, watch_thr: float, alert_thr: float) -> str:
+    """Data-driven triage from a node's own baseline score distribution (no shared global cut)."""
+    if dec_adj < watch_thr:
+        return "STABLE"
+    if dec_adj < alert_thr:
+        return "WATCH"
+    return "ALERT"
+
+
+def decide_state_with_calibration(
+    *,
+    phase: str,
+    adj: float,
+    confidence: float,
+    localization: float,
+    dec_adj: float,
+    baseline_dec_adj_prior: list[float],
+    frozen_watch_alert: tuple[float, float] | None,
+) -> tuple[str, str]:
+    """
+    Returns (state, decision_mode).
+
+    After burn-in, baseline uses quantiles of *this node's prior* adjusted scores; after baseline,
+    perturbation/recovery use frozen quantiles from the full baseline window for that node so
+    variant-specific score paths produce variant-specific stability statistics.
+    """
+    if phase == "baseline":
+        if len(baseline_dec_adj_prior) < MIN_BASELINE_SAMPLES_FOR_CALIBRATION:
+            return DecisionStage.state_from_score(adj, confidence, localization), "global_fallback"
+        arr = np.asarray(baseline_dec_adj_prior, dtype=float)
+        w_thr = float(np.percentile(arr, 82.0))
+        a_thr = float(np.percentile(arr, 93.5))
+        return state_from_node_quantiles(dec_adj, w_thr, a_thr), "online_baseline_quantile"
+    if frozen_watch_alert is not None:
+        w_thr, a_thr = frozen_watch_alert
+        return state_from_node_quantiles(dec_adj, w_thr, a_thr), "frozen_post_baseline_quantile"
+    return DecisionStage.state_from_score(adj, confidence, localization), "global_fallback"
+
 
 class AttributionStage:
     @staticmethod
