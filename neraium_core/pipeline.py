@@ -77,17 +77,20 @@ def build_frame(
     site_id: Any,
     asset_id: Any,
     sensor_values: Dict[Any, Any],
+    
+    
 ) -> Dict[str, Any]:
     if not isinstance(sensor_values, dict):
         raise ValueError("sensor_values must be an object")
 
     frame: Dict[str, Any] = {
-        "timestamp": normalize_timestamp(timestamp),
-        "site_id": normalize_identifier(site_id, DEFAULT_SITE_ID),
-        "asset_id": normalize_identifier(asset_id, DEFAULT_ASSET_ID),
-        "sensor_values": {},
-        "sensor_quality": {},
-    }
+    "timestamp": normalize_timestamp(timestamp),
+    "site_id": site_id,
+    "asset_id": asset_id,
+    "signals": sensor_values,
+    "aligned": [],   # ✅ CORRECT PLACE
+}
+
 
     for raw_key, raw_value in sensor_values.items():
         sensor_name = normalize_sensor_name(raw_key)
