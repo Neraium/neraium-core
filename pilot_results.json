@@ -1210,5 +1210,245 @@
     "state": "ALERT",
     "interpreted_state": "COHERENCE_UNDER_CONSTRAINT",
     "score": 1.5125
+  },
+  {
+    "timestep": 100,
+    "signals": {
+      "s1": 12.848377,
+      "s2": 14.702539,
+      "s3": 8.615902,
+      "s4": 9.5
+    },
+    "state": "ALERT",
+    "interpreted_state": "COHERENCE_UNDER_CONSTRAINT",
+    "score": 1.3548
+  },
+  {
+    "timestep": 101,
+    "signals": {
+      "s1": 12.439183,
+      "s2": 13.525486,
+      "s3": 6.099819,
+      "s4": 9.5
+    },
+    "state": "ALERT",
+    "interpreted_state": "COHERENCE_UNDER_CONSTRAINT",
+    "score": 1.4626
+  },
+  {
+    "timestep": 102,
+    "signals": {
+      "s1": 12.745418,
+      "s2": 12.114714,
+      "s3": 7.173526,
+      "s4": 9.5
+    },
+    "state": "ALERT",
+    "interpreted_state": "COHERENCE_UNDER_CONSTRAINT",
+    "score": 1.5069
+  },
+  {
+    "timestep": 103,
+    "signals": {
+      "s1": 13.079746,
+      "s2": 15.20139,
+      "s3": 8.730969,
+      "s4": 9.5
+    },
+    "state": "ALERT",
+    "interpreted_state": "COHERENCE_UNDER_CONSTRAINT",
+    "score": 1.4133
+  },
+  {
+    "timestep": 104,
+    "signals": {
+      "s1": 9.319144,
+      "s2": 13.892875,
+      "s3": 4.241989,
+      "s4": 9.5
+    },
+    "state": "WATCH",
+    "interpreted_state": "COHERENCE_UNDER_CONSTRAINT",
+    "score": 1.438
+  },
+  {
+    "timestep": 105,
+    "signals": {
+      "s1": 13.71572,
+      "s2": 15.020054,
+      "s3": 4.951604,
+      "s4": 9.5
+    },
+    "state": "WATCH",
+    "interpreted_state": "COHERENCE_UNDER_CONSTRAINT",
+    "score": 1.4092
+  },
+  {
+    "timestep": 106,
+    "signals": {
+      "s1": 11.725895,
+      "s2": 12.053504,
+      "s3": 4.99329,
+      "s4": 9.5
+    },
+    "state": "WATCH",
+    "interpreted_state": "COHERENCE_UNDER_CONSTRAINT",
+    "score": 1.4374
+  },
+  {
+    "timestep": 107,
+    "signals": {
+      "s1": 13.377437,
+      "s2": 14.974018,
+      "s3": 2.563066,
+      "s4": 9.5
+    },
+    "state": "WATCH",
+    "interpreted_state": "COHERENCE_UNDER_CONSTRAINT",
+    "score": 1.3865
+  },
+  {
+    "timestep": 108,
+    "signals": {
+      "s1": 11.940847,
+      "s2": 14.662224,
+      "s3": 8.424315,
+      "s4": 9.5
+    },
+    "state": "WATCH",
+    "interpreted_state": "COHERENCE_UNDER_CONSTRAINT",
+    "score": 1.3031
+  },
+  {
+    "timestep": 109,
+    "signals": {
+      "s1": 11.092455,
+      "s2": 14.94545,
+      "s3": 3.627608,
+      "s4": 9.5
+    },
+    "state": "WATCH",
+    "interpreted_state": "COHERENCE_UNDER_CONSTRAINT",
+    "score": 1.3216
+  },
+  {
+    "timestep": 110,
+    "signals": {
+      "s1": 12.515699,
+      "s2": 15.354534,
+      "s3": 5.143585,
+      "s4": 9.5
+    },
+    "state": "WATCH",
+    "interpreted_state": "COHERENCE_UNDER_CONSTRAINT",
+    "score": 1.3405
+  },
+  {
+    "timestep": 111,
+    "signals": {
+      "s1": 13.57586,
+      "s2": 14.372605,
+      "s3": 6.351601,
+      "s4": 9.5
+    },
+    "state": "WATCH",
+    "interpreted_state": "COHERENCE_UNDER_CONSTRAINT",
+    "score": 1.2154
+  },
+  {
+    "timestep": 112,
+    "signals": {
+      "s1": 10.951317,
+      "s2": 13.763954,
+      "s3": 5.771216,
+      "s4": 9.5
+    },
+    "state": "WATCH",
+    "interpreted_state": "COHERENCE_UNDER_CONSTRAINT",
+    "score": 1.2311
+  },
+  {
+    "timestep": 113,
+    "signals": {
+      "s1": 13.639754,
+      "s2": 12.306342,
+      "s3": 5.812486,
+      "s4": 9.5
+    },
+    "state": "WATCH",
+    "interpreted_state": "REGIME_SHIFT_OBSERVED",
+    "score": 1.1845
+  },
+  {
+    "timestep": 114,
+    "signals": {
+      "s1": 11.278976,
+      "s2": 12.6844,
+      "s3": 6.303459,
+      "s4": 9.5
+    },
+    "state": "WATCH",
+    "interpreted_state": "COHERENCE_UNDER_CONSTRAINT",
+    "score": 1.282
+  },
+  {
+    "timestep": 115,
+    "signals": {
+      "s1": 12.415996,
+      "s2": 16.126337,
+      "s3": 7.285191,
+      "s4": 9.5
+    },
+    "state": "WATCH",
+    "interpreted_state": "COHERENCE_UNDER_CONSTRAINT",
+    "score": 1.1458
+  },
+  {
+    "timestep": 116,
+    "signals": {
+      "s1": 13.255763,
+      "s2": 17.724245,
+      "s3": 5.692257,
+      "s4": 9.5
+    },
+    "state": "WATCH",
+    "interpreted_state": "COHERENCE_UNDER_CONSTRAINT",
+    "score": 1.2129
+  },
+  {
+    "timestep": 117,
+    "signals": {
+      "s1": 14.805956,
+      "s2": 13.267681,
+      "s3": 6.161821,
+      "s4": 9.5
+    },
+    "state": "WATCH",
+    "interpreted_state": "REGIME_SHIFT_OBSERVED",
+    "score": 1.2734
+  },
+  {
+    "timestep": 118,
+    "signals": {
+      "s1": 10.396837,
+      "s2": 11.997364,
+      "s3": 3.598083,
+      "s4": 9.5
+    },
+    "state": "WATCH",
+    "interpreted_state": "COHERENCE_UNDER_CONSTRAINT",
+    "score": 1.5241
+  },
+  {
+    "timestep": 119,
+    "signals": {
+      "s1": 13.335491,
+      "s2": 14.838701,
+      "s3": 6.414411,
+      "s4": 9.5
+    },
+    "state": "WATCH",
+    "interpreted_state": "COHERENCE_UNDER_CONSTRAINT",
+    "score": 1.4794
   }
 ]
