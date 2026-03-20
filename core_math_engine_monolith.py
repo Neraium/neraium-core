@@ -706,6 +706,99 @@ def causal_graph_metrics(C: np.ndarray, threshold: float = 0.1) -> dict[str, flo
     }
 
 
+def causal_root_cause_chains(
+    C: np.ndarray,
+    sensor_names: list[str],
+    *,
+    threshold: float = 0.1,
+    max_depth: int = 3,
+    chain_count: int = 2,
+) -> list[dict[str, object]]:
+    """
+    Build propagation-like root-cause chains from an observational causal matrix.
+
+    This is a *proxy narrative* over the Granger-style causal weights:
+    - Directed edge i->j exists when |C[i,j]| >= threshold
+    - Starting nodes are chosen by outbound strength
+    - Each next hop is the strongest outgoing neighbor from the current node
+
+    Returns a list of chains with node names and edge weights for explanation.
+    """
+    if C is None:
+        return []
+
+    C = np.asarray(C, dtype=float)
+    if C.ndim != 2 or C.shape[0] != C.shape[1] or C.size == 0:
+        return []
+
+    n = C.shape[0]
+    if n < 2:
+        return []
+
+    if len(sensor_names) < n:
+        # Fall back to generic node labels.
+        names = [sensor_names[i] if i < len(sensor_names) else f"node_{i}" for i in range(n)]
+    else:
+        names = sensor_names[:n]
+
+    max_depth = max(1, int(max_depth))
+    chain_count = max(1, int(chain_count))
+
+    absC = np.abs(C)
+    # Outbound strength for starting nodes.
+    outbound = np.sum(absC, axis=1)
+    start_order = np.argsort(-outbound)[: min(chain_count, n)]
+
+    # Build thresholded boolean reachability / allowed edges.
+    allowed = absC >= float(threshold)
+    np.fill_diagonal(allowed, False)
+
+    chains: list[dict[str, object]] = []
+    for s in start_order:
+        chain_nodes: list[str] = [names[int(s)]]
+        chain_edges: list[dict[str, object]] = []
+
+        current = int(s)
+        visited = {current}
+        for _ in range(max_depth - 1):
+            # Candidates: allowed outgoing edges not already in chain.
+            cand_mask = allowed[current, :].copy()
+            if visited:
+                for v in visited:
+                    cand_mask[v] = False
+            if not bool(np.any(cand_mask)):
+                break
+
+            cand_idx = np.where(cand_mask)[0]
+            # Choose strongest outgoing edge.
+            next_i = int(cand_idx[int(np.argmax(absC[current, cand_idx]))])
+            w = float(absC[current, next_i])
+
+            chain_edges.append(
+                {
+                    "src": names[current],
+                    "dst": names[next_i],
+                    "edge_weight_abs": w,
+                }
+            )
+            chain_nodes.append(names[next_i])
+            visited.add(next_i)
+            current = next_i
+
+        chain_score = float(np.mean([float(e["edge_weight_abs"]) for e in chain_edges])) if chain_edges else 0.0
+        chains.append(
+            {
+                "chain_nodes": chain_nodes,
+                "chain_edges": chain_edges,
+                "chain_score": chain_score,
+            }
+        )
+
+    # Sort by chain_score desc and return top chain_count
+    chains.sort(key=lambda x: float(x.get("chain_score", 0.0)), reverse=True)
+    return chains[:chain_count]
+
+
 def causal_propagation_spread(
     C: np.ndarray,
     *,
@@ -780,7 +873,7 @@ def causal_propagation_spread(
     }
 
 
-__all__ = ["causal_graph_metrics", "causal_propagation_spread"]
+__all__ = ["causal_graph_metrics", "causal_propagation_spread", "causal_root_cause_chains"]
 
 
 

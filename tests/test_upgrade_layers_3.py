@@ -65,3 +65,91 @@ def test_engine_outputs_causal_propagation_and_scenario_projections():
         forecasting = analytics.get("forecasting", {})
         assert "scenario_projections" in forecasting
 
+
+def test_engine_outputs_uncertainty_and_root_cause_chains(monkeypatch):
+    """
+    The upgrades should add:
+    - uncertainty block (how sure + what limited evidence)
+    - causal_root_cause_chains + root_cause_narrative (human-readable chain)
+    """
+    monkeypatch.setenv("NERAIUM_AUTONOMOUS_RESPONSE", "0")
+    monkeypatch.setenv("NERAIUM_CAUSAL_ROOT_CAUSE_CHAINS", "1")
+    monkeypatch.setenv("NERAIUM_CAUSAL_INTELLIGENCE", "1")
+    monkeypatch.setenv("NERAIUM_TEMPORAL_SCENARIOS", "1")
+
+    with tempfile.TemporaryDirectory() as d:
+        engine = StructuralEngine(
+            baseline_window=8,
+            recent_window=4,
+            regime_store_path=f"{d}/r.json",
+        )
+
+        last = None
+        for t in range(80):
+            base = math.sin(0.05 * t)
+            frame = {
+                "timestamp": str(t),
+                "site_id": "site1",
+                "asset_id": "asset1",
+                "sensor_values": {
+                    "s1": base,
+                    "s2": 0.9 * base + 0.01 * math.sin(0.1 * t),
+                    "s3": 1.02 * base,
+                },
+            }
+            last = engine.process_frame(frame)
+
+        assert last is not None
+        assert "uncertainty" in last
+        u = last["uncertainty"]
+        assert "confidence_score" in u
+        assert "evidence_confidence" in u
+        assert "gate_passed" in u
+        assert "data_quality_summary" in u
+
+        assert "causal_root_cause_chains" in last
+        assert isinstance(last["causal_root_cause_chains"], list)
+        assert "root_cause_narrative" in last
+        assert isinstance(last["root_cause_narrative"], str)
+
+
+def test_engine_outputs_ranked_response_recommendations(monkeypatch):
+    """
+    When NERAIUM_AUTONOMOUS_RESPONSE=1, decision layer should emit ranked
+    recommendations with risk/cost/time tiers.
+    """
+    monkeypatch.setenv("NERAIUM_AUTONOMOUS_RESPONSE", "1")
+    monkeypatch.setenv("NERAIUM_CAUSAL_ROOT_CAUSE_CHAINS", "1")
+    monkeypatch.setenv("NERAIUM_CAUSAL_INTELLIGENCE", "1")
+    monkeypatch.setenv("NERAIUM_TEMPORAL_SCENARIOS", "1")
+
+    with tempfile.TemporaryDirectory() as d:
+        engine = StructuralEngine(
+            baseline_window=8,
+            recent_window=4,
+            regime_store_path=f"{d}/r.json",
+        )
+
+        last = None
+        for t in range(80):
+            base = math.sin(0.07 * t)
+            frame = {
+                "timestamp": str(t),
+                "site_id": "site1",
+                "asset_id": "asset1",
+                "sensor_values": {
+                    "s1": base,
+                    "s2": 0.9 * base + 0.02 * math.sin(0.2 * t),
+                    "s3": 1.05 * base,
+                },
+            }
+            last = engine.process_frame(frame)
+
+        assert last is not None
+        assert last.get("autonomous_response_enabled") is True
+        recs = last.get("response_recommendations")
+        assert isinstance(recs, list) and recs
+        r0 = recs[0]
+        for k in ("rank", "risk", "cost_tier", "time_impact_tier", "action_type", "rationale"):
+            assert k in r0
+
