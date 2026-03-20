@@ -29,11 +29,11 @@
   "gal2_api_configured": false,
   "gal2_time_url": "https://api-v2.gal-2.com/time",
   "gal2_used_for_disturbed_time": false,
-  "adaptive_gal2_fusion_enabled": false,
+  "adaptive_gal2_fusion_enabled": true,
   "fusion_coherence_robustness": {
-    "mean_perturb_fusion_coherence_lift_disturbed": 0.0,
+    "mean_perturb_fusion_coherence_lift_disturbed": 0.030428109343417407,
     "mean_perturb_fusion_coherence_lift_coherent": 0.0,
-    "fusion_coherence_lift_disturbed_minus_coherent_spread": 0.0
+    "fusion_coherence_lift_disturbed_minus_coherent_spread": 0.030428109343417407
   },
   "coherent_vs_disturbed_mean_operational_stability_gap": 0.005322562227428551,
   "metrics": [
@@ -60,9 +60,9 @@
     },
     {
       "condition": "disturbed_time",
-      "alert_precision": 0.3449781659,
+      "alert_precision": 0.3434782609,
       "alert_recall": 0.9875,
-      "false_positives_negatives": 150,
+      "false_positives_negatives": 151,
       "baseline_stability_mean_all_nodes": 0.909375,
       "baseline_stability_A_control": 0.9875,
       "baseline_stability_B_gal2": 0.925,
@@ -77,7 +77,7 @@
       "recall_A_control": 0.0,
       "recall_B_gal2": 0.025,
       "recall_C_raw": 0.9875,
-      "recall_D_combined": 0.9625
+      "recall_D_combined": 0.975
     }
   ],
   "artifacts": {

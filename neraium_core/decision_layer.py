@@ -383,6 +383,10 @@ def decision_output(
     *,
     confidence_score: float | None = None,
     classification_stability: float | None = None,
+    watch_threshold: float | None = None,
+    alert_threshold: float | None = None,
+    min_history_for_alerts: int = 8,
+    require_persistence: bool = True,
 ) -> dict[str, Any]:
     """
     Convert structural analytics into operator-safe decision output.
@@ -414,6 +418,29 @@ def decision_output(
         persistence=persistence,
     )
 
+    effective_watch_threshold = float(watch_threshold) if watch_threshold is not None else 1.5
+    effective_alert_threshold = float(alert_threshold) if alert_threshold is not None else 1.5
+
+    persistence = persistence or {}
+    history_len = int(float(persistence.get("history_len", 0.0)))
+    consecutive_elevated = int(float(persistence.get("consecutive_elevated", 0.0)))
+    consecutive_high = int(float(persistence.get("consecutive_high", 0.0)))
+
+    warmup_ok = history_len >= int(min_history_for_alerts)
+    sustained = (consecutive_high >= 1) or (consecutive_elevated >= 2)
+    if not require_persistence:
+        sustained = True
+
+    strong_states = {
+        "REGIME_SHIFT_OBSERVED",
+        "STRUCTURAL_INSTABILITY_OBSERVED",
+        "COUPLING_INSTABILITY_OBSERVED",
+    }
+
+    signal_emitted = (state in strong_states) or (
+        warmup_ok and sustained and composite_score > effective_alert_threshold
+    )
+
     risk_level = _risk_level(composite_score)
     signal_strength = _signal_strength(composite_score, trend)
     conf_val = confidence_score if confidence_score is not None else components.get("_confidence_score")
@@ -425,12 +452,6 @@ def decision_output(
     else:
         confidence = _confidence({k: v for k, v in components.items() if not k.startswith("_")})
     phase = _phase(composite_score, trend)
-
-    signal_emitted = composite_score >= 1.5 or state in {
-        "REGIME_SHIFT_OBSERVED",
-        "STRUCTURAL_INSTABILITY_OBSERVED",
-        "COUPLING_INSTABILITY_OBSERVED",
-    }
 
     operator_message = _operator_message(
         state=state,
@@ -447,6 +468,23 @@ def decision_output(
         "operator_message": operator_message,
         "interpreted_state": state,
     }
+
+    # Optional verbose debugging: keep off by default.
+    debug_enabled = os.environ.get("NERAIUM_DEBUG_SII", "0").strip().lower() not in {"0", "false", "no", "off", ""}
+    if debug_enabled:
+        print(
+            "[NERAIUM_DEBUG_SII]"
+            f" composite={composite_score:.4f}"
+            f" watch_thr={effective_watch_threshold:.4f}"
+            f" alert_thr={effective_alert_threshold:.4f}"
+            f" history_len={history_len}"
+            f" consec_elev={consecutive_elevated}"
+            f" consec_high={consecutive_high}"
+            f" warmup_ok={warmup_ok}"
+            f" sustained={sustained}"
+            f" interpreted_state={state}"
+            f" signal_emitted={signal_emitted}"
+        )
 
     if _response_recommendations_enabled():
         scenario_projections = forecast.get("scenario_projections") if isinstance(forecast, dict) else None

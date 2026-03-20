@@ -21,5 +21,5 @@ disturbed_time,C,baseline,80,0,0,80,0,0.0,0.0,1.0,0.0,1.0
 disturbed_time,C,perturbation,80,79,0,0,1,1.0,0.9875,0.0,0.0,0.9875
 disturbed_time,C,recovery,80,0,30,50,0,0.0,0.0,0.625,0.375,0.625
 disturbed_time,D,baseline,80,0,7,73,0,0.0,0.0,0.9125,0.0875,0.9125
-disturbed_time,D,perturbation,80,0,77,3,0,0.0,0.0,0.0375,0.9625,0.0375
+disturbed_time,D,perturbation,80,0,78,2,0,0.0,0.0,0.025,0.975,0.025
 disturbed_time,D,recovery,80,0,4,76,0,0.0,0.0,0.95,0.05,0.95
