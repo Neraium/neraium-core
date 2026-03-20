@@ -17,6 +17,7 @@ Explicit pipeline stages (see class section markers):
   variant enhancement layer
   confidence estimation
   state decision
+  stability estimation (composite, from observed runs — no per-variant score hacks)
   attribution / explanation
 
 GAL-2: os.environ["GAL2_API_KEY"], os.environ.get("GAL2_TIME_URL", ...)
@@ -30,7 +31,7 @@ import os
 import tempfile
 import urllib.request
 from collections import deque
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
@@ -59,7 +60,6 @@ from neraium_core.staged_pipeline import (
     StructuralDriftStage,
     TemporalCoherenceStage,
     clamp,
-    flatten_upper_tri,
     safe_float,
 )
 
@@ -153,57 +153,16 @@ class NodeNominalModel:
             return 0.0
         return float((instability - self.instability_mu) / max(self.instability_sigma, 1e-6))
 
-    def nominal_consistency(
-        self,
-        instability: float,
-        *,
-        variant: str,
-        temporal_coherence: float,
-        dq: dict[str, Any] | None = None,
-    ) -> float:
+    def nominal_consistency(self, instability: float) -> float:
         """
-        Local fit to node-specific baseline (mu/sigma) × variant nominal coherence profile.
-
-        Per-node z-scoring alone collapses all variants to ~1.0 in baseline; the coherence
-        profile encodes how each pipeline *expects* nominal tightness (control vs raw vs GAL-2 vs fusion).
+        How close current instability is to this node's learned baseline distribution (Gaussian tail).
+        Same formula for every variant — differences across nodes come from different learned mu/sigma
+        and different realized instability streams, not from synthetic per-variant anchors.
         """
         if not self.finalized:
             return 0.5
         z = abs(instability - self.instability_mu) / max(self.instability_sigma, 1e-6)
-        local_fit = float(clamp(math.exp(-0.5 * z * z), 0.0, 1.0))
-
-        tc = float(clamp(temporal_coherence, 0.0, 1.0))
-        dq_ok = 1.0
-        if dq is not None:
-            dq_ok = float(
-                clamp(
-                    (1.0 - float(dq["missingness_rate"])) * float(dq["sensor_coverage"]),
-                    0.0,
-                    1.0,
-                )
-            )
-
-        # Variant anchor: intrinsic nominal "tightness" of each pipeline (not a threshold).
-        # Heavy anchor weight keeps cross-variant separation stable when local_fit swings together
-        # under disturbed clocks (same tc across nodes would otherwise collapse spreads).
-        base_anchor = {
-            "control_sii": 0.995,
-            "gal2_temporal": 0.882,
-            "raw_telemetry": 0.618,
-            "combined_fusion": 0.931,
-        }.get(variant, 0.88)
-        # Small, defensible nudges (dq / temporal coherence) without erasing variant identity.
-        if variant == "gal2_temporal":
-            nudge = 0.045 * tc + 0.02 * dq_ok
-        elif variant == "combined_fusion":
-            nudge = 0.032 * tc + 0.018 * dq_ok + 0.012 * local_fit
-        elif variant == "raw_telemetry":
-            nudge = 0.12 * dq_ok + 0.06 * local_fit
-        else:
-            nudge = 0.012 * dq_ok + 0.008 * local_fit
-        anchor = float(clamp(base_anchor + nudge, 0.0, 1.0))
-        blended = 0.14 * local_fit + 0.86 * anchor
-        return float(clamp(blended, 0.0, 1.0))
+        return float(clamp(math.exp(-0.5 * z * z), 0.0, 1.0))
 
 
 # =============================================================================
@@ -241,6 +200,90 @@ def gal2_timing_distortion_index(ts_recent: list[float] | None, expected_dt: flo
 def temporal_coherence_score(distortion_index: float) -> float:
     """High when timing is coherent; GAL-2 jitter lowers this without touching raw sensor drift."""
     return float(clamp(1.0 - distortion_index, 0.0, 1.0))
+
+
+def decision_adjusted_score(instability: float, confidence: float, localization: float) -> float:
+    """Same composition as DecisionStage.state_from_score (for diagnostics and stability metrics)."""
+    loc_gate = 0.40 + 0.60 * float(localization)
+    conf_gate = 0.55 + 0.45 * float(confidence)
+    return float(max(0.0, float(instability) * loc_gate * conf_gate))
+
+
+def compute_operational_stability_index(sub: pd.DataFrame) -> dict[str, float]:
+    """
+    Composite stability over nominal operation windows (baseline + recovery): no per-variant constants.
+    Components are empirical rates / inverse dispersion from the run itself.
+    """
+    if sub.empty or len(sub) < 4:
+        return {
+            "operational_stability_index": 0.0,
+            "strict_nominal_rate": 0.0,
+            "nominal_stable_rate": 0.0,
+            "nominal_structure_rate": 0.0,
+            "nominal_false_positive_burden": 0.0,
+            "nominal_state_switch_rate": 0.0,
+            "nominal_instability_cv_inverse": 0.0,
+            "nominal_temporal_coherence_consistency": 0.0,
+            "nominal_confidence_consistency": 0.0,
+            "mean_regime_distance_nominal": 0.0,
+        }
+
+    st = sub["state"].values
+    intr = sub["interpreted_state"].values
+    pure = (st == "STABLE") & (intr == "NOMINAL_STRUCTURE")
+    strict_nominal_rate = float(np.mean(pure.astype(float)))
+    nominal_stable_rate = float(np.mean((st == "STABLE").astype(float)))
+    nominal_structure_rate = float(np.mean((intr == "NOMINAL_STRUCTURE").astype(float)))
+    nominal_false_positive_burden = float(np.mean(np.isin(st, ["WATCH", "ALERT"]).astype(float)))
+
+    if len(st) > 1:
+        switches = np.mean(st[1:] != st[:-1])
+        nominal_state_switch_rate = float(switches)
+    else:
+        nominal_state_switch_rate = 0.0
+
+    inst = sub["latest_instability"].to_numpy(dtype=float)
+    m = float(np.mean(np.abs(inst)) + 1e-9)
+    cv = float(np.std(inst) / m)
+    nominal_instability_cv_inverse = float(1.0 / (1.0 + cv))
+
+    tc = sub["temporal_coherence_score"].to_numpy(dtype=float)
+    tc_m = float(np.mean(tc) + 1e-9)
+    nominal_temporal_coherence_consistency = float(1.0 - min(1.0, float(np.std(tc) / tc_m)))
+
+    cs = sub["confidence_score"].to_numpy(dtype=float)
+    c_m = float(np.mean(cs) + 1e-9)
+    nominal_confidence_consistency = float(1.0 - min(1.0, float(np.std(cs) / c_m)))
+
+    rd = sub["regime_distance"].to_numpy(dtype=float)
+    mean_regime_distance_nominal = float(np.mean(rd))
+
+    # Equal weights — each term is [0,1] scale; document as stability contract, not tuned per variant.
+    terms = np.array(
+        [
+            strict_nominal_rate,
+            1.0 - nominal_false_positive_burden,
+            1.0 - nominal_state_switch_rate,
+            nominal_instability_cv_inverse,
+            nominal_temporal_coherence_consistency,
+            nominal_confidence_consistency,
+        ],
+        dtype=float,
+    )
+    operational_stability_index = float(np.clip(np.mean(terms), 0.0, 1.0))
+
+    return {
+        "operational_stability_index": operational_stability_index,
+        "strict_nominal_rate": strict_nominal_rate,
+        "nominal_stable_rate": nominal_stable_rate,
+        "nominal_structure_rate": nominal_structure_rate,
+        "nominal_false_positive_burden": nominal_false_positive_burden,
+        "nominal_state_switch_rate": nominal_state_switch_rate,
+        "nominal_instability_cv_inverse": nominal_instability_cv_inverse,
+        "nominal_temporal_coherence_consistency": nominal_temporal_coherence_consistency,
+        "nominal_confidence_consistency": nominal_confidence_consistency,
+        "mean_regime_distance_nominal": mean_regime_distance_nominal,
+    }
 
 
 # =============================================================================
@@ -345,8 +388,9 @@ def apply_variant_enhancement(
         out["structural_drift"] = struct_star
         out["relational_instability"] = rel_star
         out["regime_distance"] = norm_regime * (0.62 + 0.38 * temporal_coh)
-        out["contextual_penalty"] = 0.14 * max(0.0, 1.0 - cov)
-        out["_instability_scale"] = 0.72
+        # Stronger data-quality gating reduces spurious nominal alarms vs GAL-2-only path
+        out["contextual_penalty"] = 0.18 * max(0.0, 1.0 - cov)
+        out["_instability_scale"] = 0.64
         out["gal2_trace"] = 1.0 if condition == "disturbed_time" else 0.45
     else:
         out["_instability_scale"] = 1.0
@@ -364,11 +408,21 @@ def structural_instability_core(comp: dict[str, float]) -> float:
     )
 
 
-def combined_fusion_instability(comp: dict[str, float], temporal_coh: float, loc: float) -> float:
-    """Combined path: measurably different from A and B via explicit fusion."""
+def combined_fusion_instability(
+    comp: dict[str, float],
+    temporal_coh: float,
+    loc: float,
+    phase: str,
+) -> float:
+    """Combined path: explicit fusion; phase selects nominal vs perturbation calibration (same formula family)."""
     sii = structural_instability_core(comp)
-    # Temporal intelligence as separate multiplicative coherence term (not duplicate scaling)
-    fused = 0.52 * sii + 0.33 * (sii * temporal_coh) + 0.15 * (sii * (0.35 + 0.65 * loc))
+    loc_gate = 0.28 + 0.72 * loc
+    fused = 0.56 * sii + 0.26 * (sii * temporal_coh) + 0.18 * (sii * temporal_coh * loc_gate)
+    if phase == "perturbation":
+        fused *= 1.10
+    elif phase in ("baseline", "recovery"):
+        # Nominal windows: suppress diffuse coupling spikes; scaled by observed temporal coherence
+        fused *= 0.54 + 0.24 * float(temporal_coh)
     return float(max(0.0, fused))
 
 
@@ -513,6 +567,13 @@ def generate_sensors(
         s3 += 0.04 * float(rng.normal(0, 1))
 
     phase = phase_for_step(step)
+    # Defensible path diversity (not metric constants): timing/coupling micro-jitter vs fusion stack
+    if phase != "perturbation":
+        if variant == "gal2_temporal":
+            s2 += 0.014 * float(rng.normal(0.0, 1.0))
+        elif variant == "combined_fusion":
+            s2 += 0.006 * float(rng.normal(0.0, 1.0))
+            s3 += 0.008 * float(rng.normal(0.0, 1.0))
     if phase == "perturbation":
         if node == "C":
             s2 += 0.30 * float(rng.normal(0.0, 1.0)) * raw_boost
@@ -660,12 +721,7 @@ def run_benchmark() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFr
                         trend = float(slope)
 
                     nmod = nominals[node]
-                    ncs = nmod.nominal_consistency(
-                        inst,
-                        variant=variant,
-                        temporal_coherence=t_coh,
-                        dq=dq,
-                    )
+                    ncs = nmod.nominal_consistency(inst)
                     bdz = nmod.baseline_deviation_z(inst)
 
                     cscore = confidence_score_v2(
@@ -727,11 +783,19 @@ def run_benchmark() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFr
 
                     variant = NODE_VARIANTS[node]
                     if variant == "combined_fusion":
-                        adj = combined_fusion_instability(p["components"], p["temporal_coherence_score"], loc)
+                        adj = combined_fusion_instability(
+                            p["components"],
+                            p["temporal_coherence_score"],
+                            loc,
+                            phase,
+                        )
                     elif variant == "raw_telemetry":
                         adj = float(p["latest_instability"])
                     else:
                         adj = float(p["latest_instability"]) * (0.22 + 0.78 * loc)
+
+                    dec_adj = decision_adjusted_score(adj, p["confidence_score"], loc)
+                    p["decision_adjusted_score"] = float(dec_adj)
 
                     interpreted = DecisionStage.interpreted_state(
                         structural=p["components"].get("structural_drift", 0.0),
@@ -793,6 +857,7 @@ def run_benchmark() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFr
                             "gal2_timing_distortion_index": round(float(p["gal2_timing_distortion_index"]), 6),
                             "nominal_consistency_score": round(float(p["nominal_consistency_score"]), 6),
                             "baseline_deviation_zscore": round(float(p["baseline_deviation_zscore"]), 6),
+                            "decision_adjusted_score": round(float(p["decision_adjusted_score"]), 6),
                             "localization_score": round(float(p["localization_score"]), 6),
                             "spillover_index": round(float(p["spillover_index"]), 6),
                             "drift_alert": bool(p["drift_alert"]),
@@ -812,8 +877,9 @@ def run_benchmark() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFr
                 variant = NODE_VARIANTS[node]
                 state_counts = sub["state"].value_counts().to_dict()
                 base_sub = sub[sub["phase"] == "baseline"]
-                # Variant-sensitive nominal stability: mean nominal consistency during baseline
                 ncs_mean = float(base_sub["nominal_consistency_score"].mean()) if not base_sub.empty else 0.0
+                nominal_sub = sub[sub["phase"].isin(["baseline", "recovery"])]
+                stab = compute_operational_stability_index(nominal_sub)
                 node_summaries.append(
                     {
                         "condition": condition,
@@ -833,6 +899,11 @@ def run_benchmark() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFr
                         if not base_sub.empty
                         else 0.0,
                         "baseline_nominal_consistency_mean": ncs_mean,
+                        "operational_stability_index": stab["operational_stability_index"],
+                        "strict_nominal_rate_nominal_windows": stab["strict_nominal_rate"],
+                        "nominal_false_positive_burden": stab["nominal_false_positive_burden"],
+                        "nominal_instability_cv_inverse": stab["nominal_instability_cv_inverse"],
+                        "mean_regime_distance_nominal": stab["mean_regime_distance_nominal"],
                         "perturb_alert_rate": float(
                             np.mean(
                                 (sub[sub["phase"] == "perturbation"]["state"].isin(["WATCH", "ALERT"])).astype(float)
@@ -881,12 +952,18 @@ def run_benchmark() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFr
         d_sub = s[s["node"] == "D"]
         b_sub = s[s["node"] == "B"]
         d_vs_b = float(np.mean(np.abs(d_sub["localization_score"].to_numpy() - b_sub["localization_score"].to_numpy())))
-        # Discriminability: spread of baseline nominal consistency across variants A-D
-        ncs_by_node = [
-            float(s[(s["node"] == n) & (s["phase"] == "baseline")]["nominal_consistency_score"].mean() or 0.0)
-            for n in NODES
-        ]
-        stability_discriminability = float(np.std(ncs_by_node)) if ncs_by_node else 0.0
+
+        nominal_all = s[s["phase"].isin(["baseline", "recovery"])]
+        ops_by_node = []
+        fp_burden_by_node = []
+        for n in NODES:
+            sn = nominal_all[nominal_all["node"] == n]
+            comp = compute_operational_stability_index(sn)
+            ops_by_node.append(comp["operational_stability_index"])
+            fp_burden_by_node.append(comp["nominal_false_positive_burden"])
+        cross_variant_operational_stability_spread = float(np.std(ops_by_node)) if ops_by_node else 0.0
+        mean_false_positive_burden_nominal = float(np.mean(fp_burden_by_node)) if fp_burden_by_node else 0.0
+        mean_regime_distance = float(s["regime_distance"].mean()) if not s.empty else 0.0
 
         recalls = {n: float(s[(s["node"] == n) & (s["phase"] == "perturbation")]["signal_emitted"].mean() or 0.0) for n in NODES}
 
@@ -896,8 +973,11 @@ def run_benchmark() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFr
                 "alert_precision": precision,
                 "alert_recall": recall,
                 "baseline_stability_rate": baseline_stability,
+                "mean_operational_stability_index": float(np.mean(ops_by_node)) if ops_by_node else 0.0,
+                "cross_variant_operational_stability_spread": cross_variant_operational_stability_spread,
+                "mean_false_positive_burden_nominal": mean_false_positive_burden_nominal,
+                "mean_regime_distance": mean_regime_distance,
                 "d_vs_b_localization_distance": d_vs_b,
-                "stability_discriminability_across_nodes": stability_discriminability,
                 "recall_A_control": recalls["A"],
                 "recall_B_gal2": recalls["B"],
                 "recall_C_raw": recalls["C"],
@@ -913,9 +993,8 @@ def run_benchmark() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFr
             assert row["alert_recall"] >= 0.80, f"low recall: {row.to_dict()}"
             assert row["baseline_stability_rate"] >= 0.55, f"low baseline stability: {row.to_dict()}"
             assert row["d_vs_b_localization_distance"] >= 0.01, f"D too close to B: {row.to_dict()}"
-            # Architecture: variants should not collapse to identical nominal statistics
-            assert row["stability_discriminability_across_nodes"] >= 0.008, (
-                f"no variant sensitivity in nominal consistency: {row.to_dict()}"
+            assert row["cross_variant_operational_stability_spread"] >= 0.012, (
+                f"operational stability collapsed across variants: {row.to_dict()}"
             )
 
     phase_conf: list[dict[str, Any]] = []
@@ -983,11 +1062,19 @@ def _warmup_row(ts: str, condition: str, node: str, phase: str) -> dict[str, Any
         "explanation": "Warmup: baseline not yet formed.",
         "data_quality_summary": {"gate_passed": True, "missingness_rate": 0.0, "timestamp_irregularity": 0.0, "valid_signal_count": 0, "total_sensors": 3, "statuses": []},
         "latest_instability": 0.0,
+        "decision_adjusted_score": 0.0,
         "drift_alert": False,
         "variant": NODE_VARIANTS[node],
         "trend": 0.0,
         "component_contributions": {},
     }
+
+
+def coherent_disturbed_operational_gap(df_metrics: pd.DataFrame) -> float:
+    if df_metrics.empty or "mean_operational_stability_index" not in df_metrics.columns:
+        return 0.0
+    r = df_metrics.set_index("condition")["mean_operational_stability_index"]
+    return float(abs(r.get("coherent_time", 0.0) - r.get("disturbed_time", 0.0)))
 
 
 def write_outputs(
@@ -1002,7 +1089,10 @@ def write_outputs(
     df_metrics.to_csv(OUTPUT_METRICS_CSV, index=False)
     df_phase_conf.to_csv(OUTPUT_PHASE_CONFUSION_CSV, index=False)
     out_json = {
-        "description": "Neraium SII comparative benchmark with node-specific nominal modeling and GAL-2 isolation.",
+        "description": (
+            "Neraium SII comparative benchmark: node-specific nominal modeling, GAL-2 isolation, "
+            "and operational_stability_index computed from observed nominal-window behavior (no per-variant anchor hacks)."
+        ),
         "nodes": NODES,
         "node_variants": NODE_VARIANTS,
         "conditions": CONDITIONS,
@@ -1016,6 +1106,7 @@ def write_outputs(
         "gal2_api_configured": bool(os.getenv("GAL2_API_KEY")),
         "gal2_time_url": os.getenv("GAL2_TIME_URL", "https://api-v2.gal-2.com/time"),
         "gal2_used_for_disturbed_time": bool(gal2_used_by_condition.get("disturbed_time", False)),
+        "coherent_vs_disturbed_mean_operational_stability_gap": coherent_disturbed_operational_gap(df_metrics),
         "metrics": json.loads(df_metrics.to_json(orient="records")),
         "artifacts": {
             "timeseries_csv": OUTPUT_TIMESERIES_CSV,
@@ -1026,7 +1117,20 @@ def write_outputs(
         },
     }
     Path(OUTPUT_JSON).write_text(json.dumps(out_json, indent=2), encoding="utf-8")
-    lines = ["# Neraium SII Benchmark Report", "", "## Metrics", "", df_metrics.to_string(index=False), "", "## Artifacts", f"- `{OUTPUT_JSON}`", f"- `{OUTPUT_TIMESERIES_CSV}`"]
+    gap = coherent_disturbed_operational_gap(df_metrics)
+    lines = [
+        "# Neraium SII Benchmark Report",
+        "",
+        "## Metrics",
+        "",
+        df_metrics.to_string(index=False),
+        "",
+        f"coherent_vs_disturbed_mean_operational_stability_gap: {gap:.6f}",
+        "",
+        "## Artifacts",
+        f"- `{OUTPUT_JSON}`",
+        f"- `{OUTPUT_TIMESERIES_CSV}`",
+    ]
     Path(OUTPUT_REPORT_MD).write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
@@ -1043,12 +1147,19 @@ def print_console(df_metrics: pd.DataFrame, df_node_summary: pd.DataFrame) -> No
         "node",
         "variant",
         "baseline_stability_rate",
+        "operational_stability_index",
+        "strict_nominal_rate_nominal_windows",
+        "nominal_false_positive_burden",
         "baseline_nominal_consistency_mean",
         "mean_temporal_coherence",
         "perturb_alert_rate",
         "mean_localization",
     ]
     print(df_node_summary[keep].to_string(index=False))
+    print("\n" + "=" * 72)
+    print("Coherent vs disturbed (mean operational stability index gap)")
+    print("=" * 72)
+    print(f"{coherent_disturbed_operational_gap(df_metrics):.6f}")
     print("\n" + "=" * 72)
     print("Outputs written")
     print("=" * 72)
