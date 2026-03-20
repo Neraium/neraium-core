@@ -231,7 +231,7 @@ The runner sets `NERAIUM_PILOT_HARDENING=1` for you.
   ```bash
   python examples/pilot/run_pilot.py
   ```
-  Options: `--timesteps` (default `120`), `--seed`, `--baseline-window`, `--recent-window`.
+  Options: `--timesteps` (default `120`), `--seed`, `--baseline-window`, `--recent-window`, `--output` (default `pilot_results.json`: array of `{timestep, signals, state, interpreted_state, score}` per ingest).
 
 - **Static JSON file:** same as before (single payload, list, or wrapped list).  
   ```bash
