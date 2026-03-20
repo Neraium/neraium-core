@@ -56,6 +56,13 @@ BASELINE_UPDATE_MAX_COMPOSITE = 0.85
 # Number of recent interpreted states to compute classification stability.
 CLASSIFICATION_STABILITY_WINDOW = 15
 
+# Calibrate alert thresholds from early nominal scores to reduce false positives
+# and prevent early single-sample spikes from triggering alerts.
+MIN_BASELINE_SAMPLES_FOR_CALIBRATION = 28
+ALERT_PERSISTENCE_WINDOW = 3
+MIN_CONSECUTIVE_WATCH = 2
+MIN_CONSECUTIVE_ALERT = 2
+
 
 def _env_enabled(var_name: str, *, default: str = "1") -> bool:
     """Feature toggle helper that treats 0/false/no/off as disabled."""
@@ -87,6 +94,18 @@ class StructuralEngine:
         # Recent interpreted states for classification stability.
         self._state_history: deque[str] = deque(maxlen=CLASSIFICATION_STABILITY_WINDOW)
         self._stage_baseline_profile = NodeBaselineProfile()
+
+        # Drift-score threshold calibration (watch/alert).
+        self._drift_score_history: deque[float] = deque(maxlen=120)
+        self._baseline_drift_score_samples: deque[float] = deque(maxlen=256)
+        self._drift_watch_alert_thresholds: tuple[float, float] | None = None
+
+        # Composite-score threshold calibration for decision-layer emission.
+        self._baseline_composite_score_samples: deque[float] = deque(maxlen=256)
+        self._composite_watch_alert_thresholds: tuple[float, float] | None = None
+
+        # Debug helpers: print first alert reasoning once per engine instance.
+        self._first_alert_logged: bool = False
 
         self.regime_store = RegimeStore(regime_store_path)
         persisted = self.regime_store.load()
@@ -219,14 +238,36 @@ class StructuralEngine:
         return int(round(max(0.0, min(100.0, health))))
 
     def _alert_state(self, drift_score: float) -> str:
-        if drift_score > 3.0:
+        # Until we have nominal calibration samples, suppress early alerts
+        # to avoid false positives driven by unstable correlation estimates.
+        if self._drift_watch_alert_thresholds is None:
+            return "STABLE"
+
+        watch_thr, alert_thr = self._drift_watch_alert_thresholds
+
+        # Persistence requirement: require consecutive drift-score elevations.
+        window = list(self._drift_score_history)[-ALERT_PERSISTENCE_WINDOW:]
+        consec_watch = 0
+        consec_alert = 0
+        for v in reversed(window):
+            # Use strict comparison to avoid borderline numerical equality
+            # (e.g. calibrated nominal drift floors).
+            if v > alert_thr:
+                consec_alert += 1
+                consec_watch += 1
+            elif v > watch_thr:
+                consec_watch += 1
+            else:
+                break
+
+        if consec_alert >= MIN_CONSECUTIVE_ALERT:
             return "ALERT"
-        if drift_score > 1.5:
+        if consec_watch >= MIN_CONSECUTIVE_WATCH:
             return "WATCH"
         return "STABLE"
 
     def _drift_alert(self, drift_score: float) -> bool:
-        return drift_score > 1.5
+        return self._alert_state(drift_score) == "ALERT"
 
     def process_frame(self, frame: Dict) -> Dict:
         vector = self._vector_from_frame(frame)
@@ -358,6 +399,16 @@ class StructuralEngine:
             # Preserve production sensitivity by keeping legacy drift geometry while
             # binding stage outputs into runtime diagnostics.
             drift_score = structural_drift(corr_recent, baseline_corr_used, norm="fro")
+            drift_score = float(drift_score)
+            self._drift_score_history.append(drift_score)
+            if self._drift_watch_alert_thresholds is None:
+                self._baseline_drift_score_samples.append(drift_score)
+                if len(self._baseline_drift_score_samples) >= MIN_BASELINE_SAMPLES_FOR_CALIBRATION:
+                    watch_thr = float(np.percentile(list(self._baseline_drift_score_samples), 82.0))
+                    alert_thr = float(np.percentile(list(self._baseline_drift_score_samples), 93.5))
+                    if alert_thr < watch_thr:
+                        watch_thr, alert_thr = alert_thr, watch_thr
+                    self._drift_watch_alert_thresholds = (watch_thr, alert_thr)
             rel_delta_legacy = flatten_upper_tri(corr_recent) - flatten_upper_tri(baseline_corr_used)
             relational_raw = float(np.mean(np.abs(rel_delta_legacy))) if rel_delta_legacy.size else 0.0
             relational_raw = max(relational_raw, stage_relational_raw, 0.5 * stage_structural_raw)
@@ -649,7 +700,18 @@ class StructuralEngine:
         }
 
         composite = composite_instability_score_normalized(components, weights=weights_for_composite)
-        self.score_history.append(float(composite))
+        composite = float(composite)
+        self.score_history.append(composite)
+
+        # Calibrate decision thresholds from early nominal composite history.
+        if self._composite_watch_alert_thresholds is None:
+            self._baseline_composite_score_samples.append(composite)
+            if len(self._baseline_composite_score_samples) >= MIN_BASELINE_SAMPLES_FOR_CALIBRATION:
+                watch_thr = float(np.percentile(list(self._baseline_composite_score_samples), 82.0))
+                alert_thr = float(np.percentile(list(self._baseline_composite_score_samples), 93.5))
+                if alert_thr < watch_thr:
+                    watch_thr, alert_thr = alert_thr, watch_thr
+                self._composite_watch_alert_thresholds = (watch_thr, alert_thr)
 
         persistence = self._persistence_features()
 
@@ -715,6 +777,17 @@ class StructuralEngine:
             forecast=forecast,
             confidence_score=stabilized_confidence,
             classification_stability=classification_stability,
+            watch_threshold=(
+                float(self._composite_watch_alert_thresholds[0])
+                if self._composite_watch_alert_thresholds is not None
+                else None
+            ),
+            alert_threshold=(
+                float(self._composite_watch_alert_thresholds[1])
+                if self._composite_watch_alert_thresholds is not None
+                else None
+            ),
+            min_history_for_alerts=MIN_BASELINE_SAMPLES_FOR_CALIBRATION,
         )
         result.update(decision)
 
@@ -781,6 +854,63 @@ class StructuralEngine:
         result["component_confidence"] = component_confidence
 
         result["experimental_analytics"] = analytics
+
+        debug_verbose = os.environ.get("NERAIUM_DEBUG_SII_VERBOSE", "0").strip().lower() not in {
+            "0",
+            "false",
+            "no",
+            "off",
+            "",
+        }
+        if debug_verbose:
+            drift_thr = self._drift_watch_alert_thresholds
+            comp_thr = self._composite_watch_alert_thresholds
+            causal_prop = analytics.get("causal_propagation") if isinstance(analytics.get("causal_propagation"), dict) else {}
+            causal_prop_top_sources = causal_prop.get("top_sources")
+            causal_prop_spread = causal_prop.get("spread_scores")
+            causal_prop_top_pairs = causal_prop.get("top_pairs")
+            graph = analytics.get("graph")
+            causal_graph = analytics.get("causal_graph")
+
+            drift_score_tail = list(self._drift_score_history)[-ALERT_PERSISTENCE_WINDOW:]
+            consec_watch = 0
+            consec_alert = 0
+            if isinstance(drift_thr, tuple) and len(drift_thr) == 2:
+                watch_thr, alert_thr = drift_thr
+                for v in reversed(drift_score_tail):
+                    if v > alert_thr:
+                        consec_alert += 1
+                        consec_watch += 1
+                    elif v > watch_thr:
+                        consec_watch += 1
+                    else:
+                        break
+
+            print(
+                "[NERAIUM_DEBUG_SII_VERBOSE]"
+                f" state={result.get('state')} drift_score={float(result.get('latest_drift', 0.0)):.6g}"
+                f" drift_thr={drift_thr}"
+                f" drift_persist=(watch={consec_watch}, alert={consec_alert})"
+                f" composite={float(result.get('latest_instability', 0.0)):.6g}"
+                f" comp_thr={comp_thr}"
+                f" signal_emitted={result.get('signal_emitted', None)}"
+                f" top_sources={causal_prop_top_sources}"
+                f" spread_scores={(causal_prop_spread if causal_prop_spread is not None else [])[:3]}"
+                f" graph_summary={graph}"
+                f" causal_graph_summary={(causal_graph if isinstance(causal_graph, dict) else {})}"
+            )
+
+            # One-time first alert reasoning.
+            if result.get("state") in {"WATCH", "ALERT"} and not self._first_alert_logged:
+                print(
+                    "[NERAIUM_DEBUG_SII_VERBOSE][first_alert]"
+                    f" state={result.get('state')} latest_drift={float(result.get('latest_drift', 0.0)):.6g}"
+                    f" drift_thr={drift_thr} drift_score_tail={drift_score_tail}"
+                    f" drift_persist=(watch={consec_watch}, alert={consec_alert})"
+                    f" composite_thr={comp_thr}"
+                )
+                self._first_alert_logged = True
+
         self.latest_result = result
 
         return result

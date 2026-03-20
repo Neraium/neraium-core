@@ -84,10 +84,12 @@ def causal_root_cause_chains(
 
     chains: list[dict[str, object]] = []
     for s in start_order:
+        s_i = int(s)
+        assert 0 <= s_i < n, f"chain start index out of bounds: s={s_i}, n={n}"
         chain_nodes: list[str] = [names[int(s)]]
         chain_edges: list[dict[str, object]] = []
 
-        current = int(s)
+        current = s_i
         visited = {current}
         for _ in range(max_depth - 1):
             # Candidates: allowed outgoing edges not already in chain.
@@ -179,6 +181,10 @@ def causal_propagation_spread(
 
     order = np.argsort(-spread_norm)
     top_sources_idx = [int(i) for i in order[:top_k]]
+
+    # Safety: returned indices must match C.shape[0] indexing.
+    for idx in top_sources_idx:
+        assert 0 <= idx < n, f"top_sources index out of bounds: idx={idx}, n={n}"
 
     # For each top source, pick the reachable target with the strongest direct edge magnitude.
     absC = np.abs(C)
