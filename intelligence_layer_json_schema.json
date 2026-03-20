@@ -134,7 +134,8 @@
     "assertion_floors": {
       "alert_precision": { "coherent_time": 0.40, "disturbed_time": 0.40 },
       "alert_recall": { "coherent_time": 0.90, "disturbed_time": 0.94 },
-      "baseline_stability_rate": { "coherent_time": 0.75, "disturbed_time": 0.75 },
+      "baseline_stability_mean_all_nodes": { "coherent_time": 0.45, "disturbed_time": 0.45 },
+      "baseline_stability_rate_legacy_ab_only": { "coherent_time": 0.75, "disturbed_time": 0.75 },
       "recovery_success_rate": { "coherent_time": 0.80, "disturbed_time": 0.80 },
       "false_positive_rate_max": { "coherent_time": 0.35, "disturbed_time": 0.35 },
       "peak_separation_min": { "coherent_time": 0.20, "disturbed_time": 0.20 }
@@ -203,7 +204,8 @@
       "node_summary_csv": "upgraded_multinode_test_node_summary.csv",
       "metrics_csv": "upgraded_multinode_test_metrics.csv",
       "report_md": "upgraded_multinode_quality_report.md",
-      "phase_confusion_csv": "upgraded_multinode_phase_confusion.csv"
+      "phase_confusion_csv": "upgraded_multinode_phase_confusion.csv",
+      "stability_diagnostics_csv": "upgraded_multinode_test_stability_diagnostics.csv"
     }
   },
   "phase_confusion_csv_columns": [

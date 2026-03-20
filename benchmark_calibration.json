@@ -61,7 +61,11 @@
       "coherent_time": 0.90,
       "disturbed_time": 0.94
     },
-    "baseline_stability_rate": {
+    "baseline_stability_mean_all_nodes": {
+      "coherent_time": 0.45,
+      "disturbed_time": 0.45
+    },
+    "baseline_stability_rate_legacy_ab_only": {
       "coherent_time": 0.75,
       "disturbed_time": 0.75
     },
