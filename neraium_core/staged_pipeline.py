@@ -363,6 +363,31 @@ def decision_adjusted_score(instability: float, confidence: float, localization:
     return DecisionStage.adjusted_instability(instability, confidence, localization)
 
 
+def adaptive_gal2_fusion_coherence(
+    temporal_coherence: float,
+    gal2_timing_distortion_index: float,
+    *,
+    enabled: bool = True,
+) -> float:
+    """
+    Adaptive GAL-2 calibration for SII+GAL-2 *fusion* paths.
+
+    Under disturbed clocks, raw temporal_coherence is often low while GAL-2 still reports
+    meaningful timing distortion. Multiplicative fusion terms (instability × coherence) then
+    collapse and the Combined lane is underpowered. This blends in a bounded, distortion-driven
+    coupling term: higher distortion raises effective coherence only where coherence was weak,
+    preserving strong-coherent regimes unchanged.
+
+    Toggle at call sites (e.g. env NERAIUM_ADAPTIVE_GAL2_FUSION) — not a global threshold hack.
+    """
+    if not enabled:
+        return float(clamp(temporal_coherence, 0.0, 1.0))
+    tc = float(clamp(temporal_coherence, 0.0, 1.0))
+    g = float(clamp(gal2_timing_distortion_index, 0.0, 1.0))
+    # Distortion acts as a second, complementary signal when coherence alone is pessimistic
+    return float(clamp(tc + 0.45 * g * (1.0 - tc), 0.0, 1.0))
+
+
 def state_from_node_quantiles(dec_adj: float, watch_thr: float, alert_thr: float) -> str:
     """Data-driven triage from a node's own baseline score distribution (no shared global cut)."""
     if dec_adj < watch_thr:

@@ -29,6 +29,12 @@
   "gal2_api_configured": false,
   "gal2_time_url": "https://api-v2.gal-2.com/time",
   "gal2_used_for_disturbed_time": false,
+  "adaptive_gal2_fusion_enabled": false,
+  "fusion_coherence_robustness": {
+    "mean_perturb_fusion_coherence_lift_disturbed": 0.0,
+    "mean_perturb_fusion_coherence_lift_coherent": 0.0,
+    "fusion_coherence_lift_disturbed_minus_coherent_spread": 0.0
+  },
   "coherent_vs_disturbed_mean_operational_stability_gap": 0.005322562227428551,
   "metrics": [
     {

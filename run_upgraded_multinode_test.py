@@ -61,6 +61,7 @@ from neraium_core.staged_pipeline import (
     RelationalInstabilityStage,
     StructuralDriftStage,
     TemporalCoherenceStage,
+    adaptive_gal2_fusion_coherence,
     clamp,
     decide_state_with_calibration,
     decision_adjusted_score,
@@ -329,16 +330,46 @@ def structural_instability_core(comp: dict[str, float]) -> float:
     )
 
 
+def adaptive_gal2_fusion_enabled() -> bool:
+    """NERAIUM_ADAPTIVE_GAL2_FUSION=0|false disables adaptive GAL-2 calibration for A/B evaluation."""
+    return os.environ.get("NERAIUM_ADAPTIVE_GAL2_FUSION", "1").strip().lower() not in (
+        "0",
+        "false",
+        "no",
+        "off",
+    )
+
+
+def effective_fusion_coherence(
+    temporal_coh: float,
+    gal2_isolated_distortion: float,
+    phase: str,
+) -> float:
+    """Coherence factor used in Combined fusion multiplicative terms (must match combined_fusion_instability)."""
+    if phase == "perturbation" and adaptive_gal2_fusion_enabled():
+        return adaptive_gal2_fusion_coherence(
+            temporal_coh, gal2_isolated_distortion, enabled=True
+        )
+    return float(temporal_coh)
+
+
 def combined_fusion_instability(
     comp: dict[str, float],
     temporal_coh: float,
     loc: float,
     phase: str,
 ) -> float:
-    """Combined path: explicit fusion; phase selects nominal vs perturbation calibration (same formula family)."""
+    """
+    Combined path: explicit fusion; phase selects nominal vs perturbation calibration.
+
+    Perturbation: optional adaptive GAL-2 fusion coherence (library) so SII×GAL-2 does not
+    collapse when temporal_coherence is low but timing distortion is high (disturbed_time).
+    """
     sii = structural_instability_core(comp)
+    gal2_d = float(comp.get("gal2_isolated_distortion", 0.0))
+    coh_fuse = effective_fusion_coherence(temporal_coh, gal2_d, phase)
     loc_gate = 0.28 + 0.72 * loc
-    fused = 0.56 * sii + 0.26 * (sii * temporal_coh) + 0.18 * (sii * temporal_coh * loc_gate)
+    fused = 0.56 * sii + 0.26 * (sii * coh_fuse) + 0.18 * (sii * coh_fuse * loc_gate)
     if phase == "perturbation":
         fused *= 1.10
     elif phase in ("baseline", "recovery"):
@@ -540,7 +571,40 @@ def finalize_baseline(runtime: NodeRuntime, nominal: NodeNominalModel) -> None:
 # =============================================================================
 # 8) Benchmark run
 # =============================================================================
-def run_benchmark() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame, dict[str, bool]]:
+def summarize_fusion_coherence_lift(
+    samples: list[tuple[str, float]],
+) -> dict[str, float]:
+    """
+    Behavioral robustness diagnostic: how much adaptive fusion raises effective coherence
+    in perturbation (node D). Spread (disturbed − coherent) is near 0 when adaptive is off;
+    positive when disturbance drives low tc + meaningful GAL-2 distortion (structurally expected).
+    """
+    if not samples:
+        return {
+            "mean_perturb_fusion_coherence_lift_disturbed": 0.0,
+            "mean_perturb_fusion_coherence_lift_coherent": 0.0,
+            "fusion_coherence_lift_disturbed_minus_coherent_spread": 0.0,
+        }
+    d = [x for c, x in samples if c == "disturbed_time"]
+    co = [x for c, x in samples if c == "coherent_time"]
+    md = float(np.mean(d)) if d else 0.0
+    mc = float(np.mean(co)) if co else 0.0
+    return {
+        "mean_perturb_fusion_coherence_lift_disturbed": md,
+        "mean_perturb_fusion_coherence_lift_coherent": mc,
+        "fusion_coherence_lift_disturbed_minus_coherent_spread": md - mc,
+    }
+
+
+def run_benchmark() -> tuple[
+    pd.DataFrame,
+    pd.DataFrame,
+    pd.DataFrame,
+    pd.DataFrame,
+    pd.DataFrame,
+    dict[str, bool],
+    dict[str, float],
+]:
     rng_time = np.random.default_rng(SEED + 11)
     timestamps_by_condition: dict[str, list[str]] = {}
     gal2_used_by_condition: dict[str, bool] = {}
@@ -556,6 +620,7 @@ def run_benchmark() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFr
     node_summaries: list[dict[str, Any]] = []
     nominals: dict[str, NodeNominalModel] = {n: NodeNominalModel() for n in NODES}
     driver_hist: dict[str, deque[str]] = {n: deque(maxlen=8) for n in NODES}
+    fusion_coherence_lift_samples: list[tuple[str, float]] = []
 
     with tempfile.TemporaryDirectory(prefix="sii_arch_") as _tmp:
         for condition in CONDITIONS:
@@ -712,6 +777,16 @@ def run_benchmark() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFr
                             loc,
                             phase,
                         )
+                        if phase == "perturbation" and node == "D":
+                            tc = float(p["temporal_coherence_score"])
+                            gd = float(
+                                p["components"].get(
+                                    "gal2_isolated_distortion",
+                                    p["gal2_timing_distortion_index"],
+                                )
+                            )
+                            coh_eff = effective_fusion_coherence(tc, gd, phase)
+                            fusion_coherence_lift_samples.append((condition, coh_eff - tc))
                     elif variant == "raw_telemetry":
                         adj = float(p["latest_instability"])
                     else:
@@ -1032,7 +1107,16 @@ def run_benchmark() -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFr
                     }
                 )
     df_phase_conf = pd.DataFrame(phase_conf)
-    return df_rows, df_node_summary, df_metrics, df_phase_conf, df_diagnostics, gal2_used_by_condition
+    fusion_coherence_stats = summarize_fusion_coherence_lift(fusion_coherence_lift_samples)
+    return (
+        df_rows,
+        df_node_summary,
+        df_metrics,
+        df_phase_conf,
+        df_diagnostics,
+        gal2_used_by_condition,
+        fusion_coherence_stats,
+    )
 
 
 def _warmup_row(ts: str, condition: str, node: str, phase: str) -> dict[str, Any]:
@@ -1080,6 +1164,7 @@ def write_outputs(
     df_phase_conf: pd.DataFrame,
     df_diagnostics: pd.DataFrame,
     gal2_used_by_condition: dict[str, bool],
+    fusion_coherence_stats: dict[str, float],
 ) -> None:
     df_rows.to_csv(OUTPUT_TIMESERIES_CSV, index=False)
     df_node_summary.to_csv(OUTPUT_NODE_SUMMARY_CSV, index=False)
@@ -1104,6 +1189,8 @@ def write_outputs(
         "gal2_api_configured": bool(os.getenv("GAL2_API_KEY")),
         "gal2_time_url": os.getenv("GAL2_TIME_URL", "https://api-v2.gal-2.com/time"),
         "gal2_used_for_disturbed_time": bool(gal2_used_by_condition.get("disturbed_time", False)),
+        "adaptive_gal2_fusion_enabled": adaptive_gal2_fusion_enabled(),
+        "fusion_coherence_robustness": fusion_coherence_stats,
         "coherent_vs_disturbed_mean_operational_stability_gap": coherent_disturbed_operational_gap(df_metrics),
         "metrics": json.loads(df_metrics.to_json(orient="records")),
         "artifacts": {
@@ -1137,6 +1224,7 @@ def print_console(
     df_metrics: pd.DataFrame,
     df_node_summary: pd.DataFrame,
     df_diagnostics: pd.DataFrame,
+    fusion_coherence_stats: dict[str, float] | None = None,
 ) -> None:
     print("\n" + "=" * 72)
     print("SII benchmark metrics (target C perturbation + cross-variant stats)")
@@ -1163,6 +1251,12 @@ def print_console(
     print("Coherent vs disturbed (mean operational stability index gap)")
     print("=" * 72)
     print(f"{coherent_disturbed_operational_gap(df_metrics):.6f}")
+    if fusion_coherence_stats:
+        print("\n" + "=" * 72)
+        print("Fusion coherence robustness (perturbation, node D; adaptive path diagnostic)")
+        print("=" * 72)
+        for k, v in fusion_coherence_stats.items():
+            print(f"{k}: {v:.6f}")
     print("\n" + "=" * 72)
     print("Stability diagnostics (proof of variant separation - nominal windows)")
     print("=" * 72)
@@ -1193,9 +1287,25 @@ def print_console(
 
 
 def main() -> int:
-    df_rows, df_node_summary, df_metrics, df_phase_conf, df_diagnostics, gal2_used = run_benchmark()
-    write_outputs(df_rows, df_node_summary, df_metrics, df_phase_conf, df_diagnostics, gal2_used)
-    print_console(df_metrics, df_node_summary, df_diagnostics)
+    (
+        df_rows,
+        df_node_summary,
+        df_metrics,
+        df_phase_conf,
+        df_diagnostics,
+        gal2_used,
+        fusion_coherence_stats,
+    ) = run_benchmark()
+    write_outputs(
+        df_rows,
+        df_node_summary,
+        df_metrics,
+        df_phase_conf,
+        df_diagnostics,
+        gal2_used,
+        fusion_coherence_stats,
+    )
+    print_console(df_metrics, df_node_summary, df_diagnostics, fusion_coherence_stats)
     return 0
 
 
