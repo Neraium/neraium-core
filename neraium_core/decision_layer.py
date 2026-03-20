@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from typing import Any
 
 
@@ -48,6 +49,115 @@ def _phase(score: float, trend: float) -> str:
     if trend < -0.05:
         return "recovering"
     return "transitional"
+
+
+def _response_recommendations_enabled() -> bool:
+    # Default to disabled to preserve existing "observational only" behavior.
+    return os.environ.get("NERAIUM_AUTONOMOUS_RESPONSE", "0").strip().lower() not in (
+        "0",
+        "false",
+        "no",
+        "off",
+        "",
+    )
+
+
+def _response_recommendations(
+    *,
+    state: str,
+    risk_level: str,
+    time_to_instability: float | None,
+    scenario_projections: Any,
+) -> list[dict[str, Any]]:
+    """
+    Operator-facing recommendations only (no control authority / no actuation).
+    """
+    actions: list[dict[str, Any]] = []
+
+    horizon_urgent = time_to_instability is not None and time_to_instability <= 12.0
+
+    # Core, structurally grounded suggestions mapped to typical control-system themes.
+    if state == "STRUCTURAL_INSTABILITY_OBSERVED":
+        actions.append(
+            {
+                "action_type": "maintenance_scheduling",
+                "integration_trigger": "SCHEDULE_MAINTENANCE",
+                "rationale": "Observed multi-indicator structural instability suggests risk of near-term transition.",
+            }
+        )
+        actions.append(
+            {
+                "action_type": "failover_routing_planning",
+                "integration_trigger": "FAILOVER_ROUTING_PREP",
+                "rationale": "Prepare routing safeguards for coordination loss across infrastructure signals.",
+            }
+        )
+        actions.append(
+            {
+                "action_type": "configuration_sanity_check",
+                "integration_trigger": "VERIFY_CONTROL_SETPOINTS",
+                "rationale": "Structural regime divergence can be amplified by recent configuration changes.",
+            }
+        )
+    elif state == "COUPLING_INSTABILITY_OBSERVED":
+        actions.append(
+            {
+                "action_type": "throttling_consideration",
+                "integration_trigger": "THROTTLING_PREP",
+                "rationale": "Coupling/directional breakdown implies higher coordination volatility; reduce stress until stable.",
+            }
+        )
+        actions.append(
+            {
+                "action_type": "load_redistribution_planning",
+                "integration_trigger": "LOAD_REDISTRIBUTION_PREP",
+                "rationale": "Propagation-aware causal proxy suggests some signals can dominate system motion.",
+            }
+        )
+    elif state == "REGIME_SHIFT_OBSERVED":
+        actions.append(
+            {
+                "action_type": "sensor_calibration_verify",
+                "integration_trigger": "VERIFY_SENSOR_CALIBRATION",
+                "rationale": "A regime shift may reflect operational reconfiguration or instrumentation change; verify both.",
+            }
+        )
+        actions.append(
+            {
+                "action_type": "increase_monitoring_cadence",
+                "integration_trigger": "ALERTING_CADENCE_UP",
+                "rationale": "Regime transitions benefit from faster operator review windows.",
+            }
+        )
+    else:
+        actions.append(
+            {
+                "action_type": "continue_observation",
+                "integration_trigger": "NO_ACTUATION",
+                "rationale": "System state is consistent with baseline under current analysis.",
+            }
+        )
+
+    # Horizon-based readiness (still human-in-the-loop).
+    if horizon_urgent and risk_level in {"HIGH", "ELEVATED"}:
+        actions.append(
+            {
+                "action_type": "urgent_readiness_check",
+                "integration_trigger": "HUMAN_APPROVAL_REQUIRED",
+                "rationale": f"Projected time-to-threshold is short (~{round(time_to_instability, 1)} time units). Escalate readiness.",
+            }
+        )
+
+    # Keep recommendation language grounded: do not directly encode control commands.
+    actions.append(
+        {
+            "action_type": "human_approval_required",
+            "integration_trigger": "OPERATOR_REVIEW_ONLY",
+            "rationale": "Neraium emits recommendations as decision-support; no automated actuation is executed from this layer.",
+        }
+    )
+
+    return actions
 
 
 def _interpret_state(
@@ -250,6 +360,19 @@ def decision_output(
         "operator_message": operator_message,
         "interpreted_state": state,
     }
+
+    if _response_recommendations_enabled():
+        scenario_projections = forecast.get("scenario_projections") if isinstance(forecast, dict) else None
+        out["response_recommendations"] = _response_recommendations(
+            state=state,
+            risk_level=risk_level,
+            time_to_instability=time_to_instability,
+            scenario_projections=scenario_projections,
+        )
+        out["autonomous_response_enabled"] = True
+    else:
+        out["autonomous_response_enabled"] = False
+
     if classification_stability is not None:
         out["classification_stability"] = round(classification_stability, 4)
     return out

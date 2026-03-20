@@ -3,11 +3,12 @@ from __future__ import annotations
 from collections import Counter, deque
 from typing import Dict, List, Optional
 
+import os
 import numpy as np
 
 from neraium_core.causal import causal_metrics, granger_causality_matrix
 from neraium_core.causal_attribution import causal_attribution
-from neraium_core.causal_graph import causal_graph_metrics
+from neraium_core.causal_graph import causal_graph_metrics, causal_propagation_spread
 from neraium_core.data_quality import (
     compute_data_quality,
     data_quality_summary,
@@ -50,6 +51,14 @@ DEFAULT_BASELINE_ADAPTATION_ALPHA = 0.92
 BASELINE_UPDATE_MAX_COMPOSITE = 0.85
 # Number of recent interpreted states to compute classification stability.
 CLASSIFICATION_STABILITY_WINDOW = 15
+
+
+def _env_enabled(var_name: str, *, default: str = "1") -> bool:
+    """Feature toggle helper that treats 0/false/no/off as disabled."""
+    v = os.environ.get(var_name, default)
+    if v is None:
+        return True
+    return str(v).strip().lower() not in {"0", "false", "no", "off"}
 
 
 class StructuralEngine:
@@ -382,6 +391,23 @@ class StructuralEngine:
             causal_graph = causal_graph_metrics(causal_matrix, threshold=0.1)
 
             valid_sensor_names = [self.sensor_order[i] for i in range(len(valid_mask)) if valid_mask[i]]
+            causal_prop = None
+            dominant_causal_source = None
+            if _env_enabled("NERAIUM_CAUSAL_INTELLIGENCE", default="1"):
+                try:
+                    causal_prop = causal_propagation_spread(
+                        causal_matrix,
+                        threshold=0.1,
+                        max_steps=2,
+                        top_k=3,
+                    )
+                    top_sources = causal_prop.get("top_sources") if isinstance(causal_prop, dict) else None
+                    if top_sources:
+                        top_idx = int(top_sources[0])
+                        if 0 <= top_idx < len(valid_sensor_names):
+                            dominant_causal_source = valid_sensor_names[top_idx]
+                except Exception:
+                    causal_prop = None
             attr = causal_attribution(
                 baseline_corr_used,
                 corr_recent,
@@ -391,6 +417,8 @@ class StructuralEngine:
             )
             result["causal_attribution"] = attr
             result["dominant_driver"] = attr["top_drivers"][0] if attr["top_drivers"] else None
+            if dominant_causal_source is not None:
+                result["dominant_causal_source"] = dominant_causal_source
 
             subsystem = subsystem_spectral_measures(corr_recent)
 
@@ -462,6 +490,7 @@ class StructuralEngine:
                     "directional": directional,
                     "causal": causal,
                     "causal_graph": causal_graph,
+                    "causal_propagation": causal_prop,
                     "subsystems": subsystem,
                     "spectral": spectral,
                     "entropy": entropy_score,
@@ -580,6 +609,53 @@ class StructuralEngine:
             "ar1_time_to_instability": time_to_threshold_ar1(self.score_history),
             "persistence": persistence,
         }
+
+        # Temporal foresight upgrade: observational scenario projections.
+        # These are "what-if" time-to-threshold estimates derived from the same
+        # AR(1) forecast, with selected component magnitudes scaled.
+        if _env_enabled("NERAIUM_TEMPORAL_SCENARIOS", default="1"):
+            try:
+                scenario_defs = [
+                    {
+                        "scenario": "structural_drift_up_12pct",
+                        "scale": {"relational_drift": 1.12, "regime_drift": 1.08, "early_warning": 1.05},
+                    },
+                    {
+                        "scenario": "coupling_breakdown_up_10pct",
+                        "scale": {"directional_divergence": 1.10, "spectral": 1.10},
+                    },
+                    {"scenario": "interaction_entropy_up_10pct", "scale": {"entropy": 1.10}},
+                ]
+
+                threshold = 1.5
+                score_series = list(self.score_history)
+                projections: list[dict[str, object]] = []
+                for sc in scenario_defs:
+                    scen_components = dict(components)
+                    for k, factor in sc["scale"].items():
+                        if k in scen_components:
+                            scen_components[k] = float(scen_components[k]) * float(factor)
+
+                    scen_score = float(
+                        composite_instability_score_normalized(
+                            scen_components, weights=weights_for_composite
+                        )
+                    )
+                    scen_series = list(score_series)
+                    if scen_series:
+                        scen_series[-1] = scen_score
+                    tti = time_to_threshold_ar1(scen_series, threshold=threshold, max_steps=200)
+                    projections.append(
+                        {
+                            "scenario": sc["scenario"],
+                            "projected_composite_score": scen_score,
+                            "projected_time_to_instability_steps": tti,
+                        }
+                    )
+
+                forecast["scenario_projections"] = projections
+            except Exception:
+                pass
 
         decision = decision_output(
             composite_score=float(composite),

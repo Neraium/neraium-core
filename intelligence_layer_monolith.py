@@ -732,7 +732,81 @@ def causal_graph_metrics(C: np.ndarray, threshold: float = 0.1) -> dict[str, flo
     }
 
 
-__all__ = ["causal_graph_metrics"]
+def causal_propagation_spread(
+    C: np.ndarray,
+    *,
+    threshold: float = 0.1,
+    max_steps: int = 2,
+    top_k: int = 3,
+) -> dict[str, object]:
+    """
+    Propagation-aware causal proxy.
+
+    Uses the Granger-style causal matrix C as a directed weighted adjacency
+    (edge i->j exists when |C[i,j]| >= threshold). It then estimates which
+    sources can reach other nodes within `max_steps` hops.
+
+    This is still an observational proxy (not intervention-level causality),
+    but it upgrades "correlation-only" reasoning into "propagation" reasoning.
+    """
+    if C is None:
+        return {"top_sources": [], "spread_scores": [], "top_pairs": []}
+
+    C = np.asarray(C, dtype=float)
+    if C.ndim != 2 or C.shape[0] != C.shape[1] or C.size == 0:
+        return {"top_sources": [], "spread_scores": [], "top_pairs": []}
+
+    n = C.shape[0]
+    if n < 2:
+        return {"top_sources": [], "spread_scores": [], "top_pairs": []}
+
+    max_steps = max(1, int(max_steps))
+    top_k = max(1, int(top_k))
+
+    # Directed boolean adjacency: preserve direction (i->j) while thresholding by magnitude.
+    adj_bool = np.abs(C) >= float(threshold)
+    adj_bool = adj_bool & (~np.eye(n, dtype=bool))
+    adj_int = adj_bool.astype(int)
+
+    reach = adj_bool.copy()
+    mat = adj_int.copy()
+    for _ in range(max_steps - 1):
+        mat = mat @ adj_int
+        reach |= mat > 0
+
+    # Never count self-reach.
+    np.fill_diagonal(reach, False)
+
+    spread = reach.sum(axis=1).astype(float)  # number of reachable nodes within max_steps
+    denom = max(1, n - 1)
+    spread_norm = spread / float(denom)
+
+    order = np.argsort(-spread_norm)
+    top_sources_idx = [int(i) for i in order[:top_k]]
+
+    # For each top source, pick the reachable target with the strongest direct edge magnitude.
+    absC = np.abs(C)
+    top_pairs: list[dict[str, int | float]] = []
+    for src in top_sources_idx:
+        reachable = reach[src, :]
+        if not bool(np.any(reachable)):
+            continue
+        # Mask unreachable and self, then pick argmax by edge magnitude.
+        mask = reachable.astype(bool)
+        masked_abs = absC[src, :].copy()
+        masked_abs[~mask] = -np.inf
+        dst = int(np.nanargmax(masked_abs))
+        weight = float(absC[src, dst]) if np.isfinite(masked_abs[dst]) else 0.0
+        top_pairs.append({"src_idx": src, "dst_idx": dst, "edge_weight": weight})
+
+    return {
+        "top_sources": top_sources_idx,
+        "spread_scores": [float(x) for x in spread_norm.tolist()],
+        "top_pairs": top_pairs,
+    }
+
+
+__all__ = ["causal_graph_metrics", "causal_propagation_spread"]
 
 
 
@@ -1250,6 +1324,7 @@ def impute_missing_simple(
 
 
 # --- decision_layer ---
+import os
 from typing import Any
 
 
@@ -1298,6 +1373,115 @@ def _phase(score: float, trend: float) -> str:
     if trend < -0.05:
         return "recovering"
     return "transitional"
+
+
+def _response_recommendations_enabled() -> bool:
+    # Default to disabled to preserve existing "observational only" behavior.
+    return os.environ.get("NERAIUM_AUTONOMOUS_RESPONSE", "0").strip().lower() not in (
+        "0",
+        "false",
+        "no",
+        "off",
+        "",
+    )
+
+
+def _response_recommendations(
+    *,
+    state: str,
+    risk_level: str,
+    time_to_instability: float | None,
+    scenario_projections: Any,
+) -> list[dict[str, Any]]:
+    """
+    Operator-facing recommendations only (no control authority / no actuation).
+    """
+    actions: list[dict[str, Any]] = []
+
+    horizon_urgent = time_to_instability is not None and time_to_instability <= 12.0
+
+    # Core, structurally grounded suggestions mapped to typical control-system themes.
+    if state == "STRUCTURAL_INSTABILITY_OBSERVED":
+        actions.append(
+            {
+                "action_type": "maintenance_scheduling",
+                "integration_trigger": "SCHEDULE_MAINTENANCE",
+                "rationale": "Observed multi-indicator structural instability suggests risk of near-term transition.",
+            }
+        )
+        actions.append(
+            {
+                "action_type": "failover_routing_planning",
+                "integration_trigger": "FAILOVER_ROUTING_PREP",
+                "rationale": "Prepare routing safeguards for coordination loss across infrastructure signals.",
+            }
+        )
+        actions.append(
+            {
+                "action_type": "configuration_sanity_check",
+                "integration_trigger": "VERIFY_CONTROL_SETPOINTS",
+                "rationale": "Structural regime divergence can be amplified by recent configuration changes.",
+            }
+        )
+    elif state == "COUPLING_INSTABILITY_OBSERVED":
+        actions.append(
+            {
+                "action_type": "throttling_consideration",
+                "integration_trigger": "THROTTLING_PREP",
+                "rationale": "Coupling/directional breakdown implies higher coordination volatility; reduce stress until stable.",
+            }
+        )
+        actions.append(
+            {
+                "action_type": "load_redistribution_planning",
+                "integration_trigger": "LOAD_REDISTRIBUTION_PREP",
+                "rationale": "Propagation-aware causal proxy suggests some signals can dominate system motion.",
+            }
+        )
+    elif state == "REGIME_SHIFT_OBSERVED":
+        actions.append(
+            {
+                "action_type": "sensor_calibration_verify",
+                "integration_trigger": "VERIFY_SENSOR_CALIBRATION",
+                "rationale": "A regime shift may reflect operational reconfiguration or instrumentation change; verify both.",
+            }
+        )
+        actions.append(
+            {
+                "action_type": "increase_monitoring_cadence",
+                "integration_trigger": "ALERTING_CADENCE_UP",
+                "rationale": "Regime transitions benefit from faster operator review windows.",
+            }
+        )
+    else:
+        actions.append(
+            {
+                "action_type": "continue_observation",
+                "integration_trigger": "NO_ACTUATION",
+                "rationale": "System state is consistent with baseline under current analysis.",
+            }
+        )
+
+    # Horizon-based readiness (still human-in-the-loop).
+    if horizon_urgent and risk_level in {"HIGH", "ELEVATED"}:
+        actions.append(
+            {
+                "action_type": "urgent_readiness_check",
+                "integration_trigger": "HUMAN_APPROVAL_REQUIRED",
+                "rationale": f"Projected time-to-threshold is short (~{round(time_to_instability, 1)} time units). Escalate readiness.",
+            }
+        )
+
+    # Keep recommendation language grounded: do not directly encode control commands.
+    actions.append(
+        {
+            "action_type": "human_approval_required",
+            "integration_trigger": "OPERATOR_REVIEW_ONLY",
+            "rationale": "Neraium emits recommendations as decision-support; no automated actuation is executed from this layer.",
+        }
+    )
+
+    return actions
 
 
 def _interpret_state(
@@ -1500,6 +1684,19 @@ def decision_output(
         "operator_message": operator_message,
         "interpreted_state": state,
     }
+
+    if _response_recommendations_enabled():
+        scenario_projections = forecast.get("scenario_projections") if isinstance(forecast, dict) else None
+        out["response_recommendations"] = _response_recommendations(
+            state=state,
+            risk_level=risk_level,
+            time_to_instability=time_to_instability,
+            scenario_projections=scenario_projections,
+        )
+        out["autonomous_response_enabled"] = True
+    else:
+        out["autonomous_response_enabled"] = False
+
     if classification_stability is not None:
         out["classification_stability"] = round(classification_stability, 4)
     return out
@@ -2051,6 +2248,14 @@ BASELINE_UPDATE_MAX_COMPOSITE = 0.85
 CLASSIFICATION_STABILITY_WINDOW = 15
 
 
+def _env_enabled(var_name: str, *, default: str = "1") -> bool:
+    """Feature toggle helper that treats 0/false/no/off as disabled."""
+    v = os.environ.get(var_name, default)
+    if v is None:
+        return True
+    return str(v).strip().lower() not in {"0", "false", "no", "off"}
+
+
 class StructuralEngine:
     def __init__(
         self,
@@ -2094,8 +2299,9 @@ class StructuralEngine:
         This does not change analytics; it provides decision-layer context so
         transient motion does not escalate into persistent instability.
         """
-        values = [float(v) for v in self.score_history]
-        if not values:
+        values_arr = np.asarray(list(self.score_history), dtype=float)
+        n = int(values_arr.size)
+        if n == 0:
             return {
                 "history_len": 0.0,
                 "rolling_mean": 0.0,
@@ -2104,25 +2310,27 @@ class StructuralEngine:
                 "consecutive_high": 0.0,
             }
 
-        window = values[-min(len(values), 12) :]
-        rolling_mean = float(np.mean(window)) if window else 0.0
-        rolling_std = float(np.std(window)) if window else 0.0
+        window = values_arr[-min(n, 12) :]
+        rolling_mean = float(np.mean(window)) if window.size else 0.0
+        rolling_std = float(np.std(window)) if window.size else 0.0
 
         consecutive_elevated = 0
         consecutive_high = 0
-        for v in reversed(values):
+        for i in range(n - 1, -1, -1):
+            v = float(values_arr[i])
             if v >= 1.5:
                 consecutive_elevated += 1
             else:
                 break
-        for v in reversed(values):
+        for i in range(n - 1, -1, -1):
+            v = float(values_arr[i])
             if v >= 2.5:
                 consecutive_high += 1
             else:
                 break
 
         return {
-            "history_len": float(len(values)),
+            "history_len": float(n),
             "rolling_mean": float(rolling_mean),
             "rolling_std": float(rolling_std),
             "consecutive_elevated": float(consecutive_elevated),
@@ -2145,11 +2353,13 @@ class StructuralEngine:
 
         return np.array(values, dtype=float)
 
-    def _get_recent_window(self) -> Optional[np.ndarray]:
-        if len(self.frames) < self.recent_window:
+    def _get_recent_window(self, frames_list: list[dict] | None = None) -> Optional[np.ndarray]:
+        """Use ``frames_list`` when available to avoid repeated ``list(deque)`` copies per step."""
+        fl = frames_list if frames_list is not None else list(self.frames)
+        if len(fl) < self.recent_window:
             return None
 
-        vectors = np.vstack([f["_vector"] for f in list(self.frames)[-self.recent_window:]])
+        vectors = np.stack([f["_vector"] for f in fl[-self.recent_window :]], axis=0)
         vectors = vectors[:: self.window_stride]
 
         if vectors.shape[0] < 2:
@@ -2157,11 +2367,12 @@ class StructuralEngine:
 
         return vectors
 
-    def _get_baseline_window(self) -> Optional[np.ndarray]:
-        if len(self.frames) < self.baseline_window:
+    def _get_baseline_window(self, frames_list: list[dict] | None = None) -> Optional[np.ndarray]:
+        fl = frames_list if frames_list is not None else list(self.frames)
+        if len(fl) < self.baseline_window:
             return None
 
-        vectors = np.vstack([f["_vector"] for f in list(self.frames)[: self.baseline_window]])
+        vectors = np.stack([f["_vector"] for f in fl[: self.baseline_window]], axis=0)
         vectors = vectors[:: self.window_stride]
 
         if vectors.shape[0] < 2:
@@ -2169,22 +2380,24 @@ class StructuralEngine:
 
         return vectors
 
-    def _get_recent_timestamps(self) -> Optional[list[float]]:
-        if len(self.frames) < self.recent_window:
+    def _get_recent_timestamps(self, frames_list: list[dict] | None = None) -> Optional[list[float]]:
+        fl = frames_list if frames_list is not None else list(self.frames)
+        if len(fl) < self.recent_window:
             return None
         ts_vals: list[float] = []
-        for f in list(self.frames)[-self.recent_window:]:
+        for f in fl[-self.recent_window :]:
             try:
                 ts_vals.append(float(f.get("timestamp")))
             except (TypeError, ValueError):
                 continue
         return ts_vals if len(ts_vals) >= 2 else None
 
-    def _get_baseline_timestamps(self) -> Optional[list[float]]:
-        if len(self.frames) < self.baseline_window:
+    def _get_baseline_timestamps(self, frames_list: list[dict] | None = None) -> Optional[list[float]]:
+        fl = frames_list if frames_list is not None else list(self.frames)
+        if len(fl) < self.baseline_window:
             return None
         ts_vals: list[float] = []
-        for f in list(self.frames)[: self.baseline_window]:
+        for f in fl[: self.baseline_window]:
             try:
                 ts_vals.append(float(f.get("timestamp")))
             except (TypeError, ValueError):
@@ -2240,19 +2453,28 @@ class StructuralEngine:
             "missing_sensor_count": 0,
         }
 
-        baseline_window = self._get_baseline_window()
-        recent_window = self._get_recent_window()
+        # Skip deque→list snapshot during warmup (saves O(n) per frame until windows fill).
+        if len(self.frames) < self.baseline_window or len(self.frames) < self.recent_window:
+            self.latest_result = result
+            return result
+
+        frames_list = list(self.frames)
+        baseline_window = self._get_baseline_window(frames_list)
+        recent_window = self._get_recent_window(frames_list)
 
         if baseline_window is None or recent_window is None:
             self.latest_result = result
             return result
 
+        ts_baseline = self._get_baseline_timestamps(frames_list)
+        ts_recent = self._get_recent_timestamps(frames_list)
+
         data_quality_report = compute_data_quality(
             baseline_window,
             recent_window,
             sensor_names=self.sensor_order,
-            timestamps_baseline=self._get_baseline_timestamps(),
-            timestamps_recent=self._get_recent_timestamps(),
+            timestamps_baseline=ts_baseline,
+            timestamps_recent=ts_recent,
         )
         result["data_quality"] = data_quality_report.to_dict()
         dq_summary = data_quality_summary(data_quality_report)
@@ -2277,7 +2499,6 @@ class StructuralEngine:
         warning = early_warning_metrics(np.nan_to_num(recent_window, nan=0.0))
 
         signature = build_regime_signature(recent_mean, recent_std)
-        assigned_regime = assign_regime(signature, self.regime_signatures)
         self.regime_signatures = update_regime_library(signature, self.regime_signatures)
         assigned_regime = assign_regime(signature, self.regime_signatures)
 
@@ -2324,7 +2545,7 @@ class StructuralEngine:
             self._stage_baseline_profile.corr_baseline = np.array(baseline_corr_used, dtype=float, copy=True)
             stage_structural_raw, _ = StructuralDriftStage.score(stage_features, self._stage_baseline_profile)
             stage_relational_raw, _ = RelationalInstabilityStage.score(stage_features, self._stage_baseline_profile)
-            temporal_raw, _ = TemporalCoherenceStage.score(self._get_recent_timestamps(), self._stage_baseline_profile)
+            temporal_raw, _ = TemporalCoherenceStage.score(ts_recent, self._stage_baseline_profile)
             # Preserve production sensitivity by keeping legacy drift geometry while
             # binding stage outputs into runtime diagnostics.
             drift_score = structural_drift(corr_recent, baseline_corr_used, norm="fro")
@@ -2365,6 +2586,23 @@ class StructuralEngine:
             causal_graph = causal_graph_metrics(causal_matrix, threshold=0.1)
 
             valid_sensor_names = [self.sensor_order[i] for i in range(len(valid_mask)) if valid_mask[i]]
+            causal_prop = None
+            dominant_causal_source = None
+            if _env_enabled("NERAIUM_CAUSAL_INTELLIGENCE", default="1"):
+                try:
+                    causal_prop = causal_propagation_spread(
+                        causal_matrix,
+                        threshold=0.1,
+                        max_steps=2,
+                        top_k=3,
+                    )
+                    top_sources = causal_prop.get("top_sources") if isinstance(causal_prop, dict) else None
+                    if top_sources:
+                        top_idx = int(top_sources[0])
+                        if 0 <= top_idx < len(valid_sensor_names):
+                            dominant_causal_source = valid_sensor_names[top_idx]
+                except Exception:
+                    causal_prop = None
             attr = causal_attribution(
                 baseline_corr_used,
                 corr_recent,
@@ -2374,6 +2612,8 @@ class StructuralEngine:
             )
             result["causal_attribution"] = attr
             result["dominant_driver"] = attr["top_drivers"][0] if attr["top_drivers"] else None
+            if dominant_causal_source is not None:
+                result["dominant_causal_source"] = dominant_causal_source
 
             subsystem = subsystem_spectral_measures(corr_recent)
 
@@ -2383,6 +2623,7 @@ class StructuralEngine:
                 **dominant_mode_loading(corr_recent),
             }
 
+            entropy_score = float(interaction_entropy(corr_recent))
             raw_components = {
                 "drift": drift_score,
                 "relational_drift": relational_raw,
@@ -2392,7 +2633,7 @@ class StructuralEngine:
                     float(directional.get("divergence", 0.0)),
                     float(causal.get("causal_divergence", 0.0)),
                 ),
-                "entropy": interaction_entropy(corr_recent),
+                "entropy": entropy_score,
                 "subsystem_instability": float(subsystem["max_instability"]),
                 "temporal_distortion": temporal_raw,
             }
@@ -2444,9 +2685,10 @@ class StructuralEngine:
                     "directional": directional,
                     "causal": causal,
                     "causal_graph": causal_graph,
+                    "causal_propagation": causal_prop,
                     "subsystems": subsystem,
                     "spectral": spectral,
-                    "entropy": float(interaction_entropy(corr_recent)),
+                    "entropy": entropy_score,
                     "regime_drift": float(regime_drift),
                 }
             )
@@ -2497,8 +2739,9 @@ class StructuralEngine:
         # Metric disagreement: high std across components slightly reduces confidence.
         comp_vals = [float(components.get(k, 0.0)) for k in tier1_components if k in components]
         if comp_vals:
-            mean_c = sum(comp_vals) / len(comp_vals)
-            std_c = (sum((x - mean_c) ** 2 for x in comp_vals) / len(comp_vals)) ** 0.5
+            arr_c = np.asarray(comp_vals, dtype=float)
+            mean_c = float(np.mean(arr_c))
+            std_c = float(np.std(arr_c))
             disagreement = std_c / (mean_c + 1e-6)
             disagreement_factor = max(0.7, 1.0 - disagreement * 0.15)
         else:
@@ -2561,6 +2804,53 @@ class StructuralEngine:
             "ar1_time_to_instability": time_to_threshold_ar1(self.score_history),
             "persistence": persistence,
         }
+
+        # Temporal foresight upgrade: observational scenario projections.
+        # These are "what-if" time-to-threshold estimates derived from the same
+        # AR(1) forecast, with selected component magnitudes scaled.
+        if _env_enabled("NERAIUM_TEMPORAL_SCENARIOS", default="1"):
+            try:
+                scenario_defs = [
+                    {
+                        "scenario": "structural_drift_up_12pct",
+                        "scale": {"relational_drift": 1.12, "regime_drift": 1.08, "early_warning": 1.05},
+                    },
+                    {
+                        "scenario": "coupling_breakdown_up_10pct",
+                        "scale": {"directional_divergence": 1.10, "spectral": 1.10},
+                    },
+                    {"scenario": "interaction_entropy_up_10pct", "scale": {"entropy": 1.10}},
+                ]
+
+                threshold = 1.5
+                score_series = list(self.score_history)
+                projections: list[dict[str, object]] = []
+                for sc in scenario_defs:
+                    scen_components = dict(components)
+                    for k, factor in sc["scale"].items():
+                        if k in scen_components:
+                            scen_components[k] = float(scen_components[k]) * float(factor)
+
+                    scen_score = float(
+                        composite_instability_score_normalized(
+                            scen_components, weights=weights_for_composite
+                        )
+                    )
+                    scen_series = list(score_series)
+                    if scen_series:
+                        scen_series[-1] = scen_score
+                    tti = time_to_threshold_ar1(scen_series, threshold=threshold, max_steps=200)
+                    projections.append(
+                        {
+                            "scenario": sc["scenario"],
+                            "projected_composite_score": scen_score,
+                            "projected_time_to_instability_steps": tti,
+                        }
+                    )
+
+                forecast["scenario_projections"] = projections
+            except Exception:
+                pass
 
         decision = decision_output(
             composite_score=float(composite),
