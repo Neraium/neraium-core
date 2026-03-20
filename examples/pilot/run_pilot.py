@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import argparse
+import gc
 import json
 import os
+import shutil
 import tempfile
 from pathlib import Path
 from typing import Any
@@ -55,7 +57,10 @@ def main() -> None:
     payloads = _load_json_payloads(input_path)
 
     # Keep any engine/store artifacts isolated for the run.
-    with tempfile.TemporaryDirectory(prefix="neraium_pilot_") as tmp_dir:
+    # Use mkdtemp + best-effort rmtree: on Windows, SQLite WAL can briefly lock `run.db`
+    # after connections close; `TemporaryDirectory` cleanup can raise PermissionError.
+    tmp_dir = tempfile.mkdtemp(prefix="neraium_pilot_")
+    try:
         tmp_path = Path(tmp_dir)
         engine = StructuralEngine(
             baseline_window=args.baseline_window,
@@ -70,6 +75,12 @@ def main() -> None:
         for payload in payloads:
             result = service.ingest_payload(payload)
             outputs.append(_pilot_view(result))
+
+        # Drop references so SQLite releases file handles before temp dir removal (Windows).
+        del service, store, engine
+        gc.collect()
+    finally:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
 
     # Print structured pilot view (never raw sensor values outside the `signals` field).
     if len(outputs) == 1:
