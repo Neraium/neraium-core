@@ -5,7 +5,17 @@ from pathlib import Path
 from typing import Any
 
 from neraium_core.alignment import StructuralEngine
-from neraium_core.pipeline import normalize_rest_payload, parse_csv_text
+from neraium_core.pipeline import normalize_rest_payload, parse_csv_text, pilot_hardening_enabled
+from neraium_core.logging_utils import (
+    Timer,
+    log_structured,
+    pilot_debug_enabled,
+    summarize_exception_for_logs,
+    summarize_payload_for_logs,
+    summarize_result_for_logs,
+)
+from neraium_core.pilot_schema import build_pilot_output
+from neraium_core.pilot_config import PilotConfig, load_pilot_config
 from neraium_core.store import ResultStore
 
 
@@ -19,6 +29,7 @@ class StructuralMonitoringService:
         self,
         engine: StructuralEngine | None = None,
         store: ResultStore | None = None,
+        pilot_config: PilotConfig | None = None,
     ):
         # Template engine config; runtime engines are isolated per (site_id, asset_id)
         # so each asset gets its own baseline/model memory.
@@ -26,6 +37,7 @@ class StructuralMonitoringService:
         self.store = store or ResultStore()
         self._engines_by_asset: dict[tuple[str, str], StructuralEngine] = {}
         self._localization_by_site: dict[str, dict[str, float]] = {}
+        self.pilot_config: PilotConfig = pilot_config or load_pilot_config()
 
     def _engine_for_frame(self, frame: dict[str, Any]) -> StructuralEngine:
         site_id = str(frame.get("site_id", "default-site"))
@@ -79,14 +91,14 @@ class StructuralMonitoringService:
         drift = float(result.get("structural_drift_score", 0.0))
         state = str(result.get("state", "STABLE")).upper()
 
-        if drift >= 3.0 or state == "ALERT":
+        if drift >= float(self.pilot_config.drift_high_threshold) or state == "ALERT":
             return {
                 "risk_level": "HIGH",
                 "action_state": "ALERT",
                 "operator_message": "High instability detected. Immediate operator review advised.",
             }
 
-        if drift >= 1.5 or state == "WATCH":
+        if drift >= float(self.pilot_config.drift_watch_threshold) or state == "WATCH":
             return {
                 "risk_level": "MEDIUM",
                 "action_state": "WATCH",
@@ -174,40 +186,169 @@ class StructuralMonitoringService:
         return enriched
 
     def ingest_payload(self, payload: dict[str, Any]) -> dict[str, Any]:
-        logger.info(
-            "ingest_payload called site_id=%s asset_id=%s",
-            payload.get("site_id"),
-            payload.get("asset_id"),
-        )
-        frame = normalize_rest_payload(payload)
-        engine = self._engine_for_frame(frame)
-        result = self._decorate_result(engine.process_frame(frame))
-        self.store.save_ingestion(frame, result)
-        return result
+        """Ingest a single telemetry payload and return the decorated result.
 
-    def ingest_batch(self, payloads: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        pairs: list[tuple[dict[str, Any], dict[str, Any]]] = []
-        results: list[dict[str, Any]] = []
-        for payload in payloads:
+        When `NERAIUM_PILOT_HARDENING=1`, the response is augmented with the pilot
+        schema keys: `timestamp, signals, score, status, aligned, anomaly`.
+        """
+
+        timer = Timer()
+        log_structured(
+            logger,
+            event="ingest_payload_in",
+            fields=summarize_payload_for_logs(payload),
+            level=logging.INFO,
+        )
+        try:
             frame = normalize_rest_payload(payload)
             engine = self._engine_for_frame(frame)
             result = self._decorate_result(engine.process_frame(frame))
-            results.append(result)
-            pairs.append((frame, result))
+            if pilot_hardening_enabled():
+                result.update(build_pilot_output(frame=frame, result=result))
+            self.store.save_ingestion(frame, result)
+
+            out_fields = summarize_result_for_logs(result)
+            out_fields["latency_ms"] = round(timer.ms(), 3)
+            log_structured(logger, event="ingest_payload_out", fields=out_fields, level=logging.INFO)
+
+            if out_fields.get("gate_passed") is False:
+                log_structured(
+                    logger,
+                    event="data_quality_gate_failed",
+                    fields=out_fields,
+                    level=logging.WARNING,
+                )
+
+            if pilot_debug_enabled():
+                # Debug-only: provide a slightly richer reason block without including raw signals.
+                dq = result.get("data_quality_summary")
+                if isinstance(dq, dict) and dq.get("statuses"):
+                    log_structured(
+                        logger,
+                        event="data_quality_statuses_debug",
+                        fields={
+                            "statuses": [str(s) for s in dq.get("statuses", [])[:10]],
+                            "missingness_rate": dq.get("missingness_rate"),
+                            "variability_coverage": dq.get("variability_coverage"),
+                        },
+                        level=logging.DEBUG,
+                    )
+
+            return result
+        except Exception as exc:
+            err_fields = {
+                **summarize_payload_for_logs(payload),
+                **summarize_exception_for_logs(exc),
+                "latency_ms": round(timer.ms(), 3),
+            }
+            log_structured(logger, event="ingest_payload_error", fields=err_fields, level=logging.ERROR)
+            raise
+
+    def ingest_batch(self, payloads: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Ingest multiple telemetry payloads (batch) and return decorated results.
+
+        When `NERAIUM_PILOT_HARDENING=1`, each result is augmented with pilot schema keys.
+        """
+
+        batch_timer = Timer()
+        log_structured(
+            logger,
+            event="ingest_batch_in",
+            fields={"items": len(payloads)},
+            level=logging.INFO,
+        )
+        pairs: list[tuple[dict[str, Any], dict[str, Any]]] = []
+        results: list[dict[str, Any]] = []
+        for payload in payloads:
+            item_timer = Timer()
+            try:
+                frame = normalize_rest_payload(payload)
+                engine = self._engine_for_frame(frame)
+                result = self._decorate_result(engine.process_frame(frame))
+                if pilot_hardening_enabled():
+                    result.update(build_pilot_output(frame=frame, result=result))
+                results.append(result)
+                pairs.append((frame, result))
+
+                out_fields = summarize_result_for_logs(result)
+                out_fields["latency_ms"] = round(item_timer.ms(), 3)
+                out_fields["item_asset_id"] = payload.get("asset_id")
+                log_structured(
+                    logger,
+                    event="ingest_batch_item_out",
+                    fields=out_fields,
+                    level=logging.INFO,
+                )
+            except Exception as exc:
+                err_fields = {
+                    **summarize_payload_for_logs(payload),
+                    **summarize_exception_for_logs(exc),
+                    "latency_ms": round(item_timer.ms(), 3),
+                }
+                log_structured(logger, event="ingest_batch_item_error", fields=err_fields, level=logging.ERROR)
+                raise
+
         self.store.save_ingestion_batch(pairs)
+        log_structured(
+            logger,
+            event="ingest_batch_out",
+            fields={"items": len(results), "latency_ms": round(batch_timer.ms(), 3)},
+            level=logging.INFO,
+        )
         return results
 
     def ingest_csv(self, csv_text: str) -> list[dict[str, Any]]:
-        frames = parse_csv_text(csv_text)
-        pairs: list[tuple[dict[str, Any], dict[str, Any]]] = []
-        results: list[dict[str, Any]] = []
-        for frame in frames:
-            engine = self._engine_for_frame(frame)
-            result = self._decorate_result(engine.process_frame(frame))
-            results.append(result)
-            pairs.append((frame, result))
-        self.store.save_ingestion_batch(pairs)
-        return results
+        """Ingest CSV text and return decorated results.
+
+        When `NERAIUM_PILOT_HARDENING=1`, each result is augmented with pilot schema keys.
+        """
+
+        timer = Timer()
+        log_structured(
+            logger,
+            event="ingest_csv_in",
+            fields={"csv_text_len": len(csv_text)},
+            level=logging.INFO,
+        )
+        try:
+            frames = parse_csv_text(csv_text)
+            pairs: list[tuple[dict[str, Any], dict[str, Any]]] = []
+            results: list[dict[str, Any]] = []
+            for frame in frames:
+                item_timer = Timer()
+                engine = self._engine_for_frame(frame)
+                result = self._decorate_result(engine.process_frame(frame))
+                if pilot_hardening_enabled():
+                    result.update(build_pilot_output(frame=frame, result=result))
+                results.append(result)
+                pairs.append((frame, result))
+
+                out_fields = summarize_result_for_logs(result)
+                out_fields["latency_ms"] = round(item_timer.ms(), 3)
+                out_fields["frame_asset_id"] = frame.get("asset_id")
+                log_structured(
+                    logger,
+                    event="ingest_csv_item_out",
+                    fields=out_fields,
+                    level=logging.INFO,
+                )
+
+            self.store.save_ingestion_batch(pairs)
+            log_structured(
+                logger,
+                event="ingest_csv_out",
+                fields={"items": len(results), "latency_ms": round(timer.ms(), 3)},
+                level=logging.INFO,
+            )
+            return results
+        except Exception as exc:
+            err_fields = {
+                "csv_text_len": len(csv_text),
+                **summarize_exception_for_logs(exc),
+                "latency_ms": round(timer.ms(), 3),
+            }
+            log_structured(logger, event="ingest_csv_error", fields=err_fields, level=logging.ERROR)
+            raise
 
     def get_latest_result(self) -> dict[str, Any] | None:
         return self.store.get_latest_result()

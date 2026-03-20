@@ -1,4 +1,6 @@
 import csv
+import math
+import os
 from datetime import datetime, timezone
 from io import StringIO
 from typing import Any, Dict, List, Optional
@@ -53,23 +55,59 @@ def normalize_sensor_name(value: Any) -> str:
     return text
 
 
-def coerce_float(value: Any) -> Optional[float]:
+def pilot_hardening_enabled() -> bool:
     """
-    Convert input to float when possible.
-    Returns None for missing or invalid values.
+    Pilot hardening feature toggle.
+
+    When enabled, the pipeline rejects non-numeric sensor values and treats NaN/inf
+    as missing (`None`) to keep downstream analytics stable.
     """
+
+    v = os.getenv("NERAIUM_PILOT_HARDENING", "0").strip().lower()
+    return v not in {"0", "false", "no", "off", ""}
+
+
+def coerce_float(value: Any, *, sensor_name: str) -> Optional[float]:
+    """
+    Convert a sensor input value into a float.
+
+    Returns:
+      - `None` for missing values (`None`, empty string).
+      - In pilot mode, rejects malformed non-numeric values with `ValueError`.
+      - In pilot mode, converts NaN/inf to `None`.
+    """
+
+    strict = pilot_hardening_enabled()
+
     if value is None:
         return None
 
     if isinstance(value, str):
-        value = value.strip()
-        if value == "":
+        text = value.strip()
+        if text == "":
             return None
-
-    try:
-        return float(value)
-    except (TypeError, ValueError):
+        try:
+            f = float(text)
+        except (TypeError, ValueError) as exc:
+            if strict:
+                raise ValueError(f"Invalid signal value for {sensor_name!r}: {value!r}") from exc
+            return None
+    elif isinstance(value, (int, float)):
+        try:
+            f = float(value)
+        except (TypeError, ValueError) as exc:
+            if strict:
+                raise ValueError(f"Invalid signal value for {sensor_name!r}: {value!r}") from exc
+            return None
+    else:
+        if strict:
+            raise ValueError(f"Invalid signal type for {sensor_name!r}: {type(value).__name__}")
         return None
+
+    if strict and (math.isnan(f) or math.isinf(f)):
+        return None
+
+    return f
 
 
 def build_frame(
@@ -80,27 +118,34 @@ def build_frame(
     
     
 ) -> Dict[str, Any]:
+    """
+    Build the internal telemetry frame for `StructuralEngine.process_frame()`.
+
+    Internal contract:
+    - `frame["timestamp"]` is an ISO-8601 UTC string
+    - `frame["sensor_values"]` is a dict of `{signal_name: float | None}`
+    """
     if not isinstance(sensor_values, dict):
         raise ValueError("sensor_values must be an object")
 
+    # Internal frame shape used by `StructuralEngine.process_frame`.
+    # Keep this stable across pipelines/entrypoints so production ingestion works.
     frame: Dict[str, Any] = {
-    "timestamp": normalize_timestamp(timestamp),
-    "site_id": site_id,
-    "asset_id": asset_id,
-    "signals": sensor_values,
-    "aligned": [],  
-    "anomoly": False, # ✅ CORRECT PLACE
-}
-
+        "timestamp": normalize_timestamp(timestamp),
+        "site_id": site_id,
+        "asset_id": asset_id,
+        "sensor_values": {},
+        "sensor_quality": {},
+        "aligned": [],
+        "anomaly": False,
+    }
 
     for raw_key, raw_value in sensor_values.items():
         sensor_name = normalize_sensor_name(raw_key)
-        numeric_value = coerce_float(raw_value)
+        numeric_value = coerce_float(raw_value, sensor_name=sensor_name)
 
         frame["sensor_values"][sensor_name] = numeric_value
-        frame["sensor_quality"][sensor_name] = (
-            "ok" if numeric_value is not None else "missing"
-        )
+        frame["sensor_quality"][sensor_name] = "ok" if numeric_value is not None else "missing"
 
     return frame
 
@@ -108,6 +153,11 @@ def build_frame(
 def normalize_rest_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
     """
     Normalize an incoming REST payload into the internal frame format.
+
+    In pilot hardening mode (`NERAIUM_PILOT_HARDENING=1`), validation is strict:
+    - `sensor_values` must be an object/dict
+    - sensor values must be numeric or numeric strings (or `null`)
+    - invalid values are rejected with clear `ValueError` messages
     """
     if not isinstance(payload, dict):
         raise ValueError("Payload must be an object")
