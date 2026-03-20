@@ -109,6 +109,48 @@ def _scenario_timestamp(start: datetime, logical_t: int) -> tuple[str, list[str]
     return _iso_timestamp(start, logical_t), tags
 
 
+def _rounded_signals_from_result(result: dict[str, Any]) -> dict[str, float | None] | None:
+    pv = _pilot_view(result)
+    signals = pv.get("signals")
+    if not isinstance(signals, dict):
+        return None
+    rounded: dict[str, float | None] = {}
+    for k, v in signals.items():
+        if v is None or (isinstance(v, float) and (np.isnan(v) or np.isinf(v))):
+            rounded[str(k)] = None
+        else:
+            rounded[str(k)] = round(float(v), 6)
+    return rounded
+
+
+def _result_score(result: dict[str, Any]) -> float | None:
+    pv = _pilot_view(result)
+    s = pv.get("score")
+    if s is None:
+        return None
+    try:
+        return float(s)
+    except (TypeError, ValueError):
+        return None
+
+
+def _save_result_row(*, timestep: int, result: dict[str, Any]) -> dict[str, Any]:
+    """Compact row for pilot_results.json (requested schema)."""
+    return {
+        "timestep": timestep,
+        "signals": _rounded_signals_from_result(result),
+        "state": result.get("state"),
+        "interpreted_state": result.get("interpreted_state"),
+        "score": _result_score(result),
+    }
+
+
+def _write_pilot_results(path: Path, rows: list[dict[str, Any]]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(rows, indent=2), encoding="utf-8")
+    SCENARIO_LOG.info("saved %s rows to %s", len(rows), path.resolve())
+
+
 def _apply_scenario_degradations(
     sensors: dict[str, float],
     logical_t: int,
@@ -138,20 +180,11 @@ def _print_step_record(
     logical_t: int,
     result: dict[str, Any],
     degraded: list[str] | None = None,
+    save_rows: list[dict[str, Any]] | None = None,
 ) -> None:
     """One JSON object per line: pilot fields + engine state + interpreted_state + confidence."""
     pv = _pilot_view(result)
-    signals = pv.get("signals")
-    rounded_signals: dict[str, float | None] | None
-    if isinstance(signals, dict):
-        rounded_signals = {}
-        for k, v in signals.items():
-            if v is None or (isinstance(v, float) and (np.isnan(v) or np.isinf(v))):
-                rounded_signals[str(k)] = None
-            else:
-                rounded_signals[str(k)] = round(float(v), 6)
-    else:
-        rounded_signals = None
+    rounded_signals = _rounded_signals_from_result(result)
 
     record: dict[str, Any] = {
         "ingest_seq": ingest_seq,
@@ -167,6 +200,9 @@ def _print_step_record(
     if degraded:
         record["degraded"] = degraded
     print(json.dumps(record, separators=(",", ":")))
+
+    if save_rows is not None:
+        save_rows.append(_save_result_row(timestep=logical_t, result=result))
 
 
 def _log_engine_data_quality_if_degraded(
@@ -196,6 +232,7 @@ def _run_scenario(
     seed: int,
     baseline_window: int,
     recent_window: int,
+    results_path: Path,
 ) -> None:
     """Drive Neraium with generate_signals(t) for t in [0, timesteps)."""
     if timesteps < 100:
@@ -210,6 +247,7 @@ def _run_scenario(
     rng = np.random.default_rng(seed)
     start = datetime(2026, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
 
+    save_rows: list[dict[str, Any]] = []
     tmp_dir = tempfile.mkdtemp(prefix="neraium_pilot_")
     try:
         tmp_path = Path(tmp_dir)
@@ -267,6 +305,7 @@ def _run_scenario(
                 logical_t=logical_t,
                 result=result,
                 degraded=step_tags if step_tags else None,
+                save_rows=save_rows,
             )
             ingest_seq += 1
 
@@ -285,6 +324,7 @@ def _run_scenario(
                     logical_t=logical_t,
                     result=result_dup,
                     degraded=["duplicated_frame"],
+                    save_rows=save_rows,
                 )
                 ingest_seq += 1
 
@@ -292,6 +332,8 @@ def _run_scenario(
         gc.collect()
     finally:
         shutil.rmtree(tmp_dir, ignore_errors=True)
+
+    _write_pilot_results(results_path, save_rows)
 
     # Progression summary (operator-facing heuristic status)
     print(
@@ -319,11 +361,13 @@ def _run_scenario(
     )
 
 
-def _run_file_payloads(path: Path) -> None:
+def _run_file_payloads(path: Path, *, results_path: Path) -> None:
     """Original behavior: load JSON payload(s) and print pilot view."""
     payloads = _load_json_payloads(path)
+    _setup_scenario_logging()
 
     tmp_dir = tempfile.mkdtemp(prefix="neraium_pilot_")
+    save_rows: list[dict[str, Any]] = []
     try:
         tmp_path = Path(tmp_dir)
         engine = StructuralEngine(
@@ -336,14 +380,17 @@ def _run_file_payloads(path: Path) -> None:
         service = StructuralMonitoringService(engine=engine, store=store)
 
         outputs: list[dict[str, Any]] = []
-        for payload in payloads:
+        for timestep, payload in enumerate(payloads):
             result = service.ingest_payload(payload)
             outputs.append(_pilot_view(result))
+            save_rows.append(_save_result_row(timestep=timestep, result=result))
 
         del service, store, engine
         gc.collect()
     finally:
         shutil.rmtree(tmp_dir, ignore_errors=True)
+
+    _write_pilot_results(results_path, save_rows)
 
     if len(outputs) == 1:
         print(json.dumps(outputs[0], indent=2))
@@ -376,6 +423,12 @@ def main() -> None:
         default=8,
         help="StructuralEngine recent window (scenario mode).",
     )
+    parser.add_argument(
+        "--output",
+        type=Path,
+        default=Path("pilot_results.json"),
+        help="Write per-step results (timestep, signals, state, interpreted_state, score) to this JSON file.",
+    )
     args = parser.parse_args()
 
     os.environ["NERAIUM_PILOT_HARDENING"] = "1"
@@ -386,7 +439,7 @@ def main() -> None:
         input_path = Path(args.input)
         if not input_path.exists():
             raise FileNotFoundError(str(input_path))
-        _run_file_payloads(input_path)
+        _run_file_payloads(input_path, results_path=args.output)
         return
 
     _run_scenario(
@@ -394,6 +447,7 @@ def main() -> None:
         seed=args.seed,
         baseline_window=args.baseline_window,
         recent_window=args.recent_window,
+        results_path=args.output,
     )
 
 

@@ -1,0 +1,1214 @@
+[
+  {
+    "timestep": 0,
+    "signals": {
+      "s1": 10.0,
+      "s2": 10.0,
+      "s3": 10.0,
+      "s4": 10.0
+    },
+    "state": "STABLE",
+    "interpreted_state": null,
+    "score": 0.0
+  },
+  {
+    "timestep": 1,
+    "signals": {
+      "s1": 10.004948,
+      "s2": 10.004948,
+      "s3": 10.004948,
+      "s4": 10.004948
+    },
+    "state": "STABLE",
+    "interpreted_state": null,
+    "score": 0.0
+  },
+  {
+    "timestep": 2,
+    "signals": {
+      "s1": 10.009589,
+      "s2": 10.009589,
+      "s3": 10.009589,
+      "s4": 10.009589
+    },
+    "state": "STABLE",
+    "interpreted_state": null,
+    "score": 0.0
+  },
+  {
+    "timestep": 3,
+    "signals": {
+      "s1": 10.013633,
+      "s2": 10.013633,
+      "s3": 10.013633,
+      "s4": 10.013633
+    },
+    "state": "STABLE",
+    "interpreted_state": null,
+    "score": 0.0
+  },
+  {
+    "timestep": 4,
+    "signals": {
+      "s1": 10.016829,
+      "s2": 10.016829,
+      "s3": 10.016829,
+      "s4": 10.016829
+    },
+    "state": "STABLE",
+    "interpreted_state": null,
+    "score": 0.0
+  },
+  {
+    "timestep": 5,
+    "signals": {
+      "s1": 10.01898,
+      "s2": 10.01898,
+      "s3": 10.01898,
+      "s4": 10.01898
+    },
+    "state": "STABLE",
+    "interpreted_state": null,
+    "score": 0.0
+  },
+  {
+    "timestep": 6,
+    "signals": {
+      "s1": 10.01995,
+      "s2": 10.01995,
+      "s3": 10.01995,
+      "s4": 10.01995
+    },
+    "state": "STABLE",
+    "interpreted_state": null,
+    "score": 0.0
+  },
+  {
+    "timestep": 7,
+    "signals": {
+      "s1": 10.01968,
+      "s2": 10.01968,
+      "s3": 10.01968,
+      "s4": 10.01968
+    },
+    "state": "STABLE",
+    "interpreted_state": null,
+    "score": 0.0
+  },
+  {
+    "timestep": 8,
+    "signals": {
+      "s1": 10.018186,
+      "s2": 10.018186,
+      "s3": 10.018186,
+      "s4": 10.018186
+    },
+    "state": "STABLE",
+    "interpreted_state": null,
+    "score": 0.0
+  },
+  {
+    "timestep": 9,
+    "signals": {
+      "s1": 10.015561,
+      "s2": 10.015561,
+      "s3": 10.015561,
+      "s4": 10.015561
+    },
+    "state": "STABLE",
+    "interpreted_state": null,
+    "score": 0.0
+  },
+  {
+    "timestep": 10,
+    "signals": {
+      "s1": 10.011969,
+      "s2": 10.011969,
+      "s3": 10.011969,
+      "s4": 10.011969
+    },
+    "state": "STABLE",
+    "interpreted_state": null,
+    "score": 0.0
+  },
+  {
+    "timestep": 11,
+    "signals": {
+      "s1": 10.007633,
+      "s2": 10.007633,
+      "s3": 10.007633,
+      "s4": 10.007633
+    },
+    "state": "STABLE",
+    "interpreted_state": null,
+    "score": 0.0
+  },
+  {
+    "timestep": 12,
+    "signals": {
+      "s1": 10.002822,
+      "s2": 10.002822,
+      "s3": 10.002822,
+      "s4": 10.002822
+    },
+    "state": "STABLE",
+    "interpreted_state": null,
+    "score": 0.0
+  },
+  {
+    "timestep": 13,
+    "signals": {
+      "s1": 9.997836,
+      "s2": 9.997836,
+      "s3": 9.997836,
+      "s4": 9.997836
+    },
+    "state": "STABLE",
+    "interpreted_state": null,
+    "score": 0.0
+  },
+  {
+    "timestep": 14,
+    "signals": {
+      "s1": 9.992984,
+      "s2": 9.992984,
+      "s3": 9.992984,
+      "s4": 9.992984
+    },
+    "state": "STABLE",
+    "interpreted_state": null,
+    "score": 0.0
+  },
+  {
+    "timestep": 15,
+    "signals": {
+      "s1": 9.988569,
+      "s2": 9.988569,
+      "s3": 9.988569,
+      "s4": 9.988569
+    },
+    "state": "STABLE",
+    "interpreted_state": null,
+    "score": 0.0
+  },
+  {
+    "timestep": 16,
+    "signals": {
+      "s1": 9.984864,
+      "s2": 9.984864,
+      "s3": 9.984864,
+      "s4": 9.984864
+    },
+    "state": "STABLE",
+    "interpreted_state": null,
+    "score": 0.0
+  },
+  {
+    "timestep": 17,
+    "signals": {
+      "s1": 9.9821,
+      "s2": 9.9821,
+      "s3": 9.9821,
+      "s4": 9.9821
+    },
+    "state": "STABLE",
+    "interpreted_state": null,
+    "score": 0.0
+  },
+  {
+    "timestep": 18,
+    "signals": {
+      "s1": 9.980449,
+      "s2": 9.980449,
+      "s3": 9.980449,
+      "s4": 9.980449
+    },
+    "state": "STABLE",
+    "interpreted_state": null,
+    "score": 0.0
+  },
+  {
+    "timestep": 19,
+    "signals": {
+      "s1": 9.980014,
+      "s2": 9.980014,
+      "s3": 9.980014,
+      "s4": 9.980014
+    },
+    "state": "STABLE",
+    "interpreted_state": null,
+    "score": 0.0
+  },
+  {
+    "timestep": 20,
+    "signals": {
+      "s1": 9.980822,
+      "s2": 9.980822,
+      "s3": 9.980822,
+      "s4": 9.980822
+    },
+    "state": "STABLE",
+    "interpreted_state": null,
+    "score": 0.0
+  },
+  {
+    "timestep": 21,
+    "signals": {
+      "s1": 9.982821,
+      "s2": 9.982821,
+      "s3": 9.982821,
+      "s4": 9.982821
+    },
+    "state": "STABLE",
+    "interpreted_state": null,
+    "score": 0.0
+  },
+  {
+    "timestep": 22,
+    "signals": {
+      "s1": 9.985889,
+      "s2": 9.985889,
+      "s3": 9.985889,
+      "s4": 9.985889
+    },
+    "state": "STABLE",
+    "interpreted_state": null,
+    "score": 0.0
+  },
+  {
+    "timestep": 23,
+    "signals": {
+      "s1": 9.989834,
+      "s2": 9.989834,
+      "s3": 9.989834,
+      "s4": 9.989834
+    },
+    "state": "STABLE",
+    "interpreted_state": "NOMINAL_STRUCTURE",
+    "score": 1.1074
+  },
+  {
+    "timestep": 24,
+    "signals": {
+      "s1": 9.994412,
+      "s2": 9.994412,
+      "s3": 9.994412,
+      "s4": 9.994412
+    },
+    "state": "STABLE",
+    "interpreted_state": "NOMINAL_STRUCTURE",
+    "score": 1.0939
+  },
+  {
+    "timestep": 25,
+    "signals": {
+      "s1": 9.999336,
+      "s2": 9.999336,
+      "s3": 9.999336,
+      "s4": 9.999336
+    },
+    "state": "STABLE",
+    "interpreted_state": "NOMINAL_STRUCTURE",
+    "score": 1.0397
+  },
+  {
+    "timestep": 26,
+    "signals": {
+      "s1": 10.004302,
+      "s2": 10.004302,
+      "s3": 10.004302,
+      "s4": 10.004302
+    },
+    "state": "STABLE",
+    "interpreted_state": "NOMINAL_STRUCTURE",
+    "score": 0.9861
+  },
+  {
+    "timestep": 27,
+    "signals": {
+      "s1": 10.009001,
+      "s2": 10.009001,
+      "s3": 10.009001,
+      "s4": 10.009001
+    },
+    "state": "STABLE",
+    "interpreted_state": "NOMINAL_STRUCTURE",
+    "score": 0.9371
+  },
+  {
+    "timestep": 28,
+    "signals": {
+      "s1": 10.01314,
+      "s2": 10.01314,
+      "s3": 10.01314,
+      "s4": 10.01314
+    },
+    "state": "STABLE",
+    "interpreted_state": "NOMINAL_STRUCTURE",
+    "score": 0.9372
+  },
+  {
+    "timestep": 29,
+    "signals": {
+      "s1": 10.016462,
+      "s2": 10.016462,
+      "s3": 10.016462,
+      "s4": 10.016462
+    },
+    "state": "STABLE",
+    "interpreted_state": "NOMINAL_STRUCTURE",
+    "score": 0.9372
+  },
+  {
+    "timestep": 30,
+    "signals": {
+      "s1": 9.991389,
+      "s2": 10.027198,
+      "s3": 10.031,
+      "s4": 9.973168
+    },
+    "state": "STABLE",
+    "interpreted_state": "COHERENCE_UNDER_CONSTRAINT",
+    "score": 1.7006
+  },
+  {
+    "timestep": 31,
+    "signals": {
+      "s1": 10.04547,
+      "s2": 9.941588,
+      "s3": 9.947577,
+      "s4": 9.930852
+    },
+    "state": "STABLE",
+    "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
+    "score": 2.15
+  },
+  {
+    "timestep": 32,
+    "signals": {
+      "s1": 10.240732,
+      "s2": 10.036497,
+      "s3": 10.057721,
+      "s4": 10.044526
+    },
+    "state": "STABLE",
+    "interpreted_state": "NOMINAL_STRUCTURE",
+    "score": 1.206
+  },
+  {
+    "timestep": 33,
+    "signals": {
+      "s1": 10.258003,
+      "s2": 9.946451,
+      "s3": 9.983197,
+      "s4": 9.96463
+    },
+    "state": "STABLE",
+    "interpreted_state": "STRUCTURAL_INSTABILITY_OBSERVED",
+    "score": 1.5328
+  },
+  {
+    "timestep": 34,
+    "signals": {
+      "s1": 10.358987,
+      "s2": 10.017056,
+      "s3": 9.989515,
+      "s4": 9.984039
+    },
+    "state": "STABLE",
+    "interpreted_state": "STRUCTURAL_INSTABILITY_OBSERVED",
+    "score": 1.4677
+  },
+  {
+    "timestep": 35,
+    "signals": {
+      "s1": 10.471561,
+      "s2": 9.993224,
+      "s3": 9.994169,
+      "s4": 9.994531
+    },
+    "state": "STABLE",
+    "interpreted_state": "COHERENCE_UNDER_CONSTRAINT",
+    "score": 1.4195
+  },
+  {
+    "timestep": 36,
+    "signals": {
+      "s1": 10.647538,
+      "s2": 10.075421,
+      "s3": 10.06939,
+      "s4": 10.097985
+    },
+    "state": "STABLE",
+    "interpreted_state": "NOMINAL_STRUCTURE",
+    "score": 1.0238
+  },
+  {
+    "timestep": 37,
+    "signals": {
+      "s1": 10.70788,
+      "s2": 10.028356,
+      "s3": 10.028669,
+      "s4": 10.058171
+    },
+    "state": "STABLE",
+    "interpreted_state": "NOMINAL_STRUCTURE",
+    "score": 1.0397
+  },
+  {
+    "timestep": 38,
+    "signals": {
+      "s1": 10.800593,
+      "s2": 10.01642,
+      "s3": 10.034373,
+      "s4": 10.032064
+    },
+    "state": "STABLE",
+    "interpreted_state": "NOMINAL_STRUCTURE",
+    "score": 1.0288
+  },
+  {
+    "timestep": 39,
+    "signals": {
+      "s1": 10.881176,
+      "s2": 10.013219,
+      "s3": 10.022326,
+      "s4": 10.010099
+    },
+    "state": "STABLE",
+    "interpreted_state": "NOMINAL_STRUCTURE",
+    "score": 1.1417
+  },
+  {
+    "timestep": 40,
+    "signals": {
+      "s1": 10.974191,
+      "s2": null,
+      "s3": null,
+      "s4": 10.002157
+    },
+    "state": "STABLE",
+    "interpreted_state": "NOMINAL_STRUCTURE",
+    "score": 1.5982
+  },
+  {
+    "timestep": 41,
+    "signals": {
+      "s1": 11.013942,
+      "s2": null,
+      "s3": null,
+      "s4": 9.99381
+    },
+    "state": "STABLE",
+    "interpreted_state": "REGIME_SHIFT_OBSERVED",
+    "score": 1.8104
+  },
+  {
+    "timestep": 42,
+    "signals": {
+      "s1": 11.065988,
+      "s2": null,
+      "s3": null,
+      "s4": 9.94691
+    },
+    "state": "STABLE",
+    "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
+    "score": 2.0608
+  },
+  {
+    "timestep": 43,
+    "signals": {
+      "s1": 11.259759,
+      "s2": null,
+      "s3": null,
+      "s4": 10.027908
+    },
+    "state": "STABLE",
+    "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
+    "score": 2.3003
+  },
+  {
+    "timestep": 44,
+    "signals": {
+      "s1": 11.256307,
+      "s2": null,
+      "s3": null,
+      "s4": 9.951821
+    },
+    "state": "STABLE",
+    "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
+    "score": 2.1638
+  },
+  {
+    "timestep": 45,
+    "signals": {
+      "s1": 11.444074,
+      "s2": 10.03079,
+      "s3": 10.040131,
+      "s4": 10.021432
+    },
+    "state": "STABLE",
+    "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
+    "score": 1.9994
+  },
+  {
+    "timestep": 46,
+    "signals": {
+      "s1": 11.525032,
+      "s2": 10.01101,
+      "s3": 10.010636,
+      "s4": 9.994354
+    },
+    "state": "STABLE",
+    "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
+    "score": 1.7471
+  },
+  {
+    "timestep": 47,
+    "signals": {
+      "s1": 11.625091,
+      "s2": 10.019729,
+      "s3": 10.029094,
+      "s4": 10.02841
+    },
+    "state": "STABLE",
+    "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
+    "score": 1.8047
+  },
+  {
+    "timestep": 48,
+    "signals": {
+      "s1": 11.734646,
+      "s2": 10.018149,
+      "s3": 10.025021,
+      "s4": 9.992869
+    },
+    "state": "STABLE",
+    "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
+    "score": 1.7749
+  },
+  {
+    "timestep": 49,
+    "signals": {
+      "s1": 11.720662,
+      "s2": 9.922171,
+      "s3": 9.950111,
+      "s4": 9.924006
+    },
+    "state": "STABLE",
+    "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
+    "score": 1.9038
+  },
+  {
+    "timestep": 50,
+    "signals": {
+      "s1": 11.910858,
+      "s2": 9.977748,
+      "s3": 9.999624,
+      "s4": 9.966201
+    },
+    "state": "STABLE",
+    "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
+    "score": 2.099
+  },
+  {
+    "timestep": 51,
+    "signals": {
+      "s1": 11.967782,
+      "s2": 9.985002,
+      "s3": 10.008589,
+      "s4": 9.957236
+    },
+    "state": "WATCH",
+    "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
+    "score": 2.0842
+  },
+  {
+    "timestep": 52,
+    "signals": {
+      "s1": 12.112132,
+      "s2": 10.005494,
+      "s3": 9.988456,
+      "s4": 10.01882
+    },
+    "state": "WATCH",
+    "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
+    "score": 1.5627
+  },
+  {
+    "timestep": 53,
+    "signals": {
+      "s1": 12.168474,
+      "s2": 9.979257,
+      "s3": 10.010856,
+      "s4": 9.974033
+    },
+    "state": "WATCH",
+    "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
+    "score": 1.2724
+  },
+  {
+    "timestep": 54,
+    "signals": {
+      "s1": 12.242646,
+      "s2": 9.96346,
+      "s3": 9.986244,
+      "s4": 9.975762
+    },
+    "state": "STABLE",
+    "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
+    "score": 1.2337
+  },
+  {
+    "timestep": 55,
+    "signals": {
+      "s1": 12.418541,
+      "s2": 9.9905,
+      "s3": 10.00148,
+      "s4": 9.995743
+    },
+    "state": "STABLE",
+    "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
+    "score": 1.2064
+  },
+  {
+    "timestep": 55,
+    "signals": {
+      "s1": 12.418541,
+      "s2": 9.9905,
+      "s3": 10.00148,
+      "s4": 9.995743
+    },
+    "state": "STABLE",
+    "interpreted_state": "NOMINAL_STRUCTURE",
+    "score": 1.2596
+  },
+  {
+    "timestep": 56,
+    "signals": {
+      "s1": 12.426874,
+      "s2": 9.997111,
+      "s3": 9.979963,
+      "s4": 9.954991
+    },
+    "state": "STABLE",
+    "interpreted_state": "COHERENCE_UNDER_CONSTRAINT",
+    "score": 1.4204
+  },
+  {
+    "timestep": 57,
+    "signals": {
+      "s1": 12.530647,
+      "s2": 9.976139,
+      "s3": 9.999311,
+      "s4": 10.017654
+    },
+    "state": "WATCH",
+    "interpreted_state": "COHERENCE_UNDER_CONSTRAINT",
+    "score": 1.3589
+  },
+  {
+    "timestep": 58,
+    "signals": {
+      "s1": 12.656786,
+      "s2": 9.973935,
+      "s3": 10.021931,
+      "s4": 10.000318
+    },
+    "state": "WATCH",
+    "interpreted_state": "COHERENCE_UNDER_CONSTRAINT",
+    "score": 1.4504
+  },
+  {
+    "timestep": 59,
+    "signals": {
+      "s1": 12.726144,
+      "s2": 9.98057,
+      "s3": 10.004705,
+      "s4": 9.986527
+    },
+    "state": "WATCH",
+    "interpreted_state": "COHERENCE_UNDER_CONSTRAINT",
+    "score": 1.4282
+  },
+  {
+    "timestep": 60,
+    "signals": {
+      "s1": 7.777911,
+      "s2": 12.342954,
+      "s3": 3.487976,
+      "s4": 10.173277
+    },
+    "state": "WATCH",
+    "interpreted_state": "COHERENCE_UNDER_CONSTRAINT",
+    "score": 2.4806
+  },
+  {
+    "timestep": 61,
+    "signals": {
+      "s1": 8.004704,
+      "s2": 16.828688,
+      "s3": 6.195412,
+      "s4": 12.670657
+    },
+    "state": "ALERT",
+    "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
+    "score": 2.569
+  },
+  {
+    "timestep": 62,
+    "signals": {
+      "s1": 7.460986,
+      "s2": 12.10409,
+      "s3": 4.552325,
+      "s4": 9.767116
+    },
+    "state": "ALERT",
+    "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
+    "score": 2.403
+  },
+  {
+    "timestep": 63,
+    "signals": {
+      "s1": 11.219858,
+      "s2": 12.685781,
+      "s3": 7.257734,
+      "s4": 9.465024
+    },
+    "state": "ALERT",
+    "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
+    "score": 2.2643
+  },
+  {
+    "timestep": 64,
+    "signals": {
+      "s1": 9.624202,
+      "s2": 14.615922,
+      "s3": 5.765043,
+      "s4": 10.930704
+    },
+    "state": "ALERT",
+    "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
+    "score": 2.425
+  },
+  {
+    "timestep": 65,
+    "signals": {
+      "s1": 7.483297,
+      "s2": 14.713716,
+      "s3": 5.317525,
+      "s4": 8.91647
+    },
+    "state": "ALERT",
+    "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
+    "score": 2.2105
+  },
+  {
+    "timestep": 66,
+    "signals": {
+      "s1": 6.690887,
+      "s2": 14.276141,
+      "s3": 8.368637,
+      "s4": 11.271986
+    },
+    "state": "ALERT",
+    "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
+    "score": 2.0879
+  },
+  {
+    "timestep": 67,
+    "signals": {
+      "s1": 8.393906,
+      "s2": 14.457322,
+      "s3": 7.959003,
+      "s4": 11.37295
+    },
+    "state": "ALERT",
+    "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
+    "score": 1.7058
+  },
+  {
+    "timestep": 68,
+    "signals": {
+      "s1": 8.064702,
+      "s2": 15.770062,
+      "s3": 6.643135,
+      "s4": 13.610785
+    },
+    "state": "WATCH",
+    "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
+    "score": 1.6477
+  },
+  {
+    "timestep": 69,
+    "signals": {
+      "s1": 8.976528,
+      "s2": 12.04085,
+      "s3": 3.947761,
+      "s4": 13.806577
+    },
+    "state": "WATCH",
+    "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
+    "score": 1.7417
+  },
+  {
+    "timestep": 70,
+    "signals": {
+      "s1": 11.213132,
+      "s2": 13.712769,
+      "s3": 5.425219,
+      "s4": 13.484455
+    },
+    "state": "WATCH",
+    "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
+    "score": 1.9504
+  },
+  {
+    "timestep": 71,
+    "signals": {
+      "s1": 7.330136,
+      "s2": 12.568437,
+      "s3": 6.96499,
+      "s4": 10.329171
+    },
+    "state": "ALERT",
+    "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
+    "score": 1.9869
+  },
+  {
+    "timestep": 72,
+    "signals": {
+      "s1": 8.952829,
+      "s2": 13.738491,
+      "s3": 6.506362,
+      "s4": 13.392719
+    },
+    "state": "ALERT",
+    "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
+    "score": 1.8613
+  },
+  {
+    "timestep": 73,
+    "signals": {
+      "s1": 9.166819,
+      "s2": 15.030302,
+      "s3": 2.924742,
+      "s4": 10.917179
+    },
+    "state": "ALERT",
+    "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
+    "score": 1.7534
+  },
+  {
+    "timestep": 74,
+    "signals": {
+      "s1": 7.939478,
+      "s2": 12.049899,
+      "s3": 4.682771,
+      "s4": 10.43199
+    },
+    "state": "ALERT",
+    "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
+    "score": 1.5383
+  },
+  {
+    "timestep": 75,
+    "signals": {
+      "s1": 10.482264,
+      "s2": 11.877772,
+      "s3": 6.045947,
+      "s4": 9.5
+    },
+    "state": "WATCH",
+    "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
+    "score": 1.5829
+  },
+  {
+    "timestep": 76,
+    "signals": {
+      "s1": 8.821258,
+      "s2": 15.604413,
+      "s3": 6.807173,
+      "s4": 9.5
+    },
+    "state": "WATCH",
+    "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
+    "score": 1.5025
+  },
+  {
+    "timestep": 77,
+    "signals": {
+      "s1": 9.143692,
+      "s2": 12.886492,
+      "s3": 5.664212,
+      "s4": 9.5
+    },
+    "state": "WATCH",
+    "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
+    "score": 1.5282
+  },
+  {
+    "timestep": 78,
+    "signals": {
+      "s1": 9.687203,
+      "s2": 12.264979,
+      "s3": 6.135735,
+      "s4": 9.5
+    },
+    "state": "WATCH",
+    "interpreted_state": "COHERENCE_UNDER_CONSTRAINT",
+    "score": 1.3762
+  },
+  {
+    "timestep": 79,
+    "signals": {
+      "s1": 13.044464,
+      "s2": 17.002951,
+      "s3": 4.720135,
+      "s4": 9.5
+    },
+    "state": "ALERT",
+    "interpreted_state": "COHERENCE_UNDER_CONSTRAINT",
+    "score": 1.7719
+  },
+  {
+    "timestep": 80,
+    "signals": {
+      "s1": 7.551181,
+      "s2": 13.054869,
+      "s3": 6.473408,
+      "s4": 9.5
+    },
+    "state": "ALERT",
+    "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
+    "score": 1.961
+  },
+  {
+    "timestep": 81,
+    "signals": {
+      "s1": 8.659283,
+      "s2": 12.953366,
+      "s3": 2.779066,
+      "s4": 9.5
+    },
+    "state": "ALERT",
+    "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
+    "score": 1.7452
+  },
+  {
+    "timestep": 82,
+    "signals": {
+      "s1": 8.27262,
+      "s2": 13.152897,
+      "s3": 4.684709,
+      "s4": 9.5
+    },
+    "state": "ALERT",
+    "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
+    "score": 1.5262
+  },
+  {
+    "timestep": 83,
+    "signals": {
+      "s1": 7.37918,
+      "s2": 11.652728,
+      "s3": 9.193871,
+      "s4": 9.5
+    },
+    "state": "WATCH",
+    "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
+    "score": 1.801
+  },
+  {
+    "timestep": 84,
+    "signals": {
+      "s1": 8.3845,
+      "s2": 16.939062,
+      "s3": 10.357601,
+      "s4": 9.5
+    },
+    "state": "WATCH",
+    "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
+    "score": 1.7352
+  },
+  {
+    "timestep": 85,
+    "signals": {
+      "s1": 9.484451,
+      "s2": 14.546489,
+      "s3": 8.593046,
+      "s4": 9.5
+    },
+    "state": "WATCH",
+    "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
+    "score": 1.7893
+  },
+  {
+    "timestep": 86,
+    "signals": {
+      "s1": 9.736611,
+      "s2": 15.24374,
+      "s3": 6.652149,
+      "s4": 9.5
+    },
+    "state": "WATCH",
+    "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
+    "score": 1.8007
+  },
+  {
+    "timestep": 87,
+    "signals": {
+      "s1": 9.972648,
+      "s2": 11.800167,
+      "s3": 5.642739,
+      "s4": 9.5
+    },
+    "state": "WATCH",
+    "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
+    "score": 1.5392
+  },
+  {
+    "timestep": 88,
+    "signals": {
+      "s1": 10.565038,
+      "s2": 13.111476,
+      "s3": 6.707308,
+      "s4": 9.5
+    },
+    "state": "WATCH",
+    "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
+    "score": 1.5542
+  },
+  {
+    "timestep": 89,
+    "signals": {
+      "s1": 10.537601,
+      "s2": 14.56281,
+      "s3": 6.079733,
+      "s4": 9.5
+    },
+    "state": "WATCH",
+    "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
+    "score": 1.665
+  },
+  {
+    "timestep": 90,
+    "signals": {
+      "s1": 9.389819,
+      "s2": 14.506391,
+      "s3": 5.85407,
+      "s4": 9.5
+    },
+    "state": "WATCH",
+    "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
+    "score": 1.721
+  },
+  {
+    "timestep": 91,
+    "signals": {
+      "s1": 12.682697,
+      "s2": 14.617354,
+      "s3": 4.855414,
+      "s4": 9.5
+    },
+    "state": "ALERT",
+    "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
+    "score": 1.7885
+  },
+  {
+    "timestep": 92,
+    "signals": {
+      "s1": 12.2276,
+      "s2": 14.420399,
+      "s3": 6.720215,
+      "s4": 9.5
+    },
+    "state": "ALERT",
+    "interpreted_state": "COHERENCE_UNDER_CONSTRAINT",
+    "score": 1.3379
+  },
+  {
+    "timestep": 93,
+    "signals": {
+      "s1": 11.938414,
+      "s2": 14.727073,
+      "s3": 4.334354,
+      "s4": 9.5
+    },
+    "state": "ALERT",
+    "interpreted_state": "COHERENCE_UNDER_CONSTRAINT",
+    "score": 1.2304
+  },
+  {
+    "timestep": 94,
+    "signals": {
+      "s1": 11.089204,
+      "s2": 14.083947,
+      "s3": 5.561743,
+      "s4": 9.5
+    },
+    "state": "ALERT",
+    "interpreted_state": "COHERENCE_UNDER_CONSTRAINT",
+    "score": 1.2532
+  },
+  {
+    "timestep": 95,
+    "signals": {
+      "s1": 10.447232,
+      "s2": 14.2441,
+      "s3": 8.207238,
+      "s4": 9.5
+    },
+    "state": "ALERT",
+    "interpreted_state": "COHERENCE_UNDER_CONSTRAINT",
+    "score": 1.4647
+  },
+  {
+    "timestep": 96,
+    "signals": {
+      "s1": 10.54841,
+      "s2": 14.28242,
+      "s3": 6.443991,
+      "s4": 9.5
+    },
+    "state": "ALERT",
+    "interpreted_state": "COHERENCE_UNDER_CONSTRAINT",
+    "score": 1.4519
+  },
+  {
+    "timestep": 97,
+    "signals": {
+      "s1": 8.50059,
+      "s2": 14.524793,
+      "s3": 8.591025,
+      "s4": 9.5
+    },
+    "state": "ALERT",
+    "interpreted_state": "COHERENCE_UNDER_CONSTRAINT",
+    "score": 1.4851
+  },
+  {
+    "timestep": 98,
+    "signals": {
+      "s1": 12.249359,
+      "s2": 13.47436,
+      "s3": 5.908013,
+      "s4": 9.5
+    },
+    "state": "ALERT",
+    "interpreted_state": "COHERENCE_UNDER_CONSTRAINT",
+    "score": 1.5225
+  },
+  {
+    "timestep": 99,
+    "signals": {
+      "s1": 10.651761,
+      "s2": 16.080071,
+      "s3": 6.873983,
+      "s4": 9.5
+    },
+    "state": "ALERT",
+    "interpreted_state": "COHERENCE_UNDER_CONSTRAINT",
+    "score": 1.5125
+  }
+]
