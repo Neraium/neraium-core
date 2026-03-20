@@ -223,13 +223,20 @@ For pilot deployments, enable stricter validation and a stable, traceable respon
 - **`aligned`**: `data_quality_summary.gate_passed` (input alignment / quality gate).  
 - **`anomaly`**: `true` when `status` is `WATCH` or `ALERT`.  
 
-**CLI (sample JSON → pilot schema JSON):**
+**CLI (pilot schema JSON):**
 
 The runner sets `NERAIUM_PILOT_HARDENING=1` for you.
 
-```bash
-python examples/pilot/run_pilot.py --input examples/pilot/sample_payload.json
-```
+- **Dynamic scenario (default):** ≥100 timesteps, evolving signals (`stable` → `regime shift` → `instability`), one JSON object per line plus a final `summary` block.  
+  ```bash
+  python examples/pilot/run_pilot.py
+  ```
+  Options: `--timesteps` (default `120`), `--seed`, `--baseline-window`, `--recent-window`.
+
+- **Static JSON file:** same as before (single payload, list, or wrapped list).  
+  ```bash
+  python examples/pilot/run_pilot.py --input examples/pilot/sample_payload.json
+  ```
 
 Example files: `examples/pilot/sample_payload.json`, `examples/pilot/sample_output.json`.
 
