@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import argparse
+import copy
 import gc
 import json
 import logging
 import math
 import os
 import shutil
+import sys
 import tempfile
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -20,6 +22,18 @@ from neraium_core.store import ResultStore
 
 
 PILOT_KEYS = ("timestamp", "signals", "score", "status", "aligned", "anomaly")
+
+# Scenario-only: degradation logs to stderr (JSONL stays on stdout).
+SCENARIO_LOG = logging.getLogger("neraium_pilot.scenario")
+
+
+def _setup_scenario_logging() -> None:
+    SCENARIO_LOG.setLevel(logging.INFO)
+    if not SCENARIO_LOG.handlers:
+        handler = logging.StreamHandler(sys.stderr)
+        handler.setFormatter(logging.Formatter("[%(levelname)s] neraium_pilot.scenario: %(message)s"))
+        SCENARIO_LOG.addHandler(handler)
+    SCENARIO_LOG.propagate = False
 
 
 def _load_json_payloads(path: Path) -> list[dict[str, Any]]:
@@ -82,12 +96,50 @@ def _iso_timestamp(start: datetime, step: int) -> str:
     return (start + timedelta(seconds=step)).isoformat()
 
 
+def _scenario_timestamp(start: datetime, logical_t: int) -> tuple[str, list[str]]:
+    """
+    Nominal one-second cadence, except a window of delayed timestamps (non-monotonic vs ingest order).
+    """
+    tags: list[str] = []
+    if 70 <= logical_t < 80:
+        # Timestamp lags logical time by 10 steps (arrives / recorded late).
+        sec = max(0, logical_t - 10)
+        tags.append("delayed_timestamp_lag_10_steps")
+        return (start + timedelta(seconds=sec)).isoformat(), tags
+    return _iso_timestamp(start, logical_t), tags
+
+
+def _apply_scenario_degradations(
+    sensors: dict[str, float],
+    logical_t: int,
+) -> tuple[dict[str, float | None], list[str]]:
+    """
+    Inject missing data, flatline, etc. Pilot pipeline accepts None for missing sensors.
+    """
+    tags: list[str] = []
+    out: dict[str, float | None] = dict(sensors)
+
+    if 40 <= logical_t < 45:
+        out["s2"] = None
+        out["s3"] = None
+        tags.append("missing_s2_s3")
+
+    if logical_t >= 75:
+        # Partial sensor failure: s4 stuck (same value every frame after onset).
+        out["s4"] = 9.5
+        tags.append("s4_flatline")
+
+    return out, tags
+
+
 def _print_step_record(
     *,
-    t: int,
+    ingest_seq: int,
+    logical_t: int,
     result: dict[str, Any],
+    degraded: list[str] | None = None,
 ) -> None:
-    """One JSON object per line: timestamp, signals, score, status, interpreted_state."""
+    """One JSON object per line: pilot fields + engine state + interpreted_state + confidence."""
     pv = _pilot_view(result)
     signals = pv.get("signals")
     rounded_signals: dict[str, float | None] | None
@@ -101,17 +153,41 @@ def _print_step_record(
     else:
         rounded_signals = None
 
-    interpreted = result.get("interpreted_state")
     record: dict[str, Any] = {
-        "t": t,
+        "ingest_seq": ingest_seq,
+        "logical_t": logical_t,
         "timestamp": pv.get("timestamp"),
         "signals": rounded_signals,
         "score": pv.get("score"),
         "status": pv.get("status"),
+        "state": result.get("state"),
+        "interpreted_state": result.get("interpreted_state"),
+        "confidence": result.get("confidence"),
     }
-    if interpreted is not None:
-        record["interpreted_state"] = interpreted
+    if degraded:
+        record["degraded"] = degraded
     print(json.dumps(record, separators=(",", ":")))
+
+
+def _log_engine_data_quality_if_degraded(
+    *,
+    logical_t: int,
+    ingest_seq: int,
+    result: dict[str, Any],
+) -> None:
+    dq = result.get("data_quality_summary")
+    if not isinstance(dq, dict):
+        return
+    # Only log when the gate explicitly failed (not missing/unknown).
+    if dq.get("gate_passed") is not False:
+        return
+    SCENARIO_LOG.info(
+        "engine_data_quality_degraded ingest_seq=%s logical_t=%s gate_passed=False missingness_rate=%s statuses=%s",
+        ingest_seq,
+        logical_t,
+        dq.get("missingness_rate"),
+        dq.get("statuses"),
+    )
 
 
 def _run_scenario(
@@ -124,6 +200,8 @@ def _run_scenario(
     """Drive Neraium with generate_signals(t) for t in [0, timesteps)."""
     if timesteps < 100:
         raise ValueError("timesteps must be at least 100 for the pilot scenario")
+
+    _setup_scenario_logging()
 
     # Avoid per-step INFO logs flooding stdout when printing JSONL.
     for name in ("neraium_core.service", "neraium_core.store"):
@@ -146,22 +224,69 @@ def _run_scenario(
 
         first_watch: int | None = None
         first_alert: int | None = None
+        ingest_seq = 0
 
-        for t in range(timesteps):
+        for logical_t in range(timesteps):
+            raw = generate_signals(logical_t, rng)
+            sensors, deg_tags = _apply_scenario_degradations(raw, logical_t)
+            ts, ts_tags = _scenario_timestamp(start, logical_t)
+            step_tags = list(deg_tags) + list(ts_tags)
+
+            if logical_t == 40:
+                SCENARIO_LOG.info(
+                    "data_degraded window=missing_sensors logical_t=40..44 sensors=null for s2,s3"
+                )
+            if logical_t == 70:
+                SCENARIO_LOG.info(
+                    "data_degraded window=delayed_timestamps logical_t=70..79 timestamps lag 10 steps vs nominal"
+                )
+            if logical_t == 75:
+                SCENARIO_LOG.info(
+                    "data_degraded window=flatline logical_t>=75 sensor=s4 value=9.5 constant"
+                )
+
             payload = {
-                "timestamp": _iso_timestamp(start, t),
+                "timestamp": ts,
                 "site_id": "pilot-scenario",
                 "asset_id": "asset-1",
-                "sensor_values": generate_signals(t, rng),
+                "sensor_values": sensors,
             }
+
             result = service.ingest_payload(payload)
             action = str(result.get("action_state", ""))
             if first_watch is None and action == "WATCH":
-                first_watch = t
+                first_watch = logical_t
             if first_alert is None and action == "ALERT":
-                first_alert = t
+                first_alert = logical_t
 
-            _print_step_record(t=t, result=result)
+            _log_engine_data_quality_if_degraded(
+                logical_t=logical_t, ingest_seq=ingest_seq, result=result
+            )
+            _print_step_record(
+                ingest_seq=ingest_seq,
+                logical_t=logical_t,
+                result=result,
+                degraded=step_tags if step_tags else None,
+            )
+            ingest_seq += 1
+
+            # Duplicated frame: same payload ingested twice (logical_t 55).
+            if logical_t == 55:
+                SCENARIO_LOG.info(
+                    "data_degraded event=duplicated_frame logical_t=55 re-ingesting identical payload"
+                )
+                dup_payload = copy.deepcopy(payload)
+                result_dup = service.ingest_payload(dup_payload)
+                _log_engine_data_quality_if_degraded(
+                    logical_t=logical_t, ingest_seq=ingest_seq, result=result_dup
+                )
+                _print_step_record(
+                    ingest_seq=ingest_seq,
+                    logical_t=logical_t,
+                    result=result_dup,
+                    degraded=["duplicated_frame"],
+                )
+                ingest_seq += 1
 
         del service, store, engine
         gc.collect()
@@ -175,10 +300,17 @@ def _run_scenario(
                 "summary": {
                     "scenario": "stable → regime_shift → instability",
                     "phases": {"stable_t_lt_30": True, "regime_shift_30_le_t_lt_60": True, "instability_t_ge_60": True},
+                    "degradation_injected": {
+                        "missing_s2_s3": "logical_t 40–44",
+                        "duplicated_frame": "logical_t 55 (second ingest identical payload)",
+                        "delayed_timestamps": "logical_t 70–79 (10-step lag)",
+                        "s4_flatline": "logical_t ≥ 75",
+                    },
                     "first_WATCH_step": first_watch,
                     "first_ALERT_step": first_alert,
-                    "note": "status is service action_state (STABLE/WATCH/ALERT); "
-                    "interpreted_state is engine/decision-layer interpretation.",
+                    "note": "status=action_state; state=engine drift alert state; "
+                    "interpreted_state=decision layer; confidence=service operator confidence [0,1]. "
+                    "Degradation logs on stderr (neraium_pilot.scenario).",
                 }
             },
             indent=2,

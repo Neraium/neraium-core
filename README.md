@@ -227,7 +227,7 @@ For pilot deployments, enable stricter validation and a stable, traceable respon
 
 The runner sets `NERAIUM_PILOT_HARDENING=1` for you.
 
-- **Dynamic scenario (default):** ≥100 timesteps, evolving signals (`stable` → `regime shift` → `instability`), one JSON object per line plus a final `summary` block.  
+- **Dynamic scenario (default):** ≥100 timesteps, evolving signals (`stable` → `regime shift` → `instability`), plus injected degradations (missing sensors, duplicated frame, delayed timestamps, flatlined sensor). Each JSONL line includes `state`, `interpreted_state`, `confidence`, and optional `degraded` tags; **degradation notices** go to **stderr** via logger `neraium_pilot.scenario`.  
   ```bash
   python examples/pilot/run_pilot.py
   ```
