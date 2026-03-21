@@ -29,6 +29,17 @@ class ExternalContextProvider(Protocol):
 OptionalContextProvider = ExternalContextProvider
 
 
+class FutureGAL2Boundary(Protocol):
+    """
+    Optional future ingestion boundary for GAL-2-like context sources.
+
+    This is intentionally a protocol-only contract and not an active dependency.
+    """
+
+    def ingest_context(self, frame: dict[str, Any]) -> dict[str, Any] | None:
+        ...
+
+
 class NoOpContextProvider:
     def snapshot(self, frame: dict[str, Any]) -> ExternalContextSnapshot | None:
         _ = frame

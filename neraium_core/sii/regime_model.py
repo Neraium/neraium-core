@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
+from pathlib import Path
 from typing import Any
 
 import numpy as np
 
 from neraium_core.sii.config import SIIConfig
+from neraium_core.sii.errors import SIIIOError
 
 
 @dataclass(frozen=True)
@@ -31,6 +34,8 @@ class RegimeModel:
         self.config = config
         self._regimes: list[dict[str, Any]] = []
         self._pending: dict[str, Any] | None = None
+        self._store_path = Path(self.config.regime_store_path)
+        self.load()
 
     @staticmethod
     def _distance(a: np.ndarray, b: np.ndarray) -> float:
@@ -144,3 +149,68 @@ class RegimeModel:
             regime_support=0.1,
             regime_activated=False,
         )
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "regimes": list(self._regimes),
+            "pending": None if self._pending is None else dict(self._pending),
+        }
+
+    def _sanitize_loaded(self, raw: Any) -> None:
+        if not isinstance(raw, dict):
+            return
+        regimes = raw.get("regimes")
+        pending = raw.get("pending")
+        if isinstance(regimes, list):
+            safe_regimes: list[dict[str, Any]] = []
+            for item in regimes:
+                if not isinstance(item, dict):
+                    continue
+                name = str(item.get("name", f"regime_{len(safe_regimes)}"))
+                signature = item.get("signature")
+                prototypes = item.get("prototypes")
+                hits = int(item.get("hits", 0))
+                if not isinstance(signature, list) or not isinstance(prototypes, list):
+                    continue
+                safe_regimes.append(
+                    {
+                        "name": name,
+                        "signature": signature,
+                        "prototypes": prototypes,
+                        "hits": hits,
+                    }
+                )
+            self._regimes = safe_regimes
+        if isinstance(pending, dict):
+            name = str(pending.get("name", f"regime_{len(self._regimes)}"))
+            signature = pending.get("signature")
+            prototypes = pending.get("prototypes")
+            hits = int(pending.get("hits", 1))
+            if isinstance(signature, list) and isinstance(prototypes, list):
+                self._pending = {
+                    "name": name,
+                    "signature": signature,
+                    "prototypes": prototypes,
+                    "hits": hits,
+                }
+
+    def save(self) -> None:
+        try:
+            self._store_path.parent.mkdir(parents=True, exist_ok=True)
+            self._store_path.write_text(
+                json.dumps(self.to_dict(), indent=2),
+                encoding="utf-8",
+            )
+        except Exception as exc:
+            raise SIIIOError(f"Failed to write regime store: {self._store_path}") from exc
+
+    def load(self) -> None:
+        if not self._store_path.exists():
+            return
+        if not self._store_path.is_file():
+            raise SIIIOError(f"Regime store path is not a file: {self._store_path}")
+        try:
+            raw = json.loads(self._store_path.read_text(encoding="utf-8"))
+        except Exception as exc:
+            raise SIIIOError(f"Failed to parse regime store: {self._store_path}") from exc
+        self._sanitize_loaded(raw)

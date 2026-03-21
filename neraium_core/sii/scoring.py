@@ -2,8 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from neraium_core.sii.graph_layer import GraphSnapshot
-from neraium_core.sii.geometry_layer import GeometrySnapshot
+from .types import StructuralIndicators
 
 
 @dataclass(frozen=True)
@@ -35,14 +34,15 @@ def component_scores(
     geometry_departure: float,
     graph_departure: float,
     regime_distance: float,
-    graph_snapshot: GraphSnapshot,
-    geometry_snapshot: GeometrySnapshot,
+    graph_snapshot: object,
+    geometry_snapshot: object,
 ) -> ComponentScores:
     structural = _clip(float(geometry_departure) / 3.0)
     relational = _clip(float(geometry_departure) / 2.2)
     graph_def = _clip(float(graph_departure))
     regime = _clip(float(regime_distance) / 2.5)
-    coherence_loss = _clip(1.0 - float(geometry_snapshot.coherence_score))
+    coherence_score = float(getattr(geometry_snapshot, "coherence_score", 1.0))
+    coherence_loss = _clip(1.0 - coherence_score)
     coupling = _clip(0.55 * graph_def + 0.45 * coherence_loss)
     return ComponentScores(
         structural_departure=structural,
@@ -63,7 +63,7 @@ class StructuralScoringModel:
     w_coherence: float = 0.10
     w_coupling: float = 0.08
 
-    def composite_departure_score(self, indicators: ComponentScores) -> float:
+    def composite_departure_score(self, indicators: ComponentScores | StructuralIndicators) -> float:
         # Accept both ComponentScores and StructuralIndicators-compatible objects.
         structural = float(
             getattr(indicators, "structural_departure", getattr(indicators, "structural_drift_score", 0.0))

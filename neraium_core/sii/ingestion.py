@@ -88,6 +88,8 @@ def load_frames_from_json(path: str) -> list[dict[str, Any]]:
     p = Path(path)
     if not p.exists():
         raise SIIValidationError(f"Input file not found: {path}")
+    if not p.is_file():
+        raise SIIValidationError(f"Input path is not a file: {path}")
     try:
         raw = json.loads(p.read_text(encoding="utf-8"))
     except Exception as exc:
@@ -108,6 +110,8 @@ def load_frames_from_csv(path: str) -> list[dict[str, Any]]:
     p = Path(path)
     if not p.exists():
         raise SIIValidationError(f"Input file not found: {path}")
+    if not p.is_file():
+        raise SIIValidationError(f"Input path is not a file: {path}")
     text = p.read_text(encoding="utf-8")
     parsed = frames_from_csv(text)
     out: list[dict[str, Any]] = []
