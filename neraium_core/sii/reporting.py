@@ -1,0 +1,63 @@
+from __future__ import annotations
+
+import csv
+import json
+from pathlib import Path
+from typing import Any
+
+
+def results_to_json(results: list[dict[str, Any]]) -> str:
+    return json.dumps(results, indent=2)
+
+
+def write_json_report(path: str | Path, results: list[dict[str, Any]]) -> None:
+    p = Path(path)
+    p.write_text(results_to_json(results), encoding="utf-8")
+
+
+def results_to_csv_text(results: list[dict[str, Any]]) -> str:
+    if not results:
+        return ""
+    fields = [
+        "timestamp",
+        "site_id",
+        "asset_id",
+        "state",
+        "interpreted_state",
+        "confidence",
+        "structural_drift_score",
+        "relational_instability_score",
+        "regime_distance",
+        "coherence_score",
+        "graph_deformation_score",
+        "explanation",
+    ]
+    # csv.DictWriter needs file-like object; create via StringIO
+    from io import StringIO
+
+    buf = StringIO()
+    writer = csv.DictWriter(buf, fieldnames=fields)
+    writer.writeheader()
+    for item in results:
+        writer.writerow(
+            {
+                "timestamp": item.get("timestamp"),
+                "site_id": item.get("site_id"),
+                "asset_id": item.get("asset_id"),
+                "state": item.get("state"),
+                "interpreted_state": item.get("interpreted_state"),
+                "confidence": item.get("confidence"),
+                "structural_drift_score": item.get("structural_drift_score"),
+                "relational_instability_score": item.get("relational_instability_score"),
+                "regime_distance": item.get("regime_distance"),
+                "coherence_score": item.get("coherence_score"),
+                "graph_deformation_score": item.get("graph_deformation_score"),
+                "explanation": item.get("explanation"),
+            }
+        )
+    return buf.getvalue()
+
+
+def write_csv_report(path: str | Path, results: list[dict[str, Any]]) -> None:
+    p = Path(path)
+    p.write_text(results_to_csv_text(results), encoding="utf-8")
