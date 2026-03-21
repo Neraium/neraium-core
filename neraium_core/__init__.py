@@ -1,3 +1,3 @@
 """Core package for Neraium."""
 
-__all__ = ["alignment", "models", "pipeline", "service", "store"]
+__all__ = ["alignment", "models", "pipeline", "service", "store", "sii"]
