@@ -233,10 +233,21 @@ The runner sets `NERAIUM_PILOT_HARDENING=1` for you.
   ```
   Options: `--timesteps` (default `120`), `--seed`, `--baseline-window`, `--recent-window`, `--output` (default `pilot_results.json`). The output file is a **document** `{"records": [...], "summary": {...}}`: each record has `timestep`, `signals`, **`state`** (thresholded from `score`: &lt;1.25 `STABLE`, 1.25–&lt;2.0 `WATCH`, ≥2.0 `ALERT`), **`interpreted_state`** (hysteresis-smoothed from the engine), `score`, **`frame_type`** (`normal` / `duplicate`), and `missing_data`. Duplicates mirror the first ingest’s pilot `score`/`state` for that timestep. The **`summary`** block includes first occurrence per state, counts, max/mean score (mean for timestep ≥60), duplicate/missing-data counts, and smoothing metadata.
 
-- **Static JSON file:** same as before (single payload, list, or wrapped list).  
+- **Static JSON file:** single payload, list, or `{ "payloads" | "items" | "sequence": [...] }`. Uses `--baseline-window` / `--recent-window` (defaults `24` / `8`) for the engine.  
   ```bash
   python examples/pilot/run_pilot.py --input examples/pilot/sample_payload.json
   ```
+
+- **Bundled long-run scenarios (120 steps):** inputs live under `examples/pilot/scenarios/`. Regenerate deterministically, then run the pilot:
+  ```bash
+  python examples/pilot/scenarios/build_scenario_inputs.py
+  python run_pilot.py --input examples/pilot/scenarios/regime_shift_inputs.json --output pilot_regime_shift.json
+  python run_pilot.py --input examples/pilot/scenarios/structural_instability_inputs.json --output pilot_structural_instability.json
+  ```
+  - **regime_shift** — smooth cross-fade between two coherent relational regimes; tuned for **REGIME_SHIFT_OBSERVED** / low **WATCH** without **ALERT** (``interpreted_smoothing.consecutive_required`` may be set in the JSON).  
+  - **structural_instability** — calm phase then rising variance and diverging cross-sensor behavior (no missing data).
+
+  Optional input envelope keys (alongside ``payloads``): ``interpreted_smoothing: { \"consecutive_required\": 1–10 }`` overrides pilot hysteresis for that file only.
 
 Example files: `examples/pilot/sample_payload.json`, `examples/pilot/sample_output.json`.
 
