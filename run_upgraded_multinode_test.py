@@ -103,6 +103,8 @@ OUTPUT_METRICS_CSV = "upgraded_multinode_test_metrics.csv"
 OUTPUT_PHASE_CONFUSION_CSV = "upgraded_multinode_phase_confusion.csv"
 OUTPUT_REPORT_MD = "upgraded_multinode_quality_report.md"
 OUTPUT_DIAGNOSTICS_CSV = "upgraded_multinode_test_stability_diagnostics.csv"
+OUTPUT_VERDICT_CSV = "upgraded_multinode_test_verdict.csv"
+CALIBRATION_PATH = "benchmark_calibration.json"
 
 # Variant keys (semantic)
 # A=Control SII, B=GAL-2 temporal, C=raw/minimal, D=combined fusion
@@ -112,6 +114,402 @@ NODE_VARIANTS: Dict[str, str] = {
     "C": "raw_telemetry",
     "D": "combined_fusion",
 }
+
+
+def load_benchmark_calibration(path: str = CALIBRATION_PATH) -> dict[str, Any]:
+    p = Path(path)
+    if not p.exists() or not p.is_file():
+        return {}
+    try:
+        raw = json.loads(p.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+    return raw if isinstance(raw, dict) else {}
+
+
+def _safe_mean(series: pd.Series) -> float:
+    if series.empty:
+        return 0.0
+    return float(series.mean())
+
+
+def _safe_std(series: pd.Series) -> float:
+    if len(series) < 2:
+        return 0.0
+    return float(series.std())
+
+
+def _rate_true(mask: pd.Series) -> float:
+    if mask.empty:
+        return 0.0
+    return float(np.mean(mask.astype(float)))
+
+
+def _state_switch_inverse(sub: pd.DataFrame) -> float:
+    if sub.empty or len(sub) < 2:
+        return 1.0
+    inv_vals: list[float] = []
+    for node in sorted(sub["node"].unique()):
+        sn = sub[sub["node"] == node].sort_values("step")
+        if len(sn) < 2:
+            inv_vals.append(1.0)
+            continue
+        st = sn["state"].to_numpy()
+        inv_vals.append(float(1.0 - np.mean(st[1:] != st[:-1])))
+    return float(np.mean(inv_vals)) if inv_vals else 1.0
+
+
+def behavioral_stability_index(nominal_df: pd.DataFrame) -> float:
+    """
+    Stability derived from observed software behavior, not shared benchmark artifacts.
+    """
+    if nominal_df.empty:
+        return 0.0
+    strict_nominal = _rate_true(
+        (nominal_df["state"] == "STABLE")
+        & (nominal_df["interpreted_state"] == "NOMINAL_STRUCTURE")
+    )
+    switch_inverse = _state_switch_inverse(nominal_df)
+    inst = nominal_df["latest_instability"].astype(float)
+    inst_mean = float(np.mean(np.abs(inst)) + 1e-9)
+    inst_cv_inverse = float(1.0 / (1.0 + (float(np.std(inst)) / inst_mean)))
+    conf = nominal_df["confidence_score"].astype(float)
+    conf_mean = float(np.mean(conf) + 1e-9)
+    conf_consistency = float(1.0 - min(1.0, float(np.std(conf) / conf_mean)))
+    nominal_consistency = _safe_mean(nominal_df["nominal_consistency_score"].astype(float))
+    return float(
+        np.clip(
+            np.mean(
+                np.asarray(
+                    [
+                        strict_nominal,
+                        switch_inverse,
+                        inst_cv_inverse,
+                        conf_consistency,
+                        nominal_consistency,
+                    ],
+                    dtype=float,
+                )
+            ),
+            0.0,
+            1.0,
+        )
+    )
+
+
+def _floor_for(
+    floors: dict[str, Any],
+    metric: str,
+    condition: str,
+    default: float,
+) -> float:
+    raw = floors.get(metric)
+    if isinstance(raw, dict):
+        try:
+            return float(raw.get(condition, default))
+        except Exception:
+            return float(default)
+    try:
+        return float(raw)
+    except Exception:
+        return float(default)
+
+
+def _higher_better_quality(value: float, floor: float) -> float:
+    floor = float(max(0.0, min(0.999999, floor)))
+    value = float(max(0.0, min(1.0, value)))
+    if value <= floor:
+        return 0.0
+    return float(np.clip((value - floor) / (1.0 - floor), 0.0, 1.0))
+
+
+def _lower_better_quality(value: float, ceiling: float) -> float:
+    ceiling = float(max(1e-6, min(1.0, ceiling)))
+    value = float(max(0.0, min(1.0, value)))
+    if value >= ceiling:
+        return 0.0
+    return float(np.clip((ceiling - value) / ceiling, 0.0, 1.0))
+
+
+def build_condition_metrics(df_rows: pd.DataFrame, condition: str) -> dict[str, Any]:
+    s = df_rows[df_rows["condition"] == condition]
+    perturb = s[s["phase"] == "perturbation"]
+    pos = perturb[perturb["node"] == "C"]
+    neg = s[~((s["node"] == "C") & (s["phase"] == "perturbation"))]
+
+    tp = int((pos["state"].isin(["WATCH", "ALERT"])).sum())
+    fn = int(len(pos) - tp)
+    fp = int((neg["state"].isin(["WATCH", "ALERT"])).sum())
+    tn = int(len(neg) - fp)
+
+    precision = float(tp / (tp + fp)) if (tp + fp) > 0 else 0.0
+    recall = float(tp / (tp + fn)) if (tp + fn) > 0 else 0.0
+    false_positive_burden = float(fp / max(1, len(neg)))
+    specificity = float(tn / max(1, (tn + fp)))
+
+    baseline_all = s[s["phase"] == "baseline"]
+    nominal_all = s[s["phase"].isin(["baseline", "recovery"])]
+    recovery_all = s[s["phase"] == "recovery"]
+
+    per_node_baseline_strict = {
+        n: _rate_true(
+            (baseline_all[baseline_all["node"] == n]["state"] == "STABLE")
+            & (baseline_all[baseline_all["node"] == n]["interpreted_state"] == "NOMINAL_STRUCTURE")
+        )
+        for n in NODES
+    }
+    baseline_stability_mean_all_nodes = float(np.mean(list(per_node_baseline_strict.values())))
+    baseline_behavioral_stability = behavioral_stability_index(baseline_all)
+    nominal_behavioral_stability = behavioral_stability_index(nominal_all)
+
+    per_node_recovery_strict = {
+        n: _rate_true(
+            (recovery_all[recovery_all["node"] == n]["state"] == "STABLE")
+            & (recovery_all[recovery_all["node"] == n]["interpreted_state"] == "NOMINAL_STRUCTURE")
+        )
+        for n in NODES
+    }
+    recovery_quality = float(np.mean(list(per_node_recovery_strict.values())))
+
+    node_c_nominal = nominal_all[nominal_all["node"] == "C"]
+    nominal_consistency_mean = _safe_mean(node_c_nominal["nominal_consistency_score"].astype(float))
+    nominal_consistency_std = _safe_std(node_c_nominal["nominal_consistency_score"].astype(float))
+
+    ops_by_node: list[float] = []
+    fp_burden_by_node: list[float] = []
+    for n in NODES:
+        sn = nominal_all[nominal_all["node"] == n]
+        comp = compute_operational_stability_index(sn)
+        ops_by_node.append(comp["operational_stability_index"])
+        fp_burden_by_node.append(comp["nominal_false_positive_burden"])
+    cross_variant_operational_stability_spread = float(np.std(ops_by_node)) if ops_by_node else 0.0
+    mean_false_positive_burden_nominal = float(np.mean(fp_burden_by_node)) if fp_burden_by_node else 0.0
+
+    pert_non_target = perturb[perturb["node"] != "C"]
+    localization_target = _safe_mean(pos["localization_score"].astype(float))
+    localization_non_target = _safe_mean(pert_non_target["localization_score"].astype(float))
+    localization_contrast = float(localization_target - localization_non_target)
+    localization_quality = float(
+        np.clip((localization_target + (1.0 - localization_non_target)) / 2.0, 0.0, 1.0)
+    )
+
+    d_sub = s[s["node"] == "D"]
+    b_sub = s[s["node"] == "B"]
+    d_vs_b_localization_distance = float(
+        np.mean(np.abs(d_sub["localization_score"].to_numpy() - b_sub["localization_score"].to_numpy()))
+    )
+
+    recalls = {
+        n: float(s[(s["node"] == n) & (s["phase"] == "perturbation")]["signal_emitted"].mean() or 0.0)
+        for n in NODES
+    }
+
+    return {
+        "condition": condition,
+        "alert_precision": precision,
+        "alert_recall": recall,
+        "false_positive_burden": false_positive_burden,
+        "false_positive_rate": false_positive_burden,
+        "specificity": specificity,
+        "false_positives_negatives": int(fp),
+        "true_positives": int(tp),
+        "false_negatives": int(fn),
+        "baseline_stability_mean_all_nodes": baseline_stability_mean_all_nodes,
+        "baseline_behavioral_stability": baseline_behavioral_stability,
+        "nominal_behavioral_stability": nominal_behavioral_stability,
+        "baseline_stability_A_control": per_node_baseline_strict["A"],
+        "baseline_stability_B_gal2": per_node_baseline_strict["B"],
+        "baseline_stability_C_raw": per_node_baseline_strict["C"],
+        "baseline_stability_D_combined": per_node_baseline_strict["D"],
+        "recovery_quality": recovery_quality,
+        "recovery_stability_A_control": per_node_recovery_strict["A"],
+        "recovery_stability_B_gal2": per_node_recovery_strict["B"],
+        "recovery_stability_C_raw": per_node_recovery_strict["C"],
+        "recovery_stability_D_combined": per_node_recovery_strict["D"],
+        "nominal_consistency_mean": nominal_consistency_mean,
+        "nominal_consistency_std": nominal_consistency_std,
+        "mean_operational_stability_index": float(np.mean(ops_by_node)) if ops_by_node else 0.0,
+        "cross_variant_operational_stability_spread": cross_variant_operational_stability_spread,
+        "mean_false_positive_burden_nominal": mean_false_positive_burden_nominal,
+        "mean_regime_distance": float(s["regime_distance"].mean()) if not s.empty else 0.0,
+        "peak_regime_distance": float(s["regime_distance"].max()) if not s.empty else 0.0,
+        "localization_target_C_perturbation": localization_target,
+        "localization_non_target_perturbation": localization_non_target,
+        "localization_contrast_C_minus_nonC": localization_contrast,
+        "localization_quality": localization_quality,
+        "d_vs_b_localization_distance": d_vs_b_localization_distance,
+        "mean_temporal_coherence_all_nodes": _safe_mean(s["temporal_coherence_score"].astype(float)),
+        "mean_temporal_distortion_all_nodes": _safe_mean(s["temporal_distortion_score"].astype(float)),
+        "mean_timestamp_irregularity": _safe_mean(s["timestamp_irregularity"].astype(float)),
+        "recall_A_control": recalls["A"],
+        "recall_B_gal2": recalls["B"],
+        "recall_C_raw": recalls["C"],
+        "recall_D_combined": recalls["D"],
+    }
+
+
+def compute_condition_verdict(
+    metrics: dict[str, Any],
+    floors: dict[str, Any],
+) -> dict[str, Any]:
+    condition = str(metrics["condition"])
+    floor_precision = _floor_for(floors, "alert_precision", condition, 0.30)
+    floor_recall = _floor_for(floors, "alert_recall", condition, 0.80)
+    floor_baseline = _floor_for(floors, "baseline_stability_mean_all_nodes", condition, 0.45)
+    floor_recovery = _floor_for(floors, "recovery_success_rate", condition, 0.70)
+    ceiling_fp = _floor_for(floors, "false_positive_rate_max", condition, 0.35)
+
+    checks = {
+        "precision_pass": float(metrics["alert_precision"]) >= floor_precision,
+        "recall_pass": float(metrics["alert_recall"]) >= floor_recall,
+        "false_positive_burden_pass": float(metrics["false_positive_burden"]) <= ceiling_fp,
+        "baseline_stability_pass": float(metrics["baseline_behavioral_stability"]) >= floor_baseline,
+        "recovery_quality_pass": float(metrics["recovery_quality"]) >= floor_recovery,
+        "nominal_consistency_pass": float(metrics["nominal_consistency_mean"]) >= 0.50,
+        "localization_quality_pass": float(metrics["localization_quality"]) >= 0.50,
+    }
+    quality = {
+        "precision_quality": _higher_better_quality(float(metrics["alert_precision"]), floor_precision),
+        "recall_quality": _higher_better_quality(float(metrics["alert_recall"]), floor_recall),
+        "false_positive_quality": _lower_better_quality(float(metrics["false_positive_burden"]), ceiling_fp),
+        "baseline_stability_quality": _higher_better_quality(
+            float(metrics["baseline_behavioral_stability"]), floor_baseline
+        ),
+        "recovery_quality_quality": _higher_better_quality(float(metrics["recovery_quality"]), floor_recovery),
+        "nominal_consistency_quality": float(np.clip(metrics["nominal_consistency_mean"], 0.0, 1.0)),
+        "localization_quality_quality": float(np.clip(metrics["localization_quality"], 0.0, 1.0)),
+    }
+    evidence_score = float(np.mean(list(quality.values()))) if quality else 0.0
+    weak = [k for k, v in quality.items() if v < 0.45]
+    strong = [k for k, v in quality.items() if v >= 0.75]
+    critical_fail = any(
+        not checks[k]
+        for k in [
+            "precision_pass",
+            "false_positive_burden_pass",
+            "baseline_stability_pass",
+            "recovery_quality_pass",
+        ]
+    )
+    if not critical_fail and evidence_score >= 0.65 and len(weak) <= 1:
+        verdict = "DEFENSIBLE"
+    elif evidence_score < 0.45 and len(strong) <= 1:
+        verdict = "NOT_DEFENSIBLE"
+    else:
+        verdict = "MIXED_EVIDENCE"
+
+    summary = (
+        f"{verdict}: evidence_score={evidence_score:.3f}, "
+        f"strong={','.join(strong) if strong else 'none'}, "
+        f"weak={','.join(weak) if weak else 'none'}"
+    )
+    return {
+        "condition": condition,
+        "verdict": verdict,
+        "evidence_score": evidence_score,
+        "mixed_evidence": bool(verdict == "MIXED_EVIDENCE"),
+        "critical_fail": bool(critical_fail),
+        "strong_metrics": ",".join(strong),
+        "weak_metrics": ",".join(weak),
+        "verdict_summary": summary,
+        **checks,
+        **quality,
+    }
+
+
+def compare_condition_metric_table(df_metrics: pd.DataFrame) -> dict[str, float]:
+    if df_metrics.empty or len(df_metrics) < 2:
+        return {
+            "coherent_vs_disturbed_temporal_coherence_gap": 0.0,
+            "coherent_vs_disturbed_temporal_distortion_gap": 0.0,
+            "coherent_vs_disturbed_precision_gap": 0.0,
+            "coherent_vs_disturbed_false_positive_burden_gap": 0.0,
+            "coherent_vs_disturbed_recovery_quality_gap": 0.0,
+            "coherent_vs_disturbed_separation_score": 0.0,
+        }
+    by_condition = {str(r["condition"]): r for _, r in df_metrics.iterrows()}
+    coh = by_condition.get("coherent_time")
+    dis = by_condition.get("disturbed_time")
+    if coh is None or dis is None:
+        return {
+            "coherent_vs_disturbed_temporal_coherence_gap": 0.0,
+            "coherent_vs_disturbed_temporal_distortion_gap": 0.0,
+            "coherent_vs_disturbed_precision_gap": 0.0,
+            "coherent_vs_disturbed_false_positive_burden_gap": 0.0,
+            "coherent_vs_disturbed_recovery_quality_gap": 0.0,
+            "coherent_vs_disturbed_separation_score": 0.0,
+        }
+
+    coherence_gap = float(coh["mean_temporal_coherence_all_nodes"] - dis["mean_temporal_coherence_all_nodes"])
+    distortion_gap = float(dis["mean_temporal_distortion_all_nodes"] - coh["mean_temporal_distortion_all_nodes"])
+    precision_gap = float(abs(coh["alert_precision"] - dis["alert_precision"]))
+    fp_gap = float(abs(coh["false_positive_burden"] - dis["false_positive_burden"]))
+    recovery_gap = float(abs(coh["recovery_quality"] - dis["recovery_quality"]))
+    separation_score = float(
+        np.mean(
+            [
+                np.clip(coherence_gap / 0.10, 0.0, 1.0),
+                np.clip(distortion_gap / 0.10, 0.0, 1.0),
+                np.clip((precision_gap + fp_gap + recovery_gap) / 0.60, 0.0, 1.0),
+            ]
+        )
+    )
+    return {
+        "coherent_vs_disturbed_temporal_coherence_gap": coherence_gap,
+        "coherent_vs_disturbed_temporal_distortion_gap": distortion_gap,
+        "coherent_vs_disturbed_precision_gap": precision_gap,
+        "coherent_vs_disturbed_false_positive_burden_gap": fp_gap,
+        "coherent_vs_disturbed_recovery_quality_gap": recovery_gap,
+        "coherent_vs_disturbed_separation_score": separation_score,
+    }
+
+
+def summarize_overall_verdict(
+    df_verdict: pd.DataFrame,
+    separation: dict[str, float],
+) -> dict[str, Any]:
+    if df_verdict.empty:
+        return {
+            "overall_verdict": "MIXED_EVIDENCE",
+            "overall_evidence_score": 0.0,
+            "mixed_evidence": True,
+            "summary": "MIXED_EVIDENCE: no verdict rows available.",
+        }
+    base_score = float(df_verdict["evidence_score"].mean())
+    separation_score = float(separation.get("coherent_vs_disturbed_separation_score", 0.0))
+    final_score = float(np.clip(0.8 * base_score + 0.2 * separation_score, 0.0, 1.0))
+    verdicts = set(df_verdict["verdict"].astype(str).tolist())
+    if "NOT_DEFENSIBLE" in verdicts:
+        overall = "NOT_DEFENSIBLE"
+    elif "MIXED_EVIDENCE" in verdicts or separation_score < 0.45:
+        overall = "MIXED_EVIDENCE"
+    else:
+        overall = "DEFENSIBLE"
+    summary = (
+        f"{overall}: final_score={final_score:.3f}, condition_scores="
+        f"{','.join(f'{c}:{s:.3f}' for c, s in zip(df_verdict['condition'], df_verdict['evidence_score']))}, "
+        f"separation_score={separation_score:.3f}"
+    )
+    return {
+        "overall_verdict": overall,
+        "overall_evidence_score": final_score,
+        "mixed_evidence": bool(overall == "MIXED_EVIDENCE"),
+        "summary": summary,
+    }
+
+
+def build_verdict_frame(
+    df_metrics: pd.DataFrame,
+    floors: dict[str, Any],
+) -> tuple[pd.DataFrame, dict[str, Any], dict[str, float]]:
+    rows = [
+        compute_condition_verdict(row.to_dict(), floors)
+        for _, row in df_metrics.iterrows()
+    ]
+    df_verdict = pd.DataFrame(rows)
+    separation = compare_condition_metric_table(df_metrics)
+    overall = summarize_overall_verdict(df_verdict, separation)
+    return df_verdict, overall, separation
 
 
 # =============================================================================
@@ -984,76 +1382,10 @@ def run_benchmark() -> tuple[
 
     df_node_summary = pd.DataFrame(node_summaries)
 
-    metric_rows: list[dict[str, Any]] = []
-    for condition in CONDITIONS:
-        s = df_rows[df_rows["condition"] == condition]
-        pos = s[(s["node"] == "C") & (s["phase"] == "perturbation")]
-        neg = s[~((s["node"] == "C") & (s["phase"] == "perturbation"))]
-        tp = int((pos["state"].isin(["WATCH", "ALERT"])).sum())
-        fn = int(len(pos) - tp)
-        fp = int((neg["state"].isin(["WATCH", "ALERT"])).sum())
-        precision = float(tp / (tp + fp)) if (tp + fp) > 0 else 0.0
-        recall = float(tp / (tp + fn)) if (tp + fn) > 0 else 0.0
-
-        # Baseline strict nominal rate: ALL nodes (A–D). Old A+B-only average forced identical headlines.
-        baseline_all = s[s["phase"] == "baseline"]
-        per_node_baseline_strict = {
-            n: float(
-                np.mean(
-                    (
-                        (baseline_all[baseline_all["node"] == n]["state"] == "STABLE")
-                        & (baseline_all[baseline_all["node"] == n]["interpreted_state"] == "NOMINAL_STRUCTURE")
-                    ).astype(float)
-                )
-            )
-            if not baseline_all[baseline_all["node"] == n].empty
-            else 0.0
-            for n in NODES
-        }
-        baseline_stability_mean_all_nodes = float(np.mean(list(per_node_baseline_strict.values())))
-
-        d_sub = s[s["node"] == "D"]
-        b_sub = s[s["node"] == "B"]
-        d_vs_b = float(np.mean(np.abs(d_sub["localization_score"].to_numpy() - b_sub["localization_score"].to_numpy())))
-
-        nominal_all = s[s["phase"].isin(["baseline", "recovery"])]
-        ops_by_node = []
-        fp_burden_by_node = []
-        for n in NODES:
-            sn = nominal_all[nominal_all["node"] == n]
-            comp = compute_operational_stability_index(sn)
-            ops_by_node.append(comp["operational_stability_index"])
-            fp_burden_by_node.append(comp["nominal_false_positive_burden"])
-        cross_variant_operational_stability_spread = float(np.std(ops_by_node)) if ops_by_node else 0.0
-        mean_false_positive_burden_nominal = float(np.mean(fp_burden_by_node)) if fp_burden_by_node else 0.0
-        mean_regime_distance = float(s["regime_distance"].mean()) if not s.empty else 0.0
-        peak_regime_distance = float(s["regime_distance"].max()) if not s.empty else 0.0
-
-        recalls = {n: float(s[(s["node"] == n) & (s["phase"] == "perturbation")]["signal_emitted"].mean() or 0.0) for n in NODES}
-
-        metric_rows.append(
-            {
-                "condition": condition,
-                "alert_precision": precision,
-                "alert_recall": recall,
-                "false_positives_negatives": int(fp),
-                "baseline_stability_mean_all_nodes": baseline_stability_mean_all_nodes,
-                "baseline_stability_A_control": per_node_baseline_strict["A"],
-                "baseline_stability_B_gal2": per_node_baseline_strict["B"],
-                "baseline_stability_C_raw": per_node_baseline_strict["C"],
-                "baseline_stability_D_combined": per_node_baseline_strict["D"],
-                "mean_operational_stability_index": float(np.mean(ops_by_node)) if ops_by_node else 0.0,
-                "cross_variant_operational_stability_spread": cross_variant_operational_stability_spread,
-                "mean_false_positive_burden_nominal": mean_false_positive_burden_nominal,
-                "mean_regime_distance": mean_regime_distance,
-                "peak_regime_distance": peak_regime_distance,
-                "d_vs_b_localization_distance": d_vs_b,
-                "recall_A_control": recalls["A"],
-                "recall_B_gal2": recalls["B"],
-                "recall_C_raw": recalls["C"],
-                "recall_D_combined": recalls["D"],
-            }
-        )
+    metric_rows: list[dict[str, Any]] = [
+        build_condition_metrics(df_rows, condition)
+        for condition in CONDITIONS
+    ]
 
     df_metrics = pd.DataFrame(metric_rows)
 
@@ -1161,14 +1493,18 @@ def write_outputs(
     df_rows: pd.DataFrame,
     df_node_summary: pd.DataFrame,
     df_metrics: pd.DataFrame,
+    df_verdict: pd.DataFrame,
     df_phase_conf: pd.DataFrame,
     df_diagnostics: pd.DataFrame,
     gal2_used_by_condition: dict[str, bool],
     fusion_coherence_stats: dict[str, float],
+    overall_verdict: dict[str, Any],
+    separation_metrics: dict[str, float],
 ) -> None:
     df_rows.to_csv(OUTPUT_TIMESERIES_CSV, index=False)
     df_node_summary.to_csv(OUTPUT_NODE_SUMMARY_CSV, index=False)
     df_metrics.to_csv(OUTPUT_METRICS_CSV, index=False)
+    df_verdict.to_csv(OUTPUT_VERDICT_CSV, index=False)
     df_phase_conf.to_csv(OUTPUT_PHASE_CONFUSION_CSV, index=False)
     df_diagnostics.to_csv(OUTPUT_DIAGNOSTICS_CSV, index=False)
     out_json = {
@@ -1192,11 +1528,15 @@ def write_outputs(
         "adaptive_gal2_fusion_enabled": adaptive_gal2_fusion_enabled(),
         "fusion_coherence_robustness": fusion_coherence_stats,
         "coherent_vs_disturbed_mean_operational_stability_gap": coherent_disturbed_operational_gap(df_metrics),
+        "coherent_vs_disturbed_separation_metrics": separation_metrics,
+        "comparative_verdict": overall_verdict,
         "metrics": json.loads(df_metrics.to_json(orient="records")),
+        "verdict_by_condition": json.loads(df_verdict.to_json(orient="records")),
         "artifacts": {
             "timeseries_csv": OUTPUT_TIMESERIES_CSV,
             "node_summary_csv": OUTPUT_NODE_SUMMARY_CSV,
             "metrics_csv": OUTPUT_METRICS_CSV,
+            "verdict_csv": OUTPUT_VERDICT_CSV,
             "phase_confusion_csv": OUTPUT_PHASE_CONFUSION_CSV,
             "stability_diagnostics_csv": OUTPUT_DIAGNOSTICS_CSV,
             "report_md": OUTPUT_REPORT_MD,
@@ -1211,7 +1551,17 @@ def write_outputs(
         "",
         df_metrics.to_string(index=False),
         "",
+        "## Verdict by condition",
+        "",
+        df_verdict.to_string(index=False),
+        "",
         f"coherent_vs_disturbed_mean_operational_stability_gap: {gap:.6f}",
+        f"coherent_vs_disturbed_separation_score: {separation_metrics.get('coherent_vs_disturbed_separation_score', 0.0):.6f}",
+        "",
+        f"overall_verdict: {overall_verdict.get('overall_verdict', 'MIXED_EVIDENCE')}",
+        f"overall_evidence_score: {float(overall_verdict.get('overall_evidence_score', 0.0)):.6f}",
+        f"mixed_evidence: {bool(overall_verdict.get('mixed_evidence', True))}",
+        f"verdict_summary: {overall_verdict.get('summary', '')}",
         "",
         "## Artifacts",
         f"- `{OUTPUT_JSON}`",
@@ -1222,6 +1572,9 @@ def write_outputs(
 
 def print_console(
     df_metrics: pd.DataFrame,
+    df_verdict: pd.DataFrame,
+    overall_verdict: dict[str, Any],
+    separation_metrics: dict[str, float],
     df_node_summary: pd.DataFrame,
     df_diagnostics: pd.DataFrame,
     fusion_coherence_stats: dict[str, float] | None = None,
@@ -1230,6 +1583,20 @@ def print_console(
     print("SII benchmark metrics (target C perturbation + cross-variant stats)")
     print("=" * 72)
     print(df_metrics.to_string(index=False))
+    print("\n" + "=" * 72)
+    print("Comparative verdict (multi-metric, no recall-only winner)")
+    print("=" * 72)
+    print(df_verdict.to_string(index=False))
+    print(
+        f"overall_verdict={overall_verdict.get('overall_verdict', 'MIXED_EVIDENCE')}, "
+        f"overall_evidence_score={float(overall_verdict.get('overall_evidence_score', 0.0)):.6f}, "
+        f"mixed_evidence={bool(overall_verdict.get('mixed_evidence', True))}"
+    )
+    print(f"summary: {overall_verdict.get('summary', '')}")
+    print(
+        f"coherent_vs_disturbed_separation_score="
+        f"{float(separation_metrics.get('coherent_vs_disturbed_separation_score', 0.0)):.6f}"
+    )
     print("\n" + "=" * 72)
     print("Node summary (per variant)")
     print("=" * 72)
@@ -1279,6 +1646,7 @@ def print_console(
         OUTPUT_TIMESERIES_CSV,
         OUTPUT_NODE_SUMMARY_CSV,
         OUTPUT_METRICS_CSV,
+        OUTPUT_VERDICT_CSV,
         OUTPUT_PHASE_CONFUSION_CSV,
         OUTPUT_DIAGNOSTICS_CSV,
         OUTPUT_REPORT_MD,
@@ -1296,16 +1664,34 @@ def main() -> int:
         gal2_used,
         fusion_coherence_stats,
     ) = run_benchmark()
+    calibration = load_benchmark_calibration(CALIBRATION_PATH)
+    floors = (
+        calibration.get("assertion_floors", {})
+        if isinstance(calibration.get("assertion_floors"), dict)
+        else {}
+    )
+    df_verdict, overall_verdict, separation_metrics = build_verdict_frame(df_metrics, floors)
     write_outputs(
         df_rows,
         df_node_summary,
         df_metrics,
+        df_verdict,
         df_phase_conf,
         df_diagnostics,
         gal2_used,
         fusion_coherence_stats,
+        overall_verdict,
+        separation_metrics,
     )
-    print_console(df_metrics, df_node_summary, df_diagnostics, fusion_coherence_stats)
+    print_console(
+        df_metrics,
+        df_verdict,
+        overall_verdict,
+        separation_metrics,
+        df_node_summary,
+        df_diagnostics,
+        fusion_coherence_stats,
+    )
     return 0
 
 
