@@ -231,7 +231,7 @@ The runner sets `NERAIUM_PILOT_HARDENING=1` for you.
   ```bash
   python examples/pilot/run_pilot.py
   ```
-  Options: `--timesteps` (default `120`), `--seed`, `--baseline-window`, `--recent-window`, `--output` (default `pilot_results.json`: array of `{timestep, signals, state, interpreted_state, score}` per ingest).
+  Options: `--timesteps` (default `120`), `--seed`, `--baseline-window`, `--recent-window`, `--output` (default `pilot_results.json`). The output file is a **document** `{"records": [...], "summary": {...}}`: each record has `timestep`, `signals`, **`state`** (thresholded from `score`: &lt;1.25 `STABLE`, 1.25–&lt;2.0 `WATCH`, ≥2.0 `ALERT`), **`interpreted_state`** (hysteresis-smoothed from the engine), `score`, **`frame_type`** (`normal` / `duplicate`), and `missing_data`. Duplicates mirror the first ingest’s pilot `score`/`state` for that timestep. The **`summary`** block includes first occurrence per state, counts, max/mean score (mean for timestep ≥60), duplicate/missing-data counts, and smoothing metadata.
 
 - **Static JSON file:** same as before (single payload, list, or wrapped list).  
   ```bash

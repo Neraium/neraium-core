@@ -10,6 +10,8 @@ import os
 import shutil
 import sys
 import tempfile
+from collections import Counter
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -23,7 +25,28 @@ from neraium_core.store import ResultStore
 
 PILOT_KEYS = ("timestamp", "signals", "score", "status", "aligned", "anomaly")
 
-# Scenario-only: degradation logs to stderr (JSONL stays on stdout).
+# Score → pilot state (deterministic; decoupled from engine drift-based state).
+SCORE_STABLE_LT = 1.25
+SCORE_WATCH_LT = 2.0
+
+# interpreted_state smoothing: require this many consecutive raw proposals before switching.
+INTERPRETED_CONSECUTIVE_REQUIRED = 3
+
+# Severe score move: bypass hysteresis for interpreted_state.
+SEVERE_SCORE_DELTA = 0.75
+SEVERE_SCORE_HIGH = 2.25
+SEVERE_SCORE_LOW_PRIOR = 1.45
+
+INTERPRETED_CANONICAL = frozenset(
+    {
+        "NOMINAL_STRUCTURE",
+        "COHERENCE_UNDER_CONSTRAINT",
+        "REGIME_SHIFT_OBSERVED",
+        "COUPLING_INSTABILITY_OBSERVED",
+        "STRUCTURAL_INSTABILITY_OBSERVED",
+    }
+)
+
 SCENARIO_LOG = logging.getLogger("neraium_pilot.scenario")
 
 
@@ -56,21 +79,103 @@ def _pilot_view(result: dict[str, Any]) -> dict[str, Any]:
     return {k: result.get(k) for k in PILOT_KEYS}
 
 
+def state_from_score(score: float | None) -> str:
+    """Deterministic pilot state from instability score (latest_instability)."""
+    if score is None:
+        return "STABLE"
+    try:
+        s = float(score)
+    except (TypeError, ValueError):
+        return "STABLE"
+    if math.isnan(s) or math.isinf(s):
+        return "STABLE"
+    if s < SCORE_STABLE_LT:
+        return "STABLE"
+    if s < SCORE_WATCH_LT:
+        return "WATCH"
+    return "ALERT"
+
+
+@dataclass
+class InterpretedStateSmoother:
+    """Hysteresis on engine interpreted_state; duplicate frames do not advance this."""
+
+    consecutive_required: int = INTERPRETED_CONSECUTIVE_REQUIRED
+    _current: str = "NOMINAL_STRUCTURE"
+    _pending: str | None = None
+    _pending_count: int = 0
+
+    @property
+    def current(self) -> str:
+        return self._current
+
+    def _normalize_proposed(self, raw: Any) -> str:
+        if raw is None:
+            return "NOMINAL_STRUCTURE"
+        text = str(raw)
+        return text if text in INTERPRETED_CANONICAL else "NOMINAL_STRUCTURE"
+
+    def _severe_jump(self, score: float, prev_score: float | None) -> bool:
+        if prev_score is None:
+            return False
+        try:
+            ps = float(prev_score)
+            sc = float(score)
+        except (TypeError, ValueError):
+            return False
+        if math.isnan(sc) or math.isnan(ps):
+            return False
+        if sc - ps >= SEVERE_SCORE_DELTA:
+            return True
+        if sc >= SEVERE_SCORE_HIGH and ps < SEVERE_SCORE_LOW_PRIOR:
+            return True
+        return False
+
+    def update(self, proposed_raw: Any, score: float, prev_score: float | None) -> str:
+        proposed = self._normalize_proposed(proposed_raw)
+
+        if proposed == self._current:
+            self._pending = None
+            self._pending_count = 0
+            return self._current
+
+        if self._severe_jump(score, prev_score):
+            self._current = proposed
+            self._pending = None
+            self._pending_count = 0
+            return self._current
+
+        if proposed == self._pending:
+            self._pending_count += 1
+        else:
+            self._pending = proposed
+            self._pending_count = 1
+
+        if self._pending_count >= self.consecutive_required:
+            self._current = self._pending
+            self._pending = None
+            self._pending_count = 0
+
+        return self._current
+
+
 def generate_signals(t: int, rng: np.random.Generator) -> dict[str, float]:
     """
     Evolving multivariate scenario (timestep index t >= 0).
 
-    - t < 30: stable baseline — shared latent factor, tight coupling.
+    - t < 30: stable baseline — correlated, non-identical channels.
     - 30 <= t < 60: regime shift — one channel ramps steadily vs the others.
     - t >= 60: instability — independent high noise / coupling breakdown.
     """
     if t < 30:
-        # Near-perfect coupling (same value on all channels) keeps drift low until t == 30.
-        v = 10.0 + 0.02 * math.sin(float(t) / 4.0)
-        return {"s1": v, "s2": v, "s3": v, "s4": v}
+        u = float(t)
+        s1 = 10.0 + 0.004 * u + 0.015 * math.sin(u / 4.5)
+        s2 = s1 + 0.12 + 0.008 * math.sin(u / 6.0)
+        s3 = 10.0 + 0.012 * math.sin((u + 3.5) / 4.5) + 0.003 * u
+        s4 = s1 + 0.06 * math.sin(u / 7.0) + float(rng.normal(0.0, 0.025))
+        return {"s1": s1, "s2": s2, "s3": s3, "s4": s4}
 
     if t < 60:
-        # Steady increase on s1 breaks prior correlation geometry (regime shift).
         latent = rng.normal(0.0, 0.04)
         ramp = 0.095 * float(t - 30)
         base = 10.0
@@ -82,7 +187,6 @@ def generate_signals(t: int, rng: np.random.Generator) -> dict[str, float]:
             "s4": base + latent + rng.normal(0.0, eps),
         }
 
-    # Coupling breakdown: weak shared structure, strong independent noise.
     u = float(t - 60)
     return {
         "s1": 8.0 + 0.08 * u + rng.normal(0.0, 1.4),
@@ -97,12 +201,8 @@ def _iso_timestamp(start: datetime, step: int) -> str:
 
 
 def _scenario_timestamp(start: datetime, logical_t: int) -> tuple[str, list[str]]:
-    """
-    Nominal one-second cadence, except a window of delayed timestamps (non-monotonic vs ingest order).
-    """
     tags: list[str] = []
     if 70 <= logical_t < 80:
-        # Timestamp lags logical time by 10 steps (arrives / recorded late).
         sec = max(0, logical_t - 10)
         tags.append("delayed_timestamp_lag_10_steps")
         return (start + timedelta(seconds=sec)).isoformat(), tags
@@ -134,30 +234,117 @@ def _result_score(result: dict[str, Any]) -> float | None:
         return None
 
 
-def _save_result_row(*, timestep: int, result: dict[str, Any]) -> dict[str, Any]:
-    """Compact row for pilot_results.json (requested schema)."""
+def _row_missing_data(signals: dict[str, float | None] | None, degraded: list[str] | None) -> bool:
+    if degraded and "missing_s2_s3" in degraded:
+        return True
+    if not isinstance(signals, dict):
+        return False
+    return any(v is None for v in signals.values())
+
+
+def build_pilot_record(
+    *,
+    timestep: int,
+    result: dict[str, Any],
+    pilot_state: str,
+    interpreted_smoothed: str,
+    frame_type: str,
+    missing_data: bool,
+    pilot_score: float | None = None,
+) -> dict[str, Any]:
+    """pilot_score overrides engine score for duplicate rows (same logical timestep, identical payload)."""
+    sc = pilot_score if pilot_score is not None else _result_score(result)
     return {
         "timestep": timestep,
         "signals": _rounded_signals_from_result(result),
-        "state": result.get("state"),
-        "interpreted_state": result.get("interpreted_state"),
-        "score": _result_score(result),
+        "state": pilot_state,
+        "interpreted_state": interpreted_smoothed,
+        "score": sc,
+        "frame_type": frame_type,
+        "missing_data": missing_data,
     }
 
 
-def _write_pilot_results(path: Path, rows: list[dict[str, Any]]) -> None:
+def summarize_pilot_records(rows: list[dict[str, Any]]) -> dict[str, Any]:
+    """Aggregate stats for pilot_results.json summary block."""
+    if not rows:
+        return {
+            "first_step_by_state": {},
+            "count_by_state": {},
+            "count_by_interpreted_state": {},
+            "max_score": None,
+            "mean_score_after_timestep_60": None,
+            "duplicate_frame_count": 0,
+            "missing_data_frame_count": 0,
+            "first_step_by_interpreted_state": {},
+        }
+
+    states = [str(r.get("state", "STABLE")) for r in rows]
+    interps = [str(r.get("interpreted_state", "NOMINAL_STRUCTURE")) for r in rows]
+    scores: list[float] = []
+    for r in rows:
+        s = r.get("score")
+        if s is not None:
+            try:
+                scores.append(float(s))
+            except (TypeError, ValueError):
+                pass
+
+    first_by_state: dict[str, int | None] = {}
+    for name in ("STABLE", "WATCH", "ALERT"):
+        first_by_state[name] = None
+        for r in rows:
+            if str(r.get("state")) == name:
+                first_by_state[name] = int(r["timestep"])
+                break
+
+    first_by_interp: dict[str, int] = {}
+    for r in rows:
+        k = str(r.get("interpreted_state", "NOMINAL_STRUCTURE"))
+        ts = int(r["timestep"])
+        if k not in first_by_interp:
+            first_by_interp[k] = ts
+
+    after_60 = [float(r["score"]) for r in rows if int(r["timestep"]) >= 60 and r.get("score") is not None]
+    mean_after_60 = round(sum(after_60) / len(after_60), 6) if after_60 else None
+
+    dup_count = sum(1 for r in rows if r.get("frame_type") == "duplicate")
+    miss_count = sum(1 for r in rows if r.get("missing_data") is True)
+
+    return {
+        "first_step_by_state": first_by_state,
+        "count_by_state": dict(Counter(states)),
+        "count_by_interpreted_state": dict(Counter(interps)),
+        "max_score": round(max(scores), 6) if scores else None,
+        "mean_score_after_timestep_60": mean_after_60,
+        "duplicate_frame_count": dup_count,
+        "missing_data_frame_count": miss_count,
+        "first_step_by_interpreted_state": first_by_interp,
+        "score_thresholds": {
+            "STABLE_lt": SCORE_STABLE_LT,
+            "WATCH_lt": SCORE_WATCH_LT,
+            "ALERT_gte": SCORE_WATCH_LT,
+        },
+        "interpreted_smoothing": {
+            "consecutive_required": INTERPRETED_CONSECUTIVE_REQUIRED,
+            "severe_score_delta": SEVERE_SCORE_DELTA,
+            "severe_score_high": SEVERE_SCORE_HIGH,
+            "severe_score_low_prior": SEVERE_SCORE_LOW_PRIOR,
+        },
+    }
+
+
+def _write_pilot_results_document(path: Path, records: list[dict[str, Any]], summary: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(rows, indent=2), encoding="utf-8")
-    SCENARIO_LOG.info("saved %s rows to %s", len(rows), path.resolve())
+    doc = {"records": records, "summary": summary}
+    path.write_text(json.dumps(doc, indent=2), encoding="utf-8")
+    SCENARIO_LOG.info("saved %s records + summary to %s", len(records), path.resolve())
 
 
 def _apply_scenario_degradations(
     sensors: dict[str, float],
     logical_t: int,
 ) -> tuple[dict[str, float | None], list[str]]:
-    """
-    Inject missing data, flatline, etc. Pilot pipeline accepts None for missing sensors.
-    """
     tags: list[str] = []
     out: dict[str, float | None] = dict(sensors)
 
@@ -167,7 +354,6 @@ def _apply_scenario_degradations(
         tags.append("missing_s2_s3")
 
     if logical_t >= 75:
-        # Partial sensor failure: s4 stuck (same value every frame after onset).
         out["s4"] = 9.5
         tags.append("s4_flatline")
 
@@ -179,30 +365,35 @@ def _print_step_record(
     ingest_seq: int,
     logical_t: int,
     result: dict[str, Any],
+    pilot_state: str,
+    interpreted_smoothed: str,
+    frame_type: str,
+    missing_data: bool,
     degraded: list[str] | None = None,
-    save_rows: list[dict[str, Any]] | None = None,
+    pilot_score: float | None = None,
 ) -> None:
-    """One JSON object per line: pilot fields + engine state + interpreted_state + confidence."""
     pv = _pilot_view(result)
     rounded_signals = _rounded_signals_from_result(result)
+    display_score = pilot_score if pilot_score is not None else pv.get("score")
 
     record: dict[str, Any] = {
         "ingest_seq": ingest_seq,
         "logical_t": logical_t,
         "timestamp": pv.get("timestamp"),
         "signals": rounded_signals,
-        "score": pv.get("score"),
+        "score": display_score,
         "status": pv.get("status"),
-        "state": result.get("state"),
-        "interpreted_state": result.get("interpreted_state"),
+        "state": pilot_state,
+        "interpreted_state": interpreted_smoothed,
+        "frame_type": frame_type,
+        "missing_data": missing_data,
         "confidence": result.get("confidence"),
+        "engine_state": result.get("state"),
+        "engine_interpreted_raw": result.get("interpreted_state"),
     }
     if degraded:
         record["degraded"] = degraded
     print(json.dumps(record, separators=(",", ":")))
-
-    if save_rows is not None:
-        save_rows.append(_save_result_row(timestep=logical_t, result=result))
 
 
 def _log_engine_data_quality_if_degraded(
@@ -214,7 +405,6 @@ def _log_engine_data_quality_if_degraded(
     dq = result.get("data_quality_summary")
     if not isinstance(dq, dict):
         return
-    # Only log when the gate explicitly failed (not missing/unknown).
     if dq.get("gate_passed") is not False:
         return
     SCENARIO_LOG.info(
@@ -234,20 +424,21 @@ def _run_scenario(
     recent_window: int,
     results_path: Path,
 ) -> None:
-    """Drive Neraium with generate_signals(t) for t in [0, timesteps)."""
     if timesteps < 100:
         raise ValueError("timesteps must be at least 100 for the pilot scenario")
 
     _setup_scenario_logging()
 
-    # Avoid per-step INFO logs flooding stdout when printing JSONL.
     for name in ("neraium_core.service", "neraium_core.store"):
         logging.getLogger(name).setLevel(logging.WARNING)
 
     rng = np.random.default_rng(seed)
     start = datetime(2026, 1, 1, 0, 0, 0, tzinfo=timezone.utc)
 
-    save_rows: list[dict[str, Any]] = []
+    save_records: list[dict[str, Any]] = []
+    smoother = InterpretedStateSmoother()
+    prev_score: float | None = None
+
     tmp_dir = tempfile.mkdtemp(prefix="neraium_pilot_")
     try:
         tmp_path = Path(tmp_dir)
@@ -263,6 +454,82 @@ def _run_scenario(
         first_watch: int | None = None
         first_alert: int | None = None
         ingest_seq = 0
+
+        def process_ingest(
+            *,
+            logical_t: int,
+            result: dict[str, Any],
+            step_tags: list[str],
+            frame_type: str,
+            advance_smoother: bool,
+        ) -> None:
+            nonlocal ingest_seq, prev_score, first_watch, first_alert
+
+            score = _result_score(result)
+            pilot_state = state_from_score(score)
+            pilot_score_out: float | None = score
+
+            # Duplicate of same logical timestep: mirror pilot score/state from first ingest (engine may differ).
+            if (
+                not advance_smoother
+                and save_records
+                and int(save_records[-1]["timestep"]) == logical_t
+            ):
+                canon = save_records[-1]
+                cs = canon.get("score")
+                if cs is not None:
+                    try:
+                        pilot_score_out = float(cs)
+                    except (TypeError, ValueError):
+                        pilot_score_out = score
+                pilot_state = str(canon.get("state", pilot_state))
+
+            if advance_smoother:
+                raw_interp = result.get("interpreted_state")
+                interpreted_smoothed = smoother.update(raw_interp, score if score is not None else 0.0, prev_score)
+            else:
+                # Duplicate: do not advance hysteresis; keep last smoothed interpretation.
+                interpreted_smoothed = smoother.current
+
+            # Do not advance prev_score on duplicate ingests (keeps step-to-step jump logic on real cadence).
+            if score is not None and advance_smoother:
+                prev_score = score
+
+            action = str(result.get("action_state", ""))
+            if first_watch is None and pilot_state == "WATCH":
+                first_watch = logical_t
+            if first_alert is None and pilot_state == "ALERT":
+                first_alert = logical_t
+
+            rounded = _rounded_signals_from_result(result)
+            missing_data = _row_missing_data(rounded, step_tags if step_tags else None)
+
+            _log_engine_data_quality_if_degraded(
+                logical_t=logical_t, ingest_seq=ingest_seq, result=result
+            )
+            _print_step_record(
+                ingest_seq=ingest_seq,
+                logical_t=logical_t,
+                result=result,
+                pilot_state=pilot_state,
+                interpreted_smoothed=interpreted_smoothed,
+                frame_type=frame_type,
+                missing_data=missing_data,
+                degraded=step_tags if step_tags else None,
+                pilot_score=pilot_score_out if not advance_smoother else None,
+            )
+            save_records.append(
+                build_pilot_record(
+                    timestep=logical_t,
+                    result=result,
+                    pilot_state=pilot_state,
+                    interpreted_smoothed=interpreted_smoothed,
+                    frame_type=frame_type,
+                    missing_data=missing_data,
+                    pilot_score=pilot_score_out if not advance_smoother else None,
+                )
+            )
+            ingest_seq += 1
 
         for logical_t in range(timesteps):
             raw = generate_signals(logical_t, rng)
@@ -291,68 +558,60 @@ def _run_scenario(
             }
 
             result = service.ingest_payload(payload)
-            action = str(result.get("action_state", ""))
-            if first_watch is None and action == "WATCH":
-                first_watch = logical_t
-            if first_alert is None and action == "ALERT":
-                first_alert = logical_t
-
-            _log_engine_data_quality_if_degraded(
-                logical_t=logical_t, ingest_seq=ingest_seq, result=result
-            )
-            _print_step_record(
-                ingest_seq=ingest_seq,
+            process_ingest(
                 logical_t=logical_t,
                 result=result,
-                degraded=step_tags if step_tags else None,
-                save_rows=save_rows,
+                step_tags=step_tags,
+                frame_type="normal",
+                advance_smoother=True,
             )
-            ingest_seq += 1
 
-            # Duplicated frame: same payload ingested twice (logical_t 55).
             if logical_t == 55:
                 SCENARIO_LOG.info(
                     "data_degraded event=duplicated_frame logical_t=55 re-ingesting identical payload"
                 )
                 dup_payload = copy.deepcopy(payload)
                 result_dup = service.ingest_payload(dup_payload)
-                _log_engine_data_quality_if_degraded(
-                    logical_t=logical_t, ingest_seq=ingest_seq, result=result_dup
-                )
-                _print_step_record(
-                    ingest_seq=ingest_seq,
+                process_ingest(
                     logical_t=logical_t,
                     result=result_dup,
-                    degraded=["duplicated_frame"],
-                    save_rows=save_rows,
+                    step_tags=["duplicated_frame"],
+                    frame_type="duplicate",
+                    advance_smoother=False,
                 )
-                ingest_seq += 1
 
         del service, store, engine
         gc.collect()
     finally:
         shutil.rmtree(tmp_dir, ignore_errors=True)
 
-    _write_pilot_results(results_path, save_rows)
+    summary = summarize_pilot_records(save_records)
+    summary["scenario"] = {
+        "stable_baseline_t_lt_30": True,
+        "first_disruption_t_ge_30": True,
+        "stronger_disruption_t_ge_60": True,
+        "missing_data_logical_t_40_44": True,
+        "note": "state is score-threshold pilot state; interpreted_state is hysteresis-smoothed.",
+    }
+    summary["first_WATCH_step_action_state_legacy"] = first_watch
+    summary["first_ALERT_step_action_state_legacy"] = first_alert
 
-    # Progression summary (operator-facing heuristic status)
+    _write_pilot_results_document(results_path, save_records, summary)
+
     print(
         json.dumps(
             {
-                "summary": {
+                "summary_stdout": {
                     "scenario": "stable → regime_shift → instability",
-                    "phases": {"stable_t_lt_30": True, "regime_shift_30_le_t_lt_60": True, "instability_t_ge_60": True},
                     "degradation_injected": {
                         "missing_s2_s3": "logical_t 40–44",
-                        "duplicated_frame": "logical_t 55 (second ingest identical payload)",
-                        "delayed_timestamps": "logical_t 70–79 (10-step lag)",
+                        "duplicated_frame": "logical_t 55 (second ingest, frame_type=duplicate)",
+                        "delayed_timestamps": "logical_t 70–79",
                         "s4_flatline": "logical_t ≥ 75",
                     },
-                    "first_WATCH_step": first_watch,
-                    "first_ALERT_step": first_alert,
-                    "note": "status=action_state; state=engine drift alert state; "
-                    "interpreted_state=decision layer; confidence=service operator confidence [0,1]. "
-                    "Degradation logs on stderr (neraium_pilot.scenario).",
+                    "pilot_results_file": str(results_path.resolve()),
+                    "first_WATCH_pilot_state_step": summary["first_step_by_state"].get("WATCH"),
+                    "first_ALERT_pilot_state_step": summary["first_step_by_state"].get("ALERT"),
                 }
             },
             indent=2,
@@ -362,12 +621,14 @@ def _run_scenario(
 
 
 def _run_file_payloads(path: Path, *, results_path: Path) -> None:
-    """Original behavior: load JSON payload(s) and print pilot view."""
     payloads = _load_json_payloads(path)
     _setup_scenario_logging()
 
+    smoother = InterpretedStateSmoother()
+    prev_score: float | None = None
+    save_records: list[dict[str, Any]] = []
+
     tmp_dir = tempfile.mkdtemp(prefix="neraium_pilot_")
-    save_rows: list[dict[str, Any]] = []
     try:
         tmp_path = Path(tmp_dir)
         engine = StructuralEngine(
@@ -383,14 +644,36 @@ def _run_file_payloads(path: Path, *, results_path: Path) -> None:
         for timestep, payload in enumerate(payloads):
             result = service.ingest_payload(payload)
             outputs.append(_pilot_view(result))
-            save_rows.append(_save_result_row(timestep=timestep, result=result))
+            score = _result_score(result)
+            pilot_state = state_from_score(score)
+            interpreted_smoothed = smoother.update(
+                result.get("interpreted_state"),
+                score if score is not None else 0.0,
+                prev_score,
+            )
+            if score is not None:
+                prev_score = score
+            rounded = _rounded_signals_from_result(result)
+            missing_data = _row_missing_data(rounded, None)
+            save_records.append(
+                build_pilot_record(
+                    timestep=timestep,
+                    result=result,
+                    pilot_state=pilot_state,
+                    interpreted_smoothed=interpreted_smoothed,
+                    frame_type="normal",
+                    missing_data=missing_data,
+                )
+            )
 
         del service, store, engine
         gc.collect()
     finally:
         shutil.rmtree(tmp_dir, ignore_errors=True)
 
-    _write_pilot_results(results_path, save_rows)
+    summary = summarize_pilot_records(save_records)
+    summary["scenario"] = {"mode": "file_payloads"}
+    _write_pilot_results_document(results_path, save_records, summary)
 
     if len(outputs) == 1:
         print(json.dumps(outputs[0], indent=2))
@@ -427,7 +710,7 @@ def main() -> None:
         "--output",
         type=Path,
         default=Path("pilot_results.json"),
-        help="Write per-step results (timestep, signals, state, interpreted_state, score) to this JSON file.",
+        help="Write records + summary JSON document (timestep, signals, state, interpreted_state, score, frame_type).",
     )
     args = parser.parse_args()
 
