@@ -20,6 +20,7 @@ dev = [
   "pytest",
   "ruff",
   "httpx",
+  "pandas",
 ]
 
 [tool.setuptools]
