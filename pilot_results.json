@@ -1,1454 +1,1746 @@
-[
-  {
-    "timestep": 0,
-    "signals": {
-      "s1": 10.0,
-      "s2": 10.0,
-      "s3": 10.0,
-      "s4": 10.0
-    },
-    "state": "STABLE",
-    "interpreted_state": null,
-    "score": 0.0
-  },
-  {
-    "timestep": 1,
-    "signals": {
-      "s1": 10.004948,
-      "s2": 10.004948,
-      "s3": 10.004948,
-      "s4": 10.004948
-    },
-    "state": "STABLE",
-    "interpreted_state": null,
-    "score": 0.0
-  },
-  {
-    "timestep": 2,
-    "signals": {
-      "s1": 10.009589,
-      "s2": 10.009589,
-      "s3": 10.009589,
-      "s4": 10.009589
-    },
-    "state": "STABLE",
-    "interpreted_state": null,
-    "score": 0.0
-  },
-  {
-    "timestep": 3,
-    "signals": {
-      "s1": 10.013633,
-      "s2": 10.013633,
-      "s3": 10.013633,
-      "s4": 10.013633
-    },
-    "state": "STABLE",
-    "interpreted_state": null,
-    "score": 0.0
-  },
-  {
-    "timestep": 4,
-    "signals": {
-      "s1": 10.016829,
-      "s2": 10.016829,
-      "s3": 10.016829,
-      "s4": 10.016829
-    },
-    "state": "STABLE",
-    "interpreted_state": null,
-    "score": 0.0
-  },
-  {
-    "timestep": 5,
-    "signals": {
-      "s1": 10.01898,
-      "s2": 10.01898,
-      "s3": 10.01898,
-      "s4": 10.01898
-    },
-    "state": "STABLE",
-    "interpreted_state": null,
-    "score": 0.0
-  },
-  {
-    "timestep": 6,
-    "signals": {
-      "s1": 10.01995,
-      "s2": 10.01995,
-      "s3": 10.01995,
-      "s4": 10.01995
-    },
-    "state": "STABLE",
-    "interpreted_state": null,
-    "score": 0.0
-  },
-  {
-    "timestep": 7,
-    "signals": {
-      "s1": 10.01968,
-      "s2": 10.01968,
-      "s3": 10.01968,
-      "s4": 10.01968
-    },
-    "state": "STABLE",
-    "interpreted_state": null,
-    "score": 0.0
-  },
-  {
-    "timestep": 8,
-    "signals": {
-      "s1": 10.018186,
-      "s2": 10.018186,
-      "s3": 10.018186,
-      "s4": 10.018186
-    },
-    "state": "STABLE",
-    "interpreted_state": null,
-    "score": 0.0
-  },
-  {
-    "timestep": 9,
-    "signals": {
-      "s1": 10.015561,
-      "s2": 10.015561,
-      "s3": 10.015561,
-      "s4": 10.015561
-    },
-    "state": "STABLE",
-    "interpreted_state": null,
-    "score": 0.0
-  },
-  {
-    "timestep": 10,
-    "signals": {
-      "s1": 10.011969,
-      "s2": 10.011969,
-      "s3": 10.011969,
-      "s4": 10.011969
-    },
-    "state": "STABLE",
-    "interpreted_state": null,
-    "score": 0.0
-  },
-  {
-    "timestep": 11,
-    "signals": {
-      "s1": 10.007633,
-      "s2": 10.007633,
-      "s3": 10.007633,
-      "s4": 10.007633
-    },
-    "state": "STABLE",
-    "interpreted_state": null,
-    "score": 0.0
-  },
-  {
-    "timestep": 12,
-    "signals": {
-      "s1": 10.002822,
-      "s2": 10.002822,
-      "s3": 10.002822,
-      "s4": 10.002822
-    },
-    "state": "STABLE",
-    "interpreted_state": null,
-    "score": 0.0
-  },
-  {
-    "timestep": 13,
-    "signals": {
-      "s1": 9.997836,
-      "s2": 9.997836,
-      "s3": 9.997836,
-      "s4": 9.997836
-    },
-    "state": "STABLE",
-    "interpreted_state": null,
-    "score": 0.0
-  },
-  {
-    "timestep": 14,
-    "signals": {
-      "s1": 9.992984,
-      "s2": 9.992984,
-      "s3": 9.992984,
-      "s4": 9.992984
-    },
-    "state": "STABLE",
-    "interpreted_state": null,
-    "score": 0.0
-  },
-  {
-    "timestep": 15,
-    "signals": {
-      "s1": 9.988569,
-      "s2": 9.988569,
-      "s3": 9.988569,
-      "s4": 9.988569
-    },
-    "state": "STABLE",
-    "interpreted_state": null,
-    "score": 0.0
-  },
-  {
-    "timestep": 16,
-    "signals": {
-      "s1": 9.984864,
-      "s2": 9.984864,
-      "s3": 9.984864,
-      "s4": 9.984864
-    },
-    "state": "STABLE",
-    "interpreted_state": null,
-    "score": 0.0
-  },
-  {
-    "timestep": 17,
-    "signals": {
-      "s1": 9.9821,
-      "s2": 9.9821,
-      "s3": 9.9821,
-      "s4": 9.9821
-    },
-    "state": "STABLE",
-    "interpreted_state": null,
-    "score": 0.0
-  },
-  {
-    "timestep": 18,
-    "signals": {
-      "s1": 9.980449,
-      "s2": 9.980449,
-      "s3": 9.980449,
-      "s4": 9.980449
-    },
-    "state": "STABLE",
-    "interpreted_state": null,
-    "score": 0.0
-  },
-  {
-    "timestep": 19,
-    "signals": {
-      "s1": 9.980014,
-      "s2": 9.980014,
-      "s3": 9.980014,
-      "s4": 9.980014
-    },
-    "state": "STABLE",
-    "interpreted_state": null,
-    "score": 0.0
-  },
-  {
-    "timestep": 20,
-    "signals": {
-      "s1": 9.980822,
-      "s2": 9.980822,
-      "s3": 9.980822,
-      "s4": 9.980822
-    },
-    "state": "STABLE",
-    "interpreted_state": null,
-    "score": 0.0
-  },
-  {
-    "timestep": 21,
-    "signals": {
-      "s1": 9.982821,
-      "s2": 9.982821,
-      "s3": 9.982821,
-      "s4": 9.982821
-    },
-    "state": "STABLE",
-    "interpreted_state": null,
-    "score": 0.0
-  },
-  {
-    "timestep": 22,
-    "signals": {
-      "s1": 9.985889,
-      "s2": 9.985889,
-      "s3": 9.985889,
-      "s4": 9.985889
-    },
-    "state": "STABLE",
-    "interpreted_state": null,
-    "score": 0.0
-  },
-  {
-    "timestep": 23,
-    "signals": {
-      "s1": 9.989834,
-      "s2": 9.989834,
-      "s3": 9.989834,
-      "s4": 9.989834
-    },
-    "state": "STABLE",
-    "interpreted_state": "NOMINAL_STRUCTURE",
-    "score": 1.1074
-  },
-  {
-    "timestep": 24,
-    "signals": {
-      "s1": 9.994412,
-      "s2": 9.994412,
-      "s3": 9.994412,
-      "s4": 9.994412
-    },
-    "state": "STABLE",
-    "interpreted_state": "NOMINAL_STRUCTURE",
-    "score": 1.0939
-  },
-  {
-    "timestep": 25,
-    "signals": {
-      "s1": 9.999336,
-      "s2": 9.999336,
-      "s3": 9.999336,
-      "s4": 9.999336
-    },
-    "state": "STABLE",
-    "interpreted_state": "NOMINAL_STRUCTURE",
-    "score": 1.0397
-  },
-  {
-    "timestep": 26,
-    "signals": {
-      "s1": 10.004302,
-      "s2": 10.004302,
-      "s3": 10.004302,
-      "s4": 10.004302
-    },
-    "state": "STABLE",
-    "interpreted_state": "NOMINAL_STRUCTURE",
-    "score": 0.9861
-  },
-  {
-    "timestep": 27,
-    "signals": {
-      "s1": 10.009001,
-      "s2": 10.009001,
-      "s3": 10.009001,
-      "s4": 10.009001
-    },
-    "state": "STABLE",
-    "interpreted_state": "NOMINAL_STRUCTURE",
-    "score": 0.9371
-  },
-  {
-    "timestep": 28,
-    "signals": {
-      "s1": 10.01314,
-      "s2": 10.01314,
-      "s3": 10.01314,
-      "s4": 10.01314
-    },
-    "state": "STABLE",
-    "interpreted_state": "NOMINAL_STRUCTURE",
-    "score": 0.9372
-  },
-  {
-    "timestep": 29,
-    "signals": {
-      "s1": 10.016462,
-      "s2": 10.016462,
-      "s3": 10.016462,
-      "s4": 10.016462
-    },
-    "state": "STABLE",
-    "interpreted_state": "NOMINAL_STRUCTURE",
-    "score": 0.9372
-  },
-  {
-    "timestep": 30,
-    "signals": {
-      "s1": 9.991389,
-      "s2": 10.027198,
-      "s3": 10.031,
-      "s4": 9.973168
-    },
-    "state": "STABLE",
-    "interpreted_state": "COHERENCE_UNDER_CONSTRAINT",
-    "score": 1.7006
-  },
-  {
-    "timestep": 31,
-    "signals": {
-      "s1": 10.04547,
-      "s2": 9.941588,
-      "s3": 9.947577,
-      "s4": 9.930852
-    },
-    "state": "STABLE",
-    "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
-    "score": 2.15
-  },
-  {
-    "timestep": 32,
-    "signals": {
-      "s1": 10.240732,
-      "s2": 10.036497,
-      "s3": 10.057721,
-      "s4": 10.044526
-    },
-    "state": "STABLE",
-    "interpreted_state": "NOMINAL_STRUCTURE",
-    "score": 1.206
-  },
-  {
-    "timestep": 33,
-    "signals": {
-      "s1": 10.258003,
-      "s2": 9.946451,
-      "s3": 9.983197,
-      "s4": 9.96463
-    },
-    "state": "STABLE",
-    "interpreted_state": "STRUCTURAL_INSTABILITY_OBSERVED",
-    "score": 1.5328
-  },
-  {
-    "timestep": 34,
-    "signals": {
-      "s1": 10.358987,
-      "s2": 10.017056,
-      "s3": 9.989515,
-      "s4": 9.984039
-    },
-    "state": "STABLE",
-    "interpreted_state": "STRUCTURAL_INSTABILITY_OBSERVED",
-    "score": 1.4677
-  },
-  {
-    "timestep": 35,
-    "signals": {
-      "s1": 10.471561,
-      "s2": 9.993224,
-      "s3": 9.994169,
-      "s4": 9.994531
-    },
-    "state": "STABLE",
-    "interpreted_state": "COHERENCE_UNDER_CONSTRAINT",
-    "score": 1.4195
-  },
-  {
-    "timestep": 36,
-    "signals": {
-      "s1": 10.647538,
-      "s2": 10.075421,
-      "s3": 10.06939,
-      "s4": 10.097985
-    },
-    "state": "STABLE",
-    "interpreted_state": "NOMINAL_STRUCTURE",
-    "score": 1.0238
-  },
-  {
-    "timestep": 37,
-    "signals": {
-      "s1": 10.70788,
-      "s2": 10.028356,
-      "s3": 10.028669,
-      "s4": 10.058171
-    },
-    "state": "STABLE",
-    "interpreted_state": "NOMINAL_STRUCTURE",
-    "score": 1.0397
-  },
-  {
-    "timestep": 38,
-    "signals": {
-      "s1": 10.800593,
-      "s2": 10.01642,
-      "s3": 10.034373,
-      "s4": 10.032064
-    },
-    "state": "STABLE",
-    "interpreted_state": "NOMINAL_STRUCTURE",
-    "score": 1.0288
-  },
-  {
-    "timestep": 39,
-    "signals": {
-      "s1": 10.881176,
-      "s2": 10.013219,
-      "s3": 10.022326,
-      "s4": 10.010099
-    },
-    "state": "STABLE",
-    "interpreted_state": "NOMINAL_STRUCTURE",
-    "score": 1.1417
-  },
-  {
-    "timestep": 40,
-    "signals": {
-      "s1": 10.974191,
-      "s2": null,
-      "s3": null,
-      "s4": 10.002157
-    },
-    "state": "STABLE",
-    "interpreted_state": "NOMINAL_STRUCTURE",
-    "score": 1.5982
-  },
-  {
-    "timestep": 41,
-    "signals": {
-      "s1": 11.013942,
-      "s2": null,
-      "s3": null,
-      "s4": 9.99381
-    },
-    "state": "STABLE",
-    "interpreted_state": "REGIME_SHIFT_OBSERVED",
-    "score": 1.8104
-  },
-  {
-    "timestep": 42,
-    "signals": {
-      "s1": 11.065988,
-      "s2": null,
-      "s3": null,
-      "s4": 9.94691
-    },
-    "state": "STABLE",
-    "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
-    "score": 2.0608
-  },
-  {
-    "timestep": 43,
-    "signals": {
-      "s1": 11.259759,
-      "s2": null,
-      "s3": null,
-      "s4": 10.027908
-    },
-    "state": "STABLE",
-    "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
-    "score": 2.3003
-  },
-  {
-    "timestep": 44,
-    "signals": {
-      "s1": 11.256307,
-      "s2": null,
-      "s3": null,
-      "s4": 9.951821
-    },
-    "state": "STABLE",
-    "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
-    "score": 2.1638
-  },
-  {
-    "timestep": 45,
-    "signals": {
-      "s1": 11.444074,
-      "s2": 10.03079,
-      "s3": 10.040131,
-      "s4": 10.021432
-    },
-    "state": "STABLE",
-    "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
-    "score": 1.9994
-  },
-  {
-    "timestep": 46,
-    "signals": {
-      "s1": 11.525032,
-      "s2": 10.01101,
-      "s3": 10.010636,
-      "s4": 9.994354
-    },
-    "state": "STABLE",
-    "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
-    "score": 1.7471
-  },
-  {
-    "timestep": 47,
-    "signals": {
-      "s1": 11.625091,
-      "s2": 10.019729,
-      "s3": 10.029094,
-      "s4": 10.02841
-    },
-    "state": "STABLE",
-    "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
-    "score": 1.8047
-  },
-  {
-    "timestep": 48,
-    "signals": {
-      "s1": 11.734646,
-      "s2": 10.018149,
-      "s3": 10.025021,
-      "s4": 9.992869
-    },
-    "state": "STABLE",
-    "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
-    "score": 1.7749
-  },
-  {
-    "timestep": 49,
-    "signals": {
-      "s1": 11.720662,
-      "s2": 9.922171,
-      "s3": 9.950111,
-      "s4": 9.924006
-    },
-    "state": "STABLE",
-    "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
-    "score": 1.9038
-  },
-  {
-    "timestep": 50,
-    "signals": {
-      "s1": 11.910858,
-      "s2": 9.977748,
-      "s3": 9.999624,
-      "s4": 9.966201
-    },
-    "state": "STABLE",
-    "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
-    "score": 2.099
-  },
-  {
-    "timestep": 51,
-    "signals": {
-      "s1": 11.967782,
-      "s2": 9.985002,
-      "s3": 10.008589,
-      "s4": 9.957236
-    },
-    "state": "WATCH",
-    "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
-    "score": 2.0842
-  },
-  {
-    "timestep": 52,
-    "signals": {
-      "s1": 12.112132,
-      "s2": 10.005494,
-      "s3": 9.988456,
-      "s4": 10.01882
-    },
-    "state": "WATCH",
-    "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
-    "score": 1.5627
-  },
-  {
-    "timestep": 53,
-    "signals": {
-      "s1": 12.168474,
-      "s2": 9.979257,
-      "s3": 10.010856,
-      "s4": 9.974033
-    },
-    "state": "WATCH",
-    "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
-    "score": 1.2724
-  },
-  {
-    "timestep": 54,
-    "signals": {
-      "s1": 12.242646,
-      "s2": 9.96346,
-      "s3": 9.986244,
-      "s4": 9.975762
-    },
-    "state": "STABLE",
-    "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
-    "score": 1.2337
-  },
-  {
-    "timestep": 55,
-    "signals": {
-      "s1": 12.418541,
-      "s2": 9.9905,
-      "s3": 10.00148,
-      "s4": 9.995743
-    },
-    "state": "STABLE",
-    "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
-    "score": 1.2064
-  },
-  {
-    "timestep": 55,
-    "signals": {
-      "s1": 12.418541,
-      "s2": 9.9905,
-      "s3": 10.00148,
-      "s4": 9.995743
-    },
-    "state": "STABLE",
-    "interpreted_state": "NOMINAL_STRUCTURE",
-    "score": 1.2596
-  },
-  {
-    "timestep": 56,
-    "signals": {
-      "s1": 12.426874,
-      "s2": 9.997111,
-      "s3": 9.979963,
-      "s4": 9.954991
-    },
-    "state": "STABLE",
-    "interpreted_state": "COHERENCE_UNDER_CONSTRAINT",
-    "score": 1.4204
-  },
-  {
-    "timestep": 57,
-    "signals": {
-      "s1": 12.530647,
-      "s2": 9.976139,
-      "s3": 9.999311,
-      "s4": 10.017654
-    },
-    "state": "WATCH",
-    "interpreted_state": "COHERENCE_UNDER_CONSTRAINT",
-    "score": 1.3589
-  },
-  {
-    "timestep": 58,
-    "signals": {
-      "s1": 12.656786,
-      "s2": 9.973935,
-      "s3": 10.021931,
-      "s4": 10.000318
-    },
-    "state": "WATCH",
-    "interpreted_state": "COHERENCE_UNDER_CONSTRAINT",
-    "score": 1.4504
-  },
-  {
-    "timestep": 59,
-    "signals": {
-      "s1": 12.726144,
-      "s2": 9.98057,
-      "s3": 10.004705,
-      "s4": 9.986527
-    },
-    "state": "WATCH",
-    "interpreted_state": "COHERENCE_UNDER_CONSTRAINT",
-    "score": 1.4282
-  },
-  {
-    "timestep": 60,
-    "signals": {
-      "s1": 7.777911,
-      "s2": 12.342954,
-      "s3": 3.487976,
-      "s4": 10.173277
-    },
-    "state": "WATCH",
-    "interpreted_state": "COHERENCE_UNDER_CONSTRAINT",
-    "score": 2.4806
-  },
-  {
-    "timestep": 61,
-    "signals": {
-      "s1": 8.004704,
-      "s2": 16.828688,
-      "s3": 6.195412,
-      "s4": 12.670657
-    },
-    "state": "ALERT",
-    "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
-    "score": 2.569
-  },
-  {
-    "timestep": 62,
-    "signals": {
-      "s1": 7.460986,
-      "s2": 12.10409,
-      "s3": 4.552325,
-      "s4": 9.767116
-    },
-    "state": "ALERT",
-    "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
-    "score": 2.403
-  },
-  {
-    "timestep": 63,
-    "signals": {
-      "s1": 11.219858,
-      "s2": 12.685781,
-      "s3": 7.257734,
-      "s4": 9.465024
-    },
-    "state": "ALERT",
-    "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
-    "score": 2.2643
-  },
-  {
-    "timestep": 64,
-    "signals": {
-      "s1": 9.624202,
-      "s2": 14.615922,
-      "s3": 5.765043,
-      "s4": 10.930704
-    },
-    "state": "ALERT",
-    "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
-    "score": 2.425
-  },
-  {
-    "timestep": 65,
-    "signals": {
-      "s1": 7.483297,
-      "s2": 14.713716,
-      "s3": 5.317525,
-      "s4": 8.91647
-    },
-    "state": "ALERT",
-    "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
-    "score": 2.2105
-  },
-  {
-    "timestep": 66,
-    "signals": {
-      "s1": 6.690887,
-      "s2": 14.276141,
-      "s3": 8.368637,
-      "s4": 11.271986
-    },
-    "state": "ALERT",
-    "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
-    "score": 2.0879
-  },
-  {
-    "timestep": 67,
-    "signals": {
-      "s1": 8.393906,
-      "s2": 14.457322,
-      "s3": 7.959003,
-      "s4": 11.37295
-    },
-    "state": "ALERT",
-    "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
-    "score": 1.7058
-  },
-  {
-    "timestep": 68,
-    "signals": {
-      "s1": 8.064702,
-      "s2": 15.770062,
-      "s3": 6.643135,
-      "s4": 13.610785
-    },
-    "state": "WATCH",
-    "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
-    "score": 1.6477
-  },
-  {
-    "timestep": 69,
-    "signals": {
-      "s1": 8.976528,
-      "s2": 12.04085,
-      "s3": 3.947761,
-      "s4": 13.806577
-    },
-    "state": "WATCH",
-    "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
-    "score": 1.7417
-  },
-  {
-    "timestep": 70,
-    "signals": {
-      "s1": 11.213132,
-      "s2": 13.712769,
-      "s3": 5.425219,
-      "s4": 13.484455
-    },
-    "state": "WATCH",
-    "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
-    "score": 1.9504
-  },
-  {
-    "timestep": 71,
-    "signals": {
-      "s1": 7.330136,
-      "s2": 12.568437,
-      "s3": 6.96499,
-      "s4": 10.329171
-    },
-    "state": "ALERT",
-    "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
-    "score": 1.9869
-  },
-  {
-    "timestep": 72,
-    "signals": {
-      "s1": 8.952829,
-      "s2": 13.738491,
-      "s3": 6.506362,
-      "s4": 13.392719
-    },
-    "state": "ALERT",
-    "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
-    "score": 1.8613
-  },
-  {
-    "timestep": 73,
-    "signals": {
-      "s1": 9.166819,
-      "s2": 15.030302,
-      "s3": 2.924742,
-      "s4": 10.917179
-    },
-    "state": "ALERT",
-    "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
-    "score": 1.7534
-  },
-  {
-    "timestep": 74,
-    "signals": {
-      "s1": 7.939478,
-      "s2": 12.049899,
-      "s3": 4.682771,
-      "s4": 10.43199
-    },
-    "state": "ALERT",
-    "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
-    "score": 1.5383
-  },
-  {
-    "timestep": 75,
-    "signals": {
-      "s1": 10.482264,
-      "s2": 11.877772,
-      "s3": 6.045947,
-      "s4": 9.5
-    },
-    "state": "WATCH",
-    "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
-    "score": 1.5829
-  },
-  {
-    "timestep": 76,
-    "signals": {
-      "s1": 8.821258,
-      "s2": 15.604413,
-      "s3": 6.807173,
-      "s4": 9.5
-    },
-    "state": "WATCH",
-    "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
-    "score": 1.5025
-  },
-  {
-    "timestep": 77,
-    "signals": {
-      "s1": 9.143692,
-      "s2": 12.886492,
-      "s3": 5.664212,
-      "s4": 9.5
-    },
-    "state": "WATCH",
-    "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
-    "score": 1.5282
-  },
-  {
-    "timestep": 78,
-    "signals": {
-      "s1": 9.687203,
-      "s2": 12.264979,
-      "s3": 6.135735,
-      "s4": 9.5
-    },
-    "state": "WATCH",
-    "interpreted_state": "COHERENCE_UNDER_CONSTRAINT",
-    "score": 1.3762
-  },
-  {
-    "timestep": 79,
-    "signals": {
-      "s1": 13.044464,
-      "s2": 17.002951,
-      "s3": 4.720135,
-      "s4": 9.5
-    },
-    "state": "ALERT",
-    "interpreted_state": "COHERENCE_UNDER_CONSTRAINT",
-    "score": 1.7719
-  },
-  {
-    "timestep": 80,
-    "signals": {
-      "s1": 7.551181,
-      "s2": 13.054869,
-      "s3": 6.473408,
-      "s4": 9.5
-    },
-    "state": "ALERT",
-    "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
-    "score": 1.961
-  },
-  {
-    "timestep": 81,
-    "signals": {
-      "s1": 8.659283,
-      "s2": 12.953366,
-      "s3": 2.779066,
-      "s4": 9.5
-    },
-    "state": "ALERT",
-    "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
-    "score": 1.7452
-  },
-  {
-    "timestep": 82,
-    "signals": {
-      "s1": 8.27262,
-      "s2": 13.152897,
-      "s3": 4.684709,
-      "s4": 9.5
-    },
-    "state": "ALERT",
-    "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
-    "score": 1.5262
-  },
-  {
-    "timestep": 83,
-    "signals": {
-      "s1": 7.37918,
-      "s2": 11.652728,
-      "s3": 9.193871,
-      "s4": 9.5
-    },
-    "state": "WATCH",
-    "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
-    "score": 1.801
-  },
-  {
-    "timestep": 84,
-    "signals": {
-      "s1": 8.3845,
-      "s2": 16.939062,
-      "s3": 10.357601,
-      "s4": 9.5
-    },
-    "state": "WATCH",
-    "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
-    "score": 1.7352
-  },
-  {
-    "timestep": 85,
-    "signals": {
-      "s1": 9.484451,
-      "s2": 14.546489,
-      "s3": 8.593046,
-      "s4": 9.5
-    },
-    "state": "WATCH",
-    "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
-    "score": 1.7893
-  },
-  {
-    "timestep": 86,
-    "signals": {
-      "s1": 9.736611,
-      "s2": 15.24374,
-      "s3": 6.652149,
-      "s4": 9.5
-    },
-    "state": "WATCH",
-    "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
-    "score": 1.8007
-  },
-  {
-    "timestep": 87,
-    "signals": {
-      "s1": 9.972648,
-      "s2": 11.800167,
-      "s3": 5.642739,
-      "s4": 9.5
-    },
-    "state": "WATCH",
-    "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
-    "score": 1.5392
-  },
-  {
-    "timestep": 88,
-    "signals": {
-      "s1": 10.565038,
-      "s2": 13.111476,
-      "s3": 6.707308,
-      "s4": 9.5
-    },
-    "state": "WATCH",
-    "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
-    "score": 1.5542
-  },
-  {
-    "timestep": 89,
-    "signals": {
-      "s1": 10.537601,
-      "s2": 14.56281,
-      "s3": 6.079733,
-      "s4": 9.5
-    },
-    "state": "WATCH",
-    "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
-    "score": 1.665
-  },
-  {
-    "timestep": 90,
-    "signals": {
-      "s1": 9.389819,
-      "s2": 14.506391,
-      "s3": 5.85407,
-      "s4": 9.5
-    },
-    "state": "WATCH",
-    "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
-    "score": 1.721
-  },
-  {
-    "timestep": 91,
-    "signals": {
-      "s1": 12.682697,
-      "s2": 14.617354,
-      "s3": 4.855414,
-      "s4": 9.5
-    },
-    "state": "ALERT",
-    "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
-    "score": 1.7885
-  },
-  {
-    "timestep": 92,
-    "signals": {
-      "s1": 12.2276,
-      "s2": 14.420399,
-      "s3": 6.720215,
-      "s4": 9.5
-    },
-    "state": "ALERT",
-    "interpreted_state": "COHERENCE_UNDER_CONSTRAINT",
-    "score": 1.3379
-  },
-  {
-    "timestep": 93,
-    "signals": {
-      "s1": 11.938414,
-      "s2": 14.727073,
-      "s3": 4.334354,
-      "s4": 9.5
-    },
-    "state": "ALERT",
-    "interpreted_state": "COHERENCE_UNDER_CONSTRAINT",
-    "score": 1.2304
-  },
-  {
-    "timestep": 94,
-    "signals": {
-      "s1": 11.089204,
-      "s2": 14.083947,
-      "s3": 5.561743,
-      "s4": 9.5
-    },
-    "state": "ALERT",
-    "interpreted_state": "COHERENCE_UNDER_CONSTRAINT",
-    "score": 1.2532
-  },
-  {
-    "timestep": 95,
-    "signals": {
-      "s1": 10.447232,
-      "s2": 14.2441,
-      "s3": 8.207238,
-      "s4": 9.5
-    },
-    "state": "ALERT",
-    "interpreted_state": "COHERENCE_UNDER_CONSTRAINT",
-    "score": 1.4647
-  },
-  {
-    "timestep": 96,
-    "signals": {
-      "s1": 10.54841,
-      "s2": 14.28242,
-      "s3": 6.443991,
-      "s4": 9.5
-    },
-    "state": "ALERT",
-    "interpreted_state": "COHERENCE_UNDER_CONSTRAINT",
-    "score": 1.4519
-  },
-  {
-    "timestep": 97,
-    "signals": {
-      "s1": 8.50059,
-      "s2": 14.524793,
-      "s3": 8.591025,
-      "s4": 9.5
-    },
-    "state": "ALERT",
-    "interpreted_state": "COHERENCE_UNDER_CONSTRAINT",
-    "score": 1.4851
-  },
-  {
-    "timestep": 98,
-    "signals": {
-      "s1": 12.249359,
-      "s2": 13.47436,
-      "s3": 5.908013,
-      "s4": 9.5
-    },
-    "state": "ALERT",
-    "interpreted_state": "COHERENCE_UNDER_CONSTRAINT",
-    "score": 1.5225
-  },
-  {
-    "timestep": 99,
-    "signals": {
-      "s1": 10.651761,
-      "s2": 16.080071,
-      "s3": 6.873983,
-      "s4": 9.5
-    },
-    "state": "ALERT",
-    "interpreted_state": "COHERENCE_UNDER_CONSTRAINT",
-    "score": 1.5125
-  },
-  {
-    "timestep": 100,
-    "signals": {
-      "s1": 12.848377,
-      "s2": 14.702539,
-      "s3": 8.615902,
-      "s4": 9.5
-    },
-    "state": "ALERT",
-    "interpreted_state": "COHERENCE_UNDER_CONSTRAINT",
-    "score": 1.3548
-  },
-  {
-    "timestep": 101,
-    "signals": {
-      "s1": 12.439183,
-      "s2": 13.525486,
-      "s3": 6.099819,
-      "s4": 9.5
-    },
-    "state": "ALERT",
-    "interpreted_state": "COHERENCE_UNDER_CONSTRAINT",
-    "score": 1.4626
-  },
-  {
-    "timestep": 102,
-    "signals": {
-      "s1": 12.745418,
-      "s2": 12.114714,
-      "s3": 7.173526,
-      "s4": 9.5
-    },
-    "state": "ALERT",
-    "interpreted_state": "COHERENCE_UNDER_CONSTRAINT",
-    "score": 1.5069
-  },
-  {
-    "timestep": 103,
-    "signals": {
-      "s1": 13.079746,
-      "s2": 15.20139,
-      "s3": 8.730969,
-      "s4": 9.5
-    },
-    "state": "ALERT",
-    "interpreted_state": "COHERENCE_UNDER_CONSTRAINT",
-    "score": 1.4133
-  },
-  {
-    "timestep": 104,
-    "signals": {
-      "s1": 9.319144,
-      "s2": 13.892875,
-      "s3": 4.241989,
-      "s4": 9.5
-    },
-    "state": "WATCH",
-    "interpreted_state": "COHERENCE_UNDER_CONSTRAINT",
-    "score": 1.438
-  },
-  {
-    "timestep": 105,
-    "signals": {
-      "s1": 13.71572,
-      "s2": 15.020054,
-      "s3": 4.951604,
-      "s4": 9.5
-    },
-    "state": "WATCH",
-    "interpreted_state": "COHERENCE_UNDER_CONSTRAINT",
-    "score": 1.4092
-  },
-  {
-    "timestep": 106,
-    "signals": {
-      "s1": 11.725895,
-      "s2": 12.053504,
-      "s3": 4.99329,
-      "s4": 9.5
-    },
-    "state": "WATCH",
-    "interpreted_state": "COHERENCE_UNDER_CONSTRAINT",
-    "score": 1.4374
-  },
-  {
-    "timestep": 107,
-    "signals": {
-      "s1": 13.377437,
-      "s2": 14.974018,
-      "s3": 2.563066,
-      "s4": 9.5
-    },
-    "state": "WATCH",
-    "interpreted_state": "COHERENCE_UNDER_CONSTRAINT",
-    "score": 1.3865
-  },
-  {
-    "timestep": 108,
-    "signals": {
-      "s1": 11.940847,
-      "s2": 14.662224,
-      "s3": 8.424315,
-      "s4": 9.5
-    },
-    "state": "WATCH",
-    "interpreted_state": "COHERENCE_UNDER_CONSTRAINT",
-    "score": 1.3031
-  },
-  {
-    "timestep": 109,
-    "signals": {
-      "s1": 11.092455,
-      "s2": 14.94545,
-      "s3": 3.627608,
-      "s4": 9.5
-    },
-    "state": "WATCH",
-    "interpreted_state": "COHERENCE_UNDER_CONSTRAINT",
-    "score": 1.3216
-  },
-  {
-    "timestep": 110,
-    "signals": {
-      "s1": 12.515699,
-      "s2": 15.354534,
-      "s3": 5.143585,
-      "s4": 9.5
-    },
-    "state": "WATCH",
-    "interpreted_state": "COHERENCE_UNDER_CONSTRAINT",
-    "score": 1.3405
-  },
-  {
-    "timestep": 111,
-    "signals": {
-      "s1": 13.57586,
-      "s2": 14.372605,
-      "s3": 6.351601,
-      "s4": 9.5
-    },
-    "state": "WATCH",
-    "interpreted_state": "COHERENCE_UNDER_CONSTRAINT",
-    "score": 1.2154
-  },
-  {
-    "timestep": 112,
-    "signals": {
-      "s1": 10.951317,
-      "s2": 13.763954,
-      "s3": 5.771216,
-      "s4": 9.5
-    },
-    "state": "WATCH",
-    "interpreted_state": "COHERENCE_UNDER_CONSTRAINT",
-    "score": 1.2311
-  },
-  {
-    "timestep": 113,
-    "signals": {
-      "s1": 13.639754,
-      "s2": 12.306342,
-      "s3": 5.812486,
-      "s4": 9.5
-    },
-    "state": "WATCH",
-    "interpreted_state": "REGIME_SHIFT_OBSERVED",
-    "score": 1.1845
-  },
-  {
-    "timestep": 114,
-    "signals": {
-      "s1": 11.278976,
-      "s2": 12.6844,
-      "s3": 6.303459,
-      "s4": 9.5
-    },
-    "state": "WATCH",
-    "interpreted_state": "COHERENCE_UNDER_CONSTRAINT",
-    "score": 1.282
-  },
-  {
-    "timestep": 115,
-    "signals": {
-      "s1": 12.415996,
-      "s2": 16.126337,
-      "s3": 7.285191,
-      "s4": 9.5
-    },
-    "state": "WATCH",
-    "interpreted_state": "COHERENCE_UNDER_CONSTRAINT",
-    "score": 1.1458
-  },
-  {
-    "timestep": 116,
-    "signals": {
-      "s1": 13.255763,
-      "s2": 17.724245,
-      "s3": 5.692257,
-      "s4": 9.5
-    },
-    "state": "WATCH",
-    "interpreted_state": "COHERENCE_UNDER_CONSTRAINT",
-    "score": 1.2129
-  },
-  {
-    "timestep": 117,
-    "signals": {
-      "s1": 14.805956,
-      "s2": 13.267681,
-      "s3": 6.161821,
-      "s4": 9.5
-    },
-    "state": "WATCH",
-    "interpreted_state": "REGIME_SHIFT_OBSERVED",
-    "score": 1.2734
-  },
-  {
-    "timestep": 118,
-    "signals": {
-      "s1": 10.396837,
-      "s2": 11.997364,
-      "s3": 3.598083,
-      "s4": 9.5
-    },
-    "state": "WATCH",
-    "interpreted_state": "COHERENCE_UNDER_CONSTRAINT",
-    "score": 1.5241
-  },
-  {
-    "timestep": 119,
-    "signals": {
-      "s1": 13.335491,
-      "s2": 14.838701,
-      "s3": 6.414411,
-      "s4": 9.5
-    },
-    "state": "WATCH",
-    "interpreted_state": "COHERENCE_UNDER_CONSTRAINT",
-    "score": 1.4794
+{
+  "records": [
+    {
+      "timestep": 0,
+      "signals": {
+        "s1": 10.0,
+        "s2": 10.12,
+        "s3": 10.00842,
+        "s4": 10.007618
+      },
+      "state": "STABLE",
+      "interpreted_state": "NOMINAL_STRUCTURE",
+      "score": 0.0,
+      "frame_type": "normal",
+      "missing_data": false
+    },
+    {
+      "timestep": 1,
+      "signals": {
+        "s1": 10.007306,
+        "s2": 10.128633,
+        "s3": 10.013098,
+        "s4": 9.989849
+      },
+      "state": "STABLE",
+      "interpreted_state": "NOMINAL_STRUCTURE",
+      "score": 0.0,
+      "frame_type": "normal",
+      "missing_data": false
+    },
+    {
+      "timestep": 2,
+      "signals": {
+        "s1": 10.014449,
+        "s2": 10.137067,
+        "s3": 10.017278,
+        "s4": 10.050121
+      },
+      "state": "STABLE",
+      "interpreted_state": "NOMINAL_STRUCTURE",
+      "score": 0.0,
+      "frame_type": "normal",
+      "missing_data": false
+    },
+    {
+      "timestep": 3,
+      "signals": {
+        "s1": 10.021276,
+        "s2": 10.145111,
+        "s3": 10.020904,
+        "s4": 10.069724
+      },
+      "state": "STABLE",
+      "interpreted_state": "NOMINAL_STRUCTURE",
+      "score": 0.0,
+      "frame_type": "normal",
+      "missing_data": false
+    },
+    {
+      "timestep": 4,
+      "signals": {
+        "s1": 10.027646,
+        "s2": 10.152593,
+        "s3": 10.023945,
+        "s4": 10.01132
+      },
+      "state": "STABLE",
+      "interpreted_state": "NOMINAL_STRUCTURE",
+      "score": 0.0,
+      "frame_type": "normal",
+      "missing_data": false
+    },
+    {
+      "timestep": 5,
+      "signals": {
+        "s1": 10.033443,
+        "s2": 10.159364,
+        "s3": 10.026398,
+        "s4": 10.040193
+      },
+      "state": "STABLE",
+      "interpreted_state": "NOMINAL_STRUCTURE",
+      "score": 0.0,
+      "frame_type": "normal",
+      "missing_data": false
+    },
+    {
+      "timestep": 6,
+      "signals": {
+        "s1": 10.038579,
+        "s2": 10.165311,
+        "s3": 10.028291,
+        "s4": 10.087134
+      },
+      "state": "STABLE",
+      "interpreted_state": "NOMINAL_STRUCTURE",
+      "score": 0.0,
+      "frame_type": "normal",
+      "missing_data": false
+    },
+    {
+      "timestep": 7,
+      "signals": {
+        "s1": 10.042998,
+        "s2": 10.170354,
+        "s3": 10.029677,
+        "s4": 10.08558
+      },
+      "state": "STABLE",
+      "interpreted_state": "NOMINAL_STRUCTURE",
+      "score": 0.0,
+      "frame_type": "normal",
+      "missing_data": false
+    },
+    {
+      "timestep": 8,
+      "signals": {
+        "s1": 10.04668,
+        "s2": 10.174455,
+        "s3": 10.030637,
+        "s4": 10.100849
+      },
+      "state": "STABLE",
+      "interpreted_state": "NOMINAL_STRUCTURE",
+      "score": 0.0,
+      "frame_type": "normal",
+      "missing_data": false
+    },
+    {
+      "timestep": 9,
+      "signals": {
+        "s1": 10.049639,
+        "s2": 10.177619,
+        "s3": 10.03127,
+        "s4": 10.085892
+      },
+      "state": "STABLE",
+      "interpreted_state": "NOMINAL_STRUCTURE",
+      "score": 0.0,
+      "frame_type": "normal",
+      "missing_data": false
+    },
+    {
+      "timestep": 10,
+      "signals": {
+        "s1": 10.051928,
+        "s2": 10.179892,
+        "s3": 10.031693,
+        "s4": 10.133307
+      },
+      "state": "STABLE",
+      "interpreted_state": "NOMINAL_STRUCTURE",
+      "score": 0.0,
+      "frame_type": "normal",
+      "missing_data": false
+    },
+    {
+      "timestep": 11,
+      "signals": {
+        "s1": 10.053631,
+        "s2": 10.181356,
+        "s3": 10.032033,
+        "s4": 10.133075
+      },
+      "state": "STABLE",
+      "interpreted_state": "NOMINAL_STRUCTURE",
+      "score": 0.0,
+      "frame_type": "normal",
+      "missing_data": false
+    },
+    {
+      "timestep": 12,
+      "signals": {
+        "s1": 10.054859,
+        "s2": 10.182133,
+        "s3": 10.032421,
+        "s4": 10.115893
+      },
+      "state": "STABLE",
+      "interpreted_state": "NOMINAL_STRUCTURE",
+      "score": 0.0,
+      "frame_type": "normal",
+      "missing_data": false
+    },
+    {
+      "timestep": 13,
+      "signals": {
+        "s1": 10.05575,
+        "s2": 10.182372,
+        "s3": 10.032985,
+        "s4": 10.141488
+      },
+      "state": "STABLE",
+      "interpreted_state": "NOMINAL_STRUCTURE",
+      "score": 0.0,
+      "frame_type": "normal",
+      "missing_data": false
+    },
+    {
+      "timestep": 14,
+      "signals": {
+        "s1": 10.056457,
+        "s2": 10.182242,
+        "s3": 10.033844,
+        "s4": 10.122703
+      },
+      "state": "STABLE",
+      "interpreted_state": "NOMINAL_STRUCTURE",
+      "score": 0.0,
+      "frame_type": "normal",
+      "missing_data": false
+    },
+    {
+      "timestep": 15,
+      "signals": {
+        "s1": 10.057141,
+        "s2": 10.181929,
+        "s3": 10.035105,
+        "s4": 10.086106
+      },
+      "state": "STABLE",
+      "interpreted_state": "NOMINAL_STRUCTURE",
+      "score": 0.0,
+      "frame_type": "normal",
+      "missing_data": false
+    },
+    {
+      "timestep": 16,
+      "signals": {
+        "s1": 10.057966,
+        "s2": 10.181625,
+        "s3": 10.036852,
+        "s4": 10.112494
+      },
+      "state": "STABLE",
+      "interpreted_state": "NOMINAL_STRUCTURE",
+      "score": 0.0,
+      "frame_type": "normal",
+      "missing_data": false
+    },
+    {
+      "timestep": 17,
+      "signals": {
+        "s1": 10.059088,
+        "s2": 10.181515,
+        "s3": 10.039147,
+        "s4": 10.074363
+      },
+      "state": "STABLE",
+      "interpreted_state": "NOMINAL_STRUCTURE",
+      "score": 0.0,
+      "frame_type": "normal",
+      "missing_data": false
+    },
+    {
+      "timestep": 18,
+      "signals": {
+        "s1": 10.060648,
+        "s2": 10.181777,
+        "s3": 10.042026,
+        "s4": 10.114995
+      },
+      "state": "STABLE",
+      "interpreted_state": "NOMINAL_STRUCTURE",
+      "score": 0.0,
+      "frame_type": "normal",
+      "missing_data": false
+    },
+    {
+      "timestep": 19,
+      "signals": {
+        "s1": 10.062766,
+        "s2": 10.182566,
+        "s3": 10.045493,
+        "s4": 10.086383
+      },
+      "state": "STABLE",
+      "interpreted_state": "NOMINAL_STRUCTURE",
+      "score": 0.0,
+      "frame_type": "normal",
+      "missing_data": false
+    },
+    {
+      "timestep": 20,
+      "signals": {
+        "s1": 10.065535,
+        "s2": 10.184011,
+        "s3": 10.049526,
+        "s4": 10.077751
+      },
+      "state": "STABLE",
+      "interpreted_state": "NOMINAL_STRUCTURE",
+      "score": 0.0,
+      "frame_type": "normal",
+      "missing_data": false
+    },
+    {
+      "timestep": 21,
+      "signals": {
+        "s1": 10.069016,
+        "s2": 10.186209,
+        "s3": 10.054074,
+        "s4": 10.06046
+      },
+      "state": "STABLE",
+      "interpreted_state": "NOMINAL_STRUCTURE",
+      "score": 0.0,
+      "frame_type": "normal",
+      "missing_data": false
+    },
+    {
+      "timestep": 22,
+      "signals": {
+        "s1": 10.073233,
+        "s2": 10.189223,
+        "s3": 10.059062,
+        "s4": 10.103721
+      },
+      "state": "STABLE",
+      "interpreted_state": "NOMINAL_STRUCTURE",
+      "score": 0.0,
+      "frame_type": "normal",
+      "missing_data": false
+    },
+    {
+      "timestep": 23,
+      "signals": {
+        "s1": 10.078177,
+        "s2": 10.193074,
+        "s3": 10.06439,
+        "s4": 10.065696
+      },
+      "state": "WATCH",
+      "interpreted_state": "REGIME_SHIFT_OBSERVED",
+      "score": 1.5896,
+      "frame_type": "normal",
+      "missing_data": false
+    },
+    {
+      "timestep": 24,
+      "signals": {
+        "s1": 10.0838,
+        "s2": 10.197746,
+        "s3": 10.069945,
+        "s4": 10.056109
+      },
+      "state": "WATCH",
+      "interpreted_state": "REGIME_SHIFT_OBSERVED",
+      "score": 1.5677,
+      "frame_type": "normal",
+      "missing_data": false
+    },
+    {
+      "timestep": 25,
+      "signals": {
+        "s1": 10.090023,
+        "s2": 10.203185,
+        "s3": 10.075602,
+        "s4": 10.056217
+      },
+      "state": "WATCH",
+      "interpreted_state": "REGIME_SHIFT_OBSERVED",
+      "score": 1.6505,
+      "frame_type": "normal",
+      "missing_data": false
+    },
+    {
+      "timestep": 26,
+      "signals": {
+        "s1": 10.096738,
+        "s2": 10.209305,
+        "s3": 10.081228,
+        "s4": 10.077531
+      },
+      "state": "WATCH",
+      "interpreted_state": "REGIME_SHIFT_OBSERVED",
+      "score": 1.384,
+      "frame_type": "normal",
+      "missing_data": false
+    },
+    {
+      "timestep": 27,
+      "signals": {
+        "s1": 10.103809,
+        "s2": 10.215989,
+        "s3": 10.086696,
+        "s4": 10.073583
+      },
+      "state": "WATCH",
+      "interpreted_state": "REGIME_SHIFT_OBSERVED",
+      "score": 1.3661,
+      "frame_type": "normal",
+      "missing_data": false
+    },
+    {
+      "timestep": 28,
+      "signals": {
+        "s1": 10.111086,
+        "s2": 10.223094,
+        "s3": 10.091884,
+        "s4": 10.075996
+      },
+      "state": "WATCH",
+      "interpreted_state": "REGIME_SHIFT_OBSERVED",
+      "score": 1.3831,
+      "frame_type": "normal",
+      "missing_data": false
+    },
+    {
+      "timestep": 29,
+      "signals": {
+        "s1": 10.118408,
+        "s2": 10.230467,
+        "s3": 10.096684,
+        "s4": 10.07865
+      },
+      "state": "WATCH",
+      "interpreted_state": "REGIME_SHIFT_OBSERVED",
+      "score": 1.3508,
+      "frame_type": "normal",
+      "missing_data": false
+    },
+    {
+      "timestep": 30,
+      "signals": {
+        "s1": 10.077538,
+        "s2": 10.075421,
+        "s3": 10.06939,
+        "s4": 10.097985
+      },
+      "state": "WATCH",
+      "interpreted_state": "REGIME_SHIFT_OBSERVED",
+      "score": 1.3295,
+      "frame_type": "normal",
+      "missing_data": false
+    },
+    {
+      "timestep": 31,
+      "signals": {
+        "s1": 10.13788,
+        "s2": 10.028356,
+        "s3": 10.028669,
+        "s4": 10.058171
+      },
+      "state": "WATCH",
+      "interpreted_state": "REGIME_SHIFT_OBSERVED",
+      "score": 1.7096,
+      "frame_type": "normal",
+      "missing_data": false
+    },
+    {
+      "timestep": 32,
+      "signals": {
+        "s1": 10.230593,
+        "s2": 10.01642,
+        "s3": 10.034373,
+        "s4": 10.032064
+      },
+      "state": "ALERT",
+      "interpreted_state": "REGIME_SHIFT_OBSERVED",
+      "score": 2.2026,
+      "frame_type": "normal",
+      "missing_data": false
+    },
+    {
+      "timestep": 33,
+      "signals": {
+        "s1": 10.311176,
+        "s2": 10.013219,
+        "s3": 10.022326,
+        "s4": 10.010099
+      },
+      "state": "ALERT",
+      "interpreted_state": "REGIME_SHIFT_OBSERVED",
+      "score": 2.2927,
+      "frame_type": "normal",
+      "missing_data": false
+    },
+    {
+      "timestep": 34,
+      "signals": {
+        "s1": 10.404191,
+        "s2": 9.982422,
+        "s3": 10.005171,
+        "s4": 10.002157
+      },
+      "state": "ALERT",
+      "interpreted_state": "REGIME_SHIFT_OBSERVED",
+      "score": 2.3187,
+      "frame_type": "normal",
+      "missing_data": false
+    },
+    {
+      "timestep": 35,
+      "signals": {
+        "s1": 10.443942,
+        "s2": 10.004344,
+        "s3": 9.957128,
+        "s4": 9.99381
+      },
+      "state": "ALERT",
+      "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
+      "score": 2.2759,
+      "frame_type": "normal",
+      "missing_data": false
+    },
+    {
+      "timestep": 36,
+      "signals": {
+        "s1": 10.495988,
+        "s2": 9.93594,
+        "s3": 9.94441,
+        "s4": 9.94691
+      },
+      "state": "ALERT",
+      "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
+      "score": 2.2295,
+      "frame_type": "normal",
+      "missing_data": false
+    },
+    {
+      "timestep": 37,
+      "signals": {
+        "s1": 10.689759,
+        "s2": 10.022487,
+        "s3": 10.048893,
+        "s4": 10.027908
+      },
+      "state": "WATCH",
+      "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
+      "score": 1.8448,
+      "frame_type": "normal",
+      "missing_data": false
+    },
+    {
+      "timestep": 38,
+      "signals": {
+        "s1": 10.686307,
+        "s2": 9.930584,
+        "s3": 9.958916,
+        "s4": 9.951821
+      },
+      "state": "WATCH",
+      "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
+      "score": 1.6983,
+      "frame_type": "normal",
+      "missing_data": false
+    },
+    {
+      "timestep": 39,
+      "signals": {
+        "s1": 10.874074,
+        "s2": 10.03079,
+        "s3": 10.040131,
+        "s4": 10.021432
+      },
+      "state": "WATCH",
+      "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
+      "score": 1.3929,
+      "frame_type": "normal",
+      "missing_data": false
+    },
+    {
+      "timestep": 40,
+      "signals": {
+        "s1": 10.955032,
+        "s2": null,
+        "s3": null,
+        "s4": 9.994354
+      },
+      "state": "WATCH",
+      "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
+      "score": 1.9279,
+      "frame_type": "normal",
+      "missing_data": true
+    },
+    {
+      "timestep": 41,
+      "signals": {
+        "s1": 11.055091,
+        "s2": null,
+        "s3": null,
+        "s4": 10.02841
+      },
+      "state": "WATCH",
+      "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
+      "score": 1.9111,
+      "frame_type": "normal",
+      "missing_data": true
+    },
+    {
+      "timestep": 42,
+      "signals": {
+        "s1": 11.164646,
+        "s2": null,
+        "s3": null,
+        "s4": 9.992869
+      },
+      "state": "WATCH",
+      "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
+      "score": 1.8641,
+      "frame_type": "normal",
+      "missing_data": true
+    },
+    {
+      "timestep": 43,
+      "signals": {
+        "s1": 11.150662,
+        "s2": null,
+        "s3": null,
+        "s4": 9.924006
+      },
+      "state": "WATCH",
+      "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
+      "score": 1.6781,
+      "frame_type": "normal",
+      "missing_data": true
+    },
+    {
+      "timestep": 44,
+      "signals": {
+        "s1": 11.340858,
+        "s2": null,
+        "s3": null,
+        "s4": 9.966201
+      },
+      "state": "WATCH",
+      "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
+      "score": 1.5779,
+      "frame_type": "normal",
+      "missing_data": true
+    },
+    {
+      "timestep": 45,
+      "signals": {
+        "s1": 11.397782,
+        "s2": 9.985002,
+        "s3": 10.008589,
+        "s4": 9.957236
+      },
+      "state": "WATCH",
+      "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
+      "score": 1.5731,
+      "frame_type": "normal",
+      "missing_data": false
+    },
+    {
+      "timestep": 46,
+      "signals": {
+        "s1": 11.542132,
+        "s2": 10.005494,
+        "s3": 9.988456,
+        "s4": 10.01882
+      },
+      "state": "ALERT",
+      "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
+      "score": 2.2371,
+      "frame_type": "normal",
+      "missing_data": false
+    },
+    {
+      "timestep": 47,
+      "signals": {
+        "s1": 11.598474,
+        "s2": 9.979257,
+        "s3": 10.010856,
+        "s4": 9.974033
+      },
+      "state": "ALERT",
+      "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
+      "score": 2.4608,
+      "frame_type": "normal",
+      "missing_data": false
+    },
+    {
+      "timestep": 48,
+      "signals": {
+        "s1": 11.672646,
+        "s2": 9.96346,
+        "s3": 9.986244,
+        "s4": 9.975762
+      },
+      "state": "WATCH",
+      "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
+      "score": 1.7718,
+      "frame_type": "normal",
+      "missing_data": false
+    },
+    {
+      "timestep": 49,
+      "signals": {
+        "s1": 11.848541,
+        "s2": 9.9905,
+        "s3": 10.00148,
+        "s4": 9.995743
+      },
+      "state": "WATCH",
+      "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
+      "score": 1.8205,
+      "frame_type": "normal",
+      "missing_data": false
+    },
+    {
+      "timestep": 50,
+      "signals": {
+        "s1": 11.856874,
+        "s2": 9.997111,
+        "s3": 9.979963,
+        "s4": 9.954991
+      },
+      "state": "WATCH",
+      "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
+      "score": 1.8055,
+      "frame_type": "normal",
+      "missing_data": false
+    },
+    {
+      "timestep": 51,
+      "signals": {
+        "s1": 11.960647,
+        "s2": 9.976139,
+        "s3": 9.999311,
+        "s4": 10.017654
+      },
+      "state": "WATCH",
+      "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
+      "score": 1.719,
+      "frame_type": "normal",
+      "missing_data": false
+    },
+    {
+      "timestep": 52,
+      "signals": {
+        "s1": 12.086786,
+        "s2": 9.973935,
+        "s3": 10.021931,
+        "s4": 10.000318
+      },
+      "state": "STABLE",
+      "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
+      "score": 1.1824,
+      "frame_type": "normal",
+      "missing_data": false
+    },
+    {
+      "timestep": 53,
+      "signals": {
+        "s1": 12.156144,
+        "s2": 9.98057,
+        "s3": 10.004705,
+        "s4": 9.986527
+      },
+      "state": "STABLE",
+      "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
+      "score": 1.2242,
+      "frame_type": "normal",
+      "missing_data": false
+    },
+    {
+      "timestep": 54,
+      "signals": {
+        "s1": 12.252942,
+        "s2": 9.960161,
+        "s3": 9.983928,
+        "s4": 9.992579
+      },
+      "state": "STABLE",
+      "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
+      "score": 1.2362,
+      "frame_type": "normal",
+      "missing_data": false
+    },
+    {
+      "timestep": 55,
+      "signals": {
+        "s1": 12.448323,
+        "s2": 10.090372,
+        "s3": 10.060731,
+        "s4": 10.047018
+      },
+      "state": "WATCH",
+      "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
+      "score": 1.422,
+      "frame_type": "normal",
+      "missing_data": false
+    },
+    {
+      "timestep": 55,
+      "signals": {
+        "s1": 12.448323,
+        "s2": 10.090372,
+        "s3": 10.060731,
+        "s4": 10.047018
+      },
+      "state": "WATCH",
+      "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
+      "score": 1.422,
+      "frame_type": "duplicate",
+      "missing_data": false
+    },
+    {
+      "timestep": 56,
+      "signals": {
+        "s1": 12.416891,
+        "s2": 10.003965,
+        "s3": 9.944968,
+        "s4": 9.978165
+      },
+      "state": "STABLE",
+      "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
+      "score": 1.2197,
+      "frame_type": "normal",
+      "missing_data": false
+    },
+    {
+      "timestep": 57,
+      "signals": {
+        "s1": 12.547514,
+        "s2": 9.971582,
+        "s3": 9.96075,
+        "s4": 9.963068
+      },
+      "state": "WATCH",
+      "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
+      "score": 1.4231,
+      "frame_type": "normal",
+      "missing_data": false
+    },
+    {
+      "timestep": 58,
+      "signals": {
+        "s1": 12.64273,
+        "s2": 9.964709,
+        "s3": 9.949296,
+        "s4": 9.94825
+      },
+      "state": "WATCH",
+      "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
+      "score": 1.6388,
+      "frame_type": "normal",
+      "missing_data": false
+    },
+    {
+      "timestep": 59,
+      "signals": {
+        "s1": 12.793485,
+        "s2": 10.010103,
+        "s3": 10.004531,
+        "s4": 10.01262
+      },
+      "state": "WATCH",
+      "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
+      "score": 1.5122,
+      "frame_type": "normal",
+      "missing_data": false
+    },
+    {
+      "timestep": 60,
+      "signals": {
+        "s1": 9.828402,
+        "s2": 14.351012,
+        "s3": 5.383609,
+        "s4": 12.880691
+      },
+      "state": "ALERT",
+      "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
+      "score": 2.2514,
+      "frame_type": "normal",
+      "missing_data": false
+    },
+    {
+      "timestep": 61,
+      "signals": {
+        "s1": 8.680259,
+        "s2": 16.45721,
+        "s3": 6.274852,
+        "s4": 8.918403
+      },
+      "state": "ALERT",
+      "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
+      "score": 2.5341,
+      "frame_type": "normal",
+      "missing_data": false
+    },
+    {
+      "timestep": 62,
+      "signals": {
+        "s1": 6.244577,
+        "s2": 16.641485,
+        "s3": 8.585499,
+        "s4": 10.694817
+      },
+      "state": "ALERT",
+      "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
+      "score": 2.3548,
+      "frame_type": "normal",
+      "missing_data": false
+    },
+    {
+      "timestep": 63,
+      "signals": {
+        "s1": 7.703538,
+        "s2": 16.338311,
+        "s3": 4.339431,
+        "s4": 9.478964
+      },
+      "state": "ALERT",
+      "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
+      "score": 2.235,
+      "frame_type": "normal",
+      "missing_data": false
+    },
+    {
+      "timestep": 64,
+      "signals": {
+        "s1": 9.220658,
+        "s2": 13.368632,
+        "s3": 5.992317,
+        "s4": 10.722147
+      },
+      "state": "ALERT",
+      "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
+      "score": 2.2817,
+      "frame_type": "normal",
+      "missing_data": false
+    },
+    {
+      "timestep": 65,
+      "signals": {
+        "s1": 8.872604,
+        "s2": 16.251971,
+        "s3": 6.135877,
+        "s4": 12.094696
+      },
+      "state": "ALERT",
+      "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
+      "score": 2.1321,
+      "frame_type": "normal",
+      "missing_data": false
+    },
+    {
+      "timestep": 66,
+      "signals": {
+        "s1": 5.609759,
+        "s2": 13.922051,
+        "s3": 4.735155,
+        "s4": 8.928018
+      },
+      "state": "ALERT",
+      "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
+      "score": 2.013,
+      "frame_type": "normal",
+      "missing_data": false
+    },
+    {
+      "timestep": 67,
+      "signals": {
+        "s1": 7.330587,
+        "s2": 13.465402,
+        "s3": 7.373854,
+        "s4": 8.745132
+      },
+      "state": "WATCH",
+      "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
+      "score": 1.5676,
+      "frame_type": "normal",
+      "missing_data": false
+    },
+    {
+      "timestep": 68,
+      "signals": {
+        "s1": 8.682884,
+        "s2": 13.225329,
+        "s3": 5.50849,
+        "s4": 12.704688
+      },
+      "state": "WATCH",
+      "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
+      "score": 1.4975,
+      "frame_type": "normal",
+      "missing_data": false
+    },
+    {
+      "timestep": 69,
+      "signals": {
+        "s1": 9.473362,
+        "s2": 16.139837,
+        "s3": 5.768241,
+        "s4": 9.816898
+      },
+      "state": "WATCH",
+      "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
+      "score": 1.4488,
+      "frame_type": "normal",
+      "missing_data": false
+    },
+    {
+      "timestep": 70,
+      "signals": {
+        "s1": 8.486598,
+        "s2": 14.387995,
+        "s3": 6.26486,
+        "s4": 9.15654
+      },
+      "state": "WATCH",
+      "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
+      "score": 1.3276,
+      "frame_type": "normal",
+      "missing_data": false
+    },
+    {
+      "timestep": 71,
+      "signals": {
+        "s1": 9.006686,
+        "s2": 14.365165,
+        "s3": 9.776211,
+        "s4": 14.190636
+      },
+      "state": "WATCH",
+      "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
+      "score": 1.5283,
+      "frame_type": "normal",
+      "missing_data": false
+    },
+    {
+      "timestep": 72,
+      "signals": {
+        "s1": 7.765459,
+        "s2": 13.540187,
+        "s3": 3.804837,
+        "s4": 9.995798
+      },
+      "state": "WATCH",
+      "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
+      "score": 1.5809,
+      "frame_type": "normal",
+      "missing_data": false
+    },
+    {
+      "timestep": 73,
+      "signals": {
+        "s1": 9.481847,
+        "s2": 15.929366,
+        "s3": 4.906374,
+        "s4": 9.887951
+      },
+      "state": "WATCH",
+      "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
+      "score": 1.5511,
+      "frame_type": "normal",
+      "missing_data": false
+    },
+    {
+      "timestep": 74,
+      "signals": {
+        "s1": 6.113795,
+        "s2": 13.739735,
+        "s3": 4.406378,
+        "s4": 10.099953
+      },
+      "state": "WATCH",
+      "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
+      "score": 1.5036,
+      "frame_type": "normal",
+      "missing_data": false
+    },
+    {
+      "timestep": 75,
+      "signals": {
+        "s1": 7.972395,
+        "s2": 13.84918,
+        "s3": 3.363407,
+        "s4": 9.5
+      },
+      "state": "WATCH",
+      "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
+      "score": 1.5691,
+      "frame_type": "normal",
+      "missing_data": false
+    },
+    {
+      "timestep": 76,
+      "signals": {
+        "s1": 12.260946,
+        "s2": 11.940124,
+        "s3": 4.354822,
+        "s4": 9.5
+      },
+      "state": "WATCH",
+      "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
+      "score": 1.6734,
+      "frame_type": "normal",
+      "missing_data": false
+    },
+    {
+      "timestep": 77,
+      "signals": {
+        "s1": 13.427094,
+        "s2": 12.125493,
+        "s3": 5.447627,
+        "s4": 9.5
+      },
+      "state": "WATCH",
+      "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
+      "score": 1.8875,
+      "frame_type": "normal",
+      "missing_data": false
+    },
+    {
+      "timestep": 78,
+      "signals": {
+        "s1": 11.860177,
+        "s2": 12.421029,
+        "s3": 5.632083,
+        "s4": 9.5
+      },
+      "state": "WATCH",
+      "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
+      "score": 1.9651,
+      "frame_type": "normal",
+      "missing_data": false
+    },
+    {
+      "timestep": 79,
+      "signals": {
+        "s1": 10.128673,
+        "s2": 13.39815,
+        "s3": 5.799266,
+        "s4": 9.5
+      },
+      "state": "ALERT",
+      "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
+      "score": 2.182,
+      "frame_type": "normal",
+      "missing_data": false
+    },
+    {
+      "timestep": 80,
+      "signals": {
+        "s1": 9.266557,
+        "s2": 13.57378,
+        "s3": 6.348255,
+        "s4": 9.5
+      },
+      "state": "ALERT",
+      "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
+      "score": 2.0212,
+      "frame_type": "normal",
+      "missing_data": false
+    },
+    {
+      "timestep": 81,
+      "signals": {
+        "s1": 10.340154,
+        "s2": 15.620345,
+        "s3": 6.233144,
+        "s4": 9.5
+      },
+      "state": "WATCH",
+      "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
+      "score": 1.853,
+      "frame_type": "normal",
+      "missing_data": false
+    },
+    {
+      "timestep": 82,
+      "signals": {
+        "s1": 9.834417,
+        "s2": 14.000135,
+        "s3": 4.917663,
+        "s4": 9.5
+      },
+      "state": "WATCH",
+      "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
+      "score": 1.4764,
+      "frame_type": "normal",
+      "missing_data": false
+    },
+    {
+      "timestep": 83,
+      "signals": {
+        "s1": 9.703799,
+        "s2": 17.349069,
+        "s3": 8.360032,
+        "s4": 9.5
+      },
+      "state": "WATCH",
+      "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
+      "score": 1.8767,
+      "frame_type": "normal",
+      "missing_data": false
+    },
+    {
+      "timestep": 84,
+      "signals": {
+        "s1": 8.85172,
+        "s2": 12.220142,
+        "s3": 7.786714,
+        "s4": 9.5
+      },
+      "state": "WATCH",
+      "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
+      "score": 1.6209,
+      "frame_type": "normal",
+      "missing_data": false
+    },
+    {
+      "timestep": 85,
+      "signals": {
+        "s1": 10.672201,
+        "s2": 11.208662,
+        "s3": 7.391158,
+        "s4": 9.5
+      },
+      "state": "WATCH",
+      "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
+      "score": 1.357,
+      "frame_type": "normal",
+      "missing_data": false
+    },
+    {
+      "timestep": 86,
+      "signals": {
+        "s1": 8.525397,
+        "s2": 13.24556,
+        "s3": 6.395576,
+        "s4": 9.5
+      },
+      "state": "STABLE",
+      "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
+      "score": 1.1611,
+      "frame_type": "normal",
+      "missing_data": false
+    },
+    {
+      "timestep": 87,
+      "signals": {
+        "s1": 9.75096,
+        "s2": 13.834419,
+        "s3": 5.622034,
+        "s4": 9.5
+      },
+      "state": "STABLE",
+      "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
+      "score": 1.0835,
+      "frame_type": "normal",
+      "missing_data": false
+    },
+    {
+      "timestep": 88,
+      "signals": {
+        "s1": 12.300089,
+        "s2": 9.893346,
+        "s3": 5.644725,
+        "s4": 9.5
+      },
+      "state": "WATCH",
+      "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
+      "score": 1.5274,
+      "frame_type": "normal",
+      "missing_data": false
+    },
+    {
+      "timestep": 89,
+      "signals": {
+        "s1": 10.734392,
+        "s2": 13.404937,
+        "s3": 3.364917,
+        "s4": 9.5
+      },
+      "state": "WATCH",
+      "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
+      "score": 1.5629,
+      "frame_type": "normal",
+      "missing_data": false
+    },
+    {
+      "timestep": 90,
+      "signals": {
+        "s1": 12.81829,
+        "s2": 11.545822,
+        "s3": 7.295742,
+        "s4": 9.5
+      },
+      "state": "WATCH",
+      "interpreted_state": "COHERENCE_UNDER_CONSTRAINT",
+      "score": 1.4823,
+      "frame_type": "normal",
+      "missing_data": false
+    },
+    {
+      "timestep": 91,
+      "signals": {
+        "s1": 10.394146,
+        "s2": 12.315362,
+        "s3": 5.498316,
+        "s4": 9.5
+      },
+      "state": "WATCH",
+      "interpreted_state": "COHERENCE_UNDER_CONSTRAINT",
+      "score": 1.4722,
+      "frame_type": "normal",
+      "missing_data": false
+    },
+    {
+      "timestep": 92,
+      "signals": {
+        "s1": 11.375717,
+        "s2": 16.771699,
+        "s3": 7.766118,
+        "s4": 9.5
+      },
+      "state": "STABLE",
+      "interpreted_state": "COHERENCE_UNDER_CONSTRAINT",
+      "score": 1.2278,
+      "frame_type": "normal",
+      "missing_data": false
+    },
+    {
+      "timestep": 93,
+      "signals": {
+        "s1": 13.081508,
+        "s2": 14.702389,
+        "s3": 7.241982,
+        "s4": 9.5
+      },
+      "state": "WATCH",
+      "interpreted_state": "COHERENCE_UNDER_CONSTRAINT",
+      "score": 1.2882,
+      "frame_type": "normal",
+      "missing_data": false
+    },
+    {
+      "timestep": 94,
+      "signals": {
+        "s1": 10.813164,
+        "s2": 12.884122,
+        "s3": 7.484376,
+        "s4": 9.5
+      },
+      "state": "WATCH",
+      "interpreted_state": "COHERENCE_UNDER_CONSTRAINT",
+      "score": 1.256,
+      "frame_type": "normal",
+      "missing_data": false
+    },
+    {
+      "timestep": 95,
+      "signals": {
+        "s1": 11.89529,
+        "s2": 13.694958,
+        "s3": 7.756871,
+        "s4": 9.5
+      },
+      "state": "WATCH",
+      "interpreted_state": "COHERENCE_UNDER_CONSTRAINT",
+      "score": 1.328,
+      "frame_type": "normal",
+      "missing_data": false
+    },
+    {
+      "timestep": 96,
+      "signals": {
+        "s1": 13.428905,
+        "s2": 15.16924,
+        "s3": 3.64194,
+        "s4": 9.5
+      },
+      "state": "WATCH",
+      "interpreted_state": "COHERENCE_UNDER_CONSTRAINT",
+      "score": 1.2987,
+      "frame_type": "normal",
+      "missing_data": false
+    },
+    {
+      "timestep": 97,
+      "signals": {
+        "s1": 9.31919,
+        "s2": 13.170752,
+        "s3": 8.266843,
+        "s4": 9.5
+      },
+      "state": "WATCH",
+      "interpreted_state": "COHERENCE_UNDER_CONSTRAINT",
+      "score": 1.5117,
+      "frame_type": "normal",
+      "missing_data": false
+    },
+    {
+      "timestep": 98,
+      "signals": {
+        "s1": 10.061497,
+        "s2": 12.378052,
+        "s3": 6.049173,
+        "s4": 9.5
+      },
+      "state": "WATCH",
+      "interpreted_state": "COHERENCE_UNDER_CONSTRAINT",
+      "score": 1.4902,
+      "frame_type": "normal",
+      "missing_data": false
+    },
+    {
+      "timestep": 99,
+      "signals": {
+        "s1": 10.180404,
+        "s2": 14.499215,
+        "s3": 7.732968,
+        "s4": 9.5
+      },
+      "state": "WATCH",
+      "interpreted_state": "COHERENCE_UNDER_CONSTRAINT",
+      "score": 1.5191,
+      "frame_type": "normal",
+      "missing_data": false
+    },
+    {
+      "timestep": 100,
+      "signals": {
+        "s1": 7.992195,
+        "s2": 14.486987,
+        "s3": 6.10805,
+        "s4": 9.5
+      },
+      "state": "WATCH",
+      "interpreted_state": "COHERENCE_UNDER_CONSTRAINT",
+      "score": 1.6047,
+      "frame_type": "normal",
+      "missing_data": false
+    },
+    {
+      "timestep": 101,
+      "signals": {
+        "s1": 13.542694,
+        "s2": 10.698819,
+        "s3": 5.113345,
+        "s4": 9.5
+      },
+      "state": "WATCH",
+      "interpreted_state": "COHERENCE_UNDER_CONSTRAINT",
+      "score": 1.5429,
+      "frame_type": "normal",
+      "missing_data": false
+    },
+    {
+      "timestep": 102,
+      "signals": {
+        "s1": 9.145768,
+        "s2": 16.361518,
+        "s3": 6.552535,
+        "s4": 9.5
+      },
+      "state": "WATCH",
+      "interpreted_state": "COHERENCE_UNDER_CONSTRAINT",
+      "score": 1.5668,
+      "frame_type": "normal",
+      "missing_data": false
+    },
+    {
+      "timestep": 103,
+      "signals": {
+        "s1": 10.640679,
+        "s2": 15.302022,
+        "s3": 7.602707,
+        "s4": 9.5
+      },
+      "state": "WATCH",
+      "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
+      "score": 1.6085,
+      "frame_type": "normal",
+      "missing_data": false
+    },
+    {
+      "timestep": 104,
+      "signals": {
+        "s1": 11.848161,
+        "s2": 14.432549,
+        "s3": 4.704982,
+        "s4": 9.5
+      },
+      "state": "WATCH",
+      "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
+      "score": 1.5542,
+      "frame_type": "normal",
+      "missing_data": false
+    },
+    {
+      "timestep": 105,
+      "signals": {
+        "s1": 11.386468,
+        "s2": 14.61343,
+        "s3": 7.499736,
+        "s4": 9.5
+      },
+      "state": "WATCH",
+      "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
+      "score": 1.5132,
+      "frame_type": "normal",
+      "missing_data": false
+    },
+    {
+      "timestep": 106,
+      "signals": {
+        "s1": 11.504987,
+        "s2": 16.370329,
+        "s3": 4.884618,
+        "s4": 9.5
+      },
+      "state": "WATCH",
+      "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
+      "score": 1.4443,
+      "frame_type": "normal",
+      "missing_data": false
+    },
+    {
+      "timestep": 107,
+      "signals": {
+        "s1": 12.043229,
+        "s2": 15.351016,
+        "s3": 6.017139,
+        "s4": 9.5
+      },
+      "state": "WATCH",
+      "interpreted_state": "COUPLING_INSTABILITY_OBSERVED",
+      "score": 1.4005,
+      "frame_type": "normal",
+      "missing_data": false
+    },
+    {
+      "timestep": 108,
+      "signals": {
+        "s1": 13.039512,
+        "s2": 15.346912,
+        "s3": 6.831175,
+        "s4": 9.5
+      },
+      "state": "WATCH",
+      "interpreted_state": "COHERENCE_UNDER_CONSTRAINT",
+      "score": 1.567,
+      "frame_type": "normal",
+      "missing_data": false
+    },
+    {
+      "timestep": 109,
+      "signals": {
+        "s1": 11.632774,
+        "s2": 10.794364,
+        "s3": 8.406382,
+        "s4": 9.5
+      },
+      "state": "WATCH",
+      "interpreted_state": "COHERENCE_UNDER_CONSTRAINT",
+      "score": 1.462,
+      "frame_type": "normal",
+      "missing_data": false
+    },
+    {
+      "timestep": 110,
+      "signals": {
+        "s1": 12.151033,
+        "s2": 16.095281,
+        "s3": 3.596611,
+        "s4": 9.5
+      },
+      "state": "WATCH",
+      "interpreted_state": "COHERENCE_UNDER_CONSTRAINT",
+      "score": 1.4987,
+      "frame_type": "normal",
+      "missing_data": false
+    },
+    {
+      "timestep": 111,
+      "signals": {
+        "s1": 9.838211,
+        "s2": 12.729382,
+        "s3": 6.659455,
+        "s4": 9.5
+      },
+      "state": "WATCH",
+      "interpreted_state": "COHERENCE_UNDER_CONSTRAINT",
+      "score": 1.5728,
+      "frame_type": "normal",
+      "missing_data": false
+    },
+    {
+      "timestep": 112,
+      "signals": {
+        "s1": 12.546784,
+        "s2": 11.739575,
+        "s3": 2.534845,
+        "s4": 9.5
+      },
+      "state": "WATCH",
+      "interpreted_state": "COHERENCE_UNDER_CONSTRAINT",
+      "score": 1.3485,
+      "frame_type": "normal",
+      "missing_data": false
+    },
+    {
+      "timestep": 113,
+      "signals": {
+        "s1": 11.579514,
+        "s2": 14.735017,
+        "s3": 7.05293,
+        "s4": 9.5
+      },
+      "state": "WATCH",
+      "interpreted_state": "COHERENCE_UNDER_CONSTRAINT",
+      "score": 1.3184,
+      "frame_type": "normal",
+      "missing_data": false
+    },
+    {
+      "timestep": 114,
+      "signals": {
+        "s1": 13.384186,
+        "s2": 14.366738,
+        "s3": 6.795097,
+        "s4": 9.5
+      },
+      "state": "STABLE",
+      "interpreted_state": "COHERENCE_UNDER_CONSTRAINT",
+      "score": 1.2426,
+      "frame_type": "normal",
+      "missing_data": false
+    },
+    {
+      "timestep": 115,
+      "signals": {
+        "s1": 12.148544,
+        "s2": 14.314842,
+        "s3": 7.230793,
+        "s4": 9.5
+      },
+      "state": "STABLE",
+      "interpreted_state": "COHERENCE_UNDER_CONSTRAINT",
+      "score": 1.2239,
+      "frame_type": "normal",
+      "missing_data": false
+    },
+    {
+      "timestep": 116,
+      "signals": {
+        "s1": 13.209634,
+        "s2": 13.574658,
+        "s3": 5.823687,
+        "s4": 9.5
+      },
+      "state": "STABLE",
+      "interpreted_state": "COHERENCE_UNDER_CONSTRAINT",
+      "score": 1.1979,
+      "frame_type": "normal",
+      "missing_data": false
+    },
+    {
+      "timestep": 117,
+      "signals": {
+        "s1": 9.769715,
+        "s2": 11.925644,
+        "s3": 3.776722,
+        "s4": 9.5
+      },
+      "state": "WATCH",
+      "interpreted_state": "COHERENCE_UNDER_CONSTRAINT",
+      "score": 1.2531,
+      "frame_type": "normal",
+      "missing_data": false
+    },
+    {
+      "timestep": 118,
+      "signals": {
+        "s1": 11.69043,
+        "s2": 15.199094,
+        "s3": 5.572674,
+        "s4": 9.5
+      },
+      "state": "WATCH",
+      "interpreted_state": "COHERENCE_UNDER_CONSTRAINT",
+      "score": 1.371,
+      "frame_type": "normal",
+      "missing_data": false
+    },
+    {
+      "timestep": 119,
+      "signals": {
+        "s1": 14.244904,
+        "s2": 16.124298,
+        "s3": 5.896293,
+        "s4": 9.5
+      },
+      "state": "WATCH",
+      "interpreted_state": "COHERENCE_UNDER_CONSTRAINT",
+      "score": 1.4061,
+      "frame_type": "normal",
+      "missing_data": false
+    }
+  ],
+  "summary": {
+    "first_step_by_state": {
+      "STABLE": 0,
+      "WATCH": 23,
+      "ALERT": 32
+    },
+    "count_by_state": {
+      "STABLE": 33,
+      "WATCH": 72,
+      "ALERT": 16
+    },
+    "count_by_interpreted_state": {
+      "NOMINAL_STRUCTURE": 23,
+      "REGIME_SHIFT_OBSERVED": 12,
+      "COUPLING_INSTABILITY_OBSERVED": 61,
+      "COHERENCE_UNDER_CONSTRAINT": 25
+    },
+    "max_score": 2.5341,
+    "mean_score_after_timestep_60": 1.5866,
+    "duplicate_frame_count": 1,
+    "missing_data_frame_count": 5,
+    "first_step_by_interpreted_state": {
+      "NOMINAL_STRUCTURE": 0,
+      "REGIME_SHIFT_OBSERVED": 23,
+      "COUPLING_INSTABILITY_OBSERVED": 35,
+      "COHERENCE_UNDER_CONSTRAINT": 90
+    },
+    "score_thresholds": {
+      "STABLE_lt": 1.25,
+      "WATCH_lt": 2.0,
+      "ALERT_gte": 2.0
+    },
+    "interpreted_smoothing": {
+      "consecutive_required": 3,
+      "severe_score_delta": 0.75,
+      "severe_score_high": 2.25,
+      "severe_score_low_prior": 1.45
+    },
+    "scenario": {
+      "stable_baseline_t_lt_30": true,
+      "first_disruption_t_ge_30": true,
+      "stronger_disruption_t_ge_60": true,
+      "missing_data_logical_t_40_44": true,
+      "note": "state is score-threshold pilot state; interpreted_state is hysteresis-smoothed."
+    },
+    "first_WATCH_step_action_state_legacy": 23,
+    "first_ALERT_step_action_state_legacy": 32
   }
-]
+}
