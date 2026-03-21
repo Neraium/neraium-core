@@ -145,14 +145,14 @@ def _print_report(path: Path) -> None:
     print()
     print(f"  Max score:                 {_fmt_num(max_score)}")
     print(f"  Mean score (overall):      {_fmt_num(mean_all)}")
-    print(f"  Mean score (timestep ≥60): {_fmt_num(mean_60)}")
+    print(f"  Mean score (timestep >= 60): {_fmt_num(mean_60)}")
     print()
     print(f"  Missing-data steps:        {n_missing}")
     print(f"  Duplicate frames:          {n_dup}")
     print(
         f"  Flatline behavior:         "
         f"{'yes' if flat_ok else 'no'} "
-        f"({flat_hits}/{flat_n} steps at t≥75 with s4≈9.5, excl. duplicates)"
+        f"({flat_hits}/{flat_n} steps at t>=75 with s4~9.5, excl. duplicates)"
     )
     print()
 
@@ -174,7 +174,7 @@ def _print_report(path: Path) -> None:
             )
         if first_alert is not None:
             lines.append(
-                f"ALERT (score ≥ 2.0) first appears at timestep {first_alert}, "
+                f"ALERT (score >= 2.0) first appears at timestep {first_alert}, "
                 "indicating the strongest instability band in this scenario."
             )
         if max_score is not None and mean_all is not None:
@@ -198,12 +198,12 @@ def _print_report(path: Path) -> None:
             )
         if flat_ok:
             lines.append(
-                "Sensor s4 shows a sustained flat value in the late window (t≥75), consistent with an "
+                "Sensor s4 shows a sustained flat value in the late window (t>=75), consistent with an "
                 "injected flatline / stuck-sensor behavior in the pilot scenario."
             )
         else:
             lines.append(
-                "No clear s4 flatline signature was detected in the t≥75 window with the default heuristic "
+                "No clear s4 flatline signature was detected in the t>=75 window with the default heuristic "
                 "(or there were too few post-75 rows)."
             )
 
@@ -212,7 +212,7 @@ def _print_report(path: Path) -> None:
             name, cnt = top_interp[0]
             lines.append(
                 f"The dominant smoothed interpretation is {name} ({cnt} rows), reflecting hysteresis on "
-                "the engine’s raw interpreted_state."
+                "the engine's raw interpreted_state."
             )
 
     for line in lines:
