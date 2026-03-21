@@ -60,17 +60,40 @@ def _setup_scenario_logging() -> None:
 
 
 def _load_json_payloads(path: Path) -> list[dict[str, Any]]:
+    payloads, _meta = _load_pilot_input(path)
+    return payloads
+
+
+def _load_pilot_input(path: Path) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """
+    Load pilot input JSON. Returns (payloads, file_meta).
+
+    Optional top-level keys on a dict root (alongside payloads/items/sequence) are preserved
+    in file_meta, e.g. ``interpreted_smoothing: { "consecutive_required": 2 }``.
+    """
     data = json.loads(path.read_text(encoding="utf-8"))
+    file_meta: dict[str, Any] = {}
+
+    def _extract_meta(d: dict[str, Any]) -> None:
+        for k in (
+            "scenario",
+            "description",
+            "timesteps",
+            "interpreted_smoothing",
+        ):
+            if k in d:
+                file_meta[k] = d[k]
 
     if isinstance(data, list):
-        return data
+        return data, file_meta
 
     if isinstance(data, dict):
+        _extract_meta(data)
         for key in ("payloads", "items", "sequence"):
             maybe = data.get(key)
             if isinstance(maybe, list):
-                return maybe
-        return [data]
+                return maybe, file_meta
+        return [data], file_meta
 
     raise ValueError("Input JSON must be an object or array of objects")
 
@@ -620,11 +643,26 @@ def _run_scenario(
     )
 
 
-def _run_file_payloads(path: Path, *, results_path: Path) -> None:
-    payloads = _load_json_payloads(path)
+def _run_file_payloads(
+    path: Path,
+    *,
+    results_path: Path,
+    baseline_window: int = 24,
+    recent_window: int = 8,
+) -> None:
+    payloads, file_meta = _load_pilot_input(path)
     _setup_scenario_logging()
 
-    smoother = InterpretedStateSmoother()
+    smooth_cfg = file_meta.get("interpreted_smoothing")
+    consec = INTERPRETED_CONSECUTIVE_REQUIRED
+    if isinstance(smooth_cfg, dict) and "consecutive_required" in smooth_cfg:
+        try:
+            cr = int(smooth_cfg["consecutive_required"])
+            if 1 <= cr <= 10:
+                consec = cr
+        except (TypeError, ValueError):
+            pass
+    smoother = InterpretedStateSmoother(consecutive_required=consec)
     prev_score: float | None = None
     save_records: list[dict[str, Any]] = []
 
@@ -632,8 +670,8 @@ def _run_file_payloads(path: Path, *, results_path: Path) -> None:
     try:
         tmp_path = Path(tmp_dir)
         engine = StructuralEngine(
-            baseline_window=5,
-            recent_window=3,
+            baseline_window=baseline_window,
+            recent_window=recent_window,
             window_stride=1,
             regime_store_path=str(tmp_path / "regimes.json"),
         )
@@ -672,7 +710,17 @@ def _run_file_payloads(path: Path, *, results_path: Path) -> None:
         shutil.rmtree(tmp_dir, ignore_errors=True)
 
     summary = summarize_pilot_records(save_records)
-    summary["scenario"] = {"mode": "file_payloads"}
+    summary["interpreted_smoothing"]["consecutive_required_applied"] = consec
+    if isinstance(smooth_cfg, dict):
+        summary["interpreted_smoothing"]["input_file_overrides"] = dict(smooth_cfg)
+    summary["scenario"] = {
+        "mode": "file_payloads",
+        "input_file": str(path.resolve()),
+        "baseline_window": baseline_window,
+        "recent_window": recent_window,
+    }
+    if file_meta.get("scenario") is not None:
+        summary["scenario"]["input_scenario"] = file_meta.get("scenario")
     _write_pilot_results_document(results_path, save_records, summary)
 
     if len(outputs) == 1:
@@ -689,6 +737,7 @@ def main() -> None:
         "--input",
         default=None,
         help="Optional JSON file: single payload, list, or {payloads|items|sequence: [...]}. "
+        "Dict roots may include interpreted_smoothing: {consecutive_required: 1–10}. "
         "If omitted, runs the built-in evolving scenario (≥100 steps).",
     )
     parser.add_argument("--debug", action="store_true", help="Enable pilot debug logging (redacted).")
@@ -698,13 +747,13 @@ def main() -> None:
         "--baseline-window",
         type=int,
         default=24,
-        help="StructuralEngine baseline window (scenario mode uses larger windows for drift).",
+        help="StructuralEngine baseline window (default scenario and --input file mode).",
     )
     parser.add_argument(
         "--recent-window",
         type=int,
         default=8,
-        help="StructuralEngine recent window (scenario mode).",
+        help="StructuralEngine recent window (default scenario and --input file mode).",
     )
     parser.add_argument(
         "--output",
@@ -722,7 +771,12 @@ def main() -> None:
         input_path = Path(args.input)
         if not input_path.exists():
             raise FileNotFoundError(str(input_path))
-        _run_file_payloads(input_path, results_path=args.output)
+        _run_file_payloads(
+            input_path,
+            results_path=args.output,
+            baseline_window=args.baseline_window,
+            recent_window=args.recent_window,
+        )
         return
 
     _run_scenario(
