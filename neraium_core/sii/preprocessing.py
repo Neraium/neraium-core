@@ -5,6 +5,8 @@ from typing import Any
 
 import numpy as np
 
+from .errors import SIIValidationError
+
 
 @dataclass(frozen=True)
 class DataQualitySummary:
@@ -78,6 +80,7 @@ def data_quality(
     recent_timestamps: list[float] | None,
 ) -> DataQualitySummary:
     _ = recent_timestamps
+    recent_window = np.asarray(recent_window, dtype=float)
     if recent_window.ndim != 2 or recent_window.size == 0:
         return DataQualitySummary(
             missingness_rate=1.0,
@@ -121,6 +124,8 @@ def summarize_quality(report: DataQualitySummary) -> dict[str, Any]:
 
 def impute_column_mean(m: np.ndarray) -> np.ndarray:
     out = np.asarray(m, dtype=float, copy=True)
+    if out.ndim != 2:
+        raise SIIValidationError("impute_column_mean expects a 2D matrix")
     if out.size == 0:
         return out
     col_mean = np.nanmean(out, axis=0)

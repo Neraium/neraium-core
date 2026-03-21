@@ -2,15 +2,23 @@ from __future__ import annotations
 
 import numpy as np
 
-from neraium_core.sii.types import GraphSnapshot, GraphState
+from .errors import SIIValidationError
+from .types import GraphSnapshot, GraphState
+
+
+def _build_adjacency(corr: np.ndarray, threshold: float) -> np.ndarray:
+    if corr.ndim != 2 or corr.shape[0] != corr.shape[1]:
+        raise SIIValidationError("graph layer expects a square correlation matrix")
+    adj = (np.abs(corr) >= float(threshold)).astype(float)
+    np.fill_diagonal(adj, 0.0)
+    return adj
 
 
 def build_graph_snapshot(state: GraphState, *, threshold: float) -> GraphSnapshot:
     corr = np.asarray(state.adjacency, dtype=float)
-    adj = (np.abs(corr) >= float(threshold)).astype(float)
-    np.fill_diagonal(adj, 0.0)
+    adj = _build_adjacency(corr, threshold)
 
-    n = int(adj.shape[0]) if adj.ndim == 2 else 0
+    n = int(adj.shape[0])
     edge_count = int(np.sum(adj))
     density = float(edge_count / max(1.0, float(n * (n - 1))))
     mean_abs_weight = float(np.mean(np.abs(corr[np.triu_indices(n, k=1)]))) if n > 1 else 0.0
@@ -53,9 +61,8 @@ def graph_state(
     threshold: float,
 ) -> GraphState:
     corr = np.asarray(current_corr, dtype=float)
-    adj = (np.abs(corr) >= float(threshold)).astype(float)
-    np.fill_diagonal(adj, 0.0)
-    n = int(adj.shape[0]) if adj.ndim == 2 else 0
+    adj = _build_adjacency(corr, threshold)
+    n = int(adj.shape[0])
     edges = float(np.sum(adj))
     density = float(edges / max(1.0, float(n * (n - 1))))
     avg_degree = float(edges / max(1.0, float(n)))
@@ -63,10 +70,10 @@ def graph_state(
         deformation = 0.0
     else:
         deformation = float(np.mean(np.abs(adj - baseline_adj)))
-    _ = density
-    _ = avg_degree
-    _ = deformation
     return GraphState(
         adjacency=adj,
         feature_names=[f"s{i}" for i in range(n)],
+        density=density,
+        avg_degree=avg_degree,
+        l1_deformation=deformation,
     )

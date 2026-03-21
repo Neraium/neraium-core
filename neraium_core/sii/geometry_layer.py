@@ -4,8 +4,12 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from .errors import SIIValidationError
+
 
 def normalize_window(window: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    if window.ndim != 2:
+        raise SIIValidationError("normalize_window expects a 2D matrix")
     mean = np.nanmean(window, axis=0)
     std = np.nanstd(window, axis=0)
     std = np.where(std < 1e-9, 1.0, std)
@@ -15,6 +19,8 @@ def normalize_window(window: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.nda
 
 
 def correlation_matrix(z_window: np.ndarray) -> np.ndarray:
+    if z_window.ndim != 2:
+        raise SIIValidationError("correlation_matrix expects a 2D matrix")
     corr = np.corrcoef(z_window.T)
     corr = np.nan_to_num(corr, nan=0.0, posinf=0.0, neginf=0.0)
     np.fill_diagonal(corr, 1.0)
@@ -47,6 +53,7 @@ class GeometryState:
     mean: np.ndarray
     cov: np.ndarray
     feature_names: list[str]
+    coherence_score: float = 1.0
 
 
 @dataclass(frozen=True)
@@ -94,6 +101,7 @@ class GeometrySnapshot:
     cov: np.ndarray
     principal_values: np.ndarray
     principal_vectors: np.ndarray
+    coherence_score: float
 
 
 def _safe_cov(cov: np.ndarray) -> np.ndarray:
@@ -110,6 +118,14 @@ def _safe_cov(cov: np.ndarray) -> np.ndarray:
     return c
 
 
+def _coherence_from_cov(cov: np.ndarray) -> float:
+    vals = np.linalg.eigvalsh(cov)
+    vals = np.clip(np.asarray(vals, dtype=float), a_min=1e-12, a_max=None)
+    ratio = float(np.max(vals) / np.sum(vals))
+    # Higher ratio indicates one dominant mode -> lower multivariate coherence.
+    return float(max(0.0, min(1.0, 1.0 - ratio)))
+
+
 def build_geometry_snapshot(state: GeometryState) -> GeometrySnapshot:
     cov = _safe_cov(state.cov)
     vals, vecs = np.linalg.eigh(cov)
@@ -122,6 +138,7 @@ def build_geometry_snapshot(state: GeometryState) -> GeometrySnapshot:
         cov=cov,
         principal_values=vals,
         principal_vectors=vecs,
+        coherence_score=float(max(0.0, min(1.0, state.coherence_score))),
     )
 
 

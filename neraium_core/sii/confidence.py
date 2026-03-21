@@ -3,17 +3,19 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Mapping
 
+from .types import ConfidenceLevel
+
 
 @dataclass(frozen=True)
 class ConfidenceResult:
     score: float
-    level: str
+    level: ConfidenceLevel
     reasoning: list[str]
     quality_factor: float
     evidence_factor: float
 
 
-def confidence_to_level(score: float) -> str:
+def confidence_to_level(score: float) -> ConfidenceLevel:
     s = float(max(0.0, min(1.0, score)))
     if s >= 0.7:
         return "high"

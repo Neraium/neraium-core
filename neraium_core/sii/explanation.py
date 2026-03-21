@@ -24,3 +24,7 @@ def build_explanation_text(
         "Read-only instrumentation output for human operator review."
     )
 
+
+# Backward-compatible alias
+build_explanation = build_explanation_text
+

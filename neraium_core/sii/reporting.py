@@ -5,6 +5,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+from .errors import SIIIOError
+
 
 def results_to_json(results: list[dict[str, Any]]) -> str:
     return json.dumps(results, indent=2)
@@ -12,7 +14,11 @@ def results_to_json(results: list[dict[str, Any]]) -> str:
 
 def write_json_report(path: str | Path, results: list[dict[str, Any]]) -> None:
     p = Path(path)
-    p.write_text(results_to_json(results), encoding="utf-8")
+    try:
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(results_to_json(results), encoding="utf-8")
+    except Exception as exc:
+        raise SIIIOError(f"Failed to write JSON report: {p}") from exc
 
 
 def results_to_csv_text(results: list[dict[str, Any]]) -> str:
@@ -60,4 +66,8 @@ def results_to_csv_text(results: list[dict[str, Any]]) -> str:
 
 def write_csv_report(path: str | Path, results: list[dict[str, Any]]) -> None:
     p = Path(path)
-    p.write_text(results_to_csv_text(results), encoding="utf-8")
+    try:
+        p.parent.mkdir(parents=True, exist_ok=True)
+        p.write_text(results_to_csv_text(results), encoding="utf-8")
+    except Exception as exc:
+        raise SIIIOError(f"Failed to write CSV report: {p}") from exc

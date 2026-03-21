@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Literal, TypedDict
 
+import numpy as np
+
 
 InterpretedState = Literal[
     "NOMINAL_STRUCTURE",
@@ -71,7 +73,7 @@ class DecisionResult:
 
 @dataclass(frozen=True)
 class GraphState:
-    adjacency: Any
+    adjacency: np.ndarray
     feature_names: list[str]
     density: float = 0.0
     avg_degree: float = 0.0
@@ -80,7 +82,7 @@ class GraphState:
 
 @dataclass(frozen=True)
 class GraphSnapshot:
-    adjacency: Any
+    adjacency: np.ndarray
     node_count: int
     edge_count: int
     density: float

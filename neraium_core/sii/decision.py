@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from .config import SIIConfig
 from neraium_core.sii.types import (
     CONFIDENCE_LEVELS,
     INTERPRETED_STATES,
@@ -64,6 +65,32 @@ def map_decision_state(
     if state not in STATES:
         return "STABLE"
     return state
+
+
+def map_decision_state_with_config(
+    *,
+    composite_score: float,
+    interpreted_state: InterpretedState,
+    trend: float,
+    stability: float,
+    config: SIIConfig,
+) -> DecisionState:
+    """
+    Config-aware decision mapping preserving read-only semantics.
+    """
+    score = float(composite_score)
+    if interpreted_state in {"STRUCTURAL_INSTABILITY_OBSERVED", "COUPLING_INSTABILITY_OBSERVED"}:
+        score += 0.15
+    if trend > 0.03:
+        score += 0.08
+    if stability < 0.55:
+        score += 0.08
+
+    if score >= float(config.alert_threshold):
+        return "ALERT"
+    if score >= float(config.watch_threshold):
+        return "WATCH"
+    return "STABLE"
 
 
 def safe_interpreted(value: str) -> InterpretedState:
