@@ -117,6 +117,7 @@ def _uvicorn_h11_max_incomplete_event_size() -> int:
 
 
 class IngestRequest(BaseModel):
+    customer_id: str | None = None
     timestamp: str | None = None
     site_id: str | None = None
     asset_id: str | None = None
@@ -128,6 +129,7 @@ class BatchIngestRequest(BaseModel):
 
 
 class CsvIngestRequest(BaseModel):
+    customer_id: str | None = None
     csv_text: str
 
 
@@ -201,14 +203,20 @@ class GeometryEnvelope(BaseModel):
     provenance: dict[str, Any] = Field(default_factory=dict)
 
 
-def _ensure_default_run(service: StructuralMonitoringService) -> dict[str, Any]:
-    existing = service.get_active_run()
+def _ensure_default_run(
+    service: StructuralMonitoringService,
+    *,
+    customer_id: str | None,
+) -> dict[str, Any]:
+    resolved_customer = _resolve_customer_id(customer_id)
+    existing = service.get_active_run(customer_id=resolved_customer)
     if existing is not None:
         return existing
     return service.create_run(
         name="Default Run",
         config={"source": "api-default"},
         activate=True,
+        customer_id=resolved_customer,
     )
  
 
@@ -233,10 +241,20 @@ def _results_envelope(results: list[dict[str, Any]], latest: dict[str, Any] | No
     return {"latest": latest, "count": len(results), "results": results}
 
 
-def _resolve_run_id(service: StructuralMonitoringService, run_id: str | None) -> str | None:
+def _resolve_customer_id(customer_id: str | None) -> str:
+    text = str(customer_id or "").strip()
+    return text or "default-customer"
+
+
+def _resolve_run_id(
+    service: StructuralMonitoringService,
+    run_id: str | None,
+    *,
+    customer_id: str | None,
+) -> str | None:
     if run_id is not None and str(run_id).strip():
         return str(run_id).strip()
-    active = service.get_active_run()
+    active = service.get_active_run(customer_id=_resolve_customer_id(customer_id))
     if active is None:
         return None
     rid = active.get("run_id")
@@ -245,27 +263,42 @@ def _resolve_run_id(service: StructuralMonitoringService, run_id: str | None) ->
     return str(rid)
 
 
-def _require_run_id(service: StructuralMonitoringService, run_id: str | None) -> str:
-    resolved = _resolve_run_id(service, run_id)
+def _require_run_id(
+    service: StructuralMonitoringService,
+    run_id: str | None,
+    *,
+    customer_id: str | None,
+) -> str:
+    resolved = _resolve_run_id(service, run_id, customer_id=customer_id)
     if resolved is None:
         raise HTTPException(status_code=400, detail="No active run. Create or activate a run first.")
     return resolved
 
 
-def _request_run_id_or_active(service: StructuralMonitoringService, run_id: str | None) -> str | None:
+def _request_run_id_or_active(
+    service: StructuralMonitoringService,
+    run_id: str | None,
+    *,
+    customer_id: str | None,
+) -> str | None:
     if run_id is None:
-        return _resolve_run_id(service, None)
+        return _resolve_run_id(service, None, customer_id=customer_id)
     text = str(run_id).strip()
     if not text:
-        return _resolve_run_id(service, None)
+        return _resolve_run_id(service, None, customer_id=customer_id)
     return text
 
 
-def _resolve_run_id_with_default(service: StructuralMonitoringService, run_id: str | None) -> str:
-    resolved = _request_run_id_or_active(service, run_id)
+def _resolve_run_id_with_default(
+    service: StructuralMonitoringService,
+    run_id: str | None,
+    *,
+    customer_id: str | None,
+) -> str:
+    resolved = _request_run_id_or_active(service, run_id, customer_id=customer_id)
     if resolved is not None:
         return resolved
-    created = _ensure_default_run(service)
+    created = _ensure_default_run(service, customer_id=_resolve_customer_id(customer_id))
     return str(created.get("run_id"))
 
 
@@ -600,7 +633,9 @@ def create_app(
 
     @app.get("/health", response_model=HealthResponse)
     def health() -> HealthResponse:
-        latest = service_instance.get_latest_result()
+        latest = service_instance.get_latest_result(
+            customer_id=_resolve_customer_id(os.getenv("NERAIUM_DEFAULT_CUSTOMER_ID"))
+        )
         return HealthResponse(
             status="ok" if persistence_available else "degraded",
             version=app.version,
@@ -610,41 +645,57 @@ def create_app(
         )
 
     @app.post("/runs", response_model=RunEnvelope)
-    def create_run(payload: CreateRunRequest, _: None = Depends(require_api_key)) -> dict[str, Any]:
+    def create_run(
+        payload: CreateRunRequest,
+        _: None = Depends(require_api_key),
+        customer_id: str | None = Query(default=None),
+    ) -> dict[str, Any]:
         try:
             run = service_instance.create_run(
                 name=payload.name.strip(),
                 config=dict(payload.config),
                 activate=bool(payload.activate),
+                customer_id=_resolve_customer_id(customer_id),
             )
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc))
         return {"run": run}
 
     @app.post("/runs/activate", response_model=RunEnvelope)
-    def activate_run(payload: ActivateRunRequest, _: None = Depends(require_api_key)) -> dict[str, Any]:
+    def activate_run(
+        payload: ActivateRunRequest,
+        _: None = Depends(require_api_key),
+        customer_id: str | None = Query(default=None),
+    ) -> dict[str, Any]:
         try:
-            run = service_instance.activate_run(payload.run_id.strip())
+            run = service_instance.activate_run(
+                payload.run_id.strip(),
+                customer_id=_resolve_customer_id(customer_id),
+            )
         except ValueError as exc:
             raise HTTPException(status_code=404, detail=str(exc))
         return {"run": run}
 
     @app.get("/runs", response_model=RunsEnvelope)
-    def list_runs(limit: int = Query(50, ge=1, le=500)) -> dict[str, Any]:
-        runs = service_instance.list_runs(limit=limit)
-        active = service_instance.get_active_run()
+    def list_runs(
+        limit: int = Query(50, ge=1, le=500),
+        customer_id: str | None = Query(default=None),
+    ) -> dict[str, Any]:
+        resolved_customer = _resolve_customer_id(customer_id)
+        runs = service_instance.list_runs(limit=limit, customer_id=resolved_customer)
+        active = service_instance.get_active_run(customer_id=resolved_customer)
         return {"active_run": active, "count": len(runs), "runs": runs}
 
     @app.get("/runs/active", response_model=RunEnvelope)
-    def get_active_run() -> dict[str, Any]:
-        run = service_instance.get_active_run()
+    def get_active_run(customer_id: str | None = Query(default=None)) -> dict[str, Any]:
+        run = service_instance.get_active_run(customer_id=_resolve_customer_id(customer_id))
         if run is None:
             return {"run": None}
         return {"run": run}
 
     @app.get("/runs/{run_id}", response_model=RunEnvelope)
-    def get_run(run_id: str) -> dict[str, Any]:
-        run = service_instance.get_run(run_id)
+    def get_run(run_id: str, customer_id: str | None = Query(default=None)) -> dict[str, Any]:
+        run = service_instance.get_run(run_id, customer_id=_resolve_customer_id(customer_id))
         if run is None:
             raise HTTPException(status_code=404, detail=f"Unknown run_id: {run_id}")
         return {"run": run}
@@ -653,17 +704,23 @@ def create_app(
     def get_run_geometry(
         run_id: str,
         result_id: int | None = Query(default=None),
+        customer_id: str | None = Query(default=None),
     ) -> dict[str, Any]:
-        run = service_instance.get_run(run_id)
+        resolved_customer = _resolve_customer_id(customer_id)
+        run = service_instance.get_run(run_id, customer_id=resolved_customer)
         if run is None:
             raise HTTPException(status_code=404, detail=f"Unknown run_id: {run_id}")
 
         if result_id is not None:
-            result = service_instance.get_result_by_id(result_id, run_id=run_id)
+            result = service_instance.get_result_by_id(
+                result_id,
+                run_id=run_id,
+                customer_id=resolved_customer,
+            )
             if result is None:
                 raise HTTPException(status_code=404, detail=f"Unknown result_id: {result_id}")
         else:
-            result = service_instance.get_latest_result(run_id=run_id)
+            result = service_instance.get_latest_result(run_id=run_id, customer_id=resolved_customer)
 
         if result is None:
             return {
@@ -697,13 +754,19 @@ def create_app(
         return _build_geometry_payload(result, run_id=run_id)
 
     @app.patch("/runs/{run_id}", response_model=RunEnvelope)
-    def update_run(run_id: str, payload: UpdateRunRequest, _: None = Depends(require_api_key)) -> dict[str, Any]:
+    def update_run(
+        run_id: str,
+        payload: UpdateRunRequest,
+        _: None = Depends(require_api_key),
+        customer_id: str | None = Query(default=None),
+    ) -> dict[str, Any]:
         try:
             run = service_instance.update_run(
                 run_id,
                 name=payload.name,
                 config=payload.config,
                 status=payload.status,
+                customer_id=_resolve_customer_id(customer_id),
             )
         except ValueError as exc:
             detail = str(exc)
@@ -712,9 +775,16 @@ def create_app(
         return {"run": run}
 
     @app.post("/runs/{run_id}/activate", response_model=RunEnvelope)
-    def activate_run_path(run_id: str, _: None = Depends(require_api_key)) -> dict[str, Any]:
+    def activate_run_path(
+        run_id: str,
+        _: None = Depends(require_api_key),
+        customer_id: str | None = Query(default=None),
+    ) -> dict[str, Any]:
         try:
-            run = service_instance.activate_run(run_id.strip())
+            run = service_instance.activate_run(
+                run_id.strip(),
+                customer_id=_resolve_customer_id(customer_id),
+            )
         except ValueError as exc:
             raise HTTPException(status_code=404, detail=str(exc))
         return {"run": run}
@@ -724,13 +794,20 @@ def create_app(
         payload: IngestRequest,
         _: None = Depends(require_api_key),
         run_id: str | None = Query(default=None),
+        customer_id: str | None = Query(default=None),
     ) -> dict[str, Any]:
         logger.info("ingest endpoint called")
         try:
-            resolved = _resolve_run_id_with_default(service_instance, run_id)
+            resolved_customer = _resolve_customer_id(customer_id or payload.customer_id)
+            resolved = _resolve_run_id_with_default(
+                service_instance,
+                run_id,
+                customer_id=resolved_customer,
+            )
             result = service_instance.ingest_payload(
                 payload.model_dump(exclude_none=True),
                 run_id=resolved,
+                customer_id=resolved_customer,
             )
         except ValueError as e:
             logger.warning("validation failure ingest: %s", e)
@@ -742,13 +819,23 @@ def create_app(
         payload: BatchIngestRequest,
         _: None = Depends(require_api_key),
         run_id: str | None = Query(default=None),
+        customer_id: str | None = Query(default=None),
     ) -> dict[str, Any]:
         logger.info("ingest_batch endpoint called items=%s", len(payload.items))
         try:
-            resolved = _resolve_run_id_with_default(service_instance, run_id)
+            payload_customer = None
+            if payload.items:
+                payload_customer = payload.items[0].customer_id
+            resolved_customer = _resolve_customer_id(customer_id or payload_customer)
+            resolved = _resolve_run_id_with_default(
+                service_instance,
+                run_id,
+                customer_id=resolved_customer,
+            )
             results = service_instance.ingest_batch(
                 [item.model_dump(exclude_none=True) for item in payload.items],
                 run_id=resolved,
+                customer_id=resolved_customer,
             )
         except ValueError as e:
             logger.warning("validation failure ingest_batch: %s", e)
@@ -760,11 +847,21 @@ def create_app(
         payload: CsvIngestRequest,
         _: None = Depends(require_api_key),
         run_id: str | None = Query(default=None),
+        customer_id: str | None = Query(default=None),
     ) -> dict[str, Any]:
         logger.info("ingest_csv endpoint called")
         try:
-            resolved = _resolve_run_id_with_default(service_instance, run_id)
-            results = service_instance.ingest_csv(payload.csv_text, run_id=resolved)
+            resolved_customer = _resolve_customer_id(customer_id or payload.customer_id)
+            resolved = _resolve_run_id_with_default(
+                service_instance,
+                run_id,
+                customer_id=resolved_customer,
+            )
+            results = service_instance.ingest_csv(
+                payload.csv_text,
+                run_id=resolved,
+                customer_id=resolved_customer,
+            )
         except ValueError as e:
             logger.warning("validation failure ingest_csv: %s", e)
             raise HTTPException(status_code=400, detail=str(e))
@@ -777,16 +874,36 @@ def create_app(
         return {"ok": True}
 
     @app.get("/results/latest", response_model=ResultsEnvelope)
-    def get_latest(run_id: str | None = Query(default=None)) -> dict[str, Any]:
-        resolved = _resolve_run_id(service_instance, run_id)
-        latest = service_instance.get_latest_result(run_id=resolved)
+    def get_latest(
+        run_id: str | None = Query(default=None),
+        customer_id: str | None = Query(default=None),
+        site_id: str | None = Query(default=None),
+    ) -> dict[str, Any]:
+        resolved_customer = _resolve_customer_id(customer_id)
+        resolved = _resolve_run_id(service_instance, run_id, customer_id=resolved_customer)
+        latest = service_instance.get_latest_result(
+            run_id=resolved,
+            customer_id=resolved_customer,
+            site_id=site_id,
+        )
         results = [latest] if latest is not None else []
         return _results_envelope(results, latest=latest)
 
     @app.get("/results/recent", response_model=ResultsEnvelope)
-    def get_recent(limit: int = 100, run_id: str | None = Query(default=None)) -> dict[str, Any]:
-        resolved = _resolve_run_id(service_instance, run_id)
-        results = service_instance.list_recent_results(limit=limit, run_id=resolved)
+    def get_recent(
+        limit: int = 100,
+        run_id: str | None = Query(default=None),
+        customer_id: str | None = Query(default=None),
+        site_id: str | None = Query(default=None),
+    ) -> dict[str, Any]:
+        resolved_customer = _resolve_customer_id(customer_id)
+        resolved = _resolve_run_id(service_instance, run_id, customer_id=resolved_customer)
+        results = service_instance.list_recent_results(
+            limit=limit,
+            run_id=resolved,
+            customer_id=resolved_customer,
+            site_id=site_id,
+        )
         latest = results[0] if results else None
         return _results_envelope(results, latest=latest)
 
@@ -795,12 +912,20 @@ def create_app(
         format: Literal["json", "csv"] = Query(default="json"),
         limit: int = Query(default=500, ge=1, le=5000),
         run_id: str | None = Query(default=None),
+        customer_id: str | None = Query(default=None),
+        site_id: str | None = Query(default=None),
     ) -> dict[str, Any]:
-        resolved = _resolve_run_id(service_instance, run_id)
-        results = service_instance.list_recent_results(limit=limit, run_id=resolved)
+        resolved_customer = _resolve_customer_id(customer_id)
+        resolved = _resolve_run_id(service_instance, run_id, customer_id=resolved_customer)
+        results = service_instance.list_recent_results(
+            limit=limit,
+            run_id=resolved,
+            customer_id=resolved_customer,
+            site_id=site_id,
+        )
         content_type, content = _build_export(results, format_name=format)
         suffix = "json" if format == "json" else "csv"
-        file_id = resolved or "all_runs"
+        file_id = f"{resolved_customer}_{resolved or 'all_runs'}"
         filename = f"neraium_results_{file_id}.{suffix}"
         return {
             "run_id": resolved,
@@ -812,17 +937,35 @@ def create_app(
         }
 
     @app.get("/results/{result_id}", response_model=ResultEnvelope)
-    def get_result_by_id(result_id: int, run_id: str | None = Query(default=None)) -> dict[str, Any]:
-        resolved = _resolve_run_id(service_instance, run_id)
-        result = service_instance.get_result_by_id(result_id, run_id=resolved)
+    def get_result_by_id(
+        result_id: int,
+        run_id: str | None = Query(default=None),
+        customer_id: str | None = Query(default=None),
+    ) -> dict[str, Any]:
+        resolved_customer = _resolve_customer_id(customer_id)
+        resolved = _resolve_run_id(service_instance, run_id, customer_id=resolved_customer)
+        result = service_instance.get_result_by_id(
+            result_id,
+            run_id=resolved,
+            customer_id=resolved_customer,
+        )
         if result is None:
             raise HTTPException(status_code=404, detail=f"Unknown result_id: {result_id}")
         return {"result": result}
 
     @app.get("/results/{result_id}/geometry", response_model=GeometryEnvelope)
-    def get_result_geometry(result_id: int, run_id: str | None = Query(default=None)) -> dict[str, Any]:
-        resolved = _resolve_run_id(service_instance, run_id)
-        result = service_instance.get_result_by_id(result_id, run_id=resolved)
+    def get_result_geometry(
+        result_id: int,
+        run_id: str | None = Query(default=None),
+        customer_id: str | None = Query(default=None),
+    ) -> dict[str, Any]:
+        resolved_customer = _resolve_customer_id(customer_id)
+        resolved = _resolve_run_id(service_instance, run_id, customer_id=resolved_customer)
+        result = service_instance.get_result_by_id(
+            result_id,
+            run_id=resolved,
+            customer_id=resolved_customer,
+        )
         if result is None:
             raise HTTPException(status_code=404, detail=f"Unknown result_id: {result_id}")
         return _build_geometry_payload(result, run_id=result.get("run_id") or resolved)
@@ -832,8 +975,16 @@ def create_app(
         format: Literal["json", "csv"] = Query(default="json"),
         limit: int = Query(default=500, ge=1, le=5000),
         run_id: str | None = Query(default=None),
+        customer_id: str | None = Query(default=None),
+        site_id: str | None = Query(default=None),
     ) -> dict[str, Any]:
-        return export_results(format=format, limit=limit, run_id=run_id)
+        return export_results(
+            format=format,
+            limit=limit,
+            run_id=run_id,
+            customer_id=customer_id,
+            site_id=site_id,
+        )
 
     app.include_router(build_web_router())
 

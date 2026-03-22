@@ -28,17 +28,18 @@ def _generate_csv_rows(row_count: int) -> str:
     return header + (row * row_count)
 
 
-def _run_and_ingest(client: TestClient) -> tuple[str, int]:
+def _run_and_ingest(client: TestClient, customer_id: str = "customer-a") -> tuple[str, int]:
     run = client.post(
-        "/runs",
+        _customer_path("/runs", customer_id=customer_id),
         json={"name": "mvp-run", "activate": True, "config": {"baseline_window": 5, "recent_window": 3}},
     )
     assert run.status_code == 200
     run_id = run.json()["run"]["run_id"]
     ing = client.post(
-        f"/ingest?run_id={run_id}",
+        _customer_path(f"/ingest?run_id={run_id}", customer_id=customer_id),
         json={
             "timestamp": "2026-01-01T00:00:00+00:00",
+            "customer_id": customer_id,
             "site_id": "site-a",
             "asset_id": "asset-a",
             "sensor_values": {"pressure": 51.2, "flow": 12.4},
@@ -47,6 +48,11 @@ def _run_and_ingest(client: TestClient) -> tuple[str, int]:
     assert ing.status_code == 200
     rid = int(ing.json()["results"][0]["result_id"])
     return run_id, rid
+
+
+def _customer_path(path: str, customer_id: str = "customer-a") -> str:
+    sep = "&" if "?" in path else "?"
+    return f"{path}{sep}customer_id={customer_id}"
 
 
 def test_mvp_routes_available(tmp_path) -> None:
@@ -89,13 +95,13 @@ def test_run_scoped_result_detail_and_recent(tmp_path) -> None:
     client = _client(tmp_path)
     run_id, result_id = _run_and_ingest(client)
 
-    detail = client.get(f"/results/{result_id}?run_id={run_id}")
+    detail = client.get(_customer_path(f"/results/{result_id}?run_id={run_id}"))
     assert detail.status_code == 200
     result = detail.json()["result"]
     assert result["run_id"] == run_id
     assert result["result_id"] == result_id
 
-    recent = client.get(f"/results/recent?run_id={run_id}&limit=10")
+    recent = client.get(_customer_path(f"/results/recent?run_id={run_id}&limit=10"))
     assert recent.status_code == 200
     body = recent.json()
     assert body["count"] >= 1
@@ -104,9 +110,27 @@ def test_run_scoped_result_detail_and_recent(tmp_path) -> None:
 
 def test_geometry_endpoints_expose_engine_derived_structure(tmp_path) -> None:
     client = _client(tmp_path)
-    run_id, result_id = _run_and_ingest(client)
+    run = client.post(
+        _customer_path("/runs", customer_id="customer-a"),
+        json={"name": "mvp-run-geometry", "activate": True, "config": {"baseline_window": 5, "recent_window": 3}},
+    )
+    assert run.status_code == 200
+    run_id = run.json()["run"]["run_id"]
+    for i in range(8):
+        ing = client.post(
+            _customer_path(f"/ingest?run_id={run_id}", customer_id="customer-a"),
+            json={
+                "timestamp": f"2026-01-01T00:00:{i:02d}+00:00",
+                "customer_id": "customer-a",
+                "site_id": "site-a",
+                "asset_id": "asset-a",
+                "sensor_values": {"pressure": 51.2 + i * 0.1, "flow": 12.4 + i * 0.2},
+            },
+        )
+        assert ing.status_code == 200
+    result_id = int(ing.json()["results"][0]["result_id"])
 
-    run_geom = client.get(f"/runs/{run_id}/geometry")
+    run_geom = client.get(_customer_path(f"/runs/{run_id}/geometry"))
     assert run_geom.status_code == 200
     run_payload = run_geom.json()
     assert run_payload["run_id"] == run_id
@@ -121,7 +145,7 @@ def test_geometry_endpoints_expose_engine_derived_structure(tmp_path) -> None:
     assert set(node.keys()) >= {"id", "label", "position", "magnitude", "stress", "state"}
     assert set(node["position"].keys()) == {"x", "y", "z"}
 
-    result_geom = client.get(f"/results/{result_id}/geometry?run_id={run_id}")
+    result_geom = client.get(_customer_path(f"/results/{result_id}/geometry?run_id={run_id}"))
     assert result_geom.status_code == 200
     result_payload = result_geom.json()
     assert result_payload["result_id"] == result_id
@@ -133,7 +157,7 @@ def test_export_json_and_csv(tmp_path) -> None:
     client = _client(tmp_path)
     run_id, _ = _run_and_ingest(client)
 
-    export_json = client.get(f"/results/export?run_id={run_id}&format=json&limit=50")
+    export_json = client.get(_customer_path(f"/results/export?run_id={run_id}&format=json&limit=50"))
     assert export_json.status_code == 200
     j = export_json.json()
     assert j["format"] == "json"
@@ -141,7 +165,7 @@ def test_export_json_and_csv(tmp_path) -> None:
     assert isinstance(decoded, list)
     assert decoded
 
-    export_csv = client.get(f"/results/export?run_id={run_id}&format=csv&limit=50")
+    export_csv = client.get(_customer_path(f"/results/export?run_id={run_id}&format=csv&limit=50"))
     assert export_csv.status_code == 200
     c = export_csv.json()
     assert c["format"] == "csv"
@@ -150,21 +174,24 @@ def test_export_json_and_csv(tmp_path) -> None:
 
 def test_update_and_activate_run_routes(tmp_path) -> None:
     client = _client(tmp_path)
-    r1 = client.post("/runs", json={"name": "run-1", "activate": True, "config": {"x": 1}})
-    r2 = client.post("/runs", json={"name": "run-2", "activate": False, "config": {"x": 2}})
+    r1 = client.post(_customer_path("/runs"), json={"name": "run-1", "activate": True, "config": {"x": 1}})
+    r2 = client.post(_customer_path("/runs"), json={"name": "run-2", "activate": False, "config": {"x": 2}})
     assert r1.status_code == 200
     assert r2.status_code == 200
     run2 = r2.json()["run"]["run_id"]
 
-    upd = client.patch(f"/runs/{run2}", json={"name": "run-2b", "status": "open", "config": {"x": 3}})
+    upd = client.patch(
+        _customer_path(f"/runs/{run2}"),
+        json={"name": "run-2b", "status": "open", "config": {"x": 3}},
+    )
     assert upd.status_code == 200
     assert upd.json()["run"]["name"] == "run-2b"
 
-    act = client.post(f"/runs/{run2}/activate")
+    act = client.post(_customer_path(f"/runs/{run2}/activate"))
     assert act.status_code == 200
     assert act.json()["run"]["is_active"] is True
 
-    active = client.get("/runs/active")
+    active = client.get(_customer_path("/runs/active"))
     assert active.status_code == 200
     assert active.json()["run"]["run_id"] == run2
 
@@ -176,7 +203,7 @@ def test_request_body_limit_allows_50mb_and_rejects_over_limit(tmp_path) -> None
     # exercising the same middleware code path.
     client = _client(tmp_path, max_request_body_bytes=2048)
     run = client.post(
-        "/runs",
+        _customer_path("/runs"),
         json={"name": "size-limit-run", "activate": True, "config": {}},
     )
     assert run.status_code == 200
@@ -184,13 +211,13 @@ def test_request_body_limit_allows_50mb_and_rejects_over_limit(tmp_path) -> None
 
     allowed_csv = _generate_csv_rows(30)
     allowed_payload = {"csv_text": allowed_csv}
-    allowed_resp = client.post(f"/ingest/csv?run_id={run_id}", json=allowed_payload)
+    allowed_resp = client.post(_customer_path(f"/ingest/csv?run_id={run_id}"), json=allowed_payload)
     assert allowed_resp.status_code == 200
     assert allowed_resp.json()["count"] > 0
 
     too_large_csv = _generate_csv_rows(120)
     too_large_payload = {"csv_text": too_large_csv}
-    too_large_resp = client.post(f"/ingest/csv?run_id={run_id}", json=too_large_payload)
+    too_large_resp = client.post(_customer_path(f"/ingest/csv?run_id={run_id}"), json=too_large_payload)
     assert too_large_resp.status_code == 413
     assert "Request body too large" in too_large_resp.json()["detail"]
 
@@ -198,7 +225,7 @@ def test_request_body_limit_allows_50mb_and_rejects_over_limit(tmp_path) -> None
 def test_request_body_limit_short_circuits_content_length(tmp_path) -> None:
     client = _client(tmp_path, max_request_body_bytes=2048)
     run = client.post(
-        "/runs",
+        _customer_path("/runs"),
         json={"name": "size-limit-run-header", "activate": True, "config": {}},
     )
     assert run.status_code == 200
@@ -206,10 +233,60 @@ def test_request_body_limit_short_circuits_content_length(tmp_path) -> None:
 
     oversized_csv = _generate_csv_rows(40)
     response = client.post(
-        f"/ingest/csv?run_id={run_id}",
+        _customer_path(f"/ingest/csv?run_id={run_id}"),
         json={"csv_text": oversized_csv},
         headers={"content-length": str(2048 + 10)},
     )
     assert response.status_code == 413
     assert "Request body too large" in response.json()["detail"]
+
+
+def test_customer_isolation_for_results_and_runs(tmp_path) -> None:
+    client = _client(tmp_path)
+
+    run_a = client.post(_customer_path("/runs", customer_id="cust-a"), json={"name": "run-a", "activate": True, "config": {}})
+    run_b = client.post(_customer_path("/runs", customer_id="cust-b"), json={"name": "run-b", "activate": True, "config": {}})
+    assert run_a.status_code == 200
+    assert run_b.status_code == 200
+    run_a_id = run_a.json()["run"]["run_id"]
+    run_b_id = run_b.json()["run"]["run_id"]
+
+    ing_a = client.post(
+        _customer_path(f"/ingest?run_id={run_a_id}", customer_id="cust-a"),
+        json={
+            "timestamp": "2026-01-01T00:00:00+00:00",
+            "customer_id": "cust-a",
+            "site_id": "site-1",
+            "asset_id": "asset-1",
+            "sensor_values": {"pressure": 50.0, "flow": 10.0},
+        },
+    )
+    ing_b = client.post(
+        _customer_path(f"/ingest?run_id={run_b_id}", customer_id="cust-b"),
+        json={
+            "timestamp": "2026-01-01T00:01:00+00:00",
+            "customer_id": "cust-b",
+            "site_id": "site-2",
+            "asset_id": "asset-2",
+            "sensor_values": {"pressure": 60.0, "flow": 11.0},
+        },
+    )
+    assert ing_a.status_code == 200
+    assert ing_b.status_code == 200
+
+    recent_a = client.get(_customer_path("/results/recent?limit=10", customer_id="cust-a"))
+    recent_b = client.get(_customer_path("/results/recent?limit=10", customer_id="cust-b"))
+    assert recent_a.status_code == 200
+    assert recent_b.status_code == 200
+    assert recent_a.json()["count"] == 1
+    assert recent_b.json()["count"] == 1
+    assert recent_a.json()["results"][0]["customer_id"] == "cust-a"
+    assert recent_b.json()["results"][0]["customer_id"] == "cust-b"
+
+    runs_a = client.get(_customer_path("/runs?limit=10", customer_id="cust-a"))
+    runs_b = client.get(_customer_path("/runs?limit=10", customer_id="cust-b"))
+    assert runs_a.status_code == 200
+    assert runs_b.status_code == 200
+    assert all(item["customer_id"] == "cust-a" for item in runs_a.json()["runs"])
+    assert all(item["customer_id"] == "cust-b" for item in runs_b.json()["runs"])
 

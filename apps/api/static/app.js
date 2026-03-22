@@ -125,6 +125,11 @@ const state = {
   runRecent: [],
   runGeometry: null,
   uploadFile: null,
+  tenant: {
+    customerId: "default-customer",
+    siteId: "",
+    knownSites: [],
+  },
   runsView: {
     search: "",
     status: "all",
@@ -156,6 +161,84 @@ const state = {
     cleanupResize: null,
   },
 };
+
+const TENANT_STORAGE_KEY = "neraium_customer_id";
+
+function customerIdValue(value) {
+  const text = String(value || "").trim();
+  return text || "default-customer";
+}
+
+function siteIdValue(value) {
+  return String(value || "").trim();
+}
+
+function readTenantFromStorage() {
+  try {
+    const stored = window.localStorage.getItem(TENANT_STORAGE_KEY);
+    state.tenant.customerId = customerIdValue(stored);
+  } catch (_err) {
+    state.tenant.customerId = "default-customer";
+  }
+}
+
+function tenantScopeParams(extra = {}) {
+  const out = {
+    customer_id: customerIdValue(state.tenant.customerId),
+  };
+  const siteId = siteIdValue(state.tenant.siteId);
+  if (siteId) {
+    out.site_id = siteId;
+  }
+  return { ...out, ...extra };
+}
+
+function routeScopeFromQuery() {
+  const params = new URLSearchParams(window.location.search);
+  const out = {};
+  const customer = params.get("customer_id");
+  const site = params.get("site_id");
+  if (customer) out.customer_id = customerIdValue(customer);
+  if (site) out.site_id = siteIdValue(site);
+  return out;
+}
+
+function collectKnownSites(results) {
+  const known = new Set(state.tenant.knownSites);
+  (results || []).forEach((row) => {
+    const site = siteIdValue(row?.site_id);
+    if (site) known.add(site);
+  });
+  state.tenant.knownSites = Array.from(known).sort((a, b) => a.localeCompare(b));
+}
+
+function renderTenantControls() {
+  const customerInput = qs("#customerFilterInput");
+  const siteInput = qs("#siteFilterInput");
+  const siteList = qs("#knownSitesList");
+  if (customerInput) customerInput.value = customerIdValue(state.tenant.customerId);
+  if (siteInput) siteInput.value = siteIdValue(state.tenant.siteId);
+  if (siteList) {
+    siteList.innerHTML = state.tenant.knownSites
+      .map((site) => `<option value="${escapeHtml(site)}"></option>`)
+      .join("");
+  }
+}
+
+async function applyTenantFromControls() {
+  const customerInput = qs("#customerFilterInput");
+  const siteInput = qs("#siteFilterInput");
+  const customer = customerIdValue(customerInput?.value);
+  const site = siteIdValue(siteInput?.value);
+  state.tenant.customerId = customer;
+  state.tenant.siteId = site;
+  try {
+    window.localStorage.setItem(TENANT_STORAGE_KEY, customer);
+  } catch (_err) {
+    // no-op
+  }
+  await refreshCurrentPage();
+}
 
 const chartTheme = {
   tickColor: "#9cb0ce",
@@ -647,7 +730,9 @@ function renderGeometryScene(payload) {
 }
 
 async function loadRunGeometry(runId) {
-  const payload = await fetchJson(apiUrl(`/runs/${encodeURIComponent(runId)}/geometry`, {}));
+  const payload = await fetchJson(
+    apiUrl(`/runs/${encodeURIComponent(runId)}/geometry`, tenantScopeParams())
+  );
   state.runGeometry = payload;
   const projectionNote =
     payload?.projection?.note ||
@@ -742,9 +827,9 @@ function updateUploadRunInfo() {
 }
 
 async function ensureActiveRun() {
-  const active = await fetchJson("/runs/active");
+  const active = await fetchJson(apiUrl("/runs/active", tenantScopeParams()));
   if (active.run) return active.run;
-  const created = await fetchJson("/runs", {
+  const created = await fetchJson(apiUrl("/runs", tenantScopeParams()), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -799,11 +884,15 @@ function filteredSortedRuns() {
 }
 
 async function loadRuns() {
-  const runsEnv = await fetchJson("/runs?limit=500");
+  const runsEnv = await fetchJson(apiUrl("/runs", tenantScopeParams({ limit: 500 })));
   state.runs = runsEnv.runs || [];
+  collectKnownSites(state.runs);
   if (runsEnv.active_run) {
     updateActiveRunHeader(runsEnv.active_run);
+  } else {
+    updateActiveRunHeader(null);
   }
+  renderTenantControls();
   renderRunsList();
 }
 
@@ -838,7 +927,10 @@ function renderRunsList() {
       if (!runId) return;
       try {
         setLoading(true, "Activating run...");
-        const out = await fetchJson(`/runs/${encodeURIComponent(runId)}/activate`, { method: "POST" });
+        const out = await fetchJson(
+          apiUrl(`/runs/${encodeURIComponent(runId)}/activate`, tenantScopeParams()),
+          { method: "POST" }
+        );
         updateActiveRunHeader(out.run);
         await loadRuns();
         setStatus(`Activated run ${out.run.name}`, false, true);
@@ -910,7 +1002,7 @@ function renderDashboardRecent(results) {
       <td>${riskBadgeHtml(r.risk_level)}</td>
       <td>${toPretty(structuralDriftFromResult(r))}</td>
       <td>${toPretty(compositeInstabilityFromResult(r))}</td>
-      <td><a href="/app/results/${encodeURIComponent(r.result_id)}?run_id=${encodeURIComponent(state.activeRun?.run_id || "")}">View</a></td>
+      <td><a href="/app/results/${encodeURIComponent(r.result_id)}?run_id=${encodeURIComponent(state.activeRun?.run_id || "")}&customer_id=${encodeURIComponent(customerIdValue(state.tenant.customerId))}">View</a></td>
     `;
     tbody.appendChild(tr);
   });
@@ -918,15 +1010,17 @@ function renderDashboardRecent(results) {
 
 async function loadDashboard() {
   const runId = state.activeRun?.run_id || "";
-  const recentEnv = await fetchJson(apiUrl("/results/recent", { run_id: runId, limit: 200 }));
+  const recentEnv = await fetchJson(apiUrl("/results/recent", tenantScopeParams({ run_id: runId, limit: 200 })));
   const latest = (recentEnv.results && recentEnv.results[0]) || null;
   state.dashboardRecent = recentEnv.results || [];
+  collectKnownSites(state.dashboardRecent);
+  renderTenantControls();
   renderDashboardMetrics(latest);
   renderDashboardRecent(state.dashboardRecent);
 }
 
 function exportData(format, runId) {
-  const url = apiUrl("/results/export", { format, run_id: runId || "", limit: 500 });
+  const url = apiUrl("/results/export", tenantScopeParams({ format, run_id: runId || "", limit: 500 }));
   window.location.href = url;
 }
 
@@ -953,10 +1047,13 @@ async function uploadCsvToActiveRun() {
   const runId = state.activeRun?.run_id;
   if (!runId) throw new Error("No active run found");
   const csvText = await parseCsvText(file);
-  return fetchJson(`/ingest/csv?run_id=${encodeURIComponent(runId)}`, {
+  return fetchJson(apiUrl("/ingest/csv", tenantScopeParams({ run_id: runId })), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ csv_text: csvText }),
+    body: JSON.stringify({
+      customer_id: customerIdValue(state.tenant.customerId),
+      csv_text: csvText,
+    }),
   });
 }
 
@@ -978,7 +1075,7 @@ async function createRunFromForm() {
       throw new Error(`Invalid run config JSON: ${err.message || err}`);
     }
   }
-  const out = await fetchJson("/runs", {
+  const out = await fetchJson(apiUrl("/runs", tenantScopeParams()), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ name, config, activate }),
@@ -1008,10 +1105,15 @@ async function seedDemoData() {
       },
     });
   }
-  return fetchJson(`/ingest/batch?run_id=${encodeURIComponent(runId)}`, {
+  return fetchJson(apiUrl("/ingest/batch", tenantScopeParams({ run_id: runId })), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ items }),
+    body: JSON.stringify({
+      items: items.map((item) => ({
+        ...item,
+        customer_id: customerIdValue(state.tenant.customerId),
+      })),
+    }),
   });
 }
 
@@ -1237,14 +1339,16 @@ function renderRunDetailFromState() {
 }
 
 async function loadRunDetail(runId) {
-  const runRes = await fetchJson(`/runs/${encodeURIComponent(runId)}`);
+  const runRes = await fetchJson(apiUrl(`/runs/${encodeURIComponent(runId)}`, tenantScopeParams()));
   const run = runRes.run;
   const title = qs("#runDetailTitle");
   const meta = qs("#runDetailMeta");
   if (title) title.textContent = `Run: ${run.name}`;
   if (meta) meta.textContent = `${run.run_id} · status=${run.status} · created=${run.created_at}`;
-  const recentEnv = await fetchJson(apiUrl("/results/recent", { run_id: runId, limit: 1000 }));
+  const recentEnv = await fetchJson(apiUrl("/results/recent", tenantScopeParams({ run_id: runId, limit: 1000 })));
   state.runRecent = recentEnv.results || [];
+  collectKnownSites(state.runRecent);
+  renderTenantControls();
   setRangeButtonState(state.runDetailView.range);
   renderRunDetailFromState();
   await loadRunGeometry(runId);
@@ -1258,7 +1362,9 @@ async function loadRunDetail(runId) {
 async function loadResultDetail(resultId) {
   const params = new URLSearchParams(window.location.search);
   const runId = params.get("run_id") || state.activeRun?.run_id || "";
-  const env = await fetchJson(apiUrl(`/results/${encodeURIComponent(resultId)}`, { run_id: runId }));
+  const env = await fetchJson(
+    apiUrl(`/results/${encodeURIComponent(resultId)}`, tenantScopeParams({ run_id: runId }))
+  );
   const r = env.result;
   const grid = qs("#resultDetailGrid");
   if (!grid) return;
@@ -1399,6 +1505,15 @@ async function wireEvents() {
     state.runsView.sort = String(e.target.value || "created_desc");
     renderRunsList();
   });
+  qs("#customerFilterInput")?.addEventListener("change", async () => {
+    await applyTenantFromControls();
+  });
+  qs("#customerFilterInput")?.addEventListener("blur", async () => {
+    await applyTenantFromControls();
+  });
+  qs("#siteFilterInput")?.addEventListener("change", async () => {
+    await applyTenantFromControls();
+  });
 
   qs("#runResultsSearchInput")?.addEventListener("input", (e) => {
     state.runDetailView.search = String(e.target.value || "");
@@ -1445,6 +1560,15 @@ async function wireEvents() {
 }
 
 async function init() {
+  readTenantFromStorage();
+  const routeScope = routeScopeFromQuery();
+  if (routeScope.customer_id) {
+    state.tenant.customerId = customerIdValue(routeScope.customer_id);
+  }
+  if (routeScope.site_id) {
+    state.tenant.siteId = siteIdValue(routeScope.site_id);
+  }
+  renderTenantControls();
   const route = getRoute();
   const routeToPage = {
     dashboard: "dashboard",

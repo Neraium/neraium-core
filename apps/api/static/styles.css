@@ -234,6 +234,12 @@ a:hover {
   gap: 8px;
 }
 
+#customerFilterInput,
+#siteFilterInput {
+  min-width: 160px;
+  max-width: 210px;
+}
+
 .content {
   max-width: 1380px;
   margin: 0 auto;
@@ -616,6 +622,14 @@ input[type="file"] {
 .filters input,
 .filters select {
   max-width: 320px;
+}
+
+.tenant-filters {
+  align-items: end;
+}
+
+.tenant-filters input {
+  min-width: 170px;
 }
 
 .table-wrap {
