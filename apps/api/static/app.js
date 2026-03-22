@@ -132,6 +132,64 @@ function compositeInstabilityFromResult(r) {
   return null;
 }
 
+function interpretDrift(value) {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return { label: "Drift unavailable", detail: "no structural drift score yet." };
+  }
+  if (value >= 0.65) {
+    return { label: "High structural drift", detail: `value ${value.toFixed(3)} indicates strong structural change.` };
+  }
+  if (value >= 0.35) {
+    return { label: "Elevated structural drift", detail: `value ${value.toFixed(3)} indicates meaningful movement from baseline.` };
+  }
+  return { label: "Low structural drift", detail: `value ${value.toFixed(3)} remains close to baseline structure.` };
+}
+
+function interpretComposite(value) {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return { label: "Instability unavailable", detail: "composite instability is not available for this result." };
+  }
+  if (value >= 0.65) {
+    return { label: "High instability", detail: `value ${value.toFixed(3)} suggests unstable system behavior.` };
+  }
+  if (value >= 0.35) {
+    return { label: "Watch instability", detail: `value ${value.toFixed(3)} suggests growing instability.` };
+  }
+  return { label: "Stable instability profile", detail: `value ${value.toFixed(3)} remains in low-instability range.` };
+}
+
+function interpretConfidence(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) {
+    return { label: "Confidence unavailable", detail: "confidence score is not present for this result." };
+  }
+  if (n >= 0.75) {
+    return { label: "High confidence", detail: `${n.toFixed(3)} means this interpretation is well-supported by current structure.` };
+  }
+  if (n >= 0.45) {
+    return { label: "Moderate confidence", detail: `${n.toFixed(3)} means interpretation is directionally useful but should be monitored.` };
+  }
+  return { label: "Low confidence", detail: `${n.toFixed(3)} means treat this as an early signal, not a firm conclusion.` };
+}
+
+function interpretRisk(value) {
+  const risk = normalizeRiskLevel(value);
+  if (risk === "HIGH") return "High risk: immediate operator attention is recommended.";
+  if (risk === "MEDIUM") return "Medium risk: monitor closely for escalation.";
+  if (risk === "LOW") return "Low risk: structure appears stable right now.";
+  return "Risk is unknown: not enough signal context yet.";
+}
+
+function conciseResultInsight(result) {
+  const risk = normalizeRiskLevel(result?.risk_level);
+  const phase = String(phaseFromResult(result) || "-");
+  const trend = String(trendFromResult(result) || "-");
+  if (risk === "HIGH") return `High risk in ${phase} phase (${trend} trend): operator review recommended.`;
+  if (risk === "MEDIUM") return `Watch condition in ${phase} phase (${trend} trend): monitor for escalation.`;
+  if (risk === "LOW") return `Stable condition in ${phase} phase (${trend} trend): no immediate concern indicated.`;
+  return `State observed in ${phase} phase (${trend} trend): awaiting stronger risk signal.`;
+}
+
 function summarizeRiskDrivers(result) {
   const risk = normalizeRiskLevel(result?.risk_level);
   const drift = structuralDriftFromResult(result);
@@ -1733,17 +1791,29 @@ function renderDashboardMetrics(latest) {
   const metricRiskBadge = qs("#metricRiskBadge");
   const metricPhaseBadge = qs("#metricPhaseBadge");
 
-  if (metricDrift) metricDrift.textContent = toPretty(structuralDriftFromResult(latest));
-  if (metricComposite) metricComposite.textContent = toPretty(compositeInstabilityFromResult(latest));
+  const driftVal = structuralDriftFromResult(latest);
+  const compositeVal = compositeInstabilityFromResult(latest);
+  const confidenceVal = latest?.confidence;
+  const driftInsight = interpretDrift(driftVal);
+  const compositeInsight = interpretComposite(compositeVal);
+  const confidenceInsight = interpretConfidence(confidenceVal);
+  if (metricDrift) metricDrift.textContent = driftInsight.label;
+  if (metricComposite) metricComposite.textContent = compositeInsight.label;
   if (metricPhase) metricPhase.textContent = toPretty(phaseFromResult(latest));
   if (metricTrend) metricTrend.textContent = toPretty(trendFromResult(latest));
-  if (metricRisk) metricRisk.textContent = toPretty(latest?.risk_level);
+  if (metricRisk) metricRisk.textContent = interpretRisk(latest?.risk_level);
   if (metricState) metricState.textContent = toPretty(latest?.state || latest?.interpreted_state);
-  if (metricConfidence) metricConfidence.textContent = toPretty(latest?.confidence);
+  if (metricConfidence) metricConfidence.textContent = confidenceInsight.label;
   const operatorSummary = demoFriendlyOperatorMessage(latest, null);
   if (metricOperator) metricOperator.textContent = operatorSummary;
   if (metricRiskBadge) metricRiskBadge.innerHTML = riskBadgeHtml(latest?.risk_level);
   if (metricPhaseBadge) metricPhaseBadge.innerHTML = phaseBadgeHtml(phaseFromResult(latest));
+  const metricDriftNote = qs("#metricDriftNote");
+  const metricCompositeNote = qs("#metricCompositeNote");
+  const metricConfidenceNote = qs("#metricConfidenceNote");
+  if (metricDriftNote) metricDriftNote.textContent = driftInsight.detail;
+  if (metricCompositeNote) metricCompositeNote.textContent = compositeInsight.detail;
+  if (metricConfidenceNote) metricConfidenceNote.textContent = confidenceInsight.detail;
 
   const riskLevel = normalizeRiskLevel(latest?.risk_level);
   if (metricRisk) metricRisk.setAttribute("data-risk", riskLevel);
@@ -1773,14 +1843,16 @@ function renderDashboardRecent(results) {
     else empty.classList.add("hidden");
   }
   list.forEach((r) => {
+    const insight = conciseResultInsight(r);
     const tr = document.createElement("tr");
     tr.innerHTML = `
       <td>${toPretty(r.result_id)}</td>
       <td>${toPretty(r.timestamp || r.persisted_at)}</td>
       <td>${phaseBadgeHtml(phaseFromResult(r))}</td>
       <td>${riskBadgeHtml(r.risk_level)}</td>
-      <td>${toPretty(structuralDriftFromResult(r))}</td>
-      <td>${toPretty(compositeInstabilityFromResult(r))}</td>
+      <td>${escapeHtml(interpretDrift(structuralDriftFromResult(r)).label)}</td>
+      <td>${escapeHtml(interpretComposite(compositeInstabilityFromResult(r)).label)}</td>
+      <td>${escapeHtml(insight)}</td>
       <td><a href="/app/results/${encodeURIComponent(r.result_id)}?run_id=${encodeURIComponent(state.activeRun?.run_id || "")}&customer_id=${encodeURIComponent(customerIdValue(state.tenant.customerId))}">View</a></td>
     `;
     tbody.appendChild(tr);
@@ -1808,9 +1880,14 @@ function renderDashboardAlerts(alerts) {
     const li = document.createElement("li");
     li.className = `message-item message-item-${alertSeverityClass(a.severity)}`.trim();
     const ctx = a.context || {};
+    let meaning = "Alert generated due to notable structural change.";
+    if (String(a.type || "") === "risk_high_transition") meaning = "Risk moved into HIGH: immediate operator attention recommended.";
+    else if (String(a.type || "") === "instability_threshold_crossed") meaning = "Instability crossed configured boundary: system behavior is becoming less stable.";
+    else if (String(a.type || "") === "rapid_drift_detected") meaning = "Drift changed quickly between updates: structure is shifting faster than expected.";
     li.innerHTML = `
       <div class="msg-head">${escapeHtml(String(a.type || "alert"))} · ${escapeHtml(String(a.created_at || ""))}</div>
-      <div>${escapeHtml(String(a.message || ""))}</div>
+      <div>${escapeHtml(meaning)}</div>
+      <div class="msg-subtle">${escapeHtml(String(a.message || ""))}</div>
       <div class="msg-subtle">run: ${escapeHtml(String(ctx.run_id || "-"))} · result: ${escapeHtml(String(ctx.result_id || "-"))}</div>
     `;
     list.appendChild(li);
@@ -2118,6 +2195,7 @@ function renderRunResultsTable(results) {
     const transition = transitionLabel(prev, r);
     const severity = transitionSeverity(prev, r);
     const stateText = String(r.state || r.interpreted_state || "-");
+    const insight = conciseResultInsight(r);
     const tr = document.createElement("tr");
     tr.className = `result-row result-row-${severity}`;
     tr.innerHTML = `
@@ -2127,10 +2205,11 @@ function renderRunResultsTable(results) {
       <td>${phaseBadgeHtml(phaseFromResult(r))}</td>
       <td><span class="trend-pill">${escapeHtml(String(trendFromResult(r) || "-"))}</span></td>
       <td>${riskBadgeHtml(r.risk_level)}</td>
-      <td>${toPretty(structuralDriftFromResult(r))}</td>
-      <td>${toPretty(compositeInstabilityFromResult(r))}</td>
+      <td>${escapeHtml(interpretDrift(structuralDriftFromResult(r)).label)}</td>
+      <td>${escapeHtml(interpretComposite(compositeInstabilityFromResult(r)).label)}</td>
       <td>
-        <div>${toPretty(r.operator_message)}</div>
+        <div>${escapeHtml(insight)}</div>
+        <div class="msg-subtle">${toPretty(r.operator_message)}</div>
         <div class="row-transition row-transition-${severity}">${escapeHtml(transition)}</div>
       </td>
     `;
@@ -2273,16 +2352,13 @@ async function loadResultDetail(resultId) {
   if (!grid) return;
   grid.innerHTML = "";
   const keys = [
-    ["result_id", r.result_id],
-    ["run_id", r.run_id],
-    ["timestamp", r.timestamp || r.persisted_at],
-    ["state", r.state],
-    ["phase", phaseFromResult(r)],
-    ["trend", trendFromResult(r)],
-    ["risk_level", r.risk_level],
-    ["structural_drift_score", structuralDriftFromResult(r)],
-    ["composite_instability", compositeInstabilityFromResult(r)],
-    ["operator_message", r.operator_message],
+    ["Result", `ID ${toPretty(r.result_id)} in run ${toPretty(r.run_id)}`],
+    ["Observed at", r.timestamp || r.persisted_at],
+    ["State", `${toPretty(r.state)} (${toPretty(phaseFromResult(r))} / ${toPretty(trendFromResult(r))})`],
+    ["Risk meaning", interpretRisk(r.risk_level)],
+    ["Drift interpretation", `${interpretDrift(structuralDriftFromResult(r)).label} — ${interpretDrift(structuralDriftFromResult(r)).detail}`],
+    ["Instability interpretation", `${interpretComposite(compositeInstabilityFromResult(r)).label} — ${interpretComposite(compositeInstabilityFromResult(r)).detail}`],
+    ["Operator guidance", r.operator_message],
   ];
   keys.forEach(([k, v]) => {
     const card = document.createElement("article");

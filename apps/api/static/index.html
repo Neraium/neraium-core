@@ -98,6 +98,9 @@
                   <p id="metricConfidence" class="signal-meta-value compact">-</p>
                 </article>
               </div>
+              <p id="metricInterpretation" class="subtitle signal-interpretation">
+                Waiting for telemetry to explain current structural condition.
+              </p>
             </div>
           </section>
 
@@ -109,6 +112,10 @@
           <section class="panel">
             <div class="panel-header">
               <h3>Alerts</h3>
+            </div>
+            <div id="dashboardAlertsEmpty" class="empty-state hidden">
+              <p>No alerts yet.</p>
+              <p class="subtitle">Alerts appear when risk escalates, instability crosses threshold, or drift jumps rapidly.</p>
             </div>
             <ul id="dashboardAlertsList" class="messages"></ul>
           </section>
@@ -135,6 +142,7 @@
                     <th>Risk</th>
                     <th>Drift</th>
                     <th>Composite</th>
+                    <th>Insight</th>
                     <th></th>
                   </tr>
                 </thead>
