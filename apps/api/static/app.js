@@ -210,6 +210,383 @@ function normalizeRiskLevel(value) {
   return "UNKNOWN";
 }
 
+function riskRankNumber(value) {
+  const r = normalizeRiskLevel(value);
+  if (r === "HIGH") return 3;
+  if (r === "MEDIUM") return 2;
+  if (r === "LOW") return 1;
+  return 0;
+}
+
+function healthScoreFromSignals(result) {
+  if (!result) return null;
+  const risk = normalizeRiskLevel(result.risk_level);
+  const drift = structuralDriftFromResult(result);
+  const inst = compositeInstabilityFromResult(result);
+  let score = 90;
+  if (risk === "HIGH") score -= 44;
+  else if (risk === "MEDIUM") score -= 24;
+  else if (risk === "UNKNOWN") score -= 10;
+  if (typeof drift === "number" && Number.isFinite(drift)) {
+    score -= Math.min(30, drift * 34);
+  }
+  if (typeof inst === "number" && Number.isFinite(inst)) {
+    score -= Math.min(28, inst * 32);
+  }
+  return Math.max(0, Math.min(100, Math.round(score)));
+}
+
+function setHealthRingScore(score) {
+  const arc = qs("#dashboardHealthArc");
+  if (!arc) return;
+  const safe = Number.isFinite(score) ? Math.max(0, Math.min(100, score)) : 0;
+  const r = 52;
+  const c = 2 * Math.PI * r;
+  arc.style.strokeDasharray = `${c}`;
+  arc.style.strokeDashoffset = `${c * (1 - safe / 100)}`;
+  arc.setAttribute("data-score", String(safe));
+}
+
+function dashboardChronologicalResults() {
+  return (state.dashboardRecent || []).slice().reverse();
+}
+
+function sparkPointAnomaly(prev, curr) {
+  if (!curr) return false;
+  const pd = structuralDriftFromResult(prev);
+  const cd = structuralDriftFromResult(curr);
+  const pi = compositeInstabilityFromResult(prev);
+  const ci = compositeInstabilityFromResult(curr);
+  const dJump = typeof pd === "number" && typeof cd === "number" ? Math.abs(cd - pd) : 0;
+  const iJump = typeof pi === "number" && typeof ci === "number" ? Math.abs(ci - pi) : 0;
+  if (dJump >= 0.12 || iJump >= 0.12) return true;
+  if (prev && riskRankNumber(curr.risk_level) > riskRankNumber(prev.risk_level)) return true;
+  return false;
+}
+
+function renderDashboardSparkline(series) {
+  const canvas = qs("#dashboardSparkline");
+  const tooltip = qs("#dashboardSparklineTooltip");
+  if (!canvas || !canvas.getContext) return;
+  const ctx = canvas.getContext("2d");
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const cssW = canvas.clientWidth || canvas.parentElement?.clientWidth || 640;
+  const cssH = 140;
+  canvas.width = Math.floor(cssW * dpr);
+  canvas.height = Math.floor(cssH * dpr);
+  canvas.style.width = `${cssW}px`;
+  canvas.style.height = `${cssH}px`;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, cssW, cssH);
+
+  const pad = { l: 8, r: 12, t: 18, b: 22 };
+  const innerW = cssW - pad.l - pad.r;
+  const innerH = cssH - pad.t - pad.b;
+  const items = Array.isArray(series) ? series : [];
+  if (items.length === 0) {
+    ctx.fillStyle = "rgba(140, 164, 206, 0.55)";
+    ctx.font = "12px Inter, system-ui, sans-serif";
+    ctx.fillText("Trend appears after ingest.", pad.l, pad.t + 24);
+    if (tooltip) {
+      tooltip.classList.add("hidden");
+      tooltip.textContent = "";
+    }
+    return;
+  }
+
+  const driftVals = items.map((r) => structuralDriftFromResult(r)).map((v) => (typeof v === "number" ? v : 0));
+  const compVals = items.map((r) => compositeInstabilityFromResult(r)).map((v) => (typeof v === "number" ? v : 0));
+  const maxY = Math.max(0.08, ...driftVals, ...compVals, 1);
+  const n = items.length;
+  const step = n <= 1 ? 0 : innerW / (n - 1);
+
+  ctx.strokeStyle = "rgba(80, 110, 160, 0.35)";
+  ctx.lineWidth = 1;
+  for (let g = 0; g <= 4; g += 1) {
+    const y = pad.t + innerH * (g / 4);
+    ctx.beginPath();
+    ctx.moveTo(pad.l, y);
+    ctx.lineTo(pad.l + innerW, y);
+    ctx.stroke();
+  }
+
+  function xAt(i) {
+    return pad.l + step * i;
+  }
+  function yAt(v) {
+    return pad.t + innerH - (Math.min(maxY, Math.max(0, v)) / maxY) * innerH;
+  }
+
+  function drawLine(vals, color, fill) {
+    ctx.beginPath();
+    vals.forEach((v, i) => {
+      const x = xAt(i);
+      const y = yAt(v);
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    });
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    if (fill) {
+      ctx.lineTo(xAt(n - 1), pad.t + innerH);
+      ctx.lineTo(pad.l, pad.t + innerH);
+      ctx.closePath();
+      ctx.fillStyle = fill;
+      ctx.fill();
+    }
+  }
+
+  drawLine(
+    driftVals,
+    "rgba(121, 171, 255, 0.95)",
+    "rgba(106, 156, 250, 0.12)",
+  );
+
+  drawLine(compVals, "rgba(255, 191, 86, 0.92)", null);
+
+  const lastIdx = n - 1;
+  items.forEach((r, i) => {
+    const prev = i > 0 ? items[i - 1] : null;
+    const anomaly = sparkPointAnomaly(prev, r);
+    const cx = xAt(i);
+    const cyD = yAt(driftVals[i]);
+    const cyC = yAt(compVals[i]);
+    const isHover = state.dashboardSparkline.hoveredIndex === i;
+    const radius = i === lastIdx ? (anomaly ? 5 : 4) : anomaly || isHover ? 4 : 0;
+    if (radius > 0) {
+      ctx.beginPath();
+      ctx.arc(cx, cyD, radius, 0, Math.PI * 2);
+      ctx.fillStyle = anomaly ? "rgba(255, 120, 120, 0.95)" : "rgba(186, 210, 255, 0.95)";
+      ctx.fill();
+      if (i === lastIdx) {
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.5)";
+        ctx.lineWidth = 1;
+        ctx.stroke();
+      }
+    }
+    ctx.beginPath();
+    ctx.arc(cx, cyC, i === lastIdx ? 3 : 0, 0, Math.PI * 2);
+    if (i === lastIdx) {
+      ctx.fillStyle = "rgba(255, 207, 120, 0.95)";
+      ctx.fill();
+    }
+  });
+
+  ctx.fillStyle = "rgba(180, 198, 230, 0.85)";
+  ctx.font = "10px Inter, system-ui, sans-serif";
+  ctx.fillText("drift", pad.l, 12);
+  ctx.fillStyle = "rgba(255, 201, 120, 0.9)";
+  ctx.fillText("composite", pad.l + 52, 12);
+
+  canvas.dataset.sparkMeta = JSON.stringify(
+    items.map((r, i) => ({
+      i,
+      x: xAt(i),
+      drift: driftVals[i],
+      comp: compVals[i],
+      ts: String(r.timestamp || r.persisted_at || ""),
+      risk: normalizeRiskLevel(r.risk_level),
+    })),
+  );
+}
+
+function bindDashboardSparklineInteractions() {
+  const canvas = qs("#dashboardSparkline");
+  if (!canvas || canvas.dataset.sparkBound === "1") return;
+  canvas.dataset.sparkBound = "1";
+  const tooltip = qs("#dashboardSparklineTooltip");
+
+  function metaList() {
+    try {
+      return JSON.parse(canvas.dataset.sparkMeta || "[]");
+    } catch (_e) {
+      return [];
+    }
+  }
+
+  function showTip(idx, clientX, clientY) {
+    const list = metaList();
+    const row = list.find((m) => m.i === idx);
+    if (!row || !tooltip) return;
+    tooltip.classList.remove("hidden");
+    tooltip.innerHTML = `<strong>${escapeHtml(row.ts)}</strong><br/>Drift ${row.drift.toFixed(2)} · Composite ${row.comp.toFixed(
+      2,
+    )}<br/><span class="spark-tip-risk">${escapeHtml(row.risk)} risk</span>`;
+    const wrap = canvas.parentElement;
+    if (!wrap) return;
+    const rect = wrap.getBoundingClientRect();
+    const x = clientX - rect.left;
+    const y = clientY - rect.top;
+    tooltip.style.left = `${Math.min(rect.width - 120, Math.max(8, x + 12))}px`;
+    tooltip.style.top = `${Math.min(rect.height - 48, Math.max(8, y - 36))}px`;
+  }
+
+  canvas.addEventListener("mousemove", (evt) => {
+    const list = metaList();
+    if (!list.length) return;
+    const rect = canvas.getBoundingClientRect();
+    const x = evt.clientX - rect.left;
+    let best = -1;
+    let bestDist = 14;
+    list.forEach((m) => {
+      const d = Math.abs(m.x - x);
+      if (d < bestDist) {
+        bestDist = d;
+        best = m.i;
+      }
+    });
+    if (best < 0) {
+      state.dashboardSparkline.hoveredIndex = null;
+      if (tooltip) tooltip.classList.add("hidden");
+      renderDashboardSparkline(dashboardChronologicalResults());
+      return;
+    }
+    state.dashboardSparkline.hoveredIndex = best;
+    renderDashboardSparkline(dashboardChronologicalResults());
+    showTip(best, evt.clientX, evt.clientY);
+  });
+
+  canvas.addEventListener("mouseleave", () => {
+    state.dashboardSparkline.hoveredIndex = null;
+    if (tooltip) tooltip.classList.add("hidden");
+    renderDashboardSparkline(dashboardChronologicalResults());
+  });
+}
+
+function renderDashboardStressHeatmap(latest) {
+  const host = qs("#dashboardStressHeatmap");
+  const legend = qs("#dashboardStressLegend");
+  if (!host) return;
+  const drift = structuralDriftFromResult(latest);
+  const comp = compositeInstabilityFromResult(latest);
+  const d = typeof drift === "number" && Number.isFinite(drift) ? Math.max(0, Math.min(1, drift)) : null;
+  const c = typeof comp === "number" && Number.isFinite(comp) ? Math.max(0, Math.min(1, comp)) : null;
+  host.innerHTML = "";
+  if (d === null && c === null) {
+    host.innerHTML = '<p class="stress-empty">No stress scalars on latest snapshot.</p>';
+    if (legend) legend.textContent = "Drift and composite unavailable.";
+    return;
+  }
+  function bar(label, value, tone) {
+    const pct = Math.round(value * 100);
+    return `<div class="stress-bar-row" data-tone="${tone}">
+      <span class="stress-bar-label">${escapeHtml(label)}</span>
+      <div class="stress-bar-track"><span class="stress-bar-fill" style="width:${pct}%"></span></div>
+      <span class="stress-bar-value">${pct}%</span>
+    </div>`;
+  }
+  const parts = [];
+  if (d !== null) parts.push(bar("Structural drift", d, d >= 0.65 ? "high" : d >= 0.35 ? "med" : "low"));
+  if (c !== null) parts.push(bar("Composite instability", c, c >= 0.65 ? "high" : c >= 0.35 ? "med" : "low"));
+  host.innerHTML = parts.join("");
+  if (legend) {
+    legend.textContent = `Normalized stress (0–100%) · latest snapshot${
+      d !== null ? ` · drift ${d.toFixed(2)}` : ""
+    }${c !== null ? ` · composite ${c.toFixed(2)}` : ""}`;
+  }
+}
+
+function renderDashboardMiniGraph(latest) {
+  const svg = qs("#dashboardMiniGraph");
+  const empty = qs("#dashboardMiniGraphEmpty");
+  if (!svg) return;
+  const sensors = latest && Array.isArray(latest.sensor_relationships) ? latest.sensor_relationships : [];
+  const labels = sensors.map((s) => String(s || "").trim()).filter(Boolean);
+  if (labels.length < 2) {
+    svg.innerHTML = "";
+    if (empty) empty.classList.remove("hidden");
+    return;
+  }
+  if (empty) empty.classList.add("hidden");
+  const n = labels.length;
+  const cx = 160;
+  const cy = 100;
+  const rad = 72;
+  const pts = labels.map((_, i) => {
+    const a = -Math.PI / 2 + (i / n) * Math.PI * 2;
+    return { x: cx + rad * Math.cos(a), y: cy + rad * Math.sin(a), label: labels[i] };
+  });
+  let edges = "";
+  for (let i = 0; i < n; i += 1) {
+    const a = pts[i];
+    const b = pts[(i + 1) % n];
+    edges += `<line x1="${a.x.toFixed(1)}" y1="${a.y.toFixed(1)}" x2="${b.x.toFixed(1)}" y2="${b.y.toFixed(
+      1,
+    )}" class="mini-graph-edge" />`;
+  }
+  const nodes = pts
+    .map((p, i) => {
+      const short = p.label.length > 10 ? `${p.label.slice(0, 9)}…` : p.label;
+      return `<g class="mini-graph-node" data-idx="${i}">
+        <circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="10" />
+        <title>${escapeHtml(p.label)}</title>
+        <text x="${p.x.toFixed(1)}" y="${(p.y + 22).toFixed(1)}" text-anchor="middle" class="mini-graph-label">${escapeHtml(
+        short,
+      )}</text>
+      </g>`;
+    })
+    .join("");
+  svg.innerHTML = `<defs>
+    <linearGradient id="miniGraphGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="rgba(121,171,255,0.5)" />
+      <stop offset="100%" stop-color="rgba(90,140,220,0.2)" />
+    </linearGradient>
+  </defs>
+  ${edges}
+  ${nodes}`;
+}
+
+function renderDashboardHero(latest, prev) {
+  const scoreEl = qs("#dashboardHealthScore");
+  const narrative = qs("#dashboardNarrativeStrip");
+  const countEl = qs("#dashboardSnapshotCount");
+  const alertCountEl = qs("#dashboardAlertCount");
+  const alertSummaryEl = qs("#dashboardAlertSummary");
+  const link = qs("#dashboardOpenRunLink");
+  const alertTile = qs("#dashboardAlertTile");
+
+  const score = healthScoreFromSignals(latest);
+  if (scoreEl) scoreEl.textContent = latest ? String(score) : "—";
+  setHealthRingScore(latest ? score : 0);
+  if (narrative) {
+    const line = buildDemoNarrative(latest, prev);
+    narrative.textContent = line.message;
+    narrative.setAttribute("data-severity", line.severity || "normal");
+  }
+  const chron = dashboardChronologicalResults();
+  if (countEl) countEl.textContent = String(chron.length);
+
+  const alerts = state.dashboardAlerts || [];
+  if (alertCountEl) alertCountEl.textContent = String(alerts.length);
+  if (alertSummaryEl) {
+    const first = alerts[0];
+    alertSummaryEl.textContent = first
+      ? String(first.message || first.type || "Alert").slice(0, 120)
+      : "No open alerts for this run.";
+  }
+  if (alertTile) {
+    const critical = alerts.some((a) => String(a.severity || "").toLowerCase() === "critical");
+    const high = alerts.some((a) => {
+      const s = String(a.severity || "").toLowerCase();
+      return s === "high" || s === "critical";
+    });
+    alertTile.classList.toggle("insight-tile-alert-critical", critical);
+    alertTile.classList.toggle("insight-tile-alert-watch", !critical && high);
+  }
+
+  const runId = state.activeRun?.run_id || "";
+  if (link) {
+    if (runId) {
+      link.href = `/app/runs/${encodeURIComponent(runId)}?customer_id=${encodeURIComponent(customerIdValue(state.tenant.customerId))}`;
+      link.classList.remove("disabled");
+    } else {
+      link.href = "/app/runs";
+      link.classList.add("disabled");
+    }
+  }
+}
+
 function riskBadgeHtml(value) {
   const risk = normalizeRiskLevel(value);
   const classMap = {
@@ -584,6 +961,7 @@ function getRoute() {
   const parts = window.location.pathname.split("/").filter(Boolean);
   if (parts.length === 0 || parts[0] === "dashboard") return { page: "dashboard" };
   if (parts[0] === "upload") return { page: "upload" };
+  if (parts[0] === "demo" && parts[1] === "sii") return { page: "demo-sii" };
   if (parts[0] === "app" && parts[1] === "runs" && parts[2]) return { page: "run-detail", runId: parts[2] };
   if (parts[0] === "app" && parts[1] === "runs") return { page: "runs" };
   if (parts[0] === "app" && parts[1] === "results" && parts[2]) return { page: "result-detail", resultId: parts[2] };
@@ -651,6 +1029,9 @@ const state = {
     cursor: 0,
     keyEvents: [],
     activeRunId: "",
+  },
+  dashboardSparkline: {
+    hoveredIndex: null,
   },
 };
 
@@ -1484,6 +1865,7 @@ function setPage(page) {
     upload: ["Upload", "Upload telemetry CSV into the active run"],
     "run-detail": ["Run Detail", "Deep inspection of run outputs"],
     "result-detail": ["Result Detail", "Focused view for a single result"],
+    "demo-sii": ["SII tour", "Narrative walkthrough for demos and onboarding"],
   };
   qsa(".page").forEach((p) => p.classList.add("hidden"));
   const pageEl = qs(`#page-${page}`);
@@ -1497,6 +1879,7 @@ function setPage(page) {
   if (page === "dashboard") qs('[data-nav="dashboard"]')?.classList.add("active");
   if (page === "runs" || page === "run-detail") qs('[data-nav="runs"]')?.classList.add("active");
   if (page === "upload") qs('[data-nav="upload"]')?.classList.add("active");
+  if (page === "demo-sii") qs('[data-nav="demo-sii"]')?.classList.add("active");
 }
 
 function updateUploadRunInfo() {
@@ -1788,7 +2171,7 @@ function renderRunsList() {
   });
 }
 
-function renderDashboardMetrics(latest) {
+function renderDashboardMetrics(latest, prev) {
   const metricDrift = qs("#metricDrift");
   const metricComposite = qs("#metricComposite");
   const metricPhase = qs("#metricPhase");
@@ -1807,7 +2190,7 @@ function renderDashboardMetrics(latest) {
   if (metricRisk) metricRisk.textContent = toPretty(latest?.risk_level);
   if (metricState) metricState.textContent = toPretty(latest?.state || latest?.interpreted_state);
   if (metricConfidence) metricConfidence.textContent = toPretty(latest?.confidence);
-  const operatorSummary = demoFriendlyOperatorMessage(latest, null);
+  const operatorSummary = demoFriendlyOperatorMessage(latest, prev);
   if (metricOperator) metricOperator.textContent = operatorSummary;
   if (metricRiskBadge) metricRiskBadge.innerHTML = riskBadgeHtml(latest?.risk_level);
   if (metricPhaseBadge) metricPhaseBadge.innerHTML = phaseBadgeHtml(phaseFromResult(latest));
@@ -1827,6 +2210,10 @@ function renderDashboardMetrics(latest) {
     }
     metricState.setAttribute("data-state", stateTone);
   }
+
+  renderDashboardHero(latest, prev);
+  renderDashboardStressHeatmap(latest);
+  renderDashboardMiniGraph(latest);
 }
 
 function renderDashboardRecent(results) {
@@ -1873,7 +2260,7 @@ function renderDashboardAlerts(alerts) {
   }
   items.forEach((a) => {
     const li = document.createElement("li");
-    li.className = `message-item message-item-${alertSeverityClass(a.severity)}`.trim();
+    li.className = `alert-feed-item alert-feed-${alertSeverityClass(a.severity)}`.trim();
     const ctx = a.context || {};
     li.innerHTML = `
       <div class="msg-head">${escapeHtml(String(a.type || "alert"))} · ${escapeHtml(String(a.created_at || ""))}</div>
@@ -1887,7 +2274,6 @@ function renderDashboardAlerts(alerts) {
 async function loadDashboard() {
   const runId = state.activeRun?.run_id || "";
   const recentEnv = await fetchJson(apiUrl("/results/recent", tenantScopeParams({ run_id: runId, limit: 200 })));
-  const latest = (recentEnv.results && recentEnv.results[0]) || null;
   const alertsEnv = await fetchJson(
     apiUrl("/alerts", tenantScopeParams({ run_id: runId, limit: 20 }))
   );
@@ -1895,9 +2281,15 @@ async function loadDashboard() {
   state.dashboardAlerts = alertsEnv.alerts || [];
   collectKnownSites(state.dashboardRecent);
   renderTenantControls();
-  renderDashboardMetrics(latest);
+  const chron = dashboardChronologicalResults();
+  const latest = chron.length ? chron[chron.length - 1] : null;
+  const prev = chron.length > 1 ? chron[chron.length - 2] : null;
+  renderDashboardMetrics(latest, prev);
   renderDashboardRecent(state.dashboardRecent);
   renderDashboardAlerts(state.dashboardAlerts);
+  renderDashboardSparkline(chron);
+  bindDashboardSparklineInteractions();
+  window.requestAnimationFrame(() => renderDashboardSparkline(dashboardChronologicalResults()));
 }
 
 function exportData(format, runId) {
@@ -2194,11 +2586,11 @@ function renderRunResultsTable(results) {
       <td>${phaseBadgeHtml(phaseFromResult(r))}</td>
       <td><span class="trend-pill">${escapeHtml(String(trendFromResult(r) || "-"))}</span></td>
       <td>${riskBadgeHtml(r.risk_level)}</td>
+      <td><span class="row-transition row-transition-${severity}">${escapeHtml(transition)}</span></td>
       <td>${toPretty(structuralDriftFromResult(r))}</td>
       <td>${toPretty(compositeInstabilityFromResult(r))}</td>
       <td>
         <div>${toPretty(r.operator_message)}</div>
-        <div class="row-transition row-transition-${severity}">${escapeHtml(transition)}</div>
       </td>
     `;
     tbody.appendChild(tr);
@@ -2722,6 +3114,24 @@ async function wireEvents() {
   qs("#exportJsonBtn")?.addEventListener("click", () => exportData("json", state.activeRun?.run_id || ""));
   qs("#exportCsvBtn")?.addEventListener("click", () => exportData("csv", state.activeRun?.run_id || ""));
 
+  qs("#demoTourEnableBtn")?.addEventListener("click", () => {
+    const toggle = qs("#demoModeToggle");
+    if (toggle) {
+      toggle.checked = true;
+      toggle.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+  });
+
+  let resizeTimer = null;
+  window.addEventListener("resize", () => {
+    if (resizeTimer) window.clearTimeout(resizeTimer);
+    resizeTimer = window.setTimeout(() => {
+      if (getRoute().page === "dashboard") {
+        renderDashboardSparkline(dashboardChronologicalResults());
+      }
+    }, 150);
+  });
+
   wireUploadInteractions();
 }
 
@@ -2743,6 +3153,7 @@ async function init() {
     upload: "upload",
     "run-detail": "run-detail",
     "result-detail": "result-detail",
+    "demo-sii": "demo-sii",
   };
   setPage(routeToPage[route.page] || "dashboard");
   try {
@@ -2753,6 +3164,7 @@ async function init() {
     if (route.page === "dashboard") await loadDashboard();
     if (route.page === "runs") renderRunsList();
     if (route.page === "upload") updateUploadRunInfo();
+    if (route.page === "demo-sii") renderTenantControls();
     if (route.page === "run-detail") await loadRunDetail(route.runId);
     if (route.page === "result-detail") await loadResultDetail(route.resultId);
     await wireEvents();

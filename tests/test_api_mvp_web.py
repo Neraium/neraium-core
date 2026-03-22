@@ -151,6 +151,9 @@ def test_mvp_routes_available(tmp_path) -> None:
     home = client.get("/")
     assert home.status_code == 200
     assert "text/html" in home.headers.get("content-type", "")
+    demo_tour = client.get("/demo/sii")
+    assert demo_tour.status_code == 200
+    assert "text/html" in demo_tour.headers.get("content-type", "")
     js = client.get("/web/app.js")
     css = client.get("/web/styles.css")
     assert js.status_code == 200
