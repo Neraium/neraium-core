@@ -2,7 +2,8 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#05080f" />
   <title>Neraium Product UI</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -18,8 +19,10 @@
     </div>
   </div>
 
+  <div id="navBackdrop" class="nav-backdrop hidden" aria-hidden="true"></div>
+
   <div class="app-shell">
-    <aside class="sidebar">
+    <aside class="sidebar" id="appSidebar" aria-label="Main navigation">
       <div class="brand">
         <div class="brand-mark" aria-hidden="true">N</div>
         <div class="brand-text">
@@ -43,6 +46,9 @@
 
     <div class="main">
       <header class="topbar">
+        <button type="button" id="mobileNavToggle" class="mobile-nav-toggle" aria-label="Open menu" aria-expanded="false" aria-controls="appSidebar">
+          <span class="mobile-nav-toggle-bars" aria-hidden="true"></span>
+        </button>
         <div class="title-block">
           <p class="kicker">Operations Console</p>
           <h2 id="pageTitle">Dashboard</h2>
@@ -156,7 +162,7 @@
                 <canvas id="dashboardSparkline" width="900" height="140" aria-label="Drift and composite trend"></canvas>
                 <div id="dashboardSparklineTooltip" class="sparkline-tooltip hidden" role="tooltip"></div>
               </div>
-              <p class="sparkline-hint" id="dashboardSparklineHint">Hover the trend for values. Latest snapshot highlighted.</p>
+              <p class="sparkline-hint" id="dashboardSparklineHint">Hover or drag along the trend for values. Latest snapshot highlighted.</p>
             </div>
           </section>
 

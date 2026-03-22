@@ -418,17 +418,19 @@ function bindDashboardSparklineInteractions() {
     const rect = wrap.getBoundingClientRect();
     const x = clientX - rect.left;
     const y = clientY - rect.top;
-    tooltip.style.left = `${Math.min(rect.width - 120, Math.max(8, x + 12))}px`;
-    tooltip.style.top = `${Math.min(rect.height - 48, Math.max(8, y - 36))}px`;
+    const tipW = 140;
+    const tipH = 52;
+    tooltip.style.left = `${Math.min(rect.width - tipW - 8, Math.max(8, x + 12))}px`;
+    tooltip.style.top = `${Math.min(rect.height - tipH - 8, Math.max(8, y - 36))}px`;
   }
 
-  canvas.addEventListener("mousemove", (evt) => {
+  function pickIndex(clientX) {
     const list = metaList();
-    if (!list.length) return;
+    if (!list.length) return -1;
     const rect = canvas.getBoundingClientRect();
-    const x = evt.clientX - rect.left;
+    const x = clientX - rect.left;
     let best = -1;
-    let bestDist = 14;
+    let bestDist = 22;
     list.forEach((m) => {
       const d = Math.abs(m.x - x);
       if (d < bestDist) {
@@ -436,21 +438,65 @@ function bindDashboardSparklineInteractions() {
         best = m.i;
       }
     });
+    return best;
+  }
+
+  function clearHover() {
+    state.dashboardSparkline.hoveredIndex = null;
+    if (tooltip) tooltip.classList.add("hidden");
+    renderDashboardSparkline(dashboardChronologicalResults());
+  }
+
+  function updateFromClient(clientX, clientY) {
+    const list = metaList();
+    if (!list.length) {
+      clearHover();
+      return;
+    }
+    const best = pickIndex(clientX);
     if (best < 0) {
-      state.dashboardSparkline.hoveredIndex = null;
-      if (tooltip) tooltip.classList.add("hidden");
-      renderDashboardSparkline(dashboardChronologicalResults());
+      clearHover();
       return;
     }
     state.dashboardSparkline.hoveredIndex = best;
     renderDashboardSparkline(dashboardChronologicalResults());
-    showTip(best, evt.clientX, evt.clientY);
+    showTip(best, clientX, clientY);
+  }
+
+  canvas.addEventListener("pointerdown", (evt) => {
+    if (evt.pointerType === "touch" || evt.pointerType === "pen") {
+      try {
+        canvas.setPointerCapture(evt.pointerId);
+      } catch (_e) {
+        /* ignore */
+      }
+    }
+    updateFromClient(evt.clientX, evt.clientY);
   });
 
-  canvas.addEventListener("mouseleave", () => {
-    state.dashboardSparkline.hoveredIndex = null;
-    if (tooltip) tooltip.classList.add("hidden");
-    renderDashboardSparkline(dashboardChronologicalResults());
+  canvas.addEventListener("pointermove", (evt) => {
+    updateFromClient(evt.clientX, evt.clientY);
+  });
+
+  canvas.addEventListener("pointerup", (evt) => {
+    if (evt.pointerType === "touch" || evt.pointerType === "pen") {
+      try {
+        canvas.releasePointerCapture(evt.pointerId);
+      } catch (_e) {
+        /* ignore */
+      }
+      clearHover();
+    }
+  });
+
+  canvas.addEventListener("pointerleave", (evt) => {
+    if (evt.pointerType === "mouse") {
+      clearHover();
+    }
+  });
+
+  canvas.addEventListener("pointercancel", () => {
+    clearHover();
   });
 }
 
@@ -3001,7 +3047,69 @@ async function refreshCurrentPage() {
   if (route.page === "result-detail") await loadResultDetail(route.resultId);
 }
 
+const MOBILE_NAV_MQ = window.matchMedia("(max-width: 980px)");
+
+function setMobileNavOpen(open) {
+  const sidebar = qs("#appSidebar");
+  const backdrop = qs("#navBackdrop");
+  const toggle = qs("#mobileNavToggle");
+  if (!sidebar || !backdrop || !toggle) return;
+  if (open) {
+    sidebar.classList.add("nav-drawer-open");
+    backdrop.classList.remove("hidden");
+    toggle.setAttribute("aria-expanded", "true");
+    toggle.setAttribute("aria-label", "Close menu");
+    document.body.classList.add("nav-mobile-open");
+  } else {
+    sidebar.classList.remove("nav-drawer-open");
+    backdrop.classList.add("hidden");
+    toggle.setAttribute("aria-expanded", "false");
+    toggle.setAttribute("aria-label", "Open menu");
+    document.body.classList.remove("nav-mobile-open");
+  }
+}
+
+function wireMobileNav() {
+  const sidebar = qs("#appSidebar");
+  const backdrop = qs("#navBackdrop");
+  const toggle = qs("#mobileNavToggle");
+  if (!sidebar || !backdrop || !toggle || toggle.dataset.wired === "1") return;
+  toggle.dataset.wired = "1";
+
+  toggle.addEventListener("click", () => {
+    const open = !sidebar.classList.contains("nav-drawer-open");
+    setMobileNavOpen(open);
+  });
+
+  backdrop.addEventListener("click", () => {
+    setMobileNavOpen(false);
+  });
+
+  qsa(".nav a").forEach((a) => {
+    a.addEventListener("click", () => {
+      if (MOBILE_NAV_MQ.matches) setMobileNavOpen(false);
+    });
+  });
+
+  window.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && sidebar.classList.contains("nav-drawer-open")) {
+      setMobileNavOpen(false);
+      toggle.focus();
+    }
+  });
+
+  const onMq = () => {
+    if (!MOBILE_NAV_MQ.matches) setMobileNavOpen(false);
+  };
+  if (typeof MOBILE_NAV_MQ.addEventListener === "function") {
+    MOBILE_NAV_MQ.addEventListener("change", onMq);
+  } else {
+    MOBILE_NAV_MQ.addListener(onMq);
+  }
+}
+
 async function wireEvents() {
+  wireMobileNav();
   qsa("[data-geometry-mode]").forEach((btn) => {
     btn.addEventListener("click", () => {
       const mode = String(btn.getAttribute("data-geometry-mode") || "current");
