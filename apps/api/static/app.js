@@ -586,6 +586,7 @@ const state = {
   activeRun: null,
   runs: [],
   dashboardRecent: [],
+  dashboardAlerts: [],
   runRecent: [],
   runGeometry: null,
   uploadFile: null,
@@ -622,12 +623,16 @@ const state = {
     pointer: null,
     nodeMeshById: {},
     nodeDataById: {},
+    nodeLabelById: {},
+    nodeGlowById: {},
+    unstablePulseById: {},
     selectedId: null,
     frameId: null,
     resizeObserver: null,
     interactionEnabled: false,
     cleanupPointer: null,
     cleanupResize: null,
+    baselineMode: false,
   },
   demo: {
     enabled: false,
@@ -831,6 +836,9 @@ function disposeGeometryRenderer() {
   g.pointer = null;
   g.nodeMeshById = {};
   g.nodeDataById = {};
+  g.nodeLabelById = {};
+  g.nodeGlowById = {};
+  g.unstablePulseById = {};
   g.selectedId = null;
   g.interactionEnabled = false;
 }
@@ -941,24 +949,89 @@ function ensureThreeLibs() {
   return { three, controlsCtor };
 }
 
-function geometryNodeDetailsHtml(node) {
-  return `
-    <div class="geom-detail-row"><span>Node</span><strong>${escapeHtml(node.label || node.id || "-")}</strong></div>
-    <div class="geom-detail-row"><span>State</span><strong>${escapeHtml(node.state || "-")}</strong></div>
-    <div class="geom-detail-row"><span>Magnitude</span><strong>${toPretty(Number(node.magnitude))}</strong></div>
-    <div class="geom-detail-row"><span>Stress</span><strong>${toPretty(Number(node.stress))}</strong></div>
+function renderGeometryLegend(payload) {
+  const legend = qs("#geometryLegend");
+  if (!legend) return;
+  if (!payload || !payload.available) {
+    legend.innerHTML = "";
+    return;
+  }
+  const unstableCount = Number(payload?.summary?.unstable_nodes_current || 0);
+  const changedEdges = Number(payload?.summary?.changed_edges_current || 0);
+  legend.innerHTML = `
+    <span class="geom-pill">Current nodes: ${Number(payload?.nodes?.length || 0)}</span>
+    <span class="geom-pill">Current edges: ${Number(payload?.edges?.length || 0)}</span>
+    <span class="geom-pill geom-pill-unstable">Unstable nodes: ${unstableCount}</span>
+    <span class="geom-pill">Changed edges: ${changedEdges}</span>
   `;
 }
 
-function geometryGlobalDetailsHtml(payload) {
-  const m = payload?.metrics || {};
-  return `
-    <div class="geom-detail-row"><span>State</span><strong>${escapeHtml(String(m.state || "-"))}</strong></div>
-    <div class="geom-detail-row"><span>Risk</span><strong>${escapeHtml(String(m.risk_level || "-"))}</strong></div>
-    <div class="geom-detail-row"><span>Trend</span><strong>${escapeHtml(String(m.trend || "-"))}</strong></div>
-    <div class="geom-detail-row"><span>Drift</span><strong>${toPretty(m.structural_drift_score)}</strong></div>
-    <div class="geom-detail-row"><span>Composite</span><strong>${toPretty(m.composite_instability)}</strong></div>
-  `;
+function geometryDisplayMode() {
+  return state.geometry3d.baselineMode ? "baseline" : "current";
+}
+
+function geometryPositionForNode(node) {
+  const mode = geometryDisplayMode();
+  const source =
+    mode === "baseline"
+      ? node?.position_baseline || node?.position || {}
+      : node?.position_current || node?.position || {};
+  return {
+    x: Number(source?.x || 0),
+    y: Number(source?.y || 0),
+    z: Number(source?.z || 0),
+  };
+}
+
+function geometryStructureSummary(payload) {
+  if (!payload || !Array.isArray(payload.nodes) || !Array.isArray(payload.edges)) return "-";
+  const totalNodes = payload.nodes.length;
+  const totalEdges = payload.edges.length;
+  const unstableNodes = payload.nodes.filter((n) => Boolean(n.is_unstable)).length;
+  const strongEdges = payload.edges.filter((e) => Math.abs(Number(e.magnitude || 0)) >= 0.6).length;
+  const density = totalNodes > 1 ? (2 * totalEdges) / (totalNodes * (totalNodes - 1)) : 0;
+  return `${totalNodes} nodes · ${totalEdges} edges · unstable ${unstableNodes} · strong links ${strongEdges} · density ${toPretty(
+    density
+  )}`;
+}
+
+function setGeometryModeButtons() {
+  qsa("[data-geometry-mode]").forEach((btn) => {
+    const mode = String(btn.getAttribute("data-geometry-mode") || "current");
+    if ((mode === "baseline") === state.geometry3d.baselineMode) btn.classList.add("active");
+    else btn.classList.remove("active");
+  });
+}
+
+function applyGeometryDisplayMode() {
+  const g = state.geometry3d;
+  Object.entries(g.nodeMeshById || {}).forEach(([nodeId, mesh]) => {
+    const node = g.nodeDataById[nodeId];
+    if (!node || !mesh) return;
+    const pos = geometryPositionForNode(node);
+    if (!mesh.userData) mesh.userData = {};
+    const three = window.THREE;
+    if (!three?.Vector3) return;
+    mesh.userData.basePos = new three.Vector3(pos.x, pos.y, pos.z);
+    mesh.position.set(pos.x, pos.y, pos.z);
+    const label = g.nodeLabelById[nodeId];
+    if (label) {
+      const radius = Number(mesh.userData.radius || 0.05);
+      label.position.set(pos.x, pos.y + radius + 0.08, pos.z);
+    }
+    const halo = g.nodeGlowById[nodeId];
+    if (halo) halo.position.set(pos.x, pos.y, pos.z);
+  });
+  const note = qs("#geometryProjectionNote");
+  if (note) {
+    const modeLabel = state.geometry3d.baselineMode ? "BASELINE" : "CURRENT";
+    const extra =
+      " Use toggle to compare baseline structure against current stress projection.";
+    note.textContent = `${String(note.textContent || "").split(" [mode:")[0]} [mode: ${modeLabel}]${extra}`;
+  }
+  const summary = qs("#geometryStructureSummary");
+  if (summary) summary.textContent = geometryStructureSummary(state.runGeometry);
+  setGeometryModeButtons();
 }
 
 function updateGeometryDetails(nodeId = null) {
@@ -972,11 +1045,13 @@ function updateGeometryDetails(nodeId = null) {
   const metricRisk = qs("#geometryRisk");
   const metricDrift = qs("#geometryDrift");
   const metricComposite = qs("#geometryComposite");
+  const metricView = qs("#geometryViewMode");
 
   if (metricState) metricState.textContent = toPretty(payload?.metrics?.state);
   if (metricRisk) metricRisk.textContent = toPretty(payload?.metrics?.risk_level);
   if (metricDrift) metricDrift.textContent = toPretty(payload?.metrics?.structural_drift_score);
   if (metricComposite) metricComposite.textContent = toPretty(payload?.metrics?.composite_instability);
+  if (metricView) metricView.textContent = state.geometry3d.baselineMode ? "BASELINE" : "CURRENT";
 
   const setNodeFields = (label, stress, magnitude, stateText) => {
     if (nodeLabel) nodeLabel.textContent = label;
@@ -1002,7 +1077,7 @@ function updateGeometryDetails(nodeId = null) {
     String(node.label || node.id || "-"),
     toPretty(Number(node.stress)),
     toPretty(Number(node.magnitude)),
-    String(node.state || "-"),
+    `${String(node.state || "-")}${node.is_unstable ? " (UNSTABLE)" : ""}`,
   );
 }
 
@@ -1033,9 +1108,11 @@ function buildGeometryLegend(payload) {
   if (!details) return;
   if (!payload || !payload.available) {
     details.setAttribute("data-geometry-risk", "UNKNOWN");
+    renderGeometryLegend(payload);
     return;
   }
   details.setAttribute("data-geometry-risk", normalizeRiskLevel(payload.metrics?.risk_level));
+  renderGeometryLegend(payload);
 }
 
 function createNodeLabelSprite(three, text, colorHex = 0xd9e6ff) {
@@ -1144,6 +1221,9 @@ function renderGeometryScene(payload, viewportDims) {
   g.pointer = new three.Vector2();
   g.nodeMeshById = {};
   g.nodeDataById = {};
+  g.nodeLabelById = {};
+  g.nodeGlowById = {};
+  g.unstablePulseById = {};
   g.selectedId = null;
   g.interactionEnabled = true;
 
@@ -1198,21 +1278,42 @@ function renderGeometryScene(payload, viewportDims) {
     const pz = Number(node.position?.z || 0);
     mesh.position.set(px, py, pz);
     mesh.userData.nodeId = String(node.id);
+    mesh.userData.radius = radius;
     mesh.userData.basePos = new three.Vector3(px, py, pz);
     mesh.userData.jitterSeed = Math.random() * Math.PI * 2;
     nodeGroup.add(mesh);
     g.nodeMeshById[String(node.id)] = mesh;
     g.nodeDataById[String(node.id)] = node;
 
+    if (node.is_unstable) {
+      const unstableHalo = new three.Mesh(
+        new three.SphereGeometry(radius * 2.05, 16, 16),
+        new three.MeshBasicMaterial({
+          color: 0xff7878,
+          transparent: true,
+          opacity: 0.24,
+          blending: three.AdditiveBlending,
+          depthWrite: false,
+        })
+      );
+      unstableHalo.position.set(px, py, pz);
+      unstableHalo.userData.nodeId = String(node.id);
+      nodeGroup.add(unstableHalo);
+      g.nodeGlowById[String(node.id)] = unstableHalo;
+      g.unstablePulseById[String(node.id)] = 0.65 + Math.random() * 0.7;
+    }
+
     if (payload.nodes.length <= 24) {
       const label = createNodeLabelSprite(three, node.label || node.id);
       if (label) {
         label.position.set(px, py + radius + 0.08, pz);
         nodeGroup.add(label);
+        g.nodeLabelById[String(node.id)] = label;
       }
     }
   });
   scene.add(nodeGroup);
+  applyGeometryDisplayMode();
   updateGeometryDetails(null);
 
   const grid = new three.GridHelper(5.8, 14, 0x2f476b, 0x182741);
@@ -1280,6 +1381,14 @@ function renderGeometryScene(payload, viewportDims) {
         obj.position.y = base.y + Math.cos(t * 1.3 + phase) * amp * 0.1;
         obj.position.z = base.z + Math.sin(t * 1.1 + phase) * amp * 0.12;
       });
+      Object.entries(g.nodeGlowById || {}).forEach(([nodeId, halo]) => {
+        const mesh = g.nodeMeshById[nodeId];
+        if (!halo || !mesh) return;
+        const k = Number(g.unstablePulseById[nodeId] || 1);
+        const pulse = 1 + 0.12 * Math.sin(t * 2.4 + k);
+        halo.scale.setScalar(pulse);
+        halo.position.copy(mesh.position);
+      });
     }
     controls.update();
     renderer.render(scene, camera);
@@ -1296,12 +1405,14 @@ async function loadRunGeometry(runId) {
     payload?.projection?.note ||
     "Geometry projection metadata unavailable.";
   const fallback = qs("#geometryFallback");
+  const summary = qs("#geometryStructureSummary");
   if (fallback) {
     fallback.setAttribute("title", projectionNote);
     if (!payload?.available) {
       fallback.textContent = payload?.reason || projectionNote;
     }
   }
+  if (summary) summary.textContent = geometryStructureSummary(payload);
   try {
     const dims = await ensureGeometryViewportReady();
     if (!dims || dims.width <= 40 || dims.height <= 40) {
@@ -1735,15 +1846,50 @@ function renderDashboardRecent(results) {
   });
 }
 
+function alertSeverityClass(severity) {
+  const s = String(severity || "").toLowerCase();
+  if (s === "critical") return "critical";
+  if (s === "high") return "watch";
+  return "normal";
+}
+
+function renderDashboardAlerts(alerts) {
+  const list = qs("#dashboardAlertsList");
+  const empty = qs("#dashboardAlertsEmpty");
+  if (!list) return;
+  list.innerHTML = "";
+  const items = (alerts || []).slice(0, 20);
+  if (empty) {
+    if (items.length === 0) empty.classList.remove("hidden");
+    else empty.classList.add("hidden");
+  }
+  items.forEach((a) => {
+    const li = document.createElement("li");
+    li.className = `message-item message-item-${alertSeverityClass(a.severity)}`.trim();
+    const ctx = a.context || {};
+    li.innerHTML = `
+      <div class="msg-head">${escapeHtml(String(a.type || "alert"))} · ${escapeHtml(String(a.created_at || ""))}</div>
+      <div>${escapeHtml(String(a.message || ""))}</div>
+      <div class="msg-subtle">run: ${escapeHtml(String(ctx.run_id || "-"))} · result: ${escapeHtml(String(ctx.result_id || "-"))}</div>
+    `;
+    list.appendChild(li);
+  });
+}
+
 async function loadDashboard() {
   const runId = state.activeRun?.run_id || "";
   const recentEnv = await fetchJson(apiUrl("/results/recent", tenantScopeParams({ run_id: runId, limit: 200 })));
   const latest = (recentEnv.results && recentEnv.results[0]) || null;
+  const alertsEnv = await fetchJson(
+    apiUrl("/alerts", tenantScopeParams({ run_id: runId, limit: 20 }))
+  );
   state.dashboardRecent = recentEnv.results || [];
+  state.dashboardAlerts = alertsEnv.alerts || [];
   collectKnownSites(state.dashboardRecent);
   renderTenantControls();
   renderDashboardMetrics(latest);
   renderDashboardRecent(state.dashboardRecent);
+  renderDashboardAlerts(state.dashboardAlerts);
 }
 
 function exportData(format, runId) {
@@ -2269,6 +2415,14 @@ async function refreshCurrentPage() {
 }
 
 async function wireEvents() {
+  qsa("[data-geometry-mode]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const mode = String(btn.getAttribute("data-geometry-mode") || "current");
+      state.geometry3d.baselineMode = mode === "baseline";
+      applyGeometryDisplayMode();
+      updateGeometryDetails(state.geometry3d.selectedId);
+    });
+  });
   qs("#demoModeToggle")?.addEventListener("change", async (e) => {
     const enabled = Boolean(e.target?.checked);
     try {

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import json
 import socket
 import threading
@@ -230,10 +231,19 @@ def test_geometry_endpoints_expose_engine_derived_structure(tmp_path) -> None:
     assert isinstance(run_payload["edges"], list)
     assert run_payload["projection"]["is_visualization_projection"] is True
     assert "engine_fields" in run_payload["provenance"]
+    assert "views" in run_payload
+    assert "current" in run_payload["views"]
+    assert "baseline" in run_payload["views"]
+    assert run_payload["views"]["current"]["available"] is True
+    assert "summary" in run_payload
+    assert "unstable_nodes_current" in run_payload["summary"]
 
     node = run_payload["nodes"][0]
     assert set(node.keys()) >= {"id", "label", "position", "magnitude", "stress", "state"}
     assert set(node["position"].keys()) == {"x", "y", "z"}
+    assert set(node.keys()) >= {"position_current", "position_baseline", "is_unstable"}
+    assert set(node["position_current"].keys()) == {"x", "y", "z"}
+    assert set(node["position_baseline"].keys()) == {"x", "y", "z"}
 
     result_geom = client.get(_customer_path(f"/results/{result_id}/geometry?run_id={run_id}"))
     assert result_geom.status_code == 200
@@ -464,6 +474,21 @@ def test_stream_upload_rejects_non_csv_extension(tmp_path) -> None:
     assert ".csv file" in resp.json()["detail"]
 
 
+def test_alerts_test_endpoint_creates_alert(tmp_path) -> None:
+    client = _client(tmp_path)
+    run_id, _ = _run_and_ingest(client, customer_id="alerts-customer-b")
+
+    create = client.post(_customer_path(f"/alerts/test?run_id={run_id}", customer_id="alerts-customer-b"))
+    assert create.status_code == 200
+    assert create.json()["ok"] is True
+
+    listed = client.get(_customer_path(f"/alerts?run_id={run_id}&limit=20", customer_id="alerts-customer-b"))
+    assert listed.status_code == 200
+    alerts = listed.json()["alerts"]
+    assert alerts
+    assert any(str(a.get("type")) == "test_alert" for a in alerts)
+
+
 def test_pull_integration_start_status_stop_and_ingest(tmp_path) -> None:
     client = _client(tmp_path)
     customer_id = "pull-customer-a"
@@ -575,4 +600,282 @@ def test_pull_integration_reports_failures_with_retries(tmp_path) -> None:
     assert last.get("last_error")
     stop = client.post(_customer_path("/integrations/pull/stop", customer_id=customer_id))
     assert stop.status_code == 200
+
+
+def test_pull_integration_with_basic_auth_and_mapping_config(tmp_path) -> None:
+    client = _client(tmp_path)
+    customer_id = "pull-customer-c"
+    run = client.post(
+        _customer_path("/runs", customer_id=customer_id),
+        json={"name": "pull-run-basic-auth", "activate": True, "config": {}},
+    )
+    assert run.status_code == 200
+    run_id = run.json()["run"]["run_id"]
+
+    mapping_path = tmp_path / "integration.json"
+    mapping_path.write_text(
+        json.dumps(
+            {
+                "customers": {
+                    customer_id: {
+                        "mapping": {
+                            "payload_path": "data",
+                            "items_path": "events",
+                            "field_aliases": {
+                                "timestamp": ["time stamp"],
+                                "site_id": ["site code"],
+                                "asset_id": ["asset code"],
+                            },
+                        }
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    client.app.state.integration_config_path_override = str(mapping_path)
+    client.app.state.integration_config_override = None
+    try:
+        payload = json.dumps(
+            {
+                "data": {
+                    "events": [
+                        {
+                            "time stamp": "2026-01-01T00:00:00+00:00",
+                            "site code": "site-auth",
+                            "asset code": "asset-auth",
+                            "Pressure PSI": 55.1,
+                        }
+                    ]
+                }
+            }
+        )
+        auth_header = "Basic " + base64.b64encode(b"demo-user:demo-pass").decode("ascii")
+        server = _PullServer(payload, auth_header=auth_header)
+        endpoint = server.start()
+        try:
+            start = client.post(
+                _customer_path("/integrations/pull/start", customer_id=customer_id),
+                json={
+                    "endpoint_url": endpoint,
+                    "polling_interval_seconds": 0.2,
+                    "auth_type": "basic",
+                    "username": "demo-user",
+                    "password": "demo-pass",
+                    "run_id": run_id,
+                    "retry_max_attempts": 2,
+                    "retry_backoff_seconds": 0.05,
+                    "request_timeout_seconds": 2.0,
+                },
+            )
+            assert start.status_code == 200
+            pulled = _wait_for_pull_ingest(client, customer_id=customer_id, min_count=1)
+            assert pulled["running"] is True
+            recent = client.get(
+                _customer_path(
+                    f"/results/recent?run_id={run_id}&limit=5",
+                    customer_id=customer_id,
+                )
+            )
+            assert recent.status_code == 200
+            assert recent.json()["count"] >= 1
+            sensors = recent.json()["results"][0].get("sensor_relationships") or []
+            assert "pressure_psi" in {str(k).lower() for k in sensors}
+            stop = client.post(_customer_path("/integrations/pull/stop", customer_id=customer_id))
+            assert stop.status_code == 200
+        finally:
+            server.stop()
+    finally:
+        client.app.state.integration_config_path_override = None
+        client.app.state.integration_config_override = None
+
+
+def test_pull_integration_applies_customer_mapping_config(tmp_path) -> None:
+    mapping_path = tmp_path / "integration_config.json"
+    mapping_path.write_text(
+        json.dumps(
+            {
+                "customers": {
+                    "pull-customer-map": {
+                        "mapping": {
+                            "payload_path": "payload",
+                            "items_path": "rows",
+                            "field_aliases": {
+                                "timestamp": ["time_stamp"],
+                                "site_id": ["SITE ID"],
+                                "asset_id": ["asset id"],
+                                "sensor_values": ["SENSORS"],
+                            },
+                            "sensor_aliases": {
+                                "temp c": "temperature",
+                            },
+                        }
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    store = ResultStore(db_path=str(tmp_path / "test_pull_map.db"))
+    engine = StructuralEngine(baseline_window=5, recent_window=3)
+    service = StructuralMonitoringService(engine=engine, store=store)
+    app = create_app(service=service)
+    app.state.integration_config_path_override = str(mapping_path)
+    app.state.integration_config_override = None
+    client = TestClient(app)
+
+    customer_id = "pull-customer-map"
+    run = client.post(
+        _customer_path("/runs", customer_id=customer_id),
+        json={"name": "pull-map-run", "activate": True, "config": {}},
+    )
+    assert run.status_code == 200
+    run_id = run.json()["run"]["run_id"]
+
+    payload = json.dumps(
+        {
+            "payload": {
+                "rows": [
+                    {
+                        "time_stamp": "2026-01-01T00:00:00+00:00",
+                        "SITE ID": "site-map",
+                        "asset id": "asset-map",
+                        "SENSORS": {"temp c": 61.2, "pressure": 42.1},
+                    }
+                ]
+            }
+        }
+    )
+    server = _PullServer(payload)
+    endpoint = server.start()
+    try:
+        start = client.post(
+            _customer_path("/integrations/pull/start", customer_id=customer_id),
+            json={
+                "endpoint_url": endpoint,
+                "polling_interval_seconds": 0.2,
+                "auth_type": "none",
+                "run_id": run_id,
+                "retry_max_attempts": 1,
+                "retry_backoff_seconds": 0.05,
+                "request_timeout_seconds": 2.0,
+            },
+        )
+        assert start.status_code == 200
+        pulled = _wait_for_pull_ingest(client, customer_id=customer_id, min_count=1)
+        assert int(pulled.get("total_ingested", 0)) >= 1
+
+        recent = client.get(_customer_path(f"/results/recent?run_id={run_id}&limit=1", customer_id=customer_id))
+        assert recent.status_code == 200
+        assert recent.json()["count"] >= 1
+        latest = recent.json()["results"][0]
+        sensors = latest.get("sensor_relationships") or []
+        assert "temperature" in sensors
+    finally:
+        client.post(_customer_path("/integrations/pull/stop", customer_id=customer_id))
+        server.stop()
+
+
+def test_alerts_trigger_on_risk_high_transition_and_list(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("NERAIUM_ALERT_INSTABILITY_THRESHOLD", "1000.0")
+    monkeypatch.setenv("NERAIUM_ALERT_RAPID_DRIFT_DELTA", "1000.0")
+    monkeypatch.setenv("NERAIUM_PILOT_DRIFT_HIGH_THRESHOLD", "0.0")
+    monkeypatch.setenv("NERAIUM_PILOT_DRIFT_WATCH_THRESHOLD", "0.0")
+    client = _client(tmp_path)
+    run = client.post(
+        _customer_path("/runs", customer_id="alert-customer-risk"),
+        json={"name": "alert-risk-run", "activate": True, "config": {"baseline_window": 5, "recent_window": 3}},
+    )
+    assert run.status_code == 200
+    run_id = run.json()["run"]["run_id"]
+    for i in range(10):
+        payload = {
+            "timestamp": f"2026-01-01T00:00:{i:02d}+00:00",
+            "customer_id": "alert-customer-risk",
+            "site_id": "site-alert",
+            "asset_id": "asset-alert",
+            "sensor_values": {
+                "pressure": 45.0 + i * 2.4,
+                "flow": 18.0 + i * 2.1,
+                "vibration": 4.0 + i * 0.9,
+                "temperature": 58.0 + i * 2.0,
+            },
+        }
+        ing = client.post(_customer_path(f"/ingest?run_id={run_id}", customer_id="alert-customer-risk"), json=payload)
+        assert ing.status_code == 200
+    alerts = client.get(_customer_path(f"/alerts?run_id={run_id}&limit=50", customer_id="alert-customer-risk"))
+    assert alerts.status_code == 200
+    items = alerts.json()["alerts"]
+    assert any(str(a.get("type")) == "risk_high_transition" for a in items)
+
+
+def test_alerts_trigger_on_instability_threshold_cross(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("NERAIUM_ALERT_INSTABILITY_THRESHOLD", "0.25")
+    monkeypatch.setenv("NERAIUM_ALERT_RAPID_DRIFT_DELTA", "10.0")
+    client = _client(tmp_path)
+    run = client.post(
+        _customer_path("/runs", customer_id="alert-customer-instability"),
+        json={"name": "alert-instability-run", "activate": True, "config": {"baseline_window": 5, "recent_window": 3}},
+    )
+    assert run.status_code == 200
+    run_id = run.json()["run"]["run_id"]
+    for i in range(8):
+        ing = client.post(
+            _customer_path(f"/ingest?run_id={run_id}", customer_id="alert-customer-instability"),
+            json={
+                "timestamp": f"2026-01-01T00:00:{i:02d}+00:00",
+                "customer_id": "alert-customer-instability",
+                "site_id": "site-alert",
+                "asset_id": "asset-alert",
+                "sensor_values": {
+                    "pressure": 40.0 + i * 3.0,
+                    "flow": 20.0 + i * 2.8,
+                    "vibration": 3.0 + i * 1.3,
+                    "temperature": 55.0 + i * 2.7,
+                },
+            },
+        )
+        assert ing.status_code == 200
+    alerts = client.get(
+        _customer_path(f"/alerts?run_id={run_id}&limit=50", customer_id="alert-customer-instability")
+    )
+    assert alerts.status_code == 200
+    items = alerts.json()["alerts"]
+    assert any(str(a.get("type")) == "instability_threshold_crossed" for a in items)
+
+
+def test_alerts_trigger_on_rapid_drift_detected(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("NERAIUM_ALERT_INSTABILITY_THRESHOLD", "1000.0")
+    monkeypatch.setenv("NERAIUM_ALERT_RAPID_DRIFT_DELTA", "0.0")
+    monkeypatch.setenv("NERAIUM_PILOT_DRIFT_HIGH_THRESHOLD", "1000.0")
+    monkeypatch.setenv("NERAIUM_PILOT_DRIFT_WATCH_THRESHOLD", "1000.0")
+    client = _client(tmp_path)
+    run = client.post(
+        _customer_path("/runs", customer_id="alert-customer-drift"),
+        json={"name": "alert-drift-run", "activate": True, "config": {"baseline_window": 5, "recent_window": 3}},
+    )
+    assert run.status_code == 200
+    run_id = run.json()["run"]["run_id"]
+    base_ts = "2026-01-01T00:00:"
+    samples = [
+        {"pressure": 50.0, "flow": 20.0, "vibration": 2.0, "temperature": 60.0},
+        {"pressure": 50.1, "flow": 19.9, "vibration": 2.1, "temperature": 60.1},
+        {"pressure": 80.0, "flow": 10.0, "vibration": 8.0, "temperature": 75.0},
+    ]
+    for i, sensor_values in enumerate(samples):
+        ing = client.post(
+            _customer_path(f"/ingest?run_id={run_id}", customer_id="alert-customer-drift"),
+            json={
+                "timestamp": f"{base_ts}{i:02d}+00:00",
+                "customer_id": "alert-customer-drift",
+                "site_id": "site-alert",
+                "asset_id": "asset-alert",
+                "sensor_values": sensor_values,
+            },
+        )
+        assert ing.status_code == 200
+    alerts = client.get(_customer_path(f"/alerts?run_id={run_id}&limit=50", customer_id="alert-customer-drift"))
+    assert alerts.status_code == 200
+    items = alerts.json()["alerts"]
+    assert any(str(a.get("type")) == "rapid_drift_detected" for a in items)
 

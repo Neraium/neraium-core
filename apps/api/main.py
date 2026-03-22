@@ -21,6 +21,12 @@ from pydantic import BaseModel, Field
 from starlette.responses import JSONResponse
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
+from apps.api.integration import (
+    IntegrationMappingError,
+    apply_integration_mapping,
+    load_integration_config,
+    resolve_customer_integration,
+)
 from apps.api.web import build_web_router
 from neraium_core.logging_utils import log_structured, summarize_exception_for_logs
 from neraium_core.service import StructuralMonitoringService
@@ -35,6 +41,15 @@ DEFAULT_MAX_REQUEST_BODY_BYTES = 50 * 1024 * 1024
 DEFAULT_UVICORN_H11_MAX_INCOMPLETE_EVENT_SIZE = 64 * 1024 * 1024
 DEFAULT_UPLOAD_STREAM_CHUNK_BYTES = 1024 * 1024
 DEFAULT_INGEST_JOB_MAX_ERROR_SAMPLES = 25
+
+
+def _configure_logging() -> None:
+    raw = str(os.getenv("NERAIUM_LOG_LEVEL", "INFO")).strip().upper()
+    level = getattr(logging, raw, logging.INFO)
+    logging.basicConfig(
+        level=level,
+        format="%(asctime)s %(levelname)s %(name)s %(message)s",
+    )
 
 
 class RequestBodyTooLargeError(Exception):
@@ -211,6 +226,8 @@ class GeometryEnvelope(BaseModel):
     metrics: dict[str, Any] = Field(default_factory=dict)
     nodes: list[dict[str, Any]] = Field(default_factory=list)
     edges: list[dict[str, Any]] = Field(default_factory=list)
+    views: dict[str, Any] = Field(default_factory=dict)
+    summary: dict[str, Any] = Field(default_factory=dict)
     projection: dict[str, Any] = Field(default_factory=dict)
     provenance: dict[str, Any] = Field(default_factory=dict)
 
@@ -235,16 +252,16 @@ class IngestJobEnvelope(BaseModel):
 
 
 class PullIntegrationStartRequest(BaseModel):
-    endpoint_url: str = Field(min_length=1, max_length=2000)
-    polling_interval_seconds: float = Field(default=30.0, ge=0.2, le=3600.0)
-    auth_type: Literal["none", "basic", "bearer"] = "none"
+    endpoint_url: str | None = Field(default=None, min_length=1, max_length=2000)
+    polling_interval_seconds: float | None = Field(default=None, ge=0.2, le=3600.0)
+    auth_type: Literal["none", "basic", "bearer"] | None = None
     username: str | None = None
     password: str | None = None
     token: str | None = None
     run_id: str | None = None
-    retry_max_attempts: int = Field(default=3, ge=1, le=10)
-    retry_backoff_seconds: float = Field(default=1.0, ge=0.05, le=60.0)
-    request_timeout_seconds: float = Field(default=10.0, ge=1.0, le=120.0)
+    retry_max_attempts: int | None = Field(default=None, ge=1, le=10)
+    retry_backoff_seconds: float | None = Field(default=None, ge=0.05, le=60.0)
+    request_timeout_seconds: float | None = Field(default=None, ge=1.0, le=120.0)
 
 
 class PullIntegrationStatusEnvelope(BaseModel):
@@ -269,6 +286,163 @@ class PullIntegrationStatusEnvelope(BaseModel):
     consecutive_failures: int = 0
     total_ingested: int = 0
     message: str | None = None
+
+
+class AlertsEnvelope(BaseModel):
+    count: int
+    alerts: list[dict[str, Any]]
+
+
+def _alert_thresholds() -> tuple[float, float]:
+    try:
+        instability = float(os.getenv("NERAIUM_ALERT_INSTABILITY_THRESHOLD", "1.5"))
+    except (TypeError, ValueError):
+        instability = 1.5
+    try:
+        drift_rapid = float(os.getenv("NERAIUM_ALERT_RAPID_DRIFT_DELTA", "0.2"))
+    except (TypeError, ValueError):
+        drift_rapid = 0.2
+    return max(0.0, instability), max(0.0, drift_rapid)
+
+
+def _fmt_num(value: Any, digits: int = 4) -> str:
+    try:
+        n = float(value)
+    except (TypeError, ValueError):
+        return "-"
+    if not np.isfinite(n):
+        return "-"
+    return f"{n:.{digits}f}"
+
+
+def _normalize_risk_level(value: Any) -> str:
+    text = str(value or "").strip().upper()
+    if text in {"HIGH", "MEDIUM", "LOW"}:
+        return text
+    return "UNKNOWN"
+
+
+def _alert_context(result: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "result_id": result.get("result_id"),
+        "run_id": result.get("run_id"),
+        "timestamp": result.get("timestamp") or result.get("persisted_at"),
+        "state": result.get("state") or result.get("interpreted_state"),
+        "risk_level": result.get("risk_level"),
+        "structural_drift_score": _safe_float(result.get("structural_drift_score"), 0.0),
+        "composite_instability": _safe_float(result.get("latest_instability"), 0.0),
+    }
+
+
+def _evaluate_alerts(
+    *,
+    current: dict[str, Any] | None,
+    previous: dict[str, Any] | None,
+    instability_threshold: float,
+    rapid_drift_delta: float,
+) -> list[dict[str, Any]]:
+    if not isinstance(current, dict):
+        return []
+    alerts: list[dict[str, Any]] = []
+    now = _utc_now_iso()
+    current_risk = _normalize_risk_level(current.get("risk_level"))
+    prev_risk = _normalize_risk_level(previous.get("risk_level")) if isinstance(previous, dict) else "UNKNOWN"
+
+    if current_risk == "HIGH" and prev_risk != "HIGH":
+        alerts.append(
+            {
+                "id": f"alert_{uuid4().hex[:12]}",
+                "type": "risk_high_transition",
+                "severity": "critical",
+                "message": f"Risk transitioned to HIGH (from {prev_risk}).",
+                "created_at": now,
+                "trigger": {"from": prev_risk, "to": current_risk},
+                "context": _alert_context(current),
+            }
+        )
+
+    current_instability = _safe_float(current.get("latest_instability"), 0.0)
+    prev_instability = (
+        _safe_float(previous.get("latest_instability"), 0.0) if isinstance(previous, dict) else None
+    )
+    crossed_up = prev_instability is None or prev_instability < instability_threshold
+    if current_instability >= instability_threshold and crossed_up:
+        alerts.append(
+            {
+                "id": f"alert_{uuid4().hex[:12]}",
+                "type": "instability_threshold_crossed",
+                "severity": "high",
+                "message": (
+                    f"Composite instability crossed threshold "
+                    f"({_fmt_num(current_instability)} >= {_fmt_num(instability_threshold)})."
+                ),
+                "created_at": now,
+                "trigger": {
+                    "threshold": instability_threshold,
+                    "previous": prev_instability,
+                    "current": current_instability,
+                },
+                "context": _alert_context(current),
+            }
+        )
+
+    current_drift = _safe_float(current.get("structural_drift_score"), 0.0)
+    prev_drift = _safe_float(previous.get("structural_drift_score"), 0.0) if isinstance(previous, dict) else None
+    if prev_drift is not None:
+        drift_delta = current_drift - prev_drift
+        if drift_delta >= rapid_drift_delta:
+            alerts.append(
+                {
+                    "id": f"alert_{uuid4().hex[:12]}",
+                    "type": "rapid_drift_detected",
+                    "severity": "high",
+                    "message": (
+                        f"Rapid drift detected (+{_fmt_num(drift_delta)} in latest update)."
+                    ),
+                    "created_at": now,
+                    "trigger": {
+                        "delta": drift_delta,
+                        "threshold": rapid_drift_delta,
+                        "previous": prev_drift,
+                        "current": current_drift,
+                    },
+                    "context": _alert_context(current),
+                }
+            )
+
+    return alerts
+
+
+def _dispatch_alert_stubs(
+    *,
+    alert: dict[str, Any],
+    webhook_url: str | None,
+    email_to: str | None,
+) -> None:
+    if webhook_url:
+        log_structured(
+            logger,
+            event="alert_webhook_stub",
+            fields={
+                "webhook_url": webhook_url,
+                "alert_id": alert.get("id"),
+                "alert_type": alert.get("type"),
+                "severity": alert.get("severity"),
+            },
+            level=logging.INFO,
+        )
+    if email_to:
+        log_structured(
+            logger,
+            event="alert_email_stub",
+            fields={
+                "email_to": email_to,
+                "alert_id": alert.get("id"),
+                "alert_type": alert.get("type"),
+                "severity": alert.get("severity"),
+            },
+            level=logging.INFO,
+        )
 
 
 def _ensure_default_run(
@@ -544,6 +718,83 @@ def _project_geometry_positions(
     return np.stack([axis_x, axis_y, axis_z], axis=1)
 
 
+def _stress_state(value: float) -> str:
+    if value >= 0.66:
+        return "critical"
+    if value >= 0.33:
+        return "watch"
+    return "stable"
+
+
+def _build_geometry_nodes(
+    *,
+    feature_names: list[str],
+    positions: np.ndarray,
+    magnitude_norm: np.ndarray,
+    stress_norm: np.ndarray,
+) -> list[dict[str, Any]]:
+    n = min(len(feature_names), int(positions.shape[0]), int(magnitude_norm.shape[0]), int(stress_norm.shape[0]))
+    out: list[dict[str, Any]] = []
+    for idx in range(n):
+        stress = float(stress_norm[idx])
+        state = _stress_state(stress)
+        out.append(
+            {
+                "id": str(feature_names[idx]),
+                "label": str(feature_names[idx]),
+                "position": {
+                    "x": round(float(positions[idx, 0]), 6),
+                    "y": round(float(positions[idx, 1]), 6),
+                    "z": round(float(positions[idx, 2]), 6),
+                },
+                "magnitude": round(float(magnitude_norm[idx]), 6),
+                "stress": round(stress, 6),
+                "state": state,
+                "unstable": state == "critical",
+                "is_unstable": state == "critical",
+                "role": "signal",
+            }
+        )
+    return out
+
+
+def _build_geometry_edges(
+    corr_matrix: np.ndarray,
+    *,
+    feature_names: list[str],
+    baseline_ref: np.ndarray | None = None,
+    limit: int = 240,
+) -> list[dict[str, Any]]:
+    n = int(corr_matrix.shape[0])
+    out: list[dict[str, Any]] = []
+    if n <= 1:
+        return out
+    upper_idx = np.triu_indices(n, k=1)
+    upper_abs = np.abs(corr_matrix[upper_idx])
+    threshold = float(np.clip(np.percentile(upper_abs, 72.0), 0.22, 0.78)) if upper_abs.size else 1.1
+
+    for i in range(n):
+        for j in range(i + 1, n):
+            weight = float(corr_matrix[i, j])
+            magnitude = abs(weight)
+            if magnitude < threshold:
+                continue
+            baseline_weight = float(baseline_ref[i, j]) if baseline_ref is not None else weight
+            delta = weight - baseline_weight
+            out.append(
+                {
+                    "source": str(feature_names[i]),
+                    "target": str(feature_names[j]),
+                    "weight": round(weight, 6),
+                    "magnitude": round(magnitude, 6),
+                    "delta": round(delta, 6),
+                    "type": "positive" if weight >= 0.0 else "negative",
+                }
+            )
+    out.sort(key=lambda e: float(e.get("magnitude", 0.0)), reverse=True)
+    return out[: max(1, int(limit))]
+
+
 def _build_geometry_payload(result: dict[str, Any], *, run_id: str | None) -> dict[str, Any]:
     analytics = result.get("experimental_analytics")
     analytics_dict = analytics if isinstance(analytics, dict) else {}
@@ -616,6 +867,8 @@ def _build_geometry_payload(result: dict[str, Any], *, run_id: str | None) -> di
             "metrics": metrics,
             "nodes": [],
             "edges": [],
+            "views": {},
+            "summary": {},
             "projection": projection,
             "provenance": provenance,
         }
@@ -641,58 +894,53 @@ def _build_geometry_payload(result: dict[str, Any], *, run_id: str | None) -> di
     stress_norm = _normalize_vector(stress_raw)
     positions = _project_geometry_positions(corr_current, node_stress=stress_norm, corr_baseline=corr_baseline)
 
-    nodes: list[dict[str, Any]] = []
-    for idx in range(n):
-        stress = float(stress_norm[idx])
-        state = "stable"
-        if stress >= 0.66:
-            state = "critical"
-        elif stress >= 0.33:
-            state = "watch"
-        nodes.append(
-            {
-                "id": str(feature_names[idx]),
-                "label": str(feature_names[idx]),
-                "position": {
-                    "x": round(float(positions[idx, 0]), 6),
-                    "y": round(float(positions[idx, 1]), 6),
-                    "z": round(float(positions[idx, 2]), 6),
-                },
-                "magnitude": round(float(importance_norm[idx]), 6),
-                "stress": round(stress, 6),
-                "state": state,
-                "role": "signal",
-            }
-        )
+    nodes_current = _build_geometry_nodes(
+        feature_names=feature_names,
+        positions=positions,
+        magnitude_norm=importance_norm,
+        stress_norm=stress_norm,
+    )
+    edges_current = _build_geometry_edges(
+        corr_current,
+        feature_names=feature_names,
+        baseline_ref=corr_baseline,
+        limit=240,
+    )
 
-    edges: list[dict[str, Any]] = []
-    if n > 1:
-        upper_idx = np.triu_indices(n, k=1)
-        upper_abs = np.abs(corr_current[upper_idx])
-        if upper_abs.size:
-            threshold = float(np.clip(np.percentile(upper_abs, 72.0), 0.22, 0.78))
-        else:
-            threshold = 1.1
-        for i in range(n):
-            for j in range(i + 1, n):
-                weight = float(corr_current[i, j])
-                magnitude = abs(weight)
-                if magnitude < threshold:
-                    continue
-                baseline_weight = float(corr_baseline[i, j]) if corr_baseline is not None else 0.0
-                delta = weight - baseline_weight
-                edges.append(
-                    {
-                        "source": str(feature_names[i]),
-                        "target": str(feature_names[j]),
-                        "weight": round(weight, 6),
-                        "magnitude": round(magnitude, 6),
-                        "delta": round(delta, 6),
-                        "type": "positive" if weight >= 0.0 else "negative",
-                    }
-                )
-        edges.sort(key=lambda e: float(e.get("magnitude", 0.0)), reverse=True)
-        edges = edges[:240]
+    corr_reference = corr_baseline if corr_baseline is not None else corr_current
+    importance_reference = np.mean(np.abs(corr_reference - np.eye(n)), axis=1)
+    importance_reference_norm = _normalize_vector(importance_reference)
+    stress_reference_norm = importance_reference_norm.copy()
+    positions_reference = _project_geometry_positions(
+        corr_reference,
+        node_stress=stress_reference_norm,
+        corr_baseline=corr_reference,
+    )
+    nodes_baseline = _build_geometry_nodes(
+        feature_names=feature_names,
+        positions=positions_reference,
+        magnitude_norm=importance_reference_norm,
+        stress_norm=stress_reference_norm,
+    )
+    edges_baseline = _build_geometry_edges(
+        corr_reference,
+        feature_names=feature_names,
+        baseline_ref=corr_reference,
+        limit=240,
+    )
+    baseline_by_id = {str(n.get("id")): n for n in nodes_baseline}
+    for node in nodes_current:
+        node_id = str(node.get("id"))
+        base_node = baseline_by_id.get(node_id) or {}
+        node["position_current"] = dict(node.get("position") or {})
+        node["position_baseline"] = dict(base_node.get("position") or node.get("position") or {})
+
+    summary = {
+        "critical_nodes_current": sum(1 for n in nodes_current if str(n.get("state")) == "critical"),
+        "watch_nodes_current": sum(1 for n in nodes_current if str(n.get("state")) == "watch"),
+        "unstable_nodes_current": sum(1 for n in nodes_current if bool(n.get("unstable"))),
+        "changed_edges_current": sum(1 for e in edges_current if abs(_safe_float(e.get("delta"), 0.0)) >= 0.10),
+    }
 
     return {
         "run_id": run_id or result.get("run_id"),
@@ -701,8 +949,29 @@ def _build_geometry_payload(result: dict[str, Any], *, run_id: str | None) -> di
         "available": True,
         "reason": None,
         "metrics": metrics,
-        "nodes": nodes,
-        "edges": edges,
+        "nodes": nodes_current,
+        "edges": edges_current,
+        "views": {
+            "current": {
+                "label": "Current structure",
+                "source": "experimental_analytics.correlation_geometry.current",
+                "available": True,
+                "nodes": nodes_current,
+                "edges": edges_current,
+            },
+            "baseline": {
+                "label": "Baseline structure",
+                "source": (
+                    "experimental_analytics.correlation_geometry.baseline"
+                    if corr_baseline is not None
+                    else "baseline_not_available_using_current_structure_as_reference"
+                ),
+                "available": corr_baseline is not None,
+                "nodes": nodes_baseline,
+                "edges": edges_baseline,
+            },
+        },
+        "summary": summary,
         "projection": projection,
         "provenance": provenance,
     }
@@ -725,10 +994,80 @@ def create_app(
     app.add_middleware(MaxRequestBodySizeMiddleware, max_body_size=request_body_limit)
     persistence_available = _persistence_available(db_path)
     service_instance = service or StructuralMonitoringService(store=ResultStore(db_path=db_path))
+    integration_config_path = os.getenv("NERAIUM_INTEGRATION_CONFIG_PATH")
+    integration_config = load_integration_config(integration_config_path)
+    app.state.integration_config_override = integration_config
+    app.state.integration_config_path_override = integration_config_path
     ingest_jobs: dict[str, dict[str, Any]] = {}
     ingest_jobs_lock = threading.Lock()
     pull_integrations: dict[str, dict[str, Any]] = {}
     pull_integrations_lock = threading.Lock()
+    alerts: dict[str, list[dict[str, Any]]] = {}
+    alerts_lock = threading.Lock()
+    alert_instability_threshold, alert_rapid_drift_delta = _alert_thresholds()
+    alert_webhook_url = str(os.getenv("NERAIUM_ALERT_WEBHOOK_URL") or "").strip() or None
+    alert_email_to = str(os.getenv("NERAIUM_ALERT_EMAIL_TO") or "").strip() or None
+
+    def _record_alerts_for_customer(customer_id: str, items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        if not items:
+            return []
+        resolved_customer = _resolve_customer_id(customer_id)
+        created: list[dict[str, Any]] = []
+        with alerts_lock:
+            bucket = alerts.setdefault(resolved_customer, [])
+            for raw in items:
+                if not isinstance(raw, dict):
+                    continue
+                alert = dict(raw)
+                context = alert.get("context") if isinstance(alert.get("context"), dict) else {}
+                trigger = alert.get("trigger") if isinstance(alert.get("trigger"), dict) else {}
+                alert["customer_id"] = resolved_customer
+                alert["context"] = dict(context)
+                alert["trigger"] = dict(trigger)
+                created.append(alert)
+                bucket.append(alert)
+            bucket.sort(key=lambda a: str(a.get("created_at") or ""), reverse=True)
+            del bucket[200:]
+        for alert in created:
+            _dispatch_alert_stubs(
+                alert=alert,
+                webhook_url=alert_webhook_url,
+                email_to=alert_email_to,
+            )
+            log_structured(
+                logger,
+                event="alert_created",
+                fields={
+                    "customer_id": resolved_customer,
+                    "alert_id": alert.get("id"),
+                    "alert_type": alert.get("type"),
+                    "severity": alert.get("severity"),
+                    "run_id": (alert.get("context") or {}).get("run_id"),
+                    "result_id": (alert.get("context") or {}).get("result_id"),
+                },
+                level=logging.WARNING,
+            )
+        return created
+
+    def _process_alerts_after_ingest(
+        *,
+        customer_id: str,
+        run_id: str | None,
+        latest_result: dict[str, Any] | None,
+        previous_result: dict[str, Any] | None,
+    ) -> list[dict[str, Any]]:
+        items = _evaluate_alerts(
+            current=latest_result,
+            previous=previous_result,
+            instability_threshold=alert_instability_threshold,
+            rapid_drift_delta=alert_rapid_drift_delta,
+        )
+        if run_id:
+            for item in items:
+                context = item.get("context")
+                if isinstance(context, dict):
+                    context.setdefault("run_id", run_id)
+        return _record_alerts_for_customer(customer_id, items)
 
     def _normalize_content_length(request: Request) -> int | None:
         raw = request.headers.get("content-length")
@@ -865,28 +1204,22 @@ def create_app(
         return None
 
     def _coerce_pull_items(payload: Any, *, customer_id: str) -> list[dict[str, Any]]:
-        rows: list[dict[str, Any]]
-        if isinstance(payload, dict) and isinstance(payload.get("items"), list):
-            rows = [item for item in payload["items"] if isinstance(item, dict)]
-            if len(rows) != len(payload["items"]):
-                raise ValueError("Payload items must be objects.")
-        elif isinstance(payload, list):
-            rows = [item for item in payload if isinstance(item, dict)]
-            if len(rows) != len(payload):
-                raise ValueError("Payload list must contain objects.")
-        elif isinstance(payload, dict):
-            rows = [payload]
+        cfg_override = getattr(app.state, "integration_config_override", None)
+        if isinstance(cfg_override, dict):
+            cfg = cfg_override
         else:
-            raise ValueError("Payload must be an object, list of objects, or an object with items[].")
-
-        if not rows:
-            return []
-        out: list[dict[str, Any]] = []
-        for row in rows:
-            item = dict(row)
-            item["customer_id"] = _resolve_customer_id(item.get("customer_id") or customer_id)
-            out.append(item)
-        return out
+            path_override = getattr(app.state, "integration_config_path_override", None)
+            path = str(path_override or "").strip() or os.getenv("NERAIUM_INTEGRATION_CONFIG_PATH")
+            cfg = load_integration_config(path)
+        try:
+            rows = apply_integration_mapping(
+                payload,
+                customer_id=customer_id,
+                config=cfg,
+            )
+        except IntegrationMappingError as exc:
+            raise ValueError(str(exc)) from exc
+        return rows
 
     def _fetch_pull_payload(state: dict[str, Any]) -> tuple[int, Any]:
         endpoint_url = str(state.get("endpoint_url") or "").strip()
@@ -1136,6 +1469,22 @@ def create_app(
                     latest_result=summary.get("latest_result"),
                     message=summary.get("message"),
                 )
+                latest_from_summary = summary.get("latest_result")
+                previous_for_alerts: dict[str, Any] | None = None
+                if isinstance(latest_from_summary, dict):
+                    recent_for_alerts = service_instance.list_recent_results(
+                        limit=2,
+                        run_id=run_id,
+                        customer_id=customer_id,
+                    )
+                    if len(recent_for_alerts) >= 2:
+                        previous_for_alerts = recent_for_alerts[1]
+                    _process_alerts_after_ingest(
+                        customer_id=customer_id,
+                        run_id=run_id,
+                        latest_result=latest_from_summary,
+                        previous_result=previous_for_alerts,
+                    )
                 log_structured(
                     logger,
                     event="ingest_job_completed",
@@ -1358,6 +1707,20 @@ def create_app(
                 run_id=resolved,
                 customer_id=resolved_customer,
             )
+            previous_result = None
+            recent_for_alerts = service_instance.list_recent_results(
+                limit=2,
+                run_id=resolved,
+                customer_id=resolved_customer,
+            )
+            if len(recent_for_alerts) >= 2:
+                previous_result = recent_for_alerts[1]
+            _process_alerts_after_ingest(
+                customer_id=resolved_customer,
+                run_id=resolved,
+                latest_result=result,
+                previous_result=previous_result,
+            )
         except ValueError as e:
             logger.warning("validation failure ingest: %s", e)
             raise HTTPException(status_code=400, detail=_actionable_validation_detail(str(e)))
@@ -1386,6 +1749,21 @@ def create_app(
                 run_id=resolved,
                 customer_id=resolved_customer,
             )
+            if results:
+                previous_result = None
+                recent_for_alerts = service_instance.list_recent_results(
+                    limit=2,
+                    run_id=resolved,
+                    customer_id=resolved_customer,
+                )
+                if len(recent_for_alerts) >= 2:
+                    previous_result = recent_for_alerts[1]
+                _process_alerts_after_ingest(
+                    customer_id=resolved_customer,
+                    run_id=resolved,
+                    latest_result=results[-1],
+                    previous_result=previous_result,
+                )
         except ValueError as e:
             logger.warning("validation failure ingest_batch: %s", e)
             raise HTTPException(status_code=400, detail=_actionable_validation_detail(str(e)))
@@ -1411,6 +1789,21 @@ def create_app(
                 run_id=resolved,
                 customer_id=resolved_customer,
             )
+            if results:
+                previous_result = None
+                recent_for_alerts = service_instance.list_recent_results(
+                    limit=2,
+                    run_id=resolved,
+                    customer_id=resolved_customer,
+                )
+                if len(recent_for_alerts) >= 2:
+                    previous_result = recent_for_alerts[1]
+                _process_alerts_after_ingest(
+                    customer_id=resolved_customer,
+                    run_id=resolved,
+                    latest_result=results[-1],
+                    previous_result=previous_result,
+                )
         except ValueError as e:
             logger.warning("validation failure ingest_csv: %s", e)
             raise HTTPException(status_code=400, detail=_actionable_validation_detail(str(e)))
@@ -1521,15 +1914,61 @@ def create_app(
         customer_id: str | None = Query(default=None),
     ) -> dict[str, Any]:
         resolved_customer = _resolve_customer_id(customer_id)
-        endpoint_url = _validate_endpoint_url(payload.endpoint_url)
-        auth_type = str(payload.auth_type or "none")
+        cfg_override = getattr(app.state, "integration_config_override", None)
+        if isinstance(cfg_override, dict):
+            cfg_doc = cfg_override
+        else:
+            path_override = getattr(app.state, "integration_config_path_override", None)
+            path = str(path_override or "").strip() or os.getenv("NERAIUM_INTEGRATION_CONFIG_PATH")
+            cfg_doc = load_integration_config(path)
+        resolved_cfg = resolve_customer_integration(
+            customer_id=resolved_customer,
+            config_doc=cfg_doc,
+        )
+
+        endpoint_url = _validate_endpoint_url(
+            payload.endpoint_url
+            or str(resolved_cfg.get("endpoint_url") or "")
+        )
+        auth_type = str(payload.auth_type or resolved_cfg.get("auth_type") or "none")
+        username = payload.username if payload.username is not None else resolved_cfg.get("username")
+        password = payload.password if payload.password is not None else resolved_cfg.get("password")
+        token = payload.token if payload.token is not None else resolved_cfg.get("token")
+        polling_interval_seconds = float(
+            payload.polling_interval_seconds
+            if payload.polling_interval_seconds is not None
+            else resolved_cfg.get("polling_interval_seconds") or 30.0
+        )
+        retry_max_attempts = int(
+            payload.retry_max_attempts
+            if payload.retry_max_attempts is not None
+            else resolved_cfg.get("retry_max_attempts") or 3
+        )
+        retry_backoff_seconds = float(
+            payload.retry_backoff_seconds
+            if payload.retry_backoff_seconds is not None
+            else resolved_cfg.get("retry_backoff_seconds") or 1.0
+        )
+        request_timeout_seconds = float(
+            payload.request_timeout_seconds
+            if payload.request_timeout_seconds is not None
+            else resolved_cfg.get("request_timeout_seconds") or 10.0
+        )
+        if polling_interval_seconds < 0.2:
+            raise HTTPException(status_code=400, detail="polling_interval_seconds must be >= 0.2.")
+        if retry_max_attempts < 1:
+            raise HTTPException(status_code=400, detail="retry_max_attempts must be >= 1.")
+        if retry_backoff_seconds < 0.05:
+            raise HTTPException(status_code=400, detail="retry_backoff_seconds must be >= 0.05.")
+        if request_timeout_seconds < 1.0:
+            raise HTTPException(status_code=400, detail="request_timeout_seconds must be >= 1.0.")
         if auth_type == "basic":
-            if not str(payload.username or "").strip() or payload.password is None:
+            if not str(username or "").strip() or password is None:
                 raise HTTPException(
                     status_code=400,
                     detail="Basic auth requires username and password.",
                 )
-        if auth_type == "bearer" and not str(payload.token or "").strip():
+        if auth_type == "bearer" and not str(token or "").strip():
             raise HTTPException(status_code=400, detail="Bearer auth requires token.")
 
         resolved_run = _resolve_run_id_with_default(
@@ -1546,15 +1985,15 @@ def create_app(
                 "endpoint_url": endpoint_url,
                 "run_id": resolved_run,
                 "auth_type": auth_type,
-                "username": payload.username,
-                "password": payload.password,
-                "token": payload.token,
+                "username": username,
+                "password": password,
+                "token": token,
                 "running": True,
                 "status": "running",
-                "polling_interval_seconds": float(payload.polling_interval_seconds),
-                "retry_max_attempts": int(payload.retry_max_attempts),
-                "retry_backoff_seconds": float(payload.retry_backoff_seconds),
-                "request_timeout_seconds": float(payload.request_timeout_seconds),
+                "polling_interval_seconds": polling_interval_seconds,
+                "retry_max_attempts": retry_max_attempts,
+                "retry_backoff_seconds": retry_backoff_seconds,
+                "request_timeout_seconds": request_timeout_seconds,
                 "started_at": started_at,
                 "updated_at": started_at,
                 "last_poll_at": None,
@@ -1578,7 +2017,7 @@ def create_app(
                 "customer_id": resolved_customer,
                 "run_id": resolved_run,
                 "endpoint_url": endpoint_url,
-                "polling_interval_seconds": float(payload.polling_interval_seconds),
+                "polling_interval_seconds": polling_interval_seconds,
                 "auth_type": auth_type,
             },
             level=logging.INFO,
@@ -1606,6 +2045,48 @@ def create_app(
         with pull_integrations_lock:
             state = pull_integrations.get(resolved_customer)
             return _public_pull_state(state, customer_id=resolved_customer)
+
+    @app.get("/alerts", response_model=AlertsEnvelope)
+    def list_alerts(
+        limit: int = Query(default=50, ge=1, le=500),
+        run_id: str | None = Query(default=None),
+        customer_id: str | None = Query(default=None),
+    ) -> dict[str, Any]:
+        resolved_customer = _resolve_customer_id(customer_id)
+        with alerts_lock:
+            items = [dict(a) for a in alerts.get(resolved_customer, [])]
+        if run_id:
+            items = [a for a in items if str((a.get("context") or {}).get("run_id") or "") == str(run_id)]
+        items = items[:limit]
+        return {"count": len(items), "alerts": items}
+
+    @app.post("/alerts/test", response_model=ActionResponse)
+    def emit_test_alert(
+        _: None = Depends(require_api_key),
+        customer_id: str | None = Query(default=None),
+        run_id: str | None = Query(default=None),
+    ) -> dict[str, bool]:
+        resolved_customer = _resolve_customer_id(customer_id)
+        now = _utc_now_iso()
+        alert = {
+            "id": f"alert_{uuid4().hex[:12]}",
+            "type": "test_alert",
+            "severity": "info",
+            "message": "Test alert generated manually.",
+            "created_at": now,
+            "trigger": {"manual": True},
+            "context": {
+                "result_id": None,
+                "run_id": run_id,
+                "timestamp": now,
+                "state": "TEST",
+                "risk_level": "UNKNOWN",
+                "structural_drift_score": 0.0,
+                "composite_instability": 0.0,
+            },
+        }
+        _record_alerts_for_customer(resolved_customer, [alert])
+        return {"ok": True}
 
     @app.post("/reset", response_model=ActionResponse)
     def reset(_: None = Depends(require_api_key)) -> dict[str, bool]:

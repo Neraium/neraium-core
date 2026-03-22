@@ -192,6 +192,52 @@ python -m pip install -e .[dev]
 uvicorn apps.api.main:app --host 0.0.0.0 --port 8000
 ```
 
+## Customer-hosted deployment (first-class path)
+
+For customer environments (server/VM or customer cloud VM), use the deployment guide:
+
+- **[docs/CUSTOMER_DEPLOYMENT.md](docs/CUSTOMER_DEPLOYMENT.md)**
+
+Quick start (Docker):
+
+```bash
+docker build -t neraium:latest .
+docker run --rm -p 8000:8000 \
+  -e HOST=0.0.0.0 \
+  -e PORT=8000 \
+  -e NERAIUM_API_KEY=change-me \
+  -e NERAIUM_DB_PATH=/data/neraium.db \
+  -e NERAIUM_CUSTOMER_API_BASE_URL=https://customer-api.internal/telemetry \
+  -e NERAIUM_CUSTOMER_API_AUTH_TYPE=bearer \
+  -e NERAIUM_INTEGRATION_CONFIG_PATH=/app/config/integration.json \
+  -v "$(pwd)/data:/data" \
+  -v "$(pwd)/config:/app/config:ro" \
+  neraium:latest
+```
+
+Quick start (Docker Compose):
+
+```bash
+docker compose up --build
+```
+
+One-command customer start:
+
+```bash
+cp .env.customer.example .env
+cp config/integration.customer.sample.json config/integration.json
+docker compose up --build
+```
+
+Notes:
+
+- Neraium stays **read-only** (no control/actuation path).
+- When deployed in customer environment, ingest, compute, and persistence stay local to that environment.
+- Pull integration is configurable via:
+  - `POST /integrations/pull/start`
+  - `POST /integrations/pull/stop`
+  - `GET /integrations/pull/status`
+
 ### MVP Web App (thin layer)
 
 The repository now includes a minimal web UI layered on the existing API and
