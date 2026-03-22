@@ -1,11 +1,18 @@
 from __future__ import annotations
 
+import csv
 import logging
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable, TextIO
 
 from neraium_core.alignment import StructuralEngine
-from neraium_core.pipeline import normalize_rest_payload, parse_csv_text, pilot_hardening_enabled
+from neraium_core.pipeline import (
+    REQUIRED_CSV_COLUMNS,
+    build_frame,
+    normalize_rest_payload,
+    parse_csv_text,
+    pilot_hardening_enabled,
+)
 from neraium_core.logging_utils import (
     Timer,
     log_structured,
@@ -35,7 +42,7 @@ class StructuralMonitoringService:
         # so each asset gets its own baseline/model memory.
         self.engine = engine or StructuralEngine(baseline_window=24, recent_window=8)
         self.store = store or ResultStore()
-        self._engines_by_asset: dict[tuple[str, str], StructuralEngine] = {}
+        self._engines_by_asset: dict[tuple[str, str, str], StructuralEngine] = {}
         self._localization_by_site: dict[str, dict[str, float]] = {}
         self.pilot_config: PilotConfig = pilot_config or load_pilot_config()
 
@@ -526,6 +533,258 @@ class StructuralMonitoringService:
             }
             log_structured(logger, event="ingest_csv_error", fields=err_fields, level=logging.ERROR)
             raise
+
+    @staticmethod
+    def _csv_validation_error_message(exc: Exception, *, row_index: int | None = None) -> str:
+        raw = str(exc)
+        if "Invalid timestamp" in raw:
+            base = (
+                "Invalid timestamp format. Use ISO-8601 (for example "
+                "2026-01-01T00:00:00+00:00)."
+            )
+        elif "Sensor name cannot be empty" in raw:
+            base = "CSV includes an empty sensor column name. Ensure all sensor headers are non-empty."
+        elif "Invalid signal value for" in raw:
+            base = f"Non-numeric sensor value detected. {raw}"
+        elif "Invalid signal type for" in raw:
+            base = f"Unsupported sensor value type detected. {raw}"
+        else:
+            base = raw
+        if row_index is None:
+            return base
+        return f"Row {row_index}: {base}"
+
+    def ingest_csv_stream(
+        self,
+        csv_stream: TextIO,
+        *,
+        run_id: str | None = None,
+        customer_id: str | None = None,
+        batch_size: int = 250,
+        max_error_samples: int = 25,
+        progress_callback: Callable[[dict[str, Any]], None] | None = None,
+    ) -> dict[str, Any]:
+        """
+        Stream-ingest CSV rows with partial success support and progress callbacks.
+
+        This path is intended for large-file ingestion where loading the full CSV into
+        memory is undesirable.
+        """
+
+        timer = Timer()
+        safe_batch_size = max(1, int(batch_size))
+        safe_error_samples = max(1, int(max_error_samples))
+        resolved_customer = self._resolve_customer_id(customer_id)
+
+        def _emit_progress(
+            *,
+            status: str,
+            rows_processed: int,
+            rows_succeeded: int,
+            rows_failed: int,
+            error_samples: list[dict[str, Any]] | None = None,
+            message: str | None = None,
+        ) -> None:
+            if progress_callback is None:
+                return
+            try:
+                progress_callback(
+                    {
+                        "status": status,
+                        "rows_processed": int(rows_processed),
+                        "rows_succeeded": int(rows_succeeded),
+                        "rows_failed": int(rows_failed),
+                        "error_samples": list(error_samples or []),
+                        "message": message,
+                    }
+                )
+            except Exception:
+                # Progress callbacks must never fail ingestion flow.
+                logger.debug("ingest_csv_stream progress callback failure", exc_info=True)
+
+        log_structured(
+            logger,
+            event="ingest_csv_stream_in",
+            fields={
+                "run_id": run_id,
+                "customer_id": resolved_customer,
+                "batch_size": safe_batch_size,
+            },
+            level=logging.INFO,
+        )
+
+        reader = csv.DictReader(csv_stream)
+        if reader.fieldnames is None:
+            raise ValueError(
+                "CSV file is empty. Add a header row with timestamp, site_id, asset_id "
+                "and one or more sensor columns."
+            )
+
+        header_names = [str(name).strip() for name in reader.fieldnames if name is not None]
+        header_set = set(header_names)
+        missing = sorted(REQUIRED_CSV_COLUMNS - header_set)
+        if missing:
+            raise ValueError(
+                "CSV is missing required columns: "
+                f"{', '.join(missing)}. Required: timestamp, site_id, asset_id."
+            )
+
+        sensor_columns = [name for name in header_names if name not in REQUIRED_CSV_COLUMNS]
+        if not sensor_columns:
+            raise ValueError(
+                "CSV must include at least one sensor column in addition to "
+                "timestamp, site_id, asset_id."
+            )
+
+        buffered_pairs: list[tuple[dict[str, Any], dict[str, Any]]] = []
+        rows_processed = 0
+        rows_succeeded = 0
+        rows_failed = 0
+        error_samples: list[dict[str, Any]] = []
+        last_result: dict[str, Any] | None = None
+
+        _emit_progress(
+            status="processing",
+            rows_processed=0,
+            rows_succeeded=0,
+            rows_failed=0,
+            error_samples=[],
+            message="CSV accepted. Processing rows...",
+        )
+
+        for row_index, row in enumerate(reader, start=2):
+            if row is None:
+                continue
+            rows_processed += 1
+            try:
+                sensor_values = {col: row.get(col) for col in sensor_columns}
+                frame = build_frame(
+                    timestamp=row.get("timestamp"),
+                    customer_id=resolved_customer,
+                    site_id=row.get("site_id"),
+                    asset_id=row.get("asset_id"),
+                    sensor_values=sensor_values,
+                )
+                frame["customer_id"] = resolved_customer
+                engine = self._engine_for_frame(frame)
+                result = self._decorate_result(engine.process_frame(frame))
+                result["customer_id"] = resolved_customer
+                if pilot_hardening_enabled():
+                    result.update(build_pilot_output(frame=frame, result=result))
+                buffered_pairs.append((frame, result))
+                rows_succeeded += 1
+                last_result = result
+            except Exception as exc:
+                rows_failed += 1
+                msg = self._csv_validation_error_message(exc, row_index=row_index)
+                if len(error_samples) < safe_error_samples:
+                    error_samples.append({"row": row_index, "message": msg})
+                log_structured(
+                    logger,
+                    event="ingest_csv_stream_row_error",
+                    fields={
+                        "row_index": row_index,
+                        "run_id": run_id,
+                        "customer_id": resolved_customer,
+                        **summarize_exception_for_logs(exc),
+                    },
+                    level=logging.WARNING,
+                )
+
+            if len(buffered_pairs) >= safe_batch_size:
+                self.store.save_ingestion_batch(
+                    buffered_pairs,
+                    run_id=run_id,
+                    customer_id=resolved_customer,
+                )
+                buffered_pairs = []
+
+            if rows_processed % 25 == 0:
+                _emit_progress(
+                    status="processing",
+                    rows_processed=rows_processed,
+                    rows_succeeded=rows_succeeded,
+                    rows_failed=rows_failed,
+                    error_samples=error_samples,
+                    message=(
+                        f"Processed {rows_processed} rows "
+                        f"({rows_succeeded} succeeded, {rows_failed} failed)."
+                    ),
+                )
+
+        if buffered_pairs:
+            self.store.save_ingestion_batch(
+                buffered_pairs,
+                run_id=run_id,
+                customer_id=resolved_customer,
+            )
+
+        persisted_latest = self.store.get_latest_result(run_id=run_id, customer_id=resolved_customer)
+        latest_result: dict[str, Any] | None = None
+        if persisted_latest is not None and last_result is not None:
+            latest_result = self._with_result_metadata(
+                last_result,
+                customer_id=persisted_latest.get("customer_id"),
+                run_id=persisted_latest.get("run_id"),
+                result_id=persisted_latest.get("result_id"),
+                persisted_at=persisted_latest.get("persisted_at"),
+            )
+        elif persisted_latest is not None:
+            latest_result = persisted_latest
+
+        partial_success = rows_succeeded > 0 and rows_failed > 0
+        message = (
+            f"Processed {rows_processed} rows: "
+            f"{rows_succeeded} succeeded, {rows_failed} failed."
+        )
+        if partial_success:
+            message += " Ingest completed with partial success."
+        elif rows_failed > 0 and rows_succeeded == 0:
+            message += " No rows were successfully ingested."
+
+        summary = {
+            "run_id": run_id,
+            "customer_id": resolved_customer,
+            "rows_processed": rows_processed,
+            "rows_succeeded": rows_succeeded,
+            "rows_failed": rows_failed,
+            "partial_success": partial_success,
+            "error_samples": error_samples,
+            "latest_result": latest_result,
+            "message": message,
+            "latency_ms": round(timer.ms(), 3),
+        }
+
+        log_level = logging.INFO
+        if partial_success:
+            log_level = logging.WARNING
+        if rows_failed > 0 and rows_succeeded == 0:
+            log_level = logging.ERROR
+
+        log_structured(
+            logger,
+            event="ingest_csv_stream_out",
+            fields={
+                "run_id": run_id,
+                "customer_id": resolved_customer,
+                "rows_processed": rows_processed,
+                "rows_succeeded": rows_succeeded,
+                "rows_failed": rows_failed,
+                "partial_success": partial_success,
+                "latency_ms": summary["latency_ms"],
+            },
+            level=log_level,
+        )
+
+        _emit_progress(
+            status="completed",
+            rows_processed=rows_processed,
+            rows_succeeded=rows_succeeded,
+            rows_failed=rows_failed,
+            error_samples=error_samples,
+            message=message,
+        )
+        return summary
 
     def get_latest_result(
         self,

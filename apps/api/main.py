@@ -3,16 +3,21 @@ from __future__ import annotations
 import json
 import logging
 import os
+import tempfile
+import threading
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Literal
+from uuid import uuid4
 
 import numpy as np
-from fastapi import Depends, FastAPI, Header, HTTPException, Query, status
+from fastapi import Depends, FastAPI, File, Header, HTTPException, Query, Request, UploadFile, status
 from pydantic import BaseModel, Field
 from starlette.responses import JSONResponse
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from apps.api.web import build_web_router
+from neraium_core.logging_utils import log_structured, summarize_exception_for_logs
 from neraium_core.service import StructuralMonitoringService
 from neraium_core.store import ResultStore
 
@@ -23,6 +28,8 @@ DEFAULT_MAX_REQUEST_BODY_BYTES = 50 * 1024 * 1024
 # Keep parser allowance above app-level request cap so oversize requests
 # are handled by middleware with a clean 413 response instead of reset.
 DEFAULT_UVICORN_H11_MAX_INCOMPLETE_EVENT_SIZE = 64 * 1024 * 1024
+DEFAULT_UPLOAD_STREAM_CHUNK_BYTES = 1024 * 1024
+DEFAULT_INGEST_JOB_MAX_ERROR_SAMPLES = 25
 
 
 class RequestBodyTooLargeError(Exception):
@@ -203,6 +210,25 @@ class GeometryEnvelope(BaseModel):
     provenance: dict[str, Any] = Field(default_factory=dict)
 
 
+class IngestJobEnvelope(BaseModel):
+    job_id: str
+    status: str
+    run_id: str | None = None
+    customer_id: str
+    filename: str
+    created_at: str
+    updated_at: str
+    rows_processed: int = 0
+    rows_succeeded: int = 0
+    rows_failed: int = 0
+    partial_success: bool = False
+    upload_bytes_received: int = 0
+    upload_bytes_total: int | None = None
+    error_samples: list[dict[str, Any]] = Field(default_factory=list)
+    message: str | None = None
+    latest_result: dict[str, Any] | None = None
+
+
 def _ensure_default_run(
     service: StructuralMonitoringService,
     *,
@@ -244,6 +270,40 @@ def _results_envelope(results: list[dict[str, Any]], latest: dict[str, Any] | No
 def _resolve_customer_id(customer_id: str | None) -> str:
     text = str(customer_id or "").strip()
     return text or "default-customer"
+
+
+def _utc_now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _actionable_validation_detail(message: str) -> str:
+    text = str(message or "").strip()
+    if not text:
+        return "Validation failed. Check required fields and payload structure."
+    if text.startswith("Invalid CSV row"):
+        if "Invalid timestamp" in text:
+            return (
+                f"{text} Use ISO-8601 timestamps like "
+                "2026-01-01T00:00:00+00:00."
+            )
+        if "Invalid signal value" in text or "Invalid signal type" in text:
+            return f"{text} Ensure all sensor values are numeric or blank."
+        return text
+    if "Invalid timestamp" in text:
+        return (
+            "Invalid timestamp format. Use ISO-8601 timestamps like "
+            "2026-01-01T00:00:00+00:00."
+        )
+    if "CSV must include" in text or "missing required columns" in text:
+        return (
+            f"{text} Ensure CSV header includes timestamp, site_id, asset_id "
+            "plus at least one sensor column."
+        )
+    if "Invalid signal value" in text or "Invalid signal type" in text:
+        return (
+            f"{text} Ensure all sensor values are numeric or blank."
+        )
+    return text
 
 
 def _resolve_run_id(
@@ -623,6 +683,178 @@ def create_app(
     app.add_middleware(MaxRequestBodySizeMiddleware, max_body_size=request_body_limit)
     persistence_available = _persistence_available(db_path)
     service_instance = service or StructuralMonitoringService(store=ResultStore(db_path=db_path))
+    ingest_jobs: dict[str, dict[str, Any]] = {}
+    ingest_jobs_lock = threading.Lock()
+
+    def _normalize_content_length(request: Request) -> int | None:
+        raw = request.headers.get("content-length")
+        if not raw:
+            return None
+        try:
+            value = int(raw)
+        except ValueError:
+            return None
+        return value if value >= 0 else None
+
+    def _public_ingest_job(job: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "job_id": str(job.get("job_id")),
+            "status": str(job.get("status", "unknown")),
+            "run_id": job.get("run_id"),
+            "customer_id": _resolve_customer_id(job.get("customer_id")),
+            "filename": str(job.get("filename") or "upload.csv"),
+            "created_at": str(job.get("created_at") or _utc_now_iso()),
+            "updated_at": str(job.get("updated_at") or _utc_now_iso()),
+            "rows_processed": int(job.get("rows_processed", 0)),
+            "rows_succeeded": int(job.get("rows_succeeded", 0)),
+            "rows_failed": int(job.get("rows_failed", 0)),
+            "partial_success": bool(job.get("partial_success", False)),
+            "upload_bytes_received": int(job.get("upload_bytes_received", 0)),
+            "upload_bytes_total": (
+                int(job.get("upload_bytes_total"))
+                if job.get("upload_bytes_total") is not None
+                else None
+            ),
+            "error_samples": list(job.get("error_samples") or []),
+            "message": job.get("message"),
+            "latest_result": job.get("latest_result"),
+        }
+
+    def _cleanup_ingest_jobs(max_jobs: int = 300) -> None:
+        with ingest_jobs_lock:
+            if len(ingest_jobs) <= max_jobs:
+                return
+            completed_ids = [
+                jid
+                for jid, job in ingest_jobs.items()
+                if str(job.get("status")) in {"completed", "partial_success", "failed"}
+            ]
+            completed_ids.sort(
+                key=lambda jid: str(ingest_jobs[jid].get("updated_at") or ingest_jobs[jid].get("created_at") or "")
+            )
+            overflow = len(ingest_jobs) - max_jobs
+            for jid in completed_ids[: max(0, overflow)]:
+                ingest_jobs.pop(jid, None)
+
+    def _update_ingest_job(job_id: str, **fields: Any) -> dict[str, Any] | None:
+        with ingest_jobs_lock:
+            job = ingest_jobs.get(job_id)
+            if job is None:
+                return None
+            job.update(fields)
+            job["updated_at"] = _utc_now_iso()
+            if "partial_success" not in fields:
+                job["partial_success"] = (
+                    int(job.get("rows_succeeded", 0)) > 0 and int(job.get("rows_failed", 0)) > 0
+                )
+            return dict(job)
+
+    async def _stream_upload_to_tempfile(upload: UploadFile, target_path: Path, job_id: str) -> int:
+        bytes_received = 0
+        chunk_size = max(16 * 1024, DEFAULT_UPLOAD_STREAM_CHUNK_BYTES)
+        try:
+            with target_path.open("wb") as out:
+                while True:
+                    chunk = await upload.read(chunk_size)
+                    if not chunk:
+                        break
+                    out.write(chunk)
+                    bytes_received += len(chunk)
+                    _update_ingest_job(
+                        job_id,
+                        status="uploading",
+                        upload_bytes_received=bytes_received,
+                        message=f"Uploading CSV ({bytes_received} bytes received)...",
+                    )
+                out.flush()
+        finally:
+            await upload.close()
+        return bytes_received
+
+    def _start_ingest_job_worker(
+        *,
+        job_id: str,
+        temp_path: str,
+        run_id: str,
+        customer_id: str,
+    ) -> None:
+        def _worker() -> None:
+            _update_ingest_job(
+                job_id,
+                status="processing",
+                message="Upload complete. Ingest processing started.",
+            )
+            try:
+                def _on_progress(progress: dict[str, Any]) -> None:
+                    progress_status = str(progress.get("status") or "processing")
+                    _update_ingest_job(
+                        job_id,
+                        status=progress_status if progress_status in {"processing", "completed"} else "processing",
+                        rows_processed=int(progress.get("rows_processed", 0)),
+                        rows_succeeded=int(progress.get("rows_succeeded", 0)),
+                        rows_failed=int(progress.get("rows_failed", 0)),
+                        error_samples=list(progress.get("error_samples") or []),
+                        message=progress.get("message"),
+                    )
+
+                with Path(temp_path).open("r", encoding="utf-8", newline="") as stream:
+                    summary = service_instance.ingest_csv_stream(
+                        stream,
+                        run_id=run_id,
+                        customer_id=customer_id,
+                        max_error_samples=DEFAULT_INGEST_JOB_MAX_ERROR_SAMPLES,
+                        progress_callback=_on_progress,
+                    )
+                final_status = "completed"
+                if int(summary.get("rows_failed", 0)) > 0:
+                    final_status = "partial_success" if int(summary.get("rows_succeeded", 0)) > 0 else "failed"
+                _update_ingest_job(
+                    job_id,
+                    status=final_status,
+                    rows_processed=int(summary.get("rows_processed", 0)),
+                    rows_succeeded=int(summary.get("rows_succeeded", 0)),
+                    rows_failed=int(summary.get("rows_failed", 0)),
+                    partial_success=bool(summary.get("partial_success", False)),
+                    error_samples=list(summary.get("error_samples") or []),
+                    latest_result=summary.get("latest_result"),
+                    message=summary.get("message"),
+                )
+                log_structured(
+                    logger,
+                    event="ingest_job_completed",
+                    fields={
+                        "job_id": job_id,
+                        "run_id": run_id,
+                        "customer_id": customer_id,
+                        "rows_processed": int(summary.get("rows_processed", 0)),
+                        "rows_succeeded": int(summary.get("rows_succeeded", 0)),
+                        "rows_failed": int(summary.get("rows_failed", 0)),
+                        "partial_success": bool(summary.get("partial_success", False)),
+                    },
+                    level=logging.INFO,
+                )
+            except Exception as exc:
+                message = _actionable_validation_detail(str(exc))
+                _update_ingest_job(job_id, status="failed", message=message)
+                log_structured(
+                    logger,
+                    event="ingest_job_failed",
+                    fields={
+                        "job_id": job_id,
+                        "run_id": run_id,
+                        "customer_id": customer_id,
+                        **summarize_exception_for_logs(exc),
+                    },
+                    level=logging.ERROR,
+                )
+            finally:
+                try:
+                    Path(temp_path).unlink(missing_ok=True)
+                except OSError:
+                    logger.debug("Unable to remove temp upload file: %s", temp_path, exc_info=True)
+                _cleanup_ingest_jobs()
+
+        threading.Thread(target=_worker, daemon=True, name=f"ingest-job-{job_id}").start()
 
     def require_api_key(x_api_key: str | None = Header(default=None)) -> None:
         if not is_api_key_valid(api_key, x_api_key):
@@ -811,7 +1043,7 @@ def create_app(
             )
         except ValueError as e:
             logger.warning("validation failure ingest: %s", e)
-            raise HTTPException(status_code=400, detail=str(e))
+            raise HTTPException(status_code=400, detail=_actionable_validation_detail(str(e)))
         return _results_envelope([result], latest=result)
 
     @app.post("/ingest/batch", response_model=ResultsEnvelope)
@@ -839,7 +1071,7 @@ def create_app(
             )
         except ValueError as e:
             logger.warning("validation failure ingest_batch: %s", e)
-            raise HTTPException(status_code=400, detail=str(e))
+            raise HTTPException(status_code=400, detail=_actionable_validation_detail(str(e)))
         return _results_envelope(results, latest=results[-1] if results else None)
 
     @app.post("/ingest/csv", response_model=ResultsEnvelope)
@@ -864,8 +1096,106 @@ def create_app(
             )
         except ValueError as e:
             logger.warning("validation failure ingest_csv: %s", e)
-            raise HTTPException(status_code=400, detail=str(e))
+            raise HTTPException(status_code=400, detail=_actionable_validation_detail(str(e)))
         return _results_envelope(results, latest=results[-1] if results else None)
+
+    @app.post("/ingest/csv/upload", response_model=IngestJobEnvelope)
+    async def ingest_csv_upload(
+        request: Request,
+        file: UploadFile = File(...),
+        _: None = Depends(require_api_key),
+        run_id: str | None = Query(default=None),
+        customer_id: str | None = Query(default=None),
+    ) -> dict[str, Any]:
+        filename = str(file.filename or "upload.csv")
+        if not filename.lower().endswith(".csv"):
+            raise HTTPException(
+                status_code=400,
+                detail="Upload must be a .csv file.",
+            )
+        resolved_customer = _resolve_customer_id(customer_id)
+        resolved_run = _resolve_run_id_with_default(
+            service_instance,
+            run_id,
+            customer_id=resolved_customer,
+        )
+        content_length = _normalize_content_length(request)
+        if content_length is not None and content_length > request_body_limit:
+            max_mb = request_body_limit / (1024 * 1024)
+            raise HTTPException(
+                status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+                detail=f"Request body too large (max {max_mb:.1f}MB).",
+            )
+
+        fd, temp_path = tempfile.mkstemp(prefix="neraium_ingest_", suffix=".csv")
+        os.close(fd)
+        job_id = f"ingest_{uuid4().hex[:16]}"
+        created_at = _utc_now_iso()
+        initial_job = {
+            "job_id": job_id,
+            "status": "uploading",
+            "run_id": resolved_run,
+            "customer_id": resolved_customer,
+            "filename": filename,
+            "created_at": created_at,
+            "updated_at": created_at,
+            "rows_processed": 0,
+            "rows_succeeded": 0,
+            "rows_failed": 0,
+            "partial_success": False,
+            "upload_bytes_received": 0,
+            "upload_bytes_total": content_length,
+            "error_samples": [],
+            "message": "Upload started.",
+            "latest_result": None,
+        }
+        with ingest_jobs_lock:
+            ingest_jobs[job_id] = initial_job
+
+        try:
+            bytes_received = await _stream_upload_to_tempfile(file, Path(temp_path), job_id)
+        except Exception as exc:
+            try:
+                Path(temp_path).unlink(missing_ok=True)
+            except OSError:
+                logger.debug("Unable to remove temp upload file after failure: %s", temp_path, exc_info=True)
+            _update_ingest_job(
+                job_id,
+                status="failed",
+                message=f"Upload failed: {str(exc)}",
+            )
+            raise HTTPException(status_code=400, detail="Failed to read upload stream.") from exc
+
+        _update_ingest_job(
+            job_id,
+            status="queued",
+            upload_bytes_received=bytes_received,
+            upload_bytes_total=content_length if content_length is not None else bytes_received,
+            message=f"Upload complete ({bytes_received} bytes). Queueing ingest job.",
+        )
+        _start_ingest_job_worker(
+            job_id=job_id,
+            temp_path=temp_path,
+            run_id=resolved_run,
+            customer_id=resolved_customer,
+        )
+        with ingest_jobs_lock:
+            job = dict(ingest_jobs[job_id])
+        return _public_ingest_job(job)
+
+    @app.get("/ingest/jobs/{job_id}", response_model=IngestJobEnvelope)
+    def get_ingest_job(
+        job_id: str,
+        customer_id: str | None = Query(default=None),
+    ) -> dict[str, Any]:
+        resolved_customer = _resolve_customer_id(customer_id)
+        with ingest_jobs_lock:
+            job = ingest_jobs.get(job_id)
+            if job is None:
+                raise HTTPException(status_code=404, detail=f"Unknown ingest job: {job_id}")
+            if _resolve_customer_id(job.get("customer_id")) != resolved_customer:
+                raise HTTPException(status_code=404, detail=f"Unknown ingest job: {job_id}")
+            return _public_ingest_job(job)
 
     @app.post("/reset", response_model=ActionResponse)
     def reset(_: None = Depends(require_api_key)) -> dict[str, bool]:
