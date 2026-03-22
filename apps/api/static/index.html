@@ -37,6 +37,29 @@
         <a href="/upload" data-nav="upload">Upload</a>
         <a href="/demo/sii" data-nav="demo-sii">SII tour</a>
       </nav>
+      <section class="sidebar-console" aria-label="Scope and actions">
+        <p class="nav-section-title">Console</p>
+        <div class="sidebar-tenant-stack">
+          <label class="sidebar-field">
+            <span>Customer ID</span>
+            <input id="customerFilterInput" placeholder="Customer ID" aria-label="Customer ID filter" />
+          </label>
+          <label class="sidebar-field">
+            <span>Site ID</span>
+            <input id="siteFilterInput" placeholder="Optional" aria-label="Site ID filter" list="knownSitesList" />
+          </label>
+          <datalist id="knownSitesList"></datalist>
+        </div>
+        <label class="demo-toggle demo-toggle-sidebar" for="demoModeToggle">
+          <input id="demoModeToggle" type="checkbox" />
+          <span>Demo Mode</span>
+        </label>
+        <div class="sidebar-action-buttons">
+          <button id="prepareDemoBtn" type="button" class="secondary">Prepare Demo Runs</button>
+          <button id="seedDemoBtn" type="button" class="secondary">Seed Demo Data</button>
+          <button id="refreshBtn" type="button">Refresh</button>
+        </div>
+      </section>
       <section class="active-run-box">
         <div class="small-label">Active run</div>
         <div id="activeRunName" class="active-run-name">No active run</div>
@@ -48,29 +71,14 @@
       <button type="button" id="mobileNavToggle" class="mobile-nav-toggle mobile-nav-fab" aria-label="Open menu" aria-expanded="false" aria-controls="appSidebar">
         <span class="mobile-nav-toggle-bars" aria-hidden="true"></span>
       </button>
-      <header class="topbar">
-        <div class="title-block">
-          <p class="kicker">Operations Console</p>
-          <h2 id="pageTitle">Dashboard</h2>
-          <p id="pageSubtitle" class="subtitle">Live summary of structural stability</p>
-        </div>
-        <div class="topbar-actions tenant-filters">
-          <input id="customerFilterInput" placeholder="Customer ID" aria-label="Customer ID filter" />
-          <input id="siteFilterInput" placeholder="Site ID (optional)" aria-label="Site ID filter" list="knownSitesList" />
-          <datalist id="knownSitesList"></datalist>
-          <label class="demo-toggle" for="demoModeToggle">
-            <input id="demoModeToggle" type="checkbox" />
-            <span>Demo Mode</span>
-          </label>
-          <button id="prepareDemoBtn" type="button" class="secondary">Prepare Demo Runs</button>
-          <button id="seedDemoBtn" type="button" class="secondary">Seed Demo Data</button>
-          <button id="refreshBtn" type="button">Refresh</button>
-        </div>
-      </header>
 
       <div id="globalStatus" class="status hidden"></div>
 
       <main class="content">
+        <header class="page-heading">
+          <h2 id="pageTitle">Dashboard</h2>
+          <p id="pageSubtitle" class="subtitle">Live summary of structural stability</p>
+        </header>
         <!-- DASHBOARD -->
         <section id="page-dashboard" class="page page-dashboard">
           <header class="dashboard-context panel" aria-label="Active run context">
