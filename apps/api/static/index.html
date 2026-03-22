@@ -37,8 +37,11 @@
         <a href="/upload" data-nav="upload">Upload</a>
         <a href="/demo/sii" data-nav="demo-sii">SII tour</a>
       </nav>
-      <section class="active-run-box">
-        <div class="small-label">Active run</div>
+      <section class="active-run-box" aria-label="Active run summary">
+        <div class="active-run-box-head">
+          <span class="small-label">Active run</span>
+          <span class="active-run-pill" id="activeRunStatusPill">—</span>
+        </div>
         <div id="activeRunName" class="active-run-name">No active run</div>
         <div id="activeRunId" class="active-run-id">-</div>
       </section>
@@ -46,25 +49,45 @@
 
     <div class="main">
       <header class="topbar">
-        <button type="button" id="mobileNavToggle" class="mobile-nav-toggle" aria-label="Open menu" aria-expanded="false" aria-controls="appSidebar">
-          <span class="mobile-nav-toggle-bars" aria-hidden="true"></span>
-        </button>
-        <div class="title-block">
-          <p class="kicker">Operations Console</p>
-          <h2 id="pageTitle">Dashboard</h2>
-          <p id="pageSubtitle" class="subtitle">Live summary of structural stability</p>
+        <div class="topbar-main">
+          <button type="button" id="mobileNavToggle" class="mobile-nav-toggle" aria-label="Open menu" aria-expanded="false" aria-controls="appSidebar">
+            <span class="mobile-nav-toggle-bars" aria-hidden="true"></span>
+          </button>
+          <div class="title-block">
+            <p class="kicker">Operations Console</p>
+            <h2 id="pageTitle">Dashboard</h2>
+            <p id="pageSubtitle" class="subtitle">Live summary of structural stability</p>
+          </div>
         </div>
-        <div class="topbar-actions tenant-filters">
-          <input id="customerFilterInput" placeholder="Customer ID" aria-label="Customer ID filter" />
-          <input id="siteFilterInput" placeholder="Site ID (optional)" aria-label="Site ID filter" list="knownSitesList" />
-          <datalist id="knownSitesList"></datalist>
-          <label class="demo-toggle" for="demoModeToggle">
-            <input id="demoModeToggle" type="checkbox" />
-            <span>Demo Mode</span>
-          </label>
-          <button id="prepareDemoBtn" type="button" class="secondary">Prepare Demo Runs</button>
-          <button id="seedDemoBtn" type="button" class="secondary">Seed Demo Data</button>
-          <button id="refreshBtn" type="button">Refresh</button>
+        <div class="topbar-controls tenant-filters">
+          <div class="topbar-group" aria-label="Tenant filters">
+            <span class="topbar-group-label">Scope</span>
+            <div class="topbar-group-row">
+              <input id="customerFilterInput" placeholder="Customer ID" aria-label="Customer ID filter" title="Sent as customer_id on API calls" />
+              <input id="siteFilterInput" placeholder="Site ID (optional)" aria-label="Site ID filter" list="knownSitesList" title="Optional site scope" />
+            </div>
+            <p class="topbar-hint">Tenant filters apply to API requests and the workspace scope.</p>
+            <datalist id="knownSitesList"></datalist>
+          </div>
+          <div class="topbar-group" aria-label="Demo tools">
+            <span class="topbar-group-label">Demo</span>
+            <div class="topbar-group-row">
+              <label class="demo-toggle" for="demoModeToggle">
+                <input id="demoModeToggle" type="checkbox" />
+                <span>Demo mode</span>
+              </label>
+              <button id="prepareDemoBtn" type="button" class="secondary">Create Demo Run</button>
+              <button id="seedDemoBtn" type="button" class="secondary">Load Sample Data</button>
+            </div>
+            <p class="topbar-hint">Prepares demo runs or seeds sample data without uploading CSV.</p>
+          </div>
+          <div class="topbar-group topbar-group-actions">
+            <span class="topbar-group-label">Actions</span>
+            <div class="topbar-group-row">
+              <button id="refreshBtn" type="button" class="topbar-refresh">Refresh</button>
+            </div>
+            <p class="topbar-hint">Reloads the current page and dashboard metrics.</p>
+          </div>
         </div>
       </header>
 
@@ -81,33 +104,42 @@
                   <span>Active run · live envelope</span>
                 </div>
                 <div class="dashboard-hero-score-row">
-                  <div class="health-ring-wrap" title="Composite health from risk, drift, and instability">
-                    <svg id="dashboardHealthRing" class="health-ring" viewBox="0 0 120 120" aria-hidden="true">
-                      <circle class="health-ring-bg" cx="60" cy="60" r="52" />
-                      <circle id="dashboardHealthArc" class="health-ring-arc" cx="60" cy="60" r="52" />
-                    </svg>
-                    <div class="health-ring-label">
-                      <span class="health-ring-value" id="dashboardHealthScore">-</span>
-                      <span class="health-ring-caption">Health</span>
+                  <div class="dashboard-hero-health-col">
+                    <div class="health-ring-wrap" title="Composite health from risk, drift, and instability">
+                      <svg id="dashboardHealthRing" class="health-ring" viewBox="0 0 120 120" aria-hidden="true">
+                        <circle class="health-ring-bg" cx="60" cy="60" r="52" />
+                        <circle id="dashboardHealthArc" class="health-ring-arc" cx="60" cy="60" r="52" />
+                      </svg>
+                      <div class="health-ring-label">
+                        <span class="health-ring-value" id="dashboardHealthScore">-</span>
+                        <span class="health-ring-caption">Health</span>
+                      </div>
                     </div>
                   </div>
                   <div class="dashboard-hero-state-block">
-                    <p class="signal-caption">System state</p>
-                    <div class="signal-main-row dashboard-state-row">
-                      <p id="metricState" class="signal-state">-</p>
-                      <div id="metricPhaseBadge"></div>
-                    </div>
-                    <div class="dashboard-risk-inline">
-                      <span class="signal-label">Risk</span>
-                      <p id="metricRisk" class="signal-risk signal-risk-inline">-</p>
-                      <div id="metricRiskBadge"></div>
+                    <div class="dashboard-status-stack">
+                      <div class="dashboard-hero-primary-status">
+                        <p class="signal-caption">System state</p>
+                        <div class="signal-main-row dashboard-state-row">
+                          <p id="metricState" class="signal-state dashboard-state-primary">-</p>
+                          <div id="metricPhaseBadge"></div>
+                        </div>
+                      </div>
+                      <div class="dashboard-hero-secondary-status">
+                        <span class="signal-label">Risk</span>
+                        <div class="dashboard-risk-row">
+                          <p id="metricRisk" class="signal-risk dashboard-risk-value metric-risk">-</p>
+                          <div id="metricRiskBadge"></div>
+                        </div>
+                      </div>
+                      <p class="signal-trend dashboard-trend-line">Trend <strong id="metricTrend">-</strong></p>
                     </div>
                     <p class="dashboard-narrative-strip" id="dashboardNarrativeStrip">Awaiting telemetry.</p>
-                    <p class="signal-trend dashboard-trend-line">Trend <strong id="metricTrend">-</strong></p>
                   </div>
                 </div>
               </div>
               <aside class="dashboard-hero-aside">
+                <p class="dashboard-last-updated" id="dashboardLastUpdated">Last updated —</p>
                 <article class="insight-tile insight-tile-alert" id="dashboardAlertTile">
                   <p class="insight-tile-label">Active signals</p>
                   <p class="insight-tile-value" id="dashboardAlertCount">0</p>
@@ -116,10 +148,24 @@
                 <article class="insight-tile">
                   <p class="insight-tile-label">Coverage</p>
                   <p class="insight-tile-value" id="dashboardSnapshotCount">0</p>
-                  <p class="insight-tile-sub">Snapshots in view (recent window)</p>
+                  <p class="insight-tile-sub">Snapshots in the recent window for this run</p>
                 </article>
                 <a class="dashboard-deep-link" id="dashboardOpenRunLink" href="/app/runs">Open run detail →</a>
               </aside>
+            </div>
+          </section>
+
+          <section class="panel dashboard-system-map" aria-label="System map">
+            <div class="panel-header dashboard-section-head">
+              <div>
+                <h3>System map</h3>
+                <p class="subtitle section-subtitle">Sensors as nodes, relationships as edges — motion reflects drift and instability.</p>
+              </div>
+            </div>
+            <div class="system-map3d-layout">
+              <div id="dashboardSystemMap3d" class="system-map3d-host" role="img" aria-label="Three dimensional sensor relationship graph"></div>
+              <div id="dashboardSystemMap3dTooltip" class="system-map3d-tooltip hidden" role="tooltip"></div>
+              <p class="system-map3d-hint">Drag to orbit · wheel to zoom · hover a node for details · click to highlight</p>
             </div>
           </section>
 
@@ -133,7 +179,7 @@
             <div class="observations-grid">
               <article class="insight-card operator-insight">
                 <p class="insight-card-label">Operator readout</p>
-                <p id="metricOperatorMessage" class="operator-message operator-message-compact">No results yet. Upload telemetry or seed demo data.</p>
+                <p id="metricOperatorMessage" class="operator-message operator-message-compact">No results yet. Upload telemetry or use Load Sample Data to populate a run.</p>
               </article>
               <article class="insight-card stress-card">
                 <p class="insight-card-label">Structural stress</p>
@@ -144,7 +190,7 @@
                 <p class="insight-card-label">Relationship map</p>
                 <div class="mini-graph-host" id="dashboardMiniGraphHost">
                   <svg id="dashboardMiniGraph" class="mini-graph" viewBox="0 0 320 200" role="img" aria-label="Sensor relationship sketch"></svg>
-                  <p class="mini-graph-empty" id="dashboardMiniGraphEmpty">No relationship sketch until data arrives.</p>
+                  <p class="mini-graph-empty" id="dashboardMiniGraphEmpty">When snapshots include relationship fields, a quick 2D sketch appears here. The System map above shows the live mesh.</p>
                 </div>
               </article>
             </div>
@@ -215,7 +261,7 @@
             </div>
             <div id="dashboardEmpty" class="empty-state hidden">
               <p>No results for the active run yet.</p>
-              <p class="subtitle">Use <strong>Upload</strong> to ingest CSV, or click <strong>Seed Demo Data</strong>.</p>
+              <p class="subtitle">Use <strong>Upload</strong> to ingest CSV, or click <strong>Load Sample Data</strong> to get started.</p>
             </div>
             <div class="table-wrap">
               <table class="data-table dashboard-results-table">
@@ -298,7 +344,7 @@
                   The engine scores forward-leaning structural stress so teams can stage maintenance, isolate subsystems, and brief leadership with a single narrative.
                 </p>
                 <ul class="demo-bullet-list">
-                  <li>Use <strong>Prepare Demo Runs</strong> for three realistic scenarios: baseline, watch, escalation.</li>
+                  <li>Use <strong>Create Demo Run</strong> for three realistic scenarios: baseline, watch, escalation.</li>
                   <li>Export JSON or CSV when you need evidence outside the console.</li>
                 </ul>
               </div>
@@ -657,7 +703,7 @@
 
   <script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/three@0.162.0/build/three.min.js"></script>
-  <script defer src="https://cdn.jsdelivr.net/npm/three@0.162.0/examples/js/controls/OrbitControls.js"></script>
+  <script defer src="/web/sensor_graph_3d.js"></script>
   <script defer src="/web/app.js"></script>
 </body>
 </html>
