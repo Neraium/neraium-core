@@ -2229,8 +2229,7 @@ function renderRunDetailFromState() {
     else runDetailEmpty.classList.remove("hidden");
   }
   if (geomPanel) {
-    if (hasResults) geomPanel.classList.remove("hidden");
-    else geomPanel.classList.add("hidden");
+    geomPanel.classList.remove("hidden");
   }
   if (!hasResults) {
     destroyCharts();
