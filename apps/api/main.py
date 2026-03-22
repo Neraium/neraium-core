@@ -20,7 +20,9 @@ from neraium_core.store import ResultStore
 logger = logging.getLogger(__name__)
 
 DEFAULT_MAX_REQUEST_BODY_BYTES = 50 * 1024 * 1024
-DEFAULT_UVICORN_H11_MAX_INCOMPLETE_EVENT_SIZE = DEFAULT_MAX_REQUEST_BODY_BYTES
+# Keep parser allowance above app-level request cap so oversize requests
+# are handled by middleware with a clean 413 response instead of reset.
+DEFAULT_UVICORN_H11_MAX_INCOMPLETE_EVENT_SIZE = 64 * 1024 * 1024
 
 
 class RequestBodyTooLargeError(Exception):
