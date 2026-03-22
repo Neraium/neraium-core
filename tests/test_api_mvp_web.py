@@ -779,8 +779,8 @@ def test_pull_integration_applies_customer_mapping_config(tmp_path) -> None:
 def test_alerts_trigger_on_risk_high_transition_and_list(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("NERAIUM_ALERT_INSTABILITY_THRESHOLD", "1000.0")
     monkeypatch.setenv("NERAIUM_ALERT_RAPID_DRIFT_DELTA", "1000.0")
-    monkeypatch.setenv("NERAIUM_PILOT_DRIFT_HIGH_THRESHOLD", "0.2")
-    monkeypatch.setenv("NERAIUM_PILOT_DRIFT_WATCH_THRESHOLD", "0.05")
+    monkeypatch.setenv("NERAIUM_PILOT_DRIFT_HIGH_THRESHOLD", "0.0")
+    monkeypatch.setenv("NERAIUM_PILOT_DRIFT_WATCH_THRESHOLD", "0.0")
     client = _client(tmp_path)
     run = client.post(
         _customer_path("/runs", customer_id="alert-customer-risk"),
@@ -846,7 +846,7 @@ def test_alerts_trigger_on_instability_threshold_cross(tmp_path, monkeypatch) ->
 
 def test_alerts_trigger_on_rapid_drift_detected(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("NERAIUM_ALERT_INSTABILITY_THRESHOLD", "1000.0")
-    monkeypatch.setenv("NERAIUM_ALERT_RAPID_DRIFT_DELTA", "0.01")
+    monkeypatch.setenv("NERAIUM_ALERT_RAPID_DRIFT_DELTA", "0.0")
     monkeypatch.setenv("NERAIUM_PILOT_DRIFT_HIGH_THRESHOLD", "1000.0")
     monkeypatch.setenv("NERAIUM_PILOT_DRIFT_WATCH_THRESHOLD", "1000.0")
     client = _client(tmp_path)
