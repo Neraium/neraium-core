@@ -15,7 +15,7 @@ def _parse_args() -> argparse.Namespace:
             "using multivariate geometry and graph structure."
         )
     )
-    p.add_argument("--input", required=True, help="Input telemetry file (.json or .csv)")
+    p.add_argument("--input", help="Input telemetry file (.json or .csv)")
     p.add_argument("--output", required=True, help="Output report file (.json or .csv)")
     p.add_argument("--baseline-window", type=int, default=50)
     p.add_argument("--recent-window", type=int, default=12)
@@ -25,6 +25,13 @@ def _parse_args() -> argparse.Namespace:
     p.add_argument("--watch-threshold", type=float, default=0.50)
     p.add_argument("--alert-threshold", type=float, default=0.74)
     p.add_argument("--regime-store-path", default="sii_regimes.json")
+    p.add_argument("--live", action="store_true", help="Run live API ingestion path")
+    p.add_argument(
+        "--live-polls",
+        type=int,
+        default=1,
+        help="Number of live polling fetches to execute",
+    )
     p.add_argument("--allow-context-provider", action="store_true", default=False)
     p.add_argument("--log-level", default="INFO")
     return p.parse_args()
@@ -51,9 +58,18 @@ def main() -> int:
     logger = configure_structured_logging(config.log_level)
     app = SIIApplication.from_config(config)
     try:
-        input_path = Path(args.input)
         output_path = Path(args.output)
-        outputs = app.run_input_file(input_path)
+        if bool(args.live):
+            outputs, live_diagnostics = app.run_live_ingestion_poll(max_polls=int(args.live_polls))
+            logger.info(
+                "sii_live_cli_diagnostics",
+                extra={"poll_count": len(live_diagnostics), "diagnostics": live_diagnostics},
+            )
+        else:
+            if not args.input:
+                raise SIIConfigurationError("--input is required unless --live is set")
+            input_path = Path(args.input)
+            outputs = app.run_input_file(input_path)
         app.write_output_file(output_path, outputs)
         app.engine.close()
         print(
