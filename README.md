@@ -192,45 +192,40 @@ python -m pip install -e .[dev]
 uvicorn apps.api.main:app --host 0.0.0.0 --port 8000
 ```
 
-<<<<<<< HEAD
 ## Run the demo
 
-One command from the repo root installs runtime dependencies (if needed), binds **0.0.0.0**, and starts the **FastAPI** app with **uvicorn** (same app as `apps/api/main.py`).
-=======
-### Run the demo
-
-One-command launch for a public demo (installs deps if needed, binds to `0.0.0.0`, uses `PORT` env or 8000):
->>>>>>> 60fa49889f50cad2076a616030c6ce50a645ad07
+**There is no separate Node/React dev server.** The MVP web UI is **static HTML/JS** under
+`apps/api/static/` (entry: `index.html` + `app.js`), served by the **same** FastAPI/uvicorn
+process as the REST API (`apps/api/web.py` mounts `/`, `/dashboard`, `/upload`, etc.).
 
 ```bash
 python run_demo.py
 ```
 
-<<<<<<< HEAD
-- **Port:** `PORT` environment variable or `--port` (default **7860** if `PORT` is unset).
-- **Host:** `--host` (default **0.0.0.0**).
-- **Public URL:** `--share` tries **cloudflared** or **ngrok** if installed (otherwise prints a hint).
-=======
+Then open the **web app** (not only `/docs`):
+
+- **http://127.0.0.1:7860/** or **http://localhost:7860/dashboard**
+
 Options:
 
-- `--host HOST` - bind address (default: 0.0.0.0)
-- `--port PORT` - port (default: 8000, or `PORT` env)
-- `--share` - start a public tunnel (ngrok or cloudflared) for sharing
->>>>>>> 60fa49889f50cad2076a616030c6ce50a645ad07
+- **Port:** `PORT` or `WEB_PORT` env, or `--port` (default **7860**).
+- **Host:** `--host` (default **0.0.0.0**).
+- **Public URL:** `--share` tries **cloudflared** or **ngrok** if installed.
 
 Examples:
 
 ```bash
-<<<<<<< HEAD
 PORT=8000 python run_demo.py
 python run_demo.py --port 8000 --host 0.0.0.0
 python run_demo.py --share
 ```
 
-Runtime-only dependencies are listed in **`requirements.txt`** (also satisfied by `pip install -e .` from `pyproject.toml`).
-=======
-python run_demo.py --port 7860
-python run_demo.py --share
+Runtime dependencies: **`requirements.txt`** (also `pip install -e .` from `pyproject.toml`).
+
+**Manual start (same stack):**
+
+```bash
+uvicorn apps.api.main:app --host 0.0.0.0 --port 7860
 ```
 
 ## Customer-hosted deployment (first-class path)
@@ -281,23 +276,19 @@ Notes:
 
 ### MVP Web App (thin layer)
 
-The repository now includes a minimal web UI layered on the existing API and
-read-only SII engine (no engine rewrite):
+The repository includes a minimal **browser UI** (vanilla JS) on top of the API:
 
-- Open `http://localhost:8000/`
-- Create/activate runs
-- Upload CSV telemetry
-- View latest and recent results
-- Open result details (`/results/{result_id}`)
-- Export recent run results as JSON or CSV
+- Open **`http://localhost:<port>/`** (same port as the API).
+- Create/activate runs, upload CSV telemetry, view results, export JSON/CSV.
 
-Key endpoints used by the MVP web app:
+Key routes: `/`, `/dashboard`, `/upload`, `/app/runs`, etc. (all serve `index.html`; see `apps/api/web.py`).
+
+Key API endpoints used by the web app:
 
 - `POST /runs`, `GET /runs`, `GET /runs/active`, `PATCH /runs/{run_id}`, `POST /runs/{run_id}/activate`
 - `POST /ingest/csv`
 - `GET /results/latest`, `GET /results/recent`, `GET /results/{result_id}`
 - `GET /results/export` (and backward-compatible `GET /export`)
->>>>>>> 60fa49889f50cad2076a616030c6ce50a645ad07
 
 ## How to test
 
