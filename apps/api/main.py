@@ -175,6 +175,10 @@ class ActivateRunRequest(BaseModel):
     run_id: str = Field(min_length=1, max_length=200)
 
 
+class LockBaselineRequest(BaseModel):
+    locked: bool = True
+
+
 class ExportEnvelope(BaseModel):
     run_id: str | None = None
     format: Literal["json", "csv"]
@@ -1684,6 +1688,49 @@ def create_app(
             )
         except ValueError as exc:
             raise HTTPException(status_code=404, detail=str(exc))
+        return {"run": run}
+
+    @app.get("/runs/{run_id}/baseline", response_model=dict)
+    def get_run_baseline(
+        run_id: str,
+        customer_id: str | None = Query(default=None),
+    ) -> dict[str, Any]:
+        resolved_customer = _resolve_customer_id(customer_id)
+        run = service_instance.get_run(run_id, customer_id=resolved_customer)
+        if run is None:
+            raise HTTPException(status_code=404, detail=f"Unknown run_id: {run_id}")
+        return service_instance.get_baseline_info_for_run(run_id, customer_id=resolved_customer)
+
+    @app.post("/runs/{run_id}/baseline/reset", response_model=ActionResponse)
+    def reset_run_baseline(
+        run_id: str,
+        _: None = Depends(require_api_key),
+        customer_id: str | None = Query(default=None),
+    ) -> dict[str, bool]:
+        resolved_customer = _resolve_customer_id(customer_id)
+        run = service_instance.get_run(run_id, customer_id=resolved_customer)
+        if run is None:
+            raise HTTPException(status_code=404, detail=f"Unknown run_id: {run_id}")
+        service_instance.reset_baseline_for_run(run_id, customer_id=resolved_customer)
+        return {"ok": True}
+
+    @app.post("/runs/{run_id}/baseline/lock", response_model=RunEnvelope)
+    def lock_run_baseline(
+        run_id: str,
+        payload: LockBaselineRequest,
+        _: None = Depends(require_api_key),
+        customer_id: str | None = Query(default=None),
+    ) -> dict[str, Any]:
+        resolved_customer = _resolve_customer_id(customer_id)
+        try:
+            service_instance.lock_baseline_for_run(
+                run_id, locked=payload.locked, customer_id=resolved_customer
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail=str(exc))
+        run = service_instance.get_run(run_id, customer_id=resolved_customer)
+        if run is None:
+            raise HTTPException(status_code=404, detail=f"Unknown run_id: {run_id}")
         return {"run": run}
 
     @app.post("/ingest", response_model=ResultsEnvelope)
