@@ -20,11 +20,16 @@ def _build_client(tmp_path) -> TestClient:
     return TestClient(app)
 
 
+def _customer_path(path: str, customer_id: str = "customer-a") -> str:
+    sep = "&" if "?" in path else "?"
+    return f"{path}{sep}customer_id={customer_id}"
+
+
 def test_ingest_invalid_timestamp_returns_400(tmp_path) -> None:
     client = _build_client(tmp_path)
 
     response = client.post(
-        "/ingest",
+        _customer_path("/ingest"),
         json={
             "timestamp": "not-a-real-timestamp",
             "site_id": "s1",
@@ -41,7 +46,7 @@ def test_ingest_malformed_payload_returns_422(tmp_path) -> None:
     client = _build_client(tmp_path)
 
     response = client.post(
-        "/ingest",
+        _customer_path("/ingest"),
         json={
             "timestamp": "2026-01-01T00:00:00+00:00",
             "site_id": "s1",
@@ -61,7 +66,7 @@ def test_ingest_batch_invalid_timestamp_returns_400(tmp_path) -> None:
     client = _build_client(tmp_path)
 
     response = client.post(
-        "/ingest/batch",
+        _customer_path("/ingest/batch"),
         json={
             "items": [
                 {
@@ -83,7 +88,7 @@ def test_ingest_csv_malformed_payload_returns_400(tmp_path) -> None:
     client = _build_client(tmp_path)
 
     response = client.post(
-        "/ingest/csv",
+        _customer_path("/ingest/csv"),
         json={"csv_text": "timestamp,site_id,asset_id,s1\ninvalid,s,a,1"},
     )
 
