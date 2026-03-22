@@ -1,10 +1,14 @@
 #!/usr/bin/env python3
 """
-Launch the Neraium FastAPI app (apps.api.main:app) with uvicorn.
+Launch the Neraium stack with uvicorn: REST API + MVP web UI in one process.
 
-- Optional dependency install via pip if fastapi/uvicorn are missing.
-- Binds to 0.0.0.0 by default; port from PORT env or --port (default 7860).
-- Optional --share: start cloudflared or ngrok in a background thread if available.
+There is no separate npm/React dev server. The browser app lives under
+apps/api/static/ (index.html, app.js, styles.css) and is mounted by FastAPI
+(apps/api/web.py) at /, /dashboard, /upload, etc. Same origin as the API.
+
+- Dependency install via pip if fastapi/uvicorn/multipart are missing.
+- Binds 0.0.0.0 by default; port from PORT / WEB_PORT env or --port (default 7860).
+- Optional --share: cloudflared or ngrok quick tunnel.
 """
 
 from __future__ import annotations
@@ -75,8 +79,11 @@ def ensure_dependencies() -> None:
 
 
 def _parse_args() -> argparse.Namespace:
-    default_port = int(os.environ.get("PORT", "7860"))
-    parser = argparse.ArgumentParser(description="Run the Neraium API demo (FastAPI + uvicorn).")
+    # WEB_PORT alias: same server serves UI + API; one port for both.
+    default_port = int(os.environ.get("PORT") or os.environ.get("WEB_PORT") or "7860")
+    parser = argparse.ArgumentParser(
+        description="Run Neraium: MVP web UI + REST API (one FastAPI/uvicorn server).",
+    )
     parser.add_argument(
         "--host",
         default=os.environ.get("NERAIUM_DEMO_HOST", "0.0.0.0"),
@@ -86,7 +93,7 @@ def _parse_args() -> argparse.Namespace:
         "--port",
         type=int,
         default=default_port,
-        help="Port (default: PORT env or 7860)",
+        help="Port for web UI + API (default: PORT or WEB_PORT env, else 7860)",
     )
     parser.add_argument(
         "--share",
@@ -109,16 +116,23 @@ def _h11_max_incomplete_event_size() -> int:
 def _print_urls(host: str, port: int) -> None:
     base_local = f"http://127.0.0.1:{port}"
     print()
-    print("  Open in browser:")
-    print(f"    API docs (Swagger): {base_local}/docs")
-    print(f"    Alternative UI:     {base_local}/redoc")
-    print(f"    Health check:        {base_local}/health")
+    print("  --- Web app (MVP UI) ---")
+    print(f"    Home / dashboard:    {base_local}/")
+    print(f"    Dashboard:           {base_local}/dashboard")
+    print(f"    Upload:              {base_local}/upload")
+    print()
+    print("  --- API (same server) ---")
+    print(f"    OpenAPI / Swagger:   {base_local}/docs")
+    print(f"    ReDoc:               {base_local}/redoc")
+    print(f"    Health:              {base_local}/health")
     print()
     if host in {"0.0.0.0", "::"}:
-        print(f"    Same host:           http://localhost:{port}/docs")
-        print("    From other devices:  http://<this-machine-ip>:%d/docs" % port)
+        print(f"  Localhost alias:       http://localhost:{port}/")
+        print("  Other devices (LAN): http://<this-machine-ip>:%d/" % port)
     else:
-        print(f"    Bound host:          http://{host}:{port}/docs")
+        print(f"  Bound host UI:         http://{host}:{port}/")
+    print()
+    print("  Static UI files: apps/api/static/index.html (see apps/api/web.py)")
     print()
 
 
@@ -159,7 +173,7 @@ def main() -> None:
     h11 = _h11_max_incomplete_event_size()
 
     print("=" * 60)
-    print("Neraium demo - FastAPI SII API")
+    print("Neraium demo - Web UI + API (single uvicorn process)")
     print("=" * 60)
     print(f"  Working directory: {REPO_ROOT}")
     print(f"  ASGI app:          {APP_IMPORT}")
