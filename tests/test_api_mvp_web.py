@@ -231,10 +231,19 @@ def test_geometry_endpoints_expose_engine_derived_structure(tmp_path) -> None:
     assert isinstance(run_payload["edges"], list)
     assert run_payload["projection"]["is_visualization_projection"] is True
     assert "engine_fields" in run_payload["provenance"]
+    assert "views" in run_payload
+    assert "current" in run_payload["views"]
+    assert "baseline" in run_payload["views"]
+    assert run_payload["views"]["current"]["available"] is True
+    assert "summary" in run_payload
+    assert "unstable_nodes_current" in run_payload["summary"]
 
     node = run_payload["nodes"][0]
     assert set(node.keys()) >= {"id", "label", "position", "magnitude", "stress", "state"}
     assert set(node["position"].keys()) == {"x", "y", "z"}
+    assert set(node.keys()) >= {"position_current", "position_baseline", "is_unstable"}
+    assert set(node["position_current"].keys()) == {"x", "y", "z"}
+    assert set(node["position_baseline"].keys()) == {"x", "y", "z"}
 
     result_geom = client.get(_customer_path(f"/results/{result_id}/geometry?run_id={run_id}"))
     assert result_geom.status_code == 200

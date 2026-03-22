@@ -327,10 +327,16 @@
                   <div><span class="k">Risk</span><span id="geometryRisk">-</span></div>
                   <div><span class="k">Drift</span><span id="geometryDrift">-</span></div>
                   <div><span class="k">Composite</span><span id="geometryComposite">-</span></div>
+                  <div><span class="k">View</span><span id="geometryViewMode">Current</span></div>
                 </div>
               </div>
               <aside id="geometryDetails" class="geometry-details">
                 <div id="geometryLegend" class="geometry-legend"></div>
+                <p id="geometryStructureSummary" class="geometry-structure-note">-</p>
+                <div class="geometry-view-toggle" role="group" aria-label="Geometry view mode">
+                  <button type="button" data-geometry-mode="current" class="active">Current</button>
+                  <button type="button" data-geometry-mode="baseline">Baseline</button>
+                </div>
                 <h4>Node detail</h4>
                 <p class="subtitle">Select a node in the scene for structural details.</p>
                 <dl id="geometrySelectedDetails" class="geometry-kv">

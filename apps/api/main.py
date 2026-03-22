@@ -226,6 +226,8 @@ class GeometryEnvelope(BaseModel):
     metrics: dict[str, Any] = Field(default_factory=dict)
     nodes: list[dict[str, Any]] = Field(default_factory=list)
     edges: list[dict[str, Any]] = Field(default_factory=list)
+    views: dict[str, Any] = Field(default_factory=dict)
+    summary: dict[str, Any] = Field(default_factory=dict)
     projection: dict[str, Any] = Field(default_factory=dict)
     provenance: dict[str, Any] = Field(default_factory=dict)
 
@@ -559,6 +561,83 @@ def _project_geometry_positions(
     return np.stack([axis_x, axis_y, axis_z], axis=1)
 
 
+def _stress_state(value: float) -> str:
+    if value >= 0.66:
+        return "critical"
+    if value >= 0.33:
+        return "watch"
+    return "stable"
+
+
+def _build_geometry_nodes(
+    *,
+    feature_names: list[str],
+    positions: np.ndarray,
+    magnitude_norm: np.ndarray,
+    stress_norm: np.ndarray,
+) -> list[dict[str, Any]]:
+    n = min(len(feature_names), int(positions.shape[0]), int(magnitude_norm.shape[0]), int(stress_norm.shape[0]))
+    out: list[dict[str, Any]] = []
+    for idx in range(n):
+        stress = float(stress_norm[idx])
+        state = _stress_state(stress)
+        out.append(
+            {
+                "id": str(feature_names[idx]),
+                "label": str(feature_names[idx]),
+                "position": {
+                    "x": round(float(positions[idx, 0]), 6),
+                    "y": round(float(positions[idx, 1]), 6),
+                    "z": round(float(positions[idx, 2]), 6),
+                },
+                "magnitude": round(float(magnitude_norm[idx]), 6),
+                "stress": round(stress, 6),
+                "state": state,
+                "unstable": state == "critical",
+                "is_unstable": state == "critical",
+                "role": "signal",
+            }
+        )
+    return out
+
+
+def _build_geometry_edges(
+    corr_matrix: np.ndarray,
+    *,
+    feature_names: list[str],
+    baseline_ref: np.ndarray | None = None,
+    limit: int = 240,
+) -> list[dict[str, Any]]:
+    n = int(corr_matrix.shape[0])
+    out: list[dict[str, Any]] = []
+    if n <= 1:
+        return out
+    upper_idx = np.triu_indices(n, k=1)
+    upper_abs = np.abs(corr_matrix[upper_idx])
+    threshold = float(np.clip(np.percentile(upper_abs, 72.0), 0.22, 0.78)) if upper_abs.size else 1.1
+
+    for i in range(n):
+        for j in range(i + 1, n):
+            weight = float(corr_matrix[i, j])
+            magnitude = abs(weight)
+            if magnitude < threshold:
+                continue
+            baseline_weight = float(baseline_ref[i, j]) if baseline_ref is not None else weight
+            delta = weight - baseline_weight
+            out.append(
+                {
+                    "source": str(feature_names[i]),
+                    "target": str(feature_names[j]),
+                    "weight": round(weight, 6),
+                    "magnitude": round(magnitude, 6),
+                    "delta": round(delta, 6),
+                    "type": "positive" if weight >= 0.0 else "negative",
+                }
+            )
+    out.sort(key=lambda e: float(e.get("magnitude", 0.0)), reverse=True)
+    return out[: max(1, int(limit))]
+
+
 def _build_geometry_payload(result: dict[str, Any], *, run_id: str | None) -> dict[str, Any]:
     analytics = result.get("experimental_analytics")
     analytics_dict = analytics if isinstance(analytics, dict) else {}
@@ -631,6 +710,8 @@ def _build_geometry_payload(result: dict[str, Any], *, run_id: str | None) -> di
             "metrics": metrics,
             "nodes": [],
             "edges": [],
+            "views": {},
+            "summary": {},
             "projection": projection,
             "provenance": provenance,
         }
@@ -656,58 +737,53 @@ def _build_geometry_payload(result: dict[str, Any], *, run_id: str | None) -> di
     stress_norm = _normalize_vector(stress_raw)
     positions = _project_geometry_positions(corr_current, node_stress=stress_norm, corr_baseline=corr_baseline)
 
-    nodes: list[dict[str, Any]] = []
-    for idx in range(n):
-        stress = float(stress_norm[idx])
-        state = "stable"
-        if stress >= 0.66:
-            state = "critical"
-        elif stress >= 0.33:
-            state = "watch"
-        nodes.append(
-            {
-                "id": str(feature_names[idx]),
-                "label": str(feature_names[idx]),
-                "position": {
-                    "x": round(float(positions[idx, 0]), 6),
-                    "y": round(float(positions[idx, 1]), 6),
-                    "z": round(float(positions[idx, 2]), 6),
-                },
-                "magnitude": round(float(importance_norm[idx]), 6),
-                "stress": round(stress, 6),
-                "state": state,
-                "role": "signal",
-            }
-        )
+    nodes_current = _build_geometry_nodes(
+        feature_names=feature_names,
+        positions=positions,
+        magnitude_norm=importance_norm,
+        stress_norm=stress_norm,
+    )
+    edges_current = _build_geometry_edges(
+        corr_current,
+        feature_names=feature_names,
+        baseline_ref=corr_baseline,
+        limit=240,
+    )
 
-    edges: list[dict[str, Any]] = []
-    if n > 1:
-        upper_idx = np.triu_indices(n, k=1)
-        upper_abs = np.abs(corr_current[upper_idx])
-        if upper_abs.size:
-            threshold = float(np.clip(np.percentile(upper_abs, 72.0), 0.22, 0.78))
-        else:
-            threshold = 1.1
-        for i in range(n):
-            for j in range(i + 1, n):
-                weight = float(corr_current[i, j])
-                magnitude = abs(weight)
-                if magnitude < threshold:
-                    continue
-                baseline_weight = float(corr_baseline[i, j]) if corr_baseline is not None else 0.0
-                delta = weight - baseline_weight
-                edges.append(
-                    {
-                        "source": str(feature_names[i]),
-                        "target": str(feature_names[j]),
-                        "weight": round(weight, 6),
-                        "magnitude": round(magnitude, 6),
-                        "delta": round(delta, 6),
-                        "type": "positive" if weight >= 0.0 else "negative",
-                    }
-                )
-        edges.sort(key=lambda e: float(e.get("magnitude", 0.0)), reverse=True)
-        edges = edges[:240]
+    corr_reference = corr_baseline if corr_baseline is not None else corr_current
+    importance_reference = np.mean(np.abs(corr_reference - np.eye(n)), axis=1)
+    importance_reference_norm = _normalize_vector(importance_reference)
+    stress_reference_norm = importance_reference_norm.copy()
+    positions_reference = _project_geometry_positions(
+        corr_reference,
+        node_stress=stress_reference_norm,
+        corr_baseline=corr_reference,
+    )
+    nodes_baseline = _build_geometry_nodes(
+        feature_names=feature_names,
+        positions=positions_reference,
+        magnitude_norm=importance_reference_norm,
+        stress_norm=stress_reference_norm,
+    )
+    edges_baseline = _build_geometry_edges(
+        corr_reference,
+        feature_names=feature_names,
+        baseline_ref=corr_reference,
+        limit=240,
+    )
+    baseline_by_id = {str(n.get("id")): n for n in nodes_baseline}
+    for node in nodes_current:
+        node_id = str(node.get("id"))
+        base_node = baseline_by_id.get(node_id) or {}
+        node["position_current"] = dict(node.get("position") or {})
+        node["position_baseline"] = dict(base_node.get("position") or node.get("position") or {})
+
+    summary = {
+        "critical_nodes_current": sum(1 for n in nodes_current if str(n.get("state")) == "critical"),
+        "watch_nodes_current": sum(1 for n in nodes_current if str(n.get("state")) == "watch"),
+        "unstable_nodes_current": sum(1 for n in nodes_current if bool(n.get("unstable"))),
+        "changed_edges_current": sum(1 for e in edges_current if abs(_safe_float(e.get("delta"), 0.0)) >= 0.10),
+    }
 
     return {
         "run_id": run_id or result.get("run_id"),
@@ -716,8 +792,29 @@ def _build_geometry_payload(result: dict[str, Any], *, run_id: str | None) -> di
         "available": True,
         "reason": None,
         "metrics": metrics,
-        "nodes": nodes,
-        "edges": edges,
+        "nodes": nodes_current,
+        "edges": edges_current,
+        "views": {
+            "current": {
+                "label": "Current structure",
+                "source": "experimental_analytics.correlation_geometry.current",
+                "available": True,
+                "nodes": nodes_current,
+                "edges": edges_current,
+            },
+            "baseline": {
+                "label": "Baseline structure",
+                "source": (
+                    "experimental_analytics.correlation_geometry.baseline"
+                    if corr_baseline is not None
+                    else "baseline_not_available_using_current_structure_as_reference"
+                ),
+                "available": corr_baseline is not None,
+                "nodes": nodes_baseline,
+                "edges": edges_baseline,
+            },
+        },
+        "summary": summary,
         "projection": projection,
         "provenance": provenance,
     }
