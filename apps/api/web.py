@@ -37,6 +37,10 @@ def build_web_router() -> APIRouter:
         _ = result_id
         return FileResponse(index_file)
 
+    @router.get("/demo/sii", include_in_schema=False)
+    def web_demo_sii() -> FileResponse:
+        return FileResponse(index_file)
+
     @router.get("/web/app.js", include_in_schema=False)
     def web_app_js() -> FileResponse:
         return FileResponse(static_dir / "app.js")
