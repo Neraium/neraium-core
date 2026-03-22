@@ -1,0 +1,133 @@
+# Neraium Product & Quality Guardrails
+
+Apply these rules when implementing features or making changes. Goal: **make it real, not just bigger**.
+
+---
+
+## 1. Definition of Done (CRITICAL)
+
+For every feature implemented, a feature is only complete if:
+
+- It is **visible in the UI or API**
+- It is **wired end-to-end** (not just partially implemented)
+- It **does not break existing functionality**
+- It includes **basic validation and error handling**
+
+**If a feature cannot be completed fully, skip it instead of leaving it partial.**
+
+---
+
+## 2. Don't Break the App
+
+Never leave the app in a broken state.
+
+After any change:
+
+- The server must start
+- The main pages must load
+- Ingest must still work
+- Existing routes must not break
+
+**If something breaks, fix it before continuing.**
+
+---
+
+## 3. Tight Integration
+
+All new features must integrate into existing flows:
+
+- Use current runs/results system
+- Use existing data structures
+- Do not create parallel systems
+- Avoid duplicating logic or creating disconnected features
+
+**Keeps the product coherent.**
+
+---
+
+## 4. Demo-First Thinking
+
+Every feature must improve the demo experience.
+
+Ask:
+
+- Does this make the system easier to understand?
+- Does this make the value clearer in 30 seconds?
+
+**If not, deprioritize it.**
+
+---
+
+## 5. Explain Everything
+
+For any output shown to the user:
+
+- Include a short explanation of what it means
+- Avoid raw numbers without context
+- Prefer "interpretable insight" over raw metrics
+
+**This turns the system into something people trust.**
+
+---
+
+## 6. Keep It Simple
+
+Prefer simple working implementations over complex ones.
+
+- Avoid overengineering
+- Avoid introducing heavy frameworks
+- Avoid unnecessary abstractions
+
+**Goal: working product, not perfect architecture.**
+
+---
+
+## 7. Sanity Test Loop
+
+After major changes:
+
+1. Run a basic ingest
+2. Verify results appear
+3. Verify UI updates
+4. Verify no critical errors
+
+**Do this before continuing development.**
+
+---
+
+## 8. Single Command Startup
+
+Ensure the entire app can be started with one command:
+
+- Either `docker run ...` or `docker compose up`
+- Or a single Python command: `uvicorn apps.api.main:app --host 0.0.0.0 --port 8000`
+
+**Document this clearly in README.md.**
+
+---
+
+## 9. Feature Visibility
+
+Do not implement hidden features.
+
+If a feature exists:
+
+- It must be visible in UI or accessible via API
+- The user should know it exists
+
+**Avoid hidden or unused functionality.**
+
+---
+
+## 10. Product Mindset
+
+Build this as a product, not a codebase.
+
+Priorities:
+
+1. Clarity
+2. Reliability
+3. Usability
+4. Then features
+
+**Avoid adding features that do not improve product value.**
