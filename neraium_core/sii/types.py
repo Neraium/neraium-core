@@ -60,6 +60,10 @@ class StructuralIndicators:
     coherence_loss_score: float
     graph_deformation_score: float
     coupling_instability_score: float
+    mean_shift_score: float = 0.0
+    covariance_shift_score: float = 0.0
+    subspace_rotation_score: float = 0.0
+    path_length_shift_score: float = 0.0
 
 
 @dataclass(frozen=True)

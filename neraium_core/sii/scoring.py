@@ -37,13 +37,13 @@ def component_scores(
     graph_snapshot: object,
     geometry_snapshot: object,
 ) -> ComponentScores:
-    structural = _clip(float(geometry_departure) / 3.0)
-    relational = _clip(float(geometry_departure) / 2.2)
+    structural = _clip(float(geometry_departure))
     graph_def = _clip(float(graph_departure))
-    regime = _clip(float(regime_distance) / 2.5)
+    regime = _clip(float(regime_distance))
     coherence_score = float(getattr(geometry_snapshot, "coherence_score", 1.0))
     coherence_loss = _clip(1.0 - coherence_score)
-    coupling = _clip(0.55 * graph_def + 0.45 * coherence_loss)
+    relational = _clip(0.70 * structural + 0.30 * coherence_loss)
+    coupling = _clip(0.50 * graph_def + 0.30 * relational + 0.20 * coherence_loss)
     return ComponentScores(
         structural_departure=structural,
         relational_instability=relational,
@@ -56,10 +56,11 @@ def component_scores(
 
 @dataclass(frozen=True)
 class StructuralScoringModel:
-    w_structural: float = 0.28
-    w_relational: float = 0.18
-    w_graph: float = 0.18
-    w_regime: float = 0.18
+    # Regime and geometry departures are primary; graph/coherence support interpretation.
+    w_structural: float = 0.24
+    w_relational: float = 0.16
+    w_graph: float = 0.16
+    w_regime: float = 0.28
     w_coherence: float = 0.10
     w_coupling: float = 0.08
 
@@ -89,7 +90,7 @@ class StructuralScoringModel:
             + self.w_coherence * coherence_loss
             + self.w_coupling * coupling
         )
-        return _clip(float(score), 0.0, 3.0)
+        return _clip(float(score), 0.0, 1.0)
 
 
 def composite_structural_score(scores: ComponentScores | dict[str, float]) -> float:

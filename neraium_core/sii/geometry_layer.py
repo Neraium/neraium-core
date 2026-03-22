@@ -8,36 +8,56 @@ from .errors import SIIValidationError
 
 
 def normalize_window(window: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    if window.ndim != 2:
+    arr = np.asarray(window, dtype=float)
+    if arr.ndim != 2:
         raise SIIValidationError("normalize_window expects a 2D matrix")
-    mean = np.nanmean(window, axis=0)
-    std = np.nanstd(window, axis=0)
+    mean = np.nanmean(arr, axis=0)
+    std = np.nanstd(arr, axis=0)
     std = np.where(std < 1e-9, 1.0, std)
-    z = (window - mean) / std
+    z = (arr - mean) / std
     z = np.nan_to_num(z, nan=0.0, posinf=0.0, neginf=0.0)
     return z, mean, std
 
 
+def covariance_matrix(z_window: np.ndarray) -> np.ndarray:
+    z = np.asarray(z_window, dtype=float)
+    if z.ndim != 2:
+        raise SIIValidationError("covariance_matrix expects a 2D matrix")
+    cov = np.cov(z.T)
+    cov = np.nan_to_num(cov, nan=0.0, posinf=0.0, neginf=0.0)
+    if cov.ndim == 0:
+        cov = np.asarray([[float(cov)]], dtype=float)
+    cov = 0.5 * (cov + cov.T)
+    return cov
+
+
 def correlation_matrix(z_window: np.ndarray) -> np.ndarray:
-    if z_window.ndim != 2:
+    z = np.asarray(z_window, dtype=float)
+    if z.ndim != 2:
         raise SIIValidationError("correlation_matrix expects a 2D matrix")
-    corr = np.corrcoef(z_window.T)
+    corr = np.corrcoef(z.T)
     corr = np.nan_to_num(corr, nan=0.0, posinf=0.0, neginf=0.0)
+    if corr.ndim == 0:
+        corr = np.asarray([[1.0]], dtype=float)
     np.fill_diagonal(corr, 1.0)
     return corr
 
 
 def flatten_upper(corr: np.ndarray) -> np.ndarray:
-    if corr.ndim != 2 or corr.shape[0] != corr.shape[1]:
+    c = np.asarray(corr, dtype=float)
+    if c.ndim != 2 or c.shape[0] != c.shape[1]:
         return np.array([], dtype=float)
-    idx = np.triu_indices(corr.shape[0], k=1)
-    return corr[idx]
+    idx = np.triu_indices(c.shape[0], k=1)
+    return c[idx]
 
 
 def geometric_distance(current: np.ndarray, reference: np.ndarray) -> float:
-    if current.shape != reference.shape:
+    a = np.asarray(current, dtype=float)
+    b = np.asarray(reference, dtype=float)
+    if a.shape != b.shape:
         return 0.0
-    return float(np.linalg.norm(current - reference, ord="fro"))
+    n = float(max(1, a.size))
+    return float(np.linalg.norm(a - b, ord="fro") / np.sqrt(n))
 
 
 def relational_instability(current_corr: np.ndarray, reference_corr: np.ndarray) -> float:
@@ -46,6 +66,48 @@ def relational_instability(current_corr: np.ndarray, reference_corr: np.ndarray)
     if cur.shape != ref.shape or cur.size == 0:
         return 0.0
     return float(np.mean(np.abs(cur - ref)))
+
+
+def _principal_subspace(cov: np.ndarray, energy: float = 0.80) -> np.ndarray:
+    vals, vecs = np.linalg.eigh(cov)
+    vals = np.clip(np.asarray(vals, dtype=float), a_min=1e-12, a_max=None)
+    order = np.argsort(vals)[::-1]
+    vals = vals[order]
+    vecs = vecs[:, order]
+    total = float(np.sum(vals))
+    if total <= 0.0:
+        return vecs[:, :1]
+    ratio = np.cumsum(vals) / total
+    k = int(np.searchsorted(ratio, energy, side="left") + 1)
+    k = max(1, min(k, vecs.shape[1]))
+    return vecs[:, :k]
+
+
+def _subspace_distance(cov_a: np.ndarray, cov_b: np.ndarray) -> float:
+    ua = _principal_subspace(cov_a)
+    ub = _principal_subspace(cov_b)
+    k = min(ua.shape[1], ub.shape[1])
+    if k <= 0:
+        return 0.0
+    proj = ua[:, :k].T @ ub[:, :k]
+    s = np.linalg.svd(proj, compute_uv=False)
+    s = np.clip(np.asarray(s, dtype=float), -1.0, 1.0)
+    angles = np.arccos(s)
+    return float(np.mean(np.abs(angles)) / np.pi)
+
+
+def _effective_rank(cov: np.ndarray) -> float:
+    vals = np.linalg.eigvalsh(cov)
+    vals = np.clip(np.asarray(vals, dtype=float), a_min=1e-12, a_max=None)
+    p = vals / np.sum(vals)
+    ent = -float(np.sum(p * np.log(p + 1e-12)))
+    return float(np.exp(ent))
+
+
+def _coherence_from_cov(cov: np.ndarray) -> float:
+    rank = _effective_rank(cov)
+    n = float(max(1, cov.shape[0]))
+    return float(np.clip(rank / n, 0.0, 1.0))
 
 
 @dataclass(frozen=True)
@@ -62,10 +124,16 @@ class GeometryFeatures:
     baseline_std: np.ndarray
     recent_mean: np.ndarray
     recent_std: np.ndarray
+    baseline_cov: np.ndarray
+    recent_cov: np.ndarray
     baseline_corr: np.ndarray
     recent_corr: np.ndarray
+    mean_shift_norm: float
+    covariance_shift_norm: float
+    subspace_rotation: float
     structural_drift: float
     relational_instability: float
+    coherence_score: float
 
 
 def build_geometry_state(
@@ -76,76 +144,38 @@ def build_geometry_state(
     z_base, mean_base, std_base = normalize_window(baseline_window)
     z_recent, mean_recent, std_recent = normalize_window(recent_window)
 
-    baseline_corr = correlation_matrix(z_base)
-    recent_corr = correlation_matrix(z_recent)
-    effective_ref = reference_corr if reference_corr is not None and reference_corr.shape == recent_corr.shape else baseline_corr
+    cov_base = covariance_matrix(z_base)
+    cov_recent = covariance_matrix(z_recent)
+    corr_base = correlation_matrix(z_base)
+    corr_recent = correlation_matrix(z_recent)
 
-    structural_drift = geometric_distance(recent_corr, effective_ref)
-    rel_instability = relational_instability(recent_corr, effective_ref)
+    effective_ref_corr = (
+        np.asarray(reference_corr, dtype=float)
+        if reference_corr is not None and np.asarray(reference_corr).shape == corr_recent.shape
+        else corr_base
+    )
+
+    mean_shift = float(np.linalg.norm(mean_recent - mean_base) / np.sqrt(float(max(1, mean_base.size))))
+    cov_shift = geometric_distance(cov_recent, cov_base)
+    subspace_rot = _subspace_distance(cov_base, cov_recent)
+    corr_drift = geometric_distance(corr_recent, effective_ref_corr)
+    rel_inst = relational_instability(corr_recent, effective_ref_corr)
+    structural = float(0.40 * cov_shift + 0.35 * corr_drift + 0.25 * subspace_rot)
+    coherence = _coherence_from_cov(cov_recent)
 
     return GeometryFeatures(
         baseline_mean=mean_base,
         baseline_std=std_base,
         recent_mean=mean_recent,
         recent_std=std_recent,
-        baseline_corr=baseline_corr,
-        recent_corr=recent_corr,
-        structural_drift=structural_drift,
-        relational_instability=rel_instability,
+        baseline_cov=cov_base,
+        recent_cov=cov_recent,
+        baseline_corr=corr_base,
+        recent_corr=corr_recent,
+        mean_shift_norm=mean_shift,
+        covariance_shift_norm=cov_shift,
+        subspace_rotation=subspace_rot,
+        structural_drift=structural,
+        relational_instability=rel_inst,
+        coherence_score=coherence,
     )
-
-
-@dataclass(frozen=True)
-class GeometrySnapshot:
-    mean: np.ndarray
-    cov: np.ndarray
-    principal_values: np.ndarray
-    principal_vectors: np.ndarray
-    coherence_score: float
-
-
-def _safe_cov(cov: np.ndarray) -> np.ndarray:
-    c = np.asarray(cov, dtype=float)
-    if c.ndim == 0:
-        c = np.asarray([[float(c)]], dtype=float)
-    if c.ndim == 1:
-        c = np.diag(c)
-    if c.shape[0] != c.shape[1]:
-        n = int(min(c.shape[0], c.shape[1]))
-        c = c[:n, :n]
-    c = np.nan_to_num(c, nan=0.0, posinf=0.0, neginf=0.0)
-    c = 0.5 * (c + c.T)
-    return c
-
-
-def _coherence_from_cov(cov: np.ndarray) -> float:
-    vals = np.linalg.eigvalsh(cov)
-    vals = np.clip(np.asarray(vals, dtype=float), a_min=1e-12, a_max=None)
-    ratio = float(np.max(vals) / np.sum(vals))
-    # Higher ratio indicates one dominant mode -> lower multivariate coherence.
-    return float(max(0.0, min(1.0, 1.0 - ratio)))
-
-
-def build_geometry_snapshot(state: GeometryState) -> GeometrySnapshot:
-    cov = _safe_cov(state.cov)
-    vals, vecs = np.linalg.eigh(cov)
-    vals = np.clip(vals, a_min=1e-12, a_max=None)
-    order = np.argsort(vals)[::-1]
-    vals = vals[order]
-    vecs = vecs[:, order]
-    return GeometrySnapshot(
-        mean=np.asarray(state.mean, dtype=float),
-        cov=cov,
-        principal_values=vals,
-        principal_vectors=vecs,
-        coherence_score=float(max(0.0, min(1.0, state.coherence_score))),
-    )
-
-
-def geometry_departure_score(current: GeometrySnapshot, baseline: GeometrySnapshot) -> float:
-    if current.mean.shape != baseline.mean.shape:
-        return 0.0
-    delta_mean = float(np.linalg.norm(current.mean - baseline.mean))
-    delta_cov = float(np.linalg.norm(current.cov - baseline.cov, ord="fro"))
-    n = float(max(1, current.mean.size))
-    return float((delta_mean / np.sqrt(n)) + 0.5 * (delta_cov / n))

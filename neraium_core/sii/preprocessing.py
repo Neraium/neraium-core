@@ -79,7 +79,6 @@ def data_quality(
     *,
     recent_timestamps: list[float] | None,
 ) -> DataQualitySummary:
-    _ = recent_timestamps
     recent_window = np.asarray(recent_window, dtype=float)
     if recent_window.ndim != 2 or recent_window.size == 0:
         return DataQualitySummary(
@@ -101,16 +100,35 @@ def data_quality(
     total_signal_count = int(recent_window.shape[1])
     sensor_coverage = float(valid_signal_count / max(1, total_signal_count))
 
+    timestamp_irregularity = 0.0
+    if recent_timestamps is not None and len(recent_timestamps) >= 3:
+        ts = np.asarray(recent_timestamps, dtype=float)
+        gaps = np.diff(ts)
+        if gaps.size > 1:
+            mean_gap = float(np.mean(gaps))
+            std_gap = float(np.std(gaps))
+            if mean_gap > 1e-9:
+                timestamp_irregularity = float(max(0.0, min(1.0, std_gap / mean_gap)))
+        if not np.all(gaps > 0):
+            timestamp_irregularity = 1.0
+
     statuses: list[str] = []
     if missingness_rate > 0.5:
         statuses.append("DATA_QUALITY_LIMITED")
     if sensor_coverage < 0.5:
         statuses.append("LOW_SENSOR_COVERAGE")
-    gate_passed = bool(missingness_rate <= 0.5 and sensor_coverage >= 0.5 and valid_signal_count >= 2)
+    if timestamp_irregularity > 0.35:
+        statuses.append("TEMPORAL_IRREGULARITY")
+    gate_passed = bool(
+        missingness_rate <= 0.5
+        and sensor_coverage >= 0.5
+        and valid_signal_count >= 2
+        and timestamp_irregularity <= 0.35
+    )
     return DataQualitySummary(
         missingness_rate=missingness_rate,
         sensor_coverage=sensor_coverage,
-        timestamp_irregularity=0.0,
+        timestamp_irregularity=timestamp_irregularity,
         gate_passed=gate_passed,
         statuses=statuses,
         valid_signal_count=valid_signal_count,
