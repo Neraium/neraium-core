@@ -44,7 +44,10 @@
           <h2 id="pageTitle">Dashboard</h2>
           <p id="pageSubtitle" class="subtitle">Live summary of structural stability</p>
         </div>
-        <div class="topbar-actions">
+        <div class="topbar-actions tenant-filters">
+          <input id="customerFilterInput" placeholder="Customer ID" aria-label="Customer ID filter" />
+          <input id="siteFilterInput" placeholder="Site ID (optional)" aria-label="Site ID filter" list="knownSitesList" />
+          <datalist id="knownSitesList"></datalist>
           <button id="seedDemoBtn" type="button" class="secondary">Seed Demo Data</button>
           <button id="refreshBtn" type="button">Refresh</button>
         </div>

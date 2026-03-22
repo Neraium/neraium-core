@@ -225,6 +225,19 @@ Environment variables:
 - `NERAIUM_MAX_REQUEST_BODY_BYTES` (optional, minimum/default: `52428800` = 50MB)  
 - `NERAIUM_UVICORN_H11_MAX_INCOMPLETE_EVENT_SIZE` (optional, minimum/default: `62914560` = 60MB parser ceiling)
 
+### Basic multi-tenant scoping (no auth/roles yet)
+
+The API now supports lightweight tenant scoping via `customer_id` query/body fields:
+
+- Ingest endpoints (`/ingest`, `/ingest/batch`, `/ingest/csv`) accept `customer_id`
+- Runs/results endpoints accept `customer_id` query parameter for isolated reads
+- Optional `site_id` query filter is supported on:
+  - `GET /results/latest`
+  - `GET /results/recent`
+  - `GET /results/export` and `GET /export`
+
+If omitted, `customer_id` defaults to `default-customer`.
+
 ### Pilot hardening mode (optional)
 
 For pilot deployments, enable stricter validation and a stable, traceable response schema **in addition to** existing fields:
