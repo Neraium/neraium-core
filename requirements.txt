@@ -1,0 +1,6 @@
+# Neraium core demo / API
+numpy
+pydantic>=2
+fastapi>=0.110
+uvicorn>=0.29
+python-multipart
