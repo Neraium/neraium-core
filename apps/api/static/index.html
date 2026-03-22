@@ -48,6 +48,11 @@
           <input id="customerFilterInput" placeholder="Customer ID" aria-label="Customer ID filter" />
           <input id="siteFilterInput" placeholder="Site ID (optional)" aria-label="Site ID filter" list="knownSitesList" />
           <datalist id="knownSitesList"></datalist>
+          <label class="demo-toggle" for="demoModeToggle">
+            <input id="demoModeToggle" type="checkbox" />
+            <span>Demo Mode</span>
+          </label>
+          <button id="prepareDemoBtn" type="button" class="secondary">Prepare Demo Runs</button>
           <button id="seedDemoBtn" type="button" class="secondary">Seed Demo Data</button>
           <button id="refreshBtn" type="button">Refresh</button>
         </div>
@@ -236,6 +241,45 @@
               </div>
             </div>
             <p id="runDetailMeta" class="subtitle"></p>
+            <div id="runSignalSeparation" class="signal-separation hidden">
+              <article class="signal-card state">
+                <span class="k">State</span>
+                <div id="runSignalState" class="v">-</div>
+              </article>
+              <article class="signal-card risk">
+                <span class="k">Risk</span>
+                <div id="runSignalRisk" class="v">-</div>
+              </article>
+              <article class="signal-card trend">
+                <span class="k">Trend</span>
+                <div id="runSignalTrend" class="v">-</div>
+              </article>
+            </div>
+            <div id="runTransitionStrip" class="timeline-transition-strip hidden"></div>
+            <section id="demoPlaybackPanel" class="demo-playback hidden">
+              <div class="demo-playback-head">
+                <strong>Timeline playback</strong>
+                <span id="demoPlaybackProgress" class="subtitle">Demo Mode off</span>
+              </div>
+              <div class="row">
+                <button id="demoPlayPauseBtn" type="button" class="secondary">Play timeline</button>
+                <button id="demoReplayBtn" type="button" class="secondary">Replay</button>
+              </div>
+            </section>
+            <section id="demoKeyEventsPanel" class="demo-key-events hidden">
+              <div class="panel-header">
+                <h4>Key events</h4>
+                <p class="subtitle">Risk spikes and structural drift changes for fast walkthroughs.</p>
+              </div>
+              <ul id="demoKeyEventsList" class="demo-key-events-list"></ul>
+            </section>
+            <article id="runRiskExplanationPanel" class="risk-explanation hidden">
+              <div class="risk-explanation-head">
+                <h4>Why this risk level</h4>
+                <div id="runRiskExplanationBadge"></div>
+              </div>
+              <p id="runRiskExplanationText" class="subtitle"></p>
+            </article>
             <div id="runDetailEmpty" class="empty-state hidden">
               <p>No results available for this run.</p>
               <p class="subtitle">Upload a CSV file or seed demo data to generate results.</p>
@@ -301,7 +345,7 @@
           </section>
 
           <section class="panel">
-            <h3>Phase timeline</h3>
+            <h3>State / risk timeline</h3>
             <div id="phaseTimeline" class="timeline"></div>
           </section>
 
@@ -337,6 +381,7 @@
                     <th>Phase</th>
                     <th>Trend</th>
                     <th>Risk</th>
+                    <th>Transition</th>
                     <th>Drift</th>
                     <th>Composite</th>
                     <th>Message</th>
@@ -355,6 +400,13 @@
         <section id="page-result-detail" class="page hidden">
           <section class="panel">
             <h3>Result detail</h3>
+            <article id="resultRiskExplanationPanel" class="risk-explanation hidden">
+              <div class="risk-explanation-head">
+                <h4>Why this risk level</h4>
+                <div id="resultRiskExplanationBadge"></div>
+              </div>
+              <p id="resultRiskExplanationText" class="subtitle"></p>
+            </article>
             <div id="resultDetailGrid" class="summary-grid"></div>
           </section>
         </section>
