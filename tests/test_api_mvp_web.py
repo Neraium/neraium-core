@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import base64
 import json
 import socket
 import threading
@@ -575,4 +576,178 @@ def test_pull_integration_reports_failures_with_retries(tmp_path) -> None:
     assert last.get("last_error")
     stop = client.post(_customer_path("/integrations/pull/stop", customer_id=customer_id))
     assert stop.status_code == 200
+
+
+def test_pull_integration_with_basic_auth_and_mapping_config(tmp_path) -> None:
+    client = _client(tmp_path)
+    customer_id = "pull-customer-c"
+    run = client.post(
+        _customer_path("/runs", customer_id=customer_id),
+        json={"name": "pull-run-basic-auth", "activate": True, "config": {}},
+    )
+    assert run.status_code == 200
+    run_id = run.json()["run"]["run_id"]
+
+    mapping_path = tmp_path / "integration.json"
+    mapping_path.write_text(
+        json.dumps(
+            {
+                "customers": {
+                    customer_id: {
+                        "mapping": {
+                            "payload_path": "data",
+                            "items_path": "events",
+                            "field_aliases": {
+                                "timestamp": ["time stamp"],
+                                "site_id": ["site code"],
+                                "asset_id": ["asset code"],
+                            },
+                        }
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    client.app.state.integration_config_path_override = str(mapping_path)
+    client.app.state.integration_config_override = None
+    try:
+        payload = json.dumps(
+            {
+                "data": {
+                    "events": [
+                        {
+                            "time stamp": "2026-01-01T00:00:00+00:00",
+                            "site code": "site-auth",
+                            "asset code": "asset-auth",
+                            "Pressure PSI": 55.1,
+                        }
+                    ]
+                }
+            }
+        )
+        auth_header = "Basic " + base64.b64encode(b"demo-user:demo-pass").decode("ascii")
+        server = _PullServer(payload, auth_header=auth_header)
+        endpoint = server.start()
+        try:
+            start = client.post(
+                _customer_path("/integrations/pull/start", customer_id=customer_id),
+                json={
+                    "endpoint_url": endpoint,
+                    "polling_interval_seconds": 0.2,
+                    "auth_type": "basic",
+                    "username": "demo-user",
+                    "password": "demo-pass",
+                    "run_id": run_id,
+                    "retry_max_attempts": 2,
+                    "retry_backoff_seconds": 0.05,
+                    "request_timeout_seconds": 2.0,
+                },
+            )
+            assert start.status_code == 200
+            pulled = _wait_for_pull_ingest(client, customer_id=customer_id, min_count=1)
+            assert pulled["running"] is True
+            recent = client.get(
+                _customer_path(
+                    f"/results/recent?run_id={run_id}&limit=5",
+                    customer_id=customer_id,
+                )
+            )
+            assert recent.status_code == 200
+            assert recent.json()["count"] >= 1
+            sensors = recent.json()["results"][0].get("sensor_relationships") or []
+            assert "pressure_psi" in {str(k).lower() for k in sensors}
+            stop = client.post(_customer_path("/integrations/pull/stop", customer_id=customer_id))
+            assert stop.status_code == 200
+        finally:
+            server.stop()
+    finally:
+        client.app.state.integration_config_path_override = None
+        client.app.state.integration_config_override = None
+
+
+def test_pull_integration_applies_customer_mapping_config(tmp_path) -> None:
+    mapping_path = tmp_path / "integration_config.json"
+    mapping_path.write_text(
+        json.dumps(
+            {
+                "customers": {
+                    "pull-customer-map": {
+                        "mapping": {
+                            "payload_path": "payload",
+                            "items_path": "rows",
+                            "field_aliases": {
+                                "timestamp": ["time_stamp"],
+                                "site_id": ["SITE ID"],
+                                "asset_id": ["asset id"],
+                                "sensor_values": ["SENSORS"],
+                            },
+                            "sensor_aliases": {
+                                "temp c": "temperature",
+                            },
+                        }
+                    }
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    store = ResultStore(db_path=str(tmp_path / "test_pull_map.db"))
+    engine = StructuralEngine(baseline_window=5, recent_window=3)
+    service = StructuralMonitoringService(engine=engine, store=store)
+    app = create_app(service=service)
+    app.state.integration_config_path_override = str(mapping_path)
+    app.state.integration_config_override = None
+    client = TestClient(app)
+
+    customer_id = "pull-customer-map"
+    run = client.post(
+        _customer_path("/runs", customer_id=customer_id),
+        json={"name": "pull-map-run", "activate": True, "config": {}},
+    )
+    assert run.status_code == 200
+    run_id = run.json()["run"]["run_id"]
+
+    payload = json.dumps(
+        {
+            "payload": {
+                "rows": [
+                    {
+                        "time_stamp": "2026-01-01T00:00:00+00:00",
+                        "SITE ID": "site-map",
+                        "asset id": "asset-map",
+                        "SENSORS": {"temp c": 61.2, "pressure": 42.1},
+                    }
+                ]
+            }
+        }
+    )
+    server = _PullServer(payload)
+    endpoint = server.start()
+    try:
+        start = client.post(
+            _customer_path("/integrations/pull/start", customer_id=customer_id),
+            json={
+                "endpoint_url": endpoint,
+                "polling_interval_seconds": 0.2,
+                "auth_type": "none",
+                "run_id": run_id,
+                "retry_max_attempts": 1,
+                "retry_backoff_seconds": 0.05,
+                "request_timeout_seconds": 2.0,
+            },
+        )
+        assert start.status_code == 200
+        pulled = _wait_for_pull_ingest(client, customer_id=customer_id, min_count=1)
+        assert int(pulled.get("total_ingested", 0)) >= 1
+
+        recent = client.get(_customer_path(f"/results/recent?run_id={run_id}&limit=1", customer_id=customer_id))
+        assert recent.status_code == 200
+        assert recent.json()["count"] >= 1
+        latest = recent.json()["results"][0]
+        sensors = latest.get("sensor_relationships") or []
+        assert "temperature" in sensors
+    finally:
+        client.post(_customer_path("/integrations/pull/stop", customer_id=customer_id))
+        server.stop()
 

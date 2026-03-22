@@ -21,6 +21,12 @@ from pydantic import BaseModel, Field
 from starlette.responses import JSONResponse
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
+from apps.api.integration import (
+    IntegrationMappingError,
+    apply_integration_mapping,
+    load_integration_config,
+    resolve_customer_integration,
+)
 from apps.api.web import build_web_router
 from neraium_core.logging_utils import log_structured, summarize_exception_for_logs
 from neraium_core.service import StructuralMonitoringService
@@ -235,16 +241,16 @@ class IngestJobEnvelope(BaseModel):
 
 
 class PullIntegrationStartRequest(BaseModel):
-    endpoint_url: str = Field(min_length=1, max_length=2000)
-    polling_interval_seconds: float = Field(default=30.0, ge=0.2, le=3600.0)
-    auth_type: Literal["none", "basic", "bearer"] = "none"
+    endpoint_url: str | None = Field(default=None, min_length=1, max_length=2000)
+    polling_interval_seconds: float | None = Field(default=None, ge=0.2, le=3600.0)
+    auth_type: Literal["none", "basic", "bearer"] | None = None
     username: str | None = None
     password: str | None = None
     token: str | None = None
     run_id: str | None = None
-    retry_max_attempts: int = Field(default=3, ge=1, le=10)
-    retry_backoff_seconds: float = Field(default=1.0, ge=0.05, le=60.0)
-    request_timeout_seconds: float = Field(default=10.0, ge=1.0, le=120.0)
+    retry_max_attempts: int | None = Field(default=None, ge=1, le=10)
+    retry_backoff_seconds: float | None = Field(default=None, ge=0.05, le=60.0)
+    request_timeout_seconds: float | None = Field(default=None, ge=1.0, le=120.0)
 
 
 class PullIntegrationStatusEnvelope(BaseModel):
@@ -725,6 +731,10 @@ def create_app(
     app.add_middleware(MaxRequestBodySizeMiddleware, max_body_size=request_body_limit)
     persistence_available = _persistence_available(db_path)
     service_instance = service or StructuralMonitoringService(store=ResultStore(db_path=db_path))
+    integration_config_path = os.getenv("NERAIUM_INTEGRATION_CONFIG_PATH")
+    integration_config = load_integration_config(integration_config_path)
+    app.state.integration_config_override = integration_config
+    app.state.integration_config_path_override = integration_config_path
     ingest_jobs: dict[str, dict[str, Any]] = {}
     ingest_jobs_lock = threading.Lock()
     pull_integrations: dict[str, dict[str, Any]] = {}
@@ -865,28 +875,22 @@ def create_app(
         return None
 
     def _coerce_pull_items(payload: Any, *, customer_id: str) -> list[dict[str, Any]]:
-        rows: list[dict[str, Any]]
-        if isinstance(payload, dict) and isinstance(payload.get("items"), list):
-            rows = [item for item in payload["items"] if isinstance(item, dict)]
-            if len(rows) != len(payload["items"]):
-                raise ValueError("Payload items must be objects.")
-        elif isinstance(payload, list):
-            rows = [item for item in payload if isinstance(item, dict)]
-            if len(rows) != len(payload):
-                raise ValueError("Payload list must contain objects.")
-        elif isinstance(payload, dict):
-            rows = [payload]
+        cfg_override = getattr(app.state, "integration_config_override", None)
+        if isinstance(cfg_override, dict):
+            cfg = cfg_override
         else:
-            raise ValueError("Payload must be an object, list of objects, or an object with items[].")
-
-        if not rows:
-            return []
-        out: list[dict[str, Any]] = []
-        for row in rows:
-            item = dict(row)
-            item["customer_id"] = _resolve_customer_id(item.get("customer_id") or customer_id)
-            out.append(item)
-        return out
+            path_override = getattr(app.state, "integration_config_path_override", None)
+            path = str(path_override or "").strip() or os.getenv("NERAIUM_INTEGRATION_CONFIG_PATH")
+            cfg = load_integration_config(path)
+        try:
+            rows = apply_integration_mapping(
+                payload,
+                customer_id=customer_id,
+                config=cfg,
+            )
+        except IntegrationMappingError as exc:
+            raise ValueError(str(exc)) from exc
+        return rows
 
     def _fetch_pull_payload(state: dict[str, Any]) -> tuple[int, Any]:
         endpoint_url = str(state.get("endpoint_url") or "").strip()
@@ -1521,15 +1525,61 @@ def create_app(
         customer_id: str | None = Query(default=None),
     ) -> dict[str, Any]:
         resolved_customer = _resolve_customer_id(customer_id)
-        endpoint_url = _validate_endpoint_url(payload.endpoint_url)
-        auth_type = str(payload.auth_type or "none")
+        cfg_override = getattr(app.state, "integration_config_override", None)
+        if isinstance(cfg_override, dict):
+            cfg_doc = cfg_override
+        else:
+            path_override = getattr(app.state, "integration_config_path_override", None)
+            path = str(path_override or "").strip() or os.getenv("NERAIUM_INTEGRATION_CONFIG_PATH")
+            cfg_doc = load_integration_config(path)
+        resolved_cfg = resolve_customer_integration(
+            customer_id=resolved_customer,
+            config_doc=cfg_doc,
+        )
+
+        endpoint_url = _validate_endpoint_url(
+            payload.endpoint_url
+            or str(resolved_cfg.get("endpoint_url") or "")
+        )
+        auth_type = str(payload.auth_type or resolved_cfg.get("auth_type") or "none")
+        username = payload.username if payload.username is not None else resolved_cfg.get("username")
+        password = payload.password if payload.password is not None else resolved_cfg.get("password")
+        token = payload.token if payload.token is not None else resolved_cfg.get("token")
+        polling_interval_seconds = float(
+            payload.polling_interval_seconds
+            if payload.polling_interval_seconds is not None
+            else resolved_cfg.get("polling_interval_seconds") or 30.0
+        )
+        retry_max_attempts = int(
+            payload.retry_max_attempts
+            if payload.retry_max_attempts is not None
+            else resolved_cfg.get("retry_max_attempts") or 3
+        )
+        retry_backoff_seconds = float(
+            payload.retry_backoff_seconds
+            if payload.retry_backoff_seconds is not None
+            else resolved_cfg.get("retry_backoff_seconds") or 1.0
+        )
+        request_timeout_seconds = float(
+            payload.request_timeout_seconds
+            if payload.request_timeout_seconds is not None
+            else resolved_cfg.get("request_timeout_seconds") or 10.0
+        )
+        if polling_interval_seconds < 0.2:
+            raise HTTPException(status_code=400, detail="polling_interval_seconds must be >= 0.2.")
+        if retry_max_attempts < 1:
+            raise HTTPException(status_code=400, detail="retry_max_attempts must be >= 1.")
+        if retry_backoff_seconds < 0.05:
+            raise HTTPException(status_code=400, detail="retry_backoff_seconds must be >= 0.05.")
+        if request_timeout_seconds < 1.0:
+            raise HTTPException(status_code=400, detail="request_timeout_seconds must be >= 1.0.")
         if auth_type == "basic":
-            if not str(payload.username or "").strip() or payload.password is None:
+            if not str(username or "").strip() or password is None:
                 raise HTTPException(
                     status_code=400,
                     detail="Basic auth requires username and password.",
                 )
-        if auth_type == "bearer" and not str(payload.token or "").strip():
+        if auth_type == "bearer" and not str(token or "").strip():
             raise HTTPException(status_code=400, detail="Bearer auth requires token.")
 
         resolved_run = _resolve_run_id_with_default(
@@ -1546,15 +1596,15 @@ def create_app(
                 "endpoint_url": endpoint_url,
                 "run_id": resolved_run,
                 "auth_type": auth_type,
-                "username": payload.username,
-                "password": payload.password,
-                "token": payload.token,
+                "username": username,
+                "password": password,
+                "token": token,
                 "running": True,
                 "status": "running",
-                "polling_interval_seconds": float(payload.polling_interval_seconds),
-                "retry_max_attempts": int(payload.retry_max_attempts),
-                "retry_backoff_seconds": float(payload.retry_backoff_seconds),
-                "request_timeout_seconds": float(payload.request_timeout_seconds),
+                "polling_interval_seconds": polling_interval_seconds,
+                "retry_max_attempts": retry_max_attempts,
+                "retry_backoff_seconds": retry_backoff_seconds,
+                "request_timeout_seconds": request_timeout_seconds,
                 "started_at": started_at,
                 "updated_at": started_at,
                 "last_poll_at": None,
@@ -1578,7 +1628,7 @@ def create_app(
                 "customer_id": resolved_customer,
                 "run_id": resolved_run,
                 "endpoint_url": endpoint_url,
-                "polling_interval_seconds": float(payload.polling_interval_seconds),
+                "polling_interval_seconds": polling_interval_seconds,
                 "auth_type": auth_type,
             },
             level=logging.INFO,
