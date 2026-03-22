@@ -446,7 +446,7 @@ if __name__ == "__main__":
     with open("part3_multinode_persistence.json", "w") as f:
         json.dump(part3, f, indent=2)
 
-    print("Done — JSON outputs written:")
+    print("Done - JSON outputs written:")
     print("  - part1_temporal_robustness.json")
     print("  - part2_structural_separation.json")
     print("  - part3_multinode_persistence.json")

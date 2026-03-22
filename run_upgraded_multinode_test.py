@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 """
-Neraium SII — comparative A/B/C/D benchmark (Colab-friendly, single file).
+Neraium SII - comparative A/B/C/D benchmark (Colab-friendly, single file).
 
 Nodes (comparative structure preserved):
-  A = Control      — full SII structural pipeline, no GAL-2 timing channel
-  B = GAL-2        — temporal coherence from GAL-2-informed timestamps (isolated)
-  C = Raw          — minimal relational processing; volatility-forward instability
-  D = Combined     — explicit fusion of structural SII + temporal intelligence
+  A = Control      - full SII structural pipeline, no GAL-2 timing channel
+  B = GAL-2        - temporal coherence from GAL-2-informed timestamps (isolated)
+  C = Raw          - minimal relational processing; volatility-forward instability
+  D = Combined     - explicit fusion of structural SII + temporal intelligence
 
 Explicit pipeline stages (see class section markers):
   preprocessing / data quality
@@ -17,7 +17,7 @@ Explicit pipeline stages (see class section markers):
   variant enhancement layer
   confidence estimation
   state decision
-  stability estimation (composite, from observed runs — no per-variant score hacks)
+  stability estimation (composite, from observed runs - no per-variant score hacks)
   attribution / explanation
 
 GAL-2: os.environ["GAL2_API_KEY"], os.environ.get("GAL2_TIME_URL", ...)
@@ -573,7 +573,7 @@ class NodeNominalModel:
     def nominal_consistency(self, instability: float) -> float:
         """
         How close current instability is to this node's learned baseline distribution (Gaussian tail).
-        Same formula for every variant — differences across nodes come from different learned mu/sigma
+        Same formula for every variant - differences across nodes come from different learned mu/sigma
         and different realized instability streams, not from synthetic per-variant anchors.
         """
         if not self.finalized:

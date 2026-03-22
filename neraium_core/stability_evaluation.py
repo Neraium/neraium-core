@@ -1,7 +1,7 @@
 """
 Nominal-window stability metrics (operational_stability_index and components).
 
-Used by comparative benchmarks and offline evaluation — not required for single-frame inference.
+Used by comparative benchmarks and offline evaluation - not required for single-frame inference.
 Depends on pandas when computing from timeseries DataFrames.
 """
 
