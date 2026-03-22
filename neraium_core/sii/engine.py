@@ -15,7 +15,10 @@ from neraium_core.sii.errors import SIIError, SIIProcessingError
 from neraium_core.sii.explanation import build_explanation_text, dominant_drivers
 from neraium_core.sii.geometry_layer import build_geometry_state, flatten_upper
 from neraium_core.sii.graph_layer import graph_state
-from neraium_core.sii.ingestion import frame_from_payload, frames_from_csv
+from neraium_core.sii.ingestion import (
+    canonical_records_from_payloads,
+    frames_from_csv,
+)
 from neraium_core.sii.preprocessing import data_quality, impute_column_mean, summarize_quality
 from neraium_core.sii.regime_model import RegimeModel, RegimeObservation
 from neraium_core.sii.scoring import StructuralScoringModel
@@ -23,9 +26,11 @@ from neraium_core.sii.types import (
     ALLOWED_CONFIDENCE,
     ALLOWED_INTERPRETED_STATES,
     ALLOWED_STATES,
+    CanonicalIngestionRecord,
     SIIResult,
     StructuralIndicators,
     TelemetryFrame,
+    ingestion_record_to_frame,
 )
 
 
@@ -624,8 +629,18 @@ class SystemicInfrastructureIntelligenceEngine:
             ) from exc
 
     def process_payload(self, payload: dict[str, Any]) -> SIIResult:
-        f = frame_from_payload(payload)
-        return self.process_frame(f)
+        record = canonical_records_from_payloads(
+            [payload],
+            source_type="payload",
+            source_name="engine_process_payload",
+        )[0]
+        return self.process_record(record)
+
+    def process_record(self, record: CanonicalIngestionRecord) -> SIIResult:
+        return self.process_frame(ingestion_record_to_frame(record))
+
+    def process_records(self, records: list[CanonicalIngestionRecord]) -> list[SIIResult]:
+        return [self.process_record(record) for record in records]
 
     def process_csv_text(self, csv_text: str) -> list[SIIResult]:
         frames = frames_from_csv(csv_text)
