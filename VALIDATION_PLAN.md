@@ -1,4 +1,4 @@
-# Neraium Upgrade — Validation Plan
+# Neraium Upgrade - Validation Plan
 
 This document lists scenarios that should be tested to validate the production-readiness upgrade and what success looks like for each.
 
