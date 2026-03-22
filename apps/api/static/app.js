@@ -920,36 +920,67 @@ async function toggleDemoMode(enabled) {
   }
 }
 
-function buildDemoScenarioItems({ profile, siteId, assetId, minutes = 120 }) {
+function buildDemoScenarioItems({ profile, siteId, assetId, minutes = 150 }) {
   const now = Date.now();
   const out = [];
-  for (let i = 0; i < minutes; i += 1) {
-    const p = i / Math.max(1, minutes - 1);
-    const t = new Date(now - (minutes - i) * 60_000).toISOString();
-    let driftLift = 0.12;
-    let vibSpike = 0.2;
+  const n = Math.max(2, minutes);
+  for (let i = 0; i < n; i += 1) {
+    const p = i / Math.max(1, n - 1);
+    const t = new Date(now - (n - i) * 60_000).toISOString();
+    let driftLift = 0.1;
+    let vibSpike = 0.18;
+    let coupling = 0.08;
     if (profile === "watch") {
-      driftLift = 0.35 + p * 0.35;
-      vibSpike = 0.55 + p * 0.45;
+      const phase = p < 0.45 ? p / 0.45 : (p - 0.45) / 0.55;
+      driftLift = 0.28 + phase * 0.42 + Math.sin(i / 14) * 0.06;
+      vibSpike = 0.48 + phase * 0.5 + Math.sin(i / 9) * 0.08;
+      coupling = 0.12 + phase * 0.22;
     } else if (profile === "critical") {
-      driftLift = 0.25 + p * 0.85;
-      vibSpike = 0.8 + p * 1.8;
+      const esc = p * p;
+      driftLift = 0.22 + esc * 0.95 + Math.sin(i / 11) * 0.07;
+      vibSpike = 0.75 + esc * 2.1 + Math.sin(i / 5.5) * 0.35;
+      coupling = 0.18 + esc * 0.45;
     }
     const waveA = Math.sin(i / 6);
     const waveB = Math.cos(i / 8);
+    const waveC = Math.sin(i / 4.2);
+    const eventSpike = profile !== "stable" && (i === Math.floor(n * 0.62) || i === Math.floor(n * 0.88)) ? 1.15 : 1;
     out.push({
       timestamp: t,
       site_id: siteId,
       asset_id: assetId,
       sensor_values: {
-        pressure: 44 + waveA * (1 + driftLift * 0.6) + p * (0.8 + driftLift),
-        flow: 28 + waveB * (1 + driftLift * 0.4) - p * (0.3 + driftLift * 0.3),
-        vibration: 6 + Math.sin(i / 3.2) * (1 + vibSpike) + driftLift * 2.2,
-        temperature: 61 + Math.cos(i / 4.8) * (1 + driftLift * 0.5) + p * (0.5 + driftLift * 0.8),
+        pressure: 44 + waveA * (1 + driftLift * 0.65) + p * (0.85 + driftLift) * eventSpike,
+        flow: 28 + waveB * (1 + driftLift * 0.42) - p * (0.28 + driftLift * 0.32),
+        vibration: 6 + waveC * (1 + vibSpike) * eventSpike + driftLift * 2.35,
+        temperature: 61 + Math.cos(i / 4.8) * (1 + driftLift * 0.52) + p * (0.55 + driftLift * 0.85),
+        motor_current: 42 + waveA * (0.9 + driftLift * 0.5) + p * (0.4 + driftLift * 1.1),
+        bearing_temp: 52 + waveB * (0.6 + driftLift * 0.45) + p * (0.35 + driftLift * 0.9),
+        acoustic_db: 58 + vibSpike * 3.2 + coupling * 8 + Math.sin(i / 7) * 1.2,
       },
     });
   }
   return out;
+}
+
+async function ingestBatchChunks(items, runId) {
+  const cid = customerIdValue(state.tenant.customerId);
+  const chunks = [];
+  for (let o = 0; o < items.length; o += DEMO_INGEST_CHUNK_SIZE) {
+    chunks.push(items.slice(o, o + DEMO_INGEST_CHUNK_SIZE));
+  }
+  for (const chunk of chunks) {
+    await fetchJson(apiUrl("/ingest/batch", tenantScopeParams({ run_id: runId })), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        items: chunk.map((item) => ({
+          ...item,
+          customer_id: cid,
+        })),
+      }),
+    });
+  }
 }
 
 async function prepareDemoRuns() {
@@ -970,23 +1001,14 @@ async function prepareDemoRuns() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           name: scenario.name,
-          config: { source: "demo-mode", scenario: scenario.profile },
+          config: { source: "demo-mode", scenario: scenario.profile, demo_version: 2 },
           activate: false,
         }),
       });
       const run = runEnv.run;
       created.push(run);
       const items = buildDemoScenarioItems(scenario);
-      await fetchJson(apiUrl("/ingest/batch", tenantScopeParams({ run_id: run.run_id })), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          items: items.map((item) => ({
-            ...item,
-            customer_id: customerIdValue(state.tenant.customerId),
-          })),
-        }),
-      });
+      await ingestBatchChunks(items, run.run_id);
     }
     const focusRun = created[created.length - 1] || null;
     if (focusRun?.run_id) {
@@ -1001,6 +1023,19 @@ async function prepareDemoRuns() {
     state.demo.preparing = false;
     renderTenantControls();
   }
+}
+
+/**
+ * Creates three demo runs, ingests telemetry, activates the escalation run, then refreshes client state.
+ * Optionally navigates to run detail for the activated run.
+ */
+async function runPrepareDemoFlow({ openRunDetail = true } = {}) {
+  const focusRun = await prepareDemoRuns();
+  await refreshAfterDemoPrepare();
+  if (openRunDetail && focusRun?.run_id) {
+    window.location.href = `/app/runs/${encodeURIComponent(focusRun.run_id)}?customer_id=${encodeURIComponent(customerIdValue(state.tenant.customerId))}`;
+  }
+  return focusRun;
 }
 
 function getRoute() {
@@ -1083,7 +1118,9 @@ const state = {
 
 const TENANT_STORAGE_KEY = "neraium_customer_id";
 const DEMO_MODE_STORAGE_KEY = "neraium_demo_mode";
-const DEMO_PLAYBACK_INTERVAL_MS = 850;
+const DEMO_PLAYBACK_INTERVAL_MS = 720;
+/** Batch ingest chunk size (keeps requests responsive on slow networks). */
+const DEMO_INGEST_CHUNK_SIZE = 48;
 
 function customerIdValue(value) {
   const text = String(value || "").trim();
@@ -2272,6 +2309,11 @@ async function loadRuns() {
   renderRunsList();
 }
 
+/** After creating runs or ingesting demo data, resync runs list, active run header, and current page. */
+async function refreshAfterDemoPrepare() {
+  await refreshCurrentPage();
+}
+
 function renderRunsList() {
   const tbody = qs("#runsBody");
   const empty = qs("#runsEmptyHint");
@@ -2507,32 +2549,31 @@ async function seedDemoData() {
   const runId = run.run_id;
   const now = Date.now();
   const items = [];
-  for (let i = 0; i < 120; i += 1) {
-    const t = new Date(now - (120 - i) * 60_000).toISOString();
-    const driftFactor = i < 40 ? 0.2 : i < 80 ? 0.6 : 1.0;
+  const n = 150;
+  for (let i = 0; i < n; i += 1) {
+    const t = new Date(now - (n - i) * 60_000).toISOString();
+    const p = i / Math.max(1, n - 1);
+    const driftFactor = i < 45 ? 0.22 : i < 95 ? 0.58 : 1.0;
     const wave = Math.sin(i / 6);
+    const wave2 = Math.cos(i / 7);
+    const esc = (p - 0.55) * (p - 0.55);
     items.push({
       timestamp: t,
       site_id: "demo-site",
       asset_id: "demo-asset",
       sensor_values: {
-        pressure: 44 + wave * (1 + driftFactor * 0.7) + i * 0.025,
-        flow: 28 + Math.cos(i / 7) * (1 + driftFactor * 0.4) + i * 0.015,
-        vibration: 6 + Math.sin(i / 3) * (1 + driftFactor * 1.1) + driftFactor * 2.5,
-        temperature: 61 + Math.cos(i / 5) * (1 + driftFactor * 0.5) + i * 0.02,
+        pressure: 44 + wave * (1 + driftFactor * 0.72) + i * 0.022 + esc * 2.4,
+        flow: 28 + wave2 * (1 + driftFactor * 0.42) + i * 0.014,
+        vibration: 6 + Math.sin(i / 3.1) * (1 + driftFactor * 1.15) + driftFactor * 2.6 + esc * 1.8,
+        temperature: 61 + Math.cos(i / 5) * (1 + driftFactor * 0.52) + i * 0.018,
+        motor_current: 42 + wave * (0.88 + driftFactor * 0.48) + p * (0.45 + driftFactor * 1.05),
+        bearing_temp: 52 + wave2 * (0.62 + driftFactor * 0.44) + p * (0.32 + driftFactor * 0.88),
+        acoustic_db: 56 + driftFactor * 4.2 + Math.sin(i / 6.5) * 1.4 + esc * 6,
       },
     });
   }
-  return fetchJson(apiUrl("/ingest/batch", tenantScopeParams({ run_id: runId })), {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      items: items.map((item) => ({
-        ...item,
-        customer_id: customerIdValue(state.tenant.customerId),
-      })),
-    }),
-  });
+  await ingestBatchChunks(items, runId);
+  return { count: items.length };
 }
 
 function destroyCharts() {
@@ -3124,12 +3165,8 @@ async function wireEvents() {
       await toggleDemoMode(enabled);
       if (enabled && !state.demo.prepared && state.runs.length === 0) {
         setLoading(true, "Preparing demo runs...");
-        const focusRun = await prepareDemoRuns();
-        await refreshCurrentPage();
-        if (focusRun?.run_id) {
-          window.location.href = `/app/runs/${encodeURIComponent(focusRun.run_id)}?customer_id=${encodeURIComponent(customerIdValue(state.tenant.customerId))}`;
-          return;
-        }
+        const focusRun = await runPrepareDemoFlow({ openRunDetail: true });
+        if (focusRun?.run_id) return;
       }
       setStatus(enabled ? "Demo Mode enabled" : "Demo Mode disabled", false, true);
     } catch (err) {
@@ -3142,11 +3179,9 @@ async function wireEvents() {
   qs("#prepareDemoBtn")?.addEventListener("click", async () => {
     try {
       setLoading(true, "Preparing realistic demo runs...");
-      const focusRun = await prepareDemoRuns();
-      await refreshCurrentPage();
+      const focusRun = await runPrepareDemoFlow({ openRunDetail: true });
       if (focusRun?.run_id) {
         setStatus(`Demo runs prepared. Opening ${focusRun.name}.`, false, true);
-        window.location.href = `/app/runs/${encodeURIComponent(focusRun.run_id)}?customer_id=${encodeURIComponent(customerIdValue(state.tenant.customerId))}`;
         return;
       }
       setStatus("Demo runs prepared.", false, true);
@@ -3181,7 +3216,7 @@ async function wireEvents() {
     try {
       setLoading(true, "Seeding demo data...");
       const out = await seedDemoData();
-      await refreshCurrentPage();
+      await refreshAfterDemoPrepare();
       setStatus(`Demo data seeded (${out.count} rows processed)`, false, true);
     } catch (err) {
       setStatus(String(err.message || err), true, true);
@@ -3325,11 +3360,30 @@ async function wireEvents() {
   qs("#exportJsonBtn")?.addEventListener("click", () => exportData("json", state.activeRun?.run_id || ""));
   qs("#exportCsvBtn")?.addEventListener("click", () => exportData("csv", state.activeRun?.run_id || ""));
 
-  qs("#demoTourEnableBtn")?.addEventListener("click", () => {
+  qs("#demoTourEnableBtn")?.addEventListener("click", async () => {
     const toggle = qs("#demoModeToggle");
     if (toggle) {
       toggle.checked = true;
       toggle.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+  });
+
+  qs("#demoTourPrepareBtn")?.addEventListener("click", async () => {
+    try {
+      setLoading(true, "Preparing demo runs...");
+      await toggleDemoMode(true);
+      const demoToggle = qs("#demoModeToggle");
+      if (demoToggle) demoToggle.checked = true;
+      const focusRun = await runPrepareDemoFlow({ openRunDetail: true });
+      if (focusRun?.run_id) {
+        setStatus(`Opening ${focusRun.name} with Demo Mode.`, false, true);
+        return;
+      }
+      setStatus("Demo runs prepared.", false, true);
+    } catch (err) {
+      setStatus(String(err.message || err), true, true);
+    } finally {
+      setLoading(false);
     }
   });
 
