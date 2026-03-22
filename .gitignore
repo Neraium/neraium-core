@@ -15,3 +15,5 @@ Thumbs.db
 *.db
 *.sqlite
 *.sqlite3
+regime_library.json
+regime_library_*.json

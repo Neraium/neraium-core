@@ -1,4 +1,5 @@
-import json, pathlib
+import json
+import pathlib
 p = pathlib.Path("upgraded_multinode_test_results.json")
 d = json.loads(p.read_text(encoding="utf-8"))
 print("GAL2 configured:", d.get("gal2_api_configured"))
