@@ -185,7 +185,24 @@ class StructuralMonitoringService:
         }
         return enriched
 
-    def ingest_payload(self, payload: dict[str, Any]) -> dict[str, Any]:
+    @staticmethod
+    def _with_result_metadata(
+        result: dict[str, Any],
+        *,
+        run_id: str | None,
+        result_id: int | None,
+        persisted_at: str | None,
+    ) -> dict[str, Any]:
+        enriched = dict(result)
+        if run_id is not None:
+            enriched["run_id"] = run_id
+        if result_id is not None:
+            enriched["result_id"] = int(result_id)
+        if persisted_at is not None:
+            enriched["persisted_at"] = persisted_at
+        return enriched
+
+    def ingest_payload(self, payload: dict[str, Any], *, run_id: str | None = None) -> dict[str, Any]:
         """Ingest a single telemetry payload and return the decorated result.
 
         When `NERAIUM_PILOT_HARDENING=1`, the response is augmented with the pilot
@@ -205,7 +222,15 @@ class StructuralMonitoringService:
             result = self._decorate_result(engine.process_frame(frame))
             if pilot_hardening_enabled():
                 result.update(build_pilot_output(frame=frame, result=result))
-            self.store.save_ingestion(frame, result)
+            self.store.save_ingestion(frame, result, run_id=run_id)
+            persisted = self.store.get_latest_result(run_id=run_id)
+            if persisted is not None:
+                result = self._with_result_metadata(
+                    result,
+                    run_id=persisted.get("run_id"),
+                    result_id=persisted.get("result_id"),
+                    persisted_at=persisted.get("persisted_at"),
+                )
 
             out_fields = summarize_result_for_logs(result)
             out_fields["latency_ms"] = round(timer.ms(), 3)
@@ -244,7 +269,12 @@ class StructuralMonitoringService:
             log_structured(logger, event="ingest_payload_error", fields=err_fields, level=logging.ERROR)
             raise
 
-    def ingest_batch(self, payloads: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    def ingest_batch(
+        self,
+        payloads: list[dict[str, Any]],
+        *,
+        run_id: str | None = None,
+    ) -> list[dict[str, Any]]:
         """Ingest multiple telemetry payloads (batch) and return decorated results.
 
         When `NERAIUM_PILOT_HARDENING=1`, each result is augmented with pilot schema keys.
@@ -288,16 +318,44 @@ class StructuralMonitoringService:
                 log_structured(logger, event="ingest_batch_item_error", fields=err_fields, level=logging.ERROR)
                 raise
 
-        self.store.save_ingestion_batch(pairs)
+        self.store.save_ingestion_batch(pairs, run_id=run_id)
+        persisted_recent = self.store.list_recent_results(limit=len(results), run_id=run_id)
+        persisted_map: dict[tuple[str, str, str], dict[str, Any]] = {}
+        for item in persisted_recent:
+            key = (
+                str(item.get("timestamp", "")),
+                str(item.get("site_id", "")),
+                str(item.get("asset_id", "")),
+            )
+            persisted_map[key] = item
+        results_with_ids: list[dict[str, Any]] = []
+        for result in results:
+            key = (
+                str(result.get("timestamp", "")),
+                str(result.get("site_id", "")),
+                str(result.get("asset_id", "")),
+            )
+            persisted = persisted_map.get(key)
+            if persisted is None:
+                results_with_ids.append(self._with_result_metadata(result, run_id=run_id, result_id=None, persisted_at=None))
+            else:
+                results_with_ids.append(
+                    self._with_result_metadata(
+                        result,
+                        run_id=persisted.get("run_id"),
+                        result_id=persisted.get("result_id"),
+                        persisted_at=persisted.get("persisted_at"),
+                    )
+                )
         log_structured(
             logger,
             event="ingest_batch_out",
             fields={"items": len(results), "latency_ms": round(batch_timer.ms(), 3)},
             level=logging.INFO,
         )
-        return results
+        return results_with_ids
 
-    def ingest_csv(self, csv_text: str) -> list[dict[str, Any]]:
+    def ingest_csv(self, csv_text: str, *, run_id: str | None = None) -> list[dict[str, Any]]:
         """Ingest CSV text and return decorated results.
 
         When `NERAIUM_PILOT_HARDENING=1`, each result is augmented with pilot schema keys.
@@ -333,14 +391,44 @@ class StructuralMonitoringService:
                     level=logging.INFO,
                 )
 
-            self.store.save_ingestion_batch(pairs)
+            self.store.save_ingestion_batch(pairs, run_id=run_id)
+            persisted_recent = self.store.list_recent_results(limit=len(results), run_id=run_id)
+            persisted_map: dict[tuple[str, str, str], dict[str, Any]] = {}
+            for item in persisted_recent:
+                key = (
+                    str(item.get("timestamp", "")),
+                    str(item.get("site_id", "")),
+                    str(item.get("asset_id", "")),
+                )
+                persisted_map[key] = item
+            results_with_ids: list[dict[str, Any]] = []
+            for result in results:
+                key = (
+                    str(result.get("timestamp", "")),
+                    str(result.get("site_id", "")),
+                    str(result.get("asset_id", "")),
+                )
+                persisted = persisted_map.get(key)
+                if persisted is None:
+                    results_with_ids.append(
+                        self._with_result_metadata(result, run_id=run_id, result_id=None, persisted_at=None)
+                    )
+                else:
+                    results_with_ids.append(
+                        self._with_result_metadata(
+                            result,
+                            run_id=persisted.get("run_id"),
+                            result_id=persisted.get("result_id"),
+                            persisted_at=persisted.get("persisted_at"),
+                        )
+                    )
             log_structured(
                 logger,
                 event="ingest_csv_out",
                 fields={"items": len(results), "latency_ms": round(timer.ms(), 3)},
                 level=logging.INFO,
             )
-            return results
+            return results_with_ids
         except Exception as exc:
             err_fields = {
                 "csv_text_len": len(csv_text),
@@ -350,11 +438,50 @@ class StructuralMonitoringService:
             log_structured(logger, event="ingest_csv_error", fields=err_fields, level=logging.ERROR)
             raise
 
-    def get_latest_result(self) -> dict[str, Any] | None:
-        return self.store.get_latest_result()
+    def get_latest_result(self, *, run_id: str | None = None) -> dict[str, Any] | None:
+        return self.store.get_latest_result(run_id=run_id)
 
-    def list_recent_results(self, limit: int = 100) -> list[dict[str, Any]]:
-        return self.store.list_recent_results(limit=limit)
+    def list_recent_results(self, limit: int = 100, *, run_id: str | None = None) -> list[dict[str, Any]]:
+        return self.store.list_recent_results(limit=limit, run_id=run_id)
+
+    def get_result_by_id(self, result_id: int, *, run_id: str | None = None) -> dict[str, Any] | None:
+        return self.store.get_result_by_id(result_id, run_id=run_id)
+
+    def create_run(
+        self,
+        *,
+        name: str,
+        config: dict[str, Any] | None = None,
+        activate: bool = True,
+    ) -> dict[str, Any]:
+        return self.store.create_run(name=name, config=config, activate=activate)
+
+    def list_runs(self, *, limit: int = 100) -> list[dict[str, Any]]:
+        return self.store.list_runs(limit=limit)
+
+    def get_run(self, run_id: str) -> dict[str, Any] | None:
+        return self.store.get_run(run_id)
+
+    def get_active_run(self) -> dict[str, Any] | None:
+        return self.store.get_active_run()
+
+    def activate_run(self, run_id: str) -> dict[str, Any]:
+        return self.store.activate_run(run_id)
+
+    def update_run(
+        self,
+        run_id: str,
+        *,
+        name: str | None = None,
+        config: dict[str, Any] | None = None,
+        status: str | None = None,
+    ) -> dict[str, Any]:
+        return self.store.update_run(
+            run_id,
+            name=name,
+            config=config,
+            status=status,
+        )
 
     def reset(self) -> None:
         logger.info("reset called")
