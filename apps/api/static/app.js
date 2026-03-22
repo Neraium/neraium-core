@@ -500,6 +500,50 @@ function bindDashboardSparklineInteractions() {
   });
 }
 
+function sensorValuesNormalizedForGraph(latest, labels) {
+  const sv = latest?.sensor_values;
+  if (!sv || typeof sv !== "object") {
+    return labels.map(() => 0.5);
+  }
+  const raw = labels.map((k) => {
+    const v = sv[k];
+    return typeof v === "number" && Number.isFinite(v) ? v : null;
+  });
+  const finite = raw.filter((v) => v !== null);
+  if (finite.length === 0) return labels.map(() => 0.5);
+  const min = Math.min(...finite);
+  const max = Math.max(...finite);
+  const spread = max - min || 1;
+  return raw.map((v) => (v === null ? 0.5 : (v - min) / spread));
+}
+
+let dashboardSystemMap3dReady = false;
+function ensureDashboardSystemMap3d() {
+  const host = qs("#dashboardSystemMap3d");
+  if (!host || dashboardSystemMap3dReady) return;
+  const api = window.NeraiumSensorGraph3D;
+  if (api && typeof api.init === "function") {
+    api.init(host);
+    dashboardSystemMap3dReady = true;
+  }
+}
+
+function renderDashboardSystemMap3d(latest) {
+  ensureDashboardSystemMap3d();
+  const api = window.NeraiumSensorGraph3D;
+  if (!api || typeof api.update !== "function") return;
+  const rel = latest && Array.isArray(latest.sensor_relationships) ? latest.sensor_relationships : [];
+  const labels = rel.map((s) => String(s || "").trim()).filter(Boolean);
+  const values = sensorValuesNormalizedForGraph(latest, labels);
+  api.update({
+    labels,
+    values,
+    drift: structuralDriftFromResult(latest),
+    instability: compositeInstabilityFromResult(latest),
+    risk: normalizeRiskLevel(latest?.risk_level),
+  });
+}
+
 function renderDashboardStressHeatmap(latest) {
   const host = qs("#dashboardStressHeatmap");
   const legend = qs("#dashboardStressLegend");
@@ -1161,7 +1205,7 @@ function renderTenantControls() {
   if (demoToggle) demoToggle.checked = !!state.demo.enabled;
   if (prepareDemoBtn) {
     prepareDemoBtn.disabled = state.demo.preparing;
-    prepareDemoBtn.textContent = state.demo.preparing ? "Preparing..." : "Prepare Demo Runs";
+    prepareDemoBtn.textContent = state.demo.preparing ? "Creating…" : "Create Demo Run";
   }
   if (siteList) {
     siteList.innerHTML = state.tenant.knownSites
@@ -2221,8 +2265,21 @@ function updateActiveRunHeader(run) {
   state.activeRun = run || null;
   const nameEl = qs("#activeRunName");
   const idEl = qs("#activeRunId");
+  const pillEl = qs("#activeRunStatusPill");
   if (nameEl) nameEl.textContent = run?.name || "No active run";
   if (idEl) idEl.textContent = run?.run_id || "-";
+  if (pillEl) {
+    if (!run) {
+      pillEl.textContent = "—";
+      pillEl.setAttribute("data-status", "none");
+    } else if (run.is_active) {
+      pillEl.textContent = "Live";
+      pillEl.setAttribute("data-status", "live");
+    } else {
+      pillEl.textContent = "Idle";
+      pillEl.setAttribute("data-status", "idle");
+    }
+  }
   if (run?.run_id) {
     window.localStorage.setItem("active_run_id", run.run_id);
   }
@@ -2362,6 +2419,12 @@ function renderDashboardMetrics(latest, prev) {
   renderDashboardHero(latest, prev);
   renderDashboardStressHeatmap(latest);
   renderDashboardMiniGraph(latest);
+  renderDashboardSystemMap3d(latest);
+  const lu = qs("#dashboardLastUpdated");
+  if (lu) {
+    const ts = new Date();
+    lu.textContent = `Last updated ${ts.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`;
+  }
 }
 
 function renderDashboardRecent(results) {

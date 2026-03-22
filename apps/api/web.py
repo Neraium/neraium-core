@@ -49,4 +49,8 @@ def build_web_router() -> APIRouter:
     def web_styles() -> FileResponse:
         return FileResponse(static_dir / "styles.css")
 
+    @router.get("/web/sensor_graph_3d.js", include_in_schema=False)
+    def web_sensor_graph_3d_js() -> FileResponse:
+        return FileResponse(static_dir / "sensor_graph_3d.js")
+
     return router
