@@ -236,6 +236,21 @@
               </div>
             </div>
             <p id="runDetailMeta" class="subtitle"></p>
+            <div id="runSignalSeparation" class="signal-separation hidden">
+              <article class="signal-card state">
+                <span class="k">State</span>
+                <div id="runSignalState" class="v">-</div>
+              </article>
+              <article class="signal-card risk">
+                <span class="k">Risk</span>
+                <div id="runSignalRisk" class="v">-</div>
+              </article>
+              <article class="signal-card trend">
+                <span class="k">Trend</span>
+                <div id="runSignalTrend" class="v">-</div>
+              </article>
+            </div>
+            <div id="runTransitionStrip" class="timeline-transition-strip hidden"></div>
             <article id="runRiskExplanationPanel" class="risk-explanation hidden">
               <div class="risk-explanation-head">
                 <h4>Why this risk level</h4>
@@ -307,7 +322,7 @@
           </section>
 
           <section class="panel">
-            <h3>Phase timeline</h3>
+            <h3>State / risk timeline</h3>
             <div id="phaseTimeline" class="timeline"></div>
           </section>
 
@@ -343,6 +358,7 @@
                     <th>Phase</th>
                     <th>Trend</th>
                     <th>Risk</th>
+                    <th>Transition</th>
                     <th>Drift</th>
                     <th>Composite</th>
                     <th>Message</th>

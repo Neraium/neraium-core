@@ -67,6 +67,55 @@ function trendFromResult(r) {
   return r.trend || "-";
 }
 
+function stateTone(value) {
+  const text = String(value || "").toLowerCase();
+  if (text.includes("alert") || text.includes("unstable")) return "critical";
+  if (text.includes("watch") || text.includes("shift") || text.includes("drift")) return "watch";
+  if (text.includes("stable") || text.includes("nominal")) return "stable";
+  return "unknown";
+}
+
+function transitionLabel(prevResult, nextResult) {
+  if (!prevResult || !nextResult) return "Start";
+  const prevState = String(prevResult.state || prevResult.interpreted_state || "-").toUpperCase();
+  const nextState = String(nextResult.state || nextResult.interpreted_state || "-").toUpperCase();
+  if (prevState !== nextState) return `${prevState} -> ${nextState}`;
+  const prevRisk = normalizeRiskLevel(prevResult.risk_level);
+  const nextRisk = normalizeRiskLevel(nextResult.risk_level);
+  if (prevRisk !== nextRisk) return `Risk ${prevRisk} -> ${nextRisk}`;
+  const prevTrend = String(trendFromResult(prevResult)).toUpperCase();
+  const nextTrend = String(trendFromResult(nextResult)).toUpperCase();
+  if (prevTrend !== nextTrend) return `Trend ${prevTrend} -> ${nextTrend}`;
+  return "No major transition";
+}
+
+function transitionSeverity(prevResult, nextResult) {
+  if (!prevResult || !nextResult) return "normal";
+  const prevStateTone = stateTone(prevResult.state || prevResult.interpreted_state);
+  const nextStateTone = stateTone(nextResult.state || nextResult.interpreted_state);
+  const prevRisk = normalizeRiskLevel(prevResult.risk_level);
+  const nextRisk = normalizeRiskLevel(nextResult.risk_level);
+  if ((prevStateTone !== "critical" && nextStateTone === "critical") || (prevRisk !== "HIGH" && nextRisk === "HIGH")) {
+    return "critical";
+  }
+  if (prevStateTone !== nextStateTone || prevRisk !== nextRisk) return "watch";
+  return "normal";
+}
+
+function transitionArrow(prevResult, nextResult) {
+  if (!prevResult || !nextResult) return "Start";
+  const prevState = String(prevResult.state || prevResult.interpreted_state || "-").toUpperCase();
+  const nextState = String(nextResult.state || nextResult.interpreted_state || "-").toUpperCase();
+  if (prevState !== nextState) return `${prevState} -> ${nextState}`;
+  const prevRisk = normalizeRiskLevel(prevResult.risk_level);
+  const nextRisk = normalizeRiskLevel(nextResult.risk_level);
+  if (prevRisk !== nextRisk) return `Risk ${prevRisk} -> ${nextRisk}`;
+  const prevTrend = String(trendFromResult(prevResult)).toUpperCase();
+  const nextTrend = String(trendFromResult(nextResult)).toUpperCase();
+  if (prevTrend !== nextTrend) return `Trend ${prevTrend} -> ${nextTrend}`;
+  return "No major transition";
+}
+
 function structuralDriftFromResult(r) {
   if (!r) return null;
   const v = r.structural_drift_score;
@@ -1430,14 +1479,23 @@ function renderPhaseTimeline(results) {
   const el = qs("#phaseTimeline");
   if (!el) return;
   el.innerHTML = "";
-  results.forEach((r) => {
+  results.forEach((r, idx) => {
     const phase = phaseFromResult(r);
+    const prev = idx > 0 ? results[idx - 1] : null;
+    const severity = transitionSeverity(prev, r);
+    const transition = transitionLabel(prev, r);
     const item = document.createElement("div");
-    item.className = "timeline-item";
+    item.className = `timeline-item timeline-${severity}`;
     item.innerHTML = `
-      <div class="timeline-dot"></div>
+      <div class="timeline-dot timeline-dot-${severity}"></div>
       <div class="timeline-content">
+        <div class="timeline-primary">
+          <span class="timeline-state">${escapeHtml(String(r.state || r.interpreted_state || "-"))}</span>
+          <span>${riskBadgeHtml(r.risk_level)}</span>
+          <span class="timeline-trend-chip">${escapeHtml(String(trendFromResult(r) || "-"))}</span>
+        </div>
         <div class="timeline-phase">${phaseBadgeHtml(phase)}</div>
+        <div class="timeline-transition">${escapeHtml(transition)}</div>
         <div class="timeline-meta">${escapeHtml(String(r.timestamp || r.persisted_at || ""))}</div>
       </div>
     `;
@@ -1517,18 +1575,26 @@ function renderRunResultsTable(results) {
     if (results.length === 0) empty.classList.remove("hidden");
     else empty.classList.add("hidden");
   }
-  results.forEach((r) => {
+  results.forEach((r, idx) => {
+    const prev = idx + 1 < results.length ? results[idx + 1] : null;
+    const transition = transitionLabel(prev, r);
+    const severity = transitionSeverity(prev, r);
+    const stateText = String(r.state || r.interpreted_state || "-");
     const tr = document.createElement("tr");
+    tr.className = `result-row result-row-${severity}`;
     tr.innerHTML = `
       <td>${toPretty(r.result_id)}</td>
       <td>${toPretty(r.timestamp || r.persisted_at)}</td>
-      <td>${toPretty(r.state)}</td>
+      <td><span class="state-pill state-pill-${stateTone(stateText)}">${escapeHtml(stateText)}</span></td>
       <td>${phaseBadgeHtml(phaseFromResult(r))}</td>
-      <td>${toPretty(trendFromResult(r))}</td>
+      <td><span class="trend-pill">${escapeHtml(String(trendFromResult(r) || "-"))}</span></td>
       <td>${riskBadgeHtml(r.risk_level)}</td>
       <td>${toPretty(structuralDriftFromResult(r))}</td>
       <td>${toPretty(compositeInstabilityFromResult(r))}</td>
-      <td>${toPretty(r.operator_message)}</td>
+      <td>
+        <div>${toPretty(r.operator_message)}</div>
+        <div class="row-transition row-transition-${severity}">${escapeHtml(transition)}</div>
+      </td>
     `;
     tbody.appendChild(tr);
   });
