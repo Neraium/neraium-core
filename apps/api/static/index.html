@@ -375,6 +375,27 @@
             </div>
           </section>
 
+          <section class="panel geometry-models-panel hidden" id="geometryModelsPanel" aria-label="Graph and system state models">
+            <div class="panel-header">
+              <h3>Graph &amp; system state models</h3>
+              <p class="subtitle">
+                Correlation and causal graph metrics plus regime snapshot for the same engine result as the 3D view.
+              </p>
+            </div>
+            <div class="geometry-models-columns">
+              <article class="geometry-model-block">
+                <h4>Graph analytics</h4>
+                <p id="geometryGraphMetricsEmpty" class="subtitle geometry-model-empty hidden">No graph metrics in this result.</p>
+                <dl id="geometryGraphMetricsDl" class="geometry-model-dl"></dl>
+              </article>
+              <article class="geometry-model-block">
+                <h4>System state</h4>
+                <p id="geometrySystemStateEmpty" class="subtitle geometry-model-empty hidden">No system state snapshot.</p>
+                <dl id="geometrySystemStateDl" class="geometry-model-dl"></dl>
+              </article>
+            </div>
+          </section>
+
           <section class="panel">
             <h3>State / risk timeline</h3>
             <div id="phaseTimeline" class="timeline"></div>
@@ -445,9 +466,9 @@
     </div>
   </div>
 
-  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/three@0.162.0/build/three.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/three@0.162.0/examples/js/controls/OrbitControls.js"></script>
-  <script src="/web/app.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/three@0.162.0/build/three.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/three@0.162.0/examples/js/controls/OrbitControls.js"></script>
+  <script defer src="/web/app.js"></script>
 </body>
 </html>

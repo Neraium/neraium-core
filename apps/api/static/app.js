@@ -1000,6 +1000,101 @@ function geometryStructureSummary(payload) {
   )}`;
 }
 
+function clearGeometryModelsPanel() {
+  const panel = qs("#geometryModelsPanel");
+  const graphDl = qs("#geometryGraphMetricsDl");
+  const graphEmpty = qs("#geometryGraphMetricsEmpty");
+  const sysDl = qs("#geometrySystemStateDl");
+  const sysEmpty = qs("#geometrySystemStateEmpty");
+  if (panel) panel.classList.add("hidden");
+  if (graphDl) graphDl.innerHTML = "";
+  if (sysDl) sysDl.innerHTML = "";
+  if (graphEmpty) graphEmpty.classList.add("hidden");
+  if (sysEmpty) sysEmpty.classList.add("hidden");
+}
+
+function renderGeometryModelsPanel(payload) {
+  const panel = qs("#geometryModelsPanel");
+  const graphDl = qs("#geometryGraphMetricsDl");
+  const graphEmpty = qs("#geometryGraphMetricsEmpty");
+  const sysDl = qs("#geometrySystemStateDl");
+  const sysEmpty = qs("#geometrySystemStateEmpty");
+  if (!panel || !graphDl || !graphEmpty || !sysDl || !sysEmpty) return;
+
+  const ga = payload && payload.graph_analytics;
+  const ss = payload && payload.system_state;
+  const hasGraph =
+    ga &&
+    typeof ga === "object" &&
+    (Boolean(ga.correlation_graph) || Boolean(ga.causal_graph));
+  const hasSys = ss && typeof ss === "object" && Object.keys(ss).length > 0;
+
+  if (!hasGraph && !hasSys) {
+    clearGeometryModelsPanel();
+    return;
+  }
+
+  panel.classList.remove("hidden");
+
+  if (!hasGraph) {
+    graphEmpty.classList.remove("hidden");
+    graphDl.innerHTML = "";
+  } else {
+    graphEmpty.classList.add("hidden");
+    const rows = [];
+    const cg = ga.correlation_graph;
+    if (cg && typeof cg === "object") {
+      rows.push(
+        ["Correlation graph · mean degree", toPretty(cg.mean_degree)],
+        ["Correlation graph · density", toPretty(cg.density)],
+        ["Correlation graph · clustering", toPretty(cg.clustering)],
+        ["Correlation graph · connectivity", toPretty(cg.connectivity)],
+        ["Correlation graph · mean |corr| off-diag", toPretty(cg.mean_absolute_connectivity)]
+      );
+    }
+    const cag = ga.causal_graph;
+    if (cag && typeof cag === "object") {
+      const labels = Array.isArray(cag.dominant_source_labels) ? cag.dominant_source_labels.filter(Boolean) : [];
+      const labelText = labels.length ? labels.join(", ") : "-";
+      rows.push(
+        ["Causal graph · density", toPretty(cag.density)],
+        ["Causal graph · asymmetry", toPretty(cag.asymmetry)],
+        ["Causal graph · dominant sources", escapeHtml(labelText)]
+      );
+    }
+    graphDl.innerHTML = rows
+      .map(([dt, dd]) => `<div><dt>${escapeHtml(String(dt))}</dt><dd>${escapeHtml(String(dd))}</dd></div>`)
+      .join("");
+  }
+
+  if (!hasSys) {
+    sysEmpty.classList.remove("hidden");
+    sysDl.innerHTML = "";
+  } else {
+    sysEmpty.classList.add("hidden");
+    const rm = ss.regime_memory && typeof ss.regime_memory === "object" ? ss.regime_memory : {};
+    const rs = ss.regime_signature && typeof ss.regime_signature === "object" ? ss.regime_signature : {};
+    const nr = ss.nearest_regime && typeof ss.nearest_regime === "object" ? ss.nearest_regime : null;
+    const sysRows = [
+      ["Phase", toPretty(ss.phase)],
+      ["Interpreted state", toPretty(ss.interpreted_state)],
+      ["Regime name", toPretty(ss.regime_name)],
+      ["Confidence", toPretty(ss.confidence)],
+      ["Structural analysis", ss.structural_analysis_available ? "available" : "limited"],
+      ["Regime library size", toPretty(rs.library_size != null ? rs.library_size : rm.library_size)],
+      ["Regime baseline count", toPretty(rm.baseline_count)],
+      ["Assigned regime (signature)", toPretty(rs.assigned_name)],
+      ["Regime distance", ss.regime_distance != null && ss.regime_distance !== undefined ? toPretty(ss.regime_distance) : "-"],
+    ];
+    if (nr && nr.name != null) {
+      sysRows.push(["Nearest regime (library)", `${String(nr.name)} · ${toPretty(nr.distance)}`]);
+    }
+    sysDl.innerHTML = sysRows
+      .map(([dt, dd]) => `<div><dt>${escapeHtml(String(dt))}</dt><dd>${escapeHtml(String(dd))}</dd></div>`)
+      .join("");
+  }
+}
+
 function setGeometryModeButtons() {
   qsa("[data-geometry-mode]").forEach((btn) => {
     const mode = String(btn.getAttribute("data-geometry-mode") || "current");
@@ -1405,10 +1500,17 @@ function renderGeometryScene(payload, viewportDims) {
 
 async function loadRunGeometry(runId, resultId = null) {
   const params = tenantScopeParams(resultId != null ? { result_id: resultId } : {});
-  const payload = await fetchJson(
-    apiUrl(`/runs/${encodeURIComponent(runId)}/geometry`, params)
-  );
+  let payload;
+  try {
+    payload = await fetchJson(
+      apiUrl(`/runs/${encodeURIComponent(runId)}/geometry`, params)
+    );
+  } catch (_err) {
+    clearGeometryModelsPanel();
+    throw _err;
+  }
   state.runGeometry = payload;
+  renderGeometryModelsPanel(payload);
   const projectionNote =
     payload?.projection?.note ||
     "Geometry projection metadata unavailable.";
@@ -2234,6 +2336,7 @@ function renderRunDetailFromState() {
   if (!hasResults) {
     destroyCharts();
     disposeGeometryRenderer();
+    clearGeometryModelsPanel();
     state.runGeometry = null;
     renderRunSignals(null, null);
     renderRunTransitionStrip(null, null);
