@@ -4,6 +4,9 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Neraium Product UI</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/web/styles.css" />
 </head>
 <body>
@@ -29,6 +32,7 @@
         <a href="/dashboard" data-nav="dashboard">Dashboard</a>
         <a href="/app/runs" data-nav="runs">Runs</a>
         <a href="/upload" data-nav="upload">Upload</a>
+        <a href="/demo/sii" data-nav="demo-sii">SII tour</a>
       </nav>
       <section class="active-run-box">
         <div class="small-label">Active run</div>
@@ -63,63 +67,145 @@
       <main class="content">
         <!-- DASHBOARD -->
         <section id="page-dashboard" class="page page-dashboard">
-          <section class="panel control-center">
-            <div class="control-center-grid">
-              <article class="signal-primary">
-                <p class="signal-caption">Live system state</p>
-                <div class="signal-main-row">
-                  <p id="metricState" class="signal-state">-</p>
-                  <div id="metricPhaseBadge"></div>
+          <section class="dashboard-hero panel control-center">
+            <div class="dashboard-hero-grid">
+              <div class="dashboard-hero-primary">
+                <div class="dashboard-hero-kicker">
+                  <span class="live-pulse" aria-hidden="true"></span>
+                  <span>Active run · live envelope</span>
                 </div>
-                <div class="signal-risk-wrap">
-                  <span class="signal-label">Risk level</span>
-                  <p id="metricRisk" class="signal-risk">-</p>
+                <div class="dashboard-hero-score-row">
+                  <div class="health-ring-wrap" title="Composite health from risk, drift, and instability">
+                    <svg id="dashboardHealthRing" class="health-ring" viewBox="0 0 120 120" aria-hidden="true">
+                      <circle class="health-ring-bg" cx="60" cy="60" r="52" />
+                      <circle id="dashboardHealthArc" class="health-ring-arc" cx="60" cy="60" r="52" />
+                    </svg>
+                    <div class="health-ring-label">
+                      <span class="health-ring-value" id="dashboardHealthScore">—</span>
+                      <span class="health-ring-caption">Health</span>
+                    </div>
+                  </div>
+                  <div class="dashboard-hero-state-block">
+                    <p class="signal-caption">System state</p>
+                    <div class="signal-main-row dashboard-state-row">
+                      <p id="metricState" class="signal-state">-</p>
+                      <div id="metricPhaseBadge"></div>
+                    </div>
+                    <div class="dashboard-risk-inline">
+                      <span class="signal-label">Risk</span>
+                      <p id="metricRisk" class="signal-risk signal-risk-inline">-</p>
+                      <div id="metricRiskBadge"></div>
+                    </div>
+                    <p class="dashboard-narrative-strip" id="dashboardNarrativeStrip">Awaiting telemetry.</p>
+                    <p class="signal-trend dashboard-trend-line">Trend <strong id="metricTrend">-</strong></p>
+                  </div>
                 </div>
-                <div class="signal-subline">
-                  <div id="metricRiskBadge"></div>
-                  <p class="signal-trend">Trend: <strong id="metricTrend">-</strong></p>
-                </div>
-              </article>
-              <div class="signal-secondary">
-                <article class="signal-meta-card">
-                  <p class="signal-meta-label">Phase</p>
-                  <p id="metricPhase" class="signal-meta-value">-</p>
-                </article>
-                <article class="signal-meta-card">
-                  <p class="signal-meta-label">Structural drift</p>
-                  <p id="metricDrift" class="signal-meta-value compact">-</p>
-                </article>
-                <article class="signal-meta-card">
-                  <p class="signal-meta-label">Composite instability</p>
-                  <p id="metricComposite" class="signal-meta-value compact">-</p>
-                </article>
-                <article class="signal-meta-card">
-                  <p class="signal-meta-label">Confidence</p>
-                  <p id="metricConfidence" class="signal-meta-value compact">-</p>
-                </article>
               </div>
+              <aside class="dashboard-hero-aside">
+                <article class="insight-tile insight-tile-alert" id="dashboardAlertTile">
+                  <p class="insight-tile-label">Active signals</p>
+                  <p class="insight-tile-value" id="dashboardAlertCount">0</p>
+                  <p class="insight-tile-sub" id="dashboardAlertSummary">No open alerts for this run.</p>
+                </article>
+                <article class="insight-tile">
+                  <p class="insight-tile-label">Coverage</p>
+                  <p class="insight-tile-value" id="dashboardSnapshotCount">0</p>
+                  <p class="insight-tile-sub">Snapshots in view (recent window)</p>
+                </article>
+                <a class="dashboard-deep-link" id="dashboardOpenRunLink" href="/app/runs">Open run detail →</a>
+              </aside>
             </div>
           </section>
 
-          <section class="panel operator-panel">
-            <h3>Operator message</h3>
-            <p id="metricOperatorMessage" class="operator-message">No results yet. Upload telemetry or seed demo data.</p>
+          <section class="panel dashboard-observations">
+            <div class="panel-header dashboard-section-head">
+              <div>
+                <h3>What we see</h3>
+                <p class="subtitle section-subtitle">Narrative plus structural relationships from the latest snapshot.</p>
+              </div>
+            </div>
+            <div class="observations-grid">
+              <article class="insight-card operator-insight">
+                <p class="insight-card-label">Operator readout</p>
+                <p id="metricOperatorMessage" class="operator-message operator-message-compact">No results yet. Upload telemetry or seed demo data.</p>
+              </article>
+              <article class="insight-card stress-card">
+                <p class="insight-card-label">Structural stress</p>
+                <div class="stress-heatmap" id="dashboardStressHeatmap" aria-label="Drift and instability stress"></div>
+                <p class="stress-heatmap-legend" id="dashboardStressLegend">Drift and composite —</p>
+              </article>
+              <article class="insight-card graph-card">
+                <p class="insight-card-label">Relationship map</p>
+                <div class="mini-graph-host" id="dashboardMiniGraphHost">
+                  <svg id="dashboardMiniGraph" class="mini-graph" viewBox="0 0 320 200" role="img" aria-label="Sensor relationship sketch"></svg>
+                  <p class="mini-graph-empty" id="dashboardMiniGraphEmpty">No relationship sketch until data arrives.</p>
+                </div>
+              </article>
+            </div>
+          </section>
+
+          <section class="panel dashboard-signals">
+            <div class="panel-header dashboard-section-head">
+              <div>
+                <h3>What is changing</h3>
+                <p class="subtitle section-subtitle">Drift and instability trend with anomaly emphasis on the latest point.</p>
+              </div>
+            </div>
+            <div class="sparkline-wrap">
+              <div class="sparkline-canvas-wrap">
+                <canvas id="dashboardSparkline" width="900" height="140" aria-label="Drift and composite trend"></canvas>
+                <div id="dashboardSparklineTooltip" class="sparkline-tooltip hidden" role="tooltip"></div>
+              </div>
+              <p class="sparkline-hint" id="dashboardSparklineHint">Hover the trend for values. Latest snapshot highlighted.</p>
+            </div>
           </section>
 
           <section class="panel">
-            <div class="panel-header">
-              <h3>Alerts</h3>
+            <div class="panel-header dashboard-section-head">
+              <div>
+                <h3>Alerts</h3>
+                <p class="subtitle section-subtitle">Highest-priority platform signals for the active run.</p>
+              </div>
             </div>
-            <ul id="dashboardAlertsList" class="messages"></ul>
+            <div id="dashboardAlertsEmpty" class="empty-state hidden">
+              <p>No alerts for this run.</p>
+            </div>
+            <ul id="dashboardAlertsList" class="messages alerts-feed"></ul>
           </section>
 
-          <section class="panel results-panel">
-            <div class="panel-header">
-              <h3>Recent results</h3>
-              <div class="row panel-actions">
-                <button id="exportJsonBtn" type="button">Export JSON</button>
-                <button id="exportCsvBtn" type="button" class="secondary">Export CSV</button>
-              </div>
+          <details class="panel disclosure-panel" id="dashboardMetricsDisclosure">
+            <summary class="disclosure-summary">
+              <span class="disclosure-title">Run metrics</span>
+              <span class="disclosure-hint">Phase, drift, composite, confidence</span>
+            </summary>
+            <div class="signal-secondary dashboard-metrics-grid">
+              <article class="signal-meta-card">
+                <p class="signal-meta-label">Phase</p>
+                <p id="metricPhase" class="signal-meta-value">-</p>
+              </article>
+              <article class="signal-meta-card">
+                <p class="signal-meta-label">Structural drift</p>
+                <p id="metricDrift" class="signal-meta-value compact">-</p>
+              </article>
+              <article class="signal-meta-card">
+                <p class="signal-meta-label">Composite instability</p>
+                <p id="metricComposite" class="signal-meta-value compact">-</p>
+              </article>
+              <article class="signal-meta-card">
+                <p class="signal-meta-label">Confidence</p>
+                <p id="metricConfidence" class="signal-meta-value compact">-</p>
+              </article>
+            </div>
+          </details>
+
+          <details class="panel disclosure-panel results-panel" open id="dashboardResultsDisclosure">
+            <summary class="disclosure-summary">
+              <span class="disclosure-title">Recent results</span>
+              <span class="disclosure-hint">Export and drill into individual snapshots</span>
+            </summary>
+            <div class="row panel-actions disclosure-actions">
+              <button id="exportJsonBtn" type="button">Export JSON</button>
+              <button id="exportCsvBtn" type="button" class="secondary">Export CSV</button>
             </div>
             <div id="dashboardEmpty" class="empty-state hidden">
               <p>No results for the active run yet.</p>
@@ -140,6 +226,103 @@
                 </thead>
                 <tbody id="dashboardRecentBody"></tbody>
               </table>
+            </div>
+          </details>
+        </section>
+
+        <!-- DEMO TOUR (SII narrative) -->
+        <section id="page-demo-sii" class="page page-demo-sii hidden">
+          <section class="demo-hero panel">
+            <p class="demo-hero-eyebrow">Systemic Infrastructure Intelligence</p>
+            <h2 class="demo-hero-title">See the system. Surface the shift. Act before failure.</h2>
+            <p class="demo-hero-lead">
+              Neraium fuses sensor streams into structural relationships, then scores drift, instability, and risk in one operational surface—built for live walkthroughs and real incident response.
+            </p>
+            <div class="demo-hero-actions">
+              <a class="button-link" href="/dashboard">Open dashboard</a>
+              <button type="button" class="secondary" id="demoTourEnableBtn">Enable demo mode</button>
+            </div>
+          </section>
+
+          <section class="demo-steps">
+            <article class="demo-step panel">
+              <div class="demo-step-index">01</div>
+              <div class="demo-step-body">
+                <h3>Here is the system</h3>
+                <p class="subtitle">
+                  Every snapshot projects correlated sensors into a relationship field. You see nodes, stress, and coupling—not isolated charts.
+                </p>
+                <ul class="demo-bullet-list">
+                  <li>3D geometry view on run detail shows current vs baseline structure.</li>
+                  <li>Dashboard summarizes the latest envelope: state, phase, and health score.</li>
+                </ul>
+              </div>
+            </article>
+            <article class="demo-step panel">
+              <div class="demo-step-index">02</div>
+              <div class="demo-step-body">
+                <h3>Here is what is changing</h3>
+                <p class="subtitle">
+                  Drift and composite instability trend together. Transitions and key events are highlighted so motion in the system is obvious in seconds.
+                </p>
+                <ul class="demo-bullet-list">
+                  <li>Timeline on run detail encodes severity: normal, watch, critical.</li>
+                  <li>Demo mode plays the timeline forward for storytelling.</li>
+                </ul>
+              </div>
+            </article>
+            <article class="demo-step panel">
+              <div class="demo-step-index">03</div>
+              <div class="demo-step-body">
+                <h3>Here is the risk</h3>
+                <p class="subtitle">
+                  Risk is not a single threshold—it is interpreted from drift, instability, phase, and structural availability, with plain-language operator readouts.
+                </p>
+                <ul class="demo-bullet-list">
+                  <li>Alert rail surfaces platform-detected transitions and threshold crosses.</li>
+                  <li>“Why this risk” explains drivers without opening another tool.</li>
+                </ul>
+              </div>
+            </article>
+            <article class="demo-step panel">
+              <div class="demo-step-index">04</div>
+              <div class="demo-step-body">
+                <h3>Here is the prediction</h3>
+                <p class="subtitle">
+                  The engine scores forward-leaning structural stress so teams can stage maintenance, isolate subsystems, and brief leadership with a single narrative.
+                </p>
+                <ul class="demo-bullet-list">
+                  <li>Use <strong>Prepare Demo Runs</strong> for three realistic scenarios: baseline, watch, escalation.</li>
+                  <li>Export JSON or CSV when you need evidence outside the console.</li>
+                </ul>
+              </div>
+            </article>
+          </section>
+
+          <section class="panel demo-compare">
+            <div class="panel-header dashboard-section-head">
+              <div>
+                <h3>Without SII vs with SII</h3>
+                <p class="subtitle section-subtitle">Same telemetry—different time-to-comprehension.</p>
+              </div>
+            </div>
+            <div class="compare-grid">
+              <article class="compare-card compare-before">
+                <h4>Without SII</h4>
+                <ul class="compare-list">
+                  <li>Raw sensor tiles and static thresholds</li>
+                  <li>Correlations discovered late in spreadsheets</li>
+                  <li>Incidents explained after the fact</li>
+                </ul>
+              </article>
+              <article class="compare-card compare-after">
+                <h4>With SII</h4>
+                <ul class="compare-list">
+                  <li>Structural field + drift / instability trajectory</li>
+                  <li>Risk narrative tied to evidence in one run</li>
+                  <li>Demo-ready playback for exec and field teams</li>
+                </ul>
+              </article>
             </div>
           </section>
         </section>
@@ -283,7 +466,7 @@
             </section>
             <article id="runRiskExplanationPanel" class="risk-explanation hidden">
               <div class="risk-explanation-head">
-                <h4>Why this risk level</h4>
+                <h4 id="runRiskExplanationTitle">Why this risk level</h4>
                 <div id="runRiskExplanationBadge"></div>
               </div>
               <p id="runRiskExplanationText" class="subtitle"></p>
@@ -433,7 +616,7 @@
             <h3>Result detail</h3>
             <article id="resultRiskExplanationPanel" class="risk-explanation hidden">
               <div class="risk-explanation-head">
-                <h4>Why this risk level</h4>
+                <h4 id="resultRiskExplanationTitle">Why this risk level</h4>
                 <div id="resultRiskExplanationBadge"></div>
               </div>
               <p id="resultRiskExplanationText" class="subtitle"></p>
