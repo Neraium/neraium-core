@@ -2285,6 +2285,79 @@ function renderRunDetailFromState() {
   });
 }
 
+function formatIsoTime(iso) {
+  if (!iso || typeof iso !== "string") return "-";
+  try {
+    const d = new Date(iso);
+    return Number.isFinite(d.getTime()) ? d.toLocaleString() : "-";
+  } catch {
+    return "-";
+  }
+}
+
+async function loadRunBaseline(runId) {
+  const panel = qs("#runBaselinePanel");
+  const setAt = qs("#runBaselineSetAt");
+  const coverage = qs("#runBaselineCoverage");
+  const windowEl = qs("#runBaselineWindow");
+  const modeEl = qs("#runBaselineMode");
+  const lockedEl = qs("#runBaselineLocked");
+  const resetBtn = qs("#runBaselineResetBtn");
+  const lockBtn = qs("#runBaselineLockBtn");
+  const unlockBtn = qs("#runBaselineUnlockBtn");
+  if (!panel) return;
+  try {
+    const info = await fetchJson(apiUrl(`/runs/${encodeURIComponent(runId)}/baseline`, tenantScopeParams()));
+    panel.classList.remove("hidden");
+    if (setAt) setAt.textContent = formatIsoTime(info.baseline_set_at) || "Not yet set";
+    if (coverage) coverage.textContent = info.baseline_coverage_samples != null ? `${info.baseline_coverage_samples} samples` : "-";
+    if (windowEl) windowEl.textContent = info.baseline_window_config != null ? `${info.baseline_window_config} samples` : "-";
+    if (modeEl) modeEl.textContent = String(info.baseline_mode || "unknown");
+    const locked = Boolean(info.baseline_locked);
+    if (lockedEl) lockedEl.textContent = locked ? "Yes" : "No";
+    if (lockBtn) lockBtn.classList.toggle("hidden", locked);
+    if (unlockBtn) unlockBtn.classList.toggle("hidden", !locked);
+    if (resetBtn) resetBtn.onclick = () => resetRunBaseline(runId);
+    if (lockBtn) lockBtn.onclick = () => lockRunBaseline(runId, true);
+    if (unlockBtn) unlockBtn.onclick = () => lockRunBaseline(runId, false);
+  } catch (err) {
+    panel.classList.add("hidden");
+  }
+}
+
+async function resetRunBaseline(runId) {
+  try {
+    setLoading(true, "Resetting baseline...");
+    await fetchJson(apiUrl(`/runs/${encodeURIComponent(runId)}/baseline/reset`, tenantScopeParams()), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+    });
+    await loadRunBaseline(runId);
+    setStatus("Baseline reset. New baseline will form from current window.", false, true);
+  } catch (err) {
+    setStatus(String(err.message || err), true, true);
+  } finally {
+    setLoading(false);
+  }
+}
+
+async function lockRunBaseline(runId, locked) {
+  try {
+    setLoading(true, locked ? "Locking baseline..." : "Unlocking baseline...");
+    await fetchJson(apiUrl(`/runs/${encodeURIComponent(runId)}/baseline/lock`, tenantScopeParams()), {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ locked }),
+    });
+    await loadRunBaseline(runId);
+    setStatus(locked ? "Baseline locked." : "Baseline unlocked.", false, true);
+  } catch (err) {
+    setStatus(String(err.message || err), true, true);
+  } finally {
+    setLoading(false);
+  }
+}
+
 async function loadRunDetail(runId) {
   const runRes = await fetchJson(apiUrl(`/runs/${encodeURIComponent(runId)}`, tenantScopeParams()));
   const run = runRes.run;
@@ -2314,6 +2387,7 @@ async function loadRunDetail(runId) {
   renderRunDetailFromState();
   maybeAutoStartDemoPlayback();
   await loadRunGeometry(runId);
+  await loadRunBaseline(runId);
 
   const exportJson = qs("#runDetailExportJsonBtn");
   const exportCsv = qs("#runDetailExportCsvBtn");
