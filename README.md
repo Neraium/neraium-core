@@ -192,6 +192,25 @@ python -m pip install -e .[dev]
 uvicorn apps.api.main:app --host 0.0.0.0 --port 8000
 ```
 
+### MVP Web App (thin layer)
+
+The repository now includes a minimal web UI layered on the existing API and
+read-only SII engine (no engine rewrite):
+
+- Open `http://localhost:8000/`
+- Create/activate runs
+- Upload CSV telemetry
+- View latest and recent results
+- Open result details (`/results/{result_id}`)
+- Export recent run results as JSON or CSV
+
+Key endpoints used by the MVP web app:
+
+- `POST /runs`, `GET /runs`, `GET /runs/active`, `PATCH /runs/{run_id}`, `POST /runs/{run_id}/activate`
+- `POST /ingest/csv`
+- `GET /results/latest`, `GET /results/recent`, `GET /results/{result_id}`
+- `GET /results/export` (and backward-compatible `GET /export`)
+
 ## How to test
 
 ```bash
