@@ -63,8 +63,8 @@ frame
 - **Where:** In `alignment.py`, immediately after we have `baseline_window` and `recent_window`, **before** the first `normalize_window` call.
 - **What:** Call a data-quality function that takes `(baseline_window, recent_window, sensor_names)` and returns a small report (e.g. `gate_passed`, `missingness_rate`, `valid_signal_count`, `statuses`).
 - **Files:** 
-  - **Created:** `neraium_core/data_quality.py` (already added) — single function e.g. `compute_data_quality(...)` returning a report dataclass.
-  - **Modified:** `alignment.py` — add import; after `if baseline_window is None or recent_window is None` block, call data quality; attach report to `result` (e.g. `result["data_quality"]`); optionally skip or limit downstream analytics when `gate_passed` is False (current choice: still run, only add the report and a flag so UI/tests see it).
+  - **Created:** `neraium_core/data_quality.py` (already added) - single function e.g. `compute_data_quality(...)` returning a report dataclass.
+  - **Modified:** `alignment.py` - add import; after `if baseline_window is None or recent_window is None` block, call data quality; attach report to `result` (e.g. `result["data_quality"]`); optionally skip or limit downstream analytics when `gate_passed` is False (current choice: still run, only add the report and a flag so UI/tests see it).
 - **No new parallel path:** Same `process_frame`; one extra call and result keys.
 
 ### 2. Normalized scoring (replacing existing composite score)
@@ -74,8 +74,8 @@ frame
   - Component values are robustly normalized (e.g. winsorize, then scale to a bounded range).
   - Composite = weighted sum of normalized values (and optionally confidence-weighted); same or similar interface so `decision_output(composite_score, ...)` and `result["latest_instability"]` stay valid.
 - **Files:**
-  - **Modified:** `scoring.py` — add robust normalization (e.g. per-component winsorization + scaling), and a function (or signature) that returns the normalized composite (e.g. `composite_instability_score(..., use_normalization=True)` or a dedicated `composite_instability_score_normalized` used by alignment).
-  - **Modified:** `alignment.py` — call the new normalized composite instead of the raw one (one-line change at composite calculation).
+  - **Modified:** `scoring.py` - add robust normalization (e.g. per-component winsorization + scaling), and a function (or signature) that returns the normalized composite (e.g. `composite_instability_score(..., use_normalization=True)` or a dedicated `composite_instability_score_normalized` used by alignment).
+  - **Modified:** `alignment.py` - call the new normalized composite instead of the raw one (one-line change at composite calculation).
 - **No new module:** Logic lives in existing `scoring.py`; alignment only changes the call site.
 
 ### 3. (Future) Decision hysteresis, regime lifecycle, explanation engine
@@ -91,10 +91,10 @@ frame
 | Change | Create | Modify |
 |--------|--------|--------|
 | Data quality gating | `neraium_core/data_quality.py` (one function + report) | `alignment.py`: 1 call before normalization, add `result["data_quality"]` |
-| Normalized scoring | — | `scoring.py`: add normalization + normalized composite; `alignment.py`: use it for `composite` |
-| (Future) Hysteresis | — | `decision_layer.py` (+ optional state in `StructuralEngine`) |
-| (Future) Regime lifecycle | — | `regime.py`, `alignment.py`, `regime_store.py` |
-| (Future) Explanation | — | `decision_layer.py` (or same module) |
+| Normalized scoring | - | `scoring.py`: add normalization + normalized composite; `alignment.py`: use it for `composite` |
+| (Future) Hysteresis | - | `decision_layer.py` (+ optional state in `StructuralEngine`) |
+| (Future) Regime lifecycle | - | `regime.py`, `alignment.py`, `regime_store.py` |
+| (Future) Explanation | - | `decision_layer.py` (or same module) |
 
 ---
 

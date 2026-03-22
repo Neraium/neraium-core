@@ -63,7 +63,7 @@ def _run_demo() -> int:
     import tempfile
     from neraium_core.alignment import StructuralEngine
 
-    print("Neraium intelligence layer — quick demo\n")
+    print("Neraium intelligence layer - quick demo\n")
     with tempfile.TemporaryDirectory() as d:
         engine = StructuralEngine(
             baseline_window=25,

@@ -1,11 +1,18 @@
 from __future__ import annotations
 
+import csv
 import logging
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable, TextIO
 
 from neraium_core.alignment import StructuralEngine
-from neraium_core.pipeline import normalize_rest_payload, parse_csv_text, pilot_hardening_enabled
+from neraium_core.pipeline import (
+    REQUIRED_CSV_COLUMNS,
+    build_frame,
+    normalize_rest_payload,
+    parse_csv_text,
+    pilot_hardening_enabled,
+)
 from neraium_core.logging_utils import (
     Timer,
     log_structured,
@@ -16,7 +23,7 @@ from neraium_core.logging_utils import (
 )
 from neraium_core.pilot_schema import build_pilot_output
 from neraium_core.pilot_config import PilotConfig, load_pilot_config
-from neraium_core.store import ResultStore
+from neraium_core.store import DEFAULT_CUSTOMER_ID, ResultStore
 
 
 logger = logging.getLogger(__name__)
@@ -35,42 +42,71 @@ class StructuralMonitoringService:
         # so each asset gets its own baseline/model memory.
         self.engine = engine or StructuralEngine(baseline_window=24, recent_window=8)
         self.store = store or ResultStore()
-        self._engines_by_asset: dict[tuple[str, str], StructuralEngine] = {}
+        self._engines_by_asset: dict[tuple[str, str, str], StructuralEngine] = {}
         self._localization_by_site: dict[str, dict[str, float]] = {}
         self.pilot_config: PilotConfig = pilot_config or load_pilot_config()
 
-    def _engine_for_frame(self, frame: dict[str, Any]) -> StructuralEngine:
+    @staticmethod
+    def _resolve_customer_id(customer_id: str | None) -> str:
+        text = str(customer_id or "").strip()
+        return text or DEFAULT_CUSTOMER_ID
+
+    @classmethod
+    def _effective_customer_id(
+        cls,
+        *,
+        request_customer_id: str | None,
+        payload_customer_id: str | None,
+    ) -> str:
+        request_text = str(request_customer_id or "").strip()
+        payload_text = str(payload_customer_id or "").strip()
+        if request_text:
+            return cls._resolve_customer_id(request_text)
+        if payload_text:
+            return cls._resolve_customer_id(payload_text)
+        return DEFAULT_CUSTOMER_ID
+
+    def _engine_for_frame(
+        self,
+        frame: dict[str, Any],
+        *,
+        run_config: dict[str, Any] | None = None,
+    ) -> StructuralEngine:
+        customer_id = self._resolve_customer_id(frame.get("customer_id"))
         site_id = str(frame.get("site_id", "default-site"))
         asset_id = str(frame.get("asset_id", "default-asset"))
-        key = (site_id, asset_id)
+        key = (customer_id, site_id, asset_id)
         existing = self._engines_by_asset.get(key)
         if existing is not None:
             return existing
 
-        # Reuse the initially provided engine for the first asset to preserve
-        # backwards compatibility with tests/injection.
-        if not self._engines_by_asset:
-            self._engines_by_asset[key] = self.engine
-            return self.engine
-
-        # Clone config for additional assets with isolated regime memory file.
         template = self.engine
+        baseline_window = int(run_config.get("baseline_window", template.baseline_window)) if run_config else template.baseline_window
+        recent_window = int(run_config.get("recent_window", template.recent_window)) if run_config else template.recent_window
+        baseline_window = max(4, min(baseline_window, 500))
+        recent_window = max(2, min(recent_window, 120))
+
         regime_path = "regime_library.json"
         try:
             base_path = Path(template.regime_store.path)
+            safe_customer = customer_id.replace("/", "_").replace("\\", "_").replace(":", "_")
             safe_site = site_id.replace("/", "_").replace("\\", "_").replace(":", "_")
             safe_asset = asset_id.replace("/", "_").replace("\\", "_").replace(":", "_")
-            regime_path = str(base_path.with_name(f"{base_path.stem}_{safe_site}_{safe_asset}{base_path.suffix}"))
+            regime_path = str(
+                base_path.with_name(f"{base_path.stem}_{safe_customer}_{safe_site}_{safe_asset}{base_path.suffix}")
+            )
         except Exception:
-            regime_path = f"regime_library_{site_id}_{asset_id}.json"
+            regime_path = f"regime_library_{customer_id}_{site_id}_{asset_id}.json"
 
         new_engine = StructuralEngine(
-            baseline_window=template.baseline_window,
-            recent_window=template.recent_window,
+            baseline_window=baseline_window,
+            recent_window=recent_window,
             window_stride=template.window_stride,
             regime_store_path=regime_path,
             baseline_adaptation_alpha=template.baseline_adaptation_alpha,
         )
+        if run_config and run_config.get("baseline_locked") is True:
+            new_engine.lock_baseline(True)
         self._engines_by_asset[key] = new_engine
         return new_engine
 
@@ -185,7 +221,33 @@ class StructuralMonitoringService:
         }
         return enriched
 
-    def ingest_payload(self, payload: dict[str, Any]) -> dict[str, Any]:
+    @staticmethod
+    def _with_result_metadata(
+        result: dict[str, Any],
+        *,
+        customer_id: str | None,
+        run_id: str | None,
+        result_id: int | None,
+        persisted_at: str | None,
+    ) -> dict[str, Any]:
+        enriched = dict(result)
+        if customer_id is not None:
+            enriched["customer_id"] = customer_id
+        if run_id is not None:
+            enriched["run_id"] = run_id
+        if result_id is not None:
+            enriched["result_id"] = int(result_id)
+        if persisted_at is not None:
+            enriched["persisted_at"] = persisted_at
+        return enriched
+
+    def ingest_payload(
+        self,
+        payload: dict[str, Any],
+        *,
+        run_id: str | None = None,
+        customer_id: str | None = None,
+    ) -> dict[str, Any]:
         """Ingest a single telemetry payload and return the decorated result.
 
         When `NERAIUM_PILOT_HARDENING=1`, the response is augmented with the pilot
@@ -201,11 +263,31 @@ class StructuralMonitoringService:
         )
         try:
             frame = normalize_rest_payload(payload)
-            engine = self._engine_for_frame(frame)
+            resolved_customer = self._effective_customer_id(
+                request_customer_id=customer_id,
+                payload_customer_id=frame.get("customer_id"),
+            )
+            frame["customer_id"] = resolved_customer
+            run_config: dict[str, Any] | None = None
+            if run_id:
+                run_obj = self.store.get_run(run_id, customer_id=resolved_customer)
+                if run_obj and isinstance(run_obj.get("config"), dict):
+                    run_config = run_obj["config"]
+            engine = self._engine_for_frame(frame, run_config=run_config)
             result = self._decorate_result(engine.process_frame(frame))
+            result["customer_id"] = resolved_customer
             if pilot_hardening_enabled():
                 result.update(build_pilot_output(frame=frame, result=result))
-            self.store.save_ingestion(frame, result)
+            self.store.save_ingestion(frame, result, run_id=run_id, customer_id=resolved_customer)
+            persisted = self.store.get_latest_result(run_id=run_id, customer_id=resolved_customer)
+            if persisted is not None:
+                result = self._with_result_metadata(
+                    result,
+                    customer_id=persisted.get("customer_id"),
+                    run_id=persisted.get("run_id"),
+                    result_id=persisted.get("result_id"),
+                    persisted_at=persisted.get("persisted_at"),
+                )
 
             out_fields = summarize_result_for_logs(result)
             out_fields["latency_ms"] = round(timer.ms(), 3)
@@ -244,7 +326,13 @@ class StructuralMonitoringService:
             log_structured(logger, event="ingest_payload_error", fields=err_fields, level=logging.ERROR)
             raise
 
-    def ingest_batch(self, payloads: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    def ingest_batch(
+        self,
+        payloads: list[dict[str, Any]],
+        *,
+        run_id: str | None = None,
+        customer_id: str | None = None,
+    ) -> list[dict[str, Any]]:
         """Ingest multiple telemetry payloads (batch) and return decorated results.
 
         When `NERAIUM_PILOT_HARDENING=1`, each result is augmented with pilot schema keys.
@@ -259,12 +347,29 @@ class StructuralMonitoringService:
         )
         pairs: list[tuple[dict[str, Any], dict[str, Any]]] = []
         results: list[dict[str, Any]] = []
+        resolved_customer = self._effective_customer_id(
+            request_customer_id=customer_id,
+            payload_customer_id=payloads[0].get("customer_id") if payloads else None,
+        )
         for payload in payloads:
             item_timer = Timer()
             try:
                 frame = normalize_rest_payload(payload)
-                engine = self._engine_for_frame(frame)
+                frame_customer = self._effective_customer_id(
+                    request_customer_id=customer_id,
+                    payload_customer_id=frame.get("customer_id"),
+                )
+                frame["customer_id"] = frame_customer
+                if frame_customer != resolved_customer:
+                    raise ValueError("All batch items must share the same customer_id")
+                run_config = None
+                if run_id:
+                    run_obj = self.store.get_run(run_id, customer_id=resolved_customer)
+                    if run_obj and isinstance(run_obj.get("config"), dict):
+                        run_config = run_obj["config"]
+                engine = self._engine_for_frame(frame, run_config=run_config)
                 result = self._decorate_result(engine.process_frame(frame))
+                result["customer_id"] = resolved_customer
                 if pilot_hardening_enabled():
                     result.update(build_pilot_output(frame=frame, result=result))
                 results.append(result)
@@ -288,16 +393,65 @@ class StructuralMonitoringService:
                 log_structured(logger, event="ingest_batch_item_error", fields=err_fields, level=logging.ERROR)
                 raise
 
-        self.store.save_ingestion_batch(pairs)
+        self.store.save_ingestion_batch(pairs, run_id=run_id, customer_id=resolved_customer)
+        persisted_recent = self.store.list_recent_results(
+            limit=len(results),
+            run_id=run_id,
+            customer_id=resolved_customer,
+        )
+        persisted_map: dict[tuple[str, str, str, str], dict[str, Any]] = {}
+        for item in persisted_recent:
+            key = (
+                str(item.get("customer_id", "")),
+                str(item.get("timestamp", "")),
+                str(item.get("site_id", "")),
+                str(item.get("asset_id", "")),
+            )
+            persisted_map[key] = item
+        results_with_ids: list[dict[str, Any]] = []
+        for result in results:
+            key = (
+                str(result.get("customer_id", "")),
+                str(result.get("timestamp", "")),
+                str(result.get("site_id", "")),
+                str(result.get("asset_id", "")),
+            )
+            persisted = persisted_map.get(key)
+            if persisted is None:
+                results_with_ids.append(
+                    self._with_result_metadata(
+                        result,
+                        customer_id=resolved_customer,
+                        run_id=run_id,
+                        result_id=None,
+                        persisted_at=None,
+                    )
+                )
+            else:
+                results_with_ids.append(
+                    self._with_result_metadata(
+                        result,
+                        customer_id=persisted.get("customer_id"),
+                        run_id=persisted.get("run_id"),
+                        result_id=persisted.get("result_id"),
+                        persisted_at=persisted.get("persisted_at"),
+                    )
+                )
         log_structured(
             logger,
             event="ingest_batch_out",
             fields={"items": len(results), "latency_ms": round(batch_timer.ms(), 3)},
             level=logging.INFO,
         )
-        return results
+        return results_with_ids
 
-    def ingest_csv(self, csv_text: str) -> list[dict[str, Any]]:
+    def ingest_csv(
+        self,
+        csv_text: str,
+        *,
+        run_id: str | None = None,
+        customer_id: str | None = None,
+    ) -> list[dict[str, Any]]:
         """Ingest CSV text and return decorated results.
 
         When `NERAIUM_PILOT_HARDENING=1`, each result is augmented with pilot schema keys.
@@ -311,13 +465,20 @@ class StructuralMonitoringService:
             level=logging.INFO,
         )
         try:
-            frames = parse_csv_text(csv_text)
+            resolved_customer = self._resolve_customer_id(customer_id)
+            run_config: dict[str, Any] | None = None
+            if run_id:
+                run_obj = self.store.get_run(run_id, customer_id=resolved_customer)
+                if run_obj and isinstance(run_obj.get("config"), dict):
+                    run_config = run_obj["config"]
+            frames = parse_csv_text(csv_text, customer_id=resolved_customer)
             pairs: list[tuple[dict[str, Any], dict[str, Any]]] = []
             results: list[dict[str, Any]] = []
             for frame in frames:
                 item_timer = Timer()
-                engine = self._engine_for_frame(frame)
+                engine = self._engine_for_frame(frame, run_config=run_config)
                 result = self._decorate_result(engine.process_frame(frame))
+                result["customer_id"] = resolved_customer
                 if pilot_hardening_enabled():
                     result.update(build_pilot_output(frame=frame, result=result))
                 results.append(result)
@@ -333,14 +494,57 @@ class StructuralMonitoringService:
                     level=logging.INFO,
                 )
 
-            self.store.save_ingestion_batch(pairs)
+            self.store.save_ingestion_batch(pairs, run_id=run_id, customer_id=resolved_customer)
+            persisted_recent = self.store.list_recent_results(
+                limit=len(results),
+                run_id=run_id,
+                customer_id=resolved_customer,
+            )
+            persisted_map: dict[tuple[str, str, str, str], dict[str, Any]] = {}
+            for item in persisted_recent:
+                key = (
+                    str(item.get("customer_id", "")),
+                    str(item.get("timestamp", "")),
+                    str(item.get("site_id", "")),
+                    str(item.get("asset_id", "")),
+                )
+                persisted_map[key] = item
+            results_with_ids: list[dict[str, Any]] = []
+            for result in results:
+                key = (
+                    str(result.get("customer_id", "")),
+                    str(result.get("timestamp", "")),
+                    str(result.get("site_id", "")),
+                    str(result.get("asset_id", "")),
+                )
+                persisted = persisted_map.get(key)
+                if persisted is None:
+                    results_with_ids.append(
+                        self._with_result_metadata(
+                            result,
+                            customer_id=resolved_customer,
+                            run_id=run_id,
+                            result_id=None,
+                            persisted_at=None,
+                        )
+                    )
+                else:
+                    results_with_ids.append(
+                        self._with_result_metadata(
+                            result,
+                            customer_id=persisted.get("customer_id"),
+                            run_id=persisted.get("run_id"),
+                            result_id=persisted.get("result_id"),
+                            persisted_at=persisted.get("persisted_at"),
+                        )
+                    )
             log_structured(
                 logger,
                 event="ingest_csv_out",
                 fields={"items": len(results), "latency_ms": round(timer.ms(), 3)},
                 level=logging.INFO,
             )
-            return results
+            return results_with_ids
         except Exception as exc:
             err_fields = {
                 "csv_text_len": len(csv_text),
@@ -350,11 +554,342 @@ class StructuralMonitoringService:
             log_structured(logger, event="ingest_csv_error", fields=err_fields, level=logging.ERROR)
             raise
 
-    def get_latest_result(self) -> dict[str, Any] | None:
-        return self.store.get_latest_result()
+    @staticmethod
+    def _csv_validation_error_message(exc: Exception, *, row_index: int | None = None) -> str:
+        raw = str(exc)
+        if "Invalid timestamp" in raw:
+            base = (
+                "Invalid timestamp format. Use ISO-8601 (for example "
+                "2026-01-01T00:00:00+00:00)."
+            )
+        elif "Sensor name cannot be empty" in raw:
+            base = "CSV includes an empty sensor column name. Ensure all sensor headers are non-empty."
+        elif "Invalid signal value for" in raw:
+            base = f"Non-numeric sensor value detected. {raw}"
+        elif "Invalid signal type for" in raw:
+            base = f"Unsupported sensor value type detected. {raw}"
+        else:
+            base = raw
+        if row_index is None:
+            return base
+        return f"Row {row_index}: {base}"
 
-    def list_recent_results(self, limit: int = 100) -> list[dict[str, Any]]:
-        return self.store.list_recent_results(limit=limit)
+    def ingest_csv_stream(
+        self,
+        csv_stream: TextIO,
+        *,
+        run_id: str | None = None,
+        customer_id: str | None = None,
+        batch_size: int = 250,
+        max_error_samples: int = 25,
+        progress_callback: Callable[[dict[str, Any]], None] | None = None,
+    ) -> dict[str, Any]:
+        """
+        Stream-ingest CSV rows with partial success support and progress callbacks.
+
+        This path is intended for large-file ingestion where loading the full CSV into
+        memory is undesirable.
+        """
+
+        timer = Timer()
+        safe_batch_size = max(1, int(batch_size))
+        safe_error_samples = max(1, int(max_error_samples))
+        resolved_customer = self._resolve_customer_id(customer_id)
+
+        def _emit_progress(
+            *,
+            status: str,
+            rows_processed: int,
+            rows_succeeded: int,
+            rows_failed: int,
+            error_samples: list[dict[str, Any]] | None = None,
+            message: str | None = None,
+        ) -> None:
+            if progress_callback is None:
+                return
+            try:
+                progress_callback(
+                    {
+                        "status": status,
+                        "rows_processed": int(rows_processed),
+                        "rows_succeeded": int(rows_succeeded),
+                        "rows_failed": int(rows_failed),
+                        "error_samples": list(error_samples or []),
+                        "message": message,
+                    }
+                )
+            except Exception:
+                # Progress callbacks must never fail ingestion flow.
+                logger.debug("ingest_csv_stream progress callback failure", exc_info=True)
+
+        log_structured(
+            logger,
+            event="ingest_csv_stream_in",
+            fields={
+                "run_id": run_id,
+                "customer_id": resolved_customer,
+                "batch_size": safe_batch_size,
+            },
+            level=logging.INFO,
+        )
+
+        run_config: dict[str, Any] | None = None
+        if run_id:
+            run_obj = self.store.get_run(run_id, customer_id=resolved_customer)
+            if run_obj and isinstance(run_obj.get("config"), dict):
+                run_config = run_obj["config"]
+
+        reader = csv.DictReader(csv_stream)
+        if reader.fieldnames is None:
+            raise ValueError(
+                "CSV file is empty. Add a header row with timestamp, site_id, asset_id "
+                "and one or more sensor columns."
+            )
+
+        header_names = [str(name).strip() for name in reader.fieldnames if name is not None]
+        header_set = set(header_names)
+        missing = sorted(REQUIRED_CSV_COLUMNS - header_set)
+        if missing:
+            raise ValueError(
+                "CSV is missing required columns: "
+                f"{', '.join(missing)}. Required: timestamp, site_id, asset_id."
+            )
+
+        sensor_columns = [name for name in header_names if name not in REQUIRED_CSV_COLUMNS]
+        if not sensor_columns:
+            raise ValueError(
+                "CSV must include at least one sensor column in addition to "
+                "timestamp, site_id, asset_id."
+            )
+
+        buffered_pairs: list[tuple[dict[str, Any], dict[str, Any]]] = []
+        rows_processed = 0
+        rows_succeeded = 0
+        rows_failed = 0
+        error_samples: list[dict[str, Any]] = []
+        last_result: dict[str, Any] | None = None
+
+        _emit_progress(
+            status="processing",
+            rows_processed=0,
+            rows_succeeded=0,
+            rows_failed=0,
+            error_samples=[],
+            message="CSV accepted. Processing rows...",
+        )
+
+        for row_index, row in enumerate(reader, start=2):
+            if row is None:
+                continue
+            rows_processed += 1
+            try:
+                sensor_values = {col: row.get(col) for col in sensor_columns}
+                frame = build_frame(
+                    timestamp=row.get("timestamp"),
+                    customer_id=resolved_customer,
+                    site_id=row.get("site_id"),
+                    asset_id=row.get("asset_id"),
+                    sensor_values=sensor_values,
+                )
+                frame["customer_id"] = resolved_customer
+                engine = self._engine_for_frame(frame, run_config=run_config)
+                result = self._decorate_result(engine.process_frame(frame))
+                result["customer_id"] = resolved_customer
+                if pilot_hardening_enabled():
+                    result.update(build_pilot_output(frame=frame, result=result))
+                buffered_pairs.append((frame, result))
+                rows_succeeded += 1
+                last_result = result
+            except Exception as exc:
+                rows_failed += 1
+                msg = self._csv_validation_error_message(exc, row_index=row_index)
+                if len(error_samples) < safe_error_samples:
+                    error_samples.append({"row": row_index, "message": msg})
+                log_structured(
+                    logger,
+                    event="ingest_csv_stream_row_error",
+                    fields={
+                        "row_index": row_index,
+                        "run_id": run_id,
+                        "customer_id": resolved_customer,
+                        **summarize_exception_for_logs(exc),
+                    },
+                    level=logging.WARNING,
+                )
+
+            if len(buffered_pairs) >= safe_batch_size:
+                self.store.save_ingestion_batch(
+                    buffered_pairs,
+                    run_id=run_id,
+                    customer_id=resolved_customer,
+                )
+                buffered_pairs = []
+
+            if rows_processed % 25 == 0:
+                _emit_progress(
+                    status="processing",
+                    rows_processed=rows_processed,
+                    rows_succeeded=rows_succeeded,
+                    rows_failed=rows_failed,
+                    error_samples=error_samples,
+                    message=(
+                        f"Processed {rows_processed} rows "
+                        f"({rows_succeeded} succeeded, {rows_failed} failed)."
+                    ),
+                )
+
+        if buffered_pairs:
+            self.store.save_ingestion_batch(
+                buffered_pairs,
+                run_id=run_id,
+                customer_id=resolved_customer,
+            )
+
+        persisted_latest = self.store.get_latest_result(run_id=run_id, customer_id=resolved_customer)
+        latest_result: dict[str, Any] | None = None
+        if persisted_latest is not None and last_result is not None:
+            latest_result = self._with_result_metadata(
+                last_result,
+                customer_id=persisted_latest.get("customer_id"),
+                run_id=persisted_latest.get("run_id"),
+                result_id=persisted_latest.get("result_id"),
+                persisted_at=persisted_latest.get("persisted_at"),
+            )
+        elif persisted_latest is not None:
+            latest_result = persisted_latest
+
+        partial_success = rows_succeeded > 0 and rows_failed > 0
+        message = (
+            f"Processed {rows_processed} rows: "
+            f"{rows_succeeded} succeeded, {rows_failed} failed."
+        )
+        if partial_success:
+            message += " Ingest completed with partial success."
+        elif rows_failed > 0 and rows_succeeded == 0:
+            message += " No rows were successfully ingested."
+
+        summary = {
+            "run_id": run_id,
+            "customer_id": resolved_customer,
+            "rows_processed": rows_processed,
+            "rows_succeeded": rows_succeeded,
+            "rows_failed": rows_failed,
+            "partial_success": partial_success,
+            "error_samples": error_samples,
+            "latest_result": latest_result,
+            "message": message,
+            "latency_ms": round(timer.ms(), 3),
+        }
+
+        log_level = logging.INFO
+        if partial_success:
+            log_level = logging.WARNING
+        if rows_failed > 0 and rows_succeeded == 0:
+            log_level = logging.ERROR
+
+        log_structured(
+            logger,
+            event="ingest_csv_stream_out",
+            fields={
+                "run_id": run_id,
+                "customer_id": resolved_customer,
+                "rows_processed": rows_processed,
+                "rows_succeeded": rows_succeeded,
+                "rows_failed": rows_failed,
+                "partial_success": partial_success,
+                "latency_ms": summary["latency_ms"],
+            },
+            level=log_level,
+        )
+
+        _emit_progress(
+            status="completed",
+            rows_processed=rows_processed,
+            rows_succeeded=rows_succeeded,
+            rows_failed=rows_failed,
+            error_samples=error_samples,
+            message=message,
+        )
+        return summary
+
+    def get_latest_result(
+        self,
+        *,
+        run_id: str | None = None,
+        customer_id: str | None = None,
+        site_id: str | None = None,
+    ) -> dict[str, Any] | None:
+        if site_id is None or not str(site_id).strip():
+            return self.store.get_latest_result(run_id=run_id, customer_id=customer_id)
+        results = self.list_recent_results(
+            limit=1000,
+            run_id=run_id,
+            customer_id=customer_id,
+            site_id=site_id,
+        )
+        return results[0] if results else None
+
+    def list_recent_results(
+        self,
+        limit: int = 100,
+        *,
+        run_id: str | None = None,
+        customer_id: str | None = None,
+        site_id: str | None = None,
+    ) -> list[dict[str, Any]]:
+        items = self.store.list_recent_results(limit=limit, run_id=run_id, customer_id=customer_id)
+        if site_id is None or not str(site_id).strip():
+            return items
+        target = str(site_id).strip()
+        return [item for item in items if str(item.get("site_id", "")).strip() == target]
+
+    def get_result_by_id(
+        self,
+        result_id: int,
+        *,
+        run_id: str | None = None,
+        customer_id: str | None = None,
+    ) -> dict[str, Any] | None:
+        return self.store.get_result_by_id(result_id, run_id=run_id, customer_id=customer_id)
+
+    def create_run(
+        self,
+        *,
+        name: str,
+        config: dict[str, Any] | None = None,
+        activate: bool = True,
+        customer_id: str | None = None,
+    ) -> dict[str, Any]:
+        return self.store.create_run(name=name, config=config, activate=activate, customer_id=customer_id)
+
+    def list_runs(self, *, limit: int = 100, customer_id: str | None = None) -> list[dict[str, Any]]:
+        return self.store.list_runs(limit=limit, customer_id=customer_id)
+
+    def get_run(self, run_id: str, *, customer_id: str | None = None) -> dict[str, Any] | None:
+        return self.store.get_run(run_id, customer_id=customer_id)
+
+    def get_active_run(self, *, customer_id: str | None = None) -> dict[str, Any] | None:
+        return self.store.get_active_run(customer_id=customer_id)
+
+    def activate_run(self, run_id: str, *, customer_id: str | None = None) -> dict[str, Any]:
+        return self.store.activate_run(run_id, customer_id=customer_id)
+
+    def update_run(
+        self,
+        run_id: str,
+        *,
+        name: str | None = None,
+        config: dict[str, Any] | None = None,
+        status: str | None = None,
+        customer_id: str | None = None,
+    ) -> dict[str, Any]:
+        return self.store.update_run(
+            run_id,
+            name=name,
+            config=config,
+            status=status,
+            customer_id=customer_id,
+        )
 
     def reset(self) -> None:
         logger.info("reset called")
@@ -367,3 +902,91 @@ class StructuralMonitoringService:
         self._engines_by_asset = {}
         self._localization_by_site = {}
         self.store.reset()
+
+    def _engine_keys_for_run(
+        self,
+        run_id: str,
+        customer_id: str | None = None,
+    ) -> list[tuple[str, str, str]]:
+        """Return (customer_id, site_id, asset_id) keys for engines used by this run."""
+        resolved_customer = self._resolve_customer_id(customer_id)
+        results = self.store.list_recent_results(limit=1000, run_id=run_id, customer_id=resolved_customer)
+        seen: set[tuple[str, str, str]] = set()
+        keys: list[tuple[str, str, str]] = []
+        for r in results:
+            site_id = str(r.get("site_id") or "default-site")
+            asset_id = str(r.get("asset_id") or "default-asset")
+            key = (resolved_customer, site_id, asset_id)
+            if key not in seen:
+                seen.add(key)
+                keys.append(key)
+        return keys if keys else [(resolved_customer, "default-site", "default-asset")]
+
+    def reset_baseline_for_run(
+        self,
+        run_id: str,
+        customer_id: str | None = None,
+    ) -> None:
+        """Reset baseline and calibration for all engines used by this run."""
+        for key in self._engine_keys_for_run(run_id, customer_id):
+            engine = self._engines_by_asset.get(key)
+            if engine is not None:
+                engine.reset_baseline()
+                log_structured(
+                    logger,
+                    event="baseline_reset",
+                    fields={"run_id": run_id, "site_id": key[1], "asset_id": key[2]},
+                    level=logging.INFO,
+                )
+
+    def lock_baseline_for_run(
+        self,
+        run_id: str,
+        locked: bool,
+        customer_id: str | None = None,
+    ) -> None:
+        """Lock or unlock baseline for this run. Updates run config and existing engines."""
+        resolved_customer = self._resolve_customer_id(customer_id)
+        run_obj = self.store.get_run(run_id, customer_id=resolved_customer)
+        if run_obj is None:
+            raise ValueError(f"Unknown run_id: {run_id}")
+        config = dict(run_obj.get("config") or {})
+        config["baseline_locked"] = bool(locked)
+        self.store.update_run(run_id, config=config, customer_id=resolved_customer)
+        for key in self._engine_keys_for_run(run_id, customer_id):
+            engine = self._engines_by_asset.get(key)
+            if engine is not None:
+                engine.lock_baseline(locked)
+
+    def get_baseline_info_for_run(
+        self,
+        run_id: str,
+        customer_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Return baseline metadata for this run (from engines or run config)."""
+        resolved_customer = self._resolve_customer_id(customer_id)
+        run_obj = self.store.get_run(run_id, customer_id=resolved_customer)
+        if run_obj is None:
+            return {
+                "baseline_set_at": None,
+                "baseline_coverage_samples": 0,
+                "baseline_window_config": 24,
+                "baseline_locked": False,
+                "baseline_mode": "unknown",
+            }
+        config = run_obj.get("config") or {}
+        keys = self._engine_keys_for_run(run_id, customer_id)
+        # Use first engine's info if available
+        for key in keys:
+            engine = self._engines_by_asset.get(key)
+            if engine is not None:
+                info = dict(engine.get_baseline_info())
+                info["baseline_locked"] = config.get("baseline_locked", info.get("baseline_locked", False))
+                return info
+        return {
+            "baseline_set_at": None,
+            "baseline_coverage_samples": 0,
+            "baseline_window_config": int(config.get("baseline_window", 24)),
+            "baseline_locked": bool(config.get("baseline_locked", False)),
+            "baseline_mode": "unknown",
+        }

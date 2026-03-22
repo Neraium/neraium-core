@@ -1,5 +1,14 @@
+<<<<<<< HEAD
 # Runtime dependencies for the Neraium API demo (mirrors pyproject.toml [project.dependencies]).
 numpy
 pydantic>=2
 fastapi>=0.110
 uvicorn[standard]>=0.29
+=======
+# Neraium core demo / API
+numpy
+pydantic>=2
+fastapi>=0.110
+uvicorn>=0.29
+python-multipart
+>>>>>>> 60fa49889f50cad2076a616030c6ce50a645ad07

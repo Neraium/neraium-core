@@ -13,5 +13,9 @@ Thumbs.db
 
 # Runtime persistence artifacts
 *.db
+*.db-shm
+*.db-wal
 *.sqlite
 *.sqlite3
+regime_library.json
+regime_library_*.json

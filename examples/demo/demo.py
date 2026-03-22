@@ -90,7 +90,7 @@ def _risk_and_message(drift: float, instability: float, trend: str) -> tuple[str
     if drift >= 4.0 or instability >= 2.6 or (drift >= 3.4 and instability >= 2.1 and trend != "↓"):
         return "HIGH", "System unstable: intervention recommended"
     if instability >= 1.2 and trend == "↑":
-        return "MEDIUM", "Instability increasing — monitor system"
+        return "MEDIUM", "Instability increasing - monitor system"
     if drift >= 2.0 or instability >= 1.2 or trend == "↑":
         return "MEDIUM", "Structural relationships shifting"
     return "LOW", "System stable"

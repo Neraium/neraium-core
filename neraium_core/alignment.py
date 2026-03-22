@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import Counter, deque
+from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
 import os
@@ -111,6 +112,36 @@ class StructuralEngine:
         persisted = self.regime_store.load()
         self.regime_signatures: list[dict[str, object]] = list(persisted.get("regimes", []))
         self.regime_baselines: dict[str, dict[str, object]] = dict(persisted.get("baselines", {}))
+
+        # Baseline management: lock prevents rolling update; metadata for UI/API.
+        self.baseline_locked: bool = False
+        self._baseline_set_at: Optional[str] = None  # ISO timestamp when baseline was last established
+        self._baseline_coverage_samples: int = 0  # Number of samples in baseline window
+
+    def reset_baseline(self) -> None:
+        """Clear rolling baseline and calibration state so baseline is recomputed from window."""
+        self._rolling_baseline_corr = None
+        self._baseline_set_at = None
+        self._baseline_coverage_samples = 0
+        self._drift_watch_alert_thresholds = None
+        self._composite_watch_alert_thresholds = None
+        self._baseline_drift_score_samples.clear()
+        self._baseline_composite_score_samples.clear()
+
+    def lock_baseline(self, locked: bool = True) -> None:
+        """Lock or unlock baseline. When locked, rolling baseline stops adapting."""
+        self.baseline_locked = bool(locked)
+
+    def get_baseline_info(self) -> Dict[str, object]:
+        """Return baseline metadata for UI/API: when set, coverage, locked state."""
+        mode = "rolling" if self._rolling_baseline_corr is not None else "fixed"
+        return {
+            "baseline_set_at": self._baseline_set_at,
+            "baseline_coverage_samples": self._baseline_coverage_samples,
+            "baseline_window_config": self.baseline_window,
+            "baseline_locked": self.baseline_locked,
+            "baseline_mode": mode,
+        }
 
     def _persist_regime_state(self) -> None:
         self.regime_store.save(
@@ -559,6 +590,7 @@ class StructuralEngine:
 
             analytics.update(
                 {
+                    "valid_sensor_names": valid_sensor_names,
                     "correlation_geometry": {
                         "baseline": corr_baseline.tolist(),
                         "current": corr_recent.tolist(),
@@ -822,14 +854,17 @@ class StructuralEngine:
 
         self._state_history.append(decision.get("interpreted_state", "NOMINAL_STRUCTURE"))
 
-        # Rolling baseline: update only when nominal and composite low (avoid absorbing instability).
+        # Rolling baseline: update only when nominal, composite low, and not locked.
         if (
             valid_signal_count >= 2
+            and not self.baseline_locked
             and decision.get("interpreted_state") == "NOMINAL_STRUCTURE"
             and float(composite) < BASELINE_UPDATE_MAX_COMPOSITE
         ):
             if self._rolling_baseline_corr is None or self._rolling_baseline_corr.shape != corr_recent.shape:
                 self._rolling_baseline_corr = np.array(corr_recent, dtype=float, copy=True)
+                self._baseline_set_at = datetime.now(timezone.utc).isoformat()
+                self._baseline_coverage_samples = self.baseline_window
             else:
                 alpha = self.baseline_adaptation_alpha
                 self._rolling_baseline_corr = alpha * self._rolling_baseline_corr + (1.0 - alpha) * corr_recent

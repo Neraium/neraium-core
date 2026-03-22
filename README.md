@@ -7,7 +7,7 @@ It ingests multivariate telemetry, computes **Systemic Infrastructure Intelligen
 
 ## How Neraium is different
 
-Most tools optimize for **single sensors** or **component failure prediction**: thresholds, per-signal anomalies, or models trained on “normal” history. Neraium focuses on **systemic stability**—how signals **relate** to each other over time—so teams can see **structural drift and approaching instability** before many component-level alarms fire.
+Most tools optimize for **single sensors** or **component failure prediction**: thresholds, per-signal anomalies, or models trained on “normal” history. Neraium focuses on **systemic stability**, how signals **relate** to each other over time, so teams can see **structural drift and approaching instability** before many component-level alarms fire.
 
 | Typical approach | Neraium |
 |------------------|---------|
@@ -192,27 +192,112 @@ python -m pip install -e .[dev]
 uvicorn apps.api.main:app --host 0.0.0.0 --port 8000
 ```
 
+<<<<<<< HEAD
 ## Run the demo
 
 One command from the repo root installs runtime dependencies (if needed), binds **0.0.0.0**, and starts the **FastAPI** app with **uvicorn** (same app as `apps/api/main.py`).
+=======
+### Run the demo
+
+One-command launch for a public demo (installs deps if needed, binds to `0.0.0.0`, uses `PORT` env or 8000):
+>>>>>>> 60fa49889f50cad2076a616030c6ce50a645ad07
 
 ```bash
 python run_demo.py
 ```
 
+<<<<<<< HEAD
 - **Port:** `PORT` environment variable or `--port` (default **7860** if `PORT` is unset).
 - **Host:** `--host` (default **0.0.0.0**).
 - **Public URL:** `--share` tries **cloudflared** or **ngrok** if installed (otherwise prints a hint).
+=======
+Options:
+
+- `--host HOST` - bind address (default: 0.0.0.0)
+- `--port PORT` - port (default: 8000, or `PORT` env)
+- `--share` - start a public tunnel (ngrok or cloudflared) for sharing
+>>>>>>> 60fa49889f50cad2076a616030c6ce50a645ad07
 
 Examples:
 
 ```bash
+<<<<<<< HEAD
 PORT=8000 python run_demo.py
 python run_demo.py --port 8000 --host 0.0.0.0
 python run_demo.py --share
 ```
 
 Runtime-only dependencies are listed in **`requirements.txt`** (also satisfied by `pip install -e .` from `pyproject.toml`).
+=======
+python run_demo.py --port 7860
+python run_demo.py --share
+```
+
+## Customer-hosted deployment (first-class path)
+
+For customer environments (server/VM or customer cloud VM), use the deployment guide:
+
+- **[docs/CUSTOMER_DEPLOYMENT.md](docs/CUSTOMER_DEPLOYMENT.md)**
+
+Quick start (Docker):
+
+```bash
+docker build -t neraium:latest .
+docker run --rm -p 8000:8000 \
+  -e HOST=0.0.0.0 \
+  -e PORT=8000 \
+  -e NERAIUM_API_KEY=change-me \
+  -e NERAIUM_DB_PATH=/data/neraium.db \
+  -e NERAIUM_CUSTOMER_API_BASE_URL=https://customer-api.internal/telemetry \
+  -e NERAIUM_CUSTOMER_API_AUTH_TYPE=bearer \
+  -e NERAIUM_INTEGRATION_CONFIG_PATH=/app/config/integration.json \
+  -v "$(pwd)/data:/data" \
+  -v "$(pwd)/config:/app/config:ro" \
+  neraium:latest
+```
+
+Quick start (Docker Compose):
+
+```bash
+docker compose up --build
+```
+
+One-command customer start:
+
+```bash
+cp .env.customer.example .env
+cp config/integration.customer.sample.json config/integration.json
+docker compose up --build
+```
+
+Notes:
+
+- Neraium stays **read-only** (no control/actuation path).
+- When deployed in customer environment, ingest, compute, and persistence stay local to that environment.
+- Pull integration is configurable via:
+  - `POST /integrations/pull/start`
+  - `POST /integrations/pull/stop`
+  - `GET /integrations/pull/status`
+
+### MVP Web App (thin layer)
+
+The repository now includes a minimal web UI layered on the existing API and
+read-only SII engine (no engine rewrite):
+
+- Open `http://localhost:8000/`
+- Create/activate runs
+- Upload CSV telemetry
+- View latest and recent results
+- Open result details (`/results/{result_id}`)
+- Export recent run results as JSON or CSV
+
+Key endpoints used by the MVP web app:
+
+- `POST /runs`, `GET /runs`, `GET /runs/active`, `PATCH /runs/{run_id}`, `POST /runs/{run_id}/activate`
+- `POST /ingest/csv`
+- `GET /results/latest`, `GET /results/recent`, `GET /results/{result_id}`
+- `GET /results/export` (and backward-compatible `GET /export`)
+>>>>>>> 60fa49889f50cad2076a616030c6ce50a645ad07
 
 ## How to test
 
@@ -225,6 +310,21 @@ Environment variables:
 
 - `NERAIUM_API_KEY` (optional)  
 - `NERAIUM_DB_PATH` (optional, default: `neraium.db`)  
+- `NERAIUM_MAX_REQUEST_BODY_BYTES` (optional, minimum/default: `52428800` = 50MB)  
+- `NERAIUM_UVICORN_H11_MAX_INCOMPLETE_EVENT_SIZE` (optional, minimum/default: `62914560` = 60MB parser ceiling)
+
+### Basic multi-tenant scoping (no auth/roles yet)
+
+The API now supports lightweight tenant scoping via `customer_id` query/body fields:
+
+- Ingest endpoints (`/ingest`, `/ingest/batch`, `/ingest/csv`) accept `customer_id`
+- Runs/results endpoints accept `customer_id` query parameter for isolated reads
+- Optional `site_id` query filter is supported on:
+  - `GET /results/latest`
+  - `GET /results/recent`
+  - `GET /results/export` and `GET /export`
+
+If omitted, `customer_id` defaults to `default-customer`.
 
 ### Pilot hardening mode (optional)
 
@@ -266,8 +366,8 @@ The runner sets `NERAIUM_PILOT_HARDENING=1` for you.
   python run_pilot.py --input examples/pilot/scenarios/regime_shift_inputs.json --output pilot_regime_shift.json
   python run_pilot.py --input examples/pilot/scenarios/structural_instability_inputs.json --output pilot_structural_instability.json
   ```
-  - **regime_shift** — smooth cross-fade between two coherent relational regimes; tuned for **REGIME_SHIFT_OBSERVED** / low **WATCH** without **ALERT** (``interpreted_smoothing.consecutive_required`` may be set in the JSON).  
-  - **structural_instability** — calm phase then rising variance and diverging cross-sensor behavior (no missing data).
+  - **regime_shift** - smooth cross-fade between two coherent relational regimes; tuned for **REGIME_SHIFT_OBSERVED** / low **WATCH** without **ALERT** (``interpreted_smoothing.consecutive_required`` may be set in the JSON).  
+  - **structural_instability** - calm phase then rising variance and diverging cross-sensor behavior (no missing data).
 
   Optional input envelope keys (alongside ``payloads``): ``interpreted_smoothing: { \"consecutive_required\": 1–10 }`` overrides pilot hysteresis for that file only.
 
