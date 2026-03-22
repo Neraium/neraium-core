@@ -393,6 +393,22 @@ function renderDashboardMetrics(latest) {
   if (metricOperator) metricOperator.textContent = latest?.operator_message || "No operator message yet.";
   if (metricRiskBadge) metricRiskBadge.innerHTML = riskBadgeHtml(latest?.risk_level);
   if (metricPhaseBadge) metricPhaseBadge.innerHTML = phaseBadgeHtml(phaseFromResult(latest));
+
+  const riskLevel = normalizeRiskLevel(latest?.risk_level);
+  if (metricRisk) metricRisk.setAttribute("data-risk", riskLevel);
+
+  const stateValue = String(latest?.state || latest?.interpreted_state || "").toLowerCase();
+  if (metricState) {
+    let stateTone = "unknown";
+    if (stateValue.includes("unstable") || stateValue.includes("alert") || riskLevel === "HIGH") {
+      stateTone = "critical";
+    } else if (stateValue.includes("watch") || stateValue.includes("drift") || riskLevel === "MEDIUM") {
+      stateTone = "watch";
+    } else if (stateValue.includes("stable") || stateValue.includes("nominal") || riskLevel === "LOW") {
+      stateTone = "stable";
+    }
+    metricState.setAttribute("data-state", stateTone);
+  }
 }
 
 function renderDashboardRecent(results) {
