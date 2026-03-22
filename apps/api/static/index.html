@@ -155,8 +155,9 @@
               </label>
               <label>
                 Run config (JSON)
-                <textarea id="runConfigInput" rows="4" placeholder='{"baseline_window":24,"recent_window":8}'></textarea>
+                <textarea id="runConfigInput" rows="4" placeholder='{"baseline_window":24,"recent_window":8,"baseline_locked":false}'></textarea>
               </label>
+              <p class="subtitle">Use <code>baseline_window</code> (samples), <code>recent_window</code>, and <code>baseline_locked</code> for baseline control.</p>
               <label class="row">
                 <input id="runActivateInput" type="checkbox" checked />
                 <span>Set as active</span>
@@ -286,6 +287,23 @@
                 <div id="runRiskExplanationBadge"></div>
               </div>
               <p id="runRiskExplanationText" class="subtitle"></p>
+            </article>
+            <article id="runBaselinePanel" class="baseline-panel hidden">
+              <div class="panel-header">
+                <h4>Baseline</h4>
+                <div class="row baseline-actions">
+                  <button id="runBaselineResetBtn" type="button" class="secondary" title="Reset baseline and recalibrate from current window">Reset baseline</button>
+                  <button id="runBaselineLockBtn" type="button" class="secondary" title="Lock baseline to prevent it from adapting during this run">Lock baseline</button>
+                  <button id="runBaselineUnlockBtn" type="button" class="secondary hidden" title="Unlock baseline to allow adaptive updates">Unlock baseline</button>
+                </div>
+              </div>
+              <dl id="runBaselineMeta" class="baseline-meta">
+                <div><dt>Set at</dt><dd id="runBaselineSetAt">-</dd></div>
+                <div><dt>Coverage</dt><dd id="runBaselineCoverage">-</dd></div>
+                <div><dt>Window</dt><dd id="runBaselineWindow">-</dd></div>
+                <div><dt>Mode</dt><dd id="runBaselineMode">-</dd></div>
+                <div><dt>Locked</dt><dd id="runBaselineLocked">-</dd></div>
+              </dl>
             </article>
             <div id="runDetailEmpty" class="empty-state hidden">
               <p>No results available for this run.</p>

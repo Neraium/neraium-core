@@ -66,7 +66,12 @@ class StructuralMonitoringService:
             return cls._resolve_customer_id(payload_text)
         return DEFAULT_CUSTOMER_ID
 
-    def _engine_for_frame(self, frame: dict[str, Any]) -> StructuralEngine:
+    def _engine_for_frame(
+        self,
+        frame: dict[str, Any],
+        *,
+        run_config: dict[str, Any] | None = None,
+    ) -> StructuralEngine:
         customer_id = self._resolve_customer_id(frame.get("customer_id"))
         site_id = str(frame.get("site_id", "default-site"))
         asset_id = str(frame.get("asset_id", "default-asset"))
@@ -75,14 +80,12 @@ class StructuralMonitoringService:
         if existing is not None:
             return existing
 
-        # Reuse the initially provided engine for the first asset to preserve
-        # backwards compatibility with tests/injection.
-        if not self._engines_by_asset:
-            self._engines_by_asset[key] = self.engine
-            return self.engine
-
-        # Clone config for additional assets with isolated regime memory file.
         template = self.engine
+        baseline_window = int(run_config.get("baseline_window", template.baseline_window)) if run_config else template.baseline_window
+        recent_window = int(run_config.get("recent_window", template.recent_window)) if run_config else template.recent_window
+        baseline_window = max(4, min(baseline_window, 500))
+        recent_window = max(2, min(recent_window, 120))
+
         regime_path = "regime_library.json"
         try:
             base_path = Path(template.regime_store.path)
@@ -96,12 +99,14 @@ class StructuralMonitoringService:
             regime_path = f"regime_library_{customer_id}_{site_id}_{asset_id}.json"
 
         new_engine = StructuralEngine(
-            baseline_window=template.baseline_window,
-            recent_window=template.recent_window,
+            baseline_window=baseline_window,
+            recent_window=recent_window,
             window_stride=template.window_stride,
             regime_store_path=regime_path,
             baseline_adaptation_alpha=template.baseline_adaptation_alpha,
         )
+        if run_config and run_config.get("baseline_locked") is True:
+            new_engine.lock_baseline(True)
         self._engines_by_asset[key] = new_engine
         return new_engine
 
@@ -263,7 +268,12 @@ class StructuralMonitoringService:
                 payload_customer_id=frame.get("customer_id"),
             )
             frame["customer_id"] = resolved_customer
-            engine = self._engine_for_frame(frame)
+            run_config: dict[str, Any] | None = None
+            if run_id:
+                run_obj = self.store.get_run(run_id, customer_id=resolved_customer)
+                if run_obj and isinstance(run_obj.get("config"), dict):
+                    run_config = run_obj["config"]
+            engine = self._engine_for_frame(frame, run_config=run_config)
             result = self._decorate_result(engine.process_frame(frame))
             result["customer_id"] = resolved_customer
             if pilot_hardening_enabled():
@@ -352,7 +362,12 @@ class StructuralMonitoringService:
                 frame["customer_id"] = frame_customer
                 if frame_customer != resolved_customer:
                     raise ValueError("All batch items must share the same customer_id")
-                engine = self._engine_for_frame(frame)
+                run_config = None
+                if run_id:
+                    run_obj = self.store.get_run(run_id, customer_id=resolved_customer)
+                    if run_obj and isinstance(run_obj.get("config"), dict):
+                        run_config = run_obj["config"]
+                engine = self._engine_for_frame(frame, run_config=run_config)
                 result = self._decorate_result(engine.process_frame(frame))
                 result["customer_id"] = resolved_customer
                 if pilot_hardening_enabled():
@@ -451,12 +466,17 @@ class StructuralMonitoringService:
         )
         try:
             resolved_customer = self._resolve_customer_id(customer_id)
+            run_config: dict[str, Any] | None = None
+            if run_id:
+                run_obj = self.store.get_run(run_id, customer_id=resolved_customer)
+                if run_obj and isinstance(run_obj.get("config"), dict):
+                    run_config = run_obj["config"]
             frames = parse_csv_text(csv_text, customer_id=resolved_customer)
             pairs: list[tuple[dict[str, Any], dict[str, Any]]] = []
             results: list[dict[str, Any]] = []
             for frame in frames:
                 item_timer = Timer()
-                engine = self._engine_for_frame(frame)
+                engine = self._engine_for_frame(frame, run_config=run_config)
                 result = self._decorate_result(engine.process_frame(frame))
                 result["customer_id"] = resolved_customer
                 if pilot_hardening_enabled():
@@ -613,6 +633,12 @@ class StructuralMonitoringService:
             level=logging.INFO,
         )
 
+        run_config: dict[str, Any] | None = None
+        if run_id:
+            run_obj = self.store.get_run(run_id, customer_id=resolved_customer)
+            if run_obj and isinstance(run_obj.get("config"), dict):
+                run_config = run_obj["config"]
+
         reader = csv.DictReader(csv_stream)
         if reader.fieldnames is None:
             raise ValueError(
@@ -666,7 +692,7 @@ class StructuralMonitoringService:
                     sensor_values=sensor_values,
                 )
                 frame["customer_id"] = resolved_customer
-                engine = self._engine_for_frame(frame)
+                engine = self._engine_for_frame(frame, run_config=run_config)
                 result = self._decorate_result(engine.process_frame(frame))
                 result["customer_id"] = resolved_customer
                 if pilot_hardening_enabled():
@@ -876,3 +902,91 @@ class StructuralMonitoringService:
         self._engines_by_asset = {}
         self._localization_by_site = {}
         self.store.reset()
+
+    def _engine_keys_for_run(
+        self,
+        run_id: str,
+        customer_id: str | None = None,
+    ) -> list[tuple[str, str, str]]:
+        """Return (customer_id, site_id, asset_id) keys for engines used by this run."""
+        resolved_customer = self._resolve_customer_id(customer_id)
+        results = self.store.list_recent_results(limit=1000, run_id=run_id, customer_id=resolved_customer)
+        seen: set[tuple[str, str, str]] = set()
+        keys: list[tuple[str, str, str]] = []
+        for r in results:
+            site_id = str(r.get("site_id") or "default-site")
+            asset_id = str(r.get("asset_id") or "default-asset")
+            key = (resolved_customer, site_id, asset_id)
+            if key not in seen:
+                seen.add(key)
+                keys.append(key)
+        return keys if keys else [(resolved_customer, "default-site", "default-asset")]
+
+    def reset_baseline_for_run(
+        self,
+        run_id: str,
+        customer_id: str | None = None,
+    ) -> None:
+        """Reset baseline and calibration for all engines used by this run."""
+        for key in self._engine_keys_for_run(run_id, customer_id):
+            engine = self._engines_by_asset.get(key)
+            if engine is not None:
+                engine.reset_baseline()
+                log_structured(
+                    logger,
+                    event="baseline_reset",
+                    fields={"run_id": run_id, "site_id": key[1], "asset_id": key[2]},
+                    level=logging.INFO,
+                )
+
+    def lock_baseline_for_run(
+        self,
+        run_id: str,
+        locked: bool,
+        customer_id: str | None = None,
+    ) -> None:
+        """Lock or unlock baseline for this run. Updates run config and existing engines."""
+        resolved_customer = self._resolve_customer_id(customer_id)
+        run_obj = self.store.get_run(run_id, customer_id=resolved_customer)
+        if run_obj is None:
+            raise ValueError(f"Unknown run_id: {run_id}")
+        config = dict(run_obj.get("config") or {})
+        config["baseline_locked"] = bool(locked)
+        self.store.update_run(run_id, config=config, customer_id=resolved_customer)
+        for key in self._engine_keys_for_run(run_id, customer_id):
+            engine = self._engines_by_asset.get(key)
+            if engine is not None:
+                engine.lock_baseline(locked)
+
+    def get_baseline_info_for_run(
+        self,
+        run_id: str,
+        customer_id: str | None = None,
+    ) -> dict[str, Any]:
+        """Return baseline metadata for this run (from engines or run config)."""
+        resolved_customer = self._resolve_customer_id(customer_id)
+        run_obj = self.store.get_run(run_id, customer_id=resolved_customer)
+        if run_obj is None:
+            return {
+                "baseline_set_at": None,
+                "baseline_coverage_samples": 0,
+                "baseline_window_config": 24,
+                "baseline_locked": False,
+                "baseline_mode": "unknown",
+            }
+        config = run_obj.get("config") or {}
+        keys = self._engine_keys_for_run(run_id, customer_id)
+        # Use first engine's info if available
+        for key in keys:
+            engine = self._engines_by_asset.get(key)
+            if engine is not None:
+                info = dict(engine.get_baseline_info())
+                info["baseline_locked"] = config.get("baseline_locked", info.get("baseline_locked", False))
+                return info
+        return {
+            "baseline_set_at": None,
+            "baseline_coverage_samples": 0,
+            "baseline_window_config": int(config.get("baseline_window", 24)),
+            "baseline_locked": bool(config.get("baseline_locked", False)),
+            "baseline_mode": "unknown",
+        }

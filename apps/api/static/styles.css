@@ -548,6 +548,59 @@ a:hover {
   color: #e8f1ff;
 }
 
+.baseline-panel {
+  margin-top: 12px;
+  border: 1px solid #3a5683;
+  border-radius: 12px;
+  padding: 11px 12px;
+  background:
+    linear-gradient(90deg, rgba(74, 118, 196, 0.12), transparent 34%),
+    linear-gradient(145deg, rgba(20, 35, 61, 0.72), rgba(12, 23, 40, 0.94));
+}
+
+.baseline-panel .panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.baseline-panel h4 {
+  margin: 0;
+  font-size: 13px;
+  color: #e8f1ff;
+}
+
+.baseline-actions {
+  gap: 8px;
+}
+
+.baseline-meta {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 8px 16px;
+  margin: 10px 0 0;
+}
+
+.baseline-meta div {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.baseline-meta dt {
+  font-size: 11px;
+  color: var(--muted);
+  margin: 0;
+}
+
+.baseline-meta dd {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text);
+}
+
 .operator-message {
   margin: 10px 0 0;
   font-size: 15px;
