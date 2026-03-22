@@ -1,4 +1,4 @@
-# Neraium Intelligence Stack — Upgrade Notes
+# Neraium Intelligence Stack - Upgrade Notes
 
 This document summarizes the production-readiness upgrade pass: what changed, why it improves the engine, and what new outputs were added.
 

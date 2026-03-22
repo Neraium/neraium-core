@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Optional
 
 DEFAULT_SITE_ID = "default-site"
 DEFAULT_ASSET_ID = "default-asset"
+DEFAULT_CUSTOMER_ID = "default-customer"
 REQUIRED_CSV_COLUMNS = {"timestamp", "site_id", "asset_id"}
 
 
@@ -115,8 +116,7 @@ def build_frame(
     site_id: Any,
     asset_id: Any,
     sensor_values: Dict[Any, Any],
-    
-    
+    customer_id: Any = DEFAULT_CUSTOMER_ID,
 ) -> Dict[str, Any]:
     """
     Build the internal telemetry frame for `StructuralEngine.process_frame()`.
@@ -132,6 +132,7 @@ def build_frame(
     # Keep this stable across pipelines/entrypoints so production ingestion works.
     frame: Dict[str, Any] = {
         "timestamp": normalize_timestamp(timestamp),
+        "customer_id": normalize_identifier(customer_id, DEFAULT_CUSTOMER_ID),
         "site_id": site_id,
         "asset_id": asset_id,
         "sensor_values": {},
@@ -164,13 +165,14 @@ def normalize_rest_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
 
     return build_frame(
         timestamp=payload.get("timestamp"),
+        customer_id=payload.get("customer_id", DEFAULT_CUSTOMER_ID),
         site_id=payload.get("site_id", DEFAULT_SITE_ID),
         asset_id=payload.get("asset_id", DEFAULT_ASSET_ID),
         sensor_values=payload.get("sensor_values", {}),
     )
 
 
-def parse_csv_text(csv_text: str) -> List[Dict[str, Any]]:
+def parse_csv_text(csv_text: str, *, customer_id: str | None = None) -> List[Dict[str, Any]]:
     """
     Parse CSV text into a list of normalized internal frames.
 
@@ -213,6 +215,7 @@ def parse_csv_text(csv_text: str) -> List[Dict[str, Any]]:
         try:
             frame = build_frame(
                 timestamp=row.get("timestamp"),
+                customer_id=customer_id or DEFAULT_CUSTOMER_ID,
                 site_id=row.get("site_id"),
                 asset_id=row.get("asset_id"),
                 sensor_values=sensor_values,

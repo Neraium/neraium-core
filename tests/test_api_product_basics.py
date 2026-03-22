@@ -23,6 +23,11 @@ def _build_client(tmp_path) -> TestClient:
     return TestClient(app)
 
 
+def _customer_path(path: str, customer_id: str = "customer-a") -> str:
+    sep = "&" if "?" in path else "?"
+    return f"{path}{sep}customer_id={customer_id}"
+
+
 def test_api_key_rejected_when_configured() -> None:
     assert is_api_key_valid("secret", None) is False
     assert is_api_key_valid("secret", "wrong") is False
@@ -109,7 +114,7 @@ def test_results_endpoints_return_stable_shape(tmp_path) -> None:
     client = _build_client(tmp_path)
 
     ingest_response = client.post(
-        "/ingest",
+        _customer_path("/ingest", customer_id="customer-a"),
         json={
             "timestamp": "2026-01-01T00:00:00+00:00",
             "site_id": "s1",
@@ -119,8 +124,8 @@ def test_results_endpoints_return_stable_shape(tmp_path) -> None:
     )
     assert ingest_response.status_code == 200
 
-    latest_response = client.get("/results/latest")
-    recent_response = client.get("/results/recent?limit=5")
+    latest_response = client.get(_customer_path("/results/latest", customer_id="customer-a"))
+    recent_response = client.get(_customer_path("/results/recent?limit=5", customer_id="customer-a"))
 
     for response in (ingest_response, latest_response, recent_response):
         body = response.json()
@@ -134,7 +139,7 @@ def test_recent_results_ordering_and_limit(tmp_path) -> None:
 
     for i in range(5):
         resp = client.post(
-            "/ingest",
+            _customer_path("/ingest", customer_id="customer-a"),
             json={
                 "timestamp": f"2026-01-01T00:00:{i:02d}+00:00",
                 "site_id": "s1",
@@ -144,7 +149,7 @@ def test_recent_results_ordering_and_limit(tmp_path) -> None:
         )
         assert resp.status_code == 200
 
-    recent = client.get("/results/recent?limit=3")
+    recent = client.get(_customer_path("/results/recent?limit=3", customer_id="customer-a"))
     assert recent.status_code == 200
 
     body = recent.json()

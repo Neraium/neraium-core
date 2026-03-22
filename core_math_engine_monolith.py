@@ -1,5 +1,5 @@
 """
-Neraium SII core math engine — single file for copy/paste.
+Neraium SII core math engine - single file for copy/paste.
 Dependencies: numpy only.
 
 Contains: window normalization, correlation geometry, structural drift norms,
@@ -1488,7 +1488,7 @@ MIN_BASELINE_SAMPLES_FOR_CALIBRATION = 28
 
 
 def decision_adjusted_score(instability: float, confidence: float, localization: float) -> float:
-    """Alias for DecisionStage.adjusted_instability — benchmark / diagnostics naming."""
+    """Alias for DecisionStage.adjusted_instability - benchmark / diagnostics naming."""
     return DecisionStage.adjusted_instability(instability, confidence, localization)
 
 
@@ -1507,7 +1507,7 @@ def adaptive_gal2_fusion_coherence(
     coupling term: higher distortion raises effective coherence only where coherence was weak,
     preserving strong-coherent regimes unchanged.
 
-    Toggle at call sites (e.g. env NERAIUM_ADAPTIVE_GAL2_FUSION) — not a global threshold hack.
+    Toggle at call sites (e.g. env NERAIUM_ADAPTIVE_GAL2_FUSION) - not a global threshold hack.
     """
     if not enabled:
         return float(clamp(temporal_coherence, 0.0, 1.0))

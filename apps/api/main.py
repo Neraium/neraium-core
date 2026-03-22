@@ -1,21 +1,149 @@
 from __future__ import annotations
 
+import base64
+import json
 import logging
 import os
+import tempfile
+import threading
+import urllib.error
+import urllib.request
+from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
+from urllib.parse import urlparse
+from uuid import uuid4
 
-from fastapi import Depends, FastAPI, Header, HTTPException, status
+import numpy as np
+from fastapi import Depends, FastAPI, File, Header, HTTPException, Query, Request, UploadFile, status
 from pydantic import BaseModel, Field
+from starlette.responses import JSONResponse
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
+from apps.api.integration import (
+    IntegrationMappingError,
+    apply_integration_mapping,
+    load_integration_config,
+    resolve_customer_integration,
+)
+from apps.api.web import build_web_router
+from neraium_core.logging_utils import log_structured, summarize_exception_for_logs
 from neraium_core.service import StructuralMonitoringService
 from neraium_core.store import ResultStore
 
 
 logger = logging.getLogger(__name__)
 
+DEFAULT_MAX_REQUEST_BODY_BYTES = 50 * 1024 * 1024
+# Keep parser allowance above app-level request cap so oversize requests
+# are handled by middleware with a clean 413 response instead of reset.
+DEFAULT_UVICORN_H11_MAX_INCOMPLETE_EVENT_SIZE = 64 * 1024 * 1024
+DEFAULT_UPLOAD_STREAM_CHUNK_BYTES = 1024 * 1024
+DEFAULT_INGEST_JOB_MAX_ERROR_SAMPLES = 25
+
+
+def _configure_logging() -> None:
+    raw = str(os.getenv("NERAIUM_LOG_LEVEL", "INFO")).strip().upper()
+    level = getattr(logging, raw, logging.INFO)
+    logging.basicConfig(
+        level=level,
+        format="%(asctime)s %(levelname)s %(name)s %(message)s",
+    )
+
+
+class RequestBodyTooLargeError(Exception):
+    """Raised when an incoming request body exceeds configured max size."""
+
+
+class MaxRequestBodySizeMiddleware:
+    def __init__(self, app: ASGIApp, max_body_size: int) -> None:
+        self.app = app
+        self.max_body_size = max(1, int(max_body_size))
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope.get("type") != "http":
+            await self.app(scope, receive, send)
+            return
+
+        headers = {k.lower(): v for k, v in scope.get("headers", [])}
+        raw_content_length = headers.get(b"content-length")
+        if raw_content_length:
+            try:
+                content_length = int(raw_content_length.decode("ascii"))
+            except (ValueError, UnicodeDecodeError):
+                content_length = None
+            if content_length is not None and content_length > self.max_body_size:
+                await self._send_413(scope, receive, send)
+                return
+
+        bytes_seen = 0
+        response_started = False
+
+        async def guarded_receive() -> Message:
+            nonlocal bytes_seen
+            message = await receive()
+            if message.get("type") == "http.request":
+                body = message.get("body", b"")
+                bytes_seen += len(body)
+                if bytes_seen > self.max_body_size:
+                    raise RequestBodyTooLargeError
+            return message
+
+        async def tracked_send(message: Message) -> None:
+            nonlocal response_started
+            if message.get("type") == "http.response.start":
+                response_started = True
+            await send(message)
+
+        try:
+            await self.app(scope, guarded_receive, tracked_send)
+        except RequestBodyTooLargeError:
+            if not response_started:
+                await self._send_413(scope, receive, send)
+
+    async def _send_413(self, scope: Scope, receive: Receive, send: Send) -> None:
+        max_mb = self.max_body_size / (1024 * 1024)
+        response = JSONResponse(
+            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+            content={"detail": f"Request body too large (max {max_mb:.1f}MB)."},
+        )
+        await response(scope, receive, send)
+
+
+def _request_body_limit_bytes() -> int:
+    raw = os.getenv("NERAIUM_MAX_REQUEST_BODY_BYTES")
+    if not raw:
+        return DEFAULT_MAX_REQUEST_BODY_BYTES
+    try:
+        value = int(raw)
+    except ValueError:
+        logger.warning(
+            "Invalid NERAIUM_MAX_REQUEST_BODY_BYTES=%r; using default=%s",
+            raw,
+            DEFAULT_MAX_REQUEST_BODY_BYTES,
+        )
+        return DEFAULT_MAX_REQUEST_BODY_BYTES
+    return max(value, DEFAULT_MAX_REQUEST_BODY_BYTES)
+
+
+def _uvicorn_h11_max_incomplete_event_size() -> int:
+    raw = os.getenv("NERAIUM_UVICORN_H11_MAX_INCOMPLETE_EVENT_SIZE")
+    if not raw:
+        return DEFAULT_UVICORN_H11_MAX_INCOMPLETE_EVENT_SIZE
+    try:
+        value = int(raw)
+    except ValueError:
+        logger.warning(
+            "Invalid NERAIUM_UVICORN_H11_MAX_INCOMPLETE_EVENT_SIZE=%r; using default=%s",
+            raw,
+            DEFAULT_UVICORN_H11_MAX_INCOMPLETE_EVENT_SIZE,
+        )
+        return DEFAULT_UVICORN_H11_MAX_INCOMPLETE_EVENT_SIZE
+    return max(value, DEFAULT_UVICORN_H11_MAX_INCOMPLETE_EVENT_SIZE)
+
 
 class IngestRequest(BaseModel):
+    customer_id: str | None = None
     timestamp: str | None = None
     site_id: str | None = None
     asset_id: str | None = None
@@ -27,7 +155,37 @@ class BatchIngestRequest(BaseModel):
 
 
 class CsvIngestRequest(BaseModel):
+    customer_id: str | None = None
     csv_text: str
+
+
+class CreateRunRequest(BaseModel):
+    name: str = Field(min_length=1, max_length=200)
+    activate: bool = True
+    config: dict[str, Any] = Field(default_factory=dict)
+
+
+class UpdateRunRequest(BaseModel):
+    name: str | None = None
+    config: dict[str, Any] | None = None
+    status: str | None = None
+
+
+class ActivateRunRequest(BaseModel):
+    run_id: str = Field(min_length=1, max_length=200)
+
+
+class LockBaselineRequest(BaseModel):
+    locked: bool = True
+
+
+class ExportEnvelope(BaseModel):
+    run_id: str | None = None
+    format: Literal["json", "csv"]
+    count: int
+    content_type: str
+    filename: str
+    content: str
 
 
 class HealthResponse(BaseModel):
@@ -47,6 +205,267 @@ class ResultsEnvelope(BaseModel):
 class ActionResponse(BaseModel):
     ok: bool
 
+
+class RunEnvelope(BaseModel):
+    run: dict[str, Any] | None
+
+
+class RunsEnvelope(BaseModel):
+    active_run: dict[str, Any] | None = None
+    count: int
+    runs: list[dict[str, Any]]
+
+
+class ResultEnvelope(BaseModel):
+    result: dict[str, Any]
+
+
+class GeometryEnvelope(BaseModel):
+    run_id: str | None = None
+    result_id: int | None = None
+    timestamp: str | None = None
+    available: bool
+    reason: str | None = None
+    metrics: dict[str, Any] = Field(default_factory=dict)
+    nodes: list[dict[str, Any]] = Field(default_factory=list)
+    edges: list[dict[str, Any]] = Field(default_factory=list)
+    views: dict[str, Any] = Field(default_factory=dict)
+    summary: dict[str, Any] = Field(default_factory=dict)
+    projection: dict[str, Any] = Field(default_factory=dict)
+    provenance: dict[str, Any] = Field(default_factory=dict)
+    graph_analytics: dict[str, Any] | None = None
+    system_state: dict[str, Any] | None = None
+
+
+class IngestJobEnvelope(BaseModel):
+    job_id: str
+    status: str
+    run_id: str | None = None
+    customer_id: str
+    filename: str
+    created_at: str
+    updated_at: str
+    rows_processed: int = 0
+    rows_succeeded: int = 0
+    rows_failed: int = 0
+    partial_success: bool = False
+    upload_bytes_received: int = 0
+    upload_bytes_total: int | None = None
+    error_samples: list[dict[str, Any]] = Field(default_factory=list)
+    message: str | None = None
+    latest_result: dict[str, Any] | None = None
+
+
+class PullIntegrationStartRequest(BaseModel):
+    endpoint_url: str | None = Field(default=None, min_length=1, max_length=2000)
+    polling_interval_seconds: float | None = Field(default=None, ge=0.2, le=3600.0)
+    auth_type: Literal["none", "basic", "bearer"] | None = None
+    username: str | None = None
+    password: str | None = None
+    token: str | None = None
+    run_id: str | None = None
+    retry_max_attempts: int | None = Field(default=None, ge=1, le=10)
+    retry_backoff_seconds: float | None = Field(default=None, ge=0.05, le=60.0)
+    request_timeout_seconds: float | None = Field(default=None, ge=1.0, le=120.0)
+
+
+class PullIntegrationStatusEnvelope(BaseModel):
+    customer_id: str
+    endpoint_url: str | None = None
+    run_id: str | None = None
+    auth_type: str = "none"
+    running: bool
+    status: str
+    polling_interval_seconds: float | None = None
+    retry_max_attempts: int | None = None
+    retry_backoff_seconds: float | None = None
+    request_timeout_seconds: float | None = None
+    started_at: str | None = None
+    updated_at: str | None = None
+    last_poll_at: str | None = None
+    last_success_at: str | None = None
+    last_error: str | None = None
+    last_http_status: int | None = None
+    total_polls: int = 0
+    total_failures: int = 0
+    consecutive_failures: int = 0
+    total_ingested: int = 0
+    message: str | None = None
+
+
+class AlertsEnvelope(BaseModel):
+    count: int
+    alerts: list[dict[str, Any]]
+
+
+def _alert_thresholds() -> tuple[float, float]:
+    try:
+        instability = float(os.getenv("NERAIUM_ALERT_INSTABILITY_THRESHOLD", "1.5"))
+    except (TypeError, ValueError):
+        instability = 1.5
+    try:
+        drift_rapid = float(os.getenv("NERAIUM_ALERT_RAPID_DRIFT_DELTA", "0.2"))
+    except (TypeError, ValueError):
+        drift_rapid = 0.2
+    return max(0.0, instability), max(0.0, drift_rapid)
+
+
+def _fmt_num(value: Any, digits: int = 4) -> str:
+    try:
+        n = float(value)
+    except (TypeError, ValueError):
+        return "-"
+    if not np.isfinite(n):
+        return "-"
+    return f"{n:.{digits}f}"
+
+
+def _normalize_risk_level(value: Any) -> str:
+    text = str(value or "").strip().upper()
+    if text in {"HIGH", "MEDIUM", "LOW"}:
+        return text
+    return "UNKNOWN"
+
+
+def _alert_context(result: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "result_id": result.get("result_id"),
+        "run_id": result.get("run_id"),
+        "timestamp": result.get("timestamp") or result.get("persisted_at"),
+        "state": result.get("state") or result.get("interpreted_state"),
+        "risk_level": result.get("risk_level"),
+        "structural_drift_score": _safe_float(result.get("structural_drift_score"), 0.0),
+        "composite_instability": _safe_float(result.get("latest_instability"), 0.0),
+    }
+
+
+def _evaluate_alerts(
+    *,
+    current: dict[str, Any] | None,
+    previous: dict[str, Any] | None,
+    instability_threshold: float,
+    rapid_drift_delta: float,
+) -> list[dict[str, Any]]:
+    if not isinstance(current, dict):
+        return []
+    alerts: list[dict[str, Any]] = []
+    now = _utc_now_iso()
+    current_risk = _normalize_risk_level(current.get("risk_level"))
+    prev_risk = _normalize_risk_level(previous.get("risk_level")) if isinstance(previous, dict) else "UNKNOWN"
+
+    if current_risk == "HIGH" and prev_risk != "HIGH":
+        alerts.append(
+            {
+                "id": f"alert_{uuid4().hex[:12]}",
+                "type": "risk_high_transition",
+                "severity": "critical",
+                "message": f"Risk transitioned to HIGH (from {prev_risk}).",
+                "created_at": now,
+                "trigger": {"from": prev_risk, "to": current_risk},
+                "context": _alert_context(current),
+            }
+        )
+
+    current_instability = _safe_float(current.get("latest_instability"), 0.0)
+    prev_instability = (
+        _safe_float(previous.get("latest_instability"), 0.0) if isinstance(previous, dict) else None
+    )
+    crossed_up = prev_instability is None or prev_instability < instability_threshold
+    if current_instability >= instability_threshold and crossed_up:
+        alerts.append(
+            {
+                "id": f"alert_{uuid4().hex[:12]}",
+                "type": "instability_threshold_crossed",
+                "severity": "high",
+                "message": (
+                    f"Composite instability crossed threshold "
+                    f"({_fmt_num(current_instability)} >= {_fmt_num(instability_threshold)})."
+                ),
+                "created_at": now,
+                "trigger": {
+                    "threshold": instability_threshold,
+                    "previous": prev_instability,
+                    "current": current_instability,
+                },
+                "context": _alert_context(current),
+            }
+        )
+
+    current_drift = _safe_float(current.get("structural_drift_score"), 0.0)
+    prev_drift = _safe_float(previous.get("structural_drift_score"), 0.0) if isinstance(previous, dict) else None
+    if prev_drift is not None:
+        drift_delta = current_drift - prev_drift
+        if drift_delta >= rapid_drift_delta:
+            alerts.append(
+                {
+                    "id": f"alert_{uuid4().hex[:12]}",
+                    "type": "rapid_drift_detected",
+                    "severity": "high",
+                    "message": (
+                        f"Rapid drift detected (+{_fmt_num(drift_delta)} in latest update)."
+                    ),
+                    "created_at": now,
+                    "trigger": {
+                        "delta": drift_delta,
+                        "threshold": rapid_drift_delta,
+                        "previous": prev_drift,
+                        "current": current_drift,
+                    },
+                    "context": _alert_context(current),
+                }
+            )
+
+    return alerts
+
+
+def _dispatch_alert_stubs(
+    *,
+    alert: dict[str, Any],
+    webhook_url: str | None,
+    email_to: str | None,
+) -> None:
+    if webhook_url:
+        log_structured(
+            logger,
+            event="alert_webhook_stub",
+            fields={
+                "webhook_url": webhook_url,
+                "alert_id": alert.get("id"),
+                "alert_type": alert.get("type"),
+                "severity": alert.get("severity"),
+            },
+            level=logging.INFO,
+        )
+    if email_to:
+        log_structured(
+            logger,
+            event="alert_email_stub",
+            fields={
+                "email_to": email_to,
+                "alert_id": alert.get("id"),
+                "alert_type": alert.get("type"),
+                "severity": alert.get("severity"),
+            },
+            level=logging.INFO,
+        )
+
+
+def _ensure_default_run(
+    service: StructuralMonitoringService,
+    *,
+    customer_id: str | None,
+) -> dict[str, Any]:
+    resolved_customer = _resolve_customer_id(customer_id)
+    existing = service.get_active_run(customer_id=resolved_customer)
+    if existing is not None:
+        return existing
+    return service.create_run(
+        name="Default Run",
+        config={"source": "api-default"},
+        activate=True,
+        customer_id=resolved_customer,
+    )
+ 
 
 def _persistence_available(db_path: str) -> bool:
     try:
@@ -69,13 +488,1148 @@ def _results_envelope(results: list[dict[str, Any]], latest: dict[str, Any] | No
     return {"latest": latest, "count": len(results), "results": results}
 
 
-def create_app(service: StructuralMonitoringService | None = None) -> FastAPI:
+def _resolve_customer_id(customer_id: str | None) -> str:
+    text = str(customer_id or "").strip()
+    return text or "default-customer"
+
+
+def _utc_now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _actionable_validation_detail(message: str) -> str:
+    text = str(message or "").strip()
+    if not text:
+        return "Validation failed. Check required fields and payload structure."
+    if text.startswith("Invalid CSV row"):
+        if "Invalid timestamp" in text:
+            return (
+                f"{text} Use ISO-8601 timestamps like "
+                "2026-01-01T00:00:00+00:00."
+            )
+        if "Invalid signal value" in text or "Invalid signal type" in text:
+            return f"{text} Ensure all sensor values are numeric or blank."
+        return text
+    if "Invalid timestamp" in text:
+        return (
+            "Invalid timestamp format. Use ISO-8601 timestamps like "
+            "2026-01-01T00:00:00+00:00."
+        )
+    if "CSV must include" in text or "missing required columns" in text:
+        return (
+            f"{text} Ensure CSV header includes timestamp, site_id, asset_id "
+            "plus at least one sensor column."
+        )
+    if "Invalid signal value" in text or "Invalid signal type" in text:
+        return (
+            f"{text} Ensure all sensor values are numeric or blank."
+        )
+    return text
+
+
+def _resolve_run_id(
+    service: StructuralMonitoringService,
+    run_id: str | None,
+    *,
+    customer_id: str | None,
+) -> str | None:
+    if run_id is not None and str(run_id).strip():
+        return str(run_id).strip()
+    active = service.get_active_run(customer_id=_resolve_customer_id(customer_id))
+    if active is None:
+        return None
+    rid = active.get("run_id")
+    if rid is None:
+        return None
+    return str(rid)
+
+
+def _require_run_id(
+    service: StructuralMonitoringService,
+    run_id: str | None,
+    *,
+    customer_id: str | None,
+) -> str:
+    resolved = _resolve_run_id(service, run_id, customer_id=customer_id)
+    if resolved is None:
+        raise HTTPException(status_code=400, detail="No active run. Create or activate a run first.")
+    return resolved
+
+
+def _request_run_id_or_active(
+    service: StructuralMonitoringService,
+    run_id: str | None,
+    *,
+    customer_id: str | None,
+) -> str | None:
+    if run_id is None:
+        return _resolve_run_id(service, None, customer_id=customer_id)
+    text = str(run_id).strip()
+    if not text:
+        return _resolve_run_id(service, None, customer_id=customer_id)
+    return text
+
+
+def _resolve_run_id_with_default(
+    service: StructuralMonitoringService,
+    run_id: str | None,
+    *,
+    customer_id: str | None,
+) -> str:
+    resolved = _request_run_id_or_active(service, run_id, customer_id=customer_id)
+    if resolved is not None:
+        return resolved
+    created = _ensure_default_run(service, customer_id=_resolve_customer_id(customer_id))
+    return str(created.get("run_id"))
+
+
+def _csv_escape(value: Any) -> str:
+    text = "" if value is None else str(value)
+    if any(ch in text for ch in [",", "\"", "\n", "\r"]):
+        return "\"" + text.replace("\"", "\"\"") + "\""
+    return text
+
+
+def _build_export(results: list[dict[str, Any]], *, format_name: Literal["json", "csv"]) -> tuple[str, str]:
+    if format_name == "json":
+        return ("application/json; charset=utf-8", json.dumps(results, indent=2, sort_keys=False))
+
+    header = [
+        "result_id",
+        "run_id",
+        "timestamp",
+        "site_id",
+        "asset_id",
+        "state",
+        "phase",
+        "risk_level",
+        "trend",
+        "operator_message",
+        "structural_drift_score",
+        "composite_instability",
+        "persisted_at",
+    ]
+    lines = [",".join(header)]
+    for row in results:
+        composite = None
+        analytics = row.get("experimental_analytics")
+        if isinstance(analytics, dict):
+            raw = analytics.get("composite_instability")
+            if raw is not None:
+                try:
+                    composite = float(raw)
+                except (TypeError, ValueError):
+                    composite = None
+        data = [
+            row.get("result_id"),
+            row.get("run_id"),
+            row.get("timestamp"),
+            row.get("site_id"),
+            row.get("asset_id"),
+            row.get("state"),
+            row.get("phase"),
+            row.get("risk_level"),
+            row.get("trend"),
+            row.get("operator_message"),
+            row.get("structural_drift_score"),
+            composite,
+            row.get("persisted_at"),
+        ]
+        lines.append(",".join(_csv_escape(v) for v in data))
+    return ("text/csv; charset=utf-8", "\n".join(lines))
+
+
+def _safe_float(value: Any, default: float = 0.0) -> float:
+    try:
+        f = float(value)
+    except (TypeError, ValueError):
+        return float(default)
+    if not np.isfinite(f):
+        return float(default)
+    return float(f)
+
+
+def _graph_analytics_payload(
+    analytics_dict: dict[str, Any],
+    *,
+    feature_names: list[str],
+) -> dict[str, Any] | None:
+    """Summarize engine graph metrics for geometry API consumers (UI, integrations)."""
+    g = analytics_dict.get("graph")
+    cg = analytics_dict.get("causal_graph")
+    if not isinstance(g, dict) and not isinstance(cg, dict):
+        return None
+    out: dict[str, Any] = {}
+    if isinstance(g, dict):
+        out["correlation_graph"] = {
+            "mean_degree": round(_safe_float(g.get("mean_degree")), 6),
+            "density": round(_safe_float(g.get("density")), 6),
+            "clustering": round(_safe_float(g.get("clustering")), 6),
+            "connectivity": round(_safe_float(g.get("connectivity")), 6),
+            "mean_absolute_connectivity": round(_safe_float(g.get("mean_absolute_connectivity")), 6),
+        }
+    if isinstance(cg, dict):
+        raw_ds = cg.get("dominant_sources")
+        idx_list: list[int] = []
+        if isinstance(raw_ds, list):
+            for x in raw_ds:
+                try:
+                    idx_list.append(int(x))
+                except (TypeError, ValueError):
+                    continue
+        labels: list[str] = []
+        for i in idx_list:
+            if 0 <= i < len(feature_names):
+                labels.append(str(feature_names[i]))
+        out["causal_graph"] = {
+            "density": round(_safe_float(cg.get("density")), 6),
+            "asymmetry": round(_safe_float(cg.get("asymmetry")), 6),
+            "dominant_source_indices": idx_list,
+            "dominant_source_labels": labels,
+        }
+    return out or None
+
+
+def _system_state_payload(result: dict[str, Any], *, analytics_dict: dict[str, Any]) -> dict[str, Any]:
+    """Regime and interpretation snapshot aligned with the same result as geometry."""
+    structural_flag = result.get("structural_analysis_available")
+    if structural_flag is None:
+        structural_available = not bool(analytics_dict.get("relational_metrics_skipped", True))
+    else:
+        structural_available = bool(structural_flag)
+
+    regime_mem = result.get("regime_memory_state")
+    regime_mem_dict = regime_mem if isinstance(regime_mem, dict) else {}
+
+    rs = analytics_dict.get("regime_signature")
+    rs_dict = rs if isinstance(rs, dict) else {}
+    nearest = rs_dict.get("nearest")
+    nearest_dict = nearest if isinstance(nearest, dict) else {}
+
+    out: dict[str, Any] = {
+        "structural_analysis_available": structural_available,
+        "phase": result.get("phase") or result.get("interpreted_state") or result.get("state"),
+        "interpreted_state": result.get("interpreted_state") or result.get("state"),
+        "regime_name": result.get("regime_name"),
+        "confidence": round(
+            _safe_float(
+                result.get("confidence"),
+                _safe_float(result.get("confidence_score"), 0.0),
+            ),
+            4,
+        ),
+        "regime_memory": {
+            "regime_name": regime_mem_dict.get("regime_name"),
+            "library_size": regime_mem_dict.get("library_size"),
+            "baseline_count": regime_mem_dict.get("baseline_count"),
+        },
+        "regime_signature": {
+            "assigned_name": rs_dict.get("assigned_name"),
+            "library_size": rs_dict.get("library_size"),
+        },
+    }
+    rd = result.get("regime_distance")
+    if rd is not None:
+        out["regime_distance"] = round(_safe_float(rd), 4)
+    ndist = nearest_dict.get("distance")
+    if ndist is not None:
+        out["nearest_regime"] = {
+            "name": nearest_dict.get("name"),
+            "distance": round(_safe_float(ndist), 6),
+        }
+    return out
+
+
+def _to_square_matrix(value: Any) -> np.ndarray | None:
+    try:
+        mat = np.asarray(value, dtype=float)
+    except Exception:
+        return None
+    if mat.ndim != 2 or mat.shape[0] != mat.shape[1] or mat.shape[0] == 0:
+        return None
+    mat = np.nan_to_num(mat, nan=0.0, posinf=0.0, neginf=0.0)
+    # Correlation geometry is expected to be self-correlated on diagonal.
+    np.fill_diagonal(mat, 1.0)
+    return mat
+
+
+def _normalize_vector(values: np.ndarray) -> np.ndarray:
+    arr = np.asarray(values, dtype=float)
+    if arr.size == 0:
+        return arr
+    lo = float(np.min(arr))
+    hi = float(np.max(arr))
+    if hi - lo <= 1e-9:
+        return np.full_like(arr, 0.5, dtype=float)
+    return (arr - lo) / (hi - lo)
+
+
+def _project_geometry_positions(
+    corr_current: np.ndarray,
+    *,
+    node_stress: np.ndarray,
+    corr_baseline: np.ndarray | None,
+) -> np.ndarray:
+    n = int(corr_current.shape[0])
+    if n <= 0:
+        return np.zeros((0, 3), dtype=float)
+    if n == 1:
+        return np.asarray([[0.0, 0.0, 0.0]], dtype=float)
+
+    vals, vecs = np.linalg.eigh(corr_current)
+    order = np.argsort(vals)[::-1]
+    vals = vals[order]
+    vecs = vecs[:, order]
+
+    def _axis(component_idx: int) -> np.ndarray:
+        if component_idx >= vecs.shape[1]:
+            return np.zeros((n,), dtype=float)
+        scale = float(np.sqrt(max(vals[component_idx], 1e-6)))
+        return np.asarray(vecs[:, component_idx], dtype=float) * scale
+
+    axis_x = _axis(0)
+    axis_y = _axis(1)
+    if corr_baseline is not None and corr_baseline.shape == corr_current.shape:
+        axis_z = np.mean(np.abs(corr_current - corr_baseline), axis=1)
+    else:
+        axis_z = _axis(2)
+
+    for axis in (axis_x, axis_y, axis_z):
+        max_abs = float(np.max(np.abs(axis))) if axis.size else 0.0
+        if max_abs > 1e-9:
+            axis /= max_abs
+
+    # Fallback to a deterministic ring if matrix eigenvectors are near-degenerate.
+    spread = float(np.std(axis_x) + np.std(axis_y))
+    if spread < 1e-5:
+        theta = np.linspace(0.0, 2.0 * np.pi, num=n, endpoint=False)
+        axis_x = np.cos(theta)
+        axis_y = np.sin(theta)
+
+    axis_z = 0.55 * axis_z + 0.45 * (2.0 * _normalize_vector(node_stress) - 1.0)
+    max_abs_z = float(np.max(np.abs(axis_z))) if axis_z.size else 0.0
+    if max_abs_z > 1e-9:
+        axis_z /= max_abs_z
+
+    return np.stack([axis_x, axis_y, axis_z], axis=1)
+
+
+def _stress_state(value: float) -> str:
+    if value >= 0.66:
+        return "critical"
+    if value >= 0.33:
+        return "watch"
+    return "stable"
+
+
+def _build_geometry_nodes(
+    *,
+    feature_names: list[str],
+    positions: np.ndarray,
+    magnitude_norm: np.ndarray,
+    stress_norm: np.ndarray,
+) -> list[dict[str, Any]]:
+    n = min(len(feature_names), int(positions.shape[0]), int(magnitude_norm.shape[0]), int(stress_norm.shape[0]))
+    out: list[dict[str, Any]] = []
+    for idx in range(n):
+        stress = float(stress_norm[idx])
+        state = _stress_state(stress)
+        out.append(
+            {
+                "id": str(feature_names[idx]),
+                "label": str(feature_names[idx]),
+                "position": {
+                    "x": round(float(positions[idx, 0]), 6),
+                    "y": round(float(positions[idx, 1]), 6),
+                    "z": round(float(positions[idx, 2]), 6),
+                },
+                "magnitude": round(float(magnitude_norm[idx]), 6),
+                "stress": round(stress, 6),
+                "state": state,
+                "unstable": state == "critical",
+                "is_unstable": state == "critical",
+                "role": "signal",
+            }
+        )
+    return out
+
+
+def _build_geometry_edges(
+    corr_matrix: np.ndarray,
+    *,
+    feature_names: list[str],
+    baseline_ref: np.ndarray | None = None,
+    limit: int = 240,
+) -> list[dict[str, Any]]:
+    n = int(corr_matrix.shape[0])
+    out: list[dict[str, Any]] = []
+    if n <= 1:
+        return out
+    upper_idx = np.triu_indices(n, k=1)
+    upper_abs = np.abs(corr_matrix[upper_idx])
+    threshold = float(np.clip(np.percentile(upper_abs, 72.0), 0.22, 0.78)) if upper_abs.size else 1.1
+
+    for i in range(n):
+        for j in range(i + 1, n):
+            weight = float(corr_matrix[i, j])
+            magnitude = abs(weight)
+            if magnitude < threshold:
+                continue
+            baseline_weight = float(baseline_ref[i, j]) if baseline_ref is not None else weight
+            delta = weight - baseline_weight
+            out.append(
+                {
+                    "source": str(feature_names[i]),
+                    "target": str(feature_names[j]),
+                    "weight": round(weight, 6),
+                    "magnitude": round(magnitude, 6),
+                    "delta": round(delta, 6),
+                    "type": "positive" if weight >= 0.0 else "negative",
+                }
+            )
+    out.sort(key=lambda e: float(e.get("magnitude", 0.0)), reverse=True)
+    return out[: max(1, int(limit))]
+
+
+def _build_geometry_payload(result: dict[str, Any], *, run_id: str | None) -> dict[str, Any]:
+    analytics = result.get("experimental_analytics")
+    analytics_dict = analytics if isinstance(analytics, dict) else {}
+    corr_geometry = analytics_dict.get("correlation_geometry")
+    corr_geometry_dict = corr_geometry if isinstance(corr_geometry, dict) else {}
+    corr_current = _to_square_matrix(corr_geometry_dict.get("current"))
+    corr_baseline = _to_square_matrix(corr_geometry_dict.get("baseline"))
+    if corr_current is not None and corr_baseline is not None and corr_baseline.shape != corr_current.shape:
+        corr_baseline = None
+
+    feature_names: list[str] = []
+    names_from_analytics = analytics_dict.get("valid_sensor_names") or analytics_dict.get("feature_names")
+    if isinstance(names_from_analytics, list):
+        feature_names = [str(v) for v in names_from_analytics if str(v).strip()]
+    if not feature_names:
+        raw = result.get("sensor_relationships")
+        if isinstance(raw, list):
+            feature_names = [str(v) for v in raw if str(v).strip()]
+
+    metrics = {
+        "state": result.get("state") or result.get("interpreted_state"),
+        "phase": result.get("phase") or result.get("interpreted_state") or result.get("state"),
+        "risk_level": result.get("risk_level", "UNKNOWN"),
+        "trend": result.get("trend", "UNKNOWN"),
+        "structural_drift_score": _safe_float(result.get("structural_drift_score"), 0.0),
+        "composite_instability": _safe_float(
+            result.get("latest_instability"),
+            _safe_float(analytics_dict.get("composite_instability"), 0.0),
+        ),
+        "confidence": _safe_float(result.get("confidence"), _safe_float(result.get("confidence_score"), 0.0)),
+    }
+    projection = {
+        "method": "spectral_projection_from_engine_correlation_geometry",
+        "is_visualization_projection": True,
+        "source": "engine correlation geometry + graph analytics",
+        "note": (
+            "Node positions are a deterministic visualization projection derived from engine "
+            "correlation outputs; they are not the core SII computation space."
+        ),
+    }
+    provenance = {
+        "engine_fields": [
+            "sensor_relationships",
+            "experimental_analytics.correlation_geometry.current",
+            "experimental_analytics.correlation_geometry.baseline",
+            "experimental_analytics.signal_structural_importance",
+            "experimental_analytics.graph",
+            "experimental_analytics.causal_graph",
+            "experimental_analytics.regime_signature",
+            "regime_memory_state",
+            "risk_level",
+            "state",
+            "interpreted_state",
+            "trend",
+            "structural_drift_score",
+            "latest_instability",
+            "confidence/confidence_score",
+        ],
+        "positions": "deterministic projection from engine outputs",
+    }
+
+    try:
+        result_id = int(result.get("result_id")) if result.get("result_id") is not None else None
+    except (TypeError, ValueError):
+        result_id = None
+
+    if corr_current is None:
+        graph_analytics = _graph_analytics_payload(analytics_dict, feature_names=feature_names)
+        system_state = _system_state_payload(result, analytics_dict=analytics_dict)
+        return {
+            "run_id": run_id or result.get("run_id"),
+            "result_id": result_id,
+            "timestamp": result.get("timestamp") or result.get("persisted_at"),
+            "available": False,
+            "reason": "Correlation geometry unavailable for this result.",
+            "metrics": metrics,
+            "nodes": [],
+            "edges": [],
+            "views": {},
+            "summary": {},
+            "projection": projection,
+            "provenance": provenance,
+            "graph_analytics": graph_analytics,
+            "system_state": system_state,
+        }
+
+    n = int(corr_current.shape[0])
+    if len(feature_names) < n:
+        feature_names = feature_names + [f"signal_{i + 1}" for i in range(len(feature_names), n)]
+    if len(feature_names) > n:
+        feature_names = feature_names[:n]
+
+    importance_raw = analytics_dict.get("signal_structural_importance")
+    if isinstance(importance_raw, list) and len(importance_raw) >= n:
+        importance = np.asarray([_safe_float(v, 0.0) for v in importance_raw[:n]], dtype=float)
+    else:
+        corr_abs = np.abs(corr_current - np.eye(n))
+        importance = np.mean(corr_abs, axis=1)
+    importance_norm = _normalize_vector(importance)
+
+    if corr_baseline is not None and corr_baseline.shape == corr_current.shape:
+        stress_raw = np.mean(np.abs(corr_current - corr_baseline), axis=1)
+    else:
+        stress_raw = importance.copy()
+    stress_norm = _normalize_vector(stress_raw)
+    positions = _project_geometry_positions(corr_current, node_stress=stress_norm, corr_baseline=corr_baseline)
+
+    nodes_current = _build_geometry_nodes(
+        feature_names=feature_names,
+        positions=positions,
+        magnitude_norm=importance_norm,
+        stress_norm=stress_norm,
+    )
+    edges_current = _build_geometry_edges(
+        corr_current,
+        feature_names=feature_names,
+        baseline_ref=corr_baseline,
+        limit=240,
+    )
+
+    corr_reference = corr_baseline if corr_baseline is not None else corr_current
+    importance_reference = np.mean(np.abs(corr_reference - np.eye(n)), axis=1)
+    importance_reference_norm = _normalize_vector(importance_reference)
+    stress_reference_norm = importance_reference_norm.copy()
+    positions_reference = _project_geometry_positions(
+        corr_reference,
+        node_stress=stress_reference_norm,
+        corr_baseline=corr_reference,
+    )
+    nodes_baseline = _build_geometry_nodes(
+        feature_names=feature_names,
+        positions=positions_reference,
+        magnitude_norm=importance_reference_norm,
+        stress_norm=stress_reference_norm,
+    )
+    edges_baseline = _build_geometry_edges(
+        corr_reference,
+        feature_names=feature_names,
+        baseline_ref=corr_reference,
+        limit=240,
+    )
+    baseline_by_id = {str(n.get("id")): n for n in nodes_baseline}
+    for node in nodes_current:
+        node_id = str(node.get("id"))
+        base_node = baseline_by_id.get(node_id) or {}
+        node["position_current"] = dict(node.get("position") or {})
+        node["position_baseline"] = dict(base_node.get("position") or node.get("position") or {})
+
+    summary = {
+        "critical_nodes_current": sum(1 for n in nodes_current if str(n.get("state")) == "critical"),
+        "watch_nodes_current": sum(1 for n in nodes_current if str(n.get("state")) == "watch"),
+        "unstable_nodes_current": sum(1 for n in nodes_current if bool(n.get("unstable"))),
+        "changed_edges_current": sum(1 for e in edges_current if abs(_safe_float(e.get("delta"), 0.0)) >= 0.10),
+    }
+
+    graph_analytics = _graph_analytics_payload(analytics_dict, feature_names=feature_names)
+    system_state = _system_state_payload(result, analytics_dict=analytics_dict)
+
+    return {
+        "run_id": run_id or result.get("run_id"),
+        "result_id": result_id,
+        "timestamp": result.get("timestamp") or result.get("persisted_at"),
+        "available": True,
+        "reason": None,
+        "metrics": metrics,
+        "nodes": nodes_current,
+        "edges": edges_current,
+        "views": {
+            "current": {
+                "label": "Current structure",
+                "source": "experimental_analytics.correlation_geometry.current",
+                "available": True,
+                "nodes": nodes_current,
+                "edges": edges_current,
+            },
+            "baseline": {
+                "label": "Baseline structure",
+                "source": (
+                    "experimental_analytics.correlation_geometry.baseline"
+                    if corr_baseline is not None
+                    else "baseline_not_available_using_current_structure_as_reference"
+                ),
+                "available": corr_baseline is not None,
+                "nodes": nodes_baseline,
+                "edges": edges_baseline,
+            },
+        },
+        "summary": summary,
+        "projection": projection,
+        "provenance": provenance,
+        "graph_analytics": graph_analytics,
+        "system_state": system_state,
+    }
+
+
+def create_app(
+    service: StructuralMonitoringService | None = None,
+    *,
+    max_request_body_bytes: int | None = None,
+) -> FastAPI:
     api_key = os.getenv("NERAIUM_API_KEY")
     db_path = os.getenv("NERAIUM_DB_PATH", "neraium.db")
+    request_body_limit = (
+        int(max_request_body_bytes)
+        if max_request_body_bytes is not None
+        else _request_body_limit_bytes()
+    )
 
     app = FastAPI(title="Neraium SII API", version="0.1.0")
+    app.add_middleware(MaxRequestBodySizeMiddleware, max_body_size=request_body_limit)
     persistence_available = _persistence_available(db_path)
     service_instance = service or StructuralMonitoringService(store=ResultStore(db_path=db_path))
+    integration_config_path = os.getenv("NERAIUM_INTEGRATION_CONFIG_PATH")
+    integration_config = load_integration_config(integration_config_path)
+    app.state.integration_config_override = integration_config
+    app.state.integration_config_path_override = integration_config_path
+    ingest_jobs: dict[str, dict[str, Any]] = {}
+    ingest_jobs_lock = threading.Lock()
+    pull_integrations: dict[str, dict[str, Any]] = {}
+    pull_integrations_lock = threading.Lock()
+    alerts: dict[str, list[dict[str, Any]]] = {}
+    alerts_lock = threading.Lock()
+    alert_instability_threshold, alert_rapid_drift_delta = _alert_thresholds()
+    alert_webhook_url = str(os.getenv("NERAIUM_ALERT_WEBHOOK_URL") or "").strip() or None
+    alert_email_to = str(os.getenv("NERAIUM_ALERT_EMAIL_TO") or "").strip() or None
+
+    def _record_alerts_for_customer(customer_id: str, items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        if not items:
+            return []
+        resolved_customer = _resolve_customer_id(customer_id)
+        created: list[dict[str, Any]] = []
+        with alerts_lock:
+            bucket = alerts.setdefault(resolved_customer, [])
+            for raw in items:
+                if not isinstance(raw, dict):
+                    continue
+                alert = dict(raw)
+                context = alert.get("context") if isinstance(alert.get("context"), dict) else {}
+                trigger = alert.get("trigger") if isinstance(alert.get("trigger"), dict) else {}
+                alert["customer_id"] = resolved_customer
+                alert["context"] = dict(context)
+                alert["trigger"] = dict(trigger)
+                created.append(alert)
+                bucket.append(alert)
+            bucket.sort(key=lambda a: str(a.get("created_at") or ""), reverse=True)
+            del bucket[200:]
+        for alert in created:
+            _dispatch_alert_stubs(
+                alert=alert,
+                webhook_url=alert_webhook_url,
+                email_to=alert_email_to,
+            )
+            log_structured(
+                logger,
+                event="alert_created",
+                fields={
+                    "customer_id": resolved_customer,
+                    "alert_id": alert.get("id"),
+                    "alert_type": alert.get("type"),
+                    "severity": alert.get("severity"),
+                    "run_id": (alert.get("context") or {}).get("run_id"),
+                    "result_id": (alert.get("context") or {}).get("result_id"),
+                },
+                level=logging.WARNING,
+            )
+        return created
+
+    def _process_alerts_after_ingest(
+        *,
+        customer_id: str,
+        run_id: str | None,
+        latest_result: dict[str, Any] | None,
+        previous_result: dict[str, Any] | None,
+    ) -> list[dict[str, Any]]:
+        items = _evaluate_alerts(
+            current=latest_result,
+            previous=previous_result,
+            instability_threshold=alert_instability_threshold,
+            rapid_drift_delta=alert_rapid_drift_delta,
+        )
+        if run_id:
+            for item in items:
+                context = item.get("context")
+                if isinstance(context, dict):
+                    context.setdefault("run_id", run_id)
+        return _record_alerts_for_customer(customer_id, items)
+
+    def _normalize_content_length(request: Request) -> int | None:
+        raw = request.headers.get("content-length")
+        if not raw:
+            return None
+        try:
+            value = int(raw)
+        except ValueError:
+            return None
+        return value if value >= 0 else None
+
+    def _public_ingest_job(job: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "job_id": str(job.get("job_id")),
+            "status": str(job.get("status", "unknown")),
+            "run_id": job.get("run_id"),
+            "customer_id": _resolve_customer_id(job.get("customer_id")),
+            "filename": str(job.get("filename") or "upload.csv"),
+            "created_at": str(job.get("created_at") or _utc_now_iso()),
+            "updated_at": str(job.get("updated_at") or _utc_now_iso()),
+            "rows_processed": int(job.get("rows_processed", 0)),
+            "rows_succeeded": int(job.get("rows_succeeded", 0)),
+            "rows_failed": int(job.get("rows_failed", 0)),
+            "partial_success": bool(job.get("partial_success", False)),
+            "upload_bytes_received": int(job.get("upload_bytes_received", 0)),
+            "upload_bytes_total": (
+                int(job.get("upload_bytes_total"))
+                if job.get("upload_bytes_total") is not None
+                else None
+            ),
+            "error_samples": list(job.get("error_samples") or []),
+            "message": job.get("message"),
+            "latest_result": job.get("latest_result"),
+        }
+
+    def _cleanup_ingest_jobs(max_jobs: int = 300) -> None:
+        with ingest_jobs_lock:
+            if len(ingest_jobs) <= max_jobs:
+                return
+            completed_ids = [
+                jid
+                for jid, job in ingest_jobs.items()
+                if str(job.get("status")) in {"completed", "partial_success", "failed"}
+            ]
+            completed_ids.sort(
+                key=lambda jid: str(ingest_jobs[jid].get("updated_at") or ingest_jobs[jid].get("created_at") or "")
+            )
+            overflow = len(ingest_jobs) - max_jobs
+            for jid in completed_ids[: max(0, overflow)]:
+                ingest_jobs.pop(jid, None)
+
+    def _update_ingest_job(job_id: str, **fields: Any) -> dict[str, Any] | None:
+        with ingest_jobs_lock:
+            job = ingest_jobs.get(job_id)
+            if job is None:
+                return None
+            job.update(fields)
+            job["updated_at"] = _utc_now_iso()
+            if "partial_success" not in fields:
+                job["partial_success"] = (
+                    int(job.get("rows_succeeded", 0)) > 0 and int(job.get("rows_failed", 0)) > 0
+                )
+            return dict(job)
+
+    def _default_pull_state(customer_id: str) -> dict[str, Any]:
+        now = _utc_now_iso()
+        return {
+            "customer_id": customer_id,
+            "endpoint_url": None,
+            "run_id": None,
+            "auth_type": "none",
+            "running": False,
+            "status": "stopped",
+            "polling_interval_seconds": None,
+            "retry_max_attempts": None,
+            "retry_backoff_seconds": None,
+            "request_timeout_seconds": None,
+            "started_at": None,
+            "updated_at": now,
+            "last_poll_at": None,
+            "last_success_at": None,
+            "last_error": None,
+            "last_http_status": None,
+            "total_polls": 0,
+            "total_failures": 0,
+            "consecutive_failures": 0,
+            "total_ingested": 0,
+            "message": "Pull integration is stopped.",
+            "_stop_event": None,
+            "_thread": None,
+        }
+
+    def _public_pull_state(state: dict[str, Any] | None, *, customer_id: str) -> dict[str, Any]:
+        base = _default_pull_state(customer_id)
+        private_keys = {"username", "password", "token"}
+        if state is None:
+            return {
+                k: v
+                for k, v in base.items()
+                if not k.startswith("_") and k not in private_keys
+            }
+        merged = dict(base)
+        merged.update(state)
+        return {
+            k: v
+            for k, v in merged.items()
+            if not k.startswith("_") and k not in private_keys
+        }
+
+    def _validate_endpoint_url(endpoint_url: str) -> str:
+        text = str(endpoint_url or "").strip()
+        if not text:
+            raise HTTPException(status_code=400, detail="endpoint_url is required.")
+        parsed = urlparse(text)
+        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            raise HTTPException(
+                status_code=400,
+                detail="endpoint_url must be a valid http(s) URL.",
+            )
+        return text
+
+    def _pull_auth_header(state: dict[str, Any]) -> str | None:
+        auth_type = str(state.get("auth_type") or "none")
+        if auth_type == "bearer":
+            token = str(state.get("token") or "").strip()
+            if not token:
+                raise ValueError("Bearer token is empty.")
+            return f"Bearer {token}"
+        if auth_type == "basic":
+            username = str(state.get("username") or "")
+            password = str(state.get("password") or "")
+            raw = f"{username}:{password}".encode("utf-8")
+            return "Basic " + base64.b64encode(raw).decode("ascii")
+        return None
+
+    def _coerce_pull_items(payload: Any, *, customer_id: str) -> list[dict[str, Any]]:
+        cfg_override = getattr(app.state, "integration_config_override", None)
+        if isinstance(cfg_override, dict):
+            cfg = cfg_override
+        else:
+            path_override = getattr(app.state, "integration_config_path_override", None)
+            path = str(path_override or "").strip() or os.getenv("NERAIUM_INTEGRATION_CONFIG_PATH")
+            cfg = load_integration_config(path)
+        try:
+            rows = apply_integration_mapping(
+                payload,
+                customer_id=customer_id,
+                config=cfg,
+            )
+        except IntegrationMappingError as exc:
+            raise ValueError(str(exc)) from exc
+        return rows
+
+    def _fetch_pull_payload(state: dict[str, Any]) -> tuple[int, Any]:
+        endpoint_url = str(state.get("endpoint_url") or "").strip()
+        timeout_s = float(state.get("request_timeout_seconds") or 10.0)
+        headers = {"Accept": "application/json"}
+        auth_header = _pull_auth_header(state)
+        if auth_header:
+            headers["Authorization"] = auth_header
+        req = urllib.request.Request(endpoint_url, headers=headers, method="GET")
+        with urllib.request.urlopen(req, timeout=timeout_s) as response:
+            status_code = int(response.getcode() or 0)
+            body_bytes = response.read()
+        if status_code < 200 or status_code >= 300:
+            raise RuntimeError(f"Upstream returned HTTP {status_code}.")
+        try:
+            payload = json.loads(body_bytes.decode("utf-8"))
+        except json.JSONDecodeError as exc:
+            raise RuntimeError("Upstream response is not valid JSON.") from exc
+        return status_code, payload
+
+    def _ingest_pull_items(*, rows: list[dict[str, Any]], run_id: str, customer_id: str) -> int:
+        if not rows:
+            return 0
+        if len(rows) == 1:
+            service_instance.ingest_payload(rows[0], run_id=run_id, customer_id=customer_id)
+            return 1
+        results = service_instance.ingest_batch(rows, run_id=run_id, customer_id=customer_id)
+        return len(results)
+
+    def _stop_pull_integration(customer_id: str, *, reason: str) -> dict[str, Any]:
+        resolved_customer = _resolve_customer_id(customer_id)
+        stop_event: threading.Event | None = None
+        thread: threading.Thread | None = None
+        with pull_integrations_lock:
+            state = pull_integrations.get(resolved_customer)
+            if state is None:
+                return _public_pull_state(None, customer_id=resolved_customer)
+            stop_event = state.get("_stop_event")
+            thread = state.get("_thread")
+            state["running"] = False
+            state["status"] = "stopped"
+            state["message"] = reason
+            state["updated_at"] = _utc_now_iso()
+        if isinstance(stop_event, threading.Event):
+            stop_event.set()
+        if isinstance(thread, threading.Thread) and thread.is_alive() and thread is not threading.current_thread():
+            thread.join(timeout=2.0)
+        with pull_integrations_lock:
+            final_state = pull_integrations.get(resolved_customer)
+            return _public_pull_state(final_state, customer_id=resolved_customer)
+
+    def _start_pull_worker(customer_id: str) -> None:
+        resolved_customer = _resolve_customer_id(customer_id)
+
+        def _worker() -> None:
+            while True:
+                with pull_integrations_lock:
+                    state = pull_integrations.get(resolved_customer)
+                    if state is None:
+                        return
+                    stop_event = state.get("_stop_event")
+                    is_running = bool(state.get("running"))
+                    endpoint_url = str(state.get("endpoint_url") or "")
+                    poll_interval = float(state.get("polling_interval_seconds") or 30.0)
+                    retry_attempts = int(state.get("retry_max_attempts") or 3)
+                    retry_backoff = float(state.get("retry_backoff_seconds") or 1.0)
+                    run_id = str(state.get("run_id") or "")
+                    state["status"] = "running"
+                    state["updated_at"] = _utc_now_iso()
+                    state["message"] = "Polling upstream API."
+                if not is_running or not isinstance(stop_event, threading.Event):
+                    return
+                if stop_event.is_set():
+                    return
+                if not endpoint_url or not run_id:
+                    with pull_integrations_lock:
+                        current = pull_integrations.get(resolved_customer)
+                        if current is not None:
+                            current["running"] = False
+                            current["status"] = "error"
+                            current["message"] = "Integration misconfigured: missing endpoint or run_id."
+                            current["last_error"] = current["message"]
+                            current["updated_at"] = _utc_now_iso()
+                    return
+
+                success = False
+                last_error = ""
+                for attempt in range(1, max(1, retry_attempts) + 1):
+                    with pull_integrations_lock:
+                        current = pull_integrations.get(resolved_customer)
+                        if current is None:
+                            return
+                        current["last_poll_at"] = _utc_now_iso()
+                        current["total_polls"] = int(current.get("total_polls", 0)) + 1
+                        current["updated_at"] = _utc_now_iso()
+                    try:
+                        http_status, payload = _fetch_pull_payload(state)
+                        rows = _coerce_pull_items(payload, customer_id=resolved_customer)
+                        ingested = _ingest_pull_items(
+                            rows=rows,
+                            run_id=run_id,
+                            customer_id=resolved_customer,
+                        )
+                        now = _utc_now_iso()
+                        with pull_integrations_lock:
+                            current = pull_integrations.get(resolved_customer)
+                            if current is None:
+                                return
+                            current["last_http_status"] = int(http_status)
+                            current["last_error"] = None
+                            current["last_success_at"] = now
+                            current["consecutive_failures"] = 0
+                            current["total_ingested"] = int(current.get("total_ingested", 0)) + int(ingested)
+                            current["status"] = "running"
+                            current["message"] = f"Last poll ingested {ingested} item(s)."
+                            current["updated_at"] = now
+                        log_structured(
+                            logger,
+                            event="pull_integration_poll_success",
+                            fields={
+                                "customer_id": resolved_customer,
+                                "run_id": run_id,
+                                "ingested_items": int(ingested),
+                                "http_status": int(http_status),
+                            },
+                            level=logging.INFO,
+                        )
+                        success = True
+                        break
+                    except Exception as exc:
+                        last_error = str(exc)
+                        with pull_integrations_lock:
+                            current = pull_integrations.get(resolved_customer)
+                            if current is None:
+                                return
+                            current["total_failures"] = int(current.get("total_failures", 0)) + 1
+                            current["consecutive_failures"] = int(current.get("consecutive_failures", 0)) + 1
+                            current["status"] = "error"
+                            current["last_error"] = last_error
+                            current["message"] = (
+                                f"Poll attempt {attempt}/{retry_attempts} failed: {last_error}"
+                            )
+                            current["updated_at"] = _utc_now_iso()
+                        log_structured(
+                            logger,
+                            event="pull_integration_poll_failure",
+                            fields={
+                                "customer_id": resolved_customer,
+                                "run_id": run_id,
+                                "attempt": attempt,
+                                "retry_attempts": retry_attempts,
+                                "error": last_error,
+                                **summarize_exception_for_logs(exc),
+                            },
+                            level=logging.WARNING,
+                        )
+                        if attempt >= retry_attempts:
+                            break
+                        delay = max(0.05, retry_backoff) * (2 ** (attempt - 1))
+                        if stop_event.wait(delay):
+                            return
+
+                if stop_event.wait(max(0.2, poll_interval)):
+                    return
+                if not success:
+                    with pull_integrations_lock:
+                        current = pull_integrations.get(resolved_customer)
+                        if current is not None:
+                            current["message"] = "Polling will continue after previous failure."
+                            current["updated_at"] = _utc_now_iso()
+
+        worker = threading.Thread(target=_worker, daemon=True, name=f"pull-integration-{resolved_customer}")
+        with pull_integrations_lock:
+            state = pull_integrations.get(resolved_customer)
+            if state is None:
+                return
+            state["_thread"] = worker
+        worker.start()
+
+    async def _stream_upload_to_tempfile(upload: UploadFile, target_path: Path, job_id: str) -> int:
+        bytes_received = 0
+        chunk_size = max(16 * 1024, DEFAULT_UPLOAD_STREAM_CHUNK_BYTES)
+        try:
+            with target_path.open("wb") as out:
+                while True:
+                    chunk = await upload.read(chunk_size)
+                    if not chunk:
+                        break
+                    out.write(chunk)
+                    bytes_received += len(chunk)
+                    _update_ingest_job(
+                        job_id,
+                        status="uploading",
+                        upload_bytes_received=bytes_received,
+                        message=f"Uploading CSV ({bytes_received} bytes received)...",
+                    )
+                out.flush()
+        finally:
+            await upload.close()
+        return bytes_received
+
+    def _start_ingest_job_worker(
+        *,
+        job_id: str,
+        temp_path: str,
+        run_id: str,
+        customer_id: str,
+    ) -> None:
+        def _worker() -> None:
+            _update_ingest_job(
+                job_id,
+                status="processing",
+                message="Upload complete. Ingest processing started.",
+            )
+            try:
+                def _on_progress(progress: dict[str, Any]) -> None:
+                    progress_status = str(progress.get("status") or "processing")
+                    _update_ingest_job(
+                        job_id,
+                        status=progress_status if progress_status in {"processing", "completed"} else "processing",
+                        rows_processed=int(progress.get("rows_processed", 0)),
+                        rows_succeeded=int(progress.get("rows_succeeded", 0)),
+                        rows_failed=int(progress.get("rows_failed", 0)),
+                        error_samples=list(progress.get("error_samples") or []),
+                        message=progress.get("message"),
+                    )
+
+                with Path(temp_path).open("r", encoding="utf-8", newline="") as stream:
+                    summary = service_instance.ingest_csv_stream(
+                        stream,
+                        run_id=run_id,
+                        customer_id=customer_id,
+                        max_error_samples=DEFAULT_INGEST_JOB_MAX_ERROR_SAMPLES,
+                        progress_callback=_on_progress,
+                    )
+                final_status = "completed"
+                if int(summary.get("rows_failed", 0)) > 0:
+                    final_status = "partial_success" if int(summary.get("rows_succeeded", 0)) > 0 else "failed"
+                _update_ingest_job(
+                    job_id,
+                    status=final_status,
+                    rows_processed=int(summary.get("rows_processed", 0)),
+                    rows_succeeded=int(summary.get("rows_succeeded", 0)),
+                    rows_failed=int(summary.get("rows_failed", 0)),
+                    partial_success=bool(summary.get("partial_success", False)),
+                    error_samples=list(summary.get("error_samples") or []),
+                    latest_result=summary.get("latest_result"),
+                    message=summary.get("message"),
+                )
+                latest_from_summary = summary.get("latest_result")
+                previous_for_alerts: dict[str, Any] | None = None
+                if isinstance(latest_from_summary, dict):
+                    recent_for_alerts = service_instance.list_recent_results(
+                        limit=2,
+                        run_id=run_id,
+                        customer_id=customer_id,
+                    )
+                    if len(recent_for_alerts) >= 2:
+                        previous_for_alerts = recent_for_alerts[1]
+                    _process_alerts_after_ingest(
+                        customer_id=customer_id,
+                        run_id=run_id,
+                        latest_result=latest_from_summary,
+                        previous_result=previous_for_alerts,
+                    )
+                log_structured(
+                    logger,
+                    event="ingest_job_completed",
+                    fields={
+                        "job_id": job_id,
+                        "run_id": run_id,
+                        "customer_id": customer_id,
+                        "rows_processed": int(summary.get("rows_processed", 0)),
+                        "rows_succeeded": int(summary.get("rows_succeeded", 0)),
+                        "rows_failed": int(summary.get("rows_failed", 0)),
+                        "partial_success": bool(summary.get("partial_success", False)),
+                    },
+                    level=logging.INFO,
+                )
+            except Exception as exc:
+                message = _actionable_validation_detail(str(exc))
+                _update_ingest_job(job_id, status="failed", message=message)
+                log_structured(
+                    logger,
+                    event="ingest_job_failed",
+                    fields={
+                        "job_id": job_id,
+                        "run_id": run_id,
+                        "customer_id": customer_id,
+                        **summarize_exception_for_logs(exc),
+                    },
+                    level=logging.ERROR,
+                )
+            finally:
+                try:
+                    Path(temp_path).unlink(missing_ok=True)
+                except OSError:
+                    logger.debug("Unable to remove temp upload file: %s", temp_path, exc_info=True)
+                _cleanup_ingest_jobs()
+
+        threading.Thread(target=_worker, daemon=True, name=f"ingest-job-{job_id}").start()
 
     def require_api_key(x_api_key: str | None = Header(default=None)) -> None:
         if not is_api_key_valid(api_key, x_api_key):
@@ -86,7 +1640,9 @@ def create_app(service: StructuralMonitoringService | None = None) -> FastAPI:
 
     @app.get("/health", response_model=HealthResponse)
     def health() -> HealthResponse:
-        latest = service_instance.get_latest_result()
+        latest = service_instance.get_latest_result(
+            customer_id=_resolve_customer_id(os.getenv("NERAIUM_DEFAULT_CUSTOMER_ID"))
+        )
         return HealthResponse(
             status="ok" if persistence_available else "degraded",
             version=app.version,
@@ -95,37 +1651,596 @@ def create_app(service: StructuralMonitoringService | None = None) -> FastAPI:
             latest_result_available=latest is not None,
         )
 
+    @app.post("/runs", response_model=RunEnvelope)
+    def create_run(
+        payload: CreateRunRequest,
+        _: None = Depends(require_api_key),
+        customer_id: str | None = Query(default=None),
+    ) -> dict[str, Any]:
+        try:
+            run = service_instance.create_run(
+                name=payload.name.strip(),
+                config=dict(payload.config),
+                activate=bool(payload.activate),
+                customer_id=_resolve_customer_id(customer_id),
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+        return {"run": run}
+
+    @app.post("/runs/activate", response_model=RunEnvelope)
+    def activate_run(
+        payload: ActivateRunRequest,
+        _: None = Depends(require_api_key),
+        customer_id: str | None = Query(default=None),
+    ) -> dict[str, Any]:
+        try:
+            run = service_instance.activate_run(
+                payload.run_id.strip(),
+                customer_id=_resolve_customer_id(customer_id),
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail=str(exc))
+        return {"run": run}
+
+    @app.get("/runs", response_model=RunsEnvelope)
+    def list_runs(
+        limit: int = Query(50, ge=1, le=500),
+        customer_id: str | None = Query(default=None),
+    ) -> dict[str, Any]:
+        resolved_customer = _resolve_customer_id(customer_id)
+        runs = service_instance.list_runs(limit=limit, customer_id=resolved_customer)
+        active = service_instance.get_active_run(customer_id=resolved_customer)
+        return {"active_run": active, "count": len(runs), "runs": runs}
+
+    @app.get("/runs/active", response_model=RunEnvelope)
+    def get_active_run(customer_id: str | None = Query(default=None)) -> dict[str, Any]:
+        run = service_instance.get_active_run(customer_id=_resolve_customer_id(customer_id))
+        if run is None:
+            return {"run": None}
+        return {"run": run}
+
+    @app.get("/runs/{run_id}", response_model=RunEnvelope)
+    def get_run(run_id: str, customer_id: str | None = Query(default=None)) -> dict[str, Any]:
+        run = service_instance.get_run(run_id, customer_id=_resolve_customer_id(customer_id))
+        if run is None:
+            raise HTTPException(status_code=404, detail=f"Unknown run_id: {run_id}")
+        return {"run": run}
+
+    @app.get("/runs/{run_id}/geometry", response_model=GeometryEnvelope)
+    def get_run_geometry(
+        run_id: str,
+        result_id: int | None = Query(default=None),
+        customer_id: str | None = Query(default=None),
+    ) -> dict[str, Any]:
+        resolved_customer = _resolve_customer_id(customer_id)
+        run = service_instance.get_run(run_id, customer_id=resolved_customer)
+        if run is None:
+            raise HTTPException(status_code=404, detail=f"Unknown run_id: {run_id}")
+
+        if result_id is not None:
+            result = service_instance.get_result_by_id(
+                result_id,
+                run_id=run_id,
+                customer_id=resolved_customer,
+            )
+            if result is None:
+                raise HTTPException(status_code=404, detail=f"Unknown result_id: {result_id}")
+        else:
+            result = service_instance.get_latest_result(run_id=run_id, customer_id=resolved_customer)
+
+        if result is None:
+            return {
+                "run_id": run_id,
+                "result_id": None,
+                "timestamp": None,
+                "available": False,
+                "reason": "No results available for this run yet.",
+                "metrics": {},
+                "nodes": [],
+                "edges": [],
+                "projection": {
+                    "method": "spectral_projection_from_engine_correlation_geometry",
+                    "is_visualization_projection": True,
+                    "source": "engine correlation geometry + graph analytics",
+                    "note": (
+                        "Node positions are a deterministic visualization projection derived from engine "
+                        "correlation outputs; they are not the core SII computation space."
+                    ),
+                },
+                "provenance": {
+                    "engine_fields": [
+                        "sensor_relationships",
+                        "experimental_analytics.correlation_geometry.current",
+                        "experimental_analytics.correlation_geometry.baseline",
+                    ],
+                    "positions": "deterministic projection from engine outputs",
+                },
+                "graph_analytics": None,
+                "system_state": None,
+            }
+
+        return _build_geometry_payload(result, run_id=run_id)
+
+    @app.patch("/runs/{run_id}", response_model=RunEnvelope)
+    def update_run(
+        run_id: str,
+        payload: UpdateRunRequest,
+        _: None = Depends(require_api_key),
+        customer_id: str | None = Query(default=None),
+    ) -> dict[str, Any]:
+        try:
+            run = service_instance.update_run(
+                run_id,
+                name=payload.name,
+                config=payload.config,
+                status=payload.status,
+                customer_id=_resolve_customer_id(customer_id),
+            )
+        except ValueError as exc:
+            detail = str(exc)
+            status_code = 404 if "Unknown run_id" in detail else 400
+            raise HTTPException(status_code=status_code, detail=detail)
+        return {"run": run}
+
+    @app.post("/runs/{run_id}/activate", response_model=RunEnvelope)
+    def activate_run_path(
+        run_id: str,
+        _: None = Depends(require_api_key),
+        customer_id: str | None = Query(default=None),
+    ) -> dict[str, Any]:
+        try:
+            run = service_instance.activate_run(
+                run_id.strip(),
+                customer_id=_resolve_customer_id(customer_id),
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail=str(exc))
+        return {"run": run}
+
+    @app.get("/runs/{run_id}/baseline", response_model=dict)
+    def get_run_baseline(
+        run_id: str,
+        customer_id: str | None = Query(default=None),
+    ) -> dict[str, Any]:
+        resolved_customer = _resolve_customer_id(customer_id)
+        run = service_instance.get_run(run_id, customer_id=resolved_customer)
+        if run is None:
+            raise HTTPException(status_code=404, detail=f"Unknown run_id: {run_id}")
+        return service_instance.get_baseline_info_for_run(run_id, customer_id=resolved_customer)
+
+    @app.post("/runs/{run_id}/baseline/reset", response_model=ActionResponse)
+    def reset_run_baseline(
+        run_id: str,
+        _: None = Depends(require_api_key),
+        customer_id: str | None = Query(default=None),
+    ) -> dict[str, bool]:
+        resolved_customer = _resolve_customer_id(customer_id)
+        run = service_instance.get_run(run_id, customer_id=resolved_customer)
+        if run is None:
+            raise HTTPException(status_code=404, detail=f"Unknown run_id: {run_id}")
+        service_instance.reset_baseline_for_run(run_id, customer_id=resolved_customer)
+        return {"ok": True}
+
+    @app.post("/runs/{run_id}/baseline/lock", response_model=RunEnvelope)
+    def lock_run_baseline(
+        run_id: str,
+        payload: LockBaselineRequest,
+        _: None = Depends(require_api_key),
+        customer_id: str | None = Query(default=None),
+    ) -> dict[str, Any]:
+        resolved_customer = _resolve_customer_id(customer_id)
+        try:
+            service_instance.lock_baseline_for_run(
+                run_id, locked=payload.locked, customer_id=resolved_customer
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=404, detail=str(exc))
+        run = service_instance.get_run(run_id, customer_id=resolved_customer)
+        if run is None:
+            raise HTTPException(status_code=404, detail=f"Unknown run_id: {run_id}")
+        return {"run": run}
+
     @app.post("/ingest", response_model=ResultsEnvelope)
-    def ingest(payload: IngestRequest, _: None = Depends(require_api_key)) -> dict[str, Any]:
+    def ingest(
+        payload: IngestRequest,
+        _: None = Depends(require_api_key),
+        run_id: str | None = Query(default=None),
+        customer_id: str | None = Query(default=None),
+    ) -> dict[str, Any]:
         logger.info("ingest endpoint called")
         try:
-            result = service_instance.ingest_payload(payload.model_dump(exclude_none=True))
+            resolved_customer = _resolve_customer_id(customer_id or payload.customer_id)
+            resolved = _resolve_run_id_with_default(
+                service_instance,
+                run_id,
+                customer_id=resolved_customer,
+            )
+            result = service_instance.ingest_payload(
+                payload.model_dump(exclude_none=True),
+                run_id=resolved,
+                customer_id=resolved_customer,
+            )
+            previous_result = None
+            recent_for_alerts = service_instance.list_recent_results(
+                limit=2,
+                run_id=resolved,
+                customer_id=resolved_customer,
+            )
+            if len(recent_for_alerts) >= 2:
+                previous_result = recent_for_alerts[1]
+            _process_alerts_after_ingest(
+                customer_id=resolved_customer,
+                run_id=resolved,
+                latest_result=result,
+                previous_result=previous_result,
+            )
         except ValueError as e:
             logger.warning("validation failure ingest: %s", e)
-            raise HTTPException(status_code=400, detail=str(e))
+            raise HTTPException(status_code=400, detail=_actionable_validation_detail(str(e)))
         return _results_envelope([result], latest=result)
 
     @app.post("/ingest/batch", response_model=ResultsEnvelope)
-    def ingest_batch(payload: BatchIngestRequest, _: None = Depends(require_api_key)) -> dict[str, Any]:
+    def ingest_batch(
+        payload: BatchIngestRequest,
+        _: None = Depends(require_api_key),
+        run_id: str | None = Query(default=None),
+        customer_id: str | None = Query(default=None),
+    ) -> dict[str, Any]:
         logger.info("ingest_batch endpoint called items=%s", len(payload.items))
         try:
-            results = service_instance.ingest_batch(
-                [item.model_dump(exclude_none=True) for item in payload.items]
+            payload_customer = None
+            if payload.items:
+                payload_customer = payload.items[0].customer_id
+            resolved_customer = _resolve_customer_id(customer_id or payload_customer)
+            resolved = _resolve_run_id_with_default(
+                service_instance,
+                run_id,
+                customer_id=resolved_customer,
             )
+            results = service_instance.ingest_batch(
+                [item.model_dump(exclude_none=True) for item in payload.items],
+                run_id=resolved,
+                customer_id=resolved_customer,
+            )
+            if results:
+                previous_result = None
+                recent_for_alerts = service_instance.list_recent_results(
+                    limit=2,
+                    run_id=resolved,
+                    customer_id=resolved_customer,
+                )
+                if len(recent_for_alerts) >= 2:
+                    previous_result = recent_for_alerts[1]
+                _process_alerts_after_ingest(
+                    customer_id=resolved_customer,
+                    run_id=resolved,
+                    latest_result=results[-1],
+                    previous_result=previous_result,
+                )
         except ValueError as e:
             logger.warning("validation failure ingest_batch: %s", e)
-            raise HTTPException(status_code=400, detail=str(e))
+            raise HTTPException(status_code=400, detail=_actionable_validation_detail(str(e)))
         return _results_envelope(results, latest=results[-1] if results else None)
 
     @app.post("/ingest/csv", response_model=ResultsEnvelope)
-    def ingest_csv(payload: CsvIngestRequest, _: None = Depends(require_api_key)) -> dict[str, Any]:
+    def ingest_csv(
+        payload: CsvIngestRequest,
+        _: None = Depends(require_api_key),
+        run_id: str | None = Query(default=None),
+        customer_id: str | None = Query(default=None),
+    ) -> dict[str, Any]:
         logger.info("ingest_csv endpoint called")
         try:
-            results = service_instance.ingest_csv(payload.csv_text)
+            resolved_customer = _resolve_customer_id(customer_id or payload.customer_id)
+            resolved = _resolve_run_id_with_default(
+                service_instance,
+                run_id,
+                customer_id=resolved_customer,
+            )
+            results = service_instance.ingest_csv(
+                payload.csv_text,
+                run_id=resolved,
+                customer_id=resolved_customer,
+            )
+            if results:
+                previous_result = None
+                recent_for_alerts = service_instance.list_recent_results(
+                    limit=2,
+                    run_id=resolved,
+                    customer_id=resolved_customer,
+                )
+                if len(recent_for_alerts) >= 2:
+                    previous_result = recent_for_alerts[1]
+                _process_alerts_after_ingest(
+                    customer_id=resolved_customer,
+                    run_id=resolved,
+                    latest_result=results[-1],
+                    previous_result=previous_result,
+                )
         except ValueError as e:
             logger.warning("validation failure ingest_csv: %s", e)
-            raise HTTPException(status_code=400, detail=str(e))
+            raise HTTPException(status_code=400, detail=_actionable_validation_detail(str(e)))
         return _results_envelope(results, latest=results[-1] if results else None)
+
+    @app.post("/ingest/csv/upload", response_model=IngestJobEnvelope)
+    async def ingest_csv_upload(
+        request: Request,
+        file: UploadFile = File(...),
+        _: None = Depends(require_api_key),
+        run_id: str | None = Query(default=None),
+        customer_id: str | None = Query(default=None),
+    ) -> dict[str, Any]:
+        filename = str(file.filename or "upload.csv")
+        if not filename.lower().endswith(".csv"):
+            raise HTTPException(
+                status_code=400,
+                detail="Upload must be a .csv file.",
+            )
+        resolved_customer = _resolve_customer_id(customer_id)
+        resolved_run = _resolve_run_id_with_default(
+            service_instance,
+            run_id,
+            customer_id=resolved_customer,
+        )
+        content_length = _normalize_content_length(request)
+        if content_length is not None and content_length > request_body_limit:
+            max_mb = request_body_limit / (1024 * 1024)
+            raise HTTPException(
+                status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+                detail=f"Request body too large (max {max_mb:.1f}MB).",
+            )
+
+        fd, temp_path = tempfile.mkstemp(prefix="neraium_ingest_", suffix=".csv")
+        os.close(fd)
+        job_id = f"ingest_{uuid4().hex[:16]}"
+        created_at = _utc_now_iso()
+        initial_job = {
+            "job_id": job_id,
+            "status": "uploading",
+            "run_id": resolved_run,
+            "customer_id": resolved_customer,
+            "filename": filename,
+            "created_at": created_at,
+            "updated_at": created_at,
+            "rows_processed": 0,
+            "rows_succeeded": 0,
+            "rows_failed": 0,
+            "partial_success": False,
+            "upload_bytes_received": 0,
+            "upload_bytes_total": content_length,
+            "error_samples": [],
+            "message": "Upload started.",
+            "latest_result": None,
+        }
+        with ingest_jobs_lock:
+            ingest_jobs[job_id] = initial_job
+
+        try:
+            bytes_received = await _stream_upload_to_tempfile(file, Path(temp_path), job_id)
+        except Exception as exc:
+            try:
+                Path(temp_path).unlink(missing_ok=True)
+            except OSError:
+                logger.debug("Unable to remove temp upload file after failure: %s", temp_path, exc_info=True)
+            _update_ingest_job(
+                job_id,
+                status="failed",
+                message=f"Upload failed: {str(exc)}",
+            )
+            raise HTTPException(status_code=400, detail="Failed to read upload stream.") from exc
+
+        _update_ingest_job(
+            job_id,
+            status="queued",
+            upload_bytes_received=bytes_received,
+            upload_bytes_total=content_length if content_length is not None else bytes_received,
+            message=f"Upload complete ({bytes_received} bytes). Queueing ingest job.",
+        )
+        _start_ingest_job_worker(
+            job_id=job_id,
+            temp_path=temp_path,
+            run_id=resolved_run,
+            customer_id=resolved_customer,
+        )
+        with ingest_jobs_lock:
+            job = dict(ingest_jobs[job_id])
+        return _public_ingest_job(job)
+
+    @app.get("/ingest/jobs/{job_id}", response_model=IngestJobEnvelope)
+    def get_ingest_job(
+        job_id: str,
+        customer_id: str | None = Query(default=None),
+    ) -> dict[str, Any]:
+        resolved_customer = _resolve_customer_id(customer_id)
+        with ingest_jobs_lock:
+            job = ingest_jobs.get(job_id)
+            if job is None:
+                raise HTTPException(status_code=404, detail=f"Unknown ingest job: {job_id}")
+            if _resolve_customer_id(job.get("customer_id")) != resolved_customer:
+                raise HTTPException(status_code=404, detail=f"Unknown ingest job: {job_id}")
+            return _public_ingest_job(job)
+
+    @app.post("/integrations/pull/start", response_model=PullIntegrationStatusEnvelope)
+    def start_pull_integration(
+        payload: PullIntegrationStartRequest,
+        _: None = Depends(require_api_key),
+        customer_id: str | None = Query(default=None),
+    ) -> dict[str, Any]:
+        resolved_customer = _resolve_customer_id(customer_id)
+        cfg_override = getattr(app.state, "integration_config_override", None)
+        if isinstance(cfg_override, dict):
+            cfg_doc = cfg_override
+        else:
+            path_override = getattr(app.state, "integration_config_path_override", None)
+            path = str(path_override or "").strip() or os.getenv("NERAIUM_INTEGRATION_CONFIG_PATH")
+            cfg_doc = load_integration_config(path)
+        resolved_cfg = resolve_customer_integration(
+            customer_id=resolved_customer,
+            config_doc=cfg_doc,
+        )
+
+        endpoint_url = _validate_endpoint_url(
+            payload.endpoint_url
+            or str(resolved_cfg.get("endpoint_url") or "")
+        )
+        auth_type = str(payload.auth_type or resolved_cfg.get("auth_type") or "none")
+        username = payload.username if payload.username is not None else resolved_cfg.get("username")
+        password = payload.password if payload.password is not None else resolved_cfg.get("password")
+        token = payload.token if payload.token is not None else resolved_cfg.get("token")
+        polling_interval_seconds = float(
+            payload.polling_interval_seconds
+            if payload.polling_interval_seconds is not None
+            else resolved_cfg.get("polling_interval_seconds") or 30.0
+        )
+        retry_max_attempts = int(
+            payload.retry_max_attempts
+            if payload.retry_max_attempts is not None
+            else resolved_cfg.get("retry_max_attempts") or 3
+        )
+        retry_backoff_seconds = float(
+            payload.retry_backoff_seconds
+            if payload.retry_backoff_seconds is not None
+            else resolved_cfg.get("retry_backoff_seconds") or 1.0
+        )
+        request_timeout_seconds = float(
+            payload.request_timeout_seconds
+            if payload.request_timeout_seconds is not None
+            else resolved_cfg.get("request_timeout_seconds") or 10.0
+        )
+        if polling_interval_seconds < 0.2:
+            raise HTTPException(status_code=400, detail="polling_interval_seconds must be >= 0.2.")
+        if retry_max_attempts < 1:
+            raise HTTPException(status_code=400, detail="retry_max_attempts must be >= 1.")
+        if retry_backoff_seconds < 0.05:
+            raise HTTPException(status_code=400, detail="retry_backoff_seconds must be >= 0.05.")
+        if request_timeout_seconds < 1.0:
+            raise HTTPException(status_code=400, detail="request_timeout_seconds must be >= 1.0.")
+        if auth_type == "basic":
+            if not str(username or "").strip() or password is None:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Basic auth requires username and password.",
+                )
+        if auth_type == "bearer" and not str(token or "").strip():
+            raise HTTPException(status_code=400, detail="Bearer auth requires token.")
+
+        resolved_run = _resolve_run_id_with_default(
+            service_instance,
+            payload.run_id,
+            customer_id=resolved_customer,
+        )
+        _stop_pull_integration(resolved_customer, reason="Restarting integration.")
+        stop_event = threading.Event()
+        started_at = _utc_now_iso()
+        with pull_integrations_lock:
+            pull_integrations[resolved_customer] = {
+                "customer_id": resolved_customer,
+                "endpoint_url": endpoint_url,
+                "run_id": resolved_run,
+                "auth_type": auth_type,
+                "username": username,
+                "password": password,
+                "token": token,
+                "running": True,
+                "status": "running",
+                "polling_interval_seconds": polling_interval_seconds,
+                "retry_max_attempts": retry_max_attempts,
+                "retry_backoff_seconds": retry_backoff_seconds,
+                "request_timeout_seconds": request_timeout_seconds,
+                "started_at": started_at,
+                "updated_at": started_at,
+                "last_poll_at": None,
+                "last_success_at": None,
+                "last_error": None,
+                "last_http_status": None,
+                "total_polls": 0,
+                "total_failures": 0,
+                "consecutive_failures": 0,
+                "total_ingested": 0,
+                "message": "Pull integration started.",
+                "_stop_event": stop_event,
+                "_thread": None,
+            }
+            state = dict(pull_integrations[resolved_customer])
+        _start_pull_worker(resolved_customer)
+        log_structured(
+            logger,
+            event="pull_integration_started",
+            fields={
+                "customer_id": resolved_customer,
+                "run_id": resolved_run,
+                "endpoint_url": endpoint_url,
+                "polling_interval_seconds": polling_interval_seconds,
+                "auth_type": auth_type,
+            },
+            level=logging.INFO,
+        )
+        return _public_pull_state(state, customer_id=resolved_customer)
+
+    @app.post("/integrations/pull/stop", response_model=PullIntegrationStatusEnvelope)
+    def stop_pull_integration(
+        _: None = Depends(require_api_key),
+        customer_id: str | None = Query(default=None),
+    ) -> dict[str, Any]:
+        resolved_customer = _resolve_customer_id(customer_id)
+        state = _stop_pull_integration(resolved_customer, reason="Pull integration stopped by operator.")
+        log_structured(
+            logger,
+            event="pull_integration_stopped",
+            fields={"customer_id": resolved_customer},
+            level=logging.INFO,
+        )
+        return state
+
+    @app.get("/integrations/pull/status", response_model=PullIntegrationStatusEnvelope)
+    def pull_integration_status(customer_id: str | None = Query(default=None)) -> dict[str, Any]:
+        resolved_customer = _resolve_customer_id(customer_id)
+        with pull_integrations_lock:
+            state = pull_integrations.get(resolved_customer)
+            return _public_pull_state(state, customer_id=resolved_customer)
+
+    @app.get("/alerts", response_model=AlertsEnvelope)
+    def list_alerts(
+        limit: int = Query(default=50, ge=1, le=500),
+        run_id: str | None = Query(default=None),
+        customer_id: str | None = Query(default=None),
+    ) -> dict[str, Any]:
+        resolved_customer = _resolve_customer_id(customer_id)
+        with alerts_lock:
+            items = [dict(a) for a in alerts.get(resolved_customer, [])]
+        if run_id:
+            items = [a for a in items if str((a.get("context") or {}).get("run_id") or "") == str(run_id)]
+        items = items[:limit]
+        return {"count": len(items), "alerts": items}
+
+    @app.post("/alerts/test", response_model=ActionResponse)
+    def emit_test_alert(
+        _: None = Depends(require_api_key),
+        customer_id: str | None = Query(default=None),
+        run_id: str | None = Query(default=None),
+    ) -> dict[str, bool]:
+        resolved_customer = _resolve_customer_id(customer_id)
+        now = _utc_now_iso()
+        alert = {
+            "id": f"alert_{uuid4().hex[:12]}",
+            "type": "test_alert",
+            "severity": "info",
+            "message": "Test alert generated manually.",
+            "created_at": now,
+            "trigger": {"manual": True},
+            "context": {
+                "result_id": None,
+                "run_id": run_id,
+                "timestamp": now,
+                "state": "TEST",
+                "risk_level": "UNKNOWN",
+                "structural_drift_score": 0.0,
+                "composite_instability": 0.0,
+            },
+        }
+        _record_alerts_for_customer(resolved_customer, [alert])
+        return {"ok": True}
 
     @app.post("/reset", response_model=ActionResponse)
     def reset(_: None = Depends(require_api_key)) -> dict[str, bool]:
@@ -134,18 +2249,132 @@ def create_app(service: StructuralMonitoringService | None = None) -> FastAPI:
         return {"ok": True}
 
     @app.get("/results/latest", response_model=ResultsEnvelope)
-    def get_latest() -> dict[str, Any]:
-        latest = service_instance.get_latest_result()
+    def get_latest(
+        run_id: str | None = Query(default=None),
+        customer_id: str | None = Query(default=None),
+        site_id: str | None = Query(default=None),
+    ) -> dict[str, Any]:
+        resolved_customer = _resolve_customer_id(customer_id)
+        resolved = _resolve_run_id(service_instance, run_id, customer_id=resolved_customer)
+        latest = service_instance.get_latest_result(
+            run_id=resolved,
+            customer_id=resolved_customer,
+            site_id=site_id,
+        )
         results = [latest] if latest is not None else []
         return _results_envelope(results, latest=latest)
 
     @app.get("/results/recent", response_model=ResultsEnvelope)
-    def get_recent(limit: int = 100) -> dict[str, Any]:
-        results = service_instance.list_recent_results(limit=limit)
+    def get_recent(
+        limit: int = 100,
+        run_id: str | None = Query(default=None),
+        customer_id: str | None = Query(default=None),
+        site_id: str | None = Query(default=None),
+    ) -> dict[str, Any]:
+        resolved_customer = _resolve_customer_id(customer_id)
+        resolved = _resolve_run_id(service_instance, run_id, customer_id=resolved_customer)
+        results = service_instance.list_recent_results(
+            limit=limit,
+            run_id=resolved,
+            customer_id=resolved_customer,
+            site_id=site_id,
+        )
         latest = results[0] if results else None
         return _results_envelope(results, latest=latest)
+
+    @app.get("/results/export", response_model=ExportEnvelope)
+    def export_results(
+        format: Literal["json", "csv"] = Query(default="json"),
+        limit: int = Query(default=500, ge=1, le=5000),
+        run_id: str | None = Query(default=None),
+        customer_id: str | None = Query(default=None),
+        site_id: str | None = Query(default=None),
+    ) -> dict[str, Any]:
+        resolved_customer = _resolve_customer_id(customer_id)
+        resolved = _resolve_run_id(service_instance, run_id, customer_id=resolved_customer)
+        results = service_instance.list_recent_results(
+            limit=limit,
+            run_id=resolved,
+            customer_id=resolved_customer,
+            site_id=site_id,
+        )
+        content_type, content = _build_export(results, format_name=format)
+        suffix = "json" if format == "json" else "csv"
+        file_id = f"{resolved_customer}_{resolved or 'all_runs'}"
+        filename = f"neraium_results_{file_id}.{suffix}"
+        return {
+            "run_id": resolved,
+            "format": format,
+            "count": len(results),
+            "content_type": content_type,
+            "filename": filename,
+            "content": content,
+        }
+
+    @app.get("/results/{result_id}", response_model=ResultEnvelope)
+    def get_result_by_id(
+        result_id: int,
+        run_id: str | None = Query(default=None),
+        customer_id: str | None = Query(default=None),
+    ) -> dict[str, Any]:
+        resolved_customer = _resolve_customer_id(customer_id)
+        resolved = _resolve_run_id(service_instance, run_id, customer_id=resolved_customer)
+        result = service_instance.get_result_by_id(
+            result_id,
+            run_id=resolved,
+            customer_id=resolved_customer,
+        )
+        if result is None:
+            raise HTTPException(status_code=404, detail=f"Unknown result_id: {result_id}")
+        return {"result": result}
+
+    @app.get("/results/{result_id}/geometry", response_model=GeometryEnvelope)
+    def get_result_geometry(
+        result_id: int,
+        run_id: str | None = Query(default=None),
+        customer_id: str | None = Query(default=None),
+    ) -> dict[str, Any]:
+        resolved_customer = _resolve_customer_id(customer_id)
+        resolved = _resolve_run_id(service_instance, run_id, customer_id=resolved_customer)
+        result = service_instance.get_result_by_id(
+            result_id,
+            run_id=resolved,
+            customer_id=resolved_customer,
+        )
+        if result is None:
+            raise HTTPException(status_code=404, detail=f"Unknown result_id: {result_id}")
+        return _build_geometry_payload(result, run_id=result.get("run_id") or resolved)
+
+    @app.get("/export", response_model=ExportEnvelope)
+    def export_results_legacy(
+        format: Literal["json", "csv"] = Query(default="json"),
+        limit: int = Query(default=500, ge=1, le=5000),
+        run_id: str | None = Query(default=None),
+        customer_id: str | None = Query(default=None),
+        site_id: str | None = Query(default=None),
+    ) -> dict[str, Any]:
+        return export_results(
+            format=format,
+            limit=limit,
+            run_id=run_id,
+            customer_id=customer_id,
+            site_id=site_id,
+        )
+
+    app.include_router(build_web_router())
 
     return app
 
 
 app = create_app()
+
+
+if __name__ == "__main__":
+    import uvicorn
+
+    uvicorn.run(
+        "apps.api.main:app",
+        host=os.getenv("HOST", "0.0.0.0"),
+        port=int(os.getenv("PORT", "8000")),
+        h11_max_incomplete_event_size=_uvicorn_h11_max_incomplete_event_size(),
+    )

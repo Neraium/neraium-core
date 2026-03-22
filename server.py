@@ -136,16 +136,16 @@ class Handler(BaseHTTPRequestHandler):
                     out = {
                         "state": "UNKNOWN",
                         "timestamp": "-",
-                        "site_id": "—",
-                        "asset_id": "—",
+                        "site_id": "-",
+                        "asset_id": "-",
                         "structural_drift_score": 0.0,
                         "relational_stability_score": 0.0,
                         "system_health": 100,
                         "lead_time_hours": None,
                         "lead_time_confidence": 0.0,
                         "drift_velocity": 0.0,
-                        "structural_driver": "—",
-                        "predicted_impact": "—",
+                        "structural_driver": "-",
+                        "predicted_impact": "-",
                         "explanation": "Initializing structural telemetry...",
                     }
                 out["events_tracked"] = len(events)

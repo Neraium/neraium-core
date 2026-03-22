@@ -1,5 +1,5 @@
 # %% [markdown]
-# # Neraium intelligence layer — Google Colab
+# # Neraium intelligence layer - Google Colab
 # Run each section in order (or run all).
 
 # %% 1) Clone repo (change URL if your repo is elsewhere) and go to folder
@@ -27,7 +27,7 @@ else:
     subprocess.check_call([sys.executable, "-m", "pip", "install", "-q", "numpy"])
 print("Done installing.")
 
-# %% 3) Run the intelligence layer demo (no pytest — works without tests folder)
+# %% 3) Run the intelligence layer demo (no pytest - works without tests folder)
 import math
 import tempfile
 import sys
@@ -39,7 +39,7 @@ if project_root not in sys.path:
 
 from neraium_core.alignment import StructuralEngine
 
-print("Neraium intelligence layer — quick demo\n")
+print("Neraium intelligence layer - quick demo\n")
 with tempfile.TemporaryDirectory() as d:
     engine = StructuralEngine(
         baseline_window=25,
