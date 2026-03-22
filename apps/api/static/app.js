@@ -236,6 +236,342 @@ function phaseBadgeHtml(value) {
   return `<span class="badge ${klass}">${escapeHtml(phase)}</span>`;
 }
 
+function buildDemoNarrative(result, prevResult) {
+  if (!result) {
+    return {
+      message: "No structural signal yet. Seed or upload data to begin monitoring.",
+      severity: "normal",
+    };
+  }
+  const risk = normalizeRiskLevel(result.risk_level);
+  const drift = structuralDriftFromResult(result);
+  const instability = compositeInstabilityFromResult(result);
+  const transition = transitionLabel(prevResult, result);
+  const severity = transitionSeverity(prevResult, result);
+  const driftText = typeof drift === "number" ? drift.toFixed(3) : "n/a";
+  const instabilityText = typeof instability === "number" ? instability.toFixed(3) : "n/a";
+  let message = `System ${String(result.state || result.interpreted_state || "UNKNOWN").toUpperCase()}, risk ${risk}.`;
+  if (severity === "critical") {
+    message = `Immediate attention: ${transition}. Drift ${driftText}, instability ${instabilityText}.`;
+  } else if (severity === "watch") {
+    message = `Change detected: ${transition}. Drift ${driftText}, instability ${instabilityText}.`;
+  } else if (risk === "HIGH") {
+    message = `High-risk condition sustained. Drift ${driftText}, instability ${instabilityText}.`;
+  } else if (risk === "MEDIUM") {
+    message = `Watch condition. Drift ${driftText}, instability ${instabilityText}.`;
+  } else if (risk === "LOW") {
+    message = `Stable operating envelope. Drift ${driftText}, instability ${instabilityText}.`;
+  }
+  return { message, severity };
+}
+
+function demoFriendlyOperatorMessage(result, prevResult) {
+  const narrative = buildDemoNarrative(result, prevResult);
+  const raw = String(result?.operator_message || "").trim();
+  if (!raw) return narrative.message;
+  if (raw.toLowerCase().startsWith(narrative.message.toLowerCase())) return raw;
+  return `${narrative.message} ${raw}`;
+}
+
+function renderRunSignals(latest, prev) {
+  const strip = qs("#runSignalSeparation");
+  const stateEl = qs("#runSignalState");
+  const riskEl = qs("#runSignalRisk");
+  const trendEl = qs("#runSignalTrend");
+  if (!strip || !stateEl || !riskEl || !trendEl) return;
+  if (!latest) {
+    strip.classList.add("hidden");
+    return;
+  }
+  strip.classList.remove("hidden");
+  const stateText = String(latest.state || latest.interpreted_state || "-");
+  stateEl.textContent = stateText;
+  riskEl.innerHTML = riskBadgeHtml(latest.risk_level);
+  trendEl.textContent = String(trendFromResult(latest) || "-");
+  const sev = transitionSeverity(prev, latest);
+  strip.setAttribute("data-severity", sev);
+}
+
+function renderRunTransitionStrip(prev, latest) {
+  const strip = qs("#runTransitionStrip");
+  if (!strip) return;
+  if (!latest) {
+    strip.className = "timeline-transition-strip hidden";
+    strip.textContent = "";
+    return;
+  }
+  const label = transitionLabel(prev, latest);
+  const sev = transitionSeverity(prev, latest);
+  strip.className = `timeline-transition-strip ${sev === "critical" ? "high" : sev === "watch" ? "watch" : ""}`;
+  strip.innerHTML = `<strong>${sev === "critical" ? "Key transition" : "Latest transition"}:</strong> ${escapeHtml(label)}`;
+  strip.classList.remove("hidden");
+}
+
+function stopDemoPlayback() {
+  if (state.demo.timer) {
+    window.clearTimeout(state.demo.timer);
+    state.demo.timer = null;
+  }
+  state.demo.isPlaying = false;
+}
+
+function extractDemoKeyEvents(results) {
+  if (!Array.isArray(results) || results.length === 0) return [];
+  const events = [];
+  for (let i = 0; i < results.length; i += 1) {
+    const current = results[i];
+    const prev = i > 0 ? results[i - 1] : null;
+    const sev = transitionSeverity(prev, current);
+    const transition = transitionLabel(prev, current);
+    const prevDrift = structuralDriftFromResult(prev);
+    const nextDrift = structuralDriftFromResult(current);
+    const driftJump =
+      typeof prevDrift === "number" && typeof nextDrift === "number"
+        ? Math.abs(nextDrift - prevDrift)
+        : 0;
+    const isSpike = normalizeRiskLevel(current.risk_level) === "HIGH" && normalizeRiskLevel(prev?.risk_level) !== "HIGH";
+    const isDriftEvent = driftJump >= 0.14;
+    if (sev === "critical" || isSpike || isDriftEvent) {
+      events.push({
+        index: i + 1,
+        ts: String(current.timestamp || current.persisted_at || ""),
+        severity: sev === "normal" ? (isSpike ? "critical" : "watch") : sev,
+        text: isDriftEvent ? `${transition} · drift jump ${driftJump.toFixed(3)}` : transition,
+      });
+    }
+  }
+  return events.slice(0, 8);
+}
+
+function renderDemoKeyEvents(events = state.demo.keyEvents || []) {
+  const panel = qs("#demoKeyEventsPanel");
+  const list = qs("#demoKeyEventsList");
+  if (!panel || !list) return;
+  const show = !!state.demo.enabled && Array.isArray(events) && events.length > 0;
+  if (!show) {
+    panel.classList.add("hidden");
+    list.innerHTML = "";
+    return;
+  }
+  panel.classList.remove("hidden");
+  const cursor = Math.max(1, Number(state.demo.cursor || 1));
+  list.innerHTML = events
+    .map((event) => {
+      const reached = event.index <= cursor;
+      return `<li class="demo-key-event ${escapeHtml(event.severity)} ${reached ? "reached" : ""}">
+        <div class="msg-head">${escapeHtml(event.ts)}</div>
+        <div>${escapeHtml(event.text)}</div>
+      </li>`;
+    })
+    .join("");
+}
+
+function setDemoPlaybackUI() {
+  const panel = qs("#demoPlaybackPanel");
+  const progress = qs("#demoPlaybackProgress");
+  const playPauseBtn = qs("#demoPlayPauseBtn");
+  const replayBtn = qs("#demoReplayBtn");
+  if (!panel || !progress || !playPauseBtn || !replayBtn) return;
+  const route = getRoute();
+  const total = state.runRecent.length;
+  const show = state.demo.enabled && route.page === "run-detail" && total > 0;
+  if (!show) {
+    panel.classList.add("hidden");
+    progress.textContent = state.demo.enabled ? "Open a run to start playback" : "Demo Mode off";
+    playPauseBtn.textContent = "Play timeline";
+    replayBtn.disabled = true;
+    renderDemoKeyEvents([]);
+    return;
+  }
+  panel.classList.remove("hidden");
+  const cursor = Math.max(1, Math.min(total, Number(state.demo.cursor || total)));
+  progress.textContent = `Snapshot ${cursor}/${total}`;
+  playPauseBtn.textContent = state.demo.isPlaying ? "Pause timeline" : "Play timeline";
+  replayBtn.disabled = total <= 1;
+  renderDemoKeyEvents();
+}
+
+function maybeAutoStartDemoPlayback() {
+  if (!state.demo.enabled) return;
+  if (state.demo.isPlaying) return;
+  if (state.runRecent.length < 2) return;
+  const route = getRoute();
+  if (route.page !== "run-detail") return;
+  state.demo.cursor = 1;
+  state.demo.isPlaying = true;
+  applyDemoSnapshot();
+  scheduleDemoTick();
+}
+
+function applyDemoSnapshot() {
+  if (!state.demo.enabled) return;
+  if (!state.runRecent.length) {
+    stopDemoPlayback();
+    return;
+  }
+  const total = state.runRecent.length;
+  if (!Number.isFinite(state.demo.cursor) || state.demo.cursor <= 0) {
+    state.demo.cursor = 1;
+  }
+  if (state.demo.cursor > total) {
+    state.demo.cursor = total;
+    stopDemoPlayback();
+  }
+  renderRunDetailFromState();
+}
+
+function scheduleDemoTick() {
+  if (!state.demo.isPlaying) return;
+  if (state.demo.timer) {
+    window.clearTimeout(state.demo.timer);
+    state.demo.timer = null;
+  }
+  state.demo.timer = window.setTimeout(() => {
+    if (!state.demo.isPlaying) return;
+    const total = state.runRecent.length;
+    if (state.demo.cursor >= total) {
+      stopDemoPlayback();
+      setDemoPlaybackUI();
+      return;
+    }
+    state.demo.cursor += 1;
+    applyDemoSnapshot();
+    scheduleDemoTick();
+  }, DEMO_PLAYBACK_INTERVAL_MS);
+}
+
+function toggleDemoPlayback(forcePlay = null) {
+  if (!state.demo.enabled) {
+    setStatus("Enable Demo Mode first.", true, true);
+    return;
+  }
+  if (!state.runRecent.length) {
+    setStatus("No run results available for playback.", true, true);
+    return;
+  }
+  const shouldPlay = forcePlay === null ? !state.demo.isPlaying : !!forcePlay;
+  if (!shouldPlay) {
+    stopDemoPlayback();
+    setDemoPlaybackUI();
+    return;
+  }
+  if (state.demo.cursor >= state.runRecent.length) {
+    state.demo.cursor = 1;
+  }
+  state.demo.isPlaying = true;
+  applyDemoSnapshot();
+  scheduleDemoTick();
+}
+
+function replayDemoTimeline() {
+  if (!state.demo.enabled || !state.runRecent.length) return;
+  state.demo.cursor = 1;
+  state.demo.isPlaying = true;
+  applyDemoSnapshot();
+  scheduleDemoTick();
+}
+
+async function toggleDemoMode(enabled) {
+  state.demo.enabled = !!enabled;
+  persistDemoMode();
+  if (!state.demo.enabled) {
+    stopDemoPlayback();
+    state.demo.cursor = state.runRecent.length || 0;
+  } else if (state.runRecent.length > 0) {
+    state.demo.cursor = state.runRecent.length;
+    state.demo.keyEvents = extractDemoKeyEvents(state.runRecent.slice().reverse());
+    state.demo.activeRunId = state.activeRun?.run_id || state.demo.activeRunId;
+  }
+  renderTenantControls();
+  renderRunDetailFromState();
+  if (state.demo.enabled) {
+    maybeAutoStartDemoPlayback();
+  }
+}
+
+function buildDemoScenarioItems({ profile, siteId, assetId, minutes = 120 }) {
+  const now = Date.now();
+  const out = [];
+  for (let i = 0; i < minutes; i += 1) {
+    const p = i / Math.max(1, minutes - 1);
+    const t = new Date(now - (minutes - i) * 60_000).toISOString();
+    let driftLift = 0.12;
+    let vibSpike = 0.2;
+    if (profile === "watch") {
+      driftLift = 0.35 + p * 0.35;
+      vibSpike = 0.55 + p * 0.45;
+    } else if (profile === "critical") {
+      driftLift = 0.25 + p * 0.85;
+      vibSpike = 0.8 + p * 1.8;
+    }
+    const waveA = Math.sin(i / 6);
+    const waveB = Math.cos(i / 8);
+    out.push({
+      timestamp: t,
+      site_id: siteId,
+      asset_id: assetId,
+      sensor_values: {
+        pressure: 44 + waveA * (1 + driftLift * 0.6) + p * (0.8 + driftLift),
+        flow: 28 + waveB * (1 + driftLift * 0.4) - p * (0.3 + driftLift * 0.3),
+        vibration: 6 + Math.sin(i / 3.2) * (1 + vibSpike) + driftLift * 2.2,
+        temperature: 61 + Math.cos(i / 4.8) * (1 + driftLift * 0.5) + p * (0.5 + driftLift * 0.8),
+      },
+    });
+  }
+  return out;
+}
+
+async function prepareDemoRuns() {
+  if (state.demo.preparing) return null;
+  state.demo.preparing = true;
+  renderTenantControls();
+  try {
+    const suffix = new Date().toISOString().slice(11, 16).replace(":", "");
+    const scenarios = [
+      { name: `Demo Baseline ${suffix}`, profile: "stable", siteId: "north-yard", assetId: "compressor-A" },
+      { name: `Demo Watch ${suffix}`, profile: "watch", siteId: "north-yard", assetId: "compressor-B" },
+      { name: `Demo Escalation ${suffix}`, profile: "critical", siteId: "south-yard", assetId: "compressor-C" },
+    ];
+    const created = [];
+    for (const scenario of scenarios) {
+      const runEnv = await fetchJson(apiUrl("/runs", tenantScopeParams()), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: scenario.name,
+          config: { source: "demo-mode", scenario: scenario.profile },
+          activate: false,
+        }),
+      });
+      const run = runEnv.run;
+      created.push(run);
+      const items = buildDemoScenarioItems(scenario);
+      await fetchJson(apiUrl("/ingest/batch", tenantScopeParams({ run_id: run.run_id })), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          items: items.map((item) => ({
+            ...item,
+            customer_id: customerIdValue(state.tenant.customerId),
+          })),
+        }),
+      });
+    }
+    const focusRun = created[created.length - 1] || null;
+    if (focusRun?.run_id) {
+      await fetchJson(apiUrl(`/runs/${encodeURIComponent(focusRun.run_id)}/activate`, tenantScopeParams()), {
+        method: "POST",
+      });
+      state.demo.activeRunId = focusRun.run_id;
+    }
+    state.demo.prepared = true;
+    return focusRun;
+  } finally {
+    state.demo.preparing = false;
+    renderTenantControls();
+  }
+}
+
 function getRoute() {
   const parts = window.location.pathname.split("/").filter(Boolean);
   if (parts.length === 0 || parts[0] === "dashboard") return { page: "dashboard" };
@@ -293,9 +629,21 @@ const state = {
     cleanupPointer: null,
     cleanupResize: null,
   },
+  demo: {
+    enabled: false,
+    prepared: false,
+    preparing: false,
+    isPlaying: false,
+    timer: null,
+    cursor: 0,
+    keyEvents: [],
+    activeRunId: "",
+  },
 };
 
 const TENANT_STORAGE_KEY = "neraium_customer_id";
+const DEMO_MODE_STORAGE_KEY = "neraium_demo_mode";
+const DEMO_PLAYBACK_INTERVAL_MS = 850;
 
 function customerIdValue(value) {
   const text = String(value || "").trim();
@@ -312,6 +660,23 @@ function readTenantFromStorage() {
     state.tenant.customerId = customerIdValue(stored);
   } catch (_err) {
     state.tenant.customerId = "default-customer";
+  }
+}
+
+function readDemoModeFromStorage() {
+  try {
+    const raw = String(window.localStorage.getItem(DEMO_MODE_STORAGE_KEY) || "").trim().toLowerCase();
+    state.demo.enabled = raw === "1" || raw === "true" || raw === "on";
+  } catch (_err) {
+    state.demo.enabled = false;
+  }
+}
+
+function persistDemoMode() {
+  try {
+    window.localStorage.setItem(DEMO_MODE_STORAGE_KEY, state.demo.enabled ? "1" : "0");
+  } catch (_err) {
+    // no-op
   }
 }
 
@@ -349,8 +714,15 @@ function renderTenantControls() {
   const customerInput = qs("#customerFilterInput");
   const siteInput = qs("#siteFilterInput");
   const siteList = qs("#knownSitesList");
+  const demoToggle = qs("#demoModeToggle");
+  const prepareDemoBtn = qs("#prepareDemoBtn");
   if (customerInput) customerInput.value = customerIdValue(state.tenant.customerId);
   if (siteInput) siteInput.value = siteIdValue(state.tenant.siteId);
+  if (demoToggle) demoToggle.checked = !!state.demo.enabled;
+  if (prepareDemoBtn) {
+    prepareDemoBtn.disabled = state.demo.preparing;
+    prepareDemoBtn.textContent = state.demo.preparing ? "Preparing..." : "Prepare Demo Runs";
+  }
   if (siteList) {
     siteList.innerHTML = state.tenant.knownSites
       .map((site) => `<option value="${escapeHtml(site)}"></option>`)
@@ -1257,7 +1629,8 @@ function renderDashboardMetrics(latest) {
   if (metricRisk) metricRisk.textContent = toPretty(latest?.risk_level);
   if (metricState) metricState.textContent = toPretty(latest?.state || latest?.interpreted_state);
   if (metricConfidence) metricConfidence.textContent = toPretty(latest?.confidence);
-  if (metricOperator) metricOperator.textContent = latest?.operator_message || "No operator message yet.";
+  const operatorSummary = demoFriendlyOperatorMessage(latest, null);
+  if (metricOperator) metricOperator.textContent = operatorSummary;
   if (metricRiskBadge) metricRiskBadge.innerHTML = riskBadgeHtml(latest?.risk_level);
   if (metricPhaseBadge) metricPhaseBadge.innerHTML = phaseBadgeHtml(phaseFromResult(latest));
 
@@ -1484,8 +1857,17 @@ function renderPhaseTimeline(results) {
     const prev = idx > 0 ? results[idx - 1] : null;
     const severity = transitionSeverity(prev, r);
     const transition = transitionLabel(prev, r);
+    const prevRisk = normalizeRiskLevel(prev?.risk_level);
+    const nextRisk = normalizeRiskLevel(r.risk_level);
+    const prevDrift = structuralDriftFromResult(prev);
+    const nextDrift = structuralDriftFromResult(r);
+    const driftJump =
+      typeof prevDrift === "number" && typeof nextDrift === "number"
+        ? Math.abs(nextDrift - prevDrift)
+        : 0;
+    const keyEvent = (nextRisk === "HIGH" && prevRisk !== "HIGH") || driftJump >= 0.14;
     const item = document.createElement("div");
-    item.className = `timeline-item timeline-${severity}`;
+    item.className = `timeline-item timeline-${severity}${keyEvent ? " timeline-key-event" : ""}`;
     item.innerHTML = `
       <div class="timeline-dot timeline-dot-${severity}"></div>
       <div class="timeline-content">
@@ -1493,6 +1875,7 @@ function renderPhaseTimeline(results) {
           <span class="timeline-state">${escapeHtml(String(r.state || r.interpreted_state || "-"))}</span>
           <span>${riskBadgeHtml(r.risk_level)}</span>
           <span class="timeline-trend-chip">${escapeHtml(String(trendFromResult(r) || "-"))}</span>
+          ${keyEvent ? '<span class="demo-event-pill">Key event</span>' : ""}
         </div>
         <div class="timeline-phase">${phaseBadgeHtml(phase)}</div>
         <div class="timeline-transition">${escapeHtml(transition)}</div>
@@ -1503,14 +1886,23 @@ function renderPhaseTimeline(results) {
   });
 }
 
-function renderOperatorMessages(results) {
+function renderOperatorMessages(results, opts = {}) {
   const el = qs("#operatorMessagesList");
   if (!el) return;
   el.innerHTML = "";
+  const emphasize = Boolean(opts.emphasize);
   const msgs = results
     .slice()
     .reverse()
-    .map((r) => ({ id: r.result_id, ts: r.timestamp || r.persisted_at, msg: r.operator_message || "" }))
+    .map((r, idx, arr) => {
+      const prev = idx + 1 < arr.length ? arr[idx + 1] : null;
+      return {
+        id: r.result_id,
+        ts: r.timestamp || r.persisted_at,
+        severity: transitionSeverity(prev, r),
+        msg: demoFriendlyOperatorMessage(r, prev),
+      };
+    })
     .filter((x) => x.msg);
   if (msgs.length === 0) {
     const li = document.createElement("li");
@@ -1521,7 +1913,7 @@ function renderOperatorMessages(results) {
   }
   msgs.slice(0, 20).forEach((x) => {
     const li = document.createElement("li");
-    li.className = "message-item";
+    li.className = `message-item ${emphasize ? `message-item-${x.severity}` : ""}`.trim();
     li.innerHTML = `
       <div class="msg-head">#${escapeHtml(String(x.id))} · ${escapeHtml(String(x.ts || ""))}</div>
       <div>${escapeHtml(String(x.msg))}</div>
@@ -1631,8 +2023,12 @@ function renderRunDetailFromState() {
     destroyCharts();
     disposeGeometryRenderer();
     state.runGeometry = null;
+    renderRunSignals(null, null);
+    renderRunTransitionStrip(null, null);
     renderPhaseTimeline([]);
     renderOperatorMessages([]);
+    renderDemoKeyEvents([]);
+    setDemoPlaybackUI();
     renderRunResultsTable([]);
     renderRiskExplanation(null, {
       panelSelector: "#runRiskExplanationPanel",
@@ -1643,15 +2039,39 @@ function renderRunDetailFromState() {
     return;
   }
 
-  const chronological = state.runRecent.slice().reverse();
+  const chronologicalFull = state.runRecent.slice().reverse();
+  const activeRunId = String(state.activeRun?.run_id || "");
+  if (state.demo.enabled) {
+    if (state.demo.activeRunId !== activeRunId) {
+      stopDemoPlayback();
+      state.demo.activeRunId = activeRunId;
+      state.demo.cursor = chronologicalFull.length;
+    }
+    if (!Number.isFinite(state.demo.cursor) || state.demo.cursor <= 0) {
+      state.demo.cursor = chronologicalFull.length;
+    }
+    state.demo.cursor = Math.max(1, Math.min(state.demo.cursor, chronologicalFull.length));
+    state.demo.keyEvents = extractDemoKeyEvents(chronologicalFull);
+  } else {
+    state.demo.activeRunId = activeRunId;
+    state.demo.cursor = chronologicalFull.length;
+    state.demo.keyEvents = [];
+  }
+  const chronological = state.demo.enabled
+    ? chronologicalFull.slice(0, Math.max(1, Number(state.demo.cursor || chronologicalFull.length)))
+    : chronologicalFull;
   const ranged = currentRangeSlice(chronological);
+  const latest = chronological.length ? chronological[chronological.length - 1] : state.runRecent[0];
+  const prev = chronological.length > 1 ? chronological[chronological.length - 2] : null;
+  renderRunSignals(latest, prev);
+  renderRunTransitionStrip(prev, latest);
+  setDemoPlaybackUI();
   renderRunDetailCharts(ranged);
   renderPhaseTimeline(ranged);
-  renderOperatorMessages(ranged);
+  renderOperatorMessages(ranged, { emphasize: state.demo.enabled });
   const filtered = filterRunResults(ranged);
   const sorted = sortRunResults(filtered);
   renderRunResultsTable(sorted);
-  const latest = ranged.length ? ranged[ranged.length - 1] : state.runRecent[0];
   renderRiskExplanation(latest, {
     panelSelector: "#runRiskExplanationPanel",
     titleSelector: "#runRiskExplanationTitle",
@@ -1669,10 +2089,25 @@ async function loadRunDetail(runId) {
   if (meta) meta.textContent = `${run.run_id} · status=${run.status} · created=${run.created_at}`;
   const recentEnv = await fetchJson(apiUrl("/results/recent", tenantScopeParams({ run_id: runId, limit: 1000 })));
   state.runRecent = recentEnv.results || [];
+  if (state.demo.enabled) {
+    if (state.demo.activeRunId !== runId) {
+      stopDemoPlayback();
+      state.demo.activeRunId = runId;
+      state.demo.cursor = state.runRecent.length;
+    } else if (!Number.isFinite(state.demo.cursor) || state.demo.cursor <= 0 || state.demo.cursor > state.runRecent.length) {
+      state.demo.cursor = state.runRecent.length;
+    }
+    state.demo.keyEvents = extractDemoKeyEvents(state.runRecent.slice().reverse());
+  } else {
+    state.demo.activeRunId = runId;
+    state.demo.cursor = state.runRecent.length;
+    state.demo.keyEvents = [];
+  }
   collectKnownSites(state.runRecent);
   renderTenantControls();
   setRangeButtonState(state.runDetailView.range);
   renderRunDetailFromState();
+  maybeAutoStartDemoPlayback();
   await loadRunGeometry(runId);
 
   const exportJson = qs("#runDetailExportJsonBtn");
@@ -1775,6 +2210,53 @@ async function refreshCurrentPage() {
 }
 
 async function wireEvents() {
+  qs("#demoModeToggle")?.addEventListener("change", async (e) => {
+    const enabled = Boolean(e.target?.checked);
+    try {
+      await toggleDemoMode(enabled);
+      if (enabled && !state.demo.prepared && state.runs.length === 0) {
+        setLoading(true, "Preparing demo runs...");
+        const focusRun = await prepareDemoRuns();
+        await refreshCurrentPage();
+        if (focusRun?.run_id) {
+          window.location.href = `/app/runs/${encodeURIComponent(focusRun.run_id)}?customer_id=${encodeURIComponent(customerIdValue(state.tenant.customerId))}`;
+          return;
+        }
+      }
+      setStatus(enabled ? "Demo Mode enabled" : "Demo Mode disabled", false, true);
+    } catch (err) {
+      setStatus(String(err.message || err), true, true);
+    } finally {
+      setLoading(false);
+    }
+  });
+
+  qs("#prepareDemoBtn")?.addEventListener("click", async () => {
+    try {
+      setLoading(true, "Preparing realistic demo runs...");
+      const focusRun = await prepareDemoRuns();
+      await refreshCurrentPage();
+      if (focusRun?.run_id) {
+        setStatus(`Demo runs prepared. Opening ${focusRun.name}.`, false, true);
+        window.location.href = `/app/runs/${encodeURIComponent(focusRun.run_id)}?customer_id=${encodeURIComponent(customerIdValue(state.tenant.customerId))}`;
+        return;
+      }
+      setStatus("Demo runs prepared.", false, true);
+    } catch (err) {
+      setStatus(String(err.message || err), true, true);
+    } finally {
+      setLoading(false);
+    }
+  });
+
+  qs("#demoPlayPauseBtn")?.addEventListener("click", () => {
+    toggleDemoPlayback();
+  });
+
+  qs("#demoReplayBtn")?.addEventListener("click", () => {
+    replayDemoTimeline();
+  });
+
   qs("#refreshBtn")?.addEventListener("click", async () => {
     try {
       setLoading(true, "Refreshing...");
@@ -1940,6 +2422,7 @@ async function wireEvents() {
 
 async function init() {
   readTenantFromStorage();
+  readDemoModeFromStorage();
   const routeScope = routeScopeFromQuery();
   if (routeScope.customer_id) {
     state.tenant.customerId = customerIdValue(routeScope.customer_id);
