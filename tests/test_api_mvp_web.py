@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import json
+import socket
+import threading
 import time
+from http.server import BaseHTTPRequestHandler, HTTPServer
 
 import pytest
 
@@ -54,6 +57,72 @@ def _run_and_ingest(client: TestClient, customer_id: str = "customer-a") -> tupl
 def _customer_path(path: str, customer_id: str = "customer-a") -> str:
     sep = "&" if "?" in path else "?"
     return f"{path}{sep}customer_id={customer_id}"
+
+
+class _PullServer:
+    def __init__(self, body_text: str, *, auth_header: str | None = None):
+        self.body_text = body_text
+        self.auth_header = auth_header
+        self.requests = 0
+        self._httpd: HTTPServer | None = None
+        self._thread: threading.Thread | None = None
+
+    def start(self) -> str:
+        parent = self
+
+        class Handler(BaseHTTPRequestHandler):
+            def do_GET(self):  # noqa: N802
+                parent.requests += 1
+                if parent.auth_header:
+                    provided = self.headers.get("Authorization")
+                    if provided != parent.auth_header:
+                        self.send_response(401)
+                        self.send_header("Content-Type", "application/json")
+                        self.end_headers()
+                        self.wfile.write(b'{"detail":"unauthorized"}')
+                        return
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.end_headers()
+                self.wfile.write(parent.body_text.encode("utf-8"))
+
+            def log_message(self, format, *args):  # noqa: A003
+                return
+
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.bind(("127.0.0.1", 0))
+            host, port = s.getsockname()
+        self._httpd = HTTPServer(("127.0.0.1", port), Handler)
+        self._thread = threading.Thread(target=self._httpd.serve_forever, daemon=True)
+        self._thread.start()
+        return f"http://127.0.0.1:{port}/pull"
+
+    def stop(self) -> None:
+        if self._httpd is not None:
+            self._httpd.shutdown()
+            self._httpd.server_close()
+        if self._thread is not None and self._thread.is_alive():
+            self._thread.join(timeout=1.0)
+
+
+def _wait_for_pull_ingest(
+    client: TestClient,
+    *,
+    customer_id: str,
+    min_count: int,
+    timeout_s: float = 4.0,
+) -> dict:
+    deadline = time.monotonic() + timeout_s
+    last: dict = {}
+    while time.monotonic() < deadline:
+        resp = client.get(_customer_path("/integrations/pull/status", customer_id=customer_id))
+        assert resp.status_code == 200
+        payload = resp.json()
+        last = payload
+        if int(payload.get("total_ingested", 0)) >= min_count:
+            return payload
+        time.sleep(0.08)
+    raise AssertionError(f"pull integration did not ingest target rows; last={last}")
 
 
 def _wait_for_ingest_job(
@@ -393,4 +462,117 @@ def test_stream_upload_rejects_non_csv_extension(tmp_path) -> None:
     )
     assert resp.status_code == 400
     assert ".csv file" in resp.json()["detail"]
+
+
+def test_pull_integration_start_status_stop_and_ingest(tmp_path) -> None:
+    client = _client(tmp_path)
+    customer_id = "pull-customer-a"
+    run = client.post(
+        _customer_path("/runs", customer_id=customer_id),
+        json={"name": "pull-run", "activate": True, "config": {}},
+    )
+    assert run.status_code == 200
+    run_id = run.json()["run"]["run_id"]
+
+    payload = json.dumps(
+        {
+            "items": [
+                {
+                    "timestamp": "2026-01-01T00:00:00+00:00",
+                    "site_id": "site-a",
+                    "asset_id": "asset-a",
+                    "sensor_values": {"pressure": 50.0, "flow": 11.0},
+                },
+                {
+                    "timestamp": "2026-01-01T00:00:01+00:00",
+                    "site_id": "site-a",
+                    "asset_id": "asset-a",
+                    "sensor_values": {"pressure": 50.1, "flow": 11.1},
+                },
+            ]
+        }
+    )
+    server = _PullServer(payload, auth_header="Bearer secret-token")
+    endpoint = server.start()
+    try:
+        start = client.post(
+            _customer_path("/integrations/pull/start", customer_id=customer_id),
+            json={
+                "endpoint_url": endpoint,
+                "polling_interval_seconds": 0.2,
+                "auth_type": "bearer",
+                "token": "secret-token",
+                "run_id": run_id,
+                "retry_max_attempts": 2,
+                "retry_backoff_seconds": 0.05,
+                "request_timeout_seconds": 2.0,
+            },
+        )
+        assert start.status_code == 200
+        started = start.json()
+        assert started["running"] is True
+        assert started["status"] in {"running", "error"}
+        assert started["endpoint_url"] == endpoint
+        assert started["run_id"] == run_id
+
+        pulled = _wait_for_pull_ingest(client, customer_id=customer_id, min_count=2)
+        assert pulled["running"] is True
+        assert int(pulled.get("total_ingested", 0)) >= 2
+        assert pulled["last_success_at"] is not None
+        assert pulled["last_error"] in {None, ""}
+
+        stop = client.post(_customer_path("/integrations/pull/stop", customer_id=customer_id))
+        assert stop.status_code == 200
+        stopped = stop.json()
+        assert stopped["running"] is False
+        assert stopped["status"] == "stopped"
+
+        recent = client.get(_customer_path(f"/results/recent?run_id={run_id}&limit=10", customer_id=customer_id))
+        assert recent.status_code == 200
+        assert recent.json()["count"] >= 2
+    finally:
+        server.stop()
+
+
+def test_pull_integration_reports_failures_with_retries(tmp_path) -> None:
+    client = _client(tmp_path)
+    customer_id = "pull-customer-b"
+    run = client.post(
+        _customer_path("/runs", customer_id=customer_id),
+        json={"name": "pull-run-fail", "activate": True, "config": {}},
+    )
+    assert run.status_code == 200
+    run_id = run.json()["run"]["run_id"]
+
+    # Unbound localhost port should fail quickly and trigger retry accounting.
+    endpoint = "http://127.0.0.1:9/pull"
+    start = client.post(
+        _customer_path("/integrations/pull/start", customer_id=customer_id),
+        json={
+            "endpoint_url": endpoint,
+            "polling_interval_seconds": 0.2,
+            "auth_type": "none",
+            "run_id": run_id,
+            "retry_max_attempts": 2,
+            "retry_backoff_seconds": 0.05,
+            "request_timeout_seconds": 1.0,
+        },
+    )
+    assert start.status_code == 200
+
+    deadline = time.monotonic() + 4.0
+    last = {}
+    while time.monotonic() < deadline:
+        status_resp = client.get(_customer_path("/integrations/pull/status", customer_id=customer_id))
+        assert status_resp.status_code == 200
+        last = status_resp.json()
+        if int(last.get("total_failures", 0)) >= 1:
+            break
+        time.sleep(0.08)
+
+    assert int(last.get("total_failures", 0)) >= 1
+    assert int(last.get("consecutive_failures", 0)) >= 1
+    assert last.get("last_error")
+    stop = client.post(_customer_path("/integrations/pull/stop", customer_id=customer_id))
+    assert stop.status_code == 200
 
