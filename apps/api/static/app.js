@@ -123,6 +123,7 @@ const state = {
   runs: [],
   dashboardRecent: [],
   runRecent: [],
+  runGeometry: null,
   uploadFile: null,
   runsView: {
     search: "",
@@ -137,6 +138,22 @@ const state = {
   charts: {
     drift: null,
     composite: null,
+  },
+  geometry3d: {
+    renderer: null,
+    scene: null,
+    camera: null,
+    controls: null,
+    raycaster: null,
+    pointer: null,
+    nodeMeshById: {},
+    nodeDataById: {},
+    selectedId: null,
+    frameId: null,
+    resizeObserver: null,
+    interactionEnabled: false,
+    cleanupPointer: null,
+    cleanupResize: null,
   },
 };
 
@@ -185,6 +202,469 @@ function buildTrendChartOptions() {
       },
     },
   };
+}
+
+function disposeGeometryRenderer() {
+  const g = state.geometry3d;
+  if (g.frameId) {
+    window.cancelAnimationFrame(g.frameId);
+    g.frameId = null;
+  }
+  if (g.resizeObserver) {
+    try {
+      g.resizeObserver.disconnect();
+    } catch (_err) {
+      // no-op
+    }
+    g.resizeObserver = null;
+  }
+  if (typeof g.cleanupResize === "function") {
+    g.cleanupResize();
+    g.cleanupResize = null;
+  }
+  if (typeof g.cleanupPointer === "function") {
+    g.cleanupPointer();
+    g.cleanupPointer = null;
+  }
+  if (g.controls) {
+    g.controls.dispose();
+    g.controls = null;
+  }
+  if (g.renderer) {
+    g.renderer.dispose();
+    if (g.renderer.domElement && g.renderer.domElement.parentElement) {
+      g.renderer.domElement.parentElement.removeChild(g.renderer.domElement);
+    }
+    g.renderer = null;
+  }
+  g.scene = null;
+  g.camera = null;
+  g.raycaster = null;
+  g.pointer = null;
+  g.nodeMeshById = {};
+  g.nodeDataById = {};
+  g.selectedId = null;
+  g.interactionEnabled = false;
+}
+
+function setGeometrySurfaceState(message, level = "info") {
+  const fallback = qs("#geometryFallback");
+  const canvasWrap = qs("#geometryCanvasWrap");
+  if (fallback) {
+    fallback.textContent = String(message || "");
+    fallback.className = `empty-state geometry-fallback ${level === "error" ? "error" : ""}`;
+    fallback.classList.remove("hidden");
+  }
+  if (canvasWrap) {
+    canvasWrap.classList.add("hidden");
+  }
+}
+
+function showGeometryCanvas() {
+  const fallback = qs("#geometryFallback");
+  const canvasWrap = qs("#geometryCanvasWrap");
+  if (fallback) {
+    fallback.classList.add("hidden");
+    fallback.textContent = "";
+  }
+  if (canvasWrap) {
+    canvasWrap.classList.remove("hidden");
+  }
+}
+
+function riskColorHex(riskLevel) {
+  const risk = normalizeRiskLevel(riskLevel);
+  if (risk === "HIGH") return 0xe46060;
+  if (risk === "MEDIUM") return 0xffbf56;
+  if (risk === "LOW") return 0x68d497;
+  return 0x8aa6cf;
+}
+
+function nodeStateColorHex(nodeState) {
+  const s = String(nodeState || "").toLowerCase();
+  if (s === "critical") return 0xff7a7a;
+  if (s === "watch") return 0xffca72;
+  return 0x7fdaac;
+}
+
+function edgeColorHex(edge, metrics) {
+  const risk = normalizeRiskLevel(metrics?.risk_level);
+  if (risk === "HIGH" && Math.abs(Number(edge.delta || 0)) > 0.18) {
+    return 0xff8a8a;
+  }
+  if (risk === "MEDIUM" && Math.abs(Number(edge.delta || 0)) > 0.12) {
+    return 0xffca72;
+  }
+  return edge.type === "negative" ? 0x8aa4d0 : 0x9ebcf0;
+}
+
+function ensureThreeLibs() {
+  const three = window.THREE;
+  const controlsCtor = window.OrbitControls;
+  if (!three || !controlsCtor) {
+    throw new Error("3D libraries unavailable.");
+  }
+  return { three, controlsCtor };
+}
+
+function geometryNodeDetailsHtml(node) {
+  return `
+    <div class="geom-detail-row"><span>Node</span><strong>${escapeHtml(node.label || node.id || "-")}</strong></div>
+    <div class="geom-detail-row"><span>State</span><strong>${escapeHtml(node.state || "-")}</strong></div>
+    <div class="geom-detail-row"><span>Magnitude</span><strong>${toPretty(Number(node.magnitude))}</strong></div>
+    <div class="geom-detail-row"><span>Stress</span><strong>${toPretty(Number(node.stress))}</strong></div>
+  `;
+}
+
+function geometryGlobalDetailsHtml(payload) {
+  const m = payload?.metrics || {};
+  return `
+    <div class="geom-detail-row"><span>State</span><strong>${escapeHtml(String(m.state || "-"))}</strong></div>
+    <div class="geom-detail-row"><span>Risk</span><strong>${escapeHtml(String(m.risk_level || "-"))}</strong></div>
+    <div class="geom-detail-row"><span>Trend</span><strong>${escapeHtml(String(m.trend || "-"))}</strong></div>
+    <div class="geom-detail-row"><span>Drift</span><strong>${toPretty(m.structural_drift_score)}</strong></div>
+    <div class="geom-detail-row"><span>Composite</span><strong>${toPretty(m.composite_instability)}</strong></div>
+  `;
+}
+
+function updateGeometryDetails(nodeId = null) {
+  const payload = state.runGeometry;
+  const g = state.geometry3d;
+  const nodeLabel = qs("#geometryNodeLabel");
+  const nodeStress = qs("#geometryNodeStress");
+  const nodeMagnitude = qs("#geometryNodeMagnitude");
+  const nodeState = qs("#geometryNodeState");
+  const metricState = qs("#geometryState");
+  const metricRisk = qs("#geometryRisk");
+  const metricDrift = qs("#geometryDrift");
+  const metricComposite = qs("#geometryComposite");
+
+  if (metricState) metricState.textContent = toPretty(payload?.metrics?.state);
+  if (metricRisk) metricRisk.textContent = toPretty(payload?.metrics?.risk_level);
+  if (metricDrift) metricDrift.textContent = toPretty(payload?.metrics?.structural_drift_score);
+  if (metricComposite) metricComposite.textContent = toPretty(payload?.metrics?.composite_instability);
+
+  const setNodeFields = (label, stress, magnitude, stateText) => {
+    if (nodeLabel) nodeLabel.textContent = label;
+    if (nodeStress) nodeStress.textContent = stress;
+    if (nodeMagnitude) nodeMagnitude.textContent = magnitude;
+    if (nodeState) nodeState.textContent = stateText;
+  };
+
+  if (!payload || !payload.available) {
+    setNodeFields("-", "-", "-", "-");
+    return;
+  }
+  if (!nodeId) {
+    setNodeFields("None selected", "-", "-", "-");
+    return;
+  }
+  const node = g.nodeDataById[nodeId];
+  if (!node) {
+    setNodeFields("None selected", "-", "-", "-");
+    return;
+  }
+  setNodeFields(
+    String(node.label || node.id || "-"),
+    toPretty(Number(node.stress)),
+    toPretty(Number(node.magnitude)),
+    String(node.state || "-"),
+  );
+}
+
+function setGeometrySelection(nextId = null) {
+  const g = state.geometry3d;
+  const previous = g.selectedId;
+  if (previous && g.nodeMeshById[previous]) {
+    const prevMesh = g.nodeMeshById[previous];
+    prevMesh.scale.setScalar(1);
+    if (prevMesh.material && prevMesh.material.emissive) {
+      prevMesh.material.emissive.setHex(0x000000);
+    }
+  }
+  g.selectedId = nextId;
+  if (nextId && g.nodeMeshById[nextId]) {
+    const mesh = g.nodeMeshById[nextId];
+    mesh.scale.setScalar(1.2);
+    if (mesh.material && mesh.material.emissive) {
+      mesh.material.emissive.setHex(0x33557f);
+      mesh.material.emissiveIntensity = 0.6;
+    }
+  }
+  updateGeometryDetails(g.selectedId);
+}
+
+function buildGeometryLegend(payload) {
+  const details = qs("#geometryDetails");
+  if (!details) return;
+  if (!payload || !payload.available) {
+    details.setAttribute("data-geometry-risk", "UNKNOWN");
+    return;
+  }
+  details.setAttribute("data-geometry-risk", normalizeRiskLevel(payload.metrics?.risk_level));
+}
+
+function createNodeLabelSprite(three, text, colorHex = 0xd9e6ff) {
+  const canvas = document.createElement("canvas");
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return null;
+  canvas.width = 256;
+  canvas.height = 64;
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = "rgba(8, 16, 30, 0.72)";
+  ctx.strokeStyle = "rgba(86, 119, 176, 0.86)";
+  ctx.lineWidth = 2;
+  const x = 4;
+  const y = 8;
+  const w = 248;
+  const h = 48;
+  const r = 8;
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + w, y, x + w, y + h, r);
+  ctx.arcTo(x + w, y + h, x, y + h, r);
+  ctx.arcTo(x, y + h, x, y, r);
+  ctx.arcTo(x, y, x + w, y, r);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = `#${colorHex.toString(16).padStart(6, "0")}`;
+  ctx.font = "600 22px Inter, sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.fillText(String(text || ""), canvas.width / 2, canvas.height / 2);
+  const texture = new three.CanvasTexture(canvas);
+  texture.needsUpdate = true;
+  const material = new three.SpriteMaterial({ map: texture, transparent: true, depthWrite: false });
+  const sprite = new three.Sprite(material);
+  sprite.scale.set(0.58, 0.145, 1);
+  return sprite;
+}
+
+function renderGeometryScene(payload) {
+  const canvasHost = qs("#geometryCanvas");
+  if (!canvasHost) return;
+  const { three, controlsCtor } = ensureThreeLibs();
+  disposeGeometryRenderer();
+  state.runGeometry = payload;
+  buildGeometryLegend(payload);
+  if (!payload || !payload.available) {
+    setGeometrySurfaceState(payload?.reason || "Geometry unavailable.", "warn");
+    updateGeometryDetails(null);
+    return;
+  }
+  if (!Array.isArray(payload.nodes) || payload.nodes.length === 0) {
+    setGeometrySurfaceState("No geometry nodes available in this result.", "warn");
+    updateGeometryDetails(null);
+    return;
+  }
+
+  showGeometryCanvas();
+  const width = Math.max(240, canvasHost.clientWidth || 240);
+  const height = Math.max(220, canvasHost.clientHeight || 340);
+  const renderer = new three.WebGLRenderer({ antialias: true, alpha: true });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  renderer.setSize(width, height);
+  renderer.outputColorSpace = three.SRGBColorSpace || undefined;
+  canvasHost.appendChild(renderer.domElement);
+
+  const scene = new three.Scene();
+  scene.background = null;
+  scene.fog = new three.FogExp2(0x070d19, 0.07);
+
+  const camera = new three.PerspectiveCamera(48, width / height, 0.01, 60);
+  camera.position.set(0, 0.45, 3.05);
+  scene.add(camera);
+
+  const hemi = new three.HemisphereLight(0xa7c9ff, 0x0e1a30, 0.74);
+  scene.add(hemi);
+  const key = new three.DirectionalLight(0x8db5ff, 0.82);
+  key.position.set(2.4, 3.6, 2.2);
+  scene.add(key);
+  const rim = new three.PointLight(0x5f8fde, 0.66, 8);
+  rim.position.set(-2.4, -0.8, -1.4);
+  scene.add(rim);
+
+  const controls = new controlsCtor(camera, renderer.domElement);
+  controls.enableDamping = true;
+  controls.dampingFactor = 0.07;
+  controls.rotateSpeed = 0.7;
+  controls.zoomSpeed = 0.9;
+  controls.panSpeed = 0.7;
+  controls.minDistance = 1.3;
+  controls.maxDistance = 7.2;
+  controls.target.set(0, 0, 0);
+
+  const g = state.geometry3d;
+  g.renderer = renderer;
+  g.scene = scene;
+  g.camera = camera;
+  g.controls = controls;
+  g.raycaster = new three.Raycaster();
+  g.pointer = new three.Vector2();
+  g.nodeMeshById = {};
+  g.nodeDataById = {};
+  g.selectedId = null;
+  g.interactionEnabled = true;
+
+  const riskColor = riskColorHex(payload.metrics?.risk_level);
+  const glowMaterial = new three.MeshBasicMaterial({
+    color: riskColor,
+    transparent: true,
+    opacity: 0.08,
+    blending: three.AdditiveBlending,
+    depthWrite: false,
+  });
+  const glow = new three.Mesh(new three.SphereGeometry(2.35, 32, 32), glowMaterial);
+  scene.add(glow);
+
+  const edgeGroup = new three.Group();
+  const drift = Number(payload.metrics?.structural_drift_score || 0);
+  const instability = Number(payload.metrics?.composite_instability || 0);
+  const stressScale = Math.max(0, Math.min(1.2, 0.35 * drift + 0.45 * instability));
+  const jitterAmp = 0.05 + stressScale * 0.07;
+
+  payload.edges.forEach((edge) => {
+    const source = payload.nodes.find((n) => n.id === edge.source);
+    const target = payload.nodes.find((n) => n.id === edge.target);
+    if (!source || !target) return;
+    const p1 = new three.Vector3(Number(source.position.x), Number(source.position.y), Number(source.position.z));
+    const p2 = new three.Vector3(Number(target.position.x), Number(target.position.y), Number(target.position.z));
+    const edgeGeom = new three.BufferGeometry().setFromPoints([p1, p2]);
+    const edgeMat = new three.LineBasicMaterial({
+      color: edgeColorHex(edge, payload.metrics),
+      transparent: true,
+      opacity: 0.18 + 0.5 * Math.min(1, Math.abs(Number(edge.magnitude || 0))),
+    });
+    edgeGroup.add(new three.Line(edgeGeom, edgeMat));
+  });
+  scene.add(edgeGroup);
+
+  const nodeGroup = new three.Group();
+  payload.nodes.forEach((node) => {
+    const magnitude = Math.max(0, Number(node.magnitude || 0));
+    const radius = 0.045 + magnitude * 0.09;
+    const geom = new three.SphereGeometry(radius, 24, 24);
+    const mat = new three.MeshStandardMaterial({
+      color: nodeStateColorHex(node.state),
+      roughness: 0.35,
+      metalness: 0.2,
+      emissive: 0x0d1424,
+      emissiveIntensity: 0.35,
+    });
+    const mesh = new three.Mesh(geom, mat);
+    const px = Number(node.position?.x || 0);
+    const py = Number(node.position?.y || 0);
+    const pz = Number(node.position?.z || 0);
+    mesh.position.set(px, py, pz);
+    mesh.userData.nodeId = String(node.id);
+    mesh.userData.basePos = new three.Vector3(px, py, pz);
+    mesh.userData.jitterSeed = Math.random() * Math.PI * 2;
+    nodeGroup.add(mesh);
+    g.nodeMeshById[String(node.id)] = mesh;
+    g.nodeDataById[String(node.id)] = node;
+
+    if (payload.nodes.length <= 24) {
+      const label = createNodeLabelSprite(three, node.label || node.id);
+      if (label) {
+        label.position.set(px, py + radius + 0.08, pz);
+        nodeGroup.add(label);
+      }
+    }
+  });
+  scene.add(nodeGroup);
+  updateGeometryDetails(null);
+
+  const grid = new three.GridHelper(5.8, 14, 0x2f476b, 0x182741);
+  grid.position.y = -0.78;
+  grid.material.opacity = 0.17;
+  grid.material.transparent = true;
+  scene.add(grid);
+
+  function onResize() {
+    if (!g.renderer || !g.camera) return;
+    const w = Math.max(240, canvasHost.clientWidth || 240);
+    const h = Math.max(220, canvasHost.clientHeight || 340);
+    g.renderer.setSize(w, h);
+    g.camera.aspect = w / h;
+    g.camera.updateProjectionMatrix();
+  }
+
+  if (window.ResizeObserver) {
+    const ro = new window.ResizeObserver(() => onResize());
+    ro.observe(canvasHost);
+    g.resizeObserver = ro;
+  } else {
+    const handler = () => onResize();
+    window.addEventListener("resize", handler);
+    g.cleanupResize = () => window.removeEventListener("resize", handler);
+  }
+
+  function pickNode(evt) {
+    if (!g.interactionEnabled || !g.raycaster || !g.camera || !g.renderer) return;
+    const rect = g.renderer.domElement.getBoundingClientRect();
+    const x = (evt.clientX - rect.left) / rect.width;
+    const y = (evt.clientY - rect.top) / rect.height;
+    if (x < 0 || x > 1 || y < 0 || y > 1) return;
+    g.pointer.x = x * 2 - 1;
+    g.pointer.y = -(y * 2 - 1);
+    g.raycaster.setFromCamera(g.pointer, g.camera);
+    const intersects = g.raycaster.intersectObjects(Object.values(g.nodeMeshById));
+    if (!intersects.length) {
+      setGeometrySelection(null);
+      return;
+    }
+    const id = intersects[0].object?.userData?.nodeId;
+    setGeometrySelection(id ? String(id) : null);
+  }
+  const pointerHandler = (evt) => pickNode(evt);
+  renderer.domElement.addEventListener("pointerdown", pointerHandler);
+  g.cleanupPointer = () => renderer.domElement.removeEventListener("pointerdown", pointerHandler);
+
+  let t = 0;
+  function animate() {
+    g.frameId = window.requestAnimationFrame(animate);
+    t += 0.016;
+    if (nodeGroup && payload.metrics) {
+      nodeGroup.children.forEach((obj) => {
+        if (!obj.userData || !obj.userData.basePos || !obj.userData.nodeId) return;
+        const nodeId = String(obj.userData.nodeId);
+        const nodeData = g.nodeDataById[nodeId];
+        if (!nodeData) return;
+        const base = obj.userData.basePos;
+        const localStress = Number(nodeData.stress || 0);
+        const amp = jitterAmp * (0.3 + localStress);
+        const phase = obj.userData.jitterSeed || 0;
+        obj.position.x = base.x + Math.sin(t * 1.7 + phase) * amp * 0.12;
+        obj.position.y = base.y + Math.cos(t * 1.3 + phase) * amp * 0.1;
+        obj.position.z = base.z + Math.sin(t * 1.1 + phase) * amp * 0.12;
+      });
+    }
+    controls.update();
+    renderer.render(scene, camera);
+  }
+  animate();
+}
+
+async function loadRunGeometry(runId) {
+  const payload = await fetchJson(apiUrl(`/runs/${encodeURIComponent(runId)}/geometry`, {}));
+  state.runGeometry = payload;
+  const projectionNote =
+    payload?.projection?.note ||
+    "Geometry projection metadata unavailable.";
+  const fallback = qs("#geometryFallback");
+  if (fallback) {
+    fallback.setAttribute("title", projectionNote);
+    if (!payload?.available) {
+      fallback.textContent = payload?.reason || projectionNote;
+    }
+  }
+  try {
+    renderGeometryScene(payload);
+  } catch (err) {
+    setGeometrySurfaceState(`3D unavailable: ${String(err.message || err)}`, "error");
+    updateGeometryDetails(null);
+  }
 }
 
 function createToast(message, type = "success") {
@@ -727,12 +1207,19 @@ function currentRangeSlice(resultsChronological) {
 function renderRunDetailFromState() {
   const hasResults = state.runRecent.length > 0;
   const runDetailEmpty = qs("#runDetailEmpty");
+  const geomPanel = qs(".geometry-panel");
   if (runDetailEmpty) {
     if (hasResults) runDetailEmpty.classList.add("hidden");
     else runDetailEmpty.classList.remove("hidden");
   }
+  if (geomPanel) {
+    if (hasResults) geomPanel.classList.remove("hidden");
+    else geomPanel.classList.add("hidden");
+  }
   if (!hasResults) {
     destroyCharts();
+    disposeGeometryRenderer();
+    state.runGeometry = null;
     renderPhaseTimeline([]);
     renderOperatorMessages([]);
     renderRunResultsTable([]);
@@ -760,6 +1247,7 @@ async function loadRunDetail(runId) {
   state.runRecent = recentEnv.results || [];
   setRangeButtonState(state.runDetailView.range);
   renderRunDetailFromState();
+  await loadRunGeometry(runId);
 
   const exportJson = qs("#runDetailExportJsonBtn");
   const exportCsv = qs("#runDetailExportCsvBtn");
@@ -841,6 +1329,9 @@ function wireUploadInteractions() {
 
 async function refreshCurrentPage() {
   const route = getRoute();
+  if (route.page !== "run-detail") {
+    disposeGeometryRenderer();
+  }
   await loadRuns();
   if (route.page === "dashboard") await loadDashboard();
   if (route.page === "runs") renderRunsList();
