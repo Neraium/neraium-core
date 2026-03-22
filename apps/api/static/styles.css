@@ -114,6 +114,11 @@ a:hover {
     0 6px 0 #e7eefc;
 }
 
+/* FAB variant: used when top bar is hidden on narrow viewports */
+.mobile-nav-fab {
+  display: none;
+}
+
 body.nav-mobile-open {
   overflow: hidden;
 }
@@ -3149,8 +3154,22 @@ input[type="file"] {
     pointer-events: auto;
   }
 
-  .mobile-nav-toggle {
-    display: inline-flex;
+  /* Remove the Operations header strip on phone/tablet — it dominated the viewport. */
+  .topbar {
+    display: none !important;
+  }
+
+  .mobile-nav-toggle.mobile-nav-fab {
+    display: flex;
+    position: fixed;
+    right: max(14px, env(safe-area-inset-right, 0px));
+    bottom: max(18px, env(safe-area-inset-bottom, 0px));
+    left: auto;
+    top: auto;
+    margin: 0;
+    z-index: 45;
+    box-shadow: 0 10px 28px rgba(1, 4, 11, 0.55);
+    border-radius: 14px;
   }
 
   .sidebar {
