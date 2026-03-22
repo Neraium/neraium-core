@@ -1488,6 +1488,15 @@ function setPage(page) {
   qsa(".page").forEach((p) => p.classList.add("hidden"));
   const pageEl = qs(`#page-${page}`);
   if (pageEl) pageEl.classList.remove("hidden");
+  const sharedGeom = qs("#sharedGeometryPanel");
+  if (sharedGeom) {
+    if (page === "dashboard" || page === "run-detail") {
+      sharedGeom.classList.remove("hidden");
+    } else {
+      sharedGeom.classList.add("hidden");
+      disposeGeometryRenderer();
+    }
+  }
   const [title, subtitle] = titles[page] || ["Neraium", ""];
   const titleEl = qs("#pageTitle");
   const subtitleEl = qs("#pageSubtitle");
@@ -1898,6 +1907,15 @@ async function loadDashboard() {
   renderDashboardMetrics(latest);
   renderDashboardRecent(state.dashboardRecent);
   renderDashboardAlerts(state.dashboardAlerts);
+  if (runId) {
+    const resultId = latest?.result_id ?? null;
+    await loadRunGeometry(runId, resultId);
+  } else {
+    disposeGeometryRenderer();
+    state.runGeometry = null;
+    setGeometrySurfaceState("No active run. Select or create a run to view system geometry.", "info");
+    updateGeometryDetails(null);
+  }
 }
 
 function exportData(format, runId) {
@@ -2223,13 +2241,9 @@ function currentRangeSlice(resultsChronological) {
 function renderRunDetailFromState() {
   const hasResults = state.runRecent.length > 0;
   const runDetailEmpty = qs("#runDetailEmpty");
-  const geomPanel = qs(".geometry-panel");
   if (runDetailEmpty) {
     if (hasResults) runDetailEmpty.classList.add("hidden");
     else runDetailEmpty.classList.remove("hidden");
-  }
-  if (geomPanel) {
-    geomPanel.classList.remove("hidden");
   }
   if (!hasResults) {
     destroyCharts();
@@ -2495,7 +2509,7 @@ function wireUploadInteractions() {
 
 async function refreshCurrentPage() {
   const route = getRoute();
-  if (route.page !== "run-detail") {
+  if (route.page !== "run-detail" && route.page !== "dashboard") {
     disposeGeometryRenderer();
   }
   await loadRuns();
