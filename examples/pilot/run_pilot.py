@@ -186,9 +186,9 @@ def generate_signals(t: int, rng: np.random.Generator) -> dict[str, float]:
     """
     Evolving multivariate scenario (timestep index t >= 0).
 
-    - t < 30: stable baseline — correlated, non-identical channels.
-    - 30 <= t < 60: regime shift — one channel ramps steadily vs the others.
-    - t >= 60: instability — independent high noise / coupling breakdown.
+    - t < 30: stable baseline - correlated, non-identical channels.
+    - 30 <= t < 60: regime shift - one channel ramps steadily vs the others.
+    - t >= 60: instability - independent high noise / coupling breakdown.
     """
     if t < 30:
         u = float(t)

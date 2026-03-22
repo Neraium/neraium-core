@@ -1,4 +1,4 @@
-# Neraium + GAL-2 test — Google Colab
+# Neraium + GAL-2 test - Google Colab
 
 Copy each block below into a separate Colab cell and run in order.
 

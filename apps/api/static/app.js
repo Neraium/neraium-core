@@ -481,7 +481,7 @@ function renderDashboardStressHeatmap(latest) {
   if (c !== null) parts.push(bar("Composite instability", c, c >= 0.65 ? "high" : c >= 0.35 ? "med" : "low"));
   host.innerHTML = parts.join("");
   if (legend) {
-    legend.textContent = `Normalized stress (0–100%) · latest snapshot${
+    legend.textContent = `Normalized stress (0 to 100%) · latest snapshot${
       d !== null ? ` · drift ${d.toFixed(2)}` : ""
     }${c !== null ? ` · composite ${c.toFixed(2)}` : ""}`;
   }
@@ -547,7 +547,7 @@ function renderDashboardHero(latest, prev) {
   const alertTile = qs("#dashboardAlertTile");
 
   const score = healthScoreFromSignals(latest);
-  if (scoreEl) scoreEl.textContent = latest ? String(score) : "—";
+  if (scoreEl) scoreEl.textContent = latest ? String(score) : "-";
   setHealthRingScore(latest ? score : 0);
   if (narrative) {
     const line = buildDemoNarrative(latest, prev);

@@ -48,7 +48,7 @@ def regime_shift_series(t: int, n: int = N_STEPS) -> dict[str, float]:
     COHERENCE/COUPLING instead of **REGIME_SHIFT_OBSERVED** in ``_interpret_state``.
 
     Regime B is kept **close** to A so ``relational_drift`` sits in ~1.15–1.35 for several
-    consecutive steps (composite ``latest_instability`` stays **< 2.0** — no ALERT).
+    consecutive steps (composite ``latest_instability`` stays **< 2.0** - no ALERT).
 
     Input JSON sets ``interpreted_smoothing: {"consecutive_required": 1}`` so a single raw
     REGIME_SHIFT tick can appear in pilot ``interpreted_state`` (see ``run_pilot._load_pilot_input``).
@@ -58,7 +58,7 @@ def regime_shift_series(t: int, n: int = N_STEPS) -> dict[str, float]:
 
     lift = 1.23 * (u**1.085)
 
-    # Mid-run cross-fade (narrower than 52-step variant — wide fades raised coupling / composite)
+    # Mid-run cross-fade (narrower than 52-step variant - wide fades raised coupling / composite)
     w = _smoothstep01((ft - 34.0) / 36.0)
 
     # --- Regime A (baseline)

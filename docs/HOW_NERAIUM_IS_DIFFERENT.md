@@ -80,7 +80,7 @@ Compared to traditional approaches, Neraium is designed to offer:
 |--------|----------------|
 | **Earlier detection** | Problems can surface before component degradation is obvious. |
 | **System-level visibility** | Operators see how instability develops **across** a system, not only inside one machine. |
-| **Less dependence on past failures** | Structural signals of instability complement—not replace—historical failure data. |
+| **Less dependence on past failures** | Structural signals of instability complement, not replace, historical failure data. |
 | **Clearer operational insights** | Alerts tie to **identifiable system behaviors** rather than opaque model scores alone. |
 
 ---
