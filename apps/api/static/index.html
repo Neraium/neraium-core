@@ -206,8 +206,22 @@
               <div class="row">
                 <button id="uploadSubmitBtn" type="submit">Upload and ingest</button>
               </div>
+              <section id="uploadProgressPanel" class="upload-progress hidden" aria-live="polite">
+                <div class="upload-progress-top">
+                  <strong id="uploadProgressTitle">Preparing upload…</strong>
+                  <span id="uploadProgressPercent">0%</span>
+                </div>
+                <div class="upload-progress-track">
+                  <div id="uploadProgressBar" class="upload-progress-bar"></div>
+                </div>
+                <p id="uploadProgressMessage" class="subtitle">Waiting to start.</p>
+                <p id="uploadProgressRows" class="subtitle"></p>
+                <ul id="uploadProgressErrors" class="upload-progress-errors"></ul>
+              </section>
             </form>
-            <p id="uploadHelpMessage" class="subtitle">Run-scoped ingestion via existing read-only pipeline.</p>
+            <p id="uploadHelpMessage" class="subtitle">
+              CSV uploads use streamed ingest with progress tracking and partial-success reporting.
+            </p>
           </section>
         </section>
 

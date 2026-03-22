@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import time
 
 import pytest
 
@@ -53,6 +54,26 @@ def _run_and_ingest(client: TestClient, customer_id: str = "customer-a") -> tupl
 def _customer_path(path: str, customer_id: str = "customer-a") -> str:
     sep = "&" if "?" in path else "?"
     return f"{path}{sep}customer_id={customer_id}"
+
+
+def _wait_for_ingest_job(
+    client: TestClient,
+    job_id: str,
+    *,
+    timeout_s: float = 8.0,
+    customer_id: str = "customer-a",
+) -> dict:
+    deadline = time.monotonic() + timeout_s
+    last: dict = {}
+    while time.monotonic() < deadline:
+        resp = client.get(_customer_path(f"/ingest/jobs/{job_id}", customer_id=customer_id))
+        assert resp.status_code == 200
+        payload = resp.json()
+        last = payload
+        if payload.get("status") in {"completed", "partial_success", "failed"}:
+            return payload
+        time.sleep(0.05)
+    raise AssertionError(f"ingest job did not complete before timeout; last={last}")
 
 
 def test_mvp_routes_available(tmp_path) -> None:
@@ -289,4 +310,87 @@ def test_customer_isolation_for_results_and_runs(tmp_path) -> None:
     assert runs_b.status_code == 200
     assert all(item["customer_id"] == "cust-a" for item in runs_a.json()["runs"])
     assert all(item["customer_id"] == "cust-b" for item in runs_b.json()["runs"])
+
+
+def test_streamed_csv_upload_job_completes_and_tracks_progress(tmp_path) -> None:
+    client = _client(tmp_path)
+    run = client.post(
+        _customer_path("/runs"),
+        json={"name": "stream-upload-run", "activate": True, "config": {}},
+    )
+    assert run.status_code == 200
+    run_id = run.json()["run"]["run_id"]
+
+    csv_bytes = (
+        "timestamp,site_id,asset_id,s1,s2\n"
+        "2026-01-01T00:00:00+00:00,site-a,asset-a,1.0,2.0\n"
+        "2026-01-01T00:00:01+00:00,site-a,asset-a,1.1,2.1\n"
+    ).encode("utf-8")
+    start = client.post(
+        _customer_path(f"/ingest/csv/upload?run_id={run_id}"),
+        files={"file": ("telemetry.csv", csv_bytes, "text/csv")},
+    )
+    assert start.status_code == 200
+    started = start.json()
+    assert started["job_id"]
+    assert started["status"] in {"uploading", "queued", "processing", "completed"}
+    assert started["upload_bytes_total"] is None or started["upload_bytes_total"] >= len(csv_bytes)
+
+    done = _wait_for_ingest_job(client, started["job_id"])
+    assert done["status"] == "completed"
+    assert done["rows_processed"] == 2
+    assert done["rows_succeeded"] == 2
+    assert done["rows_failed"] == 0
+
+    recent = client.get(_customer_path(f"/results/recent?run_id={run_id}&limit=10"))
+    assert recent.status_code == 200
+    assert recent.json()["count"] >= 2
+
+
+def test_streamed_csv_upload_reports_partial_success(tmp_path) -> None:
+    client = _client(tmp_path)
+    run = client.post(
+        _customer_path("/runs"),
+        json={"name": "stream-upload-partial", "activate": True, "config": {}},
+    )
+    assert run.status_code == 200
+    run_id = run.json()["run"]["run_id"]
+
+    csv_bytes = (
+        "timestamp,site_id,asset_id,s1\n"
+        "2026-01-01T00:00:00+00:00,site-a,asset-a,1.0\n"
+        "not-a-timestamp,site-a,asset-a,1.1\n"
+        "2026-01-01T00:00:02+00:00,site-a,asset-a,1.2\n"
+    ).encode("utf-8")
+    start = client.post(
+        _customer_path(f"/ingest/csv/upload?run_id={run_id}"),
+        files={"file": ("telemetry.csv", csv_bytes, "text/csv")},
+    )
+    assert start.status_code == 200
+    job_id = start.json()["job_id"]
+
+    done = _wait_for_ingest_job(client, job_id)
+    assert done["status"] == "partial_success"
+    assert done["rows_processed"] == 3
+    assert done["rows_succeeded"] == 2
+    assert done["rows_failed"] == 1
+    assert done["partial_success"] is True
+    assert done["error_samples"]
+    assert "Row" in str(done["error_samples"][0].get("message", ""))
+
+
+def test_stream_upload_rejects_non_csv_extension(tmp_path) -> None:
+    client = _client(tmp_path)
+    run = client.post(
+        _customer_path("/runs"),
+        json={"name": "stream-upload-invalid-ext", "activate": True, "config": {}},
+    )
+    assert run.status_code == 200
+    run_id = run.json()["run"]["run_id"]
+    resp = client.post(
+        _customer_path(f"/ingest/csv/upload?run_id={run_id}"),
+        files={"file": ("telemetry.txt", b"timestamp,site_id,asset_id,s1\n", "text/plain")},
+    )
+    assert resp.status_code == 400
+    assert ".csv file" in resp.json()["detail"]
 
