@@ -19,7 +19,7 @@ def main() -> None:
     root = Path(__file__).resolve().parent.parent
     parts: list[str] = []
     header = '''"""
-Neraium SII intelligence layer — single file for copy/paste.
+Neraium SII intelligence layer - single file for copy/paste.
 Dependencies: numpy only. Regime library defaults to ./regime_library.json
 
 For correlation / drift / spectral / composite math only (no StructuralEngine),
@@ -97,7 +97,7 @@ import numpy as np
 def _write_core_math_engine(root: Path) -> None:
     """Pure / shared numerical SII primitives (no engine, persistence, or API)."""
     header = '''"""
-Neraium SII core math engine — single file for copy/paste.
+Neraium SII core math engine - single file for copy/paste.
 Dependencies: numpy only.
 
 Contains: window normalization, correlation geometry, structural drift norms,

@@ -4,7 +4,7 @@ This file contains only the **intelligence** (structural analysis) Python code: 
 
 ---
 
-## 1. `neraium_core/geometry.py` — Correlation & structural drift
+## 1. `neraium_core/geometry.py` - Correlation & structural drift
 
 ```python
 from __future__ import annotations
@@ -93,7 +93,7 @@ def relational_structure(corr: ArrayLike) -> dict[str, np.ndarray | float]:
 
 ---
 
-## 2. `neraium_core/regime.py` — Regime signatures & assignment
+## 2. `neraium_core/regime.py` - Regime signatures & assignment
 
 ```python
 from __future__ import annotations
@@ -154,7 +154,7 @@ def update_regime_library(
 
 ---
 
-## 3. `neraium_core/scoring.py` — Composite instability score
+## 3. `neraium_core/scoring.py` - Composite instability score
 
 ```python
 from __future__ import annotations
@@ -292,7 +292,7 @@ def composite_instability_score_normalized(
 
 ---
 
-## 4. `neraium_core/decision_layer.py` — Interpreted state & operator output
+## 4. `neraium_core/decision_layer.py` - Interpreted state & operator output
 
 ```python
 from __future__ import annotations
@@ -445,7 +445,7 @@ def decision_output(
 
 ---
 
-## 5. `neraium_core/alignment.py` — StructuralEngine (main intelligence pipeline)
+## 5. `neraium_core/alignment.py` - StructuralEngine (main intelligence pipeline)
 
 This is the main SII engine: it ingests frames, runs data quality, baseline vs recent correlation geometry, regime assignment, spectral/directional/causal/subsystem metrics, confidence-weighted composite score, and decision_output. **Location in repo:** `neraium_core/alignment.py` (full file ~382 lines). It imports and uses:
 
@@ -475,24 +475,24 @@ def process_frame(self, frame: Dict) -> Dict:
     #          latest_instability, interpreted_state, phase, risk_level, operator_message, ...
 ```
 
-Full `alignment.py` lives in your repo at **`neraium_core/alignment.py`** — open that file for the complete engine.
+Full `alignment.py` lives in your repo at **`neraium_core/alignment.py`** - open that file for the complete engine.
 
 ---
 
 ## 6. Supporting intelligence modules (short)
 
-- **`neraium_core/forecasting.py`** — `instability_trend(series)`, `time_to_instability(series, threshold=1.5)` (linear regression trend and time-to-threshold).
-- **`neraium_core/forecast_models.py`** — `forecast_next(series)`, `time_to_threshold_ar1(series, threshold=1.5)` (AR(1) one-step forecast and time-to-threshold).
-- **`neraium_core/early_warning.py`** — `early_warning_metrics(observations)` → variance and lag-1 autocorrelation.
-- **`neraium_core/data_quality.py`** — `compute_data_quality(baseline_matrix, recent_matrix, ...)` → DataQualityReport (missingness, flatlined/stale sensors, gate_passed).
-- **`neraium_core/spectral.py`** — `spectral_radius`, `spectral_gap`, `dominant_mode_loading` from correlation matrix.
-- **`neraium_core/entropy.py`** — `interaction_entropy(matrix)` from correlation magnitudes.
-- **`neraium_core/graph.py`** — `thresholded_adjacency(corr, threshold=0.6)`, `graph_metrics(adjacency, corr)`.
-- **`neraium_core/directional.py`** — `lagged_correlation_matrix(observations, lag=1)`, `directional_metrics(matrix)`.
-- **`neraium_core/casual.py`** (used as `causal`) — `granger_causality_matrix(X, lag=1)`, `causal_metrics(C)`.
-- **`neraium_core/causal_graph.py`** — `causal_graph_metrics(C, threshold=0.1)`.
-- **`neraium_core/subsystems.py`** — `subsystem_spectral_measures(corr, k=3)` (subsystem instability from spectral clustering).
-- **`regime_store.py`** (project root) — `RegimeStore(path)` load/save regime library JSON.
+- **`neraium_core/forecasting.py`** - `instability_trend(series)`, `time_to_instability(series, threshold=1.5)` (linear regression trend and time-to-threshold).
+- **`neraium_core/forecast_models.py`** - `forecast_next(series)`, `time_to_threshold_ar1(series, threshold=1.5)` (AR(1) one-step forecast and time-to-threshold).
+- **`neraium_core/early_warning.py`** - `early_warning_metrics(observations)` → variance and lag-1 autocorrelation.
+- **`neraium_core/data_quality.py`** - `compute_data_quality(baseline_matrix, recent_matrix, ...)` → DataQualityReport (missingness, flatlined/stale sensors, gate_passed).
+- **`neraium_core/spectral.py`** - `spectral_radius`, `spectral_gap`, `dominant_mode_loading` from correlation matrix.
+- **`neraium_core/entropy.py`** - `interaction_entropy(matrix)` from correlation magnitudes.
+- **`neraium_core/graph.py`** - `thresholded_adjacency(corr, threshold=0.6)`, `graph_metrics(adjacency, corr)`.
+- **`neraium_core/directional.py`** - `lagged_correlation_matrix(observations, lag=1)`, `directional_metrics(matrix)`.
+- **`neraium_core/casual.py`** (used as `causal`) - `granger_causality_matrix(X, lag=1)`, `causal_metrics(C)`.
+- **`neraium_core/causal_graph.py`** - `causal_graph_metrics(C, threshold=0.1)`.
+- **`neraium_core/subsystems.py`** - `subsystem_spectral_measures(corr, k=3)` (subsystem instability from spectral clustering).
+- **`regime_store.py`** (project root) - `RegimeStore(path)` load/save regime library JSON.
 
 ---
 

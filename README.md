@@ -7,7 +7,7 @@ It ingests multivariate telemetry, computes **Systemic Infrastructure Intelligen
 
 ## How Neraium is different
 
-Most tools optimize for **single sensors** or **component failure prediction**: thresholds, per-signal anomalies, or models trained on “normal” history. Neraium focuses on **systemic stability**—how signals **relate** to each other over time—so teams can see **structural drift and approaching instability** before many component-level alarms fire.
+Most tools optimize for **single sensors** or **component failure prediction**: thresholds, per-signal anomalies, or models trained on “normal” history. Neraium focuses on **systemic stability**, how signals **relate** to each other over time, so teams can see **structural drift and approaching instability** before many component-level alarms fire.
 
 | Typical approach | Neraium |
 |------------------|---------|
@@ -202,9 +202,9 @@ python run_demo.py
 
 Options:
 
-- `--host HOST` — bind address (default: 0.0.0.0)
-- `--port PORT` — port (default: 8000, or `PORT` env)
-- `--share` — start a public tunnel (ngrok or cloudflared) for sharing
+- `--host HOST` - bind address (default: 0.0.0.0)
+- `--port PORT` - port (default: 8000, or `PORT` env)
+- `--share` - start a public tunnel (ngrok or cloudflared) for sharing
 
 Examples:
 
@@ -345,8 +345,8 @@ The runner sets `NERAIUM_PILOT_HARDENING=1` for you.
   python run_pilot.py --input examples/pilot/scenarios/regime_shift_inputs.json --output pilot_regime_shift.json
   python run_pilot.py --input examples/pilot/scenarios/structural_instability_inputs.json --output pilot_structural_instability.json
   ```
-  - **regime_shift** — smooth cross-fade between two coherent relational regimes; tuned for **REGIME_SHIFT_OBSERVED** / low **WATCH** without **ALERT** (``interpreted_smoothing.consecutive_required`` may be set in the JSON).  
-  - **structural_instability** — calm phase then rising variance and diverging cross-sensor behavior (no missing data).
+  - **regime_shift** - smooth cross-fade between two coherent relational regimes; tuned for **REGIME_SHIFT_OBSERVED** / low **WATCH** without **ALERT** (``interpreted_smoothing.consecutive_required`` may be set in the JSON).  
+  - **structural_instability** - calm phase then rising variance and diverging cross-sensor behavior (no missing data).
 
   Optional input envelope keys (alongside ``payloads``): ``interpreted_smoothing: { \"consecutive_required\": 1–10 }`` overrides pilot hysteresis for that file only.
 
