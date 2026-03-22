@@ -140,6 +140,53 @@ const state = {
   },
 };
 
+const chartTheme = {
+  tickColor: "#9cb0ce",
+  gridColor: "rgba(153, 178, 217, 0.12)",
+  legendColor: "#d8e5ff",
+  tooltipBg: "rgba(6, 12, 23, 0.92)",
+  tooltipBorder: "#3d5786",
+};
+
+function buildTrendChartOptions() {
+  return {
+    responsive: true,
+    maintainAspectRatio: false,
+    interaction: {
+      mode: "index",
+      intersect: false,
+    },
+    scales: {
+      x: {
+        ticks: { color: chartTheme.tickColor, maxRotation: 0, autoSkip: true, maxTicksLimit: 6 },
+        grid: { color: chartTheme.gridColor },
+      },
+      y: {
+        ticks: { color: chartTheme.tickColor },
+        grid: { color: chartTheme.gridColor },
+      },
+    },
+    plugins: {
+      legend: {
+        labels: {
+          color: chartTheme.legendColor,
+          usePointStyle: true,
+          pointStyle: "circle",
+          boxHeight: 7,
+        },
+      },
+      tooltip: {
+        backgroundColor: chartTheme.tooltipBg,
+        borderColor: chartTheme.tooltipBorder,
+        borderWidth: 1,
+        titleColor: "#ecf3ff",
+        bodyColor: "#cfddf8",
+        displayColors: false,
+      },
+    },
+  };
+}
+
 function createToast(message, type = "success") {
   const container = qs("#toastContainer");
   if (!container || !message) return;
@@ -488,6 +535,7 @@ function renderRunDetailCharts(results) {
   const labels = results.map((r) => String(r.timestamp || r.persisted_at || r.result_id || ""));
   const driftValues = results.map((r) => structuralDriftFromResult(r) ?? 0);
   const compositeValues = results.map((r) => compositeInstabilityFromResult(r) ?? 0);
+  const sharedOptions = buildTrendChartOptions();
 
   const driftCtx = qs("#driftChart");
   const compCtx = qs("#compositeChart");
@@ -500,25 +548,17 @@ function renderRunDetailCharts(results) {
           {
             label: "structural_drift_score",
             data: driftValues,
-            borderColor: "#60a5fa",
-            backgroundColor: "rgba(96, 165, 250, 0.2)",
+            borderColor: "#79abff",
+            backgroundColor: "rgba(106, 156, 250, 0.24)",
+            borderWidth: 2,
             fill: true,
-            tension: 0.2,
-            pointRadius: 2,
+            tension: 0.3,
+            pointRadius: 0,
+            pointHoverRadius: 3,
           },
         ],
       },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        scales: {
-          x: { ticks: { color: "#94a3b8" }, grid: { color: "rgba(148,163,184,0.08)" } },
-          y: { ticks: { color: "#94a3b8" }, grid: { color: "rgba(148,163,184,0.08)" } },
-        },
-        plugins: {
-          legend: { labels: { color: "#cbd5e1" } },
-        },
-      },
+      options: sharedOptions,
     });
   }
   if (compCtx && window.Chart) {
@@ -530,25 +570,17 @@ function renderRunDetailCharts(results) {
           {
             label: "composite_instability",
             data: compositeValues,
-            borderColor: "#f59e0b",
-            backgroundColor: "rgba(245, 158, 11, 0.2)",
+            borderColor: "#ffbf56",
+            backgroundColor: "rgba(242, 179, 74, 0.2)",
+            borderWidth: 2,
             fill: true,
-            tension: 0.2,
-            pointRadius: 2,
+            tension: 0.3,
+            pointRadius: 0,
+            pointHoverRadius: 3,
           },
         ],
       },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        scales: {
-          x: { ticks: { color: "#94a3b8" }, grid: { color: "rgba(148,163,184,0.08)" } },
-          y: { ticks: { color: "#94a3b8" }, grid: { color: "rgba(148,163,184,0.08)" } },
-        },
-        plugins: {
-          legend: { labels: { color: "#cbd5e1" } },
-        },
-      },
+      options: sharedOptions,
     });
   }
 }

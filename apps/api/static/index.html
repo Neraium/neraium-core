@@ -18,10 +18,14 @@
   <div class="app-shell">
     <aside class="sidebar">
       <div class="brand">
-        <h1>Neraium</h1>
-        <p>Systemic Infrastructure Intelligence</p>
+        <div class="brand-mark" aria-hidden="true">N</div>
+        <div class="brand-text">
+          <h1>Neraium</h1>
+          <p>Systemic Infrastructure Intelligence</p>
+        </div>
       </div>
       <nav class="nav">
+        <p class="nav-section-title">Workspace</p>
         <a href="/dashboard" data-nav="dashboard">Dashboard</a>
         <a href="/app/runs" data-nav="runs">Runs</a>
         <a href="/upload" data-nav="upload">Upload</a>
@@ -35,7 +39,8 @@
 
     <div class="main">
       <header class="topbar">
-        <div>
+        <div class="title-block">
+          <p class="kicker">Operations Console</p>
           <h2 id="pageTitle">Dashboard</h2>
           <p id="pageSubtitle" class="subtitle">Live summary of structural stability</p>
         </div>
@@ -49,7 +54,7 @@
 
       <main class="content">
         <!-- DASHBOARD -->
-        <section id="page-dashboard" class="page">
+        <section id="page-dashboard" class="page page-dashboard">
           <div class="summary-grid">
             <article class="metric-card emphasis">
               <h3>Risk level</h3>
@@ -62,25 +67,25 @@
               <div id="metricPhaseBadge"></div>
             </article>
             <article class="metric-card">
-              <h3>structural_drift_score</h3>
+              <h3>Structural drift score</h3>
               <p id="metricDrift" class="metric-value">-</p>
             </article>
             <article class="metric-card">
-              <h3>composite_instability</h3>
+              <h3>Composite instability</h3>
               <p id="metricComposite" class="metric-value">-</p>
             </article>
             <article class="metric-card">
-              <h3>trend</h3>
+              <h3>Trend direction</h3>
               <p id="metricTrend" class="metric-value">-</p>
             </article>
             <article class="metric-card">
-              <h3>state / confidence</h3>
+              <h3>State / confidence</h3>
               <p id="metricState" class="metric-value">-</p>
               <p id="metricConfidence" class="subtle-row">-</p>
             </article>
           </div>
 
-          <section class="panel">
+          <section class="panel operator-panel">
             <h3>Operator message</h3>
             <p id="metricOperatorMessage" class="operator-message">No results yet. Upload telemetry or seed demo data.</p>
           </section>
@@ -88,7 +93,7 @@
           <section class="panel">
             <div class="panel-header">
               <h3>Recent results</h3>
-              <div class="row">
+              <div class="row panel-actions">
                 <button id="exportJsonBtn" type="button">Export JSON</button>
                 <button id="exportCsvBtn" type="button" class="secondary">Export CSV</button>
               </div>
@@ -98,7 +103,7 @@
               <p class="subtitle">Use <strong>Upload</strong> to ingest CSV, or click <strong>Seed Demo Data</strong>.</p>
             </div>
             <div class="table-wrap">
-              <table>
+              <table class="data-table">
                 <thead>
                   <tr>
                     <th>ID</th>
@@ -159,7 +164,7 @@
               <p>No runs match your filters.</p>
             </div>
             <div class="table-wrap">
-              <table>
+              <table class="data-table">
                 <thead>
                   <tr>
                     <th>Name</th>
@@ -200,7 +205,7 @@
           <section class="panel">
             <div class="panel-header">
               <h3 id="runDetailTitle">Run detail</h3>
-              <div class="row">
+              <div class="row panel-actions">
                 <button id="runDetailExportJsonBtn" type="button">Export JSON</button>
                 <button id="runDetailExportCsvBtn" type="button" class="secondary">Export CSV</button>
               </div>
@@ -223,11 +228,11 @@
             </div>
             <div class="chart-grid">
               <div class="chart-panel">
-                <h4>structural_drift_score</h4>
+                <h4>Structural drift score</h4>
                 <canvas id="driftChart"></canvas>
               </div>
               <div class="chart-panel">
-                <h4>composite_instability</h4>
+                <h4>Composite instability</h4>
                 <canvas id="compositeChart"></canvas>
               </div>
             </div>
@@ -261,7 +266,7 @@
               </select>
             </div>
             <div class="table-wrap">
-              <table>
+              <table class="data-table">
                 <thead>
                   <tr>
                     <th>ID</th>
