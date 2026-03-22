@@ -8,18 +8,24 @@ pytest.importorskip("httpx")
 
 from fastapi.testclient import TestClient
 
-from apps.api.main import create_app
+from apps.api.main import DEFAULT_MAX_REQUEST_BODY_BYTES, create_app
 from neraium_core.alignment import StructuralEngine
 from neraium_core.service import StructuralMonitoringService
 from neraium_core.store import ResultStore
 
 
-def _client(tmp_path) -> TestClient:
+def _client(tmp_path, *, max_request_body_bytes: int | None = None) -> TestClient:
     store = ResultStore(db_path=str(tmp_path / "test_mvp.db"))
     engine = StructuralEngine(baseline_window=5, recent_window=3)
     service = StructuralMonitoringService(engine=engine, store=store)
-    app = create_app(service=service)
+    app = create_app(service=service, max_request_body_bytes=max_request_body_bytes)
     return TestClient(app)
+
+
+def _generate_csv_rows(row_count: int) -> str:
+    header = "timestamp,site_id,asset_id,s1\n"
+    row = "2026-01-01T00:00:00+00:00,a,b,1\n"
+    return header + (row * row_count)
 
 
 def _run_and_ingest(client: TestClient) -> tuple[str, int]:
@@ -161,4 +167,49 @@ def test_update_and_activate_run_routes(tmp_path) -> None:
     active = client.get("/runs/active")
     assert active.status_code == 200
     assert active.json()["run"]["run_id"] == run2
+
+
+def test_request_body_limit_allows_50mb_and_rejects_over_limit(tmp_path) -> None:
+    assert DEFAULT_MAX_REQUEST_BODY_BYTES >= 50 * 1024 * 1024
+
+    # Use a much smaller limit in test to keep runtime/memory bounded while
+    # exercising the same middleware code path.
+    client = _client(tmp_path, max_request_body_bytes=2048)
+    run = client.post(
+        "/runs",
+        json={"name": "size-limit-run", "activate": True, "config": {}},
+    )
+    assert run.status_code == 200
+    run_id = run.json()["run"]["run_id"]
+
+    allowed_csv = _generate_csv_rows(30)
+    allowed_payload = {"csv_text": allowed_csv}
+    allowed_resp = client.post(f"/ingest/csv?run_id={run_id}", json=allowed_payload)
+    assert allowed_resp.status_code == 200
+    assert allowed_resp.json()["count"] > 0
+
+    too_large_csv = _generate_csv_rows(120)
+    too_large_payload = {"csv_text": too_large_csv}
+    too_large_resp = client.post(f"/ingest/csv?run_id={run_id}", json=too_large_payload)
+    assert too_large_resp.status_code == 413
+    assert "Request body too large" in too_large_resp.json()["detail"]
+
+
+def test_request_body_limit_short_circuits_content_length(tmp_path) -> None:
+    client = _client(tmp_path, max_request_body_bytes=2048)
+    run = client.post(
+        "/runs",
+        json={"name": "size-limit-run-header", "activate": True, "config": {}},
+    )
+    assert run.status_code == 200
+    run_id = run.json()["run"]["run_id"]
+
+    oversized_csv = _generate_csv_rows(40)
+    response = client.post(
+        f"/ingest/csv?run_id={run_id}",
+        json={"csv_text": oversized_csv},
+        headers={"content-length": str(2048 + 10)},
+    )
+    assert response.status_code == 413
+    assert "Request body too large" in response.json()["detail"]
 
