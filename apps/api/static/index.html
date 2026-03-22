@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Neraium SII MVP</title>
+  <link rel="stylesheet" href="/web/styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <h1>Neraium SII MVP</h1>
+    <div class="topbar-actions">
+      <button id="refreshBtn" type="button">Refresh</button>
+      <button id="newRunBtn" type="button">New Run</button>
+    </div>
+  </header>
+
+  <main class="layout">
+    <aside class="panel">
+      <h2>Runs</h2>
+      <div id="activeRun"></div>
+      <ul id="runsList" class="list"></ul>
+      <form id="runForm" class="stack hidden">
+        <input id="runNameInput" placeholder="Run name" required />
+        <textarea id="runConfigInput" rows="4" placeholder='{"site_id":"site-A"}'></textarea>
+        <div class="row">
+          <button type="submit">Create</button>
+          <button type="button" id="cancelRunBtn">Cancel</button>
+        </div>
+      </form>
+    </aside>
+
+    <section class="panel">
+      <h2>CSV Upload</h2>
+      <form id="csvForm" class="stack">
+        <input id="csvFileInput" type="file" accept=".csv,text/csv" required />
+        <button type="submit">Ingest CSV</button>
+      </form>
+      <p class="muted">Upload telemetry CSV using existing ingest pipeline.</p>
+    </section>
+
+    <section class="panel span-2">
+      <h2>Latest Result</h2>
+      <div id="latestEmpty" class="muted">No result yet.</div>
+      <div id="latestView" class="hidden">
+        <div class="grid">
+          <div><span class="k">structural_drift_score</span><span id="mDrift" class="v"></span></div>
+          <div><span class="k">composite_instability</span><span id="mComposite" class="v"></span></div>
+          <div><span class="k">phase</span><span id="mPhase" class="v"></span></div>
+          <div><span class="k">trend</span><span id="mTrend" class="v"></span></div>
+          <div><span class="k">risk_level</span><span id="mRisk" class="v"></span></div>
+          <div><span class="k">operator_message</span><span id="mMsg" class="v"></span></div>
+        </div>
+      </div>
+      <div class="row">
+        <button id="exportCsvBtn" type="button">Export CSV</button>
+        <button id="exportJsonBtn" type="button">Export JSON</button>
+      </div>
+    </section>
+
+    <section class="panel span-2">
+      <h2>Recent Results</h2>
+      <table id="recentTable">
+        <thead>
+          <tr>
+            <th>id</th>
+            <th>timestamp</th>
+            <th>state</th>
+            <th>phase</th>
+            <th>risk</th>
+            <th>drift</th>
+            <th>composite</th>
+          </tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </section>
+  </main>
+
+  <script src="/web/app.js"></script>
+</body>
+</html>
