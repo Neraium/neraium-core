@@ -221,6 +221,14 @@ Quick start (Docker Compose):
 docker compose up --build
 ```
 
+One-command customer start:
+
+```bash
+cp .env.customer.example .env
+cp config/integration.customer.sample.json config/integration.json
+docker compose up --build
+```
+
 Notes:
 
 - Neraium stays **read-only** (no control/actuation path).

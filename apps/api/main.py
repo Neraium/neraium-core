@@ -43,6 +43,15 @@ DEFAULT_UPLOAD_STREAM_CHUNK_BYTES = 1024 * 1024
 DEFAULT_INGEST_JOB_MAX_ERROR_SAMPLES = 25
 
 
+def _configure_logging() -> None:
+    raw = str(os.getenv("NERAIUM_LOG_LEVEL", "INFO")).strip().upper()
+    level = getattr(logging, raw, logging.INFO)
+    logging.basicConfig(
+        level=level,
+        format="%(asctime)s %(levelname)s %(name)s %(message)s",
+    )
+
+
 class RequestBodyTooLargeError(Exception):
     """Raised when an incoming request body exceeds configured max size."""
 
