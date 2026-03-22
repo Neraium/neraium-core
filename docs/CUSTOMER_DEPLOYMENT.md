@@ -15,10 +15,10 @@ When deployed customer-side:
 
 ## 1) Configure environment
 
-Use `.env.example` as a template:
+Use `.env.customer.example` as a template:
 
 ```bash
-cp .env.example .env
+cp .env.customer.example .env
 ```
 
 Set at minimum:
@@ -106,7 +106,7 @@ Mapping is config-driven via `NERAIUM_INTEGRATION_CONFIG_PATH`.
 
 See:
 
-- `config/integration.example.json`
+- `config/integration.customer.sample.json`
 
 Supports:
 
@@ -116,6 +116,18 @@ Supports:
 - sensor extraction from nested object
 
 This keeps customer payload differences out of the engine code.
+
+## 5.1) One-command startup
+
+After creating `.env` and adding the integration sample config:
+
+```bash
+mkdir -p data config
+cp config/integration.customer.sample.json config/integration.json
+docker compose up --build
+```
+
+This starts the API and UI at `http://localhost:8000` with local persistence in `./data`.
 
 ## 6) Security posture notes
 
