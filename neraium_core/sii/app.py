@@ -35,6 +35,12 @@ class SIIApplication:
         return cls.from_config(SIIConfig.from_env())
 
     def run_payloads(self, payloads: list[dict[str, Any]]) -> list[SIIResult]:
+        """
+        Process telemetry payloads through the read-only SII engine.
+
+        The engine state is intentionally stateful across payloads to support
+        regime memory and temporal windows.
+        """
         outputs: list[SIIResult] = []
         for payload in payloads:
             outputs.append(self.engine.process_payload(payload))

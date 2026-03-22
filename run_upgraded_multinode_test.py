@@ -28,7 +28,6 @@ from __future__ import annotations
 import json
 import math
 import os
-import tempfile
 import urllib.request
 from collections import deque
 from dataclasses import dataclass
@@ -39,12 +38,10 @@ import numpy as np
 
 try:
     import pandas as pd
-except ModuleNotFoundError:  # pragma: no cover
-    import subprocess
-    import sys
-
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "-q", "pandas"])
-    import pandas as pd
+except ModuleNotFoundError as exc:  # pragma: no cover
+    raise SystemExit(
+        "Missing dependency: pandas. Install project dependencies before running this benchmark harness."
+    ) from exc
 
 # Optional: shared geometry helpers from package (Colab: install package or vendor file)
 from neraium_core.stability_evaluation import compute_operational_stability_index
@@ -54,7 +51,6 @@ from neraium_core.staged_pipeline import (
     DecisionStage,
     FeatureExtractionStage,
     LocalizationStage,
-    MIN_BASELINE_SAMPLES_FOR_CALIBRATION,
     NodeBaselineProfile,
     NodeRuntime,
     RegimeStage,
@@ -1132,399 +1128,398 @@ def run_benchmark() -> tuple[
     driver_hist: dict[str, deque[str]] = {n: deque(maxlen=8) for n in NODES}
     fusion_coherence_lift_samples: list[tuple[str, float]] = []
 
-    with tempfile.TemporaryDirectory(prefix="sii_arch_") as _tmp:
-        for condition in CONDITIONS:
-            baseline_dec_adj_hist: dict[str, list[float]] = {n: [] for n in NODES}
-            frozen_thr: dict[str, tuple[float, float]] = {}
-            runtimes: dict[str, NodeRuntime] = {
-                node: NodeRuntime(
-                    node=node,
-                    variant=NODE_VARIANTS[node],
-                    sensor_names=["s1", "s2", "s3"],
-                    baseline_window=BASELINE_WINDOW,
-                    recent_window=RECENT_WINDOW,
-                )
-                for node in NODES
-            }
-            sensor_rngs = {
-                node: np.random.default_rng(
-                    SEED + (ord(node) - ord("A")) * 997 + (0 if condition == "coherent_time" else 50000)
-                )
-                for node in NODES
-            }
+    for condition in CONDITIONS:
+        baseline_dec_adj_hist: dict[str, list[float]] = {n: [] for n in NODES}
+        frozen_thr: dict[str, tuple[float, float]] = {}
+        runtimes: dict[str, NodeRuntime] = {
+            node: NodeRuntime(
+                node=node,
+                variant=NODE_VARIANTS[node],
+                sensor_names=["s1", "s2", "s3"],
+                baseline_window=BASELINE_WINDOW,
+                recent_window=RECENT_WINDOW,
+            )
+            for node in NODES
+        }
+        sensor_rngs = {
+            node: np.random.default_rng(
+                SEED + (ord(node) - ord("A")) * 997 + (0 if condition == "coherent_time" else 50000)
+            )
+            for node in NODES
+        }
 
-            for step in range(N_STEPS):
-                phase = phase_for_step(step)
-                provisional: dict[str, dict[str, Any]] = {}
-                anomaly_evidence: dict[str, float] = {}
+        for step in range(N_STEPS):
+            phase = phase_for_step(step)
+            provisional: dict[str, dict[str, Any]] = {}
+            anomaly_evidence: dict[str, float] = {}
 
-                for node in NODES:
-                    rt = runtimes[node]
-                    variant = NODE_VARIANTS[node]
-                    ts = parse_ts(timestamps_by_condition[condition][step])
-                    sensors = generate_sensors(node, step, ts, condition, sensor_rngs[node], variant)
-                    rt.push(ts, sensors)
-
-                    baseline = rt.baseline_matrix()
-                    recent = rt.recent_matrix()
-                    ts_base = rt.baseline_timestamps()
-                    ts_recent = rt.recent_timestamps()
-
-                    if baseline is None or recent is None:
-                        provisional[node] = _warmup_row(timestamps_by_condition[condition][step], condition, node, phase)
-                        anomaly_evidence[node] = 0.0
-                        continue
-
-                    dq = stage_data_quality(baseline, recent, ts_base, ts_recent)
-                    feats = FeatureExtractionStage.extract(baseline, recent)
-                    if rt.baseline_profile.corr_baseline is None:
-                        rt.baseline_profile.corr_baseline = feats["corr_base"].copy()
-
-                    gal2_d = gal2_timing_distortion_index(ts_recent, expected_dt=1.0)
-                    t_coh = temporal_coherence_score(gal2_d)
-
-                    raw_s, raw_r, norm_s, norm_r = stage_structural_and_relational(feats, rt.baseline_profile, variant)
-                    raw_temp, norm_temp = stage_temporal_raw(ts_recent, rt.baseline_profile)
-                    regime_sig = build_variant_regime_signature(
-                        variant=variant,
-                        feats=feats,
-                        norm_temp=norm_temp,
-                        gal2_distortion=gal2_d,
-                        temporal_coh=t_coh,
-                    )
-                    regime_distance = stage_regime(rt, regime_sig)
-                    norm_reg = clamp(float(regime_distance) / max(0.25, float(rt.regime_memory.threshold)), 0.0, 4.0)
-
-                    corr_base = np.asarray(feats["corr_base"], dtype=float)
-                    corr_recent = np.asarray(feats["corr_recent"], dtype=float)
-                    graph_deformation_raw = float(np.mean(np.abs(corr_recent - corr_base)))
-                    graph_deformation_norm = graph_deformation_raw
-                    if nominals[node].finalized:
-                        graph_deformation_norm = float(
-                            abs(graph_deformation_raw - nominals[node].graph_mu) / (
-                                max(abs(nominals[node].graph_mu), nominals[node].graph_sigma, 1e-6)
-                            )
-                        )
-                    graph_deformation_norm = float(clamp(graph_deformation_norm, 0.0, 4.0))
-                    structural_coherence_loss = float(
-                        clamp(abs(norm_s - norm_r) / (max(norm_s, norm_r) + 1.0), 0.0, 1.0)
-                    )
-
-                    comp = apply_variant_enhancement(
-                        variant,
-                        condition,
-                        norm_struct=norm_s,
-                        norm_rel=norm_r,
-                        norm_regime=norm_reg,
-                        norm_temp=norm_temp,
-                        norm_graph=graph_deformation_norm,
-                        norm_structural_coherence_loss=structural_coherence_loss,
-                        gal2_distortion=gal2_d,
-                        temporal_coh=t_coh,
-                        dq=dq,
-                    )
-
-                    raw_min = raw_telemetry_instability(recent, baseline, nominals[node])
-                    comp["raw_sensor_departure_score"] = raw_min
-                    comp["raw_minimal_path_score"] = raw_minimal_instability(
-                        raw_sensor_departure=raw_min,
-                        graph_deformation=comp.get("graph_deformation", 0.0),
-                        temporal_distortion=comp.get("temporal_distortion", 0.0),
-                    )
-
-                    if variant == "control_sii":
-                        inst = float(comp.get("sii_structural_path_score", 0.0))
-                    elif variant == "gal2_temporal":
-                        inst = float(comp.get("external_context_path_score", 0.0))
-                    elif variant == "raw_telemetry":
-                        inst = float(comp.get("raw_minimal_path_score", 0.0))
-                    elif variant == "combined_fusion":
-                        inst = combined_fusion_instability(
-                            comp,
-                            t_coh,
-                            0.0,
-                            phase,
-                        )
-                    else:
-                        inst = float(comp.get("sii_structural_path_score", 0.0))
-
-                    inst = max(0.0, float(inst))
-                    rt.score_history.append(float(inst))
-
-                    trend = 0.0
-                    if len(rt.score_history) >= 6:
-                        y = np.array(list(rt.score_history)[-6:], dtype=float)
-                        x = np.arange(len(y), dtype=float)
-                        A = np.vstack([x, np.ones_like(x)]).T
-                        slope, _ = np.linalg.lstsq(A, y, rcond=None)[0]
-                        trend = float(slope)
-
-                    nmod = nominals[node]
-                    ncs = nmod.nominal_consistency(inst)
-                    bdz = nmod.baseline_deviation_z(inst)
-
-                    cscore = confidence_score_v2(
-                        dq, comp, rt.score_history, nmod, driver_hist[node], t_coh, inst
-                    )
-                    ccat = confidence_categorical(cscore)
-
-                    provisional[node] = {
-                        "state": "STABLE",
-                        "interpreted_state": "NOMINAL_STRUCTURE",
-                        "confidence": ccat,
-                        "confidence_score": cscore,
-                        "structural_drift_score": raw_s,
-                        "relational_instability_score": raw_r,
-                        "regime_distance": float(regime_distance),
-                        "temporal_distortion_score": raw_temp,
-                        "gal2_timing_distortion_index": gal2_d,
-                        "temporal_coherence_score": t_coh,
-                        "nominal_consistency_score": ncs,
-                        "baseline_deviation_zscore": bdz,
-                        "localization_score": 0.0,
-                        "anomaly_evidence": float(inst),
-                        "components": comp,
-                        "trend": trend,
-                        "dominant_driver": None,
-                        "explanation": "",
-                        "data_quality_summary": {
-                            "gate_passed": bool(dq["gate_passed"]),
-                            "missingness_rate": float(dq["missingness_rate"]),
-                            "timestamp_irregularity": float(dq["timestamp_irregularity"]),
-                            "valid_signal_count": int(dq["valid_signal_count"]),
-                            "total_sensors": int(dq["total_sensors"]),
-                            "statuses": list(dq["statuses"]),
-                        },
-                        "latest_instability": float(inst),
-                        "drift_alert": bool(raw_s > 1.5),
-                        "variant": variant,
-                    }
-                    anomaly_evidence[node] = float(inst)
-
-                    if phase == "baseline":
-                        rt._baseline_corr_drift.append(float(raw_s))
-                        rt._baseline_relational.append(float(raw_r))
-                        rt._baseline_graph.append(float(comp.get("graph_deformation", 0.0)))
-                        rt._baseline_gap.append(float(raw_temp))
-                        rt._baseline_instability.append(float(inst))
-                        finalize_baseline(rt, nominals[node])
-
-                loc_scores = LocalizationStage.compute(anomaly_evidence)
-
-                for node in NODES:
-                    rt = runtimes[node]
-                    p = provisional[node]
-                    if "latest_instability" not in p:
-                        continue
-                    loc = float(loc_scores[node])
-                    p["localization_score"] = loc
-                    spillover = float(1.0 - max(anomaly_evidence.values()) / (sum(anomaly_evidence.values()) + 1e-9))
-                    p["spillover_index"] = clamp(spillover, 0.0, 1.0)
-
-                    variant = NODE_VARIANTS[node]
-                    if variant == "combined_fusion":
-                        adj = combined_fusion_instability(
-                            p["components"],
-                            p["temporal_coherence_score"],
-                            loc,
-                            phase,
-                        )
-                        if phase == "perturbation" and node == "D":
-                            tc = float(p["temporal_coherence_score"])
-                            gd = float(
-                                p["components"].get(
-                                    "gal2_isolated_distortion",
-                                    p["gal2_timing_distortion_index"],
-                                )
-                            )
-                            coh_eff = effective_fusion_coherence(tc, gd, phase)
-                            fusion_coherence_lift_samples.append((condition, coh_eff - tc))
-                    elif variant == "control_sii":
-                        adj = float(p["components"].get("sii_structural_path_score", p["latest_instability"]))
-                    elif variant == "gal2_temporal":
-                        adj = float(p["components"].get("external_context_path_score", p["latest_instability"]))
-                    elif variant == "raw_telemetry":
-                        adj = float(p["components"].get("raw_minimal_path_score", p["latest_instability"]))
-                    else:
-                        adj = float(p["latest_instability"])
-
-                    dec_adj = decision_adjusted_score(adj, p["confidence_score"], loc)
-                    p["decision_adjusted_score"] = float(dec_adj)
-
-                    interpreted = DecisionStage.interpreted_state(
-                        structural=p["components"].get("structural_drift", 0.0),
-                        relational=p["components"].get("relational_instability", 0.0),
-                        regime_distance=p["components"].get("regime_distance", 0.0),
-                        temporal_distortion=p["components"].get("temporal_distortion", 0.0),
-                        localization=loc,
-                        trend=float(p.get("trend", 0.0)),
-                    )
-                    if p.get("_warmup"):
-                        state = DecisionStage.state_from_score(adj, p["confidence_score"], loc)
-                        dec_mode = "warmup"
-                    else:
-                        prior = list(baseline_dec_adj_hist[node])
-                        state, dec_mode = decide_state_with_calibration(
-                            phase=phase,
-                            adj=adj,
-                            confidence=p["confidence_score"],
-                            localization=loc,
-                            dec_adj=dec_adj,
-                            baseline_dec_adj_prior=prior,
-                            frozen_watch_alert=frozen_thr.get(node),
-                        )
-                        if phase == "baseline":
-                            baseline_dec_adj_hist[node].append(float(dec_adj))
-                    p["state"] = state
-                    p["decision_calibration_mode"] = dec_mode
-                    p["interpreted_state"] = interpreted
-
-                    component_for_attr = {
-                        "sii_structural_path_score": p["components"].get("sii_structural_path_score", 0.0),
-                        "external_context_path_score": p["components"].get("external_context_path_score", 0.0),
-                        "raw_minimal_path_score": p["components"].get("raw_minimal_path_score", 0.0),
-                        "structural_drift_score": p["components"].get("structural_drift", 0.0),
-                        "relational_instability_score": p["components"].get("relational_instability", 0.0),
-                        "regime_distance": p["components"].get("regime_distance", 0.0),
-                        "graph_deformation_score": p["components"].get("graph_deformation", 0.0),
-                        "temporal_distortion_score": p["components"].get("temporal_distortion", 0.0),
-                        "localization_score": loc,
-                    }
-                    msg, contrib = AttributionStage.explain(component_for_attr, state)
-                    p["component_contributions"] = contrib
-                    dom = max(contrib, key=contrib.get) if contrib else None
-                    p["dominant_driver"] = dom
-                    if dom:
-                        driver_hist[node].append(str(dom))
-                    p["explanation"] = (
-                        f"{state} [{variant}] ({p['components'].get('variant_path_signature', 'unknown')}): {msg} "
-                        f"(t_coh={p['temporal_coherence_score']:.3f}, gal2_d={p['gal2_timing_distortion_index']:.3f}, "
-                        f"sii={p['components'].get('sii_structural_path_score', 0.0):.3f}, "
-                        f"ext={p['components'].get('external_context_path_score', 0.0):.3f}, "
-                        f"raw={p['components'].get('raw_minimal_path_score', 0.0):.3f})"
-                    )
-
-                    if p["state"] not in STATE_ALLOWED:
-                        raise AssertionError(p["state"])
-                    if p["interpreted_state"] not in INTERPRETED_ALLOWED:
-                        raise AssertionError(p["interpreted_state"])
-                    if p["confidence"] not in CONFIDENCE_ALLOWED:
-                        raise AssertionError(p["confidence"])
-
-                    rt.interpreted_history.append(str(interpreted))
-
-                    rows.append(
-                        {
-                            "condition": condition,
-                            "node": node,
-                            "variant": variant,
-                            "step": step,
-                            "phase": phase,
-                            "timestamp": timestamps_by_condition[condition][step],
-                            "state": p["state"],
-                            "interpreted_state": p["interpreted_state"],
-                            "confidence": p["confidence"],
-                            "confidence_score": round(float(p["confidence_score"]), 6),
-                            "latest_instability": round(float(p["latest_instability"]), 6),
-                            "structural_drift_score": round(float(p["structural_drift_score"]), 6),
-                            "relational_instability_score": round(float(p["relational_instability_score"]), 6),
-                            "regime_distance": round(float(p["regime_distance"]), 6),
-                            "graph_deformation_score": round(float(p["components"].get("graph_deformation", 0.0)), 6),
-                            "structural_coherence_loss": round(float(p["components"].get("structural_coherence_loss", 0.0)), 6),
-                            "variant_path_signature": str(p["components"].get("variant_path_signature", "")),
-                            "sii_structural_path_score": round(float(p["components"].get("sii_structural_path_score", 0.0)), 6),
-                            "external_context_path_score": round(float(p["components"].get("external_context_path_score", 0.0)), 6),
-                            "raw_sensor_departure_score": round(float(p["components"].get("raw_sensor_departure_score", 0.0)), 6),
-                            "raw_minimal_path_score": round(float(p["components"].get("raw_minimal_path_score", 0.0)), 6),
-                            "temporal_distortion_score": round(float(p["temporal_distortion_score"]), 6),
-                            "temporal_coherence_score": round(float(p["temporal_coherence_score"]), 6),
-                            "gal2_timing_distortion_index": round(float(p["gal2_timing_distortion_index"]), 6),
-                            "nominal_consistency_score": round(float(p["nominal_consistency_score"]), 6),
-                            "baseline_deviation_zscore": round(float(p["baseline_deviation_zscore"]), 6),
-                            "decision_adjusted_score": round(float(p["decision_adjusted_score"]), 6),
-                            "localization_score": round(float(p["localization_score"]), 6),
-                            "spillover_index": round(float(p["spillover_index"]), 6),
-                            "drift_alert": bool(p["drift_alert"]),
-                            "signal_emitted": bool(p["state"] in {"WATCH", "ALERT"}),
-                            "dominant_driver": p["dominant_driver"],
-                            "explanation": p["explanation"],
-                            "component_contributions_json": json.dumps(p["component_contributions"], sort_keys=True),
-                            "data_quality_gate_passed": bool(p["data_quality_summary"]["gate_passed"]),
-                            "missingness_rate": round(float(p["data_quality_summary"]["missingness_rate"]), 6),
-                            "timestamp_irregularity": round(float(p["data_quality_summary"]["timestamp_irregularity"]), 6),
-                            "decision_calibration_mode": p.get("decision_calibration_mode", ""),
-                        }
-                    )
-
-                if step == BASELINE_END:
-                    for n in NODES:
-                        arr = np.array(baseline_dec_adj_hist[n], dtype=float)
-                        if len(arr) >= 10:
-                            frozen_thr[n] = (
-                                float(np.percentile(arr, 82.0)),
-                                float(np.percentile(arr, 93.5)),
-                            )
-
-            df_cond = pd.DataFrame([r for r in rows if r["condition"] == condition])
             for node in NODES:
-                sub = df_cond[df_cond["node"] == node]
+                rt = runtimes[node]
                 variant = NODE_VARIANTS[node]
-                state_counts = sub["state"].value_counts().to_dict()
-                base_sub = sub[sub["phase"] == "baseline"]
-                ncs_mean = float(base_sub["nominal_consistency_score"].mean()) if not base_sub.empty else 0.0
-                nominal_sub = sub[sub["phase"].isin(["baseline", "recovery"])]
-                stab = compute_operational_stability_index(nominal_sub)
-                node_summaries.append(
+                ts = parse_ts(timestamps_by_condition[condition][step])
+                sensors = generate_sensors(node, step, ts, condition, sensor_rngs[node], variant)
+                rt.push(ts, sensors)
+
+                baseline = rt.baseline_matrix()
+                recent = rt.recent_matrix()
+                ts_base = rt.baseline_timestamps()
+                ts_recent = rt.recent_timestamps()
+
+                if baseline is None or recent is None:
+                    provisional[node] = _warmup_row(timestamps_by_condition[condition][step], condition, node, phase)
+                    anomaly_evidence[node] = 0.0
+                    continue
+
+                dq = stage_data_quality(baseline, recent, ts_base, ts_recent)
+                feats = FeatureExtractionStage.extract(baseline, recent)
+                if rt.baseline_profile.corr_baseline is None:
+                    rt.baseline_profile.corr_baseline = feats["corr_base"].copy()
+
+                gal2_d = gal2_timing_distortion_index(ts_recent, expected_dt=1.0)
+                t_coh = temporal_coherence_score(gal2_d)
+
+                raw_s, raw_r, norm_s, norm_r = stage_structural_and_relational(feats, rt.baseline_profile, variant)
+                raw_temp, norm_temp = stage_temporal_raw(ts_recent, rt.baseline_profile)
+                regime_sig = build_variant_regime_signature(
+                    variant=variant,
+                    feats=feats,
+                    norm_temp=norm_temp,
+                    gal2_distortion=gal2_d,
+                    temporal_coh=t_coh,
+                )
+                regime_distance = stage_regime(rt, regime_sig)
+                norm_reg = clamp(float(regime_distance) / max(0.25, float(rt.regime_memory.threshold)), 0.0, 4.0)
+
+                corr_base = np.asarray(feats["corr_base"], dtype=float)
+                corr_recent = np.asarray(feats["corr_recent"], dtype=float)
+                graph_deformation_raw = float(np.mean(np.abs(corr_recent - corr_base)))
+                graph_deformation_norm = graph_deformation_raw
+                if nominals[node].finalized:
+                    graph_deformation_norm = float(
+                        abs(graph_deformation_raw - nominals[node].graph_mu) / (
+                            max(abs(nominals[node].graph_mu), nominals[node].graph_sigma, 1e-6)
+                        )
+                    )
+                graph_deformation_norm = float(clamp(graph_deformation_norm, 0.0, 4.0))
+                structural_coherence_loss = float(
+                    clamp(abs(norm_s - norm_r) / (max(norm_s, norm_r) + 1.0), 0.0, 1.0)
+                )
+
+                comp = apply_variant_enhancement(
+                    variant,
+                    condition,
+                    norm_struct=norm_s,
+                    norm_rel=norm_r,
+                    norm_regime=norm_reg,
+                    norm_temp=norm_temp,
+                    norm_graph=graph_deformation_norm,
+                    norm_structural_coherence_loss=structural_coherence_loss,
+                    gal2_distortion=gal2_d,
+                    temporal_coh=t_coh,
+                    dq=dq,
+                )
+
+                raw_min = raw_telemetry_instability(recent, baseline, nominals[node])
+                comp["raw_sensor_departure_score"] = raw_min
+                comp["raw_minimal_path_score"] = raw_minimal_instability(
+                    raw_sensor_departure=raw_min,
+                    graph_deformation=comp.get("graph_deformation", 0.0),
+                    temporal_distortion=comp.get("temporal_distortion", 0.0),
+                )
+
+                if variant == "control_sii":
+                    inst = float(comp.get("sii_structural_path_score", 0.0))
+                elif variant == "gal2_temporal":
+                    inst = float(comp.get("external_context_path_score", 0.0))
+                elif variant == "raw_telemetry":
+                    inst = float(comp.get("raw_minimal_path_score", 0.0))
+                elif variant == "combined_fusion":
+                    inst = combined_fusion_instability(
+                        comp,
+                        t_coh,
+                        0.0,
+                        phase,
+                    )
+                else:
+                    inst = float(comp.get("sii_structural_path_score", 0.0))
+
+                inst = max(0.0, float(inst))
+                rt.score_history.append(float(inst))
+
+                trend = 0.0
+                if len(rt.score_history) >= 6:
+                    y = np.array(list(rt.score_history)[-6:], dtype=float)
+                    x = np.arange(len(y), dtype=float)
+                    A = np.vstack([x, np.ones_like(x)]).T
+                    slope, _ = np.linalg.lstsq(A, y, rcond=None)[0]
+                    trend = float(slope)
+
+                nmod = nominals[node]
+                ncs = nmod.nominal_consistency(inst)
+                bdz = nmod.baseline_deviation_z(inst)
+
+                cscore = confidence_score_v2(
+                    dq, comp, rt.score_history, nmod, driver_hist[node], t_coh, inst
+                )
+                ccat = confidence_categorical(cscore)
+
+                provisional[node] = {
+                    "state": "STABLE",
+                    "interpreted_state": "NOMINAL_STRUCTURE",
+                    "confidence": ccat,
+                    "confidence_score": cscore,
+                    "structural_drift_score": raw_s,
+                    "relational_instability_score": raw_r,
+                    "regime_distance": float(regime_distance),
+                    "temporal_distortion_score": raw_temp,
+                    "gal2_timing_distortion_index": gal2_d,
+                    "temporal_coherence_score": t_coh,
+                    "nominal_consistency_score": ncs,
+                    "baseline_deviation_zscore": bdz,
+                    "localization_score": 0.0,
+                    "anomaly_evidence": float(inst),
+                    "components": comp,
+                    "trend": trend,
+                    "dominant_driver": None,
+                    "explanation": "",
+                    "data_quality_summary": {
+                        "gate_passed": bool(dq["gate_passed"]),
+                        "missingness_rate": float(dq["missingness_rate"]),
+                        "timestamp_irregularity": float(dq["timestamp_irregularity"]),
+                        "valid_signal_count": int(dq["valid_signal_count"]),
+                        "total_sensors": int(dq["total_sensors"]),
+                        "statuses": list(dq["statuses"]),
+                    },
+                    "latest_instability": float(inst),
+                    "drift_alert": bool(raw_s > 1.5),
+                    "variant": variant,
+                }
+                anomaly_evidence[node] = float(inst)
+
+                if phase == "baseline":
+                    rt._baseline_corr_drift.append(float(raw_s))
+                    rt._baseline_relational.append(float(raw_r))
+                    rt._baseline_graph.append(float(comp.get("graph_deformation", 0.0)))
+                    rt._baseline_gap.append(float(raw_temp))
+                    rt._baseline_instability.append(float(inst))
+                    finalize_baseline(rt, nominals[node])
+
+            loc_scores = LocalizationStage.compute(anomaly_evidence)
+
+            for node in NODES:
+                rt = runtimes[node]
+                p = provisional[node]
+                if "latest_instability" not in p:
+                    continue
+                loc = float(loc_scores[node])
+                p["localization_score"] = loc
+                spillover = float(1.0 - max(anomaly_evidence.values()) / (sum(anomaly_evidence.values()) + 1e-9))
+                p["spillover_index"] = clamp(spillover, 0.0, 1.0)
+
+                variant = NODE_VARIANTS[node]
+                if variant == "combined_fusion":
+                    adj = combined_fusion_instability(
+                        p["components"],
+                        p["temporal_coherence_score"],
+                        loc,
+                        phase,
+                    )
+                    if phase == "perturbation" and node == "D":
+                        tc = float(p["temporal_coherence_score"])
+                        gd = float(
+                            p["components"].get(
+                                "gal2_isolated_distortion",
+                                p["gal2_timing_distortion_index"],
+                            )
+                        )
+                        coh_eff = effective_fusion_coherence(tc, gd, phase)
+                        fusion_coherence_lift_samples.append((condition, coh_eff - tc))
+                elif variant == "control_sii":
+                    adj = float(p["components"].get("sii_structural_path_score", p["latest_instability"]))
+                elif variant == "gal2_temporal":
+                    adj = float(p["components"].get("external_context_path_score", p["latest_instability"]))
+                elif variant == "raw_telemetry":
+                    adj = float(p["components"].get("raw_minimal_path_score", p["latest_instability"]))
+                else:
+                    adj = float(p["latest_instability"])
+
+                dec_adj = decision_adjusted_score(adj, p["confidence_score"], loc)
+                p["decision_adjusted_score"] = float(dec_adj)
+
+                interpreted = DecisionStage.interpreted_state(
+                    structural=p["components"].get("structural_drift", 0.0),
+                    relational=p["components"].get("relational_instability", 0.0),
+                    regime_distance=p["components"].get("regime_distance", 0.0),
+                    temporal_distortion=p["components"].get("temporal_distortion", 0.0),
+                    localization=loc,
+                    trend=float(p.get("trend", 0.0)),
+                )
+                if p.get("_warmup"):
+                    state = DecisionStage.state_from_score(adj, p["confidence_score"], loc)
+                    dec_mode = "warmup"
+                else:
+                    prior = list(baseline_dec_adj_hist[node])
+                    state, dec_mode = decide_state_with_calibration(
+                        phase=phase,
+                        adj=adj,
+                        confidence=p["confidence_score"],
+                        localization=loc,
+                        dec_adj=dec_adj,
+                        baseline_dec_adj_prior=prior,
+                        frozen_watch_alert=frozen_thr.get(node),
+                    )
+                    if phase == "baseline":
+                        baseline_dec_adj_hist[node].append(float(dec_adj))
+                p["state"] = state
+                p["decision_calibration_mode"] = dec_mode
+                p["interpreted_state"] = interpreted
+
+                component_for_attr = {
+                    "sii_structural_path_score": p["components"].get("sii_structural_path_score", 0.0),
+                    "external_context_path_score": p["components"].get("external_context_path_score", 0.0),
+                    "raw_minimal_path_score": p["components"].get("raw_minimal_path_score", 0.0),
+                    "structural_drift_score": p["components"].get("structural_drift", 0.0),
+                    "relational_instability_score": p["components"].get("relational_instability", 0.0),
+                    "regime_distance": p["components"].get("regime_distance", 0.0),
+                    "graph_deformation_score": p["components"].get("graph_deformation", 0.0),
+                    "temporal_distortion_score": p["components"].get("temporal_distortion", 0.0),
+                    "localization_score": loc,
+                }
+                msg, contrib = AttributionStage.explain(component_for_attr, state)
+                p["component_contributions"] = contrib
+                dom = max(contrib, key=contrib.get) if contrib else None
+                p["dominant_driver"] = dom
+                if dom:
+                    driver_hist[node].append(str(dom))
+                p["explanation"] = (
+                    f"{state} [{variant}] ({p['components'].get('variant_path_signature', 'unknown')}): {msg} "
+                    f"(t_coh={p['temporal_coherence_score']:.3f}, gal2_d={p['gal2_timing_distortion_index']:.3f}, "
+                    f"sii={p['components'].get('sii_structural_path_score', 0.0):.3f}, "
+                    f"ext={p['components'].get('external_context_path_score', 0.0):.3f}, "
+                    f"raw={p['components'].get('raw_minimal_path_score', 0.0):.3f})"
+                )
+
+                if p["state"] not in STATE_ALLOWED:
+                    raise AssertionError(p["state"])
+                if p["interpreted_state"] not in INTERPRETED_ALLOWED:
+                    raise AssertionError(p["interpreted_state"])
+                if p["confidence"] not in CONFIDENCE_ALLOWED:
+                    raise AssertionError(p["confidence"])
+
+                rt.interpreted_history.append(str(interpreted))
+
+                rows.append(
                     {
                         "condition": condition,
                         "node": node,
                         "variant": variant,
-                        "variant_path_signature": str(sub["variant_path_signature"].dropna().iloc[-1]) if len(sub) else "",
-                        "alert_count": int(state_counts.get("ALERT", 0)),
-                        "watch_count": int(state_counts.get("WATCH", 0)),
-                        "stable_count": int(state_counts.get("STABLE", 0)),
-                        "baseline_stability_rate": float(
-                            np.mean(
-                                (
-                                    (base_sub["state"] == "STABLE")
-                                    & (base_sub["interpreted_state"] == "NOMINAL_STRUCTURE")
-                                ).astype(float)
-                            )
-                        )
-                        if not base_sub.empty
-                        else 0.0,
-                        "baseline_nominal_consistency_mean": ncs_mean,
-                        "operational_stability_index": stab["operational_stability_index"],
-                        "strict_nominal_rate_nominal_windows": stab["strict_nominal_rate"],
-                        "nominal_false_positive_burden": stab["nominal_false_positive_burden"],
-                        "nominal_instability_cv_inverse": stab["nominal_instability_cv_inverse"],
-                        "mean_regime_distance_nominal": stab["mean_regime_distance_nominal"],
-                        "perturb_alert_rate": float(
-                            np.mean(
-                                (sub[sub["phase"] == "perturbation"]["state"].isin(["WATCH", "ALERT"])).astype(float)
-                            )
-                        )
-                        if not sub[sub["phase"] == "perturbation"].empty
-                        else 0.0,
-                        "recovery_nominal_rate": float(
-                            np.mean(
-                                (
-                                    (sub[sub["phase"] == "recovery"]["state"] == "STABLE")
-                                    & (sub[sub["phase"] == "recovery"]["interpreted_state"] == "NOMINAL_STRUCTURE")
-                                ).astype(float)
-                            )
-                        )
-                        if not sub[sub["phase"] == "recovery"].empty
-                        else 0.0,
-                        "mean_localization": float(sub["localization_score"].mean()) if not sub.empty else 0.0,
-                        "mean_temporal_coherence": float(sub["temporal_coherence_score"].mean()) if not sub.empty else 0.0,
-                        "mean_graph_deformation": float(sub["graph_deformation_score"].mean()) if not sub.empty else 0.0,
-                        "mean_structural_coherence_loss": float(sub["structural_coherence_loss"].mean()) if not sub.empty else 0.0,
-                        "mean_sii_structural_path_score": float(sub["sii_structural_path_score"].mean()) if not sub.empty else 0.0,
-                        "mean_external_context_path_score": float(sub["external_context_path_score"].mean()) if not sub.empty else 0.0,
-                        "mean_raw_minimal_path_score": float(sub["raw_minimal_path_score"].mean()) if not sub.empty else 0.0,
+                        "step": step,
+                        "phase": phase,
+                        "timestamp": timestamps_by_condition[condition][step],
+                        "state": p["state"],
+                        "interpreted_state": p["interpreted_state"],
+                        "confidence": p["confidence"],
+                        "confidence_score": round(float(p["confidence_score"]), 6),
+                        "latest_instability": round(float(p["latest_instability"]), 6),
+                        "structural_drift_score": round(float(p["structural_drift_score"]), 6),
+                        "relational_instability_score": round(float(p["relational_instability_score"]), 6),
+                        "regime_distance": round(float(p["regime_distance"]), 6),
+                        "graph_deformation_score": round(float(p["components"].get("graph_deformation", 0.0)), 6),
+                        "structural_coherence_loss": round(float(p["components"].get("structural_coherence_loss", 0.0)), 6),
+                        "variant_path_signature": str(p["components"].get("variant_path_signature", "")),
+                        "sii_structural_path_score": round(float(p["components"].get("sii_structural_path_score", 0.0)), 6),
+                        "external_context_path_score": round(float(p["components"].get("external_context_path_score", 0.0)), 6),
+                        "raw_sensor_departure_score": round(float(p["components"].get("raw_sensor_departure_score", 0.0)), 6),
+                        "raw_minimal_path_score": round(float(p["components"].get("raw_minimal_path_score", 0.0)), 6),
+                        "temporal_distortion_score": round(float(p["temporal_distortion_score"]), 6),
+                        "temporal_coherence_score": round(float(p["temporal_coherence_score"]), 6),
+                        "gal2_timing_distortion_index": round(float(p["gal2_timing_distortion_index"]), 6),
+                        "nominal_consistency_score": round(float(p["nominal_consistency_score"]), 6),
+                        "baseline_deviation_zscore": round(float(p["baseline_deviation_zscore"]), 6),
+                        "decision_adjusted_score": round(float(p["decision_adjusted_score"]), 6),
+                        "localization_score": round(float(p["localization_score"]), 6),
+                        "spillover_index": round(float(p["spillover_index"]), 6),
+                        "drift_alert": bool(p["drift_alert"]),
+                        "signal_emitted": bool(p["state"] in {"WATCH", "ALERT"}),
+                        "dominant_driver": p["dominant_driver"],
+                        "explanation": p["explanation"],
+                        "component_contributions_json": json.dumps(p["component_contributions"], sort_keys=True),
+                        "data_quality_gate_passed": bool(p["data_quality_summary"]["gate_passed"]),
+                        "missingness_rate": round(float(p["data_quality_summary"]["missingness_rate"]), 6),
+                        "timestamp_irregularity": round(float(p["data_quality_summary"]["timestamp_irregularity"]), 6),
+                        "decision_calibration_mode": p.get("decision_calibration_mode", ""),
                     }
                 )
+
+            if step == BASELINE_END:
+                for n in NODES:
+                    arr = np.array(baseline_dec_adj_hist[n], dtype=float)
+                    if len(arr) >= 10:
+                        frozen_thr[n] = (
+                            float(np.percentile(arr, 82.0)),
+                            float(np.percentile(arr, 93.5)),
+                        )
+
+        df_cond = pd.DataFrame([r for r in rows if r["condition"] == condition])
+        for node in NODES:
+            sub = df_cond[df_cond["node"] == node]
+            variant = NODE_VARIANTS[node]
+            state_counts = sub["state"].value_counts().to_dict()
+            base_sub = sub[sub["phase"] == "baseline"]
+            ncs_mean = float(base_sub["nominal_consistency_score"].mean()) if not base_sub.empty else 0.0
+            nominal_sub = sub[sub["phase"].isin(["baseline", "recovery"])]
+            stab = compute_operational_stability_index(nominal_sub)
+            node_summaries.append(
+                {
+                    "condition": condition,
+                    "node": node,
+                    "variant": variant,
+                    "variant_path_signature": str(sub["variant_path_signature"].dropna().iloc[-1]) if len(sub) else "",
+                    "alert_count": int(state_counts.get("ALERT", 0)),
+                    "watch_count": int(state_counts.get("WATCH", 0)),
+                    "stable_count": int(state_counts.get("STABLE", 0)),
+                    "baseline_stability_rate": float(
+                        np.mean(
+                            (
+                                (base_sub["state"] == "STABLE")
+                                & (base_sub["interpreted_state"] == "NOMINAL_STRUCTURE")
+                            ).astype(float)
+                        )
+                    )
+                    if not base_sub.empty
+                    else 0.0,
+                    "baseline_nominal_consistency_mean": ncs_mean,
+                    "operational_stability_index": stab["operational_stability_index"],
+                    "strict_nominal_rate_nominal_windows": stab["strict_nominal_rate"],
+                    "nominal_false_positive_burden": stab["nominal_false_positive_burden"],
+                    "nominal_instability_cv_inverse": stab["nominal_instability_cv_inverse"],
+                    "mean_regime_distance_nominal": stab["mean_regime_distance_nominal"],
+                    "perturb_alert_rate": float(
+                        np.mean(
+                            (sub[sub["phase"] == "perturbation"]["state"].isin(["WATCH", "ALERT"])).astype(float)
+                        )
+                    )
+                    if not sub[sub["phase"] == "perturbation"].empty
+                    else 0.0,
+                    "recovery_nominal_rate": float(
+                        np.mean(
+                            (
+                                (sub[sub["phase"] == "recovery"]["state"] == "STABLE")
+                                & (sub[sub["phase"] == "recovery"]["interpreted_state"] == "NOMINAL_STRUCTURE")
+                            ).astype(float)
+                        )
+                    )
+                    if not sub[sub["phase"] == "recovery"].empty
+                    else 0.0,
+                    "mean_localization": float(sub["localization_score"].mean()) if not sub.empty else 0.0,
+                    "mean_temporal_coherence": float(sub["temporal_coherence_score"].mean()) if not sub.empty else 0.0,
+                    "mean_graph_deformation": float(sub["graph_deformation_score"].mean()) if not sub.empty else 0.0,
+                    "mean_structural_coherence_loss": float(sub["structural_coherence_loss"].mean()) if not sub.empty else 0.0,
+                    "mean_sii_structural_path_score": float(sub["sii_structural_path_score"].mean()) if not sub.empty else 0.0,
+                    "mean_external_context_path_score": float(sub["external_context_path_score"].mean()) if not sub.empty else 0.0,
+                    "mean_raw_minimal_path_score": float(sub["raw_minimal_path_score"].mean()) if not sub.empty else 0.0,
+                }
+            )
 
     df_rows = pd.DataFrame(rows)
 

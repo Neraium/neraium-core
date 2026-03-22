@@ -100,12 +100,6 @@ def map_decision_state_with_config(
 
     watch_threshold = float(config.watch_threshold)
     alert_threshold = float(config.alert_threshold)
-    if watch_threshold > 0.60:
-        watch_threshold = 0.50
-    if alert_threshold > 0.90:
-        alert_threshold = 0.74
-    if alert_threshold <= watch_threshold:
-        alert_threshold = watch_threshold + 0.16
 
     if score >= alert_threshold:
         return "ALERT"
