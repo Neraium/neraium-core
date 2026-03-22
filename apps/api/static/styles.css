@@ -930,7 +930,39 @@ body.nav-mobile-open {
 }
 
 .page-demo-sii {
+  gap: 0;
+  display: block;
+}
+
+/* Sticky hero: stays under the app top bar while the rest of the tour scrolls */
+.demo-sii-scroll {
+  display: block;
+}
+
+.demo-sii-sticky-hero {
+  position: sticky;
+  top: calc(env(safe-area-inset-top, 0px) + 76px);
+  z-index: 11;
+  margin: 0 0 12px;
+  padding-bottom: 4px;
+  background: linear-gradient(180deg, rgba(5, 8, 15, 0.98) 0%, rgba(5, 8, 15, 0.92) 85%, transparent 100%);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.demo-sii-sticky-hero .demo-hero {
+  margin-bottom: 0;
+}
+
+.demo-sii-body {
+  display: grid;
   gap: 20px;
+}
+
+@media (max-width: 740px) {
+  .demo-sii-sticky-hero {
+    top: calc(env(safe-area-inset-top, 0px) + 112px);
+  }
 }
 
 .demo-quick-start {

@@ -1325,6 +1325,25 @@ function getOrbitControlsConstructor() {
   return null;
 }
 
+function waitForOrbitControls(maxMs = 5000) {
+  return new Promise((resolve, reject) => {
+    const start = window.performance.now();
+    function tick() {
+      const ctor = getOrbitControlsConstructor();
+      if (ctor) {
+        resolve(ctor);
+        return;
+      }
+      if (window.performance.now() - start > maxMs) {
+        reject(new Error("3D controls failed to load (OrbitControls). Check network or refresh."));
+        return;
+      }
+      window.setTimeout(tick, 30);
+    }
+    tick();
+  });
+}
+
 function geometryViewportDimensions() {
   const host = qs("#geometryViewport");
   if (!host) return null;
@@ -1409,12 +1428,12 @@ function edgeColorHex(edge, metrics) {
   return edge.type === "negative" ? 0x8aa4d0 : 0x9ebcf0;
 }
 
-function ensureThreeLibs() {
+async function ensureThreeLibs() {
   const three = window.THREE;
-  const controlsCtor = getOrbitControlsConstructor();
-  if (!three || !controlsCtor) {
-    throw new Error("3D libraries unavailable.");
+  if (!three) {
+    throw new Error("Three.js failed to load.");
   }
+  const controlsCtor = await waitForOrbitControls();
   return { three, controlsCtor };
 }
 
@@ -1588,10 +1607,11 @@ function applyGeometryDisplayMode() {
   });
   const note = qs("#geometryProjectionNote");
   if (note) {
-    const modeLabel = state.geometry3d.baselineMode ? "BASELINE" : "CURRENT";
-    const extra =
-      " Use toggle to compare baseline structure against current stress projection.";
-    note.textContent = `${String(note.textContent || "").split(" [mode:")[0]} [mode: ${modeLabel}]${extra}`;
+    const base =
+      String(note.getAttribute("data-default") || "").trim() ||
+      "Node positions are deterministic display projections derived from engine correlation outputs.";
+    const modeLabel = state.geometry3d.baselineMode ? "baseline" : "current";
+    note.textContent = `${base} Toggle compares ${modeLabel} stress projection.`;
   }
   const summary = qs("#geometryStructureSummary");
   if (summary) summary.textContent = geometryStructureSummary(state.runGeometry);
@@ -1716,11 +1736,11 @@ function createNodeLabelSprite(three, text, colorHex = 0xd9e6ff) {
   return sprite;
 }
 
-function renderGeometryScene(payload, viewportDims) {
+async function renderGeometryScene(payload, viewportDims) {
   const canvasHost = qs("#geometryViewport");
   const viewport = qs("#geometryViewport");
   if (!canvasHost || !viewport || !viewportDims) return;
-  const { three, controlsCtor } = ensureThreeLibs();
+  const { three, controlsCtor } = await ensureThreeLibs();
   disposeGeometryRenderer();
   state.runGeometry = payload;
   buildGeometryLegend(payload);
@@ -1987,6 +2007,14 @@ async function loadRunGeometry(runId, resultId = null) {
     }
   }
   if (summary) summary.textContent = geometryStructureSummary(payload);
+  const noteEl = qs("#geometryProjectionNote");
+  if (noteEl) {
+    const base =
+      String(noteEl.getAttribute("data-default") || "").trim() ||
+      "Node positions are deterministic display projections derived from engine correlation outputs.";
+    const method = payload?.projection?.method ? String(payload.projection.method) : "";
+    noteEl.textContent = method ? `${base} (${method}).` : `${base}`;
+  }
   try {
     const dims = await ensureGeometryViewportReady();
     if (!dims || dims.width <= 40 || dims.height <= 40) {
@@ -1994,7 +2022,7 @@ async function loadRunGeometry(runId, resultId = null) {
       updateGeometryDetails(null);
       return;
     }
-    renderGeometryScene(payload, dims);
+    await renderGeometryScene(payload, dims);
   } catch (err) {
     setGeometrySurfaceState(`3D unavailable: ${String(err.message || err)}`, "error");
     updateGeometryDetails(null);

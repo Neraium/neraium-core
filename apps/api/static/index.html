@@ -238,18 +238,22 @@
 
         <!-- DEMO TOUR (SII narrative) -->
         <section id="page-demo-sii" class="page page-demo-sii hidden">
-          <section class="demo-hero panel">
-            <p class="demo-hero-eyebrow">Systemic Infrastructure Intelligence</p>
-            <h2 class="demo-hero-title">See the system. Surface the shift. Act before failure.</h2>
-            <p class="demo-hero-lead">
-              Neraium fuses sensor streams into structural relationships, then scores drift, instability, and risk in one operational surface built for live walkthroughs and real incident response.
-            </p>
-            <div class="demo-hero-actions">
-              <a class="button-link" href="/dashboard">Open dashboard</a>
-              <button type="button" class="secondary" id="demoTourEnableBtn">Enable demo mode</button>
+          <div class="demo-sii-scroll">
+            <div class="demo-sii-sticky-hero">
+              <section class="demo-hero panel">
+                <p class="demo-hero-eyebrow">Systemic Infrastructure Intelligence</p>
+                <h2 class="demo-hero-title">See the system. Surface the shift. Act before failure.</h2>
+                <p class="demo-hero-lead">
+                  Neraium fuses sensor streams into structural relationships, then scores drift, instability, and risk in one operational surface built for live walkthroughs and real incident response.
+                </p>
+                <div class="demo-hero-actions">
+                  <a class="button-link" href="/dashboard">Open dashboard</a>
+                  <button type="button" class="secondary" id="demoTourEnableBtn">Enable demo mode</button>
+                </div>
+              </section>
             </div>
-          </section>
 
+            <div class="demo-sii-body">
           <section class="panel demo-quick-start" aria-label="Quick start">
             <div class="demo-quick-start-grid">
               <div>
@@ -350,6 +354,8 @@
               </article>
             </div>
           </section>
+            </div>
+          </div>
         </section>
 
         <!-- RUNS LIST -->
@@ -547,7 +553,11 @@
                 Engine-derived structural relationship view (3D projection for visualization only).
               </p>
             </div>
-            <p id="geometryProjectionNote" class="subtitle geometry-meta">
+            <p
+              id="geometryProjectionNote"
+              class="subtitle geometry-meta"
+              data-default="Node positions are deterministic display projections derived from engine correlation outputs."
+            >
               Node positions are deterministic display projections derived from engine correlation outputs.
             </p>
             <div class="geometry-layout">
@@ -676,7 +686,12 @@
 
   <script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/three@0.162.0/build/three.min.js"></script>
-  <script defer src="https://cdn.jsdelivr.net/npm/three@0.162.0/examples/js/controls/OrbitControls.js"></script>
+  <script defer type="module">
+    import { OrbitControls } from "https://cdn.jsdelivr.net/npm/three@0.162.0/examples/jsm/controls/OrbitControls.js";
+    window.THREE = window.THREE || {};
+    window.THREE.OrbitControls = OrbitControls;
+    window.__neraiumThreeReady = true;
+  </script>
   <script defer src="/web/app.js"></script>
 </body>
 </html>
