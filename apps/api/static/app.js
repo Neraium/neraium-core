@@ -586,6 +586,7 @@ const state = {
   activeRun: null,
   runs: [],
   dashboardRecent: [],
+  dashboardAlerts: [],
   runRecent: [],
   runGeometry: null,
   uploadFile: null,
@@ -1786,15 +1787,50 @@ function renderDashboardRecent(results) {
   });
 }
 
+function alertSeverityClass(severity) {
+  const s = String(severity || "").toLowerCase();
+  if (s === "critical") return "critical";
+  if (s === "high") return "watch";
+  return "normal";
+}
+
+function renderDashboardAlerts(alerts) {
+  const list = qs("#dashboardAlertsList");
+  const empty = qs("#dashboardAlertsEmpty");
+  if (!list) return;
+  list.innerHTML = "";
+  const items = (alerts || []).slice(0, 20);
+  if (empty) {
+    if (items.length === 0) empty.classList.remove("hidden");
+    else empty.classList.add("hidden");
+  }
+  items.forEach((a) => {
+    const li = document.createElement("li");
+    li.className = `message-item message-item-${alertSeverityClass(a.severity)}`.trim();
+    const ctx = a.context || {};
+    li.innerHTML = `
+      <div class="msg-head">${escapeHtml(String(a.type || "alert"))} · ${escapeHtml(String(a.created_at || ""))}</div>
+      <div>${escapeHtml(String(a.message || ""))}</div>
+      <div class="msg-subtle">run: ${escapeHtml(String(ctx.run_id || "-"))} · result: ${escapeHtml(String(ctx.result_id || "-"))}</div>
+    `;
+    list.appendChild(li);
+  });
+}
+
 async function loadDashboard() {
   const runId = state.activeRun?.run_id || "";
   const recentEnv = await fetchJson(apiUrl("/results/recent", tenantScopeParams({ run_id: runId, limit: 200 })));
   const latest = (recentEnv.results && recentEnv.results[0]) || null;
+  const alertsEnv = await fetchJson(
+    apiUrl("/alerts", tenantScopeParams({ run_id: runId, limit: 20 }))
+  );
   state.dashboardRecent = recentEnv.results || [];
+  state.dashboardAlerts = alertsEnv.alerts || [];
   collectKnownSites(state.dashboardRecent);
   renderTenantControls();
   renderDashboardMetrics(latest);
   renderDashboardRecent(state.dashboardRecent);
+  renderDashboardAlerts(state.dashboardAlerts);
 }
 
 function exportData(format, runId) {
