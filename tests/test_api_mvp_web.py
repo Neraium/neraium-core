@@ -96,6 +96,33 @@ def test_run_scoped_result_detail_and_recent(tmp_path) -> None:
     assert body["results"][0]["run_id"] == run_id
 
 
+def test_geometry_endpoints_expose_engine_derived_structure(tmp_path) -> None:
+    client = _client(tmp_path)
+    run_id, result_id = _run_and_ingest(client)
+
+    run_geom = client.get(f"/runs/{run_id}/geometry")
+    assert run_geom.status_code == 200
+    run_payload = run_geom.json()
+    assert run_payload["run_id"] == run_id
+    assert run_payload["available"] is True
+    assert isinstance(run_payload["nodes"], list)
+    assert len(run_payload["nodes"]) >= 2
+    assert isinstance(run_payload["edges"], list)
+    assert run_payload["projection"]["is_visualization_projection"] is True
+    assert "engine_fields" in run_payload["provenance"]
+
+    node = run_payload["nodes"][0]
+    assert set(node.keys()) >= {"id", "label", "position", "magnitude", "stress", "state"}
+    assert set(node["position"].keys()) == {"x", "y", "z"}
+
+    result_geom = client.get(f"/results/{result_id}/geometry?run_id={run_id}")
+    assert result_geom.status_code == 200
+    result_payload = result_geom.json()
+    assert result_payload["result_id"] == result_id
+    assert result_payload["available"] is True
+    assert result_payload["metrics"]["state"] in {"STABLE", "WATCH", "ALERT", "NOMINAL_STRUCTURE"}
+
+
 def test_export_json_and_csv(tmp_path) -> None:
     client = _client(tmp_path)
     run_id, _ = _run_and_ingest(client)
