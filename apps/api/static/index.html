@@ -236,6 +236,13 @@
               </div>
             </div>
             <p id="runDetailMeta" class="subtitle"></p>
+            <article id="runRiskExplanationPanel" class="risk-explanation hidden">
+              <div class="risk-explanation-head">
+                <h4>Why this risk level</h4>
+                <div id="runRiskExplanationBadge"></div>
+              </div>
+              <p id="runRiskExplanationText" class="subtitle"></p>
+            </article>
             <div id="runDetailEmpty" class="empty-state hidden">
               <p>No results available for this run.</p>
               <p class="subtitle">Upload a CSV file or seed demo data to generate results.</p>
@@ -354,6 +361,13 @@
         <section id="page-result-detail" class="page hidden">
           <section class="panel">
             <h3>Result detail</h3>
+            <article id="resultRiskExplanationPanel" class="risk-explanation hidden">
+              <div class="risk-explanation-head">
+                <h4>Why this risk level</h4>
+                <div id="resultRiskExplanationBadge"></div>
+              </div>
+              <p id="resultRiskExplanationText" class="subtitle"></p>
+            </article>
             <div id="resultDetailGrid" class="summary-grid"></div>
           </section>
         </section>

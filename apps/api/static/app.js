@@ -83,6 +83,71 @@ function compositeInstabilityFromResult(r) {
   return null;
 }
 
+function summarizeRiskDrivers(result) {
+  const risk = normalizeRiskLevel(result?.risk_level);
+  const drift = structuralDriftFromResult(result);
+  const instability = compositeInstabilityFromResult(result);
+  const structuralAvailable = Boolean(result?.structural_analysis_available);
+  const skippedReason = String(result?.skipped_reason || "").trim();
+  const phase = String(phaseFromResult(result) || "-");
+  const trend = String(trendFromResult(result) || "-");
+
+  const hasDrift = typeof drift === "number" && Number.isFinite(drift);
+  const hasInstability = typeof instability === "number" && Number.isFinite(instability);
+  const highSignal = (hasDrift && drift >= 0.65) || (hasInstability && instability >= 0.65);
+  const mediumSignal =
+    (!highSignal && hasDrift && drift >= 0.35) || (!highSignal && hasInstability && instability >= 0.35);
+
+  let summary = "Risk is currently unknown because core structural signals are incomplete.";
+  if (risk === "HIGH") {
+    summary = highSignal
+      ? "Risk is HIGH because drift/instability indicate strong structural stress."
+      : "Risk is HIGH due to unstable structural behavior and elevated state interpretation.";
+  } else if (risk === "MEDIUM") {
+    summary = mediumSignal
+      ? "Risk is MEDIUM because drift/instability are elevated but not critical."
+      : "Risk is MEDIUM due to watch-level structural movement.";
+  } else if (risk === "LOW") {
+    summary = "Risk is LOW because drift and instability remain within stable bounds.";
+  }
+
+  const driftText = hasDrift ? drift.toFixed(3) : "unavailable";
+  const instabilityText = hasInstability ? instability.toFixed(3) : "unavailable";
+  const structureText = structuralAvailable
+    ? "Structural relationship analysis is available."
+    : skippedReason
+      ? `Structural relationship analysis is limited (${skippedReason}).`
+      : "Structural relationship analysis is limited due to insufficient relationship signal.";
+  return {
+    risk,
+    text: `${summary} Drift is ${driftText}, instability is ${instabilityText}, and phase is ${phase} (${trend} trend). ${structureText}`,
+  };
+}
+
+function renderRiskExplanation(result, opts = {}) {
+  const titleEl = qs(opts.titleSelector || "#riskExplainTitle");
+  const bodyEl = qs(opts.bodySelector || "#riskExplainBody");
+  const panelEl = qs(opts.panelSelector || "#riskExplainPanel");
+  const badgeEl = qs(opts.badgeSelector || "#riskExplainBadge");
+  if (!titleEl || !bodyEl || !panelEl) return;
+
+  if (!result) {
+    panelEl.classList.remove("hidden");
+    panelEl.setAttribute("data-risk", "UNKNOWN");
+    titleEl.textContent = "Why this risk level";
+    bodyEl.textContent = "No result available yet to explain risk.";
+    if (badgeEl) badgeEl.innerHTML = riskBadgeHtml("UNKNOWN");
+    return;
+  }
+
+  const explanation = summarizeRiskDrivers(result);
+  panelEl.classList.remove("hidden");
+  panelEl.setAttribute("data-risk", explanation.risk);
+  titleEl.textContent = `Why risk is ${explanation.risk}`;
+  bodyEl.textContent = explanation.text;
+  if (badgeEl) badgeEl.innerHTML = riskBadgeHtml(explanation.risk);
+}
+
 function parseTime(value) {
   const ms = Date.parse(String(value || ""));
   return Number.isFinite(ms) ? ms : 0;
@@ -1503,6 +1568,12 @@ function renderRunDetailFromState() {
     renderPhaseTimeline([]);
     renderOperatorMessages([]);
     renderRunResultsTable([]);
+    renderRiskExplanation(null, {
+      panelSelector: "#runRiskExplanationPanel",
+      titleSelector: "#runRiskExplanationTitle",
+      bodySelector: "#runRiskExplanationText",
+      badgeSelector: "#runRiskExplanationBadge",
+    });
     return;
   }
 
@@ -1514,6 +1585,13 @@ function renderRunDetailFromState() {
   const filtered = filterRunResults(ranged);
   const sorted = sortRunResults(filtered);
   renderRunResultsTable(sorted);
+  const latest = ranged.length ? ranged[ranged.length - 1] : state.runRecent[0];
+  renderRiskExplanation(latest, {
+    panelSelector: "#runRiskExplanationPanel",
+    titleSelector: "#runRiskExplanationTitle",
+    bodySelector: "#runRiskExplanationText",
+    badgeSelector: "#runRiskExplanationBadge",
+  });
 }
 
 async function loadRunDetail(runId) {
@@ -1564,6 +1642,12 @@ async function loadResultDetail(resultId) {
     card.className = "metric-card";
     card.innerHTML = `<h3>${escapeHtml(String(k))}</h3><p class="metric-value">${escapeHtml(toPretty(v))}</p>`;
     grid.appendChild(card);
+  });
+  renderRiskExplanation(r, {
+    panelSelector: "#resultRiskExplanationPanel",
+    titleSelector: "#resultRiskExplanationTitle",
+    bodySelector: "#resultRiskExplanationText",
+    badgeSelector: "#resultRiskExplanationBadge",
   });
 }
 
