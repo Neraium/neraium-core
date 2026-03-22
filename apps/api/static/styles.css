@@ -3,6 +3,7 @@
 }
 
 :root {
+  --layout-stack-gap: 18px;
   --bg: #04060c;
   --bg-elev: #0a101c;
   --panel: #0c1526;
@@ -265,21 +266,24 @@ body.nav-mobile-open {
   word-break: break-all;
 }
 
+/* Column shell: header + status + page content stack in normal flow (no sticky overlap). */
 .main {
   min-width: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .topbar {
-  position: sticky;
-  top: 0;
-  z-index: 20;
+  position: relative;
+  z-index: 1;
+  flex: 0 0 auto;
   border-bottom: 1px solid var(--border-strong);
   padding: 18px 24px;
   padding-top: max(18px, env(safe-area-inset-top, 0px));
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: 18px;
+  gap: var(--layout-stack-gap);
   background: rgba(6, 9, 14, 0.92);
   backdrop-filter: blur(12px);
 }
@@ -417,9 +421,15 @@ body.nav-mobile-open {
   max-width: 210px;
 }
 
+.main > .content {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
 .content {
   max-width: 1380px;
   margin: 0 auto;
+  width: 100%;
   padding: 28px 24px;
   padding-bottom: max(28px, env(safe-area-inset-bottom, 0px));
 }
@@ -432,6 +442,10 @@ body.nav-mobile-open {
 .page.hidden,
 .hidden {
   display: none !important;
+}
+
+.main > .status {
+  flex: 0 0 auto;
 }
 
 .status {
@@ -2984,9 +2998,6 @@ input[type="file"] {
   }
 
   .topbar {
-    position: sticky;
-    top: 0;
-    z-index: 25;
     padding-left: max(14px, env(safe-area-inset-left, 0px));
     padding-right: max(14px, env(safe-area-inset-right, 0px));
   }
@@ -3037,15 +3048,18 @@ input[type="file"] {
 
   .topbar {
     padding: 14px;
-    flex-direction: row;
-    flex-wrap: wrap;
-    align-items: flex-start;
-    gap: 10px 12px;
+    flex-direction: column;
+    align-items: stretch;
+    gap: var(--layout-stack-gap);
   }
 
   .topbar .title-block {
     flex: 1;
     min-width: 0;
+  }
+
+  .topbar-main {
+    width: 100%;
   }
 
   .topbar-actions,
