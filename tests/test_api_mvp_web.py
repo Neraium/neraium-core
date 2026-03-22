@@ -54,6 +54,31 @@ def test_mvp_routes_available(tmp_path) -> None:
     assert css.status_code == 200
 
 
+def test_web_js_smoke_wiring_for_demo_critical_controls(tmp_path) -> None:
+    client = _client(tmp_path)
+    js = client.get("/web/app.js")
+    assert js.status_code == 200
+    source = js.text
+    expected_tokens = [
+        "#loadingOverlay",
+        "#loadingMessage",
+        "createToast(",
+        "riskBadgeHtml(",
+        "phaseBadgeHtml(",
+        "#seedDemoBtn",
+        "#runsSearchInput",
+        "#runResultsSearchInput",
+        "#runRangeControls [data-range]",
+        "#uploadDropZone",
+        "#selectedFileName",
+        "#dashboardEmpty",
+        "#runDetailEmpty",
+        "#runResultsEmpty",
+    ]
+    for token in expected_tokens:
+        assert token in source
+
+
 def test_run_scoped_result_detail_and_recent(tmp_path) -> None:
     client = _client(tmp_path)
     run_id, result_id = _run_and_ingest(client)

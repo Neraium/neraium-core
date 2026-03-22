@@ -69,6 +69,45 @@ function compositeInstabilityFromResult(r) {
   return null;
 }
 
+function parseTime(value) {
+  const ms = Date.parse(String(value || ""));
+  return Number.isFinite(ms) ? ms : 0;
+}
+
+function normalizeRiskLevel(value) {
+  const risk = String(value || "UNKNOWN").trim().toUpperCase();
+  if (risk === "LOW" || risk === "MEDIUM" || risk === "HIGH") {
+    return risk;
+  }
+  return "UNKNOWN";
+}
+
+function riskBadgeHtml(value) {
+  const risk = normalizeRiskLevel(value);
+  const classMap = {
+    LOW: "badge-risk-low",
+    MEDIUM: "badge-risk-medium",
+    HIGH: "badge-risk-high",
+    UNKNOWN: "badge-risk-unknown",
+  };
+  return `<span class="badge ${classMap[risk]}">${escapeHtml(risk)}</span>`;
+}
+
+function phaseBadgeHtml(value) {
+  const raw = String(value || "-").trim();
+  const phase = raw || "-";
+  const s = phase.toLowerCase();
+  let klass = "badge-phase";
+  if (s.includes("stable") || s === "nominal_structure") {
+    klass = "badge-phase-stable";
+  } else if (s.includes("watch") || s.includes("drift") || s.includes("regime_shift")) {
+    klass = "badge-phase-watch";
+  } else if (s.includes("alert") || s.includes("unstable") || s.includes("instability")) {
+    klass = "badge-phase-alert";
+  }
+  return `<span class="badge ${klass}">${escapeHtml(phase)}</span>`;
+}
+
 function getRoute() {
   const parts = window.location.pathname.split("/").filter(Boolean);
   if (parts.length === 0 || parts[0] === "dashboard") return { page: "dashboard" };
@@ -84,36 +123,63 @@ const state = {
   runs: [],
   dashboardRecent: [],
   runRecent: [],
+  uploadFile: null,
+  runsView: {
+    search: "",
+    status: "all",
+    sort: "created_desc",
+  },
+  runDetailView: {
+    search: "",
+    sort: "timestamp_desc",
+    range: "200",
+  },
   charts: {
     drift: null,
     composite: null,
   },
 };
 
+function createToast(message, type = "success") {
+  const container = qs("#toastContainer");
+  if (!container || !message) return;
+  const toast = document.createElement("div");
+  const safeType = type === "error" ? "error" : "success";
+  toast.className = `toast ${safeType}`;
+  toast.textContent = String(message);
+  container.appendChild(toast);
+  window.setTimeout(() => {
+    toast.remove();
+  }, 3200);
+}
+
 function setLoading(isLoading, message = "Loading...") {
-  const el = qs("#globalLoading");
-  if (!el) return;
+  const overlay = qs("#loadingOverlay");
+  const text = qs("#loadingMessage");
+  if (!overlay || !text) return;
   if (isLoading) {
-    el.classList.remove("hidden");
-    el.textContent = message;
+    text.textContent = String(message || "Loading...");
+    overlay.classList.remove("hidden");
   } else {
-    el.classList.add("hidden");
-    el.textContent = "Loading...";
+    text.textContent = "Loading...";
+    overlay.classList.add("hidden");
   }
 }
 
-function setStatus(message = "", isError = false) {
+function setStatus(message = "", isError = false, showToast = false) {
   const el = qs("#globalStatus");
   if (!el) return;
   if (!message) {
-    el.classList.add("hidden");
-    el.textContent = "";
     el.className = "status hidden";
+    el.textContent = "";
     return;
   }
   el.className = `status ${isError ? "error" : "ok"}`;
-  el.textContent = message;
+  el.textContent = String(message);
   el.classList.remove("hidden");
+  if (showToast) {
+    createToast(message, isError ? "error" : "success");
+  }
 }
 
 function setPage(page) {
@@ -128,12 +194,24 @@ function setPage(page) {
   const pageEl = qs(`#page-${page}`);
   if (pageEl) pageEl.classList.remove("hidden");
   const [title, subtitle] = titles[page] || ["Neraium", ""];
-  qs("#pageTitle").textContent = title;
-  qs("#pageSubtitle").textContent = subtitle;
+  const titleEl = qs("#pageTitle");
+  const subtitleEl = qs("#pageSubtitle");
+  if (titleEl) titleEl.textContent = title;
+  if (subtitleEl) subtitleEl.textContent = subtitle;
   qsa(".nav a").forEach((a) => a.classList.remove("active"));
   if (page === "dashboard") qs('[data-nav="dashboard"]')?.classList.add("active");
   if (page === "runs" || page === "run-detail") qs('[data-nav="runs"]')?.classList.add("active");
   if (page === "upload") qs('[data-nav="upload"]')?.classList.add("active");
+}
+
+function updateUploadRunInfo() {
+  const info = qs("#uploadRunInfo");
+  if (!info) return;
+  if (state.activeRun?.run_id) {
+    info.textContent = `Active run: ${state.activeRun.name} (${state.activeRun.run_id})`;
+  } else {
+    info.textContent = "No active run selected.";
+  }
 }
 
 async function ensureActiveRun() {
@@ -153,15 +231,48 @@ async function ensureActiveRun() {
 
 function updateActiveRunHeader(run) {
   state.activeRun = run || null;
-  qs("#activeRunName").textContent = run?.name || "No active run";
-  qs("#activeRunId").textContent = run?.run_id || "-";
+  const nameEl = qs("#activeRunName");
+  const idEl = qs("#activeRunId");
+  if (nameEl) nameEl.textContent = run?.name || "No active run";
+  if (idEl) idEl.textContent = run?.run_id || "-";
   if (run?.run_id) {
     window.localStorage.setItem("active_run_id", run.run_id);
   }
+  updateUploadRunInfo();
+}
+
+function sortRuns(runs, mode) {
+  const items = runs.slice();
+  if (mode === "created_asc") {
+    return items.sort((a, b) => parseTime(a.created_at) - parseTime(b.created_at));
+  }
+  if (mode === "name_asc") {
+    return items.sort((a, b) => String(a.name || "").localeCompare(String(b.name || "")));
+  }
+  if (mode === "name_desc") {
+    return items.sort((a, b) => String(b.name || "").localeCompare(String(a.name || "")));
+  }
+  return items.sort((a, b) => parseTime(b.created_at) - parseTime(a.created_at));
+}
+
+function filteredSortedRuns() {
+  const search = state.runsView.search.trim().toLowerCase();
+  const status = state.runsView.status;
+  const filtered = state.runs.filter((run) => {
+    const name = String(run.name || "").toLowerCase();
+    const runId = String(run.run_id || "").toLowerCase();
+    const matchesSearch = !search || name.includes(search) || runId.includes(search);
+    const matchesStatus =
+      status === "all" ||
+      (status === "active" && !!run.is_active) ||
+      (status === "open" && !run.is_active && String(run.status || "").toLowerCase() === "open");
+    return matchesSearch && matchesStatus;
+  });
+  return sortRuns(filtered, state.runsView.sort);
 }
 
 async function loadRuns() {
-  const runsEnv = await fetchJson("/runs?limit=200");
+  const runsEnv = await fetchJson("/runs?limit=500");
   state.runs = runsEnv.runs || [];
   if (runsEnv.active_run) {
     updateActiveRunHeader(runsEnv.active_run);
@@ -171,14 +282,21 @@ async function loadRuns() {
 
 function renderRunsList() {
   const tbody = qs("#runsBody");
+  const empty = qs("#runsEmptyHint");
   if (!tbody) return;
+  const runs = filteredSortedRuns();
   tbody.innerHTML = "";
-  state.runs.forEach((run) => {
+  if (empty) {
+    if (runs.length === 0) empty.classList.remove("hidden");
+    else empty.classList.add("hidden");
+  }
+  runs.forEach((run) => {
+    const statusText = run.is_active ? "active" : String(run.status || "open");
     const tr = document.createElement("tr");
     tr.innerHTML = `
       <td>${escapeHtml(run.name || "")}</td>
       <td class="mono">${escapeHtml(run.run_id || "")}</td>
-      <td>${run.is_active ? "active" : escapeHtml(run.status || "open")}</td>
+      <td>${phaseBadgeHtml(statusText)}</td>
       <td>${escapeHtml(run.created_at || "")}</td>
       <td class="row">
         <a href="/app/runs/${encodeURIComponent(run.run_id)}">Open</a>
@@ -196,9 +314,9 @@ function renderRunsList() {
         const out = await fetchJson(`/runs/${encodeURIComponent(runId)}/activate`, { method: "POST" });
         updateActiveRunHeader(out.run);
         await loadRuns();
-        setStatus(`Activated run ${out.run.name}`);
+        setStatus(`Activated run ${out.run.name}`, false, true);
       } catch (err) {
-        setStatus(String(err.message || err), true);
+        setStatus(String(err.message || err), true, true);
       } finally {
         setLoading(false);
       }
@@ -207,26 +325,46 @@ function renderRunsList() {
 }
 
 function renderDashboardMetrics(latest) {
-  qs("#metricDrift").textContent = toPretty(structuralDriftFromResult(latest));
-  qs("#metricComposite").textContent = toPretty(compositeInstabilityFromResult(latest));
-  qs("#metricPhase").textContent = toPretty(phaseFromResult(latest));
-  qs("#metricTrend").textContent = toPretty(trendFromResult(latest));
-  qs("#metricRisk").textContent = toPretty(latest?.risk_level);
-  qs("#metricState").textContent = toPretty(latest?.state || latest?.interpreted_state);
-  qs("#metricOperatorMessage").textContent = latest?.operator_message || "No operator message yet.";
+  const metricDrift = qs("#metricDrift");
+  const metricComposite = qs("#metricComposite");
+  const metricPhase = qs("#metricPhase");
+  const metricTrend = qs("#metricTrend");
+  const metricRisk = qs("#metricRisk");
+  const metricState = qs("#metricState");
+  const metricConfidence = qs("#metricConfidence");
+  const metricOperator = qs("#metricOperatorMessage");
+  const metricRiskBadge = qs("#metricRiskBadge");
+  const metricPhaseBadge = qs("#metricPhaseBadge");
+
+  if (metricDrift) metricDrift.textContent = toPretty(structuralDriftFromResult(latest));
+  if (metricComposite) metricComposite.textContent = toPretty(compositeInstabilityFromResult(latest));
+  if (metricPhase) metricPhase.textContent = toPretty(phaseFromResult(latest));
+  if (metricTrend) metricTrend.textContent = toPretty(trendFromResult(latest));
+  if (metricRisk) metricRisk.textContent = toPretty(latest?.risk_level);
+  if (metricState) metricState.textContent = toPretty(latest?.state || latest?.interpreted_state);
+  if (metricConfidence) metricConfidence.textContent = toPretty(latest?.confidence);
+  if (metricOperator) metricOperator.textContent = latest?.operator_message || "No operator message yet.";
+  if (metricRiskBadge) metricRiskBadge.innerHTML = riskBadgeHtml(latest?.risk_level);
+  if (metricPhaseBadge) metricPhaseBadge.innerHTML = phaseBadgeHtml(phaseFromResult(latest));
 }
 
 function renderDashboardRecent(results) {
   const tbody = qs("#dashboardRecentBody");
+  const empty = qs("#dashboardEmpty");
   if (!tbody) return;
   tbody.innerHTML = "";
-  (results || []).forEach((r) => {
+  const list = results || [];
+  if (empty) {
+    if (list.length === 0) empty.classList.remove("hidden");
+    else empty.classList.add("hidden");
+  }
+  list.forEach((r) => {
     const tr = document.createElement("tr");
     tr.innerHTML = `
       <td>${toPretty(r.result_id)}</td>
       <td>${toPretty(r.timestamp || r.persisted_at)}</td>
-      <td>${toPretty(phaseFromResult(r))}</td>
-      <td>${toPretty(r.risk_level)}</td>
+      <td>${phaseBadgeHtml(phaseFromResult(r))}</td>
+      <td>${riskBadgeHtml(r.risk_level)}</td>
       <td>${toPretty(structuralDriftFromResult(r))}</td>
       <td>${toPretty(compositeInstabilityFromResult(r))}</td>
       <td><a href="/app/results/${encodeURIComponent(r.result_id)}?run_id=${encodeURIComponent(state.activeRun?.run_id || "")}">View</a></td>
@@ -237,7 +375,7 @@ function renderDashboardRecent(results) {
 
 async function loadDashboard() {
   const runId = state.activeRun?.run_id || "";
-  const recentEnv = await fetchJson(apiUrl("/results/recent", { run_id: runId, limit: 50 }));
+  const recentEnv = await fetchJson(apiUrl("/results/recent", { run_id: runId, limit: 200 }));
   const latest = (recentEnv.results && recentEnv.results[0]) || null;
   state.dashboardRecent = recentEnv.results || [];
   renderDashboardMetrics(latest);
@@ -258,9 +396,16 @@ function parseCsvText(file) {
   });
 }
 
+function setUploadFile(file) {
+  state.uploadFile = file || null;
+  const el = qs("#selectedFileName");
+  if (!el) return;
+  el.textContent = state.uploadFile ? `${state.uploadFile.name} (${state.uploadFile.size} bytes)` : "No file selected";
+}
+
 async function uploadCsvToActiveRun() {
   const fileInput = qs("#csvFileInput");
-  const file = fileInput?.files?.[0];
+  const file = state.uploadFile || fileInput?.files?.[0];
   if (!file) throw new Error("Choose a CSV file first");
   const runId = state.activeRun?.run_id;
   if (!runId) throw new Error("No active run found");
@@ -273,9 +418,9 @@ async function uploadCsvToActiveRun() {
 }
 
 async function createRunFromForm() {
-  const name = String(qs("#runNameInput").value || "").trim();
-  const configRaw = String(qs("#runConfigInput").value || "").trim();
-  const activate = Boolean(qs("#runActivateInput").checked);
+  const name = String(qs("#runNameInput")?.value || "").trim();
+  const configRaw = String(qs("#runConfigInput")?.value || "").trim();
+  const activate = Boolean(qs("#runActivateInput")?.checked);
   if (!name) throw new Error("Run name is required");
   let config = {};
   if (configRaw) {
@@ -296,6 +441,35 @@ async function createRunFromForm() {
     body: JSON.stringify({ name, config, activate }),
   });
   return out.run;
+}
+
+async function seedDemoData() {
+  const run = state.activeRun || (await ensureActiveRun());
+  updateActiveRunHeader(run);
+  const runId = run.run_id;
+  const now = Date.now();
+  const items = [];
+  for (let i = 0; i < 120; i += 1) {
+    const t = new Date(now - (120 - i) * 60_000).toISOString();
+    const driftFactor = i < 40 ? 0.2 : i < 80 ? 0.6 : 1.0;
+    const wave = Math.sin(i / 6);
+    items.push({
+      timestamp: t,
+      site_id: "demo-site",
+      asset_id: "demo-asset",
+      sensor_values: {
+        pressure: 44 + wave * (1 + driftFactor * 0.7) + i * 0.025,
+        flow: 28 + Math.cos(i / 7) * (1 + driftFactor * 0.4) + i * 0.015,
+        vibration: 6 + Math.sin(i / 3) * (1 + driftFactor * 1.1) + driftFactor * 2.5,
+        temperature: 61 + Math.cos(i / 5) * (1 + driftFactor * 0.5) + i * 0.02,
+      },
+    });
+  }
+  return fetchJson(`/ingest/batch?run_id=${encodeURIComponent(runId)}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ items }),
+  });
 }
 
 function destroyCharts() {
@@ -390,7 +564,7 @@ function renderPhaseTimeline(results) {
     item.innerHTML = `
       <div class="timeline-dot"></div>
       <div class="timeline-content">
-        <div class="timeline-phase">${escapeHtml(String(phase))}</div>
+        <div class="timeline-phase">${phaseBadgeHtml(phase)}</div>
         <div class="timeline-meta">${escapeHtml(String(r.timestamp || r.persisted_at || ""))}</div>
       </div>
     `;
@@ -403,6 +577,8 @@ function renderOperatorMessages(results) {
   if (!el) return;
   el.innerHTML = "";
   const msgs = results
+    .slice()
+    .reverse()
     .map((r) => ({ id: r.result_id, ts: r.timestamp || r.persisted_at, msg: r.operator_message || "" }))
     .filter((x) => x.msg);
   if (msgs.length === 0) {
@@ -423,19 +599,60 @@ function renderOperatorMessages(results) {
   });
 }
 
+function filterRunResults(results) {
+  const q = state.runDetailView.search.trim().toLowerCase();
+  if (!q) return results.slice();
+  return results.filter((r) => {
+    const fields = [
+      r.result_id,
+      r.timestamp,
+      r.persisted_at,
+      r.state,
+      phaseFromResult(r),
+      trendFromResult(r),
+      r.risk_level,
+      r.operator_message,
+    ];
+    return fields.some((value) => String(value || "").toLowerCase().includes(q));
+  });
+}
+
+function sortRunResults(results) {
+  const mode = state.runDetailView.sort;
+  const items = results.slice();
+  const riskRank = { LOW: 1, MEDIUM: 2, HIGH: 3 };
+  if (mode === "timestamp_asc") return items.sort((a, b) => parseTime(a.timestamp || a.persisted_at) - parseTime(b.timestamp || b.persisted_at));
+  if (mode === "drift_desc") return items.sort((a, b) => (structuralDriftFromResult(b) ?? -Infinity) - (structuralDriftFromResult(a) ?? -Infinity));
+  if (mode === "drift_asc") return items.sort((a, b) => (structuralDriftFromResult(a) ?? Infinity) - (structuralDriftFromResult(b) ?? Infinity));
+  if (mode === "composite_desc") return items.sort((a, b) => (compositeInstabilityFromResult(b) ?? -Infinity) - (compositeInstabilityFromResult(a) ?? -Infinity));
+  if (mode === "composite_asc") return items.sort((a, b) => (compositeInstabilityFromResult(a) ?? Infinity) - (compositeInstabilityFromResult(b) ?? Infinity));
+  if (mode === "risk_desc") {
+    return items.sort((a, b) => (riskRank[normalizeRiskLevel(b.risk_level)] || 0) - (riskRank[normalizeRiskLevel(a.risk_level)] || 0));
+  }
+  if (mode === "risk_asc") {
+    return items.sort((a, b) => (riskRank[normalizeRiskLevel(a.risk_level)] || 0) - (riskRank[normalizeRiskLevel(b.risk_level)] || 0));
+  }
+  return items.sort((a, b) => parseTime(b.timestamp || b.persisted_at) - parseTime(a.timestamp || a.persisted_at));
+}
+
 function renderRunResultsTable(results) {
   const tbody = qs("#runResultsBody");
+  const empty = qs("#runResultsEmpty");
   if (!tbody) return;
   tbody.innerHTML = "";
+  if (empty) {
+    if (results.length === 0) empty.classList.remove("hidden");
+    else empty.classList.add("hidden");
+  }
   results.forEach((r) => {
     const tr = document.createElement("tr");
     tr.innerHTML = `
       <td>${toPretty(r.result_id)}</td>
       <td>${toPretty(r.timestamp || r.persisted_at)}</td>
       <td>${toPretty(r.state)}</td>
-      <td>${toPretty(phaseFromResult(r))}</td>
+      <td>${phaseBadgeHtml(phaseFromResult(r))}</td>
       <td>${toPretty(trendFromResult(r))}</td>
-      <td>${toPretty(r.risk_level)}</td>
+      <td>${riskBadgeHtml(r.risk_level)}</td>
       <td>${toPretty(structuralDriftFromResult(r))}</td>
       <td>${toPretty(compositeInstabilityFromResult(r))}</td>
       <td>${toPretty(r.operator_message)}</td>
@@ -444,21 +661,62 @@ function renderRunResultsTable(results) {
   });
 }
 
+function setRangeButtonState(rangeValue) {
+  qsa("#runRangeControls [data-range]").forEach((btn) => {
+    if (btn.getAttribute("data-range") === String(rangeValue)) btn.classList.add("active");
+    else btn.classList.remove("active");
+  });
+}
+
+function currentRangeSlice(resultsChronological) {
+  const range = state.runDetailView.range;
+  if (range === "all") return resultsChronological.slice();
+  const n = Number.parseInt(range, 10);
+  if (!Number.isFinite(n) || n <= 0) return resultsChronological.slice();
+  return resultsChronological.slice(-n);
+}
+
+function renderRunDetailFromState() {
+  const hasResults = state.runRecent.length > 0;
+  const runDetailEmpty = qs("#runDetailEmpty");
+  if (runDetailEmpty) {
+    if (hasResults) runDetailEmpty.classList.add("hidden");
+    else runDetailEmpty.classList.remove("hidden");
+  }
+  if (!hasResults) {
+    destroyCharts();
+    renderPhaseTimeline([]);
+    renderOperatorMessages([]);
+    renderRunResultsTable([]);
+    return;
+  }
+
+  const chronological = state.runRecent.slice().reverse();
+  const ranged = currentRangeSlice(chronological);
+  renderRunDetailCharts(ranged);
+  renderPhaseTimeline(ranged);
+  renderOperatorMessages(ranged);
+  const filtered = filterRunResults(ranged);
+  const sorted = sortRunResults(filtered);
+  renderRunResultsTable(sorted);
+}
+
 async function loadRunDetail(runId) {
   const runRes = await fetchJson(`/runs/${encodeURIComponent(runId)}`);
   const run = runRes.run;
-  qs("#runDetailTitle").textContent = `Run: ${run.name}`;
-  qs("#runDetailMeta").textContent = `${run.run_id} · status=${run.status} · created=${run.created_at}`;
-  const recentEnv = await fetchJson(apiUrl("/results/recent", { run_id: runId, limit: 200 }));
-  const results = (recentEnv.results || []).slice().reverse();
+  const title = qs("#runDetailTitle");
+  const meta = qs("#runDetailMeta");
+  if (title) title.textContent = `Run: ${run.name}`;
+  if (meta) meta.textContent = `${run.run_id} · status=${run.status} · created=${run.created_at}`;
+  const recentEnv = await fetchJson(apiUrl("/results/recent", { run_id: runId, limit: 1000 }));
   state.runRecent = recentEnv.results || [];
-  renderRunDetailCharts(results);
-  renderPhaseTimeline(results);
-  renderOperatorMessages(results);
-  renderRunResultsTable(results);
+  setRangeButtonState(state.runDetailView.range);
+  renderRunDetailFromState();
 
-  qs("#runDetailExportJsonBtn").onclick = () => exportData("json", runId);
-  qs("#runDetailExportCsvBtn").onclick = () => exportData("csv", runId);
+  const exportJson = qs("#runDetailExportJsonBtn");
+  const exportCsv = qs("#runDetailExportCsvBtn");
+  if (exportJson) exportJson.onclick = () => exportData("json", runId);
+  if (exportCsv) exportCsv.onclick = () => exportData("csv", runId);
 }
 
 async function loadResultDetail(resultId) {
@@ -467,6 +725,7 @@ async function loadResultDetail(resultId) {
   const env = await fetchJson(apiUrl(`/results/${encodeURIComponent(resultId)}`, { run_id: runId }));
   const r = env.result;
   const grid = qs("#resultDetailGrid");
+  if (!grid) return;
   grid.innerHTML = "";
   const keys = [
     ["result_id", r.result_id],
@@ -488,19 +747,81 @@ async function loadResultDetail(resultId) {
   });
 }
 
+function wireUploadInteractions() {
+  const fileInput = qs("#csvFileInput");
+  const zone = qs("#uploadDropZone");
+  if (fileInput) {
+    fileInput.addEventListener("change", () => {
+      const f = fileInput.files && fileInput.files[0] ? fileInput.files[0] : null;
+      setUploadFile(f);
+    });
+  }
+  if (!zone) return;
+
+  const stop = (evt) => {
+    evt.preventDefault();
+    evt.stopPropagation();
+  };
+
+  ["dragenter", "dragover"].forEach((name) => {
+    zone.addEventListener(name, (evt) => {
+      stop(evt);
+      zone.classList.add("dragging");
+    });
+  });
+  ["dragleave", "drop"].forEach((name) => {
+    zone.addEventListener(name, (evt) => {
+      stop(evt);
+      zone.classList.remove("dragging");
+    });
+  });
+  zone.addEventListener("drop", (evt) => {
+    const dt = evt.dataTransfer;
+    const file = dt && dt.files && dt.files[0] ? dt.files[0] : null;
+    if (!file) return;
+    setUploadFile(file);
+    // Keep native file input in sync when possible.
+    if (fileInput && dt && dt.files) {
+      try {
+        fileInput.files = dt.files;
+      } catch (_err) {
+        // Ignore browser restrictions; upload uses state.uploadFile fallback.
+      }
+    }
+  });
+}
+
+async function refreshCurrentPage() {
+  const route = getRoute();
+  await loadRuns();
+  if (route.page === "dashboard") await loadDashboard();
+  if (route.page === "runs") renderRunsList();
+  if (route.page === "upload") updateUploadRunInfo();
+  if (route.page === "run-detail") await loadRunDetail(route.runId);
+  if (route.page === "result-detail") await loadResultDetail(route.resultId);
+}
+
 async function wireEvents() {
   qs("#refreshBtn")?.addEventListener("click", async () => {
     try {
       setLoading(true, "Refreshing...");
-      const route = getRoute();
-      await loadRuns();
-      if (route.page === "dashboard") await loadDashboard();
-      if (route.page === "runs") renderRunsList();
-      if (route.page === "run-detail") await loadRunDetail(route.runId);
-      if (route.page === "result-detail") await loadResultDetail(route.resultId);
-      setStatus("Refreshed");
+      await refreshCurrentPage();
+      setStatus("Refreshed", false, true);
     } catch (err) {
-      setStatus(String(err.message || err), true);
+      setStatus(String(err.message || err), true, true);
+    } finally {
+      setLoading(false);
+    }
+  });
+
+  qs("#seedDemoBtn")?.addEventListener("click", async () => {
+    try {
+      setLoading(true, "Seeding demo data...");
+      const out = await seedDemoData();
+      await refreshCurrentPage();
+      setStatus(`Demo data seeded (${out.count} rows processed)`, false, true);
+    } catch (err) {
+      setStatus(String(err.message || err), true, true);
     } finally {
       setLoading(false);
     }
@@ -512,16 +833,49 @@ async function wireEvents() {
       setLoading(true, "Creating run...");
       const run = await createRunFromForm();
       if (run.is_active) updateActiveRunHeader(run);
-      qs("#runNameInput").value = "";
-      qs("#runConfigInput").value = "";
-      qs("#runActivateInput").checked = true;
+      const nameInput = qs("#runNameInput");
+      const configInput = qs("#runConfigInput");
+      const activateInput = qs("#runActivateInput");
+      if (nameInput) nameInput.value = "";
+      if (configInput) configInput.value = "";
+      if (activateInput) activateInput.checked = true;
       await loadRuns();
-      setStatus(`Run created: ${run.name}`);
+      setStatus(`Run created: ${run.name}`, false, true);
     } catch (err) {
-      setStatus(String(err.message || err), true);
+      setStatus(String(err.message || err), true, true);
     } finally {
       setLoading(false);
     }
+  });
+
+  qs("#runsSearchInput")?.addEventListener("input", (e) => {
+    state.runsView.search = String(e.target.value || "");
+    renderRunsList();
+  });
+  qs("#runsStatusFilter")?.addEventListener("change", (e) => {
+    state.runsView.status = String(e.target.value || "all");
+    renderRunsList();
+  });
+  qs("#runsSortSelect")?.addEventListener("change", (e) => {
+    state.runsView.sort = String(e.target.value || "created_desc");
+    renderRunsList();
+  });
+
+  qs("#runResultsSearchInput")?.addEventListener("input", (e) => {
+    state.runDetailView.search = String(e.target.value || "");
+    renderRunDetailFromState();
+  });
+  qs("#runResultsSortSelect")?.addEventListener("change", (e) => {
+    state.runDetailView.sort = String(e.target.value || "timestamp_desc");
+    renderRunDetailFromState();
+  });
+  qsa("#runRangeControls [data-range]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const range = String(btn.getAttribute("data-range") || "200");
+      state.runDetailView.range = range;
+      setRangeButtonState(range);
+      renderRunDetailFromState();
+    });
   });
 
   qs("#csvUploadForm")?.addEventListener("submit", async (e) => {
@@ -529,10 +883,17 @@ async function wireEvents() {
     try {
       setLoading(true, "Uploading CSV...");
       const out = await uploadCsvToActiveRun();
+      const route = getRoute();
       await loadDashboard();
-      setStatus(`CSV ingested (${out.count} rows processed)`);
+      if (route.page === "run-detail" && route.runId) {
+        await loadRunDetail(route.runId);
+      }
+      const fileInput = qs("#csvFileInput");
+      if (fileInput) fileInput.value = "";
+      setUploadFile(null);
+      setStatus(`CSV ingested (${out.count} rows processed)`, false, true);
     } catch (err) {
-      setStatus(String(err.message || err), true);
+      setStatus(String(err.message || err), true, true);
     } finally {
       setLoading(false);
     }
@@ -540,6 +901,8 @@ async function wireEvents() {
 
   qs("#exportJsonBtn")?.addEventListener("click", () => exportData("json", state.activeRun?.run_id || ""));
   qs("#exportCsvBtn")?.addEventListener("click", () => exportData("csv", state.activeRun?.run_id || ""));
+
+  wireUploadInteractions();
 }
 
 async function init() {
@@ -559,12 +922,13 @@ async function init() {
     await loadRuns();
     if (route.page === "dashboard") await loadDashboard();
     if (route.page === "runs") renderRunsList();
+    if (route.page === "upload") updateUploadRunInfo();
     if (route.page === "run-detail") await loadRunDetail(route.runId);
     if (route.page === "result-detail") await loadResultDetail(route.resultId);
     await wireEvents();
     setStatus("");
   } catch (err) {
-    setStatus(String(err.message || err), true);
+    setStatus(String(err.message || err), true, true);
   } finally {
     setLoading(false);
   }
