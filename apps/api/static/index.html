@@ -3,80 +3,228 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Neraium SII MVP</title>
+  <title>Neraium Product UI</title>
   <link rel="stylesheet" href="/web/styles.css" />
 </head>
 <body>
-  <header class="topbar">
-    <h1>Neraium SII MVP</h1>
-    <div class="topbar-actions">
-      <button id="refreshBtn" type="button">Refresh</button>
-      <button id="newRunBtn" type="button">New Run</button>
-    </div>
-  </header>
-
-  <main class="layout">
-    <aside class="panel">
-      <h2>Runs</h2>
-      <div id="activeRun"></div>
-      <ul id="runsList" class="list"></ul>
-      <form id="runForm" class="stack hidden">
-        <input id="runNameInput" placeholder="Run name" required />
-        <textarea id="runConfigInput" rows="4" placeholder='{"site_id":"site-A"}'></textarea>
-        <div class="row">
-          <button type="submit">Create</button>
-          <button type="button" id="cancelRunBtn">Cancel</button>
-        </div>
-      </form>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="brand">
+        <h1>Neraium</h1>
+        <p>SII Product</p>
+      </div>
+      <nav class="nav">
+        <a href="/dashboard" data-nav="dashboard">Dashboard</a>
+        <a href="/app/runs" data-nav="runs">Runs</a>
+        <a href="/upload" data-nav="upload">Upload</a>
+      </nav>
+      <div class="active-run-box">
+        <div class="small-label">Active run</div>
+        <div id="activeRunName" class="active-run-name">-</div>
+        <div id="activeRunId" class="active-run-id">-</div>
+      </div>
     </aside>
 
-    <section class="panel">
-      <h2>CSV Upload</h2>
-      <form id="csvForm" class="stack">
-        <input id="csvFileInput" type="file" accept=".csv,text/csv" required />
-        <button type="submit">Ingest CSV</button>
-      </form>
-      <p class="muted">Upload telemetry CSV using existing ingest pipeline.</p>
-    </section>
-
-    <section class="panel span-2">
-      <h2>Latest Result</h2>
-      <div id="latestEmpty" class="muted">No result yet.</div>
-      <div id="latestView" class="hidden">
-        <div class="grid">
-          <div><span class="k">structural_drift_score</span><span id="mDrift" class="v"></span></div>
-          <div><span class="k">composite_instability</span><span id="mComposite" class="v"></span></div>
-          <div><span class="k">phase</span><span id="mPhase" class="v"></span></div>
-          <div><span class="k">trend</span><span id="mTrend" class="v"></span></div>
-          <div><span class="k">risk_level</span><span id="mRisk" class="v"></span></div>
-          <div><span class="k">operator_message</span><span id="mMsg" class="v"></span></div>
+    <div class="main">
+      <header class="topbar">
+        <div>
+          <h2 id="pageTitle">Dashboard</h2>
+          <p id="pageSubtitle" class="subtitle">System stability overview</p>
         </div>
-      </div>
-      <div class="row">
-        <button id="exportCsvBtn" type="button">Export CSV</button>
-        <button id="exportJsonBtn" type="button">Export JSON</button>
-      </div>
-    </section>
+        <div class="topbar-actions">
+          <button id="refreshBtn" type="button">Refresh</button>
+        </div>
+      </header>
 
-    <section class="panel span-2">
-      <h2>Recent Results</h2>
-      <table id="recentTable">
-        <thead>
-          <tr>
-            <th>id</th>
-            <th>timestamp</th>
-            <th>state</th>
-            <th>phase</th>
-            <th>risk</th>
-            <th>drift</th>
-            <th>composite</th>
-          </tr>
-        </thead>
-        <tbody></tbody>
-      </table>
-    </section>
-  </main>
+      <div id="globalStatus" class="status hidden"></div>
+      <div id="globalLoading" class="loading hidden">Loading...</div>
 
+      <main class="content">
+        <!-- DASHBOARD -->
+        <section id="page-dashboard" class="page">
+          <div class="card-grid">
+            <article class="metric-card">
+              <h3>structural_drift_score</h3>
+              <p id="metricDrift" class="metric-value">-</p>
+            </article>
+            <article class="metric-card">
+              <h3>composite_instability</h3>
+              <p id="metricComposite" class="metric-value">-</p>
+            </article>
+            <article class="metric-card">
+              <h3>phase</h3>
+              <p id="metricPhase" class="metric-value">-</p>
+            </article>
+            <article class="metric-card">
+              <h3>trend</h3>
+              <p id="metricTrend" class="metric-value">-</p>
+            </article>
+            <article class="metric-card">
+              <h3>risk_level</h3>
+              <p id="metricRisk" class="metric-value">-</p>
+            </article>
+            <article class="metric-card">
+              <h3>state</h3>
+              <p id="metricState" class="metric-value">-</p>
+            </article>
+          </div>
+          <section class="panel">
+            <h3>Operator message</h3>
+            <p id="metricOperatorMessage" class="operator-message">No results yet.</p>
+          </section>
+          <section class="panel">
+            <div class="panel-header">
+              <h3>Recent results</h3>
+              <div class="row">
+                <button id="exportJsonBtn" type="button">Export JSON</button>
+                <button id="exportCsvBtn" type="button" class="secondary">Export CSV</button>
+              </div>
+            </div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>ID</th>
+                    <th>Timestamp</th>
+                    <th>Phase</th>
+                    <th>Risk</th>
+                    <th>Drift</th>
+                    <th>Composite</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody id="dashboardRecentBody"></tbody>
+              </table>
+            </div>
+          </section>
+        </section>
+
+        <!-- RUNS LIST -->
+        <section id="page-runs" class="page hidden">
+          <section class="panel">
+            <div class="panel-header">
+              <h3>Create run</h3>
+            </div>
+            <form id="runCreateForm" class="stack">
+              <label>
+                Run name
+                <input id="runNameInput" required placeholder="e.g. Plant A - Morning batch" />
+              </label>
+              <label>
+                Run config (JSON)
+                <textarea id="runConfigInput" rows="4" placeholder='{"baseline_window":24,"recent_window":8}'></textarea>
+              </label>
+              <label class="row">
+                <input id="runActivateInput" type="checkbox" checked />
+                <span>Set as active</span>
+              </label>
+              <button type="submit">Create run</button>
+            </form>
+          </section>
+
+          <section class="panel">
+            <h3>Runs</h3>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Run ID</th>
+                    <th>Status</th>
+                    <th>Created</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody id="runsBody"></tbody>
+              </table>
+            </div>
+          </section>
+        </section>
+
+        <!-- UPLOAD -->
+        <section id="page-upload" class="page hidden">
+          <section class="panel">
+            <h3>Upload CSV to active run</h3>
+            <form id="csvUploadForm" class="stack">
+              <label>
+                CSV file
+                <input id="csvFileInput" type="file" accept=".csv,text/csv" required />
+              </label>
+              <button id="uploadSubmitBtn" type="submit">Upload and ingest</button>
+            </form>
+            <p class="subtitle">Uses existing read-only ingest pipeline and run association.</p>
+          </section>
+        </section>
+
+        <!-- RUN DETAIL -->
+        <section id="page-run-detail" class="page hidden">
+          <section class="panel">
+            <div class="panel-header">
+              <h3 id="runDetailTitle">Run detail</h3>
+              <div class="row">
+                <button id="runDetailExportJsonBtn" type="button">Export JSON</button>
+                <button id="runDetailExportCsvBtn" type="button" class="secondary">Export CSV</button>
+              </div>
+            </div>
+            <p id="runDetailMeta" class="subtitle"></p>
+          </section>
+
+          <div class="chart-grid">
+            <section class="panel">
+              <h3>structural_drift_score</h3>
+              <canvas id="driftChart" height="120"></canvas>
+            </section>
+            <section class="panel">
+              <h3>composite_instability</h3>
+              <canvas id="compositeChart" height="120"></canvas>
+            </section>
+          </div>
+
+          <section class="panel">
+            <h3>Phase timeline</h3>
+            <div id="phaseTimeline" class="timeline"></div>
+          </section>
+
+          <section class="panel">
+            <h3>Operator messages</h3>
+            <ul id="operatorMessagesList" class="messages"></ul>
+          </section>
+
+          <section class="panel">
+            <h3>Results table</h3>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>ID</th>
+                    <th>Timestamp</th>
+                    <th>State</th>
+                    <th>Phase</th>
+                    <th>Trend</th>
+                    <th>Risk</th>
+                    <th>Drift</th>
+                    <th>Composite</th>
+                    <th>Message</th>
+                  </tr>
+                </thead>
+                <tbody id="runResultsBody"></tbody>
+              </table>
+            </div>
+          </section>
+        </section>
+
+        <!-- RESULT DETAIL -->
+        <section id="page-result-detail" class="page hidden">
+          <section class="panel">
+            <h3>Result detail</h3>
+            <div id="resultDetailGrid" class="card-grid"></div>
+          </section>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <script src="/web/app.js"></script>
 </body>
 </html>
