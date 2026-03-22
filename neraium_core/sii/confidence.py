@@ -40,7 +40,9 @@ def estimate_confidence(
     if vals:
         mean_v = sum(vals) / len(vals)
         spread = (sum((v - mean_v) ** 2 for v in vals) / len(vals)) ** 0.5
-        evidence = max(0.0, min(1.0, 1.0 - spread / (mean_v + 1e-6)))
+        spread_consistency = max(0.0, min(1.0, 1.0 - spread / (mean_v + 1e-6)))
+        evidence_strength = max(0.0, min(1.0, mean_v))
+        evidence = 0.6 * spread_consistency + 0.4 * evidence_strength
     else:
         evidence = 0.0
 

@@ -18,10 +18,9 @@ def build_explanation_text(
     driver_text = ", ".join(dominant) if dominant else "no dominant structural drivers"
     reason_text = ", ".join(confidence_reasoning) if confidence_reasoning else "no confidence factors"
     return (
-        f"{interpreted_state} with {decision_state}: systemic multivariate geometry and graph topology "
-        f"show evolving relational structure. Dominant evidence: {driver_text}. "
-        f"Confidence reasoning: {reason_text}. "
-        "Read-only instrumentation output for human operator review."
+        f"{interpreted_state} / {decision_state}: multivariate relational geometry and graph topology "
+        f"indicate structural regime departure characteristics. Dominant contributors: {driver_text}. "
+        f"Confidence evidence: {reason_text}. Read-only instrumentation output."
     )
 
 
