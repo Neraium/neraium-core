@@ -1,0 +1,5 @@
+# Runtime dependencies for the Neraium API demo (mirrors pyproject.toml [project.dependencies]).
+numpy
+pydantic>=2
+fastapi>=0.110
+uvicorn[standard]>=0.29

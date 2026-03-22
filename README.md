@@ -192,6 +192,28 @@ python -m pip install -e .[dev]
 uvicorn apps.api.main:app --host 0.0.0.0 --port 8000
 ```
 
+## Run the demo
+
+One command from the repo root installs runtime dependencies (if needed), binds **0.0.0.0**, and starts the **FastAPI** app with **uvicorn** (same app as `apps/api/main.py`).
+
+```bash
+python run_demo.py
+```
+
+- **Port:** `PORT` environment variable or `--port` (default **7860** if `PORT` is unset).
+- **Host:** `--host` (default **0.0.0.0**).
+- **Public URL:** `--share` tries **cloudflared** or **ngrok** if installed (otherwise prints a hint).
+
+Examples:
+
+```bash
+PORT=8000 python run_demo.py
+python run_demo.py --port 8000 --host 0.0.0.0
+python run_demo.py --share
+```
+
+Runtime-only dependencies are listed in **`requirements.txt`** (also satisfied by `pip install -e .` from `pyproject.toml`).
+
 ## How to test
 
 ```bash
