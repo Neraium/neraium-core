@@ -3093,17 +3093,39 @@ input[type="file"] {
   }
 }
 
-/* Mobile / tablet: scroll the whole main column so the top bar scrolls away (not stuck above content). */
+/* Mobile / tablet: use document scroll so the Operations bar is not trapped in a non-scrolling region.
+   (Nested overflow on .main often never gets a bounded height in grid/flex, so the header looked "fixed".) */
 @media (max-width: 980px) {
-  .main {
-    overflow-y: auto;
+  html {
+    height: auto;
+    min-height: 100%;
+  }
+
+  body {
+    height: auto;
+    min-height: 100dvh;
+    max-height: none;
     overflow-x: hidden;
+    overflow-y: auto;
     -webkit-overflow-scrolling: touch;
-    overscroll-behavior-y: contain;
+  }
+
+  /* Single column stack (not CSS grid — avoids height/min-height quirks with nested scroll). */
+  .app-shell {
+    display: block;
+    height: auto;
+    min-height: 100dvh;
+    max-height: none;
+  }
+
+  .main {
+    display: block;
+    overflow: visible;
+    min-height: 0;
   }
 
   .content {
-    flex: 0 0 auto;
+    flex: none;
     min-height: 0;
     overflow: visible;
   }
@@ -3129,10 +3151,6 @@ input[type="file"] {
 
   .mobile-nav-toggle {
     display: inline-flex;
-  }
-
-  .app-shell {
-    grid-template-columns: 1fr;
   }
 
   .sidebar {
