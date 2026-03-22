@@ -94,7 +94,7 @@ class SystemicInfrastructureIntelligenceEngine:
             extra={
                 "baseline_window": self.config.baseline_window,
                 "recent_window": self.config.recent_window,
-                "relation_threshold": self.config.relation_threshold,
+                "graph_edge_threshold": self.config.effective_graph_edge_threshold,
                 "regime_distance_threshold": self.config.regime_distance_threshold,
             },
         )
@@ -371,7 +371,7 @@ class SystemicInfrastructureIntelligenceEngine:
             gstate = graph_state(
                 geom.recent_corr,
                 baseline_adj=self.state.baseline_adj,
-                threshold=self.config.relation_threshold,
+                threshold=self.config.effective_graph_edge_threshold,
                 feature_names=self.state.sensor_order,
             )
 
@@ -529,15 +529,19 @@ class SystemicInfrastructureIntelligenceEngine:
             driver_names = dominant_drivers(driver_scores, top_k=3)
             context = None
             if self.config.allow_context_provider:
-                snap = self.context_provider.snapshot(
-                    {
-                        "timestamp": frame.timestamp,
-                        "site_id": frame.site_id,
-                        "asset_id": frame.asset_id,
-                        "sensor_values": frame.sensor_values,
-                    }
-                )
-                context = None if snap is None else {"source": snap.source, "payload": snap.payload}
+                try:
+                    snap = self.context_provider.snapshot(
+                        {
+                            "timestamp": frame.timestamp,
+                            "site_id": frame.site_id,
+                            "asset_id": frame.asset_id,
+                            "sensor_values": frame.sensor_values,
+                        }
+                    )
+                    context = None if snap is None else {"source": snap.source, "payload": snap.payload}
+                except Exception:
+                    self.logger.exception("context_provider_snapshot_failed")
+                    context = None
 
             system_health = int(max(0.0, min(100.0, 100.0 - (composite * 55.0))))
             out: SIIResult = {
@@ -614,7 +618,10 @@ class SystemicInfrastructureIntelligenceEngine:
             raise
         except Exception as exc:
             self.logger.exception("frame_processing_failure")
-            raise SIIProcessingError("Failed to process telemetry frame safely") from exc
+            raise SIIProcessingError(
+                f"Failed to process telemetry frame safely for asset={frame.asset_id!r} "
+                f"site={frame.site_id!r} timestamp={frame.timestamp!r}"
+            ) from exc
 
     def process_payload(self, payload: dict[str, Any]) -> SIIResult:
         f = frame_from_payload(payload)
