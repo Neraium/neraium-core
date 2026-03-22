@@ -288,6 +288,163 @@ class PullIntegrationStatusEnvelope(BaseModel):
     message: str | None = None
 
 
+class AlertsEnvelope(BaseModel):
+    count: int
+    alerts: list[dict[str, Any]]
+
+
+def _alert_thresholds() -> tuple[float, float]:
+    try:
+        instability = float(os.getenv("NERAIUM_ALERT_INSTABILITY_THRESHOLD", "1.5"))
+    except (TypeError, ValueError):
+        instability = 1.5
+    try:
+        drift_rapid = float(os.getenv("NERAIUM_ALERT_RAPID_DRIFT_DELTA", "0.2"))
+    except (TypeError, ValueError):
+        drift_rapid = 0.2
+    return max(0.0, instability), max(0.0, drift_rapid)
+
+
+def _fmt_num(value: Any, digits: int = 4) -> str:
+    try:
+        n = float(value)
+    except (TypeError, ValueError):
+        return "-"
+    if not np.isfinite(n):
+        return "-"
+    return f"{n:.{digits}f}"
+
+
+def _normalize_risk_level(value: Any) -> str:
+    text = str(value or "").strip().upper()
+    if text in {"HIGH", "MEDIUM", "LOW"}:
+        return text
+    return "UNKNOWN"
+
+
+def _alert_context(result: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "result_id": result.get("result_id"),
+        "run_id": result.get("run_id"),
+        "timestamp": result.get("timestamp") or result.get("persisted_at"),
+        "state": result.get("state") or result.get("interpreted_state"),
+        "risk_level": result.get("risk_level"),
+        "structural_drift_score": _safe_float(result.get("structural_drift_score"), 0.0),
+        "composite_instability": _safe_float(result.get("latest_instability"), 0.0),
+    }
+
+
+def _evaluate_alerts(
+    *,
+    current: dict[str, Any] | None,
+    previous: dict[str, Any] | None,
+    instability_threshold: float,
+    rapid_drift_delta: float,
+) -> list[dict[str, Any]]:
+    if not isinstance(current, dict):
+        return []
+    alerts: list[dict[str, Any]] = []
+    now = _utc_now_iso()
+    current_risk = _normalize_risk_level(current.get("risk_level"))
+    prev_risk = _normalize_risk_level(previous.get("risk_level")) if isinstance(previous, dict) else "UNKNOWN"
+
+    if current_risk == "HIGH" and prev_risk != "HIGH":
+        alerts.append(
+            {
+                "id": f"alert_{uuid4().hex[:12]}",
+                "type": "risk_high_transition",
+                "severity": "critical",
+                "message": f"Risk transitioned to HIGH (from {prev_risk}).",
+                "created_at": now,
+                "trigger": {"from": prev_risk, "to": current_risk},
+                "context": _alert_context(current),
+            }
+        )
+
+    current_instability = _safe_float(current.get("latest_instability"), 0.0)
+    prev_instability = (
+        _safe_float(previous.get("latest_instability"), 0.0) if isinstance(previous, dict) else None
+    )
+    crossed_up = prev_instability is None or prev_instability < instability_threshold
+    if current_instability >= instability_threshold and crossed_up:
+        alerts.append(
+            {
+                "id": f"alert_{uuid4().hex[:12]}",
+                "type": "instability_threshold_crossed",
+                "severity": "high",
+                "message": (
+                    f"Composite instability crossed threshold "
+                    f"({_fmt_num(current_instability)} >= {_fmt_num(instability_threshold)})."
+                ),
+                "created_at": now,
+                "trigger": {
+                    "threshold": instability_threshold,
+                    "previous": prev_instability,
+                    "current": current_instability,
+                },
+                "context": _alert_context(current),
+            }
+        )
+
+    current_drift = _safe_float(current.get("structural_drift_score"), 0.0)
+    prev_drift = _safe_float(previous.get("structural_drift_score"), 0.0) if isinstance(previous, dict) else None
+    if prev_drift is not None:
+        drift_delta = current_drift - prev_drift
+        if drift_delta >= rapid_drift_delta:
+            alerts.append(
+                {
+                    "id": f"alert_{uuid4().hex[:12]}",
+                    "type": "rapid_drift_detected",
+                    "severity": "high",
+                    "message": (
+                        f"Rapid drift detected (+{_fmt_num(drift_delta)} in latest update)."
+                    ),
+                    "created_at": now,
+                    "trigger": {
+                        "delta": drift_delta,
+                        "threshold": rapid_drift_delta,
+                        "previous": prev_drift,
+                        "current": current_drift,
+                    },
+                    "context": _alert_context(current),
+                }
+            )
+
+    return alerts
+
+
+def _dispatch_alert_stubs(
+    *,
+    alert: dict[str, Any],
+    webhook_url: str | None,
+    email_to: str | None,
+) -> None:
+    if webhook_url:
+        log_structured(
+            logger,
+            event="alert_webhook_stub",
+            fields={
+                "webhook_url": webhook_url,
+                "alert_id": alert.get("id"),
+                "alert_type": alert.get("type"),
+                "severity": alert.get("severity"),
+            },
+            level=logging.INFO,
+        )
+    if email_to:
+        log_structured(
+            logger,
+            event="alert_email_stub",
+            fields={
+                "email_to": email_to,
+                "alert_id": alert.get("id"),
+                "alert_type": alert.get("type"),
+                "severity": alert.get("severity"),
+            },
+            level=logging.INFO,
+        )
+
+
 def _ensure_default_run(
     service: StructuralMonitoringService,
     *,
@@ -845,6 +1002,72 @@ def create_app(
     ingest_jobs_lock = threading.Lock()
     pull_integrations: dict[str, dict[str, Any]] = {}
     pull_integrations_lock = threading.Lock()
+    alerts: dict[str, list[dict[str, Any]]] = {}
+    alerts_lock = threading.Lock()
+    alert_instability_threshold, alert_rapid_drift_delta = _alert_thresholds()
+    alert_webhook_url = str(os.getenv("NERAIUM_ALERT_WEBHOOK_URL") or "").strip() or None
+    alert_email_to = str(os.getenv("NERAIUM_ALERT_EMAIL_TO") or "").strip() or None
+
+    def _record_alerts_for_customer(customer_id: str, items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        if not items:
+            return []
+        resolved_customer = _resolve_customer_id(customer_id)
+        created: list[dict[str, Any]] = []
+        with alerts_lock:
+            bucket = alerts.setdefault(resolved_customer, [])
+            for raw in items:
+                if not isinstance(raw, dict):
+                    continue
+                alert = dict(raw)
+                context = alert.get("context") if isinstance(alert.get("context"), dict) else {}
+                trigger = alert.get("trigger") if isinstance(alert.get("trigger"), dict) else {}
+                alert["customer_id"] = resolved_customer
+                alert["context"] = dict(context)
+                alert["trigger"] = dict(trigger)
+                created.append(alert)
+                bucket.append(alert)
+            bucket.sort(key=lambda a: str(a.get("created_at") or ""), reverse=True)
+            del bucket[200:]
+        for alert in created:
+            _dispatch_alert_stubs(
+                alert=alert,
+                webhook_url=alert_webhook_url,
+                email_to=alert_email_to,
+            )
+            log_structured(
+                logger,
+                event="alert_created",
+                fields={
+                    "customer_id": resolved_customer,
+                    "alert_id": alert.get("id"),
+                    "alert_type": alert.get("type"),
+                    "severity": alert.get("severity"),
+                    "run_id": (alert.get("context") or {}).get("run_id"),
+                    "result_id": (alert.get("context") or {}).get("result_id"),
+                },
+                level=logging.WARNING,
+            )
+        return created
+
+    def _process_alerts_after_ingest(
+        *,
+        customer_id: str,
+        run_id: str | None,
+        latest_result: dict[str, Any] | None,
+        previous_result: dict[str, Any] | None,
+    ) -> list[dict[str, Any]]:
+        items = _evaluate_alerts(
+            current=latest_result,
+            previous=previous_result,
+            instability_threshold=alert_instability_threshold,
+            rapid_drift_delta=alert_rapid_drift_delta,
+        )
+        if run_id:
+            for item in items:
+                context = item.get("context")
+                if isinstance(context, dict):
+                    context.setdefault("run_id", run_id)
+        return _record_alerts_for_customer(customer_id, items)
 
     def _normalize_content_length(request: Request) -> int | None:
         raw = request.headers.get("content-length")
@@ -1246,6 +1469,22 @@ def create_app(
                     latest_result=summary.get("latest_result"),
                     message=summary.get("message"),
                 )
+                latest_from_summary = summary.get("latest_result")
+                previous_for_alerts: dict[str, Any] | None = None
+                if isinstance(latest_from_summary, dict):
+                    recent_for_alerts = service_instance.list_recent_results(
+                        limit=2,
+                        run_id=run_id,
+                        customer_id=customer_id,
+                    )
+                    if len(recent_for_alerts) >= 2:
+                        previous_for_alerts = recent_for_alerts[1]
+                    _process_alerts_after_ingest(
+                        customer_id=customer_id,
+                        run_id=run_id,
+                        latest_result=latest_from_summary,
+                        previous_result=previous_for_alerts,
+                    )
                 log_structured(
                     logger,
                     event="ingest_job_completed",
@@ -1468,6 +1707,20 @@ def create_app(
                 run_id=resolved,
                 customer_id=resolved_customer,
             )
+            previous_result = None
+            recent_for_alerts = service_instance.list_recent_results(
+                limit=2,
+                run_id=resolved,
+                customer_id=resolved_customer,
+            )
+            if len(recent_for_alerts) >= 2:
+                previous_result = recent_for_alerts[1]
+            _process_alerts_after_ingest(
+                customer_id=resolved_customer,
+                run_id=resolved,
+                latest_result=result,
+                previous_result=previous_result,
+            )
         except ValueError as e:
             logger.warning("validation failure ingest: %s", e)
             raise HTTPException(status_code=400, detail=_actionable_validation_detail(str(e)))
@@ -1496,6 +1749,21 @@ def create_app(
                 run_id=resolved,
                 customer_id=resolved_customer,
             )
+            if results:
+                previous_result = None
+                recent_for_alerts = service_instance.list_recent_results(
+                    limit=2,
+                    run_id=resolved,
+                    customer_id=resolved_customer,
+                )
+                if len(recent_for_alerts) >= 2:
+                    previous_result = recent_for_alerts[1]
+                _process_alerts_after_ingest(
+                    customer_id=resolved_customer,
+                    run_id=resolved,
+                    latest_result=results[-1],
+                    previous_result=previous_result,
+                )
         except ValueError as e:
             logger.warning("validation failure ingest_batch: %s", e)
             raise HTTPException(status_code=400, detail=_actionable_validation_detail(str(e)))
@@ -1521,6 +1789,21 @@ def create_app(
                 run_id=resolved,
                 customer_id=resolved_customer,
             )
+            if results:
+                previous_result = None
+                recent_for_alerts = service_instance.list_recent_results(
+                    limit=2,
+                    run_id=resolved,
+                    customer_id=resolved_customer,
+                )
+                if len(recent_for_alerts) >= 2:
+                    previous_result = recent_for_alerts[1]
+                _process_alerts_after_ingest(
+                    customer_id=resolved_customer,
+                    run_id=resolved,
+                    latest_result=results[-1],
+                    previous_result=previous_result,
+                )
         except ValueError as e:
             logger.warning("validation failure ingest_csv: %s", e)
             raise HTTPException(status_code=400, detail=_actionable_validation_detail(str(e)))
@@ -1762,6 +2045,48 @@ def create_app(
         with pull_integrations_lock:
             state = pull_integrations.get(resolved_customer)
             return _public_pull_state(state, customer_id=resolved_customer)
+
+    @app.get("/alerts", response_model=AlertsEnvelope)
+    def list_alerts(
+        limit: int = Query(default=50, ge=1, le=500),
+        run_id: str | None = Query(default=None),
+        customer_id: str | None = Query(default=None),
+    ) -> dict[str, Any]:
+        resolved_customer = _resolve_customer_id(customer_id)
+        with alerts_lock:
+            items = [dict(a) for a in alerts.get(resolved_customer, [])]
+        if run_id:
+            items = [a for a in items if str((a.get("context") or {}).get("run_id") or "") == str(run_id)]
+        items = items[:limit]
+        return {"count": len(items), "alerts": items}
+
+    @app.post("/alerts/test", response_model=ActionResponse)
+    def emit_test_alert(
+        _: None = Depends(require_api_key),
+        customer_id: str | None = Query(default=None),
+        run_id: str | None = Query(default=None),
+    ) -> dict[str, bool]:
+        resolved_customer = _resolve_customer_id(customer_id)
+        now = _utc_now_iso()
+        alert = {
+            "id": f"alert_{uuid4().hex[:12]}",
+            "type": "test_alert",
+            "severity": "info",
+            "message": "Test alert generated manually.",
+            "created_at": now,
+            "trigger": {"manual": True},
+            "context": {
+                "result_id": None,
+                "run_id": run_id,
+                "timestamp": now,
+                "state": "TEST",
+                "risk_level": "UNKNOWN",
+                "structural_drift_score": 0.0,
+                "composite_instability": 0.0,
+            },
+        }
+        _record_alerts_for_customer(resolved_customer, [alert])
+        return {"ok": True}
 
     @app.post("/reset", response_model=ActionResponse)
     def reset(_: None = Depends(require_api_key)) -> dict[str, bool]:

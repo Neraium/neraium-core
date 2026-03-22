@@ -37,6 +37,13 @@ Set integration-related values when using pull mode:
 - `NERAIUM_PULL_POLLING_INTERVAL_SECONDS` (recommended default)
 - `NERAIUM_INTEGRATION_CONFIG_PATH` (mapping configuration file path)
 
+Set alerting-related values (optional, minimal defaults are applied automatically):
+
+- `NERAIUM_ALERT_INSTABILITY_THRESHOLD` (default `1.5`)
+- `NERAIUM_ALERT_RAPID_DRIFT_DELTA` (default `0.2`)
+- `NERAIUM_ALERT_WEBHOOK_URL` (stub logging only)
+- `NERAIUM_ALERT_EMAIL_TO` (stub logging only)
+
 ## 2) Run with Docker
 
 Build:
@@ -136,7 +143,31 @@ This starts the API and UI at `http://localhost:8000` with local persistence in 
 - Do not expose internal endpoints publicly unless explicitly required.
 - Mount config/token sources securely (secrets manager, protected env injection, etc).
 
-## 7) Kubernetes (later)
+## 7) Basic alerting
+
+Alerts are generated on ingest and can be listed via API:
+
+```bash
+curl "http://localhost:8000/alerts?customer_id=acme&limit=20"
+```
+
+Triggers:
+
+- risk transition to `HIGH`
+- composite instability crossing `NERAIUM_ALERT_INSTABILITY_THRESHOLD`
+- rapid drift delta over `NERAIUM_ALERT_RAPID_DRIFT_DELTA`
+
+Optional stub endpoint for smoke checks:
+
+```bash
+curl -X POST "http://localhost:8000/alerts/test?customer_id=acme" \
+  -H "x-api-key: ${NERAIUM_API_KEY}"
+```
+
+If `NERAIUM_ALERT_WEBHOOK_URL` or `NERAIUM_ALERT_EMAIL_TO` is set, Neraium logs
+webhook/email stub events for each alert (no outbound delivery implementation yet).
+
+## 8) Kubernetes (later)
 
 Current packaging is container-ready and works well as a base for Kubernetes:
 
