@@ -55,42 +55,50 @@
       <main class="content">
         <!-- DASHBOARD -->
         <section id="page-dashboard" class="page page-dashboard">
-          <div class="summary-grid">
-            <article class="metric-card emphasis">
-              <h3>Risk level</h3>
-              <p id="metricRisk" class="metric-value">-</p>
-              <div id="metricRiskBadge"></div>
-            </article>
-            <article class="metric-card emphasis">
-              <h3>Phase</h3>
-              <p id="metricPhase" class="metric-value">-</p>
-              <div id="metricPhaseBadge"></div>
-            </article>
-            <article class="metric-card">
-              <h3>Structural drift score</h3>
-              <p id="metricDrift" class="metric-value">-</p>
-            </article>
-            <article class="metric-card">
-              <h3>Composite instability</h3>
-              <p id="metricComposite" class="metric-value">-</p>
-            </article>
-            <article class="metric-card">
-              <h3>Trend direction</h3>
-              <p id="metricTrend" class="metric-value">-</p>
-            </article>
-            <article class="metric-card">
-              <h3>State / confidence</h3>
-              <p id="metricState" class="metric-value">-</p>
-              <p id="metricConfidence" class="subtle-row">-</p>
-            </article>
-          </div>
+          <section class="panel control-center">
+            <div class="control-center-grid">
+              <article class="signal-primary">
+                <p class="signal-caption">Live system state</p>
+                <div class="signal-main-row">
+                  <p id="metricState" class="signal-state">-</p>
+                  <div id="metricPhaseBadge"></div>
+                </div>
+                <div class="signal-risk-wrap">
+                  <span class="signal-label">Risk level</span>
+                  <p id="metricRisk" class="signal-risk">-</p>
+                </div>
+                <div class="signal-subline">
+                  <div id="metricRiskBadge"></div>
+                  <p class="signal-trend">Trend: <strong id="metricTrend">-</strong></p>
+                </div>
+              </article>
+              <div class="signal-secondary">
+                <article class="signal-meta-card">
+                  <p class="signal-meta-label">Phase</p>
+                  <p id="metricPhase" class="signal-meta-value">-</p>
+                </article>
+                <article class="signal-meta-card">
+                  <p class="signal-meta-label">Structural drift</p>
+                  <p id="metricDrift" class="signal-meta-value compact">-</p>
+                </article>
+                <article class="signal-meta-card">
+                  <p class="signal-meta-label">Composite instability</p>
+                  <p id="metricComposite" class="signal-meta-value compact">-</p>
+                </article>
+                <article class="signal-meta-card">
+                  <p class="signal-meta-label">Confidence</p>
+                  <p id="metricConfidence" class="signal-meta-value compact">-</p>
+                </article>
+              </div>
+            </div>
+          </section>
 
           <section class="panel operator-panel">
             <h3>Operator message</h3>
             <p id="metricOperatorMessage" class="operator-message">No results yet. Upload telemetry or seed demo data.</p>
           </section>
 
-          <section class="panel">
+          <section class="panel results-panel">
             <div class="panel-header">
               <h3>Recent results</h3>
               <div class="row panel-actions">
@@ -103,7 +111,7 @@
               <p class="subtitle">Use <strong>Upload</strong> to ingest CSV, or click <strong>Seed Demo Data</strong>.</p>
             </div>
             <div class="table-wrap">
-              <table class="data-table">
+              <table class="data-table dashboard-results-table">
                 <thead>
                   <tr>
                     <th>ID</th>
@@ -164,7 +172,7 @@
               <p>No runs match your filters.</p>
             </div>
             <div class="table-wrap">
-              <table class="data-table">
+              <table class="data-table runs-table">
                 <thead>
                   <tr>
                     <th>Name</th>
@@ -238,6 +246,42 @@
             </div>
           </section>
 
+          <section class="panel geometry-panel">
+            <div class="panel-header">
+              <h3>System geometry</h3>
+              <p class="subtitle geometry-subtitle">
+                Engine-derived structural relationship view (3D projection for visualization only).
+              </p>
+            </div>
+            <p id="geometryProjectionNote" class="subtitle geometry-meta">
+              Node positions are deterministic display projections derived from engine correlation outputs.
+            </p>
+            <div class="geometry-layout">
+              <div id="geometryCanvasWrap" class="geometry-canvas-wrap">
+                <div id="geometry3dStatus" class="geometry-status hidden"></div>
+                <canvas id="geometryCanvas" aria-label="3D system geometry visualization"></canvas>
+                <div id="geometryFallback" class="empty-state geometry-fallback hidden"></div>
+                <div id="geometryHud" class="geometry-hud">
+                  <div><span class="k">State</span><span id="geometryState">-</span></div>
+                  <div><span class="k">Risk</span><span id="geometryRisk">-</span></div>
+                  <div><span class="k">Drift</span><span id="geometryDrift">-</span></div>
+                  <div><span class="k">Composite</span><span id="geometryComposite">-</span></div>
+                </div>
+              </div>
+              <aside id="geometryDetails" class="geometry-details">
+                <div id="geometryLegend" class="geometry-legend"></div>
+                <h4>Node detail</h4>
+                <p class="subtitle">Select a node in the scene for structural details.</p>
+                <dl id="geometrySelectedDetails" class="geometry-kv">
+                  <div><dt>Signal</dt><dd id="geometryNodeLabel">-</dd></div>
+                  <div><dt>Stress</dt><dd id="geometryNodeStress">-</dd></div>
+                  <div><dt>Magnitude</dt><dd id="geometryNodeMagnitude">-</dd></div>
+                  <div><dt>State</dt><dd id="geometryNodeState">-</dd></div>
+                </dl>
+              </aside>
+            </div>
+          </section>
+
           <section class="panel">
             <h3>Phase timeline</h3>
             <div id="phaseTimeline" class="timeline"></div>
@@ -266,7 +310,7 @@
               </select>
             </div>
             <div class="table-wrap">
-              <table class="data-table">
+              <table class="data-table run-results-table">
                 <thead>
                   <tr>
                     <th>ID</th>
@@ -301,6 +345,8 @@
   </div>
 
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.162.0/build/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.162.0/examples/js/controls/OrbitControls.js"></script>
   <script src="/web/app.js"></script>
 </body>
 </html>

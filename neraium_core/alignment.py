@@ -559,6 +559,7 @@ class StructuralEngine:
 
             analytics.update(
                 {
+                    "valid_sensor_names": valid_sensor_names,
                     "correlation_geometry": {
                         "baseline": corr_baseline.tolist(),
                         "current": corr_recent.tolist(),

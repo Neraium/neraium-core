@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 from typing import Any, Literal
 
+import numpy as np
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, status
 from pydantic import BaseModel, Field
 
@@ -87,6 +88,19 @@ class RunsEnvelope(BaseModel):
 
 class ResultEnvelope(BaseModel):
     result: dict[str, Any]
+
+
+class GeometryEnvelope(BaseModel):
+    run_id: str | None = None
+    result_id: int | None = None
+    timestamp: str | None = None
+    available: bool
+    reason: str | None = None
+    metrics: dict[str, Any] = Field(default_factory=dict)
+    nodes: list[dict[str, Any]] = Field(default_factory=list)
+    edges: list[dict[str, Any]] = Field(default_factory=list)
+    projection: dict[str, Any] = Field(default_factory=dict)
+    provenance: dict[str, Any] = Field(default_factory=dict)
 
 
 def _ensure_default_run(service: StructuralMonitoringService) -> dict[str, Any]:
@@ -213,6 +227,254 @@ def _build_export(results: list[dict[str, Any]], *, format_name: Literal["json",
     return ("text/csv; charset=utf-8", "\n".join(lines))
 
 
+def _safe_float(value: Any, default: float = 0.0) -> float:
+    try:
+        f = float(value)
+    except (TypeError, ValueError):
+        return float(default)
+    if not np.isfinite(f):
+        return float(default)
+    return float(f)
+
+
+def _to_square_matrix(value: Any) -> np.ndarray | None:
+    try:
+        mat = np.asarray(value, dtype=float)
+    except Exception:
+        return None
+    if mat.ndim != 2 or mat.shape[0] != mat.shape[1] or mat.shape[0] == 0:
+        return None
+    mat = np.nan_to_num(mat, nan=0.0, posinf=0.0, neginf=0.0)
+    # Correlation geometry is expected to be self-correlated on diagonal.
+    np.fill_diagonal(mat, 1.0)
+    return mat
+
+
+def _normalize_vector(values: np.ndarray) -> np.ndarray:
+    arr = np.asarray(values, dtype=float)
+    if arr.size == 0:
+        return arr
+    lo = float(np.min(arr))
+    hi = float(np.max(arr))
+    if hi - lo <= 1e-9:
+        return np.full_like(arr, 0.5, dtype=float)
+    return (arr - lo) / (hi - lo)
+
+
+def _project_geometry_positions(
+    corr_current: np.ndarray,
+    *,
+    node_stress: np.ndarray,
+    corr_baseline: np.ndarray | None,
+) -> np.ndarray:
+    n = int(corr_current.shape[0])
+    if n <= 0:
+        return np.zeros((0, 3), dtype=float)
+    if n == 1:
+        return np.asarray([[0.0, 0.0, 0.0]], dtype=float)
+
+    vals, vecs = np.linalg.eigh(corr_current)
+    order = np.argsort(vals)[::-1]
+    vals = vals[order]
+    vecs = vecs[:, order]
+
+    def _axis(component_idx: int) -> np.ndarray:
+        if component_idx >= vecs.shape[1]:
+            return np.zeros((n,), dtype=float)
+        scale = float(np.sqrt(max(vals[component_idx], 1e-6)))
+        return np.asarray(vecs[:, component_idx], dtype=float) * scale
+
+    axis_x = _axis(0)
+    axis_y = _axis(1)
+    if corr_baseline is not None and corr_baseline.shape == corr_current.shape:
+        axis_z = np.mean(np.abs(corr_current - corr_baseline), axis=1)
+    else:
+        axis_z = _axis(2)
+
+    for axis in (axis_x, axis_y, axis_z):
+        max_abs = float(np.max(np.abs(axis))) if axis.size else 0.0
+        if max_abs > 1e-9:
+            axis /= max_abs
+
+    # Fallback to a deterministic ring if matrix eigenvectors are near-degenerate.
+    spread = float(np.std(axis_x) + np.std(axis_y))
+    if spread < 1e-5:
+        theta = np.linspace(0.0, 2.0 * np.pi, num=n, endpoint=False)
+        axis_x = np.cos(theta)
+        axis_y = np.sin(theta)
+
+    axis_z = 0.55 * axis_z + 0.45 * (2.0 * _normalize_vector(node_stress) - 1.0)
+    max_abs_z = float(np.max(np.abs(axis_z))) if axis_z.size else 0.0
+    if max_abs_z > 1e-9:
+        axis_z /= max_abs_z
+
+    return np.stack([axis_x, axis_y, axis_z], axis=1)
+
+
+def _build_geometry_payload(result: dict[str, Any], *, run_id: str | None) -> dict[str, Any]:
+    analytics = result.get("experimental_analytics")
+    analytics_dict = analytics if isinstance(analytics, dict) else {}
+    corr_geometry = analytics_dict.get("correlation_geometry")
+    corr_geometry_dict = corr_geometry if isinstance(corr_geometry, dict) else {}
+    corr_current = _to_square_matrix(corr_geometry_dict.get("current"))
+    corr_baseline = _to_square_matrix(corr_geometry_dict.get("baseline"))
+    if corr_current is not None and corr_baseline is not None and corr_baseline.shape != corr_current.shape:
+        corr_baseline = None
+
+    feature_names: list[str] = []
+    names_from_analytics = analytics_dict.get("valid_sensor_names") or analytics_dict.get("feature_names")
+    if isinstance(names_from_analytics, list):
+        feature_names = [str(v) for v in names_from_analytics if str(v).strip()]
+    if not feature_names:
+        raw = result.get("sensor_relationships")
+        if isinstance(raw, list):
+            feature_names = [str(v) for v in raw if str(v).strip()]
+
+    metrics = {
+        "state": result.get("state") or result.get("interpreted_state"),
+        "phase": result.get("phase") or result.get("interpreted_state") or result.get("state"),
+        "risk_level": result.get("risk_level", "UNKNOWN"),
+        "trend": result.get("trend", "UNKNOWN"),
+        "structural_drift_score": _safe_float(result.get("structural_drift_score"), 0.0),
+        "composite_instability": _safe_float(
+            result.get("latest_instability"),
+            _safe_float(analytics_dict.get("composite_instability"), 0.0),
+        ),
+        "confidence": _safe_float(result.get("confidence"), _safe_float(result.get("confidence_score"), 0.0)),
+    }
+    projection = {
+        "method": "spectral_projection_from_engine_correlation_geometry",
+        "is_visualization_projection": True,
+        "source": "engine correlation geometry + graph analytics",
+        "note": (
+            "Node positions are a deterministic visualization projection derived from engine "
+            "correlation outputs; they are not the core SII computation space."
+        ),
+    }
+    provenance = {
+        "engine_fields": [
+            "sensor_relationships",
+            "experimental_analytics.correlation_geometry.current",
+            "experimental_analytics.correlation_geometry.baseline",
+            "experimental_analytics.signal_structural_importance",
+            "risk_level",
+            "state",
+            "interpreted_state",
+            "trend",
+            "structural_drift_score",
+            "latest_instability",
+            "confidence/confidence_score",
+        ],
+        "positions": "deterministic projection from engine outputs",
+    }
+
+    try:
+        result_id = int(result.get("result_id")) if result.get("result_id") is not None else None
+    except (TypeError, ValueError):
+        result_id = None
+
+    if corr_current is None:
+        return {
+            "run_id": run_id or result.get("run_id"),
+            "result_id": result_id,
+            "timestamp": result.get("timestamp") or result.get("persisted_at"),
+            "available": False,
+            "reason": "Correlation geometry unavailable for this result.",
+            "metrics": metrics,
+            "nodes": [],
+            "edges": [],
+            "projection": projection,
+            "provenance": provenance,
+        }
+
+    n = int(corr_current.shape[0])
+    if len(feature_names) < n:
+        feature_names = feature_names + [f"signal_{i + 1}" for i in range(len(feature_names), n)]
+    if len(feature_names) > n:
+        feature_names = feature_names[:n]
+
+    importance_raw = analytics_dict.get("signal_structural_importance")
+    if isinstance(importance_raw, list) and len(importance_raw) >= n:
+        importance = np.asarray([_safe_float(v, 0.0) for v in importance_raw[:n]], dtype=float)
+    else:
+        corr_abs = np.abs(corr_current - np.eye(n))
+        importance = np.mean(corr_abs, axis=1)
+    importance_norm = _normalize_vector(importance)
+
+    if corr_baseline is not None and corr_baseline.shape == corr_current.shape:
+        stress_raw = np.mean(np.abs(corr_current - corr_baseline), axis=1)
+    else:
+        stress_raw = importance.copy()
+    stress_norm = _normalize_vector(stress_raw)
+    positions = _project_geometry_positions(corr_current, node_stress=stress_norm, corr_baseline=corr_baseline)
+
+    nodes: list[dict[str, Any]] = []
+    for idx in range(n):
+        stress = float(stress_norm[idx])
+        state = "stable"
+        if stress >= 0.66:
+            state = "critical"
+        elif stress >= 0.33:
+            state = "watch"
+        nodes.append(
+            {
+                "id": str(feature_names[idx]),
+                "label": str(feature_names[idx]),
+                "position": {
+                    "x": round(float(positions[idx, 0]), 6),
+                    "y": round(float(positions[idx, 1]), 6),
+                    "z": round(float(positions[idx, 2]), 6),
+                },
+                "magnitude": round(float(importance_norm[idx]), 6),
+                "stress": round(stress, 6),
+                "state": state,
+                "role": "signal",
+            }
+        )
+
+    edges: list[dict[str, Any]] = []
+    if n > 1:
+        upper_idx = np.triu_indices(n, k=1)
+        upper_abs = np.abs(corr_current[upper_idx])
+        if upper_abs.size:
+            threshold = float(np.clip(np.percentile(upper_abs, 72.0), 0.22, 0.78))
+        else:
+            threshold = 1.1
+        for i in range(n):
+            for j in range(i + 1, n):
+                weight = float(corr_current[i, j])
+                magnitude = abs(weight)
+                if magnitude < threshold:
+                    continue
+                baseline_weight = float(corr_baseline[i, j]) if corr_baseline is not None else 0.0
+                delta = weight - baseline_weight
+                edges.append(
+                    {
+                        "source": str(feature_names[i]),
+                        "target": str(feature_names[j]),
+                        "weight": round(weight, 6),
+                        "magnitude": round(magnitude, 6),
+                        "delta": round(delta, 6),
+                        "type": "positive" if weight >= 0.0 else "negative",
+                    }
+                )
+        edges.sort(key=lambda e: float(e.get("magnitude", 0.0)), reverse=True)
+        edges = edges[:240]
+
+    return {
+        "run_id": run_id or result.get("run_id"),
+        "result_id": result_id,
+        "timestamp": result.get("timestamp") or result.get("persisted_at"),
+        "available": True,
+        "reason": None,
+        "metrics": metrics,
+        "nodes": nodes,
+        "edges": edges,
+        "projection": projection,
+        "provenance": provenance,
+    }
+
+
 def create_app(service: StructuralMonitoringService | None = None) -> FastAPI:
     api_key = os.getenv("NERAIUM_API_KEY")
     db_path = os.getenv("NERAIUM_DB_PATH", "neraium.db")
@@ -278,6 +540,53 @@ def create_app(service: StructuralMonitoringService | None = None) -> FastAPI:
         if run is None:
             raise HTTPException(status_code=404, detail=f"Unknown run_id: {run_id}")
         return {"run": run}
+
+    @app.get("/runs/{run_id}/geometry", response_model=GeometryEnvelope)
+    def get_run_geometry(
+        run_id: str,
+        result_id: int | None = Query(default=None),
+    ) -> dict[str, Any]:
+        run = service_instance.get_run(run_id)
+        if run is None:
+            raise HTTPException(status_code=404, detail=f"Unknown run_id: {run_id}")
+
+        if result_id is not None:
+            result = service_instance.get_result_by_id(result_id, run_id=run_id)
+            if result is None:
+                raise HTTPException(status_code=404, detail=f"Unknown result_id: {result_id}")
+        else:
+            result = service_instance.get_latest_result(run_id=run_id)
+
+        if result is None:
+            return {
+                "run_id": run_id,
+                "result_id": None,
+                "timestamp": None,
+                "available": False,
+                "reason": "No results available for this run yet.",
+                "metrics": {},
+                "nodes": [],
+                "edges": [],
+                "projection": {
+                    "method": "spectral_projection_from_engine_correlation_geometry",
+                    "is_visualization_projection": True,
+                    "source": "engine correlation geometry + graph analytics",
+                    "note": (
+                        "Node positions are a deterministic visualization projection derived from engine "
+                        "correlation outputs; they are not the core SII computation space."
+                    ),
+                },
+                "provenance": {
+                    "engine_fields": [
+                        "sensor_relationships",
+                        "experimental_analytics.correlation_geometry.current",
+                        "experimental_analytics.correlation_geometry.baseline",
+                    ],
+                    "positions": "deterministic projection from engine outputs",
+                },
+            }
+
+        return _build_geometry_payload(result, run_id=run_id)
 
     @app.patch("/runs/{run_id}", response_model=RunEnvelope)
     def update_run(run_id: str, payload: UpdateRunRequest, _: None = Depends(require_api_key)) -> dict[str, Any]:
@@ -401,6 +710,14 @@ def create_app(service: StructuralMonitoringService | None = None) -> FastAPI:
         if result is None:
             raise HTTPException(status_code=404, detail=f"Unknown result_id: {result_id}")
         return {"result": result}
+
+    @app.get("/results/{result_id}/geometry", response_model=GeometryEnvelope)
+    def get_result_geometry(result_id: int, run_id: str | None = Query(default=None)) -> dict[str, Any]:
+        resolved = _resolve_run_id(service_instance, run_id)
+        result = service_instance.get_result_by_id(result_id, run_id=resolved)
+        if result is None:
+            raise HTTPException(status_code=404, detail=f"Unknown result_id: {result_id}")
+        return _build_geometry_payload(result, run_id=result.get("run_id") or resolved)
 
     @app.get("/export", response_model=ExportEnvelope)
     def export_results_legacy(
