@@ -48,6 +48,11 @@
           <input id="customerFilterInput" placeholder="Customer ID" aria-label="Customer ID filter" />
           <input id="siteFilterInput" placeholder="Site ID (optional)" aria-label="Site ID filter" list="knownSitesList" />
           <datalist id="knownSitesList"></datalist>
+          <label class="demo-toggle" for="demoModeToggle">
+            <input id="demoModeToggle" type="checkbox" />
+            <span>Demo Mode</span>
+          </label>
+          <button id="prepareDemoBtn" type="button" class="secondary">Prepare Demo Runs</button>
           <button id="seedDemoBtn" type="button" class="secondary">Seed Demo Data</button>
           <button id="refreshBtn" type="button">Refresh</button>
         </div>
@@ -251,6 +256,23 @@
               </article>
             </div>
             <div id="runTransitionStrip" class="timeline-transition-strip hidden"></div>
+            <section id="demoPlaybackPanel" class="demo-playback hidden">
+              <div class="demo-playback-head">
+                <strong>Timeline playback</strong>
+                <span id="demoPlaybackProgress" class="subtitle">Demo Mode off</span>
+              </div>
+              <div class="row">
+                <button id="demoPlayPauseBtn" type="button" class="secondary">Play timeline</button>
+                <button id="demoReplayBtn" type="button" class="secondary">Replay</button>
+              </div>
+            </section>
+            <section id="demoKeyEventsPanel" class="demo-key-events hidden">
+              <div class="panel-header">
+                <h4>Key events</h4>
+                <p class="subtitle">Risk spikes and structural drift changes for fast walkthroughs.</p>
+              </div>
+              <ul id="demoKeyEventsList" class="demo-key-events-list"></ul>
+            </section>
             <article id="runRiskExplanationPanel" class="risk-explanation hidden">
               <div class="risk-explanation-head">
                 <h4>Why this risk level</h4>
