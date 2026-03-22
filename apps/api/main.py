@@ -9,6 +9,8 @@ from typing import Any, Literal
 import numpy as np
 from fastapi import Depends, FastAPI, Header, HTTPException, Query, status
 from pydantic import BaseModel, Field
+from starlette.responses import JSONResponse
+from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from apps.api.web import build_web_router
 from neraium_core.service import StructuralMonitoringService
@@ -16,6 +18,100 @@ from neraium_core.store import ResultStore
 
 
 logger = logging.getLogger(__name__)
+
+DEFAULT_MAX_REQUEST_BODY_BYTES = 50 * 1024 * 1024
+DEFAULT_UVICORN_H11_MAX_INCOMPLETE_EVENT_SIZE = DEFAULT_MAX_REQUEST_BODY_BYTES
+
+
+class RequestBodyTooLargeError(Exception):
+    """Raised when an incoming request body exceeds configured max size."""
+
+
+class MaxRequestBodySizeMiddleware:
+    def __init__(self, app: ASGIApp, max_body_size: int) -> None:
+        self.app = app
+        self.max_body_size = max(1, int(max_body_size))
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope.get("type") != "http":
+            await self.app(scope, receive, send)
+            return
+
+        headers = {k.lower(): v for k, v in scope.get("headers", [])}
+        raw_content_length = headers.get(b"content-length")
+        if raw_content_length:
+            try:
+                content_length = int(raw_content_length.decode("ascii"))
+            except (ValueError, UnicodeDecodeError):
+                content_length = None
+            if content_length is not None and content_length > self.max_body_size:
+                await self._send_413(scope, receive, send)
+                return
+
+        bytes_seen = 0
+        response_started = False
+
+        async def guarded_receive() -> Message:
+            nonlocal bytes_seen
+            message = await receive()
+            if message.get("type") == "http.request":
+                body = message.get("body", b"")
+                bytes_seen += len(body)
+                if bytes_seen > self.max_body_size:
+                    raise RequestBodyTooLargeError
+            return message
+
+        async def tracked_send(message: Message) -> None:
+            nonlocal response_started
+            if message.get("type") == "http.response.start":
+                response_started = True
+            await send(message)
+
+        try:
+            await self.app(scope, guarded_receive, tracked_send)
+        except RequestBodyTooLargeError:
+            if not response_started:
+                await self._send_413(scope, receive, send)
+
+    async def _send_413(self, scope: Scope, receive: Receive, send: Send) -> None:
+        max_mb = self.max_body_size / (1024 * 1024)
+        response = JSONResponse(
+            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+            content={"detail": f"Request body too large (max {max_mb:.1f}MB)."},
+        )
+        await response(scope, receive, send)
+
+
+def _request_body_limit_bytes() -> int:
+    raw = os.getenv("NERAIUM_MAX_REQUEST_BODY_BYTES")
+    if not raw:
+        return DEFAULT_MAX_REQUEST_BODY_BYTES
+    try:
+        value = int(raw)
+    except ValueError:
+        logger.warning(
+            "Invalid NERAIUM_MAX_REQUEST_BODY_BYTES=%r; using default=%s",
+            raw,
+            DEFAULT_MAX_REQUEST_BODY_BYTES,
+        )
+        return DEFAULT_MAX_REQUEST_BODY_BYTES
+    return max(value, DEFAULT_MAX_REQUEST_BODY_BYTES)
+
+
+def _uvicorn_h11_max_incomplete_event_size() -> int:
+    raw = os.getenv("NERAIUM_UVICORN_H11_MAX_INCOMPLETE_EVENT_SIZE")
+    if not raw:
+        return DEFAULT_UVICORN_H11_MAX_INCOMPLETE_EVENT_SIZE
+    try:
+        value = int(raw)
+    except ValueError:
+        logger.warning(
+            "Invalid NERAIUM_UVICORN_H11_MAX_INCOMPLETE_EVENT_SIZE=%r; using default=%s",
+            raw,
+            DEFAULT_UVICORN_H11_MAX_INCOMPLETE_EVENT_SIZE,
+        )
+        return DEFAULT_UVICORN_H11_MAX_INCOMPLETE_EVENT_SIZE
+    return max(value, DEFAULT_UVICORN_H11_MAX_INCOMPLETE_EVENT_SIZE)
 
 
 class IngestRequest(BaseModel):
@@ -475,11 +571,21 @@ def _build_geometry_payload(result: dict[str, Any], *, run_id: str | None) -> di
     }
 
 
-def create_app(service: StructuralMonitoringService | None = None) -> FastAPI:
+def create_app(
+    service: StructuralMonitoringService | None = None,
+    *,
+    max_request_body_bytes: int | None = None,
+) -> FastAPI:
     api_key = os.getenv("NERAIUM_API_KEY")
     db_path = os.getenv("NERAIUM_DB_PATH", "neraium.db")
+    request_body_limit = (
+        int(max_request_body_bytes)
+        if max_request_body_bytes is not None
+        else _request_body_limit_bytes()
+    )
 
     app = FastAPI(title="Neraium SII API", version="0.1.0")
+    app.add_middleware(MaxRequestBodySizeMiddleware, max_body_size=request_body_limit)
     persistence_available = _persistence_available(db_path)
     service_instance = service or StructuralMonitoringService(store=ResultStore(db_path=db_path))
 
@@ -733,3 +839,14 @@ def create_app(service: StructuralMonitoringService | None = None) -> FastAPI:
 
 
 app = create_app()
+
+
+if __name__ == "__main__":
+    import uvicorn
+
+    uvicorn.run(
+        "apps.api.main:app",
+        host=os.getenv("HOST", "0.0.0.0"),
+        port=int(os.getenv("PORT", "8000")),
+        h11_max_incomplete_event_size=_uvicorn_h11_max_incomplete_event_size(),
+    )

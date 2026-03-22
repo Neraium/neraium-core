@@ -222,6 +222,8 @@ Environment variables:
 
 - `NERAIUM_API_KEY` (optional)  
 - `NERAIUM_DB_PATH` (optional, default: `neraium.db`)  
+- `NERAIUM_MAX_REQUEST_BODY_BYTES` (optional, minimum/default: `52428800` = 50MB)  
+- `NERAIUM_UVICORN_H11_MAX_INCOMPLETE_EVENT_SIZE` (optional, minimum/default: `52428800` = 50MB)  
 
 ### Pilot hardening mode (optional)
 
