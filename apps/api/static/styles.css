@@ -118,8 +118,8 @@ body.nav-mobile-open {
   overflow: hidden;
 }
 
-/* Drawer open: lock the main scroll region (body no longer scrolls the page). */
-body.nav-mobile-open .main .content {
+/* Drawer open: lock scroll so backdrop does not move */
+body.nav-mobile-open .main {
   overflow: hidden;
   overscroll-behavior: none;
 }
@@ -3093,7 +3093,21 @@ input[type="file"] {
   }
 }
 
+/* Mobile / tablet: scroll the whole main column so the top bar scrolls away (not stuck above content). */
 @media (max-width: 980px) {
+  .main {
+    overflow-y: auto;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior-y: contain;
+  }
+
+  .content {
+    flex: 0 0 auto;
+    min-height: 0;
+    overflow: visible;
+  }
+
   .nav-backdrop {
     display: block;
     position: fixed;
