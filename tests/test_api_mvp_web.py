@@ -252,6 +252,15 @@ def test_geometry_endpoints_expose_engine_derived_structure(tmp_path) -> None:
     assert result_payload["available"] is True
     assert result_payload["metrics"]["state"] in {"STABLE", "WATCH", "ALERT", "NOMINAL_STRUCTURE"}
 
+    assert "graph_analytics" in run_payload
+    assert isinstance(run_payload["graph_analytics"], dict)
+    assert "correlation_graph" in run_payload["graph_analytics"]
+    cg = run_payload["graph_analytics"]["correlation_graph"]
+    assert "density" in cg and "mean_degree" in cg
+    assert "system_state" in run_payload
+    assert isinstance(run_payload["system_state"], dict)
+    assert "regime_memory" in run_payload["system_state"]
+
 
 def test_export_json_and_csv(tmp_path) -> None:
     client = _client(tmp_path)

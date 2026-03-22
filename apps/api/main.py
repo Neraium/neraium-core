@@ -233,6 +233,8 @@ class GeometryEnvelope(BaseModel):
     summary: dict[str, Any] = Field(default_factory=dict)
     projection: dict[str, Any] = Field(default_factory=dict)
     provenance: dict[str, Any] = Field(default_factory=dict)
+    graph_analytics: dict[str, Any] | None = None
+    system_state: dict[str, Any] | None = None
 
 
 class IngestJobEnvelope(BaseModel):
@@ -647,6 +649,97 @@ def _safe_float(value: Any, default: float = 0.0) -> float:
     return float(f)
 
 
+def _graph_analytics_payload(
+    analytics_dict: dict[str, Any],
+    *,
+    feature_names: list[str],
+) -> dict[str, Any] | None:
+    """Summarize engine graph metrics for geometry API consumers (UI, integrations)."""
+    g = analytics_dict.get("graph")
+    cg = analytics_dict.get("causal_graph")
+    if not isinstance(g, dict) and not isinstance(cg, dict):
+        return None
+    out: dict[str, Any] = {}
+    if isinstance(g, dict):
+        out["correlation_graph"] = {
+            "mean_degree": round(_safe_float(g.get("mean_degree")), 6),
+            "density": round(_safe_float(g.get("density")), 6),
+            "clustering": round(_safe_float(g.get("clustering")), 6),
+            "connectivity": round(_safe_float(g.get("connectivity")), 6),
+            "mean_absolute_connectivity": round(_safe_float(g.get("mean_absolute_connectivity")), 6),
+        }
+    if isinstance(cg, dict):
+        raw_ds = cg.get("dominant_sources")
+        idx_list: list[int] = []
+        if isinstance(raw_ds, list):
+            for x in raw_ds:
+                try:
+                    idx_list.append(int(x))
+                except (TypeError, ValueError):
+                    continue
+        labels: list[str] = []
+        for i in idx_list:
+            if 0 <= i < len(feature_names):
+                labels.append(str(feature_names[i]))
+        out["causal_graph"] = {
+            "density": round(_safe_float(cg.get("density")), 6),
+            "asymmetry": round(_safe_float(cg.get("asymmetry")), 6),
+            "dominant_source_indices": idx_list,
+            "dominant_source_labels": labels,
+        }
+    return out or None
+
+
+def _system_state_payload(result: dict[str, Any], *, analytics_dict: dict[str, Any]) -> dict[str, Any]:
+    """Regime and interpretation snapshot aligned with the same result as geometry."""
+    structural_flag = result.get("structural_analysis_available")
+    if structural_flag is None:
+        structural_available = not bool(analytics_dict.get("relational_metrics_skipped", True))
+    else:
+        structural_available = bool(structural_flag)
+
+    regime_mem = result.get("regime_memory_state")
+    regime_mem_dict = regime_mem if isinstance(regime_mem, dict) else {}
+
+    rs = analytics_dict.get("regime_signature")
+    rs_dict = rs if isinstance(rs, dict) else {}
+    nearest = rs_dict.get("nearest")
+    nearest_dict = nearest if isinstance(nearest, dict) else {}
+
+    out: dict[str, Any] = {
+        "structural_analysis_available": structural_available,
+        "phase": result.get("phase") or result.get("interpreted_state") or result.get("state"),
+        "interpreted_state": result.get("interpreted_state") or result.get("state"),
+        "regime_name": result.get("regime_name"),
+        "confidence": round(
+            _safe_float(
+                result.get("confidence"),
+                _safe_float(result.get("confidence_score"), 0.0),
+            ),
+            4,
+        ),
+        "regime_memory": {
+            "regime_name": regime_mem_dict.get("regime_name"),
+            "library_size": regime_mem_dict.get("library_size"),
+            "baseline_count": regime_mem_dict.get("baseline_count"),
+        },
+        "regime_signature": {
+            "assigned_name": rs_dict.get("assigned_name"),
+            "library_size": rs_dict.get("library_size"),
+        },
+    }
+    rd = result.get("regime_distance")
+    if rd is not None:
+        out["regime_distance"] = round(_safe_float(rd), 4)
+    ndist = nearest_dict.get("distance")
+    if ndist is not None:
+        out["nearest_regime"] = {
+            "name": nearest_dict.get("name"),
+            "distance": round(_safe_float(ndist), 6),
+        }
+    return out
+
+
 def _to_square_matrix(value: Any) -> np.ndarray | None:
     try:
         mat = np.asarray(value, dtype=float)
@@ -844,6 +937,10 @@ def _build_geometry_payload(result: dict[str, Any], *, run_id: str | None) -> di
             "experimental_analytics.correlation_geometry.current",
             "experimental_analytics.correlation_geometry.baseline",
             "experimental_analytics.signal_structural_importance",
+            "experimental_analytics.graph",
+            "experimental_analytics.causal_graph",
+            "experimental_analytics.regime_signature",
+            "regime_memory_state",
             "risk_level",
             "state",
             "interpreted_state",
@@ -861,6 +958,8 @@ def _build_geometry_payload(result: dict[str, Any], *, run_id: str | None) -> di
         result_id = None
 
     if corr_current is None:
+        graph_analytics = _graph_analytics_payload(analytics_dict, feature_names=feature_names)
+        system_state = _system_state_payload(result, analytics_dict=analytics_dict)
         return {
             "run_id": run_id or result.get("run_id"),
             "result_id": result_id,
@@ -874,6 +973,8 @@ def _build_geometry_payload(result: dict[str, Any], *, run_id: str | None) -> di
             "summary": {},
             "projection": projection,
             "provenance": provenance,
+            "graph_analytics": graph_analytics,
+            "system_state": system_state,
         }
 
     n = int(corr_current.shape[0])
@@ -945,6 +1046,9 @@ def _build_geometry_payload(result: dict[str, Any], *, run_id: str | None) -> di
         "changed_edges_current": sum(1 for e in edges_current if abs(_safe_float(e.get("delta"), 0.0)) >= 0.10),
     }
 
+    graph_analytics = _graph_analytics_payload(analytics_dict, feature_names=feature_names)
+    system_state = _system_state_payload(result, analytics_dict=analytics_dict)
+
     return {
         "run_id": run_id or result.get("run_id"),
         "result_id": result_id,
@@ -977,6 +1081,8 @@ def _build_geometry_payload(result: dict[str, Any], *, run_id: str | None) -> di
         "summary": summary,
         "projection": projection,
         "provenance": provenance,
+        "graph_analytics": graph_analytics,
+        "system_state": system_state,
     }
 
 
@@ -1650,6 +1756,8 @@ def create_app(
                     ],
                     "positions": "deterministic projection from engine outputs",
                 },
+                "graph_analytics": None,
+                "system_state": None,
             }
 
         return _build_geometry_payload(result, run_id=run_id)
