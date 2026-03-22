@@ -29,6 +29,7 @@ class _StubUSGSProvider(USGSLiveTelemetryProvider):
             request_retries=0,
             request_backoff_seconds=0.0,
             asset_prefix="usgs_site_",
+            max_records=500,
         )
         super().__init__(cfg)
         self._body = body
@@ -72,10 +73,12 @@ def test_usgs_provider_normalizes_payload() -> None:
     assert batch.provider_name == "usgs_nwis_iv"
     assert batch.normalized_record_count == 2
     assert batch.raw_record_count == 2
+    assert len(batch.canonical_records) == 2
     assert batch.detected_nodes == ["01646500"]
     assert "00060" in batch.detected_sensors
     assert batch.payloads[0]["site_id"] == "01646500"
     assert "00060" in batch.payloads[0]["sensor_values"]
+    assert "00060" in batch.canonical_records[0].variables
 
 
 def test_live_ingestion_runner_handles_empty_without_raising() -> None:

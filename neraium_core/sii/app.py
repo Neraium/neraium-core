@@ -8,11 +8,11 @@ from typing import Any
 from .config import SIIConfig
 from .engine import SIIEngine
 from .errors import SIIValidationError
-from .ingestion import load_frames_from_csv, load_frames_from_json
+from .ingestion import canonical_records_from_payloads, load_frames_from_csv, load_frames_from_json
 from .live_ingestion import LiveIngestionConfig, LiveIngestionRunner, build_live_provider
 from .logging import configure_structured_logging
 from .reporting import write_csv_report, write_json_report
-from .types import SIIResult
+from .types import CanonicalIngestionRecord, SIIResult
 
 
 @dataclass
@@ -57,6 +57,7 @@ class SIIApplication:
             usgs_end_dt=end_dt or None,
             usgs_extra_query_params=extra,
             usgs_asset_prefix="usgs_site_",
+            max_records=int(self.config.live_ingestion_max_records),
         )
 
     @classmethod
@@ -76,11 +77,17 @@ class SIIApplication:
         The engine state is intentionally stateful across payloads to support
         regime memory and temporal windows.
         """
-        outputs: list[SIIResult] = []
-        for payload in payloads:
-            outputs.append(self.engine.process_payload(payload))
+        records = canonical_records_from_payloads(
+            payloads,
+            source_type="payload",
+            source_name="sii_application_run_payloads",
+        )
+        outputs = self.run_records(records)
         self.logger.info("sii_batch_processed", extra={"frames": len(outputs)})
         return outputs
+
+    def run_records(self, records: list[CanonicalIngestionRecord]) -> list[SIIResult]:
+        return self.engine.process_records(records)
 
     def run_input_file(self, input_path: str | Path) -> list[SIIResult]:
         path = Path(input_path)
@@ -109,6 +116,11 @@ class SIIApplication:
             timeout_seconds=self.config.live_ingestion_timeout_seconds,
             max_retries=self.config.live_ingestion_max_retries,
             retry_backoff_seconds=self.config.live_ingestion_retry_backoff_seconds,
+            period=live_cfg.usgs_period,
+            start_dt=live_cfg.usgs_start_dt,
+            end_dt=live_cfg.usgs_end_dt,
+            asset_prefix=live_cfg.usgs_asset_prefix,
+            max_records=live_cfg.max_records,
             extra_query_params=live_cfg.usgs_extra_query_params,
             logger=self.logger,
         )
@@ -119,7 +131,7 @@ class SIIApplication:
             raise_on_empty_response=False,
         )
         batch = batches[0]
-        results = self.run_payloads(batch.payloads)
+        results = self.run_records(batch.canonical_records)
         diagnostics = {
             "provider_name": batch.provider_name,
             "request_url": batch.request_url,
@@ -162,6 +174,11 @@ class SIIApplication:
             timeout_seconds=self.config.live_ingestion_timeout_seconds,
             max_retries=self.config.live_ingestion_max_retries,
             retry_backoff_seconds=self.config.live_ingestion_retry_backoff_seconds,
+            period=live_cfg.usgs_period,
+            start_dt=live_cfg.usgs_start_dt,
+            end_dt=live_cfg.usgs_end_dt,
+            asset_prefix=live_cfg.usgs_asset_prefix,
+            max_records=live_cfg.max_records,
             extra_query_params=live_cfg.usgs_extra_query_params,
             logger=self.logger,
         )
@@ -175,7 +192,7 @@ class SIIApplication:
         all_results: list[SIIResult] = []
         diagnostics_rows: list[dict[str, Any]] = []
         for batch in batches:
-            all_results.extend(self.run_payloads(batch.payloads))
+            all_results.extend(self.run_records(batch.canonical_records))
             diagnostics_rows.append(
                 {
                     "provider_name": batch.provider_name,

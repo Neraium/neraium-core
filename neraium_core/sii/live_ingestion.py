@@ -11,6 +11,8 @@ from urllib import request as urlrequest
 from urllib.error import HTTPError, URLError
 
 from .errors import SIIConfigurationError, SIIIOError, SIIValidationError
+from .ingestion import ingestion_record_to_payload
+from .types import CanonicalIngestionRecord, IngestionQualityMetadata, IngestionSourceMetadata
 
 
 def _normalize_timestamp_to_epoch_seconds(raw: Any) -> str | None:
@@ -64,6 +66,7 @@ class LiveIngestionBatch:
     request_params: dict[str, str]
     fetched_at_epoch: float
     payloads: list[dict[str, Any]]
+    canonical_records: list[CanonicalIngestionRecord]
     raw_record_count: int
     normalized_record_count: int
     dropped_record_count: int
@@ -308,7 +311,7 @@ class USGSLiveTelemetryProvider:
         sensors_detected: set[str] = set()
         variables_detected: set[str] = set()
         nodes_detected: set[str] = set()
-        grouped: dict[tuple[str, str], dict[str, Any]] = {}
+        grouped: dict[tuple[str, str], CanonicalIngestionRecord] = {}
 
         for series in time_series:
             if not isinstance(series, dict):
@@ -349,28 +352,64 @@ class USGSLiveTelemetryProvider:
                         continue
                     numeric = _parse_optional_float(row.get("value"))
                     key = (site_code, ts)
-                    frame = grouped.get(key)
-                    if frame is None:
-                        frame = {
-                            "timestamp": ts,
-                            "site_id": site_code,
-                            "asset_id": f"{self.config.asset_prefix}{site_code}",
-                            "sensor_values": {},
-                        }
-                        grouped[key] = frame
-                    sensor_values = frame["sensor_values"]
-                    if isinstance(sensor_values, dict):
-                        sensor_values[sensor_name] = numeric
+                    record = grouped.get(key)
+                    if record is None:
+                        record = CanonicalIngestionRecord(
+                            timestamp=ts,
+                            site_id=site_code,
+                            system_id="usgs",
+                            asset_id=f"{self.config.asset_prefix}{site_code}",
+                            node_id=site_code,
+                            variables={},
+                            quality_metadata=IngestionQualityMetadata(
+                                missingness_rate=0.0,
+                                stale_signal=False,
+                                flatlined_variables=[],
+                                source_status="ok",
+                                validation_issues=[],
+                                completeness_score=1.0,
+                            ),
+                            source_metadata=IngestionSourceMetadata(
+                                source_type="live_api",
+                                source_name=self.name,
+                            ),
+                            metadata={},
+                        )
+                        grouped[key] = record
+                    variables = dict(record.variables)
+                    variables[sensor_name] = numeric
+                    missingness = float(sum(1 for v in variables.values() if v is None)) / float(
+                        max(1, len(variables))
+                    )
+                    grouped[key] = CanonicalIngestionRecord(
+                        timestamp=record.timestamp,
+                        site_id=record.site_id,
+                        system_id=record.system_id,
+                        asset_id=record.asset_id,
+                        node_id=record.node_id,
+                        variables=variables,
+                        quality_metadata=IngestionQualityMetadata(
+                            missingness_rate=missingness,
+                            stale_signal=record.quality_metadata.stale_signal,
+                            flatlined_variables=list(record.quality_metadata.flatlined_variables),
+                            source_status=record.quality_metadata.source_status,
+                            validation_issues=list(record.quality_metadata.validation_issues),
+                            completeness_score=max(0.0, min(1.0, 1.0 - missingness)),
+                        ),
+                        source_metadata=record.source_metadata,
+                        metadata=dict(record.metadata),
+                    )
 
-        frames = list(grouped.values())
-        frames.sort(key=lambda x: (str(x.get("timestamp", "")), str(x.get("asset_id", ""))))
-        if len(frames) > int(self.config.max_records):
-            drop_n = len(frames) - int(self.config.max_records)
+        records = list(grouped.values())
+        records.sort(key=lambda x: (str(x.timestamp), str(x.asset_id)))
+        if len(records) > int(self.config.max_records):
+            drop_n = len(records) - int(self.config.max_records)
             dropped_records += int(drop_n)
             issues.append(f"normalized frames truncated by max_records={self.config.max_records}")
-            frames = frames[-int(self.config.max_records) :]
+            records = records[-int(self.config.max_records) :]
 
-        ts_values = [float(f["timestamp"]) for f in frames if "timestamp" in f]
+        payloads = [ingestion_record_to_payload(record) for record in records]
+        ts_values = [float(record.timestamp) for record in records]
         time_start = str(min(ts_values)) if ts_values else None
         time_end = str(max(ts_values)) if ts_values else None
 
@@ -379,9 +418,10 @@ class USGSLiveTelemetryProvider:
             request_url=request_url,
             request_params=dict(request_params),
             fetched_at_epoch=time.time(),
-            payloads=frames,
+            payloads=payloads,
+            canonical_records=records,
             raw_record_count=int(raw_records),
-            normalized_record_count=int(len(frames)),
+            normalized_record_count=int(len(records)),
             dropped_record_count=int(dropped_records),
             time_range_start=time_start,
             time_range_end=time_end,
