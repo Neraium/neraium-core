@@ -13,7 +13,7 @@ from neraium_core.sii.context import ExternalContextProvider, NoOpContextProvide
 from neraium_core.sii.decision import map_decision_state_with_config, map_to_interpreted_state
 from neraium_core.sii.errors import SIIError, SIIProcessingError
 from neraium_core.sii.explanation import build_explanation_text, dominant_drivers
-from neraium_core.sii.geometry_layer import build_geometry_state
+from neraium_core.sii.geometry_layer import build_geometry_state, flatten_upper
 from neraium_core.sii.graph_layer import graph_state
 from neraium_core.sii.ingestion import frame_from_payload, frames_from_csv
 from neraium_core.sii.preprocessing import data_quality, impute_column_mean, summarize_quality
@@ -38,6 +38,15 @@ class _State:
     baseline_adj: np.ndarray | None
     composite_history: deque[float]
     interpreted_history: deque[str]
+    raw_structural_history: deque[float]
+    raw_relational_history: deque[float]
+    raw_graph_history: deque[float]
+    raw_regime_history: deque[float]
+    raw_coherence_loss_history: deque[float]
+    raw_mean_shift_history: deque[float]
+    raw_cov_shift_history: deque[float]
+    raw_subspace_shift_history: deque[float]
+    raw_path_shift_history: deque[float]
     processed_frames: int = 0
 
 
@@ -48,7 +57,7 @@ class SystemicInfrastructureIntelligenceEngine:
     This engine instruments multivariate structural behavior:
     - statistical geometry of relational state
     - graph topology deformation
-    - regime departure from known stable configurations
+    - regime departure from historically stable operating structure
     """
 
     def __init__(
@@ -68,15 +77,25 @@ class SystemicInfrastructureIntelligenceEngine:
             sensor_order=[],
             baseline_corr=None,
             baseline_adj=None,
-            composite_history=deque(maxlen=120),
-            interpreted_history=deque(maxlen=30),
+            composite_history=deque(maxlen=240),
+            interpreted_history=deque(maxlen=80),
+            raw_structural_history=deque(maxlen=240),
+            raw_relational_history=deque(maxlen=240),
+            raw_graph_history=deque(maxlen=240),
+            raw_regime_history=deque(maxlen=240),
+            raw_coherence_loss_history=deque(maxlen=240),
+            raw_mean_shift_history=deque(maxlen=240),
+            raw_cov_shift_history=deque(maxlen=240),
+            raw_subspace_shift_history=deque(maxlen=240),
+            raw_path_shift_history=deque(maxlen=240),
         )
         self.logger.info(
             "engine_initialized",
             extra={
                 "baseline_window": self.config.baseline_window,
                 "recent_window": self.config.recent_window,
-                "relation_threshold": self.config.relation_threshold,
+                "graph_edge_threshold": self.config.effective_graph_edge_threshold,
+                "regime_distance_threshold": self.config.regime_distance_threshold,
             },
         )
 
@@ -86,6 +105,19 @@ class SystemicInfrastructureIntelligenceEngine:
             return float(value)
         except (TypeError, ValueError):
             return float(fallback)
+
+    def _clear_reference_histories(self) -> None:
+        self.state.raw_structural_history.clear()
+        self.state.raw_relational_history.clear()
+        self.state.raw_graph_history.clear()
+        self.state.raw_regime_history.clear()
+        self.state.raw_coherence_loss_history.clear()
+        self.state.raw_mean_shift_history.clear()
+        self.state.raw_cov_shift_history.clear()
+        self.state.raw_subspace_shift_history.clear()
+        self.state.raw_path_shift_history.clear()
+        self.state.composite_history.clear()
+        self.state.interpreted_history.clear()
 
     def _expand_schema(self, new_sensors: list[str]) -> None:
         if not new_sensors:
@@ -98,6 +130,7 @@ class SystemicInfrastructureIntelligenceEngine:
         self.state.sensor_order.extend(new_sensors)
         self.state.baseline_corr = None
         self.state.baseline_adj = None
+        self._clear_reference_histories()
         self.logger.warning("sensor_schema_extended", extra={"new_sensors": new_sensors})
 
     def _ensure_sensor_order(self, frame: TelemetryFrame) -> None:
@@ -149,11 +182,69 @@ class SystemicInfrastructureIntelligenceEngine:
 
     def _trend(self) -> float:
         vals = np.asarray(list(self.state.composite_history), dtype=float)
-        if vals.size < 4:
+        if vals.size < 6:
             return 0.0
         x = np.arange(vals.size, dtype=float)
         slope, _ = np.polyfit(x, vals, 1)
         return float(slope)
+
+    @staticmethod
+    def _avg_shortest_path_length(adj: np.ndarray) -> float:
+        a = np.asarray(adj, dtype=float)
+        if a.ndim != 2 or a.shape[0] != a.shape[1]:
+            return 0.0
+        n = int(a.shape[0])
+        if n <= 1:
+            return 0.0
+        dist = np.full((n, n), np.inf, dtype=float)
+        np.fill_diagonal(dist, 0.0)
+        edge_idx = np.where(a > 0.0)
+        dist[edge_idx] = 1.0
+        for k in range(n):
+            dist = np.minimum(dist, dist[:, [k]] + dist[[k], :])
+        finite = dist[np.isfinite(dist) & (dist > 0.0)]
+        if finite.size == 0:
+            return 0.0
+        return float(np.mean(finite))
+
+    @staticmethod
+    def _clamp01(value: float) -> float:
+        return float(max(0.0, min(1.0, value)))
+
+    def _score_from_reference(self, value: float, history: deque[float], fallback_scale: float) -> float:
+        v = float(max(0.0, value))
+        scale = max(1e-6, float(fallback_scale))
+        if len(history) < 12:
+            return self._clamp01(v / (v + scale))
+        arr = np.asarray(history, dtype=float)
+        q50 = float(np.percentile(arr, 50.0))
+        q90 = float(np.percentile(arr, 90.0))
+        if q90 <= q50 + 1e-6:
+            return self._clamp01((v - q50) / (q50 + 1e-6))
+        return self._clamp01((v - q50) / (q90 - q50))
+
+    def _geometry_signature(self, mean_delta: np.ndarray, std_delta: np.ndarray, corr: np.ndarray, coherence: float) -> np.ndarray:
+        corr_flat = flatten_upper(corr)
+        return np.concatenate(
+            [
+                np.clip(mean_delta, -6.0, 6.0),
+                np.clip(std_delta, -6.0, 6.0),
+                np.clip(corr_flat, -1.0, 1.0),
+                np.asarray([float(max(0.0, min(1.0, coherence)))], dtype=float),
+            ]
+        ).astype(float, copy=False)
+
+    def _graph_signature(self, adjacency: np.ndarray, density: float, avg_degree: float, deformation: float) -> np.ndarray:
+        adj = np.asarray(adjacency, dtype=float)
+        n = int(adj.shape[0]) if adj.ndim == 2 else 0
+        deg = np.sum(adj, axis=1) / max(1.0, float(n - 1)) if n > 1 else np.zeros((n,), dtype=float)
+        avg_path = self._avg_shortest_path_length(adj)
+        return np.concatenate(
+            [
+                np.asarray([float(density), float(avg_degree), float(avg_path), float(deformation)], dtype=float),
+                np.asarray(deg, dtype=float),
+            ]
+        ).astype(float, copy=False)
 
     def _warmup_output(self, frame: TelemetryFrame) -> SIIResult:
         out: SIIResult = {
@@ -184,6 +275,7 @@ class SystemicInfrastructureIntelligenceEngine:
             },
             "experimental_analytics": {
                 "components": {},
+                "raw_components": {},
                 "graph_metrics": {},
                 "regime": {},
                 "context": None,
@@ -191,19 +283,62 @@ class SystemicInfrastructureIntelligenceEngine:
         }
         return out
 
-    def _update_adaptive_baseline(self, recent_corr: np.ndarray, state: str) -> None:
+    def _update_adaptive_baseline(
+        self,
+        *,
+        recent_corr: np.ndarray,
+        recent_adj: np.ndarray,
+        decision_state: str,
+        interpreted_state: str,
+        dq_passed: bool,
+    ) -> None:
         if self.state.baseline_corr is None:
             self.state.baseline_corr = np.asarray(recent_corr, dtype=float)
+        if self.state.baseline_adj is None:
+            self.state.baseline_adj = np.asarray(recent_adj, dtype=float)
+        if self.state.baseline_corr is None or self.state.baseline_adj is None:
             return
         if self.state.processed_frames < self.config.freeze_baseline_frames:
             return
-        if state != "STABLE":
+        if not dq_passed:
+            return
+        if decision_state != "STABLE" or interpreted_state != "NOMINAL_STRUCTURE":
             return
         alpha = float(self.config.baseline_adaptation_alpha)
-        self.state.baseline_corr = alpha * self.state.baseline_corr + (1.0 - alpha) * recent_corr
-        adapted_adj = (np.abs(self.state.baseline_corr) >= float(self.config.relation_threshold)).astype(float)
-        np.fill_diagonal(adapted_adj, 0.0)
-        self.state.baseline_adj = adapted_adj
+        self.state.baseline_corr = alpha * self.state.baseline_corr + (1.0 - alpha) * np.asarray(recent_corr, dtype=float)
+        smoothed_adj = alpha * self.state.baseline_adj + (1.0 - alpha) * np.asarray(recent_adj, dtype=float)
+        self.state.baseline_adj = (smoothed_adj >= 0.5).astype(float)
+        np.fill_diagonal(self.state.baseline_adj, 0.0)
+
+    def _update_reference_histories(
+        self,
+        *,
+        dq_passed: bool,
+        decision_state: str,
+        interpreted_state: str,
+        raw_structural: float,
+        raw_relational: float,
+        raw_graph: float,
+        raw_regime: float,
+        raw_coherence_loss: float,
+        raw_mean_shift: float,
+        raw_cov_shift: float,
+        raw_subspace_shift: float,
+        raw_path_shift: float,
+    ) -> None:
+        if not dq_passed:
+            return
+        if decision_state != "STABLE" or interpreted_state != "NOMINAL_STRUCTURE":
+            return
+        self.state.raw_structural_history.append(float(max(0.0, raw_structural)))
+        self.state.raw_relational_history.append(float(max(0.0, raw_relational)))
+        self.state.raw_graph_history.append(float(max(0.0, raw_graph)))
+        self.state.raw_regime_history.append(float(max(0.0, raw_regime)))
+        self.state.raw_coherence_loss_history.append(float(max(0.0, raw_coherence_loss)))
+        self.state.raw_mean_shift_history.append(float(max(0.0, raw_mean_shift)))
+        self.state.raw_cov_shift_history.append(float(max(0.0, raw_cov_shift)))
+        self.state.raw_subspace_shift_history.append(float(max(0.0, raw_subspace_shift)))
+        self.state.raw_path_shift_history.append(float(max(0.0, raw_path_shift)))
 
     def close(self) -> None:
         self.regimes.save()
@@ -236,7 +371,8 @@ class SystemicInfrastructureIntelligenceEngine:
             gstate = graph_state(
                 geom.recent_corr,
                 baseline_adj=self.state.baseline_adj,
-                threshold=self.config.relation_threshold,
+                threshold=self.config.effective_graph_edge_threshold,
+                feature_names=self.state.sensor_order,
             )
 
             if self.state.baseline_corr is None:
@@ -244,31 +380,80 @@ class SystemicInfrastructureIntelligenceEngine:
             if self.state.baseline_adj is None:
                 self.state.baseline_adj = np.asarray(gstate.adjacency, dtype=float)
 
-            reg_assign = self.regimes.observe(
-                RegimeObservation(
-                    signature=np.asarray(np.concatenate([geom.recent_mean, geom.recent_std]), dtype=float),
-                    graph_signature=np.asarray(
-                        [float(gstate.density), float(gstate.avg_degree), float(gstate.l1_deformation)],
-                        dtype=float,
-                    ),
-                )
-            )
-            regime_distance = (
-                float(reg_assign.regime_distance)
-                if reg_assign.regime_distance is not None
-                else float(self.config.regime_distance_threshold)
+            denom = np.abs(geom.baseline_std) + 1e-6
+            mean_delta = (geom.recent_mean - geom.baseline_mean) / denom
+            std_delta = (geom.recent_std - geom.baseline_std) / denom
+            geometry_signature = self._geometry_signature(mean_delta, std_delta, geom.recent_corr, geom.coherence_score)
+            graph_signature = self._graph_signature(
+                gstate.adjacency,
+                gstate.density,
+                gstate.avg_degree,
+                gstate.l1_deformation,
             )
 
-            coherence = float(1.0 / (1.0 + max(0.0, geom.relational_instability)))
-            coupling = float(max(0.0, geom.relational_instability * (1.0 + gstate.l1_deformation)))
+            reg_assign = self.regimes.observe(
+                RegimeObservation(
+                    geometry_signature=np.asarray(geometry_signature, dtype=float),
+                    graph_signature=np.asarray(graph_signature, dtype=float),
+                    feature_names=list(self.state.sensor_order),
+                )
+            )
+
+            baseline_path = (
+                self._avg_shortest_path_length(self.state.baseline_adj)
+                if self.state.baseline_adj is not None
+                else self._avg_shortest_path_length(gstate.adjacency)
+            )
+            current_path = self._avg_shortest_path_length(gstate.adjacency)
+            path_shift = abs(current_path - baseline_path)
+
+            raw_structural = float(max(0.0, geom.structural_drift))
+            raw_relational = float(max(0.0, geom.relational_instability))
+            raw_graph = float(max(0.0, 0.70 * gstate.l1_deformation + 0.30 * path_shift))
+            raw_regime = float(max(0.0, reg_assign.regime_distance))
+            raw_coherence_loss = float(max(0.0, 1.0 - geom.coherence_score))
+            raw_mean_shift = float(max(0.0, geom.mean_shift_norm))
+            raw_cov_shift = float(max(0.0, geom.covariance_shift_norm))
+            raw_subspace_shift = float(max(0.0, geom.subspace_rotation))
+
+            structural_score = self._score_from_reference(raw_structural, self.state.raw_structural_history, fallback_scale=1.0)
+            relational_score = self._score_from_reference(raw_relational, self.state.raw_relational_history, fallback_scale=0.35)
+            graph_score = self._score_from_reference(raw_graph, self.state.raw_graph_history, fallback_scale=0.35)
+            regime_score = self._score_from_reference(
+                raw_regime,
+                self.state.raw_regime_history,
+                fallback_scale=max(0.25, float(self.config.regime_distance_threshold)),
+            )
+            coherence_loss_score = self._score_from_reference(
+                raw_coherence_loss,
+                self.state.raw_coherence_loss_history,
+                fallback_scale=0.30,
+            )
+            mean_shift_score = self._score_from_reference(raw_mean_shift, self.state.raw_mean_shift_history, fallback_scale=0.45)
+            cov_shift_score = self._score_from_reference(raw_cov_shift, self.state.raw_cov_shift_history, fallback_scale=0.45)
+            subspace_shift_score = self._score_from_reference(
+                raw_subspace_shift,
+                self.state.raw_subspace_shift_history,
+                fallback_scale=0.35,
+            )
+            path_shift_score = self._score_from_reference(path_shift, self.state.raw_path_shift_history, fallback_scale=0.35)
+            coupling_score = self._clamp01(0.45 * relational_score + 0.35 * graph_score + 0.20 * coherence_loss_score)
+
             components = {
-                "structural_drift_score": float(geom.structural_drift),
-                "relational_instability_score": float(geom.relational_instability),
-                "regime_distance": regime_distance,
-                "coherence_loss_score": float(1.0 - coherence),
-                "graph_deformation_score": float(gstate.l1_deformation),
-                "coupling_instability_score": coupling,
+                "structural_drift_score": structural_score,
+                "relational_instability_score": relational_score,
+                "regime_distance": regime_score,
+                "coherence_loss_score": coherence_loss_score,
+                "graph_deformation_score": graph_score,
+                "coupling_instability_score": coupling_score,
             }
+            component_extensions = {
+                "mean_shift_score": mean_shift_score,
+                "covariance_shift_score": cov_shift_score,
+                "subspace_rotation_score": subspace_shift_score,
+                "path_length_shift_score": path_shift_score,
+            }
+
             indicators = StructuralIndicators(
                 structural_drift_score=float(components["structural_drift_score"]),
                 relational_instability_score=float(components["relational_instability_score"]),
@@ -276,16 +461,21 @@ class SystemicInfrastructureIntelligenceEngine:
                 coherence_loss_score=float(components["coherence_loss_score"]),
                 graph_deformation_score=float(components["graph_deformation_score"]),
                 coupling_instability_score=float(components["coupling_instability_score"]),
+                mean_shift_score=float(component_extensions["mean_shift_score"]),
+                covariance_shift_score=float(component_extensions["covariance_shift_score"]),
+                subspace_rotation_score=float(component_extensions["subspace_rotation_score"]),
+                path_length_shift_score=float(component_extensions["path_length_shift_score"]),
             )
-            composite = self.scoring.composite_departure_score(indicators)
-            self.state.composite_history.append(float(composite))
+            composite = float(self.scoring.composite_departure_score(indicators))
+            self.state.composite_history.append(composite)
 
+            coherence_for_decision = self._clamp01(1.0 - coherence_loss_score)
             interpreted = map_to_interpreted_state(
-                structural_drift=float(geom.structural_drift),
-                relational_instability=float(geom.relational_instability),
-                regime_distance=regime_distance,
-                coherence_score=coherence,
-                graph_instability=float(gstate.l1_deformation),
+                structural_drift=float(structural_score),
+                relational_instability=float(relational_score),
+                regime_distance=float(regime_score),
+                coherence_score=float(coherence_for_decision),
+                graph_instability=float(graph_score),
             )
             trend = self._trend()
             classification_stability = self._classification_stability()
@@ -296,7 +486,30 @@ class SystemicInfrastructureIntelligenceEngine:
                 stability=classification_stability,
                 config=self.config,
             )
-            self._update_adaptive_baseline(geom.recent_corr, decision_state)
+            if self.state.processed_frames < int(self.config.min_samples_for_alerts):
+                decision_state = "STABLE"
+
+            self._update_adaptive_baseline(
+                recent_corr=geom.recent_corr,
+                recent_adj=gstate.adjacency,
+                decision_state=decision_state,
+                interpreted_state=interpreted,
+                dq_passed=bool(dq.gate_passed),
+            )
+            self._update_reference_histories(
+                dq_passed=bool(dq.gate_passed),
+                decision_state=decision_state,
+                interpreted_state=interpreted,
+                raw_structural=raw_structural,
+                raw_relational=raw_relational,
+                raw_graph=raw_graph,
+                raw_regime=raw_regime,
+                raw_coherence_loss=raw_coherence_loss,
+                raw_mean_shift=raw_mean_shift,
+                raw_cov_shift=raw_cov_shift,
+                raw_subspace_shift=raw_subspace_shift,
+                raw_path_shift=path_shift,
+            )
 
             conf = estimate_confidence(
                 data_quality={
@@ -312,20 +525,25 @@ class SystemicInfrastructureIntelligenceEngine:
             if confidence not in ALLOWED_CONFIDENCE:
                 confidence = "low"
 
-            driver_names = dominant_drivers(components, top_k=3)
+            driver_scores = {**components, **component_extensions}
+            driver_names = dominant_drivers(driver_scores, top_k=3)
             context = None
             if self.config.allow_context_provider:
-                snap = self.context_provider.snapshot(
-                    {
-                        "timestamp": frame.timestamp,
-                        "site_id": frame.site_id,
-                        "asset_id": frame.asset_id,
-                        "sensor_values": frame.sensor_values,
-                    }
-                )
-                context = None if snap is None else {"source": snap.source, "payload": snap.payload}
+                try:
+                    snap = self.context_provider.snapshot(
+                        {
+                            "timestamp": frame.timestamp,
+                            "site_id": frame.site_id,
+                            "asset_id": frame.asset_id,
+                            "sensor_values": frame.sensor_values,
+                        }
+                    )
+                    context = None if snap is None else {"source": snap.source, "payload": snap.payload}
+                except Exception:
+                    self.logger.exception("context_provider_snapshot_failed")
+                    context = None
 
-            system_health = int(max(0.0, min(100.0, 100.0 - (float(composite) * 35.0))))
+            system_health = int(max(0.0, min(100.0, 100.0 - (composite * 55.0))))
             out: SIIResult = {
                 "timestamp": frame.timestamp,
                 "site_id": frame.site_id,
@@ -333,11 +551,11 @@ class SystemicInfrastructureIntelligenceEngine:
                 "state": decision_state,
                 "interpreted_state": interpreted,
                 "confidence": confidence,
-                "structural_drift_score": round(float(geom.structural_drift), 4),
-                "relational_instability_score": round(float(geom.relational_instability), 4),
-                "regime_distance": round(float(regime_distance), 4),
-                "coherence_score": round(float(coherence), 4),
-                "graph_deformation_score": round(float(gstate.l1_deformation), 4),
+                "structural_drift_score": round(float(structural_score), 4),
+                "relational_instability_score": round(float(relational_score), 4),
+                "regime_distance": round(float(regime_score), 4),
+                "coherence_score": round(float(geom.coherence_score), 4),
+                "graph_deformation_score": round(float(graph_score), 4),
                 "dominant_drivers": driver_names,
                 "confidence_reasoning": list(conf.reasoning),
                 "explanation": build_explanation_text(
@@ -351,15 +569,37 @@ class SystemicInfrastructureIntelligenceEngine:
                 "data_quality_summary": summarize_quality(dq),
                 "experimental_analytics": {
                     "components": {k: round(float(v), 6) for k, v in components.items()},
-                    "composite_instability": round(float(composite), 6),
+                    "component_extensions": {k: round(float(v), 6) for k, v in component_extensions.items()},
+                    "raw_components": {
+                        "structural_drift": round(raw_structural, 6),
+                        "relational_instability": round(raw_relational, 6),
+                        "graph_deformation": round(raw_graph, 6),
+                        "regime_distance": round(raw_regime, 6),
+                        "coherence_loss": round(raw_coherence_loss, 6),
+                        "mean_shift": round(raw_mean_shift, 6),
+                        "covariance_shift": round(raw_cov_shift, 6),
+                        "subspace_rotation": round(raw_subspace_shift, 6),
+                        "path_length_shift": round(path_shift, 6),
+                    },
+                    "composite_instability": round(composite, 6),
+                    "geometry": {
+                        "mean_shift_norm": round(float(geom.mean_shift_norm), 6),
+                        "covariance_shift_norm": round(float(geom.covariance_shift_norm), 6),
+                        "subspace_rotation": round(float(geom.subspace_rotation), 6),
+                        "coherence_score": round(float(geom.coherence_score), 6),
+                    },
                     "graph_metrics": {
                         "density": round(float(gstate.density), 6),
                         "avg_degree": round(float(gstate.avg_degree), 6),
+                        "path_length": round(float(current_path), 6),
+                        "path_length_shift": round(float(path_shift), 6),
                         "deformation": round(float(gstate.l1_deformation), 6),
                     },
                     "regime": {
                         "name": reg_assign.regime_name,
                         "distance": reg_assign.regime_distance,
+                        "geometry_distance": reg_assign.geometry_distance,
+                        "graph_distance": reg_assign.graph_distance,
                         "pending": not bool(reg_assign.regime_activated),
                         "support": reg_assign.regime_support,
                     },
@@ -378,7 +618,10 @@ class SystemicInfrastructureIntelligenceEngine:
             raise
         except Exception as exc:
             self.logger.exception("frame_processing_failure")
-            raise SIIProcessingError("Failed to process telemetry frame safely") from exc
+            raise SIIProcessingError(
+                f"Failed to process telemetry frame safely for asset={frame.asset_id!r} "
+                f"site={frame.site_id!r} timestamp={frame.timestamp!r}"
+            ) from exc
 
     def process_payload(self, payload: dict[str, Any]) -> SIIResult:
         f = frame_from_payload(payload)
@@ -390,4 +633,3 @@ class SystemicInfrastructureIntelligenceEngine:
 
 
 SIIEngine = SystemicInfrastructureIntelligenceEngine
-

@@ -21,11 +21,17 @@ def _as_float_or_none(value: Any) -> float | None:
         if text == "":
             return None
         try:
-            return float(text)
+            fv = float(text)
+            if not (fv == fv) or abs(fv) == float("inf"):
+                return None
+            return fv
         except ValueError as exc:
             raise SIIValidationError(f"Invalid numeric value: {value!r}") from exc
     if isinstance(value, (int, float)):
-        return float(value)
+        fv = float(value)
+        if not (fv == fv) or abs(fv) == float("inf"):
+            return None
+        return fv
     raise SIIValidationError(f"Unsupported value type: {type(value).__name__}")
 
 
@@ -65,15 +71,23 @@ def frames_from_csv(csv_text: str) -> list[TelemetryFrame]:
         missing = sorted(REQUIRED_CSV_COLUMNS - headers)
         raise SIIValidationError(f"CSV missing required columns: {missing}")
 
-    sensor_columns = [h for h in reader.fieldnames if h is not None and h.strip() not in REQUIRED_CSV_COLUMNS]
+    header_lookup: dict[str, str] = {}
+    for h in reader.fieldnames:
+        if h is None:
+            continue
+        norm = h.strip()
+        if norm and norm not in header_lookup:
+            header_lookup[norm] = h
+
+    sensor_columns = [h for h in header_lookup.keys() if h not in REQUIRED_CSV_COLUMNS]
 
     out: list[TelemetryFrame] = []
     for row_index, row in enumerate(reader, start=2):
-        sensor_values = {col.strip(): row.get(col) for col in sensor_columns}
+        sensor_values = {col: row.get(header_lookup[col]) for col in sensor_columns}
         payload = {
-            "timestamp": row.get("timestamp"),
-            "site_id": row.get("site_id"),
-            "asset_id": row.get("asset_id"),
+            "timestamp": row.get(header_lookup.get("timestamp", "timestamp")),
+            "site_id": row.get(header_lookup.get("site_id", "site_id")),
+            "asset_id": row.get(header_lookup.get("asset_id", "asset_id")),
             "sensor_values": sensor_values,
         }
         try:
@@ -112,7 +126,10 @@ def load_frames_from_csv(path: str) -> list[dict[str, Any]]:
         raise SIIValidationError(f"Input file not found: {path}")
     if not p.is_file():
         raise SIIValidationError(f"Input path is not a file: {path}")
-    text = p.read_text(encoding="utf-8")
+    try:
+        text = p.read_text(encoding="utf-8")
+    except Exception as exc:
+        raise SIIValidationError(f"Failed to read CSV input: {path}") from exc
     parsed = frames_from_csv(text)
     out: list[dict[str, Any]] = []
     for f in parsed:

@@ -95,6 +95,7 @@ class NodeRuntime:
     regime_memory: RegimeMemory = field(default_factory=RegimeMemory)
     _baseline_corr_drift: list[float] = field(default_factory=list)
     _baseline_relational: list[float] = field(default_factory=list)
+    _baseline_graph: list[float] = field(default_factory=list)
     _baseline_gap: list[float] = field(default_factory=list)
     _baseline_instability: list[float] = field(default_factory=list)
 
@@ -390,9 +391,14 @@ def adaptive_gal2_fusion_coherence(
 
 def state_from_node_quantiles(dec_adj: float, watch_thr: float, alert_thr: float) -> str:
     """Data-driven triage from a node's own baseline score distribution (no shared global cut)."""
-    if dec_adj < watch_thr:
+    w = float(watch_thr)
+    a = float(alert_thr)
+    if a <= w:
+        a = w + max(1e-6, 0.01 * (abs(w) + 1.0))
+    x = float(dec_adj)
+    if x <= w:
         return "STABLE"
-    if dec_adj < alert_thr:
+    if x <= a:
         return "WATCH"
     return "ALERT"
 
