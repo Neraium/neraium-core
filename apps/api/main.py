@@ -1,13 +1,18 @@
 from __future__ import annotations
 
+import base64
 import json
 import logging
 import os
 import tempfile
 import threading
+import time
+import urllib.error
+import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Literal
+from urllib.parse import urlparse
 from uuid import uuid4
 
 import numpy as np
@@ -227,6 +232,43 @@ class IngestJobEnvelope(BaseModel):
     error_samples: list[dict[str, Any]] = Field(default_factory=list)
     message: str | None = None
     latest_result: dict[str, Any] | None = None
+
+
+class PullIntegrationStartRequest(BaseModel):
+    endpoint_url: str = Field(min_length=1, max_length=2000)
+    polling_interval_seconds: float = Field(default=30.0, ge=0.2, le=3600.0)
+    auth_type: Literal["none", "basic", "bearer"] = "none"
+    username: str | None = None
+    password: str | None = None
+    token: str | None = None
+    run_id: str | None = None
+    retry_max_attempts: int = Field(default=3, ge=1, le=10)
+    retry_backoff_seconds: float = Field(default=1.0, ge=0.05, le=60.0)
+    request_timeout_seconds: float = Field(default=10.0, ge=1.0, le=120.0)
+
+
+class PullIntegrationStatusEnvelope(BaseModel):
+    customer_id: str
+    endpoint_url: str | None = None
+    run_id: str | None = None
+    auth_type: str = "none"
+    running: bool
+    status: str
+    polling_interval_seconds: float | None = None
+    retry_max_attempts: int | None = None
+    retry_backoff_seconds: float | None = None
+    request_timeout_seconds: float | None = None
+    started_at: str | None = None
+    updated_at: str | None = None
+    last_poll_at: str | None = None
+    last_success_at: str | None = None
+    last_error: str | None = None
+    last_http_status: int | None = None
+    total_polls: int = 0
+    total_failures: int = 0
+    consecutive_failures: int = 0
+    total_ingested: int = 0
+    message: str | None = None
 
 
 def _ensure_default_run(
@@ -685,6 +727,8 @@ def create_app(
     service_instance = service or StructuralMonitoringService(store=ResultStore(db_path=db_path))
     ingest_jobs: dict[str, dict[str, Any]] = {}
     ingest_jobs_lock = threading.Lock()
+    pull_integrations: dict[str, dict[str, Any]] = {}
+    pull_integrations_lock = threading.Lock()
 
     def _normalize_content_length(request: Request) -> int | None:
         raw = request.headers.get("content-length")
@@ -748,6 +792,279 @@ def create_app(
                     int(job.get("rows_succeeded", 0)) > 0 and int(job.get("rows_failed", 0)) > 0
                 )
             return dict(job)
+
+    def _default_pull_state(customer_id: str) -> dict[str, Any]:
+        now = _utc_now_iso()
+        return {
+            "customer_id": customer_id,
+            "endpoint_url": None,
+            "run_id": None,
+            "auth_type": "none",
+            "running": False,
+            "status": "stopped",
+            "polling_interval_seconds": None,
+            "retry_max_attempts": None,
+            "retry_backoff_seconds": None,
+            "request_timeout_seconds": None,
+            "started_at": None,
+            "updated_at": now,
+            "last_poll_at": None,
+            "last_success_at": None,
+            "last_error": None,
+            "last_http_status": None,
+            "total_polls": 0,
+            "total_failures": 0,
+            "consecutive_failures": 0,
+            "total_ingested": 0,
+            "message": "Pull integration is stopped.",
+            "_stop_event": None,
+            "_thread": None,
+        }
+
+    def _public_pull_state(state: dict[str, Any] | None, *, customer_id: str) -> dict[str, Any]:
+        base = _default_pull_state(customer_id)
+        private_keys = {"username", "password", "token"}
+        if state is None:
+            return {
+                k: v
+                for k, v in base.items()
+                if not k.startswith("_") and k not in private_keys
+            }
+        merged = dict(base)
+        merged.update(state)
+        return {
+            k: v
+            for k, v in merged.items()
+            if not k.startswith("_") and k not in private_keys
+        }
+
+    def _validate_endpoint_url(endpoint_url: str) -> str:
+        text = str(endpoint_url or "").strip()
+        if not text:
+            raise HTTPException(status_code=400, detail="endpoint_url is required.")
+        parsed = urlparse(text)
+        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            raise HTTPException(
+                status_code=400,
+                detail="endpoint_url must be a valid http(s) URL.",
+            )
+        return text
+
+    def _pull_auth_header(state: dict[str, Any]) -> str | None:
+        auth_type = str(state.get("auth_type") or "none")
+        if auth_type == "bearer":
+            token = str(state.get("token") or "").strip()
+            if not token:
+                raise ValueError("Bearer token is empty.")
+            return f"Bearer {token}"
+        if auth_type == "basic":
+            username = str(state.get("username") or "")
+            password = str(state.get("password") or "")
+            raw = f"{username}:{password}".encode("utf-8")
+            return "Basic " + base64.b64encode(raw).decode("ascii")
+        return None
+
+    def _coerce_pull_items(payload: Any, *, customer_id: str) -> list[dict[str, Any]]:
+        rows: list[dict[str, Any]]
+        if isinstance(payload, dict) and isinstance(payload.get("items"), list):
+            rows = [item for item in payload["items"] if isinstance(item, dict)]
+            if len(rows) != len(payload["items"]):
+                raise ValueError("Payload items must be objects.")
+        elif isinstance(payload, list):
+            rows = [item for item in payload if isinstance(item, dict)]
+            if len(rows) != len(payload):
+                raise ValueError("Payload list must contain objects.")
+        elif isinstance(payload, dict):
+            rows = [payload]
+        else:
+            raise ValueError("Payload must be an object, list of objects, or an object with items[].")
+
+        if not rows:
+            return []
+        out: list[dict[str, Any]] = []
+        for row in rows:
+            item = dict(row)
+            item["customer_id"] = _resolve_customer_id(item.get("customer_id") or customer_id)
+            out.append(item)
+        return out
+
+    def _fetch_pull_payload(state: dict[str, Any]) -> tuple[int, Any]:
+        endpoint_url = str(state.get("endpoint_url") or "").strip()
+        timeout_s = float(state.get("request_timeout_seconds") or 10.0)
+        headers = {"Accept": "application/json"}
+        auth_header = _pull_auth_header(state)
+        if auth_header:
+            headers["Authorization"] = auth_header
+        req = urllib.request.Request(endpoint_url, headers=headers, method="GET")
+        with urllib.request.urlopen(req, timeout=timeout_s) as response:
+            status_code = int(response.getcode() or 0)
+            body_bytes = response.read()
+        if status_code < 200 or status_code >= 300:
+            raise RuntimeError(f"Upstream returned HTTP {status_code}.")
+        try:
+            payload = json.loads(body_bytes.decode("utf-8"))
+        except json.JSONDecodeError as exc:
+            raise RuntimeError("Upstream response is not valid JSON.") from exc
+        return status_code, payload
+
+    def _ingest_pull_items(*, rows: list[dict[str, Any]], run_id: str, customer_id: str) -> int:
+        if not rows:
+            return 0
+        if len(rows) == 1:
+            service_instance.ingest_payload(rows[0], run_id=run_id, customer_id=customer_id)
+            return 1
+        results = service_instance.ingest_batch(rows, run_id=run_id, customer_id=customer_id)
+        return len(results)
+
+    def _stop_pull_integration(customer_id: str, *, reason: str) -> dict[str, Any]:
+        resolved_customer = _resolve_customer_id(customer_id)
+        stop_event: threading.Event | None = None
+        thread: threading.Thread | None = None
+        with pull_integrations_lock:
+            state = pull_integrations.get(resolved_customer)
+            if state is None:
+                return _public_pull_state(None, customer_id=resolved_customer)
+            stop_event = state.get("_stop_event")
+            thread = state.get("_thread")
+            state["running"] = False
+            state["status"] = "stopped"
+            state["message"] = reason
+            state["updated_at"] = _utc_now_iso()
+        if isinstance(stop_event, threading.Event):
+            stop_event.set()
+        if isinstance(thread, threading.Thread) and thread.is_alive() and thread is not threading.current_thread():
+            thread.join(timeout=2.0)
+        with pull_integrations_lock:
+            final_state = pull_integrations.get(resolved_customer)
+            return _public_pull_state(final_state, customer_id=resolved_customer)
+
+    def _start_pull_worker(customer_id: str) -> None:
+        resolved_customer = _resolve_customer_id(customer_id)
+
+        def _worker() -> None:
+            while True:
+                with pull_integrations_lock:
+                    state = pull_integrations.get(resolved_customer)
+                    if state is None:
+                        return
+                    stop_event = state.get("_stop_event")
+                    is_running = bool(state.get("running"))
+                    endpoint_url = str(state.get("endpoint_url") or "")
+                    poll_interval = float(state.get("polling_interval_seconds") or 30.0)
+                    retry_attempts = int(state.get("retry_max_attempts") or 3)
+                    retry_backoff = float(state.get("retry_backoff_seconds") or 1.0)
+                    run_id = str(state.get("run_id") or "")
+                    state["status"] = "running"
+                    state["updated_at"] = _utc_now_iso()
+                    state["message"] = "Polling upstream API."
+                if not is_running or not isinstance(stop_event, threading.Event):
+                    return
+                if stop_event.is_set():
+                    return
+                if not endpoint_url or not run_id:
+                    with pull_integrations_lock:
+                        current = pull_integrations.get(resolved_customer)
+                        if current is not None:
+                            current["running"] = False
+                            current["status"] = "error"
+                            current["message"] = "Integration misconfigured: missing endpoint or run_id."
+                            current["last_error"] = current["message"]
+                            current["updated_at"] = _utc_now_iso()
+                    return
+
+                success = False
+                last_error = ""
+                for attempt in range(1, max(1, retry_attempts) + 1):
+                    with pull_integrations_lock:
+                        current = pull_integrations.get(resolved_customer)
+                        if current is None:
+                            return
+                        current["last_poll_at"] = _utc_now_iso()
+                        current["total_polls"] = int(current.get("total_polls", 0)) + 1
+                        current["updated_at"] = _utc_now_iso()
+                    try:
+                        http_status, payload = _fetch_pull_payload(state)
+                        rows = _coerce_pull_items(payload, customer_id=resolved_customer)
+                        ingested = _ingest_pull_items(
+                            rows=rows,
+                            run_id=run_id,
+                            customer_id=resolved_customer,
+                        )
+                        now = _utc_now_iso()
+                        with pull_integrations_lock:
+                            current = pull_integrations.get(resolved_customer)
+                            if current is None:
+                                return
+                            current["last_http_status"] = int(http_status)
+                            current["last_error"] = None
+                            current["last_success_at"] = now
+                            current["consecutive_failures"] = 0
+                            current["total_ingested"] = int(current.get("total_ingested", 0)) + int(ingested)
+                            current["status"] = "running"
+                            current["message"] = f"Last poll ingested {ingested} item(s)."
+                            current["updated_at"] = now
+                        log_structured(
+                            logger,
+                            event="pull_integration_poll_success",
+                            fields={
+                                "customer_id": resolved_customer,
+                                "run_id": run_id,
+                                "ingested_items": int(ingested),
+                                "http_status": int(http_status),
+                            },
+                            level=logging.INFO,
+                        )
+                        success = True
+                        break
+                    except Exception as exc:
+                        last_error = str(exc)
+                        with pull_integrations_lock:
+                            current = pull_integrations.get(resolved_customer)
+                            if current is None:
+                                return
+                            current["total_failures"] = int(current.get("total_failures", 0)) + 1
+                            current["consecutive_failures"] = int(current.get("consecutive_failures", 0)) + 1
+                            current["status"] = "error"
+                            current["last_error"] = last_error
+                            current["message"] = (
+                                f"Poll attempt {attempt}/{retry_attempts} failed: {last_error}"
+                            )
+                            current["updated_at"] = _utc_now_iso()
+                        log_structured(
+                            logger,
+                            event="pull_integration_poll_failure",
+                            fields={
+                                "customer_id": resolved_customer,
+                                "run_id": run_id,
+                                "attempt": attempt,
+                                "retry_attempts": retry_attempts,
+                                "error": last_error,
+                                **summarize_exception_for_logs(exc),
+                            },
+                            level=logging.WARNING,
+                        )
+                        if attempt >= retry_attempts:
+                            break
+                        delay = max(0.05, retry_backoff) * (2 ** (attempt - 1))
+                        if stop_event.wait(delay):
+                            return
+
+                if stop_event.wait(max(0.2, poll_interval)):
+                    return
+                if not success:
+                    with pull_integrations_lock:
+                        current = pull_integrations.get(resolved_customer)
+                        if current is not None:
+                            current["message"] = "Polling will continue after previous failure."
+                            current["updated_at"] = _utc_now_iso()
+
+        worker = threading.Thread(target=_worker, daemon=True, name=f"pull-integration-{resolved_customer}")
+        with pull_integrations_lock:
+            state = pull_integrations.get(resolved_customer)
+            if state is None:
+                return
+            state["_thread"] = worker
+        worker.start()
 
     async def _stream_upload_to_tempfile(upload: UploadFile, target_path: Path, job_id: str) -> int:
         bytes_received = 0
@@ -1196,6 +1513,99 @@ def create_app(
             if _resolve_customer_id(job.get("customer_id")) != resolved_customer:
                 raise HTTPException(status_code=404, detail=f"Unknown ingest job: {job_id}")
             return _public_ingest_job(job)
+
+    @app.post("/integrations/pull/start", response_model=PullIntegrationStatusEnvelope)
+    def start_pull_integration(
+        payload: PullIntegrationStartRequest,
+        _: None = Depends(require_api_key),
+        customer_id: str | None = Query(default=None),
+    ) -> dict[str, Any]:
+        resolved_customer = _resolve_customer_id(customer_id)
+        endpoint_url = _validate_endpoint_url(payload.endpoint_url)
+        auth_type = str(payload.auth_type or "none")
+        if auth_type == "basic":
+            if not str(payload.username or "").strip() or payload.password is None:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Basic auth requires username and password.",
+                )
+        if auth_type == "bearer" and not str(payload.token or "").strip():
+            raise HTTPException(status_code=400, detail="Bearer auth requires token.")
+
+        resolved_run = _resolve_run_id_with_default(
+            service_instance,
+            payload.run_id,
+            customer_id=resolved_customer,
+        )
+        _stop_pull_integration(resolved_customer, reason="Restarting integration.")
+        stop_event = threading.Event()
+        started_at = _utc_now_iso()
+        with pull_integrations_lock:
+            pull_integrations[resolved_customer] = {
+                "customer_id": resolved_customer,
+                "endpoint_url": endpoint_url,
+                "run_id": resolved_run,
+                "auth_type": auth_type,
+                "username": payload.username,
+                "password": payload.password,
+                "token": payload.token,
+                "running": True,
+                "status": "running",
+                "polling_interval_seconds": float(payload.polling_interval_seconds),
+                "retry_max_attempts": int(payload.retry_max_attempts),
+                "retry_backoff_seconds": float(payload.retry_backoff_seconds),
+                "request_timeout_seconds": float(payload.request_timeout_seconds),
+                "started_at": started_at,
+                "updated_at": started_at,
+                "last_poll_at": None,
+                "last_success_at": None,
+                "last_error": None,
+                "last_http_status": None,
+                "total_polls": 0,
+                "total_failures": 0,
+                "consecutive_failures": 0,
+                "total_ingested": 0,
+                "message": "Pull integration started.",
+                "_stop_event": stop_event,
+                "_thread": None,
+            }
+            state = dict(pull_integrations[resolved_customer])
+        _start_pull_worker(resolved_customer)
+        log_structured(
+            logger,
+            event="pull_integration_started",
+            fields={
+                "customer_id": resolved_customer,
+                "run_id": resolved_run,
+                "endpoint_url": endpoint_url,
+                "polling_interval_seconds": float(payload.polling_interval_seconds),
+                "auth_type": auth_type,
+            },
+            level=logging.INFO,
+        )
+        return _public_pull_state(state, customer_id=resolved_customer)
+
+    @app.post("/integrations/pull/stop", response_model=PullIntegrationStatusEnvelope)
+    def stop_pull_integration(
+        _: None = Depends(require_api_key),
+        customer_id: str | None = Query(default=None),
+    ) -> dict[str, Any]:
+        resolved_customer = _resolve_customer_id(customer_id)
+        state = _stop_pull_integration(resolved_customer, reason="Pull integration stopped by operator.")
+        log_structured(
+            logger,
+            event="pull_integration_stopped",
+            fields={"customer_id": resolved_customer},
+            level=logging.INFO,
+        )
+        return state
+
+    @app.get("/integrations/pull/status", response_model=PullIntegrationStatusEnvelope)
+    def pull_integration_status(customer_id: str | None = Query(default=None)) -> dict[str, Any]:
+        resolved_customer = _resolve_customer_id(customer_id)
+        with pull_integrations_lock:
+            state = pull_integrations.get(resolved_customer)
+            return _public_pull_state(state, customer_id=resolved_customer)
 
     @app.post("/reset", response_model=ActionResponse)
     def reset(_: None = Depends(require_api_key)) -> dict[str, bool]:
