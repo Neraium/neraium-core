@@ -30,7 +30,7 @@ async function fetchJson(path, opts) {
 
 function toPretty(v) {
   if (v === null || v === undefined) return "-";
-  if (typeof v === "number") return Number.isFinite(v) ? v.toFixed(4) : "-";
+  if (typeof v === "number") return Number.isFinite(v) ? v.toFixed(2) : "-";
   return String(v);
 }
 
@@ -160,8 +160,8 @@ function summarizeRiskDrivers(result) {
     summary = "Risk is LOW because drift and instability remain within stable bounds.";
   }
 
-  const driftText = hasDrift ? drift.toFixed(3) : "unavailable";
-  const instabilityText = hasInstability ? instability.toFixed(3) : "unavailable";
+  const driftText = hasDrift ? drift.toFixed(2) : "unavailable";
+  const instabilityText = hasInstability ? instability.toFixed(2) : "unavailable";
   const structureText = structuralAvailable
     ? "Structural relationship analysis is available."
     : skippedReason
@@ -248,8 +248,8 @@ function buildDemoNarrative(result, prevResult) {
   const instability = compositeInstabilityFromResult(result);
   const transition = transitionLabel(prevResult, result);
   const severity = transitionSeverity(prevResult, result);
-  const driftText = typeof drift === "number" ? drift.toFixed(3) : "n/a";
-  const instabilityText = typeof instability === "number" ? instability.toFixed(3) : "n/a";
+  const driftText = typeof drift === "number" ? drift.toFixed(2) : "n/a";
+  const instabilityText = typeof instability === "number" ? instability.toFixed(2) : "n/a";
   let message = `System ${String(result.state || result.interpreted_state || "UNKNOWN").toUpperCase()}, risk ${risk}.`;
   if (severity === "critical") {
     message = `Immediate attention: ${transition}. Drift ${driftText}, instability ${instabilityText}.`;
@@ -336,7 +336,7 @@ function extractDemoKeyEvents(results) {
         index: i + 1,
         ts: String(current.timestamp || current.persisted_at || ""),
         severity: sev === "normal" ? (isSpike ? "critical" : "watch") : sev,
-        text: isDriftEvent ? `${transition} · drift jump ${driftJump.toFixed(3)}` : transition,
+        text: isDriftEvent ? `${transition} · drift jump ${driftJump.toFixed(2)}` : transition,
       });
     }
   }
