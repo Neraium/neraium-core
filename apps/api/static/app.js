@@ -271,7 +271,7 @@ function renderDashboardSparkline(series) {
   const ctx = canvas.getContext("2d");
   const dpr = Math.min(window.devicePixelRatio || 1, 2);
   const cssW = canvas.clientWidth || canvas.parentElement?.clientWidth || 640;
-  const cssH = 140;
+  const cssH = 168;
   canvas.width = Math.floor(cssW * dpr);
   canvas.height = Math.floor(cssH * dpr);
   canvas.style.width = `${cssW}px`;
@@ -591,6 +591,16 @@ function renderDashboardHero(latest, prev) {
   const alertSummaryEl = qs("#dashboardAlertSummary");
   const link = qs("#dashboardOpenRunLink");
   const alertTile = qs("#dashboardAlertTile");
+  const runTitleEl = qs("#dashboardRunTitle");
+  const runIdLineEl = qs("#dashboardRunIdLine");
+
+  const active = state.activeRun;
+  if (runTitleEl) {
+    runTitleEl.textContent = active?.name || "No active run";
+  }
+  if (runIdLineEl) {
+    runIdLineEl.textContent = active?.run_id ? `Run ID · ${active.run_id}` : "Select or create a run under Runs.";
+  }
 
   const score = healthScoreFromSignals(latest);
   if (scoreEl) scoreEl.textContent = latest ? String(score) : "-";
@@ -608,8 +618,8 @@ function renderDashboardHero(latest, prev) {
   if (alertSummaryEl) {
     const first = alerts[0];
     alertSummaryEl.textContent = first
-      ? String(first.message || first.type || "Alert").slice(0, 120)
-      : "No open alerts for this run.";
+      ? String(first.message || first.type || "Alert").slice(0, 100)
+      : "No open alerts.";
   }
   if (alertTile) {
     const critical = alerts.some((a) => String(a.severity || "").toLowerCase() === "critical");
@@ -2446,14 +2456,16 @@ function renderDashboardRecent(results) {
   }
   list.forEach((r) => {
     const tr = document.createElement("tr");
+    const ts = toPretty(r.timestamp || r.persisted_at);
+    const href = `/app/results/${encodeURIComponent(r.result_id)}?run_id=${encodeURIComponent(state.activeRun?.run_id || "")}&customer_id=${encodeURIComponent(customerIdValue(state.tenant.customerId))}`;
     tr.innerHTML = `
-      <td>${toPretty(r.result_id)}</td>
-      <td>${toPretty(r.timestamp || r.persisted_at)}</td>
-      <td>${phaseBadgeHtml(phaseFromResult(r))}</td>
-      <td>${riskBadgeHtml(r.risk_level)}</td>
-      <td>${toPretty(structuralDriftFromResult(r))}</td>
-      <td>${toPretty(compositeInstabilityFromResult(r))}</td>
-      <td><a href="/app/results/${encodeURIComponent(r.result_id)}?run_id=${encodeURIComponent(state.activeRun?.run_id || "")}&customer_id=${encodeURIComponent(customerIdValue(state.tenant.customerId))}">View</a></td>
+      <td data-label="ID">${toPretty(r.result_id)}</td>
+      <td data-label="Time">${escapeHtml(String(ts))}</td>
+      <td data-label="Phase">${phaseBadgeHtml(phaseFromResult(r))}</td>
+      <td data-label="Risk">${riskBadgeHtml(r.risk_level)}</td>
+      <td data-label="Drift">${toPretty(structuralDriftFromResult(r))}</td>
+      <td data-label="Comp.">${toPretty(compositeInstabilityFromResult(r))}</td>
+      <td data-label=""><a class="dashboard-result-link" href="${href}">View</a></td>
     `;
     tbody.appendChild(tr);
   });

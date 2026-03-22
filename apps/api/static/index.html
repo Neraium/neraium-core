@@ -73,16 +73,36 @@
       <main class="content">
         <!-- DASHBOARD -->
         <section id="page-dashboard" class="page page-dashboard">
-          <section class="dashboard-hero panel control-center">
-            <div class="dashboard-hero-grid">
-              <div class="dashboard-hero-primary">
-                <div class="dashboard-hero-kicker">
+          <header class="dashboard-context panel" aria-label="Active run context">
+            <div class="dashboard-context-main">
+              <p class="dashboard-context-kicker">Active run</p>
+              <h3 class="dashboard-context-title" id="dashboardRunTitle">No active run</h3>
+              <p class="dashboard-context-meta">
+                <span class="dashboard-context-id mono" id="dashboardRunIdLine">—</span>
+              </p>
+            </div>
+            <div class="dashboard-context-actions">
+              <a class="dashboard-context-link" href="/app/runs">Switch run</a>
+              <a class="dashboard-deep-link dashboard-context-cta" id="dashboardOpenRunLink" href="/app/runs">Open detail</a>
+            </div>
+          </header>
+
+          <section class="dashboard-summary panel control-center" aria-label="Live run summary">
+            <div class="dashboard-summary-grid">
+              <div class="dashboard-summary-visual">
+                <div class="dashboard-hero-kicker dashboard-summary-kicker">
                   <span class="live-pulse" aria-hidden="true"></span>
-                  <span>Active run · live envelope</span>
+                  <span>Live envelope</span>
                 </div>
-                <div class="dashboard-hero-score-row">
-                  <div class="health-ring-wrap" title="Composite health from risk, drift, and instability">
+                <div class="dashboard-summary-ring-row">
+                  <div class="health-ring-wrap health-ring-wrap-lg" title="Composite health from risk, drift, and instability">
                     <svg id="dashboardHealthRing" class="health-ring" viewBox="0 0 120 120" aria-hidden="true">
+                      <defs>
+                        <linearGradient id="healthRingGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                          <stop offset="0%" stop-color="#79abff" />
+                          <stop offset="100%" stop-color="#4f8cff" />
+                        </linearGradient>
+                      </defs>
                       <circle class="health-ring-bg" cx="60" cy="60" r="52" />
                       <circle id="dashboardHealthArc" class="health-ring-arc" cx="60" cy="60" r="52" />
                     </svg>
@@ -91,142 +111,142 @@
                       <span class="health-ring-caption">Health</span>
                     </div>
                   </div>
-                  <div class="dashboard-hero-state-block">
-                    <p class="signal-caption">System state</p>
-                    <div class="signal-main-row dashboard-state-row">
-                      <p id="metricState" class="signal-state">-</p>
-                      <div id="metricPhaseBadge"></div>
-                    </div>
-                    <div class="dashboard-risk-inline">
-                      <span class="signal-label">Risk</span>
-                      <p id="metricRisk" class="signal-risk signal-risk-inline">-</p>
-                      <div id="metricRiskBadge"></div>
-                    </div>
-                    <p class="dashboard-narrative-strip" id="dashboardNarrativeStrip">Awaiting telemetry.</p>
-                    <p class="signal-trend dashboard-trend-line">Trend <strong id="metricTrend">-</strong></p>
+                  <div class="dashboard-summary-tiles">
+                    <article class="insight-tile insight-tile-compact insight-tile-alert" id="dashboardAlertTile">
+                      <p class="insight-tile-label">Alerts</p>
+                      <p class="insight-tile-value" id="dashboardAlertCount">0</p>
+                      <p class="insight-tile-sub" id="dashboardAlertSummary">None open.</p>
+                    </article>
+                    <article class="insight-tile insight-tile-compact">
+                      <p class="insight-tile-label">Snapshots</p>
+                      <p class="insight-tile-value" id="dashboardSnapshotCount">0</p>
+                      <p class="insight-tile-sub">In recent window</p>
+                    </article>
                   </div>
                 </div>
               </div>
-              <aside class="dashboard-hero-aside">
-                <article class="insight-tile insight-tile-alert" id="dashboardAlertTile">
-                  <p class="insight-tile-label">Active signals</p>
-                  <p class="insight-tile-value" id="dashboardAlertCount">0</p>
-                  <p class="insight-tile-sub" id="dashboardAlertSummary">No open alerts for this run.</p>
-                </article>
-                <article class="insight-tile">
-                  <p class="insight-tile-label">Coverage</p>
-                  <p class="insight-tile-value" id="dashboardSnapshotCount">0</p>
-                  <p class="insight-tile-sub">Snapshots in view (recent window)</p>
-                </article>
-                <a class="dashboard-deep-link" id="dashboardOpenRunLink" href="/app/runs">Open run detail →</a>
-              </aside>
+              <div class="dashboard-summary-copy">
+                <p class="signal-caption">System state</p>
+                <div class="dashboard-state-risk-row">
+                  <p id="metricState" class="signal-state dashboard-state-compact">-</p>
+                  <div class="dashboard-badge-cluster">
+                    <div id="metricPhaseBadge"></div>
+                    <div id="metricRiskBadge"></div>
+                  </div>
+                </div>
+                <div class="dashboard-risk-row">
+                  <span class="signal-label">Risk level</span>
+                  <p id="metricRisk" class="signal-risk signal-risk-dashboard">-</p>
+                </div>
+                <p class="dashboard-narrative-strip" id="dashboardNarrativeStrip">Awaiting telemetry.</p>
+                <p class="dashboard-trend-pill">Trend <strong id="metricTrend">-</strong></p>
+              </div>
+            </div>
+            <div class="dashboard-kpi-grid" role="list" aria-label="Key metrics">
+              <article class="dashboard-kpi" role="listitem">
+                <p class="dashboard-kpi-label">Phase</p>
+                <p id="metricPhase" class="dashboard-kpi-value">-</p>
+              </article>
+              <article class="dashboard-kpi" role="listitem">
+                <p class="dashboard-kpi-label">Structural drift</p>
+                <p id="metricDrift" class="dashboard-kpi-value mono">-</p>
+              </article>
+              <article class="dashboard-kpi" role="listitem">
+                <p class="dashboard-kpi-label">Composite</p>
+                <p id="metricComposite" class="dashboard-kpi-value mono">-</p>
+              </article>
+              <article class="dashboard-kpi" role="listitem">
+                <p class="dashboard-kpi-label">Confidence</p>
+                <p id="metricConfidence" class="dashboard-kpi-value mono">-</p>
+              </article>
             </div>
           </section>
 
           <section class="panel dashboard-observations">
             <div class="panel-header dashboard-section-head">
               <div>
-                <h3>What we see</h3>
-                <p class="subtitle section-subtitle">Narrative plus structural relationships from the latest snapshot.</p>
+                <h3>Field view</h3>
+                <p class="subtitle section-subtitle">Operator readout, structural stress, and relationship sketch from the latest snapshot.</p>
               </div>
             </div>
-            <div class="observations-grid">
+            <div class="dashboard-insight-stack">
               <article class="insight-card operator-insight">
                 <p class="insight-card-label">Operator readout</p>
                 <p id="metricOperatorMessage" class="operator-message operator-message-compact">No results yet. Upload telemetry or seed demo data.</p>
               </article>
-              <article class="insight-card stress-card">
-                <p class="insight-card-label">Structural stress</p>
-                <div class="stress-heatmap" id="dashboardStressHeatmap" aria-label="Drift and instability stress"></div>
-                <p class="stress-heatmap-legend" id="dashboardStressLegend">Drift and composite</p>
-              </article>
-              <article class="insight-card graph-card">
-                <p class="insight-card-label">Relationship map</p>
-                <div class="mini-graph-host" id="dashboardMiniGraphHost">
-                  <svg id="dashboardMiniGraph" class="mini-graph" viewBox="0 0 320 200" role="img" aria-label="Sensor relationship sketch"></svg>
-                  <p class="mini-graph-empty" id="dashboardMiniGraphEmpty">No relationship sketch until data arrives.</p>
-                </div>
-              </article>
+              <div class="dashboard-insight-split">
+                <article class="insight-card stress-card">
+                  <p class="insight-card-label">Structural stress</p>
+                  <div class="stress-heatmap" id="dashboardStressHeatmap" aria-label="Drift and instability stress"></div>
+                  <p class="stress-heatmap-legend" id="dashboardStressLegend">Drift and composite</p>
+                </article>
+                <article class="insight-card graph-card">
+                  <p class="insight-card-label">Relationship map</p>
+                  <div class="mini-graph-host mini-graph-host-dashboard" id="dashboardMiniGraphHost">
+                    <svg id="dashboardMiniGraph" class="mini-graph" viewBox="0 0 320 200" role="img" aria-label="Sensor relationship sketch"></svg>
+                    <p class="mini-graph-empty" id="dashboardMiniGraphEmpty">No relationship sketch until data arrives.</p>
+                  </div>
+                </article>
+              </div>
             </div>
           </section>
 
           <section class="panel dashboard-signals">
             <div class="panel-header dashboard-section-head">
               <div>
-                <h3>What is changing</h3>
-                <p class="subtitle section-subtitle">Drift and instability trend with anomaly emphasis on the latest point.</p>
+                <h3>Momentum</h3>
+                <p class="subtitle section-subtitle">Drift and composite over time. Drag on touch devices to inspect values.</p>
               </div>
             </div>
+            <div class="sparkline-legend-row" aria-hidden="true">
+              <span class="spark-legend-drift">Drift</span>
+              <span class="spark-legend-composite">Composite</span>
+            </div>
             <div class="sparkline-wrap">
-              <div class="sparkline-canvas-wrap">
-                <canvas id="dashboardSparkline" width="900" height="140" aria-label="Drift and composite trend"></canvas>
+              <div class="sparkline-canvas-wrap sparkline-canvas-wrap-tall">
+                <canvas id="dashboardSparkline" width="900" height="168" aria-label="Drift and composite trend"></canvas>
                 <div id="dashboardSparklineTooltip" class="sparkline-tooltip hidden" role="tooltip"></div>
               </div>
-              <p class="sparkline-hint" id="dashboardSparklineHint">Hover or drag along the trend for values. Latest snapshot highlighted.</p>
+              <p class="sparkline-hint" id="dashboardSparklineHint">Tap or drag along the curve for values. Latest point is highlighted.</p>
             </div>
           </section>
 
-          <section class="panel">
+          <section class="panel dashboard-alerts-panel">
             <div class="panel-header dashboard-section-head">
               <div>
                 <h3>Alerts</h3>
-                <p class="subtitle section-subtitle">Highest-priority platform signals for the active run.</p>
+                <p class="subtitle section-subtitle">Platform signals for this run.</p>
               </div>
             </div>
             <div id="dashboardAlertsEmpty" class="empty-state hidden">
               <p>No alerts for this run.</p>
             </div>
-            <ul id="dashboardAlertsList" class="messages alerts-feed"></ul>
+            <ul id="dashboardAlertsList" class="messages alerts-feed alerts-feed-dashboard"></ul>
           </section>
-
-          <details class="panel disclosure-panel" id="dashboardMetricsDisclosure">
-            <summary class="disclosure-summary">
-              <span class="disclosure-title">Run metrics</span>
-              <span class="disclosure-hint">Phase, drift, composite, confidence</span>
-            </summary>
-            <div class="signal-secondary dashboard-metrics-grid">
-              <article class="signal-meta-card">
-                <p class="signal-meta-label">Phase</p>
-                <p id="metricPhase" class="signal-meta-value">-</p>
-              </article>
-              <article class="signal-meta-card">
-                <p class="signal-meta-label">Structural drift</p>
-                <p id="metricDrift" class="signal-meta-value compact">-</p>
-              </article>
-              <article class="signal-meta-card">
-                <p class="signal-meta-label">Composite instability</p>
-                <p id="metricComposite" class="signal-meta-value compact">-</p>
-              </article>
-              <article class="signal-meta-card">
-                <p class="signal-meta-label">Confidence</p>
-                <p id="metricConfidence" class="signal-meta-value compact">-</p>
-              </article>
-            </div>
-          </details>
 
           <details class="panel disclosure-panel results-panel" open id="dashboardResultsDisclosure">
             <summary class="disclosure-summary">
               <span class="disclosure-title">Recent results</span>
-              <span class="disclosure-hint">Export and drill into individual snapshots</span>
+              <span class="disclosure-hint">Export or open a snapshot</span>
             </summary>
-            <div class="row panel-actions disclosure-actions">
+            <div class="row panel-actions disclosure-actions dashboard-export-row">
               <button id="exportJsonBtn" type="button">Export JSON</button>
               <button id="exportCsvBtn" type="button" class="secondary">Export CSV</button>
             </div>
             <div id="dashboardEmpty" class="empty-state hidden">
               <p>No results for the active run yet.</p>
-              <p class="subtitle">Use <strong>Upload</strong> to ingest CSV, or click <strong>Seed Demo Data</strong>.</p>
+              <p class="subtitle">Use <strong>Upload</strong> or <strong>Seed Demo Data</strong> from the top bar.</p>
             </div>
-            <div class="table-wrap">
+            <div class="table-wrap table-wrap-dashboard">
               <table class="data-table dashboard-results-table">
                 <thead>
                   <tr>
                     <th>ID</th>
-                    <th>Timestamp</th>
+                    <th>Time</th>
                     <th>Phase</th>
                     <th>Risk</th>
                     <th>Drift</th>
-                    <th>Composite</th>
+                    <th>Comp.</th>
                     <th></th>
                   </tr>
                 </thead>
