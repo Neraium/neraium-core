@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
 import logging
 import os
 
@@ -58,6 +59,18 @@ class SIIConfig:
     alert_threshold: float = 0.74
     min_samples_for_alerts: int = 28
     allow_context_provider: bool = True
+    live_ingestion_enabled: bool = False
+    live_ingestion_provider: str = "none"
+    live_ingestion_base_url: str = "https://waterservices.usgs.gov"
+    live_ingestion_path: str = "/nwis/iv/"
+    live_ingestion_timeout_seconds: float = 10.0
+    live_ingestion_max_retries: int = 2
+    live_ingestion_retry_backoff_seconds: float = 1.0
+    live_ingestion_max_records: int = 2000
+    live_ingestion_poll_interval_seconds: float = 60.0
+    live_ingestion_site_ids: str = ""
+    live_ingestion_parameter_codes: str = ""
+    live_ingestion_extra_query_json: str = "{}"
     regime_store_path: str = "sii_regimes.json"
     log_level: str = "INFO"
 
@@ -90,6 +103,38 @@ class SIIConfig:
             raise SIIConfigurationError("alert_threshold must be > watch_threshold")
         if self.min_samples_for_alerts < 1:
             raise SIIConfigurationError("min_samples_for_alerts must be >= 1")
+        if self.live_ingestion_timeout_seconds <= 0.0:
+            raise SIIConfigurationError("live_ingestion_timeout_seconds must be > 0")
+        if self.live_ingestion_max_retries < 0:
+            raise SIIConfigurationError("live_ingestion_max_retries must be >= 0")
+        if self.live_ingestion_retry_backoff_seconds < 0.0:
+            raise SIIConfigurationError("live_ingestion_retry_backoff_seconds must be >= 0")
+        if self.live_ingestion_max_records < 1:
+            raise SIIConfigurationError("live_ingestion_max_records must be >= 1")
+        if self.live_ingestion_poll_interval_seconds <= 0.0:
+            raise SIIConfigurationError("live_ingestion_poll_interval_seconds must be > 0")
+        if str(self.live_ingestion_provider).strip().lower() not in {"none", "usgs_nwis_iv"}:
+            raise SIIConfigurationError(
+                "live_ingestion_provider must be one of: none, usgs_nwis_iv"
+            )
+        if not str(self.live_ingestion_base_url).strip():
+            raise SIIConfigurationError("live_ingestion_base_url cannot be empty")
+        if not str(self.live_ingestion_path).strip():
+            raise SIIConfigurationError("live_ingestion_path cannot be empty")
+        if self.live_ingestion_enabled and self.live_ingestion_provider == "none":
+            raise SIIConfigurationError(
+                "live_ingestion_provider cannot be 'none' when live_ingestion_enabled is true"
+            )
+        if (
+            self.live_ingestion_enabled
+            and self.live_ingestion_provider == "usgs_nwis_iv"
+            and not str(self.live_ingestion_site_ids).strip()
+        ):
+            raise SIIConfigurationError(
+                "live_ingestion_site_ids must be provided for usgs_nwis_iv live ingestion"
+            )
+        # Validate JSON shape early for deterministic startup failure.
+        _ = self.live_ingestion_extra_query_params
         if not str(self.regime_store_path).strip():
             raise SIIConfigurationError("regime_store_path cannot be empty")
         if not str(self.log_level).strip():
@@ -104,6 +149,21 @@ class SIIConfig:
         but prefer the explicit graph_edge_threshold.
         """
         return float(self.graph_edge_threshold)
+
+    @property
+    def live_ingestion_extra_query_params(self) -> dict[str, str]:
+        raw = str(self.live_ingestion_extra_query_json or "{}").strip() or "{}"
+        try:
+            parsed = json.loads(raw)
+        except Exception as exc:
+            raise SIIConfigurationError(
+                "live_ingestion_extra_query_json must be valid JSON object text"
+            ) from exc
+        if not isinstance(parsed, dict):
+            raise SIIConfigurationError(
+                "live_ingestion_extra_query_json must decode to a JSON object"
+            )
+        return {str(k): str(v) for k, v in parsed.items()}
 
     @staticmethod
     def from_env() -> "SIIConfig":
@@ -122,6 +182,24 @@ class SIIConfig:
             alert_threshold=_env_float("SII_ALERT_THRESHOLD", 0.74),
             min_samples_for_alerts=_env_int("SII_MIN_SAMPLES_FOR_ALERTS", 28),
             allow_context_provider=_env_bool("SII_ALLOW_CONTEXT_PROVIDER", True),
+            live_ingestion_enabled=_env_bool("SII_LIVE_INGESTION_ENABLED", False),
+            live_ingestion_provider=os.getenv("SII_LIVE_INGESTION_PROVIDER", "none").strip().lower(),
+            live_ingestion_base_url=os.getenv(
+                "SII_LIVE_INGESTION_BASE_URL", "https://waterservices.usgs.gov"
+            ),
+            live_ingestion_path=os.getenv("SII_LIVE_INGESTION_PATH", "/nwis/iv/"),
+            live_ingestion_timeout_seconds=_env_float("SII_LIVE_INGESTION_TIMEOUT_SECONDS", 10.0),
+            live_ingestion_max_retries=_env_int("SII_LIVE_INGESTION_MAX_RETRIES", 2),
+            live_ingestion_retry_backoff_seconds=_env_float(
+                "SII_LIVE_INGESTION_RETRY_BACKOFF_SECONDS", 1.0
+            ),
+            live_ingestion_max_records=_env_int("SII_LIVE_INGESTION_MAX_RECORDS", 2000),
+            live_ingestion_poll_interval_seconds=_env_float(
+                "SII_LIVE_INGESTION_POLL_INTERVAL_SECONDS", 60.0
+            ),
+            live_ingestion_site_ids=os.getenv("SII_LIVE_INGESTION_SITE_IDS", ""),
+            live_ingestion_parameter_codes=os.getenv("SII_LIVE_INGESTION_PARAMETER_CODES", ""),
+            live_ingestion_extra_query_json=os.getenv("SII_LIVE_INGESTION_EXTRA_QUERY_JSON", "{}"),
             regime_store_path=os.getenv("SII_REGIME_STORE_PATH", "sii_regimes.json"),
             log_level=os.getenv("SII_LOG_LEVEL", "INFO").upper(),
         )
