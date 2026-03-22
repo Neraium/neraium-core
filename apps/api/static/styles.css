@@ -842,11 +842,15 @@ input[type="file"] {
 
 .geometry-canvas-wrap {
   position: relative;
-  min-height: 360px;
+  height: clamp(300px, 52vh, 460px);
+  min-height: 300px;
   border: 1px solid #304564;
   border-radius: 12px;
   overflow: hidden;
-  background: linear-gradient(180deg, #0a1425, #081120);
+  background:
+    radial-gradient(circle at 22% 16%, rgba(93, 136, 218, 0.22), transparent 42%),
+    radial-gradient(circle at 84% 80%, rgba(77, 126, 204, 0.16), transparent 48%),
+    linear-gradient(180deg, #0a1425, #081120);
 }
 
 #geometryCanvas {
@@ -854,6 +858,22 @@ input[type="file"] {
   inset: 0;
   width: 100%;
   height: 100%;
+}
+
+.geometry-debug-label {
+  position: absolute;
+  right: 10px;
+  top: 10px;
+  z-index: 3;
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(86, 126, 196, 0.84);
+  background: rgba(8, 16, 30, 0.72);
+  color: #cbdcf9;
+  font-size: 10px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  font-weight: 700;
 }
 
 .geometry-status {
@@ -879,6 +899,10 @@ input[type="file"] {
 
 .geometry-status.hidden {
   display: none !important;
+}
+
+.geometry-status.info {
+  color: #c9daf8;
 }
 
 .geometry-fallback.error {
@@ -1314,7 +1338,11 @@ input[type="file"] {
 
   .geometry-canvas-wrap,
   .geometry-fallback {
-    min-height: 320px;
+    min-height: 300px;
+  }
+
+  .geometry-canvas-wrap {
+    height: clamp(280px, 48vh, 420px);
   }
 }
 
@@ -1405,7 +1433,11 @@ input[type="file"] {
 
   .geometry-canvas-wrap,
   .geometry-fallback {
-    min-height: 280px;
+    min-height: 270px;
+  }
+
+  .geometry-canvas-wrap {
+    height: min(60vh, 360px);
   }
 
   .geometry-details {
@@ -1458,5 +1490,19 @@ input[type="file"] {
 
   .chart-panel {
     height: 250px;
+  }
+
+  .geometry-layout {
+    gap: 10px;
+  }
+
+  .geometry-canvas-wrap {
+    min-height: 250px;
+    height: min(56vh, 320px);
+  }
+
+  .geometry-hud {
+    min-width: 138px;
+    padding: 7px 8px;
   }
 }

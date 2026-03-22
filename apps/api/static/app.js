@@ -247,9 +247,48 @@ function disposeGeometryRenderer() {
   g.interactionEnabled = false;
 }
 
+function getOrbitControlsConstructor() {
+  if (window.THREE && window.THREE.OrbitControls) {
+    return window.THREE.OrbitControls;
+  }
+  if (window.OrbitControls) {
+    return window.OrbitControls;
+  }
+  return null;
+}
+
+function geometryViewportDimensions() {
+  const host = qs("#geometryViewport");
+  if (!host) return null;
+  const rect = host.getBoundingClientRect();
+  const w = Math.floor(rect.width || host.clientWidth || 0);
+  const h = Math.floor(rect.height || host.clientHeight || 0);
+  return { host, width: w, height: h };
+}
+
+function ensureGeometryViewportReady(timeoutMs = 1600) {
+  return new Promise((resolve) => {
+    const start = window.performance.now();
+    function tick() {
+      const dims = geometryViewportDimensions();
+      if (dims && dims.width > 40 && dims.height > 40) {
+        resolve(dims);
+        return;
+      }
+      if (window.performance.now() - start > timeoutMs) {
+        resolve(dims);
+        return;
+      }
+      window.requestAnimationFrame(tick);
+    }
+    tick();
+  });
+}
+
 function setGeometrySurfaceState(message, level = "info") {
   const fallback = qs("#geometryFallback");
   const canvasWrap = qs("#geometryCanvasWrap");
+  const viewport = qs("#geometryViewport");
   if (fallback) {
     fallback.textContent = String(message || "");
     fallback.className = `empty-state geometry-fallback ${level === "error" ? "error" : ""}`;
@@ -258,17 +297,24 @@ function setGeometrySurfaceState(message, level = "info") {
   if (canvasWrap) {
     canvasWrap.classList.add("hidden");
   }
+  if (viewport) {
+    viewport.classList.remove("ready");
+  }
 }
 
 function showGeometryCanvas() {
   const fallback = qs("#geometryFallback");
   const canvasWrap = qs("#geometryCanvasWrap");
+  const viewport = qs("#geometryViewport");
   if (fallback) {
     fallback.classList.add("hidden");
     fallback.textContent = "";
   }
   if (canvasWrap) {
     canvasWrap.classList.remove("hidden");
+  }
+  if (viewport) {
+    viewport.classList.add("ready");
   }
 }
 
@@ -300,7 +346,7 @@ function edgeColorHex(edge, metrics) {
 
 function ensureThreeLibs() {
   const three = window.THREE;
-  const controlsCtor = window.OrbitControls;
+  const controlsCtor = getOrbitControlsConstructor();
   if (!three || !controlsCtor) {
     throw new Error("3D libraries unavailable.");
   }
@@ -441,9 +487,10 @@ function createNodeLabelSprite(three, text, colorHex = 0xd9e6ff) {
   return sprite;
 }
 
-function renderGeometryScene(payload) {
-  const canvasHost = qs("#geometryCanvas");
-  if (!canvasHost) return;
+function renderGeometryScene(payload, viewportDims) {
+  const canvasHost = qs("#geometryViewport");
+  const viewport = qs("#geometryViewport");
+  if (!canvasHost || !viewport || !viewportDims) return;
   const { three, controlsCtor } = ensureThreeLibs();
   disposeGeometryRenderer();
   state.runGeometry = payload;
@@ -460,12 +507,17 @@ function renderGeometryScene(payload) {
   }
 
   showGeometryCanvas();
-  const width = Math.max(240, canvasHost.clientWidth || 240);
-  const height = Math.max(220, canvasHost.clientHeight || 340);
+  const width = Math.max(240, viewportDims.width || viewport.clientWidth || 240);
+  const height = Math.max(240, viewportDims.height || viewport.clientHeight || 360);
   const renderer = new three.WebGLRenderer({ antialias: true, alpha: true });
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   renderer.setSize(width, height);
-  renderer.outputColorSpace = three.SRGBColorSpace || undefined;
+  if (three.SRGBColorSpace) {
+    renderer.outputColorSpace = three.SRGBColorSpace;
+  } else if (typeof renderer.outputEncoding !== "undefined" && typeof three.sRGBEncoding !== "undefined") {
+    renderer.outputEncoding = three.sRGBEncoding;
+  }
+  renderer.domElement.className = "geometry-renderer-canvas";
   canvasHost.appendChild(renderer.domElement);
 
   const scene = new three.Scene();
@@ -583,8 +635,9 @@ function renderGeometryScene(payload) {
 
   function onResize() {
     if (!g.renderer || !g.camera) return;
-    const w = Math.max(240, canvasHost.clientWidth || 240);
-    const h = Math.max(220, canvasHost.clientHeight || 340);
+    const dims = geometryViewportDimensions();
+    const w = Math.max(240, dims?.width || viewport.clientWidth || 240);
+    const h = Math.max(240, dims?.height || viewport.clientHeight || 360);
     g.renderer.setSize(w, h);
     g.camera.aspect = w / h;
     g.camera.updateProjectionMatrix();
@@ -660,7 +713,13 @@ async function loadRunGeometry(runId) {
     }
   }
   try {
-    renderGeometryScene(payload);
+    const dims = await ensureGeometryViewportReady();
+    if (!dims || dims.width <= 40 || dims.height <= 40) {
+      setGeometrySurfaceState("3D viewport size unavailable. Resize or refresh to retry.", "warn");
+      updateGeometryDetails(null);
+      return;
+    }
+    renderGeometryScene(payload, dims);
   } catch (err) {
     setGeometrySurfaceState(`3D unavailable: ${String(err.message || err)}`, "error");
     updateGeometryDetails(null);
