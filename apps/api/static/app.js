@@ -418,6 +418,14 @@ function applyDemoSnapshot() {
     stopDemoPlayback();
   }
   renderRunDetailFromState();
+  const route = getRoute();
+  if (route.page === "run-detail" && route.runId && state.runRecent.length > 0) {
+    const chronologicalFull = state.runRecent.slice().reverse();
+    const chronological = chronologicalFull.slice(0, Math.max(1, Number(state.demo.cursor || chronologicalFull.length)));
+    const latest = chronological.length ? chronological[chronological.length - 1] : null;
+    const resultId = latest?.result_id ?? null;
+    loadRunGeometry(route.runId, resultId);
+  }
 }
 
 function scheduleDemoTick() {
@@ -891,7 +899,7 @@ function setGeometrySurfaceState(message, level = "info") {
     fallback.classList.remove("hidden");
   }
   if (canvasWrap) {
-    canvasWrap.classList.add("hidden");
+    canvasWrap.classList.remove("hidden");
   }
   if (viewport) {
     viewport.classList.remove("ready");
@@ -905,9 +913,6 @@ function showGeometryCanvas() {
   if (fallback) {
     fallback.classList.add("hidden");
     fallback.textContent = "";
-  }
-  if (canvasWrap) {
-    canvasWrap.classList.remove("hidden");
   }
   if (viewport) {
     viewport.classList.add("ready");
@@ -1161,11 +1166,13 @@ function renderGeometryScene(payload, viewportDims) {
   state.runGeometry = payload;
   buildGeometryLegend(payload);
   if (!payload || !payload.available) {
+    disposeGeometryRenderer();
     setGeometrySurfaceState(payload?.reason || "Geometry unavailable.", "warn");
     updateGeometryDetails(null);
     return;
   }
   if (!Array.isArray(payload.nodes) || payload.nodes.length === 0) {
+    disposeGeometryRenderer();
     setGeometrySurfaceState("No geometry nodes available in this result.", "warn");
     updateGeometryDetails(null);
     return;
@@ -1396,9 +1403,10 @@ function renderGeometryScene(payload, viewportDims) {
   animate();
 }
 
-async function loadRunGeometry(runId) {
+async function loadRunGeometry(runId, resultId = null) {
+  const params = tenantScopeParams(resultId != null ? { result_id: resultId } : {});
   const payload = await fetchJson(
-    apiUrl(`/runs/${encodeURIComponent(runId)}/geometry`, tenantScopeParams())
+    apiUrl(`/runs/${encodeURIComponent(runId)}/geometry`, params)
   );
   state.runGeometry = payload;
   const projectionNote =
@@ -2221,8 +2229,7 @@ function renderRunDetailFromState() {
     else runDetailEmpty.classList.remove("hidden");
   }
   if (geomPanel) {
-    if (hasResults) geomPanel.classList.remove("hidden");
-    else geomPanel.classList.add("hidden");
+    geomPanel.classList.remove("hidden");
   }
   if (!hasResults) {
     destroyCharts();
@@ -2386,7 +2393,18 @@ async function loadRunDetail(runId) {
   setRangeButtonState(state.runDetailView.range);
   renderRunDetailFromState();
   maybeAutoStartDemoPlayback();
-  await loadRunGeometry(runId);
+  const resultIdForGeometry =
+    state.demo.enabled && state.runRecent.length > 0
+      ? (state.runRecent
+          .slice()
+          .reverse()
+          .slice(
+            0,
+            Math.max(1, Number(state.demo.cursor || state.runRecent.length))
+          )
+          .pop()?.result_id ?? null)
+      : null;
+  await loadRunGeometry(runId, resultIdForGeometry);
   await loadRunBaseline(runId);
 
   const exportJson = qs("#runDetailExportJsonBtn");
