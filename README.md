@@ -192,6 +192,27 @@ python -m pip install -e .[dev]
 uvicorn apps.api.main:app --host 0.0.0.0 --port 8000
 ```
 
+### Run the demo
+
+One-command launch for a public demo (installs deps if needed, binds to `0.0.0.0`, uses `PORT` env or 8000):
+
+```bash
+python run_demo.py
+```
+
+Options:
+
+- `--host HOST` — bind address (default: 0.0.0.0)
+- `--port PORT` — port (default: 8000, or `PORT` env)
+- `--share` — start a public tunnel (ngrok or cloudflared) for sharing
+
+Examples:
+
+```bash
+python run_demo.py --port 7860
+python run_demo.py --share
+```
+
 ## Customer-hosted deployment (first-class path)
 
 For customer environments (server/VM or customer cloud VM), use the deployment guide:
