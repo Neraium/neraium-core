@@ -1392,6 +1392,30 @@ input[type="file"] {
   display: grid;
   gap: 5px;
   min-width: 170px;
+  pointer-events: none;
+}
+
+.geometry-viewport-debug {
+  position: absolute;
+  right: 10px;
+  top: 10px;
+  z-index: 3;
+  pointer-events: none;
+  font-size: 10px;
+  color: #8aa6cf;
+}
+
+#geometryViewport.geometry-viewport {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.geometry-renderer-canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
 }
 
 .geometry-hud div {
