@@ -1224,7 +1224,7 @@ function fitGeometryCamera(camera, controls, nodeGroup, three) {
   const center = box.getCenter(new three.Vector3());
   const size = box.getSize(new three.Vector3());
   const maxDim = Math.max(size.x, size.y, size.z, 0.08);
-  const dist = Math.max(1.25, maxDim * 2.2);
+  const dist = Math.max(1.15, maxDim * 1.78);
   controls.target.copy(center);
   camera.near = Math.max(0.008, dist / 500);
   camera.far = Math.max(80, dist * 45);
@@ -1234,31 +1234,6 @@ function fitGeometryCamera(camera, controls, nodeGroup, three) {
   camera.lookAt(center);
 }
 
-function refreshGeometryEdges() {
-  const g = state.geometry3d;
-  const payload = state.runGeometry;
-  if (!g.edgeGroup || !payload?.edges?.length) return;
-  let idx = 0;
-  payload.edges.forEach((edge) => {
-    const s = payload.nodes.find((n) => String(n.id) === String(edge.source));
-    const t = payload.nodes.find((n) => String(n.id) === String(edge.target));
-    if (!s || !t) return;
-    const p1 = geometryPositionForNode(s);
-    const p2 = geometryPositionForNode(t);
-    const line = g.edgeGroup.children[idx];
-    idx += 1;
-    if (line?.geometry?.attributes?.position) {
-      const arr = line.geometry.attributes.position.array;
-      arr[0] = p1.x;
-      arr[1] = p1.y;
-      arr[2] = p1.z;
-      arr[3] = p2.x;
-      arr[4] = p2.y;
-      arr[5] = p2.z;
-      line.geometry.attributes.position.needsUpdate = true;
-    }
-  });
-}
 
 function geometryViewportDimensions() {
   const host = qs("#geometryViewport");
@@ -1345,6 +1320,130 @@ function edgeColorHex(edge, metrics) {
   return edge.type === "negative" ? 0x8aa4d0 : 0x9ebcf0;
 }
 
+function flowDriftInstabilityNorm(payload) {
+  const d = Number(payload?.metrics?.structural_drift_score);
+  const i = Number(payload?.metrics?.composite_instability);
+  const driftN = Number.isFinite(d) ? Math.max(0, Math.min(1, d)) : 0;
+  const instN = Number.isFinite(i) ? Math.max(0, Math.min(1, i)) : 0;
+  return { driftN, instN };
+}
+
+function flowCoherence01(payload) {
+  const { driftN, instN } = flowDriftInstabilityNorm(payload);
+  return Math.max(0, Math.min(1, 1 - 0.55 * driftN - 0.55 * instN));
+}
+
+function flowNodeStress01(node) {
+  const s = Number(node?.stress);
+  return Number.isFinite(s) ? Math.max(0, Math.min(1, s)) : 0;
+}
+
+function flowNodeColorTHREE(three, stress01, unstable) {
+  const c = new three.Color();
+  const teal = new three.Color(0x2dd4bf);
+  const cyan = new three.Color(0x22d3ee);
+  const amber = new three.Color(0xfbbf24);
+  const red = new three.Color(0xef4444);
+  if (unstable) {
+    c.copy(amber).lerp(red, Math.min(1, stress01 + 0.25));
+    return c;
+  }
+  if (stress01 < 0.45) {
+    c.copy(teal).lerp(cyan, stress01 / 0.45);
+    return c;
+  }
+  c.copy(cyan).lerp(red, (stress01 - 0.45) / 0.55);
+  return c;
+}
+
+function flowEdgeTension(edge) {
+  const mag = Math.abs(Number(edge.magnitude || 0));
+  const delta = Math.abs(Number(edge.delta || 0));
+  return Math.max(0, Math.min(1, 0.4 * (1 - mag) + 0.6 * Math.min(1, delta * 3)));
+}
+
+function syncFlowEdgesFromMeshes(g, three, t) {
+  if (!g?.edgeRefs?.length || !three?.QuadraticBezierCurve3) return;
+  const coherence = typeof g.flowCoherence === "number" ? g.flowCoherence : 0.75;
+  const driftN = typeof g.flowDriftN === "number" ? g.flowDriftN : 0;
+  const instN = typeof g.flowInstN === "number" ? g.flowInstN : 0;
+  const frayBase = 0.08 + driftN * 0.35 + instN * 0.35;
+
+  g.edgeRefs.forEach((ref, index) => {
+    const { line, sourceId, targetId, edge } = ref;
+    const sm = g.nodeMeshById[sourceId];
+    const tm = g.nodeMeshById[targetId];
+    if (!line?.geometry?.attributes?.position || !sm || !tm) return;
+    const posA = sm.position;
+    const posB = tm.position;
+    const tension = flowEdgeTension(edge);
+    const mid = posA.clone().add(posB).multiplyScalar(0.5);
+    const dir = posB.clone().sub(posA);
+    if (dir.lengthSq() < 1e-10) return;
+    const up = new three.Vector3(0, 1, 0);
+    let perp = new three.Vector3().crossVectors(dir, up);
+    if (perp.lengthSq() < 1e-10) perp = new three.Vector3().crossVectors(dir, new three.Vector3(1, 0, 0));
+    perp.normalize();
+    const lift = 0.05 * coherence * (1 - tension * 0.9);
+    mid.y += lift;
+    const fray = frayBase * (0.35 + tension * 0.65) * (1 - coherence * 0.75);
+    mid.addScaled(perp, fray * Math.sin(t * 2.6 + index * 0.73));
+    mid.addScaled(perp, tension * 0.06 * Math.sin(t * 4.2 + index * 1.1));
+    const curve = new three.QuadraticBezierCurve3(posA.clone(), mid, posB.clone());
+    const pts = curve.getPoints(14);
+    const posAttr = line.geometry.attributes.position;
+    const arr = posAttr.array;
+    for (let i = 0; i < pts.length; i += 1) {
+      arr[i * 3] = pts[i].x;
+      arr[i * 3 + 1] = pts[i].y;
+      arr[i * 3 + 2] = pts[i].z;
+    }
+    posAttr.needsUpdate = true;
+    if (line.material) {
+      const mag = Math.abs(Number(edge.magnitude || 0));
+      const pulse = 0.14 + 0.52 * mag * (0.55 + 0.45 * coherence);
+      line.material.opacity = Math.min(0.92, pulse + tension * 0.12 * Math.sin(t * 3 + index));
+    }
+  });
+}
+
+function updateGeometryFlowPanel(payload) {
+  const cohEl = qs("#geometryCoherence");
+  const inEl = qs("#geometryInSync");
+  const outEl = qs("#geometryOutSync");
+  const shiftEl = qs("#geometryShiftingLinks");
+  if (!payload || !payload.available) {
+    if (cohEl) cohEl.textContent = "—";
+    if (inEl) inEl.textContent = "—";
+    if (outEl) outEl.textContent = "—";
+    if (shiftEl) shiftEl.textContent = "—";
+    return;
+  }
+  const c = flowCoherence01(payload);
+  if (cohEl) cohEl.textContent = `${Math.round(c * 100)}%`;
+  const nodes = payload.nodes || [];
+  let inSync = 0;
+  let outSync = 0;
+  nodes.forEach((n) => {
+    const st = flowNodeStress01(n);
+    const bad = Boolean(n.is_unstable) || st >= 0.42;
+    if (bad) outSync += 1;
+    else inSync += 1;
+  });
+  if (inEl) inEl.textContent = String(inSync);
+  if (outEl) outEl.textContent = String(outSync);
+  const ch = Number(payload.summary?.changed_edges_current ?? 0);
+  if (shiftEl) shiftEl.textContent = Number.isFinite(ch) ? String(ch) : "—";
+}
+
+function geometryFlowSummaryString(payload) {
+  if (!payload?.available) return "—";
+  const c = flowCoherence01(payload);
+  if (c >= 0.72) return "Sensors read as one stream — motion stays aligned.";
+  if (c >= 0.45) return "The field is fraying — some sensors are pulling away from the pack.";
+  return "High stress — links pulse and the structure separates.";
+}
+
 function ensureThreeLibs() {
   const three = getThreeNamespace();
   const controlsCtor = getOrbitControlsConstructor();
@@ -1357,18 +1456,7 @@ function ensureThreeLibs() {
 function renderGeometryLegend(payload) {
   const legend = qs("#geometryLegend");
   if (!legend) return;
-  if (!payload || !payload.available) {
-    legend.innerHTML = "";
-    return;
-  }
-  const unstableCount = Number(payload?.summary?.unstable_nodes_current || 0);
-  const changedEdges = Number(payload?.summary?.changed_edges_current || 0);
-  legend.innerHTML = `
-    <span class="geom-pill">Nodes: ${Number(payload?.nodes?.length || 0)}</span>
-    <span class="geom-pill">Edges: ${Number(payload?.edges?.length || 0)}</span>
-    <span class="geom-pill geom-pill-unstable">Unstable nodes: ${unstableCount}</span>
-    <span class="geom-pill">Changed edges: ${changedEdges}</span>
-  `;
+  legend.innerHTML = "";
 }
 
 function geometryPositionForNode(node) {
@@ -1381,15 +1469,7 @@ function geometryPositionForNode(node) {
 }
 
 function geometryStructureSummary(payload) {
-  if (!payload || !Array.isArray(payload.nodes) || !Array.isArray(payload.edges)) return "-";
-  const totalNodes = payload.nodes.length;
-  const totalEdges = payload.edges.length;
-  const unstableNodes = payload.nodes.filter((n) => Boolean(n.is_unstable)).length;
-  const strongEdges = payload.edges.filter((e) => Math.abs(Number(e.magnitude || 0)) >= 0.6).length;
-  const density = totalNodes > 1 ? (2 * totalEdges) / (totalNodes * (totalNodes - 1)) : 0;
-  return `${totalNodes} nodes · ${totalEdges} edges · unstable ${unstableNodes} · strong links ${strongEdges} · density ${toPretty(
-    density
-  )}`;
+  return geometryFlowSummaryString(payload);
 }
 
 function clearGeometryModelsPanel() {
@@ -1506,20 +1586,22 @@ function applyGeometryDisplayMode() {
     const halo = g.nodeGlowById[nodeId];
     if (halo) halo.position.set(pos.x, pos.y, pos.z);
   });
-  refreshGeometryEdges();
+  const threeNs = getThreeNamespace();
+  syncFlowEdgesFromMeshes(g, threeNs, 0);
   const note = qs("#geometryProjectionNote");
   const payload = state.runGeometry;
   if (note && payload) {
     let text = String(payload.projection?.note || "").replace(/\s*\[view:\s*[^\]]+\]\s*$/i, "").trim();
     if (!text) {
-      text = "Positions reflect the live structural field for this snapshot.";
+      text = "Live correlation field — flow tightens when sensors agree.";
     }
     note.textContent = text;
   }
   const summary = qs("#geometryStructureSummary");
   if (summary) summary.textContent = geometryStructureSummary(state.runGeometry);
-  if (g.camera && g.controls && g.nodeGroup && getThreeNamespace()) {
-    fitGeometryCamera(g.camera, g.controls, g.nodeGroup, getThreeNamespace());
+  updateGeometryFlowPanel(payload);
+  if (g.camera && g.controls && g.nodeGroup && threeNs) {
+    fitGeometryCamera(g.camera, g.controls, g.nodeGroup, threeNs);
   }
 }
 
@@ -1539,6 +1621,7 @@ function updateGeometryDetails(nodeId = null) {
   if (metricRisk) metricRisk.textContent = toPretty(payload?.metrics?.risk_level);
   if (metricDrift) metricDrift.textContent = toPretty(payload?.metrics?.structural_drift_score);
   if (metricComposite) metricComposite.textContent = toPretty(payload?.metrics?.composite_instability);
+  updateGeometryFlowPanel(payload);
 
   const setNodeFields = (label, stress, magnitude, stateText) => {
     if (nodeLabel) nodeLabel.textContent = label;
@@ -1548,11 +1631,11 @@ function updateGeometryDetails(nodeId = null) {
   };
 
   if (!payload || !payload.available) {
-    setNodeFields("-", "-", "-", "-");
+    setNodeFields("—", "—", "—", "—");
     return;
   }
   if (!nodeId) {
-    setNodeFields("None selected", "-", "-", "-");
+    setNodeFields("—", "—", "—", "—");
     return;
   }
   const node = g.nodeDataById[nodeId];
@@ -1687,8 +1770,8 @@ function renderGeometryScene(payload, viewportDims) {
   showGeometryCanvas();
   const width = Math.max(240, viewportDims.width || viewport.clientWidth || 240);
   const height = Math.max(240, viewportDims.height || viewport.clientHeight || 360);
-  const renderer = new three.WebGLRenderer({ antialias: true, alpha: true });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  const renderer = new three.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "high-performance" });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
   renderer.setSize(width, height);
   if (three.SRGBColorSpace) {
     renderer.outputColorSpace = three.SRGBColorSpace;
@@ -1700,29 +1783,29 @@ function renderGeometryScene(payload, viewportDims) {
 
   const scene = new three.Scene();
   scene.background = null;
-  scene.fog = new three.FogExp2(0x070d19, 0.07);
+  scene.fog = new three.FogExp2(0x060d18, 0.048);
 
   const camera = new three.PerspectiveCamera(48, width / height, 0.01, 60);
   camera.position.set(0, 0.45, 3.05);
   scene.add(camera);
 
-  const hemi = new three.HemisphereLight(0xa7c9ff, 0x0e1a30, 0.74);
+  const hemi = new three.HemisphereLight(0x8ec8ff, 0x0a1528, 0.68);
   scene.add(hemi);
-  const key = new three.DirectionalLight(0x8db5ff, 0.82);
+  const key = new three.DirectionalLight(0x7eb8ff, 0.72);
   key.position.set(2.4, 3.6, 2.2);
   scene.add(key);
-  const rim = new three.PointLight(0x5f8fde, 0.66, 8);
-  rim.position.set(-2.4, -0.8, -1.4);
-  scene.add(rim);
+  const fill = new three.DirectionalLight(0x2dd4bf, 0.28);
+  fill.position.set(-2.2, 1.2, -1.8);
+  scene.add(fill);
 
   const controls = new controlsCtor(camera, renderer.domElement);
   controls.enableDamping = true;
-  controls.dampingFactor = 0.07;
-  controls.rotateSpeed = 0.7;
-  controls.zoomSpeed = 0.9;
-  controls.panSpeed = 0.7;
-  controls.minDistance = 1.3;
-  controls.maxDistance = 7.2;
+  controls.dampingFactor = 0.08;
+  controls.rotateSpeed = 0.55;
+  controls.zoomSpeed = 0.75;
+  controls.panSpeed = 0.55;
+  controls.minDistance = 1.15;
+  controls.maxDistance = 6.5;
   controls.target.set(0, 0, 0);
 
   const g = state.geometry3d;
@@ -1737,40 +1820,46 @@ function renderGeometryScene(payload, viewportDims) {
   g.nodeLabelById = {};
   g.nodeGlowById = {};
   g.unstablePulseById = {};
+  g.edgeRefs = [];
+  const { driftN, instN } = flowDriftInstabilityNorm(payload);
+  g.flowCoherence = flowCoherence01(payload);
+  g.flowDriftN = driftN;
+  g.flowInstN = instN;
   g.selectedId = null;
   g.hoveredId = null;
   g.interactionEnabled = true;
 
-  const riskColor = riskColorHex(payload.metrics?.risk_level);
-  const glowMaterial = new three.MeshBasicMaterial({
-    color: riskColor,
-    transparent: true,
-    opacity: 0.08,
-    blending: three.AdditiveBlending,
-    depthWrite: false,
-  });
-  const glow = new three.Mesh(new three.SphereGeometry(2.35, 32, 32), glowMaterial);
-  scene.add(glow);
-
   const edgeGroup = new three.Group();
-  const drift = Number(payload.metrics?.structural_drift_score || 0);
-  const instability = Number(payload.metrics?.composite_instability || 0);
-  const stressScale = Math.max(0, Math.min(1.2, 0.35 * drift + 0.45 * instability));
-  const jitterAmp = 0.05 + stressScale * 0.07;
+  const coherence0 = g.flowCoherence;
 
-  payload.edges.forEach((edge) => {
+  (payload.edges || []).forEach((edge, edgeIdx) => {
     const source = payload.nodes.find((n) => n.id === edge.source);
     const target = payload.nodes.find((n) => n.id === edge.target);
     if (!source || !target) return;
     const p1 = new three.Vector3(Number(source.position.x), Number(source.position.y), Number(source.position.z));
     const p2 = new three.Vector3(Number(target.position.x), Number(target.position.y), Number(target.position.z));
-    const edgeGeom = new three.BufferGeometry().setFromPoints([p1, p2]);
+    const mid = p1.clone().add(p2).multiplyScalar(0.5);
+    mid.y += 0.05 * coherence0 * (1 - flowEdgeTension(edge) * 0.85);
+    const curve = new three.QuadraticBezierCurve3(p1.clone(), mid, p2.clone());
+    const pts = curve.getPoints(14);
+    const edgeGeom = new three.BufferGeometry().setFromPoints(pts);
+    const tension = flowEdgeTension(edge);
+    const ec = new three.Color(0x5eead4);
+    ec.lerp(new three.Color(0xfb7185), tension * (1.2 - coherence0 * 0.5));
     const edgeMat = new three.LineBasicMaterial({
-      color: edgeColorHex(edge, payload.metrics),
+      color: ec,
       transparent: true,
-      opacity: 0.18 + 0.5 * Math.min(1, Math.abs(Number(edge.magnitude || 0))),
+      opacity: 0.22 + 0.48 * Math.min(1, Math.abs(Number(edge.magnitude || 0))),
     });
-    edgeGroup.add(new three.Line(edgeGeom, edgeMat));
+    const line = new three.Line(edgeGeom, edgeMat);
+    edgeGroup.add(line);
+    g.edgeRefs.push({
+      line,
+      sourceId: String(edge.source),
+      targetId: String(edge.target),
+      edge,
+      edgeIdx,
+    });
   });
   scene.add(edgeGroup);
   g.edgeGroup = edgeGroup;
@@ -1778,14 +1867,16 @@ function renderGeometryScene(payload, viewportDims) {
   const nodeGroup = new three.Group();
   payload.nodes.forEach((node) => {
     const magnitude = Math.max(0, Number(node.magnitude || 0));
-    const radius = 0.045 + magnitude * 0.09;
-    const geom = new three.SphereGeometry(radius, 24, 24);
+    const radius = 0.042 + magnitude * 0.075;
+    const geom = new three.SphereGeometry(radius, 12, 12);
+    const stress01 = flowNodeStress01(node);
+    const col = flowNodeColorTHREE(three, stress01, Boolean(node.is_unstable));
     const mat = new three.MeshStandardMaterial({
-      color: nodeStateColorHex(node.state),
-      roughness: 0.35,
-      metalness: 0.2,
-      emissive: 0x0d1424,
-      emissiveIntensity: 0.35,
+      color: col,
+      roughness: 0.42,
+      metalness: 0.12,
+      emissive: col.clone().multiplyScalar(0.15),
+      emissiveIntensity: 0.45,
     });
     const mesh = new three.Mesh(geom, mat);
     const px = Number(node.position?.x || 0);
@@ -1801,13 +1892,14 @@ function renderGeometryScene(payload, viewportDims) {
     g.nodeMeshById[String(node.id)] = mesh;
     g.nodeDataById[String(node.id)] = node;
 
-    if (node.is_unstable) {
+    if (node.is_unstable || stress01 > 0.55) {
+      const haloCol = flowNodeColorTHREE(three, Math.min(1, stress01 + 0.2), true);
       const unstableHalo = new three.Mesh(
-        new three.SphereGeometry(radius * 2.05, 16, 16),
+        new three.SphereGeometry(radius * 2.1, 10, 10),
         new three.MeshBasicMaterial({
-          color: 0xff7878,
+          color: haloCol,
           transparent: true,
-          opacity: 0.24,
+          opacity: 0.18 + stress01 * 0.2,
           blending: three.AdditiveBlending,
           depthWrite: false,
         })
@@ -1819,32 +1911,19 @@ function renderGeometryScene(payload, viewportDims) {
       g.nodeGlowById[String(node.id)] = unstableHalo;
       g.unstablePulseById[String(node.id)] = 0.65 + Math.random() * 0.7;
     }
-
-    if (payload.nodes.length <= 24) {
-      const label = createNodeLabelSprite(three, node.label || node.id);
-      if (label) {
-        label.position.set(px, py + radius + 0.08, pz);
-        nodeGroup.add(label);
-        g.nodeLabelById[String(node.id)] = label;
-      }
-    }
   });
   scene.add(nodeGroup);
   g.nodeGroup = nodeGroup;
   applyGeometryDisplayMode();
   updateGeometryDetails(null);
-
-  const grid = new three.GridHelper(5.8, 14, 0x2f476b, 0x182741);
-  grid.position.y = -0.78;
-  grid.material.opacity = 0.17;
-  grid.material.transparent = true;
-  scene.add(grid);
+  updateGeometryFlowPanel(payload);
 
   function onResize() {
     if (!g.renderer || !g.camera) return;
     const dims = geometryViewportDimensions();
     const w = Math.max(240, dims?.width || viewport.clientWidth || 240);
     const h = Math.max(240, dims?.height || viewport.clientHeight || 360);
+    g.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
     g.renderer.setSize(w, h);
     g.camera.aspect = w / h;
     g.camera.updateProjectionMatrix();
@@ -1963,30 +2042,51 @@ function renderGeometryScene(payload, viewportDims) {
   let t = 0;
   function animate() {
     g.frameId = window.requestAnimationFrame(animate);
-    t += 0.016;
-    if (nodeGroup && payload.metrics) {
-      nodeGroup.children.forEach((obj) => {
-        if (!obj.userData || !obj.userData.basePos || !obj.userData.nodeId) return;
-        const nodeId = String(obj.userData.nodeId);
-        const nodeData = g.nodeDataById[nodeId];
-        if (!nodeData) return;
-        const base = obj.userData.basePos;
-        const localStress = Number(nodeData.stress || 0);
-        const amp = jitterAmp * (0.3 + localStress);
-        const phase = obj.userData.jitterSeed || 0;
-        obj.position.x = base.x + Math.sin(t * 1.7 + phase) * amp * 0.12;
-        obj.position.y = base.y + Math.cos(t * 1.3 + phase) * amp * 0.1;
-        obj.position.z = base.z + Math.sin(t * 1.1 + phase) * amp * 0.12;
-      });
-      Object.entries(g.nodeGlowById || {}).forEach(([nodeId, halo]) => {
-        const mesh = g.nodeMeshById[nodeId];
-        if (!halo || !mesh) return;
-        const k = Number(g.unstablePulseById[nodeId] || 1);
-        const pulse = 1 + 0.12 * Math.sin(t * 2.4 + k);
-        halo.scale.setScalar(pulse);
-        halo.position.copy(mesh.position);
-      });
-    }
+    t += 0.014;
+    const coherence = typeof g.flowCoherence === "number" ? g.flowCoherence : 0.75;
+    const driftN = typeof g.flowDriftN === "number" ? g.flowDriftN : 0;
+    const instN = typeof g.flowInstN === "number" ? g.flowInstN : 0;
+    const unifiedPhase = t * 0.88;
+
+    Object.keys(g.nodeMeshById || {}).forEach((nodeId) => {
+      const mesh = g.nodeMeshById[nodeId];
+      const nodeData = g.nodeDataById[nodeId];
+      if (!mesh?.userData?.basePos || !nodeData) return;
+      const base = mesh.userData.basePos;
+      const stress = flowNodeStress01(nodeData);
+      const unstable = Boolean(nodeData.is_unstable);
+      const breathe =
+        Math.sin(unifiedPhase) * 0.038 * coherence * (1 - stress * 0.85) * (1 - driftN * 0.4);
+      const breatheY = Math.cos(unifiedPhase * 0.97) * 0.032 * coherence * (1 - stress * 0.85);
+      const chaos =
+        (0.04 + stress * 0.42 + (unstable ? 0.12 : 0) + driftN * 0.14 + instN * 0.1) *
+        (1 - coherence * 0.72);
+      const phase = mesh.userData.jitterSeed || 0;
+      const sep = (1 - coherence) * 0.08 * stress;
+      mesh.position.x = base.x + breathe + Math.sin(t * 1.65 + phase) * chaos + sep * Math.sin(phase);
+      mesh.position.y = base.y + breatheY + Math.cos(t * 1.25 + phase) * chaos * 0.92;
+      mesh.position.z = base.z + Math.sin(t * 1.05 + phase * 1.1) * chaos + sep * Math.cos(phase);
+
+      const isPickFocus =
+        (g.hoveredId && nodeId === g.hoveredId) || (g.selectedId && nodeId === g.selectedId);
+      if (!isPickFocus && mesh.material && mesh.material.color && mesh.material.emissive) {
+        const col = flowNodeColorTHREE(three, stress, unstable);
+        mesh.material.color.copy(col);
+        mesh.material.emissive.copy(col).multiplyScalar(0.12);
+      }
+    });
+
+    syncFlowEdgesFromMeshes(g, three, t);
+
+    Object.entries(g.nodeGlowById || {}).forEach(([nodeId, halo]) => {
+      const mesh = g.nodeMeshById[nodeId];
+      if (!halo || !mesh) return;
+      const k = Number(g.unstablePulseById[nodeId] || 1);
+      const pulse = 1 + 0.14 * Math.sin(t * 2.5 + k) * (1.2 - coherence * 0.5);
+      halo.scale.setScalar(pulse);
+      halo.position.copy(mesh.position);
+    });
+
     controls.update();
     renderer.render(scene, camera);
   }
