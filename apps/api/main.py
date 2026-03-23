@@ -37,23 +37,20 @@ from neraium_core.store import ResultStore
 logger = logging.getLogger(__name__)
 
 
-def _mount_three_js_vendor(app: FastAPI) -> None:
-    """Serve three@0.162.0 at /web/vendor/three (bundled static copy or node_modules)."""
-    api_dir = Path(__file__).resolve().parent
-    repo_root = api_dir.parent.parent
-    static_vendor = api_dir / "static" / "vendor" / "three"
-    node_vendor = repo_root / "node_modules" / "three"
-    three_dir = static_vendor if static_vendor.is_dir() else node_vendor
-    if not three_dir.is_dir():
-        logger.warning(
-            "3D UI: Three.js not found — run `python scripts/download_three_vendor.py` from the repo root "
-            "(or `npm install`). Restart the API after vendor files exist."
-        )
+def _mount_web_static(app: FastAPI) -> None:
+    """Serve `apps/api/static` at `/web` (app.js, styles, three-init, vendor/three, …).
+
+    Uses Path(__file__) so the directory is correct regardless of process cwd.
+    Registered after the web router so explicit HTML routes win; /web/* is fully static.
+    """
+    static_dir = Path(__file__).resolve().parent / "static"
+    if not static_dir.is_dir():
+        logger.warning("Web static directory missing: %s", static_dir)
         return
     app.mount(
-        "/web/vendor/three",
-        StaticFiles(directory=str(three_dir)),
-        name="three_vendor",
+        "/web",
+        StaticFiles(directory=str(static_dir)),
+        name="web",
     )
 
 
@@ -2869,7 +2866,7 @@ def create_app(
         )
 
     app.include_router(build_web_router())
-    _mount_three_js_vendor(app)
+    _mount_web_static(app)
 
     return app
 
