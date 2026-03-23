@@ -762,8 +762,6 @@ function applyDemoSnapshot() {
   const latest = chronological.length ? chronological[chronological.length - 1] : null;
   const prev = chronological.length > 1 ? chronological[chronological.length - 2] : null;
   renderRunDetailFromState();
-  maybeDemoRiskChime(latest, prev);
-  renderDemoStoryPanel();
   const route = getRoute();
   if (route.page === "run-detail" && route.runId && state.runRecent.length > 0) {
     const resultId = latest?.result_id ?? null;
@@ -953,23 +951,6 @@ async function prepareDemoRuns(options = {}) {
   }
 }
 
-function applyDemoBodyClass() {
-  document.body?.classList.toggle("demo-mode-on", !!state.demo.enabled);
-}
-
-function updateDemoChrome() {
-  applyDemoBodyClass();
-  const badge = qs("#demoModeBadge");
-  if (badge) badge.classList.toggle("hidden", !state.demo.enabled);
-  const fab = qs("#quickDemoFab");
-  if (fab) {
-    const route = getRoute();
-    const showFab =
-      !state.demo.enabled && (route.page === "dashboard" || route.page === "runs" || route.page === "upload");
-    fab.classList.toggle("hidden", !showFab);
-  }
-}
-
 function shouldShowDashboardDemoHero() {
   if (state.demo.preparing) return false;
   const n = (state.dashboardRecent || []).length;
@@ -982,247 +963,20 @@ function renderDashboardDemoHero() {
   el.classList.toggle("hidden", !shouldShowDashboardDemoHero());
 }
 
-function collectDemoScenarioRunsFromState() {
-  const out = { stable: null, watch: null, critical: null };
-  (state.runs || []).forEach((run) => {
-    if (run?.config?.source !== "demo-mode") return;
-    const p = run?.config?.scenario;
-    if (p === "stable" || p === "watch" || p === "critical") {
-      out[p] = run;
-    }
-  });
-  Object.keys(state.demo.scenarioRunMap || {}).forEach((k) => {
-    if ((k === "stable" || k === "watch" || k === "critical") && state.demo.scenarioRunMap[k]) {
-      out[k] = state.demo.scenarioRunMap[k];
-    }
-  });
-  return out;
-}
-
-function renderDemoScenarioCarousel() {
-  const wrap = qs("#demoScenarioCarousel");
-  const cards = qs("#demoScenarioCards");
-  if (!wrap || !cards) return;
-  const map = collectDemoScenarioRunsFromState();
-  const any = map.stable || map.watch || map.critical;
-  wrap.classList.toggle("hidden", !any);
-  if (!any) {
-    cards.innerHTML = "";
-    return;
-  }
-  cards.innerHTML = DEMO_SCENARIO_CATALOG.map((def) => {
-    const run = map[def.id];
-    if (!run) return "";
-    const cid = encodeURIComponent(customerIdValue(state.tenant.customerId));
-    return `
-      <article class="demo-scenario-card" data-scenario="${escapeHtml(def.id)}">
-        <div class="mini-spark" aria-hidden="true"></div>
-        <h4>${escapeHtml(def.title)}</h4>
-        <p class="demo-scenario-desc">${escapeHtml(def.blurb)}</p>
-        <div class="row" style="margin-top:auto;gap:8px;flex-wrap:wrap">
-          <a class="button-link" href="/app/runs/${encodeURIComponent(run.run_id)}?customer_id=${cid}">Open run</a>
-          <button type="button" class="secondary demo-scenario-play" data-run-id="${escapeHtml(String(run.run_id))}">Activate &amp; play</button>
-        </div>
-      </article>
-    `;
-  }).join("");
-  cards.querySelectorAll(".demo-scenario-play").forEach((btn) => {
-    btn.addEventListener("click", async () => {
-      const rid = btn.getAttribute("data-run-id");
-      if (!rid) return;
-      try {
-        setLoading(true, "Switching run…");
-        await fetchJson(apiUrl(`/runs/${encodeURIComponent(rid)}/activate`, tenantScopeParams()), {
-          method: "POST",
-        });
-        await toggleDemoMode(true);
-        state.demo.playbackCompleteNotified = false;
-        const cid = encodeURIComponent(customerIdValue(state.tenant.customerId));
-        window.location.href = `/app/runs/${encodeURIComponent(rid)}?customer_id=${cid}`;
-      } catch (err) {
-        setStatus(String(err.message || err), true, true);
-      } finally {
-        setLoading(false);
-      }
-    });
-  });
-}
-
-function fillDemoScenarioPicker() {
-  const picker = qs("#demoScenarioPicker");
-  if (!picker) return;
-  const rows = [
-    { mode: "all", title: "Full story (all three)", desc: "Creates Stable, Watch, and Escalation — opens the escalation run." },
-    ...DEMO_SCENARIO_CATALOG.map((d) => ({
-      mode: d.id,
-      title: d.title,
-      desc: d.blurb,
-    })),
-  ];
-  picker.innerHTML = rows
-    .map(
-      (r) => `
-    <button type="button" class="demo-scenario-option" data-mode="${escapeHtml(r.mode)}">
-      <strong>${escapeHtml(r.title)}</strong>
-      <span>${escapeHtml(r.desc)}</span>
-    </button>
-  `,
-    )
-    .join("");
-}
-
-function openDemoScenarioModal() {
-  fillDemoScenarioPicker();
-  qs("#demoScenarioModal")?.classList.remove("hidden");
-}
-
-function wireDemoScenarioModal() {
-  const modal = qs("#demoScenarioModal");
-  const picker = qs("#demoScenarioPicker");
-  if (!modal || !picker || picker.dataset.wired === "1") return;
-  picker.dataset.wired = "1";
-  picker.addEventListener("click", async (e) => {
-    const btn = e.target && e.target.closest && e.target.closest(".demo-scenario-option");
-    if (!btn) return;
-    const mode = btn.getAttribute("data-mode") || "all";
-    modal.classList.add("hidden");
-    await launchGuidedDemo({ mode });
-  });
-}
-
-function closeDemoScenarioModal() {
-  qs("#demoScenarioModal")?.classList.add("hidden");
-}
-
-function playSoftAlertChime() {
-  try {
-    const Ctx = window.AudioContext || window.webkitAudioContext;
-    if (!Ctx) return;
-    const ctx = new Ctx();
-    const o = ctx.createOscillator();
-    const g = ctx.createGain();
-    o.type = "sine";
-    o.frequency.value = 880;
-    g.gain.value = 0.08;
-    o.connect(g);
-    g.connect(ctx.destination);
-    o.start();
-    o.stop(ctx.currentTime + 0.12);
-    window.setTimeout(() => ctx.close(), 200);
-  } catch (_e) {
-    // ignore
-  }
-}
-
-function maybeDemoRiskChime(latest, prev) {
-  if (!state.demo.enabled || !latest) return;
-  const nr = normalizeRiskLevel(latest.risk_level);
-  const pr = prev ? normalizeRiskLevel(prev.risk_level) : "LOW";
-  if (nr === "HIGH" && pr !== "HIGH") {
-    playSoftAlertChime();
-  }
-}
-
-function getDemoStoryBeat(cursor, total, latest, prev) {
-  if (!state.demo.enabled || state.demo.storyDismissed || total <= 0) {
-    return null;
-  }
-  const t = Math.max(0, Math.min(1, (cursor - 1) / Math.max(1, total - 1)));
-  const risk = latest ? normalizeRiskLevel(latest.risk_level) : "LOW";
-  if (t < 0.34) {
-    return {
-      phase: "Phase 1 · Nominal",
-      title: "Normal operations — structural flow aligned",
-      body:
-        "Early snapshots show coherent relationships between sensors. Drift stays in a low band while the system behaves as expected.",
-      tip: "Drift score: how far current structure sits from the learned baseline (not a single-sensor threshold).",
-    };
-  }
-  if (t < 0.67) {
-    return {
-      phase: "Phase 2 · Drift",
-      title: "Early drift — watch conditions building",
-      body:
-        "Coupling shifts: instability rises before risk jumps. This is where teams often still feel ‘fine’ in raw tags.",
-      tip: "Composite blends drift × instability (and availability when present) into one stress signal.",
-    };
-  }
-  return {
-    phase: "Phase 3 · Elevated risk",
-    title: risk === "HIGH" ? "HIGH risk — immediate review advised" : "Risk elevated — tighten scrutiny",
-    body:
-      "Structural stress is visible in the scores and timeline. Use operator readouts and export for evidence.",
-    tip: "Why this phase changed: compare the transition strip and key events list for the triggering jump.",
-  };
-}
-
-function renderDemoStoryPanel() {
-  const panel = qs("#demoStoryPanel");
-  if (!panel) return;
-  if (!state.demo.enabled || state.demo.storyDismissed || !state.runRecent.length) {
-    panel.classList.add("hidden");
-    return;
-  }
-  const route = getRoute();
-  if (route.page !== "run-detail") {
-    panel.classList.add("hidden");
-    return;
-  }
-  const chronologicalFull = state.runRecent.slice().reverse();
-  const total = chronologicalFull.length;
-  const cursor = Math.max(1, Math.min(Number(state.demo.cursor) || total, total));
-  const chronological = chronologicalFull.slice(0, Math.max(1, cursor));
-  const latest = chronological.length ? chronological[chronological.length - 1] : null;
-  const prev = chronological.length > 1 ? chronological[chronological.length - 2] : null;
-  const beat = getDemoStoryBeat(cursor, total, latest, prev);
-  if (!beat) {
-    panel.classList.add("hidden");
-    return;
-  }
-  panel.classList.remove("hidden");
-  const ph = qs("#demoStoryPhase");
-  const ti = qs("#demoStoryTitle");
-  const bo = qs("#demoStoryBody");
-  const tip = qs("#demoStoryTip");
-  if (ph) ph.textContent = beat.phase;
-  if (ti) ti.textContent = beat.title;
-  if (bo) bo.textContent = beat.body;
-  if (tip) tip.textContent = beat.tip;
-}
-
 function onDemoPlaybackComplete() {
   if (state.demo.playbackCompleteNotified) return;
   state.demo.playbackCompleteNotified = true;
-  createToast("Demo finished — upload your own CSV on Upload to analyze your system.", "success");
-  createToast("Tip: export JSON or CSV from this run to explore offline.", "success");
-  const uploadNav = qs('[data-nav="upload"]');
-  if (uploadNav) {
-    uploadNav.classList.add("nav-pulse-highlight");
-    window.setTimeout(() => uploadNav.classList.remove("nav-pulse-highlight"), 10000);
-  }
-  setStatus("Next step: Upload your telemetry CSV, or export this run for offline review.", false, false);
+  createToast("Demo finished — use Upload for your CSV, or export this run.", "success");
 }
 
 async function launchGuidedDemo({ mode = "all" } = {}) {
-  const messages = [
-    "Generating demo telemetry…",
-    "Simulating stable → watch → escalation phases…",
-    "Activating run and starting playback…",
-  ];
-  let step = 0;
-  let stepTimer = null;
   try {
-    stepTimer = window.setInterval(() => {
-      step = Math.min(messages.length - 1, step + 1);
-      setLoading(true, messages[step]);
-    }, 520);
-    setLoading(true, messages[0]);
+    setLoading(true, "Loading demo…");
     await toggleDemoMode(true);
     await prepareDemoRuns({ mode });
     await refreshCurrentPage();
     const focusRun = state.activeRun;
     state.demo.playbackCompleteNotified = false;
-    state.demo.storyDismissed = false;
     if (focusRun?.run_id) {
       const cid = encodeURIComponent(customerIdValue(state.tenant.customerId));
       window.location.href = `/app/runs/${encodeURIComponent(focusRun.run_id)}?customer_id=${cid}&demo=1&autoplay=1`;
@@ -1232,31 +986,8 @@ async function launchGuidedDemo({ mode = "all" } = {}) {
   } catch (err) {
     setStatus(String(err.message || err), true, true);
   } finally {
-    if (stepTimer) window.clearInterval(stepTimer);
     setLoading(false);
   }
-}
-
-function scheduleDemoInviteModal() {
-  if (state.demo.inviteTimer) {
-    window.clearTimeout(state.demo.inviteTimer);
-    state.demo.inviteTimer = null;
-  }
-  try {
-    if (window.sessionStorage.getItem("neraium_demo_invite_dismissed") === "1") return;
-  } catch (_e) {
-    return;
-  }
-  if (state.demo.enabled) return;
-  const route = getRoute();
-  if (route.page !== "dashboard") return;
-  if ((state.dashboardRecent || []).length > 0) return;
-  state.demo.inviteTimer = window.setTimeout(() => {
-    state.demo.inviteTimer = null;
-    if (state.demo.enabled) return;
-    if ((state.dashboardRecent || []).length > 0) return;
-    qs("#demoInviteModal")?.classList.remove("hidden");
-  }, DEMO_INVITE_DELAY_MS);
 }
 
 function getRoute() {
@@ -1354,10 +1085,7 @@ const state = {
     activeRunId: "",
     /** stable | watch | critical -> run_id after prepare */
     scenarioRunMap: {},
-    storyDismissed: false,
     playbackCompleteNotified: false,
-    inviteTimer: null,
-    lastChimeRisk: null,
   },
   dashboardSparkline: {
     hoveredIndex: null,
@@ -1368,27 +1096,6 @@ const TENANT_STORAGE_KEY = "neraium_customer_id";
 const DEMO_MODE_STORAGE_KEY = "neraium_demo_mode";
 /** Demo timeline: advance one snapshot per interval (tunable; lower = faster review). */
 const DEMO_PLAYBACK_INTERVAL_MS = 1600;
-const DEMO_INVITE_DELAY_MS = 6500;
-const DEMO_SCENARIO_CATALOG = [
-  {
-    id: "critical",
-    title: "High-risk escalation",
-    short: "Escalation",
-    blurb: "Progressive stress: drift and instability ramp into HIGH risk — pump/valve style cascade.",
-  },
-  {
-    id: "watch",
-    title: "Watch-level drift",
-    short: "Watch",
-    blurb: "Early structural drift: elevated drift score before full instability.",
-  },
-  {
-    id: "stable",
-    title: "Fully stable baseline",
-    short: "Stable",
-    blurb: "Nominal envelope: relationships stay coherent; low drift for comparison.",
-  },
-];
 /** How often to poll `/ingest/jobs/{id}` after CSV upload (lower = snappier status UI). */
 const INGEST_JOB_POLL_MS = 400;
 /** Default on: lighter WebGL + simpler motion. Set localStorage "neraium_structural_flow_perf" to "0" for richer visuals. */
@@ -1668,16 +1375,14 @@ function renderTenantControls() {
   if (demoToggle) demoToggle.checked = !!state.demo.enabled;
   if (prepareDemoBtn) {
     prepareDemoBtn.disabled = state.demo.preparing;
-    prepareDemoBtn.textContent = state.demo.preparing ? "Preparing…" : "Launch scenario";
+    prepareDemoBtn.textContent = state.demo.preparing ? "Preparing…" : "Run demo";
   }
   if (siteList) {
     siteList.innerHTML = state.tenant.knownSites
       .map((site) => `<option value="${escapeHtml(site)}"></option>`)
       .join("");
   }
-  updateDemoChrome();
   renderDashboardDemoHero();
-  renderDemoScenarioCarousel();
 }
 
 async function applyTenantFromControls() {
@@ -1768,6 +1473,9 @@ function disposeGeometryRenderer() {
     g.groundMesh = null;
   }
   g.keyLight = null;
+  g.keyLightBasePos = null;
+  g.geometryRig = null;
+  g.reducedGeometryMotion = false;
   g.structuralFlowPlaneLayout = false;
   if (g.flowInstancedMesh) {
     try {
@@ -1856,6 +1564,7 @@ function disposeGeometryRenderer() {
   g.raycaster = null;
   g.pointer = null;
   g.nodeGroup = null;
+  g.geometryRig = null;
   g.nodeMeshById = {};
   g.nodeDataById = {};
   g.nodeLabelById = {};
@@ -2905,6 +2614,9 @@ function renderGeometryScene(payload, viewportDims) {
   controls.minDistance = 1.15;
   controls.maxDistance = 6.5;
   controls.target.set(0, 0, 0);
+  const reduceGeomMotion = geometryFlowReducedMotion();
+  controls.autoRotate = !reduceGeomMotion;
+  controls.autoRotateSpeed = perf ? 0.55 : 0.85;
 
   const g = state.geometry3d;
   g.renderer = renderer;
@@ -2938,8 +2650,10 @@ function renderGeometryScene(payload, viewportDims) {
   g.hoveredId = null;
   g.interactionEnabled = true;
   g.keyLight = key;
+  g.keyLightBasePos = key.position.clone();
   g.groundMesh = null;
   g.structuralFlowPlaneLayout = structuralFlowUsesPlaneLayout(payload);
+  g.reducedGeometryMotion = reduceGeomMotion;
 
   const edgeGroup = new three.Group();
   const coherence0 = g.flowCoherence;
@@ -3009,7 +2723,9 @@ function renderGeometryScene(payload, viewportDims) {
     }
   }
 
-  scene.add(edgeGroup);
+  const geometryRig = new three.Group();
+  geometryRig.name = "geometryRig";
+  geometryRig.add(edgeGroup);
   g.edgeGroup = edgeGroup;
 
   const nodeGroup = new three.Group();
@@ -3108,8 +2824,10 @@ function renderGeometryScene(payload, viewportDims) {
       g.groundMesh = ground;
     }
   }
-  scene.add(nodeGroup);
+  geometryRig.add(nodeGroup);
+  scene.add(geometryRig);
   g.nodeGroup = nodeGroup;
+  g.geometryRig = geometryRig;
   applyGeometryDisplayMode();
   updateGeometryDetails(null);
   updateGeometryFlowPanel(payload);
@@ -3327,6 +3045,28 @@ function renderGeometryScene(payload, viewportDims) {
         halo.scale.setScalar(pulse);
         halo.position.copy(mesh.position);
       });
+
+      const rig = g.geometryRig;
+      if (rig) {
+        if (!g.reducedGeometryMotion) {
+          const sway = 0.07 * ms;
+          rig.rotation.y = Math.sin(t * 0.41) * sway;
+          rig.rotation.x = Math.sin(t * 0.31 + 0.85) * sway * 0.4;
+          rig.rotation.z = Math.sin(t * 0.26 + 1.1) * sway * 0.22;
+        } else {
+          rig.rotation.set(0, 0, 0);
+        }
+      }
+
+      if (g.keyLight && g.keyLightBasePos && !g.perfMode && !g.reducedGeometryMotion) {
+        const bp = g.keyLightBasePos;
+        const kl = g.keyLight;
+        kl.position.set(
+          bp.x + Math.sin(t * 0.33) * 0.45,
+          bp.y + Math.sin(t * 0.37 + 0.6) * 0.24,
+          bp.z + Math.cos(t * 0.35) * 0.4,
+        );
+      }
 
       controls.update();
       if (geometryFrameIndex === 0 && typeof console !== "undefined" && console.debug) {
@@ -3863,8 +3603,6 @@ async function loadDashboard() {
   bindDashboardSparklineInteractions();
   window.requestAnimationFrame(() => renderDashboardSparkline(dashboardChronologicalResults()));
   renderDashboardDemoHero();
-  renderDemoScenarioCarousel();
-  scheduleDemoInviteModal();
 }
 
 function exportData(format, runId) {
@@ -4272,7 +4010,6 @@ function renderRunDetailFromState() {
     bodySelector: "#runRiskExplanationText",
     badgeSelector: "#runRiskExplanationBadge",
   });
-  renderDemoStoryPanel();
 }
 
 async function loadRunDetail(runId) {
@@ -4506,46 +4243,13 @@ async function wireEvents() {
     }
   });
 
-  qs("#prepareDemoBtn")?.addEventListener("click", () => {
-    openDemoScenarioModal();
+  qs("#prepareDemoBtn")?.addEventListener("click", async () => {
+    await launchGuidedDemo({ mode: "all" });
   });
 
   qs("#dashboardQuickDemoBtn")?.addEventListener("click", async () => {
     await launchGuidedDemo({ mode: "all" });
   });
-
-  qs("#dashboardPickScenarioBtn")?.addEventListener("click", () => {
-    openDemoScenarioModal();
-  });
-
-  qs("#quickDemoFab")?.addEventListener("click", () => {
-    openDemoScenarioModal();
-  });
-
-  qs("#demoInviteDismissBtn")?.addEventListener("click", () => {
-    qs("#demoInviteModal")?.classList.add("hidden");
-    try {
-      window.sessionStorage.setItem("neraium_demo_invite_dismissed", "1");
-    } catch (_e) {
-      // ignore
-    }
-  });
-
-  qs("#demoInviteStartBtn")?.addEventListener("click", async () => {
-    qs("#demoInviteModal")?.classList.add("hidden");
-    await launchGuidedDemo({ mode: "all" });
-  });
-
-  qs("#demoScenarioModalCancel")?.addEventListener("click", () => {
-    closeDemoScenarioModal();
-  });
-
-  qs("#demoStoryDismiss")?.addEventListener("click", () => {
-    state.demo.storyDismissed = true;
-    renderDemoStoryPanel();
-  });
-
-  wireDemoScenarioModal();
 
   qs("#demoPlayPauseBtn")?.addEventListener("click", () => {
     toggleDemoPlayback();
@@ -4723,16 +4427,6 @@ async function wireEvents() {
     }
   });
 
-  if (!window.__neraiumDemoEsc) {
-    window.__neraiumDemoEsc = true;
-    window.addEventListener("keydown", (e) => {
-      if (e.key === "Escape") {
-        qs("#demoScenarioModal")?.classList.add("hidden");
-        qs("#demoInviteModal")?.classList.add("hidden");
-      }
-    });
-  }
-
   let resizeTimer = null;
   window.addEventListener("resize", () => {
     if (resizeTimer) window.clearTimeout(resizeTimer);
@@ -4803,7 +4497,6 @@ async function init() {
     setStatus(String(err.message || err), true, true);
   } finally {
     setLoading(false);
-    updateDemoChrome();
   }
 }
 

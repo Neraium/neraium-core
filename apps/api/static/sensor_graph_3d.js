@@ -35,6 +35,12 @@
   let riskLevel = "UNKNOWN";
   let hasTelemetry = false;
   let resizeObserver;
+  let reducedMotion = false;
+  try {
+    reducedMotion = typeof global.matchMedia === "function" && global.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  } catch (_e) {
+    reducedMotion = false;
+  }
 
   function lerp(a, b, t) {
     return a + (b - a) * t;
@@ -328,7 +334,15 @@
     const stress = distortion;
     const jitter = hasTelemetry ? stress * 0.42 : 0.06;
     const breathe = 0.04 + 0.03 * Math.sin(t * 0.7);
-    graphRoot.rotation.y = t * (hasTelemetry ? 0.05 : 0.11);
+    const spin = reducedMotion ? (hasTelemetry ? 0.035 : 0.05) : hasTelemetry ? 0.072 : 0.12;
+    graphRoot.rotation.y = t * spin;
+    const rxAmp = reducedMotion ? 0.016 : 0.05;
+    const rzAmp = reducedMotion ? 0.012 : 0.035;
+    graphRoot.rotation.x = Math.sin(t * 0.22 + 0.4) * rxAmp;
+    graphRoot.rotation.z = Math.cos(t * 0.19 + 0.2) * rzAmp;
+    if (!isDragging && !reducedMotion) {
+      spherical.theta += 0.00065 + stress * 0.00025;
+    }
 
     for (let i = 0; i < nodeMeshes.length; i += 1) {
       const mesh = nodeMeshes[i];
