@@ -1353,19 +1353,37 @@ function scheduleGeometrySceneBuild(fn) {
   });
 }
 
-let threeInitPreloadPromise = null;
-/** Ensures the ESM three-init bundle is evaluated (dedupes with the module script tag when present). */
+/**
+ * Waits for `three-init.mjs` (loaded via `<script type="module" src="/web/three-init.mjs">`) to set
+ * `window.__THREE_ESM`. We intentionally do not use a second `import("/web/...")` from this classic
+ * script: duplicate dynamic imports can throw "Failed to fetch" under some CSP or timing setups.
+ */
 function ensureThreeModulesLoaded() {
-  if (typeof window !== "undefined" && window.__THREE_ESM) {
+  if (typeof window === "undefined") {
+    return Promise.reject(new Error("Three.js is only available in the browser."));
+  }
+  if (window.__THREE_ESM) {
     return Promise.resolve();
   }
-  if (!threeInitPreloadPromise) {
-    threeInitPreloadPromise = import("/web/three-init.mjs").catch((err) => {
-      threeInitPreloadPromise = null;
-      throw err;
-    });
-  }
-  return threeInitPreloadPromise;
+  return new Promise((resolve, reject) => {
+    const deadline = Date.now() + 15000;
+    const step = () => {
+      if (window.__THREE_ESM) {
+        resolve();
+        return;
+      }
+      if (Date.now() > deadline) {
+        reject(
+          new Error(
+            "Three.js did not load. Open /web/three-init.mjs in the browser and ensure the CDN (three) is reachable.",
+          ),
+        );
+        return;
+      }
+      requestAnimationFrame(step);
+    };
+    step();
+  });
 }
 
 function setGeometryViewportLoading(on) {
