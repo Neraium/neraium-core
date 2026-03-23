@@ -1835,10 +1835,13 @@ function flowNodeStress01(node) {
   return Number.isFinite(s) ? Math.max(0, Math.min(1, s)) : 0;
 }
 
+/** API `in_range` / heuristic: sensor within relational tolerance band. */
 function flowNodeInRange(node) {
   if (node && typeof node.in_range === "boolean") return node.in_range;
   return flowNodeStress01(node) < 0.33 && !node?.is_unstable;
 }
+
+const flowNodeWithinTolerance = flowNodeInRange;
 
 /** Triangle+hub (n=4), ring, or dual ring: shared XZ plane + vertical lift story. */
 function structuralFlowUsesPlaneLayout(payload) {
@@ -1847,6 +1850,180 @@ function structuralFlowUsesPlaneLayout(payload) {
     l === "diamond_plane_four_sensors" ||
     l === "triangle_center_plane_four_sensors" ||
     l === "coherent_plane_ring"
+  );
+}
+
+/** Complete-graph pairwise link count: C(n,2). */
+function structuralPairwiseLinkCount(sensorCount) {
+  const n = Math.max(0, Math.floor(Number(sensorCount) || 0));
+  return (n * (n - 1)) / 2;
+}
+
+/**
+ * Aggregates all inputs for the structural-flow panel from the geometry payload + engine metrics.
+ * Coherence 0–1 matches flowCoherence01 (derived from structural drift + composite instability norms).
+ */
+function computeStructuralFlowMetrics(payload) {
+  const nodes = payload?.nodes || [];
+  const edges = payload?.edges || [];
+  const totalSensors = nodes.length;
+  const totalLinks = edges.length;
+  const maxPairwiseLinks = structuralPairwiseLinkCount(totalSensors);
+  let withinTolerance = 0;
+  let outsideTolerance = 0;
+  const summaryIn = payload?.summary?.in_range_nodes;
+  const summaryOut = payload?.summary?.out_of_range_nodes;
+  if (Number.isFinite(Number(summaryIn)) && Number.isFinite(Number(summaryOut))) {
+    withinTolerance = Math.max(0, Number(summaryIn));
+    outsideTolerance = Math.max(0, Number(summaryOut));
+  } else {
+    nodes.forEach((n) => {
+      if (flowNodeWithinTolerance(n)) withinTolerance += 1;
+      else outsideTolerance += 1;
+    });
+  }
+  const driftedLinks = Number.isFinite(Number(payload?.summary?.changed_edges_current))
+    ? Math.max(0, Number(payload.summary.changed_edges_current))
+    : 0;
+  const coherence01 = flowCoherence01(payload);
+  const { driftN, instN } = flowDriftInstabilityNorm(payload);
+  return {
+    totalSensors,
+    totalLinks,
+    maxPairwiseLinks,
+    withinTolerance,
+    outsideTolerance,
+    driftedLinks,
+    coherence01,
+    driftN,
+    instN,
+    riskLevel: payload?.metrics?.risk_level,
+    engineState: payload?.metrics?.state,
+    planeLayout: structuralFlowUsesPlaneLayout(payload),
+  };
+}
+
+/**
+ * Structural headline for this view — derived from tolerance counts, coherence, and link drift.
+ * Never labels the relationship view "stable" when coherence is collapsed and multiple sensors are outside tolerance.
+ *
+ * Threshold intent:
+ * - "High-risk pattern": ≥2 sensors outside tolerance AND coherence very low (<0.22).
+ * - "Unstable": ≥2 outside + coherence <0.4, OR ≥1 outside + coherence <0.35.
+ * - "Degrading": material drift on links or partial tolerance breach.
+ * - "Aligned": high coherence, none outside tolerance, no drifted links.
+ */
+function deriveStructuralAssessment(m) {
+  const {
+    coherence01,
+    outsideTolerance,
+    totalSensors,
+    driftedLinks,
+    totalLinks,
+  } = m;
+  const risk = normalizeRiskLevel(m.riskLevel);
+  const driftRatio = totalLinks > 0 ? driftedLinks / totalLinks : 0;
+
+  if (totalSensors >= 2 && outsideTolerance >= 2 && coherence01 < 0.22) {
+    return {
+      label: "High-risk pattern",
+      detail:
+        "Multiple sensors exceed relational tolerance while structural coherence from drift and instability is critically low.",
+      tone: "HIGH",
+    };
+  }
+  if (totalSensors >= 2 && outsideTolerance >= 2 && coherence01 < 0.4) {
+    return {
+      label: "Unstable",
+      detail: "Multiple sensors outside relational tolerance with substantially reduced coherence.",
+      tone: "HIGH",
+    };
+  }
+  if (outsideTolerance >= 1 && coherence01 < 0.35) {
+    return {
+      label: "Unstable",
+      detail: "At least one sensor outside tolerance with low structural coherence.",
+      tone: "HIGH",
+    };
+  }
+  if (totalLinks >= 3 && driftRatio >= 0.5) {
+    return {
+      label: "Degrading",
+      detail: "A majority of displayed pairwise links exceed the drift threshold.",
+      tone: risk === "HIGH" ? "HIGH" : "MEDIUM",
+    };
+  }
+  if (outsideTolerance >= 1 || coherence01 < 0.45 || driftRatio >= 0.34) {
+    return {
+      label: "Degrading",
+      detail: "Relational tolerance or pairwise drift signals are elevated versus baseline.",
+      tone: "MEDIUM",
+    };
+  }
+  if (coherence01 >= 0.65 && outsideTolerance === 0 && driftedLinks === 0) {
+    return {
+      label: "Aligned",
+      detail: "Sensors within tolerance and no links above drift threshold at this snapshot.",
+      tone: "LOW",
+    };
+  }
+  return {
+    label: "Monitoring",
+    detail: "Insufficient deviation to classify; continue monitoring.",
+    tone: "LOW",
+  };
+}
+
+/**
+ * One technical paragraph aligned to computeStructuralFlowMetrics + deriveStructuralAssessment.
+ */
+function buildStructuralFlowNarrative(m, assessment) {
+  const n = m.totalSensors;
+  const L = m.totalLinks;
+  const Lmax = m.maxPairwiseLinks;
+  const w = m.withinTolerance;
+  const o = m.outsideTolerance;
+  const d = m.driftedLinks;
+  const pch = Math.round(m.coherence01 * 100);
+  const sentences = [];
+  if (n > 0) {
+    sentences.push(
+      `The projection shows ${n} sensor${n === 1 ? "" : "s"} and ${L} displayed pairwise link${L === 1 ? "" : "s"} (a complete graph on ${n} nodes has ${Lmax}).`,
+    );
+    sentences.push(`${w} sensor${w === 1 ? "" : "s"} are within relational tolerance; ${o} outside tolerance.`);
+  }
+  if (L > 0) {
+    sentences.push(`${d} of ${L} displayed link${L === 1 ? "" : "s"} exceed the pairwise drift threshold.`);
+  } else if (n > 1) {
+    sentences.push("No pairwise links are included in this projection.");
+  }
+  sentences.push(
+    `Structural coherence is ${pch}% (network consistency implied by structural drift and composite instability, 0–100%).`,
+  );
+  sentences.push(`Structural assessment: ${assessment.label}.`);
+  const engine = String(m.engineState || "").trim();
+  if (engine && /stable|nominal|ok/i.test(engine) && (assessment.tone === "HIGH" || assessment.tone === "MEDIUM")) {
+    sentences.push(
+      `Engine phase is ${engine}; the relational view above is the authoritative read for pairwise tolerance and link drift.`,
+    );
+  }
+  return sentences.join(" ");
+}
+
+/** Consistent encoding copy for the projection (Y = deviation magnitude, not decorative). */
+function structuralProjectionCaption(payload) {
+  const plane = structuralFlowUsesPlaneLayout(payload);
+  const layout = plane
+    ? "Horizontal plane (X/Z): baseline relational layout from the structural projection. Vertical axis (Y): deviation magnitude from that baseline (larger Y = larger relational deviation)."
+    : "Axes encode the projected relational layout; vertical extent (Y) encodes deviation magnitude from baseline.";
+  return `${layout} Node color encodes tolerance band (within, warning, critical). Link color and opacity encode pairwise drift relative to baseline.`;
+}
+
+function structuralMetricDefinitionsFootnote() {
+  return (
+    "Structural coherence: consistency of expected pairwise sensor relationships (from drift + instability). " +
+    "Within tolerance: sensor inside relational bounds. " +
+    "Links above drift threshold: pairwise relationship change versus baseline exceeds the configured limit."
   );
 }
 
@@ -2388,27 +2565,22 @@ function createStructuralFieldPlane(three, center, boxNg, perf) {
   return mesh;
 }
 
-/** Short, count-accurate copy for the structural flow panel (replaces static “up to 24…” text). */
+/** Subtitle under panel title: sensor/link counts and projection role. */
 function updateStructuralFlowCopy(payload) {
   const el = qs("#geometryFlowSubtitle");
   if (!el) return;
-  const n = Math.max(0, (payload?.nodes || []).length);
   if (!payload?.available) {
-    el.textContent = "Geometry appears when relationship data is available for this run.";
+    el.textContent = "Loads when pairwise structural geometry is available for this run.";
     return;
   }
-  const plane = structuralFlowUsesPlaneLayout(payload);
-  const outR = Number(payload.summary?.out_of_range_nodes ?? 0);
-  if (plane && n >= 2) {
-    const lift = outR > 0 ? `${outR} elevated by severity` : "all in range on the plane";
-    el.textContent = `${n} sensor${n === 1 ? "" : "s"} · shared base plane · ${lift}.`;
+  const m = computeStructuralFlowMetrics(payload);
+  const n = m.totalSensors;
+  const lmax = m.maxPairwiseLinks;
+  if (n <= 0) {
+    el.textContent = "No sensors in this structural view.";
     return;
   }
-  if (n > 0) {
-    el.textContent = `${n} sensor${n === 1 ? "" : "s"} in a correlation projection.`;
-  } else {
-    el.textContent = "Structural relationship view for this result.";
-  }
+  el.textContent = `${n} sensor${n === 1 ? "" : "s"} · ${lmax} possible pairwise link${lmax === 1 ? "" : "s"} (complete graph) · layout encodes relational position; height encodes deviation magnitude.`;
 }
 
 function updateGeometryFlowPanel(payload) {
@@ -2416,57 +2588,70 @@ function updateGeometryFlowPanel(payload) {
   const inEl = qs("#geometryInSync");
   const outEl = qs("#geometryOutSync");
   const shiftEl = qs("#geometryShiftingLinks");
+  const assessEl = qs("#geometryStructuralAssessment");
+  const engineEl = qs("#geometryEnginePhase");
+  const defEl = qs("#geometryMetricDefinitions");
+  const details = qs("#geometryDetails");
   if (!payload || !payload.available) {
     if (cohEl) cohEl.textContent = "—";
+    if (cohEl) cohEl.removeAttribute("title");
     if (inEl) inEl.textContent = "—";
+    if (inEl) inEl.removeAttribute("title");
     if (outEl) outEl.textContent = "—";
+    if (outEl) outEl.removeAttribute("title");
     if (shiftEl) shiftEl.textContent = "—";
+    if (shiftEl) shiftEl.removeAttribute("title");
+    if (assessEl) assessEl.textContent = "—";
+    if (assessEl) assessEl.removeAttribute("title");
+    if (engineEl) engineEl.textContent = "—";
+    if (engineEl) engineEl.removeAttribute("title");
+    if (defEl) defEl.textContent = "";
+    if (details) details.setAttribute("data-geometry-risk", "UNKNOWN");
     updateStructuralFlowCopy(payload || { available: false, nodes: [] });
     return;
   }
-  const c = flowCoherence01(payload);
-  if (cohEl) cohEl.textContent = `${Math.round(c * 100)}%`;
-  const nodes = payload.nodes || [];
-  let inSync = 0;
-  let outSync = 0;
-  const summaryIn = payload.summary?.in_range_nodes;
-  const summaryOut = payload.summary?.out_of_range_nodes;
-  if (Number.isFinite(Number(summaryIn)) && Number.isFinite(Number(summaryOut))) {
-    inSync = Math.max(0, Number(summaryIn));
-    outSync = Math.max(0, Number(summaryOut));
-  } else {
-    nodes.forEach((n) => {
-      if (flowNodeInRange(n)) inSync += 1;
-      else outSync += 1;
-    });
+  const m = computeStructuralFlowMetrics(payload);
+  const assessment = deriveStructuralAssessment(m);
+  const c = m.coherence01;
+  if (cohEl) {
+    cohEl.textContent = `${Math.round(c * 100)}%`;
+    cohEl.title =
+      "Structural coherence (0–100%): implied network consistency from structural drift score and composite instability (same weighting as the engine view).";
   }
-  if (inEl) inEl.textContent = String(inSync);
-  if (outEl) outEl.textContent = String(outSync);
-  const ch = Number(payload.summary?.changed_edges_current ?? 0);
-  if (shiftEl) shiftEl.textContent = Number.isFinite(ch) ? String(ch) : "—";
+  if (inEl) {
+    inEl.textContent = String(m.withinTolerance);
+    inEl.title = "Count of sensors inside the relational tolerance band for this snapshot.";
+  }
+  if (outEl) {
+    outEl.textContent = String(m.outsideTolerance);
+    outEl.title = "Count of sensors outside the relational tolerance band for this snapshot.";
+  }
+  if (shiftEl) {
+    const denom = m.totalLinks;
+    const num = m.driftedLinks;
+    shiftEl.textContent = denom > 0 ? `${num} / ${denom}` : String(num);
+    shiftEl.title =
+      "Pairwise links whose drift versus baseline exceeds the current threshold. Numerator: flagged links; denominator: links shown in this projection (with N sensors, a complete graph has N·(N−1)/2 links).";
+  }
+  if (assessEl) {
+    assessEl.textContent = assessment.label;
+    assessEl.title = assessment.detail;
+  }
+  if (engineEl) {
+    engineEl.textContent = toPretty(m.engineState);
+    engineEl.title =
+      "Phase label from the engine result (may differ from structural assessment when tolerance and drift tell a different story).";
+  }
+  if (defEl) defEl.textContent = structuralMetricDefinitionsFootnote();
+  if (details) details.setAttribute("data-geometry-risk", assessment.tone || "UNKNOWN");
   updateStructuralFlowCopy(payload);
 }
 
 function geometryFlowSummaryString(payload) {
   if (!payload?.available) return "—";
-  const c = flowCoherence01(payload);
-  const plane = structuralFlowUsesPlaneLayout(payload);
-  const outN = Number(payload.summary?.out_of_range_nodes ?? 0);
-  const nN = (payload.nodes || []).length;
-  if (plane) {
-    if (outN <= 0 && c >= 0.65) {
-      return `All ${nN || "multiple"} sensors sit on the shared plane — full links, calm flow, structural coherence high.`;
-    }
-    if (outN === 1) {
-      return "One sensor has lifted off the shared plane — links stretch and weaken toward it; the rest stay grounded.";
-    }
-    if (outN >= 2) {
-      return `${outN} sensors are elevated above the plane — the base ring destabilizes; links fray and pulse.`;
-    }
-  }
-  if (c >= 0.72) return "Structural coherence is strong — sensors stay on the shared plane with steady links.";
-  if (c >= 0.45) return "Coherence is slipping — some sensors pull out of range; links shift and stretch.";
-  return "Low coherence — out-of-range sensors lift away; links pulse and the structure separates.";
+  const m = computeStructuralFlowMetrics(payload);
+  const assessment = deriveStructuralAssessment(m);
+  return buildStructuralFlowNarrative(m, assessment);
 }
 
 function scheduleGeometryResize(g, fn) {
@@ -2777,11 +2962,7 @@ function applyGeometryDisplayMode() {
   const note = qs("#geometryProjectionNote");
   const payload = state.runGeometry;
   if (note && payload) {
-    let text = String(payload.projection?.note || "").replace(/\s*\[view:\s*[^\]]+\]\s*$/i, "").trim();
-    if (!text) {
-      text = "Live correlation field — flow tightens when sensors agree.";
-    }
-    note.textContent = text;
+    note.textContent = structuralProjectionCaption(payload);
   }
   const summary = qs("#geometryStructureSummary");
   if (summary) summary.textContent = geometryStructureSummary(state.runGeometry);
@@ -2807,12 +2988,12 @@ function updateGeometryDetails(nodeId = null) {
   const nodeStress = qs("#geometryNodeStress");
   const nodeMagnitude = qs("#geometryNodeMagnitude");
   const nodeState = qs("#geometryNodeState");
-  const metricState = qs("#geometryState");
+  const metricEnginePhase = qs("#geometryEnginePhase");
   const metricRisk = qs("#geometryRisk");
   const metricDrift = qs("#geometryDrift");
   const metricComposite = qs("#geometryComposite");
 
-  if (metricState) metricState.textContent = toPretty(payload?.metrics?.state);
+  if (metricEnginePhase) metricEnginePhase.textContent = toPretty(payload?.metrics?.state);
   if (metricRisk) metricRisk.textContent = toPretty(payload?.metrics?.risk_level);
   if (metricDrift) metricDrift.textContent = toPretty(payload?.metrics?.structural_drift_score);
   if (metricComposite) metricComposite.textContent = toPretty(payload?.metrics?.composite_instability);
@@ -2901,7 +3082,11 @@ function buildGeometryLegend(payload) {
     renderGeometryLegend(payload);
     return;
   }
-  details.setAttribute("data-geometry-risk", normalizeRiskLevel(payload.metrics?.risk_level));
+  const assessment = deriveStructuralAssessment(computeStructuralFlowMetrics(payload));
+  details.setAttribute(
+    "data-geometry-risk",
+    assessment.tone || normalizeRiskLevel(payload.metrics?.risk_level),
+  );
   renderGeometryLegend(payload);
 }
 

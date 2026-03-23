@@ -480,7 +480,7 @@
               </p>
             </div>
             <p id="geometryProjectionNote" class="subtitle geometry-meta geometry-meta-flow">
-              Shared XZ plane = in-range structure; vertical Y = separation from the system (visualization only).
+              Encoding loads with the run.
             </p>
             <div class="geometry-layout">
               <div id="geometryCanvasWrap" class="geometry-canvas-wrap geometry-canvas-wrap--flow">
@@ -491,28 +491,30 @@
               <aside id="geometryDetails" class="geometry-details geometry-details--flow">
                 <div class="geometry-flow-hero">
                   <span class="geometry-flow-label">Structural coherence</span>
-                  <span id="geometryCoherence" class="geometry-flow-value" title="How aligned the four-sensor field is on the shared plane">—</span>
+                  <span id="geometryCoherence" class="geometry-flow-value" title="">—</span>
                 </div>
                 <div class="geometry-flow-grid">
                   <div class="geometry-flow-stat">
-                    <span class="metric-k">In range</span>
-                    <span id="geometryInSync" class="metric-v">—</span>
+                    <span class="metric-k">Within tolerance</span>
+                    <span id="geometryInSync" class="metric-v" title="">—</span>
                   </div>
                   <div class="geometry-flow-stat">
-                    <span class="metric-k">Out of range</span>
-                    <span id="geometryOutSync" class="metric-v">—</span>
+                    <span class="metric-k">Outside tolerance</span>
+                    <span id="geometryOutSync" class="metric-v" title="">—</span>
                   </div>
                   <div class="geometry-flow-stat">
-                    <span class="metric-k">Links shifting</span>
-                    <span id="geometryShiftingLinks" class="metric-v">—</span>
+                    <span class="metric-k">Links above drift threshold</span>
+                    <span id="geometryShiftingLinks" class="metric-v" title="">—</span>
                   </div>
                 </div>
                 <div class="geometry-run-metrics" id="geometryRunMetrics">
-                  <div class="geometry-metric-row"><span class="metric-k">State</span><span id="geometryState" class="metric-v">-</span></div>
+                  <div class="geometry-metric-row"><span class="metric-k">Structural assessment</span><span id="geometryStructuralAssessment" class="metric-v" title="">—</span></div>
+                  <div class="geometry-metric-row"><span class="metric-k">Engine phase</span><span id="geometryEnginePhase" class="metric-v" title="">—</span></div>
                   <div class="geometry-metric-row"><span class="metric-k">Risk</span><span id="geometryRisk" class="metric-v">-</span></div>
                   <div class="geometry-metric-row"><span class="metric-k">Drift</span><span id="geometryDrift" class="metric-v">-</span></div>
                   <div class="geometry-metric-row"><span class="metric-k">Instability</span><span id="geometryComposite" class="metric-v">-</span></div>
                 </div>
+                <p id="geometryMetricDefinitions" class="geometry-metric-definitions subtitle geometry-meta-flow" aria-label="Metric definitions"></p>
                 <div id="geometryLegend" class="geometry-legend geometry-legend--minimal" aria-hidden="true"></div>
                 <p id="geometryStructureSummary" class="geometry-structure-note">-</p>
                 <details class="geometry-flow-details">
