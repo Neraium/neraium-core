@@ -1000,6 +1000,9 @@ const state = {
     keyLight: null,
     groundMesh: null,
     structuralFlowPlaneLayout: false,
+    flowInstancedMesh: null,
+    flowDummy: null,
+    flowParticlesPerEdge: 3,
   },
   demo: {
     enabled: false,
@@ -1377,6 +1380,20 @@ function disposeGeometryRenderer() {
   }
   g.keyLight = null;
   g.structuralFlowPlaneLayout = false;
+  if (g.flowInstancedMesh) {
+    try {
+      g.flowInstancedMesh.geometry?.dispose?.();
+      if (g.flowInstancedMesh.material) {
+        if (Array.isArray(g.flowInstancedMesh.material)) g.flowInstancedMesh.material.forEach((m) => m.dispose?.());
+        else g.flowInstancedMesh.material.dispose?.();
+      }
+      if (g.edgeGroup) g.edgeGroup.remove(g.flowInstancedMesh);
+    } catch (_e) {
+      // no-op
+    }
+    g.flowInstancedMesh = null;
+  }
+  g.flowDummy = null;
   if (g.scene && g.scene.environment) {
     try {
       g.scene.environment.dispose();
@@ -1446,6 +1463,7 @@ function disposeGeometryRenderer() {
   g.scene = null;
   g.camera = null;
   g.edgeGroup = null;
+  g.edgeRefs = [];
   g.raycaster = null;
   g.pointer = null;
   g.nodeGroup = null;
@@ -1678,6 +1696,37 @@ function flowEdgeTension(edge) {
   return Math.max(0, Math.min(1, 0.4 * (1 - mag) + 0.6 * Math.min(1, delta * 3)));
 }
 
+/** 1 = healthy shared flow, 0 = broken / stressed link. */
+function flowEdgeHealth01(verticalSpan, tension, coherence) {
+  const span = Math.min(1, verticalSpan * 4);
+  const t = Math.max(0, Math.min(1, tension));
+  const c = typeof coherence === "number" ? coherence : 0.75;
+  return Math.max(0, Math.min(1, c * (1 - span * 0.85) * (1 - t * 0.55)));
+}
+
+function createStructuralFlowParticles(three, particleCount, perf) {
+  const n = Math.max(0, Math.floor(particleCount));
+  if (n <= 0 || !three.InstancedMesh) return null;
+  const r = perf ? 0.011 : 0.015;
+  const geom = new three.SphereGeometry(r, perf ? 4 : 5, perf ? 4 : 5);
+  const mat = new three.MeshBasicMaterial({
+    color: 0xffffff,
+    vertexColors: true,
+    transparent: true,
+    opacity: perf ? 0.88 : 0.94,
+    blending: three.AdditiveBlending,
+    depthWrite: false,
+  });
+  const mesh = new three.InstancedMesh(geom, mat, n);
+  if (mesh.instanceMatrix && mesh.instanceMatrix.setUsage) {
+    mesh.instanceMatrix.setUsage(three.DynamicDrawUsage);
+  }
+  mesh.frustumCulled = false;
+  mesh.renderOrder = 2;
+  mesh.userData.pickMesh = false;
+  return mesh;
+}
+
 function ensureFlowEdgeScratch(g, three) {
   if (!g.flowEdgeScratch) {
     const v0 = new three.Vector3();
@@ -1691,6 +1740,12 @@ function ensureFlowEdgeScratch(g, three) {
       up: new three.Vector3(0, 1, 0),
       altUp: new three.Vector3(1, 0, 0),
       tmpPoint: new three.Vector3(),
+      flowColorA: new three.Color(),
+      flowColorB: new three.Color(),
+      edgeColHealthy: new three.Color(0x5eead4),
+      edgeColHealthy2: new three.Color(0x22d3ee),
+      edgeColStress: new three.Color(0xfbbf24),
+      edgeColStress2: new three.Color(0xfb7185),
     };
   }
   return g.flowEdgeScratch;
@@ -1706,9 +1761,18 @@ function syncFlowEdgesFromMeshes(g, three, t) {
   const planeLayout = Boolean(g.structuralFlowPlaneLayout);
   const S = ensureFlowEdgeScratch(g, three);
   const framePhase = Math.floor(t * 30);
+  const pep = Math.max(1, Math.floor(g.flowParticlesPerEdge || 3));
+  const flowMesh = g.flowInstancedMesh;
+  const dummy = g.flowDummy;
+  const colA = S.flowColorA;
+  const colB = S.flowColorB;
+  const colHealthyA = S.edgeColHealthy;
+  const colHealthyB = S.edgeColHealthy2;
+  const colStressA = S.edgeColStress;
+  const colStressB = S.edgeColStress2;
 
   g.edgeRefs.forEach((ref, index) => {
-    const { line, sourceId, targetId, edge } = ref;
+    const { line, lineGlow, sourceId, targetId, edge } = ref;
     const sm = g.nodeMeshById[sourceId];
     const tm = g.nodeMeshById[targetId];
     if (!line?.geometry?.attributes?.position || !sm || !tm) return;
@@ -1716,6 +1780,8 @@ function syncFlowEdgesFromMeshes(g, three, t) {
     const posB = tm.position;
     const tension = flowEdgeTension(edge);
     const verticalSpan = Math.abs(posA.y - posB.y);
+    const health = flowEdgeHealth01(verticalSpan, tension, coherence);
+    const stress01 = 1 - health;
     const mid = S.mid;
     mid.copy(posA).add(posB).multiplyScalar(0.5);
     S.dir.subVectors(posB, posA);
@@ -1733,7 +1799,9 @@ function syncFlowEdgesFromMeshes(g, three, t) {
     if (planeLayout) {
       fray *= Math.max(0.12, 1 - Math.min(1, verticalSpan * 2.2));
     }
-    mid.addScaledVector(S.perp, fray * Math.sin(t * 2.6 + index * 0.73));
+    const frayPulse = stress01 * (0.55 + 0.45 * Math.sin(t * 6.2 + index * 1.4));
+    mid.addScaledVector(S.perp, fray * Math.sin(t * 2.6 + index * 0.73) * (0.4 + 0.6 * health));
+    mid.addScaledVector(S.perp, frayPulse * 0.04 * (planeLayout ? 1.25 : 1));
     mid.addScaledVector(S.perp, tension * (planeLayout ? 0.02 : 0.06) * Math.sin(t * 4.2 + index * 1.1));
     const curve = S.curve;
     curve.v0.copy(posA);
@@ -1751,19 +1819,63 @@ function syncFlowEdgesFromMeshes(g, three, t) {
       arr[o + 2] = tmp.z;
     }
     posAttr.needsUpdate = true;
-    if (line.material && !perf) {
-      const mag = Math.abs(Number(edge.magnitude || 0));
-      let pulse = 0.14 + 0.52 * mag * (0.55 + 0.45 * coherence);
+    const mag = Math.abs(Number(edge.magnitude || 0));
+    colA.copy(colHealthyA).lerp(colStressA, stress01 * 0.92);
+    colB.copy(colHealthyB).lerp(colStressB, stress01 * 0.85);
+    if (line.material) {
+      line.material.color.copy(colA);
+      const wave = 0.5 + 0.5 * Math.sin(t * (2.8 + coherence * 1.4) - index * 0.31);
+      let pulse = 0.12 + 0.48 * mag * (0.45 + 0.55 * coherence) * (0.55 + 0.45 * health);
       if (planeLayout && verticalSpan > 0.06) {
-        pulse += 0.08 + 0.12 * Math.min(1, verticalSpan * 1.5) + tension * 0.1 * (0.5 + 0.5 * Math.sin(t * 4.1 + index));
+        pulse += 0.08 + 0.14 * Math.min(1, verticalSpan * 1.5) + tension * 0.12 * (0.5 + 0.5 * Math.sin(t * 4.1 + index));
       }
-      line.material.opacity = Math.min(0.95, pulse + tension * (planeLayout ? 0.18 : 0.12) * Math.sin(t * 3 + index));
+      pulse *= 0.82 + 0.18 * wave;
+      line.material.opacity = Math.min(0.96, pulse + tension * (planeLayout ? 0.2 : 0.14) * Math.sin(t * 3 + index) * stress01);
+      line.material.opacity = Math.min(0.97, line.material.opacity + (0.08 + 0.12 * health) * wave);
+    }
+    if (lineGlow && lineGlow.material) {
+      lineGlow.material.color.copy(colB);
+      const flicker = 0.55 + 0.45 * Math.sin(t * (3.1 + stress01 * 5) + index * 0.9);
+      const erratic = stress01 * (0.35 + 0.65 * Math.abs(Math.sin(t * 11.3 + index * 2.1)));
+      lineGlow.material.opacity = Math.min(0.78, (0.12 + 0.55 * health) * flicker * (1 - erratic * 0.85));
     }
     if (line.material && perf && framePhase % 3 === index % 3) {
-      const mag = Math.abs(Number(edge.magnitude || 0));
-      line.material.opacity = Math.min(0.88, 0.22 + 0.55 * mag * (0.5 + 0.5 * coherence));
+      line.material.opacity = Math.min(0.9, 0.2 + 0.52 * mag * (0.45 + 0.55 * coherence) * (0.5 + 0.5 * health));
+    }
+
+    if (flowMesh && dummy && typeof flowMesh.setMatrixAt === "function") {
+      const slot = typeof ref.particleSlotStart === "number" ? ref.particleSlotStart : index * pep;
+      const baseSpeed = 0.14 + 0.22 * coherence + 0.16 * health;
+      const chaos = (1 - health) * (0.018 + driftN * 0.028 + instN * 0.032);
+      for (let p = 0; p < pep; p += 1) {
+        const phase = index * 0.37 + p * 0.41;
+        let u =
+          (t * baseSpeed * (0.4 + health * 0.65) + phase + Math.sin(t * 0.35 + index) * (1 - coherence) * 0.04) % 1;
+        if (u < 0) u += 1;
+        curve.getPoint(u, tmp);
+        tmp.x += Math.sin(t * 6.8 + phase * 3) * chaos;
+        tmp.y += Math.sin(t * 5.4 + index) * chaos * 0.55;
+        tmp.z += Math.cos(t * 6.1 + phase * 2.2) * chaos;
+        const ps = (0.72 + 0.38 * health) * (1 + stress01 * 0.35 * Math.sin(t * 8.2 + p));
+        dummy.position.copy(tmp);
+        dummy.scale.setScalar(ps * (perf ? 0.92 : 1));
+        dummy.updateMatrix();
+        flowMesh.setMatrixAt(slot + p, dummy.matrix);
+        if (typeof flowMesh.setColorAt === "function") {
+          colB.copy(colA).lerp(colHealthyB, p / Math.max(1, pep - 1) * 0.35);
+          colB.lerp(colStressA, stress01 * 0.55);
+          flowMesh.setColorAt(slot + p, colB);
+        }
+      }
     }
   });
+
+  if (flowMesh?.instanceMatrix) {
+    flowMesh.instanceMatrix.needsUpdate = true;
+  }
+  if (flowMesh?.instanceColor) {
+    flowMesh.instanceColor.needsUpdate = true;
+  }
 }
 
 function updateGeometryFlowPanel(payload) {
@@ -2143,6 +2255,8 @@ function applyGeometryDisplayMode() {
     updateGeometryShadowFrustum(g, threeNs);
     if (g.structuralFlowPlaneLayout && g.camera && g.controls) {
       g.camera.position.y += 0.32;
+      g.camera.position.x += 0.22;
+      g.camera.position.z += 0.12;
       g.camera.lookAt(g.controls.target);
     }
   }
@@ -2441,6 +2555,8 @@ function renderGeometryScene(payload, viewportDims) {
   const edgeGroup = new three.Group();
   const coherence0 = g.flowCoherence;
   const divisions0 = g.curveSegments;
+  const pep = perf ? 2 : 3;
+  g.flowParticlesPerEdge = pep;
 
   (payload.edges || []).forEach((edge, edgeIdx) => {
     const source = payload.nodes.find((n) => n.id === edge.source);
@@ -2459,20 +2575,51 @@ function renderGeometryScene(payload, viewportDims) {
     const mag = Math.min(1, Math.abs(Number(edge.magnitude || 0)));
     const edgeMat = new three.LineBasicMaterial({
       color: ec,
-      transparent: !perf,
-      opacity: perf ? 1 : 0.22 + 0.48 * mag,
+      transparent: true,
+      opacity: perf ? 0.82 : 0.26 + 0.5 * mag,
+      depthWrite: false,
     });
     const line = new three.Line(edgeGeom, edgeMat);
     edgeGroup.add(line);
+    const slotStart = g.edgeRefs.length * pep;
+    let lineGlow = null;
+    if (!perf) {
+      const glowMat = new three.LineBasicMaterial({
+        color: 0x55eeff,
+        transparent: true,
+        opacity: 0.38,
+        blending: three.AdditiveBlending,
+        depthWrite: false,
+        toneMapped: false,
+      });
+      lineGlow = new three.Line(edgeGeom, glowMat);
+      lineGlow.renderOrder = 1;
+      edgeGroup.add(lineGlow);
+    }
     g.edgeRefs.push({
       line,
+      lineGlow,
       sourceId: String(edge.source),
       targetId: String(edge.target),
       edge,
       edgeIdx,
       divisions: divisions0,
+      particleSlotStart: slotStart,
     });
   });
+
+  const flowCount = g.edgeRefs.length * pep;
+  g.flowDummy = null;
+  g.flowInstancedMesh = null;
+  if (flowCount > 0) {
+    const flowMesh = createStructuralFlowParticles(three, flowCount, perf);
+    if (flowMesh) {
+      g.flowInstancedMesh = flowMesh;
+      g.flowDummy = new three.Object3D();
+      edgeGroup.add(flowMesh);
+    }
+  }
+
   scene.add(edgeGroup);
   g.edgeGroup = edgeGroup;
 
@@ -2736,19 +2883,42 @@ function renderGeometryScene(payload, viewportDims) {
         const unstable = Boolean(nodeData.is_unstable);
         const phase = mesh.userData.jitterSeed || 0;
         if (planeLayout) {
-          const wobble = 0.01 * (1 - coherence * 0.45) * ms;
-          const liftHint = Math.min(1, base.y * 2.2);
-          mesh.position.x = base.x + Math.sin(unifiedPhase * 0.85 + phase) * wobble * (0.4 + liftHint * 0.2);
-          mesh.position.z = base.z + Math.cos(unifiedPhase * 0.8 + phase * 1.02) * wobble * (0.4 + liftHint * 0.2);
-          mesh.position.y = base.y + Math.sin(unifiedPhase * 0.65 + phase) * 0.006 * (0.25 + liftHint * 0.75);
+          const inRange = flowNodeInRange(nodeData);
+          const liftHint = Math.min(1, base.y * 2.4);
+          const cohWobble = (1 - coherence) * 0.06;
+          const wobble =
+            (0.012 + cohWobble) * (0.55 + 0.45 * coherence) * ms * (inRange ? 1 : 0.55 + liftHint * 0.45);
+          const breatheX = Math.sin(unifiedPhase * 0.85 + phase * 0.08) * wobble;
+          const breatheZ = Math.cos(unifiedPhase * 0.8 + phase * 0.08) * wobble;
+          const breatheY = Math.sin(unifiedPhase * 0.68 + phase * 0.06) * 0.007 * ms * (0.35 + 0.65 * coherence);
+          if (inRange) {
+            mesh.position.x = base.x + breatheX;
+            mesh.position.z = base.z + breatheZ;
+            mesh.position.y = base.y + breatheY + Math.sin(unifiedPhase * 0.82 + phase) * 0.004 * ms;
+          } else {
+            const decouple = 0.5 + 0.5 * (1 - coherence);
+            const asyncAmp = 0.018 * ms * decouple * (0.45 + liftHint * 0.55);
+            mesh.position.x =
+              base.x + breatheX * (1 - decouple * 0.82) + Math.sin(t * 1.05 + phase * 2.1) * asyncAmp;
+            mesh.position.z =
+              base.z + breatheZ * (1 - decouple * 0.82) + Math.cos(t * 1.02 + phase * 1.8) * asyncAmp;
+            mesh.position.y =
+              base.y +
+              breatheY * 0.45 +
+              Math.sin(t * 0.92 + phase * 1.3) * 0.014 * ms * decouple * (0.4 + liftHint * 0.6);
+          }
           return;
         }
+        const inRange = flowNodeInRange(nodeData);
+        const cohMul = inRange ? 1 : 0.55 + 0.45 * stress;
         const breathe =
-          Math.sin(unifiedPhase) * 0.038 * coherence * (1 - stress * 0.85) * (1 - driftN * 0.4);
-        const breatheY = Math.cos(unifiedPhase * 0.97) * 0.032 * coherence * (1 - stress * 0.85);
+          Math.sin(unifiedPhase) * 0.038 * coherence * (1 - stress * 0.85) * (1 - driftN * 0.4) * cohMul;
+        const breatheY =
+          Math.cos(unifiedPhase * 0.97) * 0.032 * coherence * (1 - stress * 0.85) * cohMul;
         const chaos =
           (0.04 + stress * 0.42 + (unstable ? 0.12 : 0) + driftN * 0.14 + instN * 0.1) *
-          (1 - coherence * 0.72);
+          (1 - coherence * 0.72) *
+          (inRange ? 1 : 1.15 + (1 - coherence) * 0.35);
         const sep = (1 - coherence) * 0.08 * stress;
         mesh.position.x =
           base.x + (breathe + Math.sin(t * 1.65 + phase) * chaos + sep * Math.sin(phase)) * ms;
