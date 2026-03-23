@@ -999,6 +999,7 @@ const state = {
     _2dT: 0,
     keyLight: null,
     groundMesh: null,
+    structuralFlowPlaneLayout: false,
   },
   demo: {
     enabled: false,
@@ -1023,6 +1024,39 @@ const DEMO_PLAYBACK_INTERVAL_MS = 5000;
 const GEOMETRY_FLOW_PERF_KEY = "neraium_structural_flow_perf";
 /** Origin marker + debug visuals for structural flow. `true` always shows the marker; when `false`, use URL `?geomDebug=1` instead. */
 const DEBUG_GEOMETRY = false;
+
+/** Demo/sample ingest: 12 correlated channels for a rich multi-node structural flow field. */
+const DEMO_STRUCTURAL_SENSOR_KEYS = [
+  "pressure",
+  "flow",
+  "vibration",
+  "temperature",
+  "motor_current",
+  "bearing_temp",
+  "load_cell",
+  "rpm",
+  "humidity",
+  "displacement",
+  "valve_position",
+  "shaft_accel",
+];
+
+function buildDemoSensorValuesRow(i, p, driftLift, vibSpike) {
+  const o = {};
+  DEMO_STRUCTURAL_SENSOR_KEYS.forEach((key, k) => {
+    const phase = k * 0.85;
+    const wave = Math.sin(i / (5.2 + k * 0.11) + phase);
+    const w2 = Math.cos(i / (7.1 + k * 0.09) + phase * 0.65);
+    const base = 18 + k * 6.2;
+    o[key] =
+      base +
+      wave * (1 + driftLift * (0.45 + k * 0.025)) +
+      w2 * (0.55 + vibSpike * 0.12) +
+      i * (0.011 + k * 0.0008) +
+      p * (0.15 + k * 0.02);
+  });
+  return o;
+}
 
 function geometryFlowPerfEnabled() {
   try {
@@ -1330,6 +1364,7 @@ function disposeGeometryRenderer() {
     g.groundMesh = null;
   }
   g.keyLight = null;
+  g.structuralFlowPlaneLayout = false;
   if (g.scene && g.scene.environment) {
     try {
       g.scene.environment.dispose();
@@ -1589,6 +1624,17 @@ function flowNodeStress01(node) {
   return Number.isFinite(s) ? Math.max(0, Math.min(1, s)) : 0;
 }
 
+function flowNodeInRange(node) {
+  if (node && typeof node.in_range === "boolean") return node.in_range;
+  return flowNodeStress01(node) < 0.33 && !node?.is_unstable;
+}
+
+/** Diamond (n=4) or regular ring (2–12): shared XZ plane + vertical lift story. */
+function structuralFlowUsesPlaneLayout(payload) {
+  const l = payload?.projection?.layout;
+  return l === "diamond_plane_four_sensors" || l === "coherent_plane_ring";
+}
+
 function flowNodeColorTHREE(three, stress01, unstable) {
   const c = new three.Color();
   const teal = new three.Color(0x2dd4bf);
@@ -1645,6 +1691,7 @@ function syncFlowEdgesFromMeshes(g, three, t) {
   const instN = typeof g.flowInstN === "number" ? g.flowInstN : 0;
   const frayBase = 0.08 + driftN * 0.35 + instN * 0.35;
   const perf = Boolean(g.perfMode);
+  const planeLayout = Boolean(g.structuralFlowPlaneLayout);
   const S = ensureFlowEdgeScratch(g, three);
   const framePhase = Math.floor(t * 30);
 
@@ -1656,6 +1703,7 @@ function syncFlowEdgesFromMeshes(g, three, t) {
     const posA = sm.position;
     const posB = tm.position;
     const tension = flowEdgeTension(edge);
+    const verticalSpan = Math.abs(posA.y - posB.y);
     const mid = S.mid;
     mid.copy(posA).add(posB).multiplyScalar(0.5);
     S.dir.subVectors(posB, posA);
@@ -1665,11 +1713,16 @@ function syncFlowEdgesFromMeshes(g, three, t) {
       S.perp.crossVectors(S.dir, S.altUp);
     }
     S.perp.normalize();
-    const lift = 0.05 * coherence * (1 - tension * 0.9);
+    const lift = planeLayout
+      ? 0.06 * verticalSpan + 0.012 * coherence * (1 - tension * 0.5)
+      : 0.05 * coherence * (1 - tension * 0.9);
     mid.y += lift;
-    const fray = frayBase * (0.35 + tension * 0.65) * (1 - coherence * 0.75);
+    let fray = frayBase * (0.35 + tension * 0.65) * (1 - coherence * 0.75);
+    if (planeLayout) {
+      fray *= Math.max(0.12, 1 - Math.min(1, verticalSpan * 2.2));
+    }
     mid.addScaledVector(S.perp, fray * Math.sin(t * 2.6 + index * 0.73));
-    mid.addScaledVector(S.perp, tension * 0.06 * Math.sin(t * 4.2 + index * 1.1));
+    mid.addScaledVector(S.perp, tension * (planeLayout ? 0.02 : 0.06) * Math.sin(t * 4.2 + index * 1.1));
     const curve = S.curve;
     curve.v0.copy(posA);
     curve.v1.copy(mid);
@@ -1688,8 +1741,11 @@ function syncFlowEdgesFromMeshes(g, three, t) {
     posAttr.needsUpdate = true;
     if (line.material && !perf) {
       const mag = Math.abs(Number(edge.magnitude || 0));
-      const pulse = 0.14 + 0.52 * mag * (0.55 + 0.45 * coherence);
-      line.material.opacity = Math.min(0.92, pulse + tension * 0.12 * Math.sin(t * 3 + index));
+      let pulse = 0.14 + 0.52 * mag * (0.55 + 0.45 * coherence);
+      if (planeLayout && verticalSpan > 0.06) {
+        pulse += 0.08 + 0.12 * Math.min(1, verticalSpan * 1.5) + tension * 0.1 * (0.5 + 0.5 * Math.sin(t * 4.1 + index));
+      }
+      line.material.opacity = Math.min(0.95, pulse + tension * (planeLayout ? 0.18 : 0.12) * Math.sin(t * 3 + index));
     }
     if (line.material && perf && framePhase % 3 === index % 3) {
       const mag = Math.abs(Number(edge.magnitude || 0));
@@ -1715,12 +1771,17 @@ function updateGeometryFlowPanel(payload) {
   const nodes = payload.nodes || [];
   let inSync = 0;
   let outSync = 0;
-  nodes.forEach((n) => {
-    const st = flowNodeStress01(n);
-    const bad = Boolean(n.is_unstable) || st >= 0.42;
-    if (bad) outSync += 1;
-    else inSync += 1;
-  });
+  const summaryIn = payload.summary?.in_range_nodes;
+  const summaryOut = payload.summary?.out_of_range_nodes;
+  if (Number.isFinite(Number(summaryIn)) && Number.isFinite(Number(summaryOut))) {
+    inSync = Math.max(0, Number(summaryIn));
+    outSync = Math.max(0, Number(summaryOut));
+  } else {
+    nodes.forEach((n) => {
+      if (flowNodeInRange(n)) inSync += 1;
+      else outSync += 1;
+    });
+  }
   if (inEl) inEl.textContent = String(inSync);
   if (outEl) outEl.textContent = String(outSync);
   const ch = Number(payload.summary?.changed_edges_current ?? 0);
@@ -1730,9 +1791,23 @@ function updateGeometryFlowPanel(payload) {
 function geometryFlowSummaryString(payload) {
   if (!payload?.available) return "—";
   const c = flowCoherence01(payload);
-  if (c >= 0.72) return "Sensors read as one stream — motion stays aligned.";
-  if (c >= 0.45) return "The field is fraying — some sensors are pulling away from the pack.";
-  return "High stress — links pulse and the structure separates.";
+  const plane = structuralFlowUsesPlaneLayout(payload);
+  const outN = Number(payload.summary?.out_of_range_nodes ?? 0);
+  const nN = (payload.nodes || []).length;
+  if (plane) {
+    if (outN <= 0 && c >= 0.65) {
+      return `All ${nN || "multiple"} sensors sit on the shared plane — full links, calm flow, structural coherence high.`;
+    }
+    if (outN === 1) {
+      return "One sensor has lifted off the shared plane — links stretch and weaken toward it; the rest stay grounded.";
+    }
+    if (outN >= 2) {
+      return `${outN} sensors are elevated above the plane — the base ring destabilizes; links fray and pulse.`;
+    }
+  }
+  if (c >= 0.72) return "Structural coherence is strong — sensors stay on the shared plane with steady links.";
+  if (c >= 0.45) return "Coherence is slipping — some sensors pull out of range; links shift and stretch.";
+  return "Low coherence — out-of-range sensors lift away; links pulse and the structure separates.";
 }
 
 function scheduleGeometryResize(g, fn) {
@@ -1751,29 +1826,34 @@ function drawStructuralFlow2dCanvas(ctx, width, height, payload, t, coherence, d
   ctx.fillRect(0, 0, width, height);
   const nodes = payload.nodes || [];
   if (!nodes.length) return;
+  const planeLayout = structuralFlowUsesPlaneLayout(payload);
   let minX = Infinity;
   let maxX = -Infinity;
-  let minY = Infinity;
-  let maxY = -Infinity;
+  let minZ = Infinity;
+  let maxZ = -Infinity;
+  let maxLift = 0;
   nodes.forEach((n) => {
     const x = Number(n.position?.x) || 0;
     const y = Number(n.position?.y) || 0;
+    const z = Number(n.position?.z) || 0;
     minX = Math.min(minX, x);
     maxX = Math.max(maxX, x);
-    minY = Math.min(minY, y);
-    maxY = Math.max(maxY, y);
+    minZ = Math.min(minZ, z);
+    maxZ = Math.max(maxZ, z);
+    maxLift = Math.max(maxLift, y);
   });
   const pad = 36;
   const rw = Math.max(maxX - minX, 0.12);
-  const rh = Math.max(maxY - minY, 0.12);
+  const rz = Math.max(maxZ - minZ, 0.12);
   const sx = (width - 2 * pad) / rw;
-  const sy = (height - 2 * pad) / rh;
-  const sc = Math.min(sx, sy) * 0.82;
+  const sz = (height - 2 * pad) / (rz + maxLift * 1.4);
+  const sc = Math.min(sx, sz) * 0.82;
   const cx = (minX + maxX) / 2;
-  const cy = (minY + maxY) / 2;
+  const cz = (minZ + maxZ) / 2;
+  const liftScale = 1.35;
   const mapX = (x) => width / 2 + (x - cx) * sc;
-  const mapY = (y) => height / 2 - (y - cy) * sc;
-  const chaos = (0.12 + driftN * 0.2 + instN * 0.15) * (1 - coherence * 0.75);
+  const mapScreenY = (x, z, yLift) => height / 2 - (z - cz) * sc - yLift * sc * liftScale;
+  const chaos = planeLayout ? 0.02 : (0.12 + driftN * 0.2 + instN * 0.15) * (1 - coherence * 0.75);
   const edgeCoherence = 0.35 + 0.55 * coherence;
 
   (payload.edges || []).forEach((edge) => {
@@ -1782,14 +1862,17 @@ function drawStructuralFlow2dCanvas(ctx, width, height, payload, t, coherence, d
     if (!a || !b) return;
     const ax = Number(a.position?.x) || 0;
     const ay = Number(a.position?.y) || 0;
+    const az = Number(a.position?.z) || 0;
     const bx = Number(b.position?.x) || 0;
     const by = Number(b.position?.y) || 0;
+    const bz = Number(b.position?.z) || 0;
     const ox = Math.sin(t * 1.7 + edgeCoherence) * 0.025 * chaos;
-    ctx.strokeStyle = `rgba(94,234,212,${0.18 + 0.45 * edgeCoherence})`;
-    ctx.lineWidth = 1.1 + 0.6 * Math.min(1, Math.abs(Number(edge.magnitude || 0)));
+    const mag = Math.min(1, Math.abs(Number(edge.magnitude || 0)));
+    ctx.strokeStyle = `rgba(94,234,212,${0.2 + 0.42 * edgeCoherence * mag})`;
+    ctx.lineWidth = 1.1 + 0.65 * mag;
     ctx.beginPath();
-    ctx.moveTo(mapX(ax + ox), mapY(ay + ox));
-    ctx.lineTo(mapX(bx - ox), mapY(by - ox));
+    ctx.moveTo(mapX(ax + ox), mapScreenY(ax, az + ox, ay));
+    ctx.lineTo(mapX(bx - ox), mapScreenY(bx, bz - ox, by));
     ctx.stroke();
   });
 
@@ -1797,13 +1880,19 @@ function drawStructuralFlow2dCanvas(ctx, width, height, payload, t, coherence, d
     const stress = flowNodeStress01(n);
     const bx = Number(n.position?.x) || 0;
     const by = Number(n.position?.y) || 0;
+    const bz = Number(n.position?.z) || 0;
     const phase = i * 1.23;
-    const ox = Math.sin(t * 1.65 + phase) * 0.04 * chaos + (1 - coherence) * 0.06 * stress;
-    const oy = Math.cos(t * 1.3 + phase) * 0.04 * chaos;
+    const ox = planeLayout
+      ? Math.sin(t * 0.9 + phase) * 0.012
+      : Math.sin(t * 1.65 + phase) * 0.04 * chaos + (1 - coherence) * 0.06 * stress;
+    const oz = planeLayout ? Math.cos(t * 0.88 + phase) * 0.012 : 0;
     const x = mapX(bx + ox);
-    const y = mapY(by + oy);
+    const y = mapScreenY(bx, bz + oz, by);
     const r = 6 + stress * 8 + (n.is_unstable ? 4 : 0);
-    ctx.fillStyle = flowNodeColorCss(stress, Boolean(n.is_unstable));
+    ctx.fillStyle = flowNodeColorCss(
+      planeLayout && flowNodeInRange(n) ? Math.min(stress, 0.38) : stress,
+      Boolean(n.is_unstable),
+    );
     ctx.beginPath();
     ctx.arc(x, y, r, 0, Math.PI * 2);
     ctx.fill();
@@ -1834,6 +1923,7 @@ function renderStructuralFlow2dOnly(payload, viewportDims) {
   const g = state.geometry3d;
   g.useCanvas2d = true;
   g.perfMode = true;
+  g.structuralFlowPlaneLayout = structuralFlowUsesPlaneLayout(payload);
   const { driftN, instN } = flowDriftInstabilityNorm(payload);
   g.flowCoherence = flowCoherence01(payload);
   g.flowDriftN = driftN;
@@ -2039,6 +2129,10 @@ function applyGeometryDisplayMode() {
   if (g.camera && g.controls && g.nodeGroup && threeNs) {
     fitGeometryCamera(g.camera, g.controls, g.nodeGroup, threeNs);
     updateGeometryShadowFrustum(g, threeNs);
+    if (g.structuralFlowPlaneLayout && g.camera && g.controls) {
+      g.camera.position.y += 0.32;
+      g.camera.lookAt(g.controls.target);
+    }
   }
 }
 
@@ -2311,7 +2405,10 @@ function renderGeometryScene(payload, viewportDims) {
   g.unstablePulseById = {};
   g.edgeRefs = [];
   g.perfMode = perf;
-  g.curveSegments = perf ? 8 : 11;
+  {
+    const nc = Array.isArray(payload.nodes) ? payload.nodes.length : 0;
+    g.curveSegments = perf ? 7 : nc > 8 ? 9 : 11;
+  }
   let motionScale = perf ? 0.72 : 1;
   if (geometryFlowReducedMotion()) motionScale *= 0.42;
   g.motionScale = motionScale;
@@ -2327,6 +2424,7 @@ function renderGeometryScene(payload, viewportDims) {
   g.interactionEnabled = true;
   g.keyLight = key;
   g.groundMesh = null;
+  g.structuralFlowPlaneLayout = structuralFlowUsesPlaneLayout(payload);
 
   const edgeGroup = new three.Group();
   const coherence0 = g.flowCoherence;
@@ -2375,7 +2473,11 @@ function renderGeometryScene(payload, viewportDims) {
     const radius = 0.042 + magnitude * 0.075;
     const geom = new three.SphereGeometry(radius, sphereSeg, sphereSeg);
     const stress01 = flowNodeStress01(node);
-    const col = flowNodeColorTHREE(three, stress01, Boolean(node.is_unstable));
+    const col = flowNodeColorTHREE(
+      three,
+      g.structuralFlowPlaneLayout && flowNodeInRange(node) ? Math.min(stress01, 0.38) : stress01,
+      Boolean(node.is_unstable),
+    );
     let mat;
     if (perf) {
       mat = new three.MeshLambertMaterial({
@@ -2611,6 +2713,7 @@ function renderGeometryScene(payload, viewportDims) {
       const instN = typeof g.flowInstN === "number" ? g.flowInstN : 0;
       const unifiedPhase = t * 0.88;
       const ms = typeof g.motionScale === "number" ? g.motionScale : 1;
+      const planeLayout = Boolean(g.structuralFlowPlaneLayout);
 
       Object.keys(g.nodeMeshById || {}).forEach((nodeId) => {
         const mesh = g.nodeMeshById[nodeId];
@@ -2619,13 +2722,21 @@ function renderGeometryScene(payload, viewportDims) {
         const base = mesh.userData.basePos;
         const stress = flowNodeStress01(nodeData);
         const unstable = Boolean(nodeData.is_unstable);
+        const phase = mesh.userData.jitterSeed || 0;
+        if (planeLayout) {
+          const wobble = 0.01 * (1 - coherence * 0.45) * ms;
+          const liftHint = Math.min(1, base.y * 2.2);
+          mesh.position.x = base.x + Math.sin(unifiedPhase * 0.85 + phase) * wobble * (0.4 + liftHint * 0.2);
+          mesh.position.z = base.z + Math.cos(unifiedPhase * 0.8 + phase * 1.02) * wobble * (0.4 + liftHint * 0.2);
+          mesh.position.y = base.y + Math.sin(unifiedPhase * 0.65 + phase) * 0.006 * (0.25 + liftHint * 0.75);
+          return;
+        }
         const breathe =
           Math.sin(unifiedPhase) * 0.038 * coherence * (1 - stress * 0.85) * (1 - driftN * 0.4);
         const breatheY = Math.cos(unifiedPhase * 0.97) * 0.032 * coherence * (1 - stress * 0.85);
         const chaos =
           (0.04 + stress * 0.42 + (unstable ? 0.12 : 0) + driftN * 0.14 + instN * 0.1) *
           (1 - coherence * 0.72);
-        const phase = mesh.userData.jitterSeed || 0;
         const sep = (1 - coherence) * 0.08 * stress;
         mesh.position.x =
           base.x + (breathe + Math.sin(t * 1.65 + phase) * chaos + sep * Math.sin(phase)) * ms;
@@ -3252,17 +3363,12 @@ async function seedDemoData() {
   for (let i = 0; i < 120; i += 1) {
     const t = new Date(now - (120 - i) * 60_000).toISOString();
     const driftFactor = i < 40 ? 0.2 : i < 80 ? 0.6 : 1.0;
-    const wave = Math.sin(i / 6);
+    const p = i / 119;
     items.push({
       timestamp: t,
       site_id: "demo-site",
       asset_id: "demo-asset",
-      sensor_values: {
-        pressure: 44 + wave * (1 + driftFactor * 0.7) + i * 0.025,
-        flow: 28 + Math.cos(i / 7) * (1 + driftFactor * 0.4) + i * 0.015,
-        vibration: 6 + Math.sin(i / 3) * (1 + driftFactor * 1.1) + driftFactor * 2.5,
-        temperature: 61 + Math.cos(i / 5) * (1 + driftFactor * 0.5) + i * 0.02,
-      },
+      sensor_values: buildDemoSensorValuesRow(i, p, driftFactor, driftFactor * 1.1),
     });
   }
   return fetchJson(apiUrl("/ingest/batch", tenantScopeParams({ run_id: runId })), {
