@@ -3058,7 +3058,8 @@ function structuralFlowDriftBiasDirectionUV(nodes, normToPlane) {
 function structuralFlowForceAt(pu, pv, nodes, edges, normToPlane, driftDir, driftN, instN, riskExp) {
   let fx = 0;
   let fy = 0;
-  const rBase = 0.042;
+  /* Wider, softer influence than inverse-square: Gaussian-like falloff (single connected field). */
+  const rBase = 0.11;
 
   nodes.forEach((n) => {
     const px = Number(n.position?.x) || 0;
@@ -3066,21 +3067,21 @@ function structuralFlowForceAt(pu, pv, nodes, edges, normToPlane, driftDir, drif
     const { nx, nz } = normToPlane(px, pz);
     const du = nx - pu;
     const dv = nz - pv;
-    const d2 = du * du + dv * dv + 1e-10;
+    const d2 = du * du + dv * dv;
     const stress = flowNodeStress01(n);
     const inTol = flowNodeWithinTolerance(n);
     const unstable = Boolean(n.is_unstable);
-    const r0 = rBase * (1 + 0.55 * riskExp) * (1 + 0.4 * stress);
-    const scale = 1 / (d2 + r0 * r0);
+    const sigma = rBase * (1 + 0.45 * riskExp) * (1 + 0.35 * stress) * 1.35;
+    const g = Math.exp(-d2 / (2 * sigma * sigma + 1e-12));
 
     if (inTol && !unstable) {
-      const g = 0.95 + 0.2 * (1 - stress);
-      fx += du * scale * g;
-      fy += dv * scale * g;
+      const amp = (0.95 + 0.2 * (1 - stress)) * 1.15;
+      fx += du * g * amp;
+      fy += dv * g * amp;
     } else {
-      const rep = (unstable ? 1.35 : 0.85) * (0.7 + 0.3 * stress);
-      fx -= du * scale * rep;
-      fy -= dv * scale * rep;
+      const rep = (unstable ? 1.25 : 0.82) * (0.7 + 0.3 * stress) * 1.05;
+      fx -= du * g * rep;
+      fy -= dv * g * rep;
     }
   });
 
@@ -3103,23 +3104,199 @@ function structuralFlowForceAt(pu, pv, nodes, edges, normToPlane, driftDir, drif
     const ddx = pu - mx;
     const ddz = pv - mz;
     const d2 = ddx * ddx + ddz * ddz + 1e-9;
-    const sig = 0.062 + 0.055 * disagree;
-    const w = disagree * Math.exp(-d2 / (2 * sig * sig)) * 1.1;
+    const sig = 0.1 + 0.08 * disagree;
+    const w = disagree * Math.exp(-d2 / (2 * sig * sig)) * 0.95;
     const len = Math.sqrt(d2);
     if (len < 1e-7) return;
-    fx += w * (ddx / len) * 0.35;
-    fy += w * (ddz / len) * 0.35;
+    fx += w * (ddx / len) * 0.42;
+    fy += w * (ddz / len) * 0.42;
   });
 
   const dmag = 0.28 + 0.72 * driftN;
-  fx += driftDir.x * dmag * 0.26;
-  fy += driftDir.y * dmag * 0.26;
+  fx += driftDir.x * dmag * 0.34;
+  fy += driftDir.y * dmag * 0.34;
 
   const om = 2.15 * Math.PI;
-  fx += instN * 0.095 * Math.sin(om * pu + 0.77 * pv);
-  fy += instN * 0.095 * Math.sin(om * pv - 0.48 * pu);
+  fx += instN * 0.072 * Math.sin(om * pu + 0.77 * pv);
+  fy += instN * 0.072 * Math.sin(om * pv - 0.48 * pu);
 
   return { fx, fy };
+}
+
+function structuralFlowSmoothstep01(edge0, edge1, x) {
+  if (x <= edge0) return 0;
+  if (x >= edge1) return 1;
+  const t = (x - edge0) / (edge1 - edge0);
+  return t * t * (3 - 2 * t);
+}
+
+/** Separable box blur on corner grid (smooths hotspots into one continuous field). */
+function structuralFlowBoxBlurE2D(E, NX, NY, r) {
+  const tmp = [];
+  for (let i = 0; i <= NX; i += 1) {
+    tmp[i] = [];
+    for (let j = 0; j <= NY; j += 1) {
+      let s = 0;
+      let c = 0;
+      for (let di = -r; di <= r; di += 1) {
+        const ii = Math.max(0, Math.min(NX, i + di));
+        s += E[ii][j];
+        c += 1;
+      }
+      tmp[i][j] = s / c;
+    }
+  }
+  const out = [];
+  for (let i = 0; i <= NX; i += 1) {
+    out[i] = [];
+    for (let j = 0; j <= NY; j += 1) {
+      let s = 0;
+      let c = 0;
+      for (let dj = -r; dj <= r; dj += 1) {
+        const jj = Math.max(0, Math.min(NY, j + dj));
+        s += tmp[i][jj];
+        c += 1;
+      }
+      out[i][j] = s / c;
+    }
+  }
+  return out;
+}
+
+/** Skew scalar energy along drift so the surface stretches toward net drift (aligns with arrow). */
+function structuralFlowApplyDriftSkewScalar(E, NX, NY, driftDir, driftN) {
+  const out = [];
+  const du = driftDir.x;
+  const dv = driftDir.y;
+  const k = 1.55 * (0.35 + 0.65 * driftN);
+  const gain = 1 + 0.5 * driftN;
+  for (let i = 0; i <= NX; i += 1) {
+    out[i] = [];
+    const u = i / NX;
+    for (let j = 0; j <= NY; j += 1) {
+      const v = j / NY;
+      const tilt = du * (u - 0.5) + dv * (v - 0.5);
+      const mult = Math.exp(k * tilt) * gain;
+      out[i][j] = E[i][j] * mult;
+    }
+  }
+  return out;
+}
+
+function structuralFlowCornerTouchesLargestCC(largestMask, NX, NY, i, j) {
+  const cells = [
+    [i - 1, j - 1],
+    [i, j - 1],
+    [i - 1, j],
+    [i, j],
+  ];
+  for (let k = 0; k < cells.length; k += 1) {
+    const ci = cells[k][0];
+    const cj = cells[k][1];
+    if (ci >= 0 && ci < NX && cj >= 0 && cj < NY && largestMask[ci][cj]) return true;
+  }
+  return false;
+}
+
+/** Largest 4-connected high cell region kills stray islands for one dominant iso-boundary. */
+function structuralFlowLargestCCMask(cellHigh, NX, NY) {
+  const labels = [];
+  const sizes = [];
+  let cur = 0;
+  for (let i = 0; i < NX; i += 1) {
+    labels[i] = [];
+    for (let j = 0; j < NY; j += 1) {
+      labels[i][j] = 0;
+    }
+  }
+  for (let i = 0; i < NX; i += 1) {
+    for (let j = 0; j < NY; j += 1) {
+      if (!cellHigh[i][j] || labels[i][j]) continue;
+      cur += 1;
+      let sz = 0;
+      const stack = [[i, j]];
+      while (stack.length) {
+        const p = stack.pop();
+        const x = p[0];
+        const y = p[1];
+        if (x < 0 || y < 0 || x >= NX || y >= NY) continue;
+        if (!cellHigh[x][y] || labels[x][y]) continue;
+        labels[x][y] = cur;
+        sz += 1;
+        stack.push([x + 1, y], [x - 1, y], [x, y + 1], [x, y - 1]);
+      }
+      sizes[cur] = sz;
+    }
+  }
+  let best = 0;
+  let bestId = 0;
+  for (let k = 1; k <= cur; k += 1) {
+    if (sizes[k] > best) {
+      best = sizes[k];
+      bestId = k;
+    }
+  }
+  const out = [];
+  for (let i = 0; i < NX; i += 1) {
+    out[i] = [];
+    for (let j = 0; j < NY; j += 1) {
+      out[i][j] = bestId > 0 && labels[i][j] === bestId;
+    }
+  }
+  return out;
+}
+
+/** Corners only on the dominant super-level set → one main contour, no stray rings. */
+function structuralFlowIsoFieldForMarching(E, NX, NY, minE, largestMask) {
+  const below = minE - 0.02;
+  const Eiso = [];
+  for (let i = 0; i <= NX; i += 1) {
+    Eiso[i] = [];
+    for (let j = 0; j <= NY; j += 1) {
+      Eiso[i][j] = structuralFlowCornerTouchesLargestCC(largestMask, NX, NY, i, j) ? E[i][j] : below;
+    }
+  }
+  return Eiso;
+}
+
+function structuralFlowPrimarySegmentComponent(segs) {
+  const PREC = 1e5;
+  const R = (x) => Math.round(x * PREC) / PREC;
+  const key = (x, y) => `${R(x)},${R(y)}`;
+  const n = segs.length;
+  const visited = new Array(n).fill(false);
+  let bestSet = new Set();
+  let bestLen = -1;
+  for (let s0 = 0; s0 < n; s0 += 1) {
+    if (visited[s0]) continue;
+    const q = [s0];
+    visited[s0] = true;
+    const comp = [];
+    let len = 0;
+    while (q.length) {
+      const si = q.shift();
+      comp.push(si);
+      const s = segs[si];
+      len += Math.hypot(s[2] - s[0], s[3] - s[1]);
+      const k1 = key(s[0], s[1]);
+      const k2 = key(s[2], s[3]);
+      for (let sj = 0; sj < n; sj += 1) {
+        if (visited[sj]) continue;
+        const t = segs[sj];
+        const t1 = key(t[0], t[1]);
+        const t2 = key(t[2], t[3]);
+        if (t1 === k1 || t1 === k2 || t2 === k1 || t2 === k2) {
+          visited[sj] = true;
+          q.push(sj);
+        }
+      }
+    }
+    if (len > bestLen) {
+      bestLen = len;
+      bestSet = new Set(comp);
+    }
+  }
+  return bestSet;
 }
 
 /** Share of sampled field energy in the ~10% border band (pressure at the dashed manifold edge). */
@@ -3300,20 +3477,24 @@ function buildStructuralFlowFieldModel(payload, normToPlane, driftDir, driftN, i
   const mCount = computeStructuralFlowMetrics(payload);
   const Vx = [];
   const Vy = [];
-  const E = [];
+  const E0 = [];
   for (let i = 0; i <= NX; i += 1) {
     Vx[i] = [];
     Vy[i] = [];
-    E[i] = [];
+    E0[i] = [];
     for (let j = 0; j <= NY; j += 1) {
       const u = i / NX;
       const v = j / NY;
       const { fx, fy } = structuralFlowForceAt(u, v, nodes, edges, normToPlane, driftDir, driftN, instN, riskExp);
       Vx[i][j] = fx;
       Vy[i][j] = fy;
-      E[i][j] = fx * fx + fy * fy;
+      E0[i][j] = fx * fx + fy * fy;
     }
   }
+
+  let E = structuralFlowBoxBlurE2D(E0, NX, NY, 2);
+  E = structuralFlowBoxBlurE2D(E, NX, NY, 2);
+  E = structuralFlowApplyDriftSkewScalar(E, NX, NY, driftDir, driftN);
 
   let minE = Infinity;
   let maxE = -Infinity;
@@ -3361,6 +3542,17 @@ function buildStructuralFlowFieldModel(payload, normToPlane, driftDir, driftN, i
 
   const T = minE + span * (0.18 + 0.74 * coherence01);
 
+  const cellHigh = [];
+  for (let i = 0; i < NX; i += 1) {
+    cellHigh[i] = [];
+    for (let j = 0; j < NY; j += 1) {
+      const av = (E[i][j] + E[i + 1][j] + E[i + 1][j + 1] + E[i][j + 1]) / 4;
+      cellHigh[i][j] = av >= T;
+    }
+  }
+  const largestMask = structuralFlowLargestCCMask(cellHigh, NX, NY);
+  const E_iso = structuralFlowIsoFieldForMarching(E, NX, NY, minE, largestMask);
+
   let netVx = 0;
   let netVy = 0;
   let wv = 0;
@@ -3383,6 +3575,8 @@ function buildStructuralFlowFieldModel(payload, normToPlane, driftDir, driftN, i
     Vx,
     Vy,
     E,
+    E_iso,
+    largestMask,
     minE,
     maxE,
     T,
@@ -3507,13 +3701,14 @@ function structuralFlowSegmentEscapesManifold(u1, v1, u2, v2) {
   return !i1 || !i2;
 }
 
-function structuralFlowHeatmapRgba(enNorm, edgePressure01) {
+/** enNorm = relative energy; systemicPressure01 = smooth buildup toward dashed boundary (cyan→amber→red). */
+function structuralFlowHeatmapRgba(enNorm, systemicPressure01) {
   const t = Math.max(0, Math.min(1, enNorm));
-  const ep = Math.max(0, Math.min(1, edgePressure01));
-  const r = Math.floor(8 + t * 55 + ep * 90);
-  const g = Math.floor(18 + t * 140 + ep * 40);
-  const b = Math.floor(42 + (1 - t) * 80 + ep * 20);
-  const a = 0.42 + t * 0.38;
+  const p = Math.max(0, Math.min(1, systemicPressure01));
+  const r = Math.floor(5 + t * 48 + p * 125);
+  const g = Math.floor(20 + t * 125 + p * 62);
+  const b = Math.floor(44 + (1 - t) * 72 + p * 18);
+  const a = 0.36 + t * 0.38 + p * 0.12;
   return `rgba(${r},${g},${b},${a})`;
 }
 
@@ -3555,7 +3750,8 @@ function drawStructuralFlow2dCanvas(ctx, width, height, payload, _t, _coherence,
   const innerH = Math.max(40, height - 2 * pad);
 
   const model = buildStructuralFlowFieldModel(payload, normToPlane, driftDir, driftN, instN, riskExp);
-  const { NX, NY, E, minE, maxE, T, coherence01, cu, cv, netVx, netVy, metrics: m } = model;
+  const { NX, NY, E, E_iso, largestMask, minE, maxE, T, coherence01, cu, cv, netVx, netVy, metrics: m } =
+    model;
   const spanE = Math.max(maxE - minE, 1e-12);
 
   state.geometry3d.structuralFlowCoherence01 = coherence01;
@@ -3580,13 +3776,15 @@ function drawStructuralFlow2dCanvas(ctx, width, height, payload, _t, _coherence,
 
   for (let i = 0; i < NX; i += 1) {
     for (let j = 0; j < NY; j += 1) {
-      const eC = (E[i][j] + E[i + 1][j] + E[i + 1][j + 1] + E[i][j + 1]) / 4;
+      let eC = (E[i][j] + E[i + 1][j] + E[i + 1][j + 1] + E[i][j + 1]) / 4;
+      if (!largestMask[i][j]) eC *= 0.36;
       const en = (eC - minE) / spanE;
       const uc = (i + 0.5) / NX;
       const vc = (j + 0.5) / NY;
-      const edgeDist = Math.min(uc, 1 - uc, vc, 1 - vc);
-      const edgePressure = edgeDist < 0.14 ? (0.14 - edgeDist) / 0.14 : 0;
-      ctx.fillStyle = structuralFlowHeatmapRgba(en, edgePressure);
+      const dEdge = Math.min(uc, 1 - uc, vc, 1 - vc);
+      const edgeRamp = 1 - structuralFlowSmoothstep01(0.03, 0.42, dEdge);
+      const systemicPressure = Math.max(0, Math.min(1, edgeRamp * (0.55 + 0.45 * en)));
+      ctx.fillStyle = structuralFlowHeatmapRgba(en, systemicPressure);
       const px0 = innerX + (i / NX) * innerW;
       const py0 = innerY + (j / NY) * innerH;
       const pw = innerW / NX;
@@ -3608,21 +3806,25 @@ function drawStructuralFlow2dCanvas(ctx, width, height, payload, _t, _coherence,
   ctx.arc(cxPlane, cyPlane, 3, 0, Math.PI * 2);
   ctx.fill();
 
-  const segs = structuralFlowMarchingSquaresSegments(E, NX, NY, T);
+  const segs = structuralFlowMarchingSquaresSegments(E_iso, NX, NY, T);
   state.geometry3d.structuralFlowDerived = finalizeStructuralFlowDerivedState(model, segs, driftN, instN);
-  segs.forEach((s) => {
+  const primarySegIdx = structuralFlowPrimarySegmentComponent(segs);
+  segs.forEach((s, si) => {
     const u1 = s[0];
     const v1 = s[1];
     const u2 = s[2];
     const v2 = s[3];
     const esc = structuralFlowSegmentEscapesManifold(u1, v1, u2, v2);
+    const isPrimary = primarySegIdx.has(si);
+    ctx.globalAlpha = isPrimary ? 1 : 0.2;
     ctx.beginPath();
     ctx.moveTo(innerX + u1 * innerW, innerY + v1 * innerH);
     ctx.lineTo(innerX + u2 * innerW, innerY + v2 * innerH);
-    ctx.strokeStyle = esc ? "rgba(249, 115, 22, 0.92)" : "rgba(94, 234, 212, 0.9)";
-    ctx.lineWidth = esc ? 2.35 : 1.75;
+    ctx.strokeStyle = esc ? "rgba(249, 115, 22, 0.92)" : "rgba(94, 234, 212, 0.92)";
+    ctx.lineWidth = esc ? 2.45 : isPrimary ? 2.05 : 1.25;
     ctx.stroke();
   });
+  ctx.globalAlpha = 1;
 
   const cmPx = innerX + cu * innerW;
   const cmPy = innerY + cv * innerH;
