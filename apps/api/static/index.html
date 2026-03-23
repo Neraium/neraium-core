@@ -572,10 +572,30 @@
                 <details class="geometry-flow-details">
                   <summary>Sensor detail (optional)</summary>
                   <dl id="geometrySelectedDetails" class="geometry-kv geometry-kv--compact">
-                    <div><dt>Signal</dt><dd id="geometryNodeLabel">—</dd></div>
-                    <div><dt>Stress</dt><dd id="geometryNodeStress">—</dd></div>
-                    <div><dt>Coupling</dt><dd id="geometryNodeMagnitude">—</dd></div>
-                    <div><dt>State</dt><dd id="geometryNodeState">—</dd></div>
+                    <div>
+                      <dt title="Telemetry channel name (ingest / sensor catalog).">Signal</dt>
+                      <dd id="geometryNodeLabel">—</dd>
+                    </div>
+                    <div>
+                      <dt title="Normalized structural stress (0–1) from correlation geometry for this snapshot.">
+                        Stress
+                      </dt>
+                      <dd id="geometryNodeStress">—</dd>
+                    </div>
+                    <div>
+                      <dt
+                        title="Coupling (0–1): mean absolute off-diagonal correlation — how this channel moves with others."
+                      >
+                        Coupling
+                      </dt>
+                      <dd id="geometryNodeMagnitude">—</dd>
+                    </div>
+                    <div>
+                      <dt title="Tolerance band from stress; catalog-only nodes note when outside the correlation window.">
+                        State
+                      </dt>
+                      <dd id="geometryNodeState">—</dd>
+                    </div>
                   </dl>
                 </details>
               </aside>
