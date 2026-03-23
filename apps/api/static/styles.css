@@ -2294,10 +2294,11 @@ input[type="file"] {
 }
 
 .geometry-panel {
-  border-color: #36527b;
+  border-color: rgba(54, 82, 123, 0.95);
   background:
     radial-gradient(circle at 88% 10%, rgba(90, 132, 212, 0.16), transparent 42%),
     linear-gradient(180deg, rgba(15, 27, 48, 0.94), rgba(10, 20, 36, 0.98));
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.04) inset, 0 18px 48px rgba(0, 0, 0, 0.35);
 }
 
 .geometry-models-panel .panel-header h3 {
@@ -2366,37 +2367,40 @@ input[type="file"] {
 
 .geometry-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(260px, 300px);
-  gap: 14px;
+  grid-template-columns: minmax(0, 1fr) minmax(248px, 292px);
+  gap: 12px;
   align-items: stretch;
 }
 
 .geometry-canvas-wrap {
   position: relative;
-  height: clamp(320px, 54vh, 480px);
-  min-height: 320px;
-  border: 1px solid #304564;
-  border-radius: 12px;
+  height: clamp(340px, 56vh, 520px);
+  min-height: 340px;
+  border: 1px solid rgba(48, 69, 100, 0.95);
+  border-radius: 14px;
   overflow: hidden;
   background:
     radial-gradient(circle at 22% 16%, rgba(93, 136, 218, 0.22), transparent 42%),
     radial-gradient(circle at 84% 80%, rgba(77, 126, 204, 0.16), transparent 48%),
     linear-gradient(180deg, #0a1425, #081120);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.35) inset, 0 20px 56px rgba(0, 0, 0, 0.42);
 }
 
 .geometry-canvas-wrap--flow {
-  border-color: rgba(45, 212, 191, 0.22);
+  border-color: rgba(45, 212, 191, 0.28);
   background:
-    radial-gradient(ellipse 90% 60% at 50% 38%, rgba(34, 180, 200, 0.14), transparent 55%),
+    radial-gradient(ellipse 92% 58% at 50% 36%, rgba(34, 180, 200, 0.16), transparent 56%),
     radial-gradient(circle at 12% 88%, rgba(56, 120, 220, 0.12), transparent 40%),
     linear-gradient(165deg, #070f1c 0%, #050a12 100%);
-  transition: opacity 0.5s ease-out;
+  transition: opacity 0.65s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .geometry-meta-flow {
-  font-size: 12px;
+  font-size: 11px;
+  line-height: 1.45;
   color: #8fa6c4;
-  max-width: 62ch;
+  max-width: 58ch;
+  margin-top: 2px;
 }
 
 .geometry-details--flow {
@@ -2406,12 +2410,12 @@ input[type="file"] {
 .geometry-flow-hero {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  padding: 10px 10px 8px;
+  gap: 3px;
+  padding: 9px 10px 7px;
   border-radius: 12px;
-  border: 1px solid rgba(45, 180, 200, 0.28);
-  background: linear-gradient(145deg, rgba(12, 42, 52, 0.55), rgba(8, 18, 32, 0.92));
-  margin-bottom: 8px;
+  border: 1px solid rgba(45, 180, 200, 0.22);
+  background: linear-gradient(150deg, rgba(10, 38, 48, 0.5), rgba(6, 14, 26, 0.94));
+  margin-bottom: 6px;
 }
 
 .geometry-flow-label {
@@ -2442,8 +2446,8 @@ input[type="file"] {
 .geometry-flow-grid {
   display: grid;
   grid-template-columns: 1fr 1fr 1fr;
-  gap: 6px;
-  margin-bottom: 12px;
+  gap: 5px;
+  margin-bottom: 10px;
 }
 
 .geometry-flow-stat {
