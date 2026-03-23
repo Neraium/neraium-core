@@ -997,6 +997,8 @@ const state = {
     hoverRaf: null,
     resizeRaf: null,
     _2dT: 0,
+    keyLight: null,
+    groundMesh: null,
   },
   demo: {
     enabled: false,
@@ -1015,7 +1017,7 @@ const state = {
 
 const TENANT_STORAGE_KEY = "neraium_customer_id";
 const DEMO_MODE_STORAGE_KEY = "neraium_demo_mode";
-/** Demo timeline: advance one result every 10s (was 850ms). */
+/** Demo timeline: advance one result every 5s (was 850ms). */
 const DEMO_PLAYBACK_INTERVAL_MS = 5000;
 /** Default on: lighter WebGL + simpler motion. Set localStorage "neraium_structural_flow_perf" to "0" for richer visuals. */
 const GEOMETRY_FLOW_PERF_KEY = "neraium_structural_flow_perf";
@@ -1315,6 +1317,27 @@ function buildTrendChartOptions() {
 
 function disposeGeometryRenderer() {
   const g = state.geometry3d;
+  if (g.groundMesh) {
+    try {
+      g.groundMesh.geometry?.dispose?.();
+      if (g.groundMesh.material) {
+        if (Array.isArray(g.groundMesh.material)) g.groundMesh.material.forEach((m) => m.dispose?.());
+        else g.groundMesh.material.dispose?.();
+      }
+    } catch (_e) {
+      // no-op
+    }
+    g.groundMesh = null;
+  }
+  g.keyLight = null;
+  if (g.scene && g.scene.environment) {
+    try {
+      g.scene.environment.dispose();
+    } catch (_e) {
+      // no-op
+    }
+    g.scene.environment = null;
+  }
   if (g.frameId) {
     window.cancelAnimationFrame(g.frameId);
     g.frameId = null;
@@ -1405,6 +1428,44 @@ function getOrbitControlsConstructor() {
     return window.OrbitControls;
   }
   return null;
+}
+
+/** RoomEnvironment + PMREM for believable metal/plastic reflections (skipped in perf mode). */
+function setupGeometryIBL(three, renderer, scene, perf) {
+  if (perf || !renderer || !scene) return false;
+  const PMREM = window.__PMREMGenerator;
+  const RoomEnv = window.__RoomEnvironment;
+  if (!PMREM || !RoomEnv) return false;
+  try {
+    const pmrem = new PMREM(renderer);
+    const env = new RoomEnv();
+    const rt = pmrem.fromScene(env, 0.04);
+    scene.environment = rt.texture;
+    pmrem.dispose();
+    env.dispose();
+    return true;
+  } catch (_e) {
+    return false;
+  }
+}
+
+function updateGeometryShadowFrustum(g, three) {
+  if (!g?.keyLight || !g?.nodeGroup || !three) return;
+  const box = new three.Box3().setFromObject(g.nodeGroup);
+  if (box.isEmpty()) return;
+  const center = box.getCenter(new three.Vector3());
+  const size = box.getSize(new three.Vector3());
+  const ext = Math.max(size.x, size.y, size.z, 0.2) * 1.35;
+  const cam = g.keyLight.shadow.camera;
+  cam.left = -ext;
+  cam.right = ext;
+  cam.top = ext;
+  cam.bottom = -ext;
+  cam.near = 0.05;
+  cam.far = Math.max(10, ext * 7);
+  g.keyLight.position.copy(center.clone().add(new three.Vector3(2.4, 4.4, 2.2)));
+  g.keyLight.target.position.copy(center);
+  cam.updateProjectionMatrix();
 }
 
 function fitGeometryCamera(camera, controls, nodeGroup, three) {
@@ -1977,6 +2038,7 @@ function applyGeometryDisplayMode() {
   updateGeometryFlowPanel(payload);
   if (g.camera && g.controls && g.nodeGroup && threeNs) {
     fitGeometryCamera(g.camera, g.controls, g.nodeGroup, threeNs);
+    updateGeometryShadowFrustum(g, threeNs);
   }
 }
 
@@ -2164,33 +2226,55 @@ function renderGeometryScene(payload, viewportDims) {
   const perf = geometryFlowPerfEnabled();
   const width = Math.max(240, viewportDims.width || viewport.clientWidth || 240);
   const height = Math.max(240, viewportDims.height || viewport.clientHeight || 360);
-  const renderer = new three.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "high-performance" });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
+  const renderer = new three.WebGLRenderer({
+    antialias: true,
+    alpha: true,
+    powerPreference: "high-performance",
+  });
+  const dprCap = perf ? 1.5 : 2;
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, dprCap));
   renderer.setSize(width, height);
   if (three.SRGBColorSpace) {
     renderer.outputColorSpace = three.SRGBColorSpace;
   } else if (typeof renderer.outputEncoding !== "undefined" && typeof three.sRGBEncoding !== "undefined") {
     renderer.outputEncoding = three.sRGBEncoding;
   }
+  if (three.ACESFilmicToneMapping !== undefined) {
+    renderer.toneMapping = three.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = perf ? 0.88 : 0.96;
+  }
+  renderer.shadowMap.enabled = !perf;
+  if (three.PCFSoftShadowMap) {
+    renderer.shadowMap.type = three.PCFSoftShadowMap;
+  }
   renderer.domElement.className = "geometry-renderer-canvas";
   canvasHost.appendChild(renderer.domElement);
 
   const scene = new three.Scene();
   scene.background = null;
-  scene.fog = new three.FogExp2(0x060d18, 0.048);
+  scene.fog = new three.FogExp2(perf ? 0x060d18 : 0x0a1624, perf ? 0.048 : 0.032);
 
   const camera = new three.PerspectiveCamera(48, width / height, 0.01, 60);
   camera.position.set(0, 0.45, 3.05);
   scene.add(camera);
 
-  const hemi = new three.HemisphereLight(0x8ec8ff, 0x0a1528, 0.68);
+  const hemi = new three.HemisphereLight(0x9cb8ff, 0x0a1528, perf ? 0.68 : 0.52);
   scene.add(hemi);
-  const key = new three.DirectionalLight(0x7eb8ff, 0.72);
+  const key = new three.DirectionalLight(0xceebff, perf ? 0.72 : 1.05);
   key.position.set(2.4, 3.6, 2.2);
+  if (!perf) {
+    key.castShadow = true;
+    key.shadow.mapSize.set(2048, 2048);
+    key.shadow.bias = -0.00025;
+    key.shadow.normalBias = 0.025;
+  }
   scene.add(key);
-  const fill = new three.DirectionalLight(0x2dd4bf, 0.28);
+  scene.add(key.target);
+  const fill = new three.DirectionalLight(0x2dd4bf, perf ? 0.28 : 0.38);
   fill.position.set(-2.2, 1.2, -1.8);
   scene.add(fill);
+
+  setupGeometryIBL(three, renderer, scene, perf);
 
   const geomDebug = DEBUG_GEOMETRY || geometryFlowDebugEnabled();
   if (geomDebug) {
@@ -2241,6 +2325,8 @@ function renderGeometryScene(payload, viewportDims) {
   g.selectedId = null;
   g.hoveredId = null;
   g.interactionEnabled = true;
+  g.keyLight = key;
+  g.groundMesh = null;
 
   const edgeGroup = new three.Group();
   const coherence0 = g.flowCoherence;
@@ -2281,20 +2367,32 @@ function renderGeometryScene(payload, viewportDims) {
   g.edgeGroup = edgeGroup;
 
   const nodeGroup = new three.Group();
-  const sphereSeg = perf ? 8 : 12;
-  const emMul = perf ? 0.08 : 0.12;
-  const emInt = perf ? 0.24 : 0.38;
+  const sphereSeg = perf ? 8 : 28;
+  const emMul = perf ? 0.08 : 0.1;
+  const emInt = perf ? 0.24 : 0.32;
   payload.nodes.forEach((node) => {
     const magnitude = Math.max(0, Number(node.magnitude || 0));
     const radius = 0.042 + magnitude * 0.075;
     const geom = new three.SphereGeometry(radius, sphereSeg, sphereSeg);
     const stress01 = flowNodeStress01(node);
     const col = flowNodeColorTHREE(three, stress01, Boolean(node.is_unstable));
-    const mat = new three.MeshLambertMaterial({
-      color: col,
-      emissive: col.clone().multiplyScalar(emMul),
-      emissiveIntensity: emInt,
-    });
+    let mat;
+    if (perf) {
+      mat = new three.MeshLambertMaterial({
+        color: col,
+        emissive: col.clone().multiplyScalar(emMul),
+        emissiveIntensity: emInt,
+      });
+    } else {
+      mat = new three.MeshStandardMaterial({
+        color: col,
+        metalness: 0.2 + stress01 * 0.22,
+        roughness: 0.48 - stress01 * 0.14,
+        envMapIntensity: 0.88,
+        emissive: col.clone().multiplyScalar(emMul),
+        emissiveIntensity: emInt,
+      });
+    }
     const mesh = new three.Mesh(geom, mat);
     const px = Number(node.position?.x || 0);
     const py = Number(node.position?.y || 0);
@@ -2309,6 +2407,10 @@ function renderGeometryScene(payload, viewportDims) {
     mesh.userData.emissiveMul = emMul;
     mesh.userData.emissiveIntensityBase = emInt;
     mesh.userData.perfMode = perf;
+    if (!perf) {
+      mesh.castShadow = true;
+      mesh.receiveShadow = true;
+    }
     nodeGroup.add(mesh);
     g.nodeMeshById[String(node.id)] = mesh;
     g.nodeDataById[String(node.id)] = node;
@@ -2333,6 +2435,29 @@ function renderGeometryScene(payload, viewportDims) {
       g.unstablePulseById[String(node.id)] = 0.65 + Math.random() * 0.7;
     }
   });
+  nodeGroup.updateMatrixWorld(true);
+  if (!perf) {
+    const boxNg = new three.Box3().setFromObject(nodeGroup);
+    if (!boxNg.isEmpty()) {
+      const center = boxNg.getCenter(new three.Vector3());
+      const size = boxNg.getSize(new three.Vector3());
+      const planeW = Math.max(10, Math.max(size.x, size.z) * 2.15);
+      const planeGeom = new three.PlaneGeometry(planeW, planeW, 1, 1);
+      const planeMat = new three.MeshStandardMaterial({
+        color: 0x0b121c,
+        metalness: 0.06,
+        roughness: 0.92,
+        envMapIntensity: 0.4,
+      });
+      const ground = new three.Mesh(planeGeom, planeMat);
+      ground.rotation.x = -Math.PI / 2;
+      ground.position.set(center.x, boxNg.min.y - 0.03, center.z);
+      ground.receiveShadow = true;
+      ground.userData.pickMesh = false;
+      scene.add(ground);
+      g.groundMesh = ground;
+    }
+  }
   scene.add(nodeGroup);
   g.nodeGroup = nodeGroup;
   applyGeometryDisplayMode();
@@ -2344,7 +2469,8 @@ function renderGeometryScene(payload, viewportDims) {
     const dims = geometryViewportDimensions();
     const w = Math.max(240, dims?.width || viewport.clientWidth || 240);
     const h = Math.max(240, dims?.height || viewport.clientHeight || 360);
-    g.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.25));
+    const cap = g.perfMode ? 1.5 : 2;
+    g.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, cap));
     g.renderer.setSize(w, h);
     g.camera.aspect = w / h;
     g.camera.updateProjectionMatrix();
