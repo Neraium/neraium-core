@@ -1266,17 +1266,26 @@ function buildTrendChartOptions() {
   return {
     responsive: true,
     maintainAspectRatio: false,
+    layout: {
+      padding: { top: 6, right: 10, bottom: 32, left: 4 },
+    },
     interaction: {
       mode: "index",
       intersect: false,
     },
     scales: {
       x: {
-        ticks: { color: chartTheme.tickColor, maxRotation: 0, autoSkip: true, maxTicksLimit: 6 },
+        ticks: {
+          color: chartTheme.tickColor,
+          maxRotation: 0,
+          autoSkip: true,
+          maxTicksLimit: 8,
+          padding: 6,
+        },
         grid: { color: chartTheme.gridColor },
       },
       y: {
-        ticks: { color: chartTheme.tickColor },
+        ticks: { color: chartTheme.tickColor, padding: 6 },
         grid: { color: chartTheme.gridColor },
       },
     },
