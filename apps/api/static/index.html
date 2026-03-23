@@ -542,6 +542,12 @@
               <p id="geometryFlowSubtitle" class="subtitle geometry-subtitle">
                 Relationship geometry loads with this run.
               </p>
+              <div id="geometryFlowLegend" class="geometry-flow-legend" aria-label="Flow visualization legend">
+                <span class="geometry-flow-legend__item"><i class="geometry-flow-legend__swatch geometry-flow-legend__swatch--cyan"></i>Cyan field</span>
+                <span class="geometry-flow-legend__item"><i class="geometry-flow-legend__swatch geometry-flow-legend__swatch--amber"></i>Edge pressure</span>
+                <span class="geometry-flow-legend__item"><i class="geometry-flow-legend__swatch geometry-flow-legend__swatch--red"></i>Escape / breach</span>
+                <span class="geometry-flow-legend__item"><i class="geometry-flow-legend__swatch geometry-flow-legend__swatch--arrow"></i>Net drift</span>
+              </div>
             </div>
             <p id="geometryProjectionNote" class="subtitle geometry-meta geometry-meta-flow">
               Encoding loads with the run.
@@ -554,29 +560,64 @@
               </div>
               <aside id="geometryDetails" class="geometry-details geometry-details--flow">
                 <div class="geometry-flow-hero">
-                  <span class="geometry-flow-label">Structural coherence</span>
+                  <span id="geometryIntegrityLabel" class="geometry-flow-label">Integrity score</span>
                   <span id="geometryCoherence" class="geometry-flow-value" title="">—</span>
                 </div>
-                <div class="geometry-flow-grid">
-                  <div class="geometry-flow-stat">
-                    <span class="metric-k">Within tolerance</span>
-                    <span id="geometryInSync" class="metric-v" title="">—</span>
+                <div class="geometry-flow-metrics" id="geometryFlowMetrics">
+                  <div class="geometry-flow-metric">
+                    <span class="metric-k">Containment</span>
+                    <div class="geometry-flow-metric__row">
+                      <span id="geometryFlowContainment" class="geometry-flow-metric__value">—</span>
+                      <span id="geometryFlowContainmentHint" class="geometry-flow-metric__hint">—</span>
+                    </div>
+                    <div class="geometry-flow-microbar" aria-hidden="true"><span id="geometryFlowContainmentBar" class="geometry-flow-microbar__fill"></span></div>
                   </div>
-                  <div class="geometry-flow-stat">
-                    <span class="metric-k">Outside tolerance</span>
-                    <span id="geometryOutSync" class="metric-v" title="">—</span>
+                  <div class="geometry-flow-metric">
+                    <span class="metric-k">Drift</span>
+                    <div class="geometry-flow-metric__row">
+                      <span id="geometryFlowDrift" class="geometry-flow-metric__value">—</span>
+                      <span id="geometryFlowDriftHint" class="geometry-flow-metric__hint">—</span>
+                    </div>
+                    <div class="geometry-flow-metric__sub" id="geometryFlowDriftDir" title="">—</div>
+                    <div class="geometry-flow-microbar" aria-hidden="true"><span id="geometryFlowDriftBar" class="geometry-flow-microbar__fill"></span></div>
                   </div>
-                  <div class="geometry-flow-stat">
-                    <span class="metric-k">Links above drift threshold</span>
-                    <span id="geometryShiftingLinks" class="metric-v" title="">—</span>
+                  <div class="geometry-flow-metric">
+                    <span class="metric-k">Instability</span>
+                    <div class="geometry-flow-metric__row">
+                      <span id="geometryFlowInstability" class="geometry-flow-metric__value">—</span>
+                      <span id="geometryFlowInstabilityHint" class="geometry-flow-metric__hint">—</span>
+                    </div>
+                    <div class="geometry-flow-microbar" aria-hidden="true"><span id="geometryFlowInstabilityBar" class="geometry-flow-microbar__fill"></span></div>
+                  </div>
+                  <div class="geometry-flow-metric">
+                    <span class="metric-k">Link agreement</span>
+                    <div class="geometry-flow-metric__row">
+                      <span id="geometryFlowLinkAgree" class="geometry-flow-metric__value">—</span>
+                      <span id="geometryFlowLinkHint" class="geometry-flow-metric__hint">—</span>
+                    </div>
+                    <div class="geometry-flow-microbar" aria-hidden="true"><span id="geometryFlowLinkBar" class="geometry-flow-microbar__fill"></span></div>
                   </div>
                 </div>
+                <p class="geometry-flow-manifold-line">
+                  <span class="metric-k">Sensors</span>
+                  <span class="geometry-flow-manifold-line__v"
+                    ><span id="geometryInsideManifold">—</span> inside manifold ·
+                    <span id="geometryOutsideManifold">—</span> outside</span
+                  >
+                  <span class="geometry-flow-manifold-line__sep" aria-hidden="true">·</span>
+                  <span class="metric-k">Edge pressure</span>
+                  <span id="geometryBoundaryPressure" class="geometry-flow-manifold-line__v" title="">—</span>
+                </p>
                 <div class="geometry-run-metrics" id="geometryRunMetrics">
-                  <div class="geometry-metric-row"><span class="metric-k">Structural assessment</span><span id="geometryStructuralAssessment" class="metric-v" title="">—</span></div>
+                  <div class="geometry-metric-row"><span class="metric-k">Flow state</span><span id="geometryStructuralAssessment" class="metric-v" title="">—</span></div>
                   <div class="geometry-metric-row"><span class="metric-k">Engine phase</span><span id="geometryEnginePhase" class="metric-v" title="">—</span></div>
                   <div class="geometry-metric-row"><span class="metric-k">Risk</span><span id="geometryRisk" class="metric-v">-</span></div>
-                  <div class="geometry-metric-row"><span class="metric-k">Drift</span><span id="geometryDrift" class="metric-v">-</span></div>
-                  <div class="geometry-metric-row"><span class="metric-k">Instability</span><span id="geometryComposite" class="metric-v">-</span></div>
+                  <div class="geometry-metric-row geometry-metric-row--engine-raw hidden">
+                    <span class="metric-k">Drift (engine)</span><span id="geometryDrift" class="metric-v">-</span>
+                  </div>
+                  <div class="geometry-metric-row geometry-metric-row--engine-raw hidden">
+                    <span class="metric-k">Instability (engine)</span><span id="geometryComposite" class="metric-v">-</span>
+                  </div>
                 </div>
                 <p id="geometryMetricDefinitions" class="geometry-metric-definitions subtitle geometry-meta-flow" aria-label="Metric definitions"></p>
                 <div id="geometryLegend" class="geometry-legend geometry-legend--minimal" aria-hidden="true"></div>

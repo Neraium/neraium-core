@@ -1179,6 +1179,8 @@ const state = {
     flowCoherence: 0.75,
     /** Set by 2D structural-flow field model (blended coherence); used for panel + summary when present. */
     structuralFlowCoherence01: null,
+    /** Full field-derived interpretation (2D); null when only payload-level fallback applies. */
+    structuralFlowDerived: null,
     flowDriftN: 0,
     flowInstN: 0,
     flowEdgeScratch: null,
@@ -1812,6 +1814,7 @@ function disposeGeometryRenderer() {
   g.canvas2d = null;
   g.useCanvas2d = false;
   g.structuralFlowCoherence01 = null;
+  g.structuralFlowDerived = null;
   g.flowEdgeScratch = null;
   if (g.resizeObserver) {
     try {
@@ -2208,7 +2211,7 @@ function deriveStructuralAssessment(m) {
 /**
  * One technical paragraph aligned to computeStructuralFlowMetrics + deriveStructuralAssessment.
  */
-function buildStructuralFlowNarrative(m, assessment) {
+function buildStructuralFlowNarrative(m, assessment, derived) {
   const n = m.totalSensors;
   const L = m.totalLinks;
   const Lmax = m.maxPairwiseLinks;
@@ -2221,17 +2224,23 @@ function buildStructuralFlowNarrative(m, assessment) {
     sentences.push(
       `The projection shows ${n} sensor${n === 1 ? "" : "s"} and ${L} displayed pairwise link${L === 1 ? "" : "s"} (a complete graph on ${n} nodes has ${Lmax}).`,
     );
-    sentences.push(`${w} sensor${w === 1 ? "" : "s"} are within relational tolerance; ${o} outside tolerance.`);
+    sentences.push(`${w} read as inside the valid manifold; ${o} outside (relational tolerance).`);
   }
   if (L > 0) {
     sentences.push(`${d} of ${L} displayed link${L === 1 ? "" : "s"} exceed the pairwise drift threshold.`);
   } else if (n > 1) {
     sentences.push("No pairwise links are included in this projection.");
   }
-  sentences.push(
-    `Structural coherence is ${pch}% (tolerance share blended with pairwise drift containment, field containment, and centroid offset when the flow field is sampled).`,
-  );
-  sentences.push(`Structural assessment: ${assessment.label}.`);
+  if (derived && !derived.isFallback) {
+    sentences.push(
+      `Integrity ${pch}% with field containment ${Math.round(derived.containmentScore * 100)}% and flow state “${derived.statusLabel}”.`,
+    );
+  } else {
+    sentences.push(
+      `Integrity score is ${pch}% (tolerance and links blended with field containment when the flow grid is active).`,
+    );
+  }
+  sentences.push(`Flow state: ${assessment.label}.`);
   const engine = String(m.engineState || "").trim();
   if (engine && /stable|nominal|ok/i.test(engine) && (assessment.tone === "HIGH" || assessment.tone === "MEDIUM")) {
     sentences.push(
@@ -2261,10 +2270,9 @@ function structuralProjectionCaption(payload) {
 
 function structuralMetricDefinitionsFootnote() {
   return (
-    "Structural coherence: in the 2D flow view, a blended 0–100% score from tolerance share, pairwise drift ratio, " +
-    "how much sampled energy sits in the core region, and centroid offset; otherwise within ÷ total sensors. " +
-    "Within / outside tolerance: counts from the same snapshot. " +
-    "Links above drift threshold: pairwise relationship change versus baseline exceeds the configured limit."
+    "Integrity: blended field score. Containment: energy in the core band. Drift: net flow magnitude (arrow direction). " +
+    "Instability: engine composite. Link agreement: share of links under drift threshold. " +
+    "Boundary pressure: energy near the dashed edge. Inside/outside manifold: sensor tolerance counts."
   );
 }
 
@@ -2825,74 +2833,148 @@ function updateStructuralFlowCopy(payload) {
     el.textContent = "No sensors in this structural view.";
     return;
   }
-  el.textContent = `${n} sensor${n === 1 ? "" : "s"} · ${lmax} possible pairwise link${lmax === 1 ? "" : "s"} (complete graph) · layout encodes relational position; height encodes deviation magnitude.`;
+  el.textContent = `${n} sensor${n === 1 ? "" : "s"} · ${lmax} possible pairwise links · plane = relational layout; field view = energy on the manifold.`;
+}
+
+function setStructuralFlowMicrobar(el, frac01) {
+  if (!el) return;
+  const w = Math.max(0, Math.min(100, Math.round(frac01 * 100)));
+  el.style.width = `${w}%`;
 }
 
 function updateGeometryFlowPanel(payload, opts) {
   const cohEl = qs("#geometryCoherence");
-  const inEl = qs("#geometryInSync");
-  const outEl = qs("#geometryOutSync");
-  const shiftEl = qs("#geometryShiftingLinks");
   const assessEl = qs("#geometryStructuralAssessment");
   const engineEl = qs("#geometryEnginePhase");
   const defEl = qs("#geometryMetricDefinitions");
   const details = qs("#geometryDetails");
+  const g = state.geometry3d;
+
+  const elContain = qs("#geometryFlowContainment");
+  const elContainHint = qs("#geometryFlowContainmentHint");
+  const elContainBar = qs("#geometryFlowContainmentBar");
+  const elDrift = qs("#geometryFlowDrift");
+  const elDriftHint = qs("#geometryFlowDriftHint");
+  const elDriftBar = qs("#geometryFlowDriftBar");
+  const elDriftDir = qs("#geometryFlowDriftDir");
+  const elInst = qs("#geometryFlowInstability");
+  const elInstHint = qs("#geometryFlowInstabilityHint");
+  const elInstBar = qs("#geometryFlowInstabilityBar");
+  const elLink = qs("#geometryFlowLinkAgree");
+  const elLinkHint = qs("#geometryFlowLinkHint");
+  const elLinkBar = qs("#geometryFlowLinkBar");
+  const elInManifold = qs("#geometryInsideManifold");
+  const elOutManifold = qs("#geometryOutsideManifold");
+  const elPressure = qs("#geometryBoundaryPressure");
+
   if (!payload || !payload.available) {
-    if (cohEl) cohEl.textContent = "—";
-    if (cohEl) cohEl.removeAttribute("title");
-    if (inEl) inEl.textContent = "—";
-    if (inEl) inEl.removeAttribute("title");
-    if (outEl) outEl.textContent = "—";
-    if (outEl) outEl.removeAttribute("title");
-    if (shiftEl) shiftEl.textContent = "—";
-    if (shiftEl) shiftEl.removeAttribute("title");
-    if (assessEl) assessEl.textContent = "—";
-    if (assessEl) assessEl.removeAttribute("title");
-    if (engineEl) engineEl.textContent = "—";
-    if (engineEl) engineEl.removeAttribute("title");
+    if (cohEl) {
+      cohEl.textContent = "—";
+      cohEl.removeAttribute("title");
+    }
+    if (assessEl) {
+      assessEl.textContent = "—";
+      assessEl.removeAttribute("title");
+    }
+    if (engineEl) {
+      engineEl.textContent = "—";
+      engineEl.removeAttribute("title");
+    }
     if (defEl) defEl.textContent = "";
     if (details) details.setAttribute("data-geometry-risk", "UNKNOWN");
+    [
+      elContain,
+      elContainHint,
+      elDrift,
+      elDriftHint,
+      elInst,
+      elInstHint,
+      elLink,
+      elLinkHint,
+      elInManifold,
+      elOutManifold,
+      elPressure,
+    ].forEach((el) => {
+      if (el) el.textContent = "—";
+    });
+    if (elDriftDir) {
+      elDriftDir.textContent = "—";
+      elDriftDir.removeAttribute("title");
+    }
+    setStructuralFlowMicrobar(elContainBar, 0);
+    setStructuralFlowMicrobar(elDriftBar, 0);
+    setStructuralFlowMicrobar(elInstBar, 0);
+    setStructuralFlowMicrobar(elLinkBar, 0);
     updateStructuralFlowCopy(payload || { available: false, nodes: [] });
     return;
   }
-  const base = computeStructuralFlowMetrics(payload);
-  const m =
-    opts?.structuralFlowCoherence01 != null && Number.isFinite(opts.structuralFlowCoherence01)
-      ? { ...base, coherence01: opts.structuralFlowCoherence01 }
-      : base;
-  const assessment = deriveStructuralAssessment(m);
-  const c = m.coherence01;
+
+  const mBase = computeStructuralFlowMetrics(payload);
+  const derived =
+    g?.useCanvas2d && g.structuralFlowDerived ? g.structuralFlowDerived : deriveStructuralFlowDerivedFallback(payload);
+  let displayIntegrity = derived.integrityScore;
+  if (opts?.structuralFlowCoherence01 != null && Number.isFinite(opts.structuralFlowCoherence01)) {
+    displayIntegrity = opts.structuralFlowCoherence01;
+  }
+
+  const integ = displayIntegrity;
   if (cohEl) {
-    cohEl.textContent = `${Math.round(c * 100)}%`;
+    cohEl.textContent = `${Math.round(integ * 100)}%`;
     cohEl.title =
-      "Structural coherence (0–100%): blended field score (tolerance share, pairwise drift, energy containment, centroid offset) when the 2D flow view is active; otherwise sensors within tolerance ÷ total.";
+      "Integrity score (0–100%): blended field read — sensor tolerance, link agreement, energy containment in the core band, and centroid offset. Same blend as the heatmap threshold when the flow field is sampled.";
   }
-  if (inEl) {
-    inEl.textContent = String(m.withinTolerance);
-    inEl.title = "Count of sensors inside the relational tolerance band for this snapshot.";
+
+  const c01 = derived.containmentScore;
+  if (elContain) elContain.textContent = `${Math.round(c01 * 100)}%`;
+  if (elContainHint)
+    elContainHint.textContent = structuralFlowBandHint(c01, 0.45, 0.72, "Low", "Mixed", "Stable");
+  setStructuralFlowMicrobar(elContainBar, c01);
+
+  const d01 = derived.driftMag01;
+  if (elDrift) {
+    elDrift.textContent = d01.toFixed(2);
+    elDrift.title = `Normalized net drift (0–1); raw mean |V| ≈ ${derived.driftMagnitude.toFixed(3)}.`;
   }
-  if (outEl) {
-    outEl.textContent = String(m.outsideTolerance);
-    outEl.title = "Count of sensors outside the relational tolerance band for this snapshot.";
+  if (elDriftHint)
+    elDriftHint.textContent = structuralFlowBandHint(d01, 0.28, 0.55, "Calm", "Rising", "High");
+  setStructuralFlowMicrobar(elDriftBar, d01);
+  if (elDriftDir) {
+    elDriftDir.textContent =
+      derived.driftCompass && derived.driftCompass !== "—"
+        ? `Net ${derived.driftCompass}`
+        : "Net —";
+    elDriftDir.title = "Direction of E-weighted mean flow (matches the cyan arrow).";
   }
-  if (shiftEl) {
-    const denom = m.totalLinks;
-    const num = m.driftedLinks;
-    shiftEl.textContent = denom > 0 ? `${num} / ${denom}` : String(num);
-    shiftEl.title =
-      "Pairwise links whose drift versus baseline exceeds the current threshold. Numerator: flagged links; denominator: links shown in this projection (with N sensors, a complete graph has N·(N−1)/2 links).";
+
+  const i01 = derived.instabilityScore;
+  if (elInst) elInst.textContent = `${Math.round(i01 * 100)}%`;
+  if (elInstHint)
+    elInstHint.textContent = structuralFlowBandHint(i01, 0.25, 0.55, "Calm", "Active", "Severe");
+  setStructuralFlowMicrobar(elInstBar, i01);
+
+  const l01 = derived.linkAgreementScore;
+  if (elLink) elLink.textContent = `${Math.round(l01 * 100)}%`;
+  if (elLinkHint)
+    elLinkHint.textContent = structuralFlowBandHint(l01, 0.45, 0.75, "Weak", "Mixed", "Strong");
+  setStructuralFlowMicrobar(elLinkBar, l01);
+
+  if (elInManifold) elInManifold.textContent = String(derived.insideCount);
+  if (elOutManifold) elOutManifold.textContent = String(derived.outsideCount);
+  if (elPressure) {
+    elPressure.textContent = `${Math.round(derived.boundaryPressureScore * 100)}%`;
+    elPressure.title = "Share of field energy in the border band next to the dashed manifold edge.";
   }
+
   if (assessEl) {
-    assessEl.textContent = assessment.label;
-    assessEl.title = assessment.detail;
+    assessEl.textContent = derived.statusLabel;
+    assessEl.title = derived.statusDetail;
   }
   if (engineEl) {
-    engineEl.textContent = toPretty(m.engineState);
-    engineEl.title =
-      "Phase label from the engine result (may differ from structural assessment when tolerance and drift tell a different story).";
+    engineEl.textContent = toPretty(mBase.engineState);
+    engineEl.title = "Engine phase label from this run (orthogonal to the field interpretation).";
   }
   if (defEl) defEl.textContent = structuralMetricDefinitionsFootnote();
-  if (details) details.setAttribute("data-geometry-risk", assessment.tone || "UNKNOWN");
+  if (details) details.setAttribute("data-geometry-risk", derived.tone || "UNKNOWN");
   updateStructuralFlowCopy(payload);
 }
 
@@ -2900,12 +2982,17 @@ function geometryFlowSummaryString(payload) {
   if (!payload?.available) return "—";
   const base = computeStructuralFlowMetrics(payload);
   const g = state.geometry3d;
+  const derived = g?.useCanvas2d && g.structuralFlowDerived ? g.structuralFlowDerived : null;
   const m =
-    g?.useCanvas2d && typeof g.structuralFlowCoherence01 === "number"
-      ? { ...base, coherence01: g.structuralFlowCoherence01 }
-      : base;
-  const assessment = deriveStructuralAssessment(m);
-  return buildStructuralFlowNarrative(m, assessment);
+    derived && typeof derived.integrityScore === "number"
+      ? { ...base, coherence01: derived.integrityScore }
+      : g?.useCanvas2d && typeof g.structuralFlowCoherence01 === "number"
+        ? { ...base, coherence01: g.structuralFlowCoherence01 }
+        : base;
+  const assessment = derived
+    ? { label: derived.statusLabel, detail: derived.statusDetail, tone: derived.tone }
+    : deriveStructuralAssessment(m);
+  return buildStructuralFlowNarrative(m, assessment, derived);
 }
 
 function scheduleGeometryResize(g, fn) {
@@ -3035,6 +3122,173 @@ function structuralFlowForceAt(pu, pv, nodes, edges, normToPlane, driftDir, drif
   return { fx, fy };
 }
 
+/** Share of sampled field energy in the ~10% border band (pressure at the dashed manifold edge). */
+function computeStructuralFlowBoundaryPressure01(E, NX, NY) {
+  const band = 0.1;
+  let margin = 0;
+  let tot = 0;
+  for (let i = 0; i <= NX; i += 1) {
+    for (let j = 0; j <= NY; j += 1) {
+      const u = i / NX;
+      const v = j / NY;
+      const e = E[i][j];
+      tot += e;
+      const ed = Math.min(u, 1 - u, v, 1 - v);
+      if (ed < band) margin += e;
+    }
+  }
+  return tot > 1e-12 ? margin / tot : 0;
+}
+
+/** 8-point compass for net drift in normalized u,v (v down on screen). */
+function formatStructuralFlowCompass8(dx, dy) {
+  if (Math.hypot(dx, dy) < 1e-7) return "—";
+  const ang = Math.atan2(-dy, dx);
+  const sec = (Math.round(ang / (Math.PI / 4)) + 8) % 8;
+  const rosa = ["E", "NE", "N", "NW", "W", "SW", "S", "SE"];
+  return rosa[sec];
+}
+
+function structuralFlowBandHint(v, t0, t1, a, b, c) {
+  if (v <= t0) return a;
+  if (v >= t1) return c;
+  return b;
+}
+
+/**
+ * Flow state label for the side panel — driven by the same containment / drift / instability / escape signals as the canvas.
+ */
+function deriveStructuralFlowFieldStatus(d) {
+  const { integrity01, containment01, driftMag01, instN, escapeRatio, boundaryPressure01 } = d;
+  if (escapeRatio > 0.4 || containment01 < 0.36) {
+    return {
+      label: "Escaping boundary",
+      detail: "Iso-contour or energy is leaving the valid manifold (orange/red segments).",
+      tone: "HIGH",
+    };
+  }
+  if (integrity01 < 0.3 && driftMag01 > 0.52 && instN > 0.48) {
+    return {
+      label: "Unstable drift",
+      detail: "Strong net flow and high fragmentation relative to baseline.",
+      tone: "HIGH",
+    };
+  }
+  if (boundaryPressure01 > 0.44 && containment01 < 0.55) {
+    return {
+      label: "Boundary stress",
+      detail: "Edge-weighted energy is high; contour is compressing the border.",
+      tone: "MEDIUM",
+    };
+  }
+  if (boundaryPressure01 > 0.26 && driftMag01 > 0.36) {
+    return {
+      label: "Under pressure",
+      detail: "Net drift and edge band energy are elevated; watch the dashed boundary.",
+      tone: "MEDIUM",
+    };
+  }
+  if (containment01 > 0.68 && driftMag01 < 0.34 && instN < 0.34 && escapeRatio < 0.2) {
+    return {
+      label: "Contained",
+      detail: "Energy centroid and iso-contour favor the interior of the manifold.",
+      tone: "LOW",
+    };
+  }
+  return {
+    label: "Monitoring",
+    detail: "Mixed field signals; no single failure mode dominates this snapshot.",
+    tone: "LOW",
+  };
+}
+
+/**
+ * Single object used by the 2D canvas + side panel: same field model, no duplicate math.
+ * Fallback path uses payload metrics only when the grid has not been sampled (3D-only view).
+ */
+function finalizeStructuralFlowDerivedState(model, segs, driftN, instN) {
+  let escaped = 0;
+  const total = segs.length;
+  for (let i = 0; i < segs.length; i += 1) {
+    const s = segs[i];
+    if (structuralFlowSegmentEscapesManifold(s[0], s[1], s[2], s[3])) escaped += 1;
+  }
+  const escapeRatio = total > 0 ? escaped / total : 0;
+  const boundaryPressure01 = computeStructuralFlowBoundaryPressure01(model.E, model.NX, model.NY);
+  const driftMag = Math.hypot(model.netVx, model.netVy);
+  const driftMag01 = Math.max(0, Math.min(1, driftMag * 3.2 + driftN * 0.38));
+  const containment01 = model.containmentMassRatio;
+  const integrity01 = model.coherence01;
+  const st = deriveStructuralFlowFieldStatus({
+    integrity01,
+    containment01,
+    driftMag01,
+    instN,
+    escapeRatio,
+    boundaryPressure01,
+  });
+  const len = driftMag;
+  const nx = len > 1e-9 ? model.netVx / len : 0;
+  const ny = len > 1e-9 ? model.netVy / len : 0;
+  return {
+    integrityScore: integrity01,
+    containmentScore: containment01,
+    driftMagnitude: driftMag,
+    driftMag01,
+    driftDirection: { x: nx, y: ny },
+    driftCompass: formatStructuralFlowCompass8(nx, ny),
+    instabilityScore: instN,
+    linkAgreementScore: model.pairAgreement01,
+    insideCount: model.metrics.withinTolerance,
+    outsideCount: model.metrics.outsideTolerance,
+    boundaryPressureScore: boundaryPressure01,
+    escapedSegments: escaped,
+    totalSegments: total,
+    escapeRatio,
+    statusLabel: st.label,
+    statusDetail: st.detail,
+    tone: st.tone,
+    isFallback: false,
+  };
+}
+
+function deriveStructuralFlowDerivedFallback(payload) {
+  const m = computeStructuralFlowMetrics(payload);
+  const { driftN, instN } = flowDriftInstabilityNorm(payload);
+  const linkAgreement = m.totalLinks > 0 ? 1 - Math.min(1, m.driftedLinks / m.totalLinks) : 1;
+  const containment01 = m.totalSensors > 0 ? m.withinTolerance / m.totalSensors : 0;
+  const driftMag01 = Math.max(0, Math.min(1, driftN));
+  const boundaryPressure01 = Math.max(0, Math.min(1, 1 - containment01));
+  const st = deriveStructuralFlowFieldStatus({
+    integrity01: m.coherence01,
+    containment01,
+    driftMag01,
+    instN,
+    escapeRatio: 0,
+    boundaryPressure01,
+  });
+  return {
+    integrityScore: m.coherence01,
+    containmentScore: containment01,
+    driftMagnitude: driftN,
+    driftMag01,
+    driftDirection: { x: 1, y: 0 },
+    driftCompass: "—",
+    instabilityScore: instN,
+    linkAgreementScore: linkAgreement,
+    insideCount: m.withinTolerance,
+    outsideCount: m.outsideTolerance,
+    boundaryPressureScore: boundaryPressure01,
+    escapedSegments: 0,
+    totalSegments: 0,
+    escapeRatio: 0,
+    statusLabel: st.label,
+    statusDetail: st.detail,
+    tone: st.tone,
+    isFallback: true,
+  };
+}
+
 /**
  * Single shared model: sample V on a 60×30 grid, E = |V|², coherence from tolerance + pairwise + containment + centroid.
  */
@@ -3133,6 +3387,9 @@ function buildStructuralFlowFieldModel(payload, normToPlane, driftDir, driftN, i
     maxE,
     T,
     coherence01,
+    containmentMassRatio: containment,
+    pairAgreement01: pairScore,
+    tolRatio,
     cu,
     cv,
     netVx,
@@ -3352,6 +3609,7 @@ function drawStructuralFlow2dCanvas(ctx, width, height, payload, _t, _coherence,
   ctx.fill();
 
   const segs = structuralFlowMarchingSquaresSegments(E, NX, NY, T);
+  state.geometry3d.structuralFlowDerived = finalizeStructuralFlowDerivedState(model, segs, driftN, instN);
   segs.forEach((s) => {
     const u1 = s[0];
     const v1 = s[1];
@@ -3411,8 +3669,10 @@ function drawStructuralFlow2dCanvas(ctx, width, height, payload, _t, _coherence,
 
   ctx.fillStyle = "rgba(226, 232, 240, 0.55)";
   ctx.font = "11px system-ui, Segoe UI, sans-serif";
+  const _st = state.geometry3d.structuralFlowDerived;
+  const _lbl = _st?.statusLabel || "—";
   ctx.fillText(
-    `Coherence ${Math.round(coherence01 * 100)}% · within tolerance ${m.withinTolerance}/${m.totalSensors}`,
+    `Integrity ${Math.round(coherence01 * 100)}% · ${_lbl} · inside manifold ${m.withinTolerance}/${m.totalSensors}`,
     innerX + 6,
     innerY + 14,
   );
