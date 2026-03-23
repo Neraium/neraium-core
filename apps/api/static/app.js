@@ -880,31 +880,33 @@ async function prepareDemoRuns() {
       { name: `Demo Watch ${suffix}`, profile: "watch", siteId: "north-yard", assetId: "compressor-B" },
       { name: `Demo Escalation ${suffix}`, profile: "critical", siteId: "south-yard", assetId: "compressor-C" },
     ];
-    const created = [];
-    for (const scenario of scenarios) {
-      const runEnv = await fetchJson(apiUrl("/runs", tenantScopeParams()), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: scenario.name,
-          config: { source: "demo-mode", scenario: scenario.profile },
-          activate: false,
-        }),
-      });
-      const run = runEnv.run;
-      created.push(run);
-      const items = buildDemoScenarioItems(scenario);
-      await fetchJson(apiUrl("/ingest/batch", tenantScopeParams({ run_id: run.run_id })), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          items: items.map((item) => ({
-            ...item,
-            customer_id: customerIdValue(state.tenant.customerId),
-          })),
-        }),
-      });
-    }
+    const cust = customerIdValue(state.tenant.customerId);
+    const created = await Promise.all(
+      scenarios.map(async (scenario) => {
+        const runEnv = await fetchJson(apiUrl("/runs", tenantScopeParams()), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            name: scenario.name,
+            config: { source: "demo-mode", scenario: scenario.profile },
+            activate: false,
+          }),
+        });
+        const run = runEnv.run;
+        const items = buildDemoScenarioItems(scenario);
+        await fetchJson(apiUrl("/ingest/batch", tenantScopeParams({ run_id: run.run_id })), {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            items: items.map((item) => ({
+              ...item,
+              customer_id: cust,
+            })),
+          }),
+        });
+        return run;
+      }),
+    );
     const focusRun = created[created.length - 1] || null;
     if (focusRun?.run_id) {
       await fetchJson(apiUrl(`/runs/${encodeURIComponent(focusRun.run_id)}/activate`, tenantScopeParams()), {
@@ -1021,8 +1023,10 @@ const state = {
 
 const TENANT_STORAGE_KEY = "neraium_customer_id";
 const DEMO_MODE_STORAGE_KEY = "neraium_demo_mode";
-/** Demo timeline: advance one result every 5s (was 850ms). */
-const DEMO_PLAYBACK_INTERVAL_MS = 5000;
+/** Demo timeline: advance one snapshot per interval (tunable; lower = faster review). */
+const DEMO_PLAYBACK_INTERVAL_MS = 1600;
+/** How often to poll `/ingest/jobs/{id}` after CSV upload (lower = snappier status UI). */
+const INGEST_JOB_POLL_MS = 400;
 /** Default on: lighter WebGL + simpler motion. Set localStorage "neraium_structural_flow_perf" to "0" for richer visuals. */
 const GEOMETRY_FLOW_PERF_KEY = "neraium_structural_flow_perf";
 /** Origin marker + debug visuals for structural flow. `true` always shows the marker; when `false`, use URL `?geomDebug=1` instead. */
@@ -3254,7 +3258,7 @@ async function waitForIngestJob(jobId) {
         reject(err);
         return;
       }
-      state.uploadJob.pollTimer = window.setTimeout(tick, 700);
+      state.uploadJob.pollTimer = window.setTimeout(tick, INGEST_JOB_POLL_MS);
     };
     tick();
   });
