@@ -1342,6 +1342,32 @@ function scheduleHeavyWork(fn) {
   }
 }
 
+/** Prefer rAF for geometry scene build so the 3D view appears promptly (idle can delay hundreds of ms). */
+function scheduleGeometrySceneBuild(fn) {
+  if (typeof window.requestAnimationFrame !== "function") {
+    window.setTimeout(fn, 0);
+    return;
+  }
+  window.requestAnimationFrame(() => {
+    window.requestAnimationFrame(fn);
+  });
+}
+
+let threeInitPreloadPromise = null;
+/** Ensures the ESM three-init bundle is evaluated (dedupes with the module script tag when present). */
+function ensureThreeModulesLoaded() {
+  if (typeof window !== "undefined" && window.__THREE_ESM) {
+    return Promise.resolve();
+  }
+  if (!threeInitPreloadPromise) {
+    threeInitPreloadPromise = import("/web/three-init.mjs").catch((err) => {
+      threeInitPreloadPromise = null;
+      throw err;
+    });
+  }
+  return threeInitPreloadPromise;
+}
+
 function setGeometryViewportLoading(on) {
   const viewport = qs("#geometryViewport");
   const canvasWrap = qs("#geometryCanvasWrap");
@@ -1723,6 +1749,14 @@ function disposeGeometryRenderer() {
     g.hoverRaf = null;
   }
   g.pendingHoverEvt = null;
+  if (g.iblDeferredRaf != null) {
+    try {
+      window.cancelAnimationFrame(g.iblDeferredRaf);
+    } catch (_e) {
+      // no-op
+    }
+    g.iblDeferredRaf = null;
+  }
   Object.values(g.nodeLabelById || {}).forEach((spr) => {
     try {
       if (spr?.material?.map) spr.material.map.dispose?.();
@@ -3337,6 +3371,9 @@ function createNodeLabelSprite(three, text, colorHex = 0xd9e6ff) {
   ctx.fillText(String(text || ""), canvas.width / 2, canvas.height / 2);
   const texture = new three.CanvasTexture(canvas);
   texture.needsUpdate = true;
+  if (three.SRGBColorSpace) {
+    texture.colorSpace = three.SRGBColorSpace;
+  }
   const material = new three.SpriteMaterial({ map: texture, transparent: true, depthWrite: false });
   const sprite = new three.Sprite(material);
   sprite.scale.set(0.58, 0.145, 1);
@@ -3416,6 +3453,8 @@ function renderGeometryScene(payload, viewportDims) {
     antialias: true,
     alpha: true,
     powerPreference: "high-performance",
+    stencil: false,
+    depth: true,
   });
   const dprCap = perf ? 1.5 : 2;
   renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, dprCap));
@@ -3427,7 +3466,7 @@ function renderGeometryScene(payload, viewportDims) {
   }
   if (three.ACESFilmicToneMapping !== undefined) {
     renderer.toneMapping = three.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = perf ? 0.92 : 1.02;
+    renderer.toneMappingExposure = perf ? 0.94 : 1.06;
   }
   renderer.shadowMap.enabled = !perf;
   if (three.PCFSoftShadowMap) {
@@ -3442,32 +3481,30 @@ function renderGeometryScene(payload, viewportDims) {
 
   const scene = new three.Scene();
   scene.background = null;
-  scene.fog = new three.FogExp2(perf ? 0x060a14 : 0x0a1424, perf ? 0.056 : 0.04);
+  scene.fog = new three.FogExp2(perf ? 0x060a14 : 0x0a1424, perf ? 0.05 : 0.034);
 
   const camera = new three.PerspectiveCamera(44, width / height, 0.01, 60);
   camera.position.set(0, 0.45, 3.05);
   scene.add(camera);
 
-  const hemi = new three.HemisphereLight(0x8cb8e8, 0x0a1528, perf ? 0.62 : 0.48);
+  const hemi = new three.HemisphereLight(0x9ec5f0, 0x0a1528, perf ? 0.64 : 0.52);
   scene.add(hemi);
-  const key = new three.DirectionalLight(0xcee8ff, perf ? 0.68 : 0.98);
+  const key = new three.DirectionalLight(0xd8ecff, perf ? 0.68 : 1.02);
   key.position.set(2.4, 3.6, 2.2);
   if (!perf) {
     key.castShadow = true;
-    key.shadow.mapSize.set(2048, 2048);
+    key.shadow.mapSize.set(1024, 1024);
     key.shadow.bias = -0.00025;
     key.shadow.normalBias = 0.025;
   }
   scene.add(key);
   scene.add(key.target);
-  const fill = new three.DirectionalLight(0x14b8a6, perf ? 0.24 : 0.34);
+  const fill = new three.DirectionalLight(0x2dd4bf, perf ? 0.26 : 0.38);
   fill.position.set(-2.2, 1.2, -1.8);
   scene.add(fill);
-  const rim = new three.PointLight(0x22d3ee, perf ? 0.32 : 0.48, 9, 2);
+  const rim = new three.PointLight(0x38bdf8, perf ? 0.34 : 0.52, 9, 2);
   rim.position.set(0, 0.85, 0);
   scene.add(rim);
-
-  setupGeometryIBL(three, renderer, scene, perf);
 
   const geomDebug = DEBUG_GEOMETRY || geometryFlowDebugEnabled();
   if (geomDebug) {
@@ -3735,12 +3772,14 @@ function renderGeometryScene(payload, viewportDims) {
       const planeW = Math.max(10, Math.max(size.x, size.z) * 2.05);
       const planeGeom = new three.PlaneGeometry(planeW, planeW, 1, 1);
       const planeMat = new three.MeshStandardMaterial({
-        color: 0x070d16,
-        metalness: 0.08,
-        roughness: 0.94,
-        envMapIntensity: 0.35,
+        color: 0x080f18,
+        metalness: 0.06,
+        roughness: 0.96,
+        envMapIntensity: 0.42,
+        emissive: 0x020508,
+        emissiveIntensity: 0.06,
         transparent: true,
-        opacity: 0.92,
+        opacity: 0.94,
       });
       const ground = new three.Mesh(planeGeom, planeMat);
       ground.rotation.x = -Math.PI / 2;
@@ -4097,6 +4136,19 @@ function renderGeometryScene(payload, viewportDims) {
     }
   }
   animate();
+
+  if (!perf) {
+    const sceneRef = scene;
+    const rendererRef = renderer;
+    const cameraRef = camera;
+    g.iblDeferredRaf = window.requestAnimationFrame(() => {
+      g.iblDeferredRaf = null;
+      const live = state.geometry3d;
+      if (!live || live.scene !== sceneRef || !live.renderer) return;
+      setupGeometryIBL(three, rendererRef, sceneRef, false);
+      live.renderer.render(sceneRef, cameraRef);
+    });
+  }
 }
 
 async function loadRunGeometry(runId, resultId = null) {
@@ -4110,9 +4162,11 @@ async function loadRunGeometry(runId, resultId = null) {
   const params = tenantScopeParams(resultId != null ? { result_id: resultId } : {});
   let payload;
   try {
-    payload = await fetchJson(
+    const fetchPromise = fetchJson(
       apiUrl(`/runs/${encodeURIComponent(runId)}/geometry`, params)
     );
+    await Promise.all([fetchPromise, ensureThreeModulesLoaded()]);
+    payload = await fetchPromise;
   } catch (_err) {
     clearGeometryModelsPanel();
     if (statusEl) statusEl.classList.add("hidden");
@@ -4143,7 +4197,7 @@ async function loadRunGeometry(runId, resultId = null) {
       return;
     }
     await new Promise((resolve, reject) => {
-      scheduleHeavyWork(() => {
+      scheduleGeometrySceneBuild(() => {
         try {
           renderGeometryScene(payload, dims);
           resolve();
