@@ -1,24 +1,18 @@
 /**
- * Loads Three.js and addons as ES modules; exposes globals for app.js (classic script).
- *
- * Core uses an absolute URL so it does not depend on import maps (older Safari / edge cases).
- * Addon files still import `three` internally; the import map in index.html must load in <head>.
+ * Loads Three.js + addons from jsDelivr (ESM). Same version as download_three_vendor.py.
+ * Does not rely on the API serving /web/vendor/three — only /web/three-init.mjs must load.
  */
-import * as THREE from "/web/vendor/three/build/three.module.js";
+import * as THREE from "three";
 
 window.__THREE_ESM = THREE;
 
 try {
-  const { OrbitControls } = await import(
-    "/web/vendor/three/examples/jsm/controls/OrbitControls.js",
-  );
-  const { RoomEnvironment } = await import(
-    "/web/vendor/three/examples/jsm/environments/RoomEnvironment.js",
-  );
-  const { Line2 } = await import("/web/vendor/three/examples/jsm/lines/Line2.js");
-  const { LineGeometry } = await import("/web/vendor/three/examples/jsm/lines/LineGeometry.js");
-  const { LineMaterial } = await import("/web/vendor/three/examples/jsm/lines/LineMaterial.js");
-  const { PMREMGenerator } = await import("/web/vendor/three/examples/jsm/utils/PMREMGenerator.js");
+  const { OrbitControls } = await import("three/addons/controls/OrbitControls.js");
+  const { RoomEnvironment } = await import("three/addons/environments/RoomEnvironment.js");
+  const { Line2 } = await import("three/addons/lines/Line2.js");
+  const { LineGeometry } = await import("three/addons/lines/LineGeometry.js");
+  const { LineMaterial } = await import("three/addons/lines/LineMaterial.js");
+  const { PMREMGenerator } = await import("three/addons/utils/PMREMGenerator.js");
 
   window.__OrbitControls = OrbitControls;
   window.__RoomEnvironment = RoomEnvironment;
@@ -27,8 +21,5 @@ try {
   window.__LineGeometry = LineGeometry;
   window.__LineMaterial = LineMaterial;
 } catch (err) {
-  console.error(
-    "three-init: addon modules failed (jsm files import bare 'three'; ensure import map in <head>):",
-    err,
-  );
+  console.error("three-init: addon modules failed (CDN / network / import map):", err);
 }
