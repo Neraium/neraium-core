@@ -210,7 +210,11 @@ Options:
 
 - **Port:** `PORT` or `WEB_PORT` env, or `--port` (default **7860**).
 - **Host:** `--host` (default **0.0.0.0**).
-- **Public URL:** `--share` tries **cloudflared** or **ngrok** if installed.
+- **Public URL:** `--share` tries **cloudflared** or **ngrok** if installed. The process prints a **shareable HTTPS URL** (and a ready-made demo link) when the tunnel starts.
+
+- Full walkthrough: **[docs/DEMO_SHARE.md](docs/DEMO_SHARE.md)**
+- **Guest deep link pattern:** `https://<your-tunnel-host>/dashboard?demo=1&prepare=1`  
+  (enables Demo Mode and auto-seeds the three scripted demo runs when the DB has no runs yet)
 
 Examples:
 

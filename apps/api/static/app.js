@@ -1237,6 +1237,24 @@ function readDemoModeFromStorage() {
   }
 }
 
+/** ?demo=1 or ?share_demo=1 enables Demo Mode (for share links). Returns whether to auto-prepare runs. */
+function applyDemoQueryParams() {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const d = params.get("demo") || params.get("share_demo");
+    if (d === "1" || d === "true" || d === "yes") {
+      state.demo.enabled = true;
+      persistDemoMode();
+    }
+    const prep = params.get("prepare") || params.get("autorun");
+    const shouldAutoPrepare =
+      (prep === "1" || prep === "true" || prep === "yes") && state.demo.enabled;
+    return { shouldAutoPrepare };
+  } catch (_err) {
+    return { shouldAutoPrepare: false };
+  }
+}
+
 function persistDemoMode() {
   try {
     window.localStorage.setItem(DEMO_MODE_STORAGE_KEY, state.demo.enabled ? "1" : "0");
@@ -4320,6 +4338,7 @@ async function wireEvents() {
 async function init() {
   readTenantFromStorage();
   readDemoModeFromStorage();
+  const demoQs = applyDemoQueryParams();
   const routeScope = routeScopeFromQuery();
   if (routeScope.customer_id) {
     state.tenant.customerId = customerIdValue(routeScope.customer_id);
@@ -4350,7 +4369,24 @@ async function init() {
     if (route.page === "run-detail") await loadRunDetail(route.runId);
     if (route.page === "result-detail") await loadResultDetail(route.resultId);
     await wireEvents();
-    setStatus("");
+    let sharedDemoPrep = false;
+    if (demoQs.shouldAutoPrepare && !state.demo.preparing && state.runs.length === 0) {
+      sharedDemoPrep = true;
+      try {
+        setLoading(true, "Preparing demo runs (shared link)…");
+        const focusRun = await prepareDemoRuns();
+        await refreshCurrentPage();
+        if (focusRun?.run_id) {
+          const cid = encodeURIComponent(customerIdValue(state.tenant.customerId));
+          window.location.href = `/app/runs/${encodeURIComponent(focusRun.run_id)}?customer_id=${cid}&demo=1`;
+          return;
+        }
+        setStatus("Demo runs ready — pick a run from the list.", false, true);
+      } catch (err) {
+        setStatus(String(err.message || err), true, true);
+      }
+    }
+    if (!sharedDemoPrep) setStatus("");
   } catch (err) {
     setStatus(String(err.message || err), true, true);
   } finally {
