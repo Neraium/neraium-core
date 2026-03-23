@@ -1095,6 +1095,7 @@ const state = {
     scene: null,
     camera: null,
     controls: null,
+    edgeGroup: null,
     raycaster: null,
     pointer: null,
     nodeGroup: null,
@@ -1313,6 +1314,7 @@ function disposeGeometryRenderer() {
   }
   g.scene = null;
   g.camera = null;
+  g.edgeGroup = null;
   g.raycaster = null;
   g.pointer = null;
   g.nodeGroup = null;
@@ -1334,6 +1336,49 @@ function getOrbitControlsConstructor() {
     return window.OrbitControls;
   }
   return null;
+}
+
+function fitGeometryCamera(camera, controls, nodeGroup, three) {
+  if (!camera || !controls || !nodeGroup || !three) return;
+  const box = new three.Box3().setFromObject(nodeGroup);
+  if (box.isEmpty()) return;
+  const center = box.getCenter(new three.Vector3());
+  const size = box.getSize(new three.Vector3());
+  const maxDim = Math.max(size.x, size.y, size.z, 0.08);
+  const dist = Math.max(1.25, maxDim * 2.2);
+  controls.target.copy(center);
+  camera.near = Math.max(0.008, dist / 500);
+  camera.far = Math.max(80, dist * 45);
+  camera.updateProjectionMatrix();
+  const offset = new three.Vector3(1.2, 0.75, 1.45).normalize().multiplyScalar(dist);
+  camera.position.copy(center.clone().add(offset));
+  camera.lookAt(center);
+}
+
+function refreshGeometryEdges() {
+  const g = state.geometry3d;
+  const payload = state.runGeometry;
+  if (!g.edgeGroup || !payload?.edges?.length) return;
+  let idx = 0;
+  payload.edges.forEach((edge) => {
+    const s = payload.nodes.find((n) => String(n.id) === String(edge.source));
+    const t = payload.nodes.find((n) => String(n.id) === String(edge.target));
+    if (!s || !t) return;
+    const p1 = geometryPositionForNode(s);
+    const p2 = geometryPositionForNode(t);
+    const line = g.edgeGroup.children[idx];
+    idx += 1;
+    if (line?.geometry?.attributes?.position) {
+      const arr = line.geometry.attributes.position.array;
+      arr[0] = p1.x;
+      arr[1] = p1.y;
+      arr[2] = p1.z;
+      arr[3] = p2.x;
+      arr[4] = p2.y;
+      arr[5] = p2.z;
+      line.geometry.attributes.position.needsUpdate = true;
+    }
+  });
 }
 
 function geometryViewportDimensions() {
@@ -1370,7 +1415,8 @@ function setGeometrySurfaceState(message, level = "info") {
   const viewport = qs("#geometryViewport");
   if (fallback) {
     fallback.textContent = String(message || "");
-    fallback.className = `empty-state geometry-fallback ${level === "error" ? "error" : ""}`;
+    const tone = level === "error" ? "error" : level === "warn" ? "warn" : "info";
+    fallback.className = `empty-state geometry-fallback geometry-fallback--${tone}`;
     fallback.classList.remove("hidden");
   }
   if (canvasWrap) {
@@ -1597,16 +1643,22 @@ function applyGeometryDisplayMode() {
     const halo = g.nodeGlowById[nodeId];
     if (halo) halo.position.set(pos.x, pos.y, pos.z);
   });
+  refreshGeometryEdges();
   const note = qs("#geometryProjectionNote");
-  if (note) {
+  const payload = state.runGeometry;
+  if (note && payload) {
+    const baseRaw = String(payload.projection?.note || note.dataset.base || "").split(" [mode:")[0].trim();
+    const base = baseRaw || "Structural relationship projection from correlation signals.";
+    note.dataset.base = base;
     const modeLabel = state.geometry3d.baselineMode ? "BASELINE" : "CURRENT";
-    const extra =
-      " Use toggle to compare baseline structure against current stress projection.";
-    note.textContent = `${String(note.textContent || "").split(" [mode:")[0]} [mode: ${modeLabel}]${extra}`;
+    note.textContent = `${base} [view: ${modeLabel}]`;
   }
   const summary = qs("#geometryStructureSummary");
   if (summary) summary.textContent = geometryStructureSummary(state.runGeometry);
   setGeometryModeButtons();
+  if (g.camera && g.controls && g.nodeGroup && window.THREE) {
+    fitGeometryCamera(g.camera, g.controls, g.nodeGroup, window.THREE);
+  }
 }
 
 function updateGeometryDetails(nodeId = null) {
@@ -1739,6 +1791,7 @@ function createNodeLabelSprite(three, text, colorHex = 0xd9e6ff) {
   const material = new three.SpriteMaterial({ map: texture, transparent: true, depthWrite: false });
   const sprite = new three.Sprite(material);
   sprite.scale.set(0.58, 0.145, 1);
+  sprite.userData.pickMesh = false;
   return sprite;
 }
 
@@ -1860,6 +1913,7 @@ function renderGeometryScene(payload, viewportDims) {
     edgeGroup.add(new three.Line(edgeGeom, edgeMat));
   });
   scene.add(edgeGroup);
+  g.edgeGroup = edgeGroup;
 
   const nodeGroup = new three.Group();
   payload.nodes.forEach((node) => {
@@ -2080,6 +2134,13 @@ function renderGeometryScene(payload, viewportDims) {
 }
 
 async function loadRunGeometry(runId, resultId = null) {
+  const statusEl = qs("#geometry3dStatus");
+  const baselineBtn = qs('[data-geometry-mode="baseline"]');
+  if (statusEl) {
+    statusEl.textContent = "Loading geometry…";
+    statusEl.className = "geometry-status info";
+    statusEl.classList.remove("hidden");
+  }
   const params = tenantScopeParams(resultId != null ? { result_id: resultId } : {});
   let payload;
   try {
@@ -2088,33 +2149,47 @@ async function loadRunGeometry(runId, resultId = null) {
     );
   } catch (_err) {
     clearGeometryModelsPanel();
+    if (statusEl) statusEl.classList.add("hidden");
     throw _err;
   }
   state.runGeometry = payload;
   renderGeometryModelsPanel(payload);
   const projectionNote =
     payload?.projection?.note ||
-    "Geometry projection metadata unavailable.";
+    "Structural projection metadata was not returned for this result.";
   const fallback = qs("#geometryFallback");
   const summary = qs("#geometryStructureSummary");
+  const baselineAvail = payload?.views?.baseline?.available === true;
+  if (baselineBtn) {
+    baselineBtn.disabled = !baselineAvail;
+    baselineBtn.title = baselineAvail
+      ? "Show baseline correlation structure"
+      : "No baseline correlation matrix is stored for this result yet.";
+    if (!baselineAvail && state.geometry3d.baselineMode) {
+      state.geometry3d.baselineMode = false;
+    }
+  }
   if (fallback) {
     fallback.setAttribute("title", projectionNote);
     if (!payload?.available) {
-      fallback.textContent = payload?.reason || projectionNote;
+      fallback.textContent = payload?.reason || "No relationship graph available for this snapshot.";
     }
   }
   if (summary) summary.textContent = geometryStructureSummary(payload);
   try {
     const dims = await ensureGeometryViewportReady();
     if (!dims || dims.width <= 40 || dims.height <= 40) {
-      setGeometrySurfaceState("3D viewport size unavailable. Resize or refresh to retry.", "warn");
+      setGeometrySurfaceState("Viewport has no size yet. Resize the window or refresh.", "info");
       updateGeometryDetails(null);
+      if (statusEl) statusEl.classList.add("hidden");
       return;
     }
     renderGeometryScene(payload, dims);
+    if (statusEl) statusEl.classList.add("hidden");
   } catch (err) {
-    setGeometrySurfaceState(`3D unavailable: ${String(err.message || err)}`, "error");
+    setGeometrySurfaceState(`3D view failed: ${String(err.message || err)}`, "error");
     updateGeometryDetails(null);
+    if (statusEl) statusEl.classList.add("hidden");
   }
 }
 
@@ -3285,6 +3360,7 @@ async function wireEvents() {
   wireMobileNav();
   qsa("[data-geometry-mode]").forEach((btn) => {
     btn.addEventListener("click", () => {
+      if (btn.disabled) return;
       const mode = String(btn.getAttribute("data-geometry-mode") || "current");
       state.geometry3d.baselineMode = mode === "baseline";
       applyGeometryDisplayMode();

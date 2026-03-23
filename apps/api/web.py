@@ -53,4 +53,8 @@ def build_web_router() -> APIRouter:
     def web_sensor_graph_3d_js() -> FileResponse:
         return FileResponse(static_dir / "sensor_graph_3d.js")
 
+    @router.get("/web/OrbitControls.legacy.js", include_in_schema=False)
+    def web_orbit_controls_legacy_js() -> FileResponse:
+        return FileResponse(static_dir / "OrbitControls.legacy.js")
+
     return router

@@ -740,6 +740,21 @@ def _system_state_payload(result: dict[str, Any], *, analytics_dict: dict[str, A
     return out
 
 
+def _fallback_correlation_from_relationships(n: int) -> np.ndarray:
+    """PSD correlation matrix when stored correlation_geometry is missing but sensor names exist.
+
+    Uses moderate equicorrelation (valid for any n when rho is chosen in the PSD range).
+    """
+    if n <= 0:
+        return np.zeros((0, 0), dtype=float)
+    if n == 1:
+        return np.ones((1, 1), dtype=float)
+    rho = min(0.28, 1.0 / max(float(n - 1), 1.0))
+    c = np.full((n, n), rho, dtype=float)
+    np.fill_diagonal(c, 1.0)
+    return c
+
+
 def _to_square_matrix(value: Any) -> np.ndarray | None:
     try:
         mat = np.asarray(value, dtype=float)
@@ -957,25 +972,30 @@ def _build_geometry_payload(result: dict[str, Any], *, run_id: str | None) -> di
     except (TypeError, ValueError):
         result_id = None
 
+    geometry_fallback = False
     if corr_current is None:
-        graph_analytics = _graph_analytics_payload(analytics_dict, feature_names=feature_names)
-        system_state = _system_state_payload(result, analytics_dict=analytics_dict)
-        return {
-            "run_id": run_id or result.get("run_id"),
-            "result_id": result_id,
-            "timestamp": result.get("timestamp") or result.get("persisted_at"),
-            "available": False,
-            "reason": "Correlation geometry unavailable for this result.",
-            "metrics": metrics,
-            "nodes": [],
-            "edges": [],
-            "views": {},
-            "summary": {},
-            "projection": projection,
-            "provenance": provenance,
-            "graph_analytics": graph_analytics,
-            "system_state": system_state,
-        }
+        if len(feature_names) < 1:
+            graph_analytics = _graph_analytics_payload(analytics_dict, feature_names=feature_names)
+            system_state = _system_state_payload(result, analytics_dict=analytics_dict)
+            return {
+                "run_id": run_id or result.get("run_id"),
+                "result_id": result_id,
+                "timestamp": result.get("timestamp") or result.get("persisted_at"),
+                "available": False,
+                "reason": "No sensor relationships or correlation geometry available for this result.",
+                "metrics": metrics,
+                "nodes": [],
+                "edges": [],
+                "views": {},
+                "summary": {},
+                "projection": projection,
+                "provenance": provenance,
+                "graph_analytics": graph_analytics,
+                "system_state": system_state,
+            }
+        corr_current = _fallback_correlation_from_relationships(len(feature_names))
+        corr_baseline = None
+        geometry_fallback = True
 
     n = int(corr_current.shape[0])
     if len(feature_names) < n:
@@ -1049,6 +1069,16 @@ def _build_geometry_payload(result: dict[str, Any], *, run_id: str | None) -> di
     graph_analytics = _graph_analytics_payload(analytics_dict, feature_names=feature_names)
     system_state = _system_state_payload(result, analytics_dict=analytics_dict)
 
+    projection_out = dict(projection)
+    if geometry_fallback:
+        projection_out["geometry_fallback"] = True
+        base_note = str(projection_out.get("note") or "")
+        projection_out["note"] = (
+            base_note
+            + " Correlation matrix was synthesized from sensor names because stored "
+            "correlation_geometry.current was unavailable; baseline correlation is not available."
+        ).strip()
+
     return {
         "run_id": run_id or result.get("run_id"),
         "result_id": result_id,
@@ -1079,7 +1109,7 @@ def _build_geometry_payload(result: dict[str, Any], *, run_id: str | None) -> di
             },
         },
         "summary": summary,
-        "projection": projection,
+        "projection": projection_out,
         "provenance": provenance,
         "graph_analytics": graph_analytics,
         "system_state": system_state,
