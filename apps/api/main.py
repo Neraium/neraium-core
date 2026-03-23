@@ -17,7 +17,6 @@ from uuid import uuid4
 
 import numpy as np
 from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Query, Request, UploadFile, status
-from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from starlette.responses import JSONResponse, Response
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
@@ -2866,7 +2865,6 @@ def create_app(
         )
 
     app.include_router(build_web_router())
-    _mount_web_static(app)
 
     return app
 
