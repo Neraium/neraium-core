@@ -1600,59 +1600,6 @@ p.dashboard-risk-value.signal-risk {
   color: #e8f1ff;
 }
 
-.baseline-panel {
-  margin-top: 12px;
-  border: 1px solid #3a5683;
-  border-radius: 12px;
-  padding: 11px 12px;
-  background:
-    linear-gradient(90deg, rgba(74, 118, 196, 0.12), transparent 34%),
-    linear-gradient(145deg, rgba(20, 35, 61, 0.72), rgba(12, 23, 40, 0.94));
-}
-
-.baseline-panel .panel-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.baseline-panel h4 {
-  margin: 0;
-  font-size: 13px;
-  color: #e8f1ff;
-}
-
-.baseline-actions {
-  gap: 8px;
-}
-
-.baseline-meta {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-  gap: 8px 16px;
-  margin: 10px 0 0;
-}
-
-.baseline-meta div {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.baseline-meta dt {
-  font-size: 11px;
-  color: var(--muted);
-  margin: 0;
-}
-
-.baseline-meta dd {
-  margin: 0;
-  font-size: 13px;
-  color: var(--text);
-}
-
 .operator-message {
   margin: 10px 0 0;
   font-size: 15px;
@@ -2415,15 +2362,15 @@ input[type="file"] {
 
 .geometry-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 280px;
-  gap: 12px;
+  grid-template-columns: minmax(0, 1fr) minmax(260px, 300px);
+  gap: 14px;
   align-items: stretch;
 }
 
 .geometry-canvas-wrap {
   position: relative;
-  height: clamp(300px, 52vh, 460px);
-  min-height: 300px;
+  height: clamp(320px, 54vh, 480px);
+  min-height: 320px;
   border: 1px solid #304564;
   border-radius: 12px;
   overflow: hidden;
@@ -2510,11 +2457,6 @@ input[type="file"] {
   border-color: rgba(232, 168, 74, 0.45);
   color: #f5e6c8;
   background: rgba(40, 32, 12, 0.55);
-}
-
-.geometry-view-toggle button:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
 }
 
 .geometry-run-metrics {
@@ -2651,31 +2593,6 @@ input[type="file"] {
   color: #9cb2d5;
   font-size: 12px;
   line-height: 1.45;
-}
-
-.geometry-view-toggle {
-  display: inline-flex;
-  gap: 6px;
-  margin-top: 6px;
-}
-
-.geometry-view-toggle button {
-  border: 1px solid #3d567f;
-  border-radius: 8px;
-  background: linear-gradient(180deg, #172742, #13223a);
-  color: #cfe0fa;
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-  padding: 5px 9px;
-  cursor: pointer;
-}
-
-.geometry-view-toggle button.active {
-  border-color: #5f85d8;
-  background: linear-gradient(180deg, #385fab, #2b4d90);
-  color: #ecf4ff;
 }
 
 .geom-pill {
