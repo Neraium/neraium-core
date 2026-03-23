@@ -1377,7 +1377,11 @@ function syncFlowEdgesFromMeshes(g, three, t) {
     const posA = sm.position;
     const posB = tm.position;
     const tension = flowEdgeTension(edge);
-    const mid = posA.clone().add(posB).multiplyScalar(0.5);
+    const mid = new three.Vector3().addVectors(posA, posB).multiplyScalar(0.5);
+    if (!(mid instanceof three.Vector3)) {
+      console.error("[geometry3d] mid is not a Vector3", mid);
+      return;
+    }
     const dir = posB.clone().sub(posA);
     if (dir.lengthSq() < 1e-10) return;
     const up = new three.Vector3(0, 1, 0);
@@ -1387,8 +1391,8 @@ function syncFlowEdgesFromMeshes(g, three, t) {
     const lift = 0.05 * coherence * (1 - tension * 0.9);
     mid.y += lift;
     const fray = frayBase * (0.35 + tension * 0.65) * (1 - coherence * 0.75);
-    mid.addScaled(perp, fray * Math.sin(t * 2.6 + index * 0.73));
-    mid.addScaled(perp, tension * 0.06 * Math.sin(t * 4.2 + index * 1.1));
+    mid.addScaledVector(perp, fray * Math.sin(t * 2.6 + index * 0.73));
+    mid.addScaledVector(perp, tension * 0.06 * Math.sin(t * 4.2 + index * 1.1));
     const curve = new three.QuadraticBezierCurve3(posA.clone(), mid, posB.clone());
     const pts = curve.getPoints(14);
     const posAttr = line.geometry.attributes.position;
