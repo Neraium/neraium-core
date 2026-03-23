@@ -813,15 +813,47 @@ def _vertical_lift_y_from_stress(
     return float(lift_max * sev * global_scale)
 
 
+def _matrix_fingerprint_angle(corr: np.ndarray | None) -> float:
+    """Deterministic small rotation in XZ from correlation geometry (stable across runs)."""
+    if corr is None or corr.ndim != 2 or corr.shape[0] < 2:
+        return 0.0
+    tr = float(np.trace(corr))
+    s = float(np.sum(np.triu(corr, k=1)))
+    return 0.47 * math.sin(tr * 0.85) + 0.31 * math.cos(s * 1.13)
+
+
+def _deterministic_xz_offset(
+    i: int,
+    n: int,
+    stress_norm: np.ndarray,
+    corr_matrix: np.ndarray | None,
+) -> tuple[float, float]:
+    """Correlation-derived in-plane offsets in [-1, 1] (scaled by caller)."""
+    if corr_matrix is not None and corr_matrix.ndim == 2 and corr_matrix.shape[0] > i:
+        row = corr_matrix[i, :]
+        t = float(np.dot(row, np.arange(1, len(row) + 1, dtype=float))) * 0.017
+        u = float(np.sum(np.abs(row))) * 0.019 + float(i) * 0.121
+    else:
+        t = float(stress_norm[i]) if i < len(stress_norm) else 0.0
+        u = float(i) * 0.271 + float(n) * 0.041
+    return (
+        math.sin(t * 2.718) * 0.52 + math.cos(u * 1.414) * 0.33,
+        math.cos(t * 2.331) * 0.52 + math.sin(u * 1.732) * 0.33,
+    )
+
+
 def _diamond_plane_positions_four(
     stress_norm: np.ndarray,
     *,
     drift_global: float,
     inst_global: float,
+    corr_matrix: np.ndarray | None = None,
 ) -> np.ndarray:
     """Four sensors on a square in the XZ plane (y=0); Y is vertical lift when out-of-sync.
 
     Matches the UI convention: shared horizontal plane = XZ, up = +Y (Three.js ground plane).
+    Positions are slightly rotated / jittered in the plane so the layout never reads as a
+    rigid axis-aligned grid while staying fully connected in the same coherent plane.
     """
     r = 0.58
     # Square in XZ, centered at origin (diamond / rotated square when viewed along Y).
@@ -834,13 +866,21 @@ def _diamond_plane_positions_four(
         ],
         dtype=float,
     )
+    phi = _matrix_fingerprint_angle(corr_matrix)
+    cp = math.cos(phi)
+    sp = math.sin(phi)
     out = np.zeros((4, 3), dtype=float)
     for i in range(4):
         s = float(stress_norm[i]) if i < len(stress_norm) else 0.0
         y_lift = _vertical_lift_y_from_stress(s, drift_global=drift_global, inst_global=inst_global)
-        out[i, 0] = base[i, 0]
+        ox, oz = _deterministic_xz_offset(i, 4, stress_norm, corr_matrix)
+        jx = 0.065 * ox
+        jz = 0.065 * oz
+        x0 = base[i, 0] + jx
+        z0 = base[i, 2] + jz
+        out[i, 0] = cp * x0 - sp * z0
         out[i, 1] = y_lift
-        out[i, 2] = base[i, 2]
+        out[i, 2] = sp * x0 + cp * z0
     return out
 
 
@@ -850,8 +890,13 @@ def _plane_ring_positions(
     *,
     drift_global: float,
     inst_global: float,
+    corr_matrix: np.ndarray | None = None,
 ) -> np.ndarray:
-    """XZ plane layout: single regular n-gon (n<=12) or dual ring (n>12); Y = vertical lift."""
+    """XZ plane layout: single ring (n<=12) or dual ring (n>12); Y = vertical lift.
+
+    In-plane angles are stress- and correlation-perturbed so nodes are not locked to a
+    perfect polygon (and n=2 is not forced to a diametric line through the origin).
+    """
     if n <= 0:
         return np.zeros((0, 3), dtype=float)
     out = np.zeros((n, 3), dtype=float)
@@ -860,13 +905,41 @@ def _plane_ring_positions(
         s = float(stress_norm[i]) if i < len(stress_norm) else 0.0
         return _vertical_lift_y_from_stress(s, drift_global=drift_global, inst_global=inst_global)
 
+    phi = _matrix_fingerprint_angle(corr_matrix)
+    cp = math.cos(phi)
+    sp = math.sin(phi)
+
+    if n == 2:
+        # Avoid 180° separation (reads as a flat line through the origin from many views).
+        r = 0.55 + 0.04 * float(stress_norm[0]) if len(stress_norm) else 0.55
+        theta0 = 0.55 * math.pi + 0.22 * phi
+        for i in range(2):
+            theta = theta0 + 1.85 * float(i)
+            si = float(stress_norm[i]) if i < len(stress_norm) else 0.0
+            r_i = r * (0.9 + 0.12 * si)
+            ox, oz = _deterministic_xz_offset(i, n, stress_norm, corr_matrix)
+            sc = 0.08
+            x0 = r_i * math.cos(theta) + sc * ox
+            z0 = r_i * math.sin(theta) + sc * oz
+            out[i, 0] = cp * x0 - sp * z0
+            out[i, 1] = _lift(i)
+            out[i, 2] = sp * x0 + cp * z0
+        return out
+
     if n <= 12:
         r = 0.48 + 0.022 * float(min(n, 12))
         for i in range(n):
             theta = 2.0 * math.pi * float(i) / float(n) - math.pi / 2.0
-            out[i, 0] = r * math.cos(theta)
+            si = float(stress_norm[i]) if i < len(stress_norm) else 0.0
+            theta += 0.22 * math.sin(2.0 * math.pi * float(i) / float(n) * 3.0 + si * 4.7)
+            r_i = r * (0.88 + 0.24 * si)
+            ox, oz = _deterministic_xz_offset(i, n, stress_norm, corr_matrix)
+            sc = 0.078
+            x0 = r_i * math.cos(theta) + sc * ox
+            z0 = r_i * math.sin(theta) + sc * oz
+            out[i, 0] = cp * x0 - sp * z0
             out[i, 1] = _lift(i)
-            out[i, 2] = r * math.sin(theta)
+            out[i, 2] = sp * x0 + cp * z0
         return out
 
     # Dual ring: split nodes between inner and outer polygons (staggered for balance).
@@ -876,16 +949,30 @@ def _plane_ring_positions(
     r_out = 0.74 + 0.006 * float(max(0, n - 14))
     for i in range(n_inner):
         theta = 2.0 * math.pi * float(i) / float(max(n_inner, 1)) - math.pi / 2.0
-        out[i, 0] = r_in * math.cos(theta)
+        si = float(stress_norm[i]) if i < len(stress_norm) else 0.0
+        theta += 0.18 * math.sin(2.0 * math.pi * float(i) / float(max(n_inner, 1)) * 2.0 + si * 3.1)
+        r_i = r_in * (0.9 + 0.12 * si)
+        ox, oz = _deterministic_xz_offset(i, n, stress_norm, corr_matrix)
+        sc = 0.072
+        x0 = r_i * math.cos(theta) + sc * ox
+        z0 = r_i * math.sin(theta) + sc * oz
+        out[i, 0] = cp * x0 - sp * z0
         out[i, 1] = _lift(i)
-        out[i, 2] = r_in * math.sin(theta)
+        out[i, 2] = sp * x0 + cp * z0
     phase_off = math.pi / float(max(n_outer * 2, 1))
     for j in range(n_outer):
         idx = n_inner + j
         theta = 2.0 * math.pi * float(j) / float(max(n_outer, 1)) - math.pi / 2.0 + phase_off
-        out[idx, 0] = r_out * math.cos(theta)
+        si = float(stress_norm[idx]) if idx < len(stress_norm) else 0.0
+        theta += 0.18 * math.sin(2.0 * math.pi * float(j) / float(max(n_outer, 1)) * 2.0 + si * 3.1)
+        r_i = r_out * (0.9 + 0.12 * si)
+        ox, oz = _deterministic_xz_offset(idx, n, stress_norm, corr_matrix)
+        sc = 0.072
+        x0 = r_i * math.cos(theta) + sc * ox
+        z0 = r_i * math.sin(theta) + sc * oz
+        out[idx, 0] = cp * x0 - sp * z0
         out[idx, 1] = _lift(idx)
-        out[idx, 2] = r_out * math.sin(theta)
+        out[idx, 2] = sp * x0 + cp * z0
     return out
 
 
@@ -908,6 +995,7 @@ def _project_geometry_positions(
             node_stress,
             drift_global=drift_g,
             inst_global=inst_g,
+            corr_matrix=corr_current,
         )
     if 2 <= n <= STRUCTURAL_FLOW_PLANE_MAX_N and len(node_stress) >= n:
         return _plane_ring_positions(
@@ -915,6 +1003,7 @@ def _project_geometry_positions(
             node_stress,
             drift_global=drift_g,
             inst_global=inst_g,
+            corr_matrix=corr_current,
         )
 
     vals, vecs = np.linalg.eigh(corr_current)
@@ -952,7 +1041,40 @@ def _project_geometry_positions(
     if max_abs_z > 1e-9:
         axis_z /= max_abs_z
 
-    return np.stack([axis_x, axis_y, axis_z], axis=1)
+    pos = np.stack([axis_x, axis_y, axis_z], axis=1)
+    return _inflate_spectral_embedding_if_degenerate(pos, corr_matrix=corr_current, stress_norm=node_stress)
+
+
+def _inflate_spectral_embedding_if_degenerate(
+    pos: np.ndarray,
+    *,
+    corr_matrix: np.ndarray,
+    stress_norm: np.ndarray,
+) -> np.ndarray:
+    """When spectral embedding collapses to ~1D, add small spread in the weak eigen-directions."""
+    n = int(pos.shape[0])
+    if n < 3:
+        return pos
+    centered = pos - np.mean(pos, axis=0, keepdims=True)
+    c = np.cov(centered.T)
+    if not np.all(np.isfinite(c)):
+        return pos
+    ev, vecs = np.linalg.eigh(c)
+    ev = np.maximum(ev, 0.0)
+    if ev[-1] <= 1e-14:
+        return pos
+    if float(ev[-2] / ev[-1]) > 0.05:
+        return pos
+    e2 = vecs[:, -2]
+    e3 = vecs[:, -3]
+    out = pos.copy()
+    scale = 0.048
+    for i in range(n):
+        s1, s2 = _deterministic_xz_offset(i, n, stress_norm, corr_matrix)
+        s3, _s4 = _deterministic_xz_offset(i + 11, n, stress_norm, corr_matrix)
+        delta = e2 * (scale * s1) + e3 * (scale * s2 * 0.88 + scale * 0.35 * s3)
+        out[i, :] += delta
+    return out
 
 
 def _stress_state(value: float) -> str:
@@ -1077,7 +1199,8 @@ def _build_geometry_payload(result: dict[str, Any], *, run_id: str | None) -> di
         "vertical_axis": "y",
         "note": (
             f"2–{STRUCTURAL_FLOW_PLANE_MAX_N} sensors: coherent layout on a shared XZ plane (diamond "
-            "when n=4, single ring when n≤12, dual ring when n>12); Y is vertical lift when out of range. "
+            "when n=4, single ring when n≤12, dual ring when n>12); in-plane positions use deterministic "
+            "correlation-tinted jitter (not a rigid polygon line); Y is vertical lift when out of range. "
             "Larger counts use spectral projection from correlation geometry. Visualization-only."
         ),
     }
