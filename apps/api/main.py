@@ -768,6 +768,10 @@ def _fallback_correlation_from_relationships(n: int) -> np.ndarray:
     return c
 
 
+# Coherent structural-flow layout on XZ + vertical lift on Y (single ring n<=12, dual ring 13..N).
+STRUCTURAL_FLOW_PLANE_MAX_N = 24
+
+
 def _to_square_matrix(value: Any) -> np.ndarray | None:
     try:
         mat = np.asarray(value, dtype=float)
@@ -847,17 +851,41 @@ def _plane_ring_positions(
     drift_global: float,
     inst_global: float,
 ) -> np.ndarray:
-    """Regular n-gon on the XZ plane; Y is vertical lift for out-of-sync sensors (2 <= n <= 12)."""
+    """XZ plane layout: single regular n-gon (n<=12) or dual ring (n>12); Y = vertical lift."""
     if n <= 0:
         return np.zeros((0, 3), dtype=float)
-    r = 0.48 + 0.022 * float(min(n, 12))
     out = np.zeros((n, 3), dtype=float)
-    for i in range(n):
-        theta = 2.0 * math.pi * float(i) / float(n) - math.pi / 2.0
+
+    def _lift(i: int) -> float:
         s = float(stress_norm[i]) if i < len(stress_norm) else 0.0
-        out[i, 0] = r * math.cos(theta)
-        out[i, 1] = _vertical_lift_y_from_stress(s, drift_global=drift_global, inst_global=inst_global)
-        out[i, 2] = r * math.sin(theta)
+        return _vertical_lift_y_from_stress(s, drift_global=drift_global, inst_global=inst_global)
+
+    if n <= 12:
+        r = 0.48 + 0.022 * float(min(n, 12))
+        for i in range(n):
+            theta = 2.0 * math.pi * float(i) / float(n) - math.pi / 2.0
+            out[i, 0] = r * math.cos(theta)
+            out[i, 1] = _lift(i)
+            out[i, 2] = r * math.sin(theta)
+        return out
+
+    # Dual ring: split nodes between inner and outer polygons (staggered for balance).
+    n_inner = n // 2
+    n_outer = n - n_inner
+    r_in = 0.44
+    r_out = 0.74 + 0.006 * float(max(0, n - 14))
+    for i in range(n_inner):
+        theta = 2.0 * math.pi * float(i) / float(max(n_inner, 1)) - math.pi / 2.0
+        out[i, 0] = r_in * math.cos(theta)
+        out[i, 1] = _lift(i)
+        out[i, 2] = r_in * math.sin(theta)
+    phase_off = math.pi / float(max(n_outer * 2, 1))
+    for j in range(n_outer):
+        idx = n_inner + j
+        theta = 2.0 * math.pi * float(j) / float(max(n_outer, 1)) - math.pi / 2.0 + phase_off
+        out[idx, 0] = r_out * math.cos(theta)
+        out[idx, 1] = _lift(idx)
+        out[idx, 2] = r_out * math.sin(theta)
     return out
 
 
@@ -881,7 +909,7 @@ def _project_geometry_positions(
             drift_global=drift_g,
             inst_global=inst_g,
         )
-    if 2 <= n <= 12 and len(node_stress) >= n:
+    if 2 <= n <= STRUCTURAL_FLOW_PLANE_MAX_N and len(node_stress) >= n:
         return _plane_ring_positions(
             n,
             node_stress,
@@ -974,7 +1002,7 @@ def _build_geometry_edges(
     feature_names: list[str],
     baseline_ref: np.ndarray | None = None,
     limit: int = 240,
-    full_connectivity_max_n: int = 12,
+    full_connectivity_max_n: int = STRUCTURAL_FLOW_PLANE_MAX_N,
 ) -> list[dict[str, Any]]:
     n = int(corr_matrix.shape[0])
     out: list[dict[str, Any]] = []
@@ -1048,9 +1076,9 @@ def _build_geometry_payload(result: dict[str, Any], *, run_id: str | None) -> di
         "plane_axes": ["x", "z"],
         "vertical_axis": "y",
         "note": (
-            "2–12 sensors: coherent layout on a shared XZ plane (diamond when n=4, regular ring for "
-            "other counts); Y is vertical lift when out of range. Larger counts use spectral "
-            "projection from correlation geometry. Visualization-only."
+            f"2–{STRUCTURAL_FLOW_PLANE_MAX_N} sensors: coherent layout on a shared XZ plane (diamond "
+            "when n=4, single ring when n≤12, dual ring when n>12); Y is vertical lift when out of range. "
+            "Larger counts use spectral projection from correlation geometry. Visualization-only."
         ),
     }
     provenance = {
@@ -1124,7 +1152,7 @@ def _build_geometry_payload(result: dict[str, Any], *, run_id: str | None) -> di
         stress_raw = importance.copy()
     stress_norm = _normalize_vector(stress_raw)
 
-    if 2 <= n <= 12:
+    if 2 <= n <= STRUCTURAL_FLOW_PLANE_MAX_N:
         perm = np.array(sorted(range(n), key=lambda i: str(feature_names[i]).lower()), dtype=int)
         feature_names = [feature_names[i] for i in perm]
         corr_current = corr_current[np.ix_(perm, perm)]
@@ -1150,7 +1178,7 @@ def _build_geometry_payload(result: dict[str, Any], *, run_id: str | None) -> di
         corr_current,
         feature_names=feature_names,
         baseline_ref=corr_baseline,
-        limit=240,
+        limit=400,
     )
 
     corr_reference = corr_baseline if corr_baseline is not None else corr_current
@@ -1201,11 +1229,15 @@ def _build_geometry_payload(result: dict[str, Any], *, run_id: str | None) -> di
         projection_out["vertical_axis"] = "y"
         projection_out["method"] = "diamond_plane_four_sensors_with_vertical_lift"
         projection_out["ring_node_count"] = 4
-    elif 2 <= n <= 12:
+    elif 2 <= n <= STRUCTURAL_FLOW_PLANE_MAX_N:
         projection_out["layout"] = "coherent_plane_ring"
         projection_out["plane_axes"] = ["x", "z"]
         projection_out["vertical_axis"] = "y"
-        projection_out["method"] = "regular_polygon_plane_ring_with_vertical_lift"
+        projection_out["method"] = (
+            "regular_polygon_plane_ring_with_vertical_lift"
+            if n <= 12
+            else "dual_ring_plane_with_vertical_lift"
+        )
         projection_out["ring_node_count"] = n
     else:
         projection_out["layout"] = "spectral_correlation_projection"
