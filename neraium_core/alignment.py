@@ -65,6 +65,18 @@ MIN_CONSECUTIVE_WATCH = 2
 MIN_CONSECUTIVE_ALERT = 2
 
 
+def _vector_from_sensor_values(sensor_values: Dict[str, object], order: List[str]) -> np.ndarray:
+    """Build a fixed-order vector; missing keys become NaN (new sensors mid-stream)."""
+    values: list[float] = []
+    for name in order:
+        v = sensor_values.get(name)
+        try:
+            values.append(float(v) if v is not None else np.nan)
+        except (TypeError, ValueError):
+            values.append(np.nan)
+    return np.asarray(values, dtype=float)
+
+
 def _env_enabled(var_name: str, *, default: str = "1") -> bool:
     """Feature toggle helper that treats 0/false/no/off as disabled."""
     v = os.environ.get(var_name, default)
@@ -197,20 +209,23 @@ class StructuralEngine:
         }
 
     def _vector_from_frame(self, frame: Dict) -> np.ndarray:
-        sensor_values = frame["sensor_values"]
+        """Project sensor_values into a vector; grow ``sensor_order`` when new keys appear.
 
+        Previously only the first frame's keys were used, so adding channels later was ignored
+        (stuck at e.g. four nodes). Merging keys and rebuilding buffered vectors fixes that.
+        """
+        sensor_values = frame.get("sensor_values") or {}
+        incoming = sorted(sensor_values.keys())
         if not self.sensor_order:
-            self.sensor_order = sorted(sensor_values.keys())
-
-        values = []
-        for name in self.sensor_order:
-            v = sensor_values.get(name)
-            try:
-                values.append(float(v) if v is not None else np.nan)
-            except (TypeError, ValueError):
-                values.append(np.nan)
-
-        return np.array(values, dtype=float)
+            self.sensor_order = list(incoming)
+        else:
+            merged = sorted(set(self.sensor_order) | set(incoming))
+            if merged != self.sensor_order:
+                self.sensor_order = merged
+                for f in self.frames:
+                    sv = f.get("sensor_values") or {}
+                    f["_vector"] = _vector_from_sensor_values(sv, self.sensor_order)
+        return _vector_from_sensor_values(sensor_values, self.sensor_order)
 
     def _get_recent_window(self, frames_list: list[dict] | None = None) -> Optional[np.ndarray]:
         """Use ``frames_list`` when available to avoid repeated ``list(deque)`` copies per step."""

@@ -1025,7 +1025,7 @@ const GEOMETRY_FLOW_PERF_KEY = "neraium_structural_flow_perf";
 /** Origin marker + debug visuals for structural flow. `true` always shows the marker; when `false`, use URL `?geomDebug=1` instead. */
 const DEBUG_GEOMETRY = false;
 
-/** Demo/sample ingest: 12 correlated channels for a rich multi-node structural flow field. */
+/** Demo/sample ingest: 24 correlated channels for a dense structural flow field. */
 const DEMO_STRUCTURAL_SENSOR_KEYS = [
   "pressure",
   "flow",
@@ -1039,6 +1039,18 @@ const DEMO_STRUCTURAL_SENSOR_KEYS = [
   "displacement",
   "valve_position",
   "shaft_accel",
+  "lubrication_psi",
+  "seismic_x",
+  "seismic_y",
+  "winding_temp",
+  "inlet_guide",
+  "outlet_guide",
+  "torque_est",
+  "casing_vibe",
+  "oil_quality",
+  "stator_temp",
+  "field_bus_ok",
+  "coolant_flow",
 ];
 
 function buildDemoSensorValuesRow(i, p, driftLift, vibSpike) {
@@ -2407,7 +2419,7 @@ function renderGeometryScene(payload, viewportDims) {
   g.perfMode = perf;
   {
     const nc = Array.isArray(payload.nodes) ? payload.nodes.length : 0;
-    g.curveSegments = perf ? 7 : nc > 8 ? 9 : 11;
+    g.curveSegments = perf ? 6 : nc > 16 ? 8 : nc > 8 ? 9 : 11;
   }
   let motionScale = perf ? 0.72 : 1;
   if (geometryFlowReducedMotion()) motionScale *= 0.42;
