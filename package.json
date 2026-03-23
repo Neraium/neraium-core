@@ -1,0 +1,8 @@
+{
+  "name": "neraium-core",
+  "private": true,
+  "description": "Pinned Three.js version matches CDN import map in apps/api/static/index.html",
+  "dependencies": {
+    "three": "0.162.0"
+  }
+}
