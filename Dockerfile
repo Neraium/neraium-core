@@ -1,8 +1,3 @@
-FROM node:20-alpine AS three_vendor
-WORKDIR /vendor
-COPY package.json package-lock.json* ./
-RUN npm install --omit=dev
-
 FROM python:3.11-slim
 
 WORKDIR /app
@@ -15,8 +10,10 @@ ENV PYTHONUNBUFFERED=1 \
 COPY pyproject.toml README.md ./
 COPY neraium_core ./neraium_core
 COPY apps ./apps
+COPY scripts ./scripts
 COPY docker/entrypoint.sh /app/docker/entrypoint.sh
-COPY --from=three_vendor /vendor/node_modules/three ./node_modules/three
+
+RUN python scripts/download_three_vendor.py
 
 RUN python -m pip install --upgrade pip && \
     python -m pip install . && \

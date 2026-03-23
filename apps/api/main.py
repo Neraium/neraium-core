@@ -38,13 +38,16 @@ logger = logging.getLogger(__name__)
 
 
 def _mount_three_js_vendor(app: FastAPI) -> None:
-    """Serve three@0.162.0 from node_modules at /web/vendor/three (same-origin; no public CDN)."""
-    root = Path(__file__).resolve().parent.parent.parent
-    three_dir = root / "node_modules" / "three"
+    """Serve three@0.162.0 at /web/vendor/three (bundled static copy or node_modules)."""
+    api_dir = Path(__file__).resolve().parent
+    repo_root = api_dir.parent.parent
+    static_vendor = api_dir / "static" / "vendor" / "three"
+    node_vendor = repo_root / "node_modules" / "three"
+    three_dir = static_vendor if static_vendor.is_dir() else node_vendor
     if not three_dir.is_dir():
         logger.warning(
-            "3D UI: node_modules/three missing — run `npm install` from the repo root. "
-            "Structural flow will not load until Three.js is installed."
+            "3D UI: Three.js not found — run `python scripts/download_three_vendor.py` from the repo root "
+            "(or `npm install`). Restart the API after vendor files exist."
         )
         return
     app.mount(
