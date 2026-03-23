@@ -2433,6 +2433,164 @@ input[type="file"] {
   align-content: start;
 }
 
+/* Compact legend under Structural flow title (field colors + arrow). */
+.geometry-flow-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  margin-top: 6px;
+  font-size: 10px;
+  line-height: 1.35;
+  color: #8ea6c8;
+}
+
+.geometry-flow-legend__item {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+
+.geometry-flow-legend__swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.geometry-flow-legend__swatch--cyan {
+  background: linear-gradient(135deg, rgba(45, 212, 191, 0.85), rgba(56, 189, 248, 0.55));
+  border: 1px solid rgba(94, 234, 212, 0.45);
+}
+
+.geometry-flow-legend__swatch--amber {
+  background: linear-gradient(135deg, rgba(251, 191, 36, 0.75), rgba(249, 115, 22, 0.65));
+  border: 1px solid rgba(251, 146, 60, 0.5);
+}
+
+.geometry-flow-legend__swatch--red {
+  background: rgba(239, 68, 68, 0.75);
+  border: 1px solid rgba(248, 113, 113, 0.55);
+}
+
+.geometry-flow-legend__swatch--arrow {
+  width: 0;
+  height: 0;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-bottom: 9px solid rgba(56, 189, 248, 0.95);
+  border-radius: 0;
+  background: none;
+  border-top: none;
+}
+
+.geometry-flow-metrics {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.geometry-flow-metric {
+  padding: 7px 8px 8px;
+  border-radius: 10px;
+  border: 1px solid rgba(48, 71, 102, 0.75);
+  background: rgba(0, 0, 0, 0.2);
+  min-width: 0;
+}
+
+.geometry-flow-metric .metric-k {
+  font-size: 9px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #8ea6c8;
+}
+
+.geometry-flow-metric__row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 3px;
+}
+
+.geometry-flow-metric__value {
+  font-size: 16px;
+  font-weight: 750;
+  font-variant-numeric: tabular-nums;
+  color: #e2e8f0;
+}
+
+.geometry-flow-metric__hint {
+  font-size: 10px;
+  font-weight: 600;
+  color: #94a3b8;
+  flex-shrink: 0;
+}
+
+.geometry-flow-metric__sub {
+  font-size: 10px;
+  color: #7fb3c4;
+  margin-top: 2px;
+}
+
+.geometry-flow-microbar {
+  height: 3px;
+  border-radius: 999px;
+  background: rgba(30, 41, 59, 0.9);
+  margin-top: 6px;
+  overflow: hidden;
+}
+
+.geometry-flow-microbar__fill {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(45, 212, 191, 0.55), rgba(56, 189, 248, 0.85));
+  width: 0%;
+  transition: width 0.2s ease;
+}
+
+.geometry-details[data-geometry-risk="HIGH"] .geometry-flow-microbar__fill {
+  background: linear-gradient(90deg, rgba(251, 113, 133, 0.55), rgba(249, 115, 22, 0.85));
+}
+
+.geometry-details[data-geometry-risk="MEDIUM"] .geometry-flow-microbar__fill {
+  background: linear-gradient(90deg, rgba(251, 191, 36, 0.45), rgba(45, 212, 191, 0.65));
+}
+
+.geometry-flow-manifold-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 10px;
+  font-size: 10px;
+  line-height: 1.45;
+  color: #94a3b8;
+  margin: 0 0 8px;
+  padding: 6px 8px;
+  border-radius: 8px;
+  background: rgba(6, 12, 22, 0.35);
+  border: 1px solid rgba(48, 71, 102, 0.45);
+}
+
+.geometry-flow-manifold-line .metric-k {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #7b8fad;
+}
+
+.geometry-flow-manifold-line__v {
+  font-variant-numeric: tabular-nums;
+  color: #cbd5e1;
+}
+
+.geometry-flow-manifold-line__sep {
+  opacity: 0.35;
+}
+
 .geometry-flow-hero {
   display: flex;
   flex-direction: column;
@@ -2530,6 +2688,9 @@ input[type="file"] {
 
 @media (max-width: 980px) {
   .geometry-flow-grid {
+    grid-template-columns: 1fr;
+  }
+  .geometry-flow-metrics {
     grid-template-columns: 1fr;
   }
 }
