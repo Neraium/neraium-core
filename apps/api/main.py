@@ -16,7 +16,7 @@ from urllib.parse import urlparse
 from uuid import uuid4
 
 import numpy as np
-from fastapi import Depends, FastAPI, File, Header, HTTPException, Query, Request, UploadFile, status
+from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Query, Request, UploadFile, status
 from pydantic import BaseModel, Field
 from starlette.responses import JSONResponse, Response
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
@@ -155,9 +155,31 @@ class BatchIngestRequest(BaseModel):
     items: list[IngestRequest]
 
 
+class CsvColumnMappingPayload(BaseModel):
+    """Semantic roles: which CSV columns map to time, entity, optional site, and numeric sensors."""
+
+    timestamp: str = Field(min_length=1)
+    asset_id: str = Field(min_length=1)
+    site_id: str | None = None
+    sensor_columns: list[str] = Field(min_length=1)
+
+
 class CsvIngestRequest(BaseModel):
     customer_id: str | None = None
     csv_text: str
+    column_mapping: CsvColumnMappingPayload | None = None
+
+
+class CsvPreviewRequest(BaseModel):
+    csv_sample: str = Field(..., max_length=524_288)
+
+
+class CsvPreviewResponse(BaseModel):
+    headers: list[str]
+    suggested_mapping: dict[str, Any] | None = None
+    issues: list[str] = Field(default_factory=list)
+    warnings: list[str] = Field(default_factory=list)
+    requires_confirmation: bool = False
 
 
 class CreateRunRequest(BaseModel):
@@ -532,6 +554,16 @@ def _actionable_validation_detail(message: str) -> str:
         return (
             f"{text} Ensure CSV header includes timestamp, site_id, asset_id "
             "plus at least one sensor column."
+        )
+    if "Could not infer" in text or "Provide a column_mapping" in text:
+        return (
+            f"{text} Use POST /ingest/csv/preview with a sample of your file, "
+            "then send column_mapping (timestamp, asset_id, optional site_id, sensor_columns) with ingest."
+        )
+    if "Mapping requires" in text or "not present in the CSV header" in text:
+        return (
+            f"{text} Open the upload mapping panel and assign time, asset/entity, "
+            "optional site, and one or more numeric sensor columns."
         )
     if "Invalid signal value" in text or "Invalid signal type" in text:
         return (
@@ -1817,6 +1849,7 @@ def create_app(
         temp_path: str,
         run_id: str,
         customer_id: str,
+        column_mapping: dict[str, Any] | None = None,
     ) -> None:
         def _worker() -> None:
             _update_ingest_job(
@@ -1842,6 +1875,7 @@ def create_app(
                         stream,
                         run_id=run_id,
                         customer_id=customer_id,
+                        column_mapping=column_mapping,
                         max_error_samples=DEFAULT_INGEST_JOB_MAX_ERROR_SAMPLES,
                         progress_callback=_on_progress,
                     )
@@ -2239,6 +2273,7 @@ def create_app(
                 payload.csv_text,
                 run_id=resolved,
                 customer_id=resolved_customer,
+                column_mapping=payload.column_mapping.model_dump() if payload.column_mapping else None,
             )
             if results:
                 previous_result = None
@@ -2260,6 +2295,44 @@ def create_app(
             raise HTTPException(status_code=400, detail=_actionable_validation_detail(str(e)))
         return _results_envelope(results, latest=results[-1] if results else None)
 
+    @app.post("/ingest/csv/preview", response_model=CsvPreviewResponse)
+    def ingest_csv_preview(
+        payload: CsvPreviewRequest,
+        _: None = Depends(require_api_key),
+        customer_id: str | None = Query(default=None),
+    ) -> dict[str, Any]:
+        """Infer semantic column roles from an arbitrary CSV header + sample rows."""
+        _ = _resolve_customer_id(customer_id)
+        from neraium_core.csv_mapping import (
+            infer_semantic_mapping,
+            parse_csv_sample_for_mapping,
+            validate_mapping,
+        )
+
+        headers, rows = parse_csv_sample_for_mapping(payload.csv_sample, max_rows=16)
+        if not headers:
+            raise HTTPException(
+                status_code=400,
+                detail="CSV sample has no header row.",
+            )
+        mapping, issues, _debug = infer_semantic_mapping(headers, sample_rows=rows)
+        warnings = [i for i in issues if "Confirm" in i or "Multiple" in i]
+        infer_blocking = [i for i in issues if i not in warnings]
+        hard_issues: list[str] = list(infer_blocking)
+        if mapping is not None:
+            errs = validate_mapping(mapping, headers)
+            if errs:
+                hard_issues.extend(errs)
+                mapping = None
+        requires_confirmation = mapping is None or len(warnings) > 0
+        return CsvPreviewResponse(
+            headers=headers,
+            suggested_mapping=mapping.to_dict() if mapping else None,
+            issues=hard_issues,
+            warnings=warnings,
+            requires_confirmation=requires_confirmation,
+        )
+
     @app.post("/ingest/csv/upload", response_model=IngestJobEnvelope)
     async def ingest_csv_upload(
         request: Request,
@@ -2267,6 +2340,7 @@ def create_app(
         _: None = Depends(require_api_key),
         run_id: str | None = Query(default=None),
         customer_id: str | None = Query(default=None),
+        mapping: str | None = Form(default=None),
     ) -> dict[str, Any]:
         filename = str(file.filename or "upload.csv")
         if not filename.lower().endswith(".csv"):
@@ -2280,6 +2354,22 @@ def create_app(
             run_id,
             customer_id=resolved_customer,
         )
+        column_mapping: dict[str, Any] | None = None
+        if mapping:
+            try:
+                parsed = json.loads(mapping)
+            except json.JSONDecodeError as exc:
+                raise HTTPException(
+                    status_code=400,
+                    detail="column_mapping must be valid JSON (timestamp, asset_id, optional site_id, sensor_columns).",
+                ) from exc
+            try:
+                column_mapping = CsvColumnMappingPayload.model_validate(parsed).model_dump()
+            except Exception as exc:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Invalid column_mapping: " + str(exc),
+                ) from exc
         content_length = _normalize_content_length(request)
         if content_length is not None and content_length > request_body_limit:
             max_mb = request_body_limit / (1024 * 1024)
@@ -2339,6 +2429,7 @@ def create_app(
             temp_path=temp_path,
             run_id=resolved_run,
             customer_id=resolved_customer,
+            column_mapping=column_mapping,
         )
         with ingest_jobs_lock:
             job = dict(ingest_jobs[job_id])

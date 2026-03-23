@@ -9,6 +9,7 @@ from typing import Any, Dict, List, Optional
 DEFAULT_SITE_ID = "default-site"
 DEFAULT_ASSET_ID = "default-asset"
 DEFAULT_CUSTOMER_ID = "default-customer"
+# Legacy: ingest no longer requires these literal header names — use semantic mapping in csv_mapping.py.
 REQUIRED_CSV_COLUMNS = {"timestamp", "site_id", "asset_id"}
 
 
@@ -31,10 +32,23 @@ def normalize_timestamp(value: Any) -> str:
         text = str(value).strip()
         if text.endswith("Z"):
             text = text[:-1] + "+00:00"
+        dt = None
         try:
             dt = datetime.fromisoformat(text)
-        except ValueError as exc:
-            raise ValueError(f"Invalid timestamp: {value!r}") from exc
+        except ValueError:
+            dt = None
+        if dt is None:
+            # Unix epoch seconds or milliseconds (common in exports)
+            try:
+                num = float(text)
+                if 1e9 <= abs(num) <= 1e12:
+                    dt = datetime.fromtimestamp(num, tz=timezone.utc)
+                elif 1e12 < abs(num) <= 1e15:
+                    dt = datetime.fromtimestamp(num / 1000.0, tz=timezone.utc)
+            except (ValueError, OSError, OverflowError):
+                dt = None
+        if dt is None:
+            raise ValueError(f"Invalid timestamp: {value!r}")
 
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)
@@ -133,8 +147,8 @@ def build_frame(
     frame: Dict[str, Any] = {
         "timestamp": normalize_timestamp(timestamp),
         "customer_id": normalize_identifier(customer_id, DEFAULT_CUSTOMER_ID),
-        "site_id": site_id,
-        "asset_id": asset_id,
+        "site_id": normalize_identifier(site_id, DEFAULT_SITE_ID),
+        "asset_id": normalize_identifier(asset_id, DEFAULT_ASSET_ID),
         "sensor_values": {},
         "sensor_quality": {},
         "aligned": [],
@@ -172,35 +186,37 @@ def normalize_rest_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
     )
 
 
-def parse_csv_text(csv_text: str, *, customer_id: str | None = None) -> List[Dict[str, Any]]:
+def parse_csv_text(
+    csv_text: str,
+    *,
+    customer_id: str | None = None,
+    column_mapping: dict[str, Any] | None = None,
+) -> List[Dict[str, Any]]:
     """
     Parse CSV text into a list of normalized internal frames.
 
-    Required columns:
-        timestamp, site_id, asset_id
+    Column roles are resolved via semantic mapping (see :mod:`neraium_core.csv_mapping`):
+    one timestamp column, one asset/entity column, optional site, and one or more sensor columns.
 
-    All remaining columns are treated as sensor columns.
+    If ``column_mapping`` is omitted, roles are inferred from headers (and sample values when needed).
     """
     if not isinstance(csv_text, str):
         raise ValueError("csv_text must be a string")
+
+    from neraium_core.csv_mapping import resolve_mapping, row_to_frame_kwargs
 
     reader = csv.DictReader(StringIO(csv_text))
 
     if reader.fieldnames is None:
         return []
 
-    headers = {h.strip() for h in reader.fieldnames if h is not None}
-
-    if not REQUIRED_CSV_COLUMNS.issubset(headers):
-        missing = sorted(REQUIRED_CSV_COLUMNS - headers)
-        raise ValueError(
-            f"CSV must include timestamp, site_id, asset_id columns. Missing: {missing}"
-        )
-
-    sensor_columns = [
-        h for h in reader.fieldnames
-        if h is not None and h.strip() not in REQUIRED_CSV_COLUMNS
-    ]
+    headers = [h for h in reader.fieldnames if h is not None]
+    resolved_customer = customer_id or DEFAULT_CUSTOMER_ID
+    sample_snippet = csv_text[:65536] if column_mapping is None else None
+    try:
+        mapping, _warnings = resolve_mapping(headers, column_mapping, csv_sample=sample_snippet)
+    except ValueError as exc:
+        raise ValueError(str(exc)) from exc
 
     frames: List[Dict[str, Any]] = []
 
@@ -208,18 +224,9 @@ def parse_csv_text(csv_text: str, *, customer_id: str | None = None) -> List[Dic
         if row is None:
             continue
 
-        sensor_values: Dict[str, Any] = {}
-        for col in sensor_columns:
-            sensor_values[col.strip()] = row.get(col)
-
         try:
-            frame = build_frame(
-                timestamp=row.get("timestamp"),
-                customer_id=customer_id or DEFAULT_CUSTOMER_ID,
-                site_id=row.get("site_id"),
-                asset_id=row.get("asset_id"),
-                sensor_values=sensor_values,
-            )
+            kwargs = row_to_frame_kwargs(row, mapping, customer_id=resolved_customer)
+            frame = build_frame(**kwargs)
         except ValueError as exc:
             raise ValueError(f"Invalid CSV row {row_index}: {exc}") from exc
 

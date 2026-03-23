@@ -4,7 +4,7 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
   <meta name="theme-color" content="#05080f" />
-  <title>Neraium Product UI</title>
+  <title>Neraium</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
@@ -44,28 +44,14 @@
           <button type="button" id="mobileNavToggle" class="mobile-nav-toggle" aria-label="Open menu" aria-expanded="false" aria-controls="appSidebar">
             <span class="mobile-nav-toggle-bars" aria-hidden="true"></span>
           </button>
+          <a href="/dashboard" class="topbar-wordmark">Neraium</a>
           <div class="title-block">
             <h2 id="pageTitle">Dashboard</h2>
             <p id="pageSubtitle" class="subtitle page-subtitle-truncate">Active run snapshot</p>
           </div>
         </div>
-        <div class="topbar-controls topbar-controls-compact tenant-filters" aria-label="Scope and tools">
-          <datalist id="knownSitesList"></datalist>
+        <div class="topbar-controls topbar-controls-compact topbar-tools" aria-label="Demo and tools">
           <div class="topbar-compact-row">
-            <input
-              id="customerFilterInput"
-              placeholder="Customer ID"
-              aria-label="Customer ID filter"
-              title="Sent as customer_id on API calls"
-            />
-            <input
-              id="siteFilterInput"
-              placeholder="Site (optional)"
-              aria-label="Site ID filter"
-              list="knownSitesList"
-              title="Optional site scope"
-            />
-            <span class="topbar-compact-sep" aria-hidden="true"></span>
             <label class="demo-toggle" for="demoModeToggle">
               <input id="demoModeToggle" type="checkbox" />
               <span>Demo</span>
@@ -370,9 +356,29 @@
               <label id="uploadDropZone" class="upload-dropzone">
                 <input id="csvFileInput" type="file" accept=".csv,text/csv" required />
                 <span class="upload-cta">Choose or drop a CSV file</span>
-                <span class="upload-hint">Telemetry columns should match your ingest format.</span>
+                <span class="upload-hint">Any column names — we detect time, asset, optional site, and numeric sensors.</span>
                 <span id="selectedFileName" class="upload-file-name">No file selected</span>
               </label>
+              <section id="csvMappingPanel" class="csv-mapping-panel hidden" aria-label="CSV column mapping">
+                <h4>Column mapping</h4>
+                <p id="csvMappingSummary" class="subtitle"></p>
+                <ul id="csvMappingIssues" class="csv-mapping-messages"></ul>
+                <div class="csv-mapping-grid">
+                  <label class="csv-mapping-field">Timestamp
+                    <select id="csvMapTimestamp"></select>
+                  </label>
+                  <label class="csv-mapping-field">Asset / entity
+                    <select id="csvMapAsset"></select>
+                  </label>
+                  <label class="csv-mapping-field">Site (optional)
+                    <select id="csvMapSite"></select>
+                  </label>
+                </div>
+                <fieldset id="csvMapSensorsField" class="csv-mapping-sensors">
+                  <legend>Sensor columns</legend>
+                  <div id="csvMapSensors" class="csv-mapping-sensor-chips"></div>
+                </fieldset>
+              </section>
               <div class="row">
                 <button id="uploadSubmitBtn" type="submit">Upload and ingest</button>
               </div>
@@ -390,7 +396,7 @@
               </section>
             </form>
             <p id="uploadHelpMessage" class="subtitle">
-              CSV uploads use streamed ingest with progress tracking and partial-success reporting.
+              Uploads stream to the server with progress tracking. Headers are mapped semantically — no fixed column names required.
             </p>
           </section>
         </section>
