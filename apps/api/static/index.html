@@ -458,37 +458,56 @@
 
           <section class="panel geometry-panel">
             <div class="panel-header">
-              <h3>System geometry</h3>
+              <h3>Structural flow</h3>
               <p class="subtitle geometry-subtitle">
-                Live structural relationships between sensors (3D projection for visualization).
+                Sensors move as one stream when aligned; they pull apart and fray when the field drifts.
               </p>
             </div>
-            <p id="geometryProjectionNote" class="subtitle geometry-meta">
-              Positions are derived from the latest correlation geometry for this snapshot.
+            <p id="geometryProjectionNote" class="subtitle geometry-meta geometry-meta-flow">
+              Correlation field shown as a living flow — not a wire diagram.
             </p>
             <div class="geometry-layout">
-              <div id="geometryCanvasWrap" class="geometry-canvas-wrap">
+              <div id="geometryCanvasWrap" class="geometry-canvas-wrap geometry-canvas-wrap--flow">
                 <div id="geometry3dStatus" class="geometry-status hidden"></div>
-                <div id="geometryViewport" class="geometry-viewport" aria-label="3D system geometry visualization"></div>
+                <div id="geometryViewport" class="geometry-viewport" aria-label="Structural sensor flow visualization"></div>
                 <div id="geometryFallback" class="empty-state geometry-fallback hidden"></div>
               </div>
-              <aside id="geometryDetails" class="geometry-details">
+              <aside id="geometryDetails" class="geometry-details geometry-details--flow">
+                <div class="geometry-flow-hero">
+                  <span class="geometry-flow-label">Structural coherence</span>
+                  <span id="geometryCoherence" class="geometry-flow-value" title="How aligned the sensor field is">—</span>
+                </div>
+                <div class="geometry-flow-grid">
+                  <div class="geometry-flow-stat">
+                    <span class="metric-k">In sync</span>
+                    <span id="geometryInSync" class="metric-v">—</span>
+                  </div>
+                  <div class="geometry-flow-stat">
+                    <span class="metric-k">Out of range</span>
+                    <span id="geometryOutSync" class="metric-v">—</span>
+                  </div>
+                  <div class="geometry-flow-stat">
+                    <span class="metric-k">Shifting links</span>
+                    <span id="geometryShiftingLinks" class="metric-v">—</span>
+                  </div>
+                </div>
                 <div class="geometry-run-metrics" id="geometryRunMetrics">
                   <div class="geometry-metric-row"><span class="metric-k">State</span><span id="geometryState" class="metric-v">-</span></div>
                   <div class="geometry-metric-row"><span class="metric-k">Risk</span><span id="geometryRisk" class="metric-v">-</span></div>
                   <div class="geometry-metric-row"><span class="metric-k">Drift</span><span id="geometryDrift" class="metric-v">-</span></div>
-                  <div class="geometry-metric-row"><span class="metric-k">Composite</span><span id="geometryComposite" class="metric-v">-</span></div>
+                  <div class="geometry-metric-row"><span class="metric-k">Instability</span><span id="geometryComposite" class="metric-v">-</span></div>
                 </div>
-                <div id="geometryLegend" class="geometry-legend"></div>
+                <div id="geometryLegend" class="geometry-legend geometry-legend--minimal" aria-hidden="true"></div>
                 <p id="geometryStructureSummary" class="geometry-structure-note">-</p>
-                <h4>Node detail</h4>
-                <p class="subtitle">Select a node in the scene for structural details.</p>
-                <dl id="geometrySelectedDetails" class="geometry-kv">
-                  <div><dt>Signal</dt><dd id="geometryNodeLabel">-</dd></div>
-                  <div><dt>Stress</dt><dd id="geometryNodeStress">-</dd></div>
-                  <div><dt>Magnitude</dt><dd id="geometryNodeMagnitude">-</dd></div>
-                  <div><dt>State</dt><dd id="geometryNodeState">-</dd></div>
-                </dl>
+                <details class="geometry-flow-details">
+                  <summary>Sensor detail (optional)</summary>
+                  <dl id="geometrySelectedDetails" class="geometry-kv geometry-kv--compact">
+                    <div><dt>Signal</dt><dd id="geometryNodeLabel">—</dd></div>
+                    <div><dt>Stress</dt><dd id="geometryNodeStress">—</dd></div>
+                    <div><dt>Coupling</dt><dd id="geometryNodeMagnitude">—</dd></div>
+                    <div><dt>State</dt><dd id="geometryNodeState">—</dd></div>
+                  </dl>
+                </details>
               </aside>
             </div>
           </section>
