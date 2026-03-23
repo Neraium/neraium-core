@@ -158,6 +158,10 @@ def test_mvp_routes_available(tmp_path) -> None:
     css = client.get("/web/styles.css")
     assert js.status_code == 200
     assert css.status_code == 200
+    three = client.get("/web/vendor/three/build/three.module.js")
+    assert three.status_code == 200
+    assert "text/javascript" in three.headers.get("content-type", "")
+    assert "REVISION" in three.text[:4000] and "Three.js" in three.text[:4000]
 
 
 def test_web_js_smoke_wiring_for_demo_critical_controls(tmp_path) -> None:

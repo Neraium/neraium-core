@@ -42,16 +42,29 @@ def _mount_web_static(app: FastAPI) -> None:
 
     Uses Path(__file__) so the directory is correct regardless of process cwd.
     Registered after the web router so explicit HTML routes win; /web/* is fully static.
+
+    If this mount is skipped, GET /web/... falls through to FastAPI's default 404
+    (JSON ``{"detail":"Not Found"}``), which is easy to mistake for an API error.
     """
     static_dir = Path(__file__).resolve().parent / "static"
     if not static_dir.is_dir():
-        logger.warning("Web static directory missing: %s", static_dir)
+        logger.error(
+            "Web static directory missing: %s — /web/* will 404. Clone or sync apps/api/static.",
+            static_dir,
+        )
         return
     app.mount(
         "/web",
         StaticFiles(directory=str(static_dir)),
         name="web",
     )
+    logger.info("Serving static files at /web from %s", static_dir)
+    three_vendor = static_dir / "vendor" / "three" / "build" / "three.module.js"
+    if not three_vendor.is_file():
+        logger.warning(
+            "Three.js bundle missing at %s — run: python scripts/download_three_vendor.py",
+            three_vendor,
+        )
 
 
 DEFAULT_MAX_REQUEST_BODY_BYTES = 50 * 1024 * 1024
