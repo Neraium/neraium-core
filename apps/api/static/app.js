@@ -2149,6 +2149,7 @@ function renderGeometryScene(payload, viewportDims) {
   }
 
   showGeometryCanvas();
+  const perf = geometryFlowPerfEnabled();
   const width = Math.max(240, viewportDims.width || viewport.clientWidth || 240);
   const height = Math.max(240, viewportDims.height || viewport.clientHeight || 360);
   const renderer = new three.WebGLRenderer({ antialias: true, alpha: true, powerPreference: "high-performance" });
