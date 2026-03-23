@@ -17,7 +17,7 @@ from uuid import uuid4
 import numpy as np
 from fastapi import Depends, FastAPI, File, Header, HTTPException, Query, Request, UploadFile, status
 from pydantic import BaseModel, Field
-from starlette.responses import JSONResponse
+from starlette.responses import JSONResponse, Response
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from apps.api.integration import (
@@ -194,6 +194,18 @@ class HealthResponse(BaseModel):
     auth_configured: bool
     persistence_available: bool
     latest_result_available: bool
+
+
+class ClientErrorReport(BaseModel):
+    """Browser-reported script errors (product UI telemetry)."""
+
+    message: str = ""
+    stack: str | None = None
+    url: str | None = None
+    source: str | None = None
+    lineno: int | None = None
+    colno: int | None = None
+    reason: str | None = None
 
 
 class ResultsEnvelope(BaseModel):
@@ -1680,6 +1692,22 @@ def create_app(
             persistence_available=persistence_available,
             latest_result_available=latest is not None,
         )
+
+    @app.post("/client-errors", status_code=status.HTTP_204_NO_CONTENT)
+    def report_client_error(report: ClientErrorReport) -> Response:
+        """Receive client-side JS errors from the web UI (no API key; same-origin)."""
+        msg = (report.message or "")[:1500]
+        url = (report.url or "")[:1500]
+        stack = (report.stack or "")[:4000]
+        extra = (report.reason or report.source or "")[:500]
+        logger.warning(
+            "client_js_error url=%s msg=%s extra=%s stack_snip=%s",
+            url,
+            msg,
+            extra,
+            stack[:800].replace("\n", " "),
+        )
+        return Response(status_code=status.HTTP_204_NO_CONTENT)
 
     @app.post("/runs", response_model=RunEnvelope)
     def create_run(

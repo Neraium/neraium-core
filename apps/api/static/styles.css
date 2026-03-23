@@ -2507,6 +2507,40 @@ input[type="file"] {
   min-height: 200px;
 }
 
+.geometry-viewport.geometry-viewport--loading {
+  background: linear-gradient(145deg, rgba(10, 18, 34, 0.98) 0%, rgba(6, 12, 24, 0.99) 100%);
+}
+
+.geometry-canvas-wrap.geometry-canvas-wrap--loading {
+  position: relative;
+}
+
+.geometry-canvas-wrap.geometry-canvas-wrap--loading::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(45, 212, 191, 0.07) 50%,
+    transparent 100%
+  );
+  background-size: 220% 100%;
+  animation: geometry-flow-shimmer 1.15s ease-in-out infinite;
+  opacity: 0.9;
+}
+
+@keyframes geometry-flow-shimmer {
+  0% {
+    background-position: 100% 0;
+  }
+  100% {
+    background-position: -100% 0;
+  }
+}
+
 #geometryCanvas {
   position: absolute;
   inset: 0;
