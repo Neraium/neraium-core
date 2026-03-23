@@ -1015,7 +1015,8 @@ const state = {
 
 const TENANT_STORAGE_KEY = "neraium_customer_id";
 const DEMO_MODE_STORAGE_KEY = "neraium_demo_mode";
-const DEMO_PLAYBACK_INTERVAL_MS = 850;
+/** Demo timeline: advance one result every 10s (was 850ms). */
+const DEMO_PLAYBACK_INTERVAL_MS = 10_000;
 /** Default on: lighter WebGL + simpler motion. Set localStorage "neraium_structural_flow_perf" to "0" for richer visuals. */
 const GEOMETRY_FLOW_PERF_KEY = "neraium_structural_flow_perf";
 /** Origin marker + debug visuals for structural flow. `true` always shows the marker; when `false`, use URL `?geomDebug=1` instead. */
