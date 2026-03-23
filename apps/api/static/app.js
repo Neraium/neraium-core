@@ -1097,12 +1097,14 @@ const state = {
     controls: null,
     raycaster: null,
     pointer: null,
+    nodeGroup: null,
     nodeMeshById: {},
     nodeDataById: {},
     nodeLabelById: {},
     nodeGlowById: {},
     unstablePulseById: {},
     selectedId: null,
+    hoveredId: null,
     frameId: null,
     resizeObserver: null,
     interactionEnabled: false,
@@ -1313,12 +1315,14 @@ function disposeGeometryRenderer() {
   g.camera = null;
   g.raycaster = null;
   g.pointer = null;
+  g.nodeGroup = null;
   g.nodeMeshById = {};
   g.nodeDataById = {};
   g.nodeLabelById = {};
   g.nodeGlowById = {};
   g.unstablePulseById = {};
   g.selectedId = null;
+  g.hoveredId = null;
   g.interactionEnabled = false;
 }
 
@@ -1644,23 +1648,38 @@ function updateGeometryDetails(nodeId = null) {
     setNodeFields("None selected", "-", "-", "-");
     return;
   }
+  const stressVal = node.stress;
+  const magVal = node.magnitude;
+  const stressText =
+    stressVal != null && stressVal !== "" && Number.isFinite(Number(stressVal)) ? toPretty(Number(stressVal)) : "—";
+  const magText =
+    magVal != null && magVal !== "" && Number.isFinite(Number(magVal)) ? toPretty(Number(magVal)) : "—";
   setNodeFields(
     String(node.label || node.id || "-"),
-    toPretty(Number(node.stress)),
-    toPretty(Number(node.magnitude)),
+    stressText,
+    magText,
     `${String(node.state || "-")}${node.is_unstable ? " (UNSTABLE)" : ""}`,
   );
 }
 
+function resetNodeMeshVisual(mesh) {
+  if (!mesh || !mesh.material) return;
+  mesh.scale.setScalar(1);
+  if (mesh.material.emissive) {
+    mesh.material.emissive.setHex(0x0d1424);
+    mesh.material.emissiveIntensity = 0.35;
+  }
+}
+
 function setGeometrySelection(nextId = null) {
   const g = state.geometry3d;
+  if (g.hoveredId && g.nodeMeshById[g.hoveredId]) {
+    resetNodeMeshVisual(g.nodeMeshById[g.hoveredId]);
+  }
+  g.hoveredId = null;
   const previous = g.selectedId;
   if (previous && g.nodeMeshById[previous]) {
-    const prevMesh = g.nodeMeshById[previous];
-    prevMesh.scale.setScalar(1);
-    if (prevMesh.material && prevMesh.material.emissive) {
-      prevMesh.material.emissive.setHex(0x000000);
-    }
+    resetNodeMeshVisual(g.nodeMeshById[previous]);
   }
   g.selectedId = nextId;
   if (nextId && g.nodeMeshById[nextId]) {
@@ -1744,6 +1763,14 @@ function renderGeometryScene(payload, viewportDims) {
     return;
   }
 
+  if (typeof console !== "undefined" && console.debug) {
+    console.debug("[geometry3d] build scene", {
+      nodes: payload.nodes.length,
+      edges: Array.isArray(payload.edges) ? payload.edges.length : 0,
+      sampleNode: payload.nodes[0],
+    });
+  }
+
   showGeometryCanvas();
   const width = Math.max(240, viewportDims.width || viewport.clientWidth || 240);
   const height = Math.max(240, viewportDims.height || viewport.clientHeight || 360);
@@ -1798,6 +1825,7 @@ function renderGeometryScene(payload, viewportDims) {
   g.nodeGlowById = {};
   g.unstablePulseById = {};
   g.selectedId = null;
+  g.hoveredId = null;
   g.interactionEnabled = true;
 
   const riskColor = riskColorHex(payload.metrics?.risk_level);
@@ -1851,6 +1879,7 @@ function renderGeometryScene(payload, viewportDims) {
     const pz = Number(node.position?.z || 0);
     mesh.position.set(px, py, pz);
     mesh.userData.nodeId = String(node.id);
+    mesh.userData.pickMesh = true;
     mesh.userData.radius = radius;
     mesh.userData.basePos = new three.Vector3(px, py, pz);
     mesh.userData.jitterSeed = Math.random() * Math.PI * 2;
@@ -1871,6 +1900,7 @@ function renderGeometryScene(payload, viewportDims) {
       );
       unstableHalo.position.set(px, py, pz);
       unstableHalo.userData.nodeId = String(node.id);
+      unstableHalo.userData.pickMesh = false;
       nodeGroup.add(unstableHalo);
       g.nodeGlowById[String(node.id)] = unstableHalo;
       g.unstablePulseById[String(node.id)] = 0.65 + Math.random() * 0.7;
@@ -1886,6 +1916,7 @@ function renderGeometryScene(payload, viewportDims) {
     }
   });
   scene.add(nodeGroup);
+  g.nodeGroup = nodeGroup;
   applyGeometryDisplayMode();
   updateGeometryDetails(null);
 
@@ -1915,26 +1946,105 @@ function renderGeometryScene(payload, viewportDims) {
     g.cleanupResize = () => window.removeEventListener("resize", handler);
   }
 
-  function pickNode(evt) {
-    if (!g.interactionEnabled || !g.raycaster || !g.camera || !g.renderer) return;
+  let pointerDown = null;
+
+  function updateHoverFromEvent(evt) {
+    if (!g.interactionEnabled || !g.raycaster || !g.camera || !g.renderer || !g.scene || !g.nodeGroup) return;
+    if (g.selectedId) return;
+    if (pointerDown) return;
+    g.scene.updateMatrixWorld(true);
     const rect = g.renderer.domElement.getBoundingClientRect();
-    const x = (evt.clientX - rect.left) / rect.width;
-    const y = (evt.clientY - rect.top) / rect.height;
-    if (x < 0 || x > 1 || y < 0 || y > 1) return;
-    g.pointer.x = x * 2 - 1;
-    g.pointer.y = -(y * 2 - 1);
+    const w = rect.width || 1;
+    const h = rect.height || 1;
+    g.pointer.x = ((evt.clientX - rect.left) / w) * 2 - 1;
+    g.pointer.y = -((evt.clientY - rect.top) / h) * 2 + 1;
     g.raycaster.setFromCamera(g.pointer, g.camera);
-    const intersects = g.raycaster.intersectObjects(Object.values(g.nodeMeshById));
-    if (!intersects.length) {
-      setGeometrySelection(null);
-      return;
+    const hits = g.raycaster.intersectObjects([g.nodeGroup], true);
+    const hit = hits.find((h) => h.object && h.object.userData && h.object.userData.pickMesh === true);
+    const nextHover = hit && hit.object.userData.nodeId ? String(hit.object.userData.nodeId) : null;
+    if (nextHover === g.hoveredId) return;
+    if (g.hoveredId && g.nodeMeshById[g.hoveredId]) {
+      resetNodeMeshVisual(g.nodeMeshById[g.hoveredId]);
     }
-    const id = intersects[0].object?.userData?.nodeId;
-    setGeometrySelection(id ? String(id) : null);
+    g.hoveredId = nextHover;
+    if (g.hoveredId && g.nodeMeshById[g.hoveredId]) {
+      const hm = g.nodeMeshById[g.hoveredId];
+      if (hm.material && hm.material.emissive) {
+        hm.material.emissive.setHex(0x2a4a66);
+        hm.material.emissiveIntensity = 0.48;
+      }
+    }
+    const tip = g.hoveredId && g.nodeDataById[g.hoveredId];
+    g.renderer.domElement.title = tip ? String(tip.label || tip.id || g.hoveredId || "") : "";
   }
-  const pointerHandler = (evt) => pickNode(evt);
-  renderer.domElement.addEventListener("pointerdown", pointerHandler);
-  g.cleanupPointer = () => renderer.domElement.removeEventListener("pointerdown", pointerHandler);
+
+  function clearHover() {
+    if (g.hoveredId && g.nodeMeshById[g.hoveredId]) {
+      resetNodeMeshVisual(g.nodeMeshById[g.hoveredId]);
+    }
+    g.hoveredId = null;
+    if (g.renderer && g.renderer.domElement) {
+      g.renderer.domElement.title = "";
+    }
+  }
+
+  function pickNodeFromEvent(evt) {
+    if (!g.interactionEnabled || !g.raycaster || !g.camera || !g.renderer || !g.scene) return;
+    if (!g.nodeGroup) return;
+    g.scene.updateMatrixWorld(true);
+    const rect = g.renderer.domElement.getBoundingClientRect();
+    const w = rect.width || 1;
+    const h = rect.height || 1;
+    g.pointer.x = ((evt.clientX - rect.left) / w) * 2 - 1;
+    g.pointer.y = -((evt.clientY - rect.top) / h) * 2 + 1;
+    g.raycaster.setFromCamera(g.pointer, g.camera);
+    const hits = g.raycaster.intersectObjects([g.nodeGroup], true);
+    if (typeof console !== "undefined" && console.debug) {
+      console.debug("[geometry3d] pick ray", {
+        pointer: [g.pointer.x, g.pointer.y],
+        hitCount: hits.length,
+        firstPick: hits[0]?.object?.userData,
+      });
+    }
+    const hit = hits.find((h) => h.object && h.object.userData && h.object.userData.pickMesh === true);
+    const id = hit && hit.object.userData.nodeId ? String(hit.object.userData.nodeId) : null;
+    if (typeof console !== "undefined" && console.debug) {
+      console.debug("[geometry3d] pick result", { selectedId: id });
+    }
+    setGeometrySelection(id);
+  }
+
+  const onPointerDown = (evt) => {
+    if (evt.button !== 0) return;
+    pointerDown = { x: evt.clientX, y: evt.clientY };
+  };
+  const onPointerUp = (evt) => {
+    if (evt.button !== 0 || !pointerDown) return;
+    const dx = evt.clientX - pointerDown.x;
+    const dy = evt.clientY - pointerDown.y;
+    pointerDown = null;
+    if (Math.hypot(dx, dy) > 10) return;
+    pickNodeFromEvent(evt);
+  };
+  const onPointerMove = (evt) => {
+    updateHoverFromEvent(evt);
+  };
+  const onPointerLeave = () => {
+    clearHover();
+    pointerDown = null;
+  };
+
+  const el = renderer.domElement;
+  el.addEventListener("pointerdown", onPointerDown);
+  el.addEventListener("pointerup", onPointerUp);
+  el.addEventListener("pointermove", onPointerMove);
+  el.addEventListener("pointerleave", onPointerLeave);
+  g.cleanupPointer = () => {
+    el.removeEventListener("pointerdown", onPointerDown);
+    el.removeEventListener("pointerup", onPointerUp);
+    el.removeEventListener("pointermove", onPointerMove);
+    el.removeEventListener("pointerleave", onPointerLeave);
+  };
 
   let t = 0;
   function animate() {
