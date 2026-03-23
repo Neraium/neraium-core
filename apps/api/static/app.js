@@ -1375,7 +1375,7 @@ function ensureThreeModulesLoaded() {
       if (Date.now() > deadline) {
         reject(
           new Error(
-            "Three.js did not load. From the repo root run `npm install` (installs three@0.162.0), restart the API, then hard-refresh. Check Network: /web/three-init.mjs and /web/vendor/three/build/three.module.js should return 200.",
+            "Three.js did not load. On the server run `python scripts/download_three_vendor.py` (or `npm install`), restart the API, hard-refresh. Network tab: /web/vendor/three/build/three.module.js must be 200.",
           ),
         );
         return;
