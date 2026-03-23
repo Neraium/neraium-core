@@ -1154,7 +1154,7 @@ def _build_geometry_payload(result: dict[str, Any], *, run_id: str | None) -> di
         "note": (
             f"2–{STRUCTURAL_FLOW_PLANE_MAX_N} sensors: deterministic layout on shared XZ (triangle+hub when "
             f"n=4, even ring when n≤12, dual ring when n>12); in-range sensors stay on the plane; "
-            out-of-range lift on +Y. Larger counts use spectral projection. Visualization-only."
+            "out-of-range lift on +Y. Larger counts use spectral projection. Visualization-only."
         ),
     }
     provenance = {

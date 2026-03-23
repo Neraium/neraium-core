@@ -2390,6 +2390,20 @@ input[type="file"] {
     radial-gradient(ellipse 90% 60% at 50% 38%, rgba(34, 180, 200, 0.14), transparent 55%),
     radial-gradient(circle at 12% 88%, rgba(56, 120, 220, 0.12), transparent 40%),
     linear-gradient(165deg, #070f1c 0%, #050a12 100%);
+  transition: opacity 0.45s ease-out;
+}
+
+.geometry-canvas-wrap--flow.geometry-canvas-wrap--enter {
+  animation: geometry-canvas-fade-in 0.55s ease-out forwards;
+}
+
+@keyframes geometry-canvas-fade-in {
+  from {
+    opacity: 0.35;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 .geometry-meta-flow {
@@ -2406,11 +2420,11 @@ input[type="file"] {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  padding: 12px 12px 10px;
+  padding: 10px 10px 8px;
   border-radius: 12px;
   border: 1px solid rgba(45, 180, 200, 0.28);
   background: linear-gradient(145deg, rgba(12, 42, 52, 0.55), rgba(8, 18, 32, 0.92));
-  margin-bottom: 10px;
+  margin-bottom: 8px;
 }
 
 .geometry-flow-label {
