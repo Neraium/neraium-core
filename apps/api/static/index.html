@@ -211,7 +211,7 @@
                   Every snapshot projects correlated sensors into a relationship field. You see nodes, stress, and coupling rather than isolated charts.
                 </p>
                 <ul class="demo-bullet-list">
-                  <li>3D geometry view on run detail shows current vs baseline structure.</li>
+                  <li>3D system geometry on run detail shows live structural relationships between sensors.</li>
                   <li>Dashboard summarizes the latest envelope: state, phase, and health score.</li>
                 </ul>
               </div>
@@ -250,7 +250,7 @@
                   The engine scores forward-leaning structural stress so teams can stage maintenance, isolate subsystems, and brief leadership with a single narrative.
                 </p>
                 <ul class="demo-bullet-list">
-                  <li>Use <strong>Create Demo Run</strong> for three realistic scenarios: baseline, watch, escalation.</li>
+                  <li>Use <strong>Demo run</strong> for three scenarios: stable, watch, and escalation.</li>
                   <li>Export JSON or CSV when you need evidence outside the console.</li>
                 </ul>
               </div>
@@ -296,9 +296,9 @@
               </label>
               <label>
                 Run config (JSON)
-                <textarea id="runConfigInput" rows="4" placeholder='{"baseline_window":24,"recent_window":8,"baseline_locked":false}'></textarea>
+                <textarea id="runConfigInput" rows="4" placeholder='{"recent_window":8}'></textarea>
               </label>
-              <p class="subtitle">Use <code>baseline_window</code> (samples), <code>recent_window</code>, and <code>baseline_locked</code> for baseline control.</p>
+              <p class="subtitle">Optional JSON for window sizes and engine options (see API docs).</p>
               <label class="row">
                 <input id="runActivateInput" type="checkbox" checked />
                 <span>Set as active</span>
@@ -429,23 +429,6 @@
               </div>
               <p id="runRiskExplanationText" class="subtitle"></p>
             </article>
-            <article id="runBaselinePanel" class="baseline-panel hidden">
-              <div class="panel-header">
-                <h4>Baseline</h4>
-                <div class="row baseline-actions">
-                  <button id="runBaselineResetBtn" type="button" class="secondary" title="Reset baseline and recalibrate from current window">Reset baseline</button>
-                  <button id="runBaselineLockBtn" type="button" class="secondary" title="Lock baseline to prevent it from adapting during this run">Lock baseline</button>
-                  <button id="runBaselineUnlockBtn" type="button" class="secondary hidden" title="Unlock baseline to allow adaptive updates">Unlock baseline</button>
-                </div>
-              </div>
-              <dl id="runBaselineMeta" class="baseline-meta">
-                <div><dt>Set at</dt><dd id="runBaselineSetAt">-</dd></div>
-                <div><dt>Coverage</dt><dd id="runBaselineCoverage">-</dd></div>
-                <div><dt>Window</dt><dd id="runBaselineWindow">-</dd></div>
-                <div><dt>Mode</dt><dd id="runBaselineMode">-</dd></div>
-                <div><dt>Locked</dt><dd id="runBaselineLocked">-</dd></div>
-              </dl>
-            </article>
             <div id="runDetailEmpty" class="empty-state hidden">
               <p>No results available for this run.</p>
               <p class="subtitle">Upload a CSV file or seed demo data to generate results.</p>
@@ -477,11 +460,11 @@
             <div class="panel-header">
               <h3>System geometry</h3>
               <p class="subtitle geometry-subtitle">
-                Engine-derived structural relationship view (3D projection for visualization only).
+                Live structural relationships between sensors (3D projection for visualization).
               </p>
             </div>
             <p id="geometryProjectionNote" class="subtitle geometry-meta">
-              Node positions are deterministic display projections derived from engine correlation outputs.
+              Positions are derived from the latest correlation geometry for this snapshot.
             </p>
             <div class="geometry-layout">
               <div id="geometryCanvasWrap" class="geometry-canvas-wrap">
@@ -495,14 +478,9 @@
                   <div class="geometry-metric-row"><span class="metric-k">Risk</span><span id="geometryRisk" class="metric-v">-</span></div>
                   <div class="geometry-metric-row"><span class="metric-k">Drift</span><span id="geometryDrift" class="metric-v">-</span></div>
                   <div class="geometry-metric-row"><span class="metric-k">Composite</span><span id="geometryComposite" class="metric-v">-</span></div>
-                  <div class="geometry-metric-row"><span class="metric-k">View</span><span id="geometryViewMode" class="metric-v">Current</span></div>
                 </div>
                 <div id="geometryLegend" class="geometry-legend"></div>
                 <p id="geometryStructureSummary" class="geometry-structure-note">-</p>
-                <div class="geometry-view-toggle" role="group" aria-label="Geometry view mode">
-                  <button type="button" data-geometry-mode="current" class="active">Current</button>
-                  <button type="button" data-geometry-mode="baseline">Baseline</button>
-                </div>
                 <h4>Node detail</h4>
                 <p class="subtitle">Select a node in the scene for structural details.</p>
                 <dl id="geometrySelectedDetails" class="geometry-kv">

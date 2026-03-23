@@ -876,7 +876,7 @@ async function prepareDemoRuns() {
   try {
     const suffix = new Date().toISOString().slice(11, 16).replace(":", "");
     const scenarios = [
-      { name: `Demo Baseline ${suffix}`, profile: "stable", siteId: "north-yard", assetId: "compressor-A" },
+      { name: `Demo Stable ${suffix}`, profile: "stable", siteId: "north-yard", assetId: "compressor-A" },
       { name: `Demo Watch ${suffix}`, profile: "watch", siteId: "north-yard", assetId: "compressor-B" },
       { name: `Demo Escalation ${suffix}`, profile: "critical", siteId: "south-yard", assetId: "compressor-C" },
     ];
@@ -984,7 +984,6 @@ const state = {
     interactionEnabled: false,
     cleanupPointer: null,
     cleanupResize: null,
-    baselineMode: false,
   },
   demo: {
     enabled: false,
@@ -1358,23 +1357,15 @@ function renderGeometryLegend(payload) {
   const unstableCount = Number(payload?.summary?.unstable_nodes_current || 0);
   const changedEdges = Number(payload?.summary?.changed_edges_current || 0);
   legend.innerHTML = `
-    <span class="geom-pill">Current nodes: ${Number(payload?.nodes?.length || 0)}</span>
-    <span class="geom-pill">Current edges: ${Number(payload?.edges?.length || 0)}</span>
+    <span class="geom-pill">Nodes: ${Number(payload?.nodes?.length || 0)}</span>
+    <span class="geom-pill">Edges: ${Number(payload?.edges?.length || 0)}</span>
     <span class="geom-pill geom-pill-unstable">Unstable nodes: ${unstableCount}</span>
     <span class="geom-pill">Changed edges: ${changedEdges}</span>
   `;
 }
 
-function geometryDisplayMode() {
-  return state.geometry3d.baselineMode ? "baseline" : "current";
-}
-
 function geometryPositionForNode(node) {
-  const mode = geometryDisplayMode();
-  const source =
-    mode === "baseline"
-      ? node?.position_baseline || node?.position || {}
-      : node?.position_current || node?.position || {};
+  const source = node?.position_current || node?.position || {};
   return {
     x: Number(source?.x || 0),
     y: Number(source?.y || 0),
@@ -1476,7 +1467,7 @@ function renderGeometryModelsPanel(payload) {
       ["Confidence", toPretty(ss.confidence)],
       ["Structural analysis", ss.structural_analysis_available ? "available" : "limited"],
       ["Regime library size", toPretty(rs.library_size != null ? rs.library_size : rm.library_size)],
-      ["Regime baseline count", toPretty(rm.baseline_count)],
+      ["Regime memory entries", toPretty(rm.baseline_count)],
       ["Assigned regime (signature)", toPretty(rs.assigned_name)],
       ["Regime distance", ss.regime_distance != null && ss.regime_distance !== undefined ? toPretty(ss.regime_distance) : "-"],
     ];
@@ -1487,14 +1478,6 @@ function renderGeometryModelsPanel(payload) {
       .map(([dt, dd]) => `<div><dt>${escapeHtml(String(dt))}</dt><dd>${escapeHtml(String(dd))}</dd></div>`)
       .join("");
   }
-}
-
-function setGeometryModeButtons() {
-  qsa("[data-geometry-mode]").forEach((btn) => {
-    const mode = String(btn.getAttribute("data-geometry-mode") || "current");
-    if ((mode === "baseline") === state.geometry3d.baselineMode) btn.classList.add("active");
-    else btn.classList.remove("active");
-  });
 }
 
 function applyGeometryDisplayMode() {
@@ -1520,15 +1503,14 @@ function applyGeometryDisplayMode() {
   const note = qs("#geometryProjectionNote");
   const payload = state.runGeometry;
   if (note && payload) {
-    const baseRaw = String(payload.projection?.note || note.dataset.base || "").split(" [mode:")[0].trim();
-    const base = baseRaw || "Structural relationship projection from correlation signals.";
-    note.dataset.base = base;
-    const modeLabel = state.geometry3d.baselineMode ? "BASELINE" : "CURRENT";
-    note.textContent = `${base} [view: ${modeLabel}]`;
+    let text = String(payload.projection?.note || "").replace(/\s*\[view:\s*[^\]]+\]\s*$/i, "").trim();
+    if (!text) {
+      text = "Positions reflect the live structural field for this snapshot.";
+    }
+    note.textContent = text;
   }
   const summary = qs("#geometryStructureSummary");
   if (summary) summary.textContent = geometryStructureSummary(state.runGeometry);
-  setGeometryModeButtons();
   if (g.camera && g.controls && g.nodeGroup && window.THREE) {
     fitGeometryCamera(g.camera, g.controls, g.nodeGroup, window.THREE);
   }
@@ -1545,13 +1527,11 @@ function updateGeometryDetails(nodeId = null) {
   const metricRisk = qs("#geometryRisk");
   const metricDrift = qs("#geometryDrift");
   const metricComposite = qs("#geometryComposite");
-  const metricView = qs("#geometryViewMode");
 
   if (metricState) metricState.textContent = toPretty(payload?.metrics?.state);
   if (metricRisk) metricRisk.textContent = toPretty(payload?.metrics?.risk_level);
   if (metricDrift) metricDrift.textContent = toPretty(payload?.metrics?.structural_drift_score);
   if (metricComposite) metricComposite.textContent = toPretty(payload?.metrics?.composite_instability);
-  if (metricView) metricView.textContent = state.geometry3d.baselineMode ? "BASELINE" : "CURRENT";
 
   const setNodeFields = (label, stress, magnitude, stateText) => {
     if (nodeLabel) nodeLabel.textContent = label;
@@ -2008,7 +1988,6 @@ function renderGeometryScene(payload, viewportDims) {
 
 async function loadRunGeometry(runId, resultId = null) {
   const statusEl = qs("#geometry3dStatus");
-  const baselineBtn = qs('[data-geometry-mode="baseline"]');
   if (statusEl) {
     statusEl.textContent = "Loading geometry…";
     statusEl.className = "geometry-status info";
@@ -2032,16 +2011,6 @@ async function loadRunGeometry(runId, resultId = null) {
     "Structural projection metadata was not returned for this result.";
   const fallback = qs("#geometryFallback");
   const summary = qs("#geometryStructureSummary");
-  const baselineAvail = payload?.views?.baseline?.available === true;
-  if (baselineBtn) {
-    baselineBtn.disabled = !baselineAvail;
-    baselineBtn.title = baselineAvail
-      ? "Show baseline correlation structure"
-      : "No baseline correlation matrix is stored for this result yet.";
-    if (!baselineAvail && state.geometry3d.baselineMode) {
-      state.geometry3d.baselineMode = false;
-    }
-  }
   if (fallback) {
     fallback.setAttribute("title", projectionNote);
     if (!payload?.available) {
@@ -2912,79 +2881,6 @@ function renderRunDetailFromState() {
   });
 }
 
-function formatIsoTime(iso) {
-  if (!iso || typeof iso !== "string") return "-";
-  try {
-    const d = new Date(iso);
-    return Number.isFinite(d.getTime()) ? d.toLocaleString() : "-";
-  } catch {
-    return "-";
-  }
-}
-
-async function loadRunBaseline(runId) {
-  const panel = qs("#runBaselinePanel");
-  const setAt = qs("#runBaselineSetAt");
-  const coverage = qs("#runBaselineCoverage");
-  const windowEl = qs("#runBaselineWindow");
-  const modeEl = qs("#runBaselineMode");
-  const lockedEl = qs("#runBaselineLocked");
-  const resetBtn = qs("#runBaselineResetBtn");
-  const lockBtn = qs("#runBaselineLockBtn");
-  const unlockBtn = qs("#runBaselineUnlockBtn");
-  if (!panel) return;
-  try {
-    const info = await fetchJson(apiUrl(`/runs/${encodeURIComponent(runId)}/baseline`, tenantScopeParams()));
-    panel.classList.remove("hidden");
-    if (setAt) setAt.textContent = formatIsoTime(info.baseline_set_at) || "Not yet set";
-    if (coverage) coverage.textContent = info.baseline_coverage_samples != null ? `${info.baseline_coverage_samples} samples` : "-";
-    if (windowEl) windowEl.textContent = info.baseline_window_config != null ? `${info.baseline_window_config} samples` : "-";
-    if (modeEl) modeEl.textContent = String(info.baseline_mode || "unknown");
-    const locked = Boolean(info.baseline_locked);
-    if (lockedEl) lockedEl.textContent = locked ? "Yes" : "No";
-    if (lockBtn) lockBtn.classList.toggle("hidden", locked);
-    if (unlockBtn) unlockBtn.classList.toggle("hidden", !locked);
-    if (resetBtn) resetBtn.onclick = () => resetRunBaseline(runId);
-    if (lockBtn) lockBtn.onclick = () => lockRunBaseline(runId, true);
-    if (unlockBtn) unlockBtn.onclick = () => lockRunBaseline(runId, false);
-  } catch (err) {
-    panel.classList.add("hidden");
-  }
-}
-
-async function resetRunBaseline(runId) {
-  try {
-    setLoading(true, "Resetting baseline...");
-    await fetchJson(apiUrl(`/runs/${encodeURIComponent(runId)}/baseline/reset`, tenantScopeParams()), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-    });
-    await loadRunBaseline(runId);
-    setStatus("Baseline reset. New baseline will form from current window.", false, true);
-  } catch (err) {
-    setStatus(String(err.message || err), true, true);
-  } finally {
-    setLoading(false);
-  }
-}
-
-async function lockRunBaseline(runId, locked) {
-  try {
-    setLoading(true, locked ? "Locking baseline..." : "Unlocking baseline...");
-    await fetchJson(apiUrl(`/runs/${encodeURIComponent(runId)}/baseline/lock`, tenantScopeParams()), {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ locked }),
-    });
-    await loadRunBaseline(runId);
-    setStatus(locked ? "Baseline locked." : "Baseline unlocked.", false, true);
-  } catch (err) {
-    setStatus(String(err.message || err), true, true);
-  } finally {
-    setLoading(false);
-  }
-}
-
 async function loadRunDetail(runId) {
   const runRes = await fetchJson(apiUrl(`/runs/${encodeURIComponent(runId)}`, tenantScopeParams()));
   const run = runRes.run;
@@ -3025,7 +2921,6 @@ async function loadRunDetail(runId) {
           .pop()?.result_id ?? null)
       : null;
   await loadRunGeometry(runId, resultIdForGeometry);
-  await loadRunBaseline(runId);
 
   const exportJson = qs("#runDetailExportJsonBtn");
   const exportCsv = qs("#runDetailExportCsvBtn");
@@ -3189,15 +3084,6 @@ function wireMobileNav() {
 
 async function wireEvents() {
   wireMobileNav();
-  qsa("[data-geometry-mode]").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      if (btn.disabled) return;
-      const mode = String(btn.getAttribute("data-geometry-mode") || "current");
-      state.geometry3d.baselineMode = mode === "baseline";
-      applyGeometryDisplayMode();
-      updateGeometryDetails(state.geometry3d.selectedId);
-    });
-  });
   qs("#demoModeToggle")?.addEventListener("change", async (e) => {
     const enabled = Boolean(e.target?.checked);
     try {
