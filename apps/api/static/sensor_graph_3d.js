@@ -4,7 +4,7 @@
  * Rendering is isolated from app.js; data mapping happens in app.js before calling update().
  */
 (function initNeraiumSensorGraph3D(global) {
-  const THREE = global.THREE;
+  const THREE = global.__THREE_ESM || global.THREE;
   if (!THREE) {
     global.NeraiumSensorGraph3D = {
       init() {},

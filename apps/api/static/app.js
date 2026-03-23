@@ -1200,7 +1200,14 @@ function disposeGeometryRenderer() {
   g.interactionEnabled = false;
 }
 
+function getThreeNamespace() {
+  return window.__THREE_ESM || window.THREE;
+}
+
 function getOrbitControlsConstructor() {
+  if (typeof window.__OrbitControls === "function") {
+    return window.__OrbitControls;
+  }
   if (window.THREE && window.THREE.OrbitControls) {
     return window.THREE.OrbitControls;
   }
@@ -1339,10 +1346,10 @@ function edgeColorHex(edge, metrics) {
 }
 
 function ensureThreeLibs() {
-  const three = window.THREE;
+  const three = getThreeNamespace();
   const controlsCtor = getOrbitControlsConstructor();
   if (!three || !controlsCtor) {
-    throw new Error("3D libraries unavailable.");
+    throw new Error("Three.js did not load (check network or import map).");
   }
   return { three, controlsCtor };
 }
@@ -1487,7 +1494,7 @@ function applyGeometryDisplayMode() {
     if (!node || !mesh) return;
     const pos = geometryPositionForNode(node);
     if (!mesh.userData) mesh.userData = {};
-    const three = window.THREE;
+    const three = getThreeNamespace();
     if (!three?.Vector3) return;
     mesh.userData.basePos = new three.Vector3(pos.x, pos.y, pos.z);
     mesh.position.set(pos.x, pos.y, pos.z);
@@ -1511,8 +1518,8 @@ function applyGeometryDisplayMode() {
   }
   const summary = qs("#geometryStructureSummary");
   if (summary) summary.textContent = geometryStructureSummary(state.runGeometry);
-  if (g.camera && g.controls && g.nodeGroup && window.THREE) {
-    fitGeometryCamera(g.camera, g.controls, g.nodeGroup, window.THREE);
+  if (g.camera && g.controls && g.nodeGroup && getThreeNamespace()) {
+    fitGeometryCamera(g.camera, g.controls, g.nodeGroup, getThreeNamespace());
   }
 }
 
