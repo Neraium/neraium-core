@@ -987,9 +987,6 @@ const state = {
     perfMode: true,
     curveSegments: 9,
     motionScale: 1,
-    fpsEma: 60,
-    lowFpsFrames: 0,
-    lastFrameTime: 0,
     useCanvas2d: false,
     canvas2d: null,
     flowCoherence: 0.75,
@@ -1048,13 +1045,8 @@ function geometryFlow2dOnlyFromUrl() {
 }
 
 function geometryFlowPrefer2dOnly() {
-  if (geometryFlow2dOnlyFromUrl()) return true;
-  try {
-    const c = typeof navigator.hardwareConcurrency === "number" ? navigator.hardwareConcurrency : 4;
-    return c <= 2;
-  } catch (_e) {
-    return false;
-  }
+  /** Only explicit ?flow2d=1 — do not auto-downgrade by CPU count (breaks 3D on many laptops). */
+  return geometryFlow2dOnlyFromUrl();
 }
 
 function customerIdValue(value) {
@@ -1237,8 +1229,6 @@ function disposeGeometryRenderer() {
   g.canvas2d = null;
   g.useCanvas2d = false;
   g.flowEdgeScratch = null;
-  g.lowFpsFrames = 0;
-  g.lastFrameTime = 0;
   if (g.resizeObserver) {
     try {
       g.resizeObserver.disconnect();
@@ -1712,86 +1702,6 @@ function renderStructuralFlow2dOnly(payload, viewportDims) {
   updateGeometryDetails(null);
 }
 
-function switchStructuralFlowWebglTo2dFallback() {
-  const g = state.geometry3d;
-  const payload = state.runGeometry;
-  const canvasHost = qs("#geometryViewport");
-  if (!payload?.available || g.useCanvas2d || !canvasHost || !g.renderer) return;
-
-  if (g.frameId) {
-    window.cancelAnimationFrame(g.frameId);
-    g.frameId = null;
-  }
-  if (g.resizeObserver) {
-    try {
-      g.resizeObserver.disconnect();
-    } catch (_e) {
-      // no-op
-    }
-    g.resizeObserver = null;
-  }
-  if (typeof g.cleanupResize === "function") {
-    g.cleanupResize();
-    g.cleanupResize = null;
-  }
-  if (g.controls) {
-    try {
-      g.controls.dispose();
-    } catch (_e) {
-      // no-op
-    }
-    g.controls = null;
-  }
-  if (g.cleanupPointer) {
-    g.cleanupPointer();
-    g.cleanupPointer = null;
-  }
-  if (g.renderer) {
-    g.renderer.dispose();
-    if (g.renderer.domElement && g.renderer.domElement.parentElement) {
-      g.renderer.domElement.parentElement.removeChild(g.renderer.domElement);
-    }
-    g.renderer = null;
-  }
-  g.scene = null;
-  g.camera = null;
-  g.edgeGroup = null;
-  g.nodeGroup = null;
-  g.edgeRefs = [];
-  g.raycaster = null;
-  g.nodeMeshById = {};
-  g.nodeDataById = {};
-  g.nodeGlowById = {};
-  g.unstablePulseById = {};
-  g.flowEdgeScratch = null;
-  g.useCanvas2d = true;
-  g.perfMode = true;
-  g.lowFpsFrames = 0;
-
-  const dims = geometryViewportDimensions();
-  const w = Math.max(240, dims?.width || canvasHost.clientWidth || 400);
-  const h = Math.max(240, dims?.height || canvasHost.clientHeight || 360);
-  const cv = document.createElement("canvas");
-  cv.className = "geometry-renderer-canvas geometry-flow-2d";
-  cv.width = w;
-  cv.height = h;
-  canvasHost.appendChild(cv);
-  g.canvas2d = cv;
-  const ctx = cv.getContext("2d", { alpha: false });
-  g._2dT = 0;
-
-  function loop() {
-    if (!g.canvas2d || !g.useCanvas2d) return;
-    g.frameId = window.requestAnimationFrame(loop);
-    g._2dT += 0.016;
-    const d = geometryViewportDimensions();
-    const w2 = Math.max(240, d?.width || w);
-    const h2 = Math.max(240, d?.height || h);
-    drawStructuralFlow2dCanvas(ctx, w2, h2, payload, g._2dT, g.flowCoherence, g.flowDriftN, g.flowInstN);
-  }
-  loop();
-}
-
 function ensureThreeLibs() {
   const three = getThreeNamespace();
   const controlsCtor = getOrbitControlsConstructor();
@@ -2192,9 +2102,6 @@ function renderGeometryScene(payload, viewportDims) {
   let motionScale = perf ? 0.72 : 1;
   if (geometryFlowReducedMotion()) motionScale *= 0.42;
   g.motionScale = motionScale;
-  g.fpsEma = 60;
-  g.lowFpsFrames = 0;
-  g.lastFrameTime = 0;
   g.useCanvas2d = false;
   g.pendingHoverEvt = null;
   g.hoverRaf = null;
@@ -2208,6 +2115,7 @@ function renderGeometryScene(payload, viewportDims) {
 
   const edgeGroup = new three.Group();
   const coherence0 = g.flowCoherence;
+  const divisions0 = g.curveSegments;
 
   (payload.edges || []).forEach((edge, edgeIdx) => {
     const source = payload.nodes.find((n) => n.id === edge.source);
@@ -2218,15 +2126,16 @@ function renderGeometryScene(payload, viewportDims) {
     const mid = p1.clone().add(p2).multiplyScalar(0.5);
     mid.y += 0.05 * coherence0 * (1 - flowEdgeTension(edge) * 0.85);
     const curve = new three.QuadraticBezierCurve3(p1.clone(), mid, p2.clone());
-    const pts = curve.getPoints(14);
+    const pts = curve.getPoints(divisions0);
     const edgeGeom = new three.BufferGeometry().setFromPoints(pts);
     const tension = flowEdgeTension(edge);
     const ec = new three.Color(0x5eead4);
     ec.lerp(new three.Color(0xfb7185), tension * (1.2 - coherence0 * 0.5));
+    const mag = Math.min(1, Math.abs(Number(edge.magnitude || 0)));
     const edgeMat = new three.LineBasicMaterial({
       color: ec,
-      transparent: true,
-      opacity: 0.22 + 0.48 * Math.min(1, Math.abs(Number(edge.magnitude || 0))),
+      transparent: !perf,
+      opacity: perf ? 1 : 0.22 + 0.48 * mag,
     });
     const line = new three.Line(edgeGeom, edgeMat);
     edgeGroup.add(line);
@@ -2236,6 +2145,7 @@ function renderGeometryScene(payload, viewportDims) {
       targetId: String(edge.target),
       edge,
       edgeIdx,
+      divisions: divisions0,
     });
   });
   scene.add(edgeGroup);
@@ -2438,22 +2348,6 @@ function renderGeometryScene(payload, viewportDims) {
   function animate() {
     if (g.useCanvas2d) return;
     g.frameId = window.requestAnimationFrame(animate);
-    const now = typeof performance !== "undefined" ? performance.now() : Date.now();
-    if (g.lastFrameTime > 0) {
-      const instFps = 1000 / Math.max(1, now - g.lastFrameTime);
-      g.fpsEma = g.fpsEma * 0.92 + instFps * 0.08;
-    }
-    g.lastFrameTime = now;
-    if (g.fpsEma < 24 && !g.useCanvas2d) {
-      g.lowFpsFrames += 1;
-    } else {
-      g.lowFpsFrames = 0;
-    }
-    if (g.lowFpsFrames > 120 && !g.useCanvas2d) {
-      switchStructuralFlowWebglTo2dFallback();
-      return;
-    }
-
     t += 0.014;
     const coherence = typeof g.flowCoherence === "number" ? g.flowCoherence : 0.75;
     const driftN = typeof g.flowDriftN === "number" ? g.flowDriftN : 0;
