@@ -1018,6 +1018,8 @@ const DEMO_MODE_STORAGE_KEY = "neraium_demo_mode";
 const DEMO_PLAYBACK_INTERVAL_MS = 850;
 /** Default on: lighter WebGL + simpler motion. Set localStorage "neraium_structural_flow_perf" to "0" for richer visuals. */
 const GEOMETRY_FLOW_PERF_KEY = "neraium_structural_flow_perf";
+/** Origin marker + debug visuals for structural flow. `true` always shows the marker; when `false`, use URL `?geomDebug=1` instead. */
+const DEBUG_GEOMETRY = false;
 
 function geometryFlowPerfEnabled() {
   try {
@@ -2082,7 +2084,8 @@ function renderGeometryScene(payload, viewportDims) {
   fill.position.set(-2.2, 1.2, -1.8);
   scene.add(fill);
 
-  if (geometryFlowDebugEnabled()) {
+  const geomDebug = DEBUG_GEOMETRY || geometryFlowDebugEnabled();
+  if (geomDebug) {
     const testSphere = new three.Mesh(
       new three.SphereGeometry(0.14, 16, 16),
       new three.MeshBasicMaterial({ color: 0xff2222 })
