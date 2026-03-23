@@ -2623,6 +2623,11 @@ input[type="file"] {
   height: 100%;
 }
 
+.geometry-renderer-canvas.geometry-flow-2d {
+  image-rendering: auto;
+  touch-action: none;
+}
+
 .geometry-details {
   border: 1px solid #304766;
   border-radius: 12px;
