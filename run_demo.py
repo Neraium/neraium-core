@@ -264,6 +264,10 @@ def main() -> None:
     print(f"  Working directory: {REPO_ROOT}")
     print(f"  ASGI app:          {APP_IMPORT}")
     print(f"  Binding:           {host}:{port}")
+    print()
+    print("  Leave this terminal window open while you use the app.")
+    print("  If you close it or press Ctrl+C, the site stops (browser: page not working / refused).")
+    print("  Use http://127.0.0.1 in the address bar — not https:// (this server is HTTP only).")
     _print_urls(host, port)
 
     if args.share:
