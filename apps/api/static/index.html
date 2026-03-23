@@ -7,16 +7,17 @@
   <title>Neraium</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/web/styles.css" />
   <link rel="modulepreload" href="/web/three-init.mjs" />
-  <link rel="modulepreload" href="/web/vendor/three/build/three.module.js" />
-  <!-- Import maps must be in <head> so they apply before any module graph runs. -->
+  <!-- Three.js from CDN (same version as scripts/download_three_vendor.py) — avoids /web/vendor static issues. -->
+  <link rel="modulepreload" href="https://cdn.jsdelivr.net/npm/three@0.162.0/build/three.module.js" crossorigin />
   <script type="importmap">
     {
       "imports": {
-        "three": "/web/vendor/three/build/three.module.js",
-        "three/addons/": "/web/vendor/three/examples/jsm/"
+        "three": "https://cdn.jsdelivr.net/npm/three@0.162.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.162.0/examples/jsm/"
       }
     }
   </script>

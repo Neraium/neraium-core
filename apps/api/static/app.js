@@ -1375,7 +1375,7 @@ function ensureThreeModulesLoaded() {
       if (Date.now() > deadline) {
         reject(
           new Error(
-            "Three.js did not load. On the server run `python scripts/download_three_vendor.py` (or `npm install`), restart the API, hard-refresh. Network tab: /web/vendor/three/build/three.module.js must be 200.",
+            "Three.js did not load (CDN + import map). Check DevTools Console / Network for cdn.jsdelivr.net/npm/three and /web/three-init.mjs. Offline/air-gapped: run `python scripts/download_three_vendor.py` and switch index.html import map back to /web/vendor paths.",
           ),
         );
         return;

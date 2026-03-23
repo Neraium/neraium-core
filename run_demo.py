@@ -126,7 +126,7 @@ def _print_urls(host: str, port: int) -> None:
     print(f"    OpenAPI / Swagger:   {base_local}/docs")
     print(f"    ReDoc:               {base_local}/redoc")
     print(f"    Health:              {base_local}/health")
-    print(f"    Three.js (smoke):    {base_local}/web/vendor/three/build/three.module.js")
+    print(f"    three-init (module): {base_local}/web/three-init.mjs  (Three.js loads from jsDelivr CDN)")
     print()
     if host in {"0.0.0.0", "::"}:
         print(f"  Localhost alias:       http://localhost:{port}/")
