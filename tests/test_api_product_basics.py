@@ -67,6 +67,7 @@ def test_api_endpoints_registered(tmp_path) -> None:
     paths = {route.path for route in app.router.routes}
 
     assert "/health" in paths
+    assert "/client-errors" in paths
     assert "/ingest" in paths
     assert "/ingest/batch" in paths
     assert "/ingest/csv" in paths

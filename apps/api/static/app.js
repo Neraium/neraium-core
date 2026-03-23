@@ -1059,6 +1059,101 @@ function geometryFlowPrefer2dOnly() {
   return geometryFlow2dOnlyFromUrl();
 }
 
+/**
+ * Opt-in feature toggles for experiments (localStorage `neraium_feat_<name>=1` or `?feat_<name>=1`).
+ */
+function neraiumFeatureEnabled(name) {
+  try {
+    if (new URLSearchParams(window.location.search).get(`feat_${name}`) === "1") return true;
+    return String(window.localStorage.getItem(`neraium_feat_${name}`) || "")
+      .trim()
+      .toLowerCase() === "1";
+  } catch (_e) {
+    return false;
+  }
+}
+
+function neraiumClientErrorReportingDisabled() {
+  try {
+    if (new URLSearchParams(window.location.search).get("noClientLog") === "1") return true;
+    return window.localStorage.getItem("neraium_disable_client_errors") === "1";
+  } catch (_e) {
+    return false;
+  }
+}
+
+function scheduleHeavyWork(fn) {
+  if (typeof window.requestIdleCallback === "function") {
+    window.requestIdleCallback(fn, { timeout: 320 });
+  } else {
+    window.setTimeout(fn, 1);
+  }
+}
+
+function setGeometryViewportLoading(on) {
+  const viewport = qs("#geometryViewport");
+  const canvasWrap = qs("#geometryCanvasWrap");
+  if (viewport) viewport.classList.toggle("geometry-viewport--loading", Boolean(on));
+  if (canvasWrap) canvasWrap.classList.toggle("geometry-canvas-wrap--loading", Boolean(on));
+}
+
+let _lastClientErrorFingerprint = "";
+let _lastClientErrorTime = 0;
+
+function reportClientErrorToServer(payload) {
+  if (neraiumClientErrorReportingDisabled()) return;
+  const body = JSON.stringify(payload);
+  const fp = body.slice(0, 280);
+  const now = Date.now();
+  if (fp === _lastClientErrorFingerprint && now - _lastClientErrorTime < 8000) return;
+  _lastClientErrorFingerprint = fp;
+  _lastClientErrorTime = now;
+  const url = apiUrl("/client-errors");
+  try {
+    if (typeof navigator.sendBeacon === "function") {
+      const blob = new Blob([body], { type: "application/json" });
+      if (navigator.sendBeacon(url, blob)) return;
+    }
+  } catch (_e) {
+    // fall through to fetch
+  }
+  fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body,
+    keepalive: true,
+  }).catch(() => {});
+}
+
+function initClientErrorReporting() {
+  if (neraiumClientErrorReportingDisabled()) return;
+  window.addEventListener(
+    "error",
+    (ev) => {
+      reportClientErrorToServer({
+        message: String(ev.message || "error"),
+        stack: ev.error && ev.error.stack ? String(ev.error.stack) : "",
+        url: String(window.location.href || ""),
+        source: ev.filename != null ? String(ev.filename) : "",
+        lineno: ev.lineno != null ? Number(ev.lineno) : null,
+        colno: ev.colno != null ? Number(ev.colno) : null,
+      });
+    },
+    true
+  );
+  window.addEventListener("unhandledrejection", (ev) => {
+    const reason = ev.reason;
+    const msg = reason instanceof Error ? reason.message : String(reason || "rejection");
+    const stack = reason instanceof Error && reason.stack ? String(reason.stack) : "";
+    reportClientErrorToServer({
+      message: msg,
+      stack,
+      url: String(window.location.href || ""),
+      reason: "unhandledrejection",
+    });
+  });
+}
+
 function customerIdValue(value) {
   const text = String(value || "").trim();
   return text || "default-customer";
@@ -2434,6 +2529,7 @@ function renderGeometryScene(payload, viewportDims) {
 
 async function loadRunGeometry(runId, resultId = null) {
   const statusEl = qs("#geometry3dStatus");
+  setGeometryViewportLoading(true);
   if (statusEl) {
     statusEl.textContent = "Loading geometry…";
     statusEl.className = "geometry-status info";
@@ -2448,6 +2544,7 @@ async function loadRunGeometry(runId, resultId = null) {
   } catch (_err) {
     clearGeometryModelsPanel();
     if (statusEl) statusEl.classList.add("hidden");
+    setGeometryViewportLoading(false);
     throw _err;
   }
   state.runGeometry = payload;
@@ -2470,14 +2567,26 @@ async function loadRunGeometry(runId, resultId = null) {
       setGeometrySurfaceState("Viewport has no size yet. Resize the window or refresh.", "info");
       updateGeometryDetails(null);
       if (statusEl) statusEl.classList.add("hidden");
+      setGeometryViewportLoading(false);
       return;
     }
-    renderGeometryScene(payload, dims);
+    await new Promise((resolve, reject) => {
+      scheduleHeavyWork(() => {
+        try {
+          renderGeometryScene(payload, dims);
+          resolve();
+        } catch (err) {
+          reject(err);
+        }
+      });
+    });
     if (statusEl) statusEl.classList.add("hidden");
+    setGeometryViewportLoading(false);
   } catch (err) {
     setGeometrySurfaceState(`3D view failed: ${String(err.message || err)}`, "error");
     updateGeometryDetails(null);
     if (statusEl) statusEl.classList.add("hidden");
+    setGeometryViewportLoading(false);
   }
 }
 
@@ -3799,4 +3908,8 @@ async function init() {
   }
 }
 
+initClientErrorReporting();
+if (typeof window !== "undefined") {
+  window.NERAIUM_FEATURE_ENABLED = neraiumFeatureEnabled;
+}
 init();
