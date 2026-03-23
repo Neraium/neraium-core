@@ -11,6 +11,32 @@
   <link rel="stylesheet" href="/web/styles.css" />
 </head>
 <body>
+  <div id="demoInviteModal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="demoInviteTitle">
+    <div class="modal-card modal-card--demo">
+      <h3 id="demoInviteTitle">See structural drift in action?</h3>
+      <p class="subtitle">We can load a scripted, three-phase demo (stable → watch → high risk) — no upload required.</p>
+      <div class="modal-actions">
+        <button type="button" class="secondary" id="demoInviteDismissBtn">Not now</button>
+        <button type="button" class="btn-hero-demo" id="demoInviteStartBtn">Start demo</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="demoScenarioModal" class="modal-overlay hidden" role="dialog" aria-modal="true" aria-labelledby="demoScenarioModalTitle">
+    <div class="modal-card modal-card--wide">
+      <h3 id="demoScenarioModalTitle">Choose a demo scenario</h3>
+      <p class="subtitle">Each run is synthetic multivariate telemetry for storytelling — not production data.</p>
+      <div id="demoScenarioPicker" class="demo-scenario-picker"></div>
+      <div class="modal-actions">
+        <button type="button" class="secondary" id="demoScenarioModalCancel">Cancel</button>
+      </div>
+    </div>
+  </div>
+
+  <button type="button" id="quickDemoFab" class="quick-demo-fab hidden" title="Run quick demo">
+    Quick demo
+  </button>
+
   <div id="toastContainer" class="toast-container"></div>
   <div id="loadingOverlay" class="loading-overlay hidden" aria-live="polite">
     <div class="loading-card">
@@ -66,11 +92,12 @@
               title="Optional site scope"
             />
             <span class="topbar-compact-sep" aria-hidden="true"></span>
+            <span id="demoModeBadge" class="demo-mode-badge hidden" title="Sample / scripted data — switch off and use Upload for production telemetry">DEMO</span>
             <label class="demo-toggle" for="demoModeToggle">
               <input id="demoModeToggle" type="checkbox" />
               <span>Demo</span>
             </label>
-            <button id="prepareDemoBtn" type="button" class="secondary" title="Create a scripted demo run">Demo run</button>
+            <button id="prepareDemoBtn" type="button" class="secondary" title="Pick a scripted escalation scenario">Launch scenario</button>
             <button id="seedDemoBtn" type="button" class="secondary" title="Seed sample telemetry into the active run">Sample data</button>
             <button id="refreshBtn" type="button" class="topbar-refresh">Refresh</button>
           </div>
@@ -82,6 +109,34 @@
       <main class="content">
         <!-- DASHBOARD -->
         <section id="page-dashboard" class="page page-dashboard">
+          <section id="dashboardDemoHero" class="dashboard-demo-hero panel hidden" aria-labelledby="dashboardDemoHeroTitle">
+            <div class="dashboard-demo-hero-inner">
+              <div class="dashboard-demo-hero-copy">
+                <p class="dashboard-demo-hero-eyebrow">No telemetry yet · start in one click</p>
+                <h3 id="dashboardDemoHeroTitle" class="dashboard-demo-hero-title">See Neraium in action</h3>
+                <p class="dashboard-demo-hero-sub">
+                  Watch a scripted escalation: <strong>stable → watch → high risk</strong> in about half a minute — no CSV upload required.
+                </p>
+                <div class="dashboard-demo-hero-actions">
+                  <button type="button" class="btn-hero-demo" id="dashboardQuickDemoBtn">
+                    Run quick demo <span class="btn-hero-demo-sub">(no upload)</span>
+                  </button>
+                  <button type="button" class="secondary" id="dashboardPickScenarioBtn">Choose scenario…</button>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section id="demoScenarioCarousel" class="demo-scenario-carousel panel hidden" aria-label="Demo scenarios">
+            <div class="panel-header dashboard-section-head">
+              <div>
+                <h3>Demo scenarios</h3>
+                <p class="subtitle section-subtitle">Pre-built runs — open one or play the timeline on run detail.</p>
+              </div>
+            </div>
+            <div id="demoScenarioCards" class="demo-scenario-cards"></div>
+          </section>
+
           <section class="dashboard-hero panel control-center">
             <div class="dashboard-hero-grid">
               <div class="dashboard-hero-primary">
@@ -167,7 +222,7 @@
             </div>
             <div id="dashboardEmpty" class="empty-state hidden">
               <p>No results for the active run yet.</p>
-              <p class="subtitle">Use <strong>Upload</strong> to ingest CSV, or click <strong>Load Sample Data</strong> to get started.</p>
+              <p class="subtitle">Use <strong>Run quick demo</strong> above, <strong>Upload</strong> for CSV, or <strong>Sample data</strong> for a quick seed.</p>
             </div>
             <div class="table-wrap">
               <table class="data-table dashboard-results-table">
@@ -421,6 +476,15 @@
                 <button id="demoReplayBtn" type="button" class="secondary">Replay</button>
               </div>
             </section>
+            <aside id="demoStoryPanel" class="demo-story-panel hidden" aria-live="polite">
+              <div class="demo-story-panel-head">
+                <span class="demo-story-phase" id="demoStoryPhase">Guided walkthrough</span>
+                <button type="button" class="demo-story-dismiss" id="demoStoryDismiss" title="Hide narration">×</button>
+              </div>
+              <p class="demo-story-title" id="demoStoryTitle">—</p>
+              <p class="demo-story-body subtitle" id="demoStoryBody"></p>
+              <p class="demo-story-tip" id="demoStoryTip"></p>
+            </aside>
             <section id="demoKeyEventsPanel" class="demo-key-events hidden">
               <div class="panel-header">
                 <h4>Key events</h4>
