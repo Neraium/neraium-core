@@ -1560,7 +1560,6 @@ function disposeGeometryRenderer() {
   const _gfw = qs("#geometryCanvasWrap");
   if (_gfw) {
     _gfw.style.opacity = "";
-    _gfw.classList.remove("geometry-canvas-wrap--enter");
   }
   if (g.renderer) {
     g.renderer.dispose();
@@ -2646,7 +2645,6 @@ function renderGeometryScene(payload, viewportDims) {
   const canvasFlowWrap = qs("#geometryCanvasWrap");
   if (canvasFlowWrap) {
     canvasFlowWrap.style.opacity = "0.38";
-    canvasFlowWrap.classList.add("geometry-canvas-wrap--enter");
   }
 
   const scene = new three.Scene();

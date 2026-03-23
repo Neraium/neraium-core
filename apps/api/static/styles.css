@@ -2390,20 +2390,7 @@ input[type="file"] {
     radial-gradient(ellipse 90% 60% at 50% 38%, rgba(34, 180, 200, 0.14), transparent 55%),
     radial-gradient(circle at 12% 88%, rgba(56, 120, 220, 0.12), transparent 40%),
     linear-gradient(165deg, #070f1c 0%, #050a12 100%);
-  transition: opacity 0.45s ease-out;
-}
-
-.geometry-canvas-wrap--flow.geometry-canvas-wrap--enter {
-  animation: geometry-canvas-fade-in 0.55s ease-out forwards;
-}
-
-@keyframes geometry-canvas-fade-in {
-  from {
-    opacity: 0.35;
-  }
-  to {
-    opacity: 1;
-  }
+  transition: opacity 0.5s ease-out;
 }
 
 .geometry-meta-flow {
@@ -2455,7 +2442,7 @@ input[type="file"] {
 .geometry-flow-grid {
   display: grid;
   grid-template-columns: 1fr 1fr 1fr;
-  gap: 8px;
+  gap: 6px;
   margin-bottom: 12px;
 }
 
@@ -2632,9 +2619,9 @@ input[type="file"] {
 
 .geometry-run-metrics {
   display: grid;
-  gap: 8px;
-  margin-bottom: 12px;
-  padding: 12px;
+  gap: 4px;
+  margin-bottom: 10px;
+  padding: 10px;
   border-radius: 12px;
   border: 1px solid var(--border-strong);
   background: rgba(0, 0, 0, 0.2);
@@ -3386,8 +3373,20 @@ input[type="file"] {
   }
 
   .geometry-canvas-wrap {
-    min-height: 250px;
-    height: min(56vh, 320px);
+    min-height: 300px;
+    height: min(58vh, 340px);
+  }
+
+  .geometry-details--flow {
+    padding: 8px 8px 10px;
+  }
+
+  .geometry-flow-grid {
+    gap: 5px;
+  }
+
+  .geometry-flow-stat {
+    padding: 6px 6px 7px;
   }
 }
 
