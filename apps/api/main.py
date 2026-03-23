@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import json
 import logging
+import math
 import os
 import tempfile
 import threading
@@ -791,17 +792,102 @@ def _normalize_vector(values: np.ndarray) -> np.ndarray:
     return (arr - lo) / (hi - lo)
 
 
+def _vertical_lift_y_from_stress(
+    stress01: float,
+    *,
+    drift_global: float,
+    inst_global: float,
+    lift_max: float = 0.46,
+) -> float:
+    """Map normalized stress + global drift/instability to vertical separation (Y)."""
+    drift_g = float(np.clip(drift_global, 0.0, 1.0))
+    inst_g = float(np.clip(inst_global, 0.0, 1.0))
+    global_scale = 1.0 + 0.45 * drift_g + 0.4 * inst_g
+    s = float(np.clip(stress01, 0.0, 1.0))
+    sev = max(0.0, (s - 0.12) / 0.88) ** 1.12
+    sev = min(1.0, sev)
+    return float(lift_max * sev * global_scale)
+
+
+def _diamond_plane_positions_four(
+    stress_norm: np.ndarray,
+    *,
+    drift_global: float,
+    inst_global: float,
+) -> np.ndarray:
+    """Four sensors on a square in the XZ plane (y=0); Y is vertical lift when out-of-sync.
+
+    Matches the UI convention: shared horizontal plane = XZ, up = +Y (Three.js ground plane).
+    """
+    r = 0.58
+    # Square in XZ, centered at origin (diamond / rotated square when viewed along Y).
+    base = np.array(
+        [
+            [0.0, 0.0, r],
+            [r, 0.0, 0.0],
+            [0.0, 0.0, -r],
+            [-r, 0.0, 0.0],
+        ],
+        dtype=float,
+    )
+    out = np.zeros((4, 3), dtype=float)
+    for i in range(4):
+        s = float(stress_norm[i]) if i < len(stress_norm) else 0.0
+        y_lift = _vertical_lift_y_from_stress(s, drift_global=drift_global, inst_global=inst_global)
+        out[i, 0] = base[i, 0]
+        out[i, 1] = y_lift
+        out[i, 2] = base[i, 2]
+    return out
+
+
+def _plane_ring_positions(
+    n: int,
+    stress_norm: np.ndarray,
+    *,
+    drift_global: float,
+    inst_global: float,
+) -> np.ndarray:
+    """Regular n-gon on the XZ plane; Y is vertical lift for out-of-sync sensors (2 <= n <= 12)."""
+    if n <= 0:
+        return np.zeros((0, 3), dtype=float)
+    r = 0.48 + 0.022 * float(min(n, 12))
+    out = np.zeros((n, 3), dtype=float)
+    for i in range(n):
+        theta = 2.0 * math.pi * float(i) / float(n) - math.pi / 2.0
+        s = float(stress_norm[i]) if i < len(stress_norm) else 0.0
+        out[i, 0] = r * math.cos(theta)
+        out[i, 1] = _vertical_lift_y_from_stress(s, drift_global=drift_global, inst_global=inst_global)
+        out[i, 2] = r * math.sin(theta)
+    return out
+
+
 def _project_geometry_positions(
     corr_current: np.ndarray,
     *,
     node_stress: np.ndarray,
     corr_baseline: np.ndarray | None,
+    metrics: dict[str, Any] | None = None,
 ) -> np.ndarray:
     n = int(corr_current.shape[0])
     if n <= 0:
         return np.zeros((0, 3), dtype=float)
     if n == 1:
         return np.asarray([[0.0, 0.0, 0.0]], dtype=float)
+    drift_g = _safe_float(metrics.get("structural_drift_score"), 0.0) if metrics else 0.0
+    inst_g = _safe_float(metrics.get("composite_instability"), 0.0) if metrics else 0.0
+    if n == 4 and len(node_stress) >= 4:
+        return _diamond_plane_positions_four(
+            node_stress,
+            drift_global=drift_g,
+            inst_global=inst_g,
+        )
+    if 2 <= n <= 12 and len(node_stress) >= n:
+        return _plane_ring_positions(
+            n,
+            node_stress,
+            drift_global=drift_g,
+            inst_global=inst_g,
+        )
 
     vals, vecs = np.linalg.eigh(corr_current)
     order = np.argsort(vals)[::-1]
@@ -875,6 +961,7 @@ def _build_geometry_nodes(
                 "state": state,
                 "unstable": state == "critical",
                 "is_unstable": state == "critical",
+                "in_range": state == "stable",
                 "role": "signal",
             }
         )
@@ -887,20 +974,24 @@ def _build_geometry_edges(
     feature_names: list[str],
     baseline_ref: np.ndarray | None = None,
     limit: int = 240,
+    full_connectivity_max_n: int = 12,
 ) -> list[dict[str, Any]]:
     n = int(corr_matrix.shape[0])
     out: list[dict[str, Any]] = []
     if n <= 1:
         return out
-    upper_idx = np.triu_indices(n, k=1)
-    upper_abs = np.abs(corr_matrix[upper_idx])
-    threshold = float(np.clip(np.percentile(upper_abs, 72.0), 0.22, 0.78)) if upper_abs.size else 1.1
+    use_full = n <= int(full_connectivity_max_n)
+    threshold = 0.0
+    if not use_full:
+        upper_idx = np.triu_indices(n, k=1)
+        upper_abs = np.abs(corr_matrix[upper_idx])
+        threshold = float(np.clip(np.percentile(upper_abs, 72.0), 0.22, 0.78)) if upper_abs.size else 1.1
 
     for i in range(n):
         for j in range(i + 1, n):
             weight = float(corr_matrix[i, j])
             magnitude = abs(weight)
-            if magnitude < threshold:
+            if not use_full and magnitude < threshold:
                 continue
             baseline_weight = float(baseline_ref[i, j]) if baseline_ref is not None else weight
             delta = weight - baseline_weight
@@ -950,12 +1041,16 @@ def _build_geometry_payload(result: dict[str, Any], *, run_id: str | None) -> di
         "confidence": _safe_float(result.get("confidence"), _safe_float(result.get("confidence_score"), 0.0)),
     }
     projection = {
-        "method": "spectral_projection_from_engine_correlation_geometry",
+        "method": "structural_flow_coherent_plane_or_spectral",
         "is_visualization_projection": True,
         "source": "engine correlation geometry + graph analytics",
+        "layout": "coherent_plane_ring",
+        "plane_axes": ["x", "z"],
+        "vertical_axis": "y",
         "note": (
-            "Node positions are a deterministic visualization projection derived from engine "
-            "correlation outputs; they are not the core SII computation space."
+            "2–12 sensors: coherent layout on a shared XZ plane (diamond when n=4, regular ring for "
+            "other counts); Y is vertical lift when out of range. Larger counts use spectral "
+            "projection from correlation geometry. Visualization-only."
         ),
     }
     provenance = {
@@ -1028,7 +1123,22 @@ def _build_geometry_payload(result: dict[str, Any], *, run_id: str | None) -> di
     else:
         stress_raw = importance.copy()
     stress_norm = _normalize_vector(stress_raw)
-    positions = _project_geometry_positions(corr_current, node_stress=stress_norm, corr_baseline=corr_baseline)
+
+    if 2 <= n <= 12:
+        perm = np.array(sorted(range(n), key=lambda i: str(feature_names[i]).lower()), dtype=int)
+        feature_names = [feature_names[i] for i in perm]
+        corr_current = corr_current[np.ix_(perm, perm)]
+        if corr_baseline is not None:
+            corr_baseline = corr_baseline[np.ix_(perm, perm)]
+        stress_norm = stress_norm[perm]
+        importance_norm = importance_norm[perm]
+
+    positions = _project_geometry_positions(
+        corr_current,
+        node_stress=stress_norm,
+        corr_baseline=corr_baseline,
+        metrics=metrics,
+    )
 
     nodes_current = _build_geometry_nodes(
         feature_names=feature_names,
@@ -1051,6 +1161,7 @@ def _build_geometry_payload(result: dict[str, Any], *, run_id: str | None) -> di
         corr_reference,
         node_stress=stress_reference_norm,
         corr_baseline=corr_reference,
+        metrics=metrics,
     )
     nodes_baseline = _build_geometry_nodes(
         feature_names=feature_names,
@@ -1076,12 +1187,32 @@ def _build_geometry_payload(result: dict[str, Any], *, run_id: str | None) -> di
         "watch_nodes_current": sum(1 for n in nodes_current if str(n.get("state")) == "watch"),
         "unstable_nodes_current": sum(1 for n in nodes_current if bool(n.get("unstable"))),
         "changed_edges_current": sum(1 for e in edges_current if abs(_safe_float(e.get("delta"), 0.0)) >= 0.10),
+        "in_range_nodes": sum(1 for n in nodes_current if bool(n.get("in_range"))),
+        "out_of_range_nodes": sum(1 for n in nodes_current if not bool(n.get("in_range"))),
     }
 
     graph_analytics = _graph_analytics_payload(analytics_dict, feature_names=feature_names)
     system_state = _system_state_payload(result, analytics_dict=analytics_dict)
 
     projection_out = dict(projection)
+    if n == 4:
+        projection_out["layout"] = "diamond_plane_four_sensors"
+        projection_out["plane_axes"] = ["x", "z"]
+        projection_out["vertical_axis"] = "y"
+        projection_out["method"] = "diamond_plane_four_sensors_with_vertical_lift"
+        projection_out["ring_node_count"] = 4
+    elif 2 <= n <= 12:
+        projection_out["layout"] = "coherent_plane_ring"
+        projection_out["plane_axes"] = ["x", "z"]
+        projection_out["vertical_axis"] = "y"
+        projection_out["method"] = "regular_polygon_plane_ring_with_vertical_lift"
+        projection_out["ring_node_count"] = n
+    else:
+        projection_out["layout"] = "spectral_correlation_projection"
+        projection_out["plane_axes"] = None
+        projection_out["vertical_axis"] = None
+        projection_out["method"] = "spectral_projection_from_engine_correlation_geometry"
+        projection_out.pop("ring_node_count", None)
     if geometry_fallback:
         projection_out["geometry_fallback"] = True
         base_note = str(projection_out.get("note") or "")

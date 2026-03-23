@@ -211,7 +211,7 @@
                   Every snapshot projects correlated sensors into a relationship field. You see nodes, stress, and coupling rather than isolated charts.
                 </p>
                 <ul class="demo-bullet-list">
-                  <li>3D system geometry on run detail shows live structural relationships between sensors.</li>
+                  <li>Structural flow on run detail shows four sensors on a shared plane; out-of-range sensors lift vertically while links respond.</li>
                   <li>Dashboard summarizes the latest envelope: state, phase, and health score.</li>
                 </ul>
               </div>
@@ -460,11 +460,11 @@
             <div class="panel-header">
               <h3>Structural flow</h3>
               <p class="subtitle geometry-subtitle">
-                Sensors move as one stream when aligned; they pull apart and fray when the field drifts.
+                Up to twelve sensors sit on a shared plane when in range; out-of-range sensors lift above that plane while links stretch and weaken.
               </p>
             </div>
             <p id="geometryProjectionNote" class="subtitle geometry-meta geometry-meta-flow">
-              Correlation field shown as a living flow — not a wire diagram.
+              Shared XZ plane = in-range structure; vertical Y = separation from the system (visualization only).
             </p>
             <div class="geometry-layout">
               <div id="geometryCanvasWrap" class="geometry-canvas-wrap geometry-canvas-wrap--flow">
@@ -475,11 +475,11 @@
               <aside id="geometryDetails" class="geometry-details geometry-details--flow">
                 <div class="geometry-flow-hero">
                   <span class="geometry-flow-label">Structural coherence</span>
-                  <span id="geometryCoherence" class="geometry-flow-value" title="How aligned the sensor field is">—</span>
+                  <span id="geometryCoherence" class="geometry-flow-value" title="How aligned the four-sensor field is on the shared plane">—</span>
                 </div>
                 <div class="geometry-flow-grid">
                   <div class="geometry-flow-stat">
-                    <span class="metric-k">In sync</span>
+                    <span class="metric-k">In range</span>
                     <span id="geometryInSync" class="metric-v">—</span>
                   </div>
                   <div class="geometry-flow-stat">
@@ -487,7 +487,7 @@
                     <span id="geometryOutSync" class="metric-v">—</span>
                   </div>
                   <div class="geometry-flow-stat">
-                    <span class="metric-k">Shifting links</span>
+                    <span class="metric-k">Links shifting</span>
                     <span id="geometryShiftingLinks" class="metric-v">—</span>
                   </div>
                 </div>
