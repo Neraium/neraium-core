@@ -800,8 +800,68 @@ def _fallback_correlation_from_relationships(n: int) -> np.ndarray:
     return c
 
 
+def _block_pad_correlation_matrix(corr: np.ndarray, m_add: int) -> np.ndarray:
+    """Append a PSD correlation block for extra sensors (uncrossed with the existing block).
+
+    Visualization-only: keeps the original matrix as a principal block and adds a small
+    equicorrelation cluster so positions and edges remain well-defined for added channels.
+    """
+    n0 = int(corr.shape[0])
+    m = int(m_add)
+    if m <= 0:
+        return corr
+    a = np.asarray(corr, dtype=float)
+    b = _fallback_correlation_from_relationships(m)
+    out = np.zeros((n0 + m, n0 + m), dtype=float)
+    out[:n0, :n0] = a
+    out[n0:, n0:] = b
+    np.fill_diagonal(out, 1.0)
+    return out
+
+
+def _expand_geometry_sensor_names(
+    core_names: list[str],
+    result: dict[str, Any],
+    *,
+    min_nodes: int,
+    max_nodes: int,
+) -> list[str]:
+    """Prefer core (correlation order) first, then other channels from the run catalog."""
+    out = [str(x).strip() for x in core_names if str(x).strip()]
+    seen = set(out)
+    if len(out) >= min_nodes or len(out) >= max_nodes:
+        return out[:max_nodes]
+    rel = result.get("sensor_relationships")
+    if isinstance(rel, list):
+        for x in rel:
+            if len(out) >= max_nodes:
+                break
+            sx = str(x).strip()
+            if sx and sx not in seen:
+                out.append(sx)
+                seen.add(sx)
+            if len(out) >= min_nodes:
+                return out[:max_nodes]
+    sv = result.get("sensor_values")
+    if isinstance(sv, dict):
+        for k in sv.keys():
+            if len(out) >= max_nodes:
+                break
+            sx = str(k).strip()
+            if sx and sx not in seen:
+                out.append(sx)
+                seen.add(sx)
+            if len(out) >= min_nodes:
+                break
+    return out[:max_nodes]
+
+
 # Coherent structural-flow layout on XZ + vertical lift on Y (single ring n<=12, dual ring 13..N).
 STRUCTURAL_FLOW_PLANE_MAX_N = 24
+
+# When the engine keeps a smaller correlation matrix (variance-gated sensors) but the run still
+# lists more asset channels, pad to at least this many nodes so the structural view matches catalog breadth.
+GEOMETRY_VISUAL_MIN_NODES = 6
 
 
 def _to_square_matrix(value: Any) -> np.ndarray | None:
@@ -1077,16 +1137,19 @@ def _build_geometry_nodes(
     positions: np.ndarray,
     magnitude_norm: np.ndarray,
     stress_norm: np.ndarray,
+    core_name_set: set[str] | None = None,
 ) -> list[dict[str, Any]]:
     n = min(len(feature_names), int(positions.shape[0]), int(magnitude_norm.shape[0]), int(stress_norm.shape[0]))
     out: list[dict[str, Any]] = []
     for idx in range(n):
         stress = float(stress_norm[idx])
         state = _stress_state(stress)
+        nm = str(feature_names[idx]).strip()
+        in_corr = True if core_name_set is None else nm in core_name_set
         out.append(
             {
-                "id": str(feature_names[idx]),
-                "label": str(feature_names[idx]),
+                "id": nm,
+                "label": nm,
                 "position": {
                     "x": round(float(positions[idx, 0]), 6),
                     "y": round(float(positions[idx, 1]), 6),
@@ -1098,6 +1161,7 @@ def _build_geometry_nodes(
                 "unstable": state == "critical",
                 "is_unstable": state == "critical",
                 "in_range": state == "stable",
+                "in_correlation_window": in_corr,
                 "role": "signal",
             }
         )
@@ -1246,6 +1310,25 @@ def _build_geometry_payload(result: dict[str, Any], *, run_id: str | None) -> di
     if len(feature_names) > n:
         feature_names = feature_names[:n]
 
+    core_names_before_expand = list(feature_names)
+    n_core_corr = n
+    expanded_names = _expand_geometry_sensor_names(
+        feature_names,
+        result,
+        min_nodes=GEOMETRY_VISUAL_MIN_NODES,
+        max_nodes=STRUCTURAL_FLOW_PLANE_MAX_N,
+    )
+    visual_expansion_count = 0
+    if len(expanded_names) > n:
+        visual_expansion_count = len(expanded_names) - n
+        corr_current = _block_pad_correlation_matrix(corr_current, visual_expansion_count)
+        if corr_baseline is not None and corr_baseline.shape == (n, n):
+            corr_baseline = _block_pad_correlation_matrix(corr_baseline, visual_expansion_count)
+        feature_names = expanded_names
+        n = int(corr_current.shape[0])
+
+    core_name_set = {str(x).strip() for x in core_names_before_expand if str(x).strip()}
+
     importance_raw = analytics_dict.get("signal_structural_importance")
     if isinstance(importance_raw, list) and len(importance_raw) >= n:
         importance = np.asarray([_safe_float(v, 0.0) for v in importance_raw[:n]], dtype=float)
@@ -1281,6 +1364,7 @@ def _build_geometry_payload(result: dict[str, Any], *, run_id: str | None) -> di
         positions=positions,
         magnitude_norm=importance_norm,
         stress_norm=stress_norm,
+        core_name_set=core_name_set,
     )
     edges_current = _build_geometry_edges(
         corr_current,
@@ -1304,6 +1388,7 @@ def _build_geometry_payload(result: dict[str, Any], *, run_id: str | None) -> di
         positions=positions_reference,
         magnitude_norm=importance_reference_norm,
         stress_norm=stress_reference_norm,
+        core_name_set=core_name_set,
     )
     edges_baseline = _build_geometry_edges(
         corr_reference,
@@ -1361,6 +1446,18 @@ def _build_geometry_payload(result: dict[str, Any], *, run_id: str | None) -> di
             + " Correlation matrix was synthesized from sensor names because stored "
             "correlation_geometry.current was unavailable; baseline correlation is not available."
         ).strip()
+
+    projection_out["correlation_core_count"] = int(n_core_corr)
+    if visual_expansion_count > 0:
+        projection_out["visual_expansion"] = {
+            "enabled": True,
+            "added_sensor_count": int(visual_expansion_count),
+            "note": (
+                "Additional channels from this run catalog were included so the structural view "
+                "shows broader asset coverage. They use a separate correlation cluster (no cross-correlation "
+                "to the engine estimation window); see each node's in_correlation_window flag."
+            ),
+        }
 
     return {
         "run_id": run_id or result.get("run_id"),

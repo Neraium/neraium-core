@@ -1723,6 +1723,14 @@ function disposeGeometryRenderer() {
     g.hoverRaf = null;
   }
   g.pendingHoverEvt = null;
+  Object.values(g.nodeLabelById || {}).forEach((spr) => {
+    try {
+      if (spr?.material?.map) spr.material.map.dispose?.();
+      spr?.material?.dispose?.();
+    } catch (_e) {
+      // no-op
+    }
+  });
   if (g.resizeRaf) {
     try {
       window.cancelAnimationFrame(g.resizeRaf);
@@ -2162,7 +2170,12 @@ function structuralProjectionCaption(payload) {
   const layout = plane
     ? "Horizontal plane (X/Z): baseline relational layout from the structural projection. Vertical axis (Y): deviation magnitude from that baseline (larger Y = larger relational deviation)."
     : "Axes encode the projected relational layout; vertical extent (Y) encodes deviation magnitude from baseline.";
-  return `${layout} Node color encodes tolerance band (within, warning, critical). Link color and opacity encode pairwise drift relative to baseline.`;
+  const base = `${layout} Node color encodes tolerance band (within, warning, critical). Link color and opacity encode pairwise drift relative to baseline.`;
+  const ve = payload?.projection?.visual_expansion;
+  if (ve && ve.enabled) {
+    return `${base} Extra run channels were added for coverage; dimmer nodes are outside the engine’s correlation window (see selection detail).`;
+  }
+  return base;
 }
 
 function structuralMetricDefinitionsFootnote() {
@@ -2189,17 +2202,21 @@ function flowNodeColorTHREE(three, stress01, unstable, node) {
   const stateStr = String(node?.state || "").toLowerCase();
   if (unstable || stateStr === "critical") {
     c.copy(orange).lerp(red, Math.min(1, stress01 * 0.75 + 0.22));
+    if (node && node.in_correlation_window === false) c.lerp(new three.Color(0x64748b), 0.12);
     return c;
   }
   if (stateStr === "watch" || stress01 > 0.58) {
     c.copy(amber).lerp(gold, Math.min(1, (stress01 - 0.35) / 0.65));
+    if (node && node.in_correlation_window === false) c.lerp(new three.Color(0x64748b), 0.16);
     return c;
   }
   if (stress01 < 0.48) {
     c.copy(deepTeal).lerp(aqua, stress01 / 0.48);
+    if (node && node.in_correlation_window === false) c.lerp(new three.Color(0x64748b), 0.16);
     return c;
   }
   c.copy(aqua).lerp(ice, Math.min(1, (stress01 - 0.48) / 0.52));
+  if (node && node.in_correlation_window === false) c.lerp(new three.Color(0x64748b), 0.16);
   return c;
 }
 
@@ -3121,7 +3138,11 @@ function applyGeometryDisplayMode() {
     const label = g.nodeLabelById[nodeId];
     if (label) {
       const radius = Number(mesh.userData.radius || 0.05);
-      label.position.set(pos.x, pos.y + radius + 0.08, pos.z);
+      if (label.parent === mesh) {
+        label.position.set(0, radius + 0.092, 0);
+      } else {
+        label.position.set(pos.x, pos.y + radius + 0.08, pos.z);
+      }
     }
     const halo = g.nodeGlowById[nodeId];
     if (halo) halo.position.set(pos.x, pos.y, pos.z);
@@ -3194,11 +3215,30 @@ function updateGeometryDetails(nodeId = null) {
     stressVal != null && stressVal !== "" && Number.isFinite(Number(stressVal)) ? toPretty(Number(stressVal)) : "—";
   const magText =
     magVal != null && magVal !== "" && Number.isFinite(Number(magVal)) ? toPretty(Number(magVal)) : "—";
+  if (nodeLabel) {
+    nodeLabel.title =
+      "Telemetry channel name for this run (same id as ingest / sensor_relationships when present).";
+  }
+  if (nodeStress) {
+    nodeStress.title =
+      "Normalized structural stress (0–1) from correlation geometry: row-wise deviation versus baseline (or importance when baseline is unavailable).";
+  }
+  if (nodeMagnitude) {
+    nodeMagnitude.title =
+      "Coupling (0–1): mean absolute off-diagonal correlation — how strongly this channel moves with others in the projection.";
+  }
+  if (nodeState) {
+    nodeState.title = "Watch / stable / critical band from normalized stress; UNSTABLE marks critical.";
+  }
+  const catalogNote =
+    node.in_correlation_window === false
+      ? " · outside engine correlation window (listed for asset context)"
+      : "";
   setNodeFields(
     String(node.label || node.id || "-"),
     stressText,
     magText,
-    `${String(node.state || "-")}${node.is_unstable ? " (UNSTABLE)" : ""}`,
+    `${String(node.state || "-")}${node.is_unstable ? " (UNSTABLE)" : ""}${catalogNote}`,
   );
 }
 
@@ -3257,6 +3297,13 @@ function buildGeometryLegend(payload) {
     assessment.tone || normalizeRiskLevel(payload.metrics?.risk_level),
   );
   renderGeometryLegend(payload);
+}
+
+function geometryNodeLabelShort(node) {
+  const raw = String(node?.label || node?.id || "?");
+  const max = 18;
+  if (raw.length <= max) return raw;
+  return `${raw.slice(0, max - 1)}…`;
 }
 
 function createNodeLabelSprite(three, text, colorHex = 0xd9e6ff) {
@@ -3665,6 +3712,14 @@ function renderGeometryScene(payload, viewportDims) {
     g.nodeMeshById[String(node.id)] = assembly;
     g.nodeDataById[String(node.id)] = node;
     g.unstablePulseById[String(node.id)] = 0.65 + Math.random() * 0.7;
+    const lab = createNodeLabelSprite(three, geometryNodeLabelShort(node), 0xcfe4ff);
+    if (lab) {
+      lab.position.set(0, radius + 0.092, 0);
+      lab.scale.set(perf ? 0.48 : 0.58, perf ? 0.12 : 0.145, 1);
+      lab.userData.pickMesh = false;
+      assembly.add(lab);
+      g.nodeLabelById[String(node.id)] = lab;
+    }
   });
   nodeGroup.updateMatrixWorld(true);
   const boxNg = new three.Box3().setFromObject(nodeGroup);
