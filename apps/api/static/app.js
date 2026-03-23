@@ -1069,6 +1069,9 @@ const state = {
     _2dT: 0,
     keyLight: null,
     groundMesh: null,
+    structuralFieldMesh: null,
+    sensorDatumShell: null,
+    flowUseLine2: false,
     structuralFlowPlaneLayout: false,
     flowInstancedMesh: null,
     flowDummy: null,
@@ -1465,6 +1468,32 @@ function buildTrendChartOptions() {
 
 function disposeGeometryRenderer() {
   const g = state.geometry3d;
+  if (g.sensorDatumShell) {
+    try {
+      g.sensorDatumShell.geometry?.dispose?.();
+      if (g.sensorDatumShell.material) {
+        if (Array.isArray(g.sensorDatumShell.material)) g.sensorDatumShell.material.forEach((m) => m.dispose?.());
+        else g.sensorDatumShell.material.dispose?.();
+      }
+    } catch (_e) {
+      // no-op
+    }
+    g.sensorDatumShell = null;
+  }
+  if (g.structuralFieldMesh) {
+    try {
+      g.structuralFieldMesh.geometry?.dispose?.();
+      if (g.structuralFieldMesh.material) {
+        if (g.structuralFieldMesh.material.map) g.structuralFieldMesh.material.map.dispose?.();
+        if (Array.isArray(g.structuralFieldMesh.material)) {
+          g.structuralFieldMesh.material.forEach((m) => m.dispose?.());
+        } else g.structuralFieldMesh.material.dispose?.();
+      }
+    } catch (_e) {
+      // no-op
+    }
+    g.structuralFieldMesh = null;
+  }
   if (g.groundMesh) {
     try {
       g.groundMesh.geometry?.dispose?.();
@@ -1482,6 +1511,9 @@ function disposeGeometryRenderer() {
   g.geometryRig = null;
   g.reducedGeometryMotion = false;
   g.structuralFlowPlaneLayout = false;
+  g.structuralFieldMesh = null;
+  g.flowUseStructuralTubes = false;
+  g.flowUseLine2 = false;
   if (g.flowInstancedMesh) {
     try {
       g.flowInstancedMesh.geometry?.dispose?.();
@@ -1494,6 +1526,34 @@ function disposeGeometryRenderer() {
       // no-op
     }
     g.flowInstancedMesh = null;
+  }
+  if (g.edgeRefs && g.edgeRefs.length) {
+    g.edgeRefs.forEach((ref) => {
+      try {
+        if (ref.lineGeomMain) ref.lineGeomMain.dispose?.();
+        if (ref.lineGeomGlow) ref.lineGeomGlow.dispose?.();
+        if (ref.lineMatMain) ref.lineMatMain.dispose?.();
+        if (ref.lineMatGlow) ref.lineMatGlow.dispose?.();
+        if (ref.line2Main && ref.line2Main.parent) ref.line2Main.parent.remove(ref.line2Main);
+        if (ref.line2Glow && ref.line2Glow.parent) ref.line2Glow.parent.remove(ref.line2Glow);
+        if (ref.tubeGeom) {
+          ref.tubeGeom.dispose?.();
+          ref.tubeGeom = null;
+        }
+        if (ref.tubeMaterial) {
+          ref.tubeMaterial.dispose?.();
+          ref.tubeMaterial = null;
+        }
+        if (ref.tubeMesh && ref.tubeMesh.parent) {
+          ref.tubeMesh.parent.remove(ref.tubeMesh);
+        }
+      } catch (_e) {
+        // no-op
+      }
+      ref.tubeMesh = null;
+      ref.line2Main = null;
+      ref.line2Glow = null;
+    });
   }
   g.flowDummy = null;
   if (g.scene && g.scene.environment) {
@@ -1650,21 +1710,23 @@ function geometryViewportIsNarrow() {
   }
 }
 
-function fitGeometryCamera(camera, controls, nodeGroup, three) {
+function fitGeometryCamera(camera, controls, nodeGroup, three, options) {
   if (!camera || !controls || !nodeGroup || !three) return;
   const box = new three.Box3().setFromObject(nodeGroup);
   if (box.isEmpty()) return;
   const center = box.getCenter(new three.Vector3());
   const size = box.getSize(new three.Vector3());
   const maxDim = Math.max(size.x, size.y, size.z, 0.08);
-  const dist = Math.max(1.15, maxDim * 1.78);
+  const planeLayout = Boolean(options?.structuralFlowPlaneLayout);
+  const tight = planeLayout ? 1.34 : 1.42;
+  const dist = Math.max(0.92, maxDim * tight);
   controls.target.copy(center);
-  camera.near = Math.max(0.008, dist / 500);
-  camera.far = Math.max(80, dist * 45);
+  camera.near = Math.max(0.006, dist / 520);
+  camera.far = Math.max(80, dist * 48);
   camera.updateProjectionMatrix();
   const narrow = geometryViewportIsNarrow();
-  const distMul = narrow ? 0.78 : 1.0;
-  const offset = new three.Vector3(1.2, 0.75, 1.45).normalize().multiplyScalar(dist * distMul);
+  const distMul = narrow ? 0.82 : 1.0;
+  const offset = new three.Vector3(1.05, 0.62, 1.22).normalize().multiplyScalar(dist * distMul);
   camera.position.copy(center.clone().add(offset));
   camera.lookAt(center);
 }
@@ -1788,28 +1850,40 @@ function structuralFlowUsesPlaneLayout(payload) {
   );
 }
 
-function flowNodeColorTHREE(three, stress01, unstable) {
+/**
+ * Premium SII palette: calm teal/cyan when healthy, amber/gold for warning, orange/red for critical.
+ * `node` optional — uses `state` when present for tiering.
+ */
+function flowNodeColorTHREE(three, stress01, unstable, node) {
   const c = new three.Color();
-  const teal = new three.Color(0x2dd4bf);
-  const cyan = new three.Color(0x22d3ee);
-  const amber = new three.Color(0xfbbf24);
-  const red = new three.Color(0xef4444);
-  if (unstable) {
-    c.copy(amber).lerp(red, Math.min(1, stress01 + 0.25));
+  const deepTeal = new three.Color(0x0d9488);
+  const aqua = new three.Color(0x2dd4bf);
+  const ice = new three.Color(0x38bdf8);
+  const amber = new three.Color(0xd97706);
+  const gold = new three.Color(0xeab308);
+  const orange = new three.Color(0xea580c);
+  const red = new three.Color(0xdc2626);
+  const stateStr = String(node?.state || "").toLowerCase();
+  if (unstable || stateStr === "critical") {
+    c.copy(orange).lerp(red, Math.min(1, stress01 * 0.75 + 0.22));
     return c;
   }
-  if (stress01 < 0.45) {
-    c.copy(teal).lerp(cyan, stress01 / 0.45);
+  if (stateStr === "watch" || stress01 > 0.58) {
+    c.copy(amber).lerp(gold, Math.min(1, (stress01 - 0.35) / 0.65));
     return c;
   }
-  c.copy(cyan).lerp(red, (stress01 - 0.45) / 0.55);
+  if (stress01 < 0.48) {
+    c.copy(deepTeal).lerp(aqua, stress01 / 0.48);
+    return c;
+  }
+  c.copy(aqua).lerp(ice, Math.min(1, (stress01 - 0.48) / 0.52));
   return c;
 }
 
-function flowNodeColorCss(stress01, unstable) {
+function flowNodeColorCss(stress01, unstable, node) {
   const three = getThreeNamespace();
-  if (!three?.Color) return "#22d3ee";
-  const c = flowNodeColorTHREE(three, stress01, unstable);
+  if (!three?.Color) return "#38bdf8";
+  const c = flowNodeColorTHREE(three, stress01, unstable, node);
   return `#${c.getHexString()}`;
 }
 
@@ -1830,13 +1904,13 @@ function flowEdgeHealth01(verticalSpan, tension, coherence) {
 function createStructuralFlowParticles(three, particleCount, perf) {
   const n = Math.max(0, Math.floor(particleCount));
   if (n <= 0 || !three.InstancedMesh) return null;
-  const r = perf ? 0.011 : 0.015;
-  const geom = new three.SphereGeometry(r, perf ? 4 : 5, perf ? 4 : 5);
+  const r = perf ? 0.012 : 0.016;
+  const geom = new three.SphereGeometry(r, perf ? 6 : 8, perf ? 6 : 8);
   const mat = new three.MeshBasicMaterial({
     color: 0xffffff,
     vertexColors: true,
     transparent: true,
-    opacity: perf ? 0.88 : 0.94,
+    opacity: perf ? 0.82 : 0.9,
     blending: three.AdditiveBlending,
     depthWrite: false,
   });
@@ -1845,9 +1919,157 @@ function createStructuralFlowParticles(three, particleCount, perf) {
     mesh.instanceMatrix.setUsage(three.DynamicDrawUsage);
   }
   mesh.frustumCulled = false;
-  mesh.renderOrder = 2;
+  mesh.renderOrder = 3;
   mesh.userData.pickMesh = false;
   return mesh;
+}
+
+function getFlowLine2Helpers() {
+  return {
+    Line2: typeof window !== "undefined" ? window.__Line2 : null,
+    LineGeometry: typeof window !== "undefined" ? window.__LineGeometry : null,
+    LineMaterial: typeof window !== "undefined" ? window.__LineMaterial : null,
+  };
+}
+
+function applyFlowLineResolutionToEdges(g, width, height) {
+  const w = Math.max(1, Math.floor(width || 1));
+  const h = Math.max(1, Math.floor(height || 1));
+  (g.edgeRefs || []).forEach((ref) => {
+    if (ref.lineMatMain?.resolution) ref.lineMatMain.resolution.set(w, h);
+    if (ref.lineMatGlow?.resolution) ref.lineMatGlow.resolution.set(w, h);
+  });
+}
+
+/**
+ * Slow-rotating faceted datum shell — reads as calibrated measurement volume, not decoration.
+ */
+function createSensorDatumShell(three, boxNg, perf) {
+  if (!three?.IcosahedronGeometry || !boxNg || boxNg.isEmpty()) return null;
+  const size = boxNg.getSize(new three.Vector3());
+  const ext = Math.max(size.x, size.y, size.z, 0.12);
+  const r = ext * 1.42;
+  const detail = perf ? 1 : 2;
+  const ico = new three.IcosahedronGeometry(r, detail);
+  const edges = new three.EdgesGeometry(ico);
+  ico.dispose?.();
+  const mat = new three.LineBasicMaterial({
+    color: 0x153a4a,
+    transparent: true,
+    opacity: perf ? 0.11 : 0.18,
+    depthWrite: false,
+  });
+  const shell = new three.LineSegments(edges, mat);
+  shell.userData.pickMesh = false;
+  shell.renderOrder = -5;
+  shell.name = "sensorDatumShell";
+  return shell;
+}
+
+/**
+ * Instrument-style sensor: faceted shell + emissive core + wire cage + equatorial ring (not a generic sphere).
+ */
+function createStructuralSensorAssembly(three, opts) {
+  const {
+    nodeId,
+    col,
+    radius,
+    stress01,
+    inRange,
+    perf,
+  } = opts;
+  const root = new three.Group();
+  root.name = "structuralSensor";
+  root.userData.nodeId = String(nodeId);
+  root.userData.radius = radius;
+
+  const shellDetail = perf ? 0 : 1;
+  const shellGeom = new three.IcosahedronGeometry(radius, shellDetail);
+  let shellMat;
+  if (perf) {
+    shellMat = new three.MeshLambertMaterial({
+      color: col.clone(),
+      emissive: col.clone().multiplyScalar(0.07),
+      emissiveIntensity: 0.26,
+    });
+  } else {
+    shellMat = new three.MeshPhysicalMaterial({
+      color: col.clone(),
+      metalness: 0.48,
+      roughness: 0.22,
+      clearcoat: 0.82,
+      clearcoatRoughness: 0.14,
+      envMapIntensity: 1.05,
+      emissive: col.clone().multiplyScalar(0.05),
+      emissiveIntensity: 0.34,
+    });
+  }
+  const shell = new three.Mesh(shellGeom, shellMat);
+  shell.userData.nodeId = String(nodeId);
+  shell.userData.pickMesh = true;
+  shell.userData.flowColor = col.clone();
+  shell.userData.emissiveMul = perf ? 0.07 : 0.05;
+  shell.userData.emissiveIntensityBase = perf ? 0.26 : 0.34;
+  root.add(shell);
+
+  const innerR = radius * 0.36;
+  const innerGeom = new three.SphereGeometry(innerR, perf ? 6 : 10, perf ? 6 : 10);
+  let innerMat;
+  if (perf) {
+    innerMat = new three.MeshBasicMaterial({
+      color: col.clone(),
+      transparent: true,
+      opacity: 0.88,
+    });
+  } else {
+    innerMat = new three.MeshStandardMaterial({
+      color: 0x040a10,
+      metalness: 0.15,
+      roughness: 0.35,
+      emissive: col.clone(),
+      emissiveIntensity: 0.42 + stress01 * 0.45 * (inRange ? 0.35 : 1),
+      envMapIntensity: 0.55,
+    });
+  }
+  const inner = new three.Mesh(innerGeom, innerMat);
+  inner.userData.pickMesh = false;
+  root.add(inner);
+
+  const cageIco = new three.IcosahedronGeometry(radius * 1.06, shellDetail);
+  const cageGeom = new three.EdgesGeometry(cageIco);
+  cageIco.dispose?.();
+  const cageMat = new three.LineBasicMaterial({
+    color: col.clone(),
+    transparent: true,
+    opacity: perf ? 0.32 : 0.5,
+    depthWrite: false,
+  });
+  const cage = new three.LineSegments(cageGeom, cageMat);
+  cage.userData.pickMesh = false;
+  root.add(cage);
+
+  const torusR = radius * 1.1;
+  const tubeT = radius * 0.062;
+  const ringGeom = new three.TorusGeometry(torusR, tubeT, perf ? 6 : 10, perf ? 28 : 56);
+  const ringMat = new three.MeshBasicMaterial({
+    color: col.clone(),
+    transparent: true,
+    opacity: perf ? 0.2 : 0.34,
+    blending: three.AdditiveBlending,
+    depthWrite: false,
+  });
+  const ring = new three.Mesh(ringGeom, ringMat);
+  ring.rotation.x = Math.PI / 2;
+  ring.userData.pickMesh = false;
+  root.add(ring);
+
+  root.userData.shellMesh = shell;
+  root.userData.innerCore = inner;
+  root.userData.sensorCage = cage;
+  root.userData.sensorRing = ring;
+  root.userData.haloMesh = null;
+
+  return root;
 }
 
 function ensureFlowEdgeScratch(g, three) {
@@ -1865,10 +2087,10 @@ function ensureFlowEdgeScratch(g, three) {
       tmpPoint: new three.Vector3(),
       flowColorA: new three.Color(),
       flowColorB: new three.Color(),
-      edgeColHealthy: new three.Color(0x5eead4),
-      edgeColHealthy2: new three.Color(0x22d3ee),
-      edgeColStress: new three.Color(0xfbbf24),
-      edgeColStress2: new three.Color(0xfb7185),
+      edgeColHealthy: new three.Color(0x2dd4bf),
+      edgeColHealthy2: new three.Color(0x38bdf8),
+      edgeColStress: new three.Color(0xd97706),
+      edgeColStress2: new three.Color(0xf97316),
     };
   }
   return g.flowEdgeScratch;
@@ -1882,6 +2104,7 @@ function syncFlowEdgesFromMeshes(g, three, t) {
   const frayBase = 0.08 + driftN * 0.35 + instN * 0.35;
   const perf = Boolean(g.perfMode);
   const planeLayout = Boolean(g.structuralFlowPlaneLayout);
+  const useTubes = Boolean(g.flowUseStructuralTubes && three.TubeGeometry && !g.flowUseLine2);
   const S = ensureFlowEdgeScratch(g, three);
   const framePhase = Math.floor(t * 30);
   const pep = Math.max(1, Math.floor(g.flowParticlesPerEdge || 3));
@@ -1898,7 +2121,9 @@ function syncFlowEdgesFromMeshes(g, three, t) {
     const { line, lineGlow, sourceId, targetId, edge } = ref;
     const sm = g.nodeMeshById[sourceId];
     const tm = g.nodeMeshById[targetId];
-    if (!line?.geometry?.attributes?.position || !sm || !tm) return;
+    if (!sm || !tm) return;
+    const useL2 = Boolean(g.flowUseLine2 && ref.lineGeomMain);
+    if (!useL2 && !line?.geometry?.attributes?.position) return;
     const posA = sm.position;
     const posB = tm.position;
     const tension = flowEdgeTension(edge);
@@ -1915,78 +2140,171 @@ function syncFlowEdgesFromMeshes(g, three, t) {
     }
     S.perp.normalize();
     const lift = planeLayout
-      ? 0.06 * verticalSpan + 0.012 * coherence * (1 - tension * 0.5)
-      : 0.05 * coherence * (1 - tension * 0.9);
+      ? 0.07 * verticalSpan + 0.014 * coherence * (1 - tension * 0.5)
+      : 0.055 * coherence * (1 - tension * 0.88);
     mid.y += lift;
     let fray = frayBase * (0.35 + tension * 0.65) * (1 - coherence * 0.75);
     if (planeLayout) {
       fray *= Math.max(0.12, 1 - Math.min(1, verticalSpan * 2.2));
     }
     const frayPulse = stress01 * (0.55 + 0.45 * Math.sin(t * 6.2 + index * 1.4));
+    const arcSign = index % 2 === 0 ? 1 : -1;
+    mid.addScaledVector(S.perp, arcSign * 0.018 * (0.35 + coherence * 0.65));
     mid.addScaledVector(S.perp, fray * Math.sin(t * 2.6 + index * 0.73) * (0.4 + 0.6 * health));
-    mid.addScaledVector(S.perp, frayPulse * 0.04 * (planeLayout ? 1.25 : 1));
-    mid.addScaledVector(S.perp, tension * (planeLayout ? 0.02 : 0.06) * Math.sin(t * 4.2 + index * 1.1));
+    mid.addScaledVector(S.perp, frayPulse * 0.045 * (planeLayout ? 1.25 : 1));
+    mid.addScaledVector(S.perp, tension * (planeLayout ? 0.022 : 0.065) * Math.sin(t * 4.2 + index * 1.1));
     const curve = S.curve;
     curve.v0.copy(posA);
     curve.v1.copy(mid);
     curve.v2.copy(posB);
     const divisions = typeof ref.divisions === "number" ? ref.divisions : g.curveSegments || 9;
-    const posAttr = line.geometry.attributes.position;
-    const arr = posAttr.array;
     const tmp = S.tmpPoint;
-    for (let i = 0; i <= divisions; i += 1) {
-      curve.getPoint(i / divisions, tmp);
-      const o = i * 3;
-      arr[o] = tmp.x;
-      arr[o + 1] = tmp.y;
-      arr[o + 2] = tmp.z;
-    }
-    posAttr.needsUpdate = true;
-    const mag = Math.abs(Number(edge.magnitude || 0));
-    colA.copy(colHealthyA).lerp(colStressA, stress01 * 0.92);
-    colB.copy(colHealthyB).lerp(colStressB, stress01 * 0.85);
-    if (line.material) {
-      line.material.color.copy(colA);
-      const wave = 0.5 + 0.5 * Math.sin(t * (2.8 + coherence * 1.4) - index * 0.31);
-      let pulse = 0.12 + 0.48 * mag * (0.45 + 0.55 * coherence) * (0.55 + 0.45 * health);
-      if (planeLayout && verticalSpan > 0.06) {
-        pulse += 0.08 + 0.14 * Math.min(1, verticalSpan * 1.5) + tension * 0.12 * (0.5 + 0.5 * Math.sin(t * 4.1 + index));
+    if (useL2 && ref.lineGeomMain && ref.lineGeomGlow && ref.line2Main && ref.line2Glow) {
+      const posFlat = [];
+      for (let i = 0; i <= divisions; i += 1) {
+        curve.getPoint(i / divisions, tmp);
+        posFlat.push(tmp.x, tmp.y, tmp.z);
       }
-      pulse *= 0.82 + 0.18 * wave;
-      line.material.opacity = Math.min(0.96, pulse + tension * (planeLayout ? 0.2 : 0.14) * Math.sin(t * 3 + index) * stress01);
-      line.material.opacity = Math.min(0.97, line.material.opacity + (0.08 + 0.12 * health) * wave);
+      ref.lineGeomMain.setPositions(posFlat);
+      ref.lineGeomGlow.setPositions(posFlat);
+      ref.line2Main.computeLineDistances();
+      ref.line2Glow.computeLineDistances();
+    } else {
+      const posAttr = line.geometry.attributes.position;
+      const arr = posAttr.array;
+      for (let i = 0; i <= divisions; i += 1) {
+        curve.getPoint(i / divisions, tmp);
+        const o = i * 3;
+        arr[o] = tmp.x;
+        arr[o + 1] = tmp.y;
+        arr[o + 2] = tmp.z;
+      }
+      posAttr.needsUpdate = true;
     }
-    if (lineGlow && lineGlow.material) {
+    const mag = Math.min(1, Math.abs(Number(edge.magnitude || 0)));
+    colA.copy(colHealthyA).lerp(colStressA, stress01 * 0.88);
+    colB.copy(colHealthyB).lerp(colStressB, stress01 * 0.82);
+
+    const wave = 0.5 + 0.5 * Math.sin(t * (2.6 + coherence * 1.2) - index * 0.31);
+    let pulse = 0.14 + 0.52 * mag * (0.45 + 0.55 * coherence) * (0.55 + 0.45 * health);
+    if (planeLayout && verticalSpan > 0.06) {
+      pulse +=
+        0.09 +
+        0.15 * Math.min(1, verticalSpan * 1.5) +
+        tension * 0.12 * (0.5 + 0.5 * Math.sin(t * 4.1 + index));
+    }
+    pulse *= 0.84 + 0.16 * wave;
+
+    if (useL2 && ref.lineMatMain && ref.lineMatGlow) {
+      ref.lineMatMain.color.copy(colA);
+      ref.lineMatGlow.color.copy(colB);
+      const flicker = 0.55 + 0.45 * Math.sin(t * (3.1 + stress01 * 5) + index * 0.9);
+      const erratic = stress01 * (0.35 + 0.65 * Math.abs(Math.sin(t * 11.3 + index * 2.1)));
+      if (useTubes && ref.tubeMesh) {
+        ref.lineMatMain.opacity = Math.min(0.55, 0.12 + 0.28 * health * wave);
+        ref.lineMatGlow.opacity = Math.min(0.45, 0.08 + 0.22 * health * flicker * (1 - erratic * 0.75));
+      } else {
+        ref.lineMatMain.opacity = Math.min(
+          0.94,
+          0.28 + 0.52 * pulse + tension * (planeLayout ? 0.14 : 0.1) * Math.sin(t * 3 + index) * stress01,
+        );
+        ref.lineMatGlow.opacity = Math.min(
+          0.72,
+          (0.18 + 0.48 * health) * flicker * (1 - erratic * 0.85),
+        );
+      }
+    } else if (line.material) {
+      line.material.color.copy(colA);
+      if (useTubes && ref.tubeMesh) {
+        line.material.opacity = Math.min(0.22, 0.06 + 0.12 * health * wave);
+      } else {
+        line.material.opacity = Math.min(
+          0.96,
+          pulse + tension * (planeLayout ? 0.2 : 0.14) * Math.sin(t * 3 + index) * stress01,
+        );
+        line.material.opacity = Math.min(0.97, line.material.opacity + (0.08 + 0.14 * health) * wave);
+      }
+    }
+    if (!useL2 && lineGlow && lineGlow.material) {
       lineGlow.material.color.copy(colB);
       const flicker = 0.55 + 0.45 * Math.sin(t * (3.1 + stress01 * 5) + index * 0.9);
       const erratic = stress01 * (0.35 + 0.65 * Math.abs(Math.sin(t * 11.3 + index * 2.1)));
-      lineGlow.material.opacity = Math.min(0.78, (0.12 + 0.55 * health) * flicker * (1 - erratic * 0.85));
+      const perfGlow = perf ? 0.22 : 0.12;
+      lineGlow.material.opacity = Math.min(
+        0.82,
+        (perfGlow + 0.52 * health) * flicker * (1 - erratic * 0.85) * (useTubes ? 0.55 : 1),
+      );
     }
-    if (line.material && perf && framePhase % 3 === index % 3) {
-      line.material.opacity = Math.min(0.9, 0.2 + 0.52 * mag * (0.45 + 0.55 * coherence) * (0.5 + 0.5 * health));
+    if (!useL2 && line.material && perf && !useTubes && framePhase % 3 === index % 3) {
+      line.material.opacity = Math.min(0.9, 0.22 + 0.52 * mag * (0.45 + 0.55 * coherence) * (0.5 + 0.5 * health));
+    }
+
+    if (useTubes && three.TubeGeometry) {
+      const tubeRad =
+        0.0034 +
+        mag * 0.024 * (0.35 + 0.65 * health) +
+        (1 - health) * 0.0038;
+      const radialSeg = perf ? 4 : 5;
+      if (!ref.tubeMesh) {
+        ref.tubeMaterial = new three.MeshStandardMaterial({
+          color: 0xffffff,
+          metalness: 0.18,
+          roughness: 0.4,
+          envMapIntensity: 0.62,
+          transparent: true,
+          opacity: 0.88,
+        });
+        ref.tubeMesh = new three.Mesh(new three.BufferGeometry(), ref.tubeMaterial);
+        ref.tubeMesh.userData.pickMesh = false;
+        ref.tubeMesh.castShadow = !perf;
+        ref.tubeMesh.receiveShadow = false;
+        ref.tubeMesh.renderOrder = 0;
+        line.parent.add(ref.tubeMesh);
+      }
+      ref.tubeGeom?.dispose?.();
+      ref.tubeGeom = new three.TubeGeometry(curve, divisions, tubeRad, radialSeg, false);
+      ref.tubeMesh.geometry = ref.tubeGeom;
+      ref.tubeMaterial.color.copy(colA);
+      ref.tubeMaterial.emissive.copy(colA);
+      ref.tubeMaterial.emissiveIntensity = 0.08 + 0.22 * health + (1 - health) * 0.12 * Math.sin(t * 5.5 + index);
+      ref.tubeMaterial.opacity = 0.42 + 0.48 * health * (0.65 + 0.35 * wave);
+      ref.tubeMaterial.metalness = 0.1 + stress01 * 0.22;
+      ref.tubeMaterial.roughness = 0.38 + stress01 * 0.28;
+    } else if (ref.tubeMesh) {
+      try {
+        ref.tubeGeom?.dispose?.();
+        ref.tubeGeom = null;
+        ref.tubeMaterial?.dispose?.();
+        ref.tubeMaterial = null;
+        line.parent.remove(ref.tubeMesh);
+      } catch (_e) {
+        // no-op
+      }
+      ref.tubeMesh = null;
     }
 
     if (flowMesh && dummy && typeof flowMesh.setMatrixAt === "function") {
       const slot = typeof ref.particleSlotStart === "number" ? ref.particleSlotStart : index * pep;
-      const baseSpeed = 0.14 + 0.22 * coherence + 0.16 * health;
-      const chaos = (1 - health) * (0.018 + driftN * 0.028 + instN * 0.032);
+      const baseSpeed = 0.12 + 0.24 * coherence + 0.18 * health;
+      const chaos = (1 - health) * (0.016 + driftN * 0.026 + instN * 0.03);
       for (let p = 0; p < pep; p += 1) {
         const phase = index * 0.37 + p * 0.41;
         let u =
-          (t * baseSpeed * (0.4 + health * 0.65) + phase + Math.sin(t * 0.35 + index) * (1 - coherence) * 0.04) % 1;
+          (t * baseSpeed * (0.38 + health * 0.68) + phase + Math.sin(t * 0.32 + index) * (1 - coherence) * 0.035) %
+          1;
         if (u < 0) u += 1;
         curve.getPoint(u, tmp);
         tmp.x += Math.sin(t * 6.8 + phase * 3) * chaos;
         tmp.y += Math.sin(t * 5.4 + index) * chaos * 0.55;
         tmp.z += Math.cos(t * 6.1 + phase * 2.2) * chaos;
-        const ps = (0.72 + 0.38 * health) * (1 + stress01 * 0.35 * Math.sin(t * 8.2 + p));
+        const ps = (0.68 + 0.42 * health) * (1 + stress01 * 0.38 * Math.sin(t * 8.2 + p));
         dummy.position.copy(tmp);
-        dummy.scale.setScalar(ps * (perf ? 0.92 : 1));
+        dummy.scale.setScalar(ps * (perf ? 0.94 : 1));
         dummy.updateMatrix();
         flowMesh.setMatrixAt(slot + p, dummy.matrix);
         if (typeof flowMesh.setColorAt === "function") {
-          colB.copy(colA).lerp(colHealthyB, p / Math.max(1, pep - 1) * 0.35);
-          colB.lerp(colStressA, stress01 * 0.55);
+          colB.copy(colA).lerp(colHealthyB, (p / Math.max(1, pep - 1)) * 0.38);
+          colB.lerp(colStressA, stress01 * 0.52);
           flowMesh.setColorAt(slot + p, colB);
         }
       }
@@ -2004,6 +2322,70 @@ function syncFlowEdgesFromMeshes(g, three, t) {
 function easeOutCubic(t) {
   const x = Math.max(0, Math.min(1, t));
   return 1 - (1 - x) ** 3;
+}
+
+function easeInOutCubic(t) {
+  const x = Math.max(0, Math.min(1, t));
+  return x < 0.5 ? 4 * x * x * x : 1 - (-2 * x + 2) ** 3 / 2;
+}
+
+/** Snapshot current node world positions for continuous transitions between geometry updates. */
+function captureGeometryNodeDisplayPositions() {
+  const g = state.geometry3d;
+  const out = {};
+  Object.keys(g.nodeMeshById || {}).forEach((id) => {
+    const m = g.nodeMeshById[id];
+    if (m?.position) {
+      out[id] = { x: m.position.x, y: m.position.y, z: m.position.z };
+    }
+  });
+  return out;
+}
+
+/** Subtle structural field under the graph — depth anchor without heavy shading. */
+function createStructuralFieldPlane(three, center, boxNg, perf) {
+  if (!three?.PlaneGeometry || !boxNg || boxNg.isEmpty()) return null;
+  const size = boxNg.getSize(new three.Vector3());
+  const planeW = Math.max(6.5, Math.max(size.x, size.z) * 2.35);
+  const cnv = document.createElement("canvas");
+  cnv.width = 64;
+  cnv.height = 64;
+  const ctx = cnv.getContext("2d");
+  if (!ctx) return null;
+  const grd = ctx.createRadialGradient(32, 28, 4, 32, 32, 44);
+  grd.addColorStop(0, "rgba(45, 212, 191, 0.12)");
+  grd.addColorStop(0.45, "rgba(14, 40, 64, 0.08)");
+  grd.addColorStop(1, "rgba(2, 6, 14, 0)");
+  ctx.fillStyle = grd;
+  ctx.fillRect(0, 0, 64, 64);
+  ctx.strokeStyle = "rgba(56, 120, 200, 0.06)";
+  ctx.lineWidth = 1;
+  for (let i = 0; i < 64; i += 8) {
+    ctx.beginPath();
+    ctx.moveTo(i, 0);
+    ctx.lineTo(i, 64);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(0, i);
+    ctx.lineTo(64, i);
+    ctx.stroke();
+  }
+  const tex = new three.CanvasTexture(cnv);
+  tex.wrapS = three.RepeatWrapping;
+  tex.wrapT = three.RepeatWrapping;
+  tex.repeat.set(perf ? 2.4 : 3, perf ? 2.4 : 3);
+  const mat = new three.MeshBasicMaterial({
+    map: tex,
+    transparent: true,
+    opacity: perf ? 0.38 : 0.5,
+    depthWrite: false,
+  });
+  const mesh = new three.Mesh(new three.PlaneGeometry(planeW, planeW, 1, 1), mat);
+  mesh.rotation.x = -Math.PI / 2;
+  mesh.position.set(center.x, boxNg.min.y - 0.018, center.z);
+  mesh.userData.pickMesh = false;
+  mesh.renderOrder = -2;
+  return mesh;
 }
 
 /** Short, count-accurate copy for the structural flow panel (replaces static “up to 24…” text). */
@@ -2169,6 +2551,7 @@ function drawStructuralFlow2dCanvas(ctx, width, height, payload, t, coherence, d
     ctx.fillStyle = flowNodeColorCss(
       planeLayout && flowNodeInRange(n) ? Math.min(stress, 0.38) : stress,
       Boolean(n.is_unstable),
+      n,
     );
     ctx.beginPath();
     ctx.arc(x, y, r, 0, Math.PI * 2);
@@ -2404,12 +2787,14 @@ function applyGeometryDisplayMode() {
   if (summary) summary.textContent = geometryStructureSummary(state.runGeometry);
   updateGeometryFlowPanel(payload);
   if (g.camera && g.controls && g.nodeGroup && threeNs) {
-    fitGeometryCamera(g.camera, g.controls, g.nodeGroup, threeNs);
+    fitGeometryCamera(g.camera, g.controls, g.nodeGroup, threeNs, {
+      structuralFlowPlaneLayout: g.structuralFlowPlaneLayout,
+    });
     updateGeometryShadowFrustum(g, threeNs);
     if (g.structuralFlowPlaneLayout && g.camera && g.controls) {
-      g.camera.position.y += 0.32;
-      g.camera.position.x += 0.22;
-      g.camera.position.z += 0.12;
+      g.camera.position.y += 0.38;
+      g.camera.position.x += 0.26;
+      g.camera.position.z += 0.14;
       g.camera.lookAt(g.controls.target);
     }
   }
@@ -2468,18 +2853,20 @@ function updateGeometryDetails(nodeId = null) {
 }
 
 function resetNodeMeshVisual(mesh) {
-  if (!mesh || !mesh.material) return;
-  mesh.scale.setScalar(1);
-  const em = mesh.material.emissive;
-  if (mesh.userData && mesh.userData.flowColor && mesh.material.color && em) {
-    const k = mesh.userData.emissiveMul != null ? mesh.userData.emissiveMul : 0.12;
-    const inten = mesh.userData.emissiveIntensityBase != null ? mesh.userData.emissiveIntensityBase : 0.35;
-    mesh.material.color.copy(mesh.userData.flowColor);
-    em.copy(mesh.userData.flowColor).multiplyScalar(k);
-    mesh.material.emissiveIntensity = inten;
+  const shell = mesh?.userData?.shellMesh || mesh;
+  const root = mesh?.userData?.shellMesh ? mesh : mesh.parent;
+  if (!shell?.material) return;
+  if (root && root.scale) root.scale.setScalar(1);
+  const em = shell.material.emissive;
+  if (shell.userData && shell.userData.flowColor && shell.material.color && em) {
+    const k = shell.userData.emissiveMul != null ? shell.userData.emissiveMul : 0.12;
+    const inten = shell.userData.emissiveIntensityBase != null ? shell.userData.emissiveIntensityBase : 0.35;
+    shell.material.color.copy(shell.userData.flowColor);
+    em.copy(shell.userData.flowColor).multiplyScalar(k);
+    shell.material.emissiveIntensity = inten;
   } else if (em) {
     em.setHex(0x0d1424);
-    mesh.material.emissiveIntensity = 0.35;
+    shell.material.emissiveIntensity = 0.35;
   }
 }
 
@@ -2495,11 +2882,12 @@ function setGeometrySelection(nextId = null) {
   }
   g.selectedId = nextId;
   if (nextId && g.nodeMeshById[nextId]) {
-    const mesh = g.nodeMeshById[nextId];
-    mesh.scale.setScalar(1.2);
-    if (mesh.material && mesh.material.emissive) {
-      mesh.material.emissive.setHex(0x33557f);
-      mesh.material.emissiveIntensity = 0.6;
+    const root = g.nodeMeshById[nextId];
+    const shell = root.userData?.shellMesh || root;
+    root.scale.setScalar(1.14);
+    if (shell.material && shell.material.emissive) {
+      shell.material.emissive.setHex(0x1e4a68);
+      shell.material.emissiveIntensity = 0.78;
     }
   }
   updateGeometryDetails(g.selectedId);
@@ -2564,7 +2952,10 @@ function beginGeometryIntroAnimation() {
     if (!mesh.userData?.basePos) return;
     const bp = mesh.userData.basePos;
     if (!mesh.userData.geomIntroFrom) mesh.userData.geomIntroFrom = new three.Vector3();
-    mesh.userData.geomIntroFrom.set(bp.x * 0.07, bp.y * 0.08 + 0.015, bp.z * 0.07);
+    if (!mesh.userData.geomIntroFromPreset) {
+      mesh.userData.geomIntroFrom.set(bp.x * 0.06, bp.y * 0.075 + 0.012, bp.z * 0.06);
+    }
+    delete mesh.userData.geomIntroFromPreset;
     mesh.position.copy(mesh.userData.geomIntroFrom);
     const nid = mesh.userData.nodeId != null ? String(mesh.userData.nodeId) : "";
     const halo = nid ? g.nodeGlowById[nid] : null;
@@ -2572,7 +2963,7 @@ function beginGeometryIntroAnimation() {
   });
   if (three) syncFlowEdgesFromMeshes(g, three, 0);
   g.geometryIntroStart = performance.now();
-  g.geometryIntroMs = reduceGeomMotion ? 140 : 720;
+  g.geometryIntroMs = reduceGeomMotion ? 160 : 920;
 }
 
 function renderGeometryScene(payload, viewportDims) {
@@ -2591,6 +2982,7 @@ function renderGeometryScene(payload, viewportDims) {
     return;
   }
   const { three, controlsCtor } = threeLib;
+  const prevDisplayPos = captureGeometryNodeDisplayPositions();
   disposeGeometryRenderer();
   state.runGeometry = payload;
   buildGeometryLegend(payload);
@@ -2634,7 +3026,7 @@ function renderGeometryScene(payload, viewportDims) {
   }
   if (three.ACESFilmicToneMapping !== undefined) {
     renderer.toneMapping = three.ACESFilmicToneMapping;
-    renderer.toneMappingExposure = perf ? 0.88 : 0.96;
+    renderer.toneMappingExposure = perf ? 0.92 : 1.02;
   }
   renderer.shadowMap.enabled = !perf;
   if (three.PCFSoftShadowMap) {
@@ -2644,20 +3036,20 @@ function renderGeometryScene(payload, viewportDims) {
   canvasHost.appendChild(renderer.domElement);
   const canvasFlowWrap = qs("#geometryCanvasWrap");
   if (canvasFlowWrap) {
-    canvasFlowWrap.style.opacity = "0.38";
+    canvasFlowWrap.style.opacity = "0.22";
   }
 
   const scene = new three.Scene();
   scene.background = null;
-  scene.fog = new three.FogExp2(perf ? 0x060d18 : 0x0a1624, perf ? 0.048 : 0.032);
+  scene.fog = new three.FogExp2(perf ? 0x060a14 : 0x0a1424, perf ? 0.056 : 0.04);
 
-  const camera = new three.PerspectiveCamera(48, width / height, 0.01, 60);
+  const camera = new three.PerspectiveCamera(44, width / height, 0.01, 60);
   camera.position.set(0, 0.45, 3.05);
   scene.add(camera);
 
-  const hemi = new three.HemisphereLight(0x9cb8ff, 0x0a1528, perf ? 0.68 : 0.52);
+  const hemi = new three.HemisphereLight(0x8cb8e8, 0x0a1528, perf ? 0.62 : 0.48);
   scene.add(hemi);
-  const key = new three.DirectionalLight(0xceebff, perf ? 0.72 : 1.05);
+  const key = new three.DirectionalLight(0xcee8ff, perf ? 0.68 : 0.98);
   key.position.set(2.4, 3.6, 2.2);
   if (!perf) {
     key.castShadow = true;
@@ -2667,9 +3059,12 @@ function renderGeometryScene(payload, viewportDims) {
   }
   scene.add(key);
   scene.add(key.target);
-  const fill = new three.DirectionalLight(0x2dd4bf, perf ? 0.28 : 0.38);
+  const fill = new three.DirectionalLight(0x14b8a6, perf ? 0.24 : 0.34);
   fill.position.set(-2.2, 1.2, -1.8);
   scene.add(fill);
+  const rim = new three.PointLight(0x22d3ee, perf ? 0.32 : 0.48, 9, 2);
+  rim.position.set(0, 0.85, 0);
+  scene.add(rim);
 
   setupGeometryIBL(three, renderer, scene, perf);
 
@@ -2696,7 +3091,7 @@ function renderGeometryScene(payload, viewportDims) {
   const reduceGeomMotion = geometryFlowReducedMotion();
   const narrowVp = geometryViewportIsNarrow();
   controls.autoRotate = !reduceGeomMotion;
-  controls.autoRotateSpeed = perf ? 0.38 : narrowVp ? 0.58 : 0.72;
+  controls.autoRotateSpeed = perf ? 0.32 : narrowVp ? 0.5 : 0.62;
 
   const g = state.geometry3d;
   g.renderer = renderer;
@@ -2714,7 +3109,8 @@ function renderGeometryScene(payload, viewportDims) {
   g.perfMode = perf;
   {
     const nc = Array.isArray(payload.nodes) ? payload.nodes.length : 0;
-    g.curveSegments = perf ? 6 : nc > 16 ? 8 : nc > 8 ? 9 : 11;
+    const ec = Array.isArray(payload.edges) ? payload.edges.length : 0;
+    g.curveSegments = perf ? 7 : ec > 22 ? 9 : nc > 16 ? 10 : 12;
   }
   let motionScale = perf ? 0.72 : 1;
   if (geometryFlowReducedMotion()) motionScale *= 0.42;
@@ -2735,6 +3131,10 @@ function renderGeometryScene(payload, viewportDims) {
   g.structuralFlowPlaneLayout = structuralFlowUsesPlaneLayout(payload);
   g.reducedGeometryMotion = reduceGeomMotion;
 
+  const L2 = getFlowLine2Helpers();
+  const flowUseLine2 = Boolean(L2.Line2 && L2.LineGeometry && L2.LineMaterial);
+  g.flowUseLine2 = flowUseLine2;
+
   const edgeGroup = new three.Group();
   const coherence0 = g.flowCoherence;
   const divisions0 = g.curveSegments;
@@ -2751,11 +3151,13 @@ function renderGeometryScene(payload, viewportDims) {
     mid.y += 0.05 * coherence0 * (1 - flowEdgeTension(edge) * 0.85);
     const curve = new three.QuadraticBezierCurve3(p1.clone(), mid, p2.clone());
     const pts = curve.getPoints(divisions0);
-    const edgeGeom = new three.BufferGeometry().setFromPoints(pts);
+    const flat = [];
+    pts.forEach((p) => flat.push(p.x, p.y, p.z));
     const tension = flowEdgeTension(edge);
     const ec = new three.Color(0x5eead4);
     ec.lerp(new three.Color(0xfb7185), tension * (1.2 - coherence0 * 0.5));
     const mag = Math.min(1, Math.abs(Number(edge.magnitude || 0)));
+    const edgeGeom = new three.BufferGeometry().setFromPoints(pts);
     const edgeMat = new three.LineBasicMaterial({
       color: ec,
       transparent: true,
@@ -2763,25 +3165,73 @@ function renderGeometryScene(payload, viewportDims) {
       depthWrite: false,
     });
     const line = new three.Line(edgeGeom, edgeMat);
-    edgeGroup.add(line);
-    const slotStart = g.edgeRefs.length * pep;
-    let lineGlow = null;
-    if (!perf) {
-      const glowMat = new three.LineBasicMaterial({
-        color: 0x55eeff,
+    const glowMat = new three.LineBasicMaterial({
+      color: perf ? 0x5ecfff : 0x7ee8ff,
+      transparent: true,
+      opacity: perf ? 0.24 : 0.36,
+      blending: three.AdditiveBlending,
+      depthWrite: false,
+      toneMapped: false,
+    });
+    const lineGlow = new three.Line(edgeGeom, glowMat);
+    lineGlow.renderOrder = 2;
+
+    let line2Main = null;
+    let line2Glow = null;
+    let lineGeomMain = null;
+    let lineGeomGlow = null;
+    let lineMatMain = null;
+    let lineMatGlow = null;
+
+    if (flowUseLine2) {
+      line.visible = false;
+      lineGlow.visible = false;
+      lineGeomMain = new L2.LineGeometry();
+      lineGeomMain.setPositions(flat);
+      lineGeomGlow = new L2.LineGeometry();
+      lineGeomGlow.setPositions(flat);
+      lineMatMain = new L2.LineMaterial({
+        color: ec.getHex(),
+        linewidth: perf ? 0.0055 : 0.011,
+        worldUnits: true,
         transparent: true,
-        opacity: 0.38,
+        opacity: 0.92,
+        depthWrite: false,
+      });
+      lineMatMain.resolution.set(width, height);
+      lineMatGlow = new L2.LineMaterial({
+        color: new three.Color(0x6ee0ff).getHex(),
+        linewidth: perf ? 0.014 : 0.028,
+        worldUnits: true,
+        transparent: true,
+        opacity: 0.48,
         blending: three.AdditiveBlending,
         depthWrite: false,
-        toneMapped: false,
       });
-      lineGlow = new three.Line(edgeGeom, glowMat);
-      lineGlow.renderOrder = 1;
+      lineMatGlow.resolution.set(width, height);
+      line2Main = new L2.Line2(lineGeomMain, lineMatMain);
+      line2Main.computeLineDistances();
+      line2Main.renderOrder = 1;
+      line2Glow = new L2.Line2(lineGeomGlow, lineMatGlow);
+      line2Glow.computeLineDistances();
+      line2Glow.renderOrder = 2;
+      edgeGroup.add(line2Main);
+      edgeGroup.add(line2Glow);
+    } else {
+      edgeGroup.add(line);
       edgeGroup.add(lineGlow);
     }
+
+    const slotStart = g.edgeRefs.length * pep;
     g.edgeRefs.push({
       line,
       lineGlow,
+      line2Main,
+      line2Glow,
+      lineGeomMain,
+      lineGeomGlow,
+      lineMatMain,
+      lineMatGlow,
       sourceId: String(edge.source),
       targetId: String(edge.target),
       edge,
@@ -2790,6 +3240,13 @@ function renderGeometryScene(payload, viewportDims) {
       particleSlotStart: slotStart,
     });
   });
+
+  g.flowUseStructuralTubes =
+    !flowUseLine2 &&
+    !perf &&
+    g.edgeRefs.length > 0 &&
+    g.edgeRefs.length <= 28 &&
+    Boolean(three.TubeGeometry);
 
   const flowCount = g.edgeRefs.length * pep;
   g.flowDummy = null;
@@ -2803,112 +3260,104 @@ function renderGeometryScene(payload, viewportDims) {
     }
   }
 
-  const geometryRig = new three.Group();
-  geometryRig.name = "geometryRig";
-  geometryRig.add(edgeGroup);
   g.edgeGroup = edgeGroup;
 
   const nodeGroup = new three.Group();
-  const sphereSeg = perf ? 8 : 28;
-  const emMul = perf ? 0.08 : 0.1;
-  const emInt = perf ? 0.24 : 0.32;
   payload.nodes.forEach((node) => {
     const magnitude = Math.max(0, Number(node.magnitude || 0));
-    const radius = 0.042 + magnitude * 0.075;
-    const geom = new three.SphereGeometry(radius, sphereSeg, sphereSeg);
     const stress01 = flowNodeStress01(node);
+    const inRange = flowNodeInRange(node);
+    const importance = Math.min(
+      1,
+      0.32 + magnitude * 0.42 + stress01 * 0.28 + (inRange ? 0 : 0.14),
+    );
+    const radius = 0.034 + importance * (g.structuralFlowPlaneLayout ? 0.068 : 0.074);
     const col = flowNodeColorTHREE(
       three,
-      g.structuralFlowPlaneLayout && flowNodeInRange(node) ? Math.min(stress01, 0.38) : stress01,
+      g.structuralFlowPlaneLayout && inRange ? Math.min(stress01, 0.38) : stress01,
       Boolean(node.is_unstable),
+      node,
     );
-    let mat;
-    if (perf) {
-      mat = new three.MeshLambertMaterial({
-        color: col,
-        emissive: col.clone().multiplyScalar(emMul),
-        emissiveIntensity: emInt,
-      });
-    } else {
-      mat = new three.MeshStandardMaterial({
-        color: col,
-        metalness: 0.2 + stress01 * 0.22,
-        roughness: 0.48 - stress01 * 0.14,
-        envMapIntensity: 0.88,
-        emissive: col.clone().multiplyScalar(emMul),
-        emissiveIntensity: emInt,
-      });
-    }
-    const mesh = new three.Mesh(geom, mat);
+    const assembly = createStructuralSensorAssembly(three, {
+      nodeId: node.id,
+      col,
+      radius,
+      stress01,
+      inRange,
+      perf,
+    });
     const px = Number(node.position?.x || 0);
     const py = Number(node.position?.y || 0);
     const pz = Number(node.position?.z || 0);
-    mesh.userData.nodeId = String(node.id);
-    mesh.userData.pickMesh = true;
-    mesh.userData.radius = radius;
-    mesh.userData.basePos = new three.Vector3(px, py, pz);
-    mesh.userData.geomIntroFrom = new three.Vector3(px * 0.07, py * 0.08 + 0.015, pz * 0.07);
-    mesh.position.copy(mesh.userData.geomIntroFrom);
-    mesh.userData.jitterSeed = (String(node.id).length * 0.37 + px * 0.12 + pz * 0.09) % (Math.PI * 2);
-    mesh.userData.flowColor = col.clone();
-    mesh.userData.emissiveMul = emMul;
-    mesh.userData.emissiveIntensityBase = emInt;
-    mesh.userData.perfMode = perf;
+    const shell = assembly.userData.shellMesh;
+    assembly.userData.radius = radius;
+    assembly.userData.basePos = new three.Vector3(px, py, pz);
+    assembly.userData.geomIntroFrom = new three.Vector3();
+    const prevSnap = prevDisplayPos[String(node.id)];
+    if (prevSnap) {
+      assembly.userData.geomIntroFrom.set(prevSnap.x, prevSnap.y, prevSnap.z);
+      assembly.userData.geomIntroFromPreset = true;
+    } else {
+      assembly.userData.geomIntroFromPreset = false;
+    }
+    assembly.position.set(px, py, pz);
+    assembly.userData.jitterSeed = (String(node.id).length * 0.37 + px * 0.12 + pz * 0.09) % (Math.PI * 2);
+    assembly.userData.perfMode = perf;
     if (!perf) {
-      mesh.castShadow = true;
-      mesh.receiveShadow = true;
+      shell.castShadow = true;
+      shell.receiveShadow = true;
     }
-    nodeGroup.add(mesh);
-    g.nodeMeshById[String(node.id)] = mesh;
+    nodeGroup.add(assembly);
+    g.nodeMeshById[String(node.id)] = assembly;
     g.nodeDataById[String(node.id)] = node;
-
-    if (!perf && (node.is_unstable || stress01 > 0.55)) {
-      const haloCol = flowNodeColorTHREE(three, Math.min(1, stress01 + 0.2), true);
-      const unstableHalo = new three.Mesh(
-        new three.SphereGeometry(radius * 2.1, 8, 8),
-        new three.MeshBasicMaterial({
-          color: haloCol,
-          transparent: true,
-          opacity: 0.16 + stress01 * 0.18,
-          blending: three.AdditiveBlending,
-          depthWrite: false,
-        })
-      );
-      unstableHalo.position.set(px, py, pz);
-      unstableHalo.userData.nodeId = String(node.id);
-      unstableHalo.userData.pickMesh = false;
-      nodeGroup.add(unstableHalo);
-      g.nodeGlowById[String(node.id)] = unstableHalo;
-      g.unstablePulseById[String(node.id)] = 0.65 + Math.random() * 0.7;
-    }
+    g.unstablePulseById[String(node.id)] = 0.65 + Math.random() * 0.7;
   });
   nodeGroup.updateMatrixWorld(true);
-  if (!perf) {
-    const boxNg = new three.Box3().setFromObject(nodeGroup);
-    if (!boxNg.isEmpty()) {
-      const center = boxNg.getCenter(new three.Vector3());
+  const boxNg = new three.Box3().setFromObject(nodeGroup);
+  if (!boxNg.isEmpty()) {
+    const center = boxNg.getCenter(new three.Vector3());
+    const field = createStructuralFieldPlane(three, center, boxNg, perf);
+    if (field) {
+      scene.add(field);
+      g.structuralFieldMesh = field;
+    }
+    if (!perf) {
       const size = boxNg.getSize(new three.Vector3());
-      const planeW = Math.max(10, Math.max(size.x, size.z) * 2.15);
+      const planeW = Math.max(10, Math.max(size.x, size.z) * 2.05);
       const planeGeom = new three.PlaneGeometry(planeW, planeW, 1, 1);
       const planeMat = new three.MeshStandardMaterial({
-        color: 0x0b121c,
-        metalness: 0.06,
-        roughness: 0.92,
-        envMapIntensity: 0.4,
+        color: 0x070d16,
+        metalness: 0.08,
+        roughness: 0.94,
+        envMapIntensity: 0.35,
+        transparent: true,
+        opacity: 0.92,
       });
       const ground = new three.Mesh(planeGeom, planeMat);
       ground.rotation.x = -Math.PI / 2;
-      ground.position.set(center.x, boxNg.min.y - 0.03, center.z);
+      ground.position.set(center.x, boxNg.min.y - 0.04, center.z);
       ground.receiveShadow = true;
       ground.userData.pickMesh = false;
+      ground.renderOrder = -3;
       scene.add(ground);
       g.groundMesh = ground;
     }
   }
+  const geometryRig = new three.Group();
+  geometryRig.name = "geometryRig";
+  if (!boxNg.isEmpty()) {
+    const datumShell = createSensorDatumShell(three, boxNg, perf);
+    if (datumShell) {
+      geometryRig.add(datumShell);
+      g.sensorDatumShell = datumShell;
+    }
+  }
+  geometryRig.add(edgeGroup);
   geometryRig.add(nodeGroup);
   scene.add(geometryRig);
   g.nodeGroup = nodeGroup;
   g.geometryRig = geometryRig;
+  applyFlowLineResolutionToEdges(g, width, height);
   applyGeometryDisplayMode();
   beginGeometryIntroAnimation();
   updateGeometryDetails(null);
@@ -2923,6 +3372,7 @@ function renderGeometryScene(payload, viewportDims) {
     g.renderer.setSize(w, h);
     g.camera.aspect = w / h;
     g.camera.updateProjectionMatrix();
+    applyFlowLineResolutionToEdges(g, w, h);
   }
 
   if (window.ResizeObserver) {
@@ -2960,9 +3410,10 @@ function renderGeometryScene(payload, viewportDims) {
     g.hoveredId = nextHover;
     if (g.hoveredId && g.nodeMeshById[g.hoveredId]) {
       const hm = g.nodeMeshById[g.hoveredId];
-      if (hm.material && hm.material.emissive) {
-        hm.material.emissive.setHex(0x2a4a66);
-        hm.material.emissiveIntensity = 0.48;
+      const shell = hm?.userData?.shellMesh || hm;
+      if (shell.material && shell.material.emissive) {
+        shell.material.emissive.setHex(0x2a4a66);
+        shell.material.emissiveIntensity = 0.48;
       }
     }
     const tip = g.hoveredId && g.nodeDataById[g.hoveredId];
@@ -3058,7 +3509,7 @@ function renderGeometryScene(payload, viewportDims) {
       const introMs = g.geometryIntroMs || 0;
       let introProg = 1;
       if (introMs > 0 && g.geometryIntroStart != null) {
-        introProg = easeOutCubic((performance.now() - g.geometryIntroStart) / introMs);
+        introProg = easeInOutCubic((performance.now() - g.geometryIntroStart) / introMs);
         if (introProg >= 1) {
           g.geometryIntroMs = 0;
           g.geometryIntroStart = null;
@@ -3069,7 +3520,7 @@ function renderGeometryScene(payload, viewportDims) {
       const canvasWrapEl = qs("#geometryCanvasWrap");
       if (canvasWrapEl) {
         if (introActive) {
-          canvasWrapEl.style.opacity = String(0.35 + 0.65 * introProg);
+          canvasWrapEl.style.opacity = String(0.18 + 0.82 * introProg);
         } else if (canvasWrapEl.style.opacity) {
           canvasWrapEl.style.opacity = "";
         }
@@ -3160,22 +3611,50 @@ function renderGeometryScene(payload, viewportDims) {
 
       syncFlowEdgesFromMeshes(g, three, t);
 
-      Object.entries(g.nodeGlowById || {}).forEach(([nodeId, halo]) => {
-        const mesh = g.nodeMeshById[nodeId];
-        if (!halo || !mesh) return;
+      Object.keys(g.nodeMeshById || {}).forEach((nodeId) => {
+        const root = g.nodeMeshById[nodeId];
+        const ring = root?.userData?.sensorRing;
+        const cage = root?.userData?.sensorCage;
+        const inner = root?.userData?.innerCore;
+        const nodeData = g.nodeDataById[nodeId];
+        if (!nodeData || !root) return;
         const k = Number(g.unstablePulseById[nodeId] || 1);
-        const pulse = 1 + 0.14 * Math.sin(t * 2.5 + k) * (1.2 - coherence * 0.5);
-        halo.scale.setScalar(pulse);
-        halo.position.copy(mesh.position);
+        const stress = flowNodeStress01(nodeData);
+        const inRange = flowNodeInRange(nodeData);
+        const perfN = Boolean(g.perfMode);
+        if (ring) {
+          ring.rotation.z += 0.0065 * (0.85 + stress * 0.45);
+          const breathe = 0.045 * (inRange ? 0.72 : 1.12) * (0.45 + 0.55 * coherence);
+          ring.scale.setScalar(1 + breathe * Math.sin(t * 1.88 + k) + (inRange ? 0 : 0.05) * Math.sin(t * 3.1 + stress * 4));
+        }
+        if (cage?.material) {
+          cage.material.opacity = Math.min(
+            0.62,
+            (perfN ? 0.3 : 0.48) + stress * 0.14 + (inRange ? 0 : 0.16) + 0.06 * Math.sin(t * 2.2 + k * 0.2),
+          );
+        }
+        if (inner?.material) {
+          if (inner.material.emissiveIntensity != null) {
+            const pulse = 0.36 + stress * 0.42 * (inRange ? 0.38 : 1);
+            inner.material.emissiveIntensity = pulse + 0.1 * Math.sin(t * 2.9 + k);
+          } else if (inner.material.opacity != null) {
+            inner.material.opacity = Math.min(0.98, 0.82 + 0.12 * Math.sin(t * 2.4 + k));
+          }
+        }
       });
+
+      if (g.sensorDatumShell) {
+        g.sensorDatumShell.rotation.y += 0.0028 * ms;
+        g.sensorDatumShell.rotation.x += 0.001 * ms * Math.sin(t * 0.22);
+      }
 
       const rig = g.geometryRig;
       if (rig) {
         if (!g.reducedGeometryMotion) {
-          const sway = 0.07 * ms * rigMul;
-          rig.rotation.y = Math.sin(t * 0.41) * sway;
-          rig.rotation.x = Math.sin(t * 0.31 + 0.85) * sway * 0.4;
-          rig.rotation.z = Math.sin(t * 0.26 + 1.1) * sway * 0.22;
+          const sway = 0.034 * ms * rigMul;
+          rig.rotation.y = Math.sin(t * 0.38) * sway;
+          rig.rotation.x = Math.sin(t * 0.29 + 0.85) * sway * 0.35;
+          rig.rotation.z = Math.sin(t * 0.24 + 1.1) * sway * 0.18;
         } else {
           rig.rotation.set(0, 0, 0);
         }
