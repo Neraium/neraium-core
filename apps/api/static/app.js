@@ -500,133 +500,6 @@ function bindDashboardSparklineInteractions() {
   });
 }
 
-function sensorValuesNormalizedForGraph(latest, labels) {
-  const sv = latest?.sensor_values;
-  if (!sv || typeof sv !== "object") {
-    return labels.map(() => 0.5);
-  }
-  const raw = labels.map((k) => {
-    const v = sv[k];
-    return typeof v === "number" && Number.isFinite(v) ? v : null;
-  });
-  const finite = raw.filter((v) => v !== null);
-  if (finite.length === 0) return labels.map(() => 0.5);
-  const min = Math.min(...finite);
-  const max = Math.max(...finite);
-  const spread = max - min || 1;
-  return raw.map((v) => (v === null ? 0.5 : (v - min) / spread));
-}
-
-let dashboardSystemMap3dReady = false;
-function ensureDashboardSystemMap3d() {
-  const host = qs("#dashboardSystemMap3d");
-  if (!host || dashboardSystemMap3dReady) return;
-  const api = window.NeraiumSensorGraph3D;
-  if (api && typeof api.init === "function") {
-    api.init(host);
-    dashboardSystemMap3dReady = true;
-  }
-}
-
-function renderDashboardSystemMap3d(latest) {
-  ensureDashboardSystemMap3d();
-  const api = window.NeraiumSensorGraph3D;
-  if (!api || typeof api.update !== "function") return;
-  const rel = latest && Array.isArray(latest.sensor_relationships) ? latest.sensor_relationships : [];
-  const labels = rel.map((s) => String(s || "").trim()).filter(Boolean);
-  const values = sensorValuesNormalizedForGraph(latest, labels);
-  api.update({
-    labels,
-    values,
-    drift: structuralDriftFromResult(latest),
-    instability: compositeInstabilityFromResult(latest),
-    risk: normalizeRiskLevel(latest?.risk_level),
-  });
-}
-
-function renderDashboardStressHeatmap(latest) {
-  const host = qs("#dashboardStressHeatmap");
-  const legend = qs("#dashboardStressLegend");
-  if (!host) return;
-  const drift = structuralDriftFromResult(latest);
-  const comp = compositeInstabilityFromResult(latest);
-  const d = typeof drift === "number" && Number.isFinite(drift) ? Math.max(0, Math.min(1, drift)) : null;
-  const c = typeof comp === "number" && Number.isFinite(comp) ? Math.max(0, Math.min(1, comp)) : null;
-  host.innerHTML = "";
-  if (d === null && c === null) {
-    host.innerHTML = '<p class="stress-empty">No stress scalars on latest snapshot.</p>';
-    if (legend) legend.textContent = "Drift and composite unavailable.";
-    return;
-  }
-  function bar(label, value, tone) {
-    const pct = Math.round(value * 100);
-    return `<div class="stress-bar-row" data-tone="${tone}">
-      <span class="stress-bar-label">${escapeHtml(label)}</span>
-      <div class="stress-bar-track"><span class="stress-bar-fill" style="width:${pct}%"></span></div>
-      <span class="stress-bar-value">${pct}%</span>
-    </div>`;
-  }
-  const parts = [];
-  if (d !== null) parts.push(bar("Structural drift", d, d >= 0.65 ? "high" : d >= 0.35 ? "med" : "low"));
-  if (c !== null) parts.push(bar("Composite instability", c, c >= 0.65 ? "high" : c >= 0.35 ? "med" : "low"));
-  host.innerHTML = parts.join("");
-  if (legend) {
-    legend.textContent = `Normalized stress (0 to 100%) · latest snapshot${
-      d !== null ? ` · drift ${d.toFixed(2)}` : ""
-    }${c !== null ? ` · composite ${c.toFixed(2)}` : ""}`;
-  }
-}
-
-function renderDashboardMiniGraph(latest) {
-  const svg = qs("#dashboardMiniGraph");
-  const empty = qs("#dashboardMiniGraphEmpty");
-  if (!svg) return;
-  const sensors = latest && Array.isArray(latest.sensor_relationships) ? latest.sensor_relationships : [];
-  const labels = sensors.map((s) => String(s || "").trim()).filter(Boolean);
-  if (labels.length < 2) {
-    svg.innerHTML = "";
-    if (empty) empty.classList.remove("hidden");
-    return;
-  }
-  if (empty) empty.classList.add("hidden");
-  const n = labels.length;
-  const cx = 160;
-  const cy = 100;
-  const rad = 72;
-  const pts = labels.map((_, i) => {
-    const a = -Math.PI / 2 + (i / n) * Math.PI * 2;
-    return { x: cx + rad * Math.cos(a), y: cy + rad * Math.sin(a), label: labels[i] };
-  });
-  let edges = "";
-  for (let i = 0; i < n; i += 1) {
-    const a = pts[i];
-    const b = pts[(i + 1) % n];
-    edges += `<line x1="${a.x.toFixed(1)}" y1="${a.y.toFixed(1)}" x2="${b.x.toFixed(1)}" y2="${b.y.toFixed(
-      1,
-    )}" class="mini-graph-edge" />`;
-  }
-  const nodes = pts
-    .map((p, i) => {
-      const short = p.label.length > 10 ? `${p.label.slice(0, 9)}…` : p.label;
-      return `<g class="mini-graph-node" data-idx="${i}">
-        <circle cx="${p.x.toFixed(1)}" cy="${p.y.toFixed(1)}" r="10" />
-        <title>${escapeHtml(p.label)}</title>
-        <text x="${p.x.toFixed(1)}" y="${(p.y + 22).toFixed(1)}" text-anchor="middle" class="mini-graph-label">${escapeHtml(
-        short,
-      )}</text>
-      </g>`;
-    })
-    .join("");
-  svg.innerHTML = `<defs>
-    <linearGradient id="miniGraphGrad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="rgba(121,171,255,0.5)" />
-      <stop offset="100%" stop-color="rgba(90,140,220,0.2)" />
-    </linearGradient>
-  </defs>
-  ${edges}
-  ${nodes}`;
-}
-
 function renderDashboardHero(latest, prev) {
   const scoreEl = qs("#dashboardHealthScore");
   const narrative = qs("#dashboardNarrativeStrip");
@@ -2237,7 +2110,7 @@ function setStatus(message = "", isError = false, showToast = false) {
 
 function setPage(page) {
   const titles = {
-    dashboard: ["Dashboard", "Live summary of the active run"],
+    dashboard: ["Dashboard", "Active run snapshot"],
     runs: ["Runs", "Create, inspect, and activate runs"],
     upload: ["Upload", "Upload telemetry CSV into the active run"],
     "run-detail": ["Run Detail", "Deep inspection of run outputs"],
@@ -2562,24 +2435,16 @@ function renderRunsList() {
 }
 
 function renderDashboardMetrics(latest, prev) {
-  const metricDrift = qs("#metricDrift");
-  const metricComposite = qs("#metricComposite");
-  const metricPhase = qs("#metricPhase");
   const metricTrend = qs("#metricTrend");
   const metricRisk = qs("#metricRisk");
   const metricState = qs("#metricState");
-  const metricConfidence = qs("#metricConfidence");
   const metricOperator = qs("#metricOperatorMessage");
   const metricRiskBadge = qs("#metricRiskBadge");
   const metricPhaseBadge = qs("#metricPhaseBadge");
 
-  if (metricDrift) metricDrift.textContent = toPretty(structuralDriftFromResult(latest));
-  if (metricComposite) metricComposite.textContent = toPretty(compositeInstabilityFromResult(latest));
-  if (metricPhase) metricPhase.textContent = toPretty(phaseFromResult(latest));
   if (metricTrend) metricTrend.textContent = toPretty(trendFromResult(latest));
   if (metricRisk) metricRisk.textContent = toPretty(latest?.risk_level);
   if (metricState) metricState.textContent = toPretty(latest?.state || latest?.interpreted_state);
-  if (metricConfidence) metricConfidence.textContent = toPretty(latest?.confidence);
   const operatorSummary = demoFriendlyOperatorMessage(latest, prev);
   if (metricOperator) metricOperator.textContent = operatorSummary;
   if (metricRiskBadge) metricRiskBadge.innerHTML = riskBadgeHtml(latest?.risk_level);
@@ -2602,9 +2467,6 @@ function renderDashboardMetrics(latest, prev) {
   }
 
   renderDashboardHero(latest, prev);
-  renderDashboardStressHeatmap(latest);
-  renderDashboardMiniGraph(latest);
-  renderDashboardSystemMap3d(latest);
   const lu = qs("#dashboardLastUpdated");
   if (lu) {
     const ts = new Date();
@@ -2637,36 +2499,6 @@ function renderDashboardRecent(results) {
   });
 }
 
-function alertSeverityClass(severity) {
-  const s = String(severity || "").toLowerCase();
-  if (s === "critical") return "critical";
-  if (s === "high") return "watch";
-  return "normal";
-}
-
-function renderDashboardAlerts(alerts) {
-  const list = qs("#dashboardAlertsList");
-  const empty = qs("#dashboardAlertsEmpty");
-  if (!list) return;
-  list.innerHTML = "";
-  const items = (alerts || []).slice(0, 20);
-  if (empty) {
-    if (items.length === 0) empty.classList.remove("hidden");
-    else empty.classList.add("hidden");
-  }
-  items.forEach((a) => {
-    const li = document.createElement("li");
-    li.className = `alert-feed-item alert-feed-${alertSeverityClass(a.severity)}`.trim();
-    const ctx = a.context || {};
-    li.innerHTML = `
-      <div class="msg-head">${escapeHtml(String(a.type || "alert"))} · ${escapeHtml(String(a.created_at || ""))}</div>
-      <div>${escapeHtml(String(a.message || ""))}</div>
-      <div class="msg-subtle">run: ${escapeHtml(String(ctx.run_id || "-"))} · result: ${escapeHtml(String(ctx.result_id || "-"))}</div>
-    `;
-    list.appendChild(li);
-  });
-}
-
 async function loadDashboard() {
   const runId = state.activeRun?.run_id || "";
   const recentEnv = await fetchJson(apiUrl("/results/recent", tenantScopeParams({ run_id: runId, limit: 200 })));
@@ -2682,7 +2514,6 @@ async function loadDashboard() {
   const prev = chron.length > 1 ? chron[chron.length - 2] : null;
   renderDashboardMetrics(latest, prev);
   renderDashboardRecent(state.dashboardRecent);
-  renderDashboardAlerts(state.dashboardAlerts);
   renderDashboardSparkline(chron);
   bindDashboardSparklineInteractions();
   window.requestAnimationFrame(() => renderDashboardSparkline(dashboardChronologicalResults()));

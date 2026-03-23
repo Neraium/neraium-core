@@ -27,7 +27,6 @@
         <div class="brand-mark" aria-hidden="true">N</div>
         <div class="brand-text">
           <h1>Neraium</h1>
-          <p>Systemic Infrastructure Intelligence</p>
         </div>
       </div>
       <nav class="nav">
@@ -37,14 +36,6 @@
         <a href="/upload" data-nav="upload">Upload</a>
         <a href="/demo/sii" data-nav="demo-sii">SII tour</a>
       </nav>
-      <section class="active-run-box" aria-label="Active run summary">
-        <div class="active-run-box-head">
-          <span class="small-label">Active run</span>
-          <span class="active-run-pill" id="activeRunStatusPill">—</span>
-        </div>
-        <div id="activeRunName" class="active-run-name">No active run</div>
-        <div id="activeRunId" class="active-run-id">-</div>
-      </section>
     </aside>
 
     <div class="main">
@@ -54,39 +45,34 @@
             <span class="mobile-nav-toggle-bars" aria-hidden="true"></span>
           </button>
           <div class="title-block">
-            <p class="kicker">Operations Console</p>
             <h2 id="pageTitle">Dashboard</h2>
-            <p id="pageSubtitle" class="subtitle">Live summary of structural stability</p>
+            <p id="pageSubtitle" class="subtitle page-subtitle-truncate">Active run snapshot</p>
           </div>
         </div>
-        <div class="topbar-controls tenant-filters">
-          <div class="topbar-group" aria-label="Tenant filters">
-            <span class="topbar-group-label">Scope</span>
-            <div class="topbar-group-row">
-              <input id="customerFilterInput" placeholder="Customer ID" aria-label="Customer ID filter" title="Sent as customer_id on API calls" />
-              <input id="siteFilterInput" placeholder="Site ID (optional)" aria-label="Site ID filter" list="knownSitesList" title="Optional site scope" />
-            </div>
-            <p class="topbar-hint">Tenant filters apply to API requests and the workspace scope.</p>
-            <datalist id="knownSitesList"></datalist>
-          </div>
-          <div class="topbar-group" aria-label="Demo tools">
-            <span class="topbar-group-label">Demo</span>
-            <div class="topbar-group-row">
-              <label class="demo-toggle" for="demoModeToggle">
-                <input id="demoModeToggle" type="checkbox" />
-                <span>Demo mode</span>
-              </label>
-              <button id="prepareDemoBtn" type="button" class="secondary">Create Demo Run</button>
-              <button id="seedDemoBtn" type="button" class="secondary">Load Sample Data</button>
-            </div>
-            <p class="topbar-hint">Prepares demo runs or seeds sample data without uploading CSV.</p>
-          </div>
-          <div class="topbar-group topbar-group-actions">
-            <span class="topbar-group-label">Actions</span>
-            <div class="topbar-group-row">
-              <button id="refreshBtn" type="button" class="topbar-refresh">Refresh</button>
-            </div>
-            <p class="topbar-hint">Reloads the current page and dashboard metrics.</p>
+        <div class="topbar-controls topbar-controls-compact tenant-filters" aria-label="Scope and tools">
+          <datalist id="knownSitesList"></datalist>
+          <div class="topbar-compact-row">
+            <input
+              id="customerFilterInput"
+              placeholder="Customer ID"
+              aria-label="Customer ID filter"
+              title="Sent as customer_id on API calls"
+            />
+            <input
+              id="siteFilterInput"
+              placeholder="Site (optional)"
+              aria-label="Site ID filter"
+              list="knownSitesList"
+              title="Optional site scope"
+            />
+            <span class="topbar-compact-sep" aria-hidden="true"></span>
+            <label class="demo-toggle" for="demoModeToggle">
+              <input id="demoModeToggle" type="checkbox" />
+              <span>Demo</span>
+            </label>
+            <button id="prepareDemoBtn" type="button" class="secondary" title="Create a scripted demo run">Demo run</button>
+            <button id="seedDemoBtn" type="button" class="secondary" title="Seed sample telemetry into the active run">Sample data</button>
+            <button id="refreshBtn" type="button" class="topbar-refresh">Refresh</button>
           </div>
         </div>
       </header>
@@ -99,10 +85,7 @@
           <section class="dashboard-hero panel control-center">
             <div class="dashboard-hero-grid">
               <div class="dashboard-hero-primary">
-                <div class="dashboard-hero-kicker">
-                  <span class="live-pulse" aria-hidden="true"></span>
-                  <span>Active run · live envelope</span>
-                </div>
+                <p class="dashboard-hero-kicker">Active run</p>
                 <div class="dashboard-hero-score-row">
                   <div class="dashboard-hero-health-col">
                     <div class="health-ring-wrap" title="Composite health from risk, drift, and instability">
@@ -135,125 +118,48 @@
                       <p class="signal-trend dashboard-trend-line">Trend <strong id="metricTrend">-</strong></p>
                     </div>
                     <p class="dashboard-narrative-strip" id="dashboardNarrativeStrip">Awaiting telemetry.</p>
+                    <p id="metricOperatorMessage" class="operator-message dashboard-operator-line">
+                      No results yet. Upload telemetry or use Sample data.
+                    </p>
                   </div>
                 </div>
               </div>
               <aside class="dashboard-hero-aside">
                 <p class="dashboard-last-updated" id="dashboardLastUpdated">Last updated —</p>
-                <article class="insight-tile insight-tile-alert" id="dashboardAlertTile">
-                  <p class="insight-tile-label">Active signals</p>
-                  <p class="insight-tile-value" id="dashboardAlertCount">0</p>
+                <article class="insight-tile insight-tile-alert insight-tile-metrics-split" id="dashboardAlertTile">
+                  <div class="insight-metrics-row" aria-label="Alerts and snapshot count">
+                    <div class="insight-metric-block">
+                      <p class="insight-tile-label">Alerts</p>
+                      <p class="insight-tile-value insight-tile-value--sm" id="dashboardAlertCount">0</p>
+                    </div>
+                    <div class="insight-metric-block">
+                      <p class="insight-tile-label">Snapshots</p>
+                      <p class="insight-tile-value insight-tile-value--sm" id="dashboardSnapshotCount">0</p>
+                    </div>
+                  </div>
                   <p class="insight-tile-sub" id="dashboardAlertSummary">No open alerts for this run.</p>
                 </article>
-                <article class="insight-tile">
-                  <p class="insight-tile-label">Coverage</p>
-                  <p class="insight-tile-value" id="dashboardSnapshotCount">0</p>
-                  <p class="insight-tile-sub">Snapshots in the recent window for this run</p>
-                </article>
-                <a class="dashboard-deep-link" id="dashboardOpenRunLink" href="/app/runs">Open run detail →</a>
+                <a class="dashboard-deep-link" id="dashboardOpenRunLink" href="/app/runs">Run detail →</a>
               </aside>
-            </div>
-          </section>
-
-          <section class="panel dashboard-system-map" aria-label="System map">
-            <div class="panel-header dashboard-section-head">
-              <div>
-                <h3>System map</h3>
-                <p class="subtitle section-subtitle">Sensors as nodes, relationships as edges — motion reflects drift and instability.</p>
-              </div>
-            </div>
-            <div class="system-map3d-layout">
-              <div id="dashboardSystemMap3d" class="system-map3d-host" role="img" aria-label="Three dimensional sensor relationship graph"></div>
-              <div id="dashboardSystemMap3dTooltip" class="system-map3d-tooltip hidden" role="tooltip"></div>
-              <p class="system-map3d-hint">Drag to orbit · wheel to zoom · hover a node for details · click to highlight</p>
-            </div>
-          </section>
-
-          <section class="panel dashboard-observations">
-            <div class="panel-header dashboard-section-head">
-              <div>
-                <h3>What we see</h3>
-                <p class="subtitle section-subtitle">Narrative plus structural relationships from the latest snapshot.</p>
-              </div>
-            </div>
-            <div class="observations-grid">
-              <article class="insight-card operator-insight">
-                <p class="insight-card-label">Operator readout</p>
-                <p id="metricOperatorMessage" class="operator-message operator-message-compact">No results yet. Upload telemetry or use Load Sample Data to populate a run.</p>
-              </article>
-              <article class="insight-card stress-card">
-                <p class="insight-card-label">Structural stress</p>
-                <div class="stress-heatmap" id="dashboardStressHeatmap" aria-label="Drift and instability stress"></div>
-                <p class="stress-heatmap-legend" id="dashboardStressLegend">Drift and composite</p>
-              </article>
-              <article class="insight-card graph-card">
-                <p class="insight-card-label">Relationship map</p>
-                <div class="mini-graph-host" id="dashboardMiniGraphHost">
-                  <svg id="dashboardMiniGraph" class="mini-graph" viewBox="0 0 320 200" role="img" aria-label="Sensor relationship sketch"></svg>
-                  <p class="mini-graph-empty" id="dashboardMiniGraphEmpty">When snapshots include relationship fields, a quick 2D sketch appears here. The System map above shows the live mesh.</p>
-                </div>
-              </article>
             </div>
           </section>
 
           <section class="panel dashboard-signals">
             <div class="panel-header dashboard-section-head">
-              <div>
-                <h3>What is changing</h3>
-                <p class="subtitle section-subtitle">Drift and instability trend with anomaly emphasis on the latest point.</p>
-              </div>
+              <h3>Trend</h3>
             </div>
             <div class="sparkline-wrap">
               <div class="sparkline-canvas-wrap">
                 <canvas id="dashboardSparkline" width="900" height="140" aria-label="Drift and composite trend"></canvas>
                 <div id="dashboardSparklineTooltip" class="sparkline-tooltip hidden" role="tooltip"></div>
               </div>
-              <p class="sparkline-hint" id="dashboardSparklineHint">Hover or drag along the trend for values. Latest snapshot highlighted.</p>
             </div>
           </section>
 
-          <section class="panel">
-            <div class="panel-header dashboard-section-head">
-              <div>
-                <h3>Alerts</h3>
-                <p class="subtitle section-subtitle">Highest-priority platform signals for the active run.</p>
-              </div>
-            </div>
-            <div id="dashboardAlertsEmpty" class="empty-state hidden">
-              <p>No alerts for this run.</p>
-            </div>
-            <ul id="dashboardAlertsList" class="messages alerts-feed"></ul>
-          </section>
-
-          <details class="panel disclosure-panel" id="dashboardMetricsDisclosure">
-            <summary class="disclosure-summary">
-              <span class="disclosure-title">Run metrics</span>
-              <span class="disclosure-hint">Phase, drift, composite, confidence</span>
-            </summary>
-            <div class="signal-secondary dashboard-metrics-grid">
-              <article class="signal-meta-card">
-                <p class="signal-meta-label">Phase</p>
-                <p id="metricPhase" class="signal-meta-value">-</p>
-              </article>
-              <article class="signal-meta-card">
-                <p class="signal-meta-label">Structural drift</p>
-                <p id="metricDrift" class="signal-meta-value compact">-</p>
-              </article>
-              <article class="signal-meta-card">
-                <p class="signal-meta-label">Composite instability</p>
-                <p id="metricComposite" class="signal-meta-value compact">-</p>
-              </article>
-              <article class="signal-meta-card">
-                <p class="signal-meta-label">Confidence</p>
-                <p id="metricConfidence" class="signal-meta-value compact">-</p>
-              </article>
-            </div>
-          </details>
-
-          <details class="panel disclosure-panel results-panel" open id="dashboardResultsDisclosure">
+          <details class="panel disclosure-panel results-panel" id="dashboardResultsDisclosure">
             <summary class="disclosure-summary">
               <span class="disclosure-title">Recent results</span>
-              <span class="disclosure-hint">Export and drill into individual snapshots</span>
+              <span class="disclosure-hint">Export &amp; open snapshots</span>
             </summary>
             <div class="row panel-actions disclosure-actions">
               <button id="exportJsonBtn" type="button">Export JSON</button>
