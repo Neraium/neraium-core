@@ -581,17 +581,16 @@
               <div id="geometryCanvasWrap" class="geometry-canvas-wrap">
                 <div id="geometry3dStatus" class="geometry-status hidden"></div>
                 <div id="geometryViewport" class="geometry-viewport" aria-label="3D system geometry visualization"></div>
-                <div id="geometryViewportDebug" class="geometry-viewport-debug">3D viewport</div>
                 <div id="geometryFallback" class="empty-state geometry-fallback hidden"></div>
-                <div id="geometryHud" class="geometry-hud">
-                  <div><span class="k">State</span><span id="geometryState">-</span></div>
-                  <div><span class="k">Risk</span><span id="geometryRisk">-</span></div>
-                  <div><span class="k">Drift</span><span id="geometryDrift">-</span></div>
-                  <div><span class="k">Composite</span><span id="geometryComposite">-</span></div>
-                  <div><span class="k">View</span><span id="geometryViewMode">Current</span></div>
-                </div>
               </div>
               <aside id="geometryDetails" class="geometry-details">
+                <div class="geometry-run-metrics" id="geometryRunMetrics">
+                  <div class="geometry-metric-row"><span class="metric-k">State</span><span id="geometryState" class="metric-v">-</span></div>
+                  <div class="geometry-metric-row"><span class="metric-k">Risk</span><span id="geometryRisk" class="metric-v">-</span></div>
+                  <div class="geometry-metric-row"><span class="metric-k">Drift</span><span id="geometryDrift" class="metric-v">-</span></div>
+                  <div class="geometry-metric-row"><span class="metric-k">Composite</span><span id="geometryComposite" class="metric-v">-</span></div>
+                  <div class="geometry-metric-row"><span class="metric-k">View</span><span id="geometryViewMode" class="metric-v">Current</span></div>
+                </div>
                 <div id="geometryLegend" class="geometry-legend"></div>
                 <p id="geometryStructureSummary" class="geometry-structure-note">-</p>
                 <div class="geometry-view-toggle" role="group" aria-label="Geometry view mode">
@@ -703,6 +702,7 @@
 
   <script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/three@0.162.0/build/three.min.js"></script>
+  <script defer src="/web/OrbitControls.legacy.js"></script>
   <script defer src="/web/sensor_graph_3d.js"></script>
   <script defer src="/web/app.js"></script>
 </body>
