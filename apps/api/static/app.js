@@ -1073,6 +1073,11 @@ const state = {
     flowInstancedMesh: null,
     flowDummy: null,
     flowParticlesPerEdge: 3,
+    geometryRig: null,
+    geometryIntroStart: null,
+    geometryIntroMs: 0,
+    reducedGeometryMotion: false,
+    keyLightBasePos: null,
   },
   demo: {
     enabled: false,
@@ -1550,6 +1555,13 @@ function disposeGeometryRenderer() {
     g.controls.dispose();
     g.controls = null;
   }
+  g.geometryIntroStart = null;
+  g.geometryIntroMs = 0;
+  const _gfw = qs("#geometryCanvasWrap");
+  if (_gfw) {
+    _gfw.style.opacity = "";
+    _gfw.classList.remove("geometry-canvas-wrap--enter");
+  }
   if (g.renderer) {
     g.renderer.dispose();
     if (g.renderer.domElement && g.renderer.domElement.parentElement) {
@@ -1631,6 +1643,14 @@ function updateGeometryShadowFrustum(g, three) {
   cam.updateProjectionMatrix();
 }
 
+function geometryViewportIsNarrow() {
+  try {
+    return window.matchMedia && window.matchMedia("(max-width: 740px)").matches;
+  } catch (_e) {
+    return false;
+  }
+}
+
 function fitGeometryCamera(camera, controls, nodeGroup, three) {
   if (!camera || !controls || !nodeGroup || !three) return;
   const box = new three.Box3().setFromObject(nodeGroup);
@@ -1643,7 +1663,9 @@ function fitGeometryCamera(camera, controls, nodeGroup, three) {
   camera.near = Math.max(0.008, dist / 500);
   camera.far = Math.max(80, dist * 45);
   camera.updateProjectionMatrix();
-  const offset = new three.Vector3(1.2, 0.75, 1.45).normalize().multiplyScalar(dist);
+  const narrow = geometryViewportIsNarrow();
+  const distMul = narrow ? 0.78 : 1.0;
+  const offset = new three.Vector3(1.2, 0.75, 1.45).normalize().multiplyScalar(dist * distMul);
   camera.position.copy(center.clone().add(offset));
   camera.lookAt(center);
 }
@@ -1757,10 +1779,14 @@ function flowNodeInRange(node) {
   return flowNodeStress01(node) < 0.33 && !node?.is_unstable;
 }
 
-/** Diamond (n=4) or regular ring (2–12): shared XZ plane + vertical lift story. */
+/** Triangle+hub (n=4), ring, or dual ring: shared XZ plane + vertical lift story. */
 function structuralFlowUsesPlaneLayout(payload) {
   const l = payload?.projection?.layout;
-  return l === "diamond_plane_four_sensors" || l === "coherent_plane_ring";
+  return (
+    l === "diamond_plane_four_sensors" ||
+    l === "triangle_center_plane_four_sensors" ||
+    l === "coherent_plane_ring"
+  );
 }
 
 function flowNodeColorTHREE(three, stress01, unstable) {
@@ -1976,6 +2002,34 @@ function syncFlowEdgesFromMeshes(g, three, t) {
   }
 }
 
+function easeOutCubic(t) {
+  const x = Math.max(0, Math.min(1, t));
+  return 1 - (1 - x) ** 3;
+}
+
+/** Short, count-accurate copy for the structural flow panel (replaces static “up to 24…” text). */
+function updateStructuralFlowCopy(payload) {
+  const el = qs("#geometryFlowSubtitle");
+  if (!el) return;
+  const n = Math.max(0, (payload?.nodes || []).length);
+  if (!payload?.available) {
+    el.textContent = "Geometry appears when relationship data is available for this run.";
+    return;
+  }
+  const plane = structuralFlowUsesPlaneLayout(payload);
+  const outR = Number(payload.summary?.out_of_range_nodes ?? 0);
+  if (plane && n >= 2) {
+    const lift = outR > 0 ? `${outR} elevated by severity` : "all in range on the plane";
+    el.textContent = `${n} sensor${n === 1 ? "" : "s"} · shared base plane · ${lift}.`;
+    return;
+  }
+  if (n > 0) {
+    el.textContent = `${n} sensor${n === 1 ? "" : "s"} in a correlation projection.`;
+  } else {
+    el.textContent = "Structural relationship view for this result.";
+  }
+}
+
 function updateGeometryFlowPanel(payload) {
   const cohEl = qs("#geometryCoherence");
   const inEl = qs("#geometryInSync");
@@ -1986,6 +2040,7 @@ function updateGeometryFlowPanel(payload) {
     if (inEl) inEl.textContent = "—";
     if (outEl) outEl.textContent = "—";
     if (shiftEl) shiftEl.textContent = "—";
+    updateStructuralFlowCopy(payload || { available: false, nodes: [] });
     return;
   }
   const c = flowCoherence01(payload);
@@ -2008,6 +2063,7 @@ function updateGeometryFlowPanel(payload) {
   if (outEl) outEl.textContent = String(outSync);
   const ch = Number(payload.summary?.changed_edges_current ?? 0);
   if (shiftEl) shiftEl.textContent = Number.isFinite(ch) ? String(ch) : "—";
+  updateStructuralFlowCopy(payload);
 }
 
 function geometryFlowSummaryString(payload) {
@@ -2500,6 +2556,26 @@ function createNodeLabelSprite(three, text, colorHex = 0xd9e6ff) {
   return sprite;
 }
 
+function beginGeometryIntroAnimation() {
+  const g = state.geometry3d;
+  const three = getThreeNamespace();
+  if (!three?.Vector3) return;
+  const reduceGeomMotion = geometryFlowReducedMotion();
+  Object.values(g.nodeMeshById || {}).forEach((mesh) => {
+    if (!mesh.userData?.basePos) return;
+    const bp = mesh.userData.basePos;
+    if (!mesh.userData.geomIntroFrom) mesh.userData.geomIntroFrom = new three.Vector3();
+    mesh.userData.geomIntroFrom.set(bp.x * 0.07, bp.y * 0.08 + 0.015, bp.z * 0.07);
+    mesh.position.copy(mesh.userData.geomIntroFrom);
+    const nid = mesh.userData.nodeId != null ? String(mesh.userData.nodeId) : "";
+    const halo = nid ? g.nodeGlowById[nid] : null;
+    if (halo) halo.position.copy(mesh.position);
+  });
+  if (three) syncFlowEdgesFromMeshes(g, three, 0);
+  g.geometryIntroStart = performance.now();
+  g.geometryIntroMs = reduceGeomMotion ? 140 : 720;
+}
+
 function renderGeometryScene(payload, viewportDims) {
   const canvasHost = qs("#geometryViewport");
   const viewport = qs("#geometryViewport");
@@ -2567,6 +2643,11 @@ function renderGeometryScene(payload, viewportDims) {
   }
   renderer.domElement.className = "geometry-renderer-canvas";
   canvasHost.appendChild(renderer.domElement);
+  const canvasFlowWrap = qs("#geometryCanvasWrap");
+  if (canvasFlowWrap) {
+    canvasFlowWrap.style.opacity = "0.38";
+    canvasFlowWrap.classList.add("geometry-canvas-wrap--enter");
+  }
 
   const scene = new three.Scene();
   scene.background = null;
@@ -2615,8 +2696,9 @@ function renderGeometryScene(payload, viewportDims) {
   controls.maxDistance = 6.5;
   controls.target.set(0, 0, 0);
   const reduceGeomMotion = geometryFlowReducedMotion();
+  const narrowVp = geometryViewportIsNarrow();
   controls.autoRotate = !reduceGeomMotion;
-  controls.autoRotateSpeed = perf ? 0.55 : 0.85;
+  controls.autoRotateSpeed = perf ? 0.38 : narrowVp ? 0.58 : 0.72;
 
   const g = state.geometry3d;
   g.renderer = renderer;
@@ -2763,12 +2845,13 @@ function renderGeometryScene(payload, viewportDims) {
     const px = Number(node.position?.x || 0);
     const py = Number(node.position?.y || 0);
     const pz = Number(node.position?.z || 0);
-    mesh.position.set(px, py, pz);
     mesh.userData.nodeId = String(node.id);
     mesh.userData.pickMesh = true;
     mesh.userData.radius = radius;
     mesh.userData.basePos = new three.Vector3(px, py, pz);
-    mesh.userData.jitterSeed = Math.random() * Math.PI * 2;
+    mesh.userData.geomIntroFrom = new three.Vector3(px * 0.07, py * 0.08 + 0.015, pz * 0.07);
+    mesh.position.copy(mesh.userData.geomIntroFrom);
+    mesh.userData.jitterSeed = (String(node.id).length * 0.37 + px * 0.12 + pz * 0.09) % (Math.PI * 2);
     mesh.userData.flowColor = col.clone();
     mesh.userData.emissiveMul = emMul;
     mesh.userData.emissiveIntensityBase = emInt;
@@ -2829,8 +2912,8 @@ function renderGeometryScene(payload, viewportDims) {
   g.nodeGroup = nodeGroup;
   g.geometryRig = geometryRig;
   applyGeometryDisplayMode();
+  beginGeometryIntroAnimation();
   updateGeometryDetails(null);
-  updateGeometryFlowPanel(payload);
 
   function onResize() {
     if (!g.renderer || !g.camera) return;
@@ -2974,12 +3057,50 @@ function renderGeometryScene(payload, viewportDims) {
     g.frameId = window.requestAnimationFrame(animate);
     try {
       t += 0.014;
+      const introMs = g.geometryIntroMs || 0;
+      let introProg = 1;
+      if (introMs > 0 && g.geometryIntroStart != null) {
+        introProg = easeOutCubic((performance.now() - g.geometryIntroStart) / introMs);
+        if (introProg >= 1) {
+          g.geometryIntroMs = 0;
+          g.geometryIntroStart = null;
+        }
+      }
+      const introActive = introProg < 1 && introMs > 0;
+
+      const canvasWrapEl = qs("#geometryCanvasWrap");
+      if (canvasWrapEl) {
+        if (introActive) {
+          canvasWrapEl.style.opacity = String(0.35 + 0.65 * introProg);
+        } else if (canvasWrapEl.style.opacity) {
+          canvasWrapEl.style.opacity = "";
+        }
+      }
+
+      if (introActive) {
+        Object.keys(g.nodeMeshById || {}).forEach((nodeId) => {
+          const mesh = g.nodeMeshById[nodeId];
+          if (!mesh?.userData?.basePos || !mesh.userData.geomIntroFrom) return;
+          mesh.position.lerpVectors(mesh.userData.geomIntroFrom, mesh.userData.basePos, introProg);
+          const halo = g.nodeGlowById[nodeId];
+          if (halo) halo.position.copy(mesh.position);
+        });
+        syncFlowEdgesFromMeshes(g, three, t);
+        controls.update();
+        renderer.render(scene, camera);
+        geometryFrameIndex += 1;
+        return;
+      }
+
       const coherence = typeof g.flowCoherence === "number" ? g.flowCoherence : 0.75;
       const driftN = typeof g.flowDriftN === "number" ? g.flowDriftN : 0;
       const instN = typeof g.flowInstN === "number" ? g.flowInstN : 0;
       const unifiedPhase = t * 0.88;
       const ms = typeof g.motionScale === "number" ? g.motionScale : 1;
       const planeLayout = Boolean(g.structuralFlowPlaneLayout);
+      const narrowFlow = geometryViewportIsNarrow();
+      const planeCalm = 0.32;
+      const rigMul = narrowFlow ? 0.42 : 1;
 
       Object.keys(g.nodeMeshById || {}).forEach((nodeId) => {
         const mesh = g.nodeMeshById[nodeId];
@@ -2994,17 +3115,21 @@ function renderGeometryScene(payload, viewportDims) {
           const liftHint = Math.min(1, base.y * 2.4);
           const cohWobble = (1 - coherence) * 0.06;
           const wobble =
-            (0.012 + cohWobble) * (0.55 + 0.45 * coherence) * ms * (inRange ? 1 : 0.55 + liftHint * 0.45);
+            (0.012 + cohWobble) *
+            (0.55 + 0.45 * coherence) *
+            ms *
+            planeCalm *
+            (inRange ? 1 : 0.55 + liftHint * 0.45);
           const breatheX = Math.sin(unifiedPhase * 0.85 + phase * 0.08) * wobble;
           const breatheZ = Math.cos(unifiedPhase * 0.8 + phase * 0.08) * wobble;
-          const breatheY = Math.sin(unifiedPhase * 0.68 + phase * 0.06) * 0.007 * ms * (0.35 + 0.65 * coherence);
+          const breatheY = Math.sin(unifiedPhase * 0.68 + phase * 0.06) * 0.003 * ms * (0.35 + 0.65 * coherence);
           if (inRange) {
             mesh.position.x = base.x + breatheX;
             mesh.position.z = base.z + breatheZ;
-            mesh.position.y = base.y + breatheY + Math.sin(unifiedPhase * 0.82 + phase) * 0.004 * ms;
+            mesh.position.y = base.y + breatheY + Math.sin(unifiedPhase * 0.82 + phase) * 0.002 * ms;
           } else {
             const decouple = 0.5 + 0.5 * (1 - coherence);
-            const asyncAmp = 0.018 * ms * decouple * (0.45 + liftHint * 0.55);
+            const asyncAmp = 0.008 * ms * decouple * (0.45 + liftHint * 0.55);
             mesh.position.x =
               base.x + breatheX * (1 - decouple * 0.82) + Math.sin(t * 1.05 + phase * 2.1) * asyncAmp;
             mesh.position.z =
@@ -3012,7 +3137,7 @@ function renderGeometryScene(payload, viewportDims) {
             mesh.position.y =
               base.y +
               breatheY * 0.45 +
-              Math.sin(t * 0.92 + phase * 1.3) * 0.014 * ms * decouple * (0.4 + liftHint * 0.6);
+              Math.sin(t * 0.92 + phase * 1.3) * 0.008 * ms * decouple * (0.4 + liftHint * 0.6);
           }
           return;
         }
@@ -3049,7 +3174,7 @@ function renderGeometryScene(payload, viewportDims) {
       const rig = g.geometryRig;
       if (rig) {
         if (!g.reducedGeometryMotion) {
-          const sway = 0.07 * ms;
+          const sway = 0.07 * ms * rigMul;
           rig.rotation.y = Math.sin(t * 0.41) * sway;
           rig.rotation.x = Math.sin(t * 0.31 + 0.85) * sway * 0.4;
           rig.rotation.z = Math.sin(t * 0.26 + 1.1) * sway * 0.22;
