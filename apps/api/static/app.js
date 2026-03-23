@@ -984,6 +984,22 @@ const state = {
     interactionEnabled: false,
     cleanupPointer: null,
     cleanupResize: null,
+    perfMode: true,
+    curveSegments: 9,
+    motionScale: 1,
+    fpsEma: 60,
+    lowFpsFrames: 0,
+    lastFrameTime: 0,
+    useCanvas2d: false,
+    canvas2d: null,
+    flowCoherence: 0.75,
+    flowDriftN: 0,
+    flowInstN: 0,
+    flowEdgeScratch: null,
+    pendingHoverEvt: null,
+    hoverRaf: null,
+    resizeRaf: null,
+    _2dT: 0,
   },
   demo: {
     enabled: false,
@@ -1003,6 +1019,43 @@ const state = {
 const TENANT_STORAGE_KEY = "neraium_customer_id";
 const DEMO_MODE_STORAGE_KEY = "neraium_demo_mode";
 const DEMO_PLAYBACK_INTERVAL_MS = 850;
+/** Default on: lighter WebGL + simpler motion. Set localStorage "neraium_structural_flow_perf" to "0" for richer visuals. */
+const GEOMETRY_FLOW_PERF_KEY = "neraium_structural_flow_perf";
+
+function geometryFlowPerfEnabled() {
+  try {
+    const v = String(window.localStorage.getItem(GEOMETRY_FLOW_PERF_KEY) ?? "1").toLowerCase();
+    return v !== "0" && v !== "false" && v !== "off";
+  } catch (_e) {
+    return true;
+  }
+}
+
+function geometryFlowReducedMotion() {
+  try {
+    return window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  } catch (_e) {
+    return false;
+  }
+}
+
+function geometryFlow2dOnlyFromUrl() {
+  try {
+    return String(new URLSearchParams(window.location.search).get("flow2d") || "").trim() === "1";
+  } catch (_e) {
+    return false;
+  }
+}
+
+function geometryFlowPrefer2dOnly() {
+  if (geometryFlow2dOnlyFromUrl()) return true;
+  try {
+    const c = typeof navigator.hardwareConcurrency === "number" ? navigator.hardwareConcurrency : 4;
+    return c <= 2;
+  } catch (_e) {
+    return false;
+  }
+}
 
 function customerIdValue(value) {
   const text = String(value || "").trim();
@@ -1157,6 +1210,35 @@ function disposeGeometryRenderer() {
     window.cancelAnimationFrame(g.frameId);
     g.frameId = null;
   }
+  if (g.hoverRaf) {
+    try {
+      window.cancelAnimationFrame(g.hoverRaf);
+    } catch (_e) {
+      // no-op
+    }
+    g.hoverRaf = null;
+  }
+  g.pendingHoverEvt = null;
+  if (g.resizeRaf) {
+    try {
+      window.cancelAnimationFrame(g.resizeRaf);
+    } catch (_e) {
+      // no-op
+    }
+    g.resizeRaf = null;
+  }
+  if (g.canvas2d && g.canvas2d.parentElement) {
+    try {
+      g.canvas2d.parentElement.removeChild(g.canvas2d);
+    } catch (_e) {
+      // no-op
+    }
+  }
+  g.canvas2d = null;
+  g.useCanvas2d = false;
+  g.flowEdgeScratch = null;
+  g.lowFpsFrames = 0;
+  g.lastFrameTime = 0;
   if (g.resizeObserver) {
     try {
       g.resizeObserver.disconnect();
@@ -1198,6 +1280,7 @@ function disposeGeometryRenderer() {
   g.selectedId = null;
   g.hoveredId = null;
   g.interactionEnabled = false;
+  g._2dT = 0;
 }
 
 function getThreeNamespace() {
@@ -1356,10 +1439,35 @@ function flowNodeColorTHREE(three, stress01, unstable) {
   return c;
 }
 
+function flowNodeColorCss(stress01, unstable) {
+  const three = getThreeNamespace();
+  if (!three?.Color) return "#22d3ee";
+  const c = flowNodeColorTHREE(three, stress01, unstable);
+  return `#${c.getHexString()}`;
+}
+
 function flowEdgeTension(edge) {
   const mag = Math.abs(Number(edge.magnitude || 0));
   const delta = Math.abs(Number(edge.delta || 0));
   return Math.max(0, Math.min(1, 0.4 * (1 - mag) + 0.6 * Math.min(1, delta * 3)));
+}
+
+function ensureFlowEdgeScratch(g, three) {
+  if (!g.flowEdgeScratch) {
+    const v0 = new three.Vector3();
+    const v1 = new three.Vector3();
+    const v2 = new three.Vector3();
+    g.flowEdgeScratch = {
+      curve: new three.QuadraticBezierCurve3(v0, v1, v2),
+      mid: new three.Vector3(),
+      dir: new three.Vector3(),
+      perp: new three.Vector3(),
+      up: new three.Vector3(0, 1, 0),
+      altUp: new three.Vector3(1, 0, 0),
+      tmpPoint: new three.Vector3(),
+    };
+  }
+  return g.flowEdgeScratch;
 }
 
 function syncFlowEdgesFromMeshes(g, three, t) {
@@ -1368,6 +1476,9 @@ function syncFlowEdgesFromMeshes(g, three, t) {
   const driftN = typeof g.flowDriftN === "number" ? g.flowDriftN : 0;
   const instN = typeof g.flowInstN === "number" ? g.flowInstN : 0;
   const frayBase = 0.08 + driftN * 0.35 + instN * 0.35;
+  const perf = Boolean(g.perfMode);
+  const S = ensureFlowEdgeScratch(g, three);
+  const framePhase = Math.floor(t * 30);
 
   g.edgeRefs.forEach((ref, index) => {
     const { line, sourceId, targetId, edge } = ref;
@@ -1377,36 +1488,44 @@ function syncFlowEdgesFromMeshes(g, three, t) {
     const posA = sm.position;
     const posB = tm.position;
     const tension = flowEdgeTension(edge);
-    const mid = new three.Vector3().addVectors(posA, posB).multiplyScalar(0.5);
-    if (!(mid instanceof three.Vector3)) {
-      console.error("[geometry3d] mid is not a Vector3", mid);
-      return;
+    const mid = S.mid;
+    mid.copy(posA).add(posB).multiplyScalar(0.5);
+    S.dir.subVectors(posB, posA);
+    if (S.dir.lengthSq() < 1e-10) return;
+    S.perp.crossVectors(S.dir, S.up);
+    if (S.perp.lengthSq() < 1e-10) {
+      S.perp.crossVectors(S.dir, S.altUp);
     }
-    const dir = posB.clone().sub(posA);
-    if (dir.lengthSq() < 1e-10) return;
-    const up = new three.Vector3(0, 1, 0);
-    let perp = new three.Vector3().crossVectors(dir, up);
-    if (perp.lengthSq() < 1e-10) perp = new three.Vector3().crossVectors(dir, new three.Vector3(1, 0, 0));
-    perp.normalize();
+    S.perp.normalize();
     const lift = 0.05 * coherence * (1 - tension * 0.9);
     mid.y += lift;
     const fray = frayBase * (0.35 + tension * 0.65) * (1 - coherence * 0.75);
-    mid.addScaledVector(perp, fray * Math.sin(t * 2.6 + index * 0.73));
-    mid.addScaledVector(perp, tension * 0.06 * Math.sin(t * 4.2 + index * 1.1));
-    const curve = new three.QuadraticBezierCurve3(posA.clone(), mid, posB.clone());
-    const pts = curve.getPoints(14);
+    mid.addScaledVector(S.perp, fray * Math.sin(t * 2.6 + index * 0.73));
+    mid.addScaledVector(S.perp, tension * 0.06 * Math.sin(t * 4.2 + index * 1.1));
+    const curve = S.curve;
+    curve.v0.copy(posA);
+    curve.v1.copy(mid);
+    curve.v2.copy(posB);
+    const divisions = typeof ref.divisions === "number" ? ref.divisions : g.curveSegments || 9;
     const posAttr = line.geometry.attributes.position;
     const arr = posAttr.array;
-    for (let i = 0; i < pts.length; i += 1) {
-      arr[i * 3] = pts[i].x;
-      arr[i * 3 + 1] = pts[i].y;
-      arr[i * 3 + 2] = pts[i].z;
+    const tmp = S.tmpPoint;
+    for (let i = 0; i <= divisions; i += 1) {
+      curve.getPoint(i / divisions, tmp);
+      const o = i * 3;
+      arr[o] = tmp.x;
+      arr[o + 1] = tmp.y;
+      arr[o + 2] = tmp.z;
     }
     posAttr.needsUpdate = true;
-    if (line.material) {
+    if (line.material && !perf) {
       const mag = Math.abs(Number(edge.magnitude || 0));
       const pulse = 0.14 + 0.52 * mag * (0.55 + 0.45 * coherence);
       line.material.opacity = Math.min(0.92, pulse + tension * 0.12 * Math.sin(t * 3 + index));
+    }
+    if (line.material && perf && framePhase % 3 === index % 3) {
+      const mag = Math.abs(Number(edge.magnitude || 0));
+      line.material.opacity = Math.min(0.88, 0.22 + 0.55 * mag * (0.5 + 0.5 * coherence));
     }
   });
 }
@@ -1446,6 +1565,231 @@ function geometryFlowSummaryString(payload) {
   if (c >= 0.72) return "Sensors read as one stream — motion stays aligned.";
   if (c >= 0.45) return "The field is fraying — some sensors are pulling away from the pack.";
   return "High stress — links pulse and the structure separates.";
+}
+
+function scheduleGeometryResize(g, fn) {
+  if (!g || typeof fn !== "function") return;
+  if (g.resizeRaf) {
+    window.cancelAnimationFrame(g.resizeRaf);
+  }
+  g.resizeRaf = window.requestAnimationFrame(() => {
+    g.resizeRaf = null;
+    fn();
+  });
+}
+
+function drawStructuralFlow2dCanvas(ctx, width, height, payload, t, coherence, driftN, instN) {
+  ctx.fillStyle = "#060d18";
+  ctx.fillRect(0, 0, width, height);
+  const nodes = payload.nodes || [];
+  if (!nodes.length) return;
+  let minX = Infinity;
+  let maxX = -Infinity;
+  let minY = Infinity;
+  let maxY = -Infinity;
+  nodes.forEach((n) => {
+    const x = Number(n.position?.x) || 0;
+    const y = Number(n.position?.y) || 0;
+    minX = Math.min(minX, x);
+    maxX = Math.max(maxX, x);
+    minY = Math.min(minY, y);
+    maxY = Math.max(maxY, y);
+  });
+  const pad = 36;
+  const rw = Math.max(maxX - minX, 0.12);
+  const rh = Math.max(maxY - minY, 0.12);
+  const sx = (width - 2 * pad) / rw;
+  const sy = (height - 2 * pad) / rh;
+  const sc = Math.min(sx, sy) * 0.82;
+  const cx = (minX + maxX) / 2;
+  const cy = (minY + maxY) / 2;
+  const mapX = (x) => width / 2 + (x - cx) * sc;
+  const mapY = (y) => height / 2 - (y - cy) * sc;
+  const chaos = (0.12 + driftN * 0.2 + instN * 0.15) * (1 - coherence * 0.75);
+  const edgeCoherence = 0.35 + 0.55 * coherence;
+
+  (payload.edges || []).forEach((edge) => {
+    const a = nodes.find((nn) => String(nn.id) === String(edge.source));
+    const b = nodes.find((nn) => String(nn.id) === String(edge.target));
+    if (!a || !b) return;
+    const ax = Number(a.position?.x) || 0;
+    const ay = Number(a.position?.y) || 0;
+    const bx = Number(b.position?.x) || 0;
+    const by = Number(b.position?.y) || 0;
+    const ox = Math.sin(t * 1.7 + edgeCoherence) * 0.025 * chaos;
+    ctx.strokeStyle = `rgba(94,234,212,${0.18 + 0.45 * edgeCoherence})`;
+    ctx.lineWidth = 1.1 + 0.6 * Math.min(1, Math.abs(Number(edge.magnitude || 0)));
+    ctx.beginPath();
+    ctx.moveTo(mapX(ax + ox), mapY(ay + ox));
+    ctx.lineTo(mapX(bx - ox), mapY(by - ox));
+    ctx.stroke();
+  });
+
+  nodes.forEach((n, i) => {
+    const stress = flowNodeStress01(n);
+    const bx = Number(n.position?.x) || 0;
+    const by = Number(n.position?.y) || 0;
+    const phase = i * 1.23;
+    const ox = Math.sin(t * 1.65 + phase) * 0.04 * chaos + (1 - coherence) * 0.06 * stress;
+    const oy = Math.cos(t * 1.3 + phase) * 0.04 * chaos;
+    const x = mapX(bx + ox);
+    const y = mapY(by + oy);
+    const r = 6 + stress * 8 + (n.is_unstable ? 4 : 0);
+    ctx.fillStyle = flowNodeColorCss(stress, Boolean(n.is_unstable));
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fill();
+  });
+}
+
+function renderStructuralFlow2dOnly(payload, viewportDims) {
+  const canvasHost = qs("#geometryViewport");
+  const viewport = qs("#geometryViewport");
+  if (!canvasHost || !viewport || !viewportDims) return;
+  disposeGeometryRenderer();
+  state.runGeometry = payload;
+  buildGeometryLegend(payload);
+  if (!payload || !payload.available) {
+    disposeGeometryRenderer();
+    setGeometrySurfaceState(payload?.reason || "Geometry unavailable.", "warn");
+    updateGeometryDetails(null);
+    return;
+  }
+  if (!Array.isArray(payload.nodes) || payload.nodes.length === 0) {
+    disposeGeometryRenderer();
+    setGeometrySurfaceState("No geometry nodes available in this result.", "warn");
+    updateGeometryDetails(null);
+    return;
+  }
+
+  showGeometryCanvas();
+  const g = state.geometry3d;
+  g.useCanvas2d = true;
+  g.perfMode = true;
+  const { driftN, instN } = flowDriftInstabilityNorm(payload);
+  g.flowCoherence = flowCoherence01(payload);
+  g.flowDriftN = driftN;
+  g.flowInstN = instN;
+  const width = Math.max(240, viewportDims.width || viewport.clientWidth || 240);
+  const height = Math.max(240, viewportDims.height || viewport.clientHeight || 360);
+  const cv = document.createElement("canvas");
+  cv.className = "geometry-renderer-canvas geometry-flow-2d";
+  cv.width = width;
+  cv.height = height;
+  canvasHost.appendChild(cv);
+  g.canvas2d = cv;
+  const ctx = cv.getContext("2d", { alpha: false });
+  g._2dT = 0;
+
+  function resize2d() {
+    const dims = geometryViewportDimensions();
+    const w = Math.max(240, dims?.width || viewport.clientWidth || 240);
+    const h = Math.max(240, dims?.height || viewport.clientHeight || 360);
+    cv.width = w;
+    cv.height = h;
+  }
+
+  resize2d();
+  if (window.ResizeObserver) {
+    const ro = new window.ResizeObserver(() => {
+      scheduleGeometryResize(g, resize2d);
+    });
+    ro.observe(canvasHost);
+    g.resizeObserver = ro;
+  }
+
+  function loop() {
+    if (!g.canvas2d || !g.useCanvas2d) return;
+    g.frameId = window.requestAnimationFrame(loop);
+    g._2dT += 0.016;
+    const dims = geometryViewportDimensions();
+    const w = Math.max(240, dims?.width || viewport.clientWidth || 240);
+    const h = Math.max(240, dims?.height || viewport.clientHeight || 360);
+    drawStructuralFlow2dCanvas(ctx, w, h, payload, g._2dT, g.flowCoherence, g.flowDriftN, g.flowInstN);
+  }
+  loop();
+  updateGeometryFlowPanel(payload);
+  updateGeometryDetails(null);
+}
+
+function switchStructuralFlowWebglTo2dFallback() {
+  const g = state.geometry3d;
+  const payload = state.runGeometry;
+  const canvasHost = qs("#geometryViewport");
+  if (!payload?.available || g.useCanvas2d || !canvasHost || !g.renderer) return;
+
+  if (g.frameId) {
+    window.cancelAnimationFrame(g.frameId);
+    g.frameId = null;
+  }
+  if (g.resizeObserver) {
+    try {
+      g.resizeObserver.disconnect();
+    } catch (_e) {
+      // no-op
+    }
+    g.resizeObserver = null;
+  }
+  if (typeof g.cleanupResize === "function") {
+    g.cleanupResize();
+    g.cleanupResize = null;
+  }
+  if (g.controls) {
+    try {
+      g.controls.dispose();
+    } catch (_e) {
+      // no-op
+    }
+    g.controls = null;
+  }
+  if (g.cleanupPointer) {
+    g.cleanupPointer();
+    g.cleanupPointer = null;
+  }
+  if (g.renderer) {
+    g.renderer.dispose();
+    if (g.renderer.domElement && g.renderer.domElement.parentElement) {
+      g.renderer.domElement.parentElement.removeChild(g.renderer.domElement);
+    }
+    g.renderer = null;
+  }
+  g.scene = null;
+  g.camera = null;
+  g.edgeGroup = null;
+  g.nodeGroup = null;
+  g.edgeRefs = [];
+  g.raycaster = null;
+  g.nodeMeshById = {};
+  g.nodeDataById = {};
+  g.nodeGlowById = {};
+  g.unstablePulseById = {};
+  g.flowEdgeScratch = null;
+  g.useCanvas2d = true;
+  g.perfMode = true;
+  g.lowFpsFrames = 0;
+
+  const dims = geometryViewportDimensions();
+  const w = Math.max(240, dims?.width || canvasHost.clientWidth || 400);
+  const h = Math.max(240, dims?.height || canvasHost.clientHeight || 360);
+  const cv = document.createElement("canvas");
+  cv.className = "geometry-renderer-canvas geometry-flow-2d";
+  cv.width = w;
+  cv.height = h;
+  canvasHost.appendChild(cv);
+  g.canvas2d = cv;
+  const ctx = cv.getContext("2d", { alpha: false });
+  g._2dT = 0;
+
+  function loop() {
+    if (!g.canvas2d || !g.useCanvas2d) return;
+    g.frameId = window.requestAnimationFrame(loop);
+    g._2dT += 0.016;
+    const d = geometryViewportDimensions();
+    const w2 = Math.max(240, d?.width || w);
+    const h2 = Math.max(240, d?.height || h);
+    drawStructuralFlow2dCanvas(ctx, w2, h2, payload, g._2dT, g.flowCoherence, g.flowDriftN, g.flowInstN);
+  }
+  loop();
 }
 
 function ensureThreeLibs() {
@@ -1664,8 +2008,15 @@ function updateGeometryDetails(nodeId = null) {
 function resetNodeMeshVisual(mesh) {
   if (!mesh || !mesh.material) return;
   mesh.scale.setScalar(1);
-  if (mesh.material.emissive) {
-    mesh.material.emissive.setHex(0x0d1424);
+  const em = mesh.material.emissive;
+  if (mesh.userData && mesh.userData.flowColor && mesh.material.color && em) {
+    const k = mesh.userData.emissiveMul != null ? mesh.userData.emissiveMul : 0.12;
+    const inten = mesh.userData.emissiveIntensityBase != null ? mesh.userData.emissiveIntensityBase : 0.35;
+    mesh.material.color.copy(mesh.userData.flowColor);
+    em.copy(mesh.userData.flowColor).multiplyScalar(k);
+    mesh.material.emissiveIntensity = inten;
+  } else if (em) {
+    em.setHex(0x0d1424);
     mesh.material.emissiveIntensity = 0.35;
   }
 }
@@ -1746,7 +2097,18 @@ function renderGeometryScene(payload, viewportDims) {
   const canvasHost = qs("#geometryViewport");
   const viewport = qs("#geometryViewport");
   if (!canvasHost || !viewport || !viewportDims) return;
-  const { three, controlsCtor } = ensureThreeLibs();
+  if (geometryFlowPrefer2dOnly()) {
+    renderStructuralFlow2dOnly(payload, viewportDims);
+    return;
+  }
+  let threeLib;
+  try {
+    threeLib = ensureThreeLibs();
+  } catch (_err) {
+    renderStructuralFlow2dOnly(payload, viewportDims);
+    return;
+  }
+  const { three, controlsCtor } = threeLib;
   disposeGeometryRenderer();
   state.runGeometry = payload;
   buildGeometryLegend(payload);
@@ -1803,11 +2165,11 @@ function renderGeometryScene(payload, viewportDims) {
   scene.add(fill);
 
   const controls = new controlsCtor(camera, renderer.domElement);
-  controls.enableDamping = true;
-  controls.dampingFactor = 0.08;
-  controls.rotateSpeed = 0.55;
-  controls.zoomSpeed = 0.75;
-  controls.panSpeed = 0.55;
+  controls.enableDamping = !perf;
+  controls.dampingFactor = perf ? 0.05 : 0.08;
+  controls.rotateSpeed = perf ? 0.38 : 0.55;
+  controls.zoomSpeed = perf ? 0.55 : 0.75;
+  controls.panSpeed = perf ? 0.45 : 0.55;
   controls.minDistance = 1.15;
   controls.maxDistance = 6.5;
   controls.target.set(0, 0, 0);
@@ -1825,6 +2187,17 @@ function renderGeometryScene(payload, viewportDims) {
   g.nodeGlowById = {};
   g.unstablePulseById = {};
   g.edgeRefs = [];
+  g.perfMode = perf;
+  g.curveSegments = perf ? 8 : 11;
+  let motionScale = perf ? 0.72 : 1;
+  if (geometryFlowReducedMotion()) motionScale *= 0.42;
+  g.motionScale = motionScale;
+  g.fpsEma = 60;
+  g.lowFpsFrames = 0;
+  g.lastFrameTime = 0;
+  g.useCanvas2d = false;
+  g.pendingHoverEvt = null;
+  g.hoverRaf = null;
   const { driftN, instN } = flowDriftInstabilityNorm(payload);
   g.flowCoherence = flowCoherence01(payload);
   g.flowDriftN = driftN;
@@ -1869,18 +2242,19 @@ function renderGeometryScene(payload, viewportDims) {
   g.edgeGroup = edgeGroup;
 
   const nodeGroup = new three.Group();
+  const sphereSeg = perf ? 8 : 12;
+  const emMul = perf ? 0.08 : 0.12;
+  const emInt = perf ? 0.24 : 0.38;
   payload.nodes.forEach((node) => {
     const magnitude = Math.max(0, Number(node.magnitude || 0));
     const radius = 0.042 + magnitude * 0.075;
-    const geom = new three.SphereGeometry(radius, 12, 12);
+    const geom = new three.SphereGeometry(radius, sphereSeg, sphereSeg);
     const stress01 = flowNodeStress01(node);
     const col = flowNodeColorTHREE(three, stress01, Boolean(node.is_unstable));
-    const mat = new three.MeshStandardMaterial({
+    const mat = new three.MeshLambertMaterial({
       color: col,
-      roughness: 0.42,
-      metalness: 0.12,
-      emissive: col.clone().multiplyScalar(0.15),
-      emissiveIntensity: 0.45,
+      emissive: col.clone().multiplyScalar(emMul),
+      emissiveIntensity: emInt,
     });
     const mesh = new three.Mesh(geom, mat);
     const px = Number(node.position?.x || 0);
@@ -1892,18 +2266,22 @@ function renderGeometryScene(payload, viewportDims) {
     mesh.userData.radius = radius;
     mesh.userData.basePos = new three.Vector3(px, py, pz);
     mesh.userData.jitterSeed = Math.random() * Math.PI * 2;
+    mesh.userData.flowColor = col.clone();
+    mesh.userData.emissiveMul = emMul;
+    mesh.userData.emissiveIntensityBase = emInt;
+    mesh.userData.perfMode = perf;
     nodeGroup.add(mesh);
     g.nodeMeshById[String(node.id)] = mesh;
     g.nodeDataById[String(node.id)] = node;
 
-    if (node.is_unstable || stress01 > 0.55) {
+    if (!perf && (node.is_unstable || stress01 > 0.55)) {
       const haloCol = flowNodeColorTHREE(three, Math.min(1, stress01 + 0.2), true);
       const unstableHalo = new three.Mesh(
-        new three.SphereGeometry(radius * 2.1, 10, 10),
+        new three.SphereGeometry(radius * 2.1, 8, 8),
         new three.MeshBasicMaterial({
           color: haloCol,
           transparent: true,
-          opacity: 0.18 + stress01 * 0.2,
+          opacity: 0.16 + stress01 * 0.18,
           blending: three.AdditiveBlending,
           depthWrite: false,
         })
@@ -1927,25 +2305,27 @@ function renderGeometryScene(payload, viewportDims) {
     const dims = geometryViewportDimensions();
     const w = Math.max(240, dims?.width || viewport.clientWidth || 240);
     const h = Math.max(240, dims?.height || viewport.clientHeight || 360);
-    g.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
+    g.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.25));
     g.renderer.setSize(w, h);
     g.camera.aspect = w / h;
     g.camera.updateProjectionMatrix();
   }
 
   if (window.ResizeObserver) {
-    const ro = new window.ResizeObserver(() => onResize());
+    const ro = new window.ResizeObserver(() => {
+      scheduleGeometryResize(g, onResize);
+    });
     ro.observe(canvasHost);
     g.resizeObserver = ro;
   } else {
-    const handler = () => onResize();
+    const handler = () => scheduleGeometryResize(g, onResize);
     window.addEventListener("resize", handler);
     g.cleanupResize = () => window.removeEventListener("resize", handler);
   }
 
   let pointerDown = null;
 
-  function updateHoverFromEvent(evt) {
+  function updateHoverFromEventImpl(evt) {
     if (!g.interactionEnabled || !g.raycaster || !g.camera || !g.renderer || !g.scene || !g.nodeGroup) return;
     if (g.selectedId) return;
     if (pointerDown) return;
@@ -1973,6 +2353,17 @@ function renderGeometryScene(payload, viewportDims) {
     }
     const tip = g.hoveredId && g.nodeDataById[g.hoveredId];
     g.renderer.domElement.title = tip ? String(tip.label || tip.id || g.hoveredId || "") : "";
+  }
+
+  function scheduleHoverFromEvent(evt) {
+    g.pendingHoverEvt = evt;
+    if (g.hoverRaf) return;
+    g.hoverRaf = window.requestAnimationFrame(() => {
+      g.hoverRaf = null;
+      const ev = g.pendingHoverEvt;
+      g.pendingHoverEvt = null;
+      if (ev) updateHoverFromEventImpl(ev);
+    });
   }
 
   function clearHover() {
@@ -2024,7 +2415,7 @@ function renderGeometryScene(payload, viewportDims) {
     pickNodeFromEvent(evt);
   };
   const onPointerMove = (evt) => {
-    updateHoverFromEvent(evt);
+    scheduleHoverFromEvent(evt);
   };
   const onPointerLeave = () => {
     clearHover();
@@ -2045,12 +2436,30 @@ function renderGeometryScene(payload, viewportDims) {
 
   let t = 0;
   function animate() {
+    if (g.useCanvas2d) return;
     g.frameId = window.requestAnimationFrame(animate);
+    const now = typeof performance !== "undefined" ? performance.now() : Date.now();
+    if (g.lastFrameTime > 0) {
+      const instFps = 1000 / Math.max(1, now - g.lastFrameTime);
+      g.fpsEma = g.fpsEma * 0.92 + instFps * 0.08;
+    }
+    g.lastFrameTime = now;
+    if (g.fpsEma < 24 && !g.useCanvas2d) {
+      g.lowFpsFrames += 1;
+    } else {
+      g.lowFpsFrames = 0;
+    }
+    if (g.lowFpsFrames > 120 && !g.useCanvas2d) {
+      switchStructuralFlowWebglTo2dFallback();
+      return;
+    }
+
     t += 0.014;
     const coherence = typeof g.flowCoherence === "number" ? g.flowCoherence : 0.75;
     const driftN = typeof g.flowDriftN === "number" ? g.flowDriftN : 0;
     const instN = typeof g.flowInstN === "number" ? g.flowInstN : 0;
     const unifiedPhase = t * 0.88;
+    const ms = typeof g.motionScale === "number" ? g.motionScale : 1;
 
     Object.keys(g.nodeMeshById || {}).forEach((nodeId) => {
       const mesh = g.nodeMeshById[nodeId];
@@ -2067,17 +2476,12 @@ function renderGeometryScene(payload, viewportDims) {
         (1 - coherence * 0.72);
       const phase = mesh.userData.jitterSeed || 0;
       const sep = (1 - coherence) * 0.08 * stress;
-      mesh.position.x = base.x + breathe + Math.sin(t * 1.65 + phase) * chaos + sep * Math.sin(phase);
-      mesh.position.y = base.y + breatheY + Math.cos(t * 1.25 + phase) * chaos * 0.92;
-      mesh.position.z = base.z + Math.sin(t * 1.05 + phase * 1.1) * chaos + sep * Math.cos(phase);
-
-      const isPickFocus =
-        (g.hoveredId && nodeId === g.hoveredId) || (g.selectedId && nodeId === g.selectedId);
-      if (!isPickFocus && mesh.material && mesh.material.color && mesh.material.emissive) {
-        const col = flowNodeColorTHREE(three, stress, unstable);
-        mesh.material.color.copy(col);
-        mesh.material.emissive.copy(col).multiplyScalar(0.12);
-      }
+      mesh.position.x =
+        base.x + (breathe + Math.sin(t * 1.65 + phase) * chaos + sep * Math.sin(phase)) * ms;
+      mesh.position.y =
+        base.y + (breatheY + Math.cos(t * 1.25 + phase) * chaos * 0.92) * ms;
+      mesh.position.z =
+        base.z + (Math.sin(t * 1.05 + phase * 1.1) * chaos + sep * Math.cos(phase)) * ms;
     });
 
     syncFlowEdgesFromMeshes(g, three, t);
