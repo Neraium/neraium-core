@@ -1946,12 +1946,14 @@ input[type="file"] {
   border: 1px solid #31486f;
   border-radius: 12px;
   background: linear-gradient(180deg, rgba(14, 26, 47, 0.93), rgba(10, 19, 35, 0.93));
-  padding: 12px;
-  height: 300px;
+  padding: 12px 12px 20px;
+  min-height: 380px;
+  height: 400px;
+  box-sizing: border-box;
 }
 
 .chart-panel h4 {
-  margin: 0 0 8px;
+  margin: 0 0 10px;
   font-size: 12px;
   color: #9db2d1;
   text-transform: uppercase;
@@ -1959,8 +1961,10 @@ input[type="file"] {
 }
 
 .chart-panel canvas {
+  display: block;
   width: 100% !important;
-  height: calc(100% - 28px) !important;
+  height: calc(100% - 38px) !important;
+  min-height: 300px;
 }
 
 .timeline-item {
@@ -3355,7 +3359,12 @@ input[type="file"] {
   }
 
   .chart-panel {
-    height: 250px;
+    min-height: 300px;
+    height: 320px;
+  }
+
+  .chart-panel canvas {
+    min-height: 200px;
   }
 
   .geometry-layout {
