@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import json
 import logging
+import mimetypes
 import math
 import os
 import tempfile
@@ -35,6 +36,9 @@ from neraium_core.store import ResultStore
 
 
 logger = logging.getLogger(__name__)
+
+# Windows / older Python may omit .mjs; browsers refuse module scripts with wrong MIME.
+mimetypes.add_type("text/javascript", ".mjs", strict=False)
 
 
 def _mount_web_static(app: FastAPI) -> None:

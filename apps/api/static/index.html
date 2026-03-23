@@ -11,6 +11,15 @@
   <link rel="stylesheet" href="/web/styles.css" />
   <link rel="modulepreload" href="/web/three-init.mjs" />
   <link rel="modulepreload" href="/web/vendor/three/build/three.module.js" />
+  <!-- Import maps must be in <head> so they apply before any module graph runs. -->
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "/web/vendor/three/build/three.module.js",
+        "three/addons/": "/web/vendor/three/examples/jsm/"
+      }
+    }
+  </script>
 </head>
 <body>
   <div id="toastContainer" class="toast-container"></div>
@@ -695,14 +704,6 @@
     </div>
   </div>
 
-  <script type="importmap">
-    {
-      "imports": {
-        "three": "/web/vendor/three/build/three.module.js",
-        "three/addons/": "/web/vendor/three/examples/jsm/"
-      }
-    }
-  </script>
   <script type="module" src="/web/three-init.mjs"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
   <script defer src="/web/sensor_graph_3d.js"></script>
