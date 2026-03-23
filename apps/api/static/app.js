@@ -1016,7 +1016,7 @@ const state = {
 const TENANT_STORAGE_KEY = "neraium_customer_id";
 const DEMO_MODE_STORAGE_KEY = "neraium_demo_mode";
 /** Demo timeline: advance one result every 10s (was 850ms). */
-const DEMO_PLAYBACK_INTERVAL_MS = 10_000;
+const DEMO_PLAYBACK_INTERVAL_MS = 5000;
 /** Default on: lighter WebGL + simpler motion. Set localStorage "neraium_structural_flow_perf" to "0" for richer visuals. */
 const GEOMETRY_FLOW_PERF_KEY = "neraium_structural_flow_perf";
 /** Origin marker + debug visuals for structural flow. `true` always shows the marker; when `false`, use URL `?geomDebug=1` instead. */
@@ -1265,6 +1265,8 @@ const chartTheme = {
 
 function buildTrendChartOptions() {
   return {
+    // Instant updates — avoids animation queue "buffering" during demo / live refresh
+    animation: false,
     responsive: true,
     maintainAspectRatio: false,
     layout: {
@@ -3161,7 +3163,6 @@ function destroyCharts() {
 }
 
 function renderRunDetailCharts(results) {
-  destroyCharts();
   const labels = results.map((r) => String(r.timestamp || r.persisted_at || r.result_id || ""));
   const driftValues = results.map((r) => structuralDriftFromResult(r) ?? 0);
   const compositeValues = results.map((r) => compositeInstabilityFromResult(r) ?? 0);
@@ -3170,48 +3171,68 @@ function renderRunDetailCharts(results) {
   const driftCtx = qs("#driftChart");
   const compCtx = qs("#compositeChart");
   if (driftCtx && window.Chart) {
-    state.charts.drift = new window.Chart(driftCtx, {
-      type: "line",
-      data: {
-        labels,
-        datasets: [
-          {
-            label: "structural_drift_score",
-            data: driftValues,
-            borderColor: "#79abff",
-            backgroundColor: "rgba(106, 156, 250, 0.24)",
-            borderWidth: 2,
-            fill: true,
-            tension: 0.3,
-            pointRadius: 0,
-            pointHoverRadius: 3,
-          },
-        ],
-      },
-      options: sharedOptions,
-    });
+    if (state.charts.drift && state.charts.drift.canvas === driftCtx) {
+      state.charts.drift.data.labels = labels;
+      state.charts.drift.data.datasets[0].data = driftValues;
+      state.charts.drift.update("none");
+    } else {
+      if (state.charts.drift) {
+        state.charts.drift.destroy();
+        state.charts.drift = null;
+      }
+      state.charts.drift = new window.Chart(driftCtx, {
+        type: "line",
+        data: {
+          labels,
+          datasets: [
+            {
+              label: "structural_drift_score",
+              data: driftValues,
+              borderColor: "#79abff",
+              backgroundColor: "rgba(106, 156, 250, 0.24)",
+              borderWidth: 2,
+              fill: true,
+              tension: 0.3,
+              pointRadius: 0,
+              pointHoverRadius: 3,
+            },
+          ],
+        },
+        options: sharedOptions,
+      });
+    }
   }
   if (compCtx && window.Chart) {
-    state.charts.composite = new window.Chart(compCtx, {
-      type: "line",
-      data: {
-        labels,
-        datasets: [
-          {
-            label: "composite_instability",
-            data: compositeValues,
-            borderColor: "#ffbf56",
-            backgroundColor: "rgba(242, 179, 74, 0.2)",
-            borderWidth: 2,
-            fill: true,
-            tension: 0.3,
-            pointRadius: 0,
-            pointHoverRadius: 3,
-          },
-        ],
-      },
-      options: sharedOptions,
-    });
+    if (state.charts.composite && state.charts.composite.canvas === compCtx) {
+      state.charts.composite.data.labels = labels;
+      state.charts.composite.data.datasets[0].data = compositeValues;
+      state.charts.composite.update("none");
+    } else {
+      if (state.charts.composite) {
+        state.charts.composite.destroy();
+        state.charts.composite = null;
+      }
+      state.charts.composite = new window.Chart(compCtx, {
+        type: "line",
+        data: {
+          labels,
+          datasets: [
+            {
+              label: "composite_instability",
+              data: compositeValues,
+              borderColor: "#ffbf56",
+              backgroundColor: "rgba(242, 179, 74, 0.2)",
+              borderWidth: 2,
+              fill: true,
+              tension: 0.3,
+              pointRadius: 0,
+              pointHoverRadius: 3,
+            },
+          ],
+        },
+        options: sharedOptions,
+      });
+    }
   }
 }
 
