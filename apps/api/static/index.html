@@ -421,11 +421,57 @@
               </article>
             </div>
             <div id="runTransitionStrip" class="timeline-transition-strip hidden"></div>
+            <div id="runDetailDemoHero" class="run-detail-demo-hero hidden" role="dialog" aria-modal="true" aria-labelledby="runDetailDemoHeroTitle">
+              <div class="run-detail-demo-hero-card">
+                <p class="run-detail-demo-hero-kicker">Demo scenario</p>
+                <h3 id="runDetailDemoHeroTitle">Watch this escalation unfold?</h3>
+                <p class="subtitle">Add <span class="mono-inline">?hero=1</span> to the URL to show this overlay on first visit. Use Play to start the timeline.</p>
+                <div class="row">
+                  <button type="button" id="runDetailDemoHeroPlayBtn" class="btn-hero-demo">Play demo timeline</button>
+                  <button type="button" id="runDetailDemoHeroDismissBtn" class="secondary">Not now</button>
+                </div>
+              </div>
+            </div>
+            <section id="runCurrentStateCard" class="run-current-state hidden" aria-label="Current snapshot metrics">
+              <div class="run-current-state-head">
+                <strong>Current state</strong>
+                <span class="subtitle">Latest snapshot in the table below</span>
+              </div>
+              <div class="run-current-state-grid">
+                <div class="mini-gauge">
+                  <span class="mini-gauge-label">Drift</span>
+                  <div class="mini-gauge-track"><div id="gaugeDriftFill" class="mini-gauge-fill mini-gauge-fill-drift"></div></div>
+                  <span id="gaugeDriftVal" class="mini-gauge-val">—</span>
+                </div>
+                <div class="mini-gauge">
+                  <span class="mini-gauge-label">Instability</span>
+                  <div class="mini-gauge-track"><div id="gaugeInstFill" class="mini-gauge-fill mini-gauge-fill-inst"></div></div>
+                  <span id="gaugeInstVal" class="mini-gauge-val">—</span>
+                </div>
+                <div class="mini-gauge">
+                  <span class="mini-gauge-label">Risk</span>
+                  <div class="mini-gauge-track"><div id="gaugeRiskFill" class="mini-gauge-fill mini-gauge-fill-risk"></div></div>
+                  <span id="gaugeRiskVal" class="mini-gauge-val">—</span>
+                </div>
+                <div class="mini-gauge">
+                  <span class="mini-gauge-label">Health</span>
+                  <div class="mini-gauge-track"><div id="gaugeHealthFill" class="mini-gauge-fill mini-gauge-fill-health"></div></div>
+                  <span id="gaugeHealthVal" class="mini-gauge-val">—</span>
+                </div>
+              </div>
+            </section>
             <section id="demoPlaybackPanel" class="demo-playback hidden">
               <div class="demo-playback-head">
-                <strong>Timeline playback</strong>
+                <div class="demo-playback-title-row">
+                  <strong>Timeline playback</strong>
+                  <span id="demoPlaybackBadge" class="demo-playback-badge" aria-hidden="true"></span>
+                </div>
                 <span id="demoPlaybackProgress" class="subtitle">Demo Mode off</span>
               </div>
+              <div class="demo-playback-bar-wrap" aria-hidden="true">
+                <div id="demoPlaybackBar" class="demo-playback-bar"></div>
+              </div>
+              <p id="demoPlaybackNarration" class="demo-playback-narration subtitle"></p>
               <div class="row">
                 <button id="demoPlayPauseBtn" type="button" class="secondary">Play timeline</button>
                 <button id="demoReplayBtn" type="button" class="secondary">Replay</button>

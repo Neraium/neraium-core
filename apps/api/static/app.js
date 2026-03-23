@@ -173,7 +173,36 @@ function summarizeRiskDrivers(result) {
   };
 }
 
-function renderRiskExplanation(result, opts = {}) {
+function buildSeriesRiskInsight(latest, chronological) {
+  if (!latest || !Array.isArray(chronological) || chronological.length < 4) return "";
+  const drifts = chronological.map(structuralDriftFromResult).filter((x) => typeof x === "number" && Number.isFinite(x));
+  const inst = chronological.map(compositeInstabilityFromResult).filter((x) => typeof x === "number" && Number.isFinite(x));
+  const parts = [];
+  if (drifts.length >= 4) {
+    const hi = drifts.filter((d) => d >= 1.5).length;
+    const early = drifts.slice(0, Math.ceil(drifts.length / 3));
+    const late = drifts.slice(-Math.ceil(drifts.length / 3));
+    const eAvg = early.reduce((a, b) => a + b, 0) / early.length;
+    const lAvg = late.reduce((a, b) => a + b, 0) / late.length;
+    if (hi >= 15) {
+      parts.push(`Drift stayed above 1.5 on ${hi} consecutive snapshots — sustained stress drove the assessment.`);
+    } else if (lAvg > eAvg + 0.12) {
+      parts.push(`Structural drift trended upward (${eAvg.toFixed(2)} → ${lAvg.toFixed(2)}) across the visible window.`);
+    }
+  }
+  if (inst.length >= 4) {
+    const early = inst.slice(0, Math.ceil(inst.length / 3));
+    const late = inst.slice(-Math.ceil(inst.length / 3));
+    const eAvg = early.reduce((a, b) => a + b, 0) / early.length;
+    const lAvg = late.reduce((a, b) => a + b, 0) / late.length;
+    if (lAvg > eAvg + 0.15) {
+      parts.push(`Composite instability accelerated late in the series (${eAvg.toFixed(2)} → ${lAvg.toFixed(2)}).`);
+    }
+  }
+  return parts.length ? ` ${parts.join(" ")}` : "";
+}
+
+function renderRiskExplanation(result, opts = {}, chronological = null) {
   const titleEl = qs(opts.titleSelector || "#riskExplainTitle");
   const bodyEl = qs(opts.bodySelector || "#riskExplainBody");
   const panelEl = qs(opts.panelSelector || "#riskExplainPanel");
@@ -184,16 +213,22 @@ function renderRiskExplanation(result, opts = {}) {
     panelEl.classList.remove("hidden");
     panelEl.setAttribute("data-risk", "UNKNOWN");
     titleEl.textContent = "Why this risk level";
-    bodyEl.textContent = "No result available yet to explain risk.";
+    bodyEl.textContent = state.demo.enabled
+      ? "Demo data is still loading or filters hid every snapshot — adjust range or refresh."
+      : "No result available yet to explain risk.";
     if (badgeEl) badgeEl.innerHTML = riskBadgeHtml("UNKNOWN");
     return;
   }
 
   const explanation = summarizeRiskDrivers(result);
+  let bodyText = explanation.text;
+  if (state.demo.enabled && Array.isArray(chronological) && chronological.length >= 3) {
+    bodyText += buildSeriesRiskInsight(result, chronological);
+  }
   panelEl.classList.remove("hidden");
   panelEl.setAttribute("data-risk", explanation.risk);
   titleEl.textContent = `Why risk is ${explanation.risk}`;
-  bodyEl.textContent = explanation.text;
+  bodyEl.textContent = bodyText;
   if (badgeEl) badgeEl.innerHTML = riskBadgeHtml(explanation.risk);
 }
 
@@ -711,6 +746,9 @@ function setDemoPlaybackUI() {
   const progress = qs("#demoPlaybackProgress");
   const playPauseBtn = qs("#demoPlayPauseBtn");
   const replayBtn = qs("#demoReplayBtn");
+  const bar = qs("#demoPlaybackBar");
+  const narr = qs("#demoPlaybackNarration");
+  const badge = qs("#demoPlaybackBadge");
   if (!panel || !progress || !playPauseBtn || !replayBtn) return;
   const route = getRoute();
   const total = state.runRecent.length;
@@ -718,6 +756,9 @@ function setDemoPlaybackUI() {
   if (!show) {
     panel.classList.add("hidden");
     progress.textContent = state.demo.enabled ? "Open a run to start playback" : "Demo Mode off";
+    if (badge) badge.textContent = "";
+    if (bar) bar.style.width = "0%";
+    if (narr) narr.textContent = "";
     playPauseBtn.textContent = "Play timeline";
     replayBtn.disabled = true;
     renderDemoKeyEvents([]);
@@ -726,6 +767,9 @@ function setDemoPlaybackUI() {
   panel.classList.remove("hidden");
   const cursor = Math.max(1, Math.min(total, Number(state.demo.cursor || total)));
   progress.textContent = `Snapshot ${cursor}/${total}`;
+  if (badge) badge.textContent = "Demo Mode on";
+  if (bar) bar.style.width = `${(cursor / Math.max(1, total)) * 100}%`;
+  if (narr) narr.textContent = demoPlaybackNarrationText(cursor, total);
   playPauseBtn.textContent = state.demo.isPlaying ? "Pause timeline" : "Play timeline";
   replayBtn.disabled = total <= 1;
   renderDemoKeyEvents();
@@ -966,7 +1010,71 @@ function renderDashboardDemoHero() {
 function onDemoPlaybackComplete() {
   if (state.demo.playbackCompleteNotified) return;
   state.demo.playbackCompleteNotified = true;
-  createToast("Demo finished — use Upload for your CSV, or export this run.", "success");
+  createToast("Ready to test your data? Opening upload with the drop zone highlighted.", "success");
+  try {
+    const cid = encodeURIComponent(customerIdValue(state.tenant.customerId));
+    window.location.href = `/upload?customer_id=${cid}&demo=1&highlight=upload`;
+  } catch (_e) {
+    // no-op
+  }
+}
+
+function demoPlaybackNarrationText(cursor, total) {
+  if (!total || total < 2) return "";
+  const t = Math.max(1, Math.min(total, Number(cursor) || 1));
+  const p = (t - 1) / Math.max(1, total - 1);
+  if (p < 0.22) return "Baseline window — drift is still largely contained.";
+  if (p < 0.45) return "Drift rising — instability compounds across snapshots.";
+  if (p < 0.78) return "Risk threshold approaching — watch transitions on the timeline.";
+  return "Late-stage escalation — compare operator messages with structural drift.";
+}
+
+const RUN_DETAIL_DEMO_HERO_KEY = "neraium_demo_run_detail_hero_dismissed";
+
+function shouldShowRunDetailDemoHero() {
+  try {
+    if (!state.demo.enabled) return false;
+    const p = new URLSearchParams(window.location.search);
+    if (p.get("hero") !== "1") return false;
+    if (p.get("nohero") === "1") return false;
+    if (window.sessionStorage.getItem(RUN_DETAIL_DEMO_HERO_KEY) === "1") return false;
+    return true;
+  } catch (_e) {
+    return false;
+  }
+}
+
+function dismissRunDetailDemoHero() {
+  try {
+    window.sessionStorage.setItem(RUN_DETAIL_DEMO_HERO_KEY, "1");
+  } catch (_e) {
+    // no-op
+  }
+  const hero = qs("#runDetailDemoHero");
+  if (hero) hero.classList.add("hidden");
+}
+
+function showRunDetailDemoHero() {
+  const hero = qs("#runDetailDemoHero");
+  if (!hero) return false;
+  hero.classList.remove("hidden");
+  return true;
+}
+
+function wireRunDetailDemoHero() {
+  const play = qs("#runDetailDemoHeroPlayBtn");
+  const dismiss = qs("#runDetailDemoHeroDismissBtn");
+  if (play && play.dataset.wired !== "1") {
+    play.dataset.wired = "1";
+    play.addEventListener("click", () => {
+      dismissRunDetailDemoHero();
+      replayDemoTimeline();
+    });
+  }
+  if (dismiss && dismiss.dataset.wired !== "1") {
+    dismiss.dataset.wired = "1";
+    dismiss.addEventListener("click", () => dismissRunDetailDemoHero());
+  }
 }
 
 async function launchGuidedDemo({ mode = "all" } = {}) {
@@ -1326,11 +1434,38 @@ function applyDemoQueryParams() {
       persistDemoMode();
     }
     const prep = params.get("prepare") || params.get("autorun");
+    if (prep === "1" || prep === "true" || prep === "yes") {
+      state.demo.enabled = true;
+      persistDemoMode();
+    }
     const shouldAutoPrepare =
-      (prep === "1" || prep === "true" || prep === "yes") && state.demo.enabled;
+      prep === "1" || prep === "true" || prep === "yes";
     return { shouldAutoPrepare };
   } catch (_err) {
     return { shouldAutoPrepare: false };
+  }
+}
+
+function normalizeDemoEntryPath() {
+  try {
+    const path = window.location.pathname.replace(/\/$/, "") || "/";
+    if (path === "/demo") {
+      const u = new URL(window.location.href);
+      u.pathname = "/dashboard";
+      if (!u.searchParams.has("demo")) u.searchParams.set("demo", "1");
+      if (!u.searchParams.has("prepare")) u.searchParams.set("prepare", "1");
+      window.history.replaceState({}, "", u.toString());
+    }
+  } catch (_e) {
+    // no-op
+  }
+}
+
+function applyDemoUiShell() {
+  try {
+    document.body.classList.toggle("demo-mode-active", !!state.demo.enabled);
+  } catch (_e) {
+    // no-op
   }
 }
 
@@ -1390,6 +1525,8 @@ function renderTenantControls() {
       .map((site) => `<option value="${escapeHtml(site)}"></option>`)
       .join("");
   }
+  applyDemoUiShell();
+  updateUploadRunInfo();
   renderDashboardDemoHero();
 }
 
@@ -2852,8 +2989,14 @@ function clearGeometryModelsPanel() {
   if (panel) panel.classList.add("hidden");
   if (graphDl) graphDl.innerHTML = "";
   if (sysDl) sysDl.innerHTML = "";
-  if (graphEmpty) graphEmpty.classList.add("hidden");
-  if (sysEmpty) sysEmpty.classList.add("hidden");
+  if (graphEmpty) {
+    graphEmpty.classList.add("hidden");
+    graphEmpty.textContent = "No graph metrics in this result.";
+  }
+  if (sysEmpty) {
+    sysEmpty.classList.add("hidden");
+    sysEmpty.textContent = "No system state snapshot.";
+  }
 }
 
 function renderGeometryModelsPanel(payload) {
@@ -2873,6 +3016,23 @@ function renderGeometryModelsPanel(payload) {
   const hasSys = ss && typeof ss === "object" && Object.keys(ss).length > 0;
 
   if (!hasGraph && !hasSys) {
+    const hasStructuralPayload =
+      payload &&
+      (payload.available === true ||
+        (Array.isArray(payload.nodes) && payload.nodes.length > 0) ||
+        (payload.graph && typeof payload.graph === "object"));
+    if (state.demo.enabled && hasStructuralPayload) {
+      panel.classList.remove("hidden");
+      graphEmpty.classList.remove("hidden");
+      graphEmpty.textContent =
+        "Viz loading — full graph analytics are computed server-side. Use structural drift trend above for progression.";
+      graphDl.innerHTML = "";
+      sysEmpty.classList.remove("hidden");
+      sysEmpty.textContent =
+        "System state snapshot not returned in this build — the 3D structural flow still reflects live telemetry geometry.";
+      sysDl.innerHTML = "";
+      return;
+    }
     clearGeometryModelsPanel();
     return;
   }
@@ -4008,9 +4168,12 @@ function updateUploadRunInfo() {
   const info = qs("#uploadRunInfo");
   if (!info) return;
   if (state.activeRun?.run_id) {
-    info.textContent = `Active run: ${state.activeRun.name} (${state.activeRun.run_id})`;
+    const base = `Active run: ${state.activeRun.name} (${state.activeRun.run_id})`;
+    info.textContent = state.demo.enabled ? `${base} — Demo mode: upload your CSV to analyze real telemetry.` : base;
   } else {
-    info.textContent = "No active run selected.";
+    info.textContent = state.demo.enabled
+      ? "No active run selected. Create or activate a run, then upload — or stay in demo to explore seeded data."
+      : "No active run selected.";
   }
 }
 
@@ -4090,6 +4253,11 @@ function setUploadProgressUI({
       errors.classList.add("hidden");
     }
   }
+}
+
+function resetUploadPanelIfIdle() {
+  if (state.uploadJob.active) return;
+  setUploadProgressUI({ visible: false });
 }
 
 async function uploadCsvFileWithProgress(file, runId) {
@@ -4266,8 +4434,16 @@ function renderRunsList() {
   const runs = filteredSortedRuns();
   tbody.innerHTML = "";
   if (empty) {
-    if (runs.length === 0) empty.classList.remove("hidden");
-    else empty.classList.add("hidden");
+    if (runs.length === 0) {
+      empty.classList.remove("hidden");
+      const p = empty.querySelector("p");
+      if (p) {
+        p.textContent =
+          state.runs.length === 0
+            ? "No runs yet. Create a run or use Run demo to seed sample scenarios."
+            : "No runs match your filters.";
+      }
+    } else empty.classList.add("hidden");
   }
   runs.forEach((run) => {
     const statusText = run.is_active ? "active" : String(run.status || "open");
@@ -4677,22 +4853,33 @@ function sortRunResults(results) {
   return items.sort((a, b) => parseTime(b.timestamp || b.persisted_at) - parseTime(a.timestamp || a.persisted_at));
 }
 
-function renderRunResultsTable(results) {
+function renderRunResultsTable(results, opts = {}) {
   const tbody = qs("#runResultsBody");
   const empty = qs("#runResultsEmpty");
   if (!tbody) return;
   tbody.innerHTML = "";
+  const latestId = opts.latestResultId != null ? String(opts.latestResultId) : "";
   if (empty) {
-    if (results.length === 0) empty.classList.remove("hidden");
-    else empty.classList.add("hidden");
+    if (results.length === 0) {
+      empty.classList.remove("hidden");
+      const p = empty.querySelector("p");
+      if (p) {
+        p.textContent = state.demo.enabled
+          ? "No results match current filters — clear search or widen the time range."
+          : "No results match current filters.";
+      }
+    } else empty.classList.add("hidden");
   }
   results.forEach((r, idx) => {
     const prev = idx + 1 < results.length ? results[idx + 1] : null;
     const transition = transitionLabel(prev, r);
     const severity = transitionSeverity(prev, r);
     const stateText = String(r.state || r.interpreted_state || "-");
+    const riskLvl = normalizeRiskLevel(r.risk_level);
     const tr = document.createElement("tr");
-    tr.className = `result-row result-row-${severity}`;
+    const isLatest = latestId && String(r.result_id) === latestId;
+    tr.className = `result-row result-row-${severity} result-row-risk-${riskLvl}${isLatest ? " result-row-latest" : ""}`;
+    tr.setAttribute("data-risk-level", riskLvl);
     tr.innerHTML = `
       <td>${toPretty(r.result_id)}</td>
       <td>${toPretty(r.timestamp || r.persisted_at)}</td>
@@ -4716,6 +4903,44 @@ function setRangeButtonState(rangeValue) {
     if (btn.getAttribute("data-range") === String(rangeValue)) btn.classList.add("active");
     else btn.classList.remove("active");
   });
+}
+
+function renderRunCurrentStateGauges(latest) {
+  const card = qs("#runCurrentStateCard");
+  if (!card) return;
+  if (!latest) {
+    card.classList.add("hidden");
+    return;
+  }
+  card.classList.remove("hidden");
+  const drift = structuralDriftFromResult(latest);
+  const inst = compositeInstabilityFromResult(latest);
+  const risk = normalizeRiskLevel(latest.risk_level);
+  const health = healthScoreFromSignals(latest);
+  const driftFill = qs("#gaugeDriftFill");
+  const instFill = qs("#gaugeInstFill");
+  const riskFill = qs("#gaugeRiskFill");
+  const healthFill = qs("#gaugeHealthFill");
+  const toPct = (val, cap) => {
+    if (typeof val !== "number" || !Number.isFinite(val)) return 0;
+    return Math.max(0, Math.min(100, (val / cap) * 100));
+  };
+  if (driftFill) driftFill.style.width = `${toPct(drift, 2.5)}%`;
+  if (instFill) instFill.style.width = `${toPct(inst, 2.5)}%`;
+  if (riskFill) {
+    const rp = risk === "HIGH" ? 92 : risk === "MEDIUM" ? 58 : risk === "LOW" ? 24 : 38;
+    riskFill.style.width = `${rp}%`;
+  }
+  if (healthFill) healthFill.style.width = `${typeof health === "number" ? Math.max(0, Math.min(100, health)) : 0}%`;
+  const dv = qs("#gaugeDriftVal");
+  const iv = qs("#gaugeInstVal");
+  const rv = qs("#gaugeRiskVal");
+  const hv = qs("#gaugeHealthVal");
+  if (dv) dv.textContent = typeof drift === "number" ? drift.toFixed(2) : "—";
+  if (iv) iv.textContent = typeof inst === "number" ? inst.toFixed(2) : "—";
+  if (rv) rv.textContent = risk;
+  if (hv) hv.textContent = typeof health === "number" ? String(health) : "—";
+  card.setAttribute("data-risk", risk);
 }
 
 function currentRangeSlice(resultsChronological) {
@@ -4749,6 +4974,7 @@ function renderRunDetailFromState() {
     renderDemoKeyEvents([]);
     setDemoPlaybackUI();
     renderRunResultsTable([]);
+    renderRunCurrentStateGauges(null);
     renderRiskExplanation(null, {
       panelSelector: "#runRiskExplanationPanel",
       titleSelector: "#runRiskExplanationTitle",
@@ -4784,19 +5010,20 @@ function renderRunDetailFromState() {
   const prev = chronological.length > 1 ? chronological[chronological.length - 2] : null;
   renderRunSignals(latest, prev);
   renderRunTransitionStrip(prev, latest);
+  renderRunCurrentStateGauges(latest);
   setDemoPlaybackUI();
   renderRunDetailCharts(ranged);
   renderPhaseTimeline(ranged);
   renderOperatorMessages(ranged, { emphasize: state.demo.enabled });
   const filtered = filterRunResults(ranged);
   const sorted = sortRunResults(filtered);
-  renderRunResultsTable(sorted);
+  renderRunResultsTable(sorted, { latestResultId: latest?.result_id });
   renderRiskExplanation(latest, {
     panelSelector: "#runRiskExplanationPanel",
     titleSelector: "#runRiskExplanationTitle",
     bodySelector: "#runRiskExplanationText",
     badgeSelector: "#runRiskExplanationBadge",
-  });
+  }, chronologicalFull);
 }
 
 async function loadRunDetail(runId) {
@@ -4838,7 +5065,14 @@ async function loadRunDetail(runId) {
   } catch (_e) {
     // ignore
   }
-  if (!autoplayHandled) maybeAutoStartDemoPlayback();
+  wireRunDetailDemoHero();
+  let heroBlocked = false;
+  if (!autoplayHandled && shouldShowRunDetailDemoHero() && state.runRecent.length > 1) {
+    heroBlocked = showRunDetailDemoHero();
+  }
+  if (!autoplayHandled && !heroBlocked) {
+    maybeAutoStartDemoPlayback();
+  }
   const resultIdForGeometry =
     state.demo.enabled && state.runRecent.length > 0
       ? (state.runRecent
@@ -5228,9 +5462,11 @@ async function wireEvents() {
 }
 
 async function init() {
+  normalizeDemoEntryPath();
   readTenantFromStorage();
   readDemoModeFromStorage();
   const demoQs = applyDemoQueryParams();
+  applyDemoUiShell();
   const routeScope = routeScopeFromQuery();
   if (routeScope.customer_id) {
     state.tenant.customerId = customerIdValue(routeScope.customer_id);
@@ -5261,6 +5497,29 @@ async function init() {
     if (route.page === "run-detail") await loadRunDetail(route.runId);
     if (route.page === "result-detail") await loadResultDetail(route.resultId);
     await wireEvents();
+    resetUploadPanelIfIdle();
+    try {
+      const hp = new URLSearchParams(window.location.search).get("highlight");
+      if (getRoute().page === "upload" && hp === "upload") {
+        window.requestAnimationFrame(() => {
+          const zone = qs("#uploadDropZone");
+          if (zone) {
+            zone.classList.add("upload-dropzone-highlight");
+            zone.scrollIntoView({ behavior: "smooth", block: "center" });
+            window.setTimeout(() => zone.classList.remove("upload-dropzone-highlight"), 5000);
+          }
+          try {
+            const u = new URL(window.location.href);
+            u.searchParams.delete("highlight");
+            window.history.replaceState({}, "", u.pathname + u.search + u.hash);
+          } catch (_e2) {
+            // no-op
+          }
+        });
+      }
+    } catch (_e) {
+      // no-op
+    }
     let sharedDemoPrep = false;
     if (demoQs.shouldAutoPrepare && !state.demo.preparing && state.runs.length === 0) {
       sharedDemoPrep = true;

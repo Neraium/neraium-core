@@ -41,6 +41,11 @@ def build_web_router() -> APIRouter:
     def web_demo_sii() -> FileResponse:
         return FileResponse(index_file)
 
+    @router.get("/demo", include_in_schema=False)
+    def web_demo_entry() -> FileResponse:
+        """Entry point for share links; client redirects to dashboard with demo query flags."""
+        return FileResponse(index_file)
+
     @router.get("/web/app.js", include_in_schema=False)
     def web_app_js() -> FileResponse:
         return FileResponse(static_dir / "app.js")
