@@ -71,6 +71,7 @@ def test_api_endpoints_registered(tmp_path) -> None:
     assert "/ingest" in paths
     assert "/ingest/batch" in paths
     assert "/ingest/csv" in paths
+    assert "/ingest/csv/preview" in paths
     assert "/reset" in paths
     assert "/results/latest" in paths
     assert "/results/recent" in paths

@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import csv
+import io
 import logging
 from pathlib import Path
 from typing import Any, Callable, TextIO
 
 from neraium_core.alignment import StructuralEngine
+from neraium_core.csv_mapping import row_to_frame_kwargs, resolve_mapping
 from neraium_core.pipeline import (
-    REQUIRED_CSV_COLUMNS,
     build_frame,
     normalize_rest_payload,
     parse_csv_text,
@@ -451,6 +452,7 @@ class StructuralMonitoringService:
         *,
         run_id: str | None = None,
         customer_id: str | None = None,
+        column_mapping: dict[str, Any] | None = None,
     ) -> list[dict[str, Any]]:
         """Ingest CSV text and return decorated results.
 
@@ -471,7 +473,11 @@ class StructuralMonitoringService:
                 run_obj = self.store.get_run(run_id, customer_id=resolved_customer)
                 if run_obj and isinstance(run_obj.get("config"), dict):
                     run_config = run_obj["config"]
-            frames = parse_csv_text(csv_text, customer_id=resolved_customer)
+            frames = parse_csv_text(
+                csv_text,
+                customer_id=resolved_customer,
+                column_mapping=column_mapping,
+            )
             pairs: list[tuple[dict[str, Any], dict[str, Any]]] = []
             results: list[dict[str, Any]] = []
             for frame in frames:
@@ -580,6 +586,7 @@ class StructuralMonitoringService:
         *,
         run_id: str | None = None,
         customer_id: str | None = None,
+        column_mapping: dict[str, Any] | None = None,
         batch_size: int = 250,
         max_error_samples: int = 25,
         progress_callback: Callable[[dict[str, Any]], None] | None = None,
@@ -639,28 +646,39 @@ class StructuralMonitoringService:
             if run_obj and isinstance(run_obj.get("config"), dict):
                 run_config = run_obj["config"]
 
+        try:
+            pos = csv_stream.tell()
+        except (OSError, io.UnsupportedOperation):
+            pos = None
+
+        if pos is None:
+            blob = csv_stream.read()
+            csv_stream = io.StringIO(blob)
+            pos = 0
+
+        first_line = csv_stream.readline()
+        if not first_line or not str(first_line).strip():
+            raise ValueError(
+                "CSV file is empty. Add a header row with your time column, entity/asset column, "
+                "optional site/location column, and one or more numeric telemetry columns."
+            )
+
+        sample_for_infer = first_line + csv_stream.read(65536)
+        csv_stream.seek(pos)
+
         reader = csv.DictReader(csv_stream)
         if reader.fieldnames is None:
-            raise ValueError(
-                "CSV file is empty. Add a header row with timestamp, site_id, asset_id "
-                "and one or more sensor columns."
-            )
+            raise ValueError("CSV has no parseable header row.")
 
         header_names = [str(name).strip() for name in reader.fieldnames if name is not None]
-        header_set = set(header_names)
-        missing = sorted(REQUIRED_CSV_COLUMNS - header_set)
-        if missing:
-            raise ValueError(
-                "CSV is missing required columns: "
-                f"{', '.join(missing)}. Required: timestamp, site_id, asset_id."
+        try:
+            mapping, _map_warnings = resolve_mapping(
+                header_names,
+                column_mapping,
+                csv_sample=sample_for_infer if column_mapping is None else None,
             )
-
-        sensor_columns = [name for name in header_names if name not in REQUIRED_CSV_COLUMNS]
-        if not sensor_columns:
-            raise ValueError(
-                "CSV must include at least one sensor column in addition to "
-                "timestamp, site_id, asset_id."
-            )
+        except ValueError as exc:
+            raise ValueError(str(exc)) from exc
 
         buffered_pairs: list[tuple[dict[str, Any], dict[str, Any]]] = []
         rows_processed = 0
@@ -683,14 +701,8 @@ class StructuralMonitoringService:
                 continue
             rows_processed += 1
             try:
-                sensor_values = {col: row.get(col) for col in sensor_columns}
-                frame = build_frame(
-                    timestamp=row.get("timestamp"),
-                    customer_id=resolved_customer,
-                    site_id=row.get("site_id"),
-                    asset_id=row.get("asset_id"),
-                    sensor_values=sensor_values,
-                )
+                kwargs = row_to_frame_kwargs(row, mapping, customer_id=resolved_customer)
+                frame = build_frame(**kwargs)
                 frame["customer_id"] = resolved_customer
                 engine = self._engine_for_frame(frame, run_config=run_config)
                 result = self._decorate_result(engine.process_frame(frame))

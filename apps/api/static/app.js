@@ -1122,6 +1122,15 @@ const state = {
     pollTimer: null,
     active: false,
   },
+  /** CSV semantic mapping (preview + user overrides before ingest). */
+  uploadCsv: {
+    preview: null,
+    headers: [],
+    issues: [],
+    warnings: [],
+    requiresConfirmation: false,
+    mapping: null,
+  },
   tenant: {
     customerId: "default-customer",
     siteId: "",
@@ -4169,7 +4178,9 @@ function updateUploadRunInfo() {
   if (!info) return;
   if (state.activeRun?.run_id) {
     const base = `Active run: ${state.activeRun.name} (${state.activeRun.run_id})`;
-    info.textContent = state.demo.enabled ? `${base} — Demo mode: upload your CSV to analyze real telemetry.` : base;
+    info.textContent = state.demo.enabled
+      ? `${base} — Upload your own CSV to replace demo telemetry. We'll auto-detect and map your fields.`
+      : base;
   } else {
     info.textContent = state.demo.enabled
       ? "No active run selected. Create or activate a run, then upload — or stay in demo to explore seeded data."
@@ -4260,10 +4271,13 @@ function resetUploadPanelIfIdle() {
   setUploadProgressUI({ visible: false });
 }
 
-async function uploadCsvFileWithProgress(file, runId) {
+async function uploadCsvFileWithProgress(file, runId, columnMapping = null) {
   const url = apiUrl("/ingest/csv/upload", tenantScopeParams({ run_id: runId }));
   const form = new FormData();
   form.append("file", file, file.name);
+  if (columnMapping && typeof columnMapping === "object") {
+    form.append("mapping", JSON.stringify(columnMapping));
+  }
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
     xhr.open("POST", url, true);
@@ -4587,6 +4601,147 @@ function setUploadFile(file) {
   const el = qs("#selectedFileName");
   if (!el) return;
   el.textContent = state.uploadFile ? `${state.uploadFile.name} (${state.uploadFile.size} bytes)` : "No file selected";
+  if (!file) {
+    state.uploadCsv.preview = null;
+    state.uploadCsv.headers = [];
+    state.uploadCsv.issues = [];
+    state.uploadCsv.warnings = [];
+    state.uploadCsv.requiresConfirmation = false;
+    state.uploadCsv.mapping = null;
+    renderUploadMappingPanel();
+    return;
+  }
+  runCsvPreviewForFile(file).catch((err) => {
+    setStatus(String(err.message || err), true, true);
+  });
+}
+
+async function runCsvPreviewForFile(file) {
+  const chunk = file.slice(0, Math.min(file.size, 65536));
+  const text = await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(new Error("Failed to read CSV sample"));
+    reader.readAsText(chunk, "utf-8");
+  });
+  const out = await fetchJson(apiUrl("/ingest/csv/preview", tenantScopeParams()), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ csv_sample: text }),
+  });
+  state.uploadCsv.preview = out;
+  state.uploadCsv.headers = Array.isArray(out.headers) ? out.headers : [];
+  state.uploadCsv.issues = Array.isArray(out.issues) ? out.issues : [];
+  state.uploadCsv.warnings = Array.isArray(out.warnings) ? out.warnings : [];
+  state.uploadCsv.requiresConfirmation = !!out.requires_confirmation;
+  state.uploadCsv.mapping = out.suggested_mapping || null;
+  renderUploadMappingPanel();
+  if (state.uploadCsv.issues.length && !out.suggested_mapping) {
+    setStatus(state.uploadCsv.issues.join(" "), true, false);
+  } else {
+    setStatus("");
+  }
+}
+
+function renderUploadMappingPanel() {
+  const panel = qs("#csvMappingPanel");
+  const sumEl = qs("#csvMappingSummary");
+  const issuesEl = qs("#csvMappingIssues");
+  const ts = qs("#csvMapTimestamp");
+  const asset = qs("#csvMapAsset");
+  const site = qs("#csvMapSite");
+  const sensorsWrap = qs("#csvMapSensors");
+  if (!panel || !sumEl || !issuesEl || !ts || !asset || !site || !sensorsWrap) return;
+
+  const headers = state.uploadCsv.headers || [];
+  const hasFile = !!state.uploadFile;
+  if (!hasFile || headers.length === 0) {
+    panel.classList.add("hidden");
+    return;
+  }
+  panel.classList.remove("hidden");
+
+  const map = state.uploadCsv.mapping;
+  const conf = state.uploadCsv.requiresConfirmation ? "Review or adjust detected roles before ingesting." : "Auto-detected roles (you can override).";
+  sumEl.textContent = conf;
+
+  issuesEl.innerHTML = "";
+  const allMsgs = [...(state.uploadCsv.issues || []), ...(state.uploadCsv.warnings || [])];
+  allMsgs.forEach((msg) => {
+    const li = document.createElement("li");
+    li.textContent = msg;
+    issuesEl.appendChild(li);
+  });
+
+  const fillSelect = (sel, selected) => {
+    sel.innerHTML = "";
+    headers.forEach((h) => {
+      const opt = document.createElement("option");
+      opt.value = h;
+      opt.textContent = h;
+      sel.appendChild(opt);
+    });
+    if (selected && headers.includes(selected)) sel.value = selected;
+  };
+
+  fillSelect(ts, map?.timestamp || headers[0]);
+  fillSelect(asset, map?.asset_id || headers[Math.min(1, headers.length - 1)]);
+  site.innerHTML = '<option value="">— omit (use default site) —</option>';
+  headers.forEach((h) => {
+    const opt = document.createElement("option");
+    opt.value = h;
+    opt.textContent = h;
+    site.appendChild(opt);
+  });
+  if (map?.site_id && headers.includes(map.site_id)) site.value = map.site_id;
+
+  const keySet = new Set([ts.value, asset.value, site.value].filter(Boolean));
+  const suggestedSensors = Array.isArray(map?.sensor_columns) ? map.sensor_columns : [];
+  sensorsWrap.innerHTML = "";
+  headers.forEach((h) => {
+    if (keySet.has(h)) return;
+    const id = `csvSensor_${h.replace(/[^a-z0-9_-]/gi, "_")}`;
+    const label = document.createElement("label");
+    label.className = "csv-sensor-chip";
+    const input = document.createElement("input");
+    input.type = "checkbox";
+    input.dataset.col = h;
+    input.id = id;
+    const checked = suggestedSensors.length ? suggestedSensors.includes(h) : true;
+    input.checked = checked;
+    const span = document.createElement("span");
+    span.textContent = h;
+    label.appendChild(input);
+    label.appendChild(span);
+    sensorsWrap.appendChild(label);
+  });
+}
+
+function collectUploadMappingFromDom() {
+  const ts = qs("#csvMapTimestamp");
+  const asset = qs("#csvMapAsset");
+  const site = qs("#csvMapSite");
+  const sensorsWrap = qs("#csvMapSensors");
+  if (!ts || !asset || !sensorsWrap) return null;
+  const siteVal = site && site.value ? site.value : null;
+  const sensor_columns = [];
+  sensorsWrap.querySelectorAll('input[type="checkbox"]').forEach((cb) => {
+    if (cb.checked && cb.dataset.col) sensor_columns.push(cb.dataset.col);
+  });
+  return {
+    timestamp: ts.value,
+    asset_id: asset.value,
+    site_id: siteVal,
+    sensor_columns,
+  };
+}
+
+function validateUploadMapping(m) {
+  if (!m || !m.timestamp || !m.asset_id) return "Choose a timestamp column and an asset/entity column.";
+  if (!Array.isArray(m.sensor_columns) || m.sensor_columns.length < 1) {
+    return "Select at least one numeric sensor column.";
+  }
+  return null;
 }
 
 async function uploadCsvToActiveRun() {
@@ -4595,7 +4750,14 @@ async function uploadCsvToActiveRun() {
   if (!file) throw new Error("Choose a CSV file first");
   const runId = state.activeRun?.run_id;
   if (!runId) throw new Error("No active run found");
-  const started = await uploadCsvFileWithProgress(file, runId);
+  if (!state.uploadCsv.headers.length) {
+    await runCsvPreviewForFile(file);
+  }
+  renderUploadMappingPanel();
+  const mapping = collectUploadMappingFromDom();
+  const verr = validateUploadMapping(mapping);
+  if (verr) throw new Error(verr);
+  const started = await uploadCsvFileWithProgress(file, runId, mapping);
   const jobId = String(started.job_id || "");
   if (!jobId) {
     throw new Error("Upload started but did not return a job ID.");
@@ -5128,9 +5290,23 @@ async function loadResultDetail(resultId) {
   });
 }
 
+function wireCsvMappingPanel() {
+  const panel = qs("#csvMappingPanel");
+  if (!panel || panel.dataset.wired === "1") return;
+  panel.dataset.wired = "1";
+  panel.addEventListener("change", (e) => {
+    const t = e.target;
+    state.uploadCsv.mapping = collectUploadMappingFromDom();
+    if (t && ["csvMapTimestamp", "csvMapAsset", "csvMapSite"].includes(t.id)) {
+      renderUploadMappingPanel();
+    }
+  });
+}
+
 function wireUploadInteractions() {
   const fileInput = qs("#csvFileInput");
   const zone = qs("#uploadDropZone");
+  wireCsvMappingPanel();
   if (fileInput) {
     fileInput.addEventListener("change", () => {
       const f = fileInput.files && fileInput.files[0] ? fileInput.files[0] : null;
@@ -5338,16 +5514,6 @@ async function wireEvents() {
     state.runsView.sort = String(e.target.value || "created_desc");
     renderRunsList();
   });
-  qs("#customerFilterInput")?.addEventListener("change", async () => {
-    await applyTenantFromControls();
-  });
-  qs("#customerFilterInput")?.addEventListener("blur", async () => {
-    await applyTenantFromControls();
-  });
-  qs("#siteFilterInput")?.addEventListener("change", async () => {
-    await applyTenantFromControls();
-  });
-
   qs("#runResultsSearchInput")?.addEventListener("input", (e) => {
     state.runDetailView.search = String(e.target.value || "");
     renderRunDetailFromState();

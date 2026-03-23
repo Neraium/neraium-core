@@ -295,6 +295,27 @@ body.nav-mobile-open {
   min-width: 0;
 }
 
+.topbar-wordmark {
+  flex: 0 0 auto;
+  font-size: 1.35rem;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+  color: var(--text-strong);
+  text-decoration: none;
+  line-height: 1.1;
+}
+
+.topbar-wordmark:hover {
+  color: #c4dbff;
+  text-decoration: none;
+}
+
+@media (max-width: 520px) {
+  .topbar-wordmark {
+    font-size: 1.15rem;
+  }
+}
+
 .topbar-controls {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -386,6 +407,7 @@ body.nav-mobile-open {
 }
 
 .title-block {
+  flex: 1;
   min-width: 0;
 }
 
@@ -443,12 +465,6 @@ body.nav-mobile-open {
 
 .demo-toggle input[type="checkbox"] {
   margin: 0;
-}
-
-#customerFilterInput,
-#siteFilterInput {
-  min-width: 160px;
-  max-width: 210px;
 }
 
 .main > .content {
@@ -3696,4 +3712,87 @@ body.demo-mode-active #phaseTimeline::before {
 body.demo-mode-active #phaseTimeline .timeline-item {
   position: relative;
   z-index: 1;
+}
+
+/* CSV semantic mapping (upload) */
+.csv-mapping-panel {
+  margin: 14px 0;
+  padding: 14px 16px;
+  border-radius: 12px;
+  border: 1px solid var(--border-strong);
+  background: linear-gradient(180deg, rgba(14, 26, 46, 0.95), rgba(8, 14, 26, 0.98));
+}
+
+.csv-mapping-panel h4 {
+  margin: 0 0 8px;
+  font-size: 14px;
+  color: var(--text-strong);
+}
+
+.csv-mapping-messages {
+  margin: 0 0 10px 18px;
+  padding: 0;
+  color: var(--tone-warn);
+  font-size: 13px;
+}
+
+.csv-mapping-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.csv-mapping-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.csv-mapping-field select {
+  font-family: inherit;
+  font-size: 13px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--panel-2);
+  color: var(--text);
+}
+
+.csv-mapping-sensors {
+  margin: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.csv-mapping-sensors legend {
+  font-size: 12px;
+  color: var(--muted);
+  padding: 0 6px;
+}
+
+.csv-mapping-sensor-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.csv-sensor-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid #3a537c;
+  font-size: 12px;
+  cursor: pointer;
+  color: var(--text);
+  background: rgba(12, 22, 40, 0.85);
+}
+
+.csv-sensor-chip input {
+  margin: 0;
 }
