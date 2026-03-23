@@ -46,23 +46,6 @@ def build_web_router() -> APIRouter:
         """Entry point for share links; client redirects to dashboard with demo query flags."""
         return FileResponse(index_file)
 
-    @router.get("/web/app.js", include_in_schema=False)
-    def web_app_js() -> FileResponse:
-        return FileResponse(static_dir / "app.js")
-
-    @router.get("/web/styles.css", include_in_schema=False)
-    def web_styles() -> FileResponse:
-        return FileResponse(static_dir / "styles.css")
-
-    @router.get("/web/sensor_graph_3d.js", include_in_schema=False)
-    def web_sensor_graph_3d_js() -> FileResponse:
-        return FileResponse(static_dir / "sensor_graph_3d.js")
-
-    @router.get("/web/three-init.mjs", include_in_schema=False)
-    def web_three_init_mjs() -> FileResponse:
-        return FileResponse(
-            static_dir / "three-init.mjs",
-            media_type="text/javascript",
-        )
+    # /web/* assets are served by StaticFiles in main._mount_web_static (entire apps/api/static tree).
 
     return router
