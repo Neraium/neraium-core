@@ -1,41 +1,15 @@
 from __future__ import annotations
 
-import mimetypes
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 from fastapi.responses import FileResponse
-
-
-def _safe_file_under_static_root(static_root: Path, relative: str) -> Path | None:
-    """Resolve relative path under static_root; reject traversal outside the tree."""
-    try:
-        candidate = (static_root / relative).resolve()
-        candidate.relative_to(static_root.resolve())
-    except ValueError:
-        return None
-    return candidate if candidate.is_file() else None
-
-
-def _media_type_for_static_file(path: Path) -> str:
-    if path.suffix.lower() == ".mjs":
-        return "text/javascript"
-    guessed, _ = mimetypes.guess_type(str(path))
-    return guessed or "application/octet-stream"
 
 
 def build_web_router() -> APIRouter:
     router = APIRouter(tags=["web"])
     static_dir = Path(__file__).resolve().parent / "static"
     index_file = static_dir / "index.html"
-
-    @router.get("/web/{resource_path:path}", include_in_schema=False)
-    def web_static_file(resource_path: str) -> FileResponse:
-        """Serve apps/api/static/* at /web/* (Three.js, app.js, etc.). Path-safe; no CDN."""
-        path = _safe_file_under_static_root(static_dir, resource_path)
-        if path is None:
-            raise HTTPException(status_code=404, detail="Not Found")
-        return FileResponse(path, media_type=_media_type_for_static_file(path))
 
     @router.get("/", include_in_schema=False)
     def web_index() -> FileResponse:
