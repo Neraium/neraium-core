@@ -1375,7 +1375,7 @@ function ensureThreeModulesLoaded() {
       if (Date.now() > deadline) {
         reject(
           new Error(
-            "Three.js did not load. Open /web/three-init.mjs in the browser and ensure the CDN (three) is reachable.",
+            "Three.js did not load. From the repo root run `npm install` (installs three@0.162.0), restart the API, then hard-refresh. Check Network: /web/three-init.mjs and /web/vendor/three/build/three.module.js should return 200.",
           ),
         );
         return;

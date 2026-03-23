@@ -10,7 +10,7 @@
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/web/styles.css" />
   <link rel="modulepreload" href="/web/three-init.mjs" />
-  <link rel="modulepreload" href="https://cdn.jsdelivr.net/npm/three@0.162.0/build/three.module.js" crossorigin />
+  <link rel="modulepreload" href="/web/vendor/three/build/three.module.js" />
 </head>
 <body>
   <div id="toastContainer" class="toast-container"></div>
@@ -698,8 +698,8 @@
   <script type="importmap">
     {
       "imports": {
-        "three": "https://cdn.jsdelivr.net/npm/three@0.162.0/build/three.module.js",
-        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.162.0/examples/jsm/"
+        "three": "/web/vendor/three/build/three.module.js",
+        "three/addons/": "/web/vendor/three/examples/jsm/"
       }
     }
   </script>

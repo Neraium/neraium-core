@@ -17,6 +17,7 @@ from uuid import uuid4
 
 import numpy as np
 from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Query, Request, UploadFile, status
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from starlette.responses import JSONResponse, Response
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
@@ -34,6 +35,24 @@ from neraium_core.store import ResultStore
 
 
 logger = logging.getLogger(__name__)
+
+
+def _mount_three_js_vendor(app: FastAPI) -> None:
+    """Serve three@0.162.0 from node_modules at /web/vendor/three (same-origin; no public CDN)."""
+    root = Path(__file__).resolve().parent.parent.parent
+    three_dir = root / "node_modules" / "three"
+    if not three_dir.is_dir():
+        logger.warning(
+            "3D UI: node_modules/three missing — run `npm install` from the repo root. "
+            "Structural flow will not load until Three.js is installed."
+        )
+        return
+    app.mount(
+        "/web/vendor/three",
+        StaticFiles(directory=str(three_dir)),
+        name="three_vendor",
+    )
+
 
 DEFAULT_MAX_REQUEST_BODY_BYTES = 50 * 1024 * 1024
 # Keep parser allowance above app-level request cap so oversize requests
@@ -2847,6 +2866,7 @@ def create_app(
         )
 
     app.include_router(build_web_router())
+    _mount_three_js_vendor(app)
 
     return app
 
