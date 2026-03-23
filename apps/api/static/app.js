@@ -1177,6 +1177,8 @@ const state = {
     useCanvas2d: false,
     canvas2d: null,
     flowCoherence: 0.75,
+    /** Set by 2D structural-flow field model (blended coherence); used for panel + summary when present. */
+    structuralFlowCoherence01: null,
     flowDriftN: 0,
     flowInstN: 0,
     flowEdgeScratch: null,
@@ -1809,6 +1811,7 @@ function disposeGeometryRenderer() {
   }
   g.canvas2d = null;
   g.useCanvas2d = false;
+  g.structuralFlowCoherence01 = null;
   g.flowEdgeScratch = null;
   if (g.resizeObserver) {
     try {
@@ -2089,7 +2092,7 @@ function structuralPairwiseLinkCount(sensorCount) {
 
 /**
  * Aggregates all inputs for the structural-flow panel from the geometry payload + engine metrics.
- * Coherence 0–1 = withinTolerance / totalSensors (same source of truth as the headline %).
+ * Base coherence 0–1 = withinTolerance / totalSensors; the 2D canvas view may override headline % via field blend.
  */
 function computeStructuralFlowMetrics(payload) {
   const nodes = payload?.nodes || [];
@@ -2226,7 +2229,7 @@ function buildStructuralFlowNarrative(m, assessment) {
     sentences.push("No pairwise links are included in this projection.");
   }
   sentences.push(
-    `Structural coherence is ${pch}% (share of sensors within relational tolerance for this snapshot).`,
+    `Structural coherence is ${pch}% (tolerance share blended with pairwise drift containment, field containment, and centroid offset when the flow field is sampled).`,
   );
   sentences.push(`Structural assessment: ${assessment.label}.`);
   const engine = String(m.engineState || "").trim();
@@ -2245,7 +2248,7 @@ function structuralProjectionCaption(payload) {
     ? plane
       ? "3D graph: horizontal plane (X/Z) is baseline relational layout; vertical (Y) is deviation magnitude."
       : "3D graph: axes encode relational layout; vertical (Y) encodes deviation magnitude."
-    : "2D manifold: Φ(u,v) is a metaball-style field from sensors (attract/repel by tolerance) and edges (pairwise disagreement). The closed curve is the Φ=T isocontour (T rises with coherence → tighter containment). Dashed box = valid relational state space; red = super-level set outside the box or breach. Yellow dot = centroid of {Φ≥T}; cyan arrow = drift push (scaled by drift score).";
+    : "2D manifold: sensors drive a force field V(u,v); energy E=|V|² is sampled on a grid. The closed curve is an E=T isocontour (marching squares). Dashed box = valid relational state space; red/orange segments = contour crossing or escaping the box. Heatmap = distributed E (no radial glow). Yellow dot = E-weighted centroid; cyan arrow = E-weighted mean flow direction.";
   const base = geometryFlowPrefer3dGraph()
     ? `${layout} Node color encodes tolerance band. Link color and opacity encode pairwise drift versus baseline.`
     : `${layout} Sensor dots sit at projected (x,z); headline coherence = within-tolerance ÷ total.`;
@@ -2258,7 +2261,8 @@ function structuralProjectionCaption(payload) {
 
 function structuralMetricDefinitionsFootnote() {
   return (
-    "Structural coherence: percentage of sensors inside the relational tolerance band (within ÷ total). " +
+    "Structural coherence: in the 2D flow view, a blended 0–100% score from tolerance share, pairwise drift ratio, " +
+    "how much sampled energy sits in the core region, and centroid offset; otherwise within ÷ total sensors. " +
     "Within / outside tolerance: counts from the same snapshot. " +
     "Links above drift threshold: pairwise relationship change versus baseline exceeds the configured limit."
   );
@@ -2824,7 +2828,7 @@ function updateStructuralFlowCopy(payload) {
   el.textContent = `${n} sensor${n === 1 ? "" : "s"} · ${lmax} possible pairwise link${lmax === 1 ? "" : "s"} (complete graph) · layout encodes relational position; height encodes deviation magnitude.`;
 }
 
-function updateGeometryFlowPanel(payload) {
+function updateGeometryFlowPanel(payload, opts) {
   const cohEl = qs("#geometryCoherence");
   const inEl = qs("#geometryInSync");
   const outEl = qs("#geometryOutSync");
@@ -2851,13 +2855,17 @@ function updateGeometryFlowPanel(payload) {
     updateStructuralFlowCopy(payload || { available: false, nodes: [] });
     return;
   }
-  const m = computeStructuralFlowMetrics(payload);
+  const base = computeStructuralFlowMetrics(payload);
+  const m =
+    opts?.structuralFlowCoherence01 != null && Number.isFinite(opts.structuralFlowCoherence01)
+      ? { ...base, coherence01: opts.structuralFlowCoherence01 }
+      : base;
   const assessment = deriveStructuralAssessment(m);
   const c = m.coherence01;
   if (cohEl) {
     cohEl.textContent = `${Math.round(c * 100)}%`;
     cohEl.title =
-      "Structural coherence (0–100%): sensors within relational tolerance ÷ total sensors for this snapshot.";
+      "Structural coherence (0–100%): blended field score (tolerance share, pairwise drift, energy containment, centroid offset) when the 2D flow view is active; otherwise sensors within tolerance ÷ total.";
   }
   if (inEl) {
     inEl.textContent = String(m.withinTolerance);
@@ -2890,7 +2898,12 @@ function updateGeometryFlowPanel(payload) {
 
 function geometryFlowSummaryString(payload) {
   if (!payload?.available) return "—";
-  const m = computeStructuralFlowMetrics(payload);
+  const base = computeStructuralFlowMetrics(payload);
+  const g = state.geometry3d;
+  const m =
+    g?.useCanvas2d && typeof g.structuralFlowCoherence01 === "number"
+      ? { ...base, coherence01: g.structuralFlowCoherence01 }
+      : base;
   const assessment = deriveStructuralAssessment(m);
   return buildStructuralFlowNarrative(m, assessment);
 }
@@ -2927,10 +2940,9 @@ function structuralFlowRiskExpansion01(payload) {
 }
 
 /**
- * Unit direction (in normalized plane u,v) along which drift pushes the field toward the boundary.
- * Points from geometric center (0.5,0.5) toward stress-weighted centroid of sensors — deterministic.
+ * Unit direction for drift bias inside V (not the arrow — arrow comes from E-weighted mean V).
  */
-function structuralFlowDriftDirectionUV(nodes, normToPlane) {
+function structuralFlowDriftBiasDirectionUV(nodes, normToPlane) {
   let wcx = 0;
   let wcz = 0;
   let sw = 0;
@@ -2956,61 +2968,32 @@ function structuralFlowDriftDirectionUV(nodes, normToPlane) {
   return { x: dx, y: dz };
 }
 
-/**
- * Structural integrity scalar field Φ(u,v) on the normalized plane [0,1]².
- *
- * Data → field mapping (deterministic, explainable):
- * - Each sensor is a metaball-style emitter: attractor (positive contribution) when within tolerance,
- *   repulsor (negative) when outside — local "pressure" tied to relational state.
- * - driftN scales a bulk translation of emitter positions along driftDir — pushes energy toward edges.
- * - riskExp inflates effective emitter radius (expansion pressure).
- * - Pairwise edges add Gaussian bumps at midpoints; amplitude ∝ link disagreement (|delta|, |magnitude|).
- * - instN enables only a mild turbulence term (phase tied to t and instN); no motion when instability≈0.
- *
- * Coherence (tolerance ratio) sets the iso-threshold T via computeStructuralFlowIsoThreshold (containment).
- */
-function sampleStructuralIntegrityField(
-  u,
-  v,
-  nodes,
-  edges,
-  normToPlane,
-  driftDir,
-  driftN,
-  instN,
-  riskExp,
-  coh01,
-  t,
-) {
-  const uc = Math.max(0, Math.min(1, u));
-  const vc = Math.max(0, Math.min(1, v));
-  let uu = uc;
-  let vv = vc;
-  if (instN > 1e-5) {
-    const omega = 0.55 + 1.15 * instN;
-    uu += Math.sin(t * omega + uc * 9.17 + vc * 7.31) * 0.014 * instN;
-    vv += Math.cos(t * omega * 0.88 + uc * 6.02 + vc * 8.44) * 0.014 * instN;
-  }
+function structuralFlowForceAt(pu, pv, nodes, edges, normToPlane, driftDir, driftN, instN, riskExp) {
+  let fx = 0;
+  let fy = 0;
+  const rBase = 0.042;
 
-  const driftShift = 0.22 * driftN;
-  let phi = 0;
   nodes.forEach((n) => {
     const px = Number(n.position?.x) || 0;
     const pz = Number(n.position?.z) || 0;
-    let { nx, nz } = normToPlane(px, pz);
-    nx += driftDir.x * driftShift;
-    nz += driftDir.y * driftShift;
+    const { nx, nz } = normToPlane(px, pz);
+    const du = nx - pu;
+    const dv = nz - pv;
+    const d2 = du * du + dv * dv + 1e-10;
     const stress = flowNodeStress01(n);
     const inTol = flowNodeWithinTolerance(n);
-    const dx = uu - nx;
-    const dz = vv - nz;
-    const d2 = dx * dx + dz * dz + 1e-7;
-    const r0 = 0.038 * (1 + 0.55 * riskExp) * (1 + 0.45 * stress);
-    const q = (r0 * r0) / d2;
-    if (inTol) {
-      phi += q * (0.85 + 0.15 * coh01);
+    const unstable = Boolean(n.is_unstable);
+    const r0 = rBase * (1 + 0.55 * riskExp) * (1 + 0.4 * stress);
+    const scale = 1 / (d2 + r0 * r0);
+
+    if (inTol && !unstable) {
+      const g = 0.95 + 0.2 * (1 - stress);
+      fx += du * scale * g;
+      fy += dv * scale * g;
     } else {
-      phi -= q * (1.15 + 0.35 * (1 - coh01));
+      const rep = (unstable ? 1.35 : 0.85) * (0.7 + 0.3 * stress);
+      fx -= du * scale * rep;
+      fy -= dv * scale * rep;
     }
   });
 
@@ -3024,147 +3007,268 @@ function sampleStructuralIntegrityField(
     const bz = Number(b.position?.z) || 0;
     const pa = normToPlane(ax, az);
     const pb = normToPlane(bx, bz);
-    const mx = (pa.nx + pb.nx) / 2 + driftDir.x * driftShift * 0.5;
-    const mz = (pa.nz + pb.nz) / 2 + driftDir.y * driftShift * 0.5;
+    const mx = (pa.nx + pb.nx) / 2;
+    const mz = (pa.nz + pb.nz) / 2;
     const delta = Math.abs(Number(edge.delta || 0));
     const mag = Math.abs(Number(edge.magnitude || 0));
     const disagree = Math.max(0, Math.min(1, 0.55 * delta + 0.45 * mag));
     if (disagree < 1e-4) return;
-    const dx = uu - mx;
-    const dz = vv - mz;
-    const sig = 0.065 + 0.06 * disagree;
-    const d2 = dx * dx + dz * dz;
-    phi += disagree * Math.exp(-d2 / (2 * sig * sig)) * 1.35;
+    const ddx = pu - mx;
+    const ddz = pv - mz;
+    const d2 = ddx * ddx + ddz * ddz + 1e-9;
+    const sig = 0.062 + 0.055 * disagree;
+    const w = disagree * Math.exp(-d2 / (2 * sig * sig)) * 1.1;
+    const len = Math.sqrt(d2);
+    if (len < 1e-7) return;
+    fx += w * (ddx / len) * 0.35;
+    fy += w * (ddz / len) * 0.35;
   });
 
-  return phi;
-}
+  const dmag = 0.28 + 0.72 * driftN;
+  fx += driftDir.x * dmag * 0.26;
+  fy += driftDir.y * dmag * 0.26;
 
-/** Iso-level for Φ: higher coherence → higher threshold → smaller super-level set (more contained). */
-function computeStructuralFlowIsoThreshold(minF, maxF, coh01) {
-  const span = Math.max(maxF - minF, 1e-9);
-  const c = Math.max(0, Math.min(1, coh01));
-  return minF + span * (0.32 + 0.58 * c);
+  const om = 2.15 * Math.PI;
+  fx += instN * 0.095 * Math.sin(om * pu + 0.77 * pv);
+  fy += instN * 0.095 * Math.sin(om * pv - 0.48 * pu);
+
+  return { fx, fy };
 }
 
 /**
- * Ray-march iso-contour Φ = T: from origin O, along each angle find first r with Φ(O+rû) ≈ T (falling from inside).
- * Returns pixel-space points forming a closed loop (structural energy boundary).
+ * Single shared model: sample V on a 60×30 grid, E = |V|², coherence from tolerance + pairwise + containment + centroid.
  */
-function structuralFlowIsoContourRays(
-  originU,
-  originV,
-  nodes,
-  edges,
-  normToPlane,
-  driftDir,
-  driftN,
-  instN,
-  riskExp,
-  coh01,
-  T,
-  t,
-  innerX,
-  innerY,
-  innerW,
-  innerH,
-  rayCount,
-) {
-  const pts = [];
-  const sample = (uu, vv) =>
-    sampleStructuralIntegrityField(
-      uu,
-      vv,
-      nodes,
-      edges,
-      normToPlane,
-      driftDir,
-      driftN,
-      instN,
-      riskExp,
-      coh01,
-      t,
-    );
-  const step = 0.036;
-  const rMax = 2.35;
-  for (let k = 0; k < rayCount; k += 1) {
-    const theta = (k / rayCount) * Math.PI * 2;
-    const ux = Math.cos(theta);
-    const uy = Math.sin(theta);
-    let fPrev = sample(originU, originV);
-    let rHit = rMax;
-    for (let r = step; r <= rMax; r += step) {
-      const uu = originU + r * ux;
-      const vv = originV + r * uy;
-      const fm = sample(uu, vv);
-      if (fPrev >= T && fm < T) {
-        const t01 = (T - fPrev) / (fm - fPrev + 1e-12);
-        rHit = r - step + t01 * step;
-        break;
+function buildStructuralFlowFieldModel(payload, normToPlane, driftDir, driftN, instN, riskExp) {
+  const NX = 60;
+  const NY = 30;
+  const nodes = payload.nodes || [];
+  const edges = payload.edges || [];
+  const mCount = computeStructuralFlowMetrics(payload);
+  const Vx = [];
+  const Vy = [];
+  const E = [];
+  for (let i = 0; i <= NX; i += 1) {
+    Vx[i] = [];
+    Vy[i] = [];
+    E[i] = [];
+    for (let j = 0; j <= NY; j += 1) {
+      const u = i / NX;
+      const v = j / NY;
+      const { fx, fy } = structuralFlowForceAt(u, v, nodes, edges, normToPlane, driftDir, driftN, instN, riskExp);
+      Vx[i][j] = fx;
+      Vy[i][j] = fy;
+      E[i][j] = fx * fx + fy * fy;
+    }
+  }
+
+  let minE = Infinity;
+  let maxE = -Infinity;
+  let massTot = 0;
+  let massIn = 0;
+  let sw = 0;
+  let swu = 0;
+  let swv = 0;
+  const u0 = 0.2;
+  const u1 = 0.8;
+  for (let i = 0; i <= NX; i += 1) {
+    for (let j = 0; j <= NY; j += 1) {
+      const e = E[i][j];
+      minE = Math.min(minE, e);
+      maxE = Math.max(maxE, e);
+      massTot += e;
+      const u = i / NX;
+      const vv = j / NY;
+      if (u >= u0 && u <= u1 && vv >= u0 && vv <= u1) massIn += e;
+      sw += e;
+      swu += u * e;
+      swv += vv * e;
+    }
+  }
+
+  const span = Math.max(maxE - minE, 1e-12);
+  const tolRatio =
+    mCount.totalSensors > 0 ? Math.max(0, Math.min(1, mCount.withinTolerance / mCount.totalSensors)) : 0;
+  const pairScore =
+    mCount.totalLinks > 0
+      ? Math.max(0, Math.min(1, 1 - Math.min(1, mCount.driftedLinks / mCount.totalLinks)))
+      : 1;
+  const containment = massTot > 1e-12 ? massIn / massTot : 0.5;
+  const cu = sw > 1e-12 ? swu / sw : 0.5;
+  const cv = sw > 1e-12 ? swv / sw : 0.5;
+  const centroidScore = Math.max(0, Math.min(1, 1 - Math.min(1, 2.2 * Math.hypot(cu - 0.5, cv - 0.5))));
+  let coherence01 = Math.max(
+    0,
+    Math.min(
+      1,
+      0.28 * tolRatio + 0.22 * pairScore + 0.26 * containment + 0.24 * centroidScore,
+    ),
+  );
+  if (mCount.totalSensors <= 0) coherence01 = 0;
+
+  const T = minE + span * (0.18 + 0.74 * coherence01);
+
+  let netVx = 0;
+  let netVy = 0;
+  let wv = 0;
+  for (let i = 0; i <= NX; i += 1) {
+    for (let j = 0; j <= NY; j += 1) {
+      const w = E[i][j];
+      netVx += Vx[i][j] * w;
+      netVy += Vy[i][j] * w;
+      wv += w;
+    }
+  }
+  if (wv > 1e-12) {
+    netVx /= wv;
+    netVy /= wv;
+  }
+
+  return {
+    NX,
+    NY,
+    Vx,
+    Vy,
+    E,
+    minE,
+    maxE,
+    T,
+    coherence01,
+    cu,
+    cv,
+    netVx,
+    netVy,
+    metrics: mCount,
+  };
+}
+
+function structuralFlowInterpEdge(a, b, pa, pb, T) {
+  if (Math.abs(a - b) < 1e-12) return null;
+  if ((a >= T) === (b >= T)) return null;
+  const t = (T - a) / (b - a);
+  return [pa[0] + t * (pb[0] - pa[0]), pa[1] + t * (pb[1] - pa[1])];
+}
+
+/** Marching squares on E ≥ T; corners v0..v3 = BL, BR, TR, TL per cell (u right, v down on screen). */
+function structuralFlowMarchingSquaresSegments(E, nx, ny, T) {
+  const out = [];
+  const pushSeg = (p, q) => {
+    if (p && q) out.push([p[0], p[1], q[0], q[1]]);
+  };
+  for (let i = 0; i < nx; i += 1) {
+    for (let j = 0; j < ny; j += 1) {
+      const v0 = E[i][j + 1];
+      const v1 = E[i + 1][j + 1];
+      const v2 = E[i + 1][j];
+      const v3 = E[i][j];
+      const x0 = i / nx;
+      const x1 = (i + 1) / nx;
+      const y0 = (j + 1) / ny;
+      const y1 = j / ny;
+      const pBL = [x0, y0];
+      const pBR = [x1, y0];
+      const pTR = [x1, y1];
+      const pTL = [x0, y1];
+      const e0 = structuralFlowInterpEdge(v0, v1, pBL, pBR, T);
+      const e1 = structuralFlowInterpEdge(v1, v2, pBR, pTR, T);
+      const e2 = structuralFlowInterpEdge(v2, v3, pTR, pTL, T);
+      const e3 = structuralFlowInterpEdge(v3, v0, pTL, pBL, T);
+      const idx = (v0 >= T ? 1 : 0) | (v1 >= T ? 2 : 0) | (v2 >= T ? 4 : 0) | (v3 >= T ? 8 : 0);
+      const avg = (v0 + v1 + v2 + v3) / 4;
+      switch (idx) {
+        case 0:
+        case 15:
+          break;
+        case 1:
+          pushSeg(e3, e0);
+          break;
+        case 2:
+          pushSeg(e0, e1);
+          break;
+        case 3:
+          pushSeg(e3, e1);
+          break;
+        case 4:
+          pushSeg(e1, e2);
+          break;
+        case 5:
+          if (avg >= T) {
+            pushSeg(e0, e1);
+            pushSeg(e2, e3);
+          } else {
+            pushSeg(e3, e0);
+            pushSeg(e1, e2);
+          }
+          break;
+        case 6:
+          pushSeg(e0, e2);
+          break;
+        case 7:
+          pushSeg(e3, e2);
+          break;
+        case 8:
+          pushSeg(e2, e3);
+          break;
+        case 9:
+          pushSeg(e0, e2);
+          break;
+        case 10:
+          if (avg >= T) {
+            pushSeg(e0, e3);
+            pushSeg(e1, e2);
+          } else {
+            pushSeg(e0, e1);
+            pushSeg(e2, e3);
+          }
+          break;
+        case 11:
+          pushSeg(e2, e1);
+          break;
+        case 12:
+          pushSeg(e0, e3);
+          break;
+        case 13:
+          pushSeg(e0, e1);
+          break;
+        case 14:
+          pushSeg(e1, e3);
+          break;
+        default:
+          break;
       }
-      fPrev = fm;
     }
-    const uu = originU + rHit * ux;
-    const vv = originV + rHit * uy;
-    pts.push({
-      x: innerX + uu * innerW,
-      y: innerY + vv * innerH,
-    });
   }
-  return pts;
+  return out;
 }
 
-function structuralFlowGridMinMax(
-  nodes,
-  edges,
-  normToPlane,
-  driftDir,
-  driftN,
-  instN,
-  riskExp,
-  coh01,
-  t,
-  gridN,
-) {
-  let minF = Infinity;
-  let maxF = -Infinity;
-  for (let i = 0; i <= gridN; i += 1) {
-    for (let j = 0; j <= gridN; j += 1) {
-      const u = i / gridN;
-      const v = j / gridN;
-      const f = sampleStructuralIntegrityField(
-        u,
-        v,
-        nodes,
-        edges,
-        normToPlane,
-        driftDir,
-        driftN,
-        instN,
-        riskExp,
-        coh01,
-        t,
-      );
-      minF = Math.min(minF, f);
-      maxF = Math.max(maxF, f);
-    }
-  }
-  return { minF, maxF };
+function structuralFlowUvInBounds(u, v) {
+  return u >= 0 && u <= 1 && v >= 0 && v <= 1;
+}
+
+function structuralFlowSegmentEscapesManifold(u1, v1, u2, v2) {
+  const i1 = structuralFlowUvInBounds(u1, v1);
+  const i2 = structuralFlowUvInBounds(u2, v2);
+  return !i1 || !i2;
+}
+
+function structuralFlowHeatmapRgba(enNorm, edgePressure01) {
+  const t = Math.max(0, Math.min(1, enNorm));
+  const ep = Math.max(0, Math.min(1, edgePressure01));
+  const r = Math.floor(8 + t * 55 + ep * 90);
+  const g = Math.floor(18 + t * 140 + ep * 40);
+  const b = Math.floor(42 + (1 - t) * 80 + ep * 20);
+  const a = 0.42 + t * 0.38;
+  return `rgba(${r},${g},${b},${a})`;
 }
 
 /**
- * 2D structural-flow view: scalar field Φ from sensors/edges → iso-contour = boundary of "energy"
- * inside the dashed rectangle (valid relational manifold). Drift/instability/risk/coherence deform Φ;
- * breach = contour or centroid escapes the box (highlighted).
+ * 2D structural-flow: one force field V → E = |V|² → heatmap + marching-squares contour + E-weighted arrow.
  */
-function drawStructuralFlow2dCanvas(ctx, width, height, payload, t, coherence, driftN, instN) {
+function drawStructuralFlow2dCanvas(ctx, width, height, payload, _t, _coherence, driftN, instN) {
   ctx.fillStyle = "#060d18";
   ctx.fillRect(0, 0, width, height);
   const nodes = payload.nodes || [];
   if (!nodes.length) return;
 
-  const m = computeStructuralFlowMetrics(payload);
-  const coh = typeof m.coherence01 === "number" ? m.coherence01 : coherence;
   const riskExp = structuralFlowRiskExpansion01(payload);
 
   let minX = Infinity;
@@ -3185,7 +3289,7 @@ function drawStructuralFlow2dCanvas(ctx, width, height, payload, t, coherence, d
     nx: (x - minX) / spanX,
     nz: (z - minZ) / spanZ,
   });
-  const driftDir = structuralFlowDriftDirectionUV(nodes, normToPlane);
+  const driftDir = structuralFlowDriftBiasDirectionUV(nodes, normToPlane);
 
   const pad = 28;
   const innerX = pad;
@@ -3193,67 +3297,13 @@ function drawStructuralFlow2dCanvas(ctx, width, height, payload, t, coherence, d
   const innerW = Math.max(40, width - 2 * pad);
   const innerH = Math.max(40, height - 2 * pad);
 
-  const gridN = 28;
-  const { minF, maxF } = structuralFlowGridMinMax(
-    nodes,
-    payload.edges || [],
-    normToPlane,
-    driftDir,
-    driftN,
-    instN,
-    riskExp,
-    coh,
-    t,
-    gridN,
-  );
-  const T = computeStructuralFlowIsoThreshold(minF, maxF, coh);
+  const model = buildStructuralFlowFieldModel(payload, normToPlane, driftDir, driftN, instN, riskExp);
+  const { NX, NY, E, minE, maxE, T, coherence01, cu, cv, netVx, netVy, metrics: m } = model;
+  const spanE = Math.max(maxE - minE, 1e-12);
 
-  let ocu = 0;
-  let ocv = 0;
-  let osw = 0;
-  nodes.forEach((n) => {
-    const { nx, nz } = normToPlane(Number(n.position?.x) || 0, Number(n.position?.z) || 0);
-    const wt = flowNodeWithinTolerance(n) ? 1 : 0.35;
-    ocu += nx * wt;
-    ocv += nz * wt;
-    osw += wt;
-  });
-  ocu /= osw;
-  ocv /= osw;
+  state.geometry3d.structuralFlowCoherence01 = coherence01;
 
-  const GRID = 24;
-  let sSum = 0;
-  let sUx = 0;
-  let sUz = 0;
-  for (let i = 0; i <= GRID; i += 1) {
-    for (let j = 0; j <= GRID; j += 1) {
-      const u = i / GRID;
-      const v = j / GRID;
-      const fv = sampleStructuralIntegrityField(
-        u,
-        v,
-        nodes,
-        payload.edges || [],
-        normToPlane,
-        driftDir,
-        driftN,
-        instN,
-        riskExp,
-        coh,
-        t,
-      );
-      if (fv >= T) {
-        sSum += fv;
-        sUx += u * fv;
-        sUz += v * fv;
-      }
-    }
-  }
-  const cmu = sSum > 1e-9 ? sUx / sSum : ocu;
-  const cmv = sSum > 1e-9 ? sUz / sSum : ocv;
-  const centroidOff = Math.hypot(cmu - 0.5, cmv - 0.5) * 2;
-
-  ctx.strokeStyle = "rgba(51, 65, 85, 0.35)";
+  ctx.strokeStyle = "rgba(51, 65, 85, 0.22)";
   ctx.lineWidth = 1;
   const gs = 10;
   for (let g = 0; g <= gs; g += 1) {
@@ -3271,6 +3321,23 @@ function drawStructuralFlow2dCanvas(ctx, width, height, payload, t, coherence, d
     ctx.stroke();
   }
 
+  for (let i = 0; i < NX; i += 1) {
+    for (let j = 0; j < NY; j += 1) {
+      const eC = (E[i][j] + E[i + 1][j] + E[i + 1][j + 1] + E[i][j + 1]) / 4;
+      const en = (eC - minE) / spanE;
+      const uc = (i + 0.5) / NX;
+      const vc = (j + 0.5) / NY;
+      const edgeDist = Math.min(uc, 1 - uc, vc, 1 - vc);
+      const edgePressure = edgeDist < 0.14 ? (0.14 - edgeDist) / 0.14 : 0;
+      ctx.fillStyle = structuralFlowHeatmapRgba(en, edgePressure);
+      const px0 = innerX + (i / NX) * innerW;
+      const py0 = innerY + (j / NY) * innerH;
+      const pw = innerW / NX;
+      const ph = innerH / NY;
+      ctx.fillRect(px0, py0, pw + 0.5, ph + 0.5);
+    }
+  }
+
   ctx.strokeStyle = "rgba(148, 163, 184, 0.75)";
   ctx.lineWidth = 2;
   ctx.setLineDash([7, 5]);
@@ -3284,134 +3351,47 @@ function drawStructuralFlow2dCanvas(ctx, width, height, payload, t, coherence, d
   ctx.arc(cxPlane, cyPlane, 3, 0, Math.PI * 2);
   ctx.fill();
 
-  const rayN = 80;
-  const contourPts = structuralFlowIsoContourRays(
-    ocu,
-    ocv,
-    nodes,
-    payload.edges || [],
-    normToPlane,
-    driftDir,
-    driftN,
-    instN,
-    riskExp,
-    coh,
-    T,
-    t,
-    innerX,
-    innerY,
-    innerW,
-    innerH,
-    rayN,
-  );
-
-  let breach = false;
-  for (let i = 0; i < contourPts.length; i += 1) {
-    const p = contourPts[i];
-    if (p.x < innerX - 0.5 || p.x > innerX + innerW + 0.5 || p.y < innerY - 0.5 || p.y > innerY + innerH + 0.5) {
-      breach = true;
-      break;
-    }
-    if (p.x < innerX || p.x > innerX + innerW || p.y < innerY || p.y > innerY + innerH) {
-      breach = true;
-    }
-  }
-  if (m.outsideTolerance > 0 || centroidOff > 0.38 || coh < 0.4) breach = true;
-
-  function traceContourPath() {
-    if (!contourPts.length) return;
+  const segs = structuralFlowMarchingSquaresSegments(E, NX, NY, T);
+  segs.forEach((s) => {
+    const u1 = s[0];
+    const v1 = s[1];
+    const u2 = s[2];
+    const v2 = s[3];
+    const esc = structuralFlowSegmentEscapesManifold(u1, v1, u2, v2);
     ctx.beginPath();
-    ctx.moveTo(contourPts[0].x, contourPts[0].y);
-    for (let i = 1; i < contourPts.length; i += 1) ctx.lineTo(contourPts[i].x, contourPts[i].y);
-    ctx.closePath();
-  }
+    ctx.moveTo(innerX + u1 * innerW, innerY + v1 * innerH);
+    ctx.lineTo(innerX + u2 * innerW, innerY + v2 * innerH);
+    ctx.strokeStyle = esc ? "rgba(249, 115, 22, 0.92)" : "rgba(94, 234, 212, 0.9)";
+    ctx.lineWidth = esc ? 2.35 : 1.75;
+    ctx.stroke();
+  });
 
-  if (breach) {
-    try {
-      ctx.save();
-      ctx.beginPath();
-      ctx.rect(0, 0, width, height);
-      ctx.rect(innerX, innerY, innerW, innerH);
-      ctx.clip("evenodd");
-      traceContourPath();
-      ctx.fillStyle = "rgba(239, 68, 68, 0.28)";
-      ctx.fill();
-      ctx.restore();
-    } catch (_e) {
-      /* even-odd clip unsupported */
-    }
-  }
-
-  ctx.save();
-  ctx.beginPath();
-  ctx.rect(innerX, innerY, innerW, innerH);
-  ctx.clip();
-  traceContourPath();
-  const gx0 = innerX + cmu * innerW;
-  const gy0 = innerY + cmv * innerH;
-  const grd = ctx.createRadialGradient(gx0, gy0, 4, gx0, gy0, Math.min(innerW, innerH) * 0.55);
-  grd.addColorStop(0, breach ? "rgba(59, 130, 246, 0.45)" : "rgba(45, 212, 191, 0.5)");
-  grd.addColorStop(0.45, breach ? "rgba(251, 191, 36, 0.22)" : "rgba(6, 182, 212, 0.22)");
-  grd.addColorStop(1, "rgba(15, 23, 42, 0.12)");
-  ctx.fillStyle = grd;
-  ctx.fill();
-  ctx.strokeStyle = breach ? "rgba(248, 113, 113, 0.9)" : "rgba(94, 234, 212, 0.88)";
-  ctx.lineWidth = breach ? 2.4 : 1.85;
-  ctx.stroke();
-  ctx.restore();
-
-  traceContourPath();
-  ctx.strokeStyle = "rgba(94, 234, 212, 0.35)";
-  ctx.lineWidth = 1;
-  ctx.stroke();
-
-  const cmPx = innerX + cmu * innerW;
-  const cmPy = innerY + cmv * innerH;
+  const cmPx = innerX + cu * innerW;
+  const cmPy = innerY + cv * innerH;
   ctx.fillStyle = "rgba(250, 204, 21, 0.95)";
   ctx.beginPath();
   ctx.arc(cmPx, cmPy, 4, 0, Math.PI * 2);
   ctx.fill();
 
-  const arrLen = Math.min(innerW, innerH) * (0.12 + 0.28 * driftN);
-  const ax1 = cxPlane + driftDir.x * arrLen;
-  const ay1 = cyPlane + driftDir.y * arrLen;
-  ctx.strokeStyle = "rgba(56, 189, 248, 0.75)";
+  const nlen = Math.hypot(netVx, netVy);
+  const ndx = nlen > 1e-8 ? netVx / nlen : 0;
+  const ndy = nlen > 1e-8 ? netVy / nlen : 1;
+  const arrLen = Math.min(innerW, innerH) * (0.1 + 0.32 * Math.min(1, nlen * 4 + driftN * 0.35));
+  const ax1 = cxPlane + ndx * arrLen;
+  const ay1 = cyPlane + ndy * arrLen;
+  ctx.strokeStyle = "rgba(56, 189, 248, 0.8)";
   ctx.lineWidth = 1.5;
   ctx.beginPath();
   ctx.moveTo(cxPlane, cyPlane);
   ctx.lineTo(ax1, ay1);
   ctx.stroke();
-  ctx.fillStyle = "rgba(56, 189, 248, 0.9)";
+  ctx.fillStyle = "rgba(56, 189, 248, 0.92)";
   ctx.beginPath();
   ctx.moveTo(ax1, ay1);
-  ctx.lineTo(ax1 - driftDir.x * 8 - driftDir.y * 4, ay1 - driftDir.y * 8 + driftDir.x * 4);
-  ctx.lineTo(ax1 - driftDir.x * 8 + driftDir.y * 4, ay1 - driftDir.y * 8 - driftDir.x * 4);
+  ctx.lineTo(ax1 - ndx * 8 - ndy * 4, ay1 - ndy * 8 + ndx * 4);
+  ctx.lineTo(ax1 - ndx * 8 + ndy * 4, ay1 - ndy * 8 - ndx * 4);
   ctx.closePath();
   ctx.fill();
-
-  /* Outward “leak” strokes at manifold boundary when breached (length ∝ instability × pressure). */
-  if (breach) {
-    const leakLen = Math.min(innerW, innerH) * (0.04 + 0.12 * instN) * (0.35 + 0.65 * (1 - coh));
-    const leakAlpha = 0.14 + 0.32 * instN + 0.2 * driftN;
-    const sides = [
-      { x: innerX + innerW * 0.25, y: innerY, dx: 0, dy: -1 },
-      { x: innerX + innerW * 0.75, y: innerY, dx: 0, dy: -1 },
-      { x: innerX + innerW * 0.25, y: innerY + innerH, dx: 0, dy: 1 },
-      { x: innerX + innerW * 0.75, y: innerY + innerH, dx: 0, dy: 1 },
-      { x: innerX, y: innerY + innerH * 0.35, dx: -1, dy: 0 },
-      { x: innerX, y: innerY + innerH * 0.65, dx: -1, dy: 0 },
-      { x: innerX + innerW, y: innerY + innerH * 0.35, dx: 1, dy: 0 },
-      { x: innerX + innerW, y: innerY + innerH * 0.65, dx: 1, dy: 0 },
-    ];
-    ctx.strokeStyle = `rgba(251, 113, 133, ${Math.min(0.85, leakAlpha)})`;
-    ctx.lineWidth = 1.15;
-    sides.forEach((s) => {
-      ctx.beginPath();
-      ctx.moveTo(s.x, s.y);
-      ctx.lineTo(s.x + s.dx * leakLen, s.y + s.dy * leakLen);
-      ctx.stroke();
-    });
-  }
 
   nodes.forEach((n) => {
     const px = Number(n.position?.x) || 0;
@@ -3432,7 +3412,7 @@ function drawStructuralFlow2dCanvas(ctx, width, height, payload, t, coherence, d
   ctx.fillStyle = "rgba(226, 232, 240, 0.55)";
   ctx.font = "11px system-ui, Segoe UI, sans-serif";
   ctx.fillText(
-    `Coherence ${Math.round(coh * 100)}% · within tolerance ${m.withinTolerance}/${m.totalSensors}`,
+    `Coherence ${Math.round(coherence01 * 100)}% · within tolerance ${m.withinTolerance}/${m.totalSensors}`,
     innerX + 6,
     innerY + 14,
   );
@@ -3477,7 +3457,16 @@ function renderStructuralFlow2dOnly(payload, viewportDims) {
   canvasHost.appendChild(cv);
   g.canvas2d = cv;
   const ctx = cv.getContext("2d", { alpha: false });
-  g._2dT = 0;
+
+  function drawFrame() {
+    if (!g.canvas2d || !g.useCanvas2d) return;
+    const dims = geometryViewportDimensions();
+    const w = Math.max(240, dims?.width || viewport.clientWidth || 240);
+    const h = Math.max(240, dims?.height || viewport.clientHeight || 360);
+    drawStructuralFlow2dCanvas(ctx, w, h, payload, 0, g.flowCoherence, g.flowDriftN, g.flowInstN);
+    g.flowCoherence = typeof g.structuralFlowCoherence01 === "number" ? g.structuralFlowCoherence01 : g.flowCoherence;
+    updateGeometryFlowPanel(payload, { structuralFlowCoherence01: g.structuralFlowCoherence01 });
+  }
 
   function resize2d() {
     const dims = geometryViewportDimensions();
@@ -3485,6 +3474,7 @@ function renderStructuralFlow2dOnly(payload, viewportDims) {
     const h = Math.max(240, dims?.height || viewport.clientHeight || 360);
     cv.width = w;
     cv.height = h;
+    drawFrame();
   }
 
   resize2d();
@@ -3496,17 +3486,6 @@ function renderStructuralFlow2dOnly(payload, viewportDims) {
     g.resizeObserver = ro;
   }
 
-  function loop() {
-    if (!g.canvas2d || !g.useCanvas2d) return;
-    g.frameId = window.requestAnimationFrame(loop);
-    g._2dT += 0.016;
-    const dims = geometryViewportDimensions();
-    const w = Math.max(240, dims?.width || viewport.clientWidth || 240);
-    const h = Math.max(240, dims?.height || viewport.clientHeight || 360);
-    drawStructuralFlow2dCanvas(ctx, w, h, payload, g._2dT, g.flowCoherence, g.flowDriftN, g.flowInstN);
-  }
-  loop();
-  updateGeometryFlowPanel(payload);
   updateGeometryDetails(null);
 }
 
