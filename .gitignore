@@ -22,3 +22,6 @@ Thumbs.db
 *.sqlite3
 regime_library.json
 regime_library_*.json
+
+# Named Cloudflare Tunnel local config (see docs/CLOUDFLARE_NAMED_TUNNEL.md)
+cloudflared/config.yml
