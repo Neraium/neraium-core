@@ -2082,7 +2082,7 @@ function renderGeometryScene(payload, viewportDims) {
   fill.position.set(-2.2, 1.2, -1.8);
   scene.add(fill);
 
-  if (geomDebug) {
+  if (geometryFlowDebugEnabled()) {
     const testSphere = new three.Mesh(
       new three.SphereGeometry(0.14, 16, 16),
       new three.MeshBasicMaterial({ color: 0xff2222 })
