@@ -1,7 +1,7 @@
 {
   "name": "neraium-core",
   "private": true,
-  "description": "Pinned Three.js version matches CDN import map in apps/api/static/index.html",
+  "description": "three@0.162.0 is served from /web/vendor/three (node_modules) — run npm install before starting the API.",
   "dependencies": {
     "three": "0.162.0"
   }
