@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -136,27 +137,111 @@ def _print_urls(host: str, port: int) -> None:
     print()
 
 
+def _print_share_banner(public_url: str, local_port: int) -> None:
+    dash = "/dashboard?demo=1&prepare=1"
+    demo_url = public_url.rstrip("/") + dash
+    print()
+    print("  " + "=" * 56)
+    print("  SHARE THIS URL (works while this process is running)")
+    print("  " + "=" * 56)
+    print(f"    Public base:  {public_url}")
+    print(f"    Demo deep link (auto-prepares runs):")
+    print(f"    {demo_url}")
+    print("  " + "=" * 56)
+    print(f"    Local same UI: http://127.0.0.1:{local_port}{dash}")
+    print()
+
+
+def _extract_public_url_from_line(line: str) -> str | None:
+    line = line.strip()
+    m = re.search(r"https://[a-zA-Z0-9][-a-zA-Z0-9.]*\.trycloudflare\.com/?", line)
+    if m:
+        return m.group(0).rstrip("/")
+    m = re.search(r"https://[a-zA-Z0-9][-a-zA-Z0-9.]*\.ngrok(?:-free)?\.app/?", line)
+    if m:
+        return m.group(0).rstrip("/")
+    m = re.search(r"https://[a-zA-Z0-9][-a-zA-Z0-9.]*\.ngrok\.io/?", line)
+    if m:
+        return m.group(0).rstrip("/")
+    return None
+
+
+def _stream_tunnel_output(proc: subprocess.Popen, label: str) -> None:
+    """Read tunnel stdout; print lines and stop when a public HTTPS URL is found."""
+    assert proc.stdout is not None
+    public_url: str | None = None
+    try:
+        for raw in iter(proc.stdout.readline, ""):
+            if not raw:
+                break
+            sys.stdout.write(raw)
+            sys.stdout.flush()
+            if public_url is None:
+                found = _extract_public_url_from_line(raw)
+                if found:
+                    public_url = found
+                    port = int(os.environ.get("_NERAIUM_TUNNEL_LOCAL_PORT", "7860"))
+                    _print_share_banner(found, port)
+    except Exception as exc:  # noqa: BLE001
+        print(f"[demo] {label} output reader: {exc}", flush=True)
+    finally:
+        try:
+            proc.stdout.close()
+        except Exception:
+            pass
+
+
 def _tunnel_worker(port: int) -> None:
-    time.sleep(2.0)
-    url = f"http://127.0.0.1:{port}"
+    time.sleep(1.2)
+    os.environ["_NERAIUM_TUNNEL_LOCAL_PORT"] = str(port)
+    local = f"http://127.0.0.1:{port}"
     cf = shutil.which("cloudflared")
     ng = shutil.which("ngrok")
     if cf:
-        print("[demo] Starting cloudflared (Ctrl+C stops server and tunnel)...", flush=True)
+        print("[demo] Starting cloudflared quick tunnel (Ctrl+C stops server + tunnel)...", flush=True)
+        print("[demo] Tip: install from https://developers.cloudflare.com/cloudflare-one/connections/connect-apps/install-and-setup/installation/", flush=True)
         try:
-            subprocess.run([cf, "tunnel", "--url", url], check=False)
+            proc = subprocess.Popen(
+                [cf, "tunnel", "--url", local],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                bufsize=1,
+            )
+            t = threading.Thread(target=_stream_tunnel_output, args=(proc, "cloudflared"), daemon=True)
+            t.start()
+            proc.wait()
         except OSError as e:
             print(f"[demo] cloudflared failed: {e}", flush=True)
         return
     if ng:
-        print("[demo] Starting ngrok (Ctrl+C stops server and tunnel)...", flush=True)
+        print("[demo] Starting ngrok (Ctrl+C stops server + tunnel)...", flush=True)
+        print("[demo] Tip: https://ngrok.com/download — then `ngrok config add-authtoken ...` once.", flush=True)
         try:
-            subprocess.run([ng, "http", str(port)], check=False)
+            # Ngrok v3+: prints URL to console / API; stream stdout for https lines.
+            proc = subprocess.Popen(
+                [ng, "http", str(port)],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                bufsize=1,
+            )
+            t = threading.Thread(target=_stream_tunnel_output, args=(proc, "ngrok"), daemon=True)
+            t.start()
+            proc.wait()
         except OSError as e:
             print(f"[demo] ngrok failed: {e}", flush=True)
         return
     print(
-        "[demo] --share set but neither cloudflared nor ngrok found on PATH.",
+        "[demo] --share needs cloudflared OR ngrok on PATH.",
+        flush=True,
+    )
+    print(
+        "[demo] Install cloudflared (recommended): https://developers.cloudflare.com/cloudflare-one/connections/connect-apps/install-and-setup/installation/",
+        flush=True,
+    )
+    print(
+        "[demo] Or install ngrok: https://ngrok.com/download",
         flush=True,
     )
 
