@@ -1036,6 +1036,14 @@ function geometryFlowReducedMotion() {
   }
 }
 
+function geometryFlowDebugEnabled() {
+  try {
+    return new URLSearchParams(window.location.search).get("geomDebug") === "1";
+  } catch (_e) {
+    return false;
+  }
+}
+
 function geometryFlow2dOnlyFromUrl() {
   try {
     return String(new URLSearchParams(window.location.search).get("flow2d") || "").trim() === "1";
@@ -2074,6 +2082,16 @@ function renderGeometryScene(payload, viewportDims) {
   fill.position.set(-2.2, 1.2, -1.8);
   scene.add(fill);
 
+  if (geomDebug) {
+    const testSphere = new three.Mesh(
+      new three.SphereGeometry(0.14, 16, 16),
+      new three.MeshBasicMaterial({ color: 0xff2222 })
+    );
+    testSphere.position.set(0, 0.1, 0);
+    testSphere.name = "geomDebugMarker";
+    scene.add(testSphere);
+  }
+
   const controls = new controlsCtor(camera, renderer.domElement);
   controls.enableDamping = !perf;
   controls.dampingFactor = perf ? 0.05 : 0.08;
@@ -2345,52 +2363,68 @@ function renderGeometryScene(payload, viewportDims) {
   };
 
   let t = 0;
+  let geometryFrameIndex = 0;
   function animate() {
     if (g.useCanvas2d) return;
     g.frameId = window.requestAnimationFrame(animate);
-    t += 0.014;
-    const coherence = typeof g.flowCoherence === "number" ? g.flowCoherence : 0.75;
-    const driftN = typeof g.flowDriftN === "number" ? g.flowDriftN : 0;
-    const instN = typeof g.flowInstN === "number" ? g.flowInstN : 0;
-    const unifiedPhase = t * 0.88;
-    const ms = typeof g.motionScale === "number" ? g.motionScale : 1;
+    try {
+      t += 0.014;
+      const coherence = typeof g.flowCoherence === "number" ? g.flowCoherence : 0.75;
+      const driftN = typeof g.flowDriftN === "number" ? g.flowDriftN : 0;
+      const instN = typeof g.flowInstN === "number" ? g.flowInstN : 0;
+      const unifiedPhase = t * 0.88;
+      const ms = typeof g.motionScale === "number" ? g.motionScale : 1;
 
-    Object.keys(g.nodeMeshById || {}).forEach((nodeId) => {
-      const mesh = g.nodeMeshById[nodeId];
-      const nodeData = g.nodeDataById[nodeId];
-      if (!mesh?.userData?.basePos || !nodeData) return;
-      const base = mesh.userData.basePos;
-      const stress = flowNodeStress01(nodeData);
-      const unstable = Boolean(nodeData.is_unstable);
-      const breathe =
-        Math.sin(unifiedPhase) * 0.038 * coherence * (1 - stress * 0.85) * (1 - driftN * 0.4);
-      const breatheY = Math.cos(unifiedPhase * 0.97) * 0.032 * coherence * (1 - stress * 0.85);
-      const chaos =
-        (0.04 + stress * 0.42 + (unstable ? 0.12 : 0) + driftN * 0.14 + instN * 0.1) *
-        (1 - coherence * 0.72);
-      const phase = mesh.userData.jitterSeed || 0;
-      const sep = (1 - coherence) * 0.08 * stress;
-      mesh.position.x =
-        base.x + (breathe + Math.sin(t * 1.65 + phase) * chaos + sep * Math.sin(phase)) * ms;
-      mesh.position.y =
-        base.y + (breatheY + Math.cos(t * 1.25 + phase) * chaos * 0.92) * ms;
-      mesh.position.z =
-        base.z + (Math.sin(t * 1.05 + phase * 1.1) * chaos + sep * Math.cos(phase)) * ms;
-    });
+      Object.keys(g.nodeMeshById || {}).forEach((nodeId) => {
+        const mesh = g.nodeMeshById[nodeId];
+        const nodeData = g.nodeDataById[nodeId];
+        if (!mesh?.userData?.basePos || !nodeData) return;
+        const base = mesh.userData.basePos;
+        const stress = flowNodeStress01(nodeData);
+        const unstable = Boolean(nodeData.is_unstable);
+        const breathe =
+          Math.sin(unifiedPhase) * 0.038 * coherence * (1 - stress * 0.85) * (1 - driftN * 0.4);
+        const breatheY = Math.cos(unifiedPhase * 0.97) * 0.032 * coherence * (1 - stress * 0.85);
+        const chaos =
+          (0.04 + stress * 0.42 + (unstable ? 0.12 : 0) + driftN * 0.14 + instN * 0.1) *
+          (1 - coherence * 0.72);
+        const phase = mesh.userData.jitterSeed || 0;
+        const sep = (1 - coherence) * 0.08 * stress;
+        mesh.position.x =
+          base.x + (breathe + Math.sin(t * 1.65 + phase) * chaos + sep * Math.sin(phase)) * ms;
+        mesh.position.y =
+          base.y + (breatheY + Math.cos(t * 1.25 + phase) * chaos * 0.92) * ms;
+        mesh.position.z =
+          base.z + (Math.sin(t * 1.05 + phase * 1.1) * chaos + sep * Math.cos(phase)) * ms;
+      });
 
-    syncFlowEdgesFromMeshes(g, three, t);
+      syncFlowEdgesFromMeshes(g, three, t);
 
-    Object.entries(g.nodeGlowById || {}).forEach(([nodeId, halo]) => {
-      const mesh = g.nodeMeshById[nodeId];
-      if (!halo || !mesh) return;
-      const k = Number(g.unstablePulseById[nodeId] || 1);
-      const pulse = 1 + 0.14 * Math.sin(t * 2.5 + k) * (1.2 - coherence * 0.5);
-      halo.scale.setScalar(pulse);
-      halo.position.copy(mesh.position);
-    });
+      Object.entries(g.nodeGlowById || {}).forEach(([nodeId, halo]) => {
+        const mesh = g.nodeMeshById[nodeId];
+        if (!halo || !mesh) return;
+        const k = Number(g.unstablePulseById[nodeId] || 1);
+        const pulse = 1 + 0.14 * Math.sin(t * 2.5 + k) * (1.2 - coherence * 0.5);
+        halo.scale.setScalar(pulse);
+        halo.position.copy(mesh.position);
+      });
 
-    controls.update();
-    renderer.render(scene, camera);
+      controls.update();
+      if (geometryFrameIndex === 0 && typeof console !== "undefined" && console.debug) {
+        console.debug("[geometry3d] first frame", {
+          sceneChildren: scene.children.length,
+          nodes: Object.keys(g.nodeMeshById || {}).length,
+          edges: g.edgeRefs?.length || 0,
+          cameraPos: camera.position.toArray(),
+        });
+      }
+      geometryFrameIndex += 1;
+      renderer.render(scene, camera);
+    } catch (err) {
+      if (typeof console !== "undefined" && console.error) {
+        console.error("[geometry3d] frame/render error:", err);
+      }
+    }
   }
   animate();
 }
