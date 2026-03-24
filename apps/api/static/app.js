@@ -54,6 +54,13 @@ async function fetchJson(path, opts) {
         : raw
           ? raw.slice(0, 500)
           : "empty response body";
+    console.error("API request failed", {
+      endpoint,
+      method,
+      status: res.status,
+      statusText: res.statusText || "",
+      responseText: raw ? raw.slice(0, 1000) : "",
+    });
     throw new Error(`HTTP ${res.status} ${res.statusText || ""} for ${method} ${endpoint}: ${detail}`.trim());
   }
   if (!raw) return {};
@@ -946,11 +953,21 @@ function buildDemoScenarioItems({ profile, siteId, assetId, minutes = 120 }) {
 }
 
 async function ingestBatchForRun(runId, items, customerId) {
+  const safeItems = Array.isArray(items) && items.length
+    ? items
+    : [
+        {
+          timestamp: new Date().toISOString(),
+          site_id: "demo-site",
+          asset_id: "demo-asset",
+          sensor_values: { pressure: 42, flow: 27, vibration: 6.2, temperature: 61.5 },
+        },
+      ];
   return fetchJson(apiUrl("/ingest/batch", tenantScopeParams({ run_id: runId })), {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
-      items: items.map((item) => ({
+      items: safeItems.map((item) => ({
         ...item,
         customer_id: customerId,
       })),
