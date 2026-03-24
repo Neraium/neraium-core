@@ -1131,6 +1131,9 @@ const state = {
     search: "",
     sort: "timestamp_desc",
     range: "200",
+    flowPlaybackMode: "live",
+    flowPlaybackSpeed: 1,
+    flowHistoryEnabled: true,
   },
   charts: {
     drift: null,
@@ -1188,6 +1191,17 @@ const state = {
     geometryIntroMs: 0,
     reducedGeometryMotion: false,
     keyLightBasePos: null,
+    temporalFlow: {
+      points: [],
+      localTimeSec: 0,
+      replayHoldSec: 0,
+      latestResultId: null,
+      historyCentroid: [],
+      historyDriftTip: [],
+      historyContact: [],
+      contactPersistence: 0,
+      lastTrendCursor: -1,
+    },
   },
   demo: {
     enabled: false,
@@ -1801,6 +1815,18 @@ function disposeGeometryRenderer() {
   g.useCanvas2d = false;
   g.structuralFlowCoherence01 = null;
   g.structuralFlowDerived = null;
+  g.temporalFlow = {
+    points: [],
+    localTimeSec: 0,
+    replayHoldSec: 0,
+    latestResultId: null,
+    historyCentroid: [],
+    historyDriftTip: [],
+    historyContact: [],
+    contactPersistence: 0,
+    lastTrendCursor: -1,
+  };
+  setTrendPlaybackCursorMarker(-1);
   g.flowEdgeScratch = null;
   if (g.resizeObserver) {
     try {
@@ -3498,6 +3524,19 @@ function finalizeStructuralFlowDerivedState(model, segs, driftN, instN) {
   };
 }
 
+function structuralFlowBuildIsoFromScalar(E, NX, NY, T, minE) {
+  const cellHigh = Array.from({ length: NX }, () => Array(NY).fill(false));
+  for (let i = 0; i < NX; i += 1) {
+    for (let j = 0; j < NY; j += 1) {
+      const av = (E[i][j] + E[i + 1][j] + E[i + 1][j + 1] + E[i][j + 1]) / 4;
+      cellHigh[i][j] = av >= T;
+    }
+  }
+  const largestMask = structuralFlowLargestCCMask(cellHigh, NX, NY);
+  const E_iso = structuralFlowIsoFieldForMarching(E, NX, NY, minE, largestMask);
+  return { largestMask, E_iso };
+}
+
 function deriveStructuralFlowDerivedFallback(payload) {
   const m = computeStructuralFlowMetrics(payload);
   const { driftN, instN } = flowDriftInstabilityNorm(payload);
@@ -3639,6 +3678,7 @@ function buildStructuralFlowFieldModel(payload, normToPlane, driftDir, driftN, i
   const coherenceThreshold = minE + span * (0.22 + 0.66 * coherence01);
   const T = Math.max(massQuantileCut, coherenceThreshold);
 
+  const { largestMask, E_iso } = structuralFlowBuildIsoFromScalar(E, NX, NY, T, minE);
   const cellHigh = [];
   for (let i = 0; i < NX; i += 1) {
     cellHigh[i] = [];
@@ -3882,10 +3922,97 @@ function hexToRgba(hex, alpha) {
   return `rgba(${r},${g},${b},${a})`;
 }
 
+function buildInterpolatedFieldModel(payload, normToPlane, driftDir, riskExp, driftA, instA, driftB, instB, t) {
+  const ma = buildStructuralFlowFieldModel(payload, normToPlane, driftDir, driftA, instA, riskExp);
+  const mb = buildStructuralFlowFieldModel(payload, normToPlane, driftDir, driftB, instB, riskExp);
+  const lerp = (a, b) => a + (b - a) * t;
+  const { NX, NY } = ma;
+  const E = Array.from({ length: NX + 1 }, () => Array(NY + 1).fill(0));
+  let minE = Infinity;
+  let maxE = -Infinity;
+  for (let i = 0; i <= NX; i += 1) {
+    for (let j = 0; j <= NY; j += 1) {
+      const e = lerp(ma.E[i][j], mb.E[i][j]);
+      E[i][j] = e;
+      minE = Math.min(minE, e);
+      maxE = Math.max(maxE, e);
+    }
+  }
+  const T = lerp(ma.T, mb.T);
+  const { largestMask, E_iso } = structuralFlowBuildIsoFromScalar(E, NX, NY, T, minE);
+  return {
+    ...ma,
+    E,
+    E_iso,
+    minE,
+    maxE,
+    T,
+    coherence01: lerp(ma.coherence01, mb.coherence01),
+    cu: lerp(ma.cu, mb.cu),
+    cv: lerp(ma.cv, mb.cv),
+    netVx: lerp(ma.netVx, mb.netVx),
+    netVy: lerp(ma.netVy, mb.netVy),
+    metrics: ma.metrics,
+    largestMask,
+  };
+}
+
+/**
+ * Temporal wrapper around the existing structural field builder.
+ * Keeps one source of truth for field/contour generation while allowing snapshot interpolation.
+ */
+function resolveStructuralFlowModelForFrame(payload, normToPlane, driftDir, riskExp, frame) {
+  const driftN = Math.max(0, Math.min(1, Number(frame?.driftN ?? 0)));
+  const instN = Math.max(0, Math.min(1, Number(frame?.instN ?? 0)));
+  const aDrift = Number(frame?.a?.driftN);
+  const aInst = Number(frame?.a?.instN);
+  const bDrift = Number(frame?.b?.driftN);
+  const bInst = Number(frame?.b?.instN);
+  const t = Math.max(0, Math.min(1, Number(frame?.t ?? 0)));
+  const canInterpolate =
+    Number.isFinite(aDrift) &&
+    Number.isFinite(aInst) &&
+    Number.isFinite(bDrift) &&
+    Number.isFinite(bInst) &&
+    t > 0 &&
+    (Math.abs(aDrift - bDrift) > 1e-6 || Math.abs(aInst - bInst) > 1e-6);
+  if (!canInterpolate) {
+    return buildStructuralFlowFieldModel(payload, normToPlane, driftDir, driftN, instN, riskExp);
+  }
+  return buildInterpolatedFieldModel(payload, normToPlane, driftDir, riskExp, aDrift, aInst, bDrift, bInst, t);
+}
+
+function getStructuralFlowPlaybackFrame() {
+  const g = state.geometry3d;
+  const tf = g.temporalFlow || {};
+  const points = Array.isArray(tf.points) ? tf.points : [];
+  if (!points.length) {
+    return { driftN: g.flowDriftN, instN: g.flowInstN, a: null, b: null, t: 0, cursor: -1 };
+  }
+  const maxPos = Math.max(0, points.length - 1);
+  if (state.runDetailView.flowPlaybackMode === "live") {
+    tf.localTimeSec = maxPos;
+  }
+  const pos = Math.max(0, Math.min(maxPos, Number(tf.localTimeSec || 0)));
+  const i0 = Math.floor(pos);
+  const i1 = Math.min(maxPos, i0 + 1);
+  const t = Math.max(0, Math.min(1, pos - i0));
+  const a = points[i0];
+  const b = points[i1] || a;
+  return {
+    a,
+    b,
+    t,
+    cursor: i0,
+    driftN: (a?.driftN ?? 0) + ((b?.driftN ?? a?.driftN ?? 0) - (a?.driftN ?? 0)) * t,
+    instN: (a?.instN ?? 0) + ((b?.instN ?? a?.instN ?? 0) - (a?.instN ?? 0)) * t,
+  };
+}
+
 /**
  * 2D structural-flow: one force field V → E = |V|² → heatmap + marching-squares contour + E-weighted arrow.
  */
-function drawStructuralFlow2dCanvas(ctx, width, height, payload, _t, _coherence, driftN, instN) {
+function drawStructuralFlow2dCanvas(ctx, width, height, payload, frame) {
   ctx.fillStyle = "#060d18";
   ctx.fillRect(0, 0, width, height);
   const nodes = payload.nodes || [];
@@ -3919,7 +4046,9 @@ function drawStructuralFlow2dCanvas(ctx, width, height, payload, _t, _coherence,
   const innerW = Math.max(40, width - 2 * pad);
   const innerH = Math.max(40, height - 2 * pad);
 
-  const model = buildStructuralFlowFieldModel(payload, normToPlane, driftDir, driftN, instN, riskExp);
+  const driftN = Math.max(0, Math.min(1, Number(frame?.driftN ?? 0)));
+  const instN = Math.max(0, Math.min(1, Number(frame?.instN ?? 0)));
+  const model = resolveStructuralFlowModelForFrame(payload, normToPlane, driftDir, riskExp, frame);
   const { NX, NY, E, E_iso, largestMask, minE, maxE, T, coherence01, cu, cv, netVx, netVy, metrics: m } =
     model;
   const spanE = Math.max(maxE - minE, 1e-12);
@@ -3955,6 +4084,12 @@ function drawStructuralFlow2dCanvas(ctx, width, height, payload, _t, _coherence,
   const clamp01 = (value) => Math.max(0, Math.min(1, value));
   for (let i = 0; i < NX; i += 1) {
     for (let j = 0; j < NY; j += 1) {
+      let eC = (E[i][j] + E[i + 1][j] + E[i + 1][j + 1] + E[i][j + 1]) / 4;
+      if (!largestMask[i][j]) eC *= 0.08;
+      const en = (eC - minE) / spanE;
+      const edgePressure = Math.max(0, Math.min(1, model.boundaryPressure01 * (0.55 + 0.45 * driftN)));
+      ctx.fillStyle = structuralFlowHeatmapRgba(en * 0.62, edgePressure);
+      ctx.fillStyle = structuralFlowHeatmapRgba(en * 0.48, 0.03);
       const inPrimaryMask = largestMask[i][j];
       const cellEnergy = (E[i][j] + E[i + 1][j] + E[i + 1][j + 1] + E[i][j + 1]) / 4;
       const tintedEnergy = inPrimaryMask ? cellEnergy : cellEnergy * 0.08;
@@ -3986,6 +4121,28 @@ function drawStructuralFlow2dCanvas(ctx, width, height, payload, _t, _coherence,
   ctx.fill();
 
   state.geometry3d.structuralFlowDerived = finalizeStructuralFlowDerivedState(model, segs, driftN, instN);
+  const derived = state.geometry3d.structuralFlowDerived || {};
+  const tf = state.geometry3d.temporalFlow || {};
+  const primarySegIdx = structuralFlowPrimarySegmentComponent(segs);
+  const primarySegs = [];
+  segs.forEach((s, si) => {
+    if (primarySegIdx.has(si)) primarySegs.push(s);
+  });
+  const boundaryContacts = [];
+  for (let i = 0; i < NX; i += 1) {
+    for (let j = 0; j < NY; j += 1) {
+      if (!largestMask[i][j]) continue;
+      const eC = (E[i][j] + E[i + 1][j] + E[i + 1][j + 1] + E[i][j + 1]) / 4;
+      const en = Math.max(0, Math.min(1, (eC - T) / Math.max(spanE * 0.9, 1e-9)));
+      const fillA = 0.14 + 0.26 * en;
+      const px0 = innerX + (i / NX) * innerW;
+      const py0 = innerY + (j / NY) * innerH;
+      const pw = innerW / NX;
+      const ph = innerH / NY;
+      ctx.fillStyle = `rgba(45, 212, 191, ${fillA})`;
+      ctx.fillRect(px0, py0, pw + 0.5, ph + 0.5);
+    }
+  }
   secondarySegs.forEach((s) => {
     const u1 = s[0];
     const v1 = s[1];
@@ -4015,9 +4172,25 @@ function drawStructuralFlow2dCanvas(ctx, width, height, payload, _t, _coherence,
     const v1 = s[1];
     const u2 = s[2];
     const v2 = s[3];
-    const esc = structuralFlowSegmentEscapesManifold(u1, v1, u2, v2);
     const contact = structuralFlowSegmentBoundaryContact(u1, v1, u2, v2);
-    const localFail = esc || contact;
+    if (contact) boundaryContacts.push([(u1 + u2) * 0.5, (v1 + v2) * 0.5]);
+  });
+  tf.contactPersistence = Math.max(
+    0,
+    Math.min(1, (tf.contactPersistence || 0) * 0.93 + (boundaryContacts.length ? 0.08 : -0.05)),
+  );
+  const breachStage = Math.max(
+    0,
+    Math.min(1, derived.boundaryPressureScore * 0.5 + tf.contactPersistence * 0.5),
+  );
+  primarySegs.forEach((s) => {
+    const u1 = s[0];
+    const v1 = s[1];
+    const u2 = s[2];
+    const v2 = s[3];
+    const esc = structuralFlowSegmentEscapesManifold(u1, v1, u2, v2) && breachStage > 0.62;
+    const contact = structuralFlowSegmentBoundaryContact(u1, v1, u2, v2);
+    const localFail = esc || (contact && breachStage > 0.28);
     const intensity = Math.max(driftN, instN);
     const badStroke = esc ? "rgba(239, 68, 68, 0.98)" : "rgba(249, 115, 22, 0.95)";
     ctx.beginPath();
@@ -4031,6 +4204,14 @@ function drawStructuralFlow2dCanvas(ctx, width, height, payload, _t, _coherence,
 
   const cmPx = innerX + cu * innerW;
   const cmPy = innerY + cv * innerH;
+
+  if (state.runDetailView.flowHistoryEnabled) {
+    tf.historyCentroid = Array.isArray(tf.historyCentroid) ? tf.historyCentroid : [];
+    tf.historyDriftTip = Array.isArray(tf.historyDriftTip) ? tf.historyDriftTip : [];
+    tf.historyContact = Array.isArray(tf.historyContact) ? tf.historyContact : [];
+    tf.historyCentroid.push({ x: cmPx, y: cmPy });
+    if (tf.historyCentroid.length > 26) tf.historyCentroid.shift();
+  }
   ctx.fillStyle = "rgba(250, 204, 21, 0.88)";
   ctx.beginPath();
   ctx.arc(cmPx, cmPy, 4, 0, Math.PI * 2);
@@ -4042,6 +4223,45 @@ function drawStructuralFlow2dCanvas(ctx, width, height, payload, _t, _coherence,
   const arrLen = Math.min(innerW, innerH) * (0.08 + 0.36 * Math.min(1, nlen * 4 + driftN * 0.45));
   const ax1 = cxPlane + ndx * arrLen;
   const ay1 = cyPlane + ndy * arrLen;
+  if (state.runDetailView.flowHistoryEnabled) {
+    tf.historyDriftTip.push({ x: ax1, y: ay1 });
+    if (tf.historyDriftTip.length > 20) tf.historyDriftTip.shift();
+    boundaryContacts.forEach((c) => {
+      tf.historyContact.push({ x: innerX + c[0] * innerW, y: innerY + c[1] * innerH });
+    });
+    if (tf.historyContact.length > 28) {
+      tf.historyContact = tf.historyContact.slice(-28);
+    }
+  } else {
+    tf.historyCentroid = [];
+    tf.historyDriftTip = [];
+    tf.historyContact = [];
+  }
+
+  if (state.runDetailView.flowHistoryEnabled) {
+    tf.historyCentroid.forEach((p, idx) => {
+      const alpha = ((idx + 1) / tf.historyCentroid.length) * 0.35;
+      ctx.fillStyle = `rgba(250, 204, 21, ${alpha.toFixed(3)})`;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 1.8, 0, Math.PI * 2);
+      ctx.fill();
+    });
+    ctx.strokeStyle = "rgba(56, 189, 248, 0.24)";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    tf.historyDriftTip.forEach((p, idx) => {
+      if (idx === 0) ctx.moveTo(p.x, p.y);
+      else ctx.lineTo(p.x, p.y);
+    });
+    ctx.stroke();
+    tf.historyContact.forEach((p, idx) => {
+      const alpha = ((idx + 1) / tf.historyContact.length) * 0.48;
+      ctx.fillStyle = `rgba(251, 146, 60, ${alpha.toFixed(3)})`;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 1.5, 0, Math.PI * 2);
+      ctx.fill();
+    });
+  }
   ctx.strokeStyle = "rgba(56, 189, 248, 0.72)";
   ctx.lineWidth = 1.35;
   ctx.beginPath();
@@ -4078,8 +4298,9 @@ function drawStructuralFlow2dCanvas(ctx, width, height, payload, _t, _coherence,
   ctx.font = "11px system-ui, Segoe UI, sans-serif";
   const _st = state.geometry3d.structuralFlowDerived;
   const _lbl = _st?.statusLabel || "—";
+  const ts = frame?.a?.timestamp ? ` · ${frame.a.timestamp}` : "";
   ctx.fillText(
-    `Integrity ${Math.round(coherence01 * 100)}% · ${_lbl} · inside manifold ${m.withinTolerance}/${m.totalSensors}`,
+    `Integrity ${Math.round(coherence01 * 100)}% · ${_lbl} · inside manifold ${m.withinTolerance}/${m.totalSensors}${ts}`,
     innerX + 6,
     innerY + 14,
   );
@@ -4125,14 +4346,44 @@ function renderStructuralFlow2dOnly(payload, viewportDims) {
   g.canvas2d = cv;
   const ctx = cv.getContext("2d", { alpha: false });
 
-  function drawFrame() {
+  function drawFrame(ts = performance.now()) {
     if (!g.canvas2d || !g.useCanvas2d) return;
+    const tf = g.temporalFlow || (g.temporalFlow = {});
+    const lastTs = Number(tf.lastTickMs || ts);
+    const dt = Math.max(0, Math.min(120, ts - lastTs));
+    tf.lastTickMs = ts;
+    const points = Array.isArray(tf.points) ? tf.points : [];
+    const speed = Math.max(0.1, Number(state.runDetailView.flowPlaybackSpeed || 1));
+    if (state.runDetailView.flowPlaybackMode === "replay" && points.length > 1) {
+      const stepPerSec = 0.4 * speed;
+      tf.localTimeSec = Number(tf.localTimeSec || 0) + (dt / 1000) * stepPerSec;
+      if (tf.localTimeSec >= points.length - 1) {
+        tf.replayHoldSec = Number(tf.replayHoldSec || 0) + dt / 1000;
+        if (tf.replayHoldSec > 0.9) {
+          tf.localTimeSec = 0;
+          tf.replayHoldSec = 0;
+          tf.historyCentroid = [];
+          tf.historyDriftTip = [];
+          tf.historyContact = [];
+          tf.contactPersistence = 0;
+        }
+      }
+    } else if (points.length) {
+      tf.localTimeSec = Math.max(0, points.length - 1);
+      tf.replayHoldSec = 0;
+    }
+    const frame = getStructuralFlowPlaybackFrame();
     const dims = geometryViewportDimensions();
     const w = Math.max(240, dims?.width || viewport.clientWidth || 240);
     const h = Math.max(240, dims?.height || viewport.clientHeight || 360);
-    drawStructuralFlow2dCanvas(ctx, w, h, payload, 0, g.flowCoherence, g.flowDriftN, g.flowInstN);
+    drawStructuralFlow2dCanvas(ctx, w, h, payload, frame);
     g.flowCoherence = typeof g.structuralFlowCoherence01 === "number" ? g.structuralFlowCoherence01 : g.flowCoherence;
     updateGeometryFlowPanel(payload, { structuralFlowCoherence01: g.structuralFlowCoherence01 });
+    if (frame.cursor !== tf.lastTrendCursor) {
+      tf.lastTrendCursor = frame.cursor;
+      setTrendPlaybackCursorMarker(frame.cursor, points.length);
+    }
+    g.frameId = window.requestAnimationFrame(drawFrame);
   }
 
   function resize2d() {
@@ -4141,10 +4392,12 @@ function renderStructuralFlow2dOnly(payload, viewportDims) {
     const h = Math.max(240, dims?.height || viewport.clientHeight || 360);
     cv.width = w;
     cv.height = h;
-    drawFrame();
+    const frame = getStructuralFlowPlaybackFrame();
+    drawStructuralFlow2dCanvas(ctx, w, h, payload, frame);
   }
 
   resize2d();
+  g.frameId = window.requestAnimationFrame(drawFrame);
   if (window.ResizeObserver) {
     const ro = new window.ResizeObserver(() => {
       scheduleGeometryResize(g, resize2d);
@@ -6090,6 +6343,8 @@ function renderRunDetailCharts(results) {
   const labels = results.map((r) => String(r.timestamp || r.persisted_at || r.result_id || ""));
   const driftValues = results.map((r) => structuralDriftFromResult(r) ?? 0);
   const compositeValues = results.map((r) => compositeInstabilityFromResult(r) ?? 0);
+  const pointRadius = labels.map(() => 0);
+  const pointHoverRadius = labels.map(() => 0);
   const sharedOptions = buildTrendChartOptions();
 
   const driftCtx = qs("#driftChart");
@@ -6117,8 +6372,8 @@ function renderRunDetailCharts(results) {
               borderWidth: 2,
               fill: true,
               tension: 0.3,
-              pointRadius: 0,
-              pointHoverRadius: 3,
+              pointRadius,
+              pointHoverRadius,
             },
           ],
         },
@@ -6149,8 +6404,8 @@ function renderRunDetailCharts(results) {
               borderWidth: 2,
               fill: true,
               tension: 0.3,
-              pointRadius: 0,
-              pointHoverRadius: 3,
+              pointRadius: labels.map(() => 0),
+              pointHoverRadius: labels.map(() => 0),
             },
           ],
         },
@@ -6158,6 +6413,20 @@ function renderRunDetailCharts(results) {
       });
     }
   }
+  setTrendPlaybackCursorMarker(-1, labels.length);
+}
+
+function setTrendPlaybackCursorMarker(idx, lengthHint = 0) {
+  const charts = [state.charts.drift, state.charts.composite];
+  charts.forEach((chart) => {
+    if (!chart?.data?.datasets?.[0]) return;
+    const len = chart.data.labels?.length || lengthHint || 0;
+    const radius = Array.from({ length: len }, (_v, i) => (i === idx ? 3 : 0));
+    const hover = Array.from({ length: len }, (_v, i) => (i === idx ? 4 : 0));
+    chart.data.datasets[0].pointRadius = radius;
+    chart.data.datasets[0].pointHoverRadius = hover;
+    chart.update("none");
+  });
 }
 
 function renderPhaseTimeline(results) {
@@ -6368,7 +6637,38 @@ function currentRangeSlice(resultsChronological) {
   return resultsChronological.slice(-n);
 }
 
+function buildStructuralFlowTimeline(resultsChronological) {
+  return (resultsChronological || []).map((r, idx) => ({
+    idx,
+    resultId: String(r?.result_id ?? ""),
+    timestamp: String(r?.timestamp || r?.persisted_at || ""),
+    driftN: Math.max(0, Math.min(1, Number(structuralDriftFromResult(r) ?? 0))),
+    instN: Math.max(0, Math.min(1, Number(compositeInstabilityFromResult(r) ?? 0))),
+  }));
+}
+
+function setFlowModeButtonState() {
+  qsa("[data-flow-mode]").forEach((btn) => {
+    const active = btn.getAttribute("data-flow-mode") === state.runDetailView.flowPlaybackMode;
+    btn.classList.toggle("active", active);
+  });
+}
+
+function syncStructuralFlowTimeline(points, latestResultId = null) {
+  const g = state.geometry3d;
+  const tf = g.temporalFlow || (g.temporalFlow = {});
+  tf.points = Array.isArray(points) ? points : [];
+  tf.latestResultId = latestResultId != null ? String(latestResultId) : null;
+  if (!Number.isFinite(tf.localTimeSec) || tf.localTimeSec < 0) tf.localTimeSec = 0;
+  if (state.runDetailView.flowPlaybackMode === "live") {
+    tf.localTimeSec = Math.max(0, tf.points.length - 1);
+  } else {
+    tf.localTimeSec = Math.min(Math.max(0, tf.localTimeSec), Math.max(0, tf.points.length - 1));
+  }
+}
+
 function renderRunDetailFromState() {
+  setFlowModeButtonState();
   const hasResults = state.runRecent.length > 0;
   const runDetailEmpty = qs("#runDetailEmpty");
   const geomPanel = qs(".geometry-panel");
@@ -6423,6 +6723,7 @@ function renderRunDetailFromState() {
     ? chronologicalFull.slice(0, Math.max(1, Number(state.demo.cursor || chronologicalFull.length)))
     : chronologicalFull;
   const ranged = currentRangeSlice(chronological);
+  const flowTimeline = buildStructuralFlowTimeline(ranged);
   const latest = chronological.length ? chronological[chronological.length - 1] : state.runRecent[0];
   const prev = chronological.length > 1 ? chronological[chronological.length - 2] : null;
   renderRunSignals(latest, prev);
@@ -6430,6 +6731,7 @@ function renderRunDetailFromState() {
   renderRunCurrentStateGauges(latest);
   setDemoPlaybackUI();
   renderRunDetailCharts(ranged);
+  syncStructuralFlowTimeline(flowTimeline, latest?.result_id);
   renderPhaseTimeline(ranged);
   renderOperatorMessages(ranged, { emphasize: state.demo.enabled });
   const filtered = filterRunResults(ranged);
@@ -6679,6 +6981,32 @@ function wireMobileNav() {
 
 async function wireEvents() {
   wireMobileNav();
+  setFlowModeButtonState();
+  const flowSpeedSelect = qs("#flowPlaybackSpeedSelect");
+  if (flowSpeedSelect) flowSpeedSelect.value = String(state.runDetailView.flowPlaybackSpeed || 1);
+  const flowHistoryToggle = qs("#flowHistoryToggle");
+  if (flowHistoryToggle) flowHistoryToggle.checked = Boolean(state.runDetailView.flowHistoryEnabled);
+  qsa("[data-flow-mode]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      state.runDetailView.flowPlaybackMode = String(btn.getAttribute("data-flow-mode") || "live");
+      const tf = state.geometry3d.temporalFlow || (state.geometry3d.temporalFlow = {});
+      if (state.runDetailView.flowPlaybackMode === "replay") {
+        tf.localTimeSec = 0;
+        tf.historyCentroid = [];
+        tf.historyDriftTip = [];
+        tf.historyContact = [];
+        tf.contactPersistence = 0;
+      }
+      setFlowModeButtonState();
+    });
+  });
+  qs("#flowPlaybackSpeedSelect")?.addEventListener("change", (e) => {
+    const next = Number.parseFloat(String(e.target?.value || "1"));
+    state.runDetailView.flowPlaybackSpeed = Number.isFinite(next) && next > 0 ? next : 1;
+  });
+  qs("#flowHistoryToggle")?.addEventListener("change", (e) => {
+    state.runDetailView.flowHistoryEnabled = Boolean(e.target?.checked);
+  });
   qs("#demoModeToggle")?.addEventListener("change", async (e) => {
     const enabled = Boolean(e.target?.checked);
     try {

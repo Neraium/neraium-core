@@ -2493,6 +2493,54 @@ input[type="file"] {
   border-top: none;
 }
 
+.geometry-flow-playback {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 4px 0 10px;
+}
+
+.geometry-flow-playback__modes {
+  display: inline-flex;
+  gap: 6px;
+}
+
+.flow-mode-btn {
+  border: 1px solid rgba(71, 85, 105, 0.9);
+  background: rgba(15, 23, 42, 0.72);
+  color: #cbd5e1;
+  border-radius: 999px;
+  padding: 5px 10px;
+  font-size: 11px;
+  font-weight: 650;
+  cursor: pointer;
+}
+
+.flow-mode-btn.active {
+  border-color: rgba(56, 189, 248, 0.58);
+  background: rgba(14, 116, 144, 0.26);
+  color: #d8f4ff;
+}
+
+.geometry-flow-playback__speed,
+.geometry-flow-playback__history {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: #9fb7d6;
+}
+
+.geometry-flow-playback__speed select {
+  background: rgba(8, 17, 32, 0.95);
+  color: #dbeafe;
+  border: 1px solid rgba(71, 85, 105, 0.85);
+  border-radius: 8px;
+  font-size: 11px;
+  padding: 4px 6px;
+}
+
 .geometry-flow-metrics {
   display: grid;
   grid-template-columns: 1fr 1fr;
