@@ -28,13 +28,36 @@ function apiUrl(path, params) {
 }
 
 async function fetchJson(path, opts) {
-  const res = await fetch(path, opts);
-  const body = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    const msg = body && body.detail ? String(body.detail) : `HTTP ${res.status}`;
-    throw new Error(msg);
+  let res;
+  try {
+    res = await fetch(path, opts);
+  } catch (err) {
+    const endpoint = String(path || "");
+    const reason = String((err && err.message) || err || "network error");
+    throw new Error(`Request failed: ${endpoint} (${reason})`);
   }
-  return body;
+  const endpoint = String(path || res.url || "");
+  const raw = await res.text();
+  let body = null;
+  if (raw) {
+    try {
+      body = JSON.parse(raw);
+    } catch (_err) {
+      body = null;
+    }
+  }
+  if (!res.ok) {
+    const detail =
+      body && typeof body === "object" && body.detail
+        ? String(body.detail)
+        : raw
+          ? raw.slice(0, 500)
+          : "empty response body";
+    throw new Error(`HTTP ${res.status} for ${endpoint}: ${detail}`);
+  }
+  if (!raw) return {};
+  if (body !== null) return body;
+  throw new Error(`Invalid JSON from ${endpoint}: ${raw.slice(0, 500)}`);
 }
 
 function toPretty(v) {

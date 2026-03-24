@@ -18,6 +18,7 @@ from uuid import uuid4
 
 import numpy as np
 from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Query, Request, UploadFile, status
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from starlette.responses import JSONResponse, Response
@@ -82,6 +83,9 @@ DEFAULT_MAX_REQUEST_BODY_BYTES = 50 * 1024 * 1024
 DEFAULT_UVICORN_H11_MAX_INCOMPLETE_EVENT_SIZE = 64 * 1024 * 1024
 DEFAULT_UPLOAD_STREAM_CHUNK_BYTES = 1024 * 1024
 DEFAULT_INGEST_JOB_MAX_ERROR_SAMPLES = 25
+DEFAULT_CORS_ALLOW_ORIGINS = (
+    "https://neraium-core.vercel.app",
+)
 
 
 def _configure_logging() -> None:
@@ -182,6 +186,13 @@ def _uvicorn_h11_max_incomplete_event_size() -> int:
         )
         return DEFAULT_UVICORN_H11_MAX_INCOMPLETE_EVENT_SIZE
     return max(value, DEFAULT_UVICORN_H11_MAX_INCOMPLETE_EVENT_SIZE)
+
+
+def _cors_allow_origins() -> list[str]:
+    raw = str(os.getenv("NERAIUM_CORS_ALLOW_ORIGINS") or "").strip()
+    if not raw:
+        return list(DEFAULT_CORS_ALLOW_ORIGINS)
+    return [x.strip() for x in raw.split(",") if x.strip()]
 
 
 class IngestRequest(BaseModel):
@@ -1551,6 +1562,14 @@ def create_app(
     )
 
     app = FastAPI(title="Neraium SII API", version="0.1.0")
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=_cors_allow_origins(),
+        allow_origin_regex=r"^https://neraium-core(?:-[a-z0-9-]+)?\.vercel\.app$",
+        allow_credentials=False,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
     app.add_middleware(MaxRequestBodySizeMiddleware, max_body_size=request_body_limit)
     persistence_available = _persistence_available(db_path)
     service_instance = service or StructuralMonitoringService(store=ResultStore(db_path=db_path))
