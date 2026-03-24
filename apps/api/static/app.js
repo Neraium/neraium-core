@@ -35,7 +35,16 @@ async function fetchJson(path, opts) {
   } catch (err) {
     const endpoint = String(path || "");
     const reason = String((err && err.message) || err || "network error");
-    throw new Error(`Request failed: ${method} ${endpoint} (${reason})`);
+    console.error("API network/preflight failure", {
+      endpoint,
+      method,
+      reason,
+      requestHeaders: opts && opts.headers ? opts.headers : null,
+      requestBody: opts && typeof opts.body === "string" ? opts.body.slice(0, 1000) : null,
+    });
+    throw new Error(
+      `Request failed: ${method} ${endpoint} (${reason}). Possible CORS/preflight rejection or network failure.`,
+    );
   }
   const endpoint = String(path || res.url || "");
   const raw = await res.text();
