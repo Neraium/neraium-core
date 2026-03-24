@@ -3,6 +3,7 @@ from __future__ import annotations
 import csv
 import io
 import logging
+import os
 from pathlib import Path
 from typing import Any, Callable, TextIO
 
@@ -129,12 +130,20 @@ class StructuralMonitoringService:
         transition_pressure = float(result.get("transition_pressure", 0.0))
         transition_state = str(result.get("transition_state", "NONE")).upper()
         state = str(result.get("state", "STABLE")).upper()
+        transition_aware_enabled = str(os.environ.get("NERAIUM_TRANSITION_AWARE", "1")).strip().lower() not in {
+            "0",
+            "false",
+            "no",
+            "off",
+        }
 
         if (
             drift >= float(self.pilot_config.drift_high_threshold)
             or state == "ALERT"
-            or transition_state == "SUSTAINED_TRANSITION"
-            or transition_pressure >= 1.15
+            or (
+                transition_aware_enabled
+                and (transition_state == "SUSTAINED_TRANSITION" or transition_pressure >= 1.15)
+            )
         ):
             return {
                 "risk_level": "HIGH",
@@ -148,8 +157,10 @@ class StructuralMonitoringService:
         if (
             drift >= float(self.pilot_config.drift_watch_threshold)
             or state == "WATCH"
-            or transition_state == "EMERGING_TRANSITION"
-            or transition_pressure >= 0.85
+            or (
+                transition_aware_enabled
+                and (transition_state == "EMERGING_TRANSITION" or transition_pressure >= 0.85)
+            )
         ):
             return {
                 "risk_level": "MEDIUM",
