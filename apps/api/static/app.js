@@ -60,6 +60,17 @@ async function fetchJson(path, opts) {
   throw new Error(`Invalid JSON from ${endpoint}: ${raw.slice(0, 500)}`);
 }
 
+async function fetchRecentResults(params) {
+  const recentParams = tenantScopeParams(params || {});
+  try {
+    return await fetchJson(apiUrl("/results", recentParams));
+  } catch (err) {
+    const message = String(err?.message || err || "");
+    if (!message.startsWith("HTTP 404")) throw err;
+    return await fetchJson(apiUrl("/results/recent", recentParams));
+  }
+}
+
 function toPretty(v) {
   if (v === null || v === undefined) return "-";
   if (typeof v === "number") return Number.isFinite(v) ? v.toFixed(2) : "-";
@@ -6091,11 +6102,9 @@ function renderDashboardRecent(results) {
 
 async function loadDashboard() {
   const runId = state.activeRun?.run_id || "";
-  const recentEnv = await fetchJson(apiUrl("/results/recent", tenantScopeParams({ run_id: runId, limit: 200 })));
-  const alertsEnv = await fetchJson(
-    apiUrl("/alerts", tenantScopeParams({ run_id: runId, limit: 20 }))
-  );
-  state.dashboardRecent = recentEnv.results || [];
+  const recentEnv = await fetchRecentResults({ run_id: runId, limit: 200 });
+  const alertsEnv = await fetchJson(apiUrl("/alerts", tenantScopeParams({ run_id: runId, limit: 20 })));
+  state.dashboardRecent = Array.isArray(recentEnv?.results) ? recentEnv.results : [];
   state.dashboardAlerts = alertsEnv.alerts || [];
   collectKnownSites(state.dashboardRecent);
   renderTenantControls();
@@ -6772,8 +6781,8 @@ async function loadRunDetail(runId) {
   const meta = qs("#runDetailMeta");
   if (title) title.textContent = `Run: ${run.name}`;
   if (meta) meta.textContent = `${run.run_id} · status=${run.status} · created=${run.created_at}`;
-  const recentEnv = await fetchJson(apiUrl("/results/recent", tenantScopeParams({ run_id: runId, limit: 1000 })));
-  state.runRecent = recentEnv.results || [];
+  const recentEnv = await fetchRecentResults({ run_id: runId, limit: 1000 });
+  state.runRecent = Array.isArray(recentEnv?.results) ? recentEnv.results : [];
   if (state.demo.enabled) {
     if (state.demo.activeRunId !== runId) {
       stopDemoPlayback();
