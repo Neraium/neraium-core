@@ -23,16 +23,24 @@ from pydantic import BaseModel, Field
 from starlette.responses import JSONResponse, Response
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
-from apps.api.integration import (
+from integration import (
     IntegrationMappingError,
     apply_integration_mapping,
     load_integration_config,
     resolve_customer_integration,
 )
-from apps.api.web import build_web_router
-from neraium_core.logging_utils import log_structured, summarize_exception_for_logs
-from neraium_core.service import StructuralMonitoringService
-from neraium_core.store import ResultStore
+from web import build_web_router
+from _core_imports import (
+    ResultStore,
+    StructuralMonitoringService,
+    log_structured,
+    infer_semantic_mapping,
+    parse_csv_sample_for_mapping,
+    resolve_mapping,
+    row_to_frame_kwargs,
+    validate_mapping,
+    summarize_exception_for_logs,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -2436,12 +2444,6 @@ def create_app(
     ) -> dict[str, Any]:
         """Infer semantic column roles from an arbitrary CSV header + sample rows."""
         _ = _resolve_customer_id(customer_id)
-        from neraium_core.csv_mapping import (
-            infer_semantic_mapping,
-            parse_csv_sample_for_mapping,
-            validate_mapping,
-        )
-
         headers, rows = parse_csv_sample_for_mapping(payload.csv_sample, max_rows=16)
         if not headers:
             raise HTTPException(
