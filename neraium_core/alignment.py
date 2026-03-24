@@ -25,6 +25,7 @@ from neraium_core.decision_layer import decision_output
 from neraium_core.directional import directional_metrics, lagged_correlation_matrix
 from neraium_core.early_warning import early_warning_metrics
 from neraium_core.entropy import interaction_entropy
+from neraium_core.experimental_analytics.hierarchy_analysis import analyze_hierarchy_cascade
 from neraium_core.experimental_analytics.constraint_analysis import analyze_constraint_lock_in
 from neraium_core.experimental_analytics.trajectory_analysis import classify_trajectory_path
 from neraium_core.experimental_analytics.horizon_analysis import estimate_risk_horizon
@@ -1144,6 +1145,13 @@ class StructuralEngine:
                 reversibility_classification=str(reversibility.get("classification", "")),
                 reversibility_score=float(reversibility_scores.get("locked_in_index", 0.0)),
             )
+            hierarchy_analysis = analyze_hierarchy_cascade(
+                sensor_names=valid_sensor_names,
+                subsystem=subsystem,
+                graph=graph,
+                causal_propagation=causal_prop,
+                counterfactual_guidance=counterfactual_guidance,
+                transition=transition_metrics,
             constraint_analysis = analyze_constraint_lock_in(
                 transition_pressure_history=list(self._transition_pressure_history),
                 shock_activity_history=list(self._shock_activity_history),
@@ -1177,6 +1185,7 @@ class StructuralEngine:
                     "transition": transition_metrics,
                     "counterfactual_guidance": counterfactual_guidance,
                     "trajectory_analysis": trajectory_analysis,
+                    "hierarchy_analysis": hierarchy_analysis,
                     "constraint_analysis": constraint_analysis,
                 }
             )
@@ -1219,6 +1228,16 @@ class StructuralEngine:
                     "observation": "Trajectory analysis unavailable because multivariate relational metrics were skipped.",
                 },
             }
+            analytics["hierarchy_analysis"] = {
+                "available": False,
+                "reason": "relational_metrics_skipped",
+                "origin_scope": "LOCAL",
+                "origin_subsystem": None,
+                "propagation_risk": "LOW",
+                "cascade_direction": [],
+                "localized_vs_global_score": 0.0,
+                "rationale": {
+                    "observation": "Hierarchy analysis unavailable because multivariate relational metrics were skipped.",
             analytics["constraint_analysis"] = {
                 "available": False,
                 "reason": "relational_metrics_skipped",
