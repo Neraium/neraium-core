@@ -14,6 +14,7 @@ from neraium_core.causal_graph import (
     causal_propagation_spread,
     causal_root_cause_chains,
 )
+from neraium_core.branching import derive_branching_analysis
 from neraium_core.data_quality import (
     compute_data_quality,
     data_quality_summary,
@@ -1504,6 +1505,11 @@ class StructuralEngine:
         msg, contrib = AttributionStage.explain(explain_components, str(result.get("state", "STABLE")))
         result["explanation"] = msg
         analytics["component_contributions"] = contrib
+        branching_analysis = derive_branching_analysis(
+            analytics.get("trajectory_analysis") if isinstance(analytics, dict) else None
+        )
+        if branching_analysis is not None:
+            analytics["branching_analysis"] = branching_analysis
         result["dominant_driver"] = (
             max(contrib.items(), key=lambda item: item[1])[0]
             if contrib
