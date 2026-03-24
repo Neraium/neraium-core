@@ -437,6 +437,237 @@ class StructuralEngine:
             return "EMERGING_TRANSITION"
         return "NONE"
 
+    def _counterfactual_guidance(
+        self,
+        *,
+        sensor_names: list[str],
+        corr_baseline: np.ndarray,
+        corr_recent: np.ndarray,
+        adjacency: np.ndarray,
+        graph: dict[str, float],
+        subsystem: dict[str, object],
+        spectral: dict[str, object],
+        transition_metrics: dict[str, float],
+    ) -> dict[str, object]:
+        """
+        Read-only counterfactual intervention analysis.
+
+        This layer explains which structural relationships are most associated
+        with current instability and which directional shifts (toward baseline
+        structure) would likely reduce transition pressure.
+        """
+        n = int(corr_recent.shape[0]) if corr_recent.ndim == 2 else 0
+        if n < 2:
+            return {
+                "available": False,
+                "reason": "insufficient_relational_structure",
+                "top_structural_break_contributors": [],
+                "top_stabilizing_directions": [],
+                "reversibility": {
+                    "classification": "REVERSIBLE",
+                    "scores": {
+                        "persistence": 0.0,
+                        "regime_novelty": 0.0,
+                        "fragmentation": 0.0,
+                        "drift_trend": 0.0,
+                        "locked_in_index": 0.0,
+                    },
+                    "observation": (
+                        "Current transition appears reversible with limited structural evidence "
+                        "of persistent lock-in."
+                    ),
+                },
+            }
+
+        delta = np.nan_to_num(np.asarray(corr_recent, dtype=float) - np.asarray(corr_baseline, dtype=float))
+        abs_delta = np.abs(delta)
+        max_edge_delta = float(np.max(abs_delta)) if abs_delta.size else 0.0
+        node_drift = np.sum(abs_delta, axis=1)
+        node_drift_norm = node_drift / (float(np.max(node_drift)) + 1e-9)
+
+        dominant_mode = np.asarray(spectral.get("dominant_eigenvector", []), dtype=float)
+        if dominant_mode.size == n:
+            mode_abs = np.abs(dominant_mode)
+            mode_abs = mode_abs / (float(np.max(mode_abs)) + 1e-9)
+        else:
+            mode_abs = np.zeros(n, dtype=float)
+        mode_rotation = self._clamp01(float(transition_metrics.get("dominant_mode_rotation", 0.0)))
+
+        clusters = subsystem.get("clusters") if isinstance(subsystem, dict) else []
+        cluster_map: dict[int, int] = {}
+        if isinstance(clusters, list):
+            for ci, members in enumerate(clusters):
+                if isinstance(members, list):
+                    for idx in members:
+                        try:
+                            ii = int(idx)
+                        except (TypeError, ValueError):
+                            continue
+                        if 0 <= ii < n:
+                            cluster_map[ii] = ci
+        subsystem_instability = self._clamp01(float(subsystem.get("max_instability", 0.0)) / 2.0)
+
+        contributors: list[dict[str, object]] = []
+        for i in range(n):
+            for j in range(i + 1, n):
+                base_ij = float(corr_baseline[i, j])
+                curr_ij = float(corr_recent[i, j])
+                d_ij = curr_ij - base_ij
+                d_abs = abs(d_ij)
+                if d_abs < 1e-8:
+                    continue
+
+                flip = 1.0 if (np.sign(base_ij) != np.sign(curr_ij) and abs(base_ij) > 0.05 and abs(curr_ij) > 0.05) else 0.0
+                weakened = abs(curr_ij) < abs(base_ij)
+                edge_delta_norm = d_abs / (max_edge_delta + 1e-9)
+                edge_node_term = 0.5 * float(node_drift_norm[i] + node_drift_norm[j])
+                edge_mode_term = 0.5 * float(mode_abs[i] + mode_abs[j]) * mode_rotation
+                same_cluster = cluster_map.get(i) == cluster_map.get(j) if cluster_map else False
+                edge_subsystem_term = subsystem_instability if same_cluster else 0.35 * subsystem_instability
+
+                score = (
+                    0.48 * edge_delta_norm
+                    + 0.20 * flip
+                    + 0.18 * edge_node_term
+                    + 0.08 * edge_mode_term
+                    + 0.06 * edge_subsystem_term
+                )
+                score = float(self._clamp01(score))
+
+                rel_a = sensor_names[i]
+                rel_b = sensor_names[j]
+                change_label = "weakened_coupling" if weakened else "strengthened_coupling"
+                if flip > 0.5:
+                    change_label = "sign_reversal"
+                observation = (
+                    f"Instability is most associated with {change_label.replace('_', ' ')} between {rel_a} and {rel_b}."
+                )
+                direction_text = (
+                    f"Recovery would likely require restoring baseline coherence between {rel_a} and {rel_b}."
+                    if weakened
+                    else f"Recovery would likely require reducing divergence from baseline coupling between {rel_a} and {rel_b}."
+                )
+                if flip > 0.5:
+                    direction_text = (
+                        f"Recovery would likely require restoring sign-consistent coupling between {rel_a} and {rel_b} toward baseline."
+                    )
+
+                contributors.append(
+                    {
+                        "relationship": f"{rel_a} <-> {rel_b}",
+                        "sensor_a": rel_a,
+                        "sensor_b": rel_b,
+                        "contributor_score": round(score, 4),
+                        "change_type": change_label,
+                        "observed_change": round(float(d_ij), 4),
+                        "observation": observation,
+                        "stabilizing_direction": direction_text,
+                        "evidence": {
+                            "baseline_correlation": round(base_ij, 4),
+                            "current_correlation": round(curr_ij, 4),
+                            "absolute_delta": round(d_abs, 4),
+                            "edge_flip": bool(flip > 0.5),
+                            "mode_rotation_weight": round(float(edge_mode_term), 4),
+                        },
+                    }
+                )
+
+        contributors.sort(key=lambda item: float(item.get("contributor_score", 0.0)), reverse=True)
+        top_contributors = contributors[:5]
+
+        transition_pressure = self._clamp01(float(transition_metrics.get("transition_pressure", 0.0)) / 1.35)
+        top_directions: list[dict[str, object]] = []
+        for rank, item in enumerate(top_contributors, start=1):
+            relief = self._clamp01(float(item.get("contributor_score", 0.0)) * (0.55 + 0.45 * transition_pressure))
+            top_directions.append(
+                {
+                    "rank": rank,
+                    "relationship": item.get("relationship"),
+                    "directional_change": item.get("stabilizing_direction"),
+                    "estimated_transition_relief": round(float(relief), 4),
+                    "observation": (
+                        "This directional structural shift is associated with lower drift and transition pressure in the current geometry."
+                    ),
+                }
+            )
+
+        if isinstance(clusters, list) and clusters:
+            largest = max(clusters, key=lambda members: len(members) if isinstance(members, list) else 0)
+            if isinstance(largest, list) and len(largest) >= 2:
+                names = [sensor_names[int(i)] for i in largest if isinstance(i, (int, np.integer)) and 0 <= int(i) < n]
+                if names:
+                    top_directions.append(
+                        {
+                            "rank": len(top_directions) + 1,
+                            "relationship": ", ".join(names),
+                            "directional_change": (
+                                f"Recovery would likely require restoring baseline connectivity coherence within subsystem [{', '.join(names)}]."
+                            ),
+                            "estimated_transition_relief": round(float(0.4 + 0.4 * subsystem_instability), 4),
+                            "observation": (
+                                "Subsystem fragmentation appears associated with current instability; improving internal coherence is directionally stabilizing."
+                            ),
+                        }
+                    )
+
+        pressure_hist = list(self._transition_pressure_history)
+        recent_press = pressure_hist[-min(5, len(pressure_hist)) :] if pressure_hist else []
+        persistence = self._clamp01((float(np.mean(recent_press)) if recent_press else 0.0) / TRANSITION_SUSTAINED_THRESHOLD)
+        novelty = self._clamp01(
+            max(
+                float(transition_metrics.get("regime_novelty", 0.0)),
+                float(transition_metrics.get("stable_manifold_novelty", 0.0)),
+            )
+        )
+        density = self._clamp01(float(graph.get("density", 0.0)) / 0.7)
+        connectivity = self._clamp01(float(graph.get("connectivity", 0.0)))
+        subsystem_count = float(subsystem.get("subsystem_count", 0.0))
+        subsystem_frag = self._clamp01((subsystem_count - 1.0) / 3.0)
+        fragmentation = self._clamp01(0.42 * (1.0 - connectivity) + 0.33 * (1.0 - density) + 0.25 * subsystem_frag)
+
+        drift_hist = list(self._drift_score_history)
+        trend_vals: list[float] = []
+        if len(drift_hist) >= 2:
+            tail = drift_hist[-min(5, len(drift_hist)) :]
+            trend_vals = [max(0.0, float(tail[k] - tail[k - 1])) for k in range(1, len(tail))]
+        drift_trend = self._clamp01(3.2 * (float(np.mean(trend_vals)) if trend_vals else 0.0))
+
+        locked_in_index = self._clamp01(
+            0.33 * persistence + 0.25 * novelty + 0.24 * fragmentation + 0.18 * drift_trend
+        )
+        if locked_in_index >= 0.68 or (persistence >= 0.75 and novelty >= 0.65 and fragmentation >= 0.55):
+            reversibility = "LOCKED_IN"
+            reversibility_observation = (
+                "Current transition appears structurally locked in: persistent transition pressure, regime novelty, and fragmentation are jointly elevated."
+            )
+        elif locked_in_index <= 0.38 and persistence < 0.55 and fragmentation < 0.5:
+            reversibility = "REVERSIBLE"
+            reversibility_observation = (
+                "Current transition appears structurally reversible: persistence and fragmentation remain limited."
+            )
+        else:
+            reversibility = "METASTABLE"
+            reversibility_observation = (
+                "Current transition appears metastable: partial recovery is plausible but structural pressure remains active."
+            )
+
+        return {
+            "available": True,
+            "top_structural_break_contributors": top_contributors,
+            "top_stabilizing_directions": top_directions[:5],
+            "reversibility": {
+                "classification": reversibility,
+                "scores": {
+                    "persistence": round(float(persistence), 4),
+                    "regime_novelty": round(float(novelty), 4),
+                    "fragmentation": round(float(fragmentation), 4),
+                    "drift_trend": round(float(drift_trend), 4),
+                    "locked_in_index": round(float(locked_in_index), 4),
+                },
+                "observation": reversibility_observation,
+            },
+        }
+
     def process_frame(self, frame: Dict) -> Dict:
         vector = self._vector_from_frame(frame)
 
@@ -748,6 +979,17 @@ class StructuralEngine:
             if dominant_mode.size:
                 self._dominant_mode_history.append(dominant_mode)
 
+            counterfactual_guidance = self._counterfactual_guidance(
+                sensor_names=valid_sensor_names,
+                corr_baseline=baseline_corr_used,
+                corr_recent=corr_recent,
+                adjacency=np.asarray(adjacency, dtype=float),
+                graph=graph,
+                subsystem=subsystem,
+                spectral=spectral,
+                transition_metrics=transition_metrics,
+            )
+
             analytics.update(
                 {
                     "valid_sensor_names": valid_sensor_names,
@@ -767,7 +1009,13 @@ class StructuralEngine:
                     "entropy": entropy_score,
                     "regime_drift": float(regime_drift),
                     "transition": transition_metrics,
+                    "counterfactual_guidance": counterfactual_guidance,
                 }
+            )
+            result["reversibility_classification"] = (
+                counterfactual_guidance.get("reversibility", {}).get("classification")
+                if isinstance(counterfactual_guidance, dict)
+                else None
             )
         else:
             result["regime_memory_state"] = {
@@ -777,6 +1025,25 @@ class StructuralEngine:
             }
             result["transition_pressure"] = 0.0
             result["transition_state"] = "NONE"
+            analytics["counterfactual_guidance"] = {
+                "available": False,
+                "reason": "relational_metrics_skipped",
+                "top_structural_break_contributors": [],
+                "top_stabilizing_directions": [],
+                "reversibility": {
+                    "classification": "REVERSIBLE",
+                    "scores": {
+                        "persistence": 0.0,
+                        "regime_novelty": 0.0,
+                        "fragmentation": 0.0,
+                        "drift_trend": 0.0,
+                        "locked_in_index": 0.0,
+                    },
+                    "observation": (
+                        "Counterfactual guidance unavailable because multivariate relational metrics were skipped."
+                    ),
+                },
+            }
 
         # Per-component confidence: down-weight or fully suppress evidence when the
         # data quality gate indicates unreliable inputs. Production alerts should
