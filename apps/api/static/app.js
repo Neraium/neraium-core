@@ -2270,9 +2270,9 @@ function structuralProjectionCaption(payload) {
 
 function structuralMetricDefinitionsFootnote() {
   return (
-    "Integrity: blended field score. Containment: energy in the core band. Drift: net flow magnitude (arrow direction). " +
-    "Instability: engine composite. Link agreement: share of links under drift threshold. " +
-    "Boundary pressure: energy near the dashed edge. Inside/outside manifold: sensor tolerance counts."
+    "Integrity Score: blended field read used by the visualization and panel. Containment: energy held inside the manifold core. " +
+    "Drift: net flow magnitude and direction (arrow). Instability: composite breakup signal. Link Agreement: links under drift threshold. " +
+    "Boundary Pressure: energy at the manifold edge. Inside/Outside Manifold: sensor counts."
   );
 }
 
@@ -2866,6 +2866,8 @@ function updateGeometryFlowPanel(payload, opts) {
   const elInManifold = qs("#geometryInsideManifold");
   const elOutManifold = qs("#geometryOutsideManifold");
   const elPressure = qs("#geometryBoundaryPressure");
+  const elStatusText = qs("#geometryFlowStatusText");
+  const elLinkInline = qs("#geometryFlowLinkAgreeInline");
 
   if (!payload || !payload.available) {
     if (cohEl) {
@@ -2894,6 +2896,8 @@ function updateGeometryFlowPanel(payload, opts) {
       elInManifold,
       elOutManifold,
       elPressure,
+      elStatusText,
+      elLinkInline,
     ].forEach((el) => {
       if (el) el.textContent = "—";
     });
@@ -2910,8 +2914,10 @@ function updateGeometryFlowPanel(payload, opts) {
   }
 
   const mBase = computeStructuralFlowMetrics(payload);
-  const derived =
-    g?.useCanvas2d && g.structuralFlowDerived ? g.structuralFlowDerived : deriveStructuralFlowDerivedFallback(payload);
+  if (!g?.useCanvas2d || !g.structuralFlowDerived) {
+    g.structuralFlowDerived = deriveStructuralFlowDerivedFallback(payload);
+  }
+  const derived = g.structuralFlowDerived;
   let displayIntegrity = derived.integrityScore;
   if (opts?.structuralFlowCoherence01 != null && Number.isFinite(opts.structuralFlowCoherence01)) {
     displayIntegrity = opts.structuralFlowCoherence01;
@@ -2926,8 +2932,7 @@ function updateGeometryFlowPanel(payload, opts) {
 
   const c01 = derived.containmentScore;
   if (elContain) elContain.textContent = `${Math.round(c01 * 100)}%`;
-  if (elContainHint)
-    elContainHint.textContent = structuralFlowBandHint(c01, 0.45, 0.72, "Low", "Mixed", "Stable");
+  if (elContainHint) elContainHint.textContent = structuralFlowContainmentHint(derived);
   setStructuralFlowMicrobar(elContainBar, c01);
 
   const d01 = derived.driftMag01;
@@ -2955,8 +2960,9 @@ function updateGeometryFlowPanel(payload, opts) {
   const l01 = derived.linkAgreementScore;
   if (elLink) elLink.textContent = `${Math.round(l01 * 100)}%`;
   if (elLinkHint)
-    elLinkHint.textContent = structuralFlowBandHint(l01, 0.45, 0.75, "Weak", "Mixed", "Strong");
+    elLinkHint.textContent = structuralFlowBandHint(l01, 0.45, 0.75, "Low", "Moderate", "Link Agreement");
   setStructuralFlowMicrobar(elLinkBar, l01);
+  if (elLinkInline) elLinkInline.textContent = `${Math.round(l01 * 100)}%`;
 
   if (elInManifold) elInManifold.textContent = String(derived.insideCount);
   if (elOutManifold) elOutManifold.textContent = String(derived.outsideCount);
@@ -2968,6 +2974,10 @@ function updateGeometryFlowPanel(payload, opts) {
   if (assessEl) {
     assessEl.textContent = derived.statusLabel;
     assessEl.title = derived.statusDetail;
+  }
+  if (elStatusText) {
+    elStatusText.textContent = derived.statusLabel;
+    elStatusText.title = derived.statusDetail;
   }
   if (engineEl) {
     engineEl.textContent = toPretty(mBase.engineState);
@@ -3402,6 +3412,15 @@ function structuralFlowBandHint(v, t0, t1, a, b, c) {
   return b;
 }
 
+function structuralFlowContainmentHint(derived) {
+  const outside = Number(derived?.outsideCount) || 0;
+  const pressure = Number(derived?.boundaryPressureScore) || 0;
+  if (outside === 0 && pressure < 0.24) return "Inside Manifold";
+  if (outside > 0 && pressure >= 0.38) return "Outside Manifold";
+  if (pressure >= 0.3) return "Boundary Pressure";
+  return "Inside Manifold";
+}
+
 /**
  * Flow state label for the side panel — driven by the same containment / drift / instability / escape signals as the canvas.
  */
@@ -3409,28 +3428,28 @@ function deriveStructuralFlowFieldStatus(d) {
   const { integrity01, containment01, driftMag01, instN, escapeRatio, boundaryPressure01 } = d;
   if (escapeRatio > 0.4 || containment01 < 0.36) {
     return {
-      label: "Escaping boundary",
+      label: "Escaping Boundary",
       detail: "Iso-contour or energy is leaving the valid manifold (orange/red segments).",
       tone: "HIGH",
     };
   }
   if (integrity01 < 0.3 && driftMag01 > 0.52 && instN > 0.48) {
     return {
-      label: "Unstable drift",
+      label: "Unstable Drift",
       detail: "Strong net flow and high fragmentation relative to baseline.",
       tone: "HIGH",
     };
   }
   if (boundaryPressure01 > 0.44 && containment01 < 0.55) {
     return {
-      label: "Boundary stress",
+      label: "Under Pressure",
       detail: "Edge-weighted energy is high; contour is compressing the border.",
       tone: "MEDIUM",
     };
   }
   if (boundaryPressure01 > 0.26 && driftMag01 > 0.36) {
     return {
-      label: "Under pressure",
+      label: "Under Pressure",
       detail: "Net drift and edge band energy are elevated; watch the dashed boundary.",
       tone: "MEDIUM",
     };

@@ -2451,6 +2451,14 @@ input[type="file"] {
   white-space: nowrap;
 }
 
+.geometry-flow-legend--compact {
+  margin: 0 0 8px;
+  padding: 6px 8px;
+  border: 1px solid rgba(48, 71, 102, 0.45);
+  border-radius: 8px;
+  background: rgba(6, 12, 22, 0.35);
+}
+
 .geometry-flow-legend__swatch {
   display: inline-block;
   width: 10px;
@@ -2600,6 +2608,12 @@ input[type="file"] {
   border: 1px solid rgba(45, 180, 200, 0.22);
   background: linear-gradient(150deg, rgba(10, 38, 48, 0.5), rgba(6, 14, 26, 0.94));
   margin-bottom: 6px;
+}
+
+.geometry-flow-status {
+  font-size: 11px;
+  font-weight: 650;
+  color: #cbd5e1;
 }
 
 .geometry-flow-label {
