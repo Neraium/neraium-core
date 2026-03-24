@@ -3952,17 +3952,22 @@ function drawStructuralFlow2dCanvas(ctx, width, height, payload, _t, _coherence,
     if (primarySegIdx.has(si)) primarySegs.push(s);
     else secondarySegs.push(s);
   });
+  const clamp01 = (value) => Math.max(0, Math.min(1, value));
   for (let i = 0; i < NX; i += 1) {
     for (let j = 0; j < NY; j += 1) {
-      let eC = (E[i][j] + E[i + 1][j] + E[i + 1][j + 1] + E[i][j + 1]) / 4;
-      if (!largestMask[i][j]) eC *= 0.08;
-      const en = (eC - minE) / spanE;
-      const edgePressure = largestMask[i][j] ? 0.14 + 0.26 * Math.max(0, Math.min(1, (eC - T) / Math.max(spanE * 0.9, 1e-9))) : 0.03;
-      ctx.fillStyle = structuralFlowHeatmapRgba(en * 0.48, edgePressure);
+      const inPrimaryMask = largestMask[i][j];
+      const cellEnergy = (E[i][j] + E[i + 1][j] + E[i + 1][j + 1] + E[i][j + 1]) / 4;
+      const tintedEnergy = inPrimaryMask ? cellEnergy : cellEnergy * 0.08;
+      const energyNorm = (tintedEnergy - minE) / spanE;
+      const thresholdNorm = clamp01((tintedEnergy - T) / Math.max(spanE * 0.9, 1e-9));
+      const edgePressure = inPrimaryMask ? 0.14 + 0.26 * thresholdNorm : 0.03;
       const px0 = innerX + (i / NX) * innerW;
       const py0 = innerY + (j / NY) * innerH;
       const pw = innerW / NX;
       const ph = innerH / NY;
+
+      // One final per-cell render path: assign tint once, then paint once.
+      ctx.fillStyle = structuralFlowHeatmapRgba(energyNorm * 0.48, edgePressure);
       ctx.fillRect(px0, py0, pw + 0.5, ph + 0.5);
     }
   }
