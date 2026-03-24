@@ -7,15 +7,16 @@ function qsa(sel) {
 }
 
 const PRODUCTION_API_BASE_URL = "https://neraium-core-production.up.railway.app";
+const LOCAL_DEV_HOSTS = new Set(["localhost", "127.0.0.1"]);
 
 function resolveApiBaseUrl() {
-  const host = window.location.hostname;
-  const isLocalhost = host === "localhost" || host === "127.0.0.1";
-  return isLocalhost ? window.location.origin : PRODUCTION_API_BASE_URL;
+  const host = String(window.location.hostname || "").toLowerCase();
+  return LOCAL_DEV_HOSTS.has(host) ? window.location.origin : PRODUCTION_API_BASE_URL;
 }
 
 function apiUrl(path, params) {
-  const u = new URL(path, resolveApiBaseUrl());
+  const normalizedPath = String(path || "").replace(/^\/api(?=\/|$)/, "") || "/";
+  const u = new URL(normalizedPath, resolveApiBaseUrl());
   if (params) {
     Object.entries(params).forEach(([k, v]) => {
       if (v !== undefined && v !== null && String(v).length > 0) {
