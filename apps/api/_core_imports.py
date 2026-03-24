@@ -4,9 +4,11 @@ import sys
 from pathlib import Path
 
 
-# Railway runs `uvicorn main:app` from `apps/api`. Ensure repo root is importable
-# without requiring PYTHONPATH configuration.
-_REPO_ROOT = Path(__file__).resolve().parents[2]
+# Ensure the local repo root is importable for monorepo development while
+# remaining safe when this file is deployed at a shallow path (e.g. /app).
+_HERE = Path(__file__).resolve().parent
+_repo_root_candidate = _HERE.parent.parent if len(_HERE.parents) >= 2 else _HERE
+_REPO_ROOT = _repo_root_candidate if (_repo_root_candidate / "neraium_core").is_dir() else _HERE
 _repo_root_str = str(_REPO_ROOT)
 if _repo_root_str not in sys.path:
     sys.path.insert(0, _repo_root_str)
