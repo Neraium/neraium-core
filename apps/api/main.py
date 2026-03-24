@@ -1576,15 +1576,15 @@ def create_app(
     )
 
     app = FastAPI(title="Neraium SII API", version="0.1.0")
+    app.add_middleware(MaxRequestBodySizeMiddleware, max_body_size=request_body_limit)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=_cors_allow_origins(),
         allow_origin_regex=r"^https://neraium-core(?:-[a-z0-9-]+)?\.vercel\.app$",
         allow_credentials=True,
         allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-        allow_headers=["Content-Type", "Authorization", "X-API-Key"],
+        allow_headers=["Content-Type", "Authorization", "X-API-Key", "Accept"],
     )
-    app.add_middleware(MaxRequestBodySizeMiddleware, max_body_size=request_body_limit)
     persistence_available = _persistence_available(db_path)
     service_instance = service or StructuralMonitoringService(store=ResultStore(db_path=db_path))
     integration_config_path = os.getenv("NERAIUM_INTEGRATION_CONFIG_PATH")
