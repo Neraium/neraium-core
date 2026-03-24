@@ -87,6 +87,17 @@ DEFAULT_CORS_ALLOW_ORIGINS = (
     "https://neraium-core.vercel.app",
     "https://neraium-core-production.up.railway.app",
 )
+DEFAULT_CORS_ALLOW_HEADERS = (
+    "Content-Type",
+    "Authorization",
+    "X-API-Key",
+    "Accept",
+    # Browser tracing stacks (Sentry/OpenTelemetry) can attach these automatically.
+    "baggage",
+    "sentry-trace",
+    "traceparent",
+    "tracestate",
+)
 
 
 def _configure_logging() -> None:
@@ -196,6 +207,19 @@ def _cors_allow_origins() -> list[str]:
     for origin in [*DEFAULT_CORS_ALLOW_ORIGINS, *configured]:
         if origin and origin not in merged:
             merged.append(origin)
+    return merged
+
+
+def _cors_allow_headers() -> list[str]:
+    raw = str(os.getenv("NERAIUM_CORS_ALLOW_HEADERS") or "").strip()
+    configured = [x.strip() for x in raw.split(",") if x.strip()] if raw else []
+    merged: list[str] = []
+    seen: set[str] = set()
+    for header in [*DEFAULT_CORS_ALLOW_HEADERS, *configured]:
+        normalized = header.lower() if header else ""
+        if header and normalized not in seen:
+            merged.append(header)
+            seen.add(normalized)
     return merged
 
 
@@ -1583,7 +1607,7 @@ def create_app(
         allow_origin_regex=r"^https://neraium-core(?:-[a-z0-9-]+)?\.vercel\.app$",
         allow_credentials=True,
         allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-        allow_headers=["Content-Type", "Authorization", "X-API-Key", "Accept"],
+        allow_headers=_cors_allow_headers(),
     )
     persistence_available = _persistence_available(db_path)
     service_instance = service or StructuralMonitoringService(store=ResultStore(db_path=db_path))
