@@ -543,10 +543,10 @@
                 Relationship geometry loads with this run.
               </p>
               <div id="geometryFlowLegend" class="geometry-flow-legend" aria-label="Flow visualization legend">
-                <span class="geometry-flow-legend__item"><i class="geometry-flow-legend__swatch geometry-flow-legend__swatch--cyan"></i>Cyan field</span>
-                <span class="geometry-flow-legend__item"><i class="geometry-flow-legend__swatch geometry-flow-legend__swatch--amber"></i>Edge pressure</span>
-                <span class="geometry-flow-legend__item"><i class="geometry-flow-legend__swatch geometry-flow-legend__swatch--red"></i>Escape / breach</span>
-                <span class="geometry-flow-legend__item"><i class="geometry-flow-legend__swatch geometry-flow-legend__swatch--arrow"></i>Net drift</span>
+                <span class="geometry-flow-legend__item"><i class="geometry-flow-legend__swatch geometry-flow-legend__swatch--cyan"></i>Blue/cyan: stable / contained</span>
+                <span class="geometry-flow-legend__item"><i class="geometry-flow-legend__swatch geometry-flow-legend__swatch--amber"></i>Yellow/orange: pressure</span>
+                <span class="geometry-flow-legend__item"><i class="geometry-flow-legend__swatch geometry-flow-legend__swatch--red"></i>Red: escape / breach</span>
+                <span class="geometry-flow-legend__item"><i class="geometry-flow-legend__swatch geometry-flow-legend__swatch--arrow"></i>Arrow: net drift</span>
               </div>
             </div>
             <p id="geometryProjectionNote" class="subtitle geometry-meta geometry-meta-flow">
@@ -579,8 +579,9 @@
               </div>
               <aside id="geometryDetails" class="geometry-details geometry-details--flow">
                 <div class="geometry-flow-hero">
-                  <span id="geometryIntegrityLabel" class="geometry-flow-label">Integrity score</span>
+                  <span id="geometryIntegrityLabel" class="geometry-flow-label">Integrity Score</span>
                   <span id="geometryCoherence" class="geometry-flow-value" title="">—</span>
+                  <span id="geometryFlowStatusText" class="geometry-flow-status">—</span>
                 </div>
                 <div class="geometry-flow-metrics" id="geometryFlowMetrics">
                   <div class="geometry-flow-metric">
@@ -618,15 +619,25 @@
                   </div>
                 </div>
                 <p class="geometry-flow-manifold-line">
-                  <span class="metric-k">Sensors</span>
+                  <span class="metric-k">Inside Manifold</span>
                   <span class="geometry-flow-manifold-line__v"
-                    ><span id="geometryInsideManifold">—</span> inside manifold ·
-                    <span id="geometryOutsideManifold">—</span> outside</span
+                    ><span id="geometryInsideManifold">—</span></span
                   >
+                  <span class="metric-k">Outside Manifold</span>
+                  <span class="geometry-flow-manifold-line__v"><span id="geometryOutsideManifold">—</span></span>
                   <span class="geometry-flow-manifold-line__sep" aria-hidden="true">·</span>
-                  <span class="metric-k">Edge pressure</span>
+                  <span class="metric-k">Boundary Pressure</span>
                   <span id="geometryBoundaryPressure" class="geometry-flow-manifold-line__v" title="">—</span>
+                  <span class="geometry-flow-manifold-line__sep" aria-hidden="true">·</span>
+                  <span class="metric-k">Link Agreement</span>
+                  <span id="geometryFlowLinkAgreeInline" class="geometry-flow-manifold-line__v">—</span>
                 </p>
+                <div class="geometry-flow-legend geometry-flow-legend--compact" aria-label="Interpretation legend">
+                  <span class="geometry-flow-legend__item"><i class="geometry-flow-legend__swatch geometry-flow-legend__swatch--cyan"></i>Blue/cyan: stable/contained</span>
+                  <span class="geometry-flow-legend__item"><i class="geometry-flow-legend__swatch geometry-flow-legend__swatch--amber"></i>Yellow/orange: pressure</span>
+                  <span class="geometry-flow-legend__item"><i class="geometry-flow-legend__swatch geometry-flow-legend__swatch--red"></i>Red: escape/breach</span>
+                  <span class="geometry-flow-legend__item"><i class="geometry-flow-legend__swatch geometry-flow-legend__swatch--arrow"></i>Arrow: net drift</span>
+                </div>
                 <div class="geometry-run-metrics" id="geometryRunMetrics">
                   <div class="geometry-metric-row"><span class="metric-k">Flow state</span><span id="geometryStructuralAssessment" class="metric-v" title="">—</span></div>
                   <div class="geometry-metric-row"><span class="metric-k">Engine phase</span><span id="geometryEnginePhase" class="metric-v" title="">—</span></div>
