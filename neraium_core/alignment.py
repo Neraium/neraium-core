@@ -24,6 +24,7 @@ from neraium_core.decision_layer import decision_output
 from neraium_core.directional import directional_metrics, lagged_correlation_matrix
 from neraium_core.early_warning import early_warning_metrics
 from neraium_core.entropy import interaction_entropy
+from neraium_core.experimental_analytics.trajectory_analysis import classify_trajectory_path
 from neraium_core.forecast_models import forecast_next, time_to_threshold_ar1
 from neraium_core.forecasting import instability_trend, time_to_instability
 from neraium_core.geometry import (
@@ -126,6 +127,9 @@ class StructuralEngine:
         self._prev_spectral_radius: float | None = None
         self._shock_boost_steps_remaining: int = 0
         self._shock_refractory_steps: int = 0
+        self._subsystem_instability_history: deque[float] = deque(maxlen=TRANSITION_MEMORY_WINDOW)
+        self._regime_novelty_history: deque[float] = deque(maxlen=TRANSITION_MEMORY_WINDOW)
+        self._shock_activity_history: deque[float] = deque(maxlen=TRANSITION_MEMORY_WINDOW)
         self.transition_aware_enabled: bool = _env_enabled("NERAIUM_TRANSITION_AWARE", default="1")
 
         # Drift-score threshold calibration (watch/alert).
@@ -170,6 +174,9 @@ class StructuralEngine:
         self._prev_spectral_radius = None
         self._shock_boost_steps_remaining = 0
         self._shock_refractory_steps = 0
+        self._subsystem_instability_history.clear()
+        self._regime_novelty_history.clear()
+        self._shock_activity_history.clear()
 
     def lock_baseline(self, locked: bool = True) -> None:
         """Lock or unlock baseline. When locked, rolling baseline stops adapting."""
@@ -1119,6 +1126,21 @@ class StructuralEngine:
                 spectral=spectral,
                 transition_metrics=transition_metrics,
             )
+            reversibility = counterfactual_guidance.get("reversibility", {}) if isinstance(counterfactual_guidance, dict) else {}
+            reversibility_scores = reversibility.get("scores", {}) if isinstance(reversibility, dict) else {}
+
+            self._subsystem_instability_history.append(float(subsystem.get("max_instability", 0.0)))
+            self._regime_novelty_history.append(float(transition_metrics.get("regime_novelty", 0.0)))
+            self._shock_activity_history.append(float(transition_metrics.get("shock_triggered", 0.0)))
+            trajectory_analysis = classify_trajectory_path(
+                drift_history=list(self._drift_score_history),
+                transition_pressure_history=list(self._transition_pressure_history),
+                subsystem_instability_history=list(self._subsystem_instability_history),
+                regime_novelty_history=list(self._regime_novelty_history),
+                shock_activity_history=list(self._shock_activity_history),
+                reversibility_classification=str(reversibility.get("classification", "")),
+                reversibility_score=float(reversibility_scores.get("locked_in_index", 0.0)),
+            )
 
             analytics.update(
                 {
@@ -1140,6 +1162,7 @@ class StructuralEngine:
                     "regime_drift": float(regime_drift),
                     "transition": transition_metrics,
                     "counterfactual_guidance": counterfactual_guidance,
+                    "trajectory_analysis": trajectory_analysis,
                 }
             )
             result["reversibility_classification"] = (
@@ -1172,6 +1195,13 @@ class StructuralEngine:
                     "observation": (
                         "Counterfactual guidance unavailable because multivariate relational metrics were skipped."
                     ),
+                },
+            }
+            analytics["trajectory_analysis"] = {
+                "dominant_path": "METASTABLE",
+                "path_scores": {"stabilizing": 0.3333, "metastable": 0.3334, "diverging": 0.3333},
+                "rationale": {
+                    "observation": "Trajectory analysis unavailable because multivariate relational metrics were skipped.",
                 },
             }
 
