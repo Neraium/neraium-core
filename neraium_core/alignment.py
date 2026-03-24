@@ -116,6 +116,17 @@ class StructuralEngine:
         self._dominant_mode_history: deque[np.ndarray] = deque(maxlen=TRANSITION_MEMORY_WINDOW)
         self._stable_manifold_corr: Optional[np.ndarray] = None
         self._low_transition_activity_streak: int = 0
+        self._last_corr_recent: Optional[np.ndarray] = None
+        self._transition_pressure_ema: float = 0.0
+        self._prev_stable_novelty: float = 0.0
+        self._prev_regime_novelty: float = 0.0
+        self._corr_jump_history: deque[float] = deque(maxlen=24)
+        self._edge_flip_history: deque[float] = deque(maxlen=24)
+        self._spectral_jump_history: deque[float] = deque(maxlen=24)
+        self._prev_spectral_radius: float | None = None
+        self._shock_boost_steps_remaining: int = 0
+        self._shock_refractory_steps: int = 0
+        self.transition_aware_enabled: bool = _env_enabled("NERAIUM_TRANSITION_AWARE", default="1")
 
         # Drift-score threshold calibration (watch/alert).
         self._drift_score_history: deque[float] = deque(maxlen=120)
@@ -148,6 +159,17 @@ class StructuralEngine:
         self._composite_watch_alert_thresholds = None
         self._baseline_drift_score_samples.clear()
         self._baseline_composite_score_samples.clear()
+        self._last_corr_recent = None
+        self._transition_pressure_ema = 0.0
+        self._low_transition_activity_streak = 0
+        self._prev_stable_novelty = 0.0
+        self._prev_regime_novelty = 0.0
+        self._corr_jump_history.clear()
+        self._edge_flip_history.clear()
+        self._spectral_jump_history.clear()
+        self._prev_spectral_radius = None
+        self._shock_boost_steps_remaining = 0
+        self._shock_refractory_steps = 0
 
     def lock_baseline(self, locked: bool = True) -> None:
         """Lock or unlock baseline. When locked, rolling baseline stops adapting."""
@@ -337,6 +359,7 @@ class StructuralEngine:
         regime_distance: float | None,
         adjacency: np.ndarray,
         dominant_mode: np.ndarray,
+        spectral_radius_value: float,
     ) -> dict[str, float]:
         drift_hist = list(self._drift_score_history)
         drift_delta = 0.0
@@ -346,8 +369,8 @@ class StructuralEngine:
         if len(drift_hist) >= 3:
             prev_delta = float(drift_hist[-2] - drift_hist[-3])
             drift_accel = max(0.0, drift_delta - prev_delta)
-        short_horizon_drift = self._clamp01(0.55 * drift_delta + 0.45 * max(0.0, drift_score - 0.45))
-        acceleration = self._clamp01(drift_accel * 1.8 + max(0.0, drift_delta - 0.12))
+        short_horizon_drift = self._clamp01(0.72 * drift_delta + 0.28 * max(0.0, drift_score - 0.55))
+        acceleration = self._clamp01(drift_accel * 2.4 + max(0.0, drift_delta - 0.09))
 
         stable_novelty = 0.0
         if self._stable_manifold_corr is not None and self._stable_manifold_corr.shape == corr_recent.shape:
@@ -383,38 +406,123 @@ class StructuralEngine:
                     alignment = abs(float(np.dot(prev_mode, dominant_mode) / (prev_norm * curr_norm)))
                     dominant_mode_rotation = self._clamp01(1.0 - alignment)
 
-        dynamic_activity = float(
-            np.mean([short_horizon_drift, acceleration, edge_flip_rate, dominant_mode_rotation])
+        corr_jump_raw = 0.0
+        corr_spike = 0.0
+        if self._last_corr_recent is not None and self._last_corr_recent.shape == corr_recent.shape:
+            corr_jump_raw = structural_drift(corr_recent, self._last_corr_recent, norm="fro")
+            corr_spike = self._clamp01(max(0.0, corr_jump_raw - 0.06) / 0.26)
+
+        stable_novelty_delta = max(0.0, stable_novelty - float(self._prev_stable_novelty))
+        regime_novelty_delta = max(0.0, regime_novelty - float(self._prev_regime_novelty))
+        novelty_spike = self._clamp01(2.2 * stable_novelty_delta + 1.6 * regime_novelty_delta)
+        spike_term = self._clamp01(0.65 * corr_spike + 0.35 * novelty_spike)
+
+        dynamic_activity = float(np.mean([acceleration, spike_term, edge_flip_rate, dominant_mode_rotation]))
+        novelty_activation = 0.08 + 0.92 * dynamic_activity
+
+        # Emphasize active transition kinetics (acceleration/spikes) over static
+        # degraded level components. Context terms keep broad-domain sensitivity
+        # but with lower persistence bias.
+        impulse = (
+            0.46 * acceleration
+            + 0.34 * spike_term
+            + 0.08 * edge_flip_rate
+            + 0.07 * dominant_mode_rotation
+            + 0.05 * short_horizon_drift
         )
-        novelty_activation = 0.2 + 0.8 * dynamic_activity
-        base_pressure = (
-            0.23 * short_horizon_drift
-            + 0.17 * acceleration
-            + 0.21 * stable_novelty * novelty_activation
-            + 0.16 * regime_novelty * novelty_activation
-            + 0.11 * edge_flip_rate
-            + 0.12 * dominant_mode_rotation
-        ) * 2.2
-        # Transition pressure should represent active departure, not just being in a
-        # chronically degraded but now stable structure. We therefore damp pressure
-        # when dynamic transition activity is low and progressively decay pressure
-        # if low activity persists.
+        context = (
+            0.04 * stable_novelty * novelty_activation
+            + 0.03 * regime_novelty * novelty_activation
+        )
+        raw_pressure = (impulse + context) * 2.85
+        self._transition_pressure_ema = 0.20 * self._transition_pressure_ema + 0.80 * raw_pressure
+
+        # Strongly decay transition pressure when no active change is observed,
+        # so chronically bad-but-steady states do not remain transition-hot.
         quasi_steady = (
             drift_delta < 0.03
-            and acceleration < 0.03
-            and edge_flip_rate < 0.08
-            and dominant_mode_rotation < 0.08
+            and acceleration < 0.05
+            and spike_term < 0.08
+            and edge_flip_rate < 0.09
+            and dominant_mode_rotation < 0.09
         )
         if quasi_steady:
             self._low_transition_activity_streak += 1
         else:
             self._low_transition_activity_streak = 0
-        streak_decay = 1.0 / (1.0 + 0.18 * float(self._low_transition_activity_streak))
-        pressure = base_pressure * (0.25 + 0.75 * dynamic_activity) * streak_decay
+        streak_decay = 0.74 ** min(self._low_transition_activity_streak, 8)
+        activity_gate = 0.12 + 1.05 * dynamic_activity
+        pressure = self._transition_pressure_ema * activity_gate * streak_decay
+        if acceleration < 0.08 and spike_term < 0.1:
+            residual_cap = 0.22 * (short_horizon_drift + edge_flip_rate + dominant_mode_rotation)
+            pressure = min(pressure, residual_cap)
+        pressure = max(pressure, 0.85 * spike_term)
+
+        spectral_jump_raw = 0.0
+        if self._prev_spectral_radius is not None:
+            spectral_jump_raw = abs(float(spectral_radius_value) - float(self._prev_spectral_radius))
+        spectral_jump_norm = self._clamp01(max(0.0, spectral_jump_raw - 0.04) / 0.22)
+
+        corr_hist = list(self._corr_jump_history)
+        edge_hist = list(self._edge_flip_history)
+        spectral_hist = list(self._spectral_jump_history)
+
+        def _is_shock(
+            current: float,
+            history: list[float],
+            *,
+            floor: float,
+            sigma: float = 2.5,
+        ) -> bool:
+            if current < floor:
+                return False
+            if len(history) < 6:
+                return current >= (floor * 1.35)
+            arr = np.asarray(history, dtype=float)
+            mu = float(np.mean(arr))
+            std = float(np.std(arr))
+            return current > (mu + sigma * max(std, 1e-4))
+
+        corr_shock = _is_shock(corr_jump_raw, corr_hist, floor=0.22)
+        edge_shock = _is_shock(edge_flip_rate, edge_hist, floor=0.24)
+        spectral_shock = _is_shock(spectral_jump_raw, spectral_hist, floor=0.10)
+        shock_triggered = (
+            self._shock_refractory_steps <= 0
+            and corr_shock
+            and (edge_shock or spectral_shock)
+        )
+        shock_boost = 0.0
+        if shock_triggered:
+            self._shock_boost_steps_remaining = 2
+            self._shock_refractory_steps = 3
+        if self._shock_boost_steps_remaining > 0:
+            shock_strength = self._clamp01(
+                0.52 * corr_spike + 0.26 * edge_flip_rate + 0.22 * spectral_jump_norm
+            )
+            shock_boost = 0.35 + 0.85 * shock_strength
+            self._shock_boost_steps_remaining -= 1
+        if self._shock_refractory_steps > 0:
+            self._shock_refractory_steps -= 1
+
+        pressure = pressure + shock_boost
+
+        self._prev_stable_novelty = stable_novelty
+        self._prev_regime_novelty = regime_novelty
+        self._corr_jump_history.append(float(corr_jump_raw))
+        self._edge_flip_history.append(float(edge_flip_rate))
+        self._spectral_jump_history.append(float(spectral_jump_raw))
+        self._last_corr_recent = np.array(corr_recent, dtype=float, copy=True)
+        self._prev_spectral_radius = float(spectral_radius_value)
 
         return {
             "short_horizon_drift": float(short_horizon_drift),
             "consecutive_step_acceleration": float(acceleration),
+            "correlation_spike": float(corr_spike),
+            "novelty_spike": float(novelty_spike),
+            "corr_jump_raw": float(corr_jump_raw),
+            "spectral_jump_raw": float(spectral_jump_raw),
+            "shock_triggered": float(1.0 if shock_triggered else 0.0),
+            "shock_boost": float(shock_boost),
             "stable_manifold_novelty": float(stable_novelty),
             "regime_novelty": float(regime_novelty),
             "graph_edge_flip_rate": float(edge_flip_rate),
@@ -430,10 +538,18 @@ class StructuralEngine:
         recent = history[-min(4, len(history)) :]
         sustained = sum(1 for v in recent if v >= TRANSITION_SUSTAINED_THRESHOLD)
         emerging = sum(1 for v in recent if v >= TRANSITION_EMERGING_THRESHOLD)
-        avg_recent = float(np.mean(recent))
-        if sustained >= 2 or avg_recent >= TRANSITION_SUSTAINED_THRESHOLD:
+        current = float(recent[-1])
+        weighted_recent = float(
+            np.average(
+                np.asarray(recent, dtype=float),
+                weights=np.linspace(0.6, 1.0, num=len(recent), dtype=float),
+            )
+        )
+        if (current >= TRANSITION_SUSTAINED_THRESHOLD and sustained >= 2) or sustained >= 3:
             return "SUSTAINED_TRANSITION"
-        if emerging >= 2 or avg_recent >= TRANSITION_EMERGING_THRESHOLD:
+        if (current >= TRANSITION_EMERGING_THRESHOLD and emerging >= 2) or weighted_recent >= (
+            TRANSITION_EMERGING_THRESHOLD * 1.03
+        ):
             return "EMERGING_TRANSITION"
         return "NONE"
 
@@ -960,24 +1076,38 @@ class StructuralEngine:
             result["regime_memory_state"] = regime_memory_state
 
             dominant_mode = np.asarray(spectral.get("dominant_eigenvector", []), dtype=float)
-            transition_metrics = self._transition_metrics(
-                drift_score=drift_score,
-                corr_recent=corr_recent,
-                regime_name=regime_name,
-                regime_distance=regime_distance,
-                adjacency=np.asarray(adjacency, dtype=float),
-                dominant_mode=dominant_mode,
-            )
-            transition_pressure = float(transition_metrics["transition_pressure"])
-            transition_state = self._transition_state(transition_pressure)
-            raw_components["transition_pressure"] = transition_pressure
-            components["transition_pressure"] = transition_pressure
-            result["transition_pressure"] = round(transition_pressure, 4)
-            result["transition_state"] = transition_state
-            self._regime_history.append(regime_name)
-            self._adjacency_history.append(np.asarray(adjacency, dtype=float))
-            if dominant_mode.size:
-                self._dominant_mode_history.append(dominant_mode)
+            transition_metrics = {
+                "short_horizon_drift": 0.0,
+                "consecutive_step_acceleration": 0.0,
+                "stable_manifold_novelty": 0.0,
+                "regime_novelty": 0.0,
+                "graph_edge_flip_rate": 0.0,
+                "dominant_mode_rotation": 0.0,
+                "transition_pressure": 0.0,
+            }
+            if self.transition_aware_enabled:
+                transition_metrics = self._transition_metrics(
+                    drift_score=drift_score,
+                    corr_recent=corr_recent,
+                    regime_name=regime_name,
+                    regime_distance=regime_distance,
+                    adjacency=np.asarray(adjacency, dtype=float),
+                    dominant_mode=dominant_mode,
+                    spectral_radius_value=float(spectral.get("radius", 0.0)),
+                )
+                transition_pressure = float(transition_metrics["transition_pressure"])
+                transition_state = self._transition_state(transition_pressure)
+                raw_components["transition_pressure"] = transition_pressure
+                components["transition_pressure"] = transition_pressure
+                result["transition_pressure"] = round(transition_pressure, 4)
+                result["transition_state"] = transition_state
+                self._regime_history.append(regime_name)
+                self._adjacency_history.append(np.asarray(adjacency, dtype=float))
+                if dominant_mode.size:
+                    self._dominant_mode_history.append(dominant_mode)
+            else:
+                result["transition_pressure"] = 0.0
+                result["transition_state"] = "NONE"
 
             counterfactual_guidance = self._counterfactual_guidance(
                 sensor_names=valid_sensor_names,
@@ -1048,7 +1178,9 @@ class StructuralEngine:
         # Per-component confidence: down-weight or fully suppress evidence when the
         # data quality gate indicates unreliable inputs. Production alerts should
         # be driven by Tier-1 components only.
-        tier1_components = {"relational_drift", "regime_drift", "transition_pressure", "spectral", "early_warning"}
+        tier1_components = {"relational_drift", "regime_drift", "spectral", "early_warning"}
+        if self.transition_aware_enabled:
+            tier1_components.add("transition_pressure")
 
         # Evidence quality in [0, 1]
         missingness_factor = max(0.0, 1.0 - float(data_quality_report.missingness_rate))
@@ -1141,7 +1273,8 @@ class StructuralEngine:
         component_confidence["spectral"] = evidence_conf if correlation_ready else 0.0
         component_confidence["early_warning"] = evidence_conf
         component_confidence["regime_drift"] = evidence_conf * regime_factor if correlation_ready else 0.0
-        component_confidence["transition_pressure"] = evidence_conf if correlation_ready else 0.0
+        if self.transition_aware_enabled:
+            component_confidence["transition_pressure"] = evidence_conf if correlation_ready else 0.0
 
         # Suppress non-Tier-1 components explicitly (keeps production composite Tier-1 only)
         for k in list(component_confidence.keys()):
@@ -1253,18 +1386,19 @@ class StructuralEngine:
             min_history_for_alerts=MIN_BASELINE_SAMPLES_FOR_CALIBRATION,
         )
         result.update(decision)
-        transition_pressure = float(result.get("transition_pressure", components.get("transition_pressure", 0.0)))
-        transition_state = str(result.get("transition_state", "NONE"))
-        state_rank = {"STABLE": 0, "WATCH": 1, "ALERT": 2}
-        current_state = str(result.get("state", "STABLE"))
-        target_state = current_state
-        if transition_state == "SUSTAINED_TRANSITION" and transition_pressure >= TRANSITION_SUSTAINED_THRESHOLD:
-            target_state = "ALERT"
-        elif transition_state == "EMERGING_TRANSITION" and transition_pressure >= TRANSITION_EMERGING_THRESHOLD:
-            target_state = "WATCH"
-        if state_rank.get(target_state, 0) > state_rank.get(current_state, 0):
-            result["state"] = target_state
-            result["drift_alert"] = target_state == "ALERT"
+        if self.transition_aware_enabled:
+            transition_pressure = float(result.get("transition_pressure", components.get("transition_pressure", 0.0)))
+            transition_state = str(result.get("transition_state", "NONE"))
+            state_rank = {"STABLE": 0, "WATCH": 1, "ALERT": 2}
+            current_state = str(result.get("state", "STABLE"))
+            target_state = current_state
+            if transition_state == "SUSTAINED_TRANSITION" and transition_pressure >= TRANSITION_SUSTAINED_THRESHOLD:
+                target_state = "ALERT"
+            elif transition_state == "EMERGING_TRANSITION" and transition_pressure >= TRANSITION_EMERGING_THRESHOLD:
+                target_state = "WATCH"
+            if state_rank.get(target_state, 0) > state_rank.get(current_state, 0):
+                result["state"] = target_state
+                result["drift_alert"] = target_state == "ALERT"
 
         result["uncertainty"] = uncertainty
         stage_interpreted = DecisionStage.interpreted_state(
@@ -1298,12 +1432,18 @@ class StructuralEngine:
         self._state_history.append(decision.get("interpreted_state", "NOMINAL_STRUCTURE"))
 
         # Rolling baseline: update only when nominal, composite low, and not locked.
+        transition_blocks_baseline = (
+            self.transition_aware_enabled
+            and (
+                str(result.get("transition_state", "NONE")) != "NONE"
+                or float(result.get("transition_pressure", 0.0)) >= TRANSITION_EMERGING_THRESHOLD
+            )
+        )
         if (
             valid_signal_count >= 2
             and not self.baseline_locked
             and decision.get("interpreted_state") == "NOMINAL_STRUCTURE"
-            and str(result.get("transition_state", "NONE")) == "NONE"
-            and float(result.get("transition_pressure", 0.0)) < TRANSITION_EMERGING_THRESHOLD
+            and not transition_blocks_baseline
             and float(composite) < BASELINE_UPDATE_MAX_COMPOSITE
         ):
             if self._rolling_baseline_corr is None or self._rolling_baseline_corr.shape != corr_recent.shape:
