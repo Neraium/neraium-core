@@ -1,0 +1,41 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "rewrites": [
+    {
+      "source": "/web/:path*",
+      "destination": "/apps/api/static/:path*"
+    },
+    {
+      "source": "/",
+      "destination": "/apps/api/static/index.html"
+    },
+    {
+      "source": "/dashboard",
+      "destination": "/apps/api/static/index.html"
+    },
+    {
+      "source": "/upload",
+      "destination": "/apps/api/static/index.html"
+    },
+    {
+      "source": "/demo",
+      "destination": "/apps/api/static/index.html"
+    },
+    {
+      "source": "/demo/sii",
+      "destination": "/apps/api/static/index.html"
+    },
+    {
+      "source": "/app/runs",
+      "destination": "/apps/api/static/index.html"
+    },
+    {
+      "source": "/app/runs/:run_id",
+      "destination": "/apps/api/static/index.html"
+    },
+    {
+      "source": "/app/results/:result_id",
+      "destination": "/apps/api/static/index.html"
+    }
+  ]
+}
