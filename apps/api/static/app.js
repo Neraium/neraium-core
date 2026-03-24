@@ -57,18 +57,15 @@ async function fetchJson(path, opts) {
   }
   if (!raw) return {};
   if (body !== null) return body;
-  throw new Error(`Invalid JSON from ${endpoint}: ${raw.slice(0, 500)}`);
+  return {};
 }
 
 async function fetchRecentResults(params) {
   const recentParams = tenantScopeParams(params || {});
-  try {
-    return await fetchJson(apiUrl("/results", recentParams));
-  } catch (err) {
-    const message = String(err?.message || err || "");
-    if (!message.startsWith("HTTP 404")) throw err;
-    return await fetchJson(apiUrl("/results/recent", recentParams));
-  }
+  const env = await fetchJson(apiUrl("/runs", recentParams));
+  if (env && Array.isArray(env.results)) return env;
+  if (env && Array.isArray(env.runs)) return { latest: null, count: env.runs.length, results: [] };
+  return { latest: null, count: 0, results: [] };
 }
 
 function toPretty(v) {
