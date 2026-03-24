@@ -1,7 +1,9 @@
 """Tests for stability_evaluation and staged_pipeline calibration helpers."""
 
 import numpy as np
-import pandas as pd
+import pytest
+
+pd = pytest.importorskip("pandas")
 
 from neraium_core.stability_evaluation import compute_operational_stability_index
 from neraium_core.staged_pipeline import (
