@@ -3060,6 +3060,11 @@ function structuralFlowForceAt(pu, pv, nodes, edges, normToPlane, driftDir, drif
   let fy = 0;
   /* Wider, softer influence than inverse-square: Gaussian-like falloff (single connected field). */
   const rBase = 0.11;
+  const cdx = 0.5 - pu;
+  const cdy = 0.5 - pv;
+  const clen = Math.hypot(cdx, cdy);
+  const inwardX = clen > 1e-8 ? cdx / clen : 0;
+  const inwardY = clen > 1e-8 ? cdy / clen : 0;
 
   nodes.forEach((n) => {
     const px = Number(n.position?.x) || 0;
@@ -3074,15 +3079,19 @@ function structuralFlowForceAt(pu, pv, nodes, edges, normToPlane, driftDir, drif
     const sigma = rBase * (1 + 0.45 * riskExp) * (1 + 0.35 * stress) * 1.35;
     const g = Math.exp(-d2 / (2 * sigma * sigma + 1e-12));
 
-    if (inTol && !unstable) {
-      const amp = (0.95 + 0.2 * (1 - stress)) * 1.15;
-      fx += du * g * amp;
-      fy += dv * g * amp;
-    } else {
-      const rep = (unstable ? 1.25 : 0.82) * (0.7 + 0.3 * stress) * 1.05;
-      fx -= du * g * rep;
-      fy -= dv * g * rep;
-    }
+    const radialLen = Math.hypot(pu - nx, pv - nz);
+    const radialX = radialLen > 1e-8 ? (pu - nx) / radialLen : 0;
+    const radialY = radialLen > 1e-8 ? (pv - nz) / radialLen : 0;
+    const stablePull = inTol && !unstable ? 1 : 0;
+    const unstablePush = unstable ? 1 : 1 - stablePull;
+    const sensorDrift = driftN * (0.45 + 0.55 * stress);
+    const sensorInst = instN * (0.3 + 0.7 * (unstable ? 1 : stress));
+    const spinSign = structuralFlowHash01(n.id) > 0.5 ? 1 : -1;
+    const swirlX = spinSign * -radialY;
+    const swirlY = spinSign * radialX;
+    const amp = g * (0.65 + 0.6 * stress) * (1 + 0.2 * riskExp);
+    fx += amp * (stablePull * inwardX + unstablePush * radialX + sensorDrift * driftDir.x + sensorInst * swirlX);
+    fy += amp * (stablePull * inwardY + unstablePush * radialY + sensorDrift * driftDir.y + sensorInst * swirlY);
   });
 
   (edges || []).forEach((edge) => {
@@ -3115,10 +3124,6 @@ function structuralFlowForceAt(pu, pv, nodes, edges, normToPlane, driftDir, drif
   const dmag = 0.28 + 0.72 * driftN;
   fx += driftDir.x * dmag * 0.34;
   fy += driftDir.y * dmag * 0.34;
-
-  const om = 2.15 * Math.PI;
-  fx += instN * 0.072 * Math.sin(om * pu + 0.77 * pv);
-  fy += instN * 0.072 * Math.sin(om * pv - 0.48 * pu);
 
   return { fx, fy };
 }
@@ -3600,13 +3605,11 @@ function buildStructuralFlowFieldModel(payload, normToPlane, driftDir, driftN, i
   containment = massTot > 1e-12 ? massIn / massTot : containment;
   const massQuantileCut = minE + span * (0.22 + 0.14 * (1 - containment));
   const centroidScore = Math.max(0, Math.min(1, 1 - Math.min(1, 2.2 * Math.hypot(cu - 0.5, cv - 0.5))));
-  let coherence01 = Math.max(
-    0,
-    Math.min(
-      1,
-      0.28 * tolRatio + 0.22 * pairScore + 0.26 * containment + 0.24 * centroidScore,
-    ),
-  );
+  const stabilityTerm = Math.max(0, Math.min(1, 1 - instN));
+  const coherenceBase =
+    0.28 * tolRatio + 0.22 * pairScore + 0.24 * containment + 0.16 * centroidScore + 0.1 * stabilityTerm;
+  const instabilityPenalty = instN * (0.1 + 0.08 * (1 - pairScore) + 0.06 * (1 - containment));
+  let coherence01 = Math.max(0, Math.min(1, coherenceBase - instabilityPenalty));
   if (mCount.totalSensors <= 0) coherence01 = 0;
 
   const coherenceThreshold = minE + span * (0.2 + 0.7 * coherence01);
@@ -3789,6 +3792,12 @@ function structuralFlowHeatmapRgba(enNorm, systemicPressure01) {
   return `rgba(${r},${g},${b},${a})`;
 }
 
+function structuralFlowBoundaryPressureAt(u, v, boundaryPressure01) {
+  const edgeD = Math.min(u, 1 - u, v, 1 - v);
+  const nearEdge = 1 - Math.min(1, edgeD / 0.14);
+  return nearEdge * boundaryPressure01;
+}
+
 /**
  * 2D structural-flow: one force field V → E = |V|² → heatmap + marching-squares contour + E-weighted arrow.
  */
@@ -3827,8 +3836,7 @@ function drawStructuralFlow2dCanvas(ctx, width, height, payload, _t, _coherence,
   const innerH = Math.max(40, height - 2 * pad);
 
   const model = buildStructuralFlowFieldModel(payload, normToPlane, driftDir, driftN, instN, riskExp);
-  const { NX, NY, E, E_iso, largestMask, minE, maxE, T, coherence01, cu, cv, netVx, netVy, metrics: m } =
-    model;
+  const { NX, NY, E, E_iso, minE, maxE, T, coherence01, cu, cv, netVx, netVy, metrics: m } = model;
   const spanE = Math.max(maxE - minE, 1e-12);
 
   state.geometry3d.structuralFlowCoherence01 = coherence01;
@@ -3853,10 +3861,12 @@ function drawStructuralFlow2dCanvas(ctx, width, height, payload, _t, _coherence,
 
   for (let i = 0; i < NX; i += 1) {
     for (let j = 0; j < NY; j += 1) {
-      let eC = (E[i][j] + E[i + 1][j] + E[i + 1][j + 1] + E[i][j + 1]) / 4;
-      if (!largestMask[i][j]) eC *= 0.2;
+      const eC = (E[i][j] + E[i + 1][j] + E[i + 1][j + 1] + E[i][j + 1]) / 4;
       const en = (eC - minE) / spanE;
-      ctx.fillStyle = structuralFlowHeatmapRgba(en * 0.62, 0.04);
+      const uc = (i + 0.5) / NX;
+      const vc = (j + 0.5) / NY;
+      const localPressure = structuralFlowBoundaryPressureAt(uc, vc, model.boundaryPressure01);
+      ctx.fillStyle = structuralFlowHeatmapRgba(en, localPressure);
       const px0 = innerX + (i / NX) * innerW;
       const py0 = innerY + (j / NY) * innerH;
       const pw = innerW / NX;
@@ -3873,10 +3883,6 @@ function drawStructuralFlow2dCanvas(ctx, width, height, payload, _t, _coherence,
 
   const cxPlane = innerX + 0.5 * innerW;
   const cyPlane = innerY + 0.5 * innerH;
-  ctx.fillStyle = "rgba(148, 163, 184, 0.55)";
-  ctx.beginPath();
-  ctx.arc(cxPlane, cyPlane, 3, 0, Math.PI * 2);
-  ctx.fill();
 
   const segs = structuralFlowMarchingSquaresSegments(E_iso, NX, NY, T);
   state.geometry3d.structuralFlowDerived = finalizeStructuralFlowDerivedState(model, segs, driftN, instN);
@@ -3902,11 +3908,10 @@ function drawStructuralFlow2dCanvas(ctx, width, height, payload, _t, _coherence,
     const v1 = s[1];
     const u2 = s[2];
     const v2 = s[3];
-    const esc = structuralFlowSegmentEscapesManifold(u1, v1, u2, v2);
     const contact = structuralFlowSegmentBoundaryContact(u1, v1, u2, v2);
-    const localFail = esc || contact;
+    const localFail = contact;
     const intensity = Math.max(driftN, instN);
-    const badStroke = esc ? "rgba(239, 68, 68, 0.98)" : "rgba(249, 115, 22, 0.95)";
+    const badStroke = "rgba(249, 115, 22, 0.95)";
     ctx.beginPath();
     ctx.moveTo(innerX + u1 * innerW, innerY + v1 * innerH);
     ctx.lineTo(innerX + u2 * innerW, innerY + v2 * innerH);
