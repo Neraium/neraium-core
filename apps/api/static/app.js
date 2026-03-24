@@ -102,20 +102,6 @@ function transitionSeverity(prevResult, nextResult) {
   return "normal";
 }
 
-function transitionArrow(prevResult, nextResult) {
-  if (!prevResult || !nextResult) return "Start";
-  const prevState = String(prevResult.state || prevResult.interpreted_state || "-").toUpperCase();
-  const nextState = String(nextResult.state || nextResult.interpreted_state || "-").toUpperCase();
-  if (prevState !== nextState) return `${prevState} -> ${nextState}`;
-  const prevRisk = normalizeRiskLevel(prevResult.risk_level);
-  const nextRisk = normalizeRiskLevel(nextResult.risk_level);
-  if (prevRisk !== nextRisk) return `Risk ${prevRisk} -> ${nextRisk}`;
-  const prevTrend = String(trendFromResult(prevResult)).toUpperCase();
-  const nextTrend = String(trendFromResult(nextResult)).toUpperCase();
-  if (prevTrend !== nextTrend) return `Trend ${prevTrend} -> ${nextTrend}`;
-  return "No major transition";
-}
-
 function structuralDriftFromResult(r) {
   if (!r) return null;
   const v = r.structural_drift_score;
@@ -3095,7 +3081,7 @@ function structuralFlowForceAt(pu, pv, nodes, edges, normToPlane, driftDir, drif
   let fx = 0;
   let fy = 0;
   /* Wider, softer influence than inverse-square: Gaussian-like falloff (single connected field). */
-  const rBase = 0.11;
+  const rBase = 0.15 + 0.05 * driftN;
 
   nodes.forEach((n) => {
     const px = Number(n.position?.x) || 0;
@@ -3107,15 +3093,15 @@ function structuralFlowForceAt(pu, pv, nodes, edges, normToPlane, driftDir, drif
     const stress = flowNodeStress01(n);
     const inTol = flowNodeWithinTolerance(n);
     const unstable = Boolean(n.is_unstable);
-    const sigma = rBase * (1 + 0.45 * riskExp) * (1 + 0.35 * stress) * 1.35;
+    const sigma = rBase * (1 + 0.5 * riskExp) * (1 + 0.28 * stress) * 1.45;
     const g = Math.exp(-d2 / (2 * sigma * sigma + 1e-12));
 
     if (inTol && !unstable) {
-      const amp = (0.95 + 0.2 * (1 - stress)) * 1.15;
+      const amp = (1 + 0.16 * (1 - stress)) * 1.2;
       fx += du * g * amp;
       fy += dv * g * amp;
     } else {
-      const rep = (unstable ? 1.25 : 0.82) * (0.7 + 0.3 * stress) * 1.05;
+      const rep = (unstable ? 1.2 : 0.8) * (0.68 + 0.32 * stress) * 1.02;
       fx -= du * g * rep;
       fy -= dv * g * rep;
     }
@@ -3140,17 +3126,17 @@ function structuralFlowForceAt(pu, pv, nodes, edges, normToPlane, driftDir, drif
     const ddx = pu - mx;
     const ddz = pv - mz;
     const d2 = ddx * ddx + ddz * ddz + 1e-9;
-    const sig = 0.1 + 0.08 * disagree;
-    const w = disagree * Math.exp(-d2 / (2 * sig * sig)) * 0.95;
+    const sig = 0.14 + 0.1 * disagree;
+    const w = disagree * Math.exp(-d2 / (2 * sig * sig)) * 1.05;
     const len = Math.sqrt(d2);
     if (len < 1e-7) return;
     fx += w * (ddx / len) * 0.42;
     fy += w * (ddz / len) * 0.42;
   });
 
-  const dmag = 0.28 + 0.72 * driftN;
-  fx += driftDir.x * dmag * 0.34;
-  fy += driftDir.y * dmag * 0.34;
+  const dmag = 0.34 + 0.66 * driftN;
+  fx += driftDir.x * dmag * 0.42;
+  fy += driftDir.y * dmag * 0.42;
 
   const om = 2.15 * Math.PI;
   fx += instN * 0.072 * Math.sin(om * pu + 0.77 * pv);
@@ -3226,64 +3212,55 @@ function structuralFlowApplyDriftSkewScalar(E, NX, NY, driftDir, driftN) {
   const out = [];
   const du = driftDir.x;
   const dv = driftDir.y;
-  const k = 1.55 * (0.35 + 0.65 * driftN);
-  const gain = 1 + 0.5 * driftN;
+  const k = 1.95 * (0.35 + 0.65 * driftN);
+  const gain = 1 + 0.68 * driftN;
   for (let i = 0; i <= NX; i += 1) {
     out[i] = [];
     const u = i / NX;
     for (let j = 0; j <= NY; j += 1) {
       const v = j / NY;
       const tilt = du * (u - 0.5) + dv * (v - 0.5);
-      const mult = Math.exp(k * tilt) * gain;
+      const cross = -dv * (u - 0.5) + du * (v - 0.5);
+      const mult = Math.exp(k * tilt - 0.35 * Math.abs(cross) * driftN) * gain;
       out[i][j] = E[i][j] * mult;
     }
   }
   return out;
 }
 
-/** Local compression when centroid pressures a boundary; keeps failure cues local to touched edge. */
-function structuralFlowApplyBoundaryCompression(E, NX, NY, cu, cv, driftDir, boundaryPressure01, driftN, instN) {
+/** Global compression field that increases as the dominant contour approaches manifold boundaries. */
+function structuralFlowApplyBoundaryCompression(
+  E,
+  NX,
+  NY,
+  contourEdgeDistance01,
+  contourCrossing01,
+  driftDir,
+  driftN,
+  instN,
+) {
   const out = [];
-  const edgeD = Math.min(cu, 1 - cu, cv, 1 - cv);
-  const pressure = Math.max(0, Math.min(1, 0.5 * boundaryPressure01 + 0.5 * (1 - Math.min(1, edgeD * 2))));
-  const strength = pressure * (0.18 + 0.46 * Math.max(driftN, instN));
+  const pressure = Math.max(
+    0,
+    Math.min(1, 0.72 * (1 - contourEdgeDistance01) + 0.28 * contourCrossing01),
+  );
+  const strength = pressure * (0.16 + 0.58 * Math.max(driftN, instN));
   if (strength <= 1e-5) return E;
-  const eps = 1e-12;
-  const dL = cu;
-  const dR = 1 - cu;
-  const dT = cv;
-  const dB = 1 - cv;
-  let ex = -1;
-  let ey = 0;
-  let edge = dL;
-  if (dR < edge) {
-    edge = dR;
-    ex = 1;
-    ey = 0;
-  }
-  if (dT < edge) {
-    edge = dT;
-    ex = 0;
-    ey = -1;
-  }
-  if (dB < edge) {
-    ex = 0;
-    ey = 1;
-  }
-  const driftAlign = Math.max(0, ex * driftDir.x + ey * driftDir.y);
-  const edgeGain = 0.9 + 0.8 * driftAlign;
+  const driftLen = Math.hypot(driftDir.x, driftDir.y);
+  const dx = driftLen > 1e-9 ? driftDir.x / driftLen : 1;
+  const dy = driftLen > 1e-9 ? driftDir.y / driftLen : 0;
+  const edgeBand = 0.22;
   for (let i = 0; i <= NX; i += 1) {
     out[i] = [];
     const u = i / NX;
     for (let j = 0; j <= NY; j += 1) {
       const v = j / NY;
-      const du = u - cu;
-      const dv = v - cv;
-      const towardEdge = Math.max(0, du * ex + dv * ey);
-      const lateral = Math.abs(-du * ey + dv * ex);
-      const local = Math.exp(-3.8 * towardEdge) * Math.exp(-2.2 * lateral);
-      const squeeze = 1 - Math.min(0.5, strength * edgeGain * local * (0.55 + towardEdge));
-      out[i][j] = E[i][j] * Math.max(0.55, squeeze + eps);
+      const edgeDist = Math.min(u, 1 - u, v, 1 - v);
+      const edgeProx = 1 - structuralFlowSmoothstep01(0, edgeBand, edgeDist);
+      const alongDrift = dx * (u - 0.5) + dy * (v - 0.5);
+      const driftPush = Math.max(0, alongDrift) * (0.75 + 0.25 * driftN);
+      const squeeze = 1 - Math.min(0.58, strength * edgeProx * (0.85 + 0.5 * driftPush));
+      out[i][j] = E[i][j] * Math.max(0.48, squeeze);
     }
   }
   return out;
@@ -3309,6 +3286,7 @@ function structuralFlowLargestCCMask(cellHigh, NX, NY) {
   const labels = [];
   const sizes = [];
   let cur = 0;
+  const minKeep = Math.max(6, Math.floor(NX * NY * 0.012));
   for (let i = 0; i < NX; i += 1) {
     labels[i] = [];
     for (let j = 0; j < NY; j += 1) {
@@ -3346,7 +3324,9 @@ function structuralFlowLargestCCMask(cellHigh, NX, NY) {
   for (let i = 0; i < NX; i += 1) {
     out[i] = [];
     for (let j = 0; j < NY; j += 1) {
-      out[i][j] = bestId > 0 && labels[i][j] === bestId;
+      const id = labels[i][j];
+      const isTinyIsland = id > 0 && sizes[id] < minKeep;
+      out[i][j] = bestId > 0 && labels[i][j] === bestId && !isTinyIsland;
     }
   }
   return out;
@@ -3620,8 +3600,8 @@ function buildStructuralFlowFieldModel(payload, normToPlane, driftDir, driftN, i
     }
   }
 
-  const smoothRadius = driftN > 0.56 || instN > 0.56 ? 1 : 2;
-  const smoothPasses = driftN > 0.56 || instN > 0.56 ? 2 : 3;
+  const smoothRadius = driftN > 0.56 || instN > 0.56 ? 2 : 3;
+  const smoothPasses = driftN > 0.56 || instN > 0.56 ? 3 : 4;
   let E = E0;
   for (let k = 0; k < smoothPasses; k += 1) E = structuralFlowBoxBlurE2D(E, NX, NY, smoothRadius);
   E = structuralFlowApplyDriftSkewScalar(E, NX, NY, driftDir, driftN);
@@ -3659,8 +3639,13 @@ function buildStructuralFlowFieldModel(payload, normToPlane, driftDir, driftN, i
   let containment = massTot > 1e-12 ? massIn / massTot : 0.5;
   const cu = sw > 1e-12 ? swu / sw : 0.5;
   const cv = sw > 1e-12 ? swv / sw : 0.5;
-  const boundaryPressure01 = computeStructuralFlowBoundaryPressure01(E, NX, NY);
-  E = structuralFlowApplyBoundaryCompression(E, NX, NY, cu, cv, driftDir, boundaryPressure01, driftN, instN);
+  const continuityFloor = minE + (maxE - minE) * 0.08;
+  for (let i = 0; i <= NX; i += 1) {
+    for (let j = 0; j <= NY; j += 1) {
+      E[i][j] = continuityFloor + (E[i][j] - continuityFloor) * 0.92;
+    }
+  }
+  let boundaryPressure01 = computeStructuralFlowBoundaryPressure01(E, NX, NY);
   minE = Infinity;
   maxE = -Infinity;
   massTot = 0;
@@ -3676,7 +3661,7 @@ function buildStructuralFlowFieldModel(payload, normToPlane, driftDir, driftN, i
       if (u >= u0 && u <= u1 && vv >= u0 && vv <= u1) massIn += e;
     }
   }
-  const span = Math.max(maxE - minE, 1e-12);
+  let span = Math.max(maxE - minE, 1e-12);
   containment = massTot > 1e-12 ? massIn / massTot : containment;
   const targetMass = 0.76 + 0.11 * (1 - containment) - 0.06 * Math.max(driftN, instN);
   const massQuantileCut = structuralFlowMassThreshold(E, NX, NY, targetMass, minE, maxE);
@@ -3694,6 +3679,52 @@ function buildStructuralFlowFieldModel(payload, normToPlane, driftDir, driftN, i
   const T = Math.max(massQuantileCut, coherenceThreshold);
 
   const { largestMask, E_iso } = structuralFlowBuildIsoFromScalar(E, NX, NY, T, minE);
+  const cellHigh = [];
+  for (let i = 0; i < NX; i += 1) {
+    cellHigh[i] = [];
+    for (let j = 0; j < NY; j += 1) {
+      const av = (E[i][j] + E[i + 1][j] + E[i + 1][j + 1] + E[i][j + 1]) / 4;
+      cellHigh[i][j] = av >= T;
+    }
+  }
+  let largestMask = structuralFlowLargestCCMask(cellHigh, NX, NY);
+  let E_iso = structuralFlowIsoFieldForMarching(E, NX, NY, minE, largestMask);
+
+  const segsPreview = structuralFlowMarchingSquaresSegments(E_iso, NX, NY, T);
+  const primaryPreviewIdx = structuralFlowPrimarySegmentComponent(segsPreview);
+  const previewPrimary = segsPreview.filter((_, iSeg) => primaryPreviewIdx.has(iSeg));
+  const boundaryMetrics = structuralFlowContourBoundaryMetrics(previewPrimary);
+  E = structuralFlowApplyBoundaryCompression(
+    E,
+    NX,
+    NY,
+    boundaryMetrics.edgeDistance01,
+    boundaryMetrics.crossingRatio,
+    driftDir,
+    driftN,
+    instN,
+  );
+
+  minE = Infinity;
+  maxE = -Infinity;
+  for (let i = 0; i <= NX; i += 1) {
+    for (let j = 0; j <= NY; j += 1) {
+      minE = Math.min(minE, E[i][j]);
+      maxE = Math.max(maxE, E[i][j]);
+    }
+  }
+  span = Math.max(maxE - minE, 1e-12);
+  boundaryPressure01 = computeStructuralFlowBoundaryPressure01(E, NX, NY);
+
+  const T2 = Math.max(minE + span * (0.24 + 0.1 * (1 - containment)), minE + span * (0.22 + 0.64 * coherence01));
+  for (let i = 0; i < NX; i += 1) {
+    for (let j = 0; j < NY; j += 1) {
+      const av = (E[i][j] + E[i + 1][j] + E[i + 1][j + 1] + E[i][j + 1]) / 4;
+      cellHigh[i][j] = av >= T2;
+    }
+  }
+  largestMask = structuralFlowLargestCCMask(cellHigh, NX, NY);
+  E_iso = structuralFlowIsoFieldForMarching(E, NX, NY, minE, largestMask);
 
   let netVx = 0;
   let netVy = 0;
@@ -3721,7 +3752,7 @@ function buildStructuralFlowFieldModel(payload, normToPlane, driftDir, driftN, i
     largestMask,
     minE,
     maxE,
-    T,
+    T: T2,
     coherence01,
     containmentMassRatio: containment,
     pairAgreement01: pairScore,
@@ -3848,6 +3879,26 @@ function structuralFlowSegmentBoundaryContact(u1, v1, u2, v2, eps = 0.018) {
   const d1 = Math.min(u1, 1 - u1, v1, 1 - v1);
   const d2 = Math.min(u2, 1 - u2, v2, 1 - v2);
   return d1 <= eps || d2 <= eps;
+}
+
+/** Dominant contour distance to manifold boundary + crossing/contact ratio for continuous pressure cues. */
+function structuralFlowContourBoundaryMetrics(segs) {
+  if (!segs.length) return { edgeDistance01: 1, crossingRatio: 0 };
+  let minDist = 1;
+  let touchOrCross = 0;
+  segs.forEach((s) => {
+    const [u1, v1, u2, v2] = s;
+    const d1 = Math.min(u1, 1 - u1, v1, 1 - v1);
+    const d2 = Math.min(u2, 1 - u2, v2, 1 - v2);
+    minDist = Math.min(minDist, d1, d2);
+    if (structuralFlowSegmentEscapesManifold(u1, v1, u2, v2) || structuralFlowSegmentBoundaryContact(u1, v1, u2, v2)) {
+      touchOrCross += 1;
+    }
+  });
+  return {
+    edgeDistance01: Math.max(0, Math.min(1, minDist / 0.5)),
+    crossingRatio: touchOrCross / segs.length,
+  };
 }
 
 /** enNorm = relative energy; systemicPressure01 = smooth buildup toward dashed boundary (cyan→amber→red). */
@@ -4022,6 +4073,15 @@ function drawStructuralFlow2dCanvas(ctx, width, height, payload, frame) {
     ctx.stroke();
   }
 
+  const segs = structuralFlowMarchingSquaresSegments(E_iso, NX, NY, T);
+  const primarySegIdx = structuralFlowPrimarySegmentComponent(segs);
+  const primarySegs = [];
+  const secondarySegs = [];
+  segs.forEach((s, si) => {
+    if (primarySegIdx.has(si)) primarySegs.push(s);
+    else secondarySegs.push(s);
+  });
+  const clamp01 = (value) => Math.max(0, Math.min(1, value));
   for (let i = 0; i < NX; i += 1) {
     for (let j = 0; j < NY; j += 1) {
       let eC = (E[i][j] + E[i + 1][j] + E[i + 1][j + 1] + E[i][j + 1]) / 4;
@@ -4030,10 +4090,19 @@ function drawStructuralFlow2dCanvas(ctx, width, height, payload, frame) {
       const edgePressure = Math.max(0, Math.min(1, model.boundaryPressure01 * (0.55 + 0.45 * driftN)));
       ctx.fillStyle = structuralFlowHeatmapRgba(en * 0.62, edgePressure);
       ctx.fillStyle = structuralFlowHeatmapRgba(en * 0.48, 0.03);
+      const inPrimaryMask = largestMask[i][j];
+      const cellEnergy = (E[i][j] + E[i + 1][j] + E[i + 1][j + 1] + E[i][j + 1]) / 4;
+      const tintedEnergy = inPrimaryMask ? cellEnergy : cellEnergy * 0.08;
+      const energyNorm = (tintedEnergy - minE) / spanE;
+      const thresholdNorm = clamp01((tintedEnergy - T) / Math.max(spanE * 0.9, 1e-9));
+      const edgePressure = inPrimaryMask ? 0.14 + 0.26 * thresholdNorm : 0.03;
       const px0 = innerX + (i / NX) * innerW;
       const py0 = innerY + (j / NY) * innerH;
       const pw = innerW / NX;
       const ph = innerH / NY;
+
+      // One final per-cell render path: assign tint once, then paint once.
+      ctx.fillStyle = structuralFlowHeatmapRgba(energyNorm * 0.48, edgePressure);
       ctx.fillRect(px0, py0, pw + 0.5, ph + 0.5);
     }
   }
@@ -4051,7 +4120,6 @@ function drawStructuralFlow2dCanvas(ctx, width, height, payload, frame) {
   ctx.arc(cxPlane, cyPlane, 3, 0, Math.PI * 2);
   ctx.fill();
 
-  const segs = structuralFlowMarchingSquaresSegments(E_iso, NX, NY, T);
   state.geometry3d.structuralFlowDerived = finalizeStructuralFlowDerivedState(model, segs, driftN, instN);
   const derived = state.geometry3d.structuralFlowDerived || {};
   const tf = state.geometry3d.temporalFlow || {};
@@ -4075,6 +4143,18 @@ function drawStructuralFlow2dCanvas(ctx, width, height, payload, frame) {
       ctx.fillRect(px0, py0, pw + 0.5, ph + 0.5);
     }
   }
+  secondarySegs.forEach((s) => {
+    const u1 = s[0];
+    const v1 = s[1];
+    const u2 = s[2];
+    const v2 = s[3];
+    ctx.beginPath();
+    ctx.moveTo(innerX + u1 * innerW, innerY + v1 * innerH);
+    ctx.lineTo(innerX + u2 * innerW, innerY + v2 * innerH);
+    ctx.strokeStyle = "rgba(94, 234, 212, 0.14)";
+    ctx.lineWidth = 1.1;
+    ctx.stroke();
+  });
   primarySegs.forEach((s) => {
     const u1 = s[0];
     const v1 = s[1];
