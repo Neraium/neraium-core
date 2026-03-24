@@ -17,6 +17,7 @@ LEGACY_KEYS: dict[str, str] = {
 DEFAULT_COMPONENTS: dict[str, float] = {
     "relational_drift": 0.0,
     "regime_drift": 0.0,
+    "transition_pressure": 0.0,
     "spectral": 0.0,
     "directional_divergence": 0.0,
     "entropy": 0.0,
@@ -28,6 +29,7 @@ DEFAULT_COMPONENTS: dict[str, float] = {
 DEFAULT_WEIGHTS: dict[str, float] = {
     "relational_drift": 1.0,
     "regime_drift": 0.8,
+    "transition_pressure": 0.95,
     "spectral": 0.8,
     "directional_divergence": 0.8,
     "entropy": 0.5,

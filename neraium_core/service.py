@@ -126,20 +126,38 @@ class StructuralMonitoringService:
 
     def _interpret(self, result: dict[str, Any]) -> dict[str, str]:
         drift = float(result.get("structural_drift_score", 0.0))
+        transition_pressure = float(result.get("transition_pressure", 0.0))
+        transition_state = str(result.get("transition_state", "NONE")).upper()
         state = str(result.get("state", "STABLE")).upper()
 
-        if drift >= float(self.pilot_config.drift_high_threshold) or state == "ALERT":
+        if (
+            drift >= float(self.pilot_config.drift_high_threshold)
+            or state == "ALERT"
+            or transition_state == "SUSTAINED_TRANSITION"
+            or transition_pressure >= 1.15
+        ):
             return {
                 "risk_level": "HIGH",
                 "action_state": "ALERT",
-                "operator_message": "High instability detected. Immediate operator review advised.",
+                "operator_message": (
+                    "High instability/transition pressure detected. "
+                    "System is structurally departing from prior stable behavior; immediate operator review advised."
+                ),
             }
 
-        if drift >= float(self.pilot_config.drift_watch_threshold) or state == "WATCH":
+        if (
+            drift >= float(self.pilot_config.drift_watch_threshold)
+            or state == "WATCH"
+            or transition_state == "EMERGING_TRANSITION"
+            or transition_pressure >= 0.85
+        ):
             return {
                 "risk_level": "MEDIUM",
                 "action_state": "WATCH",
-                "operator_message": "Drift is elevated. Monitor closely for trend continuation.",
+                "operator_message": (
+                    "Transition pressure is elevated. "
+                    "Monitor closely for continued structural departure from recent stable behavior."
+                ),
             }
 
         return {
