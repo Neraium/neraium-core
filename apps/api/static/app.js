@@ -3503,6 +3503,19 @@ function finalizeStructuralFlowDerivedState(model, segs, driftN, instN) {
   };
 }
 
+function structuralFlowBuildIsoFromScalar(E, NX, NY, T, minE) {
+  const cellHigh = Array.from({ length: NX }, () => Array(NY).fill(false));
+  for (let i = 0; i < NX; i += 1) {
+    for (let j = 0; j < NY; j += 1) {
+      const av = (E[i][j] + E[i + 1][j] + E[i + 1][j + 1] + E[i][j + 1]) / 4;
+      cellHigh[i][j] = av >= T;
+    }
+  }
+  const largestMask = structuralFlowLargestCCMask(cellHigh, NX, NY);
+  const E_iso = structuralFlowIsoFieldForMarching(E, NX, NY, minE, largestMask);
+  return { largestMask, E_iso };
+}
+
 function deriveStructuralFlowDerivedFallback(payload) {
   const m = computeStructuralFlowMetrics(payload);
   const { driftN, instN } = flowDriftInstabilityNorm(payload);
@@ -3638,16 +3651,7 @@ function buildStructuralFlowFieldModel(payload, normToPlane, driftDir, driftN, i
   const coherenceThreshold = minE + span * (0.2 + 0.7 * coherence01);
   const T = Math.max(massQuantileCut, coherenceThreshold);
 
-  const cellHigh = [];
-  for (let i = 0; i < NX; i += 1) {
-    cellHigh[i] = [];
-    for (let j = 0; j < NY; j += 1) {
-      const av = (E[i][j] + E[i + 1][j] + E[i + 1][j + 1] + E[i][j + 1]) / 4;
-      cellHigh[i][j] = av >= T;
-    }
-  }
-  const largestMask = structuralFlowLargestCCMask(cellHigh, NX, NY);
-  const E_iso = structuralFlowIsoFieldForMarching(E, NX, NY, minE, largestMask);
+  const { largestMask, E_iso } = structuralFlowBuildIsoFromScalar(E, NX, NY, T, minE);
 
   let netVx = 0;
   let netVy = 0;
@@ -3832,15 +3836,7 @@ function buildInterpolatedFieldModel(payload, normToPlane, driftDir, riskExp, dr
     }
   }
   const T = lerp(ma.T, mb.T);
-  const cellHigh = Array.from({ length: NX }, () => Array(NY).fill(false));
-  for (let i = 0; i < NX; i += 1) {
-    for (let j = 0; j < NY; j += 1) {
-      const c = (E[i][j] + E[i + 1][j] + E[i + 1][j + 1] + E[i][j + 1]) / 4;
-      cellHigh[i][j] = c >= T;
-    }
-  }
-  const largestMask = structuralFlowLargestCCMask(cellHigh, NX, NY);
-  const E_iso = structuralFlowIsoFieldForMarching(E, NX, NY, minE, largestMask);
+  const { largestMask, E_iso } = structuralFlowBuildIsoFromScalar(E, NX, NY, T, minE);
   return {
     ...ma,
     E,
