@@ -2270,9 +2270,9 @@ function structuralProjectionCaption(payload) {
 
 function structuralMetricDefinitionsFootnote() {
   return (
-    "Integrity: blended field score. Containment: energy in the core band. Drift: net flow magnitude (arrow direction). " +
-    "Instability: engine composite. Link agreement: share of links under drift threshold. " +
-    "Boundary pressure: energy near the dashed edge. Inside/outside manifold: sensor tolerance counts."
+    "Integrity Score: blended field read used by the visualization and panel. Containment: energy held inside the manifold core. " +
+    "Drift: net flow magnitude and direction (arrow). Instability: composite breakup signal. Link Agreement: links under drift threshold. " +
+    "Boundary Pressure: energy at the manifold edge. Inside/Outside Manifold: sensor counts."
   );
 }
 
@@ -2866,6 +2866,8 @@ function updateGeometryFlowPanel(payload, opts) {
   const elInManifold = qs("#geometryInsideManifold");
   const elOutManifold = qs("#geometryOutsideManifold");
   const elPressure = qs("#geometryBoundaryPressure");
+  const elStatusText = qs("#geometryFlowStatusText");
+  const elLinkInline = qs("#geometryFlowLinkAgreeInline");
 
   if (!payload || !payload.available) {
     if (cohEl) {
@@ -2894,6 +2896,8 @@ function updateGeometryFlowPanel(payload, opts) {
       elInManifold,
       elOutManifold,
       elPressure,
+      elStatusText,
+      elLinkInline,
     ].forEach((el) => {
       if (el) el.textContent = "—";
     });
@@ -2910,8 +2914,10 @@ function updateGeometryFlowPanel(payload, opts) {
   }
 
   const mBase = computeStructuralFlowMetrics(payload);
-  const derived =
-    g?.useCanvas2d && g.structuralFlowDerived ? g.structuralFlowDerived : deriveStructuralFlowDerivedFallback(payload);
+  if (!g?.useCanvas2d || !g.structuralFlowDerived) {
+    g.structuralFlowDerived = deriveStructuralFlowDerivedFallback(payload);
+  }
+  const derived = g.structuralFlowDerived;
   let displayIntegrity = derived.integrityScore;
   if (opts?.structuralFlowCoherence01 != null && Number.isFinite(opts.structuralFlowCoherence01)) {
     displayIntegrity = opts.structuralFlowCoherence01;
@@ -2926,8 +2932,7 @@ function updateGeometryFlowPanel(payload, opts) {
 
   const c01 = derived.containmentScore;
   if (elContain) elContain.textContent = `${Math.round(c01 * 100)}%`;
-  if (elContainHint)
-    elContainHint.textContent = structuralFlowBandHint(c01, 0.45, 0.72, "Low", "Mixed", "Stable");
+  if (elContainHint) elContainHint.textContent = structuralFlowContainmentHint(derived);
   setStructuralFlowMicrobar(elContainBar, c01);
 
   const d01 = derived.driftMag01;
@@ -2955,8 +2960,9 @@ function updateGeometryFlowPanel(payload, opts) {
   const l01 = derived.linkAgreementScore;
   if (elLink) elLink.textContent = `${Math.round(l01 * 100)}%`;
   if (elLinkHint)
-    elLinkHint.textContent = structuralFlowBandHint(l01, 0.45, 0.75, "Weak", "Mixed", "Strong");
+    elLinkHint.textContent = structuralFlowBandHint(l01, 0.45, 0.75, "Low", "Moderate", "Link Agreement");
   setStructuralFlowMicrobar(elLinkBar, l01);
+  if (elLinkInline) elLinkInline.textContent = `${Math.round(l01 * 100)}%`;
 
   if (elInManifold) elInManifold.textContent = String(derived.insideCount);
   if (elOutManifold) elOutManifold.textContent = String(derived.outsideCount);
@@ -2968,6 +2974,10 @@ function updateGeometryFlowPanel(payload, opts) {
   if (assessEl) {
     assessEl.textContent = derived.statusLabel;
     assessEl.title = derived.statusDetail;
+  }
+  if (elStatusText) {
+    elStatusText.textContent = derived.statusLabel;
+    elStatusText.title = derived.statusDetail;
   }
   if (engineEl) {
     engineEl.textContent = toPretty(mBase.engineState);
@@ -3161,6 +3171,28 @@ function structuralFlowBoxBlurE2D(E, NX, NY, r) {
     }
   }
   return out;
+}
+
+/** Energy threshold whose super-level set keeps the top targetMassRatio of field energy. */
+function structuralFlowMassThreshold(E, NX, NY, targetMassRatio, fallbackMin, fallbackMax) {
+  const values = [];
+  let total = 0;
+  for (let i = 0; i <= NX; i += 1) {
+    for (let j = 0; j <= NY; j += 1) {
+      const e = Number(E[i]?.[j]) || 0;
+      values.push(e);
+      total += e;
+    }
+  }
+  if (!values.length || total <= 1e-12) return fallbackMin + 0.5 * Math.max(0, fallbackMax - fallbackMin);
+  values.sort((a, b) => b - a);
+  const target = Math.max(0.35, Math.min(0.96, Number(targetMassRatio) || 0.78)) * total;
+  let acc = 0;
+  for (let k = 0; k < values.length; k += 1) {
+    acc += values[k];
+    if (acc >= target) return values[k];
+  }
+  return values[values.length - 1];
 }
 
 /** Skew scalar energy along drift so the surface stretches toward net drift (aligns with arrow). */
@@ -3374,6 +3406,15 @@ function structuralFlowBandHint(v, t0, t1, a, b, c) {
   return b;
 }
 
+function structuralFlowContainmentHint(derived) {
+  const outside = Number(derived?.outsideCount) || 0;
+  const pressure = Number(derived?.boundaryPressureScore) || 0;
+  if (outside === 0 && pressure < 0.24) return "Inside Manifold";
+  if (outside > 0 && pressure >= 0.38) return "Outside Manifold";
+  if (pressure >= 0.3) return "Boundary Pressure";
+  return "Inside Manifold";
+}
+
 /**
  * Flow state label for the side panel — driven by the same containment / drift / instability / escape signals as the canvas.
  */
@@ -3381,28 +3422,28 @@ function deriveStructuralFlowFieldStatus(d) {
   const { integrity01, containment01, driftMag01, instN, escapeRatio, boundaryPressure01 } = d;
   if (escapeRatio > 0.4 || containment01 < 0.36) {
     return {
-      label: "Escaping boundary",
+      label: "Escaping Boundary",
       detail: "Iso-contour or energy is leaving the valid manifold (orange/red segments).",
       tone: "HIGH",
     };
   }
   if (integrity01 < 0.3 && driftMag01 > 0.52 && instN > 0.48) {
     return {
-      label: "Unstable drift",
+      label: "Unstable Drift",
       detail: "Strong net flow and high fragmentation relative to baseline.",
       tone: "HIGH",
     };
   }
   if (boundaryPressure01 > 0.44 && containment01 < 0.55) {
     return {
-      label: "Boundary stress",
+      label: "Under Pressure",
       detail: "Edge-weighted energy is high; contour is compressing the border.",
       tone: "MEDIUM",
     };
   }
   if (boundaryPressure01 > 0.26 && driftMag01 > 0.36) {
     return {
-      label: "Under pressure",
+      label: "Under Pressure",
       detail: "Net drift and edge band energy are elevated; watch the dashed boundary.",
       tone: "MEDIUM",
     };
@@ -3597,7 +3638,8 @@ function buildStructuralFlowFieldModel(payload, normToPlane, driftDir, driftN, i
   }
   let span = Math.max(maxE - minE, 1e-12);
   containment = massTot > 1e-12 ? massIn / massTot : containment;
-  const massQuantileCut = minE + span * (0.24 + 0.1 * (1 - containment));
+  const targetMass = 0.76 + 0.11 * (1 - containment) - 0.06 * Math.max(driftN, instN);
+  const massQuantileCut = structuralFlowMassThreshold(E, NX, NY, targetMass, minE, maxE);
   const centroidScore = Math.max(0, Math.min(1, 1 - Math.min(1, 2.2 * Math.hypot(cu - 0.5, cv - 0.5))));
   let coherence01 = Math.max(
     0,
@@ -3608,7 +3650,7 @@ function buildStructuralFlowFieldModel(payload, normToPlane, driftDir, driftN, i
   );
   if (mCount.totalSensors <= 0) coherence01 = 0;
 
-  const coherenceThreshold = minE + span * (0.22 + 0.64 * coherence01);
+  const coherenceThreshold = minE + span * (0.22 + 0.66 * coherence01);
   const T = Math.max(massQuantileCut, coherenceThreshold);
 
   const cellHigh = [];
@@ -3837,10 +3879,20 @@ function structuralFlowContourBoundaryMetrics(segs) {
 function structuralFlowHeatmapRgba(enNorm, systemicPressure01) {
   const t = Math.max(0, Math.min(1, enNorm));
   const p = Math.max(0, Math.min(1, systemicPressure01));
-  const r = Math.floor(6 + t * 34 + p * 40);
-  const g = Math.floor(18 + t * 84 + p * 26);
-  const b = Math.floor(42 + (1 - t) * 58 + p * 12);
-  const a = 0.1 + t * 0.16 + p * 0.08;
+  const r = Math.floor(8 + t * 22 + p * 22);
+  const g = Math.floor(18 + t * 56 + p * 18);
+  const b = Math.floor(46 + (1 - t) * 42 + p * 8);
+  const a = 0.035 + t * 0.08 + p * 0.04;
+  return `rgba(${r},${g},${b},${a})`;
+}
+
+function hexToRgba(hex, alpha) {
+  const a = Math.max(0, Math.min(1, Number(alpha) || 0));
+  const m = String(hex || "").trim().match(/^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i);
+  if (!m) return `rgba(56,189,248,${a})`;
+  const r = parseInt(m[1], 16);
+  const g = parseInt(m[2], 16);
+  const b = parseInt(m[3], 16);
   return `rgba(${r},${g},${b},${a})`;
 }
 
@@ -3921,8 +3973,7 @@ function drawStructuralFlow2dCanvas(ctx, width, height, payload, _t, _coherence,
       let eC = (E[i][j] + E[i + 1][j] + E[i + 1][j + 1] + E[i][j + 1]) / 4;
       if (!largestMask[i][j]) eC *= 0.08;
       const en = (eC - minE) / spanE;
-      const systemicPressure = Math.max(0, Math.min(1, 1 - contourBoundary.edgeDistance01));
-      ctx.fillStyle = structuralFlowHeatmapRgba(en * 0.7, systemicPressure * 0.34);
+      ctx.fillStyle = structuralFlowHeatmapRgba(en * 0.48, 0.03);
       const px0 = innerX + (i / NX) * innerW;
       const py0 = innerY + (j / NY) * innerH;
       const pw = innerW / NX;
@@ -3957,6 +4008,20 @@ function drawStructuralFlow2dCanvas(ctx, width, height, payload, _t, _coherence,
     ctx.lineWidth = 1.1;
     ctx.stroke();
   });
+  for (let i = 0; i < NX; i += 1) {
+    for (let j = 0; j < NY; j += 1) {
+      if (!largestMask[i][j]) continue;
+      const eC = (E[i][j] + E[i + 1][j] + E[i + 1][j + 1] + E[i][j + 1]) / 4;
+      const en = Math.max(0, Math.min(1, (eC - T) / Math.max(spanE * 0.9, 1e-9)));
+      const fillA = 0.14 + 0.26 * en;
+      const px0 = innerX + (i / NX) * innerW;
+      const py0 = innerY + (j / NY) * innerH;
+      const pw = innerW / NX;
+      const ph = innerH / NY;
+      ctx.fillStyle = `rgba(45, 212, 191, ${fillA})`;
+      ctx.fillRect(px0, py0, pw + 0.5, ph + 0.5);
+    }
+  }
   primarySegs.forEach((s) => {
     const u1 = s[0];
     const v1 = s[1];
@@ -4022,12 +4087,14 @@ function drawStructuralFlow2dCanvas(ctx, width, height, payload, _t, _coherence,
     const sx = innerX + nx * innerW;
     const sy = innerY + nz * innerH;
     const stress = flowNodeStress01(n);
-    ctx.fillStyle = flowNodeColorCss(stress, Boolean(n.is_unstable), n);
+    const sensorBase = flowNodeColorCss(stress, Boolean(n.is_unstable), n);
+    const sensorAlpha = 0.22 + stress * 0.18 + (n.is_unstable ? 0.1 : 0);
+    ctx.fillStyle = hexToRgba(sensorBase, Math.max(0.12, Math.min(0.5, sensorAlpha)));
     ctx.beginPath();
-    ctx.arc(sx, sy, 2.1 + stress * 2.4 + (n.is_unstable ? 0.8 : 0), 0, Math.PI * 2);
+    ctx.arc(sx, sy, 1.45 + stress * 1.35 + (n.is_unstable ? 0.35 : 0), 0, Math.PI * 2);
     ctx.fill();
-    ctx.strokeStyle = "rgba(15, 23, 42, 0.5)";
-    ctx.lineWidth = 1;
+    ctx.strokeStyle = "rgba(15, 23, 42, 0.24)";
+    ctx.lineWidth = 0.75;
     ctx.stroke();
   });
 
