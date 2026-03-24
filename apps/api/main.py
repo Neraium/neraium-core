@@ -85,6 +85,7 @@ DEFAULT_UPLOAD_STREAM_CHUNK_BYTES = 1024 * 1024
 DEFAULT_INGEST_JOB_MAX_ERROR_SAMPLES = 25
 DEFAULT_CORS_ALLOW_ORIGINS = (
     "https://neraium-core.vercel.app",
+    "https://neraium-core-production.up.railway.app",
 )
 
 
@@ -190,9 +191,12 @@ def _uvicorn_h11_max_incomplete_event_size() -> int:
 
 def _cors_allow_origins() -> list[str]:
     raw = str(os.getenv("NERAIUM_CORS_ALLOW_ORIGINS") or "").strip()
-    if not raw:
-        return list(DEFAULT_CORS_ALLOW_ORIGINS)
-    return [x.strip() for x in raw.split(",") if x.strip()]
+    configured = [x.strip() for x in raw.split(",") if x.strip()] if raw else []
+    merged: list[str] = []
+    for origin in [*DEFAULT_CORS_ALLOW_ORIGINS, *configured]:
+        if origin and origin not in merged:
+            merged.append(origin)
+    return merged
 
 
 class IngestRequest(BaseModel):
@@ -1577,8 +1581,8 @@ def create_app(
         allow_origins=_cors_allow_origins(),
         allow_origin_regex=r"^https://neraium-core(?:-[a-z0-9-]+)?\.vercel\.app$",
         allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
+        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+        allow_headers=["Content-Type", "Authorization", "X-API-Key"],
     )
     app.add_middleware(MaxRequestBodySizeMiddleware, max_body_size=request_body_limit)
     persistence_available = _persistence_available(db_path)
