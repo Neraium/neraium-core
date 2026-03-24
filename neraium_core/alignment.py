@@ -26,6 +26,7 @@ from neraium_core.directional import directional_metrics, lagged_correlation_mat
 from neraium_core.early_warning import early_warning_metrics
 from neraium_core.entropy import interaction_entropy
 from neraium_core.experimental_analytics.hierarchy_analysis import analyze_hierarchy_cascade
+from neraium_core.experimental_analytics.constraint_analysis import analyze_constraint_lock_in
 from neraium_core.experimental_analytics.trajectory_analysis import classify_trajectory_path
 from neraium_core.forecast_models import forecast_next, time_to_threshold_ar1
 from neraium_core.forecasting import instability_trend, time_to_instability
@@ -1150,6 +1151,16 @@ class StructuralEngine:
                 causal_propagation=causal_prop,
                 counterfactual_guidance=counterfactual_guidance,
                 transition=transition_metrics,
+            constraint_analysis = analyze_constraint_lock_in(
+                transition_pressure_history=list(self._transition_pressure_history),
+                shock_activity_history=list(self._shock_activity_history),
+                structural_drift_score=float(drift_score),
+                regime_novelty=float(transition_metrics.get("regime_novelty", 0.0)),
+                regime_distance=float(regime_distance) if regime_distance is not None else None,
+                subsystem_instability=float(subsystem.get("max_instability", 0.0)),
+                reversibility_classification=str(reversibility.get("classification", "")),
+                reversibility_score=float(reversibility_scores.get("locked_in_index", 0.0)),
+                trajectory_analysis=trajectory_analysis,
             )
 
             analytics.update(
@@ -1174,6 +1185,7 @@ class StructuralEngine:
                     "counterfactual_guidance": counterfactual_guidance,
                     "trajectory_analysis": trajectory_analysis,
                     "hierarchy_analysis": hierarchy_analysis,
+                    "constraint_analysis": constraint_analysis,
                 }
             )
             result["reversibility_classification"] = (
@@ -1225,6 +1237,15 @@ class StructuralEngine:
                 "localized_vs_global_score": 0.0,
                 "rationale": {
                     "observation": "Hierarchy analysis unavailable because multivariate relational metrics were skipped.",
+            analytics["constraint_analysis"] = {
+                "available": False,
+                "reason": "relational_metrics_skipped",
+                "recovery_margin": None,
+                "lock_in_score": None,
+                "commitment_to_failure": "MODERATE",
+                "point_of_no_return_risk": "ELEVATED",
+                "rationale": {
+                    "observation": "Constraint analysis unavailable because multivariate relational metrics were skipped.",
                 },
             }
 
