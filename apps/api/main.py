@@ -23,13 +23,13 @@ from pydantic import BaseModel, Field
 from starlette.responses import JSONResponse, Response
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
-from integration import (
+from apps.api.integration import (
     IntegrationMappingError,
     apply_integration_mapping,
     load_integration_config,
     resolve_customer_integration,
 )
-from web import build_web_router
+from apps.api.web import build_web_router
 from neraium_core.logging_utils import log_structured, summarize_exception_for_logs
 from neraium_core.service import StructuralMonitoringService
 from neraium_core.store import ResultStore
