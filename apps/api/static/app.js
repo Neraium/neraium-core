@@ -42,9 +42,23 @@ async function fetchJson(path, opts) {
       requestHeaders: opts && opts.headers ? opts.headers : null,
       requestBody: opts && typeof opts.body === "string" ? opts.body.slice(0, 1000) : null,
     });
-    throw new Error(
-      `Request failed: ${method} ${endpoint} (${reason}). Possible CORS/preflight rejection or network failure.`,
+    const e = new Error(
+      [
+        `[NETWORK before response] ${method} ${endpoint}`,
+        `reason=${reason}`,
+        "Possible CORS/preflight rejection or network failure.",
+      ].join(" | "),
     );
+    e.name = "ApiNetworkError";
+    e.apiError = {
+      stage: "before_response",
+      method,
+      endpoint,
+      reason,
+      status: null,
+      responseText: null,
+    };
+    throw e;
   }
   const endpoint = String(path || res.url || "");
   const raw = await res.text();
@@ -70,7 +84,24 @@ async function fetchJson(path, opts) {
       statusText: res.statusText || "",
       responseText: raw ? raw.slice(0, 1000) : "",
     });
-    throw new Error(`HTTP ${res.status} ${res.statusText || ""} for ${method} ${endpoint}: ${detail}`.trim());
+    const e = new Error(
+      [
+        `[HTTP after response] ${method} ${endpoint}`,
+        `status=${res.status} ${res.statusText || ""}`.trim(),
+        `detail=${detail}`,
+      ].join(" | "),
+    );
+    e.name = "ApiHttpError";
+    e.apiError = {
+      stage: "after_response",
+      method,
+      endpoint,
+      status: res.status,
+      statusText: res.statusText || "",
+      detail,
+      responseText: raw || "",
+    };
+    throw e;
   }
   if (!raw) return {};
   if (body !== null) return body;
