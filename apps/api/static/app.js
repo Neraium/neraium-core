@@ -28,13 +28,14 @@ function apiUrl(path, params) {
 }
 
 async function fetchJson(path, opts) {
+  const method = String((opts && opts.method) || "GET").toUpperCase();
   let res;
   try {
     res = await fetch(path, opts);
   } catch (err) {
     const endpoint = String(path || "");
     const reason = String((err && err.message) || err || "network error");
-    throw new Error(`Request failed: ${endpoint} (${reason})`);
+    throw new Error(`Request failed: ${method} ${endpoint} (${reason})`);
   }
   const endpoint = String(path || res.url || "");
   const raw = await res.text();
@@ -53,7 +54,7 @@ async function fetchJson(path, opts) {
         : raw
           ? raw.slice(0, 500)
           : "empty response body";
-    throw new Error(`HTTP ${res.status} for ${endpoint}: ${detail}`);
+    throw new Error(`HTTP ${res.status} ${res.statusText || ""} for ${method} ${endpoint}: ${detail}`.trim());
   }
   if (!raw) return {};
   if (body !== null) return body;
@@ -944,6 +945,19 @@ function buildDemoScenarioItems({ profile, siteId, assetId, minutes = 120 }) {
   return out;
 }
 
+async function ingestBatchForRun(runId, items, customerId) {
+  return fetchJson(apiUrl("/ingest/batch", tenantScopeParams({ run_id: runId })), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      items: items.map((item) => ({
+        ...item,
+        customer_id: customerId,
+      })),
+    }),
+  });
+}
+
 function demoScenarioListForMode(mode) {
   const suffix = new Date().toISOString().slice(11, 16).replace(":", "");
   const all = [
@@ -977,16 +991,7 @@ async function prepareDemoRuns(options = {}) {
         });
         const run = runEnv.run;
         const items = buildDemoScenarioItems(scenario);
-        await fetchJson(apiUrl("/ingest/batch", tenantScopeParams({ run_id: run.run_id })), {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            items: items.map((item) => ({
-              ...item,
-              customer_id: cust,
-            })),
-          }),
-        });
+        await ingestBatchForRun(run.run_id, items, cust);
         return run;
       }),
     );
@@ -6342,16 +6347,7 @@ async function seedDemoData() {
       sensor_values: buildDemoSensorValuesRow(i, p, driftFactor, driftFactor * 1.1),
     });
   }
-  return fetchJson(apiUrl("/ingest/batch", tenantScopeParams({ run_id: runId })), {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      items: items.map((item) => ({
-        ...item,
-        customer_id: customerIdValue(state.tenant.customerId),
-      })),
-    }),
-  });
+  return ingestBatchForRun(runId, items, customerIdValue(state.tenant.customerId));
 }
 
 function destroyCharts() {
