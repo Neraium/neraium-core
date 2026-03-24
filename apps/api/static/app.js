@@ -3854,6 +3854,31 @@ function buildInterpolatedFieldModel(payload, normToPlane, driftDir, riskExp, dr
   };
 }
 
+/**
+ * Temporal wrapper around the existing structural field builder.
+ * Keeps one source of truth for field/contour generation while allowing snapshot interpolation.
+ */
+function resolveStructuralFlowModelForFrame(payload, normToPlane, driftDir, riskExp, frame) {
+  const driftN = Math.max(0, Math.min(1, Number(frame?.driftN ?? 0)));
+  const instN = Math.max(0, Math.min(1, Number(frame?.instN ?? 0)));
+  const aDrift = Number(frame?.a?.driftN);
+  const aInst = Number(frame?.a?.instN);
+  const bDrift = Number(frame?.b?.driftN);
+  const bInst = Number(frame?.b?.instN);
+  const t = Math.max(0, Math.min(1, Number(frame?.t ?? 0)));
+  const canInterpolate =
+    Number.isFinite(aDrift) &&
+    Number.isFinite(aInst) &&
+    Number.isFinite(bDrift) &&
+    Number.isFinite(bInst) &&
+    t > 0 &&
+    (Math.abs(aDrift - bDrift) > 1e-6 || Math.abs(aInst - bInst) > 1e-6);
+  if (!canInterpolate) {
+    return buildStructuralFlowFieldModel(payload, normToPlane, driftDir, driftN, instN, riskExp);
+  }
+  return buildInterpolatedFieldModel(payload, normToPlane, driftDir, riskExp, aDrift, aInst, bDrift, bInst, t);
+}
+
 function getStructuralFlowPlaybackFrame() {
   const g = state.geometry3d;
   const tf = g.temporalFlow || {};
@@ -3920,17 +3945,7 @@ function drawStructuralFlow2dCanvas(ctx, width, height, payload, frame) {
 
   const driftN = Math.max(0, Math.min(1, Number(frame?.driftN ?? 0)));
   const instN = Math.max(0, Math.min(1, Number(frame?.instN ?? 0)));
-  const model = buildInterpolatedFieldModel(
-    payload,
-    normToPlane,
-    driftDir,
-    riskExp,
-    Number(frame?.a?.driftN ?? driftN),
-    Number(frame?.a?.instN ?? instN),
-    Number(frame?.b?.driftN ?? driftN),
-    Number(frame?.b?.instN ?? instN),
-    Math.max(0, Math.min(1, Number(frame?.t ?? 0))),
-  );
+  const model = resolveStructuralFlowModelForFrame(payload, normToPlane, driftDir, riskExp, frame);
   const { NX, NY, E, E_iso, largestMask, minE, maxE, T, coherence01, cu, cv, netVx, netVy, metrics: m } =
     model;
   const spanE = Math.max(maxE - minE, 1e-12);
