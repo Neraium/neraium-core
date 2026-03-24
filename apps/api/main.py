@@ -20,7 +20,7 @@ import numpy as np
 from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Query, Request, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from starlette.responses import JSONResponse, Response
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
@@ -205,6 +205,16 @@ class IngestRequest(BaseModel):
 
 class BatchIngestRequest(BaseModel):
     items: list[IngestRequest]
+
+    @model_validator(mode="before")
+    @classmethod
+    def _accept_records_alias(cls, data: Any) -> Any:
+        """Accept legacy/front-end payloads that send `records` instead of `items`."""
+        if isinstance(data, dict) and "items" not in data and "records" in data:
+            remapped = dict(data)
+            remapped["items"] = remapped.pop("records")
+            return remapped
+        return data
 
 
 class CsvColumnMappingPayload(BaseModel):
@@ -1566,7 +1576,7 @@ def create_app(
         CORSMiddleware,
         allow_origins=_cors_allow_origins(),
         allow_origin_regex=r"^https://neraium-core(?:-[a-z0-9-]+)?\.vercel\.app$",
-        allow_credentials=False,
+        allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
     )
