@@ -50,7 +50,7 @@ mimetypes.add_type("text/javascript", ".mjs", strict=False)
 
 
 def _mount_web_static(app: FastAPI) -> None:
-    """Serve `apps/api/static` at `/web` (app.js, styles, three-init, vendor/three, …).
+    """Serve `apps/api/static` at `/web` (app.js, styles, three-init, …).
 
     Uses Path(__file__) so the directory is correct regardless of process cwd.
     Registered after the web router so explicit HTML routes win; /web/* is fully static.
@@ -71,12 +71,9 @@ def _mount_web_static(app: FastAPI) -> None:
         name="web",
     )
     logger.info("Serving static files at /web from %s", static_dir)
-    three_vendor = static_dir / "vendor" / "three" / "build" / "three.module.js"
-    if not three_vendor.is_file():
-        logger.warning(
-            "Three.js bundle missing at %s — run: python scripts/download_three_vendor.py",
-            three_vendor,
-        )
+    # Front-end modules are loaded via CDN import map in static/index.html.
+    # Keep startup resilient when /web/vendor/three is not deployed
+    # (e.g. Railway root set to apps/api).
 
 
 DEFAULT_MAX_REQUEST_BODY_BYTES = 50 * 1024 * 1024
