@@ -3678,7 +3678,6 @@ function buildStructuralFlowFieldModel(payload, normToPlane, driftDir, driftN, i
   const coherenceThreshold = minE + span * (0.22 + 0.66 * coherence01);
   const T = Math.max(massQuantileCut, coherenceThreshold);
 
-  const { largestMask, E_iso } = structuralFlowBuildIsoFromScalar(E, NX, NY, T, minE);
   const cellHigh = [];
   for (let i = 0; i < NX; i += 1) {
     cellHigh[i] = [];
@@ -4084,25 +4083,19 @@ function drawStructuralFlow2dCanvas(ctx, width, height, payload, frame) {
   const clamp01 = (value) => Math.max(0, Math.min(1, value));
   for (let i = 0; i < NX; i += 1) {
     for (let j = 0; j < NY; j += 1) {
-      let eC = (E[i][j] + E[i + 1][j] + E[i + 1][j + 1] + E[i][j + 1]) / 4;
-      if (!largestMask[i][j]) eC *= 0.08;
-      const en = (eC - minE) / spanE;
-      const edgePressure = Math.max(0, Math.min(1, model.boundaryPressure01 * (0.55 + 0.45 * driftN)));
-      ctx.fillStyle = structuralFlowHeatmapRgba(en * 0.62, edgePressure);
-      ctx.fillStyle = structuralFlowHeatmapRgba(en * 0.48, 0.03);
       const inPrimaryMask = largestMask[i][j];
       const cellEnergy = (E[i][j] + E[i + 1][j] + E[i + 1][j + 1] + E[i][j + 1]) / 4;
       const tintedEnergy = inPrimaryMask ? cellEnergy : cellEnergy * 0.08;
       const energyNorm = (tintedEnergy - minE) / spanE;
       const thresholdNorm = clamp01((tintedEnergy - T) / Math.max(spanE * 0.9, 1e-9));
-      const edgePressure = inPrimaryMask ? 0.14 + 0.26 * thresholdNorm : 0.03;
+      const edgePressureCell = inPrimaryMask ? 0.14 + 0.26 * thresholdNorm : 0.03;
       const px0 = innerX + (i / NX) * innerW;
       const py0 = innerY + (j / NY) * innerH;
       const pw = innerW / NX;
       const ph = innerH / NY;
 
       // One final per-cell render path: assign tint once, then paint once.
-      ctx.fillStyle = structuralFlowHeatmapRgba(energyNorm * 0.48, edgePressure);
+      ctx.fillStyle = structuralFlowHeatmapRgba(energyNorm * 0.48, edgePressureCell);
       ctx.fillRect(px0, py0, pw + 0.5, ph + 0.5);
     }
   }
@@ -4123,11 +4116,6 @@ function drawStructuralFlow2dCanvas(ctx, width, height, payload, frame) {
   state.geometry3d.structuralFlowDerived = finalizeStructuralFlowDerivedState(model, segs, driftN, instN);
   const derived = state.geometry3d.structuralFlowDerived || {};
   const tf = state.geometry3d.temporalFlow || {};
-  const primarySegIdx = structuralFlowPrimarySegmentComponent(segs);
-  const primarySegs = [];
-  segs.forEach((s, si) => {
-    if (primarySegIdx.has(si)) primarySegs.push(s);
-  });
   const boundaryContacts = [];
   for (let i = 0; i < NX; i += 1) {
     for (let j = 0; j < NY; j += 1) {
