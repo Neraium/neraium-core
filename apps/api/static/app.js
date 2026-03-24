@@ -6,8 +6,16 @@ function qsa(sel) {
   return Array.from(document.querySelectorAll(sel));
 }
 
+const PRODUCTION_API_BASE_URL = "https://neraium-core-production.up.railway.app";
+
+function resolveApiBaseUrl() {
+  const host = window.location.hostname;
+  const isLocalhost = host === "localhost" || host === "127.0.0.1";
+  return isLocalhost ? window.location.origin : PRODUCTION_API_BASE_URL;
+}
+
 function apiUrl(path, params) {
-  const u = new URL(path, window.location.origin);
+  const u = new URL(path, resolveApiBaseUrl());
   if (params) {
     Object.entries(params).forEach(([k, v]) => {
       if (v !== undefined && v !== null && String(v).length > 0) {
