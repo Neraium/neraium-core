@@ -23,24 +23,44 @@ from pydantic import BaseModel, Field
 from starlette.responses import JSONResponse, Response
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
-from integration import (
-    IntegrationMappingError,
-    apply_integration_mapping,
-    load_integration_config,
-    resolve_customer_integration,
-)
-from web import build_web_router
-from _core_imports import (
-    ResultStore,
-    StructuralMonitoringService,
-    log_structured,
-    infer_semantic_mapping,
-    parse_csv_sample_for_mapping,
-    resolve_mapping,
-    row_to_frame_kwargs,
-    validate_mapping,
-    summarize_exception_for_logs,
-)
+try:
+    from .integration import (
+        IntegrationMappingError,
+        apply_integration_mapping,
+        load_integration_config,
+        resolve_customer_integration,
+    )
+    from .web import build_web_router
+    from ._core_imports import (
+        ResultStore,
+        StructuralMonitoringService,
+        log_structured,
+        infer_semantic_mapping,
+        parse_csv_sample_for_mapping,
+        resolve_mapping,
+        row_to_frame_kwargs,
+        validate_mapping,
+        summarize_exception_for_logs,
+    )
+except ImportError:  # pragma: no cover - script-mode fallback
+    from integration import (
+        IntegrationMappingError,
+        apply_integration_mapping,
+        load_integration_config,
+        resolve_customer_integration,
+    )
+    from web import build_web_router
+    from _core_imports import (
+        ResultStore,
+        StructuralMonitoringService,
+        log_structured,
+        infer_semantic_mapping,
+        parse_csv_sample_for_mapping,
+        resolve_mapping,
+        row_to_frame_kwargs,
+        validate_mapping,
+        summarize_exception_for_logs,
+    )
 
 
 logger = logging.getLogger(__name__)
@@ -2897,7 +2917,7 @@ if __name__ == "__main__":
     import uvicorn
 
     uvicorn.run(
-        "main:app",
+        app,
         host=os.getenv("HOST", "0.0.0.0"),
         port=int(os.getenv("PORT", "8000")),
         h11_max_incomplete_event_size=_uvicorn_h11_max_incomplete_event_size(),
