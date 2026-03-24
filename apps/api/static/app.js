@@ -102,20 +102,6 @@ function transitionSeverity(prevResult, nextResult) {
   return "normal";
 }
 
-function transitionArrow(prevResult, nextResult) {
-  if (!prevResult || !nextResult) return "Start";
-  const prevState = String(prevResult.state || prevResult.interpreted_state || "-").toUpperCase();
-  const nextState = String(nextResult.state || nextResult.interpreted_state || "-").toUpperCase();
-  if (prevState !== nextState) return `${prevState} -> ${nextState}`;
-  const prevRisk = normalizeRiskLevel(prevResult.risk_level);
-  const nextRisk = normalizeRiskLevel(nextResult.risk_level);
-  if (prevRisk !== nextRisk) return `Risk ${prevRisk} -> ${nextRisk}`;
-  const prevTrend = String(trendFromResult(prevResult)).toUpperCase();
-  const nextTrend = String(trendFromResult(nextResult)).toUpperCase();
-  if (prevTrend !== nextTrend) return `Trend ${prevTrend} -> ${nextTrend}`;
-  return "No major transition";
-}
-
 function structuralDriftFromResult(r) {
   if (!r) return null;
   const v = r.structural_drift_score;
@@ -3966,14 +3952,13 @@ function drawStructuralFlow2dCanvas(ctx, width, height, payload, _t, _coherence,
     if (primarySegIdx.has(si)) primarySegs.push(s);
     else secondarySegs.push(s);
   });
-  const contourBoundary = structuralFlowContourBoundaryMetrics(primarySegs);
-
   for (let i = 0; i < NX; i += 1) {
     for (let j = 0; j < NY; j += 1) {
       let eC = (E[i][j] + E[i + 1][j] + E[i + 1][j + 1] + E[i][j + 1]) / 4;
       if (!largestMask[i][j]) eC *= 0.08;
       const en = (eC - minE) / spanE;
-      ctx.fillStyle = structuralFlowHeatmapRgba(en * 0.48, 0.03);
+      const edgePressure = largestMask[i][j] ? 0.14 + 0.26 * Math.max(0, Math.min(1, (eC - T) / Math.max(spanE * 0.9, 1e-9))) : 0.03;
+      ctx.fillStyle = structuralFlowHeatmapRgba(en * 0.48, edgePressure);
       const px0 = innerX + (i / NX) * innerW;
       const py0 = innerY + (j / NY) * innerH;
       const pw = innerW / NX;
@@ -4008,20 +3993,6 @@ function drawStructuralFlow2dCanvas(ctx, width, height, payload, _t, _coherence,
     ctx.lineWidth = 1.1;
     ctx.stroke();
   });
-  for (let i = 0; i < NX; i += 1) {
-    for (let j = 0; j < NY; j += 1) {
-      if (!largestMask[i][j]) continue;
-      const eC = (E[i][j] + E[i + 1][j] + E[i + 1][j + 1] + E[i][j + 1]) / 4;
-      const en = Math.max(0, Math.min(1, (eC - T) / Math.max(spanE * 0.9, 1e-9)));
-      const fillA = 0.14 + 0.26 * en;
-      const px0 = innerX + (i / NX) * innerW;
-      const py0 = innerY + (j / NY) * innerH;
-      const pw = innerW / NX;
-      const ph = innerH / NY;
-      ctx.fillStyle = `rgba(45, 212, 191, ${fillA})`;
-      ctx.fillRect(px0, py0, pw + 0.5, ph + 0.5);
-    }
-  }
   primarySegs.forEach((s) => {
     const u1 = s[0];
     const v1 = s[1];
