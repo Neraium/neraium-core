@@ -86,6 +86,22 @@
       "spectral": {},
       "entropy": 0.0,
       "regime_drift": 0.0,
+      "counterfactual_guidance": {
+        "available": true,
+        "top_structural_break_contributors": [],
+        "top_stabilizing_directions": [],
+        "reversibility": {
+          "classification": "REVERSIBLE | METASTABLE | LOCKED_IN",
+          "scores": {
+            "persistence": 0.0,
+            "regime_novelty": 0.0,
+            "fragmentation": 0.0,
+            "drift_trend": 0.0,
+            "locked_in_index": 0.0
+          },
+          "observation": "string"
+        }
+      },
       "component_confidence": {},
       "composite_instability": 0.0,
       "forecasting": {},
@@ -224,4 +240,3 @@
     "accuracy"
   ]
 }
-
