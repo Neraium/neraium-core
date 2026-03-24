@@ -1,2 +1,5 @@
-# Install Neraium package from repo root; this pulls FastAPI, Uvicorn, NumPy, and other runtime deps from pyproject.toml.
--e ../..
+fastapi
+uvicorn
+numpy
+pydantic
+starlette
