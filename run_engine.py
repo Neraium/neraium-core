@@ -55,6 +55,11 @@ class StructuralEngine:
         self.sensor_order: List[str] = []
         self.latest_result: Optional[Dict] = None
         self.prev_drift: Optional[float] = None
+        self._transition_pressure_history: deque[float] = deque(maxlen=60)
+        self._shock_activity_history: deque[float] = deque(maxlen=60)
+        self._structural_drift_history: deque[float] = deque(maxlen=60)
+        self._state_history: deque[str] = deque(maxlen=60)
+        self._frame_count: int = 0
 
     def _vector_from_frame(self, frame: Dict) -> np.ndarray:
         """
@@ -242,69 +247,66 @@ class StructuralEngine:
             return "WATCH"
         return "STABLE"
 
-    def process_frame(self, frame: Dict) -> Dict:
-        """
-        Process one normalized telemetry frame and return the latest structural event.
-        Expected frame shape:
-        {
-            "timestamp": "...",
-            "site_id": "...",
-            "asset_id": "...",
-            "sensor_values": {...}
+    @staticmethod
+    def _clamp01(value: float) -> float:
+        return max(0.0, min(1.0, float(value)))
+
+    @staticmethod
+    def _trend(values: List[float]) -> float:
+        if len(values) < 2:
+            return 0.0
+        return float(values[-1] - values[0]) / float(len(values) - 1)
+
+    def _update_histories(self, *, drift_score: float, velocity: float, state: str, pressure: float) -> None:
+        shock_activity = self._clamp01(abs(velocity) / 0.35)
+        self._transition_pressure_history.append(float(pressure))
+        self._shock_activity_history.append(float(shock_activity))
+        self._structural_drift_history.append(float(drift_score))
+        self._state_history.append(state)
+
+    def _compute_base_metrics(
+        self,
+        frame: Dict,
+        baseline: Optional[Dict],
+        vector: np.ndarray,
+    ) -> Dict:
+        base = {
+            "id": None,
+            "event_type": "baseline_telemetry",
+            "timestamp": frame["timestamp"],
+            "site_id": frame["site_id"],
+            "asset_id": frame["asset_id"],
+            "state": "STABLE",
+            "structural_drift_score": 0.0,
+            "relational_stability_score": 1.0,
+            "system_health": 100,
+            "drift_alert": False,
+            "lead_time_hours": None,
+            "lead_time_confidence": 0.0,
+            "drift_velocity": 0.0,
+            "structural_driver": "baseline formation",
+            "predicted_impact": "No near term operational disruption expected.",
+            "explanation": "Initializing structural telemetry...",
+            "mahalanobis_score": 0.0,
+            "covariance_drift_score": 0.0,
+            "latest_instability": 0.0,
+            "confidence_score": 0.25,
+            "interpreted_state": "BASELINE_FORMING",
+            "regime_name": "INITIALIZING",
         }
-        """
-        required = {"timestamp", "site_id", "asset_id", "sensor_values"}
-        missing = [key for key in required if key not in frame]
-        if missing:
-            raise ValueError(f"Frame is missing required keys: {missing}")
 
-        vector = self._vector_from_frame(frame)
-        vector = self._smooth_current_vector(vector)
-
-        stored = dict(frame)
-        stored["_vector"] = vector
-        self.frames.append(stored)
-
-        baseline = self._baseline_stats()
-
-        # Wait for enough healthy baseline or skip scoring incomplete current frames.
         if baseline is None or np.isnan(vector).any():
-            result = {
-                "id": None,
-                "event_type": "baseline_telemetry",
-                "timestamp": frame["timestamp"],
-                "site_id": frame["site_id"],
-                "asset_id": frame["asset_id"],
-                "state": "STABLE",
-                "structural_drift_score": 0.0,
-                "relational_stability_score": 1.0,
-                "system_health": 100,
-                "drift_alert": False,
-                "lead_time_hours": None,
-                "lead_time_confidence": 0.0,
-                "drift_velocity": 0.0,
-                "structural_driver": "baseline formation",
-                "predicted_impact": "No near term operational disruption expected.",
-                "explanation": "Initializing structural telemetry...",
-                "mahalanobis_score": 0.0,
-                "covariance_drift_score": 0.0,
-            }
-            self.latest_result = result
-            return result
+            return base
 
         mahal = self._mahalanobis(vector, baseline["mean"], baseline["inv_cov"])
         cov_drift = self._covariance_drift()
         drift_score = self._combined_drift(mahal, cov_drift)
-
         stability_score = self._relational_stability(cov_drift)
         health = self._system_health(drift_score, stability_score)
         state = self._alert_state(drift_score)
         drift_alert = drift_score > 1.5
 
-        if self.prev_drift is None:
-            velocity = 0.0
-        else:
-            velocity = drift_score - self.prev_drift
+        velocity = 0.0 if self.prev_drift is None else (drift_score - self.prev_drift)
         self.prev_drift = drift_score
 
         lead_time_hours = None
@@ -325,12 +327,18 @@ class StructuralEngine:
             impact = "No near term operational disruption expected."
             driver = "stable baseline telemetry"
 
-        result = {
-            "id": None,
+        interpreted_state = "STABLE_FLOW"
+        regime_name = "NOMINAL"
+        if state == "WATCH":
+            interpreted_state = "EMERGING_TRANSITION"
+            regime_name = "DEGRADING"
+        elif state == "ALERT":
+            interpreted_state = "SUSTAINED_TRANSITION"
+            regime_name = "INSTABILITY_REGIME"
+
+        return {
+            **base,
             "event_type": event_type,
-            "timestamp": frame["timestamp"],
-            "site_id": frame["site_id"],
-            "asset_id": frame["asset_id"],
             "state": state,
             "structural_drift_score": round(drift_score, 4),
             "relational_stability_score": round(stability_score, 4),
@@ -344,7 +352,185 @@ class StructuralEngine:
             "explanation": "Structural engine monitoring sensor relationships in real time.",
             "mahalanobis_score": round(mahal, 4),
             "covariance_drift_score": round(cov_drift, 4),
+            "latest_instability": round(self._clamp01(drift_score / 4.5), 4),
+            "confidence_score": round(self._clamp01(0.2 + 0.8 * stability_score), 4),
+            "interpreted_state": interpreted_state,
+            "regime_name": regime_name,
         }
+
+    def _compute_transition_metrics(self, *, drift_score: float, velocity: float, stability_score: float) -> Dict:
+        raw_pressure = (0.65 * self._clamp01(drift_score / 3.0)) + (0.25 * self._clamp01(velocity / 0.25)) + (
+            0.10 * self._clamp01((1.0 - stability_score) / 0.75)
+        )
+        pressure = self._clamp01(raw_pressure)
+        if pressure >= 0.75:
+            transition_state = "SUSTAINED_TRANSITION"
+        elif pressure >= 0.45:
+            transition_state = "EMERGING_TRANSITION"
+        elif pressure >= 0.2:
+            transition_state = "METASTABLE"
+        else:
+            transition_state = "NONE"
+        return {"transition_pressure": round(pressure, 4), "transition_state": transition_state}
+
+    def _analytics_unavailable(self, reason: str) -> Dict:
+        return {"available": False, "reason": reason}
+
+    def _compute_advanced_analytics(self) -> Dict:
+        if len(self._structural_drift_history) < 3:
+            unavailable = self._analytics_unavailable("insufficient history")
+            return {
+                "trajectory_analysis": unavailable,
+                "branching_analysis": unavailable,
+                "constraint_analysis": unavailable,
+                "hierarchy_analysis": unavailable,
+                "horizon_analysis": unavailable,
+                "counterfactual_simulation": unavailable,
+            }
+
+        pressure_tail = list(self._transition_pressure_history)[-6:]
+        drift_tail = list(self._structural_drift_history)[-6:]
+        shock_tail = list(self._shock_activity_history)[-6:]
+
+        pressure_trend = self._trend(pressure_tail)
+        drift_trend = self._trend(drift_tail)
+        avg_pressure = float(np.mean(pressure_tail)) if pressure_tail else 0.0
+        avg_shock = float(np.mean(shock_tail)) if shock_tail else 0.0
+
+        if pressure_trend < -0.03 and drift_trend < -0.03:
+            dominant_path = "STABILIZING"
+        elif pressure_trend > 0.02 or drift_trend > 0.03:
+            dominant_path = "DIVERGING"
+        else:
+            dominant_path = "METASTABLE"
+
+        path_confidence = self._clamp01(0.35 + abs(pressure_trend) * 4.0 + abs(drift_trend) * 2.5)
+        trajectory = {
+            "available": True,
+            "dominant_path": dominant_path,
+            "path_confidence": round(path_confidence, 4),
+            "trend_strength": round(abs(drift_trend) + abs(pressure_trend), 4),
+        }
+
+        decision_tension = self._clamp01((avg_shock * 0.5) + (abs(pressure_trend) * 4.0))
+        commitment = self._clamp01(1.0 - decision_tension)
+        branching = {
+            "available": True,
+            "is_branching": bool(decision_tension >= 0.45 and dominant_path == "METASTABLE"),
+            "commitment": round(commitment, 4),
+            "decision_tension": round(decision_tension, 4),
+        }
+
+        lock_in_score = self._clamp01((avg_pressure * 0.6) + (float(np.mean(drift_tail)) / 4.5) * 0.4)
+        constraint = {
+            "available": True,
+            "lock_in_score": round(lock_in_score, 4),
+            "point_of_no_return_risk": round(self._clamp01(lock_in_score * 1.15), 4),
+            "recovery_margin": round(self._clamp01(1.0 - lock_in_score), 4),
+        }
+
+        origin_scope = "LOCAL"
+        if lock_in_score > 0.7:
+            origin_scope = "SYSTEMIC"
+        elif lock_in_score > 0.45:
+            origin_scope = "MULTI_SUBSYSTEM"
+        hierarchy = {
+            "available": True,
+            "origin_scope": origin_scope,
+            "propagation_risk": round(self._clamp01((lock_in_score * 0.7) + (avg_shock * 0.3)), 4),
+        }
+
+        horizon_bucket = "LONGER_HORIZON"
+        horizon_signal = (avg_pressure * 0.5) + (lock_in_score * 0.5)
+        if dominant_path == "DIVERGING":
+            horizon_signal += 0.2
+        if horizon_signal >= 0.85:
+            horizon_bucket = "IMMINENT"
+        elif horizon_signal >= 0.65:
+            horizon_bucket = "NEAR_TERM"
+        elif horizon_signal >= 0.4:
+            horizon_bucket = "MID_TERM"
+        horizon = {"available": True, "risk_horizon": horizon_bucket, "horizon_score": round(self._clamp01(horizon_signal), 4)}
+
+        baseline_path = "DIVERGING" if dominant_path == "DIVERGING" else "METASTABLE"
+        counterfactual = {
+            "available": True,
+            "baseline_future": {
+                "projected_path": baseline_path,
+                "projected_lock_in_risk": round(lock_in_score, 4),
+                "projected_horizon": horizon_bucket,
+            },
+            "counterfactuals": [
+                {"scenario": "pressure_relief", "projected_path": "STABILIZING"},
+                {"scenario": "status_quo", "projected_path": baseline_path},
+                {"scenario": "continued_degradation", "projected_path": "DIVERGING"},
+            ],
+        }
+
+        return {
+            "trajectory_analysis": trajectory,
+            "branching_analysis": branching,
+            "constraint_analysis": constraint,
+            "hierarchy_analysis": hierarchy,
+            "horizon_analysis": horizon,
+            "counterfactual_simulation": counterfactual,
+        }
+
+    def _assemble_result(self, base: Dict, transition: Dict, analytics: Dict) -> Dict:
+        result = {
+            **base,
+            "transition_pressure": transition["transition_pressure"],
+            "transition_state": transition["transition_state"],
+            "experimental_analytics": analytics,
+        }
+        return result
+
+    def process_frame(self, frame: Dict) -> Dict:
+        """
+        Process one normalized telemetry frame and return the latest structural event.
+        Expected frame shape:
+        {
+            "timestamp": "...",
+            "site_id": "...",
+            "asset_id": "...",
+            "sensor_values": {...}
+        }
+        """
+        required = {"timestamp", "site_id", "asset_id", "sensor_values"}
+        missing = [key for key in required if key not in frame]
+        if missing:
+            raise ValueError(f"Frame is missing required keys: {missing}")
+
+        vector = self._vector_from_frame(frame)
+        vector = self._smooth_current_vector(vector)
+        stored = dict(frame)
+        stored["_vector"] = vector
+        self.frames.append(stored)
+
+        baseline = self._baseline_stats()
+        base = self._compute_base_metrics(frame=frame, baseline=baseline, vector=vector)
+        transition = self._compute_transition_metrics(
+            drift_score=float(base["structural_drift_score"]),
+            velocity=float(base["drift_velocity"]),
+            stability_score=float(base["relational_stability_score"]),
+        )
+        self._update_histories(
+            drift_score=float(base["structural_drift_score"]),
+            velocity=float(base["drift_velocity"]),
+            state=str(base["state"]),
+            pressure=float(transition["transition_pressure"]),
+        )
+        analytics = self._compute_advanced_analytics()
+        result = self._assemble_result(base=base, transition=transition, analytics=analytics)
+
+        self._frame_count += 1
+        if self._frame_count <= 3:
+            print("DEBUG RESULT KEYS:", result.keys())
+            print("DEBUG EXPERIMENTAL:", result["experimental_analytics"])
+            print(
+                "DEBUG ADVANCED POPULATED:",
+                {name: bool(isinstance(payload, dict) and payload.get("available")) for name, payload in result["experimental_analytics"].items()},
+            )
 
         self.latest_result = result
         return result
