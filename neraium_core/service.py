@@ -106,6 +106,20 @@ class StructuralMonitoringService:
             window_stride=template.window_stride,
             regime_store_path=regime_path,
             baseline_adaptation_alpha=template.baseline_adaptation_alpha,
+            representation_mode=(run_config or {}).get("representation_mode", template.representation_config.mode),
+            reference_strategy=(run_config or {}).get("reference_strategy", template.representation_config.reference_strategy),
+            context_diagnostics_enabled=bool((run_config or {}).get("context_diagnostics_enabled", template.representation_config.enable_diagnostics)),
+            feature_weights=(run_config or {}).get(
+                "feature_weights",
+                {
+                    "raw_weight": template.representation_config.weights.raw_weight,
+                    "residual_weight": template.representation_config.weights.residual_weight,
+                    "delta_weight": template.representation_config.weights.delta_weight,
+                    "slope_weight": template.representation_config.weights.slope_weight,
+                    "drift_weight": template.representation_config.weights.drift_weight,
+                    "second_diff_weight": template.representation_config.weights.second_diff_weight,
+                },
+            ),
         )
         if run_config and run_config.get("baseline_locked") is True:
             new_engine.lock_baseline(True)
