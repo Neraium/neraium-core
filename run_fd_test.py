@@ -1,5 +1,6 @@
 import argparse
 import json
+import time
 from pathlib import Path
 from typing import Any
 
@@ -20,7 +21,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--input", type=Path, default=Path("test_FD001.txt"), help="Path to CMAPSS dataset text file.")
     parser.add_argument("--output", type=Path, default=Path("fd_results.csv"), help="Path to output CSV file.")
     parser.add_argument("--use-gal2", action="store_true", help="Use GAL-2 aligned time as an optional timestamp source.")
-    parser.add_argument("--gal2-cache-ms", type=int, default=0, help="Optional GAL-2 cache duration in milliseconds.")
+    parser.add_argument("--gal2-cache-ms", type=int, default=500, help="Optional GAL-2 cache duration in milliseconds.")
     return parser.parse_args()
 
 
@@ -123,16 +124,41 @@ def replay_unit(
     unit_df: pd.DataFrame,
     *,
     use_gal2: bool = False,
-    gal2_cache_ms: int = 0,
+    gal2_cache_ms: int = 500,
 ) -> list[dict[str, Any]]:
     engine = StructuralEngine()
     rows: list[dict[str, Any]] = []
     printed_debug_result = False
-    gal2_client = GAL2Client(cache_ms=gal2_cache_ms) if use_gal2 else None
+    gal2_client = GAL2Client(cache_ms=0) if use_gal2 else None
     printed_gal2_debug = 0
+    cache_ttl_ms = gal2_cache_ms
+    last_gal2_payload: dict[str, Any] | None = None
+    last_gal2_fetch_time = 0.0
+    gal2_api_calls = 0
 
     ordered = unit_df.sort_values("cycle")
     unit_id = int(ordered["unit"].iloc[0])
+
+    def get_cached_gal2_time() -> dict[str, Any]:
+        nonlocal last_gal2_payload, last_gal2_fetch_time, gal2_api_calls
+        current_time = time.time() * 1000  # ms
+        should_refresh = last_gal2_payload is None or (current_time - last_gal2_fetch_time) > cache_ttl_ms
+        print(f"GAL2 fetch reused: {not should_refresh}")
+
+        if should_refresh:
+            gal2_api_calls += 1
+            try:
+                last_gal2_payload = gal2_client.get_time() if gal2_client is not None else unavailable_payload("disabled")
+                last_gal2_fetch_time = current_time
+            except Exception:
+                # fallback: reuse last known value
+                if last_gal2_payload is None:
+                    last_gal2_payload = unavailable_payload("error")
+                last_gal2_fetch_time = current_time
+
+        if last_gal2_payload is None:
+            return unavailable_payload("unavailable")
+        return last_gal2_payload
 
     for _, row in ordered.iterrows():
         cycle = int(row["cycle"])
@@ -141,7 +167,7 @@ def replay_unit(
         timestamp = str(cycle)
         gal2_payload = unavailable_payload("disabled")
         if gal2_client is not None:
-            gal2_payload = gal2_client.get_time()
+            gal2_payload = get_cached_gal2_time()
             if gal2_payload.get("available") and gal2_payload.get("gal2_time") is not None:
                 timestamp = str(gal2_payload["gal2_time"])
             else:
@@ -167,6 +193,9 @@ def replay_unit(
             print(json.dumps(result, indent=2)[:1000])
             printed_debug_result = True
         rows.append(flatten_result(unit_id=unit_id, cycle=cycle, result=result, gal2=gal2_payload))
+
+    if gal2_client is not None:
+        print(f"GAL2 API calls for unit {unit_id}: {gal2_api_calls} / rows={len(ordered)}")
 
     return rows
 
