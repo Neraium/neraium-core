@@ -72,6 +72,8 @@ def derive_branching_analysis(
     *,
     temporal_quality: Mapping[str, object] | None = None,
     temporal_features: Mapping[str, object] | None = None,
+    geometry: Mapping[str, object] | None = None,
+    state_graph: Mapping[str, object] | None = None,
 ) -> dict[str, object] | None:
     if not isinstance(trajectory_analysis, Mapping):
         return None
@@ -94,14 +96,22 @@ def derive_branching_analysis(
     temporal_gap_irregularity = _safe_score((temporal_quality or {}).get("timestamp_gap_irregularity", 0.0))
     temporal_consistency = _safe_score((temporal_quality or {}).get("temporal_consistency_score", 0.0))
     timing_instability = _safe_score((temporal_features or {}).get("timing_instability", temporal_gap_irregularity))
+    angular_divergence = _safe_score((geometry or {}).get("angular_change", 0.0)) / 3.141592653589793
+    branching_factor = _safe_score((state_graph or {}).get("branching_factor", 0.0))
+    transition_entropy = _safe_score((state_graph or {}).get("transition_entropy", 0.0))
+    graph_divergence = _safe_score((state_graph or {}).get("graph_divergence_score", 0.0))
 
     branch_tension = (
-        0.38 * closeness
-        + 0.22 * entropy
-        + 0.18 * directional_div
+        0.28 * closeness
+        + 0.16 * entropy
+        + 0.14 * directional_div
+        + 0.10 * transition_entropy
+        + 0.09 * graph_divergence
+        + 0.08 * min(1.0, branching_factor / 2.0)
+        + 0.08 * min(1.0, angular_divergence)
         + 0.10 * shape_div
         + 0.07 * timing_instability
-        + 0.05 * temporal_gap_irregularity
+        + 0.04 * temporal_gap_irregularity
     )
     branch_tension = max(0.0, min(1.0, branch_tension))
 
@@ -157,6 +167,10 @@ def derive_branching_analysis(
             "temporal_gap_irregularity": round(float(temporal_gap_irregularity), 4),
             "temporal_consistency_score": round(float(temporal_consistency), 4),
             "timing_instability": round(float(timing_instability), 4),
+            "angular_divergence": round(float(angular_divergence), 4),
+            "state_graph_branching_factor": round(float(branching_factor), 4),
+            "state_graph_transition_entropy": round(float(transition_entropy), 4),
+            "state_graph_graph_divergence_score": round(float(graph_divergence), 4),
         },
         "thresholds": {
             "branch_margin_max": BRANCH_MARGIN_MAX,
