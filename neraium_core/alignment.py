@@ -28,7 +28,10 @@ from neraium_core.early_warning import early_warning_metrics
 from neraium_core.entropy import interaction_entropy
 from neraium_core.experimental_analytics.hierarchy_analysis import analyze_hierarchy_cascade
 from neraium_core.experimental_analytics.constraint_analysis import analyze_constraint_lock_in
+from neraium_core.experimental_analytics.directional_evolution import derive_directional_evolution_features
+from neraium_core.experimental_analytics.path_prototypes import derive_path_prototypes
 from neraium_core.experimental_analytics.trajectory_analysis import classify_trajectory_path
+from neraium_core.experimental_analytics.trajectory_shape_features import derive_trajectory_shape_features
 from neraium_core.experimental_analytics.horizon_analysis import estimate_risk_horizon
 from neraium_core.experimental_analytics.counterfactual_simulation import simulate_counterfactual_futures
 from neraium_core.forecast_models import forecast_next, time_to_threshold_ar1
@@ -1238,6 +1241,18 @@ class StructuralEngine:
                 self._subsystem_instability_history.append(float(subsystem.get("max_instability", 0.0)))
                 self._regime_novelty_history.append(float(transition_metrics.get("regime_novelty", 0.0)))
                 self._shock_activity_history.append(float(transition_metrics.get("shock_triggered", 0.0)))
+                directional_evolution = derive_directional_evolution_features(
+                    recent_window=z_recent_valid,
+                    feature_names=valid_sensor_names,
+                )
+                trajectory_shape = derive_trajectory_shape_features(
+                    recent_window=z_recent_valid,
+                )
+                path_prototypes = derive_path_prototypes(
+                    directional_evolution=directional_evolution,
+                    trajectory_shape=trajectory_shape,
+                    top_k=3,
+                )
                 trajectory_analysis = classify_trajectory_path(
                     drift_history=list(self._drift_score_history),
                     transition_pressure_history=list(self._transition_pressure_history),
@@ -1246,6 +1261,9 @@ class StructuralEngine:
                     shock_activity_history=list(self._shock_activity_history),
                     reversibility_classification=str(reversibility.get("classification", "")),
                     reversibility_score=float(reversibility_scores.get("locked_in_index", 0.0)),
+                    directional_evolution=directional_evolution,
+                    trajectory_shape=trajectory_shape,
+                    path_prototypes=path_prototypes,
                 )
                 hierarchy_analysis = analyze_hierarchy_cascade(
                     sensor_names=valid_sensor_names,
