@@ -1,0 +1,67 @@
+{
+  "geometry": {
+    "path_length": 3.626368,
+    "local_velocity_norm": 0.285592,
+    "local_acceleration_norm": 0.032844,
+    "curvature": 0.402678,
+    "directional_consistency": 0.978036,
+    "angular_change": 0.202881,
+    "path_smoothness": 0.881209,
+    "directional_deviation": 0.021964
+  },
+  "state_space_statistics": {
+    "local_volume": 0.0,
+    "local_density": 6.132639,
+    "covariance_trace": 1.266928,
+    "principal_direction_strength": 0.965423,
+    "anisotropy": 1.0,
+    "state_contraction_score": 0.0,
+    "state_expansion_score": 0.467252,
+    "geometric_concentration": 0.849266
+  },
+  "state_graph": {
+    "node_count": 7,
+    "edge_count": 12,
+    "branching_factor": 1.0,
+    "transition_entropy": 0.978222,
+    "revisit_rate": 0.5625,
+    "path_commitment_score": 0.133333,
+    "graph_divergence_score": 0.866667,
+    "graph_density": 0.285714,
+    "region_histogram": {
+      "(-3, 0)": 3,
+      "(-2, -1)": 2,
+      "(-1, -1)": 3,
+      "(0, -1)": 2,
+      "(1, -1)": 2,
+      "(1, 0)": 1,
+      "(2, 0)": 3
+    }
+  },
+  "geometry_explanations": {
+    "trajectory": "Trajectory motion shows directional consistency=0.98 and curvature=0.40.",
+    "branching": "Geometric divergence suggests branching",
+    "lock_in": "No strong lock-in geometry yet",
+    "drift_vs_noise": "persistent directional drift",
+    "horizon": "Expansion=0.47, contraction=0.00 indicates how quickly the state approaches unstable regions."
+  },
+  "fleet_geometry": {
+    "fleet_entity_count": 4,
+    "fleet_mean_pairwise_distance": 1.719395,
+    "fleet_shared_region_ratio": 0.7
+  },
+  "state_space": {
+    "representation_mode": "combined",
+    "state_vector_dim": 54,
+    "feature_group_dims": {
+      "raw": 3,
+      "residual": 6,
+      "delta": 3,
+      "slope": 3,
+      "drift": 3,
+      "directional": 9,
+      "temporal": 9,
+      "multi_scale": 18
+    }
+  }
+}
