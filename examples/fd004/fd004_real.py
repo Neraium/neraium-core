@@ -113,7 +113,8 @@ def _flatten_nested_block(block: dict[str, Any] | None, *, prefix: str) -> dict[
                 sub_value = value[sub_key]
                 sub_column = f"{column}_{sub_key}"
                 if isinstance(sub_value, dict):
-                    flattened[sub_column] = json.dumps(sub_value, sort_keys=True)
+                    for leaf_key in sorted(sub_value):
+                        flattened[f"{sub_column}_{leaf_key}"] = sub_value[leaf_key]
                 else:
                     flattened[sub_column] = sub_value
         else:
@@ -373,44 +374,55 @@ def run_fd004_real_evaluation(
     csv_path = out_dir / "fd004_real_timeseries.csv"
     rul_json_path = out_dir / "fd004_real_rul_map.json"
 
+    csv_fieldnames = ["asset_id"]
+    if all_rows:
+        csv_fieldnames = list(all_rows[0].keys())
+        for row in all_rows[1:]:
+            for key in row:
+                if key not in csv_fieldnames:
+                    csv_fieldnames.append(key)
+
     with csv_path.open("w", encoding="utf-8", newline="") as csv_file:
-        writer = csv.DictWriter(csv_file, fieldnames=list(all_rows[0].keys()) if all_rows else ["asset_id"])
+        writer = csv.DictWriter(csv_file, fieldnames=csv_fieldnames)
         writer.writeheader()
         if all_rows:
             writer.writerows(all_rows)
 
-    geometry_columns_present = bool(
-        all_rows
-        and any(key.startswith("geometry_") for key in all_rows[0])
-    )
-    print(f"Geometry columns present in CSV rows: {geometry_columns_present}")
-
-    metrics_to_count = [
-        "geometry_curvature",
-        "geometry_directional_consistency",
-        "state_space_statistics_local_density",
-        "state_graph_branching_factor",
-    ]
-    for metric in metrics_to_count:
-        non_null_count = sum(1 for row in all_rows if row.get(metric) not in (None, ""))
-        print(f"Non-null count ({metric}): {non_null_count}")
-
-    post_warmup_sample = next(
+    geometry_columns = [column for column in csv_fieldnames if column.startswith("geometry_")]
+    sample_subset = next(
         (
             {
-                "asset_id": row.get("asset_id"),
-                "cycle": row.get("cycle"),
                 "geometry_curvature": row.get("geometry_curvature"),
                 "geometry_directional_consistency": row.get("geometry_directional_consistency"),
                 "state_space_statistics_local_density": row.get("state_space_statistics_local_density"),
                 "state_graph_branching_factor": row.get("state_graph_branching_factor"),
             }
             for row in all_rows
-            if row.get("geometry_curvature") not in (None, "")
+            if any(
+                row.get(metric) not in (None, "")
+                for metric in (
+                    "geometry_curvature",
+                    "geometry_directional_consistency",
+                    "state_space_statistics_local_density",
+                    "state_graph_branching_factor",
+                )
+            )
         ),
-        None,
+        {
+            "geometry_curvature": None,
+            "geometry_directional_consistency": None,
+            "state_space_statistics_local_density": None,
+            "state_graph_branching_factor": None,
+        },
     )
-    print(f"Sample post-warmup geometry row: {post_warmup_sample}")
+    print(
+        "Geometry export validation:",
+        {
+            "geometry_columns_present": bool(geometry_columns),
+            "geometry_columns_sample": geometry_columns[:5],
+            "sample_metrics": sample_subset,
+        },
+    )
 
     if rul_mapping:
         rul_json_path.write_text(json.dumps(rul_mapping, indent=2), encoding="utf-8")
