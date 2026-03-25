@@ -204,6 +204,7 @@ class StructuralEngine:
         # Debug helpers: print first alert reasoning once per engine instance.
         self._first_alert_logged: bool = False
         self._experimental_analytics_debug_logged: bool = False
+        self._geometry_debug_frames_logged: int = 0
 
         self.regime_store = RegimeStore(regime_store_path)
         persisted = self.regime_store.load()
@@ -1016,10 +1017,10 @@ class StructuralEngine:
             "explanations": {},
             "multi_scale": {},
             "drift_noise": {},
-            "geometry": {},
-            "state_space_statistics": {},
-            "state_graph": {},
-            "geometry_explanations": {},
+            "geometry": {"available": False, "reason": "insufficient history"},
+            "state_space_statistics": {"available": False, "reason": "insufficient history"},
+            "state_graph": {"available": False, "reason": "insufficient history"},
+            "geometry_explanations": {"available": False, "reason": "insufficient history"},
         }
         temporal_quality: dict[str, object] = {}
         temporal_features: dict[str, object] = {}
@@ -1344,14 +1345,10 @@ class StructuralEngine:
                         temporal_quality=temporal_quality,
                     )
                     transition_pressure = float(transition_metrics["transition_pressure"])
-                    transition_state = self._transition_state(
-                        transition_pressure,
-                        temporal_consistency=float(temporal_quality.get("temporal_consistency_score", 1.0)),
-                    )
                     raw_components["transition_pressure"] = transition_pressure
                     components["transition_pressure"] = transition_pressure
                     result["transition_pressure"] = round(transition_pressure, 4)
-                    result["transition_state"] = transition_state
+                    result["transition_state"] = "NONE"
                     self._regime_history.append(regime_name)
                     self._adjacency_history.append(np.asarray(adjacency, dtype=float))
                     if dominant_mode.size:
@@ -1370,6 +1367,43 @@ class StructuralEngine:
                     geometry_payload.get("state_space_statistics", {}) if isinstance(geometry_payload, dict) else {}
                 )
                 state_graph = geometry_payload.get("state_graph", {}) if isinstance(geometry_payload, dict) else {}
+                geometry_available = bool(
+                    isinstance(geometry_metrics, dict) and geometry_metrics.get("available", True) is not False
+                )
+                if self.transition_aware_enabled:
+                    base_transition_pressure = float(result.get("transition_pressure", 0.0))
+                    final_transition_pressure = base_transition_pressure
+                    if geometry_available:
+                        geom_curvature = self._clamp01(float(geometry_metrics.get("curvature", 0.0)))
+                        geom_directional_consistency = self._clamp01(
+                            float(geometry_metrics.get("directional_consistency", 0.0))
+                        )
+                        state_contraction = self._clamp01(
+                            float(state_space_statistics.get("state_contraction_score", 0.0))
+                        )
+                        state_expansion = self._clamp01(float(state_space_statistics.get("state_expansion_score", 0.0)))
+                        geometry_pressure_term = self._clamp01(
+                            0.32 * geom_curvature
+                            + 0.24 * (1.0 - geom_directional_consistency)
+                            + 0.22 * state_expansion
+                            + 0.22 * state_contraction
+                        )
+                        adjusted_transition_pressure = max(
+                            0.0, base_transition_pressure * (0.98 + 0.08 * geometry_pressure_term)
+                        )
+                        transition_metrics["geometry_transition_term"] = float(geometry_pressure_term)
+                        transition_metrics["transition_pressure_pre_geometry"] = float(base_transition_pressure)
+                        transition_metrics["transition_pressure"] = float(adjusted_transition_pressure)
+                        final_transition_pressure = float(adjusted_transition_pressure)
+                        result["transition_pressure"] = round(float(final_transition_pressure), 4)
+                        components["transition_pressure"] = float(final_transition_pressure)
+                        raw_components["transition_pressure"] = float(final_transition_pressure)
+                    else:
+                        transition_metrics["geometry_transition_term"] = 0.0
+                    result["transition_state"] = self._transition_state(
+                        float(final_transition_pressure),
+                        temporal_consistency=float(temporal_quality.get("temporal_consistency_score", 1.0)),
+                    )
 
                 counterfactual_guidance = self._counterfactual_guidance(
                     sensor_names=valid_sensor_names,
@@ -1399,6 +1433,8 @@ class StructuralEngine:
                 path_prototypes = derive_path_prototypes(
                     directional_evolution=directional_evolution,
                     trajectory_shape=trajectory_shape,
+                    geometry=geometry_metrics,
+                    state_graph=state_graph,
                     top_k=3,
                 )
                 trajectory_analysis = classify_trajectory_path(
@@ -1438,11 +1474,15 @@ class StructuralEngine:
                     trajectory_analysis=trajectory_analysis,
                     temporal_quality=temporal_quality,
                     temporal_features=temporal_features,
+                    state_space_statistics=state_space_statistics if isinstance(state_space_statistics, dict) else None,
+                    state_graph=state_graph if isinstance(state_graph, dict) else None,
                 )
                 branching_analysis = derive_branching_analysis(
                     trajectory_analysis,
                     temporal_quality=temporal_quality,
                     temporal_features=temporal_features,
+                    geometry=geometry_metrics if isinstance(geometry_metrics, dict) else None,
+                    state_graph=state_graph if isinstance(state_graph, dict) else None,
                 )
                 horizon_analysis = estimate_risk_horizon(
                     transition_pressure_history=list(self._transition_pressure_history),
@@ -1453,6 +1493,8 @@ class StructuralEngine:
                     constraint_analysis=constraint_analysis,
                     temporal_quality=temporal_quality,
                     temporal_features=temporal_features,
+                    geometry=geometry_metrics if isinstance(geometry_metrics, dict) else None,
+                    state_space_statistics=state_space_statistics if isinstance(state_space_statistics, dict) else None,
                 )
                 counterfactual_simulation = simulate_counterfactual_futures(
                     transition_pressure_history=list(self._transition_pressure_history),
@@ -1577,10 +1619,10 @@ class StructuralEngine:
                     "available": False,
                     "reason": "relational_metrics_skipped",
                 }
-                analytics["geometry"] = {}
-                analytics["state_space_statistics"] = {}
-                analytics["state_graph"] = {}
-                analytics["geometry_explanations"] = {}
+                analytics["geometry"] = {"available": False, "reason": "insufficient history"}
+                analytics["state_space_statistics"] = {"available": False, "reason": "insufficient history"}
+                analytics["state_graph"] = {"available": False, "reason": "insufficient history"}
+                analytics["geometry_explanations"] = {"available": False, "reason": "insufficient history"}
                 analytics["fleet_geometry"] = {}
                 analytics["state_space"] = {}
 
@@ -1857,9 +1899,8 @@ class StructuralEngine:
             if (
                 valid_signal_count >= 2
                 and not self.baseline_locked
-                and decision.get("interpreted_state") == "NOMINAL_STRUCTURE"
+                and decision.get("interpreted_state") in {"NOMINAL_STRUCTURE", "COUPLING_INSTABILITY_OBSERVED"}
                 and not transition_blocks_baseline
-                and float(composite) < BASELINE_UPDATE_MAX_COMPOSITE
             ):
                 if self._rolling_baseline_corr is None or self._rolling_baseline_corr.shape != corr_recent.shape:
                     self._rolling_baseline_corr = np.array(corr_recent, dtype=float, copy=True)
@@ -1934,6 +1975,38 @@ class StructuralEngine:
             if os.environ.get("NERAIUM_DEBUG_EXP_ANALYTICS", "0").strip().lower() not in {"0", "false", "no", "off", ""}:
                 print("DEBUG EXP ANALYTICS:", result.get("experimental_analytics"))
                 self._debug_print_experimental_analytics_once(result)
+            if (
+                can_process_full_frame
+                and valid_signal_count >= 2
+                and self._geometry_debug_frames_logged < 3
+            ):
+                print("DEBUG GEOMETRY:", result.get("geometry"))
+                print("DEBUG STATE SPACE:", result.get("state_space_statistics"))
+                print("DEBUG STATE GRAPH:", result.get("state_graph"))
+                transition_used = bool(
+                    (analytics.get("transition") or {}).get("geometry_transition_term", 0.0)
+                    if isinstance(analytics, dict)
+                    else False
+                )
+                branching_diag = ((analytics.get("branching_analysis") or {}).get("diagnostics", {})) if isinstance(analytics, dict) else {}
+                lockin_rationale = ((analytics.get("constraint_analysis") or {}).get("rationale", {})) if isinstance(analytics, dict) else {}
+                print("DEBUG GEOMETRY USED transition_pressure:", transition_used)
+                print(
+                    "DEBUG GEOMETRY USED branching:",
+                    {
+                        "angular_divergence": branching_diag.get("angular_divergence"),
+                        "state_graph_branching_factor": branching_diag.get("state_graph_branching_factor"),
+                        "state_graph_transition_entropy": branching_diag.get("state_graph_transition_entropy"),
+                    },
+                )
+                print(
+                    "DEBUG GEOMETRY USED lock_in:",
+                    {
+                        "path_commitment_score": lockin_rationale.get("path_commitment_score"),
+                        "state_contraction_score": lockin_rationale.get("state_contraction_score"),
+                    },
+                )
+                self._geometry_debug_frames_logged += 1
 
             debug_verbose = os.environ.get("NERAIUM_DEBUG_SII_VERBOSE", "0").strip().lower() not in {
                 "0",

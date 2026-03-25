@@ -52,6 +52,8 @@ def estimate_risk_horizon(
     constraint_analysis: Mapping[str, object] | None,
     temporal_quality: Mapping[str, object] | None = None,
     temporal_features: Mapping[str, object] | None = None,
+    geometry: Mapping[str, object] | None = None,
+    state_space_statistics: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
     pressure_tail = _tail(transition_pressure_history, 6)
     shock_tail = _tail(shock_activity_history, 6)
@@ -113,6 +115,9 @@ def estimate_risk_horizon(
     temporal_consistency = _clamp01(float((temporal_quality or {}).get("temporal_consistency_score", 1.0)))
     temporal_irregularity = _clamp01(float((temporal_quality or {}).get("timestamp_gap_irregularity", 0.0)))
     drift_acceleration = _clamp01(float((temporal_features or {}).get("drift_acceleration", 0.0)))
+    local_velocity = _clamp01(float((geometry or {}).get("local_velocity_norm", 0.0)))
+    local_acceleration = _clamp01(float((geometry or {}).get("local_acceleration_norm", 0.0)))
+    state_contraction = _clamp01(float((state_space_statistics or {}).get("state_contraction_score", 0.0)))
 
     imminence_score = _clamp01(
         0.2 * shock_recent
@@ -125,6 +130,9 @@ def estimate_risk_horizon(
         + 0.08 * drift_acceleration
         + 0.05 * temporal_irregularity
         - 0.05 * temporal_consistency
+        + 0.06 * local_velocity
+        + 0.08 * local_acceleration
+        + 0.08 * state_contraction
     )
 
     mixed_branching = _clamp01(
@@ -176,5 +184,8 @@ def estimate_risk_horizon(
             "temporal_consistency": round(float(temporal_consistency), 4),
             "temporal_irregularity": round(float(temporal_irregularity), 4),
             "drift_acceleration": round(float(drift_acceleration), 4),
+            "local_velocity_norm": round(float(local_velocity), 4),
+            "local_acceleration_norm": round(float(local_acceleration), 4),
+            "state_contraction_score": round(float(state_contraction), 4),
         },
     }
