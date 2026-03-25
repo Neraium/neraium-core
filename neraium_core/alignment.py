@@ -65,6 +65,7 @@ from neraium_core.context_invariant_representation import (
     build_temporal_representation,
 )
 from neraium_core.temporal_features import derive_temporal_rate_features
+from neraium_core.stat_geometry import StatisticalGeometryLayer
 from neraium_core.temporal_quality import derive_temporal_quality_signals
 from neraium_core.staged_pipeline import (
     AttributionStage,
@@ -189,6 +190,7 @@ class StructuralEngine:
             "episode_history": [],
         }
         self.transition_aware_enabled: bool = _env_enabled("NERAIUM_TRANSITION_AWARE", default="1")
+        self.geometry_layer = StatisticalGeometryLayer(max_history=384, graph_window=24, stats_window=16)
 
         # Drift-score threshold calibration (watch/alert).
         self._drift_score_history: deque[float] = deque(maxlen=120)
@@ -1014,6 +1016,10 @@ class StructuralEngine:
             "explanations": {},
             "multi_scale": {},
             "drift_noise": {},
+            "geometry": {},
+            "state_space_statistics": {},
+            "state_graph": {},
+            "geometry_explanations": {},
         }
         temporal_quality: dict[str, object] = {}
         temporal_features: dict[str, object] = {}
@@ -1354,6 +1360,17 @@ class StructuralEngine:
                     result["transition_pressure"] = 0.0
                     result["transition_state"] = "NONE"
 
+                geometry_payload = self.geometry_layer.update(
+                    entity_id=str(frame.get("asset_id", "unknown")),
+                    matrix=z_recent_valid,
+                    representation_mode=self.representation_config.resolved_mode(),
+                )
+                geometry_metrics = geometry_payload.get("geometry", {}) if isinstance(geometry_payload, dict) else {}
+                state_space_statistics = (
+                    geometry_payload.get("state_space_statistics", {}) if isinstance(geometry_payload, dict) else {}
+                )
+                state_graph = geometry_payload.get("state_graph", {}) if isinstance(geometry_payload, dict) else {}
+
                 counterfactual_guidance = self._counterfactual_guidance(
                     sensor_names=valid_sensor_names,
                     corr_baseline=baseline_corr_used,
@@ -1397,6 +1414,9 @@ class StructuralEngine:
                     path_prototypes=path_prototypes,
                     temporal_quality=temporal_quality,
                     temporal_features=temporal_features,
+                    geometry=geometry_metrics,
+                    state_space_statistics=state_space_statistics,
+                    state_graph=state_graph,
                 )
                 hierarchy_analysis = analyze_hierarchy_cascade(
                     sensor_names=valid_sensor_names,
@@ -1475,6 +1495,12 @@ class StructuralEngine:
                         "constraint_analysis": constraint_analysis,
                         "horizon_analysis": horizon_analysis,
                         "counterfactual_simulation": counterfactual_simulation,
+                        "geometry": geometry_metrics,
+                        "state_space_statistics": state_space_statistics,
+                        "state_graph": state_graph,
+                        "geometry_explanations": geometry_payload.get("geometry_explanations", {}),
+                        "fleet_geometry": geometry_payload.get("fleet_geometry", {}),
+                        "state_space": geometry_payload.get("state_space", {}),
                     }
                 )
                 result["reversibility_classification"] = (
@@ -1551,6 +1577,12 @@ class StructuralEngine:
                     "available": False,
                     "reason": "relational_metrics_skipped",
                 }
+                analytics["geometry"] = {}
+                analytics["state_space_statistics"] = {}
+                analytics["state_graph"] = {}
+                analytics["geometry_explanations"] = {}
+                analytics["fleet_geometry"] = {}
+                analytics["state_space"] = {}
 
             # Per-component confidence: down-weight or fully suppress evidence when the
             # data quality gate indicates unreliable inputs. Production alerts should
@@ -1873,6 +1905,10 @@ class StructuralEngine:
                 else result.get("dominant_driver")
             )
             result["component_confidence"] = component_confidence
+            result["geometry"] = analytics.get("geometry", {}) if isinstance(analytics, dict) else {}
+            result["state_space_statistics"] = analytics.get("state_space_statistics", {}) if isinstance(analytics, dict) else {}
+            result["state_graph"] = analytics.get("state_graph", {}) if isinstance(analytics, dict) else {}
+            result["geometry_explanations"] = analytics.get("geometry_explanations", {}) if isinstance(analytics, dict) else {}
 
             for key, payload in self._analytics_unavailable_payload("missing inputs").items():
                 existing = analytics.get(key)
