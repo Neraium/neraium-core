@@ -108,18 +108,21 @@ def _flatten_nested_block(
     *,
     prefix: str,
     skip_nested_keys: set[str] | None = None,
+    nested_allowlist: set[str] | None = None,
 ) -> dict[str, Any]:
     """Flatten a payload into deterministic CSV-safe scalar columns.
 
     Strategy:
     - export all top-level scalar fields
-    - flatten at most one additional dict level for scalar leaves
+    - skip nested dict fields by default
+    - optionally flatten one additional dict level for explicitly allowlisted keys
     - skip known bulky nested dicts (for example: state_graph.region_histogram)
     """
     if not isinstance(block, dict):
         return {}
 
     ignored = skip_nested_keys or set()
+    allowlisted_nested = nested_allowlist or set()
     flattened: dict[str, Any] = {}
     for key in sorted(block):
         if key in ignored:
@@ -127,6 +130,8 @@ def _flatten_nested_block(
         value = block[key]
         column = f"{prefix}{key}"
         if isinstance(value, dict):
+            if key not in allowlisted_nested:
+                continue
             for sub_key in sorted(value):
                 if sub_key in ignored:
                     continue
