@@ -136,6 +136,7 @@ class StructuralEngine:
         self._subsystem_instability_history: deque[float] = deque(maxlen=TRANSITION_MEMORY_WINDOW)
         self._regime_novelty_history: deque[float] = deque(maxlen=TRANSITION_MEMORY_WINDOW)
         self._shock_activity_history: deque[float] = deque(maxlen=TRANSITION_MEMORY_WINDOW)
+        self._structural_drift_history: deque[float] = deque(maxlen=TRANSITION_MEMORY_WINDOW)
         self.transition_aware_enabled: bool = _env_enabled("NERAIUM_TRANSITION_AWARE", default="1")
 
         # Drift-score threshold calibration (watch/alert).
@@ -184,6 +185,7 @@ class StructuralEngine:
         self._subsystem_instability_history.clear()
         self._regime_novelty_history.clear()
         self._shock_activity_history.clear()
+        self._structural_drift_history.clear()
 
     def lock_baseline(self, locked: bool = True) -> None:
         """Lock or unlock baseline. When locked, rolling baseline stops adapting."""
@@ -970,6 +972,7 @@ class StructuralEngine:
             drift_score = structural_drift(corr_recent, baseline_corr_used, norm="fro")
             drift_score = float(drift_score)
             self._drift_score_history.append(drift_score)
+            self._structural_drift_history.append(drift_score)
             if self._drift_watch_alert_thresholds is None:
                 self._baseline_drift_score_samples.append(drift_score)
                 if len(self._baseline_drift_score_samples) >= MIN_BASELINE_SAMPLES_FOR_CALIBRATION:
@@ -1721,6 +1724,71 @@ class StructuralEngine:
                     f" composite_thr={comp_thr}"
                 )
                 self._first_alert_logged = True
+
+        try:
+            trajectory_analysis = classify_trajectory_path(
+                transition_pressure_history=list(self._transition_pressure_history),
+                shock_activity_history=list(self._shock_activity_history),
+                structural_drift_history=list(self._structural_drift_history),
+            )
+        except Exception as e:
+            trajectory_analysis = {"available": False, "reason": str(e)}
+
+        try:
+            branching_analysis = derive_branching_analysis(trajectory_analysis)
+            if branching_analysis is None:
+                branching_analysis = {"available": False, "reason": "empty branching analysis"}
+        except Exception as e:
+            branching_analysis = {"available": False, "reason": str(e)}
+
+        try:
+            constraint_analysis = analyze_constraint_lock_in(
+                transition_pressure_history=list(self._transition_pressure_history),
+                shock_activity_history=list(self._shock_activity_history),
+                structural_drift_score=float(result.get("structural_drift_score", 0.0)),
+            )
+        except Exception as e:
+            constraint_analysis = {"available": False, "reason": str(e)}
+
+        try:
+            hierarchy_analysis = analyze_hierarchy_cascade(
+                sensor_names=list((frame.get("sensor_values") or {}).keys()),
+                subsystem=result.get("subsystem", {}),
+            )
+        except Exception as e:
+            hierarchy_analysis = {"available": False, "reason": str(e)}
+
+        try:
+            horizon_analysis = estimate_risk_horizon(
+                trajectory_analysis=trajectory_analysis,
+                constraint_analysis=constraint_analysis,
+            )
+        except Exception as e:
+            horizon_analysis = {"available": False, "reason": str(e)}
+
+        try:
+            counterfactual_simulation = simulate_counterfactual_futures(
+                transition_pressure_history=list(self._transition_pressure_history),
+                shock_activity_history=list(self._shock_activity_history),
+                structural_drift_history=list(self._structural_drift_history),
+                trajectory_analysis=trajectory_analysis,
+                branching_analysis=branching_analysis,
+                constraint_analysis=constraint_analysis,
+                hierarchy_analysis=hierarchy_analysis,
+                horizon_analysis=horizon_analysis,
+            )
+        except Exception as e:
+            counterfactual_simulation = {"available": False, "reason": str(e)}
+
+        result["experimental_analytics"] = {
+            "trajectory_analysis": trajectory_analysis,
+            "branching_analysis": branching_analysis,
+            "constraint_analysis": constraint_analysis,
+            "hierarchy_analysis": hierarchy_analysis,
+            "horizon_analysis": horizon_analysis,
+            "counterfactual_simulation": counterfactual_simulation,
+        }
+        print("DEBUG ANALYTICS:", result["experimental_analytics"])
 
         self.latest_result = result
 
