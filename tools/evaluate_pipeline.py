@@ -45,10 +45,21 @@ def run_eval(rows: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], dict[str
 
     stability = [float((r.get("robustness", {}).get("stability", {}) or {}).get("overall_stability", 0.0)) for r in results]
     sensitivity_pop = [1.0 if (r.get("sensitivity", {}).get("top_drivers", [])) else 0.0 for r in results]
+    episode_types = [str((r.get("episodes", {}) or {}).get("current_episode_type", "unknown")) for r in results]
+    prototypes = [str((r.get("path_prototypes", {}) or {}).get("dominant_prototype", "unknown")) for r in results]
+    branches = [
+        float(((r.get("experimental_analytics", {}) or {}).get("branching_analysis", {}) or {}).get("branch_count_estimate", 1.0))
+        for r in results
+    ]
+    drift_noise_ratio = [float((r.get("drift_noise", {}) or {}).get("noise_to_drift_ratio", 0.0)) for r in results]
     summary.update(
         {
             "stability_mean": round(sum(stability) / len(stability), 4) if stability else 0.0,
             "sensitivity_summary_rate": round(sum(sensitivity_pop) / len(sensitivity_pop), 4) if sensitivity_pop else 0.0,
+            "episode_count": float(len(set(episode_types))),
+            "prototype_diversity": float(len(set(prototypes))),
+            "branch_diversity": round(float(pd.Series(branches).std()) if branches else 0.0, 4),
+            "drift_noise_ratio_mean": round(sum(drift_noise_ratio) / len(drift_noise_ratio), 4) if drift_noise_ratio else 0.0,
         }
     )
     return results, summary

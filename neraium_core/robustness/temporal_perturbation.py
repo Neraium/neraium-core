@@ -62,10 +62,13 @@ def temporal_shift_metrics(base: dict, perturbed: dict) -> dict[str, float]:
     pert_temporal = g(perturbed, "temporal_distortion_score")
     drift_delta = abs(g(base, "latest_drift") - g(perturbed, "latest_drift"))
     alignment_effect = 0.6 * abs(base_temporal - pert_temporal) + 0.4 * drift_delta
+    b_onset = float(base.get("transition_onset_score", 0.0) or 0.0)
+    p_onset = float(perturbed.get("transition_onset_score", 0.0) or 0.0)
     return {
         "alignment_effect_score": round(alignment_effect, 4),
         "structural_decision_change_rate": round(1.0 if (b_state != p_state or abs(base_temporal - pert_temporal) > 0.02) else 0.0, 4),
         "branch_flip_rate": round(1.0 if abs(b_branch - p_branch) > 0.5 else 0.0, 4),
         "horizon_shift_rate": round(abs(b_h - p_h) / (abs(b_h) + 1e-6) if b_h else 0.0, 4),
         "lock_in_shift_rate": round(abs(b_l - p_l) / (abs(b_l) + 1e-6) if b_l else 0.0, 4),
+        "transition_onset_shift": round(abs(b_onset - p_onset), 4),
     }
