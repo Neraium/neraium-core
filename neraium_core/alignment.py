@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections import Counter, deque
+import json
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
@@ -148,6 +149,7 @@ class StructuralEngine:
 
         # Debug helpers: print first alert reasoning once per engine instance.
         self._first_alert_logged: bool = False
+        self._experimental_analytics_debug_logged: bool = False
 
         self.regime_store = RegimeStore(regime_store_path)
         persisted = self.regime_store.load()
@@ -205,6 +207,40 @@ class StructuralEngine:
                 "baselines": self.regime_baselines,
             }
         )
+
+    def _analytics_unavailable_payload(self, reason: str) -> dict[str, object]:
+        return {
+            "trajectory_analysis": {
+                "available": False,
+                "reason": reason,
+            },
+            "branching_analysis": {
+                "available": False,
+                "reason": reason,
+            },
+            "constraint_analysis": {
+                "available": False,
+                "reason": reason,
+            },
+            "hierarchy_analysis": {
+                "available": False,
+                "reason": reason,
+            },
+            "horizon_analysis": {
+                "available": False,
+                "reason": reason,
+            },
+            "counterfactual_simulation": {
+                "available": False,
+                "reason": reason,
+            },
+        }
+
+    def _debug_print_experimental_analytics_once(self, result: Dict) -> None:
+        if self._experimental_analytics_debug_logged:
+            return
+        print(json.dumps(result.get("experimental_analytics", {}), indent=2)[:1500])
+        self._experimental_analytics_debug_logged = True
 
     def _persistence_features(self) -> dict[str, float]:
         """
@@ -830,11 +866,13 @@ class StructuralEngine:
             "missing_sensor_count": 0,
             "transition_pressure": 0.0,
             "transition_state": "NONE",
+            "experimental_analytics": self._analytics_unavailable_payload("warmup"),
         }
 
         # Skip deque→list snapshot during warmup (saves O(n) per frame until windows fill).
         if len(self.frames) < self.baseline_window or len(self.frames) < self.recent_window:
             self.latest_result = result
+            self._debug_print_experimental_analytics_once(result)
             return result
 
         frames_list = list(self.frames)
@@ -843,6 +881,7 @@ class StructuralEngine:
 
         if baseline_window is None or recent_window is None:
             self.latest_result = result
+            self._debug_print_experimental_analytics_once(result)
             return result
 
         ts_baseline = self._get_baseline_timestamps(frames_list)
@@ -885,6 +924,7 @@ class StructuralEngine:
         regime_distance = float(assigned_regime["distance"]) if assigned_regime else None
 
         analytics: dict[str, object] = {
+            **self._analytics_unavailable_payload("pending_multivariate_processing"),
             "early_warning": warning,
             "relational_metrics_skipped": valid_signal_count < 2,
             "regime_signature": {
@@ -1558,6 +1598,8 @@ class StructuralEngine:
         )
         if branching_analysis is not None:
             analytics["branching_analysis"] = branching_analysis
+        else:
+            analytics["branching_analysis"] = {"available": False, "reason": "trajectory_analysis_unavailable"}
         analytics["horizon_analysis"] = estimate_risk_horizon(
             transition_pressure_history=list(self._transition_pressure_history),
             shock_activity_history=list(self._shock_activity_history),
@@ -1583,7 +1625,11 @@ class StructuralEngine:
         )
         result["component_confidence"] = component_confidence
 
+        for key, payload in self._analytics_unavailable_payload("not_computed").items():
+            analytics.setdefault(key, payload)
+
         result["experimental_analytics"] = analytics
+        self._debug_print_experimental_analytics_once(result)
 
         debug_verbose = os.environ.get("NERAIUM_DEBUG_SII_VERBOSE", "0").strip().lower() not in {
             "0",
