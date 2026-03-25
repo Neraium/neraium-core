@@ -67,6 +67,9 @@ def flatten_result(
     gal2: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     experimental = _safe_get(result, "experimental_analytics") or {}
+    geometry = _safe_get(result, "geometry") or {}
+    state_space_statistics = _safe_get(result, "state_space_statistics") or {}
+    state_graph = _safe_get(result, "state_graph") or {}
     counterfactuals = _safe_get(experimental, "counterfactual_simulation", "counterfactuals")
     pressure_relief = _safe_list_item(counterfactuals, 0)
     continued_degradation = _safe_list_item(counterfactuals, 2)
@@ -92,6 +95,27 @@ def flatten_result(
         "constraint_analysis_lock_in_score": _safe_get(experimental, "constraint_analysis", "lock_in_score"),
         "constraint_analysis_point_of_no_return_risk": _safe_get(experimental, "constraint_analysis", "point_of_no_return_risk"),
         "constraint_analysis_recovery_margin": _safe_get(experimental, "constraint_analysis", "recovery_margin"),
+        "geometry_path_length": _safe_get(geometry, "path_length"),
+        "geometry_local_velocity_norm": _safe_get(geometry, "local_velocity_norm"),
+        "geometry_local_acceleration_norm": _safe_get(geometry, "local_acceleration_norm"),
+        "geometry_curvature": _safe_get(geometry, "curvature"),
+        "geometry_directional_consistency": _safe_get(geometry, "directional_consistency"),
+        "geometry_angular_change": _safe_get(geometry, "angular_change"),
+        "geometry_path_smoothness": _safe_get(geometry, "path_smoothness"),
+        "state_space_statistics_local_volume": _safe_get(state_space_statistics, "local_volume"),
+        "state_space_statistics_local_density": _safe_get(state_space_statistics, "local_density"),
+        "state_space_statistics_covariance_trace": _safe_get(state_space_statistics, "covariance_trace"),
+        "state_space_statistics_principal_direction_strength": _safe_get(state_space_statistics, "principal_direction_strength"),
+        "state_space_statistics_anisotropy": _safe_get(state_space_statistics, "anisotropy"),
+        "state_space_statistics_state_contraction_score": _safe_get(state_space_statistics, "state_contraction_score"),
+        "state_space_statistics_state_expansion_score": _safe_get(state_space_statistics, "state_expansion_score"),
+        "state_graph_node_count": _safe_get(state_graph, "node_count"),
+        "state_graph_edge_count": _safe_get(state_graph, "edge_count"),
+        "state_graph_branching_factor": _safe_get(state_graph, "branching_factor"),
+        "state_graph_transition_entropy": _safe_get(state_graph, "transition_entropy"),
+        "state_graph_revisit_rate": _safe_get(state_graph, "revisit_rate"),
+        "state_graph_path_commitment_score": _safe_get(state_graph, "path_commitment_score"),
+        "state_graph_graph_divergence_score": _safe_get(state_graph, "graph_divergence_score"),
         "temporal_consistency_score": _safe_get(result, "temporal_consistency_score"),
         "ordering_stability_score": _safe_get(result, "ordering_stability_score"),
         "timestamp_gap_irregularity": _safe_get(result, "timestamp_gap_irregularity"),

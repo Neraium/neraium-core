@@ -17,6 +17,33 @@ class StatisticalGeometryLayer:
         self.graph_window = graph_window
         self.stats_window = stats_window
         self.entity_paths: dict[str, list[np.ndarray]] = defaultdict(list)
+        self.min_history = max(4, min(self.graph_window, self.stats_window))
+
+    @staticmethod
+    def _insufficient_block(*, reason: str) -> dict[str, object]:
+        return {"available": False, "reason": reason}
+
+    def _insufficient_payload(self, *, reason: str, frame: object) -> dict[str, object]:
+        state_vector_dim = int(getattr(frame, "state_vector", np.asarray([], dtype=float)).size)
+        feature_groups = getattr(frame, "feature_groups", {}) or {}
+        return {
+            "geometry": self._insufficient_block(reason=reason),
+            "state_space_statistics": self._insufficient_block(reason=reason),
+            "state_graph": self._insufficient_block(reason=reason),
+            "geometry_explanations": {
+                "trajectory": f"Geometry unavailable: {reason}.",
+                "branching": f"Branching geometry unavailable: {reason}.",
+                "lock_in": f"Lock-in geometry unavailable: {reason}.",
+                "drift_vs_noise": f"Drift/noise geometry unavailable: {reason}.",
+                "horizon": f"Horizon geometry unavailable: {reason}.",
+            },
+            "fleet_geometry": self._fleet_summary(),
+            "state_space": {
+                "representation_mode": getattr(frame, "mode", "combined"),
+                "state_vector_dim": state_vector_dim,
+                "feature_group_dims": {k: int(v.size) for k, v in feature_groups.items()},
+            },
+        }
 
     def _fleet_summary(self) -> dict[str, float]:
         entities = sorted(self.entity_paths.keys())
@@ -88,6 +115,8 @@ class StatisticalGeometryLayer:
         path.append(frame.state_vector)
         if len(path) > self.max_history:
             del path[:-self.max_history]
+        if len(path) < self.min_history:
+            return self._insufficient_payload(reason="insufficient history", frame=frame)
 
         geometry = compute_trajectory_geometry(path, window=self.stats_window)
         stats = compute_state_statistics(path, window=self.stats_window)

@@ -20,6 +20,8 @@ def derive_path_prototypes(
     *,
     directional_evolution: Mapping[str, object] | None,
     trajectory_shape: Mapping[str, object] | None,
+    geometry: Mapping[str, object] | None = None,
+    state_graph: Mapping[str, object] | None = None,
     top_k: int = 3,
 ) -> dict[str, object]:
     if not isinstance(directional_evolution, Mapping) or not isinstance(trajectory_shape, Mapping):
@@ -36,6 +38,10 @@ def derive_path_prototypes(
             group_concentration = _clamp01(float(groups[0].get("relative_drift_contribution", 0.0)))
         except (AttributeError, TypeError, ValueError):
             group_concentration = 0.0
+    geom_curvature = _clamp01(_safe(geometry, "curvature", 0.0))
+    geom_directionality = _clamp01(_safe(geometry, "directional_consistency", 0.0))
+    graph_divergence = _clamp01(_safe(state_graph, "graph_divergence_score", 0.0))
+    graph_commitment = _clamp01(_safe(state_graph, "path_commitment_score", 0.0))
 
     prototypes = {
         "MONOTONIC_DRIFT": _clamp01(
@@ -43,25 +49,32 @@ def derive_path_prototypes(
             + 0.35 * _safe(shape_scores, "steady_deterioration")
             + 0.1 * max(0.0, cosine)
             + 0.05 * max(0.0, polarity)
+            + 0.1 * geom_directionality
+            + 0.1 * graph_commitment
         ),
         "OSCILLATORY_INSTABILITY": _clamp01(
             0.6 * _safe(shape_scores, "oscillatory_deterioration")
             + 0.2 * directional_div
             + 0.2 * _safe(shape_scores, "divergent_failure_modes")
+            + 0.1 * geom_curvature
         ),
         "STEP_SHIFT": _clamp01(
             0.6 * _safe(shape_scores, "punctuated_shift")
             + 0.3 * (1.0 - max(0.0, cosine))
             + 0.1 * max(0.0, -polarity)
+            + 0.1 * geom_curvature
         ),
         "LOCALIZED_DIVERGENCE": _clamp01(
-            0.5 * _safe(shape_scores, "divergent_failure_modes") + 0.5 * group_concentration
+            0.4 * _safe(shape_scores, "divergent_failure_modes")
+            + 0.35 * group_concentration
+            + 0.25 * graph_divergence
         ),
         "SYSTEMIC_COLLAPSE": _clamp01(
             0.5 * _safe(shape_scores, "steady_deterioration")
             + 0.25 * _safe(shape_scores, "monotonic_collapse")
             + 0.2 * (1.0 - group_concentration)
             + 0.05 * max(0.0, polarity)
+            + 0.15 * graph_commitment
         ),
     }
 
