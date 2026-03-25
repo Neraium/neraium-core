@@ -31,6 +31,7 @@ def derive_trajectory_shape_features(
     recent_window: Iterable[Sequence[float]],
     short_horizon: int = 4,
     mid_horizon: int = 8,
+    timestamps: Sequence[float] | None = None,
 ) -> dict[str, object]:
     matrix = np.asarray(list(recent_window), dtype=float)
     if matrix.ndim != 2 or matrix.shape[0] < 4 or matrix.shape[1] < 1:
@@ -40,8 +41,13 @@ def derive_trajectory_shape_features(
     spread = np.std(matrix, axis=0, keepdims=True) + 1e-9
     normalized = (matrix - center) / spread
 
+    ts = np.asarray(list(timestamps or []), dtype=float)
+    if ts.size != matrix.shape[0]:
+        ts = np.arange(matrix.shape[0], dtype=float)
+    dt = np.maximum(1e-6, np.diff(ts))
+
     aggregate = np.linalg.norm(normalized - normalized[0:1, :], axis=1)
-    diffs = np.diff(aggregate)
+    diffs = np.diff(aggregate) / dt
     second = np.diff(aggregate, n=2) if aggregate.size >= 3 else np.asarray([], dtype=float)
 
     oscillation = _oscillation_index(aggregate)
@@ -55,7 +61,7 @@ def derive_trajectory_shape_features(
         after = float(aggregate[-1] - aggregate[valley_idx])
         recovery_then_failure = _clamp01(max(0.0, -before) * max(0.0, after))
 
-    per_feature_slopes = np.mean(np.diff(normalized, axis=0), axis=0)
+    per_feature_slopes = np.mean(np.diff(normalized, axis=0) / dt[:, None], axis=0)
     slope_disagreement = _clamp01(float(np.std(per_feature_slopes)) * 0.9)
 
     short_tail = normalized[-min(short_horizon, normalized.shape[0]) :]
@@ -73,6 +79,7 @@ def derive_trajectory_shape_features(
             "short": [round(float(v), 6) for v in short_embedding],
             "mid": [round(float(v), 6) for v in mid_embedding],
         },
+        "delta_t_irregularity": round(float(_clamp01(np.std(dt) / (np.mean(dt) + 1e-9))), 6),
         "shape_scores": {
             "steady_deterioration": round(float(monotonicity * (1.0 - oscillation)), 6),
             "oscillatory_deterioration": round(float(oscillation), 6),

@@ -162,6 +162,8 @@ def simulate_counterfactual_futures(
     constraint_analysis: Mapping[str, object] | None = None,
     hierarchy_analysis: Mapping[str, object] | None = None,
     horizon_analysis: Mapping[str, object] | None = None,
+    temporal_quality: Mapping[str, object] | None = None,
+    temporal_features: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
     pressure_tail = _tail(transition_pressure_history, 6)
     shock_tail = _tail(shock_activity_history, 6)
@@ -204,6 +206,10 @@ def simulate_counterfactual_futures(
     commitment_seed = 1.0 if commitment_text == "HIGH" else (0.6 if commitment_text == "MODERATE" else 0.25)
 
     horizon_hint = str((horizon_analysis or {}).get("risk_horizon", "")).upper() if isinstance(horizon_analysis, Mapping) else ""
+    temporal_consistency = _clamp01(_safe_float(temporal_quality, "temporal_consistency_score", 1.0))
+    temporal_irregularity = _clamp01(_safe_float(temporal_quality, "timestamp_gap_irregularity", 0.0))
+    drift_acceleration = _clamp01(_safe_float(temporal_features, "drift_acceleration", 0.0))
+    timing_intensity = _clamp01(_safe_float(temporal_features, "timing_intensity", 0.0))
 
     if isinstance(hierarchy_analysis, Mapping):
         propagation_risk = str(hierarchy_analysis.get("propagation_risk", "LOW")).upper()
@@ -218,10 +224,10 @@ def simulate_counterfactual_futures(
 
     baseline = _project_state(
         pressure=pressure,
-        pressure_trend=pressure_trend,
+        pressure_trend=pressure_trend + 0.06 * drift_acceleration,
         shock=shock,
         drift=drift,
-        drift_trend=drift_trend,
+        drift_trend=drift_trend + 0.08 * timing_intensity,
         stabilizing_score=stabilizing,
         metastable_score=metastable,
         diverging_score=diverging,
@@ -293,10 +299,10 @@ def simulate_counterfactual_futures(
     for scenario in scenarios:
         projected = _project_state(
             pressure=float(scenario["pressure"]),
-            pressure_trend=float(scenario["pressure_trend"]),
+            pressure_trend=float(scenario["pressure_trend"]) + 0.04 * drift_acceleration,
             shock=float(scenario["shock"]),
             drift=float(scenario["drift"]),
-            drift_trend=float(scenario["drift_trend"]),
+            drift_trend=float(scenario["drift_trend"]) + 0.05 * timing_intensity,
             stabilizing_score=float(scenario["stabilizing"]),
             metastable_score=float(scenario["metastable"]),
             diverging_score=float(scenario["diverging"]),
@@ -374,5 +380,7 @@ def simulate_counterfactual_futures(
                 "Pressure/drift relief biases toward stabilizing or less committed futures; persistent degradation "
                 "biases toward higher commitment, higher lock-in, and shorter horizon."
             ),
+            "temporal_counterfactual_trust": round(float(_clamp01(0.7 * temporal_consistency + 0.3 * (1.0 - temporal_irregularity))), 4),
+            "timing_intensity": round(float(timing_intensity), 4),
         },
     }
