@@ -1,0 +1,2 @@
+alignment_effect_score,structural_decision_change_rate,timing_sensitive_transition_rate,branch_flip_rate,horizon_shift_rate,counterfactual_divergence_rate
+0.25,0.25,1.0,0.0,1.0,0.0

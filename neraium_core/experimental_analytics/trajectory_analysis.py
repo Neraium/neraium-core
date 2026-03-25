@@ -58,6 +58,8 @@ def classify_trajectory_path(
     directional_evolution: Mapping[str, object] | None = None,
     trajectory_shape: Mapping[str, object] | None = None,
     path_prototypes: Mapping[str, object] | None = None,
+    temporal_quality: Mapping[str, object] | None = None,
+    temporal_features: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
     drift_values = [float(v) for v in drift_history]
     pressure_values = [float(v) for v in transition_pressure_history]
@@ -105,6 +107,11 @@ def classify_trajectory_path(
 
     directional_div = _clamp01(_safe_float(directional_evolution, "directional_divergence_score", 0.0))
     cosine_dir = max(-1.0, min(1.0, _safe_float(directional_evolution, "change_pattern_cosine_direction", 1.0)))
+    timing_irregularity = _clamp01(_safe_float(temporal_quality, "timestamp_gap_irregularity", 0.0))
+    temporal_consistency = _clamp01(_safe_float(temporal_quality, "temporal_consistency_score", 0.0))
+    timing_instability = _clamp01(_safe_float(temporal_features, "timing_instability", timing_irregularity))
+    drift_velocity = _clamp01(_safe_float(temporal_features, "drift_velocity", 0.0))
+    drift_acceleration = _clamp01(_safe_float(temporal_features, "drift_acceleration", 0.0))
 
     shape_scores = trajectory_shape.get("shape_scores") if isinstance(trajectory_shape, Mapping) else {}
     oscillatory_shape = _clamp01(_safe_float(shape_scores, "oscillatory_deterioration", 0.0))
@@ -129,6 +136,8 @@ def classify_trajectory_path(
         + 0.08 * rising
         + 0.07 * max(rev_locked, locked_in)
         + 0.10 * monotonic_shape
+        + 0.08 * drift_velocity
+        + 0.08 * drift_acceleration
     )
     metastable = _clamp01(
         0.25 * fragility
@@ -138,7 +147,10 @@ def classify_trajectory_path(
         + 0.10 * (1.0 - abs(stabilizing - diverging))
         + 0.12 * oscillatory_shape
         + 0.10 * punctuated_shape
+        + 0.08 * timing_irregularity
+        + 0.07 * timing_instability
     )
+    stabilizing = _clamp01(stabilizing + 0.10 * temporal_consistency - 0.06 * timing_irregularity)
 
     total = max(1e-9, stabilizing + metastable + diverging)
     score_stabilizing = stabilizing / total
@@ -184,6 +196,11 @@ def classify_trajectory_path(
         "fragility_index": round(float(fragility), 4),
         "directional_divergence": round(float(directional_div), 4),
         "change_pattern_cosine_direction": round(float(cosine_dir), 4),
+        "temporal_consistency": round(float(temporal_consistency), 4),
+        "timing_irregularity": round(float(timing_irregularity), 4),
+        "timing_instability": round(float(timing_instability), 4),
+        "drift_velocity": round(float(drift_velocity), 4),
+        "drift_acceleration": round(float(drift_acceleration), 4),
     }
     return {
         "dominant_path": dominant,
