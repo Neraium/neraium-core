@@ -1205,6 +1205,25 @@ class StructuralEngine:
                 reversibility_score=float(reversibility_scores.get("locked_in_index", 0.0)),
                 trajectory_analysis=trajectory_analysis,
             )
+            branching_analysis = derive_branching_analysis(trajectory_analysis)
+            horizon_analysis = estimate_risk_horizon(
+                transition_pressure_history=list(self._transition_pressure_history),
+                shock_activity_history=list(self._shock_activity_history),
+                structural_drift_history=list(self._drift_score_history),
+                trajectory_analysis=trajectory_analysis,
+                branching_analysis=branching_analysis,
+                constraint_analysis=constraint_analysis,
+            )
+            counterfactual_simulation = simulate_counterfactual_futures(
+                transition_pressure_history=list(self._transition_pressure_history),
+                shock_activity_history=list(self._shock_activity_history),
+                structural_drift_history=list(self._drift_score_history),
+                trajectory_analysis=trajectory_analysis,
+                branching_analysis=branching_analysis,
+                constraint_analysis=constraint_analysis,
+                hierarchy_analysis=hierarchy_analysis,
+                horizon_analysis=horizon_analysis,
+            )
 
             analytics.update(
                 {
@@ -1227,8 +1246,11 @@ class StructuralEngine:
                     "transition": transition_metrics,
                     "counterfactual_guidance": counterfactual_guidance,
                     "trajectory_analysis": trajectory_analysis,
+                    "branching_analysis": branching_analysis,
                     "hierarchy_analysis": hierarchy_analysis,
                     "constraint_analysis": constraint_analysis,
+                    "horizon_analysis": horizon_analysis,
+                    "counterfactual_simulation": counterfactual_simulation,
                 }
             )
             result["reversibility_classification"] = (
@@ -1292,6 +1314,18 @@ class StructuralEngine:
                 "rationale": {
                     "observation": "Constraint analysis unavailable because multivariate relational metrics were skipped.",
                 },
+            }
+            analytics["branching_analysis"] = {
+                "available": False,
+                "reason": "relational_metrics_skipped",
+            }
+            analytics["horizon_analysis"] = {
+                "available": False,
+                "reason": "relational_metrics_skipped",
+            }
+            analytics["counterfactual_simulation"] = {
+                "available": False,
+                "reason": "relational_metrics_skipped",
             }
 
         # Per-component confidence: down-weight or fully suppress evidence when the
@@ -1593,30 +1627,13 @@ class StructuralEngine:
         msg, contrib = AttributionStage.explain(explain_components, str(result.get("state", "STABLE")))
         result["explanation"] = msg
         analytics["component_contributions"] = contrib
-        branching_analysis = derive_branching_analysis(
-            analytics.get("trajectory_analysis") if isinstance(analytics, dict) else None
-        )
-        if branching_analysis is not None:
-            analytics["branching_analysis"] = branching_analysis
-        else:
-            analytics["branching_analysis"] = {"available": False, "reason": "trajectory_analysis_unavailable"}
-        analytics["horizon_analysis"] = estimate_risk_horizon(
-            transition_pressure_history=list(self._transition_pressure_history),
-            shock_activity_history=list(self._shock_activity_history),
-            structural_drift_history=list(self._drift_score_history),
-            trajectory_analysis=analytics.get("trajectory_analysis") if isinstance(analytics, dict) else None,
-            branching_analysis=analytics.get("branching_analysis") if isinstance(analytics, dict) else None,
-            constraint_analysis=analytics.get("constraint_analysis") if isinstance(analytics, dict) else None,
-        )
-        analytics["counterfactual_simulation"] = simulate_counterfactual_futures(
-            transition_pressure_history=list(self._transition_pressure_history),
-            shock_activity_history=list(self._shock_activity_history),
-            structural_drift_history=list(self._drift_score_history),
-            trajectory_analysis=analytics.get("trajectory_analysis") if isinstance(analytics, dict) else None,
-            branching_analysis=analytics.get("branching_analysis") if isinstance(analytics, dict) else None,
-            constraint_analysis=analytics.get("constraint_analysis") if isinstance(analytics, dict) else None,
-            hierarchy_analysis=analytics.get("hierarchy_analysis") if isinstance(analytics, dict) else None,
-            horizon_analysis=analytics.get("horizon_analysis") if isinstance(analytics, dict) else None,
+        trajectory_analysis = analytics.get("trajectory_analysis") if isinstance(analytics, dict) else None
+        branching_analysis = analytics.get("branching_analysis") if isinstance(analytics, dict) else None
+        constraint_analysis = analytics.get("constraint_analysis") if isinstance(analytics, dict) else None
+        hierarchy_analysis = analytics.get("hierarchy_analysis") if isinstance(analytics, dict) else None
+        horizon_analysis = analytics.get("horizon_analysis") if isinstance(analytics, dict) else None
+        counterfactual_simulation = (
+            analytics.get("counterfactual_simulation") if isinstance(analytics, dict) else None
         )
         result["dominant_driver"] = (
             max(contrib.items(), key=lambda item: item[1])[0]
@@ -1625,10 +1642,28 @@ class StructuralEngine:
         )
         result["component_confidence"] = component_confidence
 
-        for key, payload in self._analytics_unavailable_payload("not_computed").items():
-            analytics.setdefault(key, payload)
+        for key, payload in self._analytics_unavailable_payload("missing inputs").items():
+            existing = analytics.get(key)
+            analytics[key] = existing if isinstance(existing, dict) and existing else payload
+
+        trajectory_analysis = analytics["trajectory_analysis"]
+        branching_analysis = analytics["branching_analysis"]
+        constraint_analysis = analytics["constraint_analysis"]
+        hierarchy_analysis = analytics["hierarchy_analysis"]
+        horizon_analysis = analytics["horizon_analysis"]
+        counterfactual_simulation = analytics["counterfactual_simulation"]
 
         result["experimental_analytics"] = analytics
+        result["experimental_analytics"] = {
+            "trajectory_analysis": trajectory_analysis,
+            "branching_analysis": branching_analysis,
+            "constraint_analysis": constraint_analysis,
+            "hierarchy_analysis": hierarchy_analysis,
+            "horizon_analysis": horizon_analysis,
+            "counterfactual_simulation": counterfactual_simulation,
+            **analytics,
+        }
+        print("DEBUG EXP ANALYTICS:", result.get("experimental_analytics"))
         self._debug_print_experimental_analytics_once(result)
 
         debug_verbose = os.environ.get("NERAIUM_DEBUG_SII_VERBOSE", "0").strip().lower() not in {
