@@ -44,6 +44,11 @@ from neraium_core.regime import build_regime_signature, assign_regime, update_re
 from neraium_core.regime_store import RegimeStore
 from neraium_core.scoring import canonicalize_components, canonicalize_weights, composite_instability_score_normalized
 from neraium_core.spectral import dominant_mode_loading, spectral_gap, spectral_radius
+from neraium_core.context_invariant_representation import (
+    RepresentationWeights,
+    TemporalRepresentationConfig,
+    build_temporal_representation,
+)
 from neraium_core.staged_pipeline import (
     AttributionStage,
     DecisionStage,
@@ -103,6 +108,10 @@ class StructuralEngine:
         window_stride: int = 1,
         regime_store_path: str = "regime_library.json",
         baseline_adaptation_alpha: float = DEFAULT_BASELINE_ADAPTATION_ALPHA,
+        representation_mode: str = "combined",
+        reference_strategy: str = "robust",
+        context_diagnostics_enabled: bool = True,
+        feature_weights: dict[str, float] | None = None,
     ):
         self.baseline_window = baseline_window
         self.recent_window = recent_window
@@ -112,6 +121,21 @@ class StructuralEngine:
         self.latest_result: Optional[Dict] = None
         self.score_history: deque[float] = deque(maxlen=120)
         self.baseline_adaptation_alpha = baseline_adaptation_alpha
+        base_weights = RepresentationWeights()
+        merged_weights = RepresentationWeights(
+            raw_weight=float((feature_weights or {}).get("raw_weight", base_weights.raw_weight)),
+            residual_weight=float((feature_weights or {}).get("residual_weight", base_weights.residual_weight)),
+            delta_weight=float((feature_weights or {}).get("delta_weight", base_weights.delta_weight)),
+            slope_weight=float((feature_weights or {}).get("slope_weight", base_weights.slope_weight)),
+            drift_weight=float((feature_weights or {}).get("drift_weight", base_weights.drift_weight)),
+            second_diff_weight=float((feature_weights or {}).get("second_diff_weight", base_weights.second_diff_weight)),
+        )
+        self.representation_config = TemporalRepresentationConfig(
+            mode=representation_mode,
+            reference_strategy=reference_strategy,
+            enable_diagnostics=bool(context_diagnostics_enabled),
+            weights=merged_weights,
+        )
         # Rolling baseline: updated only when system is nominal and composite low.
         self._rolling_baseline_corr: Optional[np.ndarray] = None
         # Recent interpreted states for classification stability.
@@ -891,6 +915,17 @@ class StructuralEngine:
                 can_process_full_frame = False
 
         if can_process_full_frame:
+            history_matrix = np.stack([f["_vector"] for f in frames_list], axis=0)
+            rep = build_temporal_representation(history_matrix, self.representation_config)
+            transformed_history = rep.transformed
+            baseline_window = np.asarray(
+                transformed_history[: self.baseline_window][:: self.window_stride],
+                dtype=float,
+            )
+            recent_window = np.asarray(
+                transformed_history[-self.recent_window :][:: self.window_stride],
+                dtype=float,
+            )
             ts_baseline = self._get_baseline_timestamps(frames_list)
             ts_recent = self._get_recent_timestamps(frames_list)
 
@@ -920,6 +955,7 @@ class StructuralEngine:
 
             valid_mask = (np.nan_to_num(recent_std) > 1e-12) | (np.nan_to_num(baseline_std) > 1e-12)
             valid_signal_count = int(np.sum(valid_mask))
+            valid_signal_count = min(valid_signal_count, len(self.sensor_order))
 
             warning = early_warning_metrics(np.nan_to_num(recent_window, nan=0.0))
 
@@ -934,6 +970,18 @@ class StructuralEngine:
                 **self._analytics_unavailable_payload("pending_multivariate_processing"),
                 "early_warning": warning,
                 "relational_metrics_skipped": valid_signal_count < 2,
+                "representation": {
+                    "mode": self.representation_config.resolved_mode(),
+                    "reference_strategy": self.representation_config.resolved_strategy(),
+                    "weights": {
+                        "raw_weight": float(self.representation_config.weights.raw_weight),
+                        "residual_weight": float(self.representation_config.weights.residual_weight),
+                        "delta_weight": float(self.representation_config.weights.delta_weight),
+                        "slope_weight": float(self.representation_config.weights.slope_weight),
+                        "drift_weight": float(self.representation_config.weights.drift_weight),
+                        "second_diff_weight": float(self.representation_config.weights.second_diff_weight),
+                    },
+                },
                 "regime_signature": {
                     "current": [float(v) for v in signature],
                     "nearest": assigned_regime,
@@ -941,6 +989,8 @@ class StructuralEngine:
                     "library_size": len(self.regime_signatures),
                 },
             }
+            if self.representation_config.enable_diagnostics:
+                analytics["context_diagnostics"] = dict(rep.diagnostics)
 
             components = canonicalize_components(
                 {
@@ -1022,7 +1072,7 @@ class StructuralEngine:
                 causal = causal_metrics(causal_matrix)
                 causal_graph = causal_graph_metrics(causal_matrix, threshold=0.1)
 
-                valid_sensor_names = [self.sensor_order[i] for i in range(len(valid_mask)) if valid_mask[i]]
+                valid_sensor_names = [rep.feature_names[i] for i in range(len(valid_mask)) if valid_mask[i]]
                 causal_prop = None
                 dominant_causal_source = None
                 causal_chains = None
@@ -1122,6 +1172,9 @@ class StructuralEngine:
                         "regime_drift": round(float(regime_drift), 4),
                         "latest_drift": round(float(drift_score), 4),
                         "baseline_mode": baseline_mode,
+                        "context_dominance_score": round(float(rep.diagnostics.get("context_dominance_score", 0.0)), 4),
+                        "dynamic_signal_strength": round(float(rep.diagnostics.get("dynamic_signal_strength", 0.0)), 4),
+                        "early_separation_flag": bool(rep.diagnostics.get("early_separation_flag", False)),
                     }
                 )
                 regime_memory_state = {
@@ -1737,52 +1790,6 @@ class StructuralEngine:
             self._shock_activity_history.append(0.0)
         if len(self._structural_drift_history) == history_drift_len_before:
             self._structural_drift_history.append(float(result.get("structural_drift_score", 0.0) or 0.0))
-
-        try:
-            exp = {}
-
-            exp["trajectory_analysis"] = classify_trajectory_path(
-                transition_pressure_history=list(self._transition_pressure_history),
-                shock_activity_history=list(self._shock_activity_history),
-                structural_drift_history=list(self._structural_drift_history),
-            )
-
-            exp["branching_analysis"] = derive_branching_analysis(exp["trajectory_analysis"])
-
-            exp["constraint_analysis"] = analyze_constraint_lock_in(
-                transition_pressure_history=list(self._transition_pressure_history),
-                shock_activity_history=list(self._shock_activity_history),
-                structural_drift_score=float(result.get("structural_drift_score", 0.0)),
-            )
-
-            exp["hierarchy_analysis"] = analyze_hierarchy_cascade(
-                sensor_names=list(sensor_values.keys()),
-                subsystem=result.get("subsystem", {}),
-            )
-
-            exp["horizon_analysis"] = estimate_risk_horizon(
-                trajectory_analysis=exp["trajectory_analysis"],
-                constraint_analysis=exp["constraint_analysis"],
-            )
-
-            exp["counterfactual_simulation"] = simulate_counterfactual_futures(
-                transition_pressure_history=list(self._transition_pressure_history),
-                shock_activity_history=list(self._shock_activity_history),
-                structural_drift_history=list(self._structural_drift_history),
-                trajectory_analysis=exp["trajectory_analysis"],
-                branching_analysis=exp["branching_analysis"],
-                constraint_analysis=exp["constraint_analysis"],
-                hierarchy_analysis=exp["hierarchy_analysis"],
-                horizon_analysis=exp["horizon_analysis"],
-            )
-
-        except Exception as e:
-            exp = {"available": False, "reason": str(e)}
-
-        # CRITICAL: attach AFTER all other result modifications
-        result["experimental_analytics"] = exp
-
-        print("DEBUG FINAL ANALYTICS:", exp)
 
         self.latest_result = result
 
