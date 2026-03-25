@@ -60,6 +60,9 @@ class StructuralEngine:
         self._structural_drift_history: deque[float] = deque(maxlen=60)
         self._state_history: deque[str] = deque(maxlen=60)
         self._frame_count: int = 0
+        self._drift_history: deque[float] = deque(maxlen=160)
+        self._velocity_history: deque[float] = deque(maxlen=160)
+        self._evidence_history: deque[float] = deque(maxlen=160)
 
     def _vector_from_frame(self, frame: Dict) -> np.ndarray:
         """
@@ -241,9 +244,18 @@ class StructuralEngine:
         """
         Convert drift score into a simple alert state.
         """
-        if drift_score > 3.0:
+        hist = list(self._drift_history)
+        if len(hist) >= max(12, self.recent_window * 2):
+            baseline = np.asarray(hist[:-3] if len(hist) > 9 else hist, dtype=float)
+            watch_thr = float(np.quantile(baseline, 0.82))
+            alert_thr = float(np.quantile(baseline, 0.93))
+            watch_thr = max(1.1, watch_thr + 0.08)
+            alert_thr = max(watch_thr + 0.18, alert_thr + 0.12)
+        else:
+            watch_thr, alert_thr = 1.8, 3.2
+        if drift_score > alert_thr:
             return "ALERT"
-        if drift_score > 1.5:
+        if drift_score > watch_thr:
             return "WATCH"
         return "STABLE"
 
@@ -263,6 +275,8 @@ class StructuralEngine:
         self._shock_activity_history.append(float(shock_activity))
         self._structural_drift_history.append(float(drift_score))
         self._state_history.append(state)
+        self._drift_history.append(float(drift_score))
+        self._velocity_history.append(float(velocity))
 
     def _compute_base_metrics(
         self,
@@ -359,10 +373,30 @@ class StructuralEngine:
         }
 
     def _compute_transition_metrics(self, *, drift_score: float, velocity: float, stability_score: float) -> Dict:
-        raw_pressure = (0.65 * self._clamp01(drift_score / 3.0)) + (0.25 * self._clamp01(velocity / 0.25)) + (
-            0.10 * self._clamp01((1.0 - stability_score) / 0.75)
+        drift_n = self._clamp01(drift_score / 4.5)
+        vel_n = self._clamp01(max(0.0, velocity) / 0.22)
+        acc_n = 0.0
+        if len(self._velocity_history) >= 2:
+            acc_n = self._clamp01(max(0.0, velocity - self._velocity_history[-1]) / 0.12)
+        disagreement = self._clamp01(abs(drift_n - vel_n))
+        persistence = self._clamp01(
+            float(np.mean([self._clamp01(v / 4.5) for v in list(self._drift_history)[-5:]]))
+            if self._drift_history
+            else 0.0
         )
-        pressure = self._clamp01(raw_pressure)
+        noise_sep = self._clamp01(max(0.0, (1.0 - stability_score) - 0.5 * self._clamp01(abs(velocity) / 0.3)))
+        evidence = self._clamp01(
+            0.28 * persistence + 0.21 * drift_n + 0.19 * vel_n + 0.14 * acc_n + 0.10 * disagreement + 0.08 * noise_sep
+        )
+        prior = list(self._evidence_history)
+        if len(prior) >= 10:
+            base = np.asarray(prior[:-4], dtype=float) if len(prior) > 14 else np.asarray(prior, dtype=float)
+            threshold = float(np.quantile(base, 0.8))
+            contrast = self._clamp01((evidence - threshold) / max(0.08, 2.0 * float(np.std(base))))
+        else:
+            contrast = 0.5 * evidence
+        pressure = self._clamp01(0.58 * evidence + 0.42 * contrast)
+        self._evidence_history.append(float(evidence))
         if pressure >= 0.75:
             transition_state = "SUSTAINED_TRANSITION"
         elif pressure >= 0.45:
@@ -421,7 +455,11 @@ class StructuralEngine:
             "decision_tension": round(decision_tension, 4),
         }
 
-        lock_in_score = self._clamp01((avg_pressure * 0.6) + (float(np.mean(drift_tail)) / 4.5) * 0.4)
+        drift_level = self._clamp01(float(np.mean(drift_tail)) / 4.5)
+        persistence = self._clamp01(float(sum(1 for p in pressure_tail if p >= 0.55)) / max(1, len(pressure_tail)))
+        commitment_proxy = self._clamp01(0.6 * (1.0 - decision_tension) + 0.4 * (1.0 if dominant_path == "DIVERGING" else 0.35))
+        lock_raw = self._clamp01(0.32 * avg_pressure + 0.30 * drift_level + 0.22 * persistence + 0.16 * commitment_proxy)
+        lock_in_score = self._clamp01(0.88 / (1.0 + math.exp(-6.0 * (lock_raw - 0.62))))
         constraint = {
             "available": True,
             "lock_in_score": round(lock_in_score, 4),
@@ -441,12 +479,16 @@ class StructuralEngine:
         }
 
         horizon_bucket = "LONGER_HORIZON"
-        horizon_signal = (avg_pressure * 0.5) + (lock_in_score * 0.5)
-        if dominant_path == "DIVERGING":
-            horizon_signal += 0.2
-        if horizon_signal >= 0.85:
+        pressure_persist = self._clamp01(float(sum(1 for p in pressure_tail if p >= 0.62)) / max(1, len(pressure_tail)))
+        accel = self._clamp01(max(0.0, self._trend([float(v) for v in list(self._velocity_history)[-6:]])) / 0.06)
+        severity = 1.0 if dominant_path == "DIVERGING" else (0.55 if dominant_path == "METASTABLE" else 0.2)
+        recovery_margin = self._clamp01(1.0 - lock_in_score)
+        horizon_signal = self._clamp01(
+            0.26 * avg_pressure + 0.24 * lock_in_score + 0.16 * pressure_persist + 0.14 * severity + 0.12 * accel - 0.12 * recovery_margin
+        )
+        if horizon_signal >= 0.88 and pressure_persist >= 0.6 and lock_in_score >= 0.68 and severity >= 0.55:
             horizon_bucket = "IMMINENT"
-        elif horizon_signal >= 0.65:
+        elif horizon_signal >= 0.62:
             horizon_bucket = "NEAR_TERM"
         elif horizon_signal >= 0.4:
             horizon_bucket = "MID_TERM"
@@ -514,6 +556,13 @@ class StructuralEngine:
             velocity=float(base["drift_velocity"]),
             stability_score=float(base["relational_stability_score"]),
         )
+        pressure_now = float(transition["transition_pressure"])
+        if base["state"] == "ALERT" and pressure_now < 0.72:
+            base["state"] = "WATCH" if pressure_now >= 0.55 else "STABLE"
+            base["drift_alert"] = base["state"] == "ALERT"
+        elif base["state"] == "WATCH" and pressure_now < 0.45:
+            base["state"] = "STABLE"
+            base["drift_alert"] = False
         self._update_histories(
             drift_score=float(base["structural_drift_score"]),
             velocity=float(base["drift_velocity"]),
