@@ -52,6 +52,11 @@ from neraium_core.robustness import (
     compute_stability_metrics,
     generate_structural_explanations,
 )
+from neraium_core.structural_upgrade import (
+    build_evidence_block,
+    derive_path_prototype_summary,
+    update_episode_memory,
+)
 from neraium_core.scoring import canonicalize_components, canonicalize_weights, composite_instability_score_normalized
 from neraium_core.spectral import dominant_mode_loading, spectral_gap, spectral_radius
 from neraium_core.context_invariant_representation import (
@@ -174,6 +179,15 @@ class StructuralEngine:
         self._shock_activity_history: deque[float] = deque(maxlen=TRANSITION_MEMORY_WINDOW)
         self._structural_drift_history: deque[float] = deque(maxlen=TRANSITION_MEMORY_WINDOW)
         self._temporal_consistency_history: deque[float] = deque(maxlen=TRANSITION_MEMORY_WINDOW)
+        self._episode_history: list[dict[str, object]] = []
+        self._current_episode: dict[str, object] = {
+            "current_episode_type": "onset",
+            "episode_index": 0,
+            "episode_start": 0,
+            "episode_duration": 0,
+            "episode_transition_reason": "initialization",
+            "episode_history": [],
+        }
         self.transition_aware_enabled: bool = _env_enabled("NERAIUM_TRANSITION_AWARE", default="1")
 
         # Drift-score threshold calibration (watch/alert).
@@ -258,6 +272,15 @@ class StructuralEngine:
         self._drift_score_history.clear()
         self._shock_activity_history.clear()
         self._structural_drift_history.clear()
+        self._episode_history = []
+        self._current_episode = {
+            "current_episode_type": "onset",
+            "episode_index": 0,
+            "episode_start": 0,
+            "episode_duration": 0,
+            "episode_transition_reason": "reset_stream",
+            "episode_history": [],
+        }
         self.reset_baseline()
 
     def snapshot_state(self) -> Dict[str, object]:
@@ -276,6 +299,8 @@ class StructuralEngine:
             "baseline_locked": bool(self.baseline_locked),
             "baseline_set_at": self._baseline_set_at,
             "baseline_coverage_samples": int(self._baseline_coverage_samples),
+            "current_episode": dict(self._current_episode),
+            "episode_history": list(self._episode_history),
         }
 
     def restore_state(self, state: Dict[str, object]) -> None:
@@ -295,6 +320,8 @@ class StructuralEngine:
         self.baseline_locked = bool(state.get("baseline_locked", False))
         self._baseline_set_at = state.get("baseline_set_at")
         self._baseline_coverage_samples = int(state.get("baseline_coverage_samples", 0))
+        self._current_episode = dict(state.get("current_episode", self._current_episode))
+        self._episode_history = list(state.get("episode_history", []))
 
     def _persist_regime_state(self) -> None:
         self.regime_store.save(
@@ -988,6 +1015,8 @@ class StructuralEngine:
             "multi_scale": {},
             "drift_noise": {},
         }
+        temporal_quality: dict[str, object] = {}
+        temporal_features: dict[str, object] = {}
 
         # Skip deque→list snapshot during warmup (saves O(n) per frame until windows fill).
         can_process_full_frame = True
@@ -1937,6 +1966,7 @@ class StructuralEngine:
             "long_term_state": "insufficient_data",
             "scale_conflict": 0.0,
             "scale_alignment": 1.0,
+            "scale_conflict_reason": "insufficient_data",
         }
         result["multi_scale"] = multi_scale
 
@@ -1958,6 +1988,7 @@ class StructuralEngine:
             counterfactual_spread=counterfactual_spread,
         )
         result["robustness"] = {"stability": stability}
+        result["stability"] = stability
 
         if isinstance(recent_window, np.ndarray) and isinstance(baseline_window, np.ndarray):
             result["sensitivity"] = compute_sensitivity(
@@ -1976,6 +2007,36 @@ class StructuralEngine:
                 "lock_in_drivers": {},
                 "branching_drivers": {},
             }
+        result["attribution"] = {
+            "top_drivers": result["sensitivity"].get("top_drivers", []),
+            "trajectory_drivers": result["sensitivity"].get("trajectory_drivers", {}),
+            "branching_drivers": result["sensitivity"].get("branching_drivers", {}),
+            "lock_in_drivers": result["sensitivity"].get("lock_in_drivers", {}),
+            "horizon_drivers": result["sensitivity"].get("horizon_drivers", {}),
+            "counterfactual_drivers": result["sensitivity"].get("counterfactual_drivers", {}),
+            "group_contributions": result["sensitivity"].get("group_contributions", {}),
+        }
+
+        result["path_prototypes"] = derive_path_prototype_summary(
+            trajectory=trajectory if isinstance(trajectory, dict) else {},
+            branching=branching if isinstance(branching, dict) else {},
+            constraint=constraint if isinstance(constraint, dict) else {},
+            drift_noise=drift_noise,
+            multi_scale=multi_scale if isinstance(multi_scale, dict) else {},
+        )
+
+        self._current_episode, self._episode_history = update_episode_memory(
+            current_step=len(self.frames),
+            previous_episode=self._current_episode,
+            episode_history=self._episode_history,
+            transition_pressure=float(result.get("transition_pressure", 0.0) or 0.0),
+            drift_type=str(drift_noise.get("interpreted_change_type", "noise")),
+            lock_in_score=float(constraint.get("lock_in_score", 0.0) or 0.0) if isinstance(constraint, dict) else 0.0,
+            horizon_category=str(horizon.get("horizon_category", "unknown")) if isinstance(horizon, dict) else "unknown",
+            branch_count=float(branching.get("branch_count_estimate", 1.0) or 1.0) if isinstance(branching, dict) else 1.0,
+            multi_scale=multi_scale if isinstance(multi_scale, dict) else {},
+        )
+        result["episodes"] = dict(self._current_episode)
 
         result["explanations"] = generate_structural_explanations(
             trajectory_label=str(trajectory.get("trajectory_label", "insufficient_data")) if isinstance(trajectory, dict) else "insufficient_data",
@@ -1985,7 +2046,21 @@ class StructuralEngine:
             counterfactual_spread=counterfactual_spread,
             drift_type=str(drift_noise.get("interpreted_change_type", "noise")),
             stability=stability,
+            path_prototype=str((result.get("path_prototypes", {}) or {}).get("dominant_prototype", "unknown")),
         )
+        result["evidence"] = build_evidence_block(
+            frame_count=len(self.frames),
+            temporal_quality=temporal_quality if isinstance(temporal_quality, dict) else {},
+            stability=stability,
+            attribution=result["attribution"],
+            explanation_count=len(result.get("explanations", {})),
+        )
+        result["fleet_comparison"] = {
+            "peer_relative_fragility": {str(result.get("asset_id", "entity")): 0.0},
+            "rankings": {},
+            "outlier_entities": [],
+            "comparison_summary": "single_entity_context",
+        }
 
         transition_pressure_value = float(result.get("transition_pressure", 0.0) or 0.0)
         if len(self._transition_pressure_history) == history_transition_len_before:

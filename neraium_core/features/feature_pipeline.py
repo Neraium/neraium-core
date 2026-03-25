@@ -6,6 +6,7 @@ from typing import Dict
 import numpy as np
 
 from neraium_core.features.directional_features import directional_features
+from neraium_core.features.multiscale_features import multiscale_features
 from neraium_core.features.residual_features import residual_features
 from neraium_core.features.temporal_features import temporal_features
 
@@ -44,16 +45,6 @@ def _slope(matrix: np.ndarray) -> np.ndarray:
     return np.dot(xc, yc) / denom
 
 
-def _multi_scale(matrix: np.ndarray) -> np.ndarray:
-    windows = [max(2, matrix.shape[0] // 6), max(2, matrix.shape[0] // 3), max(2, matrix.shape[0] // 2)]
-    summaries = []
-    for w in windows:
-        tail = matrix[-w:]
-        summaries.extend(np.mean(tail, axis=0).tolist())
-        summaries.extend(np.std(tail, axis=0).tolist())
-    return np.asarray(summaries, dtype=float)
-
-
 def build_feature_bundle(matrix: np.ndarray) -> FeatureBundle:
     safe = np.nan_to_num(np.asarray(matrix, dtype=float), nan=0.0, posinf=0.0, neginf=0.0)
     if safe.ndim != 2:
@@ -69,7 +60,7 @@ def build_feature_bundle(matrix: np.ndarray) -> FeatureBundle:
     drift = safe[-1] - safe[0]
     directional = directional_features(safe)
     temporal = temporal_features(safe)
-    multi_scale = _multi_scale(safe)
+    multi_scale = multiscale_features(safe)
 
     return FeatureBundle(
         raw_features=np.asarray(raw, dtype=float),

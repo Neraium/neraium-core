@@ -15,6 +15,7 @@ def compute_multi_scale_states(matrix: np.ndarray) -> Dict[str, object]:
             "long_term_state": "insufficient_data",
             "scale_conflict": 0.0,
             "scale_alignment": 1.0,
+            "scale_conflict_reason": "insufficient_data",
         }
 
     def state_for(window: np.ndarray) -> tuple[str, float]:
@@ -33,12 +34,15 @@ def compute_multi_scale_states(matrix: np.ndarray) -> Dict[str, object]:
     align = float(max(states.count("stable"), states.count("rising_drift"), states.count("recovering")) / 3.0)
     conflict = 1.0 - align
 
+    reason = "aligned" if conflict < 0.34 else "short_mid_long_disagreement"
+
     return {
         "short_term_state": s_state,
         "mid_term_state": m_state,
         "long_term_state": l_state,
         "scale_conflict": round(conflict, 4),
         "scale_alignment": round(align, 4),
+        "scale_conflict_reason": reason,
         "scale_magnitudes": {
             "short": round(s_mag, 4),
             "mid": round(m_mag, 4),

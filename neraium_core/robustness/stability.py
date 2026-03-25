@@ -19,7 +19,9 @@ def compute_stability_metrics(*, drift_history: list[float], transition_history:
 
     branching_consistency_score = _clamp01(1.0 - (min(3.0, max(0.0, branch_count - 1.0)) / 3.0))
     lock_in_variance = float(np.var(t)) if t.size > 2 else float(lock_in_score * 0.05)
+    lock_in_stability_score = _clamp01(1.0 - min(1.0, lock_in_variance))
     horizon_volatility = float(np.std(d[-6:])) if d.size >= 6 else float(np.std(d)) if d.size else 0.0
+    horizon_stability_score = _clamp01(1.0 - min(1.0, horizon_volatility))
     counterfactual_consistency = _clamp01(1.0 - min(1.0, float(counterfactual_spread)))
 
     if state_history:
@@ -33,16 +35,19 @@ def compute_stability_metrics(*, drift_history: list[float], transition_history:
         + 0.15 * branching_consistency_score
         + 0.15 * counterfactual_consistency
         + 0.15 * state_consistency
-        + 0.2 * (1.0 - min(1.0, lock_in_variance))
-        + 0.15 * (1.0 - min(1.0, horizon_volatility))
+        + 0.2 * lock_in_stability_score
+        + 0.15 * horizon_stability_score
     )
 
     return {
         "trajectory_stability_score": round(trajectory_stability_score, 4),
-        "branching_consistency_score": round(branching_consistency_score, 4),
-        "lock_in_variance": round(float(lock_in_variance), 4),
-        "horizon_volatility": round(float(horizon_volatility), 4),
-        "counterfactual_consistency": round(counterfactual_consistency, 4),
+        "branching_stability_score": round(branching_consistency_score, 4),
+        "lock_in_stability_score": round(lock_in_stability_score, 4),
+        "horizon_stability_score": round(horizon_stability_score, 4),
+        "counterfactual_stability_score": round(counterfactual_consistency, 4),
+        "run_to_run_consistency": round(run_to_run_consistency, 4),
+        "window_to_window_consistency": round(window_to_window_consistency, 4),
+        "overall_structural_stability": round(overall, 4),
         "run_to_run_consistency": round(run_to_run_consistency, 4),
         "window_to_window_consistency": round(window_to_window_consistency, 4),
         "overall_stability": round(overall, 4),
