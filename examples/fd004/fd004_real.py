@@ -99,6 +99,28 @@ def load_fd004_rul(path: str | Path) -> dict[str, int]:
     return mapping
 
 
+def _flatten_nested_block(block: dict[str, Any] | None, *, prefix: str) -> dict[str, Any]:
+    """Flatten a nested payload into deterministic CSV-safe scalar columns."""
+    if not isinstance(block, dict):
+        return {}
+
+    flattened: dict[str, Any] = {}
+    for key in sorted(block):
+        value = block[key]
+        column = f"{prefix}{key}"
+        if isinstance(value, dict):
+            for sub_key in sorted(value):
+                sub_value = value[sub_key]
+                sub_column = f"{column}_{sub_key}"
+                if isinstance(sub_value, dict):
+                    flattened[sub_column] = json.dumps(sub_value, sort_keys=True)
+                else:
+                    flattened[sub_column] = sub_value
+        else:
+            flattened[column] = value
+    return flattened
+
+
 
 def write_fd004_proof_summary(
     report: dict[str, Any],
@@ -252,6 +274,14 @@ def run_fd004_real_evaluation(
                 "operator_message": result.get("operator_message", ""),
                 "structural_analysis_available": bool(result.get("structural_analysis_available", False)),
             }
+            row.update(_flatten_nested_block(result.get("geometry"), prefix="geometry_"))
+            row.update(
+                _flatten_nested_block(
+                    result.get("state_space_statistics"),
+                    prefix="state_space_statistics_",
+                )
+            )
+            row.update(_flatten_nested_block(result.get("state_graph"), prefix="state_graph_"))
             all_rows.append(row)
             instabilities.append(smoothed)
             drift_scores.append(drift_score)
@@ -348,6 +378,39 @@ def run_fd004_real_evaluation(
         writer.writeheader()
         if all_rows:
             writer.writerows(all_rows)
+
+    geometry_columns_present = bool(
+        all_rows
+        and any(key.startswith("geometry_") for key in all_rows[0])
+    )
+    print(f"Geometry columns present in CSV rows: {geometry_columns_present}")
+
+    metrics_to_count = [
+        "geometry_curvature",
+        "geometry_directional_consistency",
+        "state_space_statistics_local_density",
+        "state_graph_branching_factor",
+    ]
+    for metric in metrics_to_count:
+        non_null_count = sum(1 for row in all_rows if row.get(metric) not in (None, ""))
+        print(f"Non-null count ({metric}): {non_null_count}")
+
+    post_warmup_sample = next(
+        (
+            {
+                "asset_id": row.get("asset_id"),
+                "cycle": row.get("cycle"),
+                "geometry_curvature": row.get("geometry_curvature"),
+                "geometry_directional_consistency": row.get("geometry_directional_consistency"),
+                "state_space_statistics_local_density": row.get("state_space_statistics_local_density"),
+                "state_graph_branching_factor": row.get("state_graph_branching_factor"),
+            }
+            for row in all_rows
+            if row.get("geometry_curvature") not in (None, "")
+        ),
+        None,
+    )
+    print(f"Sample post-warmup geometry row: {post_warmup_sample}")
 
     if rul_mapping:
         rul_json_path.write_text(json.dumps(rul_mapping, indent=2), encoding="utf-8")
