@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Iterable
+from typing import Iterable, Mapping
 
 
 def _clamp01(value: float) -> float:
@@ -37,6 +37,15 @@ def _oscillation(values: Iterable[float], span: int = 6) -> float:
     return _clamp01(sign_changes / denom)
 
 
+def _safe_float(mapping: Mapping[str, object] | None, key: str, default: float = 0.0) -> float:
+    if not isinstance(mapping, Mapping):
+        return float(default)
+    try:
+        return float(mapping.get(key, default))
+    except (TypeError, ValueError):
+        return float(default)
+
+
 def classify_trajectory_path(
     *,
     drift_history: Iterable[float],
@@ -46,6 +55,9 @@ def classify_trajectory_path(
     shock_activity_history: Iterable[float],
     reversibility_classification: str | None,
     reversibility_score: float | None,
+    directional_evolution: Mapping[str, object] | None = None,
+    trajectory_shape: Mapping[str, object] | None = None,
+    path_prototypes: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
     drift_values = [float(v) for v in drift_history]
     pressure_values = [float(v) for v in transition_pressure_history]
@@ -91,34 +103,58 @@ def classify_trajectory_path(
     rev_meta = 1.0 if reversibility == "METASTABLE" else 0.0
     rev_locked = 1.0 if reversibility == "LOCKED_IN" else 0.0
 
+    directional_div = _clamp01(_safe_float(directional_evolution, "directional_divergence_score", 0.0))
+    cosine_dir = max(-1.0, min(1.0, _safe_float(directional_evolution, "change_pattern_cosine_direction", 1.0)))
+
+    shape_scores = trajectory_shape.get("shape_scores") if isinstance(trajectory_shape, Mapping) else {}
+    oscillatory_shape = _clamp01(_safe_float(shape_scores, "oscillatory_deterioration", 0.0))
+    punctuated_shape = _clamp01(_safe_float(shape_scores, "punctuated_shift", 0.0))
+    monotonic_shape = _clamp01(_safe_float(shape_scores, "monotonic_collapse", 0.0))
+    divergent_modes = _clamp01(_safe_float(shape_scores, "divergent_failure_modes", 0.0))
+
     stabilizing = _clamp01(
-        0.34 * (1.0 - drift)
-        + 0.25 * (1.0 - pressure)
-        + 0.16 * (1.0 - subsystem)
-        + 0.15 * falling
+        0.30 * (1.0 - drift)
+        + 0.20 * (1.0 - pressure)
+        + 0.14 * (1.0 - subsystem)
+        + 0.13 * falling
         + 0.10 * max(rev_stable, 1.0 - locked_in)
+        + 0.13 * max(0.0, cosine_dir)
     )
     diverging = _clamp01(
-        0.24 * drift
-        + 0.24 * pressure
-        + 0.14 * subsystem
-        + 0.14 * shock
-        + 0.10 * novelty
+        0.20 * drift
+        + 0.21 * pressure
+        + 0.13 * subsystem
+        + 0.13 * shock
+        + 0.08 * novelty
         + 0.08 * rising
-        + 0.06 * max(rev_locked, locked_in)
+        + 0.07 * max(rev_locked, locked_in)
+        + 0.10 * monotonic_shape
     )
     metastable = _clamp01(
-        0.36 * fragility
-        + 0.29 * oscillation
-        + 0.19 * ambiguous_motion
+        0.25 * fragility
+        + 0.18 * oscillation
+        + 0.15 * ambiguous_motion
         + 0.10 * max(rev_meta, 1.0 - abs(0.5 - locked_in) * 2.0)
-        + 0.06 * (1.0 - abs(stabilizing - diverging))
+        + 0.10 * (1.0 - abs(stabilizing - diverging))
+        + 0.12 * oscillatory_shape
+        + 0.10 * punctuated_shape
     )
 
     total = max(1e-9, stabilizing + metastable + diverging)
     score_stabilizing = stabilizing / total
     score_metastable = metastable / total
     score_diverging = diverging / total
+
+    if directional_div >= 0.4 or divergent_modes >= 0.35:
+        score_metastable = _clamp01(score_metastable + 0.08 * directional_div + 0.07 * divergent_modes)
+        score_diverging = _clamp01(score_diverging + 0.04 * max(0.0, -cosine_dir))
+        norm = max(1e-9, score_stabilizing + score_metastable + score_diverging)
+        score_stabilizing, score_metastable, score_diverging = (
+            score_stabilizing / norm,
+            score_metastable / norm,
+            score_diverging / norm,
+        )
+
     dominant = max(
         (
             ("STABILIZING", score_stabilizing),
@@ -127,6 +163,15 @@ def classify_trajectory_path(
         ),
         key=lambda item: item[1],
     )[0]
+
+    candidate_paths = []
+    if isinstance(path_prototypes, Mapping):
+        raw_candidates = path_prototypes.get("candidate_paths")
+        if isinstance(raw_candidates, list):
+            candidate_paths = raw_candidates
+
+    concentration = max(score_stabilizing, score_metastable, score_diverging)
+    diversity = _clamp01(1.0 - concentration)
 
     rationale = {
         "drift_trend": round(float(drift_trend), 4),
@@ -137,6 +182,8 @@ def classify_trajectory_path(
         "shock_activity": round(float(shock_activity), 4),
         "oscillation_index": round(float(oscillation), 4),
         "fragility_index": round(float(fragility), 4),
+        "directional_divergence": round(float(directional_div), 4),
+        "change_pattern_cosine_direction": round(float(cosine_dir), 4),
     }
     return {
         "dominant_path": dominant,
@@ -144,6 +191,16 @@ def classify_trajectory_path(
             "stabilizing": round(float(score_stabilizing), 4),
             "metastable": round(float(score_metastable), 4),
             "diverging": round(float(score_diverging), 4),
+        },
+        "candidate_paths": candidate_paths,
+        "directional_evolution": directional_evolution if isinstance(directional_evolution, Mapping) else None,
+        "trajectory_shape": trajectory_shape if isinstance(trajectory_shape, Mapping) else None,
+        "path_prototypes": path_prototypes if isinstance(path_prototypes, Mapping) else None,
+        "diagnostics": {
+            "path_diversity_score": round(float(diversity), 4),
+            "dominant_path_concentration_ratio": round(float(concentration), 4),
+            "directional_divergence_score": round(float(directional_div), 4),
+            "shape_divergence_score": round(float(divergent_modes), 4),
         },
         "rationale": rationale,
     }
