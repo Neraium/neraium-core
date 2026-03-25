@@ -99,25 +99,42 @@ def load_fd004_rul(path: str | Path) -> dict[str, int]:
     return mapping
 
 
-def _flatten_nested_block(block: dict[str, Any] | None, *, prefix: str) -> dict[str, Any]:
-    """Flatten a nested payload into deterministic CSV-safe scalar columns."""
+def _is_csv_scalar(value: Any) -> bool:
+    return value is None or isinstance(value, (str, int, float, bool))
+
+
+def _flatten_nested_block(
+    block: dict[str, Any] | None,
+    *,
+    prefix: str,
+    skip_nested_keys: set[str] | None = None,
+) -> dict[str, Any]:
+    """Flatten a payload into deterministic CSV-safe scalar columns.
+
+    Strategy:
+    - export all top-level scalar fields
+    - flatten at most one additional dict level for scalar leaves
+    - skip known bulky nested dicts (for example: state_graph.region_histogram)
+    """
     if not isinstance(block, dict):
         return {}
 
+    ignored = skip_nested_keys or set()
     flattened: dict[str, Any] = {}
     for key in sorted(block):
+        if key in ignored:
+            continue
         value = block[key]
         column = f"{prefix}{key}"
         if isinstance(value, dict):
             for sub_key in sorted(value):
+                if sub_key in ignored:
+                    continue
                 sub_value = value[sub_key]
                 sub_column = f"{column}_{sub_key}"
-                if isinstance(sub_value, dict):
-                    for leaf_key in sorted(sub_value):
-                        flattened[f"{sub_column}_{leaf_key}"] = sub_value[leaf_key]
-                else:
+                if _is_csv_scalar(sub_value):
                     flattened[sub_column] = sub_value
-        else:
+        elif _is_csv_scalar(value):
             flattened[column] = value
     return flattened
 
@@ -282,7 +299,13 @@ def run_fd004_real_evaluation(
                     prefix="state_space_statistics_",
                 )
             )
-            row.update(_flatten_nested_block(result.get("state_graph"), prefix="state_graph_"))
+            row.update(
+                _flatten_nested_block(
+                    result.get("state_graph"),
+                    prefix="state_graph_",
+                    skip_nested_keys={"region_histogram"},
+                )
+            )
             all_rows.append(row)
             instabilities.append(smoothed)
             drift_scores.append(drift_score)
