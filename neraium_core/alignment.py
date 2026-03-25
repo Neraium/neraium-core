@@ -1152,6 +1152,7 @@ class StructuralEngine:
                 causal_propagation=causal_prop,
                 counterfactual_guidance=counterfactual_guidance,
                 transition=transition_metrics,
+            )
             constraint_analysis = analyze_constraint_lock_in(
                 transition_pressure_history=list(self._transition_pressure_history),
                 shock_activity_history=list(self._shock_activity_history),
@@ -1238,6 +1239,8 @@ class StructuralEngine:
                 "localized_vs_global_score": 0.0,
                 "rationale": {
                     "observation": "Hierarchy analysis unavailable because multivariate relational metrics were skipped.",
+                },
+            }
             analytics["constraint_analysis"] = {
                 "available": False,
                 "reason": "relational_metrics_skipped",
