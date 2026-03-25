@@ -45,6 +45,13 @@ from neraium_core.geometry import (
 from neraium_core.graph import graph_metrics, thresholded_adjacency
 from neraium_core.regime import build_regime_signature, assign_regime, update_regime_library
 from neraium_core.regime_store import RegimeStore
+from neraium_core.robustness import (
+    classify_drift_noise,
+    compute_multi_scale_states,
+    compute_sensitivity,
+    compute_stability_metrics,
+    generate_structural_explanations,
+)
 from neraium_core.scoring import canonicalize_components, canonicalize_weights, composite_instability_score_normalized
 from neraium_core.spectral import dominant_mode_loading, spectral_gap, spectral_radius
 from neraium_core.context_invariant_representation import (
@@ -232,6 +239,62 @@ class StructuralEngine:
             "baseline_locked": self.baseline_locked,
             "baseline_mode": mode,
         }
+
+    def process_stream_frame(self, frame: Dict) -> Dict:
+        """Streaming-compatible alias that preserves deterministic batch semantics."""
+        return self.process_frame(frame)
+
+    def reset_stream(self) -> None:
+        """Reset in-memory stream state while preserving constructor configuration."""
+        self.frames.clear()
+        self.sensor_order = []
+        self.latest_result = None
+        self.score_history.clear()
+        self._state_history.clear()
+        self._transition_pressure_history.clear()
+        self._regime_history.clear()
+        self._adjacency_history.clear()
+        self._dominant_mode_history.clear()
+        self._drift_score_history.clear()
+        self._shock_activity_history.clear()
+        self._structural_drift_history.clear()
+        self.reset_baseline()
+
+    def snapshot_state(self) -> Dict[str, object]:
+        """Serializable snapshot for incremental/long-running deployments."""
+        return {
+            "sensor_order": list(self.sensor_order),
+            "frames": list(self.frames),
+            "score_history": list(self.score_history),
+            "state_history": list(self._state_history),
+            "transition_pressure_history": list(self._transition_pressure_history),
+            "drift_score_history": list(self._drift_score_history),
+            "shock_activity_history": list(self._shock_activity_history),
+            "structural_drift_history": list(self._structural_drift_history),
+            "rolling_baseline_corr": self._rolling_baseline_corr.tolist() if isinstance(self._rolling_baseline_corr, np.ndarray) else None,
+            "stable_manifold_corr": self._stable_manifold_corr.tolist() if isinstance(self._stable_manifold_corr, np.ndarray) else None,
+            "baseline_locked": bool(self.baseline_locked),
+            "baseline_set_at": self._baseline_set_at,
+            "baseline_coverage_samples": int(self._baseline_coverage_samples),
+        }
+
+    def restore_state(self, state: Dict[str, object]) -> None:
+        """Restore snapshot produced by ``snapshot_state``."""
+        self.sensor_order = list(state.get("sensor_order", []))
+        self.frames = deque(list(state.get("frames", [])), maxlen=500)
+        self.score_history = deque(list(state.get("score_history", [])), maxlen=120)
+        self._state_history = deque(list(state.get("state_history", [])), maxlen=CLASSIFICATION_STABILITY_WINDOW)
+        self._transition_pressure_history = deque(list(state.get("transition_pressure_history", [])), maxlen=TRANSITION_MEMORY_WINDOW)
+        self._drift_score_history = deque(list(state.get("drift_score_history", [])), maxlen=120)
+        self._shock_activity_history = deque(list(state.get("shock_activity_history", [])), maxlen=TRANSITION_MEMORY_WINDOW)
+        self._structural_drift_history = deque(list(state.get("structural_drift_history", [])), maxlen=TRANSITION_MEMORY_WINDOW)
+        rbc = state.get("rolling_baseline_corr")
+        smc = state.get("stable_manifold_corr")
+        self._rolling_baseline_corr = np.asarray(rbc, dtype=float) if isinstance(rbc, list) else None
+        self._stable_manifold_corr = np.asarray(smc, dtype=float) if isinstance(smc, list) else None
+        self.baseline_locked = bool(state.get("baseline_locked", False))
+        self._baseline_set_at = state.get("baseline_set_at")
+        self._baseline_coverage_samples = int(state.get("baseline_coverage_samples", 0))
 
     def _persist_regime_state(self) -> None:
         self.regime_store.save(
@@ -919,6 +982,11 @@ class StructuralEngine:
             "transition_pressure": 0.0,
             "transition_state": "NONE",
             "experimental_analytics": self._analytics_unavailable_payload("warmup"),
+            "robustness": {},
+            "sensitivity": {},
+            "explanations": {},
+            "multi_scale": {},
+            "drift_noise": {},
         }
 
         # Skip deque→list snapshot during warmup (saves O(n) per frame until windows fill).
@@ -1798,8 +1866,9 @@ class StructuralEngine:
                 "counterfactual_simulation": counterfactual_simulation,
                 **analytics,
             }
-            print("DEBUG EXP ANALYTICS:", result.get("experimental_analytics"))
-            self._debug_print_experimental_analytics_once(result)
+            if os.environ.get("NERAIUM_DEBUG_EXP_ANALYTICS", "0").strip().lower() not in {"0", "false", "no", "off", ""}:
+                print("DEBUG EXP ANALYTICS:", result.get("experimental_analytics"))
+                self._debug_print_experimental_analytics_once(result)
 
             debug_verbose = os.environ.get("NERAIUM_DEBUG_SII_VERBOSE", "0").strip().lower() not in {
                 "0",
@@ -1856,6 +1925,67 @@ class StructuralEngine:
                         f" composite_thr={comp_thr}"
                     )
                     self._first_alert_logged = True
+
+        drift_noise = classify_drift_noise(list(self._drift_score_history))
+        result["drift_noise"] = drift_noise
+        matrix_for_scale = recent_window if isinstance(recent_window, np.ndarray) else None
+        if matrix_for_scale is None and len(self.frames) >= 3:
+            matrix_for_scale = np.stack([f["_vector"] for f in list(self.frames)[-min(24, len(self.frames)) :]], axis=0)
+        multi_scale = compute_multi_scale_states(np.nan_to_num(matrix_for_scale, nan=0.0)) if isinstance(matrix_for_scale, np.ndarray) else {
+            "short_term_state": "insufficient_data",
+            "mid_term_state": "insufficient_data",
+            "long_term_state": "insufficient_data",
+            "scale_conflict": 0.0,
+            "scale_alignment": 1.0,
+        }
+        result["multi_scale"] = multi_scale
+
+        exp = result.get("experimental_analytics", {}) if isinstance(result.get("experimental_analytics"), dict) else {}
+        trajectory = exp.get("trajectory_analysis", {}) if isinstance(exp, dict) else {}
+        branching = exp.get("branching_analysis", {}) if isinstance(exp, dict) else {}
+        constraint = exp.get("constraint_analysis", {}) if isinstance(exp, dict) else {}
+        horizon = exp.get("horizon_analysis", {}) if isinstance(exp, dict) else {}
+        counterfactual = exp.get("counterfactual_simulation", {}) if isinstance(exp, dict) else {}
+        counterfactual_spread = float(counterfactual.get("scenario_spread", 0.0) or 0.0) if isinstance(counterfactual, dict) else 0.0
+        stability = compute_stability_metrics(
+            drift_history=list(self._drift_score_history),
+            transition_history=list(self._transition_pressure_history),
+            state_history=list(self._state_history),
+            trajectory_label=str(trajectory.get("trajectory_label", "unknown")) if isinstance(trajectory, dict) else "unknown",
+            branch_count=float(branching.get("branch_count_estimate", 1.0) or 1.0) if isinstance(branching, dict) else 1.0,
+            lock_in_score=float(constraint.get("lock_in_score", 0.0) or 0.0) if isinstance(constraint, dict) else 0.0,
+            horizon_steps=float(horizon.get("horizon_steps", 0.0) or 0.0) if isinstance(horizon, dict) else 0.0,
+            counterfactual_spread=counterfactual_spread,
+        )
+        result["robustness"] = {"stability": stability}
+
+        if isinstance(recent_window, np.ndarray) and isinstance(baseline_window, np.ndarray):
+            result["sensitivity"] = compute_sensitivity(
+                baseline_window=baseline_window,
+                recent_window=recent_window,
+                feature_names=list(self.sensor_order),
+                trajectory_score=float(stability.get("trajectory_stability_score", 0.0)),
+                lock_in_score=float((constraint.get("lock_in_score", 0.0) if isinstance(constraint, dict) else 0.0) or 0.0),
+                branching_score=float((branching.get("branch_entropy", 0.0) if isinstance(branching, dict) else 0.0) or 0.0),
+            )
+        else:
+            result["sensitivity"] = {
+                "top_drivers": [],
+                "feature_contributions": {},
+                "trajectory_drivers": {},
+                "lock_in_drivers": {},
+                "branching_drivers": {},
+            }
+
+        result["explanations"] = generate_structural_explanations(
+            trajectory_label=str(trajectory.get("trajectory_label", "insufficient_data")) if isinstance(trajectory, dict) else "insufficient_data",
+            branching_count=float(branching.get("branch_count_estimate", 1.0) or 1.0) if isinstance(branching, dict) else 1.0,
+            lock_in_score=float(constraint.get("lock_in_score", 0.0) or 0.0) if isinstance(constraint, dict) else 0.0,
+            horizon_label=str(horizon.get("horizon_category", "unknown")) if isinstance(horizon, dict) else "unknown",
+            counterfactual_spread=counterfactual_spread,
+            drift_type=str(drift_noise.get("interpreted_change_type", "noise")),
+            stability=stability,
+        )
 
         transition_pressure_value = float(result.get("transition_pressure", 0.0) or 0.0)
         if len(self._transition_pressure_history) == history_transition_len_before:
