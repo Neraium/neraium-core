@@ -60,6 +60,9 @@ def classify_trajectory_path(
     path_prototypes: Mapping[str, object] | None = None,
     temporal_quality: Mapping[str, object] | None = None,
     temporal_features: Mapping[str, object] | None = None,
+    geometry: Mapping[str, object] | None = None,
+    state_space_statistics: Mapping[str, object] | None = None,
+    state_graph: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
     drift_values = [float(v) for v in drift_history]
     pressure_values = [float(v) for v in transition_pressure_history]
@@ -113,6 +116,14 @@ def classify_trajectory_path(
     drift_velocity = _clamp01(_safe_float(temporal_features, "drift_velocity", 0.0))
     drift_acceleration = _clamp01(_safe_float(temporal_features, "drift_acceleration", 0.0))
 
+    geom_curvature = _clamp01(_safe_float(geometry, "curvature", 0.0))
+    geom_directional_consistency = _clamp01(_safe_float(geometry, "directional_consistency", 0.0))
+    geom_angular_change = _clamp01(_safe_float(geometry, "angular_change", 0.0) / 3.141592653589793)
+    stat_expansion = _clamp01(_safe_float(state_space_statistics, "state_expansion_score", 0.0))
+    stat_contraction = _clamp01(_safe_float(state_space_statistics, "state_contraction_score", 0.0))
+    graph_divergence = _clamp01(_safe_float(state_graph, "graph_divergence_score", 0.0))
+    graph_commitment = _clamp01(_safe_float(state_graph, "path_commitment_score", 0.0))
+
     shape_scores = trajectory_shape.get("shape_scores") if isinstance(trajectory_shape, Mapping) else {}
     oscillatory_shape = _clamp01(_safe_float(shape_scores, "oscillatory_deterioration", 0.0))
     punctuated_shape = _clamp01(_safe_float(shape_scores, "punctuated_shift", 0.0))
@@ -136,8 +147,11 @@ def classify_trajectory_path(
         + 0.08 * rising
         + 0.07 * max(rev_locked, locked_in)
         + 0.10 * monotonic_shape
-        + 0.08 * drift_velocity
-        + 0.08 * drift_acceleration
+        + 0.06 * drift_velocity
+        + 0.06 * drift_acceleration
+        + 0.08 * geom_curvature
+        + 0.08 * graph_divergence
+        + 0.06 * stat_expansion
     )
     metastable = _clamp01(
         0.25 * fragility
@@ -148,9 +162,18 @@ def classify_trajectory_path(
         + 0.12 * oscillatory_shape
         + 0.10 * punctuated_shape
         + 0.08 * timing_irregularity
-        + 0.07 * timing_instability
+        + 0.06 * timing_instability
+        + 0.06 * geom_angular_change
+        + 0.05 * (1.0 - geom_directional_consistency)
     )
-    stabilizing = _clamp01(stabilizing + 0.10 * temporal_consistency - 0.06 * timing_irregularity)
+    stabilizing = _clamp01(
+        stabilizing
+        + 0.10 * temporal_consistency
+        - 0.06 * timing_irregularity
+        + 0.08 * geom_directional_consistency
+        + 0.06 * stat_contraction
+        + 0.06 * graph_commitment
+    )
 
     total = max(1e-9, stabilizing + metastable + diverging)
     score_stabilizing = stabilizing / total
@@ -201,6 +224,12 @@ def classify_trajectory_path(
         "timing_instability": round(float(timing_instability), 4),
         "drift_velocity": round(float(drift_velocity), 4),
         "drift_acceleration": round(float(drift_acceleration), 4),
+        "curvature": round(float(geom_curvature), 4),
+        "directional_consistency": round(float(geom_directional_consistency), 4),
+        "state_expansion": round(float(stat_expansion), 4),
+        "state_contraction": round(float(stat_contraction), 4),
+        "graph_divergence": round(float(graph_divergence), 4),
+        "graph_commitment": round(float(graph_commitment), 4),
     }
     return {
         "dominant_path": dominant,
@@ -218,6 +247,9 @@ def classify_trajectory_path(
             "dominant_path_concentration_ratio": round(float(concentration), 4),
             "directional_divergence_score": round(float(directional_div), 4),
             "shape_divergence_score": round(float(divergent_modes), 4),
+            "geometric_curvature_score": round(float(geom_curvature), 4),
+            "state_graph_divergence_score": round(float(graph_divergence), 4),
+            "state_graph_commitment_score": round(float(graph_commitment), 4),
         },
         "rationale": rationale,
     }
