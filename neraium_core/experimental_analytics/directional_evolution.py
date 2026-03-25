@@ -16,11 +16,14 @@ def _safe_normalize(vec: np.ndarray) -> np.ndarray:
     return vec / norm
 
 
-def _window_slope(matrix: np.ndarray, horizon: int) -> np.ndarray:
+def _window_slope(matrix: np.ndarray, horizon: int, timestamps: np.ndarray | None = None) -> np.ndarray:
     if matrix.shape[0] < 2:
         return np.zeros(matrix.shape[1], dtype=float)
     tail = matrix[-min(matrix.shape[0], horizon) :]
-    x = np.arange(tail.shape[0], dtype=float)
+    if timestamps is None:
+        x = np.arange(tail.shape[0], dtype=float)
+    else:
+        x = np.asarray(timestamps[-tail.shape[0] :], dtype=float)
     x_centered = x - float(np.mean(x))
     denom = float(np.dot(x_centered, x_centered))
     if denom <= 1e-12:
@@ -54,6 +57,7 @@ def derive_directional_evolution_features(
     short_horizon: int = 4,
     mid_horizon: int = 8,
     group_size: int = 4,
+    timestamps: Sequence[float] | None = None,
 ) -> dict[str, object]:
     matrix = np.asarray(list(recent_window), dtype=float)
     if matrix.ndim != 2 or matrix.shape[0] < 3 or matrix.shape[1] < 1:
@@ -64,14 +68,20 @@ def derive_directional_evolution_features(
             "dominant_feature_groups": [],
         }
 
+    ts = np.asarray(list(timestamps or []), dtype=float)
+    if ts.size != matrix.shape[0]:
+        ts = np.arange(matrix.shape[0], dtype=float)
+    dt = np.maximum(1e-6, np.diff(ts))
+
     diffs = np.diff(matrix, axis=0)
-    mean_first_diff = np.mean(diffs, axis=0)
+    rates = diffs / dt[:, None]
+    mean_first_diff = np.mean(rates, axis=0)
     normalized_diff = _safe_normalize(mean_first_diff)
 
-    short_slope = _window_slope(matrix, short_horizon)
-    mid_slope = _window_slope(matrix, mid_horizon)
+    short_slope = _window_slope(matrix, short_horizon, timestamps=ts)
+    mid_slope = _window_slope(matrix, mid_horizon, timestamps=ts)
 
-    drift_signature = np.mean(np.abs(diffs), axis=0)
+    drift_signature = np.mean(np.abs(rates), axis=0)
     drift_total = float(np.sum(drift_signature)) + 1e-12
     relative_contrib = drift_signature / drift_total
     polarity = float(np.sum(np.sign(mean_first_diff) * relative_contrib))
@@ -81,7 +91,7 @@ def derive_directional_evolution_features(
 
     curvature = np.zeros(matrix.shape[1], dtype=float)
     if matrix.shape[0] >= 4:
-        curvature = np.mean(np.diff(matrix, n=2, axis=0), axis=0)
+        curvature = np.mean(np.diff(rates, n=1, axis=0), axis=0)
 
     directional_divergence = float(
         0.45 * (1.0 - max(0.0, cosine))
@@ -111,6 +121,8 @@ def derive_directional_evolution_features(
         "rolling_slope_vector_short": [round(float(v), 6) for v in short_slope],
         "rolling_slope_vector_mid": [round(float(v), 6) for v in mid_slope],
         "feature_wise_drift_signature": [round(float(v), 6) for v in drift_signature],
+        "delta_t_mean": round(float(np.mean(dt)), 6),
+        "delta_t_irregularity": round(float(_clamp01(np.std(dt) / (np.mean(dt) + 1e-9))), 6),
         "change_pattern_cosine_direction": round(float(cosine), 6),
         "relative_feature_drift_contribution": [round(float(v), 6) for v in relative_contrib],
         "curvature_profile": [round(float(v), 6) for v in curvature],

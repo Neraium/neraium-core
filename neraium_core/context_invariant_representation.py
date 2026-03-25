@@ -76,7 +76,7 @@ def _ewma(arr: np.ndarray, alpha: float) -> np.ndarray:
     return out
 
 
-def _slope(arr: np.ndarray, window: int) -> np.ndarray:
+def _slope(arr: np.ndarray, window: int, timestamps: np.ndarray | None = None) -> np.ndarray:
     n, d = arr.shape
     w = max(2, int(window))
     out = np.zeros((n, d), dtype=float)
@@ -85,7 +85,10 @@ def _slope(arr: np.ndarray, window: int) -> np.ndarray:
         y = arr[lo : t + 1]
         if y.shape[0] < 2:
             continue
-        x = np.arange(y.shape[0], dtype=float)
+        if timestamps is None:
+            x = np.arange(y.shape[0], dtype=float)
+        else:
+            x = np.asarray(timestamps[lo : t + 1], dtype=float)
         x = x - float(np.mean(x))
         denom = float(np.sum(x * x))
         if denom <= 1e-12:
@@ -116,7 +119,11 @@ def _reference_series(arr: np.ndarray, *, strategy: str, window: int, ewma_alpha
     return _rolling_median(arr, w)
 
 
-def build_temporal_representation(history: np.ndarray, config: TemporalRepresentationConfig) -> TemporalRepresentation:
+def build_temporal_representation(
+    history: np.ndarray,
+    config: TemporalRepresentationConfig,
+    timestamps: np.ndarray | None = None,
+) -> TemporalRepresentation:
     h = np.asarray(history, dtype=float)
     if h.ndim != 2 or h.size == 0:
         return TemporalRepresentation(
@@ -133,6 +140,12 @@ def build_temporal_representation(history: np.ndarray, config: TemporalRepresent
             },
         )
 
+    ts = None
+    if timestamps is not None:
+        t_arr = np.asarray(timestamps, dtype=float)
+        if t_arr.shape[0] == h.shape[0]:
+            ts = t_arr
+
     local_mean = _rolling_mean(h, config.local_window)
     reference = _reference_series(
         h,
@@ -140,9 +153,15 @@ def build_temporal_representation(history: np.ndarray, config: TemporalRepresent
         window=config.reference_window,
         ewma_alpha=config.ewma_alpha,
     )
-    delta = np.vstack([np.zeros((1, h.shape[1]), dtype=float), np.diff(h, axis=0)])
+    if ts is None:
+        dt = np.ones(max(1, h.shape[0] - 1), dtype=float)
+    else:
+        dt = np.maximum(1e-6, np.diff(ts))
+    raw_delta = np.diff(h, axis=0)
+    delta = np.vstack([np.zeros((1, h.shape[1]), dtype=float), raw_delta])
+    rate = np.vstack([np.zeros((1, h.shape[1]), dtype=float), raw_delta / dt[:, None]])
     second_diff = np.vstack([np.zeros((1, h.shape[1]), dtype=float), np.diff(delta, axis=0)])
-    slope = _slope(h, config.slope_window)
+    slope = _slope(h, config.slope_window, timestamps=ts)
 
     residual = h - local_mean
     drift = h - reference
@@ -153,6 +172,7 @@ def build_temporal_representation(history: np.ndarray, config: TemporalRepresent
     delta_n = delta / scale
     second_diff_n = second_diff / scale
     slope_n = slope / scale
+    rate_n = rate / scale
 
     w = config.weights
     mode = config.resolved_mode()
@@ -172,6 +192,7 @@ def build_temporal_representation(history: np.ndarray, config: TemporalRepresent
                 w.residual_weight * residual_n,
                 w.delta_weight * delta_n,
                 w.slope_weight * slope_n,
+                w.slope_weight * rate_n,
                 w.drift_weight * drift_n,
                 w.second_diff_weight * second_diff_n,
             ],
@@ -181,6 +202,7 @@ def build_temporal_representation(history: np.ndarray, config: TemporalRepresent
             [f"{n}__residual" for n in base_names]
             + [f"{n}__delta" for n in base_names]
             + [f"{n}__slope" for n in base_names]
+            + [f"{n}__dx_dt" for n in base_names]
             + [f"{n}__drift" for n in base_names]
             + [f"{n}__second_diff" for n in base_names]
         )
@@ -191,6 +213,7 @@ def build_temporal_representation(history: np.ndarray, config: TemporalRepresent
                 w.residual_weight * residual_n,
                 w.delta_weight * delta_n,
                 w.slope_weight * slope_n,
+                w.slope_weight * rate_n,
                 w.drift_weight * drift_n,
                 w.second_diff_weight * second_diff_n,
             ],
@@ -201,13 +224,14 @@ def build_temporal_representation(history: np.ndarray, config: TemporalRepresent
             + [f"{n}__residual" for n in base_names]
             + [f"{n}__delta" for n in base_names]
             + [f"{n}__slope" for n in base_names]
+            + [f"{n}__dx_dt" for n in base_names]
             + [f"{n}__drift" for n in base_names]
             + [f"{n}__second_diff" for n in base_names]
         )
 
     static_base = np.mean(np.abs(drift_n), axis=1)
     dynamic_base = np.mean(
-        np.abs(np.concatenate([residual_n, delta_n, slope_n, second_diff_n], axis=1)),
+        np.abs(np.concatenate([residual_n, delta_n, slope_n, rate_n, second_diff_n], axis=1)),
         axis=1,
     )
     if mode == "raw":
@@ -236,12 +260,16 @@ def build_temporal_representation(history: np.ndarray, config: TemporalRepresent
     onset_timing = float(onset_idx / max(1, dyn_trace.size - 1)) if dyn_trace.size else 0.0
     early_separation_flag = bool(context_dominance > 0.62 and onset_timing > 0.35)
 
+    dt_cv = float(np.std(dt) / (np.mean(dt) + 1e-9)) if dt.size else 0.0
+
     diagnostics: dict[str, float | bool | str] = {
         "context_dominance_score": round(context_dominance, 6),
         "dynamic_signal_strength": round(dynamic_strength, 6),
         "early_window_separability": round(early_sep, 6),
         "trajectory_onset_divergence_timing": round(onset_timing, 6),
         "early_separation_flag": early_separation_flag,
+        "delta_t_stability": round(float(max(0.0, min(1.0, 1.0 - dt_cv))), 6),
+        "delta_t_irregularity": round(float(max(0.0, min(1.0, dt_cv))), 6),
         "representation_mode": mode,
         "reference_strategy": config.resolved_strategy(),
     }

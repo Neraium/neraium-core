@@ -52,6 +52,8 @@ from neraium_core.context_invariant_representation import (
     TemporalRepresentationConfig,
     build_temporal_representation,
 )
+from neraium_core.temporal_features import derive_temporal_rate_features
+from neraium_core.temporal_quality import derive_temporal_quality_signals
 from neraium_core.staged_pipeline import (
     AttributionStage,
     DecisionStage,
@@ -164,6 +166,7 @@ class StructuralEngine:
         self._regime_novelty_history: deque[float] = deque(maxlen=TRANSITION_MEMORY_WINDOW)
         self._shock_activity_history: deque[float] = deque(maxlen=TRANSITION_MEMORY_WINDOW)
         self._structural_drift_history: deque[float] = deque(maxlen=TRANSITION_MEMORY_WINDOW)
+        self._temporal_consistency_history: deque[float] = deque(maxlen=TRANSITION_MEMORY_WINDOW)
         self.transition_aware_enabled: bool = _env_enabled("NERAIUM_TRANSITION_AWARE", default="1")
 
         # Drift-score threshold calibration (watch/alert).
@@ -213,6 +216,7 @@ class StructuralEngine:
         self._regime_novelty_history.clear()
         self._shock_activity_history.clear()
         self._structural_drift_history.clear()
+        self._temporal_consistency_history.clear()
 
     def lock_baseline(self, locked: bool = True) -> None:
         """Lock or unlock baseline. When locked, rolling baseline stops adapting."""
@@ -437,6 +441,8 @@ class StructuralEngine:
         adjacency: np.ndarray,
         dominant_mode: np.ndarray,
         spectral_radius_value: float,
+        temporal_features: dict[str, object] | None = None,
+        temporal_quality: dict[str, float] | None = None,
     ) -> dict[str, float]:
         drift_hist = list(self._drift_score_history)
         drift_delta = 0.0
@@ -446,8 +452,12 @@ class StructuralEngine:
         if len(drift_hist) >= 3:
             prev_delta = float(drift_hist[-2] - drift_hist[-3])
             drift_accel = max(0.0, drift_delta - prev_delta)
-        short_horizon_drift = self._clamp01(0.72 * drift_delta + 0.28 * max(0.0, drift_score - 0.55))
-        acceleration = self._clamp01(drift_accel * 2.4 + max(0.0, drift_delta - 0.09))
+        time_accel = float((temporal_features or {}).get("drift_acceleration", 0.0))
+        time_vel = float((temporal_features or {}).get("drift_velocity", 0.0))
+        temporal_consistency = float((temporal_quality or {}).get("temporal_consistency_score", 1.0))
+        gap_irregularity = float((temporal_quality or {}).get("timestamp_gap_irregularity", 0.0))
+        short_horizon_drift = self._clamp01(0.66 * drift_delta + 0.20 * max(0.0, drift_score - 0.55) + 0.14 * time_vel)
+        acceleration = self._clamp01(drift_accel * 2.0 + max(0.0, drift_delta - 0.09) + 0.7 * time_accel)
 
         stable_novelty = 0.0
         if self._stable_manifold_corr is not None and self._stable_manifold_corr.shape == corr_recent.shape:
@@ -529,7 +539,8 @@ class StructuralEngine:
             self._low_transition_activity_streak = 0
         streak_decay = 0.74 ** min(self._low_transition_activity_streak, 8)
         activity_gate = 0.12 + 1.05 * dynamic_activity
-        pressure = self._transition_pressure_ema * activity_gate * streak_decay
+        time_gate = 0.75 + 0.35 * temporal_consistency + 0.30 * gap_irregularity
+        pressure = self._transition_pressure_ema * activity_gate * streak_decay * time_gate
         if acceleration < 0.08 and spike_term < 0.1:
             residual_cap = 0.22 * (short_horizon_drift + edge_flip_rate + dominant_mode_rotation)
             pressure = min(pressure, residual_cap)
@@ -605,9 +616,13 @@ class StructuralEngine:
             "graph_edge_flip_rate": float(edge_flip_rate),
             "dominant_mode_rotation": float(dominant_mode_rotation),
             "transition_pressure": float(pressure),
+            "temporal_consistency": float(self._clamp01(temporal_consistency)),
+            "timestamp_gap_irregularity": float(self._clamp01(gap_irregularity)),
+            "timing_velocity": float(self._clamp01(time_vel)),
+            "timing_acceleration": float(self._clamp01(time_accel)),
         }
 
-    def _transition_state(self, pressure: float) -> str:
+    def _transition_state(self, pressure: float, temporal_consistency: float = 1.0) -> str:
         self._transition_pressure_history.append(float(pressure))
         history = list(self._transition_pressure_history)
         if not history:
@@ -622,9 +637,12 @@ class StructuralEngine:
                 weights=np.linspace(0.6, 1.0, num=len(recent), dtype=float),
             )
         )
-        if (current >= TRANSITION_SUSTAINED_THRESHOLD and sustained >= 2) or sustained >= 3:
+        consistency_boost = 0.85 + 0.30 * self._clamp01(float(temporal_consistency))
+        weighted_current = current * consistency_boost
+        weighted_recent = weighted_recent * consistency_boost
+        if (weighted_current >= TRANSITION_SUSTAINED_THRESHOLD and sustained >= 2) or sustained >= 3:
             return "SUSTAINED_TRANSITION"
-        if (current >= TRANSITION_EMERGING_THRESHOLD and emerging >= 2) or weighted_recent >= (
+        if (weighted_current >= TRANSITION_EMERGING_THRESHOLD and emerging >= 2) or weighted_recent >= (
             TRANSITION_EMERGING_THRESHOLD * 1.03
         ):
             return "EMERGING_TRANSITION"
@@ -919,7 +937,14 @@ class StructuralEngine:
 
         if can_process_full_frame:
             history_matrix = np.stack([f["_vector"] for f in frames_list], axis=0)
-            rep = build_temporal_representation(history_matrix, self.representation_config)
+            history_timestamps = []
+            for f in frames_list:
+                try:
+                    history_timestamps.append(float(f.get("timestamp")))
+                except (TypeError, ValueError):
+                    history_timestamps.append(float(len(history_timestamps)))
+            history_ts = np.asarray(history_timestamps, dtype=float)
+            rep = build_temporal_representation(history_matrix, self.representation_config, timestamps=history_ts)
             transformed_history = rep.transformed
             baseline_window = np.asarray(
                 transformed_history[: self.baseline_window][:: self.window_stride],
@@ -931,6 +956,7 @@ class StructuralEngine:
             )
             ts_baseline = self._get_baseline_timestamps(frames_list)
             ts_recent = self._get_recent_timestamps(frames_list)
+            temporal_quality = derive_temporal_quality_signals(ts_recent)
 
             data_quality_report = compute_data_quality(
                 baseline_window,
@@ -955,6 +981,7 @@ class StructuralEngine:
 
             z_baseline, baseline_mean, baseline_std = normalize_window(baseline_window)
             z_recent, recent_mean, recent_std = normalize_window(recent_window)
+            temporal_features = derive_temporal_rate_features(recent_window=z_recent, timestamps=ts_recent)
 
             valid_mask = (np.nan_to_num(recent_std) > 1e-12) | (np.nan_to_num(baseline_std) > 1e-12)
             valid_signal_count = int(np.sum(valid_mask))
@@ -1210,9 +1237,14 @@ class StructuralEngine:
                         adjacency=np.asarray(adjacency, dtype=float),
                         dominant_mode=dominant_mode,
                         spectral_radius_value=float(spectral.get("radius", 0.0)),
+                        temporal_features=temporal_features,
+                        temporal_quality=temporal_quality,
                     )
                     transition_pressure = float(transition_metrics["transition_pressure"])
-                    transition_state = self._transition_state(transition_pressure)
+                    transition_state = self._transition_state(
+                        transition_pressure,
+                        temporal_consistency=float(temporal_quality.get("temporal_consistency_score", 1.0)),
+                    )
                     raw_components["transition_pressure"] = transition_pressure
                     components["transition_pressure"] = transition_pressure
                     result["transition_pressure"] = round(transition_pressure, 4)
@@ -1244,9 +1276,11 @@ class StructuralEngine:
                 directional_evolution = derive_directional_evolution_features(
                     recent_window=z_recent_valid,
                     feature_names=valid_sensor_names,
+                    timestamps=ts_recent,
                 )
                 trajectory_shape = derive_trajectory_shape_features(
                     recent_window=z_recent_valid,
+                    timestamps=ts_recent,
                 )
                 path_prototypes = derive_path_prototypes(
                     directional_evolution=directional_evolution,
@@ -1264,6 +1298,8 @@ class StructuralEngine:
                     directional_evolution=directional_evolution,
                     trajectory_shape=trajectory_shape,
                     path_prototypes=path_prototypes,
+                    temporal_quality=temporal_quality,
+                    temporal_features=temporal_features,
                 )
                 hierarchy_analysis = analyze_hierarchy_cascade(
                     sensor_names=valid_sensor_names,
@@ -1283,8 +1319,14 @@ class StructuralEngine:
                     reversibility_classification=str(reversibility.get("classification", "")),
                     reversibility_score=float(reversibility_scores.get("locked_in_index", 0.0)),
                     trajectory_analysis=trajectory_analysis,
+                    temporal_quality=temporal_quality,
+                    temporal_features=temporal_features,
                 )
-                branching_analysis = derive_branching_analysis(trajectory_analysis)
+                branching_analysis = derive_branching_analysis(
+                    trajectory_analysis,
+                    temporal_quality=temporal_quality,
+                    temporal_features=temporal_features,
+                )
                 horizon_analysis = estimate_risk_horizon(
                     transition_pressure_history=list(self._transition_pressure_history),
                     shock_activity_history=list(self._shock_activity_history),
@@ -1292,6 +1334,8 @@ class StructuralEngine:
                     trajectory_analysis=trajectory_analysis,
                     branching_analysis=branching_analysis,
                     constraint_analysis=constraint_analysis,
+                    temporal_quality=temporal_quality,
+                    temporal_features=temporal_features,
                 )
                 counterfactual_simulation = simulate_counterfactual_futures(
                     transition_pressure_history=list(self._transition_pressure_history),
@@ -1302,6 +1346,8 @@ class StructuralEngine:
                     constraint_analysis=constraint_analysis,
                     hierarchy_analysis=hierarchy_analysis,
                     horizon_analysis=horizon_analysis,
+                    temporal_quality=temporal_quality,
+                    temporal_features=temporal_features,
                 )
 
                 analytics.update(
@@ -1324,6 +1370,8 @@ class StructuralEngine:
                         "regime_drift": float(regime_drift),
                         "transition": transition_metrics,
                         "counterfactual_guidance": counterfactual_guidance,
+                        "temporal_quality": temporal_quality,
+                        "temporal_features": temporal_features,
                         "trajectory_analysis": trajectory_analysis,
                         "branching_analysis": branching_analysis,
                         "hierarchy_analysis": hierarchy_analysis,
@@ -1659,7 +1707,13 @@ class StructuralEngine:
             result["latest_instability"] = round(float(composite), 4)
             result["relational_instability_score"] = round(float(components.get("relational_drift", 0.0)), 4)
             result["temporal_distortion_score"] = round(float(components.get("temporal_distortion", data_quality_report.timestamp_irregularity)), 4)
+            result["temporal_consistency_score"] = round(float(temporal_quality.get("temporal_consistency_score", 0.0)), 4)
+            result["ordering_stability_score"] = round(float(temporal_quality.get("ordering_stability_score", 0.0)), 4)
+            result["timestamp_gap_irregularity"] = round(float(temporal_quality.get("timestamp_gap_irregularity", 0.0)), 4)
+            result["alignment_confidence"] = round(float(temporal_quality.get("alignment_confidence", 0.0)), 4)
+            result["effective_sampling_density"] = round(float(temporal_quality.get("effective_sampling_density", 0.0)), 4)
             result["localization_score"] = 0.0
+            self._temporal_consistency_history.append(float(temporal_quality.get("temporal_consistency_score", 0.0)))
 
             self._state_history.append(decision.get("interpreted_state", "NOMINAL_STRUCTURE"))
 
@@ -1695,6 +1749,8 @@ class StructuralEngine:
                     )
 
             analytics["composite_instability"] = round(float(composite), 4)
+            analytics["temporal_quality"] = temporal_quality
+            analytics["temporal_features"] = temporal_features
             analytics["forecasting"] = forecast
             analytics["components"] = components
             explain_components = {

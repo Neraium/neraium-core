@@ -67,7 +67,12 @@ def _candidate_paths_from_trajectory(trajectory_analysis: Mapping[str, object], 
     ]
 
 
-def derive_branching_analysis(trajectory_analysis: Mapping[str, object] | None) -> dict[str, object] | None:
+def derive_branching_analysis(
+    trajectory_analysis: Mapping[str, object] | None,
+    *,
+    temporal_quality: Mapping[str, object] | None = None,
+    temporal_features: Mapping[str, object] | None = None,
+) -> dict[str, object] | None:
     if not isinstance(trajectory_analysis, Mapping):
         return None
     raw_scores = trajectory_analysis.get("path_scores")
@@ -86,15 +91,27 @@ def derive_branching_analysis(trajectory_analysis: Mapping[str, object] | None) 
     diagnostics = trajectory_analysis.get("diagnostics") if isinstance(trajectory_analysis.get("diagnostics"), Mapping) else {}
     directional_div = _safe_score(diagnostics.get("directional_divergence_score", 0.0))
     shape_div = _safe_score(diagnostics.get("shape_divergence_score", 0.0))
+    temporal_gap_irregularity = _safe_score((temporal_quality or {}).get("timestamp_gap_irregularity", 0.0))
+    temporal_consistency = _safe_score((temporal_quality or {}).get("temporal_consistency_score", 0.0))
+    timing_instability = _safe_score((temporal_features or {}).get("timing_instability", temporal_gap_irregularity))
 
-    branch_tension = 0.45 * closeness + 0.25 * entropy + 0.2 * directional_div + 0.1 * shape_div
+    branch_tension = (
+        0.38 * closeness
+        + 0.22 * entropy
+        + 0.18 * directional_div
+        + 0.10 * shape_div
+        + 0.07 * timing_instability
+        + 0.05 * temporal_gap_irregularity
+    )
     branch_tension = max(0.0, min(1.0, branch_tension))
 
     is_branching = bool((margin <= BRANCH_MARGIN_MAX and entropy >= BRANCH_ENTROPY_MIN) or branch_tension >= 0.62)
 
-    if margin >= COMMITMENT_HIGH_MARGIN and entropy <= COMMITMENT_HIGH_ENTROPY_MAX and branch_tension < 0.5:
+    consistency_penalty = max(0.0, min(0.15, (1.0 - temporal_consistency) * 0.15))
+    adjusted_margin = max(0.0, margin - consistency_penalty)
+    if adjusted_margin >= COMMITMENT_HIGH_MARGIN and entropy <= COMMITMENT_HIGH_ENTROPY_MAX and branch_tension < 0.5:
         commitment = "HIGH"
-    elif margin >= COMMITMENT_MODERATE_MARGIN and entropy <= COMMITMENT_MODERATE_ENTROPY_MAX:
+    elif adjusted_margin >= COMMITMENT_MODERATE_MARGIN and entropy <= COMMITMENT_MODERATE_ENTROPY_MAX:
         commitment = "MODERATE"
     else:
         commitment = "LOW"
@@ -137,6 +154,9 @@ def derive_branching_analysis(trajectory_analysis: Mapping[str, object] | None) 
             "directional_divergence_score": round(float(directional_div), 4),
             "branch_stability_over_time": round(float(branch_stability), 4),
             "branch_transition_frequency": round(float(transition_freq), 4),
+            "temporal_gap_irregularity": round(float(temporal_gap_irregularity), 4),
+            "temporal_consistency_score": round(float(temporal_consistency), 4),
+            "timing_instability": round(float(timing_instability), 4),
         },
         "thresholds": {
             "branch_margin_max": BRANCH_MARGIN_MAX,
