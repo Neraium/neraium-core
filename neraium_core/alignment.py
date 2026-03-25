@@ -29,6 +29,7 @@ from neraium_core.experimental_analytics.hierarchy_analysis import analyze_hiera
 from neraium_core.experimental_analytics.constraint_analysis import analyze_constraint_lock_in
 from neraium_core.experimental_analytics.trajectory_analysis import classify_trajectory_path
 from neraium_core.experimental_analytics.horizon_analysis import estimate_risk_horizon
+from neraium_core.experimental_analytics.counterfactual_simulation import simulate_counterfactual_futures
 from neraium_core.forecast_models import forecast_next, time_to_threshold_ar1
 from neraium_core.forecasting import instability_trend, time_to_instability
 from neraium_core.geometry import (
@@ -1564,6 +1565,16 @@ class StructuralEngine:
             trajectory_analysis=analytics.get("trajectory_analysis") if isinstance(analytics, dict) else None,
             branching_analysis=analytics.get("branching_analysis") if isinstance(analytics, dict) else None,
             constraint_analysis=analytics.get("constraint_analysis") if isinstance(analytics, dict) else None,
+        )
+        analytics["counterfactual_simulation"] = simulate_counterfactual_futures(
+            transition_pressure_history=list(self._transition_pressure_history),
+            shock_activity_history=list(self._shock_activity_history),
+            structural_drift_history=list(self._drift_score_history),
+            trajectory_analysis=analytics.get("trajectory_analysis") if isinstance(analytics, dict) else None,
+            branching_analysis=analytics.get("branching_analysis") if isinstance(analytics, dict) else None,
+            constraint_analysis=analytics.get("constraint_analysis") if isinstance(analytics, dict) else None,
+            hierarchy_analysis=analytics.get("hierarchy_analysis") if isinstance(analytics, dict) else None,
+            horizon_analysis=analytics.get("horizon_analysis") if isinstance(analytics, dict) else None,
         )
         result["dominant_driver"] = (
             max(contrib.items(), key=lambda item: item[1])[0]
