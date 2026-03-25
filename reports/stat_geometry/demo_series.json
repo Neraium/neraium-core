@@ -1,0 +1,722 @@
+[
+  {
+    "structural_drift_score": 0.1,
+    "geometry": {
+      "curvature": 0.0,
+      "directional_consistency": 1.0,
+      "path_smoothness": 0.8
+    },
+    "state_graph": {
+      "transition_entropy": 0.0,
+      "graph_divergence_score": 0.0,
+      "path_commitment_score": 1.0
+    },
+    "experimental_analytics": {
+      "state_space": {
+        "state_vector_dim": 12
+      }
+    }
+  },
+  {
+    "structural_drift_score": 0.12000000000000001,
+    "geometry": {
+      "curvature": 0.0794677323180245,
+      "directional_consistency": 0.98,
+      "path_smoothness": 0.7970447979333867
+    },
+    "state_graph": {
+      "transition_entropy": 0.02,
+      "graph_divergence_score": 0.10460669273151944,
+      "path_commitment_score": 0.985
+    },
+    "experimental_analytics": {
+      "state_space": {
+        "state_vector_dim": 12
+      }
+    }
+  },
+  {
+    "structural_drift_score": 0.14,
+    "geometry": {
+      "curvature": 0.15576733692346023,
+      "directional_consistency": 0.96,
+      "path_smoothness": 0.7943535752660497
+    },
+    "state_graph": {
+      "transition_entropy": 0.04,
+      "graph_divergence_score": 0.20686414466293768,
+      "path_commitment_score": 0.97
+    },
+    "experimental_analytics": {
+      "state_space": {
+        "state_vector_dim": 12
+      }
+    }
+  },
+  {
+    "structural_drift_score": 0.16,
+    "geometry": {
+      "curvature": 0.2258569893580142,
+      "directional_consistency": 0.94,
+      "path_smoothness": 0.7921667309037252
+    },
+    "state_graph": {
+      "transition_entropy": 0.06,
+      "graph_divergence_score": 0.3044758738778611,
+      "path_commitment_score": 0.955
+    },
+    "experimental_analytics": {
+      "state_space": {
+        "state_vector_dim": 12
+      }
+    }
+  },
+  {
+    "structural_drift_score": 0.18,
+    "geometry": {
+      "curvature": 0.28694243635980915,
+      "directional_consistency": 0.92,
+      "path_smoothness": 0.7906796091403278
+    },
+    "state_graph": {
+      "transition_entropy": 0.08,
+      "graph_divergence_score": 0.39524973137652475,
+      "path_commitment_score": 0.94
+    },
+    "experimental_analytics": {
+      "state_space": {
+        "state_vector_dim": 12
+      }
+    }
+  },
+  {
+    "structural_drift_score": 0.2,
+    "geometry": {
+      "curvature": 0.33658839392315865,
+      "directional_consistency": 0.9,
+      "path_smoothness": 0.7900250501339595
+    },
+    "state_graph": {
+      "transition_entropy": 0.1,
+      "graph_divergence_score": 0.47714713201633385,
+      "path_commitment_score": 0.925
+    },
+    "experimental_analytics": {
+      "state_space": {
+        "state_vector_dim": 12
+      }
+    }
+  },
+  {
+    "structural_drift_score": 0.22,
+    "geometry": {
+      "curvature": 0.3728156343868906,
+      "directional_consistency": 0.88,
+      "path_smoothness": 0.790261523691218
+    },
+    "state_graph": {
+      "transition_entropy": 0.12,
+      "graph_divergence_score": 0.5483288367392383,
+      "path_commitment_score": 0.91
+    },
+    "experimental_analytics": {
+      "state_space": {
+        "state_vector_dim": 12
+      }
+    }
+  },
+  {
+    "structural_drift_score": 0.24000000000000002,
+    "geometry": {
+      "curvature": 0.3941798919953841,
+      "directional_consistency": 0.86,
+      "path_smoothness": 0.7913679063335113
+    },
+    "state_graph": {
+      "transition_entropy": 0.14,
+      "graph_divergence_score": 0.6071962579158119,
+      "path_commitment_score": 0.895
+    },
+    "experimental_analytics": {
+      "state_space": {
+        "state_vector_dim": 12
+      }
+    }
+  },
+  {
+    "structural_drift_score": 0.26,
+    "geometry": {
+      "curvature": 0.3998294412166021,
+      "directional_consistency": 0.84,
+      "path_smoothness": 0.7932453681944885
+    },
+    "state_graph": {
+      "transition_entropy": 0.16,
+      "graph_divergence_score": 0.6524273601770584,
+      "path_commitment_score": 0.88
+    },
+    "experimental_analytics": {
+      "state_space": {
+        "state_vector_dim": 12
+      }
+    }
+  },
+  {
+    "structural_drift_score": 0.28,
+    "geometry": {
+      "curvature": 0.38953905235127806,
+      "directional_consistency": 0.8200000000000001,
+      "path_smoothness": 0.7957262011976618
+    },
+    "state_graph": {
+      "transition_entropy": 0.18,
+      "graph_divergence_score": 0.6830063504786613,
+      "path_commitment_score": 0.865
+    },
+    "experimental_analytics": {
+      "state_space": {
+        "state_vector_dim": 12
+      }
+    }
+  },
+  {
+    "structural_drift_score": 0.30000000000000004,
+    "geometry": {
+      "curvature": 0.3637189707302727,
+      "directional_consistency": 0.8,
+      "path_smoothness": 0.7985887999194013
+    },
+    "state_graph": {
+      "transition_entropy": 0.2,
+      "graph_divergence_score": 0.6982464906228381,
+      "path_commitment_score": 0.85
+    },
+    "experimental_analytics": {
+      "state_space": {
+        "state_vector_dim": 12
+      }
+    }
+  },
+  {
+    "structural_drift_score": 0.32,
+    "geometry": {
+      "curvature": 0.3233985615278361,
+      "directional_consistency": 0.78,
+      "path_smoothness": 0.7984225430585675
+    },
+    "state_graph": {
+      "transition_entropy": 0.22,
+      "graph_divergence_score": 0.6978055199177432,
+      "path_commitment_score": 0.835
+    },
+    "experimental_analytics": {
+      "state_space": {
+        "state_vector_dim": 12
+      }
+    }
+  },
+  {
+    "structural_drift_score": 0.33999999999999997,
+    "geometry": {
+      "curvature": 0.27018527222046024,
+      "directional_consistency": 0.76,
+      "path_smoothness": 0.7955747955670516
+    },
+    "state_graph": {
+      "transition_entropy": 0.24,
+      "graph_divergence_score": 0.6816933416147366,
+      "path_commitment_score": 0.8200000000000001
+    },
+    "experimental_analytics": {
+      "state_space": {
+        "state_vector_dim": 12
+      }
+    }
+  },
+  {
+    "structural_drift_score": 0.36,
+    "geometry": {
+      "curvature": 0.20620054872858568,
+      "directional_consistency": 0.74,
+      "path_smoothness": 0.7931223384081603
+    },
+    "state_graph": {
+      "transition_entropy": 0.26,
+      "graph_divergence_score": 0.6502718005027085,
+      "path_commitment_score": 0.8049999999999999
+    },
+    "experimental_analytics": {
+      "state_space": {
+        "state_vector_dim": 12
+      }
+    }
+  },
+  {
+    "structural_drift_score": 0.38,
+    "geometry": {
+      "curvature": 0.13399526006236187,
+      "directional_consistency": 0.72,
+      "path_smoothness": 0.7912842422758641
+    },
+    "state_graph": {
+      "transition_entropy": 0.28,
+      "graph_divergence_score": 0.6042465566542116,
+      "path_commitment_score": 0.79
+    },
+    "experimental_analytics": {
+      "state_space": {
+        "state_vector_dim": 12
+      }
+    }
+  },
+  {
+    "structural_drift_score": 0.4,
+    "geometry": {
+      "curvature": 0.056448003223946885,
+      "directional_consistency": 0.7,
+      "path_smoothness": 0.7902246988233491
+    },
+    "state_graph": {
+      "transition_entropy": 0.3,
+      "graph_divergence_score": 0.5446512378215448,
+      "path_commitment_score": 0.775
+    },
+    "experimental_analytics": {
+      "state_space": {
+        "state_vector_dim": 12
+      }
+    }
+  },
+  {
+    "structural_drift_score": 0.42000000000000004,
+    "geometry": {
+      "curvature": 0.023349657371032034,
+      "directional_consistency": 0.6799999999999999,
+      "path_smoothness": 0.7900383539116417
+    },
+    "state_graph": {
+      "transition_entropy": 0.32,
+      "graph_divergence_score": 0.4728242263858056,
+      "path_commitment_score": 0.76
+    },
+    "experimental_analytics": {
+      "state_space": {
+        "state_vector_dim": 12
+      }
+    }
+  },
+  {
+    "structural_drift_score": 0.44000000000000006,
+    "geometry": {
+      "curvature": 0.10221644081073267,
+      "directional_consistency": 0.6599999999999999,
+      "path_smoothness": 0.7907418531767227
+    },
+    "state_graph": {
+      "transition_entropy": 0.34,
+      "graph_divergence_score": 0.39037860217399184,
+      "path_commitment_score": 0.745
+    },
+    "experimental_analytics": {
+      "state_space": {
+        "state_vector_dim": 12
+      }
+    }
+  },
+  {
+    "structural_drift_score": 0.45999999999999996,
+    "geometry": {
+      "curvature": 0.177008177317941,
+      "directional_consistency": 0.64,
+      "path_smoothness": 0.7922723551244402
+    },
+    "state_graph": {
+      "transition_entropy": 0.36,
+      "graph_divergence_score": 0.2991659161636811,
+      "path_commitment_score": 0.73
+    },
+    "experimental_analytics": {
+      "state_space": {
+        "state_vector_dim": 12
+      }
+    }
+  },
+  {
+    "structural_drift_score": 0.48,
+    "geometry": {
+      "curvature": 0.2447431563770877,
+      "directional_consistency": 0.62,
+      "path_smoothness": 0.7944931445740236
+    },
+    "state_graph": {
+      "transition_entropy": 0.38,
+      "graph_divergence_score": 0.20123460863978107,
+      "path_commitment_score": 0.7150000000000001
+    },
+    "experimental_analytics": {
+      "state_space": {
+        "state_vector_dim": 12
+      }
+    }
+  },
+  {
+    "structural_drift_score": 0.5,
+    "geometry": {
+      "curvature": 0.3027209981231713,
+      "directional_consistency": 0.6,
+      "path_smoothness": 0.7972058450180108
+    },
+    "state_graph": {
+      "transition_entropy": 0.4,
+      "graph_divergence_score": 0.09878400564190705,
+      "path_commitment_score": 0.7
+    },
+    "experimental_analytics": {
+      "state_space": {
+        "state_vector_dim": 12
+      }
+    }
+  },
+  {
+    "structural_drift_score": 0.52,
+    "geometry": {
+      "curvature": 0.3486303089654353,
+      "directional_consistency": 0.5800000000000001,
+      "path_smoothness": 0.7998318609951566
+    },
+    "state_graph": {
+      "transition_entropy": 0.42,
+      "graph_divergence_score": 0.005885073157004032,
+      "path_commitment_score": 0.685
+    },
+    "experimental_analytics": {
+      "state_space": {
+        "state_vector_dim": 12
+      }
+    }
+  },
+  {
+    "structural_drift_score": 0.54,
+    "geometry": {
+      "curvature": 0.3806408295558064,
+      "directional_consistency": 0.56,
+      "path_smoothness": 0.7968845863648663
+    },
+    "state_graph": {
+      "transition_entropy": 0.44,
+      "graph_divergence_score": 0.11042198590027374,
+      "path_commitment_score": 0.67
+    },
+    "experimental_analytics": {
+      "state_space": {
+        "state_vector_dim": 12
+      }
+    }
+  },
+  {
+    "structural_drift_score": 0.56,
+    "geometry": {
+      "curvature": 0.3974764014533858,
+      "directional_consistency": 0.54,
+      "path_smoothness": 0.7942156023561181
+    },
+    "state_graph": {
+      "transition_entropy": 0.46,
+      "graph_divergence_score": 0.2124790588959002,
+      "path_commitment_score": 0.655
+    },
+    "experimental_analytics": {
+      "state_space": {
+        "state_vector_dim": 12
+      }
+    }
+  },
+  {
+    "structural_drift_score": 0.58,
+    "geometry": {
+      "curvature": 0.39846584353433623,
+      "directional_consistency": 0.52,
+      "path_smoothness": 0.7920633213615085
+    },
+    "state_graph": {
+      "transition_entropy": 0.48,
+      "graph_divergence_score": 0.30976431030639645,
+      "path_commitment_score": 0.64
+    },
+    "experimental_analytics": {
+      "state_space": {
+        "state_vector_dim": 12
+      }
+    }
+  },
+  {
+    "structural_drift_score": 0.6,
+    "geometry": {
+      "curvature": 0.3835697098652554,
+      "directional_consistency": 0.5,
+      "path_smoothness": 0.7906200002322527
+    },
+    "state_graph": {
+      "transition_entropy": 0.5,
+      "graph_divergence_score": 0.40009292311964056,
+      "path_commitment_score": 0.625
+    },
+    "experimental_analytics": {
+      "state_space": {
+        "state_vector_dim": 12
+      }
+    }
+  },
+  {
+    "structural_drift_score": 0.62,
+    "geometry": {
+      "curvature": 0.3533818622880613,
+      "directional_consistency": 0.48,
+      "path_smoothness": 0.790014566546254
+    },
+    "state_graph": {
+      "transition_entropy": 0.52,
+      "graph_divergence_score": 0.4814363114287816,
+      "path_commitment_score": 0.61
+    },
+    "experimental_analytics": {
+      "state_space": {
+        "state_vector_dim": 12
+      }
+    }
+  },
+  {
+    "structural_drift_score": 0.64,
+    "geometry": {
+      "curvature": 0.3091057950223949,
+      "directional_consistency": 0.45999999999999996,
+      "path_smoothness": 0.7903011018915492
+    },
+    "state_graph": {
+      "transition_entropy": 0.54,
+      "graph_divergence_score": 0.5519676780983365,
+      "path_commitment_score": 0.595
+    },
+    "experimental_analytics": {
+      "state_space": {
+        "state_vector_dim": 12
+      }
+    }
+  },
+  {
+    "structural_drift_score": 0.66,
+    "geometry": {
+      "curvature": 0.25250665514892834,
+      "directional_consistency": 0.43999999999999995,
+      "path_smoothness": 0.7914540109191173
+    },
+    "state_graph": {
+      "transition_entropy": 0.56,
+      "graph_divergence_score": 0.6101030406895117,
+      "path_commitment_score": 0.5800000000000001
+    },
+    "experimental_analytics": {
+      "state_space": {
+        "state_vector_dim": 12
+      }
+    }
+  },
+  {
+    "structural_drift_score": 0.6799999999999999,
+    "geometry": {
+      "curvature": 0.18584087176550265,
+      "directional_consistency": 0.42000000000000004,
+      "path_smoothness": 0.7933703076991782
+    },
+    "state_graph": {
+      "transition_entropy": 0.58,
+      "graph_divergence_score": 0.6545368042909143,
+      "path_commitment_score": 0.565
+    },
+    "experimental_analytics": {
+      "state_space": {
+        "state_vector_dim": 12
+      }
+    }
+  },
+  {
+    "structural_drift_score": 0.7,
+    "geometry": {
+      "curvature": 0.11176619927957035,
+      "directional_consistency": 0.4,
+      "path_smoothness": 0.7958788151475825
+    },
+    "state_graph": {
+      "transition_entropy": 0.6,
+      "graph_divergence_score": 0.6842710823655679,
+      "path_commitment_score": 0.55
+    },
+    "experimental_analytics": {
+      "state_space": {
+        "state_vector_dim": 12
+      }
+    }
+  },
+  {
+    "structural_drift_score": 0.72,
+    "geometry": {
+      "curvature": 0.03323576112699856,
+      "directional_consistency": 0.38,
+      "path_smoothness": 0.7987554557649295
+    },
+    "state_graph": {
+      "transition_entropy": 0.62,
+      "graph_divergence_score": 0.6986381071312155,
+      "path_commitment_score": 0.535
+    },
+    "experimental_analytics": {
+      "state_space": {
+        "state_vector_dim": 12
+      }
+    }
+  },
+  {
+    "structural_drift_score": 0.74,
+    "geometry": {
+      "curvature": 0.04661968194019746,
+      "directional_consistency": 0.36,
+      "path_smoothness": 0.7982567321877703
+    },
+    "state_graph": {
+      "transition_entropy": 0.64,
+      "graph_divergence_score": 0.6973152261850885,
+      "path_commitment_score": 0.52
+    },
+    "experimental_analytics": {
+      "state_space": {
+        "state_vector_dim": 12
+      }
+    }
+  },
+  {
+    "structural_drift_score": 0.76,
+    "geometry": {
+      "curvature": 0.12461654540535148,
+      "directional_consistency": 0.33999999999999997,
+      "path_smoothness": 0.7954246410622469
+    },
+    "state_graph": {
+      "transition_entropy": 0.66,
+      "graph_divergence_score": 0.6803321485812746,
+      "path_commitment_score": 0.505
+    },
+    "experimental_analytics": {
+      "state_space": {
+        "state_vector_dim": 12
+      }
+    }
+  },
+  {
+    "structural_drift_score": 0.78,
+    "geometry": {
+      "curvature": 0.19764534045544357,
+      "directional_consistency": 0.31999999999999995,
+      "path_smoothness": 0.7930012531240647
+    },
+    "state_graph": {
+      "transition_entropy": 0.68,
+      "graph_divergence_score": 0.6480702776294127,
+      "path_commitment_score": 0.49
+    },
+    "experimental_analytics": {
+      "state_space": {
+        "state_vector_dim": 12
+      }
+    }
+  },
+  {
+    "structural_drift_score": 0.8,
+    "geometry": {
+      "curvature": 0.26279463948751564,
+      "directional_consistency": 0.29999999999999993,
+      "path_smoothness": 0.7912030424002834
+    },
+    "state_graph": {
+      "transition_entropy": 0.7000000000000001,
+      "graph_divergence_score": 0.6012541453986143,
+      "path_commitment_score": 0.475
+    },
+    "experimental_analytics": {
+      "state_space": {
+        "state_vector_dim": 12
+      }
+    }
+  },
+  {
+    "structural_drift_score": 0.82,
+    "geometry": {
+      "curvature": 0.31746714553966127,
+      "directional_consistency": 0.28,
+      "path_smoothness": 0.7901906376993352
+    },
+    "state_graph": {
+      "transition_entropy": 0.72,
+      "graph_divergence_score": 0.5409351412891914,
+      "path_commitment_score": 0.45999999999999996
+    },
+    "experimental_analytics": {
+      "state_space": {
+        "state_vector_dim": 12
+      }
+    }
+  },
+  {
+    "structural_drift_score": 0.84,
+    "geometry": {
+      "curvature": 0.3594832383246508,
+      "directional_consistency": 0.26,
+      "path_smoothness": 0.7900544741179601
+    },
+    "state_graph": {
+      "transition_entropy": 0.74,
+      "graph_divergence_score": 0.46846790009338335,
+      "path_commitment_score": 0.44500000000000006
+    },
+    "experimental_analytics": {
+      "state_space": {
+        "state_vector_dim": 12
+      }
+    }
+  },
+  {
+    "structural_drift_score": 0.86,
+    "geometry": {
+      "curvature": 0.38716786881259463,
+      "directional_consistency": 0.24,
+      "path_smoothness": 0.7908067147433533
+    },
+    "state_graph": {
+      "transition_entropy": 0.76,
+      "graph_divergence_score": 0.3854798798183463,
+      "path_commitment_score": 0.43000000000000005
+    },
+    "experimental_analytics": {
+      "state_space": {
+        "state_vector_dim": 12
+      }
+    }
+  },
+  {
+    "structural_drift_score": 0.88,
+    "geometry": {
+      "curvature": 0.39941733814984204,
+      "directional_consistency": 0.21999999999999997,
+      "path_smoothness": 0.7923801641608097
+    },
+    "state_graph": {
+      "transition_entropy": 0.78,
+      "graph_divergence_score": 0.2938348124879018,
+      "path_commitment_score": 0.41500000000000004
+    },
+    "experimental_analytics": {
+      "state_space": {
+        "state_vector_dim": 12
+      }
+    }
+  }
+]
