@@ -50,6 +50,8 @@ def estimate_risk_horizon(
     trajectory_analysis: Mapping[str, object] | None,
     branching_analysis: Mapping[str, object] | None,
     constraint_analysis: Mapping[str, object] | None,
+    temporal_quality: Mapping[str, object] | None = None,
+    temporal_features: Mapping[str, object] | None = None,
 ) -> dict[str, object]:
     pressure_tail = _tail(transition_pressure_history, 6)
     shock_tail = _tail(shock_activity_history, 6)
@@ -108,6 +110,9 @@ def estimate_risk_horizon(
             recovery_margin = 0.5
 
     commitment_boost = 1.0 if commitment == "HIGH" else (0.6 if commitment == "MODERATE" else 0.25)
+    temporal_consistency = _clamp01(float((temporal_quality or {}).get("temporal_consistency_score", 1.0)))
+    temporal_irregularity = _clamp01(float((temporal_quality or {}).get("timestamp_gap_irregularity", 0.0)))
+    drift_acceleration = _clamp01(float((temporal_features or {}).get("drift_acceleration", 0.0)))
 
     imminence_score = _clamp01(
         0.2 * shock_recent
@@ -117,6 +122,9 @@ def estimate_risk_horizon(
         + 0.1 * latest_pressure
         + 0.1 * pressure_persistence
         + 0.1 * worsening_index
+        + 0.08 * drift_acceleration
+        + 0.05 * temporal_irregularity
+        - 0.05 * temporal_consistency
     )
 
     mixed_branching = _clamp01(
@@ -165,5 +173,8 @@ def estimate_risk_horizon(
             "recovery_margin": round(float(recovery_margin), 4),
             "recovery_buffer": round(float(recovery_buffer), 4),
             "mixed_branching_index": round(float(mixed_branching), 4),
+            "temporal_consistency": round(float(temporal_consistency), 4),
+            "temporal_irregularity": round(float(temporal_irregularity), 4),
+            "drift_acceleration": round(float(drift_acceleration), 4),
         },
     }

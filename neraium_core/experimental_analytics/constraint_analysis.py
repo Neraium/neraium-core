@@ -43,6 +43,8 @@ def analyze_constraint_lock_in(
     reversibility_classification: str | None,
     reversibility_score: float | None,
     trajectory_analysis: dict[str, object] | None,
+    temporal_quality: dict[str, object] | None = None,
+    temporal_features: dict[str, object] | None = None,
 ) -> dict[str, object]:
     pressure_tail = _tail(transition_pressure_history, 6)
     shock_tail = _tail(shock_activity_history, 6)
@@ -99,6 +101,10 @@ def analyze_constraint_lock_in(
     diverging_dominance = _clamp01(float(trajectory_scores.get("diverging", 0.3333)))
 
     reversibility_capacity = _clamp01(1.0 - locked_in_index)
+    temporal_consistency = _clamp01(float((temporal_quality or {}).get("temporal_consistency_score", 1.0)))
+    temporal_irregularity = _clamp01(float((temporal_quality or {}).get("timestamp_gap_irregularity", 0.0)))
+    drift_acceleration = _clamp01(float((temporal_features or {}).get("drift_acceleration", 0.0)))
+    timing_instability = _clamp01(float((temporal_features or {}).get("timing_instability", temporal_irregularity)))
 
     recovery_margin = _clamp01(
         0.22 * (1.0 - pressure)
@@ -110,6 +116,7 @@ def analyze_constraint_lock_in(
         + 0.06 * (1.0 - regime_displacement)
         + 0.06 * stabilizing_dominance
         + 0.04 * reversibility_capacity
+        + 0.04 * temporal_consistency
     )
 
     lock_in_score = _clamp01(
@@ -122,6 +129,8 @@ def analyze_constraint_lock_in(
         + 0.11 * fragmentation
         + 0.06 * diverging_dominance
         + 0.04 * metastable_dominance
+        + 0.05 * timing_instability
+        + 0.05 * drift_acceleration
     )
 
     if lock_in_score >= 0.7 or (lock_in_score >= 0.62 and pressure_persistence >= 0.65):
@@ -160,5 +169,9 @@ def analyze_constraint_lock_in(
             "reversibility_capacity": round(float(reversibility_capacity), 4),
             "stabilizing_dominance": round(float(stabilizing_dominance), 4),
             "diverging_dominance": round(float(diverging_dominance), 4),
+            "temporal_consistency": round(float(temporal_consistency), 4),
+            "temporal_irregularity": round(float(temporal_irregularity), 4),
+            "timing_instability": round(float(timing_instability), 4),
+            "drift_acceleration": round(float(drift_acceleration), 4),
         },
     }
