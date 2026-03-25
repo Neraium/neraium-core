@@ -88,6 +88,7 @@ def flatten_result(
         "branching_analysis_is_branching": _safe_get(experimental, "branching_analysis", "is_branching"),
         "branching_analysis_commitment": _safe_get(experimental, "branching_analysis", "commitment"),
         "branching_analysis_decision_tension": _safe_get(experimental, "branching_analysis", "decision_tension"),
+        "branching_analysis_branch_count_estimate": _safe_get(experimental, "branching_analysis", "branch_count_estimate"),
         "constraint_analysis_lock_in_score": _safe_get(experimental, "constraint_analysis", "lock_in_score"),
         "constraint_analysis_point_of_no_return_risk": _safe_get(experimental, "constraint_analysis", "point_of_no_return_risk"),
         "constraint_analysis_recovery_margin": _safe_get(experimental, "constraint_analysis", "recovery_margin"),

@@ -385,8 +385,17 @@ class StructuralEngine:
             else 0.0
         )
         noise_sep = self._clamp01(max(0.0, (1.0 - stability_score) - 0.5 * self._clamp01(abs(velocity) / 0.3)))
+        trend_alignment = self._clamp01(
+            1.0 - min(1.0, abs(self._trend(list(self._drift_history)[-6:]) - self._trend(list(self._transition_pressure_history)[-6:])) / 0.18)
+        ) if len(self._drift_history) >= 3 and len(self._transition_pressure_history) >= 3 else 0.5
         evidence = self._clamp01(
-            0.28 * persistence + 0.21 * drift_n + 0.19 * vel_n + 0.14 * acc_n + 0.10 * disagreement + 0.08 * noise_sep
+            0.24 * persistence
+            + 0.20 * drift_n
+            + 0.16 * vel_n
+            + 0.13 * acc_n
+            + 0.09 * disagreement
+            + 0.08 * noise_sep
+            + 0.10 * trend_alignment
         )
         prior = list(self._evidence_history)
         if len(prior) >= 10:
@@ -395,11 +404,13 @@ class StructuralEngine:
             contrast = self._clamp01((evidence - threshold) / max(0.08, 2.0 * float(np.std(base))))
         else:
             contrast = 0.5 * evidence
-        pressure = self._clamp01(0.58 * evidence + 0.42 * contrast)
+        pressure = self._clamp01(0.54 * evidence + 0.46 * contrast)
         self._evidence_history.append(float(evidence))
-        if pressure >= 0.75:
+        recent_evidence = list(self._evidence_history)[-5:]
+        evidence_persistence = self._clamp01(float(sum(1 for e in recent_evidence if e >= 0.55)) / max(1, len(recent_evidence)))
+        if pressure >= 0.78 and evidence_persistence >= 0.45:
             transition_state = "SUSTAINED_TRANSITION"
-        elif pressure >= 0.45:
+        elif pressure >= 0.48 and evidence_persistence >= 0.32:
             transition_state = "EMERGING_TRANSITION"
         elif pressure >= 0.2:
             transition_state = "METASTABLE"
@@ -446,20 +457,48 @@ class StructuralEngine:
             "trend_strength": round(abs(drift_trend) + abs(pressure_trend), 4),
         }
 
-        decision_tension = self._clamp01((avg_shock * 0.5) + (abs(pressure_trend) * 4.0))
-        commitment = self._clamp01(1.0 - decision_tension)
+        drift_level = self._clamp01(float(np.mean(drift_tail)) / 4.5)
+        path_directional_ambiguity = self._clamp01(1.0 - abs(pressure_trend - drift_trend) / 0.11)
+        mixed_evidence = self._clamp01(1.0 - abs(avg_pressure - drift_level))
+        decision_tension = self._clamp01(
+            0.34 * avg_shock
+            + 0.24 * self._clamp01(abs(pressure_trend) * 3.2)
+            + 0.20 * path_directional_ambiguity
+            + 0.22 * mixed_evidence
+        )
+        commitment = self._clamp01(1.0 - (0.85 * decision_tension + 0.15 * path_directional_ambiguity))
+        branch_count_estimate = 1
+        if decision_tension >= 0.43 and mixed_evidence >= 0.32:
+            branch_count_estimate = 2
+        if decision_tension >= 0.68 and dominant_path == "METASTABLE" and path_directional_ambiguity >= 0.5:
+            branch_count_estimate = 3
         branching = {
             "available": True,
-            "is_branching": bool(decision_tension >= 0.45 and dominant_path == "METASTABLE"),
+            "is_branching": bool(
+                decision_tension >= 0.45
+                and (mixed_evidence >= 0.36 or path_directional_ambiguity >= 0.46)
+                and (dominant_path != "DIVERGING" or mixed_evidence >= 0.5)
+            ),
             "commitment": round(commitment, 4),
             "decision_tension": round(decision_tension, 4),
+            "branch_count_estimate": branch_count_estimate,
         }
 
-        drift_level = self._clamp01(float(np.mean(drift_tail)) / 4.5)
-        persistence = self._clamp01(float(sum(1 for p in pressure_tail if p >= 0.55)) / max(1, len(pressure_tail)))
-        commitment_proxy = self._clamp01(0.6 * (1.0 - decision_tension) + 0.4 * (1.0 if dominant_path == "DIVERGING" else 0.35))
-        lock_raw = self._clamp01(0.32 * avg_pressure + 0.30 * drift_level + 0.22 * persistence + 0.16 * commitment_proxy)
-        lock_in_score = self._clamp01(0.88 / (1.0 + math.exp(-6.0 * (lock_raw - 0.62))))
+        persistence = self._clamp01(float(sum(1 for p in pressure_tail if p >= 0.58)) / max(1, len(pressure_tail)))
+        sustained_pressure = self._clamp01(float(sum(1 for p in pressure_tail[-4:] if p >= 0.66)) / max(1, len(pressure_tail[-4:])))
+        branch_collapse = self._clamp01(max(0.0, (1.0 - decision_tension) - 0.22))
+        commitment_proxy = self._clamp01(0.55 * branch_collapse + 0.45 * (1.0 if dominant_path == "DIVERGING" else 0.3))
+        lock_raw = self._clamp01(
+            0.23 * avg_pressure
+            + 0.22 * drift_level
+            + 0.17 * persistence
+            + 0.10 * sustained_pressure
+            + 0.10 * commitment_proxy
+            + 0.09 * self._clamp01(max(0.0, pressure_trend) * 4.0)
+            + 0.09 * self._clamp01(max(0.0, drift_trend) * 4.0)
+        )
+        convergence = self._clamp01(0.45 * persistence + 0.30 * sustained_pressure + 0.25 * branch_collapse)
+        lock_in_score = self._clamp01(0.82 / (1.0 + math.exp(-5.2 * (lock_raw - 0.66))) * (0.9 + 0.2 * convergence))
         constraint = {
             "available": True,
             "lock_in_score": round(lock_in_score, 4),
@@ -479,16 +518,32 @@ class StructuralEngine:
         }
 
         horizon_bucket = "LONGER_HORIZON"
-        pressure_persist = self._clamp01(float(sum(1 for p in pressure_tail if p >= 0.62)) / max(1, len(pressure_tail)))
+        pressure_persist = self._clamp01(float(sum(1 for p in pressure_tail if p >= 0.64)) / max(1, len(pressure_tail)))
+        sustained_horizon_pressure = self._clamp01(float(sum(1 for p in pressure_tail[-4:] if p >= 0.72)) / max(1, len(pressure_tail[-4:])))
         accel = self._clamp01(max(0.0, self._trend([float(v) for v in list(self._velocity_history)[-6:]])) / 0.06)
         severity = 1.0 if dominant_path == "DIVERGING" else (0.55 if dominant_path == "METASTABLE" else 0.2)
         recovery_margin = self._clamp01(1.0 - lock_in_score)
         horizon_signal = self._clamp01(
-            0.26 * avg_pressure + 0.24 * lock_in_score + 0.16 * pressure_persist + 0.14 * severity + 0.12 * accel - 0.12 * recovery_margin
+            0.20 * avg_pressure
+            + 0.20 * lock_in_score
+            + 0.12 * pressure_persist
+            + 0.10 * sustained_horizon_pressure
+            + 0.14 * severity
+            + 0.10 * accel
+            + 0.08 * self._clamp01(max(0.0, pressure_trend) * 4.0)
+            + 0.06 * self._clamp01(max(0.0, drift_trend) * 4.0)
+            - 0.12 * recovery_margin
+            - 0.08 * decision_tension
         )
-        if horizon_signal >= 0.88 and pressure_persist >= 0.6 and lock_in_score >= 0.68 and severity >= 0.55:
+        if (
+            horizon_signal >= 0.9
+            and pressure_persist >= 0.68
+            and sustained_horizon_pressure >= 0.5
+            and lock_in_score >= 0.74
+            and severity >= 0.7
+        ):
             horizon_bucket = "IMMINENT"
-        elif horizon_signal >= 0.62:
+        elif horizon_signal >= 0.58:
             horizon_bucket = "NEAR_TERM"
         elif horizon_signal >= 0.4:
             horizon_bucket = "MID_TERM"

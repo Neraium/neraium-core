@@ -43,6 +43,8 @@ def evaluate(path: Path) -> dict[str, object]:
     lock = df["constraint_analysis_lock_in_score"].fillna(0.0).astype(float)
     pressure = df["transition_pressure"].fillna(0.0).astype(float)
     horizon = df["horizon_analysis_risk_horizon"].fillna("UNKNOWN").astype(str)
+    branch_true = df.get("branching_analysis_is_branching", pd.Series(False, index=df.index)).fillna(False).astype(bool)
+    branch_count = df.get("branching_analysis_branch_count_estimate", pd.Series(1.0, index=df.index)).fillna(1.0).astype(float)
 
     advanced_population = float(
         (
@@ -70,11 +72,14 @@ def evaluate(path: Path) -> dict[str, object]:
         "first_alert_cycle_unique_count": int(fa.nunique()) if not fa.empty else 0,
         "first_alert_mode_cycle": mode_cycle,
         "first_alert_mode_share": mode_share,
+        "most_common_first_alert_fraction": mode_share,
         "onset_dispersion_score": float((fa.std() / (fa.mean() + 1e-6)) if not fa.empty else 0.0),
         "lock_in_saturation_rate": float((lock >= 0.9).mean()),
         "lock_in_percentiles": _quantiles(lock),
         "horizon_distribution": {k: float(v) for k, v in horizon.value_counts(normalize=True).to_dict().items()},
         "imminent_horizon_rate": float((horizon == "IMMINENT").mean()),
+        "branching_true_rate": float(branch_true.mean()),
+        "branch_count_estimate_distribution": _quantiles(branch_count),
         "transition_pressure_saturation_rate": float((pressure >= 1.0).mean()),
         "transition_pressure_percentiles": _quantiles(pressure),
     }
