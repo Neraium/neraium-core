@@ -1,4 +1,5 @@
 import argparse
+import json
 from pathlib import Path
 from typing import Any
 
@@ -45,7 +46,20 @@ def _safe_get(mapping: dict[str, Any], *keys: str) -> Any:
     return current
 
 
+def _safe_list_item(items: Any, index: int) -> Any:
+    if not isinstance(items, list):
+        return None
+    if index < 0 or index >= len(items):
+        return None
+    return items[index]
+
+
 def flatten_result(unit_id: int, cycle: int, result: dict[str, Any]) -> dict[str, Any]:
+    experimental = _safe_get(result, "experimental_analytics") or {}
+    counterfactuals = _safe_get(experimental, "counterfactual_simulation", "counterfactuals")
+    pressure_relief = _safe_list_item(counterfactuals, 0)
+    continued_degradation = _safe_list_item(counterfactuals, 2)
+
     return {
         "unit": unit_id,
         "cycle": cycle,
@@ -57,20 +71,37 @@ def flatten_result(unit_id: int, cycle: int, result: dict[str, Any]) -> dict[str
         "confidence_score": _safe_get(result, "confidence_score"),
         "interpreted_state": _safe_get(result, "interpreted_state"),
         "regime_name": _safe_get(result, "regime_name"),
-        "trajectory_analysis_dominant_path": _safe_get(result, "trajectory_analysis", "dominant_path"),
-        "branching_analysis_is_branching": _safe_get(result, "branching_analysis", "is_branching"),
-        "branching_analysis_commitment": _safe_get(result, "branching_analysis", "commitment"),
-        "constraint_analysis_lock_in_score": _safe_get(result, "constraint_analysis", "lock_in_score"),
-        "constraint_analysis_point_of_no_return_risk": _safe_get(result, "constraint_analysis", "point_of_no_return_risk"),
-        "hierarchy_analysis_origin_scope": _safe_get(result, "hierarchy_analysis", "origin_scope"),
-        "hierarchy_analysis_propagation_risk": _safe_get(result, "hierarchy_analysis", "propagation_risk"),
-        "horizon_analysis_risk_horizon": _safe_get(result, "horizon_analysis", "risk_horizon"),
+        "trajectory_analysis_dominant_path": _safe_get(experimental, "trajectory_analysis", "dominant_path"),
+        "trajectory_analysis_path_confidence": _safe_get(experimental, "trajectory_analysis", "path_confidence"),
+        "branching_analysis_is_branching": _safe_get(experimental, "branching_analysis", "is_branching"),
+        "branching_analysis_commitment": _safe_get(experimental, "branching_analysis", "commitment"),
+        "branching_analysis_decision_tension": _safe_get(experimental, "branching_analysis", "decision_tension"),
+        "constraint_analysis_lock_in_score": _safe_get(experimental, "constraint_analysis", "lock_in_score"),
+        "constraint_analysis_point_of_no_return_risk": _safe_get(experimental, "constraint_analysis", "point_of_no_return_risk"),
+        "constraint_analysis_recovery_margin": _safe_get(experimental, "constraint_analysis", "recovery_margin"),
+        "hierarchy_analysis_origin_scope": _safe_get(experimental, "hierarchy_analysis", "origin_scope"),
+        "hierarchy_analysis_propagation_risk": _safe_get(experimental, "hierarchy_analysis", "propagation_risk"),
+        "horizon_analysis_risk_horizon": _safe_get(experimental, "horizon_analysis", "risk_horizon"),
+        "counterfactual_baseline_projected_path": _safe_get(
+            experimental, "counterfactual_simulation", "baseline_future", "projected_path"
+        ),
+        "counterfactual_baseline_projected_lock_in_risk": _safe_get(
+            experimental, "counterfactual_simulation", "baseline_future", "projected_lock_in_risk"
+        ),
+        "counterfactual_baseline_projected_horizon": _safe_get(
+            experimental, "counterfactual_simulation", "baseline_future", "projected_horizon"
+        ),
+        "counterfactual_pressure_relief_projected_path": _safe_get(pressure_relief or {}, "projected_path"),
+        "counterfactual_continued_degradation_projected_path": _safe_get(
+            continued_degradation or {}, "projected_path"
+        ),
     }
 
 
 def replay_unit(unit_df: pd.DataFrame) -> list[dict[str, Any]]:
     engine = StructuralEngine()
     rows: list[dict[str, Any]] = []
+    printed_debug_result = False
 
     ordered = unit_df.sort_values("cycle")
     unit_id = int(ordered["unit"].iloc[0])
@@ -85,6 +116,9 @@ def replay_unit(unit_df: pd.DataFrame) -> list[dict[str, Any]]:
             "sensor_values": sensor_values,
         }
         result = engine.process_frame(frame)
+        if not printed_debug_result:
+            print(json.dumps(result, indent=2)[:1000])
+            printed_debug_result = True
         rows.append(flatten_result(unit_id=unit_id, cycle=cycle, result=result))
 
     return rows
