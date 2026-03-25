@@ -1188,7 +1188,8 @@ async function launchGuidedDemo({ mode = "all" } = {}) {
 
 function getRoute() {
   const parts = window.location.pathname.split("/").filter(Boolean);
-  if (parts.length === 0 || parts[0] === "dashboard") return { page: "dashboard" };
+  if (parts.length === 0) return { page: "demo-sii" };
+  if (parts[0] === "dashboard") return { page: "dashboard" };
   if (parts[0] === "upload") return { page: "upload" };
   if (parts[0] === "demo" && parts[1] === "sii") return { page: "demo-sii" };
   if (parts[0] === "app" && parts[1] === "runs" && parts[2]) return { page: "run-detail", runId: parts[2] };
@@ -5754,7 +5755,7 @@ function setPage(page) {
     upload: ["Upload", "Upload telemetry CSV into the active run"],
     "run-detail": ["Run Detail", "Deep inspection of run outputs"],
     "result-detail": ["Result Detail", "Focused view for a single result"],
-    "demo-sii": ["SII tour", "Narrative walkthrough for demos and onboarding"],
+    "demo-sii": ["Overview", "Structural intelligence for system evolution"],
   };
   qsa(".page").forEach((p) => p.classList.add("hidden"));
   const pageEl = qs(`#page-${page}`);
@@ -5768,7 +5769,10 @@ function setPage(page) {
   if (page === "dashboard") qs('[data-nav="dashboard"]')?.classList.add("active");
   if (page === "runs" || page === "run-detail") qs('[data-nav="runs"]')?.classList.add("active");
   if (page === "upload") qs('[data-nav="upload"]')?.classList.add("active");
-  if (page === "demo-sii") qs('[data-nav="demo-sii"]')?.classList.add("active");
+  if (page === "demo-sii") {
+    qs('[data-nav="overview"]')?.classList.add("active");
+    qs('[data-nav="demo-sii"]')?.classList.add("active");
+  }
 }
 
 function updateUploadRunInfo() {

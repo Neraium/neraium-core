@@ -43,10 +43,11 @@
       </div>
       <nav class="nav">
         <p class="nav-section-title">Workspace</p>
+        <a href="/" data-nav="overview">Overview</a>
         <a href="/dashboard" data-nav="dashboard">Dashboard</a>
         <a href="/app/runs" data-nav="runs">Runs</a>
         <a href="/upload" data-nav="upload">Upload</a>
-        <a href="/demo/sii" data-nav="demo-sii">SII tour</a>
+        <a href="/demo/sii" data-nav="demo-sii">System model</a>
       </nav>
     </aside>
 
@@ -56,7 +57,7 @@
           <button type="button" id="mobileNavToggle" class="mobile-nav-toggle" aria-label="Open menu" aria-expanded="false" aria-controls="appSidebar">
             <span class="mobile-nav-toggle-bars" aria-hidden="true"></span>
           </button>
-          <a href="/dashboard" class="topbar-wordmark">Neraium</a>
+          <a href="/" class="topbar-wordmark">Neraium</a>
           <div class="title-block">
             <h2 id="pageTitle">Dashboard</h2>
             <p id="pageSubtitle" class="subtitle page-subtitle-truncate">Active run snapshot</p>
@@ -196,76 +197,81 @@
           </details>
         </section>
 
-        <!-- DEMO TOUR (SII narrative) -->
+        <!-- OVERVIEW / SYSTEM MODEL -->
         <section id="page-demo-sii" class="page page-demo-sii hidden">
           <section class="demo-hero panel">
-            <p class="demo-hero-eyebrow">Systemic Infrastructure Intelligence</p>
-            <h2 class="demo-hero-title">See the system. Surface the shift. Act before failure.</h2>
+            <p class="demo-hero-eyebrow">Neraium structural intelligence</p>
+            <h2 class="demo-hero-title">Neraium models how systems evolve over time</h2>
             <p class="demo-hero-lead">
-              Neraium fuses sensor streams into structural relationships, then scores drift, instability, and risk in one operational surface built for live walkthroughs and real incident response.
+              A read-only structural intelligence system for observing trajectory, branching, lock-in, horizon, and counterfactual evolution across complex operational systems.
             </p>
             <div class="demo-hero-actions">
               <a class="button-link" href="/dashboard">Open dashboard</a>
               <button type="button" class="secondary" id="demoTourEnableBtn">Enable demo mode</button>
             </div>
-            <p class="subtitle demo-share-hint" style="margin-top: 1rem; max-width: 42rem">
-              <strong>External guests:</strong> run <code style="font-size: 0.9em">python run_demo.py --share</code>, copy the printed
-              <code>https://…trycloudflare.com</code> (or ngrok) URL, then append
-              <code>?demo=1&amp;prepare=1</code> after <code>/dashboard</code> so Demo Mode turns on and scripted runs load automatically.
-              See <code>docs/DEMO_SHARE.md</code>.
-            </p>
           </section>
 
           <section class="demo-steps">
             <article class="demo-step panel">
               <div class="demo-step-index">01</div>
               <div class="demo-step-body">
-                <h3>Here is the system</h3>
+                <h3>What Neraium observes</h3>
                 <p class="subtitle">
-                  Every snapshot projects correlated sensors into a relationship field. You see nodes, stress, and coupling rather than isolated charts.
+                  Neraium interprets system evolution through stable structural concepts, not one-off alerts.
                 </p>
                 <ul class="demo-bullet-list">
-                  <li>Structural flow on run detail shows four sensors on a shared plane; out-of-range sensors lift vertically while links respond.</li>
-                  <li>Dashboard summarizes the latest envelope: state, phase, and health score.</li>
+                  <li><strong>Trajectory:</strong> the directional path of the system through state space over time.</li>
+                  <li><strong>Branching:</strong> where evolution can separate into materially different futures under observed conditions.</li>
+                  <li><strong>Lock-in:</strong> when structural conditions constrain recovery options and narrow future states.</li>
+                  <li><strong>Horizon:</strong> the forward interval where structural interpretation remains reliable.</li>
+                  <li><strong>Counterfactual:</strong> bounded alternate paths used to test how evolution might differ under changed inputs.</li>
                 </ul>
               </div>
             </article>
             <article class="demo-step panel">
               <div class="demo-step-index">02</div>
               <div class="demo-step-body">
-                <h3>Here is what is changing</h3>
+                <h3>Why structural intelligence matters</h3>
                 <p class="subtitle">
-                  Drift and composite instability trend together. Transitions and key events are highlighted so motion in the system is obvious in seconds.
+                  Most monitoring surfaces show isolated sensor movement. Neraium models how system structure changes through time-aware interpretation.
                 </p>
                 <ul class="demo-bullet-list">
-                  <li>Timeline on run detail encodes severity: normal, watch, critical.</li>
-                  <li>Demo mode plays the timeline forward for storytelling.</li>
+                  <li>Not anomaly detection software focused on threshold exceptions.</li>
+                  <li>Not predictive maintenance tooling built around component replacement schedules.</li>
+                  <li>Not a black-box AI model with opaque inference paths.</li>
+                  <li>Not a control system and not an automation layer for operational action.</li>
+                  <li>It is a structural intelligence layer for system evolution and interpretable evidence.</li>
                 </ul>
               </div>
             </article>
             <article class="demo-step panel">
               <div class="demo-step-index">03</div>
               <div class="demo-step-body">
-                <h3>Here is the risk</h3>
+                <h3>System structure</h3>
                 <p class="subtitle">
-                  Risk is not a single threshold: it is interpreted from drift, instability, phase, and structural availability, with plain-language operator readouts.
+                  Neraium is structured as an observational stack with one-way flow from operations to interpretation.
                 </p>
                 <ul class="demo-bullet-list">
-                  <li>Alert rail surfaces platform-detected transitions and threshold crosses.</li>
-                  <li>“Why this risk” explains drivers without opening another tool.</li>
+                  <li>Operational systems</li>
+                  <li>One-way data access</li>
+                  <li>Structural intelligence layer</li>
+                  <li>Interpretive evidence layer</li>
+                  <li>Human operators</li>
                 </ul>
               </div>
             </article>
             <article class="demo-step panel">
               <div class="demo-step-index">04</div>
               <div class="demo-step-body">
-                <h3>Here is the prediction</h3>
+                <h3>Read-only governance</h3>
                 <p class="subtitle">
-                  The engine scores forward-leaning structural stress so teams can stage maintenance, isolate subsystems, and brief leadership with a single narrative.
+                  Governance is foundational to system behavior and deployment boundaries.
                 </p>
                 <ul class="demo-bullet-list">
-                  <li>Use <strong>Demo run</strong> for three scenarios: stable, watch, and escalation.</li>
-                  <li>Export JSON or CSV when you need evidence outside the console.</li>
+                  <li>Neraium is observational and read-only across production infrastructure.</li>
+                  <li>Neraium does not control infrastructure and does not execute operational decisions.</li>
+                  <li>Outputs remain deterministic and interpretable for review and audit.</li>
+                  <li>Operational authority remains with human operators at all times.</li>
                 </ul>
               </div>
             </article>
@@ -274,25 +280,25 @@
           <section class="panel demo-compare">
             <div class="panel-header dashboard-section-head">
               <div>
-                <h3>Without SII vs with SII</h3>
-                <p class="subtitle section-subtitle">Same telemetry. Different time-to-comprehension.</p>
+                <h3>Contact</h3>
+                <p class="subtitle section-subtitle">For deployments, architecture review, or evaluation, contact the Neraium team.</p>
               </div>
             </div>
             <div class="compare-grid">
               <article class="compare-card compare-before">
-                <h4>Without SII</h4>
+                <h4>Positioning</h4>
                 <ul class="compare-list">
-                  <li>Raw sensor tiles and static thresholds</li>
-                  <li>Correlations discovered late in spreadsheets</li>
-                  <li>Incidents explained after the fact</li>
+                  <li>Structural intelligence</li>
+                  <li>System evolution modeling</li>
+                  <li>Read-only interpretive architecture</li>
                 </ul>
               </article>
               <article class="compare-card compare-after">
-                <h4>With SII</h4>
+                <h4>Reach us</h4>
                 <ul class="compare-list">
-                  <li>Structural field + drift / instability trajectory</li>
-                  <li>Risk narrative tied to evidence in one run</li>
-                  <li>Demo-ready playback for exec and field teams</li>
+                  <li>Use your Neraium deployment contact channel</li>
+                  <li>Dashboard workspace: /dashboard</li>
+                  <li>System model overview: /demo/sii</li>
                 </ul>
               </article>
             </div>
