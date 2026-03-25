@@ -5,6 +5,7 @@ from typing import Any
 
 import pandas as pd
 
+from neraium_core.integrations.gal2_client import GAL2Client, unavailable_payload
 from run_engine import StructuralEngine
 
 
@@ -18,6 +19,8 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--input", type=Path, default=Path("test_FD001.txt"), help="Path to CMAPSS dataset text file.")
     parser.add_argument("--output", type=Path, default=Path("fd_results.csv"), help="Path to output CSV file.")
+    parser.add_argument("--use-gal2", action="store_true", help="Use GAL-2 aligned time as an optional timestamp source.")
+    parser.add_argument("--gal2-cache-ms", type=int, default=0, help="Optional GAL-2 cache duration in milliseconds.")
     return parser.parse_args()
 
 
@@ -54,11 +57,17 @@ def _safe_list_item(items: Any, index: int) -> Any:
     return items[index]
 
 
-def flatten_result(unit_id: int, cycle: int, result: dict[str, Any]) -> dict[str, Any]:
+def flatten_result(
+    unit_id: int,
+    cycle: int,
+    result: dict[str, Any],
+    gal2: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     experimental = _safe_get(result, "experimental_analytics") or {}
     counterfactuals = _safe_get(experimental, "counterfactual_simulation", "counterfactuals")
     pressure_relief = _safe_list_item(counterfactuals, 0)
     continued_degradation = _safe_list_item(counterfactuals, 2)
+    gal2_payload = gal2 or unavailable_payload("disabled")
 
     return {
         "unit": unit_id,
@@ -95,13 +104,27 @@ def flatten_result(unit_id: int, cycle: int, result: dict[str, Any]) -> dict[str
         "counterfactual_continued_degradation_projected_path": _safe_get(
             continued_degradation or {}, "projected_path"
         ),
+        "gal2_time": gal2_payload.get("gal2_time"),
+        "gal2_drift_ms": gal2_payload.get("drift_ms"),
+        "gal2_wobble_ms": gal2_payload.get("wobble_ms"),
+        "gal2_live_ms": gal2_payload.get("live_ms"),
+        "gal2_fractal_factor": gal2_payload.get("fractal_factor"),
+        "gal2_available": gal2_payload.get("available", False),
+        "gal2_reason": gal2_payload.get("reason"),
     }
 
 
-def replay_unit(unit_df: pd.DataFrame) -> list[dict[str, Any]]:
+def replay_unit(
+    unit_df: pd.DataFrame,
+    *,
+    use_gal2: bool = False,
+    gal2_cache_ms: int = 0,
+) -> list[dict[str, Any]]:
     engine = StructuralEngine()
     rows: list[dict[str, Any]] = []
     printed_debug_result = False
+    gal2_client = GAL2Client(cache_ms=gal2_cache_ms) if use_gal2 else None
+    printed_gal2_debug = 0
 
     ordered = unit_df.sort_values("cycle")
     unit_id = int(ordered["unit"].iloc[0])
@@ -109,8 +132,27 @@ def replay_unit(unit_df: pd.DataFrame) -> list[dict[str, Any]]:
     for _, row in ordered.iterrows():
         cycle = int(row["cycle"])
         sensor_values = {sensor: row[sensor] for sensor in SENSOR_COLUMNS}
+
+        timestamp = str(cycle)
+        gal2_payload = unavailable_payload("disabled")
+        if gal2_client is not None:
+            gal2_payload = gal2_client.get_time()
+            if gal2_payload.get("available") and gal2_payload.get("gal2_time") is not None:
+                timestamp = str(gal2_payload["gal2_time"])
+            else:
+                gal2_payload = {**gal2_payload, "reason": gal2_payload.get("reason") or "unavailable"}
+
+            if printed_gal2_debug < 3:
+                print(
+                    "DEBUG GAL2:",
+                    f"available={gal2_payload.get('available', False)}",
+                    f"gal2_time={gal2_payload.get('gal2_time')}",
+                    f"drift_ms={gal2_payload.get('drift_ms')}",
+                )
+                printed_gal2_debug += 1
+
         frame = {
-            "timestamp": str(cycle),
+            "timestamp": timestamp,
             "site_id": "cmapss",
             "asset_id": f"unit_{unit_id}",
             "sensor_values": sensor_values,
@@ -119,7 +161,7 @@ def replay_unit(unit_df: pd.DataFrame) -> list[dict[str, Any]]:
         if not printed_debug_result:
             print(json.dumps(result, indent=2)[:1000])
             printed_debug_result = True
-        rows.append(flatten_result(unit_id=unit_id, cycle=cycle, result=result))
+        rows.append(flatten_result(unit_id=unit_id, cycle=cycle, result=result, gal2=gal2_payload))
 
     return rows
 
@@ -136,7 +178,7 @@ def main() -> None:
 
     for unit_id in unit_ids:
         unit_df = dataset[dataset["unit"] == unit_id]
-        all_rows.extend(replay_unit(unit_df))
+        all_rows.extend(replay_unit(unit_df, use_gal2=args.use_gal2, gal2_cache_ms=args.gal2_cache_ms))
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     pd.DataFrame(all_rows).to_csv(output_path, index=False)
