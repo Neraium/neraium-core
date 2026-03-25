@@ -61,6 +61,8 @@ def _horizon_from_imminence(imminence: float) -> str:
 
 
 def _shift_label(before: str, after: str, ordering: tuple[str, ...], improve_direction: int) -> str:
+    if before not in ordering or after not in ordering:
+        return "CHANGED" if before != after else "UNCHANGED"
     i0 = ordering.index(before)
     i1 = ordering.index(after)
     if i0 == i1:
@@ -91,6 +93,8 @@ def _project_state(
     recovery_margin: float,
     commitment_seed: float,
     horizon_hint: str | None,
+    dominant_branch: str | None = None,
+    alternative_branch: str | None = None,
 ) -> dict[str, str]:
     worsening_index = _clamp01(0.55 * _clamp01(pressure_trend / 0.12) + 0.45 * _clamp01(drift_trend / 0.12))
     commitment_index = _clamp01(
@@ -141,6 +145,8 @@ def _project_state(
 
     return {
         "projected_path": projected_path,
+        "projected_branch": dominant_branch or projected_path,
+        "alternative_projected_branch": alternative_branch or projected_path,
         "projected_commitment": projected_commitment,
         "projected_lock_in_risk": projected_lock_in_risk,
         "projected_horizon": projected_horizon,
@@ -188,6 +194,8 @@ def simulate_counterfactual_futures(
 
     branch_tension = _clamp01(_safe_float(branching_analysis, "branch_tension", 0.5))
     top_two_margin = _clamp01(_safe_float(branching_analysis, "top_two_margin", 0.35))
+    dominant_branch = str((branching_analysis or {}).get("dominant_branch", "")).upper() or None
+    alternative_branch = str((branching_analysis or {}).get("alternative_branch", "")).upper() or None
 
     lock_in_score = _clamp01(_safe_float(constraint_analysis, "lock_in_score", 0.0))
     recovery_margin = _clamp01(_safe_float(constraint_analysis, "recovery_margin", 0.5))
@@ -223,6 +231,8 @@ def simulate_counterfactual_futures(
         recovery_margin=recovery_margin,
         commitment_seed=commitment_seed,
         horizon_hint=horizon_hint,
+        dominant_branch=dominant_branch,
+        alternative_branch=alternative_branch,
     )
 
     scenarios = [
@@ -296,6 +306,8 @@ def simulate_counterfactual_futures(
             recovery_margin=float(scenario["recovery_margin"]),
             commitment_seed=float(scenario["commitment_seed"]),
             horizon_hint=horizon_hint,
+            dominant_branch=dominant_branch,
+            alternative_branch=alternative_branch,
         )
         if horizon_hint == "IMMINENT" and scenario["scenario"] == "continued_degradation":
             projected["projected_horizon"] = "IMMINENT"
@@ -305,6 +317,12 @@ def simulate_counterfactual_futures(
                 "assumption": scenario["assumption"],
                 **projected,
                 "delta_vs_baseline": {
+                    "branch_shift": _shift_label(
+                        baseline["projected_branch"],
+                        projected["projected_branch"],
+                        _PATH_ORDER,
+                        improve_direction=1,
+                    ),
                     "path_shift": _shift_label(
                         baseline["projected_path"],
                         projected["projected_path"],
