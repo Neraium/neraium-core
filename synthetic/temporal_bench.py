@@ -25,8 +25,12 @@ def generate_temporal_bench(seed: int = 7) -> pd.DataFrame:
         ScenarioConfig("different_static_context_same_degradation"),
         ScenarioConfig("degradation_with_temporary_recovery"),
         ScenarioConfig("two_competing_failure_paths"),
+        ScenarioConfig("oscillatory_instability"),
+        ScenarioConfig("punctuated_regime_jump"),
+        ScenarioConfig("noise_only_variation"),
         ScenarioConfig("no_degradation_high_static_offset"),
-        ScenarioConfig("mild_noise_only_variation"),
+        ScenarioConfig("same_severity_different_drift_direction"),
+        ScenarioConfig("same_values_altered_event_timing"),
     ]
 
     rows: list[dict[str, float | int | str]] = []
@@ -75,10 +79,31 @@ def generate_temporal_bench(seed: int = 7) -> pd.DataFrame:
                     s2 += static_offset * 1.2
                     s3 -= static_offset * 0.8
                     s4 += static_offset * 0.5
-                elif sc.name == "mild_noise_only_variation":
+                elif sc.name == "oscillatory_instability":
+                    s1 += 0.18 * math.sin(0.45 * t + i)
+                    s2 += 0.16 * math.cos(0.38 * t)
+                    s3 += 0.14 * math.sin(0.5 * t)
+                elif sc.name == "punctuated_regime_jump":
+                    jump = 0.0 if t < int(0.65 * sc.length) else 0.7
+                    s1 += jump
+                    s2 += 0.6 * jump
+                    s3 -= 0.4 * jump
+                elif sc.name == "noise_only_variation":
                     s1 += 0.02 * math.sin(0.27 * t)
                     s2 += 0.015 * math.cos(0.17 * t)
                     s3 += 0.02 * math.sin(0.21 * t + i)
+                elif sc.name == "same_severity_different_drift_direction":
+                    mag = 0.016 * t
+                    direction = 1.0 if (i % 2 == 0) else -1.0
+                    s1 += direction * mag
+                    s2 += 0.7 * direction * mag
+                    s3 += -0.5 * direction * mag
+                elif sc.name == "same_values_altered_event_timing":
+                    shift = (i % 3) * 6
+                    event = 1.0 if (t + shift) > int(0.6 * sc.length) else 0.0
+                    s1 += 0.35 * event
+                    s2 += 0.2 * event
+                    s3 -= 0.15 * event
 
                 s1 += _base_noise(rng)
                 s2 += _base_noise(rng)
