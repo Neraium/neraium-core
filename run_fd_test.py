@@ -22,6 +22,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output", type=Path, default=Path("fd_results.csv"), help="Path to output CSV file.")
     parser.add_argument("--use-gal2", action="store_true", help="Use GAL-2 aligned time as an optional timestamp source.")
     parser.add_argument("--gal2-cache-ms", type=int, default=500, help="Optional GAL-2 cache duration in milliseconds.")
+    parser.add_argument("--max-units", type=int, default=None, help="Optional cap on number of units to replay.")
+    parser.add_argument("--max-cycles", type=int, default=None, help="Optional cap on cycles per unit.")
     return parser.parse_args()
 
 
@@ -125,6 +127,7 @@ def replay_unit(
     *,
     use_gal2: bool = False,
     gal2_cache_ms: int = 500,
+    max_cycles: int | None = None,
 ) -> list[dict[str, Any]]:
     engine = StructuralEngine()
     rows: list[dict[str, Any]] = []
@@ -137,6 +140,8 @@ def replay_unit(
     gal2_api_calls = 0
 
     ordered = unit_df.sort_values("cycle")
+    if max_cycles is not None and max_cycles > 0:
+        ordered = ordered.head(int(max_cycles))
     unit_id = int(ordered["unit"].iloc[0])
 
     def get_cached_gal2_time() -> dict[str, Any]:
@@ -209,10 +214,19 @@ def main() -> None:
 
     all_rows: list[dict[str, Any]] = []
     unit_ids = sorted(dataset["unit"].unique())
+    if args.max_units is not None and args.max_units > 0:
+        unit_ids = unit_ids[: int(args.max_units)]
 
     for unit_id in unit_ids:
         unit_df = dataset[dataset["unit"] == unit_id]
-        all_rows.extend(replay_unit(unit_df, use_gal2=args.use_gal2, gal2_cache_ms=args.gal2_cache_ms))
+        all_rows.extend(
+            replay_unit(
+                unit_df,
+                use_gal2=args.use_gal2,
+                gal2_cache_ms=args.gal2_cache_ms,
+                max_cycles=args.max_cycles,
+            )
+        )
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     pd.DataFrame(all_rows).to_csv(output_path, index=False)
