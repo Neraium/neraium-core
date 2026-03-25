@@ -64,6 +64,7 @@ def test_engine_outputs_causal_propagation_and_scenario_projections():
 
         forecasting = analytics.get("forecasting", {})
         assert "scenario_projections" in forecasting
+        assert "counterfactual_simulation" in analytics
 
 
 def test_engine_outputs_uncertainty_and_root_cause_chains(monkeypatch):
@@ -152,4 +153,3 @@ def test_engine_outputs_ranked_response_recommendations(monkeypatch):
         r0 = recs[0]
         for k in ("rank", "risk", "cost_tier", "time_impact_tier", "action_type", "rationale"):
             assert k in r0
-
