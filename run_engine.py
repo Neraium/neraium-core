@@ -63,6 +63,14 @@ class StructuralEngine:
         self._drift_history: deque[float] = deque(maxlen=160)
         self._velocity_history: deque[float] = deque(maxlen=160)
         self._evidence_history: deque[float] = deque(maxlen=160)
+        self._onset_score_history: deque[float] = deque(maxlen=160)
+        self._onset_candidate_history: deque[bool] = deque(maxlen=40)
+        self._onset_candidate_streak: int = 0
+        self._watch_evidence_history: deque[bool] = deque(maxlen=40)
+        self._drift_excess_history: deque[float] = deque(maxlen=80)
+        self._cumulative_drift_excess: float = 0.0
+        self._sensor_shift_history: deque[float] = deque(maxlen=120)
+        self._sensor_shift_streak: int = 0
 
     def _vector_from_frame(self, frame: Dict) -> np.ndarray:
         """
@@ -418,6 +426,168 @@ class StructuralEngine:
             transition_state = "NONE"
         return {"transition_pressure": round(pressure, 4), "transition_state": transition_state}
 
+    def _rolling_slope(self, values: List[float]) -> float:
+        if len(values) < 3:
+            return 0.0
+        x = np.arange(len(values), dtype=float)
+        y = np.asarray(values, dtype=float)
+        x_centered = x - x.mean()
+        denom = float(np.sum(x_centered**2))
+        if denom <= 1e-8:
+            return 0.0
+        return float(np.sum(x_centered * (y - y.mean())) / denom)
+
+    def _baseline_reference(self) -> tuple[float, float]:
+        drift_hist = list(self._drift_history)
+        pressure_hist = list(self._transition_pressure_history)
+        if not drift_hist:
+            return 0.0, 0.1
+
+        stable_pool = [
+            float(d)
+            for d, p in zip(drift_hist[-50:], pressure_hist[-50:], strict=False)
+            if float(p) <= 0.45
+        ]
+        if len(stable_pool) < 6:
+            tail = np.asarray(drift_hist[-50:], dtype=float)
+            cutoff = float(np.quantile(tail, 0.55))
+            stable_pool = [float(v) for v in tail if float(v) <= cutoff]
+        if not stable_pool:
+            stable_pool = [float(v) for v in drift_hist[-12:]]
+
+        ref = np.asarray(stable_pool, dtype=float)
+        center = float(np.median(ref))
+        mad = float(np.median(np.abs(ref - center)))
+        spread = max(0.08, 1.4826 * mad)
+        return center, spread
+
+    def _state_from_onset_evidence(
+        self,
+        *,
+        drift_score: float,
+        velocity: float,
+        stability_score: float,
+        transition_pressure: float,
+        vector: np.ndarray,
+    ) -> str:
+        center, spread = self._baseline_reference()
+        drift_dev = self._clamp01((float(drift_score) - center) / (3.5 * spread + 1e-6))
+        drift_excess = max(0.0, float(drift_score) - (center + 1.25 * spread))
+        self._cumulative_drift_excess = 0.9 * self._cumulative_drift_excess + drift_excess
+        self._drift_excess_history.append(float(drift_excess))
+
+        drift_tail = list(self._drift_history)[-8:] + [float(drift_score)]
+        pressure_tail = list(self._transition_pressure_history)[-8:] + [float(transition_pressure)]
+        velocity_tail = list(self._velocity_history)[-8:] + [float(velocity)]
+
+        drift_slope_short = self._rolling_slope(drift_tail[-4:])
+        drift_slope_mid = self._rolling_slope(drift_tail[-8:])
+        pressure_slope = self._rolling_slope(pressure_tail[-6:])
+
+        directional_consistency = self._clamp01(
+            float(sum(1 for v in velocity_tail[-6:] if v >= 0.0)) / max(1, len(velocity_tail[-6:]))
+        )
+        drift_persistence = self._clamp01(float(sum(1 for d in drift_tail[-6:] if d > center + 1.1 * spread)) / 6.0)
+        pressure_persistence = self._clamp01(float(sum(1 for p in pressure_tail[-6:] if p >= 0.5)) / 6.0)
+        low_freq_alignment = self._clamp01(
+            0.55 * self._clamp01(max(0.0, drift_slope_short) / 0.11)
+            + 0.45 * self._clamp01(max(0.0, drift_slope_mid) / 0.08)
+        )
+        smoothness = self._clamp01(1.0 - float(np.std(np.diff(np.asarray(drift_tail[-7:], dtype=float)))) / 0.22)
+        instability = self._clamp01(1.0 - float(stability_score))
+        agreement = self._clamp01(
+            0.4 * (1.0 if drift_slope_short > 0.0 and drift_slope_mid > 0.0 else 0.0)
+            + 0.3 * (1.0 if pressure_slope > -0.003 else 0.0)
+            + 0.3 * directional_consistency
+        )
+
+        onset_score = self._clamp01(
+            0.24 * drift_dev
+            + 0.18 * drift_persistence
+            + 0.16 * pressure_persistence
+            + 0.12 * low_freq_alignment
+            + 0.11 * smoothness
+            + 0.11 * instability
+            + 0.08 * agreement
+        )
+
+        prior_scores = list(self._onset_score_history)
+        if len(prior_scores) >= 12:
+            score_ref = np.asarray(prior_scores[-60:], dtype=float)
+            onset_thr = float(np.quantile(score_ref, 0.76) + 0.025)
+            watch_thr = float(np.quantile(score_ref, 0.68) + 0.02)
+        else:
+            onset_thr = 0.5
+            watch_thr = 0.44
+
+        alert_candidate = bool(
+            onset_score >= onset_thr
+            and drift_dev >= 0.35
+            and drift_persistence >= 0.42
+            and pressure_persistence >= 0.1
+            and low_freq_alignment >= 0.34
+            and directional_consistency >= 0.55
+            and agreement >= 0.45
+            and smoothness >= 0.26
+        )
+
+        self._onset_candidate_streak = self._onset_candidate_streak + 1 if alert_candidate else max(0, self._onset_candidate_streak - 1)
+        self._onset_candidate_history.append(alert_candidate)
+        self._onset_score_history.append(float(onset_score))
+        watch_evidence = bool(
+            onset_score >= watch_thr
+            and drift_persistence >= 0.38
+            and directional_consistency >= 0.5
+            and smoothness >= 0.24
+        )
+        self._watch_evidence_history.append(watch_evidence)
+        recent_candidates = list(self._onset_candidate_history)[-3:]
+        sustained_watch = sum(1 for flag in list(self._watch_evidence_history)[-5:] if flag) >= 4
+
+        sensor_shift = 0.0
+        frame_vectors = [f.get("_vector") for f in list(self.frames)[-26:-1]]
+        valid_vectors = [v for v in frame_vectors if isinstance(v, np.ndarray) and v.shape == vector.shape and not np.isnan(v).any()]
+        if len(valid_vectors) >= 8 and not np.isnan(vector).any():
+            hist = np.vstack(valid_vectors)
+            med = np.median(hist, axis=0)
+            mad = np.median(np.abs(hist - med), axis=0)
+            z = np.abs(vector - med) / (mad + 1e-3)
+            sensor_shift = float(np.mean(np.sort(z)[-min(6, len(z)):]))
+        prior_shift = np.asarray(list(self._sensor_shift_history)[-25:], dtype=float)
+        if prior_shift.size >= 8:
+            shift_thr = float(np.quantile(prior_shift, 0.9) + 0.4 * np.std(prior_shift))
+        else:
+            shift_thr = 999.0
+        sensor_break = sensor_shift >= shift_thr
+        self._sensor_shift_streak = self._sensor_shift_streak + 1 if sensor_break else 0
+        self._sensor_shift_history.append(float(sensor_shift))
+
+        excess_tail = np.asarray(list(self._drift_excess_history)[-14:], dtype=float)
+        if excess_tail.size >= 6:
+            energy_threshold = float(
+                52.0
+                + 9.0 * float(np.mean(excess_tail))
+                + 12.0 * float(np.std(excess_tail))
+            )
+        else:
+            energy_threshold = 80.0
+        energy_confirmed = bool(
+            self._cumulative_drift_excess >= energy_threshold
+            and sustained_watch
+            and directional_consistency >= 0.5
+        )
+        confirmed_alert = (
+            (self._onset_candidate_streak >= 2 and sum(1 for flag in recent_candidates if flag) >= 2)
+            or energy_confirmed
+            or (self._sensor_shift_streak >= 2 and drift_persistence >= 0.3 and directional_consistency >= 0.45)
+        )
+
+        if confirmed_alert:
+            return "ALERT"
+        if onset_score >= watch_thr and drift_persistence >= 0.34 and directional_consistency >= 0.5:
+            return "WATCH"
+        return "STABLE"
+
     def _analytics_unavailable(self, reason: str) -> Dict:
         return {"available": False, "reason": reason}
 
@@ -612,12 +782,33 @@ class StructuralEngine:
             stability_score=float(base["relational_stability_score"]),
         )
         pressure_now = float(transition["transition_pressure"])
-        if base["state"] == "ALERT" and pressure_now < 0.72:
-            base["state"] = "WATCH" if pressure_now >= 0.55 else "STABLE"
-            base["drift_alert"] = base["state"] == "ALERT"
-        elif base["state"] == "WATCH" and pressure_now < 0.45:
-            base["state"] = "STABLE"
-            base["drift_alert"] = False
+        refined_state = self._state_from_onset_evidence(
+            drift_score=float(base["structural_drift_score"]),
+            velocity=float(base["drift_velocity"]),
+            stability_score=float(base["relational_stability_score"]),
+            transition_pressure=pressure_now,
+            vector=vector,
+        )
+        base["state"] = refined_state
+        base["drift_alert"] = refined_state == "ALERT"
+        if refined_state == "WATCH":
+            base["event_type"] = "quality_observation"
+            base["predicted_impact"] = "Early degradation detected. Maintenance window recommended."
+            base["structural_driver"] = "persistent structural drift from local baseline"
+            base["interpreted_state"] = "EMERGING_TRANSITION"
+            base["regime_name"] = "DEGRADING"
+        elif refined_state == "ALERT":
+            base["event_type"] = "instability_escalation"
+            base["predicted_impact"] = "Sustained transition pressure and directional drift detected."
+            base["structural_driver"] = "confirmed multi-window structural transition"
+            base["interpreted_state"] = "SUSTAINED_TRANSITION"
+            base["regime_name"] = "INSTABILITY_REGIME"
+        else:
+            base["event_type"] = "flow_observation"
+            base["predicted_impact"] = "No near term operational disruption expected."
+            base["structural_driver"] = "stable baseline telemetry"
+            base["interpreted_state"] = "STABLE_FLOW"
+            base["regime_name"] = "NOMINAL"
         self._update_histories(
             drift_score=float(base["structural_drift_score"]),
             velocity=float(base["drift_velocity"]),
