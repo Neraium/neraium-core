@@ -185,21 +185,31 @@ These roadmap items are not current operational dependencies for running `neraiu
 
 ---
 
-## How to run
+## Quick start
 
 ```bash
 python -m pip install -e .[dev]
-uvicorn apps.api.main:app --host 0.0.0.0 --port 8000
+python run_demo.py
 ```
 
-## Run the demo
+Then open the web app at **http://127.0.0.1:7860/**.
+
+Canonical solo-dev commands:
+
+- Install: `python -m pip install -e .[dev]`
+- Run: `python run_demo.py`
+- Test: `ruff check . && pytest`
 
 **There is no separate Node/React dev server.** The MVP web UI is **static HTML/JS** under
 `apps/api/static/` (entry: `index.html` + `app.js`), served by the **same** FastAPI/uvicorn
 process as the REST API (`apps/api/web.py` mounts `/`, `/dashboard`, `/upload`, etc.).
 
+## Manual run
+
+If you want the API/UI without the demo helper:
+
 ```bash
-python run_demo.py
+uvicorn apps.api.main:app --host 0.0.0.0 --port 7860
 ```
 
 Then open the **web app** (not only `/docs`):
@@ -222,14 +232,6 @@ Examples:
 PORT=8000 python run_demo.py
 python run_demo.py --port 8000 --host 0.0.0.0
 python run_demo.py --share
-```
-
-Runtime dependencies: **`requirements.txt`** (also `pip install -e .` from `pyproject.toml`).
-
-**Manual start (same stack):**
-
-```bash
-uvicorn apps.api.main:app --host 0.0.0.0 --port 7860
 ```
 
 ## Customer-hosted deployment (first-class path)

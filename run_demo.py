@@ -7,6 +7,7 @@ apps/api/static/ (index.html, app.js, styles.css) and is mounted by FastAPI
 (apps/api/web.py) at /, /dashboard, /upload, etc. Same origin as the API.
 
 - Dependency install via pip if fastapi/uvicorn/multipart are missing.
+- Uses pyproject.toml as the single Python dependency source of truth.
 - Binds 0.0.0.0 by default; port from PORT / WEB_PORT env or --port (default 7860).
 - Optional --share: cloudflared or ngrok quick tunnel.
 """
@@ -24,8 +25,6 @@ import time
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent
-REQUIREMENTS = REPO_ROOT / "requirements.txt"
-
 # FastAPI ASGI app: apps/api/main.py defines `app = create_app()`
 APP_IMPORT = "apps.api.main:app"
 
@@ -40,7 +39,7 @@ def _ensure_repo_on_path() -> None:
 
 
 def ensure_dependencies() -> None:
-    """Install from requirements.txt if any runtime deps are missing."""
+    """Install from pyproject.toml if required runtime deps are missing."""
     need_install = False
     try:
         import fastapi  # noqa: F401
@@ -59,24 +58,7 @@ def ensure_dependencies() -> None:
     if not need_install:
         return
 
-    if REQUIREMENTS.is_file():
-        subprocess.check_call(
-            [sys.executable, "-m", "pip", "install", "-q", "-r", str(REQUIREMENTS)]
-        )
-    else:
-        subprocess.check_call(
-            [
-                sys.executable,
-                "-m",
-                "pip",
-                "install",
-                "numpy",
-                "pydantic>=2",
-                "fastapi>=0.110",
-                "uvicorn[standard]>=0.29",
-                "python-multipart",
-            ]
-        )
+    subprocess.check_call([sys.executable, "-m", "pip", "install", "-q", "-e", str(REPO_ROOT)])
 
 
 def _parse_args() -> argparse.Namespace:

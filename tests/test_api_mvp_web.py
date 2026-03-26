@@ -151,17 +151,18 @@ def test_mvp_routes_available(tmp_path) -> None:
     home = client.get("/")
     assert home.status_code == 200
     assert "text/html" in home.headers.get("content-type", "")
+    assert "cdn.jsdelivr.net/npm/three@0.162.0" in home.text
     demo_tour = client.get("/demo/sii")
     assert demo_tour.status_code == 200
     assert "text/html" in demo_tour.headers.get("content-type", "")
     js = client.get("/web/app.js")
     css = client.get("/web/styles.css")
+    three_init = client.get("/web/three-init.mjs")
     assert js.status_code == 200
     assert css.status_code == 200
-    three = client.get("/web/vendor/three/build/three.module.js")
-    assert three.status_code == 200
-    assert "text/javascript" in three.headers.get("content-type", "")
-    assert "REVISION" in three.text[:4000] and "Three.js" in three.text[:4000]
+    assert three_init.status_code == 200
+    assert "text/javascript" in three_init.headers.get("content-type", "")
+    assert "cdn.jsdelivr.net/npm/three@0.162.0" in three_init.text
 
 
 def test_web_js_smoke_wiring_for_demo_critical_controls(tmp_path) -> None:
