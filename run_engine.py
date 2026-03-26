@@ -73,11 +73,24 @@ class StructuralEngine:
         self._cumulative_drift_excess: float = 0.0
         self._sensor_shift_history: deque[float] = deque(maxlen=120)
         self._sensor_shift_streak: int = 0
+        self._metric_history: dict[str, deque[float]] = {
+            "transition_pressure": deque(maxlen=160),
+            "lock_in_score": deque(maxlen=160),
+            "branching_factor": deque(maxlen=160),
+            "state_contraction_score": deque(maxlen=160),
+            "local_volume": deque(maxlen=160),
+            "curvature": deque(maxlen=160),
+            "directional_consistency": deque(maxlen=160),
+            "recovery_margin": deque(maxlen=160),
+        }
+        self._entity_baseline_stability: deque[float] = deque(maxlen=240)
+        self._early_warning_state_history: deque[str] = deque(maxlen=48)
         self.geometry_layer = StatisticalGeometryLayer(max_history=384, graph_window=24, stats_window=16)
         self._latest_geometry: Dict = {"available": False, "reason": "insufficient history"}
         self._latest_state_space_statistics: Dict = {"available": False, "reason": "insufficient history"}
         self._latest_state_graph: Dict = {"available": False, "reason": "insufficient history"}
         self._geometry_debug_frames_logged: int = 0
+        self._early_warning_debug_frames_logged: int = 0
 
     def _vector_from_frame(self, frame: Dict) -> np.ndarray:
         """
@@ -283,6 +296,201 @@ class StructuralEngine:
         if len(values) < 2:
             return 0.0
         return float(values[-1] - values[0]) / float(len(values) - 1)
+
+    @staticmethod
+    def _safe_float(value: object, default: float = 0.0) -> float:
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return float(default)
+
+    def _history_tail(self, key: str, size: int = 8) -> List[float]:
+        hist = list(self._metric_history.get(key, deque()))
+        return [float(v) for v in hist[-min(size, len(hist)) :]] if hist else []
+
+    def _delta_from_history(self, key: str) -> float:
+        tail = self._history_tail(key, size=2)
+        if len(tail) < 2:
+            return 0.0
+        return float(tail[-1] - tail[-2])
+
+    def _persistent_worsening(self, values: List[float], worsen_if_high: bool = True) -> float:
+        if len(values) < 3:
+            return 0.0
+        diffs = [values[i] - values[i - 1] for i in range(1, len(values))]
+        if not worsen_if_high:
+            diffs = [-d for d in diffs]
+        positive = [d for d in diffs if d > 0.0]
+        ratio = float(len(positive)) / float(max(1, len(diffs)))
+        avg = float(np.mean(positive)) if positive else 0.0
+        return self._clamp01(0.65 * ratio + 0.35 * self._clamp01(avg / 0.05))
+
+    def _compute_early_warning(
+        self,
+        *,
+        drift_score: float,
+        velocity: float,
+        transition: Dict,
+        geometry: Optional[Dict],
+        state_space_statistics: Optional[Dict],
+        state_graph: Optional[Dict],
+        vector: np.ndarray,
+    ) -> Dict:
+        geometry = geometry or {}
+        state_space_statistics = state_space_statistics or {}
+        state_graph = state_graph or {}
+        pressure = self._safe_float(transition.get("transition_pressure", 0.0))
+        lock_in = self._safe_float(
+            (self.latest_result or {}).get("experimental_analytics", {}).get("constraint_analysis", {}).get("lock_in_score", 0.0)
+        )
+        recovery_margin = self._clamp01(1.0 - lock_in)
+        branching_factor = self._safe_float(state_graph.get("branching_factor", 0.0))
+        contraction = self._safe_float(state_space_statistics.get("state_contraction_score", 0.0))
+        local_volume = self._safe_float(state_space_statistics.get("local_volume", 0.0))
+        curvature = self._safe_float(geometry.get("curvature", 0.0))
+        directional_consistency = self._clamp01(self._safe_float(geometry.get("directional_consistency", 1.0), 1.0))
+
+        self._metric_history["transition_pressure"].append(pressure)
+        self._metric_history["lock_in_score"].append(lock_in)
+        self._metric_history["branching_factor"].append(branching_factor)
+        self._metric_history["state_contraction_score"].append(contraction)
+        self._metric_history["local_volume"].append(local_volume)
+        self._metric_history["curvature"].append(curvature)
+        self._metric_history["directional_consistency"].append(directional_consistency)
+        self._metric_history["recovery_margin"].append(recovery_margin)
+
+        # Entity-relative baseline (only from historically stable frames).
+        if drift_score <= 1.4 and pressure <= 0.46 and lock_in <= 0.34:
+            self._entity_baseline_stability.append(float(drift_score))
+        baseline_center = float(np.median(self._entity_baseline_stability)) if self._entity_baseline_stability else max(0.2, drift_score)
+        baseline_spread = float(np.std(np.asarray(self._entity_baseline_stability, dtype=float))) if len(self._entity_baseline_stability) >= 6 else 0.12
+        baseline_spread = max(0.08, baseline_spread)
+        entity_relative_deviation = self._clamp01((drift_score - baseline_center) / (2.9 * baseline_spread + 1e-6))
+
+        # Geometry-informed early strain.
+        recent_vectors = [f.get("_vector") for f in list(self.frames)[-14:] if isinstance(f.get("_vector"), np.ndarray)]
+        direction_variance = 0.0
+        smoothness_instability = 0.0
+        local_curvature_pre_drift = 0.0
+        if len(recent_vectors) >= 5 and not np.isnan(vector).any():
+            mat = np.vstack([np.asarray(v, dtype=float) for v in recent_vectors if not np.isnan(v).any()])
+            if mat.shape[0] >= 5:
+                deltas = np.diff(mat, axis=0)
+                norms = np.linalg.norm(deltas, axis=1)
+                valid = norms > 1e-9
+                if np.any(valid):
+                    unit = deltas[valid] / norms[valid][:, None]
+                    direction_variance = self._clamp01(float(np.mean(np.var(unit, axis=0))) * 3.0)
+                if norms.size >= 3:
+                    smoothness_instability = self._clamp01(float(np.std(norms) / (np.mean(norms) + 1e-6)))
+                accel = np.diff(deltas, axis=0) if deltas.shape[0] >= 2 else np.zeros((0, deltas.shape[1]))
+                if accel.size > 0:
+                    acc_norm = np.linalg.norm(accel, axis=1)
+                    vel_norm = np.linalg.norm(deltas[1:], axis=1) + 1e-9
+                    local_curvature_pre_drift = self._clamp01(float(np.mean(acc_norm / vel_norm)) * 0.35)
+
+        pressure_tail = self._history_tail("transition_pressure", size=8)
+        lock_tail = self._history_tail("lock_in_score", size=8)
+        contraction_tail = self._history_tail("state_contraction_score", size=8)
+        recovery_tail = self._history_tail("recovery_margin", size=8)
+        branching_tail = self._history_tail("branching_factor", size=8)
+        directional_tail = self._history_tail("directional_consistency", size=8)
+        volume_tail = self._history_tail("local_volume", size=8)
+        curvature_tail = self._history_tail("curvature", size=8)
+
+        pressure_persist = self._persistent_worsening(pressure_tail, worsen_if_high=True)
+        lock_persist = self._persistent_worsening(lock_tail, worsen_if_high=True)
+        contraction_persist = self._persistent_worsening(contraction_tail, worsen_if_high=True)
+        recovery_fall_persist = self._persistent_worsening(recovery_tail, worsen_if_high=False)
+        directional_fall_persist = self._persistent_worsening(directional_tail, worsen_if_high=False)
+        curvature_persist = self._persistent_worsening(curvature_tail, worsen_if_high=True)
+        volume_regime_shift = self._clamp01(abs(self._trend(volume_tail)) / 0.04) if len(volume_tail) >= 3 else 0.0
+        branch_pressure = self._clamp01(max(0.0, self._trend(branching_tail)) / 0.08) if len(branching_tail) >= 3 else 0.0
+
+        short_hint = self._clamp01(
+            0.21 * direction_variance
+            + 0.16 * local_curvature_pre_drift
+            + 0.15 * smoothness_instability
+            + 0.14 * self._clamp01(1.0 - directional_consistency)
+            + 0.16 * self._clamp01(curvature)
+            + 0.18 * entity_relative_deviation
+        )
+        mid_confirmation = self._clamp01(
+            0.22 * pressure_persist
+            + 0.18 * contraction_persist
+            + 0.16 * recovery_fall_persist
+            + 0.14 * directional_fall_persist
+            + 0.12 * curvature_persist
+            + 0.10 * branch_pressure
+            + 0.08 * volume_regime_shift
+        )
+        long_commitment = self._clamp01(
+            0.24 * self._clamp01(pressure)
+            + 0.20 * self._clamp01(lock_in)
+            + 0.14 * self._clamp01(contraction)
+            + 0.14 * self._clamp01(1.0 - recovery_margin)
+            + 0.12 * self._clamp01(abs(velocity) / 0.2)
+            + 0.16 * self._clamp01(drift_score / 4.5)
+        )
+
+        stability_erosion_score = self._clamp01(0.48 * short_hint + 0.52 * mid_confirmation)
+        coherence_breakdown_score = self._clamp01(
+            0.30 * directional_fall_persist
+            + 0.24 * direction_variance
+            + 0.18 * branch_pressure
+            + 0.14 * volume_regime_shift
+            + 0.14 * self._clamp01(1.0 - smoothness_instability)
+        )
+        pre_instability_score = self._clamp01(
+            0.36 * stability_erosion_score
+            + 0.27 * coherence_breakdown_score
+            + 0.22 * short_hint
+            + 0.15 * long_commitment
+        )
+        pre_commitment_score = self._clamp01(0.55 * mid_confirmation + 0.45 * long_commitment)
+        structural_strain_score = self._clamp01(0.5 * direction_variance + 0.5 * local_curvature_pre_drift)
+        deviation_acceleration_score = self._clamp01(max(0.0, self._delta_from_history("transition_pressure")) / 0.08)
+
+        reasons: List[str] = []
+        if stability_erosion_score >= 0.44:
+            reasons.append("stability_erosion_persistent")
+        if coherence_breakdown_score >= 0.42:
+            reasons.append("coherence_breakdown_signals")
+        if pressure_persist >= 0.5:
+            reasons.append("transition_pressure_persistence")
+        if recovery_fall_persist >= 0.45:
+            reasons.append("recovery_margin_shrinking")
+        if directional_fall_persist >= 0.45:
+            reasons.append("directional_coherence_loss")
+        if branch_pressure >= 0.42:
+            reasons.append("branching_tension_rising")
+        if not reasons:
+            reasons.append("no_persistent_early_instability")
+
+        if pre_instability_score >= 0.83 and pre_commitment_score >= 0.62:
+            ew_state = "alert"
+        elif pre_instability_score >= 0.58 and (mid_confirmation >= 0.42 or short_hint >= 0.55):
+            ew_state = "emerging_instability"
+        elif pre_instability_score >= 0.38 and stability_erosion_score >= 0.34:
+            ew_state = "pre_instability"
+        else:
+            ew_state = "stable"
+        self._early_warning_state_history.append(ew_state)
+
+        return {
+            "pre_instability_score": round(pre_instability_score, 4),
+            "stability_erosion_score": round(stability_erosion_score, 4),
+            "coherence_breakdown_score": round(coherence_breakdown_score, 4),
+            "structural_strain_score": round(structural_strain_score, 4),
+            "pre_commitment_score": round(pre_commitment_score, 4),
+            "deviation_acceleration_score": round(deviation_acceleration_score, 4),
+            "early_warning_state": ew_state,
+            "early_warning_reasons": reasons[:6],
+            "short_window_hint": round(short_hint, 4),
+            "mid_window_confirmation": round(mid_confirmation, 4),
+            "long_window_commitment": round(long_commitment, 4),
+            "entity_relative_deviation": round(entity_relative_deviation, 4),
+        }
 
     def _update_histories(self, *, drift_score: float, velocity: float, state: str, pressure: float) -> None:
         shock_activity = self._clamp01(abs(velocity) / 0.35)
@@ -697,6 +905,7 @@ class StructuralEngine:
         geometry: Optional[Dict] = None,
         state_space_statistics: Optional[Dict] = None,
         state_graph: Optional[Dict] = None,
+        early_warning: Optional[Dict] = None,
     ) -> Dict:
         if len(self._structural_drift_history) < 3:
             unavailable = self._analytics_unavailable("insufficient history")
@@ -711,6 +920,7 @@ class StructuralEngine:
         geometry = geometry or self._latest_geometry
         state_space_statistics = state_space_statistics or self._latest_state_space_statistics
         state_graph = state_graph or self._latest_state_graph
+        early_warning = early_warning or {}
         geometry_available = bool(isinstance(geometry, dict) and geometry.get("available", True) is not False)
         state_stats_available = bool(
             isinstance(state_space_statistics, dict) and state_space_statistics.get("available", True) is not False
@@ -736,10 +946,15 @@ class StructuralEngine:
             dominant_path = "METASTABLE"
 
         path_confidence = self._clamp01(0.35 + abs(pressure_trend) * 4.0 + abs(drift_trend) * 2.5)
+        ew_pre = self._safe_float(early_warning.get("pre_instability_score", 0.0))
+        ew_break = self._safe_float(early_warning.get("coherence_breakdown_score", 0.0))
+        ew_erosion = self._safe_float(early_warning.get("stability_erosion_score", 0.0))
+        if dominant_path == "METASTABLE" and ew_pre >= 0.58 and ew_erosion >= 0.5:
+            dominant_path = "DIVERGING"
         trajectory = {
             "available": True,
             "dominant_path": dominant_path,
-            "path_confidence": round(path_confidence, 4),
+            "path_confidence": round(self._clamp01(path_confidence + 0.12 * ew_pre), 4),
             "trend_strength": round(abs(drift_trend) + abs(pressure_trend), 4),
         }
 
@@ -769,6 +984,7 @@ class StructuralEngine:
             + 0.08 * geom_curvature
             + 0.04 * graph_branching
             + 0.02 * graph_entropy
+            + 0.08 * ew_break
         )
         commitment = self._clamp01(1.0 - (0.85 * decision_tension + 0.15 * path_directional_ambiguity))
         branch_count_estimate = 1
@@ -854,6 +1070,7 @@ class StructuralEngine:
             + 0.08 * self._clamp01(max(0.0, pressure_trend) * 4.0)
             + 0.06 * self._clamp01(max(0.0, drift_trend) * 4.0)
             + 0.04 * local_volume
+            + 0.10 * ew_erosion
             - 0.12 * recovery_margin
             - 0.08 * decision_tension
         )
@@ -895,12 +1112,13 @@ class StructuralEngine:
             "counterfactual_simulation": counterfactual,
         }
 
-    def _assemble_result(self, base: Dict, transition: Dict, analytics: Dict) -> Dict:
+    def _assemble_result(self, base: Dict, transition: Dict, analytics: Dict, early_warning: Dict) -> Dict:
         result = {
             **base,
             "transition_pressure": transition["transition_pressure"],
             "transition_state": transition["transition_state"],
             "experimental_analytics": analytics,
+            "early_warning": early_warning,
         }
         return result
 
@@ -945,6 +1163,20 @@ class StructuralEngine:
             state_space_statistics=self._latest_state_space_statistics,
             state_graph=self._latest_state_graph,
         )
+        early_warning = self._compute_early_warning(
+            drift_score=float(base["structural_drift_score"]),
+            velocity=float(base["drift_velocity"]),
+            transition=transition,
+            geometry=self._latest_geometry,
+            state_space_statistics=self._latest_state_space_statistics,
+            state_graph=self._latest_state_graph,
+            vector=vector,
+        )
+        early_erosion = self._safe_float(early_warning.get("stability_erosion_score", 0.0))
+        pressure_boost = self._clamp01(early_erosion * 0.16)
+        transition["transition_pressure"] = round(
+            self._clamp01(self._safe_float(transition.get("transition_pressure", 0.0)) + pressure_boost), 4
+        )
         pressure_now = float(transition["transition_pressure"])
         refined_state = self._state_from_onset_evidence(
             drift_score=float(base["structural_drift_score"]),
@@ -956,6 +1188,13 @@ class StructuralEngine:
             state_space_statistics=self._latest_state_space_statistics,
             state_graph=self._latest_state_graph,
         )
+        ew_state = str(early_warning.get("early_warning_state", "stable"))
+        recent_ew = list(self._early_warning_state_history)[-6:]
+        ew_emerging_persist = sum(1 for s in recent_ew if s in {"pre_instability", "emerging_instability", "alert"}) >= 3
+        if refined_state == "STABLE" and ew_state in {"pre_instability", "emerging_instability"} and ew_emerging_persist:
+            refined_state = "WATCH"
+        if refined_state == "WATCH" and ew_state == "alert":
+            refined_state = "ALERT"
         base["state"] = refined_state
         base["drift_alert"] = refined_state == "ALERT"
         if refined_state == "WATCH":
@@ -986,8 +1225,10 @@ class StructuralEngine:
             geometry=self._latest_geometry,
             state_space_statistics=self._latest_state_space_statistics,
             state_graph=self._latest_state_graph,
+            early_warning=early_warning,
         )
-        result = self._assemble_result(base=base, transition=transition, analytics=analytics)
+        analytics["early_warning"] = dict(early_warning)
+        result = self._assemble_result(base=base, transition=transition, analytics=analytics, early_warning=early_warning)
         result["geometry"] = self._latest_geometry
         result["state_space_statistics"] = self._latest_state_space_statistics
         result["state_graph"] = self._latest_state_graph
@@ -1006,6 +1247,20 @@ class StructuralEngine:
             print("DEBUG STATE SPACE:", result.get("state_space_statistics"))
             print("DEBUG STATE GRAPH:", result.get("state_graph"))
             self._geometry_debug_frames_logged += 1
+        if self._early_warning_debug_frames_logged < 3 and len(self.frames) >= max(8, self.recent_window):
+            print(
+                "DEBUG EARLY WARNING:",
+                {
+                    "pre_instability_score": early_warning.get("pre_instability_score"),
+                    "stability_erosion_score": early_warning.get("stability_erosion_score"),
+                    "coherence_breakdown_score": early_warning.get("coherence_breakdown_score"),
+                    "transition_pressure_delta": round(self._delta_from_history("transition_pressure"), 6),
+                    "curvature_delta": round(self._delta_from_history("curvature"), 6),
+                    "local_volume_delta": round(self._delta_from_history("local_volume"), 6),
+                    "final_early_warning_state": early_warning.get("early_warning_state"),
+                },
+            )
+            self._early_warning_debug_frames_logged += 1
 
         self.latest_result = result
         return result
