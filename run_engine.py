@@ -76,6 +76,7 @@ class StructuralEngine:
         self._metric_history: dict[str, deque[float]] = {
             "transition_pressure": deque(maxlen=160),
             "lock_in_score": deque(maxlen=160),
+            "pre_instability_score": deque(maxlen=160),
             "branching_factor": deque(maxlen=160),
             "state_contraction_score": deque(maxlen=160),
             "local_volume": deque(maxlen=160),
@@ -450,6 +451,7 @@ class StructuralEngine:
         pre_commitment_score = self._clamp01(0.55 * mid_confirmation + 0.45 * long_commitment)
         structural_strain_score = self._clamp01(0.5 * direction_variance + 0.5 * local_curvature_pre_drift)
         deviation_acceleration_score = self._clamp01(max(0.0, self._delta_from_history("transition_pressure")) / 0.08)
+        self._metric_history["pre_instability_score"].append(pre_instability_score)
 
         reasons: List[str] = []
         if stability_erosion_score >= 0.44:
@@ -1050,6 +1052,7 @@ class StructuralEngine:
         }
 
         horizon_bucket = "LONGER_HORIZON"
+        horizon_before_adjustment = horizon_bucket
         pressure_persist = self._clamp01(float(sum(1 for p in pressure_tail if p >= 0.64)) / max(1, len(pressure_tail)))
         sustained_horizon_pressure = self._clamp01(float(sum(1 for p in pressure_tail[-4:] if p >= 0.72)) / max(1, len(pressure_tail[-4:])))
         accel = self._clamp01(max(0.0, self._trend([float(v) for v in list(self._velocity_history)[-6:]])) / 0.06)
@@ -1086,7 +1089,48 @@ class StructuralEngine:
             horizon_bucket = "NEAR_TERM"
         elif horizon_signal >= 0.4:
             horizon_bucket = "MID_TERM"
-        horizon = {"available": True, "risk_horizon": horizon_bucket, "horizon_score": round(self._clamp01(horizon_signal), 4)}
+        early_warning_state = str(early_warning.get("early_warning_state", "stable"))
+        ew_recent_states = list(self._early_warning_state_history)[-8:]
+        ew_preinstability_count = sum(1 for state in ew_recent_states if state == "pre_instability")
+        ew_emerging_count = sum(1 for state in ew_recent_states if state in {"pre_instability", "emerging_instability", "alert"})
+        ew_consecutive_pre = 0
+        for state in reversed(ew_recent_states):
+            if state == "pre_instability":
+                ew_consecutive_pre += 1
+            else:
+                break
+        ew_persistent = ew_preinstability_count >= 3 or ew_consecutive_pre >= 2
+
+        pre_tail = self._history_tail("pre_instability_score", size=6)
+        lock_tail = self._history_tail("lock_in_score", size=6)
+        pre_rising = len(pre_tail) >= 3 and self._trend(pre_tail[-4:]) > 0.01
+        lock_rising = len(lock_tail) >= 3 and self._trend(lock_tail[-4:]) > 0.008
+        coupled_rise = pre_rising and lock_rising
+
+        if ew_persistent and horizon_bucket == "LONGER_HORIZON":
+            horizon_bucket = "MID_TERM"
+        if (
+            coupled_rise
+            and ew_emerging_count >= 4
+            and horizon_bucket in {"LONGER_HORIZON", "MID_TERM"}
+        ):
+            horizon_bucket = "NEAR_TERM"
+
+        horizon = {
+            "available": True,
+            "risk_horizon": horizon_bucket,
+            "horizon_score": round(self._clamp01(horizon_signal), 4),
+            "rationale": {
+                "early_warning_state": early_warning_state,
+                "early_warning_persistence_count": int(ew_preinstability_count),
+                "early_warning_consecutive_pre_instability": int(ew_consecutive_pre),
+                "early_warning_emerging_count": int(ew_emerging_count),
+                "pre_instability_rising": bool(pre_rising),
+                "lock_in_rising": bool(lock_rising),
+                "horizon_before_adjustment": horizon_before_adjustment,
+                "horizon_after_adjustment": horizon_bucket,
+            },
+        }
 
         baseline_path = "DIVERGING" if dominant_path == "DIVERGING" else "METASTABLE"
         counterfactual = {
@@ -1248,6 +1292,7 @@ class StructuralEngine:
             print("DEBUG STATE GRAPH:", result.get("state_graph"))
             self._geometry_debug_frames_logged += 1
         if self._early_warning_debug_frames_logged < 3 and len(self.frames) >= max(8, self.recent_window):
+            horizon_rationale = ((analytics.get("horizon_analysis") or {}).get("rationale", {})) if isinstance(analytics, dict) else {}
             print(
                 "DEBUG EARLY WARNING:",
                 {
@@ -1257,7 +1302,10 @@ class StructuralEngine:
                     "transition_pressure_delta": round(self._delta_from_history("transition_pressure"), 6),
                     "curvature_delta": round(self._delta_from_history("curvature"), 6),
                     "local_volume_delta": round(self._delta_from_history("local_volume"), 6),
-                    "final_early_warning_state": early_warning.get("early_warning_state"),
+                    "early_warning_state": early_warning.get("early_warning_state"),
+                    "early_warning_persistence_count": horizon_rationale.get("early_warning_persistence_count"),
+                    "horizon_before_adjustment": horizon_rationale.get("horizon_before_adjustment"),
+                    "horizon_after_adjustment": horizon_rationale.get("horizon_after_adjustment"),
                 },
             )
             self._early_warning_debug_frames_logged += 1
