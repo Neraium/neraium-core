@@ -180,6 +180,11 @@ class StructuralEngine:
         self._shock_activity_history: deque[float] = deque(maxlen=TRANSITION_MEMORY_WINDOW)
         self._structural_drift_history: deque[float] = deque(maxlen=TRANSITION_MEMORY_WINDOW)
         self._temporal_consistency_history: deque[float] = deque(maxlen=TRANSITION_MEMORY_WINDOW)
+        self._signal_instability_history: deque[float] = deque(maxlen=24)
+        self._shape_change_history: deque[float] = deque(maxlen=24)
+        self._spectral_shift_history: deque[float] = deque(maxlen=24)
+        self._coherence_loss_history: deque[float] = deque(maxlen=24)
+        self._raw_debug_frames_logged: int = 0
         self._episode_history: list[dict[str, object]] = []
         self._current_episode: dict[str, object] = {
             "current_episode_type": "onset",
@@ -242,6 +247,11 @@ class StructuralEngine:
         self._shock_activity_history.clear()
         self._structural_drift_history.clear()
         self._temporal_consistency_history.clear()
+        self._signal_instability_history.clear()
+        self._shape_change_history.clear()
+        self._spectral_shift_history.clear()
+        self._coherence_loss_history.clear()
+        self._raw_debug_frames_logged = 0
 
     def lock_baseline(self, locked: bool = True) -> None:
         """Lock or unlock baseline. When locked, rolling baseline stops adapting."""
@@ -539,29 +549,59 @@ class StructuralEngine:
     def _derive_signal_degradation(self, rich_features: dict[str, object] | None) -> dict[str, object]:
         payload = rich_features if isinstance(rich_features, dict) else {}
         delta = payload.get("delta", {}) if isinstance(payload.get("delta"), dict) else {}
+        change_summary = payload.get("change_summary", {}) if isinstance(payload.get("change_summary"), dict) else {}
 
-        energy_instability = self._clamp01(
+        volatility_erosion = self._clamp01(
             0.45 * max(0.0, self._signal_feature_value(delta, "rolling_energy"))
-            + 0.30 * max(0.0, self._signal_feature_value(delta, "peak_to_peak"))
-            + 0.25 * max(0.0, self._signal_feature_value(delta, "rms"))
+            + 0.20 * max(0.0, self._signal_feature_value(delta, "rolling_local_volatility"))
+            + 0.20 * max(0.0, self._signal_feature_value(delta, "mean_abs_first_diff"))
+            + 0.15 * max(0.0, self._signal_feature_value(delta, "mean_abs_second_diff"))
         )
         spectral_shift = self._clamp01(
-            0.4 * abs(self._signal_feature_value(delta, "spectral_centroid"))
-            + 0.35 * abs(self._signal_feature_value(delta, "spectral_spread"))
-            + 0.25 * max(0.0, self._signal_feature_value(delta, "spectral_entropy"))
+            0.26 * abs(self._signal_feature_value(delta, "spectral_centroid"))
+            + 0.18 * abs(self._signal_feature_value(delta, "spectral_spread"))
+            + 0.16 * max(0.0, self._signal_feature_value(delta, "spectral_entropy"))
+            + 0.20 * abs(self._signal_feature_value(delta, "low_high_frequency_energy_ratio"))
+            + 0.20 * abs(self._signal_feature_value(delta, "dominant_frequency_ratio"))
         )
-        shape_instability = self._clamp01(
-            0.4 * max(0.0, self._signal_feature_value(delta, "kurtosis"))
-            + 0.35 * abs(self._signal_feature_value(delta, "crest_factor"))
-            + 0.25 * max(0.0, self._signal_feature_value(delta, "roughness"))
+        shape_change = self._clamp01(
+            0.22 * max(0.0, self._signal_feature_value(delta, "kurtosis"))
+            + 0.15 * abs(self._signal_feature_value(delta, "crest_factor"))
+            + 0.15 * max(0.0, self._signal_feature_value(delta, "roughness"))
+            + 0.14 * max(0.0, self._signal_feature_value(delta, "percentile_spread"))
+            + 0.14 * max(0.0, self._signal_feature_value(delta, "local_jitter_score"))
+            + 0.10 * abs(self._signal_feature_value(delta, "skewness"))
         )
         coherence_loss = self._clamp01(
             0.45 * max(0.0, self._signal_feature_value(delta, "sync_loss"))
             + 0.35 * max(0.0, self._signal_feature_value(delta, "decoupling_index"))
             + 0.20 * max(0.0, self._signal_feature_value(delta, "relative_drift"))
         )
+        consistency_breakdown = self._clamp01(float(change_summary.get("feature_consistency_breakdown", 0.0)))
+        feature_drift = self._clamp01(float(change_summary.get("feature_drift_magnitude", 0.0)))
+        volatility_drift = self._clamp01(float(change_summary.get("feature_volatility_drift", 0.0)))
+        signal_instability = self._clamp01(
+            0.33 * volatility_erosion + 0.28 * shape_change + 0.19 * feature_drift + 0.20 * consistency_breakdown
+        )
+        coherence_loss = self._clamp01(0.75 * coherence_loss + 0.25 * consistency_breakdown)
+        volatility_erosion = self._clamp01(0.7 * volatility_erosion + 0.3 * volatility_drift)
 
-        total = 0.32 * energy_instability + 0.24 * spectral_shift + 0.24 * shape_instability + 0.20 * coherence_loss
+        self._signal_instability_history.append(signal_instability)
+        self._shape_change_history.append(shape_change)
+        self._spectral_shift_history.append(spectral_shift)
+        self._coherence_loss_history.append(coherence_loss)
+
+        drift_accel = 0.0
+        if len(self._signal_instability_history) >= 3:
+            vals = list(self._signal_instability_history)
+            drift_accel = max(0.0, (vals[-1] - vals[-2]) - (vals[-2] - vals[-3]))
+        trend_persistence = 0.0
+        if len(self._signal_instability_history) >= 5:
+            tail = np.asarray(list(self._signal_instability_history)[-5:], dtype=float)
+            trend_persistence = float(np.mean(np.diff(tail) > 0.0))
+        signal_instability = self._clamp01(signal_instability + 0.08 * drift_accel + 0.08 * trend_persistence)
+
+        total = 0.30 * signal_instability + 0.23 * shape_change + 0.25 * spectral_shift + 0.12 * volatility_erosion + 0.10 * coherence_loss
         if total >= 0.7:
             state = "ELEVATED"
         elif total >= 0.4:
@@ -570,19 +610,26 @@ class StructuralEngine:
             state = "NOMINAL"
 
         drivers = [
-            ("energy_instability_score", energy_instability),
+            ("signal_instability_score", signal_instability),
             ("spectral_shift_score", spectral_shift),
-            ("shape_instability_score", shape_instability),
+            ("shape_change_score", shape_change),
+            ("volatility_erosion_score", volatility_erosion),
             ("coherence_loss_score", coherence_loss),
         ]
         drivers.sort(key=lambda x: x[1], reverse=True)
 
         return {
-            "energy_instability_score": round(float(energy_instability), 4),
+            "signal_instability_score": round(float(signal_instability), 4),
+            "energy_instability_score": round(float(signal_instability), 4),
             "spectral_shift_score": round(float(spectral_shift), 4),
-            "shape_instability_score": round(float(shape_instability), 4),
+            "shape_change_score": round(float(shape_change), 4),
+            "shape_instability_score": round(float(shape_change), 4),
+            "volatility_erosion_score": round(float(volatility_erosion), 4),
             "coherence_loss_score": round(float(coherence_loss), 4),
             "signal_degradation_state": state,
+            "top_signal_drivers": [
+                {"metric": k, "score": round(float(v), 4)} for k, v in drivers[:3]
+            ],
             "top_degradation_drivers": [
                 {"metric": k, "score": round(float(v), 4)} for k, v in drivers[:3]
             ],
@@ -1350,15 +1397,16 @@ class StructuralEngine:
                     "drift": drift_score,
                     "relational_drift": relational_raw + 0.12 * float(signal_degradation.get("coherence_loss_score", 0.0)),
                     "regime_drift": regime_drift,
-                    "transition_pressure": 0.10 * float(signal_degradation.get("energy_instability_score", 0.0)),
+                    "transition_pressure": 0.07 * float(signal_degradation.get("signal_instability_score", 0.0))
+                    + 0.06 * float(signal_degradation.get("volatility_erosion_score", 0.0)),
                     "spectral": spectral["radius"] + 0.25 * float(signal_degradation.get("spectral_shift_score", 0.0)),
                     "directional": max(
                         float(directional.get("divergence", 0.0)),
                         float(causal.get("causal_divergence", 0.0)),
-                    ) + 0.10 * float(signal_degradation.get("shape_instability_score", 0.0)),
-                    "entropy": entropy_score + 0.08 * float(signal_degradation.get("shape_instability_score", 0.0)),
+                    ) + 0.10 * float(signal_degradation.get("shape_change_score", 0.0)),
+                    "entropy": entropy_score + 0.08 * float(signal_degradation.get("shape_change_score", 0.0)),
                     "subsystem_instability": float(subsystem["max_instability"]),
-                    "temporal_distortion": temporal_raw + 0.12 * float(signal_degradation.get("energy_instability_score", 0.0)),
+                    "temporal_distortion": temporal_raw + 0.12 * float(signal_degradation.get("signal_instability_score", 0.0)),
                 }
 
                 # Merge order matters: preserve early_warning computed from the
@@ -1639,11 +1687,15 @@ class StructuralEngine:
                 result["transition_pressure"] = 0.0
                 result["transition_state"] = "NONE"
                 result["signal_degradation"] = {
+                    "signal_instability_score": 0.0,
                     "energy_instability_score": 0.0,
                     "spectral_shift_score": 0.0,
+                    "shape_change_score": 0.0,
                     "shape_instability_score": 0.0,
+                    "volatility_erosion_score": 0.0,
                     "coherence_loss_score": 0.0,
                     "signal_degradation_state": "NOMINAL",
+                    "top_signal_drivers": [],
                     "top_degradation_drivers": [],
                     "composite_signal_degradation": 0.0,
                 }
@@ -2061,6 +2113,53 @@ class StructuralEngine:
                 "counterfactual_simulation": counterfactual_simulation,
                 **analytics,
             }
+            debug_raw_features = os.environ.get("NERAIUM_DEBUG_RAW_FEATURES", "0").strip().lower() not in {
+                "0",
+                "false",
+                "no",
+                "off",
+                "",
+            }
+            if debug_raw_features and self._raw_debug_frames_logged < 3:
+                sigf = analytics.get("signal_features", {}) if isinstance(analytics, dict) else {}
+                delta = sigf.get("delta", {}) if isinstance(sigf, dict) else {}
+                change_summary = sigf.get("change_summary", {}) if isinstance(sigf, dict) else {}
+                key_time = {
+                    "mean_abs_first_diff": round(float(self._signal_feature_value(delta, "mean_abs_first_diff")), 6),
+                    "std_first_diff": round(float(self._signal_feature_value(delta, "std_first_diff")), 6),
+                    "mean_abs_second_diff": round(float(self._signal_feature_value(delta, "mean_abs_second_diff")), 6),
+                    "rolling_local_volatility": round(float(self._signal_feature_value(delta, "rolling_local_volatility")), 6),
+                    "roughness": round(float(self._signal_feature_value(delta, "roughness")), 6),
+                }
+                key_freq = {
+                    "spectral_centroid": round(float(self._signal_feature_value(delta, "spectral_centroid")), 6),
+                    "spectral_entropy": round(float(self._signal_feature_value(delta, "spectral_entropy")), 6),
+                    "low_high_frequency_energy_ratio": round(float(self._signal_feature_value(delta, "low_high_frequency_energy_ratio")), 6),
+                    "dominant_frequency_ratio": round(float(self._signal_feature_value(delta, "dominant_frequency_ratio")), 6),
+                }
+                sig_deg = result.get("signal_degradation", {}) if isinstance(result.get("signal_degradation"), dict) else {}
+                print("DEBUG RAW FEATURES:", {"time_domain": key_time, "frequency_domain": key_freq, "change_summary": change_summary})
+                print(
+                    "DEBUG RAW SIGNAL SCORES:",
+                    {
+                        "signal_instability_score": sig_deg.get("signal_instability_score"),
+                        "shape_change_score": sig_deg.get("shape_change_score"),
+                        "spectral_shift_score": sig_deg.get("spectral_shift_score"),
+                        "volatility_erosion_score": sig_deg.get("volatility_erosion_score"),
+                        "coherence_loss_score": sig_deg.get("coherence_loss_score"),
+                        "state": sig_deg.get("signal_degradation_state"),
+                    },
+                )
+                print(
+                    "DEBUG RAW->GEOMETRY ACTIVATION:",
+                    {
+                        "geometry_path_length_available": (result.get("geometry", {}) or {}).get("path_length") is not None,
+                        "state_space_local_volume_available": (result.get("state_space_statistics", {}) or {}).get("local_volume") is not None,
+                        "state_graph_branching_factor_available": (result.get("state_graph", {}) or {}).get("branching_factor") is not None,
+                        "horizon": ((result.get("experimental_analytics", {}) or {}).get("horizon_analysis", {}) or {}).get("risk_horizon"),
+                    },
+                )
+                self._raw_debug_frames_logged += 1
             if os.environ.get("NERAIUM_DEBUG_EXP_ANALYTICS", "0").strip().lower() not in {"0", "false", "no", "off", ""}:
                 print("DEBUG EXP ANALYTICS:", result.get("experimental_analytics"))
                 self._debug_print_experimental_analytics_once(result)
@@ -2336,10 +2435,11 @@ class StructuralEngine:
         sig = result.get("signal_degradation", {}) if isinstance(result.get("signal_degradation"), dict) else {}
         if isinstance(result.get("explanations"), dict):
             result["explanations"]["signal_degradation"] = (
-                "energy_instability={:.2f}; spectral_shift={:.2f}; shape_instability={:.2f}; coherence_loss={:.2f}".format(
-                    float(sig.get("energy_instability_score", 0.0)),
+                "signal_instability={:.2f}; shape_change={:.2f}; spectral_shift={:.2f}; volatility_erosion={:.2f}; coherence_loss={:.2f}".format(
+                    float(sig.get("signal_instability_score", 0.0)),
+                    float(sig.get("shape_change_score", 0.0)),
                     float(sig.get("spectral_shift_score", 0.0)),
-                    float(sig.get("shape_instability_score", 0.0)),
+                    float(sig.get("volatility_erosion_score", 0.0)),
                     float(sig.get("coherence_loss_score", 0.0)),
                 )
             )

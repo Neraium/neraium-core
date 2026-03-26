@@ -74,6 +74,7 @@ def flatten_result(
     pressure_relief = _safe_list_item(counterfactuals, 0)
     continued_degradation = _safe_list_item(counterfactuals, 2)
     early_warning = _safe_get(result, "early_warning") or {}
+    signal_degradation = _safe_get(result, "signal_degradation") or {}
     gal2_payload = gal2 or unavailable_payload("disabled")
 
     return {
@@ -102,6 +103,12 @@ def flatten_result(
         "early_warning_coherence_breakdown_score": _safe_get(early_warning, "coherence_breakdown_score"),
         "early_warning_structural_strain_score": _safe_get(early_warning, "structural_strain_score"),
         "early_warning_pre_commitment_score": _safe_get(early_warning, "pre_commitment_score"),
+        "signal_degradation_signal_instability_score": _safe_get(signal_degradation, "signal_instability_score"),
+        "signal_degradation_shape_change_score": _safe_get(signal_degradation, "shape_change_score"),
+        "signal_degradation_spectral_shift_score": _safe_get(signal_degradation, "spectral_shift_score"),
+        "signal_degradation_volatility_erosion_score": _safe_get(signal_degradation, "volatility_erosion_score"),
+        "signal_degradation_coherence_loss_score": _safe_get(signal_degradation, "coherence_loss_score"),
+        "signal_degradation_state": _safe_get(signal_degradation, "signal_degradation_state"),
         "geometry_path_length": _safe_get(geometry, "path_length"),
         "geometry_local_velocity_norm": _safe_get(geometry, "local_velocity_norm"),
         "geometry_local_acceleration_norm": _safe_get(geometry, "local_acceleration_norm"),
