@@ -6,6 +6,8 @@ from typing import Any
 
 import numpy as np
 
+from neraium_core.features.window_feature_extractor import summarize_feature_delta
+
 
 def clamp(x: float, lo: float, hi: float) -> float:
     return float(max(lo, min(hi, x)))
@@ -195,6 +197,7 @@ class FeatureExtractionStage:
         rel_vec_base = flatten_upper_tri(corr_base)
         rel_vec_recent = flatten_upper_tri(corr_recent)
         signature = np.concatenate([rec_mean, rec_std, rel_vec_recent])
+        rich = summarize_feature_delta(baseline, recent)
         return {
             "base_mean": base_mean,
             "rec_mean": rec_mean,
@@ -205,6 +208,7 @@ class FeatureExtractionStage:
             "rel_vec_base": rel_vec_base,
             "rel_vec_recent": rel_vec_recent,
             "signature": signature,
+            "rich_signal_features": rich,
         }
 
 
