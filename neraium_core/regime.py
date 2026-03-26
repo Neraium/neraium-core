@@ -76,9 +76,12 @@ def _append_prototype(regime: dict[str, Any], signature: np.ndarray, *, max_prot
     if len(proto_list) > max(1, int(max_prototypes)):
         # Keep most recent prototypes to avoid overfitting to stale signatures.
         del proto_list[0 : len(proto_list) - int(max_prototypes)]
-    arr = np.asarray(proto_list, dtype=float)
-    if arr.ndim == 2 and arr.shape[0] >= 1:
-        regime["signature"] = np.mean(arr, axis=0).tolist()
+    sig_ref = np.asarray(signature, dtype=float)
+    arrs = [np.asarray(p, dtype=float) for p in proto_list if isinstance(p, list)]
+    arrs = [a for a in arrs if a.shape == sig_ref.shape]
+    if arrs:
+        stacked = np.stack(arrs, axis=0)
+        regime["signature"] = np.mean(stacked, axis=0).tolist()
 
 
 def update_regime_library(

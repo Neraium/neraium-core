@@ -24,14 +24,14 @@ from pydantic import BaseModel, Field, model_validator
 from starlette.responses import JSONResponse, Response
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
-from integration import (
+from .integration import (
     IntegrationMappingError,
     apply_integration_mapping,
     load_integration_config,
     resolve_customer_integration,
 )
-from web import build_web_router
-from _core_imports import (
+from .web import build_web_router
+from ._core_imports import (
     ResultStore,
     StructuralMonitoringService,
     log_structured,

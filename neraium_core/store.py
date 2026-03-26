@@ -3,13 +3,41 @@ from __future__ import annotations
 import json
 import logging
 import sqlite3
+from dataclasses import asdict, is_dataclass
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+import numpy as np
+
 
 logger = logging.getLogger(__name__)
+
+
+def _json_safe(obj: Any) -> Any:
+    """Recursively convert values so json.dumps succeeds (dataclasses, numpy, nested dicts)."""
+    if obj is None or isinstance(obj, (bool, int, float, str)):
+        return obj
+    if isinstance(obj, dict):
+        return {str(k): _json_safe(v) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return [_json_safe(v) for v in obj]
+    if isinstance(obj, np.ndarray):
+        return obj.tolist()
+    if isinstance(obj, (np.floating, np.integer, np.bool_)):
+        return obj.item()
+    if is_dataclass(obj) and not isinstance(obj, type):
+        try:
+            return _json_safe(asdict(obj))
+        except TypeError:
+            pass
+    if hasattr(obj, "__dict__") and not isinstance(obj, type):
+        try:
+            return _json_safe(vars(obj))
+        except Exception:
+            pass
+    return str(obj)
 DEFAULT_CUSTOMER_ID = "default-customer"
 
 
@@ -135,7 +163,7 @@ class ResultStore:
         with self._conn() as conn:
             conn.execute(
                 "INSERT INTO results (created_at, customer_id, run_id, result_json) VALUES (?, ?, ?, ?)",
-                (_utc_now(), resolved_customer, run_id, json.dumps(result)),
+                (_utc_now(), resolved_customer, run_id, json.dumps(_json_safe(result))),
             )
 
     def save_ingestion(
@@ -150,8 +178,8 @@ class ResultStore:
         logger.debug("persistence write ingestion db_path=%s", self.db_path)
         now = _utc_now()
         resolved_customer = _normalize_customer_id(customer_id)
-        payload_json = json.dumps(payload)
-        result_json = json.dumps(result)
+        payload_json = json.dumps(_json_safe(payload))
+        result_json = json.dumps(_json_safe(result))
         with self._conn() as conn:
             conn.execute(
                 "INSERT INTO results (created_at, customer_id, run_id, result_json) VALUES (?, ?, ?, ?)",
@@ -194,7 +222,7 @@ class ResultStore:
                 now = _utc_now()
                 conn.execute(
                     "INSERT INTO results (created_at, customer_id, run_id, result_json) VALUES (?, ?, ?, ?)",
-                    (now, resolved_customer, run_id, json.dumps(result)),
+                    (now, resolved_customer, run_id, json.dumps(_json_safe(result))),
                 )
                 conn.execute(
                     """
@@ -209,7 +237,7 @@ class ResultStore:
                         payload.get("site_id"),
                         payload.get("asset_id"),
                         run_id,
-                        json.dumps(payload),
+                        json.dumps(_json_safe(payload)),
                         result.get("timestamp"),
                     ),
                 )
@@ -281,7 +309,7 @@ class ResultStore:
                     payload.get("site_id"),
                     payload.get("asset_id"),
                     run_id,
-                    json.dumps(payload),
+                    json.dumps(_json_safe(payload)),
                     result.get("timestamp"),
                 ),
             )
