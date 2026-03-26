@@ -73,6 +73,7 @@ def flatten_result(
     counterfactuals = _safe_get(experimental, "counterfactual_simulation", "counterfactuals")
     pressure_relief = _safe_list_item(counterfactuals, 0)
     continued_degradation = _safe_list_item(counterfactuals, 2)
+    early_warning = _safe_get(result, "early_warning") or {}
     gal2_payload = gal2 or unavailable_payload("disabled")
 
     return {
@@ -95,6 +96,12 @@ def flatten_result(
         "constraint_analysis_lock_in_score": _safe_get(experimental, "constraint_analysis", "lock_in_score"),
         "constraint_analysis_point_of_no_return_risk": _safe_get(experimental, "constraint_analysis", "point_of_no_return_risk"),
         "constraint_analysis_recovery_margin": _safe_get(experimental, "constraint_analysis", "recovery_margin"),
+        "early_warning_state": _safe_get(early_warning, "early_warning_state"),
+        "early_warning_pre_instability_score": _safe_get(early_warning, "pre_instability_score"),
+        "early_warning_stability_erosion_score": _safe_get(early_warning, "stability_erosion_score"),
+        "early_warning_coherence_breakdown_score": _safe_get(early_warning, "coherence_breakdown_score"),
+        "early_warning_structural_strain_score": _safe_get(early_warning, "structural_strain_score"),
+        "early_warning_pre_commitment_score": _safe_get(early_warning, "pre_commitment_score"),
         "geometry_path_length": _safe_get(geometry, "path_length"),
         "geometry_local_velocity_norm": _safe_get(geometry, "local_velocity_norm"),
         "geometry_local_acceleration_norm": _safe_get(geometry, "local_acceleration_norm"),
