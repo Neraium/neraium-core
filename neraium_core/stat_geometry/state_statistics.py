@@ -10,6 +10,17 @@ def _effective_rank(vals: np.ndarray) -> float:
     return float(np.exp(entropy))
 
 
+def _regularized_covariance(samples: np.ndarray, epsilon: float) -> np.ndarray:
+    if samples.shape[0] <= 1:
+        dim = samples.shape[1] if samples.ndim == 2 else 1
+        return np.eye(dim, dtype=float) * float(epsilon)
+    cov = np.cov(samples.T)
+    cov = np.atleast_2d(np.nan_to_num(cov, nan=0.0, posinf=0.0, neginf=0.0))
+    cov = 0.5 * (cov + cov.T)
+    dim = cov.shape[0]
+    return cov + (float(epsilon) * np.eye(dim, dtype=float))
+
+
 def compute_state_statistics(path: list[np.ndarray], window: int = 12) -> dict[str, float]:
     if not path:
         return {
@@ -26,16 +37,17 @@ def compute_state_statistics(path: list[np.ndarray], window: int = 12) -> dict[s
     tail = np.vstack([np.asarray(v, dtype=float) for v in path[-max(2, window):]])
     center = np.mean(tail, axis=0)
     centered = tail - center
-    cov = np.cov(centered.T) if tail.shape[0] > 1 else np.zeros((tail.shape[1], tail.shape[1]), dtype=float)
-    cov = np.atleast_2d(np.nan_to_num(cov, nan=0.0, posinf=0.0, neginf=0.0))
-    eigvals, _ = np.linalg.eigh(0.5 * (cov + cov.T))
-    eigvals = np.clip(np.asarray(eigvals, dtype=float), 1e-12, None)
+    epsilon = 1e-6
+    cov = _regularized_covariance(centered, epsilon=epsilon)
+    eigvals, _ = np.linalg.eigh(cov)
+    eigvals = np.clip(np.asarray(eigvals, dtype=float), epsilon, None)
 
     trace = float(np.sum(eigvals))
     principal = float(np.max(eigvals)) if eigvals.size else 0.0
     principal_strength = float(principal / (trace + 1e-12))
     anisotropy = float((np.max(eigvals) - np.min(eigvals)) / (np.max(eigvals) + 1e-12))
-    volume = float(np.prod(np.sqrt(eigvals + 1e-9)))
+    log_det = float(np.sum(np.log(eigvals + 1e-12)))
+    volume = float(np.exp(0.5 * log_det / max(1, eigvals.size)))
 
     dists = np.linalg.norm(centered, axis=1)
     scale = float(np.mean(dists) + 1e-9)
@@ -46,8 +58,7 @@ def compute_state_statistics(path: list[np.ndarray], window: int = 12) -> dict[s
     expansion = 0.0
     if first:
         prev = np.vstack([np.asarray(v, dtype=float) for v in first])
-        prev_cov = np.cov((prev - np.mean(prev, axis=0)).T) if prev.shape[0] > 1 else np.zeros_like(cov)
-        prev_cov = np.atleast_2d(np.nan_to_num(prev_cov, nan=0.0, posinf=0.0, neginf=0.0))
+        prev_cov = _regularized_covariance(prev - np.mean(prev, axis=0), epsilon=epsilon)
         prev_trace = float(np.trace(prev_cov))
         delta = trace - prev_trace
         contraction = float(max(0.0, -delta) / (abs(prev_trace) + 1e-9))
