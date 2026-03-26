@@ -21,6 +21,26 @@ def _regularized_covariance(samples: np.ndarray, epsilon: float) -> np.ndarray:
     return cov + (float(epsilon) * np.eye(dim, dtype=float))
 
 
+def _safe_logdet(cov: np.ndarray, epsilon: float) -> tuple[float, np.ndarray]:
+    """Return stable log-determinant and a PSD-regularized covariance."""
+    dim = cov.shape[0]
+    base = np.eye(dim, dtype=float)
+    eps = max(float(epsilon), 1e-12)
+
+    for _ in range(8):
+        cov_reg = cov + eps * base
+        sign, logdet = np.linalg.slogdet(cov_reg)
+        if sign > 0 and np.isfinite(logdet):
+            return float(logdet), cov_reg
+        eps *= 10.0
+
+    eigvals, eigvecs = np.linalg.eigh(0.5 * (cov + cov.T))
+    eigvals = np.clip(np.asarray(eigvals, dtype=float), eps, None)
+    cov_psd = eigvecs @ np.diag(eigvals) @ eigvecs.T
+    logdet = float(np.sum(np.log(eigvals)))
+    return logdet, cov_psd
+
+
 def compute_state_statistics(path: list[np.ndarray], window: int = 12) -> dict[str, float]:
     if not path:
         return {
@@ -38,16 +58,18 @@ def compute_state_statistics(path: list[np.ndarray], window: int = 12) -> dict[s
     center = np.mean(tail, axis=0)
     centered = tail - center
     epsilon = 1e-6
-    cov = _regularized_covariance(centered, epsilon=epsilon)
-    eigvals, _ = np.linalg.eigh(cov)
+    cov = _regularized_covariance(centered, epsilon=0.0)
+    log_det, cov_reg = _safe_logdet(cov, epsilon=epsilon)
+    eigvals, _ = np.linalg.eigh(cov_reg)
     eigvals = np.clip(np.asarray(eigvals, dtype=float), epsilon, None)
 
     trace = float(np.sum(eigvals))
     principal = float(np.max(eigvals)) if eigvals.size else 0.0
     principal_strength = float(principal / (trace + 1e-12))
     anisotropy = float((np.max(eigvals) - np.min(eigvals)) / (np.max(eigvals) + 1e-12))
-    log_det = float(np.sum(np.log(eigvals + 1e-12)))
-    volume = float(np.exp(0.5 * log_det / max(1, eigvals.size)))
+    dimension = max(1, int(cov_reg.shape[0]))
+    volume = float(np.exp(log_det / dimension))
+    volume = max(volume, epsilon)
 
     dists = np.linalg.norm(centered, axis=1)
     scale = float(np.mean(dists) + 1e-9)
@@ -67,7 +89,7 @@ def compute_state_statistics(path: list[np.ndarray], window: int = 12) -> dict[s
     concentration = float(1.0 / max(1.0, _effective_rank(eigvals)))
 
     return {
-        "local_volume": round(volume, 6),
+        "local_volume": round(volume, 9),
         "local_density": round(density, 6),
         "covariance_trace": round(trace, 6),
         "principal_direction_strength": round(principal_strength, 6),
