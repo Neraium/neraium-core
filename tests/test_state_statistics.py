@@ -23,3 +23,10 @@ def test_local_volume_varies_over_time_with_state_changes() -> None:
     assert before["local_volume"] > 0.0
     assert after["local_volume"] > 0.0
     assert before["local_volume"] != after["local_volume"]
+
+
+def test_state_statistics_skips_tiny_covariance_windows() -> None:
+    short_path = [np.array([0.1 * i, -0.2 * i, 1.0]) for i in range(6)]
+    stats = compute_state_statistics(short_path, window=4, min_covariance_samples=20)
+    assert stats["covariance_trace"] == 0.0
+    assert stats["local_volume"] == 0.0
