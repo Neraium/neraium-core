@@ -19,6 +19,10 @@ COMMITMENT_MODERATE_MARGIN = 0.22
 COMMITMENT_MODERATE_ENTROPY_MAX = 0.90
 
 
+def _clamp01(value: float) -> float:
+    return max(0.0, min(1.0, float(value)))
+
+
 def _safe_score(value: object) -> float:
     try:
         score = float(value)
@@ -105,6 +109,14 @@ def derive_branching_analysis(
     graph_divergence_effective = _safe_score((state_graph or {}).get("graph_divergence_effective", graph_divergence))
     directional_inconsistency = _safe_score((state_graph or {}).get("directional_inconsistency", 0.0))
     raw_divergence_score = _safe_score((state_graph or {}).get("raw_divergence_score", 0.0))
+    revisit_rate = _safe_score((state_graph or {}).get("revisit_rate", 0.0))
+    path_commitment_score = _safe_score((state_graph or {}).get("path_commitment_score", 0.0))
+    anisotropy = _safe_score((geometry or {}).get("anisotropy", 1.0))
+    anisotropy_norm = _clamp01(anisotropy - 1.0)
+    curvature_norm = _clamp01(_safe_score((geometry or {}).get("curvature", 0.0) or 0.0) * 8.0)
+    counterfactual_spread = _safe_score(trajectory_analysis.get("counterfactual_spread", 0.0))
+    if counterfactual_spread <= 1e-9:
+        counterfactual_spread = _clamp01(1.0 - margin)
 
     normalized_branching_signal = max(
         0.0,
@@ -130,6 +142,9 @@ def derive_branching_analysis(
         + 0.04 * temporal_gap_irregularity
         + 0.03 * min(1.0, directional_inconsistency)
         + 0.03 * min(1.0, raw_divergence_score)
+        + 0.04 * anisotropy_norm
+        + 0.04 * counterfactual_spread
+        + 0.04 * curvature_norm
     )
     branch_tension = max(0.0, min(1.0, branch_tension))
 
@@ -149,8 +164,27 @@ def derive_branching_analysis(
     support_total = sum(supports) + 1e-12
     support_probs = [max(0.0, s) / support_total for s in supports] if supports else [top_prob, second_prob]
     branch_entropy = _normalized_entropy(support_probs)
-    support_branch_count = len([p for p in support_probs if p >= 0.12])
-    graph_branch_count = 1 + int(round(3.0 * normalized_branching_signal))
+    support_branch_count = len([p for p in support_probs if p >= 0.15])
+    branch_expressiveness = _clamp01(
+        0.30 * transition_entropy_effective
+        + 0.25 * graph_divergence_effective
+        + 0.15 * branch_entropy
+        + 0.10 * directional_inconsistency
+        + 0.10 * (1.0 - path_commitment_score)
+        + 0.10 * counterfactual_spread
+    )
+    branch_response = _clamp01(
+        0.45 * normalized_branching_signal
+        + 0.25 * branch_expressiveness
+        + 0.15 * anisotropy_norm
+        + 0.10 * curvature_norm
+        + 0.05 * revisit_rate
+    )
+    graph_branch_count = 1 + int(round(2.0 * branch_response))
+    if branch_response >= 0.50 and support_branch_count < 2:
+        support_branch_count = 2
+    if branch_response >= 0.76 and support_branch_count < 3:
+        support_branch_count = 3
     branch_count = max(1, min(len(PATH_KEYS), max(support_branch_count, graph_branch_count)))
     path_diversity = 1.0 - max(support_probs) if support_probs else 0.0
     transition_freq = max(0.0, min(1.0, directional_div * 0.55 + shape_div * 0.45))
@@ -196,6 +230,13 @@ def derive_branching_analysis(
             "state_graph_graph_divergence_effective": round(float(graph_divergence_effective), 4),
             "state_graph_directional_inconsistency": round(float(directional_inconsistency), 4),
             "state_graph_raw_divergence_score": round(float(raw_divergence_score), 4),
+            "state_graph_revisit_rate": round(float(revisit_rate), 4),
+            "state_graph_path_commitment_score": round(float(path_commitment_score), 4),
+            "anisotropy_normalized": round(float(anisotropy_norm), 4),
+            "counterfactual_spread": round(float(counterfactual_spread), 4),
+            "curvature_normalized": round(float(curvature_norm), 4),
+            "branch_expressiveness": round(float(branch_expressiveness), 4),
+            "branch_response": round(float(branch_response), 4),
         },
         "thresholds": {
             "branch_margin_max": BRANCH_MARGIN_MAX,
