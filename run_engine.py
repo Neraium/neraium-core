@@ -4,6 +4,8 @@ from typing import Dict, List, Optional
 
 import numpy as np
 
+from neraium_core.stat_geometry import StatisticalGeometryLayer
+
 
 class StructuralEngine:
     """
@@ -71,6 +73,11 @@ class StructuralEngine:
         self._cumulative_drift_excess: float = 0.0
         self._sensor_shift_history: deque[float] = deque(maxlen=120)
         self._sensor_shift_streak: int = 0
+        self.geometry_layer = StatisticalGeometryLayer(max_history=384, graph_window=24, stats_window=16)
+        self._latest_geometry: Dict = {"available": False, "reason": "insufficient history"}
+        self._latest_state_space_statistics: Dict = {"available": False, "reason": "insufficient history"}
+        self._latest_state_graph: Dict = {"available": False, "reason": "insufficient history"}
+        self._geometry_debug_frames_logged: int = 0
 
     def _vector_from_frame(self, frame: Dict) -> np.ndarray:
         """
@@ -380,7 +387,16 @@ class StructuralEngine:
             "regime_name": regime_name,
         }
 
-    def _compute_transition_metrics(self, *, drift_score: float, velocity: float, stability_score: float) -> Dict:
+    def _compute_transition_metrics(
+        self,
+        *,
+        drift_score: float,
+        velocity: float,
+        stability_score: float,
+        geometry: Optional[Dict] = None,
+        state_space_statistics: Optional[Dict] = None,
+        state_graph: Optional[Dict] = None,
+    ) -> Dict:
         drift_n = self._clamp01(drift_score / 4.5)
         vel_n = self._clamp01(max(0.0, velocity) / 0.22)
         acc_n = 0.0
@@ -396,14 +412,43 @@ class StructuralEngine:
         trend_alignment = self._clamp01(
             1.0 - min(1.0, abs(self._trend(list(self._drift_history)[-6:]) - self._trend(list(self._transition_pressure_history)[-6:])) / 0.18)
         ) if len(self._drift_history) >= 3 and len(self._transition_pressure_history) >= 3 else 0.5
+        geometry_available = bool(isinstance(geometry, dict) and geometry.get("available", True) is not False)
+        state_stats_available = bool(
+            isinstance(state_space_statistics, dict) and state_space_statistics.get("available", True) is not False
+        )
+        state_graph_available = bool(isinstance(state_graph, dict) and state_graph.get("available", True) is not False)
+        geom_curvature = self._clamp01(float((geometry or {}).get("curvature", 0.0))) if geometry_available else 0.0
+        geom_direction = (
+            self._clamp01(float((geometry or {}).get("directional_consistency", 0.0)))
+            if geometry_available
+            else 0.5
+        )
+        stat_local_volume = (
+            self._clamp01(float((state_space_statistics or {}).get("local_volume", 0.0)))
+            if state_stats_available
+            else 0.0
+        )
+        graph_branching = (
+            self._clamp01(float((state_graph or {}).get("branching_factor", 0.0)))
+            if state_graph_available
+            else 0.0
+        )
+        graph_entropy = (
+            self._clamp01(float((state_graph or {}).get("transition_entropy", 0.0)))
+            if state_graph_available
+            else 0.0
+        )
         evidence = self._clamp01(
-            0.24 * persistence
-            + 0.20 * drift_n
+            0.21 * persistence
+            + 0.18 * drift_n
             + 0.16 * vel_n
             + 0.13 * acc_n
             + 0.09 * disagreement
             + 0.08 * noise_sep
             + 0.10 * trend_alignment
+            + 0.03 * geom_curvature
+            + 0.01 * (1.0 - geom_direction)
+            + 0.01 * stat_local_volume
         )
         prior = list(self._evidence_history)
         if len(prior) >= 10:
@@ -412,7 +457,7 @@ class StructuralEngine:
             contrast = self._clamp01((evidence - threshold) / max(0.08, 2.0 * float(np.std(base))))
         else:
             contrast = 0.5 * evidence
-        pressure = self._clamp01(0.54 * evidence + 0.46 * contrast)
+        pressure = self._clamp01(0.52 * evidence + 0.42 * contrast + 0.04 * graph_branching + 0.02 * graph_entropy)
         self._evidence_history.append(float(evidence))
         recent_evidence = list(self._evidence_history)[-5:]
         evidence_persistence = self._clamp01(float(sum(1 for e in recent_evidence if e >= 0.55)) / max(1, len(recent_evidence)))
@@ -469,6 +514,9 @@ class StructuralEngine:
         stability_score: float,
         transition_pressure: float,
         vector: np.ndarray,
+        geometry: Optional[Dict] = None,
+        state_space_statistics: Optional[Dict] = None,
+        state_graph: Optional[Dict] = None,
     ) -> str:
         center, spread = self._baseline_reference()
         drift_dev = self._clamp01((float(drift_score) - center) / (3.5 * spread + 1e-6))
@@ -500,15 +548,40 @@ class StructuralEngine:
             + 0.3 * (1.0 if pressure_slope > -0.003 else 0.0)
             + 0.3 * directional_consistency
         )
+        geometry_available = bool(isinstance(geometry, dict) and geometry.get("available", True) is not False)
+        state_stats_available = bool(
+            isinstance(state_space_statistics, dict) and state_space_statistics.get("available", True) is not False
+        )
+        state_graph_available = bool(isinstance(state_graph, dict) and state_graph.get("available", True) is not False)
+        geom_curvature = self._clamp01(float((geometry or {}).get("curvature", 0.0))) if geometry_available else 0.0
+        geom_direction = (
+            self._clamp01(float((geometry or {}).get("directional_consistency", 0.0)))
+            if geometry_available
+            else directional_consistency
+        )
+        state_contraction = (
+            self._clamp01(float((state_space_statistics or {}).get("state_contraction_score", 0.0)))
+            if state_stats_available
+            else 0.0
+        )
+        graph_commitment = (
+            self._clamp01(float((state_graph or {}).get("path_commitment_score", 0.0)))
+            if state_graph_available
+            else 0.0
+        )
 
         onset_score = self._clamp01(
-            0.24 * drift_dev
-            + 0.18 * drift_persistence
-            + 0.16 * pressure_persistence
-            + 0.12 * low_freq_alignment
+            0.21 * drift_dev
+            + 0.16 * drift_persistence
+            + 0.15 * pressure_persistence
+            + 0.11 * low_freq_alignment
             + 0.11 * smoothness
             + 0.11 * instability
             + 0.08 * agreement
+            + 0.04 * geom_curvature
+            + 0.02 * (1.0 - geom_direction)
+            + 0.01 * state_contraction
+            + 0.01 * graph_commitment
         )
 
         prior_scores = list(self._onset_score_history)
@@ -591,7 +664,40 @@ class StructuralEngine:
     def _analytics_unavailable(self, reason: str) -> Dict:
         return {"available": False, "reason": reason}
 
-    def _compute_advanced_analytics(self) -> Dict:
+    def _compute_geometry_payload(self, frame: Dict, vector: np.ndarray) -> Dict:
+        valid_vectors = [
+            f.get("_vector")
+            for f in list(self.frames)[-max(self.baseline_window + self.recent_window, 48) :]
+            if isinstance(f.get("_vector"), np.ndarray)
+            and f.get("_vector").shape == vector.shape
+            and not np.isnan(f.get("_vector")).any()
+        ]
+        if len(valid_vectors) < 2:
+            return {
+                "geometry": {"available": False, "reason": "insufficient history"},
+                "state_space_statistics": {"available": False, "reason": "insufficient history"},
+                "state_graph": {"available": False, "reason": "insufficient history"},
+            }
+        matrix = np.vstack(valid_vectors)
+        payload = self.geometry_layer.update(
+            entity_id=str(frame.get("asset_id", "unknown")),
+            matrix=matrix,
+            representation_mode="combined",
+        )
+        if not isinstance(payload, dict):
+            payload = {}
+        payload.setdefault("geometry", {"available": False, "reason": "insufficient history"})
+        payload.setdefault("state_space_statistics", {"available": False, "reason": "insufficient history"})
+        payload.setdefault("state_graph", {"available": False, "reason": "insufficient history"})
+        return payload
+
+    def _compute_advanced_analytics(
+        self,
+        *,
+        geometry: Optional[Dict] = None,
+        state_space_statistics: Optional[Dict] = None,
+        state_graph: Optional[Dict] = None,
+    ) -> Dict:
         if len(self._structural_drift_history) < 3:
             unavailable = self._analytics_unavailable("insufficient history")
             return {
@@ -602,6 +708,16 @@ class StructuralEngine:
                 "horizon_analysis": unavailable,
                 "counterfactual_simulation": unavailable,
             }
+        geometry = geometry or self._latest_geometry
+        state_space_statistics = state_space_statistics or self._latest_state_space_statistics
+        state_graph = state_graph or self._latest_state_graph
+        geometry_available = bool(isinstance(geometry, dict) and geometry.get("available", True) is not False)
+        state_stats_available = bool(
+            isinstance(state_space_statistics, dict) and state_space_statistics.get("available", True) is not False
+        )
+        state_graph_available = bool(
+            isinstance(state_graph, dict) and state_graph.get("available", True) is not False
+        )
 
         pressure_tail = list(self._transition_pressure_history)[-6:]
         drift_tail = list(self._structural_drift_history)[-6:]
@@ -630,11 +746,29 @@ class StructuralEngine:
         drift_level = self._clamp01(float(np.mean(drift_tail)) / 4.5)
         path_directional_ambiguity = self._clamp01(1.0 - abs(pressure_trend - drift_trend) / 0.11)
         mixed_evidence = self._clamp01(1.0 - abs(avg_pressure - drift_level))
+        geom_curvature = (
+            self._clamp01(float((geometry or {}).get("curvature", 0.0)))
+            if geometry_available
+            else 0.0
+        )
+        graph_branching = (
+            self._clamp01(float((state_graph or {}).get("branching_factor", 0.0)))
+            if state_graph_available
+            else 0.0
+        )
+        graph_entropy = (
+            self._clamp01(float((state_graph or {}).get("transition_entropy", 0.0)))
+            if state_graph_available
+            else 0.0
+        )
         decision_tension = self._clamp01(
-            0.34 * avg_shock
-            + 0.24 * self._clamp01(abs(pressure_trend) * 3.2)
-            + 0.20 * path_directional_ambiguity
-            + 0.22 * mixed_evidence
+            0.30 * avg_shock
+            + 0.20 * self._clamp01(abs(pressure_trend) * 3.2)
+            + 0.18 * path_directional_ambiguity
+            + 0.18 * mixed_evidence
+            + 0.08 * geom_curvature
+            + 0.04 * graph_branching
+            + 0.02 * graph_entropy
         )
         commitment = self._clamp01(1.0 - (0.85 * decision_tension + 0.15 * path_directional_ambiguity))
         branch_count_estimate = 1
@@ -658,14 +792,26 @@ class StructuralEngine:
         sustained_pressure = self._clamp01(float(sum(1 for p in pressure_tail[-4:] if p >= 0.66)) / max(1, len(pressure_tail[-4:])))
         branch_collapse = self._clamp01(max(0.0, (1.0 - decision_tension) - 0.22))
         commitment_proxy = self._clamp01(0.55 * branch_collapse + 0.45 * (1.0 if dominant_path == "DIVERGING" else 0.3))
+        state_contraction = (
+            self._clamp01(float((state_space_statistics or {}).get("state_contraction_score", 0.0)))
+            if state_stats_available
+            else 0.0
+        )
+        path_commitment = (
+            self._clamp01(float((state_graph or {}).get("path_commitment_score", 0.0)))
+            if state_graph_available
+            else 0.0
+        )
         lock_raw = self._clamp01(
-            0.23 * avg_pressure
-            + 0.22 * drift_level
-            + 0.17 * persistence
-            + 0.10 * sustained_pressure
-            + 0.10 * commitment_proxy
+            0.21 * avg_pressure
+            + 0.18 * drift_level
+            + 0.15 * persistence
+            + 0.08 * sustained_pressure
+            + 0.08 * commitment_proxy
             + 0.09 * self._clamp01(max(0.0, pressure_trend) * 4.0)
-            + 0.09 * self._clamp01(max(0.0, drift_trend) * 4.0)
+            + 0.07 * self._clamp01(max(0.0, drift_trend) * 4.0)
+            + 0.08 * state_contraction
+            + 0.06 * path_commitment
         )
         convergence = self._clamp01(0.45 * persistence + 0.30 * sustained_pressure + 0.25 * branch_collapse)
         lock_in_score = self._clamp01(0.82 / (1.0 + math.exp(-5.2 * (lock_raw - 0.66))) * (0.9 + 0.2 * convergence))
@@ -693,8 +839,13 @@ class StructuralEngine:
         accel = self._clamp01(max(0.0, self._trend([float(v) for v in list(self._velocity_history)[-6:]])) / 0.06)
         severity = 1.0 if dominant_path == "DIVERGING" else (0.55 if dominant_path == "METASTABLE" else 0.2)
         recovery_margin = self._clamp01(1.0 - lock_in_score)
+        local_volume = (
+            self._clamp01(float((state_space_statistics or {}).get("local_volume", 0.0)))
+            if state_stats_available
+            else 0.0
+        )
         horizon_signal = self._clamp01(
-            0.20 * avg_pressure
+            0.18 * avg_pressure
             + 0.20 * lock_in_score
             + 0.12 * pressure_persist
             + 0.10 * sustained_horizon_pressure
@@ -702,6 +853,7 @@ class StructuralEngine:
             + 0.10 * accel
             + 0.08 * self._clamp01(max(0.0, pressure_trend) * 4.0)
             + 0.06 * self._clamp01(max(0.0, drift_trend) * 4.0)
+            + 0.04 * local_volume
             - 0.12 * recovery_margin
             - 0.08 * decision_tension
         )
@@ -776,10 +928,22 @@ class StructuralEngine:
 
         baseline = self._baseline_stats()
         base = self._compute_base_metrics(frame=frame, baseline=baseline, vector=vector)
+        geometry_payload = self._compute_geometry_payload(frame=frame, vector=vector)
+        geometry_metrics = geometry_payload.get("geometry", {})
+        state_space_statistics = geometry_payload.get("state_space_statistics", {})
+        state_graph = geometry_payload.get("state_graph", {})
+        self._latest_geometry = geometry_metrics if isinstance(geometry_metrics, dict) else {"available": False, "reason": "insufficient history"}
+        self._latest_state_space_statistics = (
+            state_space_statistics if isinstance(state_space_statistics, dict) else {"available": False, "reason": "insufficient history"}
+        )
+        self._latest_state_graph = state_graph if isinstance(state_graph, dict) else {"available": False, "reason": "insufficient history"}
         transition = self._compute_transition_metrics(
             drift_score=float(base["structural_drift_score"]),
             velocity=float(base["drift_velocity"]),
             stability_score=float(base["relational_stability_score"]),
+            geometry=self._latest_geometry,
+            state_space_statistics=self._latest_state_space_statistics,
+            state_graph=self._latest_state_graph,
         )
         pressure_now = float(transition["transition_pressure"])
         refined_state = self._state_from_onset_evidence(
@@ -788,6 +952,9 @@ class StructuralEngine:
             stability_score=float(base["relational_stability_score"]),
             transition_pressure=pressure_now,
             vector=vector,
+            geometry=self._latest_geometry,
+            state_space_statistics=self._latest_state_space_statistics,
+            state_graph=self._latest_state_graph,
         )
         base["state"] = refined_state
         base["drift_alert"] = refined_state == "ALERT"
@@ -815,8 +982,15 @@ class StructuralEngine:
             state=str(base["state"]),
             pressure=float(transition["transition_pressure"]),
         )
-        analytics = self._compute_advanced_analytics()
+        analytics = self._compute_advanced_analytics(
+            geometry=self._latest_geometry,
+            state_space_statistics=self._latest_state_space_statistics,
+            state_graph=self._latest_state_graph,
+        )
         result = self._assemble_result(base=base, transition=transition, analytics=analytics)
+        result["geometry"] = self._latest_geometry
+        result["state_space_statistics"] = self._latest_state_space_statistics
+        result["state_graph"] = self._latest_state_graph
 
         self._frame_count += 1
         if self._frame_count <= 3:
@@ -826,6 +1000,12 @@ class StructuralEngine:
                 "DEBUG ADVANCED POPULATED:",
                 {name: bool(isinstance(payload, dict) and payload.get("available")) for name, payload in result["experimental_analytics"].items()},
             )
+        geometry_live = bool(isinstance(self._latest_geometry, dict) and self._latest_geometry.get("available", True) is not False)
+        if self._geometry_debug_frames_logged < 3 and (geometry_live or len(self.frames) >= self.geometry_layer.min_history):
+            print("DEBUG GEOMETRY:", result.get("geometry"))
+            print("DEBUG STATE SPACE:", result.get("state_space_statistics"))
+            print("DEBUG STATE GRAPH:", result.get("state_graph"))
+            self._geometry_debug_frames_logged += 1
 
         self.latest_result = result
         return result
