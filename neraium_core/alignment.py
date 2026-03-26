@@ -2073,6 +2073,30 @@ class StructuralEngine:
                         "state_contraction_score": lockin_rationale.get("state_contraction_score"),
                     },
                 )
+                horizon_rationale = ((analytics.get("horizon_analysis") or {}).get("rationale", {})) if isinstance(analytics, dict) else {}
+                branching_analysis_payload = (analytics.get("branching_analysis") or {}) if isinstance(analytics, dict) else {}
+                print(
+                    "DEBUG HORIZON INPUTS:",
+                    {
+                        "transition_persistence": horizon_rationale.get("transition_persistence"),
+                        "lock_in_score": horizon_rationale.get("lock_in_score"),
+                        "recovery_margin": horizon_rationale.get("recovery_margin"),
+                        "contraction_score": horizon_rationale.get("state_contraction_score"),
+                        "path_commitment": lockin_rationale.get("path_commitment_score"),
+                        "final_horizon_class": (analytics.get("horizon_analysis") or {}).get("risk_horizon"),
+                    },
+                )
+                print(
+                    "DEBUG BRANCHING REFINEMENT:",
+                    {
+                        "transition_entropy": branching_diag.get("state_graph_transition_entropy"),
+                        "graph_divergence_score": branching_diag.get("state_graph_graph_divergence_score"),
+                        "anisotropy": branching_diag.get("anisotropy_normalized"),
+                        "counterfactual_spread": branching_diag.get("counterfactual_spread"),
+                        "final_branching_factor": state_graph.get("branching_factor"),
+                        "final_branch_count_estimate": branching_analysis_payload.get("branch_count_estimate"),
+                    },
+                )
                 self._last_geometry_debug_branching_factor = branching_factor
                 self._geometry_debug_frames_logged += 1
 
