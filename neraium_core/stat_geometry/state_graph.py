@@ -25,6 +25,41 @@ def _region_id(point: np.ndarray, bucket: float = 0.8) -> tuple[int, ...]:
     return tuple(int(v) for v in q.tolist())
 
 
+def _trajectory_divergence_factor(projected: np.ndarray, radius: float) -> float:
+    if projected.shape[0] < 4:
+        return 1.0
+    directions: dict[tuple[int, ...], set[tuple[int, int]]] = {}
+    for i in range(projected.shape[0] - 1):
+        src = _region_id(projected[i], bucket=radius)
+        delta = projected[i + 1] - projected[i]
+        norm = float(np.linalg.norm(delta))
+        if norm <= 1e-9:
+            continue
+        unit = delta / norm
+        quantized = tuple(np.round(unit * 4.0).astype(int).tolist())
+        directions.setdefault(src, set()).add(quantized)
+    options = [len(v) for v in directions.values() if v]
+    return float(np.mean(options)) if options else 1.0
+
+
+def _local_successor_branching(projected: np.ndarray) -> float:
+    if projected.shape[0] < 6:
+        return 1.0
+    deltas = projected[1:] - projected[:-1]
+    step_scale = float(np.median(np.linalg.norm(deltas, axis=1))) + 1e-9
+    radius = max(0.5, 1.5 * step_scale)
+    branch_counts: list[int] = []
+    for i in range(projected.shape[0] - 2):
+        src = projected[i]
+        dists = np.linalg.norm(projected[:-1] - src, axis=1)
+        neighbors = np.where(dists <= radius)[0]
+        if neighbors.size < 2:
+            continue
+        successors = {_region_id(projected[n + 1], bucket=0.8) for n in neighbors}
+        branch_counts.append(len(successors))
+    return float(np.mean(branch_counts)) if branch_counts else 1.0
+
+
 def compute_state_graph(path: list[np.ndarray], window: int = 16) -> dict[str, float | dict[str, int]]:
     if len(path) < 2:
         return {
@@ -39,21 +74,26 @@ def compute_state_graph(path: list[np.ndarray], window: int = 16) -> dict[str, f
             "region_histogram": {},
         }
 
-    tail = np.vstack([np.asarray(v, dtype=float) for v in path[-max(3, window):]])
-    projected = _pca_reduce(tail, dims=2)
+    history = np.vstack([np.asarray(v, dtype=float) for v in path])
+    projected = _pca_reduce(history, dims=2)
     nodes = [_region_id(p) for p in projected]
     edges = list(zip(nodes[:-1], nodes[1:]))
 
     node_set = set(nodes)
     edge_counts: Counter[tuple[tuple[int, ...], tuple[int, ...]]] = Counter(edges)
-    out_degree: Counter[tuple[int, ...]] = Counter()
+    successors: dict[tuple[int, ...], set[tuple[int, ...]]] = {}
     for a, b in edges:
         if a != b:
-            out_degree[a] += 1
+            successors.setdefault(a, set()).add(b)
 
     node_count = len(node_set)
     edge_count = len(edge_counts)
-    branching_factor = float(np.mean(list(out_degree.values()))) if out_degree else 0.0
+    successor_counts = [len(v) for v in successors.values() if v]
+    structural_branching = float(np.mean(successor_counts)) if successor_counts else 1.0
+    recent = projected[-max(4, window) :]
+    divergence_branching = _trajectory_divergence_factor(recent, radius=0.7)
+    local_branching = _local_successor_branching(recent)
+    branching_factor = max(1.0, 0.4 * structural_branching + 0.3 * divergence_branching + 0.3 * local_branching)
 
     probs = np.asarray(list(edge_counts.values()), dtype=float)
     probs = probs / (np.sum(probs) + 1e-12)
