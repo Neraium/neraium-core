@@ -64,6 +64,87 @@ def mean_absolute_deviation(values: Iterable[float]) -> float:
     return float(np.mean(np.abs(x - mu)))
 
 
+def first_difference(values: Iterable[float]) -> np.ndarray:
+    x = _safe_array(values)
+    if x.size < 2:
+        return np.zeros(1, dtype=float)
+    return np.diff(x)
+
+
+def second_difference(values: Iterable[float]) -> np.ndarray:
+    d1 = first_difference(values)
+    if d1.size < 2:
+        return np.zeros(1, dtype=float)
+    return np.diff(d1)
+
+
+def mean_abs_first_difference(values: Iterable[float]) -> float:
+    return float(np.mean(np.abs(first_difference(values))))
+
+
+def std_first_difference(values: Iterable[float]) -> float:
+    return float(np.std(first_difference(values)))
+
+
+def mean_abs_second_difference(values: Iterable[float]) -> float:
+    return float(np.mean(np.abs(second_difference(values))))
+
+
+def rolling_local_volatility(values: Iterable[float], window: int = 8) -> float:
+    x = _safe_array(values)
+    if x.size < 3:
+        return 0.0
+    w = max(3, min(int(window), int(x.size)))
+    roll = np.lib.stride_tricks.sliding_window_view(x, w)
+    vols = np.std(roll, axis=1)
+    return float(np.mean(vols)) if vols.size else float(np.std(x))
+
+
+def percentile_spread(values: Iterable[float], low: float = 5.0, high: float = 95.0) -> float:
+    x = _safe_array(values)
+    lo = float(np.percentile(x, low))
+    hi = float(np.percentile(x, high))
+    return float(max(0.0, hi - lo))
+
+
+def upper_tail_ratio(values: Iterable[float], percentile: float = 95.0) -> float:
+    x = _safe_array(values)
+    threshold = float(np.percentile(x, percentile))
+    return float(np.mean(x > threshold))
+
+
+def lower_tail_ratio(values: Iterable[float], percentile: float = 5.0) -> float:
+    x = _safe_array(values)
+    threshold = float(np.percentile(x, percentile))
+    return float(np.mean(x < threshold))
+
+
+def local_jitter_score(values: Iterable[float]) -> float:
+    x = _safe_array(values)
+    if x.size < 3:
+        return 0.0
+    d1 = np.abs(first_difference(x))
+    med = float(np.median(d1)) + _EPS
+    mad = float(np.median(np.abs(d1 - np.median(d1))))
+    return float(mad / med)
+
+
+def worsening_trend_persistence(values: Iterable[float], window: int = 10) -> float:
+    x = _safe_array(values)
+    n = int(x.size)
+    if n < 4:
+        return 0.0
+    w = max(4, min(int(window), n))
+    slopes: list[float] = []
+    for start in range(0, n - w + 1):
+        seg = x[start : start + w]
+        slopes.append(trend_slope(seg))
+    if not slopes:
+        return 0.0
+    arr = np.asarray(slopes, dtype=float)
+    return float(np.mean(arr > 0.0))
+
+
 def rolling_energy(values: Iterable[float], window: int = 8) -> float:
     x = _safe_array(values)
     if x.size <= 1:

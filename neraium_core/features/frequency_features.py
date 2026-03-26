@@ -71,3 +71,35 @@ def spectral_entropy(values: Iterable[float]) -> float:
     ent = -float(np.sum(p * np.log2(p + _EPS)))
     max_ent = float(np.log2(max(2, p.size)))
     return float(max(0.0, min(1.0, ent / (max_ent + _EPS))))
+
+
+def dominant_frequency_ratio(values: Iterable[float]) -> float:
+    _freqs, power = power_spectrum(values)
+    total = float(np.sum(power)) + _EPS
+    if power.size <= 1:
+        return 0.0
+    idx = int(np.argmax(power[1:]) + 1)
+    return float(power[idx] / total)
+
+
+def low_high_frequency_energy_ratio(values: Iterable[float], split: float = 0.2) -> float:
+    freqs, power = power_spectrum(values)
+    low = float(np.sum(power[freqs < split]))
+    high = float(np.sum(power[freqs >= split]))
+    return float(low / (high + _EPS))
+
+
+def spectral_energy_dispersion(values: Iterable[float]) -> float:
+    _freqs, power = power_spectrum(values)
+    p = power / (float(np.sum(power)) + _EPS)
+    return float(np.std(p))
+
+
+def spectral_energy_concentration(values: Iterable[float], top_k: int = 3) -> float:
+    _freqs, power = power_spectrum(values)
+    total = float(np.sum(power)) + _EPS
+    if power.size == 0:
+        return 0.0
+    k = max(1, min(int(top_k), int(power.size)))
+    top = np.sort(power)[-k:]
+    return float(np.sum(top) / total)

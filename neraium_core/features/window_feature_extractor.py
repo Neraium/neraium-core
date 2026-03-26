@@ -7,7 +7,11 @@ import numpy as np
 
 from neraium_core.features.frequency_features import (
     band_energy,
+    dominant_frequency_ratio,
     dominant_frequency_magnitude,
+    low_high_frequency_energy_ratio,
+    spectral_energy_concentration,
+    spectral_energy_dispersion,
     spectral_centroid,
     spectral_entropy,
     spectral_spread,
@@ -18,15 +22,24 @@ from neraium_core.features.signal_features import (
     envelope_std,
     kurtosis,
     lag1_autocorrelation,
+    local_jitter_score,
+    lower_tail_ratio,
+    mean_abs_first_difference,
+    mean_abs_second_difference,
     mean_absolute_deviation,
     peak_to_peak,
+    percentile_spread,
+    rolling_local_volatility,
     rms,
     rolling_energy,
     roughness,
+    std_first_difference,
     shannon_entropy,
     skewness,
     trend_slope,
+    upper_tail_ratio,
     variance,
+    worsening_trend_persistence,
     zero_crossing_rate,
 )
 
@@ -59,15 +72,28 @@ def _channel_feature_vector(x: np.ndarray) -> dict[str, float]:
         "entropy": shannon_entropy(x),
         "zero_crossing_rate": zero_crossing_rate(x),
         "mean_absolute_deviation": mean_absolute_deviation(x),
+        "percentile_spread_p95_p5": percentile_spread(x),
+        "upper_tail_ratio_p95": upper_tail_ratio(x),
+        "lower_tail_ratio_p05": lower_tail_ratio(x),
+        "mean_abs_first_diff": mean_abs_first_difference(x),
+        "std_first_diff": std_first_difference(x),
+        "mean_abs_second_diff": mean_abs_second_difference(x),
+        "rolling_local_volatility": rolling_local_volatility(x),
+        "local_jitter_score": local_jitter_score(x),
         "autocorr_lag1": lag1_autocorrelation(x),
         "trend_slope": trend_slope(x),
+        "worsening_trend_persistence": worsening_trend_persistence(x),
         "roughness": roughness(x),
         "envelope_mean": envelope_mean(x),
         "envelope_std": envelope_std(x),
         "dominant_frequency_magnitude": dominant_frequency_magnitude(x),
+        "dominant_frequency_ratio": dominant_frequency_ratio(x),
         "spectral_centroid": spectral_centroid(x),
         "spectral_spread": spectral_spread(x),
         "spectral_entropy": spectral_entropy(x),
+        "low_high_frequency_energy_ratio": low_high_frequency_energy_ratio(x),
+        "spectral_energy_dispersion": spectral_energy_dispersion(x),
+        "spectral_energy_concentration_top3": spectral_energy_concentration(x, top_k=3),
     }
     feats.update(band_energy(x))
     return {k: float(v) for k, v in feats.items()}
@@ -151,8 +177,25 @@ def summarize_feature_delta(
     keys = sorted(set(base.flattened.keys()) | set(recent.flattened.keys()))
     for k in keys:
         delta[k] = float(recent.flattened.get(k, 0.0) - base.flattened.get(k, 0.0))
+    drift_magnitude = float(np.mean(np.abs(list(delta.values())))) if delta else 0.0
+    signed_drift = float(np.mean(list(delta.values()))) if delta else 0.0
+    volatility_base = float(np.std(list(base.flattened.values()))) if base.flattened else 0.0
+    volatility_recent = float(np.std(list(recent.flattened.values()))) if recent.flattened else 0.0
+    volatility_drift = float(max(0.0, volatility_recent - volatility_base))
+    coherence_related = [
+        abs(delta.get(k, 0.0))
+        for k in delta
+        if "coherence_like" in k or "channel_corr" in k or "sync_loss" in k
+    ]
+    consistency_breakdown = float(np.mean(coherence_related)) if coherence_related else 0.0
     return {
         "baseline": base,
         "recent": recent,
         "delta": delta,
+        "change_summary": {
+            "feature_drift_magnitude": drift_magnitude,
+            "feature_signed_drift": signed_drift,
+            "feature_volatility_drift": volatility_drift,
+            "feature_consistency_breakdown": consistency_breakdown,
+        },
     }
