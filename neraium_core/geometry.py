@@ -50,6 +50,7 @@ def structural_drift(current_corr: ArrayLike, baseline_corr: ArrayLike, norm: st
         raise ValueError("current and baseline correlation matrices must be equally-shaped square matrices")
 
     delta = np.nan_to_num(current - baseline, nan=0.0, posinf=0.0, neginf=0.0)
+    delta = np.clip(delta, -1e12, 1e12)
     if norm == "mae":
         return float(np.mean(np.abs(delta)))
     if norm == "fro":

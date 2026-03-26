@@ -78,6 +78,7 @@ from neraium_core.staged_pipeline import (
     flatten_upper_tri,
 )
 from neraium_core.subsystems import subsystem_spectral_measures
+from neraium_core.realtime.buffer import TimestampDequeBuffer, VectorDequeBuffer
 
 
 # How slowly the rolling baseline adapts (only when nominal); avoid absorbing instability.
@@ -115,6 +116,12 @@ def _env_enabled(var_name: str, *, default: str = "1") -> bool:
     v = os.environ.get(var_name, default)
     if v is None:
         return True
+    return str(v).strip().lower() not in {"0", "false", "no", "off"}
+
+
+def _incremental_windows_enabled() -> bool:
+    """When True, skip full ``list(frames)`` scans and cache frozen baseline matrices."""
+    v = os.environ.get("NERAIUM_INCREMENTAL", "1")
     return str(v).strip().lower() not in {"0", "false", "no", "off"}
 
 
@@ -221,6 +228,13 @@ class StructuralEngine:
         self.baseline_locked: bool = False
         self._baseline_set_at: Optional[str] = None  # ISO timestamp when baseline was last established
         self._baseline_coverage_samples: int = 0  # Number of samples in baseline window
+
+        # Incremental windows: frozen first baseline_window rows + rolling recent deque.
+        self._recent_vector_buffer = VectorDequeBuffer(recent_window)
+        self._recent_ts_buffer = TimestampDequeBuffer(recent_window)
+        self._baseline_matrix_cache: np.ndarray | None = None
+        self._baseline_ts_cached: list[float] | None = None
+        self._sensor_schema_dirty: bool = False
 
     def reset_baseline(self) -> None:
         """Clear rolling baseline and calibration state so baseline is recomputed from window."""
@@ -445,6 +459,7 @@ class StructuralEngine:
                 for f in self.frames:
                     sv = f.get("sensor_values") or {}
                     f["_vector"] = _vector_from_sensor_values(sv, self.sensor_order)
+                self._sensor_schema_dirty = True
         return _vector_from_sensor_values(sensor_values, self.sensor_order)
 
     def _get_recent_window(self, frames_list: list[dict] | None = None) -> Optional[np.ndarray]:
@@ -497,6 +512,64 @@ class StructuralEngine:
             except (TypeError, ValueError):
                 continue
         return ts_vals if len(ts_vals) >= 2 else None
+
+    def _invalidate_window_caches(self) -> None:
+        self._baseline_matrix_cache = None
+        self._baseline_ts_cached = None
+        self._recent_vector_buffer.clear()
+        self._recent_ts_buffer.clear()
+
+    def _rebuild_incremental_buffers_after_schema_change(self) -> None:
+        """After sensor-order merge, repopulate rolling buffers from the current deque."""
+        for f in self.frames:
+            v = f.get("_vector")
+            if v is None:
+                continue
+            try:
+                tsv = float(f.get("timestamp"))
+            except (TypeError, ValueError):
+                tsv = 0.0
+            self._recent_vector_buffer.append(np.asarray(v, dtype=float))
+            self._recent_ts_buffer.append(tsv)
+        if len(self.frames) >= self.baseline_window:
+            fl = list(self.frames)
+            vecs = np.stack([f["_vector"] for f in fl[: self.baseline_window]], axis=0)
+            vecs = vecs[:: self.window_stride]
+            if vecs.shape[0] >= 2:
+                self._baseline_matrix_cache = np.asarray(vecs, dtype=np.float64, order="C")
+                ts_b: list[float] = []
+                for f in fl[: self.baseline_window]:
+                    try:
+                        ts_b.append(float(f.get("timestamp")))
+                    except (TypeError, ValueError):
+                        ts_b.append(0.0)
+                self._baseline_ts_cached = ts_b
+
+    def _refresh_baseline_matrix_cache(self) -> None:
+        """Snapshot first baseline_window frames once the deque has filled them."""
+        if self._baseline_matrix_cache is not None:
+            return
+        if len(self.frames) < self.baseline_window:
+            return
+        fl = list(self.frames)
+        vecs = np.stack([f["_vector"] for f in fl[: self.baseline_window]], axis=0)
+        vecs = vecs[:: self.window_stride]
+        if vecs.shape[0] >= 2:
+            self._baseline_matrix_cache = np.asarray(vecs, dtype=np.float64, order="C")
+            ts_b: list[float] = []
+            for f in fl[: self.baseline_window]:
+                try:
+                    ts_b.append(float(f.get("timestamp")))
+                except (TypeError, ValueError):
+                    ts_b.append(0.0)
+            self._baseline_ts_cached = ts_b
+
+    def _materialize_strided_recent(self) -> np.ndarray | None:
+        m = self._recent_vector_buffer.to_matrix()
+        if m is None:
+            return None
+        vectors = m[:: self.window_stride]
+        return vectors if vectors.shape[0] >= 2 else None
 
     def _system_health(self, drift_score: float, stability_score: float) -> int:
         health = 100.0 - min(drift_score * 20.0, 85.0)
@@ -1096,6 +1169,19 @@ class StructuralEngine:
         stored["_vector"] = vector
         self.frames.append(stored)
 
+        try:
+            ts_val = float(frame["timestamp"])
+        except (TypeError, ValueError):
+            ts_val = 0.0
+        if self._sensor_schema_dirty:
+            self._invalidate_window_caches()
+            self._rebuild_incremental_buffers_after_schema_change()
+            self._sensor_schema_dirty = False
+        elif _incremental_windows_enabled():
+            self._recent_vector_buffer.append(vector)
+            self._recent_ts_buffer.append(ts_val)
+            self._refresh_baseline_matrix_cache()
+
         result = {
             "timestamp": frame["timestamp"],
             "site_id": frame["site_id"],
@@ -1148,6 +1234,11 @@ class StructuralEngine:
             frames_list = list(self.frames)
             baseline_window = self._get_baseline_window(frames_list)
             recent_window = self._get_recent_window(frames_list)
+            if _incremental_windows_enabled() and self._baseline_matrix_cache is not None:
+                ir = self._materialize_strided_recent()
+                if ir is not None:
+                    baseline_window = self._baseline_matrix_cache
+                    recent_window = ir
             if baseline_window is None or recent_window is None:
                 can_process_full_frame = False
 
