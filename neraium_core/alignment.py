@@ -1988,8 +1988,13 @@ class StructuralEngine:
                 state_space = result.get("state_space_statistics") if isinstance(result.get("state_space_statistics"), dict) else {}
                 state_graph = result.get("state_graph") if isinstance(result.get("state_graph"), dict) else {}
                 branching_factor = float(state_graph.get("branching_factor", 0.0) or 0.0)
+                branching_intensity = float(state_graph.get("branching_intensity", 0.0) or 0.0)
                 transition_entropy = float(state_graph.get("transition_entropy", 0.0) or 0.0)
                 graph_divergence_score = float(state_graph.get("graph_divergence_score", 0.0) or 0.0)
+                anisotropy = float(state_space.get("anisotropy", 1.0) or 1.0)
+                directional_consistency = float((result.get("geometry") or {}).get("directional_consistency", 1.0) or 1.0)
+                directional_inconsistency = float(state_graph.get("directional_inconsistency", 1.0 - directional_consistency) or 0.0)
+                raw_divergence_score = float(state_graph.get("raw_divergence_score", 0.0) or 0.0)
                 if self._last_geometry_debug_branching_factor is None:
                     branching_delta = 0.0
                 else:
@@ -2012,9 +2017,22 @@ class StructuralEngine:
                     },
                 )
                 print(
+                    "DEBUG BRANCH INPUTS:",
+                    {
+                        "transition_entropy": round(transition_entropy, 6),
+                        "graph_divergence_score": round(graph_divergence_score, 6),
+                        "anisotropy": round(anisotropy, 6),
+                        "directional_inconsistency": round(directional_inconsistency, 6),
+                        "raw_combined_divergence_score": round(raw_divergence_score, 6),
+                        "final_normalized_branching_factor": round(branching_factor, 6),
+                        "branching_intensity": round(branching_intensity, 6),
+                    },
+                )
+                print(
                     "DEBUG BRANCHING:",
                     {
                         "branching_factor": round(branching_factor, 6),
+                        "branching_intensity": round(branching_intensity, 6),
                         "transition_entropy": round(transition_entropy, 6),
                         "graph_divergence_score": round(graph_divergence_score, 6),
                         "branching_factor_delta": round(branching_delta, 6),
