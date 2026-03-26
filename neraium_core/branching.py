@@ -98,20 +98,38 @@ def derive_branching_analysis(
     timing_instability = _safe_score((temporal_features or {}).get("timing_instability", temporal_gap_irregularity))
     angular_divergence = _safe_score((geometry or {}).get("angular_change", 0.0)) / 3.141592653589793
     branching_factor = _safe_score((state_graph or {}).get("branching_factor", 0.0))
+    branching_intensity = _safe_score((state_graph or {}).get("branching_intensity", 0.0))
     transition_entropy = _safe_score((state_graph or {}).get("transition_entropy", 0.0))
+    transition_entropy_effective = _safe_score((state_graph or {}).get("transition_entropy_effective", transition_entropy))
     graph_divergence = _safe_score((state_graph or {}).get("graph_divergence_score", 0.0))
+    graph_divergence_effective = _safe_score((state_graph or {}).get("graph_divergence_effective", graph_divergence))
+    directional_inconsistency = _safe_score((state_graph or {}).get("directional_inconsistency", 0.0))
+    raw_divergence_score = _safe_score((state_graph or {}).get("raw_divergence_score", 0.0))
+
+    normalized_branching_signal = max(
+        0.0,
+        min(
+            1.0,
+            max(
+                branching_intensity,
+                min(1.0, (branching_factor - 1.0) / 3.5),
+            ),
+        ),
+    )
 
     branch_tension = (
         0.28 * closeness
         + 0.16 * entropy
         + 0.14 * directional_div
-        + 0.10 * transition_entropy
-        + 0.09 * graph_divergence
-        + 0.08 * min(1.0, branching_factor / 2.0)
+        + 0.10 * transition_entropy_effective
+        + 0.09 * graph_divergence_effective
+        + 0.08 * normalized_branching_signal
         + 0.08 * min(1.0, angular_divergence)
         + 0.10 * shape_div
         + 0.07 * timing_instability
         + 0.04 * temporal_gap_irregularity
+        + 0.03 * min(1.0, directional_inconsistency)
+        + 0.03 * min(1.0, raw_divergence_score)
     )
     branch_tension = max(0.0, min(1.0, branch_tension))
 
@@ -131,7 +149,9 @@ def derive_branching_analysis(
     support_total = sum(supports) + 1e-12
     support_probs = [max(0.0, s) / support_total for s in supports] if supports else [top_prob, second_prob]
     branch_entropy = _normalized_entropy(support_probs)
-    branch_count = len([p for p in support_probs if p >= 0.12])
+    support_branch_count = len([p for p in support_probs if p >= 0.12])
+    graph_branch_count = 1 + int(round(3.0 * normalized_branching_signal))
+    branch_count = max(1, min(len(PATH_KEYS), max(support_branch_count, graph_branch_count)))
     path_diversity = 1.0 - max(support_probs) if support_probs else 0.0
     transition_freq = max(0.0, min(1.0, directional_div * 0.55 + shape_div * 0.45))
     branch_stability = max(0.0, min(1.0, 1.0 - transition_freq))
@@ -169,8 +189,13 @@ def derive_branching_analysis(
             "timing_instability": round(float(timing_instability), 4),
             "angular_divergence": round(float(angular_divergence), 4),
             "state_graph_branching_factor": round(float(branching_factor), 4),
+            "state_graph_branching_intensity": round(float(normalized_branching_signal), 4),
             "state_graph_transition_entropy": round(float(transition_entropy), 4),
+            "state_graph_transition_entropy_effective": round(float(transition_entropy_effective), 4),
             "state_graph_graph_divergence_score": round(float(graph_divergence), 4),
+            "state_graph_graph_divergence_effective": round(float(graph_divergence_effective), 4),
+            "state_graph_directional_inconsistency": round(float(directional_inconsistency), 4),
+            "state_graph_raw_divergence_score": round(float(raw_divergence_score), 4),
         },
         "thresholds": {
             "branch_margin_max": BRANCH_MARGIN_MAX,
