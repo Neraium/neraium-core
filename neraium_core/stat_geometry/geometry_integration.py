@@ -130,7 +130,12 @@ class StatisticalGeometryLayer:
             window=self.stats_window,
             min_covariance_samples=self.min_history,
         )
-        graph = compute_state_graph(path, window=self.graph_window)
+        graph = compute_state_graph(
+            path,
+            window=self.graph_window,
+            geometry=geometry,
+            state_space_statistics=stats,
+        )
         return {
             "geometry": geometry,
             "state_space_statistics": stats,

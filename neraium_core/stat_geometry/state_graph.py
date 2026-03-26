@@ -60,7 +60,12 @@ def _local_successor_branching(projected: np.ndarray) -> float:
     return float(np.mean(branch_counts)) if branch_counts else 1.0
 
 
-def compute_state_graph(path: list[np.ndarray], window: int = 16) -> dict[str, float | dict[str, int]]:
+def compute_state_graph(
+    path: list[np.ndarray],
+    window: int = 16,
+    geometry: dict[str, float] | None = None,
+    state_space_statistics: dict[str, float] | None = None,
+) -> dict[str, float | dict[str, int]]:
     if len(path) < 2:
         return {
             "node_count": 1,
@@ -89,21 +94,34 @@ def compute_state_graph(path: list[np.ndarray], window: int = 16) -> dict[str, f
     node_count = len(node_set)
     edge_count = len(edge_counts)
     successor_counts = [len(v) for v in successors.values() if v]
-    structural_branching = float(np.mean(successor_counts)) if successor_counts else 1.0
+    structural_branching = float(np.mean(successor_counts)) if successor_counts else 0.0
     recent = projected[-max(4, window) :]
     divergence_branching = _trajectory_divergence_factor(recent, radius=0.7)
     local_branching = _local_successor_branching(recent)
-    branching_factor = max(1.0, 0.4 * structural_branching + 0.3 * divergence_branching + 0.3 * local_branching)
-
     probs = np.asarray(list(edge_counts.values()), dtype=float)
     probs = probs / (np.sum(probs) + 1e-12)
     entropy = float(-np.sum([p * math.log(p + 1e-12) for p in probs])) if probs.size else 0.0
     entropy_norm = float(entropy / max(1e-9, math.log(max(2, probs.size)))) if probs.size > 1 else 0.0
 
+    divergence = float(max(0.0, 1.0 - (float(np.max(probs)) if probs.size else 0.0)))
+    directional_consistency = float(np.clip((geometry or {}).get("directional_consistency", 1.0), 0.0, 1.0))
+    directional_inconsistency = float(1.0 - directional_consistency)
+    anisotropy = float(np.clip((state_space_statistics or {}).get("anisotropy", 1.0), 0.0, 1.0))
+    multi_directionality = float(1.0 - anisotropy)
+
+    base_branching = 0.35 * structural_branching + 0.25 * divergence_branching + 0.20 * local_branching
+    uncertainty_gain = (
+        0.45 * entropy_norm
+        + 0.35 * divergence
+        + 0.25 * directional_inconsistency
+        + 0.20 * multi_directionality
+    )
+    temporal_variation = 0.15 * float(np.std(np.linalg.norm(np.diff(recent, axis=0), axis=1))) if recent.shape[0] > 2 else 0.0
+    branching_factor = max(0.0, base_branching + uncertainty_gain + temporal_variation)
+
     revisit_rate = float(1.0 - (len(set(nodes)) / max(1, len(nodes))))
     dominant_path_prob = float(np.max(probs)) if probs.size else 0.0
     path_commitment = dominant_path_prob
-    divergence = float(max(0.0, 1.0 - dominant_path_prob))
     density = float(edge_count / max(1, node_count * max(1, node_count - 1)))
 
     hist = Counter(nodes)
