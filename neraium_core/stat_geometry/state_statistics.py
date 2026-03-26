@@ -41,20 +41,29 @@ def _safe_logdet(cov: np.ndarray, epsilon: float) -> tuple[float, np.ndarray]:
     return logdet, cov_psd
 
 
-def compute_state_statistics(path: list[np.ndarray], window: int = 12) -> dict[str, float]:
-    if not path:
-        return {
-            "local_volume": 0.0,
-            "local_density": 0.0,
-            "covariance_trace": 0.0,
-            "principal_direction_strength": 0.0,
-            "anisotropy": 0.0,
-            "state_contraction_score": 0.0,
-            "state_expansion_score": 0.0,
-            "geometric_concentration": 1.0,
-        }
+def _empty_state_statistics() -> dict[str, float]:
+    return {
+        "local_volume": 0.0,
+        "local_density": 0.0,
+        "covariance_trace": 0.0,
+        "principal_direction_strength": 0.0,
+        "anisotropy": 0.0,
+        "state_contraction_score": 0.0,
+        "state_expansion_score": 0.0,
+        "geometric_concentration": 1.0,
+    }
 
-    tail = np.vstack([np.asarray(v, dtype=float) for v in path[-max(2, window):]])
+
+def compute_state_statistics(path: list[np.ndarray], window: int = 12, min_covariance_samples: int = 20) -> dict[str, float]:
+    if not path:
+        return _empty_state_statistics()
+
+    required = max(2, int(min_covariance_samples))
+    if len(path) < required:
+        return _empty_state_statistics()
+
+    tail_window = max(required, max(2, int(window)))
+    tail = np.vstack([np.asarray(v, dtype=float) for v in path[-tail_window:]])
     center = np.mean(tail, axis=0)
     centered = tail - center
     epsilon = 1e-6

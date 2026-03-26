@@ -12,12 +12,18 @@ from .trajectory_geometry import compute_trajectory_geometry
 class StatisticalGeometryLayer:
     """Entity-aware deterministic geometry/statistical graph layer."""
 
-    def __init__(self, max_history: int = 256, graph_window: int = 16, stats_window: int = 12) -> None:
+    def __init__(
+        self,
+        max_history: int = 256,
+        graph_window: int = 16,
+        stats_window: int = 12,
+        min_history: int = 20,
+    ) -> None:
         self.max_history = max_history
         self.graph_window = graph_window
         self.stats_window = stats_window
         self.entity_paths: dict[str, list[np.ndarray]] = defaultdict(list)
-        self.min_history = max(4, min(self.graph_window, self.stats_window))
+        self.min_history = max(2, int(min_history), self.graph_window, self.stats_window)
 
     @staticmethod
     def _insufficient_block(*, reason: str) -> dict[str, object]:
@@ -119,7 +125,11 @@ class StatisticalGeometryLayer:
             return self._insufficient_payload(reason="insufficient history", frame=frame)
 
         geometry = compute_trajectory_geometry(path, window=self.stats_window)
-        stats = compute_state_statistics(path, window=self.stats_window)
+        stats = compute_state_statistics(
+            path,
+            window=self.stats_window,
+            min_covariance_samples=self.min_history,
+        )
         graph = compute_state_graph(path, window=self.graph_window)
         return {
             "geometry": geometry,
