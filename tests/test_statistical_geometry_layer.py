@@ -37,3 +37,12 @@ def test_geometry_layer_fleet_summary_multiple_entities() -> None:
     fleet = out["fleet_geometry"]
     assert fleet["fleet_entity_count"] >= 3
     assert fleet["fleet_mean_pairwise_distance"] >= 0.0
+
+
+def test_geometry_layer_waits_until_min_history_is_available() -> None:
+    layer = StatisticalGeometryLayer(max_history=64, graph_window=8, stats_window=8, min_history=20)
+    out = {}
+    for t in range(10):
+        out = layer.update(entity_id="asset-A", matrix=_matrix(t), representation_mode="combined")
+    assert out["geometry"]["available"] is False
+    assert out["state_space_statistics"]["available"] is False
