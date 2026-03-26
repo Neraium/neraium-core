@@ -205,6 +205,7 @@ class StructuralEngine:
         self._first_alert_logged: bool = False
         self._experimental_analytics_debug_logged: bool = False
         self._geometry_debug_frames_logged: int = 0
+        self._last_geometry_debug_branching_factor: float | None = None
 
         self.regime_store = RegimeStore(regime_store_path)
         persisted = self.regime_store.load()
@@ -284,6 +285,10 @@ class StructuralEngine:
             "episode_transition_reason": "reset_stream",
             "episode_history": [],
         }
+        self._first_alert_logged = False
+        self._experimental_analytics_debug_logged = False
+        self._geometry_debug_frames_logged = 0
+        self._last_geometry_debug_branching_factor = None
         self.reset_baseline()
 
     def snapshot_state(self) -> Dict[str, object]:
@@ -1980,9 +1985,53 @@ class StructuralEngine:
                 and valid_signal_count >= 2
                 and self._geometry_debug_frames_logged < 3
             ):
+                state_space = result.get("state_space_statistics") if isinstance(result.get("state_space_statistics"), dict) else {}
+                state_graph = result.get("state_graph") if isinstance(result.get("state_graph"), dict) else {}
+                branching_factor = float(state_graph.get("branching_factor", 0.0) or 0.0)
+                transition_entropy = float(state_graph.get("transition_entropy", 0.0) or 0.0)
+                graph_divergence_score = float(state_graph.get("graph_divergence_score", 0.0) or 0.0)
+                if self._last_geometry_debug_branching_factor is None:
+                    branching_delta = 0.0
+                else:
+                    branching_delta = branching_factor - self._last_geometry_debug_branching_factor
+
+                if branching_delta > 1e-4:
+                    branching_trend = "increasing"
+                elif branching_delta < -1e-4:
+                    branching_trend = "decreasing"
+                else:
+                    branching_trend = "flat"
+
                 print("DEBUG GEOMETRY:", result.get("geometry"))
-                print("DEBUG STATE SPACE:", result.get("state_space_statistics"))
-                print("DEBUG STATE GRAPH:", result.get("state_graph"))
+                print(
+                    "DEBUG STATE SPACE:",
+                    {
+                        "covariance_trace": state_space.get("covariance_trace"),
+                        "covariance_logdet": state_space.get("covariance_logdet"),
+                        "local_volume": state_space.get("local_volume"),
+                    },
+                )
+                print(
+                    "DEBUG BRANCHING:",
+                    {
+                        "branching_factor": round(branching_factor, 6),
+                        "transition_entropy": round(transition_entropy, 6),
+                        "graph_divergence_score": round(graph_divergence_score, 6),
+                        "branching_factor_delta": round(branching_delta, 6),
+                        "branching_trend": branching_trend,
+                        "branching_reason": (
+                            "entropy/divergence pressure rising"
+                            if branching_trend == "increasing"
+                            and (transition_entropy > 0.35 or graph_divergence_score > 0.35)
+                            else (
+                                "trajectory consolidating; uncertainty pressure is not rising"
+                                if branching_trend in {"decreasing", "flat"}
+                                and (transition_entropy < 0.3 and graph_divergence_score < 0.3)
+                                else "mixed indicators; inspect entropy/divergence vs commitment"
+                            )
+                        ),
+                    },
+                )
                 transition_used = bool(
                     (analytics.get("transition") or {}).get("geometry_transition_term", 0.0)
                     if isinstance(analytics, dict)
@@ -2006,6 +2055,7 @@ class StructuralEngine:
                         "state_contraction_score": lockin_rationale.get("state_contraction_score"),
                     },
                 )
+                self._last_geometry_debug_branching_factor = branching_factor
                 self._geometry_debug_frames_logged += 1
 
             debug_verbose = os.environ.get("NERAIUM_DEBUG_SII_VERBOSE", "0").strip().lower() not in {

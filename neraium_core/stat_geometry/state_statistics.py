@@ -44,6 +44,7 @@ def _safe_logdet(cov: np.ndarray, epsilon: float) -> tuple[float, np.ndarray]:
 def _empty_state_statistics() -> dict[str, float]:
     return {
         "local_volume": 0.0,
+        "covariance_logdet": 0.0,
         "local_density": 0.0,
         "covariance_trace": 0.0,
         "principal_direction_strength": 0.0,
@@ -99,6 +100,7 @@ def compute_state_statistics(path: list[np.ndarray], window: int = 12, min_covar
 
     return {
         "local_volume": round(volume, 9),
+        "covariance_logdet": round(log_det, 6),
         "local_density": round(density, 6),
         "covariance_trace": round(trace, 6),
         "principal_direction_strength": round(principal_strength, 6),
