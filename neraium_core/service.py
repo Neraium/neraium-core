@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any, Callable, TextIO
 
 from neraium_core.alignment import StructuralEngine
+from neraium_core.adapters.raw_telemetry_adapter import load_raw_telemetry_windows, raw_slices_to_structural_frames
 from neraium_core.csv_mapping import row_to_frame_kwargs, resolve_mapping
 from neraium_core.pipeline import (
     build_frame,
@@ -284,6 +285,26 @@ class StructuralMonitoringService:
         if persisted_at is not None:
             enriched["persisted_at"] = persisted_at
         return enriched
+
+    def ingest_raw_telemetry_windows(
+        self,
+        input_path: str,
+        *,
+        run_id: str | None = None,
+        customer_id: str | None = None,
+        site_id: str = "raw-telemetry",
+    ) -> list[dict[str, Any]]:
+        """Ingest raw waveform windows (from json/csv/npy/npz) through the existing structural engine."""
+        windows = load_raw_telemetry_windows(input_path)
+        frames = raw_slices_to_structural_frames(
+            windows,
+            site_id=site_id,
+            customer_id=customer_id or DEFAULT_CUSTOMER_ID,
+        )
+        outputs: list[dict[str, Any]] = []
+        for frame in frames:
+            outputs.append(self.ingest_payload(frame, run_id=run_id, customer_id=customer_id))
+        return outputs
 
     def ingest_payload(
         self,
