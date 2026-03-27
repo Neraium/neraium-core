@@ -56,6 +56,25 @@ It does not write back into operational systems and does not execute control act
 - `trend`  
 - `risk_level`  
 - `operator_message`  
+- Structural attribution:
+  - `attribution.status`
+  - `attribution.top_sensors`
+  - `attribution.top_relationships`
+  - `attribution.subsystem_impact`
+  - `attribution.change_character`
+- Regime memory:
+  - `regime_memory.status`
+  - `regime_memory.current_regime`
+  - `regime_memory.nearest_matches`
+  - `regime_memory.best_similarity`
+  - `regime_memory.is_novel`
+- Forward decision intelligence:
+  - `risk_assessment.status`
+  - `risk_assessment.current_risk_level`
+  - `risk_assessment.projected_near_term_trend`
+  - `risk_assessment.trajectory`
+  - `operator_guidance.status`
+  - `operator_guidance.recommended_actions`
 - Proof artifacts / reports where available (for example FD004 summaries, CSV timelines, and plots)  
 
 ---
@@ -154,6 +173,23 @@ Neraium currently includes a temporary, explicit **decision layer** that interpr
 - It returns structured decision output (`signal_emitted`, `signal_strength`, `confidence`, `reason`, `phase`, `risk_level`) for clear downstream reporting.  
 
 This layer is temporary and will be replaced when formal interpretive governance is implemented.
+
+## Structural attribution and decision intelligence upgrade
+
+The SII platform now upgrades from pure structural change detection to **structural attribution + decision intelligence**:
+
+- **Attribution layer:** identifies highest-contributing sensors and sensor relationships by baseline-vs-recent relational delta and mean-shift evidence.
+- **Regime memory similarity:** compares current geometry/graph signatures to persisted regime prototypes and reports nearest prior matches + novelty.
+- **Forward-looking risk:** projects near-term risk trend from instability trend, acceleration, and persistence evidence.
+- **Operator decision support:** emits conservative, evidence-grounded inspection targets and prioritized recommended actions.
+
+These outputs are emitted directly by the production SII engine and flow through batch payload processing, file processing, and live-ingestion paths via shared `SIIEngine.process_frame()` runtime logic.
+
+Canonical top-level decision-intelligence contract:
+- `attribution`
+- `regime_memory`
+- `risk_assessment`
+- `operator_guidance`
 
 ---
 

@@ -36,6 +36,9 @@ def results_to_csv_text(results: list[dict[str, Any]]) -> str:
         "regime_distance",
         "coherence_score",
         "graph_deformation_score",
+        "risk_level",
+        "risk_trend",
+        "inspection_target",
         "explanation",
     ]
     # csv.DictWriter needs file-like object; create via StringIO
@@ -58,6 +61,17 @@ def results_to_csv_text(results: list[dict[str, Any]]) -> str:
                 "regime_distance": item.get("regime_distance"),
                 "coherence_score": item.get("coherence_score"),
                 "graph_deformation_score": item.get("graph_deformation_score"),
+                "risk_level": ((item.get("risk_assessment") or {}) if isinstance(item.get("risk_assessment"), dict) else {}).get(
+                    "current_risk_level"
+                ),
+                "risk_trend": ((item.get("risk_assessment") or {}) if isinstance(item.get("risk_assessment"), dict) else {}).get(
+                    "projected_near_term_trend"
+                ),
+                "inspection_target": (
+                    ((item.get("operator_guidance") or {}) if isinstance(item.get("operator_guidance"), dict) else {}).get(
+                        "first_inspection_target"
+                    )
+                ),
                 "explanation": item.get("explanation"),
             }
         )
