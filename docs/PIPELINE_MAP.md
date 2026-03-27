@@ -105,3 +105,29 @@ frame
 - Prefer modifying existing pipeline: data quality and normalized score are single insertions in `process_frame` and one change in `scoring.py`.
 - Every new piece wired into main path: data quality runs on every frame that has windows; normalized score is the only composite used for decision and `latest_instability`.
 - No dead code: no parallel “legacy” path; optional `gate_passed` only controls what we attach (and optionally whether we run heavy analytics when gate fails).
+
+---
+
+## Pre-pilot decision resolver upgrade (SII runtime)
+
+`SIIEngine.process_frame()` now includes a deterministic decision-compression stage after the intelligence blocks are assembled:
+
+1. Build/emit canonical blocks:
+   - `attribution`
+   - `regime_memory`
+   - `risk_assessment`
+   - `operator_guidance`
+   - `causal_analysis`
+2. Resolve top-level `decision` via `neraium_core/decision_resolver.py::resolve_best_action(...)`.
+3. Emit structured fallback decisions during warmup/insufficient evidence instead of omitting the block.
+
+Decision selection hierarchy:
+1. `causal_analysis.best_next_action` (when confidence is usable)
+2. first ranked `causal_analysis.recommended_sequence` action
+3. `operator_guidance.recommended_actions[0]`
+4. conservative attribution-localized inspection action
+5. fallback (`decision.status.available = false`)
+
+Hardening note:
+- Canonical causal imports must use `neraium_core.causal`.
+- `neraium_core.casual` remains only as a deprecated compatibility shim.
