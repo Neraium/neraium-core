@@ -3,10 +3,23 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import numpy as np
+from numpy.lib.stride_tricks import sliding_window_view
 
 
 REFERENCE_STRATEGIES = {"initial_window", "rolling", "ewma", "robust"}
 REPRESENTATION_MODES = {"raw", "residual", "dynamic", "combined"}
+
+
+def _sliding_row_windows(a: np.ndarray, w: int) -> np.ndarray:
+    """Shape (n - w + 1, w, d); 1D sliding per column avoids NumPy 2.x axis quirks for d == 1."""
+    n, d = a.shape
+    if w > n:
+        return np.zeros((0, w, d), dtype=np.float64)
+    if d == 1:
+        sw = sliding_window_view(np.ascontiguousarray(a[:, 0]), w)
+        return np.ascontiguousarray(sw[:, :, np.newaxis])
+    cols = [sliding_window_view(np.ascontiguousarray(a[:, j]), w) for j in range(d)]
+    return np.stack(cols, axis=-1)
 
 
 @dataclass(frozen=True)
@@ -70,10 +83,17 @@ def _rolling_mean(arr: np.ndarray, window: int) -> np.ndarray:
 def _rolling_median(arr: np.ndarray, window: int) -> np.ndarray:
     n, d = arr.shape
     w = max(1, int(window))
-    out = np.zeros_like(arr, dtype=float)
-    for t in range(n):
+    a = np.asarray(arr, dtype=float)
+    out = np.zeros_like(a, dtype=float)
+    if w == 1:
+        return a
+    wm1 = w - 1
+    for t in range(min(wm1, n)):
         lo = max(0, t - w + 1)
-        out[t] = np.median(arr[lo : t + 1], axis=0)
+        out[t] = np.median(a[lo : t + 1], axis=0)
+    if n > wm1:
+        sw = _sliding_row_windows(a, w)
+        out[wm1:] = np.median(sw, axis=1)
     return out
 
 
@@ -91,15 +111,38 @@ def _slope(arr: np.ndarray, window: int, timestamps: np.ndarray | None = None) -
     n, d = arr.shape
     w = max(2, int(window))
     out = np.zeros((n, d), dtype=float)
+    a = np.asarray(arr, dtype=float)
+
+    if timestamps is None:
+        wm1 = w - 1
+        for t in range(min(wm1, n)):
+            lo = max(0, t - w + 1)
+            y = a[lo : t + 1]
+            if y.shape[0] < 2:
+                continue
+            x = np.arange(y.shape[0], dtype=float)
+            x = x - float(np.mean(x))
+            denom = float(np.sum(x * x))
+            if denom <= 1e-12:
+                continue
+            y_centered = y - np.mean(y, axis=0)
+            out[t] = (x[:, None] * y_centered).sum(axis=0) / denom
+        if n > wm1:
+            sw = _sliding_row_windows(a, w)
+            xc = np.arange(w, dtype=float)
+            xc = xc - float(np.mean(xc))
+            denom = float(np.dot(xc, xc))
+            if denom > 1e-12:
+                yc = sw - sw.mean(axis=1, keepdims=True)
+                out[wm1:] = (yc * xc[np.newaxis, :, np.newaxis]).sum(axis=1) / denom
+        return out
+
     for t in range(n):
         lo = max(0, t - w + 1)
-        y = arr[lo : t + 1]
+        y = a[lo : t + 1]
         if y.shape[0] < 2:
             continue
-        if timestamps is None:
-            x = np.arange(y.shape[0], dtype=float)
-        else:
-            x = np.asarray(timestamps[lo : t + 1], dtype=float)
+        x = np.asarray(timestamps[lo : t + 1], dtype=float)
         x = x - float(np.mean(x))
         denom = float(np.sum(x * x))
         if denom <= 1e-12:
