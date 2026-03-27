@@ -96,6 +96,51 @@ class RegimeModel:
             return None, 0.0, 0.0, 0.0
         return best_reg, float(best_dist), float(best_geom), float(best_graph)
 
+    def nearest_matches(
+        self,
+        *,
+        geometry_signature: np.ndarray,
+        graph_signature: np.ndarray,
+        top_k: int = 3,
+    ) -> list[dict[str, float | str]]:
+        matches: list[dict[str, float | str]] = []
+        geom = np.asarray(geometry_signature, dtype=float)
+        graph = np.asarray(graph_signature, dtype=float)
+        for reg in self._regimes:
+            prototypes = reg.get("prototypes", [])
+            best_dist = float("inf")
+            best_geom = float("inf")
+            best_graph = float("inf")
+            for p in prototypes:
+                if not isinstance(p, dict):
+                    continue
+                geom_proto = np.asarray(p.get("geometry_signature", []), dtype=float)
+                graph_proto = np.asarray(p.get("graph_signature", []), dtype=float)
+                dist, gdist, grdist = self._weighted_distance(
+                    geom_a=geom,
+                    geom_b=geom_proto,
+                    graph_a=graph,
+                    graph_b=graph_proto,
+                )
+                if dist < best_dist:
+                    best_dist = float(dist)
+                    best_geom = float(gdist)
+                    best_graph = float(grdist)
+            if np.isfinite(best_dist):
+                similarity = float(np.exp(-best_dist))
+                matches.append(
+                    {
+                        "regime_name": str(reg.get("name", "unknown")),
+                        "distance": round(best_dist, 6),
+                        "similarity": round(similarity, 6),
+                        "geometry_distance": round(best_geom, 6),
+                        "graph_distance": round(best_graph, 6),
+                        "hits": float(reg.get("hits", 0.0)),
+                    }
+                )
+        matches.sort(key=lambda x: float(x.get("distance", float("inf"))))
+        return matches[: max(1, int(top_k))]
+
     def _append_prototype(
         self,
         reg: dict[str, Any],
