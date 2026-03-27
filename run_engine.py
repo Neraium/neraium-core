@@ -1,8 +1,13 @@
 import math
+import os
 from collections import deque
 from typing import Dict, List, Optional
 
 import numpy as np
+
+
+def _engine_debug_enabled() -> bool:
+    return os.environ.get("NERAIUM_DEBUG_ENGINE", "0").strip().lower() in {"1", "true", "yes", "on"}
 
 from neraium_core.stat_geometry import StatisticalGeometryLayer
 
@@ -1278,37 +1283,38 @@ class StructuralEngine:
         result["state_graph"] = self._latest_state_graph
 
         self._frame_count += 1
-        if self._frame_count <= 3:
-            print("DEBUG RESULT KEYS:", result.keys())
-            print("DEBUG EXPERIMENTAL:", result["experimental_analytics"])
-            print(
-                "DEBUG ADVANCED POPULATED:",
-                {name: bool(isinstance(payload, dict) and payload.get("available")) for name, payload in result["experimental_analytics"].items()},
-            )
-        geometry_live = bool(isinstance(self._latest_geometry, dict) and self._latest_geometry.get("available", True) is not False)
-        if self._geometry_debug_frames_logged < 3 and (geometry_live or len(self.frames) >= self.geometry_layer.min_history):
-            print("DEBUG GEOMETRY:", result.get("geometry"))
-            print("DEBUG STATE SPACE:", result.get("state_space_statistics"))
-            print("DEBUG STATE GRAPH:", result.get("state_graph"))
-            self._geometry_debug_frames_logged += 1
-        if self._early_warning_debug_frames_logged < 3 and len(self.frames) >= max(8, self.recent_window):
-            horizon_rationale = ((analytics.get("horizon_analysis") or {}).get("rationale", {})) if isinstance(analytics, dict) else {}
-            print(
-                "DEBUG EARLY WARNING:",
-                {
-                    "pre_instability_score": early_warning.get("pre_instability_score"),
-                    "stability_erosion_score": early_warning.get("stability_erosion_score"),
-                    "coherence_breakdown_score": early_warning.get("coherence_breakdown_score"),
-                    "transition_pressure_delta": round(self._delta_from_history("transition_pressure"), 6),
-                    "curvature_delta": round(self._delta_from_history("curvature"), 6),
-                    "local_volume_delta": round(self._delta_from_history("local_volume"), 6),
-                    "early_warning_state": early_warning.get("early_warning_state"),
-                    "early_warning_persistence_count": horizon_rationale.get("early_warning_persistence_count"),
-                    "horizon_before_adjustment": horizon_rationale.get("horizon_before_adjustment"),
-                    "horizon_after_adjustment": horizon_rationale.get("horizon_after_adjustment"),
-                },
-            )
-            self._early_warning_debug_frames_logged += 1
+        if _engine_debug_enabled():
+            if self._frame_count <= 3:
+                print("DEBUG RESULT KEYS:", result.keys())
+                print("DEBUG EXPERIMENTAL:", result["experimental_analytics"])
+                print(
+                    "DEBUG ADVANCED POPULATED:",
+                    {name: bool(isinstance(payload, dict) and payload.get("available")) for name, payload in result["experimental_analytics"].items()},
+                )
+            geometry_live = bool(isinstance(self._latest_geometry, dict) and self._latest_geometry.get("available", True) is not False)
+            if self._geometry_debug_frames_logged < 3 and (geometry_live or len(self.frames) >= self.geometry_layer.min_history):
+                print("DEBUG GEOMETRY:", result.get("geometry"))
+                print("DEBUG STATE SPACE:", result.get("state_space_statistics"))
+                print("DEBUG STATE GRAPH:", result.get("state_graph"))
+                self._geometry_debug_frames_logged += 1
+            if self._early_warning_debug_frames_logged < 3 and len(self.frames) >= max(8, self.recent_window):
+                horizon_rationale = ((analytics.get("horizon_analysis") or {}).get("rationale", {})) if isinstance(analytics, dict) else {}
+                print(
+                    "DEBUG EARLY WARNING:",
+                    {
+                        "pre_instability_score": early_warning.get("pre_instability_score"),
+                        "stability_erosion_score": early_warning.get("stability_erosion_score"),
+                        "coherence_breakdown_score": early_warning.get("coherence_breakdown_score"),
+                        "transition_pressure_delta": round(self._delta_from_history("transition_pressure"), 6),
+                        "curvature_delta": round(self._delta_from_history("curvature"), 6),
+                        "local_volume_delta": round(self._delta_from_history("local_volume"), 6),
+                        "early_warning_state": early_warning.get("early_warning_state"),
+                        "early_warning_persistence_count": horizon_rationale.get("early_warning_persistence_count"),
+                        "horizon_before_adjustment": horizon_rationale.get("horizon_before_adjustment"),
+                        "horizon_after_adjustment": horizon_rationale.get("horizon_after_adjustment"),
+                    },
+                )
+                self._early_warning_debug_frames_logged += 1
 
         self.latest_result = result
         return result
