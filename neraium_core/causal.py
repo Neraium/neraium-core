@@ -1,8 +1,5 @@
 from __future__ import annotations
 
-import numpy as np
-
-
 from typing import Any
 
 import numpy as np
@@ -79,7 +76,6 @@ def causal_metrics(C: np.ndarray) -> dict[str, float]:
     }
 
 
-__all__ = ["causal_metrics", "granger_causality_matrix"]
 def _clamp01(value: float) -> float:
     return max(0.0, min(1.0, float(value)))
 
