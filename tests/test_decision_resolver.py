@@ -111,6 +111,16 @@ def test_confidence_is_deterministic_and_bounded() -> None:
     assert 0.0 <= c1 <= 1.0
 
 
+def test_confidence_tolerates_missing_source_flags() -> None:
+    c = compute_decision_confidence(
+        causal_analysis={"top_hypotheses": []},
+        risk_assessment={"projected_near_term_trend": "uncertain"},
+        attribution={},
+        source={},
+    )
+    assert 0.0 <= c <= 1.0
+
+
 def test_evidence_and_source_fields_are_populated() -> None:
     payload = _base_inputs()
     payload["causal_analysis"] = {
@@ -123,6 +133,19 @@ def test_evidence_and_source_fields_are_populated() -> None:
     assert out["evidence"]
     assert out["source"]["from_causal_analysis"] is True
     assert out["source"]["from_risk_assessment"] is True
+
+
+def test_resolver_handles_dict_style_causal_status_for_warmup() -> None:
+    payload = _base_inputs()
+    payload["causal_analysis"] = {
+        "status": {"available": False, "reason": "insufficient_history"},
+        "best_next_action": None,
+        "recommended_sequence": [],
+        "top_hypotheses": [],
+    }
+    out = resolve_best_action(**payload)
+    assert out["status"]["available"] is False
+    assert out["action"] is None
 
 
 def test_engine_process_frame_emits_decision_in_warmup_and_ready(tmp_path: Path) -> None:
