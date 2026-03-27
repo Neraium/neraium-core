@@ -327,20 +327,25 @@ class StructuralMonitoringService:
         *,
         run_id: str | None = None,
         customer_id: str | None = None,
+        log_ingest: bool = True,
     ) -> dict[str, Any]:
         """Ingest a single telemetry payload and return the decorated result.
 
         When `NERAIUM_PILOT_HARDENING=1`, the response is augmented with the pilot
         schema keys: `timestamp, signals, score, status, aligned, anomaly`.
+
+        Set ``log_ingest=False`` for bulk/offline runs to skip per-frame structured
+        INFO logs (JSON serialization of ingest metadata on every cycle).
         """
 
         timer = Timer()
-        log_structured(
-            logger,
-            event="ingest_payload_in",
-            fields=summarize_payload_for_logs(payload),
-            level=logging.INFO,
-        )
+        if log_ingest:
+            log_structured(
+                logger,
+                event="ingest_payload_in",
+                fields=summarize_payload_for_logs(payload),
+                level=logging.INFO,
+            )
         try:
             frame = normalize_rest_payload(payload)
             resolved_customer = self._effective_customer_id(
@@ -358,22 +363,23 @@ class StructuralMonitoringService:
             result["customer_id"] = resolved_customer
             if pilot_hardening_enabled():
                 result.update(build_pilot_output(frame=frame, result=result))
-            self.store.save_ingestion(frame, result, run_id=run_id, customer_id=resolved_customer)
-            persisted = self.store.get_latest_result(run_id=run_id, customer_id=resolved_customer)
-            if persisted is not None:
-                result = self._with_result_metadata(
-                    result,
-                    customer_id=persisted.get("customer_id"),
-                    run_id=persisted.get("run_id"),
-                    result_id=persisted.get("result_id"),
-                    persisted_at=persisted.get("persisted_at"),
-                )
+            persisted = self.store.save_ingestion(
+                frame, result, run_id=run_id, customer_id=resolved_customer
+            )
+            result = self._with_result_metadata(
+                result,
+                customer_id=persisted.get("customer_id"),
+                run_id=persisted.get("run_id"),
+                result_id=persisted.get("result_id"),
+                persisted_at=persisted.get("persisted_at"),
+            )
 
             out_fields = summarize_result_for_logs(result)
             out_fields["latency_ms"] = round(timer.ms(), 3)
-            log_structured(logger, event="ingest_payload_out", fields=out_fields, level=logging.INFO)
+            if log_ingest:
+                log_structured(logger, event="ingest_payload_out", fields=out_fields, level=logging.INFO)
 
-            if out_fields.get("gate_passed") is False:
+            if log_ingest and out_fields.get("gate_passed") is False:
                 log_structured(
                     logger,
                     event="data_quality_gate_failed",

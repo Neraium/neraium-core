@@ -173,18 +173,23 @@ class ResultStore:
         *,
         run_id: str | None = None,
         customer_id: str | None = None,
-    ) -> None:
-        """Persist frame + result in a single transaction (half the connect/commit overhead)."""
+    ) -> dict[str, Any]:
+        """Persist frame + result in a single transaction (half the connect/commit overhead).
+
+        Returns metadata for the inserted results row so callers can avoid a follow-up
+        ``SELECT`` to recover ``result_id`` / ``persisted_at``.
+        """
         logger.debug("persistence write ingestion db_path=%s", self.db_path)
         now = _utc_now()
         resolved_customer = _normalize_customer_id(customer_id)
         payload_json = json.dumps(_json_safe(payload))
         result_json = json.dumps(_json_safe(result))
         with self._conn() as conn:
-            conn.execute(
+            cur = conn.execute(
                 "INSERT INTO results (created_at, customer_id, run_id, result_json) VALUES (?, ?, ?, ?)",
                 (now, resolved_customer, run_id, result_json),
             )
+            result_id = int(cur.lastrowid)
             conn.execute(
                 """
                 INSERT INTO events (
@@ -202,6 +207,12 @@ class ResultStore:
                     result.get("timestamp"),
                 ),
             )
+        return {
+            "customer_id": resolved_customer,
+            "run_id": run_id,
+            "result_id": result_id,
+            "persisted_at": now,
+        }
 
     def save_ingestion_batch(
         self,

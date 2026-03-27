@@ -512,11 +512,23 @@ class StructuralEngine:
         return vectors
 
     def _get_recent_timestamps(self, frames_list: list[dict] | None = None) -> Optional[list[float]]:
-        fl = frames_list if frames_list is not None else list(self.frames)
-        if len(fl) < self.recent_window:
-            return None
+        """Timestamps for the trailing ``recent_window`` frames.
+
+        When ``frames_list`` is omitted, indexes ``self.frames`` (a deque) directly to
+        avoid ``list(self.frames)`` allocations on the post-warmup hot path.
+        """
+        if frames_list is not None:
+            fl = frames_list
+            if len(fl) < self.recent_window:
+                return None
+            frame_iter = fl[-self.recent_window :]
+        else:
+            n = len(self.frames)
+            if n < self.recent_window:
+                return None
+            frame_iter = (self.frames[j] for j in range(-self.recent_window, 0))
         ts_vals: list[float] = []
-        for f in fl[-self.recent_window :]:
+        for f in frame_iter:
             try:
                 ts_vals.append(float(f.get("timestamp")))
             except (TypeError, ValueError):
@@ -524,11 +536,19 @@ class StructuralEngine:
         return ts_vals if len(ts_vals) >= 2 else None
 
     def _get_baseline_timestamps(self, frames_list: list[dict] | None = None) -> Optional[list[float]]:
-        fl = frames_list if frames_list is not None else list(self.frames)
-        if len(fl) < self.baseline_window:
-            return None
+        if frames_list is not None:
+            fl = frames_list
+            if len(fl) < self.baseline_window:
+                return None
+            frame_iter = fl[: self.baseline_window]
+        else:
+            n = len(self.frames)
+            if n < self.baseline_window:
+                return None
+            bw = min(self.baseline_window, n)
+            frame_iter = (self.frames[j] for j in range(bw))
         ts_vals: list[float] = []
-        for f in fl[: self.baseline_window]:
+        for f in frame_iter:
             try:
                 ts_vals.append(float(f.get("timestamp")))
             except (TypeError, ValueError):
@@ -1256,12 +1276,10 @@ class StructuralEngine:
         can_process_full_frame = True
         baseline_window = None
         recent_window = None
-        frames_list = None
         chronological_M: np.ndarray | None = None
         if len(self.frames) < self.baseline_window or len(self.frames) < self.recent_window:
             can_process_full_frame = False
         else:
-            frames_list = list(self.frames)
             baseline_window = None
             recent_window = None
             if _incremental_windows_enabled() and self._baseline_matrix_cache is not None:
@@ -1277,7 +1295,10 @@ class StructuralEngine:
             )
 
         if can_process_full_frame:
-            history_matrix = chronological_M if chronological_M is not None else self._history_ring.chronological_matrix()
+            if chronological_M is not None:
+                history_matrix = chronological_M
+            else:
+                history_matrix = self._history_ring.chronological_matrix()
             history_ts = self._history_ring.chronological_timestamps()
             rep = build_temporal_representation(history_matrix, self.representation_config, timestamps=history_ts)
             transformed_history = rep.transformed
@@ -1289,8 +1310,8 @@ class StructuralEngine:
                 transformed_history[-self.recent_window :][:: self.window_stride],
                 dtype=float,
             )
-            ts_baseline = self._get_baseline_timestamps(frames_list)
-            ts_recent = self._get_recent_timestamps(frames_list)
+            ts_baseline = self._get_baseline_timestamps(None)
+            ts_recent = self._get_recent_timestamps(None)
             temporal_quality = derive_temporal_quality_signals(ts_recent)
 
             data_quality_report = compute_data_quality(
@@ -2313,7 +2334,9 @@ class StructuralEngine:
                 print("DEBUG EXP ANALYTICS:", result.get("experimental_analytics"))
                 self._debug_print_experimental_analytics_once(result)
             if (
-                can_process_full_frame
+                os.environ.get("NERAIUM_DEBUG_GEOMETRY", "0").strip().lower()
+                not in {"0", "false", "no", "off", ""}
+                and can_process_full_frame
                 and valid_signal_count >= 2
                 and self._geometry_debug_frames_logged < 3
             ):
