@@ -52,7 +52,8 @@ def test_fd001_row_to_payload_mapping_shape():
 
     payload = fd001_row_to_payload(row)
 
-    assert payload["asset_id"] == "unit_007"
+    assert payload["asset_id"] == "fd001_unit_007"
+    assert payload["timestamp"] == "3"
     assert payload["sensor_values"]["setting_1"] == 0.11
     assert payload["sensor_values"]["setting_2"] == 0.22
     assert payload["sensor_values"]["setting_3"] == 0.33
@@ -73,18 +74,27 @@ def test_replay_fd001_units_smoke():
     assert len(summary) == 2
     assert full[0]["unit_id"] == 1
     assert full[0]["cycle"] == 1
+    assert full[0]["row_index"] == 1
+    assert full[0]["ingest_metadata"] == {"unit_id": 1, "cycle": 1, "row_index": 1}
     assert "decision" in full[0]
     assert "risk_assessment" in full[0]
 
-    flat = flatten_validation_result(full[0], unit_id=1, cycle=1)
+    flat = flatten_validation_result(full[0], unit_id=1, cycle=1, row_index=1)
     assert set(flat.keys()) == {
         "unit_id",
         "cycle",
+        "row_index",
         "decision_action",
         "decision_confidence",
         "risk_current_level",
         "risk_trend",
+        "risk_trend_direction",
         "top_hypothesis_id",
         "top_hypothesis_confidence",
         "top_attribution_driver",
+        "first_risk_cycle",
+        "first_decision_cycle",
     }
+
+    assert "first_risk_cycle" in summary[0]
+    assert "first_decision_cycle" in summary[0]

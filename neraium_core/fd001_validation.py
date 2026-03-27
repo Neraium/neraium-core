@@ -3,7 +3,6 @@ from __future__ import annotations
 import csv
 import json
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -61,10 +60,10 @@ def fd001_row_to_payload(
     row: Fd001Row,
     *,
     site_id: str = "cmapss-fd001",
-    start_time: datetime | None = None,
 ) -> dict[str, Any]:
-    base_time = start_time or datetime(2025, 1, 1, tzinfo=timezone.utc)
-    timestamp = base_time + timedelta(minutes=row.cycle)
+    # FD001 has cycle-relative ordering only. Use cycle index as synthetic relative time
+    # so replay preserves sequence without implying wall-clock semantics.
+    synthetic_relative_time = str(row.cycle)
 
     # Explicit deterministic mapping from CMAPSS FD001 columns to canonical Neraium payload keys.
     sensor_values: dict[str, float] = {
@@ -76,9 +75,9 @@ def fd001_row_to_payload(
         sensor_values[f"s{idx}"] = float(value)
 
     return {
-        "timestamp": timestamp.isoformat(),
+        "timestamp": synthetic_relative_time,
         "site_id": site_id,
-        "asset_id": f"unit_{row.unit_id:03d}",
+        "asset_id": f"fd001_unit_{row.unit_id:03d}",
         "sensor_values": sensor_values,
     }
 
@@ -115,7 +114,18 @@ def _top_attribution_driver(attribution: dict[str, Any]) -> Any:
     return None
 
 
-def flatten_validation_result(result: dict[str, Any], *, unit_id: int, cycle: int) -> dict[str, Any]:
+def _risk_trend_direction(risk: dict[str, Any]) -> str:
+    trend = str(risk.get("projected_near_term_trend") or risk.get("trend") or "unknown").strip().lower()
+    if trend in {"increasing", "up", "rising", "worsening"}:
+        return "up"
+    if trend in {"decreasing", "down", "falling", "improving"}:
+        return "down"
+    if trend in {"stable", "flat", "unchanged"}:
+        return "flat"
+    return "unknown"
+
+
+def flatten_validation_result(result: dict[str, Any], *, unit_id: int, cycle: int, row_index: int) -> dict[str, Any]:
     decision = result.get("decision") if isinstance(result.get("decision"), dict) else {}
     risk = result.get("risk_assessment") if isinstance(result.get("risk_assessment"), dict) else {}
     causal = result.get("causal_analysis") if isinstance(result.get("causal_analysis"), dict) else {}
@@ -125,14 +135,86 @@ def flatten_validation_result(result: dict[str, Any], *, unit_id: int, cycle: in
     return {
         "unit_id": unit_id,
         "cycle": cycle,
+        "row_index": row_index,
         "decision_action": decision.get("action"),
         "decision_confidence": decision.get("confidence"),
         "risk_current_level": risk.get("current_risk_level") or risk.get("risk_level"),
         "risk_trend": risk.get("projected_near_term_trend") or risk.get("trend"),
+        "risk_trend_direction": _risk_trend_direction(risk),
         "top_hypothesis_id": hypothesis_id,
         "top_hypothesis_confidence": hypothesis_confidence,
         "top_attribution_driver": _top_attribution_driver(attribution),
+        "first_risk_cycle": None,
+        "first_decision_cycle": None,
     }
+
+
+def _risk_meaningfully_elevated(risk_assessment: dict[str, Any]) -> bool:
+    level = str(risk_assessment.get("current_risk_level") or risk_assessment.get("risk_level") or "").upper()
+    if level in {"MEDIUM", "HIGH"}:
+        return True
+    try:
+        return float(risk_assessment.get("risk_score", 0.0) or 0.0) >= 0.5
+    except (TypeError, ValueError):
+        return False
+
+
+def _run_unit_timeline(
+    rows: list[Fd001Row],
+    *,
+    unit_id: int,
+    max_cycles: int | None,
+    site_id: str,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    capped_rows = rows[: int(max_cycles)] if (max_cycles is not None and max_cycles > 0) else rows
+
+    # Explicit per-unit state scoping: instantiate a new engine per unit timeline.
+    engine = SIIEngine()
+    unit_full: list[dict[str, Any]] = []
+    unit_summary: list[dict[str, Any]] = []
+    first_risk_cycle: int | None = None
+    first_decision_cycle: int | None = None
+
+    try:
+        for row_index, row in enumerate(capped_rows, start=1):
+            payload = fd001_row_to_payload(row, site_id=site_id)
+            out = engine.process_payload(payload)
+
+            risk = out.get("risk_assessment") if isinstance(out.get("risk_assessment"), dict) else {}
+            decision = out.get("decision") if isinstance(out.get("decision"), dict) else {}
+            decision_status = decision.get("status") if isinstance(decision.get("status"), dict) else {}
+
+            if first_risk_cycle is None and _risk_meaningfully_elevated(risk):
+                first_risk_cycle = row.cycle
+            if first_decision_cycle is None and bool(decision_status.get("available")):
+                first_decision_cycle = row.cycle
+
+            full = {
+                "ingest_metadata": {
+                    "unit_id": unit_id,
+                    "cycle": row.cycle,
+                    "row_index": row_index,
+                },
+                "unit_id": unit_id,
+                "cycle": row.cycle,
+                "row_index": row_index,
+                "attribution": out.get("attribution"),
+                "regime_memory": out.get("regime_memory"),
+                "risk_assessment": out.get("risk_assessment"),
+                "operator_guidance": out.get("operator_guidance"),
+                "causal_analysis": out.get("causal_analysis"),
+                "decision": out.get("decision"),
+            }
+            unit_full.append(full)
+            unit_summary.append(flatten_validation_result(out, unit_id=unit_id, cycle=row.cycle, row_index=row_index))
+
+        for row in unit_summary:
+            row["first_risk_cycle"] = first_risk_cycle
+            row["first_decision_cycle"] = first_decision_cycle
+    finally:
+        engine.close()
+
+    return unit_full, unit_summary
 
 
 def replay_fd001_units(
@@ -141,7 +223,6 @@ def replay_fd001_units(
     unit_ids: list[int] | None = None,
     max_cycles: int | None = None,
     site_id: str = "cmapss-fd001",
-    start_time: datetime | None = None,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     full_results: list[dict[str, Any]] = []
     summary_rows: list[dict[str, Any]] = []
@@ -149,27 +230,9 @@ def replay_fd001_units(
     replay_units = sorted(unit_ids) if unit_ids else sorted(grouped_rows)
     for unit_id in replay_units:
         rows = grouped_rows.get(unit_id, [])
-        if max_cycles is not None and max_cycles > 0:
-            rows = rows[: int(max_cycles)]
-
-        # Per-unit engine reset preserves sequential behavior and avoids cross-unit leakage.
-        engine = SIIEngine()
-        for row in rows:
-            payload = fd001_row_to_payload(row, site_id=site_id, start_time=start_time)
-            out = engine.process_payload(payload)
-            full = {
-                "unit_id": unit_id,
-                "cycle": row.cycle,
-                "attribution": out.get("attribution"),
-                "regime_memory": out.get("regime_memory"),
-                "risk_assessment": out.get("risk_assessment"),
-                "operator_guidance": out.get("operator_guidance"),
-                "causal_analysis": out.get("causal_analysis"),
-                "decision": out.get("decision"),
-            }
-            full_results.append(full)
-            summary_rows.append(flatten_validation_result(out, unit_id=unit_id, cycle=row.cycle))
-        engine.close()
+        unit_full, unit_summary = _run_unit_timeline(rows, unit_id=unit_id, max_cycles=max_cycles, site_id=site_id)
+        full_results.extend(unit_full)
+        summary_rows.extend(unit_summary)
 
     return full_results, summary_rows
 
@@ -189,13 +252,17 @@ def write_summary_csv(path: str | Path, rows: list[dict[str, Any]]) -> None:
     headers = [
         "unit_id",
         "cycle",
+        "row_index",
         "decision_action",
         "decision_confidence",
         "risk_current_level",
         "risk_trend",
+        "risk_trend_direction",
         "top_hypothesis_id",
         "top_hypothesis_confidence",
         "top_attribution_driver",
+        "first_risk_cycle",
+        "first_decision_cycle",
     ]
     with out.open("w", encoding="utf-8", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=headers)
