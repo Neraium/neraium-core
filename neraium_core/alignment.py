@@ -79,7 +79,7 @@ from neraium_core.staged_pipeline import (
     flatten_upper_tri,
 )
 from neraium_core.subsystems import subsystem_spectral_measures
-from neraium_core.realtime.buffer import TimestampDequeBuffer, VectorDequeBuffer
+from neraium_core.realtime.buffer import HistoryRingBuffer, TimestampDequeBuffer, VectorDequeBuffer
 
 
 # How slowly the rolling baseline adapts (only when nominal); avoid absorbing instability.
@@ -110,18 +110,6 @@ def _vector_from_sensor_values(sensor_values: Dict[str, object], order: List[str
         except (TypeError, ValueError):
             values.append(np.nan)
     return np.asarray(values, dtype=float)
-
-
-def _history_timestamps_float64(frames_list: list[dict]) -> np.ndarray:
-    """Row-aligned timestamps for temporal representation (matches legacy list semantics)."""
-    n = len(frames_list)
-    out = np.empty(n, dtype=np.float64)
-    for i, f in enumerate(frames_list):
-        try:
-            out[i] = float(f.get("timestamp"))
-        except (TypeError, ValueError):
-            out[i] = float(i)
-    return out
 
 
 def _env_enabled(var_name: str, *, default: str = "1") -> bool:
@@ -256,6 +244,7 @@ class StructuralEngine:
         self._baseline_matrix_cache: np.ndarray | None = None
         self._baseline_ts_cached: list[float] | None = None
         self._sensor_schema_dirty: bool = False
+        self._history_ring = HistoryRingBuffer(500)
 
     def reset_baseline(self) -> None:
         """Clear rolling baseline and calibration state so baseline is recomputed from window."""
@@ -310,6 +299,7 @@ class StructuralEngine:
     def reset_stream(self) -> None:
         """Reset in-memory stream state while preserving constructor configuration."""
         self.frames.clear()
+        self._history_ring.clear()
         self.sensor_order = []
         self.latest_result = None
         self.score_history.clear()
@@ -375,6 +365,7 @@ class StructuralEngine:
         self._baseline_coverage_samples = int(state.get("baseline_coverage_samples", 0))
         self._current_episode = dict(state.get("current_episode", self._current_episode))
         self._episode_history = list(state.get("episode_history", []))
+        self._history_ring.rebuild_from_frames(list(self.frames))
 
     def _persist_regime_state(self) -> None:
         self.regime_store.save(
@@ -483,18 +474,28 @@ class StructuralEngine:
                 self._sensor_schema_dirty = True
         return _vector_from_sensor_values(sensor_values, self.sensor_order)
 
+    def _extract_windows_from_chronological(self, m: np.ndarray) -> tuple[Optional[np.ndarray], Optional[np.ndarray]]:
+        """Baseline / recent slices from a chronological (oldest→newest) matrix."""
+        if m.shape[0] < self.baseline_window or m.shape[0] < self.recent_window:
+            return None, None
+        bl = m[: self.baseline_window][:: self.window_stride]
+        rc = m[-self.recent_window :][:: self.window_stride]
+        if bl.shape[0] < 2 or rc.shape[0] < 2:
+            return None, None
+        return bl, rc
+
     def _get_recent_window(self, frames_list: list[dict] | None = None) -> Optional[np.ndarray]:
         """Use ``frames_list`` when available to avoid repeated ``list(deque)`` copies per step."""
         fl = frames_list if frames_list is not None else list(self.frames)
         if len(fl) < self.recent_window:
             return None
 
-        vectors = np.stack([f["_vector"] for f in fl[-self.recent_window :]], axis=0)
-        vectors = vectors[:: self.window_stride]
-
+        m = self._history_ring.chronological_matrix()
+        if m.shape[0] < self.recent_window:
+            return None
+        vectors = m[-self.recent_window :][:: self.window_stride]
         if vectors.shape[0] < 2:
             return None
-
         return vectors
 
     def _get_baseline_window(self, frames_list: list[dict] | None = None) -> Optional[np.ndarray]:
@@ -502,12 +503,12 @@ class StructuralEngine:
         if len(fl) < self.baseline_window:
             return None
 
-        vectors = np.stack([f["_vector"] for f in fl[: self.baseline_window]], axis=0)
-        vectors = vectors[:: self.window_stride]
-
+        m = self._history_ring.chronological_matrix()
+        if m.shape[0] < self.baseline_window:
+            return None
+        vectors = m[: self.baseline_window][:: self.window_stride]
         if vectors.shape[0] < 2:
             return None
-
         return vectors
 
     def _get_recent_timestamps(self, frames_list: list[dict] | None = None) -> Optional[list[float]]:
@@ -553,11 +554,11 @@ class StructuralEngine:
             self._recent_vector_buffer.append(np.asarray(v, dtype=float))
             self._recent_ts_buffer.append(tsv)
         if len(self.frames) >= self.baseline_window:
-            fl = list(self.frames)
-            vecs = np.stack([f["_vector"] for f in fl[: self.baseline_window]], axis=0)
-            vecs = vecs[:: self.window_stride]
+            m = self._history_ring.chronological_matrix()
+            vecs = m[: self.baseline_window][:: self.window_stride]
             if vecs.shape[0] >= 2:
                 self._baseline_matrix_cache = np.asarray(vecs, dtype=np.float64, order="C")
+                fl = list(self.frames)
                 ts_b: list[float] = []
                 for f in fl[: self.baseline_window]:
                     try:
@@ -572,11 +573,11 @@ class StructuralEngine:
             return
         if len(self.frames) < self.baseline_window:
             return
-        fl = list(self.frames)
-        vecs = np.stack([f["_vector"] for f in fl[: self.baseline_window]], axis=0)
-        vecs = vecs[:: self.window_stride]
+        m = self._history_ring.chronological_matrix()
+        vecs = m[: self.baseline_window][:: self.window_stride]
         if vecs.shape[0] >= 2:
             self._baseline_matrix_cache = np.asarray(vecs, dtype=np.float64, order="C")
+            fl = list(self.frames)
             ts_b: list[float] = []
             for f in fl[: self.baseline_window]:
                 try:
@@ -1194,14 +1195,21 @@ class StructuralEngine:
             ts_val = float(frame["timestamp"])
         except (TypeError, ValueError):
             ts_val = 0.0
+        try:
+            ts_ring = float(frame["timestamp"])
+        except (TypeError, ValueError):
+            ts_ring = float(len(self.frames) - 1)
         if self._sensor_schema_dirty:
             self._invalidate_window_caches()
+            self._history_ring.rebuild_from_frames(list(self.frames))
             self._rebuild_incremental_buffers_after_schema_change()
             self._sensor_schema_dirty = False
-        elif _incremental_windows_enabled():
-            self._recent_vector_buffer.append(vector)
-            self._recent_ts_buffer.append(ts_val)
-            self._refresh_baseline_matrix_cache()
+        else:
+            self._history_ring.append(vector, ts_ring)
+            if _incremental_windows_enabled():
+                self._recent_vector_buffer.append(vector)
+                self._recent_ts_buffer.append(ts_val)
+                self._refresh_baseline_matrix_cache()
 
         result = {
             "timestamp": frame["timestamp"],
@@ -1249,6 +1257,7 @@ class StructuralEngine:
         baseline_window = None
         recent_window = None
         frames_list = None
+        chronological_M: np.ndarray | None = None
         if len(self.frames) < self.baseline_window or len(self.frames) < self.recent_window:
             can_process_full_frame = False
         else:
@@ -1261,14 +1270,15 @@ class StructuralEngine:
                     baseline_window = self._baseline_matrix_cache
                     recent_window = ir
             if baseline_window is None or recent_window is None:
-                baseline_window = self._get_baseline_window(frames_list)
-                recent_window = self._get_recent_window(frames_list)
-            if baseline_window is None or recent_window is None:
-                can_process_full_frame = False
+                chronological_M = self._history_ring.chronological_matrix()
+                baseline_window, recent_window = self._extract_windows_from_chronological(chronological_M)
+            can_process_full_frame = bool(
+                baseline_window is not None and recent_window is not None
+            )
 
         if can_process_full_frame:
-            history_matrix = np.stack([f["_vector"] for f in frames_list], axis=0)
-            history_ts = _history_timestamps_float64(frames_list)
+            history_matrix = chronological_M if chronological_M is not None else self._history_ring.chronological_matrix()
+            history_ts = self._history_ring.chronological_timestamps()
             rep = build_temporal_representation(history_matrix, self.representation_config, timestamps=history_ts)
             transformed_history = rep.transformed
             baseline_window = np.asarray(
@@ -2482,7 +2492,7 @@ class StructuralEngine:
         result["drift_noise"] = drift_noise
         matrix_for_scale = recent_window if isinstance(recent_window, np.ndarray) else None
         if matrix_for_scale is None and len(self.frames) >= 3:
-            matrix_for_scale = np.stack([f["_vector"] for f in list(self.frames)[-min(24, len(self.frames)) :]], axis=0)
+            matrix_for_scale = self._history_ring.chronological_tail_matrix(min(24, len(self.frames)))
         multi_scale = compute_multi_scale_states(np.nan_to_num(matrix_for_scale, nan=0.0)) if isinstance(matrix_for_scale, np.ndarray) else {
             "short_term_state": "insufficient_data",
             "mid_term_state": "insufficient_data",
