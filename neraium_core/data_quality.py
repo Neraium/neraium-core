@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import List, Optional
+import warnings
 
 import numpy as np
 
@@ -107,13 +108,15 @@ def compute_data_quality(
 
     # Flatlined: near-zero std in recent (using nanstd)
     safe_recent = np.nan_to_num(recent, nan=0.0)
-    std_recent = np.nanstd(recent, axis=0)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", category=RuntimeWarning)
+        std_recent = np.nanstd(recent, axis=0)
+        std_baseline = np.nanstd(baseline, axis=0)
     std_recent = np.nan_to_num(std_recent, nan=0.0)
     flatlined = std_recent <= flatline_std_threshold
     report.flatlined_sensors = [sensor_names[i] for i in range(n_sensors) if i < len(sensor_names) and flatlined[i]]
 
     # Valid mask: nonzero variance in recent or baseline
-    std_baseline = np.nanstd(baseline, axis=0)
     std_baseline = np.nan_to_num(std_baseline, nan=0.0)
     valid_mask = (std_recent > flatline_std_threshold) | (std_baseline > flatline_std_threshold)
     report.valid_signal_count = int(np.sum(valid_mask))

@@ -48,7 +48,11 @@ def test_counterfactual_guidance_emits_ranked_contributors_and_directions() -> N
         assert guidance.get("available") is True
         assert contributors
         assert directions
-        assert "s1 <-> s2" in {str(item.get("relationship")) for item in contributors[:2]}
+        # Relationship labels use expanded feature names (e.g. signal_1__slope <-> signal_2__slope).
+        top_rels = [str(item.get("relationship")) for item in contributors[:2]]
+        assert any(
+            ("signal_1" in r and "signal_2" in r) or ("s1" in r and "s2" in r) for r in top_rels
+        )
         assert float(contributors[0]["contributor_score"]) >= float(contributors[-1]["contributor_score"])
         assert "classification" in (guidance.get("reversibility") or {})
 
