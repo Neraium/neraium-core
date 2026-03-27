@@ -56,6 +56,7 @@ It does not write back into operational systems and does not execute control act
 - `trend`  
 - `risk_level`  
 - `operator_message`  
+- `causal_analysis` (ranked hypotheses, counterfactual robustness, validation plan, value-of-information-ranked actions)  
 - Structural attribution:
   - `attribution.status`
   - `attribution.top_sensors`
@@ -190,6 +191,70 @@ Canonical top-level decision-intelligence contract:
 - `regime_memory`
 - `risk_assessment`
 - `operator_guidance`
+
+---
+
+## Platform Output Structure
+
+Neraium’s operator-facing output is organized into canonical, composable sections. The
+`causal_analysis` section is an **additional reasoning layer** on top of core structural
+outputs; it does not replace attribution, regime memory, risk, or guidance.
+
+- `attribution`
+  - `top_drivers`: ranked structural contributors.
+  - `driver_scores`: normalized per-driver impact scores.
+  - `trajectory_drivers` / `branching_drivers` / `lock_in_drivers` / `horizon_drivers`: higher-order driver views.
+
+- `regime_memory`
+  - `regime_name`: nearest known structural regime label.
+  - `regime_distance`: distance to nearest regime signature.
+  - `library_size` / `baseline_count`: regime memory depth and baseline confidence context.
+
+- `risk_assessment`
+  - `risk_level`: interpreted risk category from structural evidence.
+  - `trend`: stability trajectory direction.
+  - `latest_instability`: current composite instability.
+  - `confidence_score`: confidence proxy for decision outputs.
+
+- `operator_guidance`
+  - `operator_message`: concise human-facing interpretation.
+  - `response_recommendations`: conservative follow-up guidance for inspection/escalation.
+
+- `causal_analysis` *(additive layer)*
+  - `hypotheses`: competing causal hypotheses (`physical`, `sensor`, `systemic`) grounded in structural signals.
+  - `top_hypothesis`: highest-ranked current explanation candidate.
+  - `counterfactual`: lightweight robustness checks (`remove_top_driver`, `remove_relationship_change`, localization dependency).
+  - `validation_plan`: confirm/falsify actions with expected true/false outcomes.
+  - `recommended_sequence` / `best_next_action`: value-of-information-ranked execution order.
+  - `status`: availability state (`ok`, `warmup`, `insufficient_evidence`).
+
+### Example: `causal_analysis`
+
+```json
+{
+  "causal_analysis": {
+    "hypotheses": [
+      {
+        "hypothesis_id": "hyp_physical_localized_degradation",
+        "type": "physical",
+        "confidence": 0.71
+      }
+    ],
+    "top_hypothesis": {},
+    "counterfactual": {
+      "counterfactual_checks": [],
+      "robustness": 0.67,
+      "interpretation": "Top hypothesis has mixed robustness; targeted validation is required."
+    },
+    "validation_plan": [],
+    "recommended_sequence": [],
+    "best_next_action": {},
+    "status": { "available": true, "reason": "ok" }
+  }
+}
+```
+
+> Compatibility note: `neraium_core/casual.py` is deprecated and will be removed in a future release. Use `neraium_core/causal.py`.
 
 ---
 
