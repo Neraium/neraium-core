@@ -221,7 +221,12 @@ Fallback interpretation:
 ## Deprecated compatibility module note
 
 `neraium_core.casual` is deprecated and retained only as a temporary compatibility shim.
-All canonical runtime imports must use `neraium_core.causal`. The shim emits a non-breaking `DeprecationWarning` and is scheduled for removal in a future version.
+All canonical runtime imports must use `neraium_core.causal`.
+
+Hardening constraints for the shim:
+- no causal logic is implemented in `casual.py`,
+- only minimal re-exports are allowed,
+- importing the shim emits a `DeprecationWarning`.
 
 ---
 

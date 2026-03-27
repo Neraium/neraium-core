@@ -131,3 +131,5 @@ Decision selection hierarchy:
 Hardening note:
 - Canonical causal imports must use `neraium_core.causal`.
 - `neraium_core.casual` remains only as a deprecated compatibility shim.
+- Decision fallback is explicit and deterministic for warmup/insufficient-evidence cases.
+- Canonical output blocks (`causal_analysis`, `decision`, `attribution`, `risk_assessment`, `operator_guidance`, `regime_memory`) are always emitted.
