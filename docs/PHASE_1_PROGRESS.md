@@ -26,6 +26,13 @@ This document tracks the status of Phase 1: the production-readiness upgrade (ca
 | Full test suite (`pytest tests/`) | 89 passed |
 | Ruff check | Minor pre-existing issues in colab/utility scripts |
 
+### Post-merge hardening status
+
+- Canonical causal module path is `neraium_core.causal`; the legacy `neraium_core.casual` module remains a deprecated shim only.
+- Decision resolver fallback behavior is standardized for warmup and insufficient-evidence paths.
+- Canonical decision-intelligence output blocks remain stable across warmup and ready paths:
+  `causal_analysis`, `decision`, `attribution`, `risk_assessment`, `operator_guidance`, `regime_memory`.
+
 ### Upgrade Scenario Coverage
 
 - **Nominal operation** - output shape, NOMINAL_STRUCTURE, attribution, data_quality_summary, baseline_mode
