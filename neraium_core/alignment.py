@@ -8,7 +8,15 @@ from typing import Dict, List, Optional
 import os
 import numpy as np
 
-from neraium_core.causal import causal_metrics, granger_causality_matrix
+from neraium_core.causal import (
+    causal_metrics,
+    generate_hypotheses,
+    generate_validation_plan,
+    granger_causality_matrix,
+    rank_actions,
+    run_counterfactual_checks,
+    score_hypotheses,
+)
 from neraium_core.causal_attribution import causal_attribution
 from neraium_core.causal_graph import (
     causal_graph_metrics,
@@ -1279,7 +1287,20 @@ class StructuralEngine:
             "relational_instability_score": 0.0,
             "temporal_distortion_score": 0.0,
             "localization_score": 0.0,
-            "causal_attribution": {"top_drivers": [], "driver_scores": {}},
+            "attribution": {"top_drivers": [], "driver_scores": {}},
+            "causal_analysis": {
+                "hypotheses": [],
+                "top_hypothesis": None,
+                "counterfactual": {
+                    "counterfactual_checks": [],
+                    "robustness": 0.0,
+                    "interpretation": "Causal analysis unavailable during warmup.",
+                },
+                "validation_plan": [],
+                "recommended_sequence": [],
+                "best_next_action": None,
+                "status": {"available": False, "reason": "warmup"},
+            },
             "dominant_driver": None,
             "explanation": "Warmup: awaiting sufficient window history.",
             "baseline_mode": None,
@@ -1539,7 +1560,10 @@ class StructuralEngine:
                     valid_sensor_names,
                     top_k=10,
                 )
-                result["causal_attribution"] = attr
+                result["attribution"] = {
+                    "top_drivers": attr.get("top_drivers", []),
+                    "driver_scores": attr.get("driver_scores", {}),
+                }
                 result["dominant_driver"] = attr["top_drivers"][0] if attr["top_drivers"] else None
                 if dominant_causal_source is not None:
                     result["dominant_causal_source"] = dominant_causal_source
@@ -2601,14 +2625,86 @@ class StructuralEngine:
                 "lock_in_drivers": {},
                 "branching_drivers": {},
             }
+        existing_attribution = result.get("attribution", {}) if isinstance(result.get("attribution"), dict) else {}
         result["attribution"] = {
-            "top_drivers": result["sensitivity"].get("top_drivers", []),
+            "top_drivers": existing_attribution.get("top_drivers", result["sensitivity"].get("top_drivers", [])),
+            "driver_scores": existing_attribution.get("driver_scores", {}),
             "trajectory_drivers": result["sensitivity"].get("trajectory_drivers", {}),
             "branching_drivers": result["sensitivity"].get("branching_drivers", {}),
             "lock_in_drivers": result["sensitivity"].get("lock_in_drivers", {}),
             "horizon_drivers": result["sensitivity"].get("horizon_drivers", {}),
             "counterfactual_drivers": result["sensitivity"].get("counterfactual_drivers", {}),
             "group_contributions": result["sensitivity"].get("group_contributions", {}),
+        }
+        structural_signals = {
+            "structural_drift_score": float(result.get("structural_drift_score", 0.0) or 0.0),
+            "relational_instability_score": float(result.get("relational_instability_score", 0.0) or 0.0),
+            "regime_distance": (
+                float(result.get("regime_distance", 0.0))
+                if result.get("regime_distance") is not None
+                else 0.0
+            ),
+            "regime_drift": float(result.get("regime_drift", 0.0) or 0.0),
+            "transition_pressure": float(result.get("transition_pressure", 0.0) or 0.0),
+            "localization_score": float(result.get("localization_score", 0.0) or 0.0),
+            "temporal_distortion_score": float(result.get("temporal_distortion_score", 0.0) or 0.0),
+        }
+        regime_memory = {
+            **(result.get("regime_memory_state", {}) if isinstance(result.get("regime_memory_state"), dict) else {}),
+            "regime_distance": structural_signals["regime_distance"],
+            "regime_name": result.get("regime_name"),
+        }
+        result["regime_memory"] = regime_memory
+        risk_assessment = {
+            "risk_level": result.get("risk_level", "LOW"),
+            "trend": result.get("trend", "UNKNOWN"),
+            "latest_instability": float(result.get("latest_instability", 0.0) or 0.0),
+            "confidence_score": float(result.get("confidence_score", 0.0) or 0.0),
+        }
+        result["risk_assessment"] = risk_assessment
+        result["operator_guidance"] = {
+            "operator_message": result.get("operator_message"),
+            "response_recommendations": result.get("response_recommendations", []),
+        }
+        hypothesis_candidates = generate_hypotheses(
+            attribution=result.get("attribution", {}),
+            structural_signals=structural_signals,
+            regime_memory=regime_memory,
+            risk_assessment=risk_assessment,
+        )
+        scored_hypotheses = score_hypotheses(
+            hypotheses=hypothesis_candidates,
+            regime_memory=regime_memory,
+            risk_assessment=risk_assessment,
+            structural_signals=structural_signals,
+        )
+        top_hypothesis = scored_hypotheses.get("top_hypothesis")
+        counterfactual = run_counterfactual_checks(
+            top_hypothesis=top_hypothesis if isinstance(top_hypothesis, dict) else None,
+            attribution=result.get("attribution", {}),
+            structural_signals=structural_signals,
+        )
+        validation_plan = generate_validation_plan(
+            ranked_hypotheses=(
+                scored_hypotheses.get("ranked_hypotheses")
+                if isinstance(scored_hypotheses.get("ranked_hypotheses"), list)
+                else []
+            ),
+            attribution=result.get("attribution", {}),
+            risk_assessment=risk_assessment,
+            counterfactual=counterfactual,
+        )
+        ranked_actions = rank_actions(validation_plan=validation_plan, risk_assessment=risk_assessment)
+        causal_available = can_process_full_frame and bool(scored_hypotheses.get("ranked_hypotheses"))
+        causal_reason = "ok" if causal_available else ("warmup" if not can_process_full_frame else "insufficient_evidence")
+        result["causal_analysis"] = {
+            "hypotheses": scored_hypotheses.get("ranked_hypotheses", []),
+            "top_hypothesis": top_hypothesis,
+            "counterfactual": counterfactual,
+            "validation_plan": validation_plan,
+            "recommended_sequence": ranked_actions.get("recommended_sequence", []),
+            "best_next_action": ranked_actions.get("best_next_action"),
+            "status": {"available": bool(causal_available), "reason": causal_reason},
         }
 
         result["path_prototypes"] = derive_path_prototype_summary(
