@@ -152,11 +152,24 @@ class StructuralMonitoringService:
             "off",
         }
 
+        transition_actionable = result.get("transition_outputs_actionable")
+        if transition_actionable is None:
+            transition_actionable = result.get("engine_transition_detectable")
+        if transition_actionable is None and isinstance(result.get("readiness"), dict):
+            rd0 = result["readiness"]
+            transition_actionable = rd0.get("transition_classification_ready")
+            if transition_actionable is None:
+                transition_actionable = rd0.get("transition_classifiable")
+        if transition_actionable is None:
+            transition_actionable = transition_state != "WARMUP"
+
         if (
             drift >= float(self.pilot_config.drift_high_threshold)
             or state == "ALERT"
             or (
                 transition_aware_enabled
+                and transition_actionable is not False
+                and transition_state != "WARMUP"
                 and (transition_state == "SUSTAINED_TRANSITION" or transition_pressure >= 1.15)
             )
         ):
@@ -174,6 +187,8 @@ class StructuralMonitoringService:
             or state == "WATCH"
             or (
                 transition_aware_enabled
+                and transition_actionable is not False
+                and transition_state != "WARMUP"
                 and (transition_state == "EMERGING_TRANSITION" or transition_pressure >= 0.85)
             )
         ):

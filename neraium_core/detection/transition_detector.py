@@ -11,6 +11,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from neraium_core.detection.readiness import EngineReadinessState
 from neraium_core.detection.transition_config import TransitionDetectionConfig
 
 EPS = 1e-12
@@ -65,11 +66,11 @@ def _build_composite_signal(df: pd.DataFrame, config: TransitionDetectionConfig)
     return comp, label
 
 
-def _apply_warmup_mask(
+def _apply_timeline_trim(
     df: pd.DataFrame,
     config: TransitionDetectionConfig,
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
-    """Return dataframe after warmup exclusion and metadata."""
+    """Trim leading timeline rows (fraction, index floor, or head drop) and optional stabilization margin."""
     meta: dict[str, Any] = {"rows_in": len(df)}
     idx = pd.to_numeric(df[config.index_column], errors="coerce")
     df = df.copy()
@@ -78,24 +79,30 @@ def _apply_warmup_mask(
         k = int(len(df) * float(config.warmup_fraction))
         k = max(0, min(k, len(df) - 1))
         df = df.iloc[k:].copy()
-        meta["warmup_mode"] = "fraction"
-        meta["warmup_rows_dropped"] = k
+        meta["trim_mode"] = "fraction"
+        meta["trim_rows_dropped"] = k
     else:
-        wc = float(config.warmup_cycles)
-        if idx.notna().any() and np.nanmax(idx.values) >= wc:
-            df = df.loc[idx >= wc].copy()
-            meta["warmup_mode"] = "index_gte"
-            meta["warmup_cycles"] = wc
+        floor_v = float(config.warmup_index_floor)
+        if idx.notna().any() and np.nanmax(idx.values) >= floor_v:
+            df = df.loc[idx >= floor_v].copy()
+            meta["trim_mode"] = "index_floor"
+            meta["warmup_index_floor"] = floor_v
         else:
-            # Non-numeric or short series: drop first N rows by position
-            n_drop = min(int(max(0, config.warmup_cycles)), max(0, len(df) - 1))
+            n_drop = min(int(max(0, floor_v)), max(0, len(df) - 1))
             if n_drop > 0:
                 df = df.iloc[n_drop:].copy()
-            meta["warmup_mode"] = "head_drop"
-            meta["warmup_rows_dropped"] = int(n_drop)
+            meta["trim_mode"] = "head_drop"
+            meta["trim_rows_dropped"] = int(n_drop)
 
     df = df.sort_values(config.index_column)
-    meta["rows_after_warmup"] = len(df)
+    srm = int(getattr(config, "stabilization_row_margin", 0) or 0)
+    if srm > 0 and len(df) > srm:
+        df = df.iloc[srm:].copy()
+        meta["stabilization_row_margin_dropped"] = srm
+    meta["rows_after_trim"] = len(df)
+    # Backward-compat keys for older CSV exporters
+    meta["warmup_mode"] = meta.get("trim_mode")
+    meta["rows_after_warmup"] = meta["rows_after_trim"]
     return df, meta
 
 
@@ -129,11 +136,45 @@ def detect_transition_from_signal(
     )
 
 
+def detect_transition_from_signals(
+    signals: dict[str, np.ndarray | list[float]],
+    positions: np.ndarray | list[float] | None = None,
+    readiness: dict[str, Any] | EngineReadinessState | None = None,
+    config: TransitionDetectionConfig | None = None,
+) -> dict[str, Any]:
+    """
+    Build a time-ordered dataframe from parallel signal arrays and run :func:`detect_transition`.
+
+    All arrays must have the same length. Missing columns are skipped for composite mode.
+    """
+    cfg = config or TransitionDetectionConfig()
+    if not signals:
+        return _empty_result(cfg, "no_signals", {})
+    n = len(next(iter(signals.values())))
+    for k, v in signals.items():
+        if len(v) != n:
+            return _empty_result(cfg, f"length_mismatch:{k}", {})
+    idx = np.arange(n, dtype=float) if positions is None else np.asarray(positions, dtype=float)
+    data: dict[str, Any] = {cfg.index_column: idx}
+    for k, v in signals.items():
+        data[k] = np.asarray(v, dtype=float)
+    df = pd.DataFrame(data)
+    rd: dict[str, Any] | None
+    if isinstance(readiness, EngineReadinessState):
+        rd = readiness.as_dict()
+    elif isinstance(readiness, dict):
+        rd = readiness
+    else:
+        rd = None
+    return detect_transition(df, cfg, readiness=rd)
+
+
 def detect_transition(
     df: pd.DataFrame,
     config: TransitionDetectionConfig | None = None,
     *,
     signal_column_override: str | None = None,
+    readiness: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """
     Detect first sustained structural transition on a single-entity timeseries.
@@ -157,28 +198,38 @@ def detect_transition(
     cfg = config or TransitionDetectionConfig()
     diagnostics: dict[str, Any] = {}
 
+    if readiness is not None:
+        rc = readiness.get("transition_classification_ready")
+        if rc is None:
+            rc = readiness.get("transition_classifiable")
+        if rc is False:
+            diagnostics["readiness"] = readiness
+            return _empty_result(cfg, "readiness_not_met", diagnostics)
+
     if df is None or len(df) == 0:
         return _empty_result(cfg, "no_data", diagnostics)
 
     if cfg.index_column not in df.columns:
         return _empty_result(cfg, f"missing_index:{cfg.index_column}", diagnostics)
 
-    d0, warmup_meta = _apply_warmup_mask(df, cfg)
-    diagnostics["warmup"] = warmup_meta
+    d0, trim_meta = _apply_timeline_trim(df, cfg)
+    diagnostics["timeline_trim"] = trim_meta
+    diagnostics["warmup"] = trim_meta  # deprecated alias
 
     if len(d0) < cfg.min_history:
-        return _empty_result(cfg, "insufficient_post_warmup", diagnostics, warmup_meta)
+        return _empty_result(cfg, "insufficient_post_trim", diagnostics, trim_meta)
 
     signal_col: str | None
     signal_label: str
 
+    use_comp = bool(cfg.use_composite_signal) or cfg.signal_mode == "composite"
     if signal_column_override:
         signal_col = signal_column_override
         signal_label = signal_col
-    elif cfg.signal_mode == "composite":
+    elif use_comp:
         comp, signal_label = _build_composite_signal(d0, cfg)
         if comp is None:
-            return _empty_result(cfg, "composite_unavailable", diagnostics)
+            return _empty_result(cfg, "composite_unavailable", diagnostics, trim_meta)
         d0 = d0.copy()
         d0["__composite__"] = comp.values
         signal_col = "__composite__"
@@ -186,13 +237,13 @@ def detect_transition(
         sc, tried = _select_signal_column(d0, cfg)
         diagnostics["signal_candidates_tried"] = tried
         if sc is None:
-            return _empty_result(cfg, "no_signal_column", diagnostics)
+            return _empty_result(cfg, "no_signal_column", diagnostics, trim_meta)
         signal_col = sc
         signal_label = sc
 
     raw = _as_float_series(d0[signal_col])
     if raw.isna().all() or float(raw.std(skipna=True) or 0.0) < EPS:
-        return _empty_result(cfg, "flat_or_invalid_signal", diagnostics)
+        return _empty_result(cfg, "flat_or_invalid_signal", diagnostics, trim_meta)
 
     if cfg.use_relative_thresholds:
         norm = _normalize_01(raw)
@@ -207,12 +258,13 @@ def detect_transition(
     thr = float(cfg.threshold)
     threshold_used = thr
 
-    sustained = max(1, int(cfg.sustained_points))
+    sustained = max(1, int(cfg.sustained_points), int(cfg.confirmation_points))
+    artifact_start = max(0, int(cfg.signal_artifact_window))
     t_idx: int | None = None
     reason = "threshold_crossing"
 
     run = 0
-    for i in range(n):
+    for i in range(artifact_start, n):
         if sm[i] > thr:
             run += 1
             if run >= sustained:
@@ -224,7 +276,7 @@ def detect_transition(
     if t_idx is None and cfg.fallback_mode == "max_slope":
         d1 = np.diff(sm, prepend=sm[0])
         d1_smooth = pd.Series(d1).rolling(max(2, min(5, cfg.smoothing_window)), min_periods=1).mean().values
-        search_from = min(3, max(0, n - 1))
+        search_from = max(artifact_start, min(3, max(0, n - 1)))
         if n > search_from + 1:
             seg = d1_smooth[search_from:]
             if not np.all(np.isnan(seg)):
@@ -241,7 +293,7 @@ def detect_transition(
     if t_idx is None or t_idx < 0 or t_idx >= n:
         if cfg.verbose:
             print(f"[transition_detection] no_detection reason={cfg.fallback_mode} thr={thr} n={n}")
-        return _empty_result(cfg, "no_detection", diagnostics, warmup_meta)
+        return _empty_result(cfg, "no_detection", diagnostics, trim_meta)
 
     pos_sel = float(positions[t_idx])
     pos_max = float(np.nanmax(positions))
@@ -257,7 +309,7 @@ def detect_transition(
     if cfg.require_monotonic_confirmation and t_idx > 0 and sm[t_idx] < sm[t_idx - 1]:
         confidence *= 0.85
 
-    if cfg.ensemble_agreement and cfg.signal_mode == "single":
+    if cfg.ensemble_agreement and not use_comp:
         agreement = _signal_agreement_score(d0, cfg, t_idx)
         diagnostics["ensemble_agreement"] = agreement
         confidence = float(np.clip(confidence * (0.7 + 0.3 * agreement), 0.0, 1.0))
@@ -282,18 +334,19 @@ def detect_transition(
         "transition_position": pos_sel,
         "detection_reason": reason,
         "signal_used": signal_label,
-        "warmup_applied": warmup_meta,
+        "timeline_trim_applied": trim_meta,
+        "warmup_applied": trim_meta,
         "threshold_used": threshold_used,
         "diagnostics": diagnostics,
         "confidence": confidence,
         "normalized_progress_at_detection": norm_progress,
         "lead_time": lead,
         "remaining_life_normalized": rln,
+        "horizon_fraction_remaining": rln,
         "transition_cycle": pos_sel,
-        "remaining_life_normalized_legacy": rln,
         "lead_time_cycles": lead,
         "reason": reason,
-        "metadata": {**warmup_meta, **diagnostics},
+        "metadata": {**trim_meta, **diagnostics},
     }
 
 
@@ -332,6 +385,7 @@ def _empty_result(
         "transition_position": None,
         "detection_reason": reason,
         "signal_used": None,
+        "timeline_trim_applied": warmup or {},
         "warmup_applied": warmup or {},
         "threshold_used": float(cfg.threshold),
         "diagnostics": diagnostics,
@@ -339,8 +393,8 @@ def _empty_result(
         "normalized_progress_at_detection": None,
         "lead_time": None,
         "remaining_life_normalized": None,
+        "horizon_fraction_remaining": None,
         "transition_cycle": None,
-        "remaining_life_normalized_legacy": None,
         "lead_time_cycles": None,
         "reason": reason,
         "metadata": diagnostics,

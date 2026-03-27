@@ -9,6 +9,7 @@ import numpy as np
 def _engine_debug_enabled() -> bool:
     return os.environ.get("NERAIUM_DEBUG_ENGINE", "0").strip().lower() in {"1", "true", "yes", "on"}
 
+from neraium_core.detection.readiness import compute_engine_readiness
 from neraium_core.stat_geometry import StatisticalGeometryLayer
 
 
@@ -1281,6 +1282,37 @@ class StructuralEngine:
         result["geometry"] = self._latest_geometry
         result["state_space_statistics"] = self._latest_state_space_statistics
         result["state_graph"] = self._latest_state_graph
+
+        geo = result.get("geometry") if isinstance(result.get("geometry"), dict) else {}
+        ss = result.get("state_space_statistics") if isinstance(result.get("state_space_statistics"), dict) else {}
+        sg = result.get("state_graph") if isinstance(result.get("state_graph"), dict) else {}
+        _wm = int(os.environ.get("NERAIUM_TRANSITION_WARMUP_MARGIN", "8").strip() or "8")
+        _mh = int(os.environ.get("NERAIUM_TRANSITION_MIN_HISTORY", "6").strip() or "6")
+        rd_run = compute_engine_readiness(
+            frame_count=len(self.frames),
+            baseline_window=self.baseline_window,
+            recent_window=self.recent_window,
+            transition_pressure_history_len=len(self._transition_pressure_history),
+            warmup_margin_frames=_wm,
+            min_transition_history=_mh,
+            geometry_available=geo.get("available") is not False if geo else None,
+            geometry_reason=str(geo.get("reason", "")) if geo else None,
+            state_space_available=ss.get("available") is not False if ss else None,
+            state_space_reason=str(ss.get("reason", "")) if ss else None,
+            state_graph_available=sg.get("available") is not False if sg else None,
+            state_graph_reason=str(sg.get("reason", "")) if sg else None,
+        )
+        result["readiness"] = rd_run.as_dict()
+        result["engine_ready"] = rd_run.ready
+        result["engine_stabilization_progress"] = rd_run.stabilization_progress
+        result["engine_warmup_progress"] = rd_run.stabilization_progress
+        result["engine_min_history_required"] = rd_run.min_history_required
+        result["transition_outputs_actionable"] = rd_run.transition_classification_ready
+        result["engine_transition_detectable"] = rd_run.transition_classification_ready
+        result["neraium"] = {
+            "readiness": rd_run.as_dict(),
+            "transition_outputs_actionable": rd_run.transition_classification_ready,
+        }
 
         self._frame_count += 1
         if _engine_debug_enabled():
