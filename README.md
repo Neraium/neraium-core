@@ -56,6 +56,7 @@ It does not write back into operational systems and does not execute control act
 - `trend`  
 - `risk_level`  
 - `operator_message`  
+- `causal_analysis` (ranked hypotheses, counterfactual robustness, validation plan, value-of-information-ranked actions)  
 - Proof artifacts / reports where available (for example FD004 summaries, CSV timelines, and plots)  
 
 ---
@@ -154,6 +155,72 @@ Neraium currently includes a temporary, explicit **decision layer** that interpr
 - It returns structured decision output (`signal_emitted`, `signal_strength`, `confidence`, `reason`, `phase`, `risk_level`) for clear downstream reporting.  
 
 This layer is temporary and will be replaced when formal interpretive governance is implemented.
+
+---
+
+## Causal Hypothesis + Validation Engine (platform layer)
+
+Neraium now includes a deterministic causal-reasoning layer on top of structural outputs. It does **not** replace structural attribution; it composes over existing signals from:
+
+- `attribution` / structural drivers
+- regime memory (`regime_name`, `regime_distance`, `regime_drift`)
+- forward risk (`risk_level`, trend, instability trajectory)
+
+> Note: `neraium_core/casual.py` is deprecated compatibility-only code and will be removed in a future release. Use `neraium_core/causal.py`.
+
+The layer adds:
+
+1. **Competing hypotheses** (`physical`, `sensor`, `systemic`) grounded in structural evidence.
+2. **Hypothesis scoring/ranking** by evidence strength, regime consistency, risk alignment, and coherence.
+3. **Approximate counterfactual checks** (driver removal, relationship removal, localization dependency).
+4. **Validation planning** with confirm/falsify outcomes.
+5. **Action ranking (value of information)** balancing uncertainty reduction, risk relevance, invasiveness, and time-to-validation.
+
+### `causal_analysis` output shape
+
+```json
+{
+  "causal_analysis": {
+    "hypotheses": [
+      {
+        "hypothesis_id": "hyp_physical_localized_degradation",
+        "description": "Localized subsystem degradation is driving observed structural instability.",
+        "type": "physical",
+        "confidence": 0.71,
+        "supporting_evidence": ["structural_drift_score=1.28", "relational_instability_score=1.02"],
+        "conflicting_evidence": ["temporal_distortion_score=0.26"],
+        "primary_drivers": ["sensor_a", "sensor_c"],
+        "ranking_score": 0.74
+      }
+    ],
+    "top_hypothesis": {},
+    "counterfactual": {
+      "counterfactual_checks": [],
+      "robustness": 0.67,
+      "interpretation": "Top hypothesis has mixed robustness; targeted validation is required."
+    },
+    "validation_plan": [
+      {
+        "action": "Inspect subsystem integrity and load-path consistency",
+        "target": "sensor_a",
+        "expected_outcome_if_true": "...",
+        "expected_outcome_if_false": "...",
+        "priority": 1,
+        "confidence": 0.73
+      }
+    ],
+    "recommended_sequence": [],
+    "best_next_action": {},
+    "status": { "available": true, "reason": "ok" }
+  }
+}
+```
+
+### How to interpret validation plans
+
+- Run the **best-next-action** first to reduce uncertainty quickly with conservative checks.
+- If expected-true outcome is not observed, immediately elevate the next-ranked competing hypothesis action.
+- Use `counterfactual.robustness` as a confidence multiplier for escalation decisions.
 
 ---
 

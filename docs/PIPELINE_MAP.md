@@ -8,9 +8,10 @@
 | 2 | Frame | `service.py`: `_decorate_result(engine.process_frame(frame))` | result dict (enriched) |
 | 3 | Frame | **`alignment.py`: `StructuralEngine.process_frame(frame)`** | **Single source of structural result** |
 | 4 | Result | `decision_layer.py`: `decision_output(composite_score, components, forecast)` | phase, risk_level, signal_emitted, operator_message, interpreted_state, etc. |
-| 5 | Result | `service.py`: `_decorate_result` | Adds risk_level, action_state, operator_message, trend, confidence, interpretation, structural_analysis_metadata |
+| 5 | Result | `causal.py`: `generate_hypotheses` → `score_hypotheses` → `run_counterfactual_checks` → `generate_validation_plan` → `rank_actions` | `causal_analysis` block (hypotheses, top_hypothesis, counterfactual, validation plan, recommended sequence) |
+| 6 | Result | `service.py`: `_decorate_result` | Adds risk_level, action_state, operator_message, trend, confidence, interpretation, structural_analysis_metadata |
 
-**Conclusion:** The only execution path for structural analytics is `alignment.py` → `StructuralEngine.process_frame`. All new behavior must be wired there (or in modules it calls). No parallel pipeline.
+**Conclusion:** The only execution path for structural analytics is `alignment.py` → `StructuralEngine.process_frame`. Causal reasoning is integrated in that path via `neraium_core/causal.py`; there is no parallel pipeline.
 
 ---
 
