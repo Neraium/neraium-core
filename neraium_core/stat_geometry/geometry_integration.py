@@ -24,6 +24,7 @@ class StatisticalGeometryLayer:
         self.stats_window = stats_window
         self.entity_paths: dict[str, list[np.ndarray]] = defaultdict(list)
         self.min_history = max(2, int(min_history), self.graph_window, self.stats_window)
+        self._projector_cache: dict[str, StateSpaceProjector] = {}
 
     @staticmethod
     def _insufficient_block(*, reason: str) -> dict[str, object]:
@@ -114,7 +115,11 @@ class StatisticalGeometryLayer:
             "dynamic_only": "dynamic",
             "combined": "combined",
         }
-        projector = StateSpaceProjector(mode=mode_map.get(str(representation_mode).lower(), "combined"))
+        mode_key = mode_map.get(str(representation_mode).lower(), "combined")
+        projector = self._projector_cache.get(mode_key)
+        if projector is None:
+            projector = StateSpaceProjector(mode=mode_key)
+            self._projector_cache[mode_key] = projector
         frame = projector.project_window(matrix)
 
         path = self.entity_paths[str(entity_id)]

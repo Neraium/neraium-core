@@ -42,7 +42,9 @@ def assign_regime(
     if not regimes:
         return None
 
-    distances: list[tuple[float, str, int]] = []
+    nearest_distance: float | None = None
+    nearest_name: str | None = None
+    prototype_index: int = 0
     sig = np.asarray(signature, dtype=float)
     for regime in regimes:
         if bool(regime.get("pending", False)) and not include_pending:
@@ -52,12 +54,14 @@ def assign_regime(
             # time. Skip incompatible regimes instead of failing with broadcasting.
             if proto.shape != sig.shape:
                 continue
-            distances.append((regime_distance(sig, proto), str(regime["name"]), idx))
+            d = regime_distance(sig, proto)
+            if nearest_distance is None or d < nearest_distance:
+                nearest_distance = d
+                nearest_name = str(regime["name"])
+                prototype_index = idx
 
-    distances.sort(key=lambda x: x[0])
-    if not distances:
+    if nearest_distance is None or nearest_name is None:
         return None
-    nearest_distance, nearest_name, prototype_index = distances[0]
     if max_distance is not None and float(nearest_distance) > float(max_distance):
         return None
     return {
