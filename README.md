@@ -190,6 +190,56 @@ Canonical top-level decision-intelligence contract:
 - `regime_memory`
 - `risk_assessment`
 - `operator_guidance`
+- `causal_analysis`
+- `decision`
+
+Decision resolver behavior (deterministic compression layer):
+- Prefer `causal_analysis.best_next_action` when confidence is usable.
+- Else use top-ranked `causal_analysis.recommended_sequence` action.
+- Else use `operator_guidance.recommended_actions[0]` (with `first_inspection_target`).
+- Else synthesize a conservative inspection action from `attribution.top_sensors[0]`.
+- Else emit structured fallback with `decision.status.available=false` and explicit reason.
+
+`decision.confidence` is bounded to `[0,1]` and computed from converging evidence across:
+- top causal hypothesis confidence/robustness/counterfactual strength,
+- risk trend clarity + projected risk,
+- attribution localization strength,
+- source convergence count.
+
+Example decision payload:
+```json
+{
+  "decision": {
+    "action": "Inspect subsystem/cluster first: cluster_A.",
+    "target": "cluster_A",
+    "priority": 1,
+    "confidence": 0.74,
+    "reason": "Prioritized 'Inspect subsystem/cluster first: cluster_A.' from causal ranking, operator guidance, risk trend (increasing); confidence=0.74.",
+    "evidence": [
+      {"signal": "causal_analysis.best_next_action", "value": "Inspect subsystem/cluster first: cluster_A.", "confidence": 0.72},
+      {"signal": "risk_assessment.projected_near_term_trend", "value": "increasing", "risk_score": 0.68}
+    ],
+    "source": {
+      "from_causal_analysis": true,
+      "from_operator_guidance": true,
+      "from_risk_assessment": true,
+      "from_attribution": true
+    },
+    "status": {"available": true, "reason": "decision_available"}
+  }
+}
+```
+
+Fallback interpretation:
+- `decision.status.available=true`: single prioritized action is available.
+- `decision.status.available=false`: warmup or insufficient converging evidence; continue monitoring.
+
+---
+
+## Deprecated compatibility module note
+
+`neraium_core.casual` is deprecated and retained only as a temporary compatibility shim.
+All canonical runtime imports must use `neraium_core.causal`. The shim emits a non-breaking `DeprecationWarning` and is scheduled for removal in a future version.
 
 ---
 
