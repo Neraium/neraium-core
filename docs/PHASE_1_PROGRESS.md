@@ -6,7 +6,7 @@ This document tracks the status of Phase 1: the production-readiness upgrade (ca
 
 ## Phase 1 Scope (from UPGRADE_NOTES.md)
 
-1. **Causal Attribution** - `causal_attribution`, `dominant_driver`
+1. **Causal Attribution** - `attribution`, `dominant_driver`
 2. **Missing-Data Robustness** - `data_quality_summary`, degraded-path handling
 3. **Adaptive Baseline** - `baseline_mode`, `regime_memory_state`
 4. **Confidence Stabilization** - `confidence_score`, `classification_stability`
@@ -28,7 +28,7 @@ This document tracks the status of Phase 1: the production-readiness upgrade (ca
 
 ### Upgrade Scenario Coverage
 
-- **Nominal operation** - output shape, NOMINAL_STRUCTURE, causal_attribution, data_quality_summary, baseline_mode
+- **Nominal operation** - output shape, NOMINAL_STRUCTURE, attribution, data_quality_summary, baseline_mode
 - **Regime shift** - REGIME_SHIFT_OBSERVED or NOMINAL under clean transition
 - **Coupling instability** - COUPLING_INSTABILITY_OBSERVED in tail when one channel goes noisy
 - **Structural instability** - STRUCTURAL_INSTABILITY_OBSERVED when relational drift + persistence

@@ -40,9 +40,9 @@ def test_nominal_operation_output_shape_and_stability():
 
         assert "interpreted_state" in out
         assert out["interpreted_state"] == "NOMINAL_STRUCTURE"
-        assert "causal_attribution" in out
-        assert "top_drivers" in out["causal_attribution"]
-        assert "driver_scores" in out["causal_attribution"]
+        assert "attribution" in out
+        assert "top_drivers" in out["attribution"]
+        assert "driver_scores" in out["attribution"]
         assert "data_quality_summary" in out
         assert "active_sensor_count" in out
         assert "missing_sensor_count" in out
@@ -202,8 +202,8 @@ def test_adaptive_baseline_baseline_mode():
         assert out.get("baseline_mode") in ("fixed", "rolling", None)
 
 
-def test_causal_attribution_presence():
-    """Multi-sensor frames get causal_attribution with top_drivers and driver_scores."""
+def test_attribution_presence():
+    """Multi-sensor frames get attribution with top_drivers and driver_scores."""
     with tempfile.TemporaryDirectory() as d:
         engine = StructuralEngine(
             baseline_window=25,
@@ -216,8 +216,8 @@ def test_causal_attribution_presence():
                 _frame(t, {"s1": base, "s2": 0.9 * base, "s3": 1.05 * base})
             )
 
-        assert "causal_attribution" in out
-        attr = out["causal_attribution"]
+        assert "attribution" in out
+        attr = out["attribution"]
         assert "top_drivers" in attr
         assert "driver_scores" in attr
         assert isinstance(attr["top_drivers"], list)
