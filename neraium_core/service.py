@@ -312,6 +312,7 @@ class StructuralMonitoringService:
         run_id: str | None = None,
         customer_id: str | None = None,
         site_id: str = "raw-telemetry",
+        preprocessing_mode: str = "auto",
         sample_size: int | None = None,
     ) -> list[dict[str, Any]]:
         """Backward-compatible wrapper for generic raw industrial ingestion."""
@@ -320,6 +321,7 @@ class StructuralMonitoringService:
             run_id=run_id,
             customer_id=customer_id,
             site_id=site_id,
+            preprocessing_mode=preprocessing_mode,
             sample_size=sample_size,
         )
         return list(output["results"])
@@ -331,6 +333,7 @@ class StructuralMonitoringService:
         run_id: str | None = None,
         customer_id: str | None = None,
         site_id: str = "raw-telemetry",
+        preprocessing_mode: str = "auto",
         sample_size: int | None = None,
     ) -> dict[str, Any]:
         """Ingest raw industrial data (tabular rows or directory signal blocks) through runtime path."""
@@ -339,6 +342,7 @@ class StructuralMonitoringService:
             input_path,
             site_id=site_id,
             customer_id=resolved_customer,
+            preprocessing_mode=preprocessing_mode,
             sample_size=sample_size,
         )
         outputs: list[dict[str, Any]] = []

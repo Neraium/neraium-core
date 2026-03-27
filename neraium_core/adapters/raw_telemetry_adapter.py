@@ -71,6 +71,15 @@ class RawIndustrialIngestionResult:
     diagnostics: IngestionDiagnostics
 
 
+@dataclass(frozen=True)
+class SchemaMapping:
+    sensor_columns: list[str]
+    metadata_columns: list[str]
+    timestamp_column: str | None
+    asset_column: str | None
+    site_column: str | None
+
+
 def _safe_matrix(values: np.ndarray) -> np.ndarray:
     arr = np.asarray(values, dtype=float)
     if arr.ndim == 1:
@@ -105,11 +114,40 @@ def _to_float(value: Any) -> float | None:
     return float(out)
 
 
-def _infer_table_schema(rows: list[dict[str, Any]], headers: list[str]) -> tuple[list[str], list[str], str | None, str | None, str | None]:
+def _looks_like_numeric_token(value: str) -> bool:
+    try:
+        float(str(value).strip())
+        return True
+    except (TypeError, ValueError):
+        return False
+
+
+def _infer_table_schema(rows: list[dict[str, Any]], headers: list[str]) -> SchemaMapping:
     lower_map = {h: _normalize_signal_name(h).lower() for h in headers}
 
-    ts_col = next((h for h, l in lower_map.items() if l in {"timestamp", "time", "datetime", "date"}), None)
-    asset_col = next((h for h, l in lower_map.items() if l in {"asset", "asset_id", "machine", "unit", "unit_id", "equipment"}), None)
+    ts_col = next(
+        (
+            h
+            for h, l in lower_map.items()
+            if l in {"timestamp", "time", "datetime", "date"}
+            or l.endswith("_timestamp")
+            or l.endswith("_time")
+            or l.endswith("_at")
+        ),
+        None,
+    )
+    asset_col = next(
+        (
+            h
+            for h, l in lower_map.items()
+            if l in {"asset", "asset_id", "machine", "unit", "unit_id", "equipment"}
+            or l.endswith("_asset")
+            or l.endswith("_machine")
+            or l.endswith("_unit")
+            or l.endswith("_tag")
+        ),
+        None,
+    )
     site_col = next((h for h, l in lower_map.items() if l in {"site", "site_id", "plant", "factory", "line"}), None)
 
     sensor_cols: list[str] = []
@@ -132,7 +170,13 @@ def _infer_table_schema(rows: list[dict[str, Any]], headers: list[str]) -> tuple
         else:
             metadata_cols.append(h)
 
-    return sensor_cols, metadata_cols, ts_col, asset_col, site_col
+    return SchemaMapping(
+        sensor_columns=sensor_cols,
+        metadata_columns=metadata_cols,
+        timestamp_column=ts_col,
+        asset_column=asset_col,
+        site_column=site_col,
+    )
 
 
 def _load_tabular_rows(path: Path) -> list[dict[str, Any]]:
@@ -160,9 +204,9 @@ def _build_frames_from_tabular_rows(
     customer_id: str,
     default_site_id: str,
     default_asset_id: str,
-) -> tuple[list[dict[str, Any]], list[str], list[str], list[str]]:
+) -> tuple[list[dict[str, Any]], SchemaMapping, list[str]]:
     if not rows:
-        return [], [], [], ["No rows found in tabular input."]
+        return [], SchemaMapping([], [], None, None, None), ["No rows found in tabular input."]
 
     headers: list[str] = []
     for row in rows:
@@ -170,34 +214,66 @@ def _build_frames_from_tabular_rows(
             if key not in headers:
                 headers.append(key)
 
-    sensor_cols, metadata_cols, ts_col, asset_col, site_col = _infer_table_schema(rows, headers)
+    schema = _infer_table_schema(rows, headers)
     warnings: list[str] = []
-    if not sensor_cols:
+    if not schema.sensor_columns:
         warnings.append("Schema discovery found no valid numeric signal columns.")
 
     frames: list[dict[str, Any]] = []
     for idx, row in enumerate(rows, start=1):
-        sensor_values = {_normalize_signal_name(c): _to_float(row.get(c)) for c in sensor_cols}
+        sensor_values = {_normalize_signal_name(c): _to_float(row.get(c)) for c in schema.sensor_columns}
         frame = build_frame(
-            timestamp=row.get(ts_col) if ts_col else None,
+            timestamp=row.get(schema.timestamp_column) if schema.timestamp_column else None,
             customer_id=customer_id,
-            site_id=row.get(site_col) if site_col else default_site_id,
-            asset_id=row.get(asset_col) if asset_col else default_asset_id,
+            site_id=row.get(schema.site_column) if schema.site_column else default_site_id,
+            asset_id=row.get(schema.asset_column) if schema.asset_column else default_asset_id,
             sensor_values=sensor_values,
         )
         frame["raw_window_metadata"] = {
             "source": source_label,
             "cycle": idx,
-            "metadata": {k: row.get(k) for k in metadata_cols},
+            "metadata": {k: row.get(k) for k in schema.metadata_columns},
             "schema": {
-                "timestamp_column": ts_col,
-                "asset_column": asset_col,
-                "site_column": site_col,
+                "timestamp_column": schema.timestamp_column,
+                "asset_column": schema.asset_column,
+                "site_column": schema.site_column,
             },
         }
         frames.append(frame)
 
-    return frames, sensor_cols, metadata_cols, warnings
+    return frames, schema, warnings
+
+
+def _try_parse_file_as_tabular_row(path: Path) -> dict[str, Any] | None:
+    ext = path.suffix.lower()
+    try:
+        if ext == ".json":
+            obj = json.loads(path.read_text())
+            if isinstance(obj, dict):
+                return obj
+        if ext == ".csv":
+            with path.open("r", newline="") as f:
+                reader = csv.DictReader(f)
+                row = next(iter(reader), None)
+                if row is None:
+                    return None
+                keys = [str(k) for k in row.keys()]
+                if keys and all(_looks_like_numeric_token(k) for k in keys):
+                    return None
+                return row
+    except Exception:
+        return None
+    return None
+
+
+def _load_directory_rows(path: Path) -> list[dict[str, Any]]:
+    files = [p for p in sorted(path.iterdir()) if p.is_file() and p.suffix.lower() in {".json", ".csv"}]
+    rows: list[dict[str, Any]] = []
+    for file_path in files:
+        row = _try_parse_file_as_tabular_row(file_path)
+        if row:
+            rows.append(row)
+    return rows
 
 
 def _load_directory_slices(path: Path) -> tuple[list[RawTelemetrySlice], list[str]]:
@@ -339,11 +415,14 @@ def ingest_raw_industrial_input(
     path = Path(input_path)
     warnings: list[str] = []
 
-    rows = _load_tabular_rows(path) if path.is_file() else []
+    if preprocessing_mode not in {"auto", "none", "waveform_features"}:
+        raise ValueError("preprocessing_mode must be one of: auto, none, waveform_features")
+
+    rows = _load_tabular_rows(path) if path.is_file() else _load_directory_rows(path) if path.is_dir() else []
     detected_input_type = "tabular_timeseries" if rows else "directory_signal_blocks"
 
     if rows:
-        frames, sensor_cols, metadata_cols, schema_warnings = _build_frames_from_tabular_rows(
+        frames, schema, schema_warnings = _build_frames_from_tabular_rows(
             rows,
             source_label=str(path),
             customer_id=customer_id,
@@ -351,7 +430,9 @@ def ingest_raw_industrial_input(
             default_asset_id=default_asset_id,
         )
         warnings.extend(schema_warnings)
-        effective_preprocessing = "none" if preprocessing_mode == "auto" else preprocessing_mode
+        sensor_cols = list(schema.sensor_columns)
+        metadata_cols = list(schema.metadata_columns)
+        effective_preprocessing = "none" if preprocessing_mode in {"auto", "none"} else preprocessing_mode
     else:
         slices = load_raw_telemetry_windows(path)
         frames = raw_slices_to_structural_frames(slices, site_id=site_id, customer_id=customer_id)

@@ -19,6 +19,12 @@ def main() -> None:
     parser.add_argument("--site-id", default="raw-telemetry", help="Site id used when source does not provide one.")
     parser.add_argument("--customer-id", default="default-customer", help="Customer id for runtime persistence.")
     parser.add_argument(
+        "--preprocessing-mode",
+        default="auto",
+        choices=["auto", "none", "waveform_features"],
+        help="Raw preprocessing mode. Auto infers by input type.",
+    )
+    parser.add_argument(
         "--validation-sample-size",
         type=int,
         default=None,
@@ -31,6 +37,7 @@ def main() -> None:
         args.input,
         customer_id=args.customer_id,
         site_id=args.site_id,
+        preprocessing_mode=args.preprocessing_mode,
         sample_size=args.validation_sample_size,
     )
 
