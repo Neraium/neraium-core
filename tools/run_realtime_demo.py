@@ -30,7 +30,7 @@ def _synthetic_frames(steps: int, *, seed: int, sensors: int) -> list[dict]:
     out: list[dict] = []
     for t in range(steps):
         phase = 0.02 * t
-        vals = {n: rng.gauss(0.0, 1.0) + 0.15 * (n % 3) * phase for n in names}
+        vals = {n: rng.gauss(0.0, 1.0) + 0.15 * (i % 3) * phase for i, n in enumerate(names)}
         out.append(
             {
                 "timestamp": str(t),
