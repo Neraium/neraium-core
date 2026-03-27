@@ -6,6 +6,13 @@ from typing import Any
 
 import pandas as pd
 
+from neraium_core.fd004_transition import (
+    detect_structural_transition,
+    plot_transition_histograms,
+    plot_unit_transition,
+    save_transition_artifacts,
+    summarize_fd004_transitions,
+)
 from neraium_core.integrations.gal2_client import GAL2Client, unavailable_payload
 from run_engine import StructuralEngine
 
@@ -24,6 +31,45 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--gal2-cache-ms", type=int, default=500, help="Optional GAL-2 cache duration in milliseconds.")
     parser.add_argument("--max-units", type=int, default=None, help="Optional cap on number of units to replay.")
     parser.add_argument("--max-cycles", type=int, default=None, help="Optional cap on cycles per unit.")
+    parser.add_argument(
+        "--replay-only",
+        action="store_true",
+        help="Only write the replay CSV; skip transition summary and plots.",
+    )
+    parser.add_argument(
+        "--summary-only",
+        type=Path,
+        default=None,
+        metavar="CSV",
+        help="Skip replay; load this existing replay CSV and only run transition summary + optional plots.",
+    )
+    parser.add_argument(
+        "--summary-output",
+        type=Path,
+        default=None,
+        help="Path for per-unit transition summary CSV (default: <output stem>_transition_summary.csv).",
+    )
+    parser.add_argument(
+        "--summary-json",
+        type=Path,
+        default=None,
+        help="Path for JSON aggregate metrics (default: next to summary CSV).",
+    )
+    parser.add_argument("--min-cycle", type=int, default=30, help="Ignore cycles before this (warmup guard) for transition detection.")
+    parser.add_argument("--threshold", type=float, default=0.5, help="Normalized pressure threshold for sustained crossing.")
+    parser.add_argument("--window", type=int, default=5, help="Rolling mean window for pressure smoothing.")
+    parser.add_argument(
+        "--plot-dir",
+        type=Path,
+        default=None,
+        help="If set, save transition histograms and single-unit plot PNGs here.",
+    )
+    parser.add_argument("--plot-unit", type=int, default=1, help="Unit id for the single-unit transition plot.")
+    parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Verbose replay logs (first JSON row, GAL2 debug). Set NERAIUM_DEBUG_ENGINE=1 for engine internals.",
+    )
     return parser.parse_args()
 
 
@@ -167,6 +213,7 @@ def replay_unit(
     use_gal2: bool = False,
     gal2_cache_ms: int = 500,
     max_cycles: int | None = None,
+    verbose: bool = False,
 ) -> list[dict[str, Any]]:
     engine = StructuralEngine()
     rows: list[dict[str, Any]] = []
@@ -187,7 +234,8 @@ def replay_unit(
         nonlocal last_gal2_payload, last_gal2_fetch_time, gal2_api_calls
         current_time = time.time() * 1000  # ms
         should_refresh = last_gal2_payload is None or (current_time - last_gal2_fetch_time) > cache_ttl_ms
-        print(f"GAL2 fetch reused: {not should_refresh}")
+        if verbose:
+            print(f"GAL2 fetch reused: {not should_refresh}")
 
         if should_refresh:
             gal2_api_calls += 1
@@ -217,7 +265,7 @@ def replay_unit(
             else:
                 gal2_payload = {**gal2_payload, "reason": gal2_payload.get("reason") or "unavailable"}
 
-            if printed_gal2_debug < 3:
+            if verbose and printed_gal2_debug < 3:
                 print(
                     "DEBUG GAL2:",
                     f"available={gal2_payload.get('available', False)}",
@@ -233,22 +281,79 @@ def replay_unit(
             "sensor_values": sensor_values,
         }
         result = engine.process_frame(frame)
-        if not printed_debug_result:
+        if verbose and not printed_debug_result:
             print(json.dumps(result, indent=2)[:1000])
             printed_debug_result = True
         rows.append(flatten_result(unit_id=unit_id, cycle=cycle, result=result, gal2=gal2_payload))
+    if verbose:
+        print(f"unit={unit_id} rows={len(rows)} last_cycle={ordered['cycle'].iloc[-1] if len(ordered) else 'n/a'}")
 
-    if gal2_client is not None:
+    if gal2_client is not None and verbose:
         print(f"GAL2 API calls for unit {unit_id}: {gal2_api_calls} / rows={len(ordered)}")
 
     return rows
 
 
+def run_transition_postprocess(
+    replay_df: pd.DataFrame,
+    args: argparse.Namespace,
+    output_path: Path,
+) -> None:
+    """Per-unit transition detection, CSV/JSON summary, optional plots."""
+    summary_df, json_summary = summarize_fd004_transitions(
+        replay_df,
+        min_cycle=int(args.min_cycle),
+        window=int(args.window),
+        threshold=float(args.threshold),
+        pressure_col="transition_pressure",
+    )
+    csv_out = args.summary_output or (output_path.parent / f"{output_path.stem}_transition_summary.csv")
+    json_out = args.summary_json or csv_out.with_suffix(".json")
+    save_transition_artifacts(summary_df, json_summary, csv_path=csv_out, json_path=json_out)
+    print("Transition summary:")
+    print(f"  units_evaluated={json_summary.get('units_evaluated')}  with_detection={json_summary.get('units_with_detection')}  without_detection={json_summary.get('units_without_detection')}")
+    print(f"  mean_remaining_life_normalized={json_summary.get('mean_remaining_life_normalized')}")
+    print(f"  mean_lead_time_cycles={json_summary.get('mean_lead_time_cycles')}")
+    print(f"  wrote {csv_out}")
+    print(f"  wrote {json_out}")
+
+    if args.plot_dir is not None:
+        plot_dir = args.plot_dir.expanduser().resolve()
+        plot_transition_histograms(summary_df, output_dir=plot_dir, show=False)
+        pu = int(args.plot_unit)
+        g = replay_df[replay_df["unit"] == pu]
+        if len(g):
+            det = detect_structural_transition(
+                g,
+                min_cycle=int(args.min_cycle),
+                window=int(args.window),
+                threshold=float(args.threshold),
+            )
+            plot_unit_transition(
+                g,
+                det,
+                unit_id=pu,
+                output_path=plot_dir / f"fd004_unit_{pu}_transition.png",
+                min_cycle=int(args.min_cycle),
+                show=False,
+            )
+        else:
+            print(f"  plot skipped: unit {pu} not in replay data")
+
+
 def main() -> None:
     args = parse_args()
-    input_path = args.input.expanduser().resolve()
     output_path = args.output.expanduser().resolve()
 
+    if args.summary_only is not None:
+        csv_in = args.summary_only.expanduser().resolve()
+        if not csv_in.is_file():
+            raise FileNotFoundError(f"--summary-only file not found: {csv_in}")
+        replay_df = pd.read_csv(csv_in)
+        run_transition_postprocess(replay_df, args, output_path=csv_in)
+        return
+
+    input_path = args.input.expanduser().resolve()
     dataset = load_dataset(input_path)
 
     all_rows: list[dict[str, Any]] = []
@@ -264,6 +369,7 @@ def main() -> None:
                 use_gal2=args.use_gal2,
                 gal2_cache_ms=args.gal2_cache_ms,
                 max_cycles=args.max_cycles,
+                verbose=bool(args.verbose),
             )
         )
 
@@ -275,6 +381,9 @@ def main() -> None:
     print(f"Output path: {output_path}")
     print(f"Units processed: {len(unit_ids)}")
     print(f"Rows written: {len(all_rows)}")
+
+    if not args.replay_only:
+        run_transition_postprocess(pd.DataFrame(all_rows), args, output_path=output_path)
 
 
 if __name__ == "__main__":
