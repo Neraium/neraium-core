@@ -41,6 +41,7 @@ It does not write back into operational systems and does not execute control act
 - Multivariate telemetry from API ingest  
 - Batch CSV uploads  
 - Time-ordered streaming-like updates via repeated ingest calls  
+- Canonical raw industrial ingestion bridge (tabular rows or directory signal blocks): `docs/RAW_INGESTION.md`  
 
 ### Processing
 
