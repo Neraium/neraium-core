@@ -126,6 +126,32 @@ def _incremental_windows_enabled() -> bool:
     return str(v).strip().lower() not in {"0", "false", "no", "off"}
 
 
+_FRAME_DEBUG_ENV_KEYS = (
+    "NERAIUM_FRAME_DEBUG",
+    "NERAIUM_DEBUG_SII",
+    "NERAIUM_DEBUG_SII_VERBOSE",
+    "NERAIUM_DEBUG_RAW_FEATURES",
+    "NERAIUM_DEBUG_EXP_ANALYTICS",
+    "NERAIUM_DEBUG_GEOMETRY",
+)
+
+
+def _effective_frame_debug(explicit: bool) -> bool:
+    """True when per-frame stdout / debug prints are allowed (default: off).
+
+    ``explicit`` comes from :class:`StructuralEngine` ``frame_debug=...``. Any legacy
+    env var that previously toggled a subsection also enables the master gate so
+    existing notebooks keep working.
+    """
+    if explicit:
+        return True
+    for key in _FRAME_DEBUG_ENV_KEYS:
+        v = os.environ.get(key, "0")
+        if str(v).strip().lower() not in {"0", "false", "no", "off", ""}:
+            return True
+    return False
+
+
 class StructuralEngine:
     def __init__(
         self,
@@ -138,6 +164,7 @@ class StructuralEngine:
         reference_strategy: str = "robust",
         context_diagnostics_enabled: bool = True,
         feature_weights: dict[str, float] | None = None,
+        frame_debug: bool = False,
     ):
         self.baseline_window = baseline_window
         self.recent_window = recent_window
@@ -212,6 +239,7 @@ class StructuralEngine:
             os.environ.get("NERAIUM_TRANSITION_MIN_HISTORY", "6").strip() or "6"
         )
         self.geometry_layer = StatisticalGeometryLayer(max_history=384, graph_window=24, stats_window=16)
+        self._frame_debug: bool = _effective_frame_debug(frame_debug)
 
         # Drift-score threshold calibration (watch/alert).
         self._drift_score_history: deque[float] = deque(maxlen=120)
@@ -404,6 +432,8 @@ class StructuralEngine:
         }
 
     def _debug_print_experimental_analytics_once(self, result: Dict) -> None:
+        if not self._frame_debug:
+            return
         if self._experimental_analytics_debug_logged:
             return
         print(json.dumps(result.get("experimental_analytics", {}), indent=2)[:1500])
@@ -2142,6 +2172,7 @@ class StructuralEngine:
                     else None
                 ),
                 min_history_for_alerts=MIN_BASELINE_SAMPLES_FOR_CALIBRATION,
+                debug_prints=self._frame_debug,
             )
             result.update(decision)
             if self.transition_aware_enabled:
@@ -2290,7 +2321,7 @@ class StructuralEngine:
                 "off",
                 "",
             }
-            if debug_raw_features and self._raw_debug_frames_logged < 3:
+            if self._frame_debug and debug_raw_features and self._raw_debug_frames_logged < 3:
                 sigf = analytics.get("signal_features", {}) if isinstance(analytics, dict) else {}
                 delta = sigf.get("delta", {}) if isinstance(sigf, dict) else {}
                 change_summary = sigf.get("change_summary", {}) if isinstance(sigf, dict) else {}
@@ -2330,11 +2361,18 @@ class StructuralEngine:
                     },
                 )
                 self._raw_debug_frames_logged += 1
-            if os.environ.get("NERAIUM_DEBUG_EXP_ANALYTICS", "0").strip().lower() not in {"0", "false", "no", "off", ""}:
+            if self._frame_debug and os.environ.get("NERAIUM_DEBUG_EXP_ANALYTICS", "0").strip().lower() not in {
+                "0",
+                "false",
+                "no",
+                "off",
+                "",
+            }:
                 print("DEBUG EXP ANALYTICS:", result.get("experimental_analytics"))
                 self._debug_print_experimental_analytics_once(result)
             if (
-                os.environ.get("NERAIUM_DEBUG_GEOMETRY", "0").strip().lower()
+                self._frame_debug
+                and os.environ.get("NERAIUM_DEBUG_GEOMETRY", "0").strip().lower()
                 not in {"0", "false", "no", "off", ""}
                 and can_process_full_frame
                 and valid_signal_count >= 2
@@ -2462,7 +2500,7 @@ class StructuralEngine:
                 "off",
                 "",
             }
-            if debug_verbose:
+            if self._frame_debug and debug_verbose:
                 drift_thr = self._drift_watch_alert_thresholds
                 comp_thr = self._composite_watch_alert_thresholds
                 causal_prop = analytics.get("causal_propagation") if isinstance(analytics.get("causal_propagation"), dict) else {}
