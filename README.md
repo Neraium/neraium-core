@@ -156,6 +156,201 @@ Neraium currently includes a temporary, explicit **decision layer** that interpr
 
 This layer is temporary and will be replaced when formal interpretive governance is implemented.
 
+## Structural attribution and decision intelligence upgrade
+
+The SII platform now upgrades from pure structural change detection to **structural attribution + decision intelligence**:
+
+- **Attribution layer:** identifies highest-contributing sensors and sensor relationships by baseline-vs-recent relational delta and mean-shift evidence.
+- **Regime memory similarity:** compares current geometry/graph signatures to persisted regime prototypes and reports nearest prior matches + novelty.
+- **Forward-looking risk:** projects near-term risk trend from instability trend, acceleration, and persistence evidence.
+- **Operator decision support:** emits conservative, evidence-grounded inspection targets and prioritized recommended actions.
+
+These outputs are emitted directly by the production SII engine and flow through batch payload processing, file processing, and live-ingestion paths via shared `SIIEngine.process_frame()` runtime logic.
+
+Canonical top-level decision-intelligence contract:
+- `attribution`
+- `regime_memory`
+- `risk_assessment`
+- `operator_guidance`
+- `causal_analysis`
+- `decision`
+
+Decision resolver behavior (deterministic compression layer):
+- Prefer `causal_analysis.best_next_action` when confidence is usable.
+- Else use top-ranked `causal_analysis.recommended_sequence` action.
+- Else use `operator_guidance.recommended_actions[0]` (with `first_inspection_target`).
+- Else synthesize a conservative inspection action from `attribution.top_sensors[0]`.
+- Else emit structured fallback with `decision.status.available=false` and explicit reason.
+
+`decision.confidence` is bounded to `[0,1]` and computed from converging evidence across:
+- top causal hypothesis confidence/robustness/counterfactual strength,
+- risk trend clarity + projected risk,
+- attribution localization strength,
+- source convergence count.
+
+Example decision payload:
+```json
+{
+  "decision": {
+    "action": "Inspect subsystem/cluster first: cluster_A.",
+    "target": "cluster_A",
+    "priority": 1,
+    "confidence": 0.74,
+    "reason": "Prioritized 'Inspect subsystem/cluster first: cluster_A.' from causal ranking, operator guidance, risk trend (increasing); confidence=0.74.",
+    "evidence": [
+      {"signal": "causal_analysis.best_next_action", "value": "Inspect subsystem/cluster first: cluster_A.", "confidence": 0.72},
+      {"signal": "risk_assessment.projected_near_term_trend", "value": "increasing", "risk_score": 0.68}
+    ],
+    "source": {
+      "from_causal_analysis": true,
+      "from_operator_guidance": true,
+      "from_risk_assessment": true,
+      "from_attribution": true
+    },
+    "status": {"available": true, "reason": "decision_available"}
+  }
+}
+```
+
+Fallback interpretation:
+- `decision.status.available=true`: single prioritized action is available.
+- `decision.status.available=false`: warmup or insufficient converging evidence; continue monitoring.
+
+---
+
+## Deprecated compatibility module note
+
+`neraium_core.casual` is deprecated and retained only as a temporary compatibility shim.
+All canonical runtime imports must use `neraium_core.causal`. The shim emits a non-breaking `DeprecationWarning` and is scheduled for removal in a future version.
+
+---
+
+## Platform Output Structure
+
+Neraium’s operator-facing output is organized into canonical, composable sections. The
+`causal_analysis` section is an **additional reasoning layer** on top of core structural
+outputs; it does not replace attribution, regime memory, risk, or guidance.
+
+- `attribution`
+  - `top_drivers`: ranked structural contributors.
+  - `driver_scores`: normalized per-driver impact scores.
+  - `trajectory_drivers` / `branching_drivers` / `lock_in_drivers` / `horizon_drivers`: higher-order driver views.
+
+- `regime_memory`
+  - `regime_name`: nearest known structural regime label.
+  - `regime_distance`: distance to nearest regime signature.
+  - `library_size` / `baseline_count`: regime memory depth and baseline confidence context.
+
+- `risk_assessment`
+  - `risk_level`: interpreted risk category from structural evidence.
+  - `trend`: stability trajectory direction.
+  - `latest_instability`: current composite instability.
+  - `confidence_score`: confidence proxy for decision outputs.
+
+- `operator_guidance`
+  - `operator_message`: concise human-facing interpretation.
+  - `response_recommendations`: conservative follow-up guidance for inspection/escalation.
+
+- `causal_analysis` *(additive layer)*
+  - `hypotheses`: competing causal hypotheses (`physical`, `sensor`, `systemic`) grounded in structural signals.
+  - `top_hypothesis`: highest-ranked current explanation candidate.
+  - `counterfactual`: lightweight robustness checks (`remove_top_driver`, `remove_relationship_change`, localization dependency).
+  - `validation_plan`: confirm/falsify actions with expected true/false outcomes.
+  - `recommended_sequence` / `best_next_action`: value-of-information-ranked execution order.
+  - `status`: availability state (`ok`, `warmup`, `insufficient_evidence`).
+
+### Example: `causal_analysis`
+
+```json
+{
+  "causal_analysis": {
+    "hypotheses": [
+      {
+        "hypothesis_id": "hyp_physical_localized_degradation",
+        "type": "physical",
+        "confidence": 0.71
+      }
+    ],
+    "top_hypothesis": {},
+    "counterfactual": {
+      "counterfactual_checks": [],
+      "robustness": 0.67,
+      "interpretation": "Top hypothesis has mixed robustness; targeted validation is required."
+    },
+    "validation_plan": [],
+    "recommended_sequence": [],
+    "best_next_action": {},
+    "status": { "available": true, "reason": "ok" }
+  }
+}
+```
+
+> Compatibility note: `neraium_core/casual.py` is deprecated and will be removed in a future release. Use `neraium_core/causal.py`.
+
+---
+
+## Platform Output Structure
+
+Neraium’s operator-facing output is organized into canonical, composable sections. The
+`causal_analysis` section is an **additional reasoning layer** on top of core structural
+outputs; it does not replace attribution, regime memory, risk, or guidance.
+
+- `attribution`
+  - `top_drivers`: ranked structural contributors.
+  - `driver_scores`: normalized per-driver impact scores.
+  - `trajectory_drivers` / `branching_drivers` / `lock_in_drivers` / `horizon_drivers`: higher-order driver views.
+
+- `regime_memory`
+  - `regime_name`: nearest known structural regime label.
+  - `regime_distance`: distance to nearest regime signature.
+  - `library_size` / `baseline_count`: regime memory depth and baseline confidence context.
+
+- `risk_assessment`
+  - `risk_level`: interpreted risk category from structural evidence.
+  - `trend`: stability trajectory direction.
+  - `latest_instability`: current composite instability.
+  - `confidence_score`: confidence proxy for decision outputs.
+
+- `operator_guidance`
+  - `operator_message`: concise human-facing interpretation.
+  - `response_recommendations`: conservative follow-up guidance for inspection/escalation.
+
+- `causal_analysis` *(additive layer)*
+  - `hypotheses`: competing causal hypotheses (`physical`, `sensor`, `systemic`) grounded in structural signals.
+  - `top_hypothesis`: highest-ranked current explanation candidate.
+  - `counterfactual`: lightweight robustness checks (`remove_top_driver`, `remove_relationship_change`, localization dependency).
+  - `validation_plan`: confirm/falsify actions with expected true/false outcomes.
+  - `recommended_sequence` / `best_next_action`: value-of-information-ranked execution order.
+  - `status`: availability state (`ok`, `warmup`, `insufficient_evidence`).
+
+### Example: `causal_analysis`
+
+```json
+{
+  "causal_analysis": {
+    "hypotheses": [
+      {
+        "hypothesis_id": "hyp_physical_localized_degradation",
+        "type": "physical",
+        "confidence": 0.71
+      }
+    ],
+    "top_hypothesis": {},
+    "counterfactual": {
+      "counterfactual_checks": [],
+      "robustness": 0.67,
+      "interpretation": "Top hypothesis has mixed robustness; targeted validation is required."
+    },
+    "validation_plan": [],
+    "recommended_sequence": [],
+    "best_next_action": {},
+    "status": { "available": true, "reason": "ok" }
+  }
+}
+```
+
+> Compatibility note: `neraium_core/casual.py` is deprecated and will be removed in a future release. Use `neraium_core/causal.py`.
+
 ---
 
 ## Platform Output Structure
