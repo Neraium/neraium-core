@@ -28,8 +28,8 @@ def parse_args() -> argparse.Namespace:
         default="",
         help="Comma-separated unit ids to replay (example: 1,2). Empty means all units.",
     )
-    parser.add_argument("--max-units", type=int, default=None, help="Optional cap on number of units to replay.")
-    parser.add_argument("--max-cycles", type=int, default=None, help="Optional cap on cycles per unit.")
+    parser.add_argument("--max-units", type=int, default=2, help="Cap on number of units to replay (smoke-safe default: 2).")
+    parser.add_argument("--max-cycles", type=int, default=120, help="Cap on cycles per unit (smoke-safe default: 120).")
     parser.add_argument("--site-id", type=str, default="cmapss-fd001", help="site_id field used in generated payloads.")
     return parser.parse_args()
 
@@ -51,7 +51,11 @@ def main() -> int:
     if args.max_units is not None and args.max_units > 0:
         unit_ids = unit_ids[: int(args.max_units)]
 
-    print(f"loaded_rows={len(rows)} units_available={len(grouped)} units_selected={len(unit_ids)}")
+    print(
+        "loaded_rows={} units_available={} units_selected={} max_cycles={}".format(
+            len(rows), len(grouped), len(unit_ids), args.max_cycles
+        )
+    )
 
     full, summary = replay_fd001_units(
         grouped,
