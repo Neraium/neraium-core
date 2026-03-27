@@ -14,6 +14,21 @@ def _safe_float(value: Any, default: float = 0.0) -> float:
         return float(default)
 
 
+def _causal_status_reason(causal_analysis: dict[str, Any] | None) -> tuple[str, str]:
+    if not isinstance(causal_analysis, dict):
+        return ("unknown", "unknown")
+
+    status = causal_analysis.get("status")
+    if isinstance(status, str):
+        normalized = status.strip().lower() or "unknown"
+        return (normalized, normalized)
+    if isinstance(status, dict):
+        reason = str(status.get("reason", "unknown")).strip().lower() or "unknown"
+        available = bool(status.get("available", True))
+        return ("ready" if available else reason, reason)
+    return ("unknown", "unknown")
+
+
 def _extract_action_parts(candidate: Any) -> tuple[str | None, str | None, int | None]:
     if isinstance(candidate, str):
         text = candidate.strip()
@@ -64,7 +79,8 @@ def compute_decision_confidence(
         strongest = max((_safe_float(v) for v in contribution_scores.values()), default=0.0)
         localization = _clamp01(max(localization, strongest))
 
-    converging_count = int(sum(1 for value in source.values() if value))
+    source_flags = source if isinstance(source, dict) else {}
+    converging_count = int(sum(1 for value in source_flags.values() if bool(value)))
     converging_evidence = _clamp01(converging_count / 4.0)
 
     confidence = _clamp01(
@@ -152,7 +168,8 @@ def resolve_best_action(
     guidance = operator_guidance or {}
     causal = causal_analysis or {}
 
-    if str(causal.get("status", "")).lower() in {"warming_up", "insufficient_history"}:
+    causal_status, causal_reason = _causal_status_reason(causal)
+    if causal_status in {"warming_up", "insufficient_history"} or causal_reason in {"warming_up", "insufficient_history"}:
         return build_decision_fallback(
             reason="Warmup window is incomplete; continue monitoring until sufficient evidence accumulates.",
             evidence=[{"signal": "causal_analysis.status", "value": causal.get("status", "warming_up")}],

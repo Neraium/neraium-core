@@ -83,6 +83,17 @@ def test_hypothesis_generation_works_without_driver_scores_key() -> None:
     assert len(hypotheses) >= 3
 
 
+def test_hypothesis_generation_handles_non_mapping_attribution() -> None:
+    _, structural_signals, regime_memory, risk_assessment = _sample_inputs()
+    hypotheses = generate_hypotheses(
+        attribution=None,
+        structural_signals=structural_signals,
+        regime_memory=regime_memory,
+        risk_assessment=risk_assessment,
+    )
+    assert len(hypotheses) >= 3
+
+
 def test_hypothesis_scoring_and_ranking_behavior() -> None:
     attribution, structural_signals, regime_memory, risk_assessment = _sample_inputs()
     hypotheses = generate_hypotheses(

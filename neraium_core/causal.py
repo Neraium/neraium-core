@@ -99,7 +99,10 @@ def _normalize_driver_scores(raw_scores: dict[str, Any]) -> dict[str, float]:
     return {k: _clamp01(v / max_score) for k, v in scores.items()}
 
 
-def _driver_scores_from_attribution(attr: dict[str, Any]) -> dict[str, float]:
+def _driver_scores_from_attribution(attr: dict[str, Any] | None) -> dict[str, float]:
+    if not isinstance(attr, dict):
+        return {}
+
     raw_scores = attr.get("driver_scores", {}) if isinstance(attr.get("driver_scores"), dict) else {}
     normalized = _normalize_driver_scores(raw_scores)
     if normalized:
