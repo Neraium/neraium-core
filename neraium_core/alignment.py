@@ -67,6 +67,7 @@ from neraium_core.context_invariant_representation import (
 from neraium_core.temporal_features import derive_temporal_rate_features
 from neraium_core.stat_geometry import StatisticalGeometryLayer
 from neraium_core.temporal_quality import derive_temporal_quality_signals
+from neraium_core.detection.readiness import compute_engine_readiness
 from neraium_core.staged_pipeline import (
     AttributionStage,
     DecisionStage,
@@ -202,6 +203,14 @@ class StructuralEngine:
             "episode_history": [],
         }
         self.transition_aware_enabled: bool = _env_enabled("NERAIUM_TRANSITION_AWARE", default="1")
+        # Extra frames after windows first fill before EMERGING/SUSTAINED labels are trusted.
+        _stab = os.environ.get("NERAIUM_TRANSITION_STABILIZATION_MARGIN") or os.environ.get(
+            "NERAIUM_TRANSITION_WARMUP_MARGIN", "8"
+        )
+        self.transition_stabilization_margin_frames: int = int(str(_stab).strip() or "8")
+        self.transition_classification_min_history: int = int(
+            os.environ.get("NERAIUM_TRANSITION_MIN_HISTORY", "6").strip() or "6"
+        )
         self.geometry_layer = StatisticalGeometryLayer(max_history=384, graph_window=24, stats_window=16)
 
         # Drift-score threshold calibration (watch/alert).
@@ -901,7 +910,7 @@ class StructuralEngine:
         }
 
     def _transition_state(self, pressure: float, temporal_consistency: float = 1.0) -> str:
-        self._transition_pressure_history.append(float(pressure))
+        """Classify transition from recent pressure history. Caller must append ``pressure`` to history first."""
         history = list(self._transition_pressure_history)
         if not history:
             return "NONE"
@@ -1587,6 +1596,12 @@ class StructuralEngine:
                 geometry_available = bool(
                     isinstance(geometry_metrics, dict) and geometry_metrics.get("available", True) is not False
                 )
+                state_space_av = bool(
+                    isinstance(state_space_statistics, dict) and state_space_statistics.get("available", True) is not False
+                )
+                state_graph_av = bool(
+                    isinstance(state_graph, dict) and state_graph.get("available", True) is not False
+                )
                 if self.transition_aware_enabled:
                     base_transition_pressure = float(result.get("transition_pressure", 0.0))
                     final_transition_pressure = base_transition_pressure
@@ -1617,10 +1632,30 @@ class StructuralEngine:
                         raw_components["transition_pressure"] = float(final_transition_pressure)
                     else:
                         transition_metrics["geometry_transition_term"] = 0.0
-                    result["transition_state"] = self._transition_state(
-                        float(final_transition_pressure),
-                        temporal_consistency=float(temporal_quality.get("temporal_consistency_score", 1.0)),
+                    self._transition_pressure_history.append(float(final_transition_pressure))
+                    rd_gate = compute_engine_readiness(
+                        frame_count=len(self.frames),
+                        baseline_window=self.baseline_window,
+                        recent_window=self.recent_window,
+                        transition_pressure_history_len=len(self._transition_pressure_history),
+                        warmup_margin_frames=self.transition_stabilization_margin_frames,
+                        min_transition_history=self.transition_classification_min_history,
+                        geometry_available=geometry_available,
+                        geometry_reason=str(geometry_metrics.get("reason", "")) if isinstance(geometry_metrics, dict) else None,
+                        state_space_available=state_space_av,
+                        state_space_reason=str(state_space_statistics.get("reason", ""))
+                        if isinstance(state_space_statistics, dict)
+                        else None,
+                        state_graph_available=state_graph_av,
+                        state_graph_reason=str(state_graph.get("reason", "")) if isinstance(state_graph, dict) else None,
                     )
+                    if not rd_gate.transition_classification_ready:
+                        result["transition_state"] = "WARMUP"
+                    else:
+                        result["transition_state"] = self._transition_state(
+                            float(final_transition_pressure),
+                            temporal_consistency=float(temporal_quality.get("temporal_consistency_score", 1.0)),
+                        )
 
                 counterfactual_guidance = self._counterfactual_guidance(
                     sensor_names=valid_sensor_names,
@@ -2075,7 +2110,9 @@ class StructuralEngine:
                 state_rank = {"STABLE": 0, "WATCH": 1, "ALERT": 2}
                 current_state = str(result.get("state", "STABLE"))
                 target_state = current_state
-                if transition_state == "SUSTAINED_TRANSITION" and transition_pressure >= TRANSITION_SUSTAINED_THRESHOLD:
+                if transition_state == "WARMUP":
+                    target_state = current_state
+                elif transition_state == "SUSTAINED_TRANSITION" and transition_pressure >= TRANSITION_SUSTAINED_THRESHOLD:
                     target_state = "ALERT"
                 elif transition_state == "EMERGING_TRANSITION" and transition_pressure >= TRANSITION_EMERGING_THRESHOLD:
                     target_state = "WATCH"
@@ -2121,10 +2158,12 @@ class StructuralEngine:
             self._state_history.append(decision.get("interpreted_state", "NOMINAL_STRUCTURE"))
 
             # Rolling baseline: update only when nominal, composite low, and not locked.
+            _ts_baseline = str(result.get("transition_state", "NONE"))
             transition_blocks_baseline = (
                 self.transition_aware_enabled
+                and _ts_baseline != "WARMUP"
                 and (
-                    str(result.get("transition_state", "NONE")) != "NONE"
+                    _ts_baseline != "NONE"
                     or float(result.get("transition_pressure", 0.0)) >= TRANSITION_EMERGING_THRESHOLD
                 )
             )
@@ -2552,6 +2591,35 @@ class StructuralEngine:
         transition_pressure_value = float(result.get("transition_pressure", 0.0) or 0.0)
         if len(self._transition_pressure_history) == history_transition_len_before:
             self._transition_pressure_history.append(transition_pressure_value)
+
+        geo_r = result.get("geometry") if isinstance(result.get("geometry"), dict) else {}
+        ss_r = result.get("state_space_statistics") if isinstance(result.get("state_space_statistics"), dict) else {}
+        sg_r = result.get("state_graph") if isinstance(result.get("state_graph"), dict) else {}
+        rd_final = compute_engine_readiness(
+            frame_count=len(self.frames),
+            baseline_window=self.baseline_window,
+            recent_window=self.recent_window,
+            transition_pressure_history_len=len(self._transition_pressure_history),
+            warmup_margin_frames=self.transition_stabilization_margin_frames,
+            min_transition_history=self.transition_classification_min_history,
+            geometry_available=geo_r.get("available") is not False if geo_r else None,
+            geometry_reason=str(geo_r.get("reason", "")) if geo_r else None,
+            state_space_available=ss_r.get("available") is not False if ss_r else None,
+            state_space_reason=str(ss_r.get("reason", "")) if ss_r else None,
+            state_graph_available=sg_r.get("available") is not False if sg_r else None,
+            state_graph_reason=str(sg_r.get("reason", "")) if sg_r else None,
+        )
+        result["readiness"] = rd_final.as_dict()
+        result["engine_ready"] = rd_final.ready
+        result["engine_stabilization_progress"] = rd_final.stabilization_progress
+        result["engine_warmup_progress"] = rd_final.stabilization_progress
+        result["engine_min_history_required"] = rd_final.min_history_required
+        result["transition_outputs_actionable"] = rd_final.transition_classification_ready
+        result["engine_transition_detectable"] = rd_final.transition_classification_ready
+        result["neraium"] = {
+            "readiness": rd_final.as_dict(),
+            "transition_outputs_actionable": rd_final.transition_classification_ready,
+        }
         if len(self._shock_activity_history) == history_shock_len_before:
             self._shock_activity_history.append(0.0)
         if len(self._structural_drift_history) == history_drift_len_before:

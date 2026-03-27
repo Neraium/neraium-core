@@ -1,8 +1,8 @@
 """
-FD004 / CMAPSS convenience wrappers around :mod:`neraium_core.detection`.
+Legacy replay helpers for CMAPSS-style CSVs (e.g. FD00x) built on :mod:`neraium_core.detection`.
 
-Dataset-specific scripts should pass parameters via :class:`~neraium_core.detection.TransitionDetectionConfig`;
-this module keeps stable function names for existing CLIs and notebooks.
+Prefer :class:`~neraium_core.detection.TransitionDetectionConfig` and the shared detector directly;
+this module preserves stable CLI and notebook entry points.
 """
 
 from __future__ import annotations
@@ -26,7 +26,7 @@ from neraium_core.detection.transition_plots import (
 EPS = 1e-9
 
 
-def _fd004_config(
+def _replay_transition_config_from_cli(
     *,
     min_cycle: int,
     window: int,
@@ -35,17 +35,19 @@ def _fd004_config(
     cycle_col: str,
     sustained_points: int,
     verbose: bool = False,
+    entity_group_column: str = "unit",
 ) -> TransitionDetectionConfig:
+    """Build detection config from CMAPSS-style replay CLI parameters."""
     return TransitionDetectionConfig(
         index_column=cycle_col,
         primary_signal=pressure_col,
-        warmup_cycles=float(min_cycle),
+        warmup_index_floor=float(min_cycle),
         warmup_fraction=None,
         smoothing_window=int(window),
         threshold=float(threshold),
         sustained_points=int(sustained_points),
         fallback_mode="max_slope",
-        entity_group_column="unit",
+        entity_group_column=entity_group_column,
         verbose=verbose,
     )
 
@@ -64,9 +66,9 @@ def detect_structural_transition(
     """
     Backward-compatible wrapper for :func:`neraium_core.detection.detect_transition`.
 
-    See :class:`TransitionDetectionConfig` for the full parameter surface.
+    ``min_cycle`` maps to :attr:`TransitionDetectionConfig.warmup_index_floor` on the timeline column.
     """
-    cfg = _fd004_config(
+    cfg = _replay_transition_config_from_cli(
         min_cycle=min_cycle,
         window=window,
         threshold=threshold,
@@ -76,15 +78,15 @@ def detect_structural_transition(
         verbose=verbose,
     )
     r = detect_transition(unit_df, cfg)
-    wm = r.get("warmup_applied") or {}
+    wm = r.get("timeline_trim_applied") or r.get("warmup_applied") or {}
     meta: dict[str, Any] = {
         "min_cycle": int(min_cycle),
         "window": int(window),
         "threshold": float(threshold),
         "pressure_col": pressure_col,
         "rows_input": int(len(unit_df)) if unit_df is not None else 0,
-        "rows_after_warmup": wm.get("rows_after_warmup"),
-        "warmup_mode": wm.get("warmup_mode"),
+        "rows_after_warmup": wm.get("rows_after_warmup") or wm.get("rows_after_trim"),
+        "trim_mode": wm.get("trim_mode") or wm.get("warmup_mode"),
     }
     if r.get("diagnostics"):
         meta["detector_diagnostics"] = r["diagnostics"]
@@ -117,7 +119,7 @@ def summarize_fd004_transitions(
     """
     Per-unit summary using the shared detector; output shape matches historical FD004 scripts.
     """
-    cfg = _fd004_config(
+    cfg = _replay_transition_config_from_cli(
         min_cycle=min_cycle,
         window=window,
         threshold=threshold,
@@ -125,6 +127,7 @@ def summarize_fd004_transitions(
         cycle_col=cycle_col,
         sustained_points=2,
         verbose=verbose,
+        entity_group_column=unit_col,
     )
     summary_df, agg = summarize_entity_transitions(replay_df, unit_col, config=cfg)
 
@@ -237,7 +240,7 @@ def plot_unit_transition(
     if tc is not None:
         ax1.axvline(float(tc), color="red", ls="--", lw=1.2, label="Detected transition")
 
-    fig.suptitle(f"FD004 unit {unit_id} (cycles ≥ {min_cycle} used in detector)")
+    fig.suptitle(f"CMAPSS replay unit {unit_id} (cycles ≥ {min_cycle} used in detector)")
     lines, labels = ax1.get_legend_handles_labels()
     lines2, labels2 = ax2.get_legend_handles_labels()
     ax1.legend(lines + lines2, labels + labels2, loc="upper right")
