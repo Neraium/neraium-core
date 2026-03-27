@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import Any
+import warnings
 
 import numpy as np
 
@@ -20,11 +21,19 @@ def _as_2d_array(values: ArrayLike) -> np.ndarray:
 def normalize_window(observations: ArrayLike) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Per-window z-score normalization with missing and zero-variance guards."""
     data = _as_2d_array(observations)
-    means = np.nanmean(data, axis=0)
+    if data.shape[1] == 0:
+        z = np.zeros((data.shape[0], 0), dtype=float)
+        empty = np.zeros(0, dtype=float)
+        return z, empty.copy(), empty.copy()
+    # All-NaN columns / edge DOF: NumPy emits RuntimeWarning; outputs are sanitized below.
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", category=RuntimeWarning)
+        with np.errstate(invalid="ignore", divide="ignore"):
+            means = np.nanmean(data, axis=0)
+            std = np.nanstd(data, axis=0)
     means = np.nan_to_num(means, nan=0.0)
 
     centered = data - means
-    std = np.nanstd(data, axis=0)
     std = np.nan_to_num(std, nan=0.0)
     safe_std = np.where(std <= 1e-12, 1.0, std)
 
@@ -36,7 +45,9 @@ def normalize_window(observations: ArrayLike) -> tuple[np.ndarray, np.ndarray, n
 def correlation_matrix(observations: ArrayLike) -> np.ndarray:
     """Compute correlation geometry R_t from row-wise observations."""
     data = _as_2d_array(observations)
-    corr = np.corrcoef(data, rowvar=False)
+    # Constant or near-constant columns make corrcoef divide by zero; suppress FP noise only.
+    with np.errstate(invalid="ignore", divide="ignore"):
+        corr = np.corrcoef(data, rowvar=False)
     corr = np.nan_to_num(corr, nan=0.0, posinf=0.0, neginf=0.0)
     np.fill_diagonal(corr, 1.0)
     return corr

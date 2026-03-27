@@ -1949,9 +1949,11 @@ def create_app(
                     retry_attempts = int(state.get("retry_max_attempts") or 3)
                     retry_backoff = float(state.get("retry_backoff_seconds") or 1.0)
                     run_id = str(state.get("run_id") or "")
-                    state["status"] = "running"
-                    state["updated_at"] = _utc_now_iso()
-                    state["message"] = "Polling upstream API."
+                    # Do not clobber "stopped" / running=False set by stop endpoint before we exit.
+                    if is_running:
+                        state["status"] = "running"
+                        state["updated_at"] = _utc_now_iso()
+                        state["message"] = "Polling upstream API."
                 if not is_running or not isinstance(stop_event, threading.Event):
                     return
                 if stop_event.is_set():

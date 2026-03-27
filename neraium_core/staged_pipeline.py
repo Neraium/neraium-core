@@ -20,7 +20,8 @@ def bounded_z(raw: float, mean: float, std: float, cap: float = 4.0) -> float:
 
 
 def corr_from_matrix(m: np.ndarray) -> np.ndarray:
-    corr = np.corrcoef(m.T)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        corr = np.corrcoef(m.T)
     corr = np.nan_to_num(corr, nan=0.0, posinf=0.0, neginf=0.0)
     np.fill_diagonal(corr, 1.0)
     return corr

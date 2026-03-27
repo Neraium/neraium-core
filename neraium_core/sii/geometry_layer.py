@@ -35,7 +35,8 @@ def correlation_matrix(z_window: np.ndarray) -> np.ndarray:
     z = np.asarray(z_window, dtype=float)
     if z.ndim != 2:
         raise SIIValidationError("correlation_matrix expects a 2D matrix")
-    corr = np.corrcoef(z.T)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        corr = np.corrcoef(z.T)
     corr = np.nan_to_num(corr, nan=0.0, posinf=0.0, neginf=0.0)
     if corr.ndim == 0:
         corr = np.asarray([[1.0]], dtype=float)

@@ -162,7 +162,9 @@ def test_mvp_routes_available(tmp_path) -> None:
     assert css.status_code == 200
     assert three_init.status_code == 200
     assert "text/javascript" in three_init.headers.get("content-type", "")
-    assert "cdn.jsdelivr.net/npm/three@0.162.0" in three_init.text
+    # three-init.mjs uses bare "three" / "three/addons/..."; versioned CDN lives in index.html import map.
+    assert 'from "three"' in three_init.text
+    assert "OrbitControls" in three_init.text
 
 
 def test_web_js_smoke_wiring_for_demo_critical_controls(tmp_path) -> None:

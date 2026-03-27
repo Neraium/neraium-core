@@ -111,7 +111,8 @@ def _cross_channel_features(matrix: np.ndarray) -> dict[str, float]:
             "decoupling_index": 0.0,
             "coherence_like": 1.0,
         }
-    corr = np.corrcoef(matrix.T)
+    with np.errstate(invalid="ignore", divide="ignore"):
+        corr = np.corrcoef(matrix.T)
     corr = np.nan_to_num(corr, nan=0.0, posinf=0.0, neginf=0.0)
     idx = np.triu_indices(n_channels, k=1)
     pairs = corr[idx] if idx[0].size else np.array([1.0], dtype=float)

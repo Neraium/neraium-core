@@ -19,8 +19,9 @@ def early_warning_metrics(observations: ArrayLike) -> dict[str, float]:
         lag1 = np.zeros(safe.shape[1], dtype=float)
     else:
         lag1 = []
-        for idx in range(safe.shape[1]):
-            lag1.append(np.corrcoef(safe[:-1, idx], safe[1:, idx])[0, 1])
+        with np.errstate(invalid="ignore", divide="ignore"):
+            for idx in range(safe.shape[1]):
+                lag1.append(np.corrcoef(safe[:-1, idx], safe[1:, idx])[0, 1])
         lag1 = np.nan_to_num(np.array(lag1, dtype=float), nan=0.0, posinf=0.0, neginf=0.0)
 
     return {
