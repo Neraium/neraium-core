@@ -112,6 +112,18 @@ def _vector_from_sensor_values(sensor_values: Dict[str, object], order: List[str
     return np.asarray(values, dtype=float)
 
 
+def _history_timestamps_float64(frames_list: list[dict]) -> np.ndarray:
+    """Row-aligned timestamps for temporal representation (matches legacy list semantics)."""
+    n = len(frames_list)
+    out = np.empty(n, dtype=np.float64)
+    for i, f in enumerate(frames_list):
+        try:
+            out[i] = float(f.get("timestamp"))
+        except (TypeError, ValueError):
+            out[i] = float(i)
+    return out
+
+
 def _env_enabled(var_name: str, *, default: str = "1") -> bool:
     """Feature toggle helper that treats 0/false/no/off as disabled."""
     v = os.environ.get(var_name, default)
@@ -1241,25 +1253,22 @@ class StructuralEngine:
             can_process_full_frame = False
         else:
             frames_list = list(self.frames)
-            baseline_window = self._get_baseline_window(frames_list)
-            recent_window = self._get_recent_window(frames_list)
+            baseline_window = None
+            recent_window = None
             if _incremental_windows_enabled() and self._baseline_matrix_cache is not None:
                 ir = self._materialize_strided_recent()
                 if ir is not None:
                     baseline_window = self._baseline_matrix_cache
                     recent_window = ir
             if baseline_window is None or recent_window is None:
+                baseline_window = self._get_baseline_window(frames_list)
+                recent_window = self._get_recent_window(frames_list)
+            if baseline_window is None or recent_window is None:
                 can_process_full_frame = False
 
         if can_process_full_frame:
             history_matrix = np.stack([f["_vector"] for f in frames_list], axis=0)
-            history_timestamps = []
-            for f in frames_list:
-                try:
-                    history_timestamps.append(float(f.get("timestamp")))
-                except (TypeError, ValueError):
-                    history_timestamps.append(float(len(history_timestamps)))
-            history_ts = np.asarray(history_timestamps, dtype=float)
+            history_ts = _history_timestamps_float64(frames_list)
             rep = build_temporal_representation(history_matrix, self.representation_config, timestamps=history_ts)
             transformed_history = rep.transformed
             baseline_window = np.asarray(

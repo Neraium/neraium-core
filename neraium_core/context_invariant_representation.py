@@ -47,12 +47,23 @@ class TemporalRepresentation:
 
 
 def _rolling_mean(arr: np.ndarray, window: int) -> np.ndarray:
+    """Trailing mean with min(t+1, w) observations at row t (same semantics as the legacy loop).
+
+    Vectorized via prefix cumsums: O(n·d) vs O(n·w·d) for the naive implementation.
+    """
     n, d = arr.shape
     w = max(1, int(window))
-    out = np.zeros_like(arr, dtype=float)
-    for t in range(n):
-        lo = max(0, t - w + 1)
-        out[t] = np.mean(arr[lo : t + 1], axis=0)
+    a = np.asarray(arr, dtype=float)
+    if w == 1:
+        return a
+    c = np.cumsum(np.concatenate([np.zeros((1, d), dtype=float), a], axis=0), axis=0)
+    out = np.zeros_like(a, dtype=float)
+    wm1 = w - 1
+    if wm1 > 0:
+        for t in range(min(wm1, n)):
+            out[t] = c[t + 1] / float(t + 1)
+    if n > wm1:
+        out[wm1:] = (c[w : n + 1] - c[0 : n - wm1]) / float(w)
     return out
 
 
