@@ -40,10 +40,12 @@ class StructuralMonitoringService:
         engine: StructuralEngine | None = None,
         store: ResultStore | None = None,
         pilot_config: PilotConfig | None = None,
+        *,
+        frame_debug: bool = False,
     ):
         # Template engine config; runtime engines are isolated per (site_id, asset_id)
         # so each asset gets its own baseline/model memory.
-        self.engine = engine or StructuralEngine(baseline_window=24, recent_window=8)
+        self.engine = engine or StructuralEngine(baseline_window=24, recent_window=8, frame_debug=frame_debug)
         self.store = store or ResultStore()
         self._engines_by_asset: dict[tuple[str, str, str], StructuralEngine] = {}
         self._localization_by_site: dict[str, dict[str, float]] = {}
@@ -101,6 +103,7 @@ class StructuralMonitoringService:
         except Exception:
             regime_path = f"regime_library_{customer_id}_{site_id}_{asset_id}.json"
 
+        frame_debug = bool((run_config or {}).get("frame_debug", getattr(template, "_frame_debug", False)))
         new_engine = StructuralEngine(
             baseline_window=baseline_window,
             recent_window=recent_window,
@@ -121,6 +124,7 @@ class StructuralMonitoringService:
                     "second_diff_weight": template.representation_config.weights.second_diff_weight,
                 },
             ),
+            frame_debug=frame_debug,
         )
         if run_config and run_config.get("baseline_locked") is True:
             new_engine.lock_baseline(True)

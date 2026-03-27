@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import sqlite3
 from dataclasses import asdict, is_dataclass
 from datetime import datetime, timezone
@@ -13,6 +14,17 @@ import numpy as np
 
 
 logger = logging.getLogger(__name__)
+
+
+def _store_persistence_debug_logs() -> bool:
+    """When True, emit ``logger.debug`` on each SQLite write (default: off).
+
+    Avoids per-frame logging I/O when the root logger level is DEBUG (e.g. Jupyter).
+    Set ``NERAIUM_DEBUG_STORE=1`` to restore verbose persistence diagnostics.
+    """
+
+    v = os.environ.get("NERAIUM_DEBUG_STORE", "0")
+    return str(v).strip().lower() not in {"0", "false", "no", "off", ""}
 
 
 def _json_safe(obj: Any) -> Any:
@@ -158,7 +170,8 @@ class ResultStore:
         run_id: str | None = None,
         customer_id: str | None = None,
     ) -> None:
-        logger.debug("persistence write result db_path=%s", self.db_path)
+        if _store_persistence_debug_logs():
+            logger.debug("persistence write result db_path=%s", self.db_path)
         resolved_customer = _normalize_customer_id(customer_id)
         with self._conn() as conn:
             conn.execute(
@@ -179,7 +192,8 @@ class ResultStore:
         Returns metadata for the inserted results row so callers can avoid a follow-up
         ``SELECT`` to recover ``result_id`` / ``persisted_at``.
         """
-        logger.debug("persistence write ingestion db_path=%s", self.db_path)
+        if _store_persistence_debug_logs():
+            logger.debug("persistence write ingestion db_path=%s", self.db_path)
         now = _utc_now()
         resolved_customer = _normalize_customer_id(customer_id)
         payload_json = json.dumps(_json_safe(payload))
@@ -225,9 +239,10 @@ class ResultStore:
         if not pairs:
             return
         resolved_customer = _normalize_customer_id(customer_id)
-        logger.debug(
-            "persistence batch write count=%s db_path=%s", len(pairs), self.db_path
-        )
+        if _store_persistence_debug_logs():
+            logger.debug(
+                "persistence batch write count=%s db_path=%s", len(pairs), self.db_path
+            )
         with self._conn() as conn:
             for payload, result in pairs:
                 now = _utc_now()
@@ -304,7 +319,8 @@ class ResultStore:
         run_id: str | None = None,
         customer_id: str | None = None,
     ) -> None:
-        logger.debug("persistence write event db_path=%s", self.db_path)
+        if _store_persistence_debug_logs():
+            logger.debug("persistence write event db_path=%s", self.db_path)
         resolved_customer = _normalize_customer_id(customer_id)
         with self._conn() as conn:
             conn.execute(

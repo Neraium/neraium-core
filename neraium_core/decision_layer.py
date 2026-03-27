@@ -387,6 +387,7 @@ def decision_output(
     alert_threshold: float | None = None,
     min_history_for_alerts: int = 8,
     require_persistence: bool = True,
+    debug_prints: bool = False,
 ) -> dict[str, Any]:
     """
     Convert structural analytics into operator-safe decision output.
@@ -469,9 +470,8 @@ def decision_output(
         "interpreted_state": state,
     }
 
-    # Optional verbose debugging: keep off by default.
-    debug_enabled = os.environ.get("NERAIUM_DEBUG_SII", "0").strip().lower() not in {"0", "false", "no", "off", ""}
-    if debug_enabled:
+    # Optional verbose debugging: gated by ``debug_prints`` (see StructuralEngine.frame_debug).
+    if debug_prints:
         print(
             "[NERAIUM_DEBUG_SII]"
             f" composite={composite_score:.4f}"
