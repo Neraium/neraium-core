@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any, Callable, TextIO
 
 from neraium_core.alignment import StructuralEngine
-from neraium_core.adapters.raw_telemetry_adapter import load_raw_telemetry_windows, raw_slices_to_structural_frames
+from neraium_core.adapters.raw_telemetry_adapter import ingest_raw_industrial_input
 from neraium_core.csv_mapping import row_to_frame_kwargs, resolve_mapping
 from neraium_core.pipeline import (
     build_frame,
@@ -312,18 +312,49 @@ class StructuralMonitoringService:
         run_id: str | None = None,
         customer_id: str | None = None,
         site_id: str = "raw-telemetry",
+        sample_size: int | None = None,
     ) -> list[dict[str, Any]]:
-        """Ingest raw waveform windows (from json/csv/npy/npz) through the existing structural engine."""
-        windows = load_raw_telemetry_windows(input_path)
-        frames = raw_slices_to_structural_frames(
-            windows,
+        """Backward-compatible wrapper for generic raw industrial ingestion."""
+        output = self.ingest_raw_industrial_data(
+            input_path,
+            run_id=run_id,
+            customer_id=customer_id,
             site_id=site_id,
-            customer_id=customer_id or DEFAULT_CUSTOMER_ID,
+            sample_size=sample_size,
+        )
+        return list(output["results"])
+
+    def ingest_raw_industrial_data(
+        self,
+        input_path: str,
+        *,
+        run_id: str | None = None,
+        customer_id: str | None = None,
+        site_id: str = "raw-telemetry",
+        sample_size: int | None = None,
+    ) -> dict[str, Any]:
+        """Ingest raw industrial data (tabular rows or directory signal blocks) through runtime path."""
+        resolved_customer = self._resolve_customer_id(customer_id)
+        ingestion = ingest_raw_industrial_input(
+            input_path,
+            site_id=site_id,
+            customer_id=resolved_customer,
+            sample_size=sample_size,
         )
         outputs: list[dict[str, Any]] = []
-        for frame in frames:
+        for frame in ingestion.frames:
             outputs.append(self.ingest_payload(frame, run_id=run_id, customer_id=customer_id))
-        return outputs
+        diagnostics = {
+            "detected_input_type": ingestion.diagnostics.detected_input_type,
+            "timestep_count": ingestion.diagnostics.timestep_count,
+            "sensor_count": ingestion.diagnostics.sensor_count,
+            "preprocessing_mode": ingestion.diagnostics.preprocessing_mode,
+            "has_valid_signals": ingestion.diagnostics.has_valid_signals,
+            "sensor_columns": ingestion.diagnostics.sensor_columns,
+            "metadata_columns": ingestion.diagnostics.metadata_columns,
+            "warnings": ingestion.diagnostics.warnings,
+        }
+        return {"diagnostics": diagnostics, "results": outputs}
 
     def ingest_payload(
         self,
