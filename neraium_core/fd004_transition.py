@@ -1,8 +1,8 @@
 """
-FD004 replay helpers: robust structural transition detection on per-unit timeseries.
+FD004 / CMAPSS convenience wrappers around :mod:`neraium_core.detection`.
 
-Designed for post-warmup analysis using ``transition_pressure`` (or another column)
-so detections are not dominated by initialization artifacts.
+Dataset-specific scripts should pass parameters via :class:`~neraium_core.detection.TransitionDetectionConfig`;
+this module keeps stable function names for existing CLIs and notebooks.
 """
 
 from __future__ import annotations
@@ -14,7 +14,40 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from neraium_core.detection.transition_config import TransitionDetectionConfig
+from neraium_core.detection.transition_detector import detect_transition
+from neraium_core.detection.transition_evaluation import summarize_entity_transitions
+from neraium_core.detection.transition_plots import (
+    plot_normalized_detection_histogram,
+    plot_raw_position_histogram,
+    save_figure,
+)
+
 EPS = 1e-9
+
+
+def _fd004_config(
+    *,
+    min_cycle: int,
+    window: int,
+    threshold: float,
+    pressure_col: str,
+    cycle_col: str,
+    sustained_points: int,
+    verbose: bool = False,
+) -> TransitionDetectionConfig:
+    return TransitionDetectionConfig(
+        index_column=cycle_col,
+        primary_signal=pressure_col,
+        warmup_cycles=float(min_cycle),
+        warmup_fraction=None,
+        smoothing_window=int(window),
+        threshold=float(threshold),
+        sustained_points=int(sustained_points),
+        fallback_mode="max_slope",
+        entity_group_column="unit",
+        verbose=verbose,
+    )
 
 
 def detect_structural_transition(
@@ -26,124 +59,47 @@ def detect_structural_transition(
     pressure_col: str = "transition_pressure",
     cycle_col: str = "cycle",
     sustained_points: int = 2,
+    verbose: bool = False,
 ) -> dict[str, Any]:
     """
-    Detect the first sustained post-warmup transition from normalized pressure.
+    Backward-compatible wrapper for :func:`neraium_core.detection.detect_transition`.
 
-    Steps: sort by cycle; drop rows with cycle < ``min_cycle``; coerce pressure to
-    numeric; interpolate missing; normalize pressure to [0, 1] on the valid slice;
-    smooth with rolling mean (``window``, ``min_periods=1``); find first run of
-    ``sustained_points`` values strictly above ``threshold``. If none, fall back to
-    the index of maximum smoothed first-difference (largest sustained slope bump).
-
-    Returns a dict with ``detected``, ``transition_cycle``, ``remaining_life_normalized``,
-    ``lead_time_cycles``, ``reason``, and ``metadata``. Never raises on bad input.
+    See :class:`TransitionDetectionConfig` for the full parameter surface.
     """
+    cfg = _fd004_config(
+        min_cycle=min_cycle,
+        window=window,
+        threshold=threshold,
+        pressure_col=pressure_col,
+        cycle_col=cycle_col,
+        sustained_points=sustained_points,
+        verbose=verbose,
+    )
+    r = detect_transition(unit_df, cfg)
+    wm = r.get("warmup_applied") or {}
     meta: dict[str, Any] = {
         "min_cycle": int(min_cycle),
         "window": int(window),
         "threshold": float(threshold),
         "pressure_col": pressure_col,
-        "rows_input": int(len(unit_df)),
+        "rows_input": int(len(unit_df)) if unit_df is not None else 0,
+        "rows_after_warmup": wm.get("rows_after_warmup"),
+        "warmup_mode": wm.get("warmup_mode"),
     }
-    empty = {
-        "detected": False,
-        "transition_index": None,
-        "transition_cycle": None,
-        "remaining_life_normalized": None,
-        "lead_time_cycles": None,
-        "reason": "no_data",
-        "metadata": meta,
-    }
-
-    if unit_df is None or len(unit_df) == 0 or cycle_col not in unit_df.columns:
-        return empty
-
-    df = unit_df.sort_values(cycle_col).copy()
-    if pressure_col not in df.columns:
-        return {**empty, "reason": f"missing_column:{pressure_col}"}
-
-    df = df.loc[df[cycle_col] >= float(min_cycle)]
-    meta["rows_after_min_cycle"] = int(len(df))
-    if len(df) < sustained_points:
-        return {**empty, "reason": "insufficient_post_warmup_rows"}
-
-    raw = pd.to_numeric(df[pressure_col], errors="coerce")
-    raw = raw.interpolate(limit_direction="both").ffill().bfill()
-    if raw.isna().all() or float(raw.std(skipna=True) or 0.0) < EPS:
-        return {**empty, "reason": "flat_or_invalid_pressure"}
-
-    pmin = float(raw.min())
-    pmax = float(raw.max())
-    span = pmax - pmin
-    if span < EPS:
-        norm = pd.Series(0.5, index=raw.index, dtype=float)
-    else:
-        norm = (raw - pmin) / span
-    norm = norm.clip(0.0, 1.0)
-
-    smooth = norm.rolling(window=int(window), min_periods=1).mean()
-    cycles = pd.to_numeric(df[cycle_col], errors="coerce").values
-    sm = smooth.values.astype(float)
-    n = len(sm)
-
-    # First sustained run above threshold
-    run = 0
-    start_idx: int | None = None
-    for i in range(n):
-        if sm[i] > float(threshold):
-            run += 1
-            if run >= int(sustained_points):
-                start_idx = i - int(sustained_points) + 1
-                break
-        else:
-            run = 0
-
-    reason = "threshold_crossing"
-    t_idx: int | None = start_idx
-
-    if t_idx is None:
-        # Fallback: largest post-warmup bump in smoothed slope (avoid index 0 edge)
-        d1 = np.diff(sm, prepend=sm[0])
-        d1_smooth = pd.Series(d1).rolling(max(2, min(5, window)), min_periods=1).mean().values
-        search_from = min(3, max(0, n - 1))
-        if n <= search_from + 1:
-            return {**empty, "reason": "no_threshold_no_fallback"}
-        seg = d1_smooth[search_from:]
-        if np.all(np.isnan(seg)):
-            return {**empty, "reason": "no_threshold_no_fallback"}
-        j = int(np.nanargmax(seg)) + search_from
-        t_idx = j
-        reason = "max_slope_increase"
-
-    if t_idx is None or t_idx < 0 or t_idx >= n:
-        return {**empty, "reason": "index_error"}
-
-    c_sel = float(cycles[t_idx])
-    c_max = float(np.nanmax(cycles))
-    c_min = float(np.nanmin(cycles))
-    lead = max(0.0, c_max - c_sel)
-    denom = max(EPS, c_max - c_min)
-    rln = float(np.clip(lead / denom, 0.0, 1.0))
-
-    meta.update(
-        {
-            "pressure_min": pmin,
-            "pressure_max": pmax,
-            "normalized_pressure_tail": float(norm.iloc[t_idx]),
-            "smoothed_at_transition": float(sm[t_idx]),
-            "max_cycle": c_max,
-        }
-    )
-
+    if r.get("diagnostics"):
+        meta["detector_diagnostics"] = r["diagnostics"]
     return {
-        "detected": True,
-        "transition_index": int(t_idx),
-        "transition_cycle": c_sel,
-        "remaining_life_normalized": rln,
-        "lead_time_cycles": lead,
-        "reason": reason,
+        "detected": bool(r.get("detected")),
+        "transition_index": r.get("transition_index"),
+        "transition_cycle": r.get("transition_position"),
+        "remaining_life_normalized": r.get("remaining_life_normalized"),
+        "lead_time_cycles": r.get("lead_time_cycles"),
+        "reason": r.get("reason") or r.get("detection_reason"),
         "metadata": meta,
+        "transition_position": r.get("transition_position"),
+        "confidence": r.get("confidence"),
+        "signal_used": r.get("signal_used"),
+        "detection_reason": r.get("detection_reason"),
     }
 
 
@@ -155,61 +111,67 @@ def summarize_fd004_transitions(
     window: int = 5,
     threshold: float = 0.5,
     pressure_col: str = "transition_pressure",
+    cycle_col: str = "cycle",
+    verbose: bool = False,
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
     """
-    Run :func:`detect_structural_transition` per unit and aggregate metrics.
-
-    Returns (per_unit DataFrame, json-ready summary dict).
+    Per-unit summary using the shared detector; output shape matches historical FD004 scripts.
     """
-    rows: list[dict[str, Any]] = []
-    if replay_df is None or len(replay_df) == 0 or unit_col not in replay_df.columns:
+    cfg = _fd004_config(
+        min_cycle=min_cycle,
+        window=window,
+        threshold=threshold,
+        pressure_col=pressure_col,
+        cycle_col=cycle_col,
+        sustained_points=2,
+        verbose=verbose,
+    )
+    summary_df, agg = summarize_entity_transitions(replay_df, unit_col, config=cfg)
+
+    if len(summary_df) == 0:
         summary = {
             "units_evaluated": 0,
             "units_skipped": 0,
+            "units_with_detection": 0,
+            "units_without_detection": 0,
             "mean_remaining_life_normalized": None,
             "std_remaining_life_normalized": None,
             "mean_lead_time_cycles": None,
             "std_lead_time_cycles": None,
             "detection_params": {"min_cycle": min_cycle, "window": window, "threshold": threshold},
+            "aggregate_detection": agg,
         }
-        return pd.DataFrame(), summary
+        return summary_df, summary
 
-    evaluated = 0
-    skipped = 0
-    rln_list: list[float] = []
-    lead_list: list[float] = []
+    evaluated = len(summary_df)
+    det_mask = summary_df["detected"].astype(bool)
+    detected_count = int(det_mask.sum())
+    rln_list = [
+        float(x)
+        for x in summary_df.loc[det_mask, "remaining_life_normalized"].dropna()
+        if pd.notna(x)
+    ]
+    lead_list = [float(x) for x in summary_df.loc[det_mask, "lead_time"].dropna() if pd.notna(x)]
 
-    for uid, g in replay_df.groupby(unit_col):
-        res = detect_structural_transition(
-            g,
-            min_cycle=min_cycle,
-            window=window,
-            threshold=threshold,
-            pressure_col=pressure_col,
+    legacy_rows: list[dict[str, Any]] = []
+    for _, r in summary_df.iterrows():
+        legacy_rows.append(
+            {
+                "unit": r["entity_id"],
+                "detected": bool(r["detected"]),
+                "transition_cycle": r.get("transition_position"),
+                "remaining_life_normalized": r.get("remaining_life_normalized"),
+                "lead_time_cycles": r.get("lead_time"),
+                "reason": r.get("reason") or r.get("detection_reason"),
+                "normalized_progress_at_detection": r.get("normalized_progress_at_detection"),
+                "confidence": r.get("confidence"),
+            }
         )
-        evaluated += 1
-        det = bool(res.get("detected"))
-        if not det:
-            skipped += 1
-        row = {
-            "unit": int(uid) if pd.notna(uid) else uid,
-            "detected": det,
-            "transition_cycle": res.get("transition_cycle"),
-            "remaining_life_normalized": res.get("remaining_life_normalized"),
-            "lead_time_cycles": res.get("lead_time_cycles"),
-            "reason": res.get("reason"),
-        }
-        if det and res.get("remaining_life_normalized") is not None:
-            rln_list.append(float(res["remaining_life_normalized"]))
-        if det and res.get("lead_time_cycles") is not None:
-            lead_list.append(float(res["lead_time_cycles"]))
-        rows.append(row)
+    legacy = pd.DataFrame(legacy_rows)
 
-    summary_df = pd.DataFrame(rows)
-    detected_count = int(summary_df["detected"].sum()) if len(summary_df) else 0
     summary = {
         "units_evaluated": evaluated,
-        "units_skipped": skipped,
+        "units_skipped": evaluated - detected_count,
         "units_with_detection": detected_count,
         "units_without_detection": evaluated - detected_count,
         "mean_remaining_life_normalized": float(np.mean(rln_list)) if rln_list else None,
@@ -217,8 +179,9 @@ def summarize_fd004_transitions(
         "mean_lead_time_cycles": float(np.mean(lead_list)) if lead_list else None,
         "std_lead_time_cycles": float(np.std(lead_list)) if lead_list else None,
         "detection_params": {"min_cycle": min_cycle, "window": window, "threshold": threshold},
+        "aggregate_detection": agg,
     }
-    return summary_df, summary
+    return legacy, summary
 
 
 def save_transition_artifacts(
@@ -233,7 +196,7 @@ def save_transition_artifacts(
     summary_df.to_csv(csv_path, index=False)
     if json_path is not None:
         json_path.parent.mkdir(parents=True, exist_ok=True)
-        json_path.write_text(json.dumps(json_summary, indent=2), encoding="utf-8")
+        json_path.write_text(json.dumps(json_summary, indent=2, default=str), encoding="utf-8")
 
 
 def plot_unit_transition(
@@ -247,13 +210,12 @@ def plot_unit_transition(
     cycle_col: str = "cycle",
     show: bool = True,
 ) -> None:
-    """Single-unit plot: normalized remaining life (proxy), smoothed pressure, transition line."""
+    """Single-unit plot: normalized remaining life (cycles), smoothed pressure, transition line."""
     import matplotlib.pyplot as plt
 
     df = unit_df.sort_values(cycle_col)
     c = pd.to_numeric(df[cycle_col], errors="coerce")
     cmax = float(c.max())
-    # Remaining life in cycles (same as FD004 convention: cycles left to max)
     rem = (cmax - c).clip(lower=0.0)
     rnorm = rem / max(EPS, cmax - c.min())
 
@@ -271,7 +233,7 @@ def plot_unit_transition(
     ax2.plot(c, smooth, label="Smoothed norm. pressure", color="C1", alpha=0.85)
     ax2.set_ylabel("Smoothed pressure [0-1]", color="C1")
 
-    tc = detection.get("transition_cycle")
+    tc = detection.get("transition_cycle") or detection.get("transition_position")
     if tc is not None:
         ax1.axvline(float(tc), color="red", ls="--", lw=1.2, label="Detected transition")
 
@@ -294,7 +256,7 @@ def plot_transition_histograms(
     output_dir: Path | None = None,
     show: bool = True,
 ) -> None:
-    """Histograms: remaining life at detection and transition cycle (detected units only)."""
+    """Histograms: remaining life at detection and transition cycle (detected rows only)."""
     import matplotlib.pyplot as plt
 
     det = summary_df["detected"].map(lambda x: str(x).lower() in ("true", "1", "yes"))
@@ -302,24 +264,40 @@ def plot_transition_histograms(
     if len(sub) == 0:
         return
 
-    fig1, ax1 = plt.subplots(figsize=(8, 4))
-    ax1.hist(sub["remaining_life_normalized"].dropna(), bins=min(20, max(5, len(sub))), color="C0", edgecolor="white")
-    ax1.set_title("Remaining life at detection (normalized)")
-    ax1.set_xlabel("Value")
-    fig1.tight_layout()
-    if output_dir is not None:
-        output_dir.mkdir(parents=True, exist_ok=True)
-        fig1.savefig(output_dir / "fd004_hist_remaining_life.png", dpi=150, bbox_inches="tight")
-    plt.show()
-    plt.close(fig1)
+    col_rln = "remaining_life_normalized" if "remaining_life_normalized" in sub.columns else None
+    col_tc = "transition_cycle" if "transition_cycle" in sub.columns else "transition_position"
 
-    fig2, ax2 = plt.subplots(figsize=(8, 4))
-    ax2.hist(sub["transition_cycle"].dropna(), bins=min(20, max(5, len(sub))), color="C1", edgecolor="white")
-    ax2.set_title("Transition cycle")
-    ax2.set_xlabel("Cycle")
-    fig2.tight_layout()
-    if output_dir is not None:
-        fig2.savefig(output_dir / "fd004_hist_transition_cycle.png", dpi=150, bbox_inches="tight")
-    if show:
-        plt.show()
-    plt.close(fig2)
+    if col_rln and sub[col_rln].notna().any():
+        _, ax1 = plt.subplots(figsize=(8, 4))
+        plot_normalized_detection_histogram(
+            sub[col_rln].dropna(),
+            title="Remaining life at detection (normalized)",
+            ax=ax1,
+            show=False,
+        )
+        plt.tight_layout()
+        if output_dir is not None:
+            output_dir.mkdir(parents=True, exist_ok=True)
+            save_figure(output_dir / "fd004_hist_remaining_life.png")
+        elif show:
+            plt.show()
+            plt.close()
+        else:
+            plt.close()
+
+    if col_tc in sub.columns and sub[col_tc].notna().any():
+        _, ax2 = plt.subplots(figsize=(8, 4))
+        plot_raw_position_histogram(
+            sub[col_tc].dropna(),
+            title="Transition cycle",
+            ax=ax2,
+            show=False,
+        )
+        plt.tight_layout()
+        if output_dir is not None:
+            save_figure(output_dir / "fd004_hist_transition_cycle.png")
+        elif show:
+            plt.show()
+            plt.close()
+        else:
+            plt.close()

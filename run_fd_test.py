@@ -306,6 +306,7 @@ def run_transition_postprocess(
         window=int(args.window),
         threshold=float(args.threshold),
         pressure_col="transition_pressure",
+        verbose=bool(args.verbose),
     )
     csv_out = args.summary_output or (output_path.parent / f"{output_path.stem}_transition_summary.csv")
     json_out = args.summary_json or csv_out.with_suffix(".json")
@@ -328,6 +329,7 @@ def run_transition_postprocess(
                 min_cycle=int(args.min_cycle),
                 window=int(args.window),
                 threshold=float(args.threshold),
+                verbose=bool(args.verbose),
             )
             plot_unit_transition(
                 g,
