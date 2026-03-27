@@ -107,10 +107,14 @@ def test_end_to_end_engine_emits_decision_intelligence_fields(tmp_path) -> None:
     assert "regime_memory" in warmup_out
     assert "risk_assessment" in warmup_out
     assert "operator_guidance" in warmup_out
+    assert "causal_analysis" in warmup_out
+    assert "decision" in warmup_out
     assert warmup_out["attribution"]["status"] in {"warming_up", "insufficient_history"}
     assert warmup_out["regime_memory"]["status"] in {"warming_up", "insufficient_history"}
     assert warmup_out["risk_assessment"]["status"] in {"warming_up", "insufficient_history"}
     assert warmup_out["operator_guidance"]["status"] in {"warming_up", "insufficient_history"}
+    assert warmup_out["causal_analysis"]["status"] in {"warming_up", "insufficient_history"}
+    assert warmup_out["decision"]["status"]["available"] is False
     assert "structural_attribution" not in warmup_out
     assert "forward_risk" not in warmup_out
 
@@ -138,6 +142,8 @@ def test_end_to_end_engine_emits_decision_intelligence_fields(tmp_path) -> None:
     assert "regime_memory" in out
     assert "risk_assessment" in out
     assert "operator_guidance" in out
+    assert "causal_analysis" in out
+    assert "decision" in out
     assert "structural_attribution" not in out
     assert "forward_risk" not in out
 
@@ -151,3 +157,5 @@ def test_end_to_end_engine_emits_decision_intelligence_fields(tmp_path) -> None:
     guidance = out["operator_guidance"]
     assert guidance["status"] == "ready"
     assert guidance["recommended_actions"]
+    assert out["causal_analysis"]["status"] == "ready"
+    assert out["decision"]["status"]["available"] is True

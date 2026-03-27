@@ -25,6 +25,7 @@ from neraium_core.sii.preprocessing import data_quality, impute_column_mean, sum
 from neraium_core.sii.regime_memory import summarize_regime_memory
 from neraium_core.sii.regime_model import RegimeModel, RegimeObservation
 from neraium_core.sii.risk import assess_forward_risk
+from neraium_core.decision_resolver import resolve_best_action
 from neraium_core.sii.scoring import StructuralScoringModel
 from neraium_core.sii.types import (
     ALLOWED_CONFIDENCE,
@@ -322,7 +323,23 @@ class SystemicInfrastructureIntelligenceEngine:
                 "first_inspection_target": "none",
                 "recommended_actions": ["Collect more telemetry to establish baseline and recent windows."],
             },
+            "causal_analysis": {
+                "status": "warming_up",
+                "best_next_action": None,
+                "recommended_sequence": [],
+                "top_hypotheses": [],
+                "validation_plan": [],
+                "summary": "Warmup: causal prioritization unavailable until sufficient history is present.",
+            },
         }
+        out["decision"] = resolve_best_action(
+            attribution=out["attribution"],
+            regime_memory=out["regime_memory"],
+            risk_assessment=out["risk_assessment"],
+            operator_guidance=out["operator_guidance"],
+            causal_analysis=out["causal_analysis"],
+            readiness={"ready": False, "reason": "Warmup window is incomplete."},
+        )
         return out
 
     def _update_adaptive_baseline(
@@ -627,6 +644,45 @@ class SystemicInfrastructureIntelligenceEngine:
                     "evidence": risk_assessment_data.evidence,
                 },
             )
+
+            top_hypothesis = {
+                "hypothesis": f"Localized structural drift centered on {driver_names[0] if driver_names else 'dominant subsystem'}.",
+                "confidence": round(float(max(0.0, min(1.0, 0.55 * structural_score + 0.25 * graph_score + 0.20 * regime_score))), 4),
+                "robustness": round(float(max(0.0, min(1.0, 1.0 - abs(structural_score - relational_score)))), 4),
+                "counterfactual_strength": round(float(max(0.0, min(1.0, 0.5 * coupling_score + 0.5 * graph_score))), 4),
+            }
+            validation_plan = [
+                {
+                    "rank": 1,
+                    "step": str(operator_guidance.recommended_actions[0]) if operator_guidance.recommended_actions else "Inspect leading subsystem",
+                    "expected_voi": round(float(max(0.05, min(1.0, 0.55 + 0.35 * structural_score))), 4),
+                },
+                {
+                    "rank": 2,
+                    "step": "Validate top sensor calibration and strongest relationship pair.",
+                    "expected_voi": round(float(max(0.05, min(1.0, 0.35 + 0.35 * relational_score))), 4),
+                },
+            ]
+            causal_analysis = {
+                "status": "ready",
+                "best_next_action": {
+                    "action": str(operator_guidance.recommended_actions[0]) if operator_guidance.recommended_actions else "Inspect subsystem",
+                    "target": str(operator_guidance.first_inspection_target or "none"),
+                    "priority": 1,
+                    "confidence": round(float(max(0.0, min(1.0, 0.5 * top_hypothesis["confidence"] + 0.5 * risk_assessment_data.projected_score))), 4),
+                },
+                "recommended_sequence": [
+                    {
+                        "action": str(a),
+                        "target": str(operator_guidance.first_inspection_target or "none"),
+                        "priority": idx + 1,
+                    }
+                    for idx, a in enumerate(operator_guidance.recommended_actions[:3])
+                ],
+                "top_hypotheses": [top_hypothesis],
+                "validation_plan": validation_plan,
+                "summary": "Deterministic causal prioritization built from structural drift, coupling, and near-term risk trend.",
+            }
             context = None
             if self.config.allow_context_provider:
                 try:
@@ -699,6 +755,7 @@ class SystemicInfrastructureIntelligenceEngine:
                     "first_inspection_target": operator_guidance.first_inspection_target,
                     "recommended_actions": operator_guidance.recommended_actions,
                 },
+                "causal_analysis": causal_analysis,
                 "data_quality_summary": summarize_quality(dq),
                 "experimental_analytics": {
                     "components": {k: round(float(v), 6) for k, v in components.items()},
@@ -739,6 +796,14 @@ class SystemicInfrastructureIntelligenceEngine:
                     "context": context,
                 },
             }
+            out["decision"] = resolve_best_action(
+                attribution=out["attribution"],
+                regime_memory=out["regime_memory"],
+                risk_assessment=out["risk_assessment"],
+                operator_guidance=out["operator_guidance"],
+                causal_analysis=out.get("causal_analysis"),
+                readiness={"ready": True, "reason": "engine_ready"},
+            )
             if out["state"] not in ALLOWED_STATES:
                 out["state"] = "STABLE"
             if out["interpreted_state"] not in ALLOWED_INTERPRETED_STATES:

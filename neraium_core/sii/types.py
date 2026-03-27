@@ -227,6 +227,8 @@ class SIIResult(TypedDict):
     regime_memory: dict[str, Any]
     risk_assessment: dict[str, Any]
     operator_guidance: dict[str, Any]
+    causal_analysis: dict[str, Any]
+    decision: dict[str, Any]
     data_quality_summary: dict[str, Any]
     experimental_analytics: dict[str, Any]
 
