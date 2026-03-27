@@ -40,6 +40,52 @@ def test_ingest_raw_industrial_directory_waveform_with_validation_mode(tmp_path)
     assert any("Validation mode enabled" in w for w in out.diagnostics.warnings)
 
 
+def test_ingest_raw_industrial_directory_timestep_files(tmp_path) -> None:
+    raw_dir = tmp_path / "dir_rows"
+    raw_dir.mkdir()
+    (raw_dir / "0001.json").write_text(
+        json.dumps(
+            {
+                "timestamp": "2026-01-01T00:00:00+00:00",
+                "asset_id": "A-9",
+                "site_id": "S-9",
+                "amp_x": 0.21,
+                "amp_y": 0.33,
+                "mode": "startup",
+            }
+        )
+    )
+    (raw_dir / "0002.json").write_text(
+        json.dumps(
+            {
+                "timestamp": "2026-01-01T00:01:00+00:00",
+                "asset_id": "A-9",
+                "site_id": "S-9",
+                "amp_x": 0.27,
+                "amp_y": 0.36,
+                "mode": "steady",
+            }
+        )
+    )
+
+    out = ingest_raw_industrial_input(raw_dir)
+
+    assert out.diagnostics.detected_input_type == "tabular_timeseries"
+    assert out.diagnostics.timestep_count == 2
+    assert out.diagnostics.sensor_count == 2
+    assert out.frames[0]["asset_id"] == "A-9"
+    assert out.frames[0]["site_id"] == "S-9"
+    assert "mode" in out.diagnostics.metadata_columns
+
+
+def test_ingest_raw_industrial_rejects_invalid_preprocessing_mode(tmp_path) -> None:
+    src = tmp_path / "telemetry.csv"
+    src.write_text("timestamp,temp\n2026-01-01T00:00:00+00:00,1.0\n")
+
+    with pytest.raises(ValueError):
+        ingest_raw_industrial_input(src, preprocessing_mode="something-else")
+
+
 def test_service_ingest_raw_industrial_data_runtime_path(tmp_path) -> None:
     pytest.importorskip("matplotlib")
     from neraium_core.service import StructuralMonitoringService
