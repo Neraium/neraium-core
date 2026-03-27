@@ -158,25 +158,41 @@ This layer is temporary and will be replaced when formal interpretive governance
 
 ---
 
-## Causal Hypothesis + Validation Engine (platform layer)
+## Platform Output Structure
 
-Neraium now includes a deterministic causal-reasoning layer on top of structural outputs. It does **not** replace structural attribution; it composes over existing signals from:
+Neraium’s operator-facing output is organized into canonical, composable sections. The
+`causal_analysis` section is an **additional reasoning layer** on top of core structural
+outputs; it does not replace attribution, regime memory, risk, or guidance.
 
-- `attribution` / structural drivers
-- regime memory (`regime_name`, `regime_distance`, `regime_drift`)
-- forward risk (`risk_level`, trend, instability trajectory)
+- `attribution`
+  - `top_drivers`: ranked structural contributors.
+  - `driver_scores`: normalized per-driver impact scores.
+  - `trajectory_drivers` / `branching_drivers` / `lock_in_drivers` / `horizon_drivers`: higher-order driver views.
 
-> Note: `neraium_core/casual.py` is deprecated compatibility-only code and will be removed in a future release. Use `neraium_core/causal.py`.
+- `regime_memory`
+  - `regime_name`: nearest known structural regime label.
+  - `regime_distance`: distance to nearest regime signature.
+  - `library_size` / `baseline_count`: regime memory depth and baseline confidence context.
 
-The layer adds:
+- `risk_assessment`
+  - `risk_level`: interpreted risk category from structural evidence.
+  - `trend`: stability trajectory direction.
+  - `latest_instability`: current composite instability.
+  - `confidence_score`: confidence proxy for decision outputs.
 
-1. **Competing hypotheses** (`physical`, `sensor`, `systemic`) grounded in structural evidence.
-2. **Hypothesis scoring/ranking** by evidence strength, regime consistency, risk alignment, and coherence.
-3. **Approximate counterfactual checks** (driver removal, relationship removal, localization dependency).
-4. **Validation planning** with confirm/falsify outcomes.
-5. **Action ranking (value of information)** balancing uncertainty reduction, risk relevance, invasiveness, and time-to-validation.
+- `operator_guidance`
+  - `operator_message`: concise human-facing interpretation.
+  - `response_recommendations`: conservative follow-up guidance for inspection/escalation.
 
-### `causal_analysis` output shape
+- `causal_analysis` *(additive layer)*
+  - `hypotheses`: competing causal hypotheses (`physical`, `sensor`, `systemic`) grounded in structural signals.
+  - `top_hypothesis`: highest-ranked current explanation candidate.
+  - `counterfactual`: lightweight robustness checks (`remove_top_driver`, `remove_relationship_change`, localization dependency).
+  - `validation_plan`: confirm/falsify actions with expected true/false outcomes.
+  - `recommended_sequence` / `best_next_action`: value-of-information-ranked execution order.
+  - `status`: availability state (`ok`, `warmup`, `insufficient_evidence`).
+
+### Example: `causal_analysis`
 
 ```json
 {
@@ -184,13 +200,8 @@ The layer adds:
     "hypotheses": [
       {
         "hypothesis_id": "hyp_physical_localized_degradation",
-        "description": "Localized subsystem degradation is driving observed structural instability.",
         "type": "physical",
-        "confidence": 0.71,
-        "supporting_evidence": ["structural_drift_score=1.28", "relational_instability_score=1.02"],
-        "conflicting_evidence": ["temporal_distortion_score=0.26"],
-        "primary_drivers": ["sensor_a", "sensor_c"],
-        "ranking_score": 0.74
+        "confidence": 0.71
       }
     ],
     "top_hypothesis": {},
@@ -199,16 +210,7 @@ The layer adds:
       "robustness": 0.67,
       "interpretation": "Top hypothesis has mixed robustness; targeted validation is required."
     },
-    "validation_plan": [
-      {
-        "action": "Inspect subsystem integrity and load-path consistency",
-        "target": "sensor_a",
-        "expected_outcome_if_true": "...",
-        "expected_outcome_if_false": "...",
-        "priority": 1,
-        "confidence": 0.73
-      }
-    ],
+    "validation_plan": [],
     "recommended_sequence": [],
     "best_next_action": {},
     "status": { "available": true, "reason": "ok" }
@@ -216,11 +218,7 @@ The layer adds:
 }
 ```
 
-### How to interpret validation plans
-
-- Run the **best-next-action** first to reduce uncertainty quickly with conservative checks.
-- If expected-true outcome is not observed, immediately elevate the next-ranked competing hypothesis action.
-- Use `counterfactual.robustness` as a confidence multiplier for escalation decisions.
+> Compatibility note: `neraium_core/casual.py` is deprecated and will be removed in a future release. Use `neraium_core/causal.py`.
 
 ---
 
