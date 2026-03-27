@@ -268,14 +268,16 @@ def run_fd004_real_evaluation(
         baseline_rul = rul_mapping.get(asset_id, 0)
         threshold_increase_windows: dict[int, bool] = {}
 
-        for record in sorted(unit_records, key=lambda r: r["_meta"]["cycle"]):
+        unit_records_sorted = sorted(unit_records, key=lambda r: r["_meta"]["cycle"])
+        for record in unit_records_sorted:
             result = service.ingest_payload(
                 {
                     "timestamp": record["timestamp"],
                     "site_id": record["site_id"],
                     "asset_id": record["asset_id"],
                     "sensor_values": record["sensor_values"],
-                }
+                },
+                log_ingest=False,
             )
             cycle = int(record["_meta"]["cycle"])
             instability = float(result.get("experimental_analytics", {}).get("composite_instability", 0.0))
