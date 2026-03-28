@@ -13,15 +13,17 @@
   const statusLine = el("statusLine");
 
   async function fetchJson(path, params, options) {
-    const url = new URL(path, window.location.origin);
+    const searchParams = new URLSearchParams();
     if (params) {
       Object.entries(params).forEach(([key, value]) => {
         if (value !== undefined && value !== null && String(value).length > 0) {
-          url.searchParams.set(key, String(value));
+          searchParams.set(key, String(value));
         }
       });
     }
-    const response = await fetch(url.toString(), options);
+    const query = searchParams.toString();
+    const url = query ? `${path}?${query}` : path;
+    const response = await fetch(url, options);
     if (!response.ok) {
       throw new Error(`${response.status} ${response.statusText}`);
     }
