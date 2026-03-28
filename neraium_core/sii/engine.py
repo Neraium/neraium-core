@@ -60,6 +60,7 @@ class _State:
     risk_trend_history: deque[str]
     smoothed_risk_trend: str
     cumulative_risk_pressure: float
+    decision_hysteresis_state: dict[str, Any]
     processed_frames: int = 0
 
 
@@ -104,6 +105,7 @@ class SystemicInfrastructureIntelligenceEngine:
             risk_trend_history=deque(maxlen=5),
             smoothed_risk_trend="uncertain",
             cumulative_risk_pressure=0.0,
+            decision_hysteresis_state={},
         )
         self.logger.info(
             "engine_initialized",
@@ -880,7 +882,12 @@ class SystemicInfrastructureIntelligenceEngine:
                 operator_guidance=out["operator_guidance"],
                 causal_analysis=out.get("causal_analysis"),
                 readiness={"ready": True, "reason": "engine_ready"},
+                decision_context=self.state.decision_hysteresis_state,
             )
+            if isinstance(out.get("decision"), dict):
+                next_hysteresis = out["decision"].get("hysteresis_state")
+                if isinstance(next_hysteresis, dict):
+                    self.state.decision_hysteresis_state = dict(next_hysteresis)
             if out["state"] not in ALLOWED_STATES:
                 out["state"] = "STABLE"
             if out["interpreted_state"] not in ALLOWED_INTERPRETED_STATES:
