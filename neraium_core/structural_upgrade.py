@@ -183,7 +183,18 @@ def build_evidence_block(
     input_completeness = float(tq.get("coverage_ratio", 1.0) or 1.0)
     temporal_score = float(tq.get("temporal_consistency_score", 0.0) or 0.0)
     stability_ref = float(st.get("overall_structural_stability", st.get("overall_stability", 0.0)) or 0.0)
-    attribution_depth = len(at.get("top_drivers", [])) if isinstance(at, dict) else 0
+    top_drivers = at.get("top_drivers", []) if isinstance(at, dict) else []
+    if not isinstance(top_drivers, list):
+        top_drivers = []
+    attribution_depth = len(top_drivers)
+
+    top_driver = None
+    if attribution_depth:
+        first_driver = top_drivers[0]
+        if isinstance(first_driver, dict):
+            top_driver = first_driver.get("feature")
+        elif isinstance(first_driver, str):
+            top_driver = first_driver
     sufficiency = _clamp01(0.25 * input_completeness + 0.25 * temporal_score + 0.35 * stability_ref + 0.15 * min(1.0, attribution_depth / 5.0))
 
     return {
@@ -193,7 +204,7 @@ def build_evidence_block(
         "stability_reference": round(stability_ref, 4),
         "attribution_reference": {
             "driver_count": int(attribution_depth),
-            "top_driver": (at.get("top_drivers", [{}])[0].get("feature") if attribution_depth else None),
+            "top_driver": top_driver,
         },
         "explanation_summary": {"count": int(explanation_count)},
         "evidence_sufficiency_score": round(float(sufficiency), 4),
