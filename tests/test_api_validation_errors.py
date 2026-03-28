@@ -84,6 +84,35 @@ def test_ingest_batch_invalid_timestamp_returns_400(tmp_path) -> None:
     assert "Invalid timestamp" in response.json()["detail"]
 
 
+def test_ingest_batch_unhandled_error_returns_controlled_json(tmp_path, monkeypatch) -> None:
+    client = _build_client(tmp_path)
+
+    def _boom(*args, **kwargs):
+        raise RuntimeError("simulated ingest failure")
+
+    monkeypatch.setattr("apps.api.main.service_instance.ingest_batch", _boom)
+
+    response = client.post(
+        _customer_path("/ingest/batch"),
+        json={
+            "items": [
+                {
+                    "timestamp": "2026-01-01T00:00:00+00:00",
+                    "site_id": "s1",
+                    "asset_id": "a1",
+                    "sensor_values": {"pressure": 10},
+                }
+            ]
+        },
+    )
+
+    assert response.status_code == 500
+    body = response.json()
+    assert body["status"] == "error"
+    assert body["message"] == "ingest failed"
+    assert "simulated ingest failure" in body["detail"]
+
+
 def test_ingest_csv_malformed_payload_returns_400(tmp_path) -> None:
     client = _build_client(tmp_path)
 
