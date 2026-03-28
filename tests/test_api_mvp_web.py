@@ -578,6 +578,32 @@ def test_pull_integration_start_status_stop_and_ingest(tmp_path) -> None:
         server.stop()
 
 
+def test_pull_integration_rejects_non_finite_poll_interval(tmp_path) -> None:
+    client = _client(tmp_path)
+    customer_id = "pull-customer-invalid"
+    run = client.post(
+        _customer_path("/runs", customer_id=customer_id),
+        json={"name": "pull-run-invalid", "activate": True, "config": {}},
+    )
+    assert run.status_code == 200
+    run_id = run.json()["run"]["run_id"]
+
+    resp = client.post(
+        _customer_path("/integrations/pull/start", customer_id=customer_id),
+        json={
+            "endpoint_url": "http://127.0.0.1:9/pull",
+            "polling_interval_seconds": "NaN",
+            "auth_type": "none",
+            "run_id": run_id,
+            "retry_max_attempts": 1,
+            "retry_backoff_seconds": 0.05,
+            "request_timeout_seconds": 1.0,
+        },
+    )
+    assert resp.status_code == 400
+    assert "polling_interval_seconds must be a finite number" in resp.json()["detail"]
+
+
 def test_pull_integration_reports_failures_with_retries(tmp_path) -> None:
     client = _client(tmp_path)
     customer_id = "pull-customer-b"

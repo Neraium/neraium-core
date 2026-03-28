@@ -938,6 +938,23 @@ def _safe_float(value: Any, default: float = 0.0) -> float:
     return float(f)
 
 
+def _parse_finite_float(value: Any, *, field_name: str) -> float:
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=f"{field_name} must be a finite number.") from exc
+    if not math.isfinite(parsed):
+        raise HTTPException(status_code=400, detail=f"{field_name} must be a finite number.")
+    return float(parsed)
+
+
+def _parse_int(value: Any, *, field_name: str) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError) as exc:
+        raise HTTPException(status_code=400, detail=f"{field_name} must be an integer.") from exc
+
+
 def _graph_analytics_payload(
     analytics_dict: dict[str, Any],
     *,
@@ -2054,9 +2071,9 @@ def create_app(
                     stop_event = state.get("_stop_event")
                     is_running = bool(state.get("running"))
                     endpoint_url = str(state.get("endpoint_url") or "")
-                    poll_interval = float(state.get("polling_interval_seconds") or 30.0)
-                    retry_attempts = int(state.get("retry_max_attempts") or 3)
-                    retry_backoff = float(state.get("retry_backoff_seconds") or 1.0)
+                    poll_interval = _safe_float(state.get("polling_interval_seconds"), 30.0)
+                    retry_attempts = max(1, _parse_int(state.get("retry_max_attempts") or 3, field_name="retry_max_attempts"))
+                    retry_backoff = _safe_float(state.get("retry_backoff_seconds"), 1.0)
                     run_id = str(state.get("run_id") or "")
                     # Do not clobber "stopped" / running=False set by stop endpoint before we exit.
                     if is_running:
@@ -2151,11 +2168,11 @@ def create_app(
                         )
                         if attempt >= retry_attempts:
                             break
-                        delay = max(0.05, retry_backoff) * (2 ** (attempt - 1))
+                        delay = max(0.05, _safe_float(retry_backoff, 1.0)) * (2 ** (attempt - 1))
                         if stop_event.wait(delay):
                             return
 
-                if stop_event.wait(max(0.2, poll_interval)):
+                if stop_event.wait(max(0.2, _safe_float(poll_interval, 30.0))):
                     return
                 if not success:
                     with pull_integrations_lock:
@@ -3018,25 +3035,29 @@ def create_app(
         username = payload.username if payload.username is not None else resolved_cfg.get("username")
         password = payload.password if payload.password is not None else resolved_cfg.get("password")
         token = payload.token if payload.token is not None else resolved_cfg.get("token")
-        polling_interval_seconds = float(
+        polling_interval_seconds = _parse_finite_float(
             payload.polling_interval_seconds
             if payload.polling_interval_seconds is not None
-            else resolved_cfg.get("polling_interval_seconds") or 30.0
+            else resolved_cfg.get("polling_interval_seconds") or 30.0,
+            field_name="polling_interval_seconds",
         )
-        retry_max_attempts = int(
+        retry_max_attempts = _parse_int(
             payload.retry_max_attempts
             if payload.retry_max_attempts is not None
-            else resolved_cfg.get("retry_max_attempts") or 3
+            else resolved_cfg.get("retry_max_attempts") or 3,
+            field_name="retry_max_attempts",
         )
-        retry_backoff_seconds = float(
+        retry_backoff_seconds = _parse_finite_float(
             payload.retry_backoff_seconds
             if payload.retry_backoff_seconds is not None
-            else resolved_cfg.get("retry_backoff_seconds") or 1.0
+            else resolved_cfg.get("retry_backoff_seconds") or 1.0,
+            field_name="retry_backoff_seconds",
         )
-        request_timeout_seconds = float(
+        request_timeout_seconds = _parse_finite_float(
             payload.request_timeout_seconds
             if payload.request_timeout_seconds is not None
-            else resolved_cfg.get("request_timeout_seconds") or 10.0
+            else resolved_cfg.get("request_timeout_seconds") or 10.0,
+            field_name="request_timeout_seconds",
         )
         if polling_interval_seconds < 0.2:
             raise HTTPException(status_code=400, detail="polling_interval_seconds must be >= 0.2.")
