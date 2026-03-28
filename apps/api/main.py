@@ -1774,14 +1774,31 @@ def create_app(
 
     app = FastAPI(title="Neraium SII API", version="0.1.0")
     app.add_middleware(MaxRequestBodySizeMiddleware, max_body_size=request_body_limit)
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=_cors_allow_origins(),
-        allow_origin_regex=_cors_allow_origin_regex(),
-        allow_credentials=True,
-        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-        allow_headers=_cors_allow_headers(),
-    )
+    cors_allow_origins = _cors_allow_origins()
+    cors_allow_origin_regex = _cors_allow_origin_regex()
+    if cors_allow_origins or cors_allow_origin_regex:
+        app.add_middleware(
+            CORSMiddleware,
+            allow_origins=cors_allow_origins,
+            allow_origin_regex=cors_allow_origin_regex,
+            allow_credentials=True,
+            allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+            allow_headers=_cors_allow_headers(),
+        )
+        log_structured(
+            logger,
+            event="cors_configured",
+            fields={
+                "allow_origins_count": len(cors_allow_origins),
+                "allow_origin_regex": bool(cors_allow_origin_regex),
+            },
+        )
+    else:
+        log_structured(
+            logger,
+            event="cors_disabled_same_origin_mode",
+            fields={"reason": "no_allow_origins_or_origin_regex_configured"},
+        )
     service_instance = service or StructuralMonitoringService(store=ResultStore(db_path=db_path))
     integration_config_path = os.getenv("NERAIUM_INTEGRATION_CONFIG_PATH")
     integration_config = load_integration_config(integration_config_path)
