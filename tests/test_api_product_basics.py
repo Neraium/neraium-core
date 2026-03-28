@@ -78,6 +78,8 @@ def test_api_endpoints_registered(tmp_path) -> None:
     assert "/results/recent" in paths
     assert "/state" in paths
     assert "/history" in paths
+    assert "/recommendation" in paths
+    assert "/recommendations/latest" in paths
     assert "/decision" in paths
     assert "/explanation" in paths
     assert "/events/latest" in paths

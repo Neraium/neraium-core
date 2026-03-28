@@ -59,11 +59,12 @@ def test_recent_history_and_latest_helpers(tmp_path) -> None:
     assert len(history) == 2
     assert history[0]["cycle"] > history[1]["cycle"]
 
-    decision = service.get_latest_decision(run_id="run-prod", customer_id="customer-a")
+    recommendation = service.get_latest_recommendation(run_id="run-prod", customer_id="customer-a")
     explanation = service.get_latest_explanation(run_id="run-prod", customer_id="customer-a")
 
-    assert isinstance(decision, dict)
-    assert "state" in decision
+    assert isinstance(recommendation, dict)
+    assert recommendation["status"]["advisory"] is True
+    assert "recommended_action" in recommendation
     assert isinstance(explanation, str)
 
 
@@ -73,15 +74,15 @@ def test_event_generation_includes_stable_product_flags(tmp_path) -> None:
     first = service.ingest_frame(_frame(0, 50.0), run_id="run-prod", customer_id="customer-a")
     second = service.ingest_frame(_frame(1, 150.0), run_id="run-prod", customer_id="customer-a")
 
-    assert "decision_available" in first["events"]
-    assert "decision_available" in second["events"]
+    assert "recommendation_available" in first["events"]
+    assert "recommendation_available" in second["events"]
     synthetic_prev = {
         "risk_assessment": {"risk_level": "LOW", "trend": "STABLE", "latest_instability": 0.2},
-        "decision": {"state": "STABLE", "action": "none"},
+        "operational_recommendation": {"status": {"available": True, "advisory": True, "reason": "recommendation_available"}, "recommended_action": "none"},
     }
     synthetic_curr = {
         "risk_assessment": {"risk_level": "HIGH", "trend": "RISING", "latest_instability": 1.5},
-        "decision": {"state": "ALERT", "action": "inspect_cooling_loop"},
+        "operational_recommendation": {"status": {"available": True, "advisory": True, "reason": "recommendation_available"}, "recommended_action": "inspect_cooling_loop"},
     }
     events = derive_product_events(synthetic_curr, previous=synthetic_prev)
     assert "risk_escalated" in events
