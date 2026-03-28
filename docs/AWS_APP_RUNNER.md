@@ -29,6 +29,41 @@ This guide deploys Neraium from GitHub to AWS App Runner using the repository co
 - Operator workflow: `/operator/workflow`
 - Web static files mount: `/web/*`
 
+## Why GitHub pushes may not update App Runner
+
+If your App Runner service is connected to GitHub but new commits do **not** deploy,
+it is usually one of these operational issues (outside app code):
+
+1. **Automatic deployment is disabled** in the App Runner service settings.
+2. **Branch mismatch**: App Runner watches one branch, while changes land in another.
+3. **Stale GitHub connection/webhook**: App Runner can lose webhook delivery after
+   repo/org permission changes or GitHub App authorization updates.
+
+A practical hardening step is to trigger deployments from GitHub Actions on each
+push to `main`.
+
+### Included fallback workflow (recommended)
+
+This repository now includes `.github/workflows/aws-apprunner-redeploy.yml`.
+On every push to `main` (or manual dispatch), it calls:
+
+- `aws apprunner start-deployment --service-arn <your-service-arn>`
+
+That forces App Runner to pull the latest watched branch commit even if webhook
+notifications were missed.
+
+### Required GitHub configuration
+
+Set these in your GitHub repo before enabling the workflow:
+
+- **Repository variable:** `AWS_REGION` (for example `us-east-1`)
+- **Repository variable:** `AWS_APP_RUNNER_SERVICE_ARN`
+- **Repository secret:** `AWS_GITHUB_DEPLOY_ROLE_ARN` (IAM role trusted by GitHub OIDC)
+
+IAM role needs at minimum:
+
+- `apprunner:StartDeployment` on the target service ARN.
+
 ## Common failure points
 
 1. **Wrong source directory**
