@@ -3281,7 +3281,7 @@ if __name__ == "__main__":
     import uvicorn
 
     uvicorn.run(
-        "main:app",
+        "apps.api.main:app",
         host=os.getenv("HOST", "0.0.0.0"),
         port=int(os.getenv("PORT", "8000")),
         h11_max_incomplete_event_size=_uvicorn_h11_max_incomplete_event_size(),
