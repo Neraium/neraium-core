@@ -68,10 +68,11 @@ def test_replay_fd001_units_smoke():
     ]
     grouped = group_rows_by_unit(rows)
 
-    full, summary = replay_fd001_units(grouped, unit_ids=[1], max_cycles=2)
+    full, summary, milestones = replay_fd001_units(grouped, unit_ids=[1], max_cycles=2)
 
     assert len(full) == 2
     assert len(summary) == 2
+    assert len(milestones) == 1
     assert full[0]["unit_id"] == 1
     assert full[0]["cycle"] == 1
     assert full[0]["row_index"] == 1
@@ -92,9 +93,8 @@ def test_replay_fd001_units_smoke():
         "top_hypothesis_id",
         "top_hypothesis_confidence",
         "top_attribution_driver",
-        "first_risk_cycle",
-        "first_decision_cycle",
     }
-
-    assert "first_risk_cycle" in summary[0]
-    assert "first_decision_cycle" in summary[0]
+    assert "first_risk_cycle" not in summary[0]
+    assert "first_decision_cycle" not in summary[0]
+    assert milestones[0]["unit_id"] == 1
+    assert milestones[0]["max_cycle_observed"] == 2

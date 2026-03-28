@@ -9,7 +9,9 @@ from neraium_core.fd001_validation import (
     load_fd001_dataset,
     replay_fd001_units,
     write_jsonl,
+    write_quick_report,
     write_summary_csv,
+    write_unit_milestones_csv,
 )
 
 
@@ -57,7 +59,7 @@ def main() -> int:
         )
     )
 
-    full, summary = replay_fd001_units(
+    full, summary, milestones = replay_fd001_units(
         grouped,
         unit_ids=unit_ids,
         max_cycles=args.max_cycles,
@@ -66,12 +68,18 @@ def main() -> int:
 
     jsonl_path = args.output_dir / "fd001_validation_full.jsonl"
     csv_path = args.output_dir / "fd001_validation_summary.csv"
+    milestones_csv_path = args.output_dir / "fd001_unit_milestones.csv"
+    quick_report_path = args.output_dir / "fd001_quick_report.md"
     write_jsonl(jsonl_path, full)
     write_summary_csv(csv_path, summary)
+    write_unit_milestones_csv(milestones_csv_path, milestones)
+    write_quick_report(quick_report_path, milestones=milestones, summary_rows=summary)
 
     print(f"processed_rows={len(full)}")
     print(f"full_jsonl={jsonl_path}")
     print(f"summary_csv={csv_path}")
+    print(f"milestones_csv={milestones_csv_path}")
+    print(f"quick_report={quick_report_path}")
     return 0
 
 
