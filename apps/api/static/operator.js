@@ -5,6 +5,8 @@
   const customerIdInput = el("customerId");
   const runIdInput = el("runId");
   const seedDemoBtn = el("seedDemoBtn");
+  const loadAssistantBtn = el("loadAssistantBtn");
+  const assistantExplainMode = el("assistantExplainMode");
   const statusLine = el("statusLine");
 
   async function fetchJson(path, params, options) {
@@ -157,6 +159,42 @@
     });
   }
 
+  async function loadAssistantPanels(scope) {
+    const summaryEl = el("assistantSummary");
+    const explainEl = el("assistantExplain");
+    const handoffEl = el("assistantHandoff");
+    const explainMode = assistantExplainMode && assistantExplainMode.value ? assistantExplainMode.value : "why_recommended";
+
+    const body = {
+      customer_id: scope.customer_id,
+      run_id: scope.run_id,
+      mode: explainMode,
+      history_limit: 20,
+    };
+
+    const [summary, explain, handoff] = await Promise.all([
+      fetchJson("/assistant/summary", null, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      }),
+      fetchJson("/assistant/explain", null, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      }),
+      fetchJson("/assistant/handoff", null, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      }),
+    ]);
+
+    summaryEl.textContent = toText(summary.text, "No assistant summary available.");
+    explainEl.textContent = toText(explain.text, "No assistant explanation available.");
+    handoffEl.textContent = toText(handoff.text, "No assistant handoff available.");
+  }
+
   async function ingestDemoFrames(scope) {
     const start = Date.now();
     const payloads = [
@@ -198,7 +236,8 @@
       ]);
       renderStateView(stateEnvelope.state || null);
       renderTimeline(Array.isArray(historyEnvelope.history) ? historyEnvelope.history : []);
-      statusLine.textContent = `Loaded ${historyEnvelope.count || 0} history rows.`;
+      await loadAssistantPanels(scope);
+      statusLine.textContent = `Loaded ${historyEnvelope.count || 0} history rows and assistant panels.`;
     } catch (error) {
       statusLine.textContent = `Failed to load workflow: ${String(error.message || error)}`;
     }
@@ -221,6 +260,20 @@
       statusLine.textContent = "Demo frames ingested and workflow refreshed.";
     } catch (error) {
       statusLine.textContent = `Failed to seed demo: ${String(error.message || error)}`;
+    }
+  });
+
+  loadAssistantBtn.addEventListener("click", async () => {
+    const scope = {
+      customer_id: customerIdInput.value.trim(),
+      run_id: runIdInput.value.trim(),
+    };
+    statusLine.textContent = "Refreshing assistant panels...";
+    try {
+      await loadAssistantPanels(scope);
+      statusLine.textContent = "Assistant panels refreshed.";
+    } catch (error) {
+      statusLine.textContent = `Failed to load assistant panels: ${String(error.message || error)}`;
     }
   });
 

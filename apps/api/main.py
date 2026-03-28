@@ -482,6 +482,20 @@ class EventsEnvelope(BaseModel):
     timestamp: str | None = None
 
 
+class AssistantRequest(BaseModel):
+    run_id: str | None = None
+    customer_id: str | None = None
+    mode: Literal["summary", "why_recommended", "what_changed", "pattern_similarity", "handoff"] | None = None
+    history_limit: int = Field(default=20, ge=2, le=100)
+
+
+class AssistantResponse(BaseModel):
+    mode: str
+    text: str
+    grounding: dict[str, Any]
+    context: dict[str, Any]
+
+
 def _alert_thresholds() -> tuple[float, float]:
     try:
         instability = float(os.getenv("NERAIUM_ALERT_INSTABILITY_THRESHOLD", "1.5"))
@@ -2621,6 +2635,54 @@ def create_app(
             "cycle": state.get("cycle"),
             "timestamp": state.get("timestamp"),
         }
+
+    @app.post("/assistant/summary", response_model=AssistantResponse)
+    def assistant_summary(
+        payload: AssistantRequest,
+        _: None = Depends(require_api_key),
+    ) -> dict[str, Any]:
+        resolved_customer = _resolve_customer_id(payload.customer_id)
+        resolved_run = _resolve_run_id(service_instance, payload.run_id, customer_id=resolved_customer)
+        return service_instance.generate_assistant_response(
+            mode="summary",
+            run_id=resolved_run,
+            customer_id=resolved_customer,
+            history_limit=payload.history_limit,
+        )
+
+    @app.post("/assistant/handoff", response_model=AssistantResponse)
+    def assistant_handoff(
+        payload: AssistantRequest,
+        _: None = Depends(require_api_key),
+    ) -> dict[str, Any]:
+        resolved_customer = _resolve_customer_id(payload.customer_id)
+        resolved_run = _resolve_run_id(service_instance, payload.run_id, customer_id=resolved_customer)
+        return service_instance.generate_assistant_response(
+            mode="handoff",
+            run_id=resolved_run,
+            customer_id=resolved_customer,
+            history_limit=payload.history_limit,
+        )
+
+    @app.post("/assistant/explain", response_model=AssistantResponse)
+    def assistant_explain(
+        payload: AssistantRequest,
+        _: None = Depends(require_api_key),
+    ) -> dict[str, Any]:
+        resolved_customer = _resolve_customer_id(payload.customer_id)
+        resolved_run = _resolve_run_id(service_instance, payload.run_id, customer_id=resolved_customer)
+        mode = payload.mode or "why_recommended"
+        if mode not in {"why_recommended", "what_changed", "pattern_similarity"}:
+            raise HTTPException(
+                status_code=400,
+                detail="mode must be one of: why_recommended, what_changed, pattern_similarity",
+            )
+        return service_instance.generate_assistant_response(
+            mode=mode,
+            run_id=resolved_run,
+            customer_id=resolved_customer,
+            history_limit=payload.history_limit,
+        )
 
     @app.post("/ingest/batch", response_model=ResultsEnvelope)
     def ingest_batch(
