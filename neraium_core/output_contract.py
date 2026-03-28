@@ -336,8 +336,7 @@ def build_canonical_output(
         "confidence": _normalize_confidence(raw_result, recommendation),
         "explanation_text": str(raw_result.get("explanation_text") or raw_result.get("explanation") or ""),
         "memory_recall": _normalize_memory_recall(memory_recall if memory_recall is not None else raw_result.get("memory_recall")),
-        "operational_recommendation": raw_result.get("operational_recommendation") or (recommendations[0] if recommendations else None),
-        "recommendation_available": bool(raw_result.get("recommendation_available", bool(recommendations))),
+        "recommendation_available": bool(raw_result.get("recommendation_available", bool(recommendation))),
     }
     canonical["events"] = derive_product_events(canonical, previous=previous)
 

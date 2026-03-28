@@ -44,6 +44,33 @@ By default this writes a reproducible output bundle to:
 
 It also prints short excerpts for recommendation, explanation, memory recall, and reports.
 
+### One-command verification sequence (local end-to-end)
+
+Run this exact sequence from repository root to validate the full local demo wiring (API + seed + operator route + report generation):
+
+```bash
+uvicorn apps.api.main:app --port 8000
+```
+
+In a second terminal:
+
+```bash
+python tools/seed_water_infrastructure_demo.py \
+  --base-url http://127.0.0.1:8000 \
+  --customer-id contractor-water-demo \
+  --run-id run-water-pump-demo-v1
+
+curl -fsS http://127.0.0.1:8000/operator >/dev/null
+
+for mode in client_report technician_summary handoff_note; do
+  curl -fsS -X POST http://127.0.0.1:8000/assistant/report \
+    -H 'Content-Type: application/json' \
+    -d "{\"customer_id\":\"contractor-water-demo\",\"run_id\":\"run-water-pump-demo-v1\",\"mode\":\"${mode}\",\"history_limit\":20}" >/dev/null
+done
+```
+
+If all commands return successfully, the demo is runnable end-to-end in the standard local development runtime path.
+
 ---
 
 ## 3) Route and click path (operator walkthrough)
