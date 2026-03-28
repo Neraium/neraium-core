@@ -94,6 +94,6 @@ def test_contract_stability_required_and_optional_keys(tmp_path) -> None:
     out = service.ingest_frame(_frame(0, 50.0), run_id="run-prod", customer_id="customer-a")
 
     required = REQUIRED_FIELDS
-    optional = {"aliases", "session", "history_id", "persisted_at", "customer_id", "run_id", "memory_recall"}
+    optional = {"aliases", "session", "history_id", "persisted_at", "customer_id", "run_id", "memory_recall", "operational_recommendation", "recommendation_available"}
     unknown = set(out.keys()) - required - optional
     assert not unknown
