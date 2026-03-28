@@ -192,6 +192,55 @@ def test_web_js_smoke_wiring_for_demo_critical_controls(tmp_path) -> None:
         assert token in source
 
 
+def test_web_js_uses_relative_same_origin_api_paths(tmp_path) -> None:
+    client = _client(tmp_path)
+    js = client.get("/web/app.js")
+    assert js.status_code == 200
+    source = js.text
+    assert "window.NERAIUM_API_BASE_URL" not in source
+    assert "resolveApiBaseUrl" not in source
+    assert "return query ? `${normalizedPath}?${query}` : normalizedPath;" in source
+
+
+def test_operator_workflow_uses_relative_same_origin_fetch_urls(tmp_path) -> None:
+    client = _client(tmp_path)
+    js = client.get("/web/operator.js")
+    assert js.status_code == 200
+    source = js.text
+    assert "new URL(path, window.location.origin)" not in source
+    assert "const url = query ? `${path}?${query}` : path;" in source
+
+
+def test_cors_middleware_requires_explicit_origin_configuration(tmp_path, monkeypatch) -> None:
+    monkeypatch.delenv("NERAIUM_CORS_ALLOW_ORIGINS", raising=False)
+    monkeypatch.delenv("NERAIUM_CORS_ALLOW_ORIGIN_REGEX", raising=False)
+    client = _client(tmp_path)
+    preflight = client.options(
+        "/ingest/batch?customer_id=customer-a&run_id=run-a",
+        headers={
+            "Origin": "https://operator.example.com",
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "content-type",
+        },
+    )
+    assert "access-control-allow-origin" not in {
+        k.lower(): v for k, v in preflight.headers.items()
+    }
+
+    monkeypatch.setenv("NERAIUM_CORS_ALLOW_ORIGINS", "https://operator.example.com")
+    enabled_client = _client(tmp_path)
+    enabled_preflight = enabled_client.options(
+        "/ingest/batch?customer_id=customer-a&run_id=run-a",
+        headers={
+            "Origin": "https://operator.example.com",
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "content-type",
+        },
+    )
+    assert enabled_preflight.status_code == 200
+    assert enabled_preflight.headers.get("access-control-allow-origin") == "https://operator.example.com"
+
+
 def test_run_scoped_result_detail_and_recent(tmp_path) -> None:
     client = _client(tmp_path)
     run_id, result_id = _run_and_ingest(client)

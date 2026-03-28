@@ -6,27 +6,18 @@ function qsa(sel) {
   return Array.from(document.querySelectorAll(sel));
 }
 
-const PRODUCTION_API_BASE_URL =
-  (window && window.NERAIUM_API_BASE_URL) || window.location.origin;
-const LOCAL_DEV_HOSTS = new Set(["localhost", "127.0.0.1"]);
-
-function resolveApiBaseUrl() {
-  const host = String(window.location.hostname || "").toLowerCase();
-  if (LOCAL_DEV_HOSTS.has(host)) return window.location.origin;
-  return PRODUCTION_API_BASE_URL;
-}
-
 function apiUrl(path, params) {
   const normalizedPath = String(path || "").replace(/^\/api(?=\/|$)/, "") || "/";
-  const u = new URL(normalizedPath, resolveApiBaseUrl());
+  const searchParams = new URLSearchParams();
   if (params) {
     Object.entries(params).forEach(([k, v]) => {
       if (v !== undefined && v !== null && String(v).length > 0) {
-        u.searchParams.set(k, String(v));
+        searchParams.set(k, String(v));
       }
     });
   }
-  return u.toString();
+  const query = searchParams.toString();
+  return query ? `${normalizedPath}?${query}` : normalizedPath;
 }
 
 async function fetchJson(path, opts) {
