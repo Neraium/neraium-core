@@ -24,6 +24,7 @@ REQUIRED_FIELDS = {
 }
 
 OPTIONAL_FIELDS = {
+    "memory_recall",
     "session",
     "aliases",
     "history_id",
@@ -162,6 +163,88 @@ def _normalize_confidence(raw_result: Mapping[str, Any], recommendation: Mapping
     return 0.0
 
 
+def _normalize_memory_recall(raw: Any) -> dict[str, Any]:
+    base = {
+        "status": {"enabled": False, "memory_records_considered": 0, "scope": "none"},
+        "novelty": {"is_novel": True, "score": 1.0, "reason": "memory_not_available"},
+        "nearest_match": {
+            "found": False,
+            "similarity": 0.0,
+            "memory_id": None,
+            "asset_id": None,
+            "run_id": None,
+            "cycle": None,
+            "summary": None,
+            "scope": None,
+        },
+        "top_matches": [],
+        "pattern_family": {"label": None, "confidence": None},
+    }
+    if not isinstance(raw, Mapping):
+        return base
+
+    out = dict(base)
+    status = raw.get("status")
+    if isinstance(status, Mapping):
+        out["status"] = {
+            "enabled": bool(status.get("enabled", True)),
+            "memory_records_considered": int(status.get("memory_records_considered", 0) or 0),
+            "scope": str(status.get("scope", "customer")),
+        }
+    novelty = raw.get("novelty")
+    if isinstance(novelty, Mapping):
+        out["novelty"] = {
+            "is_novel": bool(novelty.get("is_novel", True)),
+            "score": round(max(0.0, min(float(novelty.get("score", 1.0) or 1.0), 1.0)), 6),
+            "reason": str(novelty.get("reason", "unspecified")),
+        }
+    nearest = raw.get("nearest_match")
+    if isinstance(nearest, Mapping):
+        out["nearest_match"] = {
+            "found": bool(nearest.get("found", False)),
+            "similarity": round(max(0.0, min(float(nearest.get("similarity", 0.0) or 0.0), 1.0)), 6),
+            "memory_id": nearest.get("memory_id"),
+            "asset_id": nearest.get("asset_id"),
+            "run_id": nearest.get("run_id"),
+            "cycle": nearest.get("cycle"),
+            "summary": nearest.get("summary"),
+            "scope": nearest.get("scope"),
+        }
+    raw_matches = raw.get("top_matches")
+    matches = []
+    if isinstance(raw_matches, list):
+        for item in raw_matches[:5]:
+            if not isinstance(item, Mapping):
+                continue
+            matches.append(
+                {
+                    "memory_id": item.get("memory_id"),
+                    "similarity": round(max(0.0, min(float(item.get("similarity", 0.0) or 0.0), 1.0)), 6),
+                    "asset_id": item.get("asset_id"),
+                    "run_id": item.get("run_id"),
+                    "cycle": item.get("cycle"),
+                    "summary": item.get("summary"),
+                    "scope": item.get("scope"),
+                }
+            )
+    out["top_matches"] = matches
+
+    family = raw.get("pattern_family")
+    if isinstance(family, Mapping):
+        label = family.get("label")
+        confidence = family.get("confidence")
+        out["pattern_family"] = {
+            "label": str(label) if label is not None else None,
+            "confidence": None if confidence is None else round(max(0.0, min(float(confidence), 1.0)), 6),
+        }
+    elif out["nearest_match"]["found"]:
+        out["pattern_family"] = determine_pattern_family(raw.get("signature", {}), similarity=out["nearest_match"]["similarity"])
+
+    return out
+
+
+
+
 def derive_product_events(current: Mapping[str, Any], previous: Mapping[str, Any] | None = None) -> list[str]:
     events: list[str] = []
     risk = current.get("risk_assessment") if isinstance(current.get("risk_assessment"), dict) else {}
@@ -199,6 +282,20 @@ def derive_product_events(current: Mapping[str, Any], previous: Mapping[str, Any
     if trend in {"RISING", "UP"} or latest_instability > prev_instability + 0.1:
         events.append("deterioration_detected")
 
+    memory = current.get("memory_recall") if isinstance(current.get("memory_recall"), Mapping) else {}
+    novelty = memory.get("novelty") if isinstance(memory.get("novelty"), Mapping) else {}
+    nearest = memory.get("nearest_match") if isinstance(memory.get("nearest_match"), Mapping) else {}
+
+    if bool(nearest.get("found")):
+        events.append("known_pattern_recalled")
+        if nearest.get("asset_id") and str(nearest.get("asset_id")) != str(current.get("session", {}).get("asset_id", "")):
+            events.append("cross_asset_pattern_match")
+        if float(nearest.get("similarity", 0.0) or 0.0) >= 0.85 and level in {"MEDIUM", "HIGH"}:
+            events.append("recurring_degradation_pattern")
+
+    if bool(novelty.get("is_novel", False)):
+        events.append("novel_pattern_detected")
+
     return sorted(set(events))
 
 
@@ -209,6 +306,7 @@ def build_canonical_output(
     run_id: str | None = None,
     customer_id: str | None = None,
     previous: Mapping[str, Any] | None = None,
+    memory_recall: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
     attribution = raw_result.get("attribution") if isinstance(raw_result.get("attribution"), dict) else {}
     causal_analysis = raw_result.get("causal_analysis") if isinstance(raw_result.get("causal_analysis"), dict) else {}
@@ -219,7 +317,12 @@ def build_canonical_output(
         "schema_version": CANONICAL_SCHEMA_VERSION,
         "timestamp": str(raw_result.get("timestamp", "")),
         "cycle": int(cycle),
-        "session": {"run_id": run_id, "customer_id": customer_id},
+        "session": {
+            "run_id": run_id,
+            "customer_id": customer_id,
+            "site_id": raw_result.get("site_id"),
+            "asset_id": raw_result.get("asset_id"),
+        },
         "attribution": {
             "top_drivers": _normalize_top_drivers(attribution.get("top_drivers")),
             "group_contributions": attribution.get("group_contributions", {}),
@@ -230,6 +333,7 @@ def build_canonical_output(
         "operational_recommendation": recommendation,
         "confidence": _normalize_confidence(raw_result, recommendation),
         "explanation_text": str(raw_result.get("explanation_text") or raw_result.get("explanation") or ""),
+        "memory_recall": _normalize_memory_recall(memory_recall if memory_recall is not None else raw_result.get("memory_recall")),
     }
     canonical["events"] = derive_product_events(canonical, previous=previous)
 
