@@ -689,6 +689,29 @@ def _persistence_available(db_path: str) -> bool:
         return False
 
 
+def _resolve_db_path(configured_db_path: str) -> tuple[str, bool]:
+    """Return a writable SQLite path and whether persistence is available."""
+    configured = str(configured_db_path or "").strip() or "neraium.db"
+    if _persistence_available(configured):
+        return configured, True
+
+    fallback = "/tmp/neraium.db"
+    if _persistence_available(fallback):
+        logger.warning(
+            "Configured NERAIUM_DB_PATH=%s is not writable; falling back to %s.",
+            configured,
+            fallback,
+        )
+        return fallback, True
+
+    logger.error(
+        "Configured NERAIUM_DB_PATH=%s and fallback=%s are not writable; using in-memory SQLite store.",
+        configured,
+        fallback,
+    )
+    return ":memory:", False
+
+
 def is_api_key_valid(configured_key: str | None, provided_key: str | None) -> bool:
     if not configured_key:
         return True
@@ -1723,7 +1746,8 @@ def create_app(
     max_request_body_bytes: int | None = None,
 ) -> FastAPI:
     api_key = os.getenv("NERAIUM_API_KEY")
-    db_path = os.getenv("NERAIUM_DB_PATH", "neraium.db")
+    configured_db_path = os.getenv("NERAIUM_DB_PATH", "neraium.db")
+    db_path, persistence_available = _resolve_db_path(configured_db_path)
     request_body_limit = (
         int(max_request_body_bytes)
         if max_request_body_bytes is not None
@@ -1740,7 +1764,6 @@ def create_app(
         allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
         allow_headers=_cors_allow_headers(),
     )
-    persistence_available = _persistence_available(db_path)
     service_instance = service or StructuralMonitoringService(store=ResultStore(db_path=db_path))
     integration_config_path = os.getenv("NERAIUM_INTEGRATION_CONFIG_PATH")
     integration_config = load_integration_config(integration_config_path)
