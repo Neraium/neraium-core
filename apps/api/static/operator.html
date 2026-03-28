@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Neraium Operator Workflow</title>
+  <link rel="stylesheet" href="/web/operator.css" />
+</head>
+<body>
+  <main class="layout">
+    <header class="panel hero">
+      <h1>Neraium Operator Workflow</h1>
+      <p>Advisory operating view over the validated Neraium service/API output contract.</p>
+      <form id="scopeForm" class="scope-form">
+        <label>
+          Customer ID
+          <input id="customerId" value="customer-a" required />
+        </label>
+        <label>
+          Run ID
+          <input id="runId" value="run-operator-demo" required />
+        </label>
+        <button type="submit">Load workflow</button>
+        <button type="button" id="seedDemoBtn" class="secondary">Seed demo frames</button>
+      </form>
+    </header>
+
+    <section class="grid">
+      <article class="panel">
+        <h2>Current structural state</h2>
+        <dl id="stateMeta" class="meta-list"></dl>
+      </article>
+
+      <article class="panel">
+        <h2>Risk assessment</h2>
+        <dl id="riskView" class="meta-list"></dl>
+      </article>
+
+      <article class="panel">
+        <h2>Operational recommendation (advisory)</h2>
+        <dl id="recommendationView" class="meta-list"></dl>
+      </article>
+
+      <article class="panel">
+        <h2>Explanation text</h2>
+        <p id="explanationText">No explanation loaded.</p>
+      </article>
+
+      <article class="panel">
+        <h2>Recent events</h2>
+        <ul id="eventsList" class="chip-list"></ul>
+      </article>
+
+      <article class="panel">
+        <h2>Memory recall</h2>
+        <dl id="memoryRecallView" class="meta-list"></dl>
+        <h3>Top recalled matches</h3>
+        <ul id="topMatchesList"></ul>
+      </article>
+    </section>
+
+    <section class="panel">
+      <h2>Recent timeline</h2>
+      <p class="subtitle">risk level, recommendation availability/confidence, major events, recalled vs novel pattern state</p>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Cycle</th>
+              <th>Timestamp</th>
+              <th>Risk</th>
+              <th>Recommendation</th>
+              <th>Confidence</th>
+              <th>Events</th>
+              <th>Pattern state</th>
+            </tr>
+          </thead>
+          <tbody id="timelineBody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <p id="statusLine" class="status-line">Ready.</p>
+  </main>
+
+  <script src="/web/operator.js"></script>
+</body>
+</html>

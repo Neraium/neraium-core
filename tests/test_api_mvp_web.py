@@ -898,3 +898,44 @@ def test_alerts_trigger_on_rapid_drift_detected(tmp_path, monkeypatch) -> None:
     items = alerts.json()["alerts"]
     assert any(str(a.get("type")) == "rapid_drift_detected" for a in items)
 
+
+
+def test_operator_workflow_routes_and_assets_available(tmp_path) -> None:
+    client = _client(tmp_path)
+    operator = client.get("/operator")
+    assert operator.status_code == 200
+    assert "Neraium Operator Workflow" in operator.text
+    assert "Recommended next step" in operator.text
+
+    workflow = client.get("/operator/workflow")
+    assert workflow.status_code == 200
+
+    js = client.get("/web/operator.js")
+    css = client.get("/web/operator.css")
+    assert js.status_code == 200
+    assert css.status_code == 200
+    assert "renderTimeline" in js.text
+    assert "memory_recall" in js.text
+
+
+def test_operator_workflow_state_path_exposes_recommendation_and_memory(tmp_path) -> None:
+    client = _client(tmp_path)
+    run_id, _ = _run_and_ingest(client)
+
+    state_resp = client.get(_customer_path(f"/state?run_id={run_id}"))
+    assert state_resp.status_code == 200
+    state = state_resp.json()["state"]
+    assert isinstance(state.get("risk_assessment"), dict)
+
+    recommendation = state.get("operational_recommendation")
+    assert isinstance(recommendation, dict)
+    assert recommendation["status"]["advisory"] is True
+    assert "recommended_action" in recommendation
+    assert "rationale" in recommendation
+    assert "operator_note" in recommendation
+
+    memory_recall = state.get("memory_recall")
+    assert isinstance(memory_recall, dict)
+    assert "novelty" in memory_recall
+    assert "nearest_match" in memory_recall
+    assert "top_matches" in memory_recall
