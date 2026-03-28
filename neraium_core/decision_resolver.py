@@ -200,7 +200,7 @@ def _compute_decision_confidence_with_components(
     causal_robustness = _clamp01(0.45 * hypothesis_conf + 0.35 * robustness + 0.20 * counterfactual)
     trend_reinforcement = _clamp01(0.60 * trend_strength + 0.40 * projected_score)
 
-    confidence = _clamp01(
+    confidence_raw = _clamp01(
         0.24 * risk_strength
         + 0.32 * cumulative_risk_pressure
         + 0.20 * causal_robustness
@@ -208,6 +208,7 @@ def _compute_decision_confidence_with_components(
         + 0.11 * multi_signal_agreement
         + 0.05 * trend_reinforcement
     )
+    confidence = _clamp01(confidence_raw * 1.08)
     components = {
         "risk_strength": round(risk_strength, 4),
         "cumulative_risk_pressure": round(cumulative_risk_pressure, 4),
