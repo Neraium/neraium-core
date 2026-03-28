@@ -117,6 +117,8 @@ Novelty is conservative:
 - `POST /assistant/summary`
 - `POST /assistant/explain`
 - `POST /assistant/handoff`
+- `POST /assistant/report`
+- `POST /assistant/report/export?format=txt|md`
 
 ### Example recommendation block
 
@@ -154,3 +156,41 @@ Assistant responses are grounded presentation outputs over canonical fields and 
 - `why_recommended`
 - `what_changed`
 - `pattern_similarity`
+
+
+### Contractor report generation
+
+`POST /assistant/report` builds deterministic, sectioned report text from existing canonical output only.
+
+Supported `mode` values:
+
+- `client_report`
+- `technician_summary`
+- `inspection_brief`
+- `handoff_note`
+
+Request body:
+
+```json
+{
+  "customer_id": "customer-a",
+  "run_id": "run-operator-demo",
+  "mode": "client_report",
+  "history_limit": 20
+}
+```
+
+Response body:
+
+```json
+{
+  "mode": "client_report",
+  "report_text": "Client Report\n...",
+  "sections": {
+    "Overview": "...",
+    "Current System State": "..."
+  }
+}
+```
+
+`POST /assistant/report/export?format=txt|md` returns the same `report_text` as a downloadable text/markdown attachment.

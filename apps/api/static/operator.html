@@ -58,6 +58,25 @@
         <ul id="topMatchesList"></ul>
       </article>
 
+
+      <article class="panel">
+        <h2>Generate Report</h2>
+        <div class="report-controls">
+          <label>
+            Report type
+            <select id="reportMode">
+              <option value="client_report">Client Report</option>
+              <option value="technician_summary">Technician Summary</option>
+              <option value="inspection_brief">Inspection Brief</option>
+              <option value="handoff_note">Handoff Note</option>
+            </select>
+          </label>
+          <button type="button" id="generateReportBtn">Generate</button>
+          <button type="button" id="copyReportBtn" class="secondary">Copy to clipboard</button>
+        </div>
+        <pre id="reportText">No report generated.</pre>
+      </article>
+
       <article class="panel">
         <h2>Assistant layer (grounded)</h2>
         <div class="assistant-controls">

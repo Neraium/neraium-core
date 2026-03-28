@@ -37,7 +37,13 @@ from neraium_core.memory_recall import (
     signature_similarity,
 )
 from neraium_core.store import DEFAULT_CUSTOMER_ID, ResultStore
-from neraium_core.assistant_layer import build_assistant_context, render_assistant_response, AssistantMode
+from neraium_core.assistant_layer import (
+    AssistantMode,
+    ReportMode,
+    build_assistant_context,
+    render_assistant_report,
+    render_assistant_response,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -1303,6 +1309,21 @@ class StructuralMonitoringService:
             history_limit=history_limit,
         )
         return render_assistant_response(mode=mode, context=context)
+
+    def generate_report_response(
+        self,
+        *,
+        mode: ReportMode,
+        run_id: str | None = None,
+        customer_id: str | None = None,
+        history_limit: int = 20,
+    ) -> dict[str, Any]:
+        context = self.build_assistant_context(
+            run_id=run_id,
+            customer_id=customer_id,
+            history_limit=history_limit,
+        )
+        return render_assistant_report(mode=mode, context=context)
 
     def get_result_by_id(
         self,
