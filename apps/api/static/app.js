@@ -6,12 +6,14 @@ function qsa(sel) {
   return Array.from(document.querySelectorAll(sel));
 }
 
-const PRODUCTION_API_BASE_URL = "https://neraium-core-production.up.railway.app";
+const PRODUCTION_API_BASE_URL =
+  (window && window.NERAIUM_API_BASE_URL) || window.location.origin;
 const LOCAL_DEV_HOSTS = new Set(["localhost", "127.0.0.1"]);
 
 function resolveApiBaseUrl() {
   const host = String(window.location.hostname || "").toLowerCase();
-  return LOCAL_DEV_HOSTS.has(host) ? window.location.origin : PRODUCTION_API_BASE_URL;
+  if (LOCAL_DEV_HOSTS.has(host)) return window.location.origin;
+  return PRODUCTION_API_BASE_URL;
 }
 
 function apiUrl(path, params) {
