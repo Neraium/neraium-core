@@ -9,7 +9,7 @@ build:
 
 run:
   runtime-version: 3.11
-  command: uvicorn apps.api.main:app --host 0.0.0.0 --port 8000 --proxy-headers
+  command: uvicorn app:app --host 0.0.0.0 --port 8000
   network:
     port: 8000
   env:
