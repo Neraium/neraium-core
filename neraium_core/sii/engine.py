@@ -57,6 +57,9 @@ class _State:
     raw_cov_shift_history: deque[float]
     raw_subspace_shift_history: deque[float]
     raw_path_shift_history: deque[float]
+    risk_trend_history: deque[str]
+    smoothed_risk_trend: str
+    cumulative_risk_pressure: float
     processed_frames: int = 0
 
 
@@ -98,6 +101,9 @@ class SystemicInfrastructureIntelligenceEngine:
             raw_cov_shift_history=deque(maxlen=240),
             raw_subspace_shift_history=deque(maxlen=240),
             raw_path_shift_history=deque(maxlen=240),
+            risk_trend_history=deque(maxlen=5),
+            smoothed_risk_trend="uncertain",
+            cumulative_risk_pressure=0.0,
         )
         self.logger.info(
             "engine_initialized",
@@ -197,6 +203,39 @@ class SystemicInfrastructureIntelligenceEngine:
         x = np.arange(vals.size, dtype=float)
         slope, _ = np.polyfit(x, vals, 1)
         return float(slope)
+
+    @staticmethod
+    def _risk_level_to_scalar(level: str) -> float:
+        normalized = str(level or "").strip().lower()
+        return {"low": 0.2, "medium": 0.6, "high": 0.9}.get(normalized, 0.35)
+
+    @staticmethod
+    def _trend_to_scalar(trend: str) -> float:
+        normalized = str(trend or "").strip().lower()
+        if normalized in {"increasing", "rising", "worsening", "up"}:
+            return 1.0
+        if normalized in {"flat", "stable", "uncertain", "drifting"}:
+            return 0.5
+        if normalized in {"decreasing", "falling", "improving", "down"}:
+            return 0.25
+        return 0.4
+
+    def _smooth_risk_trend(self, raw_trend: str) -> str:
+        trend = str(raw_trend or "uncertain").strip().lower() or "uncertain"
+        self.state.risk_trend_history.append(trend)
+        previous = str(self.state.smoothed_risk_trend or "uncertain").strip().lower()
+        window = list(self.state.risk_trend_history)[-3:]
+        votes = Counter(window)
+        majority, majority_count = max(votes.items(), key=lambda kv: (kv[1], kv[0]))
+        opposing = {("increasing", "decreasing"), ("decreasing", "increasing")}
+
+        smoothed = majority
+        if (previous, majority) in opposing and majority_count < 2:
+            smoothed = previous
+        elif previous != majority and majority_count == 1:
+            smoothed = previous
+        self.state.smoothed_risk_trend = smoothed
+        return smoothed
 
     @staticmethod
     def _avg_shortest_path_length(adj: np.ndarray) -> float:
@@ -616,6 +655,18 @@ class SystemicInfrastructureIntelligenceEngine:
                 regime_score=float(regime_score),
                 coupling_score=float(coupling_score),
             )
+            raw_risk_trend = str(risk_assessment_data.projected_near_term_trend)
+            risk_trend_smoothed = self._smooth_risk_trend(raw_risk_trend)
+            instant_risk_pressure = self._clamp01(
+                0.45 * float(risk_assessment_data.projected_score)
+                + 0.30 * self._risk_level_to_scalar(str(risk_assessment_data.current_risk_level))
+                + 0.25 * self._trend_to_scalar(risk_trend_smoothed)
+            )
+            trend_reinforcement = 0.02 if risk_trend_smoothed == "increasing" else (0.005 if risk_trend_smoothed == "flat" else 0.0)
+            self.state.cumulative_risk_pressure = round(
+                self._clamp01(max(float(self.state.cumulative_risk_pressure) + trend_reinforcement, instant_risk_pressure)),
+                4,
+            )
             operator_guidance = build_operator_decision_support(
                 interpreted_state=str(interpreted),
                 decision_state=str(decision_state),
@@ -645,11 +696,33 @@ class SystemicInfrastructureIntelligenceEngine:
                 },
             )
 
+            top_sensors = attribution.top_sensors if isinstance(attribution.top_sensors, list) else []
+            attribution_sensor_names = [
+                str(item.get("sensor", "")).strip()
+                for item in top_sensors
+                if isinstance(item, dict) and str(item.get("sensor", "")).strip()
+            ]
+            primary_causal_drivers = attribution_sensor_names[:3] or (driver_names[:3] if driver_names else ["dominant subsystem"])
+            attribution_set = set(attribution_sensor_names[:5])
+            causal_set = set(primary_causal_drivers)
+            overlap_score = self._clamp01(len(attribution_set & causal_set) / max(1, len(causal_set)))
             top_hypothesis = {
-                "hypothesis": f"Localized structural drift centered on {driver_names[0] if driver_names else 'dominant subsystem'}.",
-                "confidence": round(float(max(0.0, min(1.0, 0.55 * structural_score + 0.25 * graph_score + 0.20 * regime_score))), 4),
+                "hypothesis": f"Localized structural drift centered on {primary_causal_drivers[0] if primary_causal_drivers else 'dominant subsystem'}.",
+                "confidence": round(
+                    float(
+                        max(
+                            0.0,
+                            min(
+                                1.0,
+                                0.45 * structural_score + 0.20 * graph_score + 0.15 * regime_score + 0.20 * overlap_score,
+                            ),
+                        )
+                    ),
+                    4,
+                ),
                 "robustness": round(float(max(0.0, min(1.0, 1.0 - abs(structural_score - relational_score)))), 4),
                 "counterfactual_strength": round(float(max(0.0, min(1.0, 0.5 * coupling_score + 0.5 * graph_score))), 4),
+                "primary_drivers": primary_causal_drivers,
             }
             validation_plan = [
                 {
@@ -680,6 +753,8 @@ class SystemicInfrastructureIntelligenceEngine:
                     for idx, a in enumerate(operator_guidance.recommended_actions[:3])
                 ],
                 "top_hypotheses": [top_hypothesis],
+                "primary_drivers": primary_causal_drivers,
+                "attribution_causal_overlap_score": round(float(overlap_score), 4),
                 "validation_plan": validation_plan,
                 "summary": "Deterministic causal prioritization built from structural drift, coupling, and near-term risk trend.",
             }
@@ -743,9 +818,11 @@ class SystemicInfrastructureIntelligenceEngine:
                     "status": "ready",
                     "current_risk_level": risk_assessment_data.current_risk_level,
                     "projected_near_term_trend": risk_assessment_data.projected_near_term_trend,
+                    "risk_trend_smoothed": risk_trend_smoothed,
                     "trajectory": risk_assessment_data.trajectory,
                     "risk_score": risk_assessment_data.risk_score,
                     "projected_score": risk_assessment_data.projected_score,
+                    "cumulative_risk_pressure": self.state.cumulative_risk_pressure,
                     "evidence": risk_assessment_data.evidence,
                 },
                 "operator_guidance": {
