@@ -688,3 +688,18 @@ Validation semantics:
 3. Use `structural_analysis_available` and `skipped_reason` to explain when full relational metrics are unavailable.  
 4. Use `/results/recent` for timeline review and `/results/latest` for current state dashboards.  
 5. Use `/reset` to restart pilot sessions while preserving deployment configuration.  
+
+## FD001 reproducible workflow (small artifacts only)
+
+Keep generated data local and commit only lightweight summaries.
+
+1. Generate local replay outputs (not committed):
+   - `python run_fd001_demo.py --output-dir outputs/fd001_validation --max-units 2 --max-cycles 120`
+2. Build a lightweight report from existing JSONL:
+   - `python run_fd001_validation_report.py --input-jsonl outputs/fd001_validation/fd001_validation_full.jsonl`
+
+The report step writes only:
+- `reports/fd001_validation/fd001_validation_unit_summary.csv`
+- `reports/fd001_validation/fd001_validation_report.md`
+
+Do not commit raw dumps such as `outputs/`, `*.jsonl`, or per-cycle timeseries exports.

@@ -25,3 +25,10 @@ regime_library_*.json
 
 # Named Cloudflare Tunnel local config (see docs/CLOUDFLARE_NAMED_TUNNEL.md)
 cloudflared/config.yml
+
+# Local/generated validation artifacts
+outputs/
+*.jsonl
+*_timeseries.csv
+plots/
+images/plots/
