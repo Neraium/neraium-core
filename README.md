@@ -21,6 +21,9 @@ Most tools optimize for **single sensors** or **component failure prediction**: 
 Operator workflow quickstart:
 → **[docs/OPERATOR_WORKFLOW.md](docs/OPERATOR_WORKFLOW.md)**
 
+AWS App Runner deployment (source repository):
+→ **[docs/AWS_APP_RUNNER.md](docs/AWS_APP_RUNNER.md)**
+
 ---
 
 ## Deployment constraints
