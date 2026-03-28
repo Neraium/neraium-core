@@ -1,25 +1,18 @@
-FROM python:3.11-slim
+FROM python:3.10-slim
 
 WORKDIR /app
 
-ENV PYTHONUNBUFFERED=1 \
-    HOST=0.0.0.0 \
-    PORT=8000 \
-    NERAIUM_LOG_LEVEL=INFO
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
 
-COPY pyproject.toml README.md ./
-COPY neraium_core ./neraium_core
-COPY apps ./apps
-COPY scripts ./scripts
-COPY docker/entrypoint.sh /app/docker/entrypoint.sh
-
-RUN python scripts/download_three_vendor.py
+COPY requirements.txt ./requirements.txt
+COPY apps/api/requirements.txt ./apps/api/requirements.txt
 
 RUN python -m pip install --upgrade pip && \
-    python -m pip install . && \
-    chmod +x /app/docker/entrypoint.sh
+    python -m pip install --no-cache-dir -r requirements.txt
 
-EXPOSE 8000
+COPY . .
 
-ENTRYPOINT ["/app/docker/entrypoint.sh"]
-CMD ["python", "-m", "apps.api.main"]
+EXPOSE 8080
+
+CMD ["sh", "-c", "uvicorn apps.api.main:app --host 0.0.0.0 --port ${PORT:-8080}"]
