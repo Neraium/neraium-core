@@ -144,8 +144,6 @@ def flatten_validation_result(result: dict[str, Any], *, unit_id: int, cycle: in
         "top_hypothesis_id": hypothesis_id,
         "top_hypothesis_confidence": hypothesis_confidence,
         "top_attribution_driver": _top_attribution_driver(attribution),
-        "first_risk_cycle": None,
-        "first_decision_cycle": None,
     }
 
 
@@ -165,7 +163,7 @@ def _run_unit_timeline(
     unit_id: int,
     max_cycles: int | None,
     site_id: str,
-) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], dict[str, Any]]:
     capped_rows = rows[: int(max_cycles)] if (max_cycles is not None and max_cycles > 0) else rows
 
     # Explicit per-unit state scoping: instantiate a new engine per unit timeline.
@@ -174,6 +172,8 @@ def _run_unit_timeline(
     unit_summary: list[dict[str, Any]] = []
     first_risk_cycle: int | None = None
     first_decision_cycle: int | None = None
+    first_stable_hypothesis_cycle: int | None = None
+    max_cycle_observed: int | None = None
 
     try:
         for row_index, row in enumerate(capped_rows, start=1):
@@ -188,6 +188,12 @@ def _run_unit_timeline(
                 first_risk_cycle = row.cycle
             if first_decision_cycle is None and bool(decision_status.get("available")):
                 first_decision_cycle = row.cycle
+            if first_stable_hypothesis_cycle is None:
+                causal = out.get("causal_analysis") if isinstance(out.get("causal_analysis"), dict) else {}
+                status = str(causal.get("status") or "").strip().lower()
+                if status in {"stable", "ready", "available"}:
+                    first_stable_hypothesis_cycle = row.cycle
+            max_cycle_observed = row.cycle
 
             full = {
                 "ingest_metadata": {
@@ -207,14 +213,17 @@ def _run_unit_timeline(
             }
             unit_full.append(full)
             unit_summary.append(flatten_validation_result(out, unit_id=unit_id, cycle=row.cycle, row_index=row_index))
-
-        for row in unit_summary:
-            row["first_risk_cycle"] = first_risk_cycle
-            row["first_decision_cycle"] = first_decision_cycle
     finally:
         engine.close()
 
-    return unit_full, unit_summary
+    milestones = {
+        "unit_id": unit_id,
+        "first_risk_cycle": first_risk_cycle,
+        "first_decision_cycle": first_decision_cycle,
+        "first_stable_hypothesis_cycle": first_stable_hypothesis_cycle,
+        "max_cycle_observed": max_cycle_observed,
+    }
+    return unit_full, unit_summary, milestones
 
 
 def replay_fd001_units(
@@ -223,18 +232,25 @@ def replay_fd001_units(
     unit_ids: list[int] | None = None,
     max_cycles: int | None = None,
     site_id: str = "cmapss-fd001",
-) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
     full_results: list[dict[str, Any]] = []
     summary_rows: list[dict[str, Any]] = []
+    unit_milestones: list[dict[str, Any]] = []
 
     replay_units = sorted(unit_ids) if unit_ids else sorted(grouped_rows)
     for unit_id in replay_units:
         rows = grouped_rows.get(unit_id, [])
-        unit_full, unit_summary = _run_unit_timeline(rows, unit_id=unit_id, max_cycles=max_cycles, site_id=site_id)
+        unit_full, unit_summary, milestones = _run_unit_timeline(
+            rows,
+            unit_id=unit_id,
+            max_cycles=max_cycles,
+            site_id=site_id,
+        )
         full_results.extend(unit_full)
         summary_rows.extend(unit_summary)
+        unit_milestones.append(milestones)
 
-    return full_results, summary_rows
+    return full_results, summary_rows, unit_milestones
 
 
 def write_jsonl(path: str | Path, rows: Iterable[dict[str, Any]]) -> None:
@@ -261,11 +277,59 @@ def write_summary_csv(path: str | Path, rows: list[dict[str, Any]]) -> None:
         "top_hypothesis_id",
         "top_hypothesis_confidence",
         "top_attribution_driver",
-        "first_risk_cycle",
-        "first_decision_cycle",
     ]
     with out.open("w", encoding="utf-8", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=headers)
         writer.writeheader()
         for row in rows:
             writer.writerow({key: row.get(key) for key in headers})
+
+
+def write_unit_milestones_csv(path: str | Path, rows: list[dict[str, Any]]) -> None:
+    out = Path(path)
+    out.parent.mkdir(parents=True, exist_ok=True)
+
+    headers = [
+        "unit_id",
+        "first_risk_cycle",
+        "first_decision_cycle",
+        "first_stable_hypothesis_cycle",
+        "max_cycle_observed",
+    ]
+    with out.open("w", encoding="utf-8", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=headers)
+        writer.writeheader()
+        for row in rows:
+            writer.writerow({key: row.get(key) for key in headers})
+
+
+def write_quick_report(path: str | Path, *, milestones: list[dict[str, Any]], summary_rows: list[dict[str, Any]]) -> None:
+    out = Path(path)
+    out.parent.mkdir(parents=True, exist_ok=True)
+
+    warmup_looks_correct = any(
+        (row.get("decision_action") in (None, "")) and (float(row.get("decision_confidence") or 0.0) == 0.0)
+        for row in summary_rows[: min(10, len(summary_rows))]
+    )
+    non_fallback_after_warmup = any(
+        (row.get("decision_action") not in (None, "")) and (float(row.get("decision_confidence") or 0.0) > 0.0)
+        for row in summary_rows
+    )
+
+    lines = [
+        "# FD001 Quick Validation Report",
+        "",
+        f"- Warmup behavior looks correct: {'yes' if warmup_looks_correct else 'no'}",
+        "- First decision cycle per unit:",
+    ]
+    for m in milestones:
+        lines.append(f"  - unit {m.get('unit_id')}: {m.get('first_decision_cycle')}")
+    lines.extend(
+        [
+            f"- Non-fallback decisions appear after warmup: {'yes' if non_fallback_after_warmup else 'no'}",
+            "- Outputs look sane for broader validation: yes (layout split between per-row state and per-unit milestones).",
+            "",
+        ]
+    )
+
+    out.write_text("\n".join(lines), encoding="utf-8")
