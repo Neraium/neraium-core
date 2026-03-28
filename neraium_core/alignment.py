@@ -2322,7 +2322,7 @@ class StructuralEngine:
 
             result["explanation_text"] = build_explanation_text(
                 current_decision=str(result.get("interpreted_state", "NOMINAL_STRUCTURE")),
-                attribution=result.get("causal_attribution") if isinstance(result.get("causal_attribution"), dict) else None,
+                attribution=result.get("attribution") if isinstance(result.get("attribution"), dict) else None,
                 risk=result.get("risk_level"),
                 confidence=result.get("confidence"),
                 recommended_action=recommended_action,
