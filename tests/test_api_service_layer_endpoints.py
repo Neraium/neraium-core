@@ -47,7 +47,7 @@ def test_ingest_frame_endpoint_returns_canonical_payload(tmp_path) -> None:
     body = response.json()
     assert body["schema_version"] == CANONICAL_SCHEMA_VERSION
     assert body["cycle"] == 1
-    assert isinstance(body["decision"], dict)
+    assert isinstance(body["operational_recommendation"], dict)
 
 
 def test_state_and_history_endpoints_return_service_history(tmp_path) -> None:
@@ -69,16 +69,16 @@ def test_state_and_history_endpoints_return_service_history(tmp_path) -> None:
     assert len(history_body["history"]) == 2
 
 
-def test_decision_and_explanation_endpoints_return_latest_values(tmp_path) -> None:
+def test_recommendation_and_explanation_endpoints_return_latest_values(tmp_path) -> None:
     client = _build_client(tmp_path)
     client.post(_q("/ingest/frame"), json=_frame(0, 50.0))
 
-    decision_response = client.get(_q("/decision"))
+    recommendation_response = client.get(_q("/recommendation"))
     explanation_response = client.get(_q("/explanation"))
 
-    assert decision_response.status_code == 200
-    assert isinstance(decision_response.json()["decision"], dict)
-    assert "state" in decision_response.json()["decision"]
+    assert recommendation_response.status_code == 200
+    assert isinstance(recommendation_response.json()["operational_recommendation"], dict)
+    assert recommendation_response.json()["operational_recommendation"]["status"]["advisory"] is True
 
     assert explanation_response.status_code == 200
     assert isinstance(explanation_response.json()["explanation_text"], str)
@@ -93,5 +93,5 @@ def test_events_latest_endpoint_returns_latest_event_flags(tmp_path) -> None:
     assert response.status_code == 200
     body = response.json()
     assert isinstance(body["events"], list)
-    assert "decision_available" in body["events"]
+    assert "recommendation_available" in body["events"]
     assert body["cycle"] == 1
