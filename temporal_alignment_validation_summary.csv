@@ -1,3 +1,0 @@
-run,temporal_consistency,gap_irregularity,timing_instability,dominant_path,branch_commitment,lock_in,horizon,cf_path
-aligned,1.0,0.0,0.0,DIVERGING,LOW,HIGH,NEAR_TERM,DIVERGING
-perturbed,0.392302,0.601021,1.0,DIVERGING,LOW,HIGH,IMMINENT,DIVERGING
