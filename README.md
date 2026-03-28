@@ -32,6 +32,36 @@ Neraium is intentionally constrained for current deployments:
 - **No infrastructure control path**  
 - **No automated actuation**  
 
+## Railway crash-loop hardening (March 28, 2026)
+
+Main branch includes three Railway-focused hardening fixes that should be present
+in production deploys:
+
+1. **Startup/runtime pinning (PR #182)**
+   - `runtime.txt` pins Python to `3.10.13`.
+   - Both `Procfile` and `railway.toml` start FastAPI directly with:
+     `uvicorn apps.api.main:app --host 0.0.0.0 --port $PORT`.
+2. **Writable persistence fallback (PR #183)**
+   - API startup now resolves SQLite path defensively:
+     configured `NERAIUM_DB_PATH` → `/tmp/neraium.db` → `:memory:`.
+   - This keeps `/health` available even when a configured DB path is not
+     writable in Railway.
+3. **Pull-worker numeric config validation (PR #184)**
+   - Polling/backoff/timeout numeric values are sanitized and finite-checked to
+     prevent malformed values (for example `NaN`/`inf`) from crashing the worker.
+
+### Railway triage checklist
+
+If a Railway service is restart-looping, verify:
+
+- The deployed commit includes PRs #182, #183, and #184.
+- `NERAIUM_DB_PATH` (if set) points to a writable path (prefer `/tmp/...`).
+- Pull integration numeric config values are valid finite numbers:
+  - `polling_interval_seconds`
+  - `retry_max_attempts`
+  - `retry_backoff_seconds`
+  - `request_timeout_seconds`
+
 ---
 
 ## Current product scope
