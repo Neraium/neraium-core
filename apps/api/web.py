@@ -37,6 +37,15 @@ def build_web_router() -> APIRouter:
         _ = result_id
         return FileResponse(index_file)
 
+
+    @router.get("/operator", include_in_schema=False)
+    def web_operator() -> FileResponse:
+        return FileResponse(static_dir / "operator.html")
+
+    @router.get("/operator/workflow", include_in_schema=False)
+    def web_operator_workflow() -> FileResponse:
+        return FileResponse(static_dir / "operator.html")
+
     @router.get("/demo/sii", include_in_schema=False)
     def web_demo_sii() -> FileResponse:
         return FileResponse(index_file)
