@@ -2,7 +2,7 @@
 set -euo pipefail
 
 BASE_URL="${1:-http://127.0.0.1:8010}"
-ORIGIN="${2:-https://neraium-core.vercel.app}"
+ORIGIN="${2:-https://api.example.com}"
 
 echo "== Preflight OPTIONS with browser tracing headers =="
 curl -i -X OPTIONS \
