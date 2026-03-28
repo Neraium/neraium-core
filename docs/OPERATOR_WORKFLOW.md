@@ -20,6 +20,10 @@ The operator page presents the canonical service output in one place:
   - nearest match
   - top match summary list
 - recent timeline (`risk`, recommendation availability/confidence, events, recalled vs novel)
+- assistant interaction panel
+  - current situation summary
+  - explanation mode (`why_recommended`, `what_changed`, `pattern_similarity`)
+  - operator handoff note
 
 ## Run locally
 

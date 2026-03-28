@@ -114,6 +114,9 @@ Novelty is conservative:
 - `GET /decision` (deprecated compatibility alias)
 - `GET /explanation`
 - `GET /events/latest`
+- `POST /assistant/summary`
+- `POST /assistant/explain`
+- `POST /assistant/handoff`
 
 ### Example recommendation block
 
@@ -136,3 +139,18 @@ Novelty is conservative:
   }
 }
 ```
+
+
+### Assistant endpoint notes
+
+Assistant responses are grounded presentation outputs over canonical fields and recent history. They explicitly separate:
+
+- observed evidence
+- inferred pattern context
+- recommended advisory action
+
+`POST /assistant/explain` accepts `mode` values:
+
+- `why_recommended`
+- `what_changed`
+- `pattern_similarity`

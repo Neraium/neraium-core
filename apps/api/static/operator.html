@@ -57,6 +57,27 @@
         <h3>Top recalled matches</h3>
         <ul id="topMatchesList"></ul>
       </article>
+
+      <article class="panel">
+        <h2>Assistant layer (grounded)</h2>
+        <div class="assistant-controls">
+          <button type="button" id="loadAssistantBtn">Refresh assistant panels</button>
+        </div>
+        <h3>Summary</h3>
+        <pre id="assistantSummary">No assistant summary loaded.</pre>
+        <h3>Explanation panel</h3>
+        <label>
+          Mode
+          <select id="assistantExplainMode">
+            <option value="why_recommended">Why recommended</option>
+            <option value="what_changed">What changed recently</option>
+            <option value="pattern_similarity">Pattern similarity</option>
+          </select>
+        </label>
+        <pre id="assistantExplain">No assistant explanation loaded.</pre>
+        <h3>Handoff note</h3>
+        <pre id="assistantHandoff">No handoff note loaded.</pre>
+      </article>
     </section>
 
     <section class="panel">
