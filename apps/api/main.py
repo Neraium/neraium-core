@@ -333,6 +333,9 @@ class ClientErrorReport(BaseModel):
 
 
 class ResultsEnvelope(BaseModel):
+    status: str | None = None
+    run_id: str | None = None
+    processed: int | None = None
     latest: dict[str, Any] | None = None
     count: int
     results: list[dict[str, Any]]
@@ -2802,6 +2805,8 @@ def create_app(
         customer_id: str | None = Query(default=None),
     ) -> dict[str, Any]:
         logger.info("ingest_batch endpoint called items=%s", len(payload.items))
+        resolved: str | None = None
+        results: list[dict[str, Any]] = []
         try:
             payload_customer = None
             if payload.items:
@@ -2835,7 +2840,26 @@ def create_app(
         except ValueError as e:
             logger.warning("validation failure ingest_batch: %s", e)
             raise HTTPException(status_code=400, detail=_actionable_validation_detail(str(e)))
-        return _results_envelope(results, latest=results[-1] if results else None)
+        except Exception as e:  # noqa: BLE001 - ensure the route never leaks unhandled exceptions.
+            logger.exception("unhandled failure in /ingest/batch: %s", e)
+            return JSONResponse(
+                status_code=500,
+                content={
+                    "status": "error",
+                    "message": "ingest failed",
+                    "detail": str(e),
+                    "run_id": resolved,
+                    "processed": 0,
+                    "count": 0,
+                    "results": [],
+                    "latest": None,
+                },
+            )
+        envelope = _results_envelope(results, latest=results[-1] if results else None)
+        envelope["status"] = "ok"
+        envelope["processed"] = len(results)
+        envelope["run_id"] = resolved
+        return envelope
 
     @app.post("/ingest/csv", response_model=ResultsEnvelope)
     def ingest_csv(
