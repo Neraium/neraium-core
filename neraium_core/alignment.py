@@ -31,6 +31,7 @@ from neraium_core.data_quality import (
     should_use_degraded_analytics,
 )
 from neraium_core.decision_layer import decision_output
+from neraium_core.explanation_layer import build_explanation_text
 from neraium_core.directional import directional_metrics, lagged_correlation_matrix
 from neraium_core.early_warning import early_warning_metrics
 from neraium_core.entropy import interaction_entropy
@@ -2310,6 +2311,21 @@ class StructuralEngine:
                 max(contrib.items(), key=lambda item: item[1])[0]
                 if contrib
                 else result.get("dominant_driver")
+            )
+
+            recommended_action = None
+            recs = result.get("response_recommendations")
+            if isinstance(recs, list) and recs:
+                first_rec = recs[0]
+                if isinstance(first_rec, dict):
+                    recommended_action = str(first_rec.get("action", "") or "").strip() or None
+
+            result["explanation_text"] = build_explanation_text(
+                current_decision=str(result.get("interpreted_state", "NOMINAL_STRUCTURE")),
+                attribution=result.get("causal_attribution") if isinstance(result.get("causal_attribution"), dict) else None,
+                risk=result.get("risk_level"),
+                confidence=result.get("confidence"),
+                recommended_action=recommended_action,
             )
             result["component_confidence"] = component_confidence
             result["geometry"] = analytics.get("geometry", {}) if isinstance(analytics, dict) else {}
