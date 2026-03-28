@@ -26,13 +26,15 @@ All service methods emit or persist a canonical output envelope with one stable 
   - `reason`
   - `source`
 - `confidence`: normalized [0,1] confidence
+- `operational_recommendation`: canonical top operational action payload when available
+- `recommendation_available`: canonical bool indicating recommendation availability
 - `explanation_text`: operator-facing explanation
 - `events`: product-facing event flags
 
 ### Optional fields
 
 - `session`: `{run_id, customer_id, site_id, asset_id}`
-- `aliases`: isolated legacy/experimental aliases (`explanation`, `regime_memory_state`)
+- `aliases`: isolated legacy/experimental aliases (`explanation`, `regime_memory_state`, deprecated `response_recommendations`)
 - `memory_recall`: structural-memory recall block
   - `status`: recall enabled/scope/count metadata
   - `novelty`: `{is_novel, score, reason}`
