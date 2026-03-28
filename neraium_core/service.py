@@ -26,6 +26,7 @@ from neraium_core.logging_utils import (
 )
 from neraium_core.pilot_schema import build_pilot_output
 from neraium_core.pilot_config import PilotConfig, load_pilot_config
+from neraium_core.output_contract import build_canonical_output
 from neraium_core.store import DEFAULT_CUSTOMER_ID, ResultStore
 
 
@@ -49,7 +50,35 @@ class StructuralMonitoringService:
         self.store = store or ResultStore()
         self._engines_by_asset: dict[tuple[str, str, str], StructuralEngine] = {}
         self._localization_by_site: dict[str, dict[str, float]] = {}
+        self._cycle_by_run: dict[tuple[str, str], int] = {}
         self.pilot_config: PilotConfig = pilot_config or load_pilot_config()
+
+    def _next_cycle(self, *, run_id: str | None, customer_id: str) -> int:
+        key = (customer_id, str(run_id or "__default__"))
+        next_cycle = self._cycle_by_run.get(key, 0) + 1
+        self._cycle_by_run[key] = next_cycle
+        return next_cycle
+
+    def _persist_product_history(
+        self,
+        result: dict[str, Any],
+        *,
+        run_id: str | None,
+        customer_id: str,
+    ) -> dict[str, Any]:
+        previous = self.store.get_latest_service_history(run_id=run_id, customer_id=customer_id)
+        cycle = self._next_cycle(run_id=run_id, customer_id=customer_id)
+        canonical = build_canonical_output(
+            result,
+            cycle=cycle,
+            run_id=run_id,
+            customer_id=customer_id,
+            previous=previous,
+        )
+        persisted = self.store.save_service_history(canonical, run_id=run_id, customer_id=customer_id)
+        canonical["history_id"] = persisted["history_id"]
+        canonical["persisted_at"] = persisted["persisted_at"]
+        return canonical
 
     @staticmethod
     def _resolve_customer_id(customer_id: str | None) -> str:
@@ -412,6 +441,12 @@ class StructuralMonitoringService:
                 result_id=persisted.get("result_id"),
                 persisted_at=persisted.get("persisted_at"),
             )
+            result["canonical_output"] = self._persist_product_history(
+                result,
+                run_id=run_id,
+                customer_id=resolved_customer,
+            )
+            result["events"] = list(result["canonical_output"].get("events", []))
 
             out_fields = summarize_result_for_logs(result)
             out_fields["latency_ms"] = round(timer.ms(), 3)
@@ -562,6 +597,13 @@ class StructuralMonitoringService:
                         persisted_at=persisted.get("persisted_at"),
                     )
                 )
+        for result in results_with_ids:
+            result["canonical_output"] = self._persist_product_history(
+                result,
+                run_id=run_id,
+                customer_id=resolved_customer,
+            )
+            result["events"] = list(result["canonical_output"].get("events", []))
         log_structured(
             logger,
             event="ingest_batch_out",
@@ -569,6 +611,20 @@ class StructuralMonitoringService:
             level=logging.INFO,
         )
         return results_with_ids
+
+    def ingest_frame(
+        self,
+        payload: dict[str, Any],
+        *,
+        run_id: str | None = None,
+        customer_id: str | None = None,
+    ) -> dict[str, Any]:
+        result = self.ingest_payload(payload, run_id=run_id, customer_id=customer_id)
+        canonical = result.get("canonical_output")
+        if isinstance(canonical, dict):
+            return canonical
+        resolved_customer = self._resolve_customer_id(customer_id or result.get("customer_id"))
+        return self._persist_product_history(result, run_id=run_id, customer_id=resolved_customer)
 
     def ingest_csv(
         self,
@@ -668,6 +724,13 @@ class StructuralMonitoringService:
                             persisted_at=persisted.get("persisted_at"),
                         )
                     )
+            for result in results_with_ids:
+                result["canonical_output"] = self._persist_product_history(
+                    result,
+                    run_id=run_id,
+                    customer_id=resolved_customer,
+                )
+                result["events"] = list(result["canonical_output"].get("events", []))
             log_structured(
                 logger,
                 event="ingest_csv_out",
@@ -835,6 +898,12 @@ class StructuralMonitoringService:
                     result.update(build_pilot_output(frame=frame, result=result))
                 buffered_pairs.append((frame, result))
                 rows_succeeded += 1
+                result["canonical_output"] = self._persist_product_history(
+                    result,
+                    run_id=run_id,
+                    customer_id=resolved_customer,
+                )
+                result["events"] = list(result["canonical_output"].get("events", []))
                 last_result = result
             except Exception as exc:
                 rows_failed += 1
@@ -978,6 +1047,47 @@ class StructuralMonitoringService:
             return items
         target = str(site_id).strip()
         return [item for item in items if str(item.get("site_id", "")).strip() == target]
+
+    def get_current_state(
+        self,
+        *,
+        run_id: str | None = None,
+        customer_id: str | None = None,
+    ) -> dict[str, Any] | None:
+        return self.store.get_latest_service_history(run_id=run_id, customer_id=customer_id)
+
+    def get_recent_history(
+        self,
+        limit: int = 100,
+        *,
+        run_id: str | None = None,
+        customer_id: str | None = None,
+    ) -> list[dict[str, Any]]:
+        return self.store.list_service_history(limit=limit, run_id=run_id, customer_id=customer_id)
+
+    def get_latest_decision(
+        self,
+        *,
+        run_id: str | None = None,
+        customer_id: str | None = None,
+    ) -> dict[str, Any] | None:
+        latest = self.get_current_state(run_id=run_id, customer_id=customer_id)
+        if not isinstance(latest, dict):
+            return None
+        decision = latest.get("decision")
+        return decision if isinstance(decision, dict) else None
+
+    def get_latest_explanation(
+        self,
+        *,
+        run_id: str | None = None,
+        customer_id: str | None = None,
+    ) -> str | None:
+        latest = self.get_current_state(run_id=run_id, customer_id=customer_id)
+        if not isinstance(latest, dict):
+            return None
+        text = latest.get("explanation_text")
+        return str(text) if text is not None else None
 
     def get_result_by_id(
         self,
