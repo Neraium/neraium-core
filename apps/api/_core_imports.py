@@ -192,7 +192,7 @@ except ImportError:
 
                 def _missing(*_: Any, **__: Any) -> Any:
                     raise RuntimeError(
-                        f"Core runtime operation '{name}' is unavailable in this Railway image. "
+                        f"Core runtime operation '{name}' is unavailable in this API runtime image. "
                         "Deploy with app-local core modules under apps/api to enable full functionality."
                     )
 

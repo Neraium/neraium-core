@@ -12,26 +12,7 @@ Default: **http://127.0.0.1:7860/** (same port for UI + API).
 
 ## 2. Get a link others can open (tunnel)
 
-### Option A — Cloudflare Tunnel (recommended; free, no account for quick tunnels)
-
-1. Install **cloudflared** (one-time):  
-   https://developers.cloudflare.com/cloudflare-one/connections/connect-apps/install-and-setup/installation/
-2. Run:
-
-```bash
-python run_demo.py --share
-```
-
-3. Watch the terminal: when the tunnel is up, a line like  
-   `https://something-random.trycloudflare.com`  
-   appears. The script also prints a **“SHARE THIS URL”** block with:
-   - **Public base** — the tunnel root  
-   - **Demo deep link** — same base + `/dashboard?demo=1&prepare=1`  
-     (enables Demo Mode and **auto-creates** the three scripted demo runs if the DB has no runs yet)
-
-**Important:** The link works **only while** `python run_demo.py --share` is running and your network allows outbound connections.
-
-### Option B — ngrok
+### Option A — ngrok (recommended)
 
 1. Install **ngrok**: https://ngrok.com/download  
 2. Run `ngrok config add-authtoken <token>` once (free tier).  
@@ -43,6 +24,19 @@ python run_demo.py --share
 
 If ngrok is on `PATH`, it starts automatically; check the terminal for an `https://…ngrok-free.app` (or similar) URL.
 
+### Option B — another HTTPS tunnel provider
+
+If you use another tunnel provider, expose local port `7860` and share the resulting HTTPS URL.
+
+Then run:
+
+```bash
+python run_demo.py
+```
+
+The app is available at `http://127.0.0.1:7860` locally and through your configured public tunnel URL.
+**Important:** The link works **only while** your tunnel and local server are running.
+
 ## 3. Windows (PowerShell)
 
 Same commands from the repo root:
@@ -52,7 +46,7 @@ cd C:\path\to\neraium-core-1
 python run_demo.py --share
 ```
 
-Install cloudflared for Windows and ensure `cloudflared.exe` is on `PATH`, **or** install ngrok and add it to `PATH`.
+Install ngrok for Windows and ensure `ngrok.exe` is on `PATH` (or run a different tunnel provider explicitly).
 
 ## 4. What to send to guests
 

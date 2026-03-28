@@ -73,8 +73,7 @@ def _mount_web_static(app: FastAPI) -> None:
     )
     logger.info("Serving static files at /web from %s", static_dir)
     # Front-end modules are loaded via CDN import map in static/index.html.
-    # Keep startup resilient when /web/vendor/three is not deployed
-    # (e.g. Railway root set to apps/api).
+    # Keep startup resilient when /web/vendor/three is not deployed.
 
 
 DEFAULT_MAX_REQUEST_BODY_BYTES = 50 * 1024 * 1024
@@ -83,10 +82,7 @@ DEFAULT_MAX_REQUEST_BODY_BYTES = 50 * 1024 * 1024
 DEFAULT_UVICORN_H11_MAX_INCOMPLETE_EVENT_SIZE = 64 * 1024 * 1024
 DEFAULT_UPLOAD_STREAM_CHUNK_BYTES = 1024 * 1024
 DEFAULT_INGEST_JOB_MAX_ERROR_SAMPLES = 25
-DEFAULT_CORS_ALLOW_ORIGINS = (
-    "https://neraium-core.vercel.app",
-    "https://neraium-core-production.up.railway.app",
-)
+DEFAULT_CORS_ALLOW_ORIGINS: tuple[str, ...] = ()
 DEFAULT_CORS_ALLOW_HEADERS = (
     "Content-Type",
     "Authorization",
@@ -221,6 +217,11 @@ def _cors_allow_headers() -> list[str]:
             merged.append(header)
             seen.add(normalized)
     return merged
+
+
+def _cors_allow_origin_regex() -> str | None:
+    raw = str(os.getenv("NERAIUM_CORS_ALLOW_ORIGIN_REGEX") or "").strip()
+    return raw or None
 
 
 class IngestRequest(BaseModel):
@@ -1776,7 +1777,7 @@ def create_app(
     app.add_middleware(
         CORSMiddleware,
         allow_origins=_cors_allow_origins(),
-        allow_origin_regex=r"^https://neraium-core(?:-[a-z0-9-]+)?\.vercel\.app$",
+        allow_origin_regex=_cors_allow_origin_regex(),
         allow_credentials=True,
         allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
         allow_headers=_cors_allow_headers(),
