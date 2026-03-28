@@ -125,6 +125,116 @@ def _risk_trend_direction(risk: dict[str, Any]) -> str:
     return "unknown"
 
 
+def _safe_float(value: Any, default: float = 0.0) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return float(default)
+
+
+def _clamp01(value: float) -> float:
+    return max(0.0, min(1.0, float(value)))
+
+
+@dataclass
+class _TemporalConfidenceStabilizer:
+    alpha: float = 0.45
+    window: int = 3
+    max_step: float = 0.12
+    last_decision: float | None = None
+    last_hypothesis: float | None = None
+    decision_raw_hist: list[float] = None  # type: ignore[assignment]
+    hypothesis_raw_hist: list[float] = None  # type: ignore[assignment]
+    last_hypothesis_driver: str | None = None
+    last_attr_driver: str | None = None
+    hypothesis_streak: int = 0
+    attribution_streak: int = 0
+
+    def __post_init__(self) -> None:
+        if self.decision_raw_hist is None:
+            self.decision_raw_hist = []
+        if self.hypothesis_raw_hist is None:
+            self.hypothesis_raw_hist = []
+
+    def _update_streak(self, previous: str | None, current: Any, streak: int) -> tuple[str | None, int, bool]:
+        token = str(current or "").strip()
+        if not token:
+            return previous, streak, False
+        if token == previous:
+            return token, streak + 1, False
+        return token, 1, previous is not None
+
+    def _stabilize_scalar(
+        self,
+        raw_value: float,
+        *,
+        previous_value: float | None,
+        raw_history: list[float],
+        persistence_reward: float,
+        flip_penalty: float,
+    ) -> float:
+        raw = _clamp01(raw_value)
+        raw_history.append(raw)
+        if len(raw_history) > self.window:
+            del raw_history[:-self.window]
+
+        rolling_mean = sum(raw_history) / len(raw_history)
+        ema = raw if previous_value is None else (self.alpha * raw + (1.0 - self.alpha) * previous_value)
+        blended = 0.6 * ema + 0.4 * rolling_mean
+        biased = blended + persistence_reward - flip_penalty
+
+        if previous_value is None:
+            return _clamp01(biased)
+        # Preserve responsiveness when confidence emerges from prolonged low/warmup values.
+        if previous_value <= 0.05 and raw >= 0.25:
+            return _clamp01(0.85 * raw + 0.15 * blended)
+
+        delta = biased - previous_value
+        if delta > self.max_step:
+            biased = previous_value + self.max_step
+        elif delta < -self.max_step:
+            biased = previous_value - self.max_step
+        return _clamp01(biased)
+
+    def apply(
+        self,
+        *,
+        decision_conf_raw: Any,
+        hypothesis_conf_raw: Any,
+        hypothesis_id: Any,
+        attribution_driver: Any,
+    ) -> tuple[float, float]:
+        self.last_hypothesis_driver, self.hypothesis_streak, hypothesis_flipped = self._update_streak(
+            self.last_hypothesis_driver, hypothesis_id, self.hypothesis_streak
+        )
+        self.last_attr_driver, self.attribution_streak, attribution_flipped = self._update_streak(
+            self.last_attr_driver, attribution_driver, self.attribution_streak
+        )
+
+        persistence_reward = 0.008 * min(1.0, max(0.0, float(self.hypothesis_streak - 1) / 3.0))
+        persistence_reward += 0.006 * min(1.0, max(0.0, float(self.attribution_streak - 1) / 3.0))
+        flip_penalty = (0.012 if hypothesis_flipped else 0.0) + (0.008 if attribution_flipped else 0.0)
+
+        decision_smoothed = self._stabilize_scalar(
+            _safe_float(decision_conf_raw, 0.0),
+            previous_value=self.last_decision,
+            raw_history=self.decision_raw_hist,
+            persistence_reward=persistence_reward,
+            flip_penalty=flip_penalty,
+        )
+        hypothesis_smoothed = self._stabilize_scalar(
+            _safe_float(hypothesis_conf_raw, 0.0),
+            previous_value=self.last_hypothesis,
+            raw_history=self.hypothesis_raw_hist,
+            persistence_reward=persistence_reward,
+            flip_penalty=flip_penalty,
+        )
+
+        self.last_decision = decision_smoothed
+        self.last_hypothesis = hypothesis_smoothed
+        return round(decision_smoothed, 4), round(hypothesis_smoothed, 4)
+
+
 def flatten_validation_result(result: dict[str, Any], *, unit_id: int, cycle: int, row_index: int) -> dict[str, Any]:
     decision = result.get("decision") if isinstance(result.get("decision"), dict) else {}
     risk = result.get("risk_assessment") if isinstance(result.get("risk_assessment"), dict) else {}
@@ -137,11 +247,13 @@ def flatten_validation_result(result: dict[str, Any], *, unit_id: int, cycle: in
         "cycle": cycle,
         "row_index": row_index,
         "decision_action": decision.get("action"),
+        "decision_confidence_raw": decision.get("confidence"),
         "decision_confidence": decision.get("confidence"),
         "risk_current_level": risk.get("current_risk_level") or risk.get("risk_level"),
         "risk_trend": risk.get("projected_near_term_trend") or risk.get("trend"),
         "risk_trend_direction": _risk_trend_direction(risk),
         "top_hypothesis_id": hypothesis_id,
+        "top_hypothesis_confidence_raw": hypothesis_confidence,
         "top_hypothesis_confidence": hypothesis_confidence,
         "top_attribution_driver": _top_attribution_driver(attribution),
     }
@@ -168,6 +280,7 @@ def _run_unit_timeline(
 
     # Explicit per-unit state scoping: instantiate a new engine per unit timeline.
     engine = SIIEngine()
+    confidence_stabilizer = _TemporalConfidenceStabilizer(alpha=0.45, window=3, max_step=0.12)
     unit_full: list[dict[str, Any]] = []
     unit_summary: list[dict[str, Any]] = []
     first_risk_cycle: int | None = None
@@ -212,7 +325,16 @@ def _run_unit_timeline(
                 "decision": out.get("decision"),
             }
             unit_full.append(full)
-            unit_summary.append(flatten_validation_result(out, unit_id=unit_id, cycle=row.cycle, row_index=row_index))
+            summary_row = flatten_validation_result(out, unit_id=unit_id, cycle=row.cycle, row_index=row_index)
+            decision_smoothed, hypothesis_smoothed = confidence_stabilizer.apply(
+                decision_conf_raw=summary_row.get("decision_confidence_raw"),
+                hypothesis_conf_raw=summary_row.get("top_hypothesis_confidence_raw"),
+                hypothesis_id=summary_row.get("top_hypothesis_id"),
+                attribution_driver=summary_row.get("top_attribution_driver"),
+            )
+            summary_row["decision_confidence"] = decision_smoothed
+            summary_row["top_hypothesis_confidence"] = hypothesis_smoothed
+            unit_summary.append(summary_row)
     finally:
         engine.close()
 
@@ -270,11 +392,13 @@ def write_summary_csv(path: str | Path, rows: list[dict[str, Any]]) -> None:
         "cycle",
         "row_index",
         "decision_action",
+        "decision_confidence_raw",
         "decision_confidence",
         "risk_current_level",
         "risk_trend",
         "risk_trend_direction",
         "top_hypothesis_id",
+        "top_hypothesis_confidence_raw",
         "top_hypothesis_confidence",
         "top_attribution_driver",
     ]
