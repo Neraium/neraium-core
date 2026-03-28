@@ -233,14 +233,13 @@ Hardening constraints for the shim:
 
 ## Platform Output Structure
 
-Neraium’s operator-facing output is organized into canonical, composable sections. The
-`causal_analysis` section is an **additional reasoning layer** on top of core structural
-outputs; it does not replace attribution, regime memory, risk, or guidance.
+Neraium’s canonical platform output is organized into top-level sections. The
+runtime canonical schema uses `operational_recommendation` as a **top-level**
+field (not nested under `operator_guidance`).
 
 - `attribution`
   - `top_drivers`: ranked structural contributors.
-  - `driver_scores`: normalized per-driver impact scores.
-  - `trajectory_drivers` / `branching_drivers` / `lock_in_drivers` / `horizon_drivers`: higher-order driver views.
+  - `group_contributions`: grouped structural contribution summary.
 
 - `regime_memory`
   - `regime_name`: nearest known structural regime label.
@@ -251,13 +250,6 @@ outputs; it does not replace attribution, regime memory, risk, or guidance.
   - `risk_level`: interpreted risk category from structural evidence.
   - `trend`: stability trajectory direction.
   - `latest_instability`: current composite instability.
-  - `confidence_score`: confidence proxy for decision outputs.
-
-- `operator_guidance`
-  - `operator_message`: concise human-facing interpretation.
-  - `operational_recommendation`: canonical top recommendation for actioning risk.
-  - `recommendation_available`: canonical flag for recommendation availability.
-  - `response_recommendations`: deprecated compatibility alias (retained intentionally).
 
 - `causal_analysis` *(additive layer)*
   - `hypotheses`: competing causal hypotheses (`physical`, `sensor`, `systemic`) grounded in structural signals.
@@ -266,6 +258,20 @@ outputs; it does not replace attribution, regime memory, risk, or guidance.
   - `validation_plan`: confirm/falsify actions with expected true/false outcomes.
   - `recommended_sequence` / `best_next_action`: value-of-information-ranked execution order.
   - `status`: availability state (`ok`, `warmup`, `insufficient_evidence`).
+
+- `operational_recommendation`
+  - Canonical top recommendation payload for actioning current risk.
+
+- `explanation_text`
+  - Canonical operator-facing explanation summary string.
+
+- `events`
+  - Canonical derived event flags for downstream monitoring/alert routing.
+
+- `aliases` *(deprecated compatibility only; optional)*
+  - `response_recommendations` is deprecated.
+  - Legacy decision/recommendation aliases are retained only for compatibility.
+  - Canonical consumers should use `operational_recommendation`.
 
 ### Example: `causal_analysis`
 
