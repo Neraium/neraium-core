@@ -52,6 +52,22 @@ def compute_decision_confidence(
     attribution: dict[str, Any] | None,
     source: dict[str, bool],
 ) -> float:
+    score, _ = _compute_decision_confidence_with_components(
+        causal_analysis=causal_analysis,
+        risk_assessment=risk_assessment,
+        attribution=attribution,
+        source=source,
+    )
+    return score
+
+
+def _compute_decision_confidence_with_components(
+    *,
+    causal_analysis: dict[str, Any] | None,
+    risk_assessment: dict[str, Any] | None,
+    attribution: dict[str, Any] | None,
+    source: dict[str, bool],
+) -> tuple[float, dict[str, float]]:
     causal = causal_analysis or {}
     risk = risk_assessment or {}
     attr = attribution or {}
@@ -62,19 +78,25 @@ def compute_decision_confidence(
     robustness = _clamp01(_safe_float(top_h.get("robustness"), 0.0))
     counterfactual = _clamp01(_safe_float(top_h.get("counterfactual_strength"), 0.0))
 
-    trend = str(risk.get("projected_near_term_trend", "uncertain")).lower()
+    trend = str(risk.get("risk_trend_smoothed") or risk.get("projected_near_term_trend", "uncertain")).lower()
     risk_score = _clamp01(_safe_float(risk.get("risk_score"), 0.0))
     projected_score = _clamp01(_safe_float(risk.get("projected_score"), risk_score))
-    trend_clarity = 1.0 if trend in {"increasing", "decreasing"} else 0.4
-    risk_strength = _clamp01(0.55 * max(risk_score, projected_score) + 0.45 * trend_clarity)
+    risk_level = str(risk.get("current_risk_level", "low")).strip().lower()
+    risk_level_weight = {"low": 0.2, "medium": 0.65, "high": 0.95}.get(risk_level, 0.35)
+    trend_strength = 1.0 if trend in {"increasing", "rising", "worsening", "up"} else (0.7 if trend in {"flat", "stable", "uncertain"} else 0.35)
+    risk_strength = _clamp01(0.45 * max(risk_score, projected_score) + 0.30 * risk_level_weight + 0.25 * trend_strength)
+    cumulative_risk_pressure = _clamp01(_safe_float(risk.get("cumulative_risk_pressure"), risk_strength))
 
     top_sensors = attr.get("top_sensors") if isinstance(attr.get("top_sensors"), list) else []
     contribution_scores = attr.get("contribution_scores") if isinstance(attr.get("contribution_scores"), dict) else {}
     top_sensor_score = 0.0
     if top_sensors and isinstance(top_sensors[0], dict):
         top_sensor_score = _clamp01(_safe_float(top_sensors[0].get("score"), 0.0))
-    concentration = _clamp01(min(1.0, len(top_sensors) / 3.0))
-    localization = _clamp01(0.55 * top_sensor_score + 0.45 * concentration)
+    score_slice = [max(0.0, _safe_float(item.get("score"), 0.0)) for item in top_sensors[:3] if isinstance(item, dict)]
+    concentration = 0.0
+    if score_slice:
+        concentration = _clamp01(score_slice[0] / max(1e-9, sum(score_slice)))
+    localization = _clamp01(0.65 * top_sensor_score + 0.35 * concentration)
     if contribution_scores:
         strongest = max((_safe_float(v) for v in contribution_scores.values()), default=0.0)
         localization = _clamp01(max(localization, strongest))
@@ -82,16 +104,28 @@ def compute_decision_confidence(
     source_flags = source if isinstance(source, dict) else {}
     converging_count = int(sum(1 for value in source_flags.values() if bool(value)))
     converging_evidence = _clamp01(converging_count / 4.0)
+    overlap_score = _clamp01(_safe_float(causal.get("attribution_causal_overlap_score"), 0.0))
+    multi_signal_agreement = _clamp01(0.65 * converging_evidence + 0.35 * overlap_score)
+    causal_robustness = _clamp01(0.45 * hypothesis_conf + 0.35 * robustness + 0.20 * counterfactual)
+    trend_reinforcement = _clamp01(0.60 * trend_strength + 0.40 * projected_score)
 
     confidence = _clamp01(
-        0.30 * hypothesis_conf
-        + 0.20 * robustness
-        + 0.10 * counterfactual
-        + 0.20 * risk_strength
-        + 0.12 * localization
-        + 0.08 * converging_evidence
+        0.24 * risk_strength
+        + 0.32 * cumulative_risk_pressure
+        + 0.20 * causal_robustness
+        + 0.08 * localization
+        + 0.11 * multi_signal_agreement
+        + 0.05 * trend_reinforcement
     )
-    return round(float(confidence), 4)
+    components = {
+        "risk_strength": round(risk_strength, 4),
+        "cumulative_risk_pressure": round(cumulative_risk_pressure, 4),
+        "causal_robustness": round(causal_robustness, 4),
+        "attribution_localization": round(localization, 4),
+        "multi_signal_agreement": round(multi_signal_agreement, 4),
+        "trend_reinforcement": round(trend_reinforcement, 4),
+    }
+    return round(float(confidence), 4), components
 
 
 def summarize_decision_reason(
@@ -288,7 +322,7 @@ def resolve_best_action(
                 }
             )
 
-    confidence = compute_decision_confidence(
+    confidence, confidence_components = _compute_decision_confidence_with_components(
         causal_analysis=causal,
         risk_assessment=risk,
         attribution=attr,
@@ -312,6 +346,7 @@ def resolve_best_action(
         "reason": reason,
         "evidence": evidence,
         "source": source,
+        "confidence_components": confidence_components,
         "status": {
             "available": True,
             "reason": "decision_available",
