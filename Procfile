@@ -1,1 +1,1 @@
-web: sh -c 'if ! python -c "import importlib; importlib.import_module(\"apps.api.main\")" >/dev/null 2>&1; then if [ -f "main.py" ]; then export PYTHONPATH="${PYTHONPATH:+$PYTHONPATH:}../.."; fi; fi; python -c "import importlib; importlib.import_module(\"apps.api.main\")" >/dev/null 2>&1 || { echo "Unable to import apps.api.main from cwd=$(pwd)" >&2; exit 1; }; exec uvicorn apps.api.main:app --host 0.0.0.0 --port "${PORT:-8000}"'
+web: uvicorn apps.api.main:app --host 0.0.0.0 --port $PORT
