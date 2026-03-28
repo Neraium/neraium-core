@@ -59,3 +59,26 @@ table { width: 100%; border-collapse: collapse; }
 th, td { padding: 0.45rem; border-bottom: 1px solid #20324c; text-align: left; vertical-align: top; }
 .status-line { color: var(--muted); }
 ul { margin: 0.25rem 0 0; padding-left: 1rem; }
+
+select {
+  background: #091120;
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 0.45rem;
+  border-radius: 8px;
+}
+
+.assistant-controls {
+  margin-bottom: 0.5rem;
+}
+
+pre {
+  white-space: pre-wrap;
+  background: #0a1323;
+  border: 1px solid #223754;
+  border-radius: 8px;
+  padding: 0.65rem;
+  margin: 0.45rem 0 0.8rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.82rem;
+}
