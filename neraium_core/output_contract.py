@@ -2,9 +2,12 @@ from __future__ import annotations
 
 from typing import Any, Mapping
 
-from neraium_core.memory_recall import determine_pattern_family
+CANONICAL_SCHEMA_VERSION = "2026-03-28"
 
-CANONICAL_SCHEMA_VERSION = "2026-03-01"
+OPERATOR_BOUNDARY_NOTE = (
+    "Recommendations are advisory outputs intended to support, not replace, "
+    "qualified operator judgment and site-specific procedures."
+)
 
 REQUIRED_FIELDS = {
     "schema_version",
@@ -14,7 +17,7 @@ REQUIRED_FIELDS = {
     "regime_memory",
     "risk_assessment",
     "causal_analysis",
-    "decision",
+    "operational_recommendation",
     "confidence",
     "explanation_text",
     "events",
@@ -57,25 +60,75 @@ def _normalize_top_drivers(raw: Any) -> list[dict[str, Any]]:
     return out[:5]
 
 
-def _normalize_decision(raw_result: Mapping[str, Any]) -> dict[str, Any]:
+def _coerce_recommendation(raw_result: Mapping[str, Any]) -> dict[str, Any]:
     raw_decision = raw_result.get("decision") if isinstance(raw_result.get("decision"), dict) else {}
+    raw_recommendation = (
+        raw_result.get("operational_recommendation")
+        if isinstance(raw_result.get("operational_recommendation"), dict)
+        else {}
+    )
+
     state = str(
         raw_decision.get("state")
         or raw_result.get("state")
         or raw_result.get("action_state")
         or "UNKNOWN"
     ).upper()
-    action = str(
-        raw_decision.get("action")
-        or raw_decision.get("resolved_action")
-        or raw_decision.get("recommended_action")
-        or "none"
+    action = raw_recommendation.get("recommended_action") or raw_decision.get("action") or raw_decision.get("resolved_action")
+    target = raw_recommendation.get("recommended_target") or raw_decision.get("target")
+
+    status_block = raw_recommendation.get("status") if isinstance(raw_recommendation.get("status"), dict) else {}
+    legacy_status = raw_decision.get("status") if isinstance(raw_decision.get("status"), dict) else {}
+    available = bool(status_block.get("available", legacy_status.get("available", state != "UNKNOWN")))
+
+    confidence = raw_recommendation.get("recommendation_confidence")
+    if confidence is None:
+        confidence = raw_decision.get("confidence", raw_result.get("confidence", raw_result.get("confidence_score", 0.0)))
+    try:
+        recommendation_confidence = round(max(0.0, min(float(confidence), 1.0)), 6)
+    except (TypeError, ValueError):
+        recommendation_confidence = 0.0
+
+    supporting_evidence = raw_recommendation.get("supporting_evidence")
+    if not isinstance(supporting_evidence, list):
+        attribution = raw_result.get("attribution") if isinstance(raw_result.get("attribution"), dict) else {}
+        supporting_evidence = _normalize_top_drivers(attribution.get("top_drivers"))
+
+    rationale = str(
+        raw_recommendation.get("rationale")
+        or raw_decision.get("reason")
+        or "Recommendation available from converging structural evidence."
     )
+
     return {
-        "state": state,
-        "action": action,
-        "reason": str(raw_decision.get("reason", "decision_available")),
-        "source": raw_decision.get("source", {}),
+        "status": {
+            "available": available,
+            "advisory": True,
+            "reason": str(status_block.get("reason") or legacy_status.get("reason") or ("recommendation_available" if available else "recommendation_unavailable")),
+        },
+        "recommended_action": str(action) if action not in (None, "") else None,
+        "recommended_target": str(target) if target not in (None, "") else None,
+        "priority": raw_recommendation.get("priority"),
+        "recommendation_confidence": recommendation_confidence,
+        "urgency": raw_recommendation.get("urgency") if raw_recommendation.get("urgency") is not None else raw_decision.get("urgency"),
+        "rationale": rationale,
+        "supporting_evidence": supporting_evidence,
+        "operator_note": str(raw_recommendation.get("operator_note") or OPERATOR_BOUNDARY_NOTE),
+    }
+
+
+def _build_legacy_decision_alias(recommendation: Mapping[str, Any]) -> dict[str, Any]:
+    status = recommendation.get("status") if isinstance(recommendation.get("status"), dict) else {}
+    return {
+        "state": "ALERT" if bool(status.get("available")) else "UNKNOWN",
+        "action": recommendation.get("recommended_action") or "none",
+        "reason": recommendation.get("rationale") or status.get("reason") or "legacy_alias",
+        "confidence": recommendation.get("recommendation_confidence", 0.0),
+        "status": {
+            "available": bool(status.get("available")),
+            "reason": status.get("reason", "recommendation_available"),
+        },
+        "deprecated": True,
     }
 
 
@@ -95,18 +148,21 @@ def _normalize_risk(raw_result: Mapping[str, Any]) -> dict[str, Any]:
     }
 
 
-def _normalize_confidence(raw_result: Mapping[str, Any]) -> float:
+def _normalize_confidence(raw_result: Mapping[str, Any], recommendation: Mapping[str, Any]) -> float:
+    recommendation_confidence = recommendation.get("recommendation_confidence")
+    try:
+        if recommendation_confidence is not None:
+            return round(max(0.0, min(float(recommendation_confidence), 1.0)), 6)
+    except (TypeError, ValueError):
+        pass
+
     for key in ("confidence", "confidence_score"):
         if key in raw_result:
             try:
                 return round(max(0.0, min(float(raw_result[key]), 1.0)), 6)
             except (TypeError, ValueError):
                 continue
-    decision = raw_result.get("decision") if isinstance(raw_result.get("decision"), dict) else {}
-    try:
-        return round(max(0.0, min(float(decision.get("confidence", 0.0)), 1.0)), 6)
-    except (TypeError, ValueError):
-        return 0.0
+    return 0.0
 
 
 def _normalize_memory_recall(raw: Any) -> dict[str, Any]:
@@ -194,7 +250,12 @@ def _normalize_memory_recall(raw: Any) -> dict[str, Any]:
 def derive_product_events(current: Mapping[str, Any], previous: Mapping[str, Any] | None = None) -> list[str]:
     events: list[str] = []
     risk = current.get("risk_assessment") if isinstance(current.get("risk_assessment"), dict) else {}
-    decision = current.get("decision") if isinstance(current.get("decision"), dict) else {}
+    recommendation = (
+        current.get("operational_recommendation")
+        if isinstance(current.get("operational_recommendation"), dict)
+        else {}
+    )
+    status = recommendation.get("status") if isinstance(recommendation.get("status"), dict) else {}
 
     level = str(risk.get("risk_level", "UNKNOWN")).upper()
     latest_instability = float(risk.get("latest_instability", 0.0) or 0.0)
@@ -213,10 +274,10 @@ def derive_product_events(current: Mapping[str, Any], previous: Mapping[str, Any
     if _RISK_RANK.get(level, -1) > _RISK_RANK.get(prev_level, -1):
         events.append("risk_escalated")
 
-    if decision and str(decision.get("state", "UNKNOWN")).upper() != "UNKNOWN":
-        events.append("decision_available")
+    if bool(status.get("available")):
+        events.append("recommendation_available")
 
-    next_action = str(decision.get("action", "")).lower()
+    next_action = str(recommendation.get("recommended_action", "")).lower()
     if level == "HIGH" or "inspect" in next_action or "diagn" in next_action:
         events.append("inspection_recommended")
 
@@ -253,10 +314,7 @@ def build_canonical_output(
     causal_analysis = raw_result.get("causal_analysis") if isinstance(raw_result.get("causal_analysis"), dict) else {}
     regime_memory = raw_result.get("regime_memory") if isinstance(raw_result.get("regime_memory"), dict) else {}
 
-    recommendations = raw_result.get("response_recommendations")
-    if not isinstance(recommendations, list):
-        recommendations = []
-
+    recommendation = _coerce_recommendation(raw_result)
     canonical = {
         "schema_version": CANONICAL_SCHEMA_VERSION,
         "timestamp": str(raw_result.get("timestamp", "")),
@@ -274,8 +332,8 @@ def build_canonical_output(
         "regime_memory": regime_memory,
         "risk_assessment": _normalize_risk(raw_result),
         "causal_analysis": causal_analysis,
-        "decision": _normalize_decision(raw_result),
-        "confidence": _normalize_confidence(raw_result),
+        "operational_recommendation": recommendation,
+        "confidence": _normalize_confidence(raw_result, recommendation),
         "explanation_text": str(raw_result.get("explanation_text") or raw_result.get("explanation") or ""),
         "memory_recall": _normalize_memory_recall(memory_recall if memory_recall is not None else raw_result.get("memory_recall")),
         "operational_recommendation": raw_result.get("operational_recommendation") or (recommendations[0] if recommendations else None),
@@ -283,7 +341,11 @@ def build_canonical_output(
     }
     canonical["events"] = derive_product_events(canonical, previous=previous)
 
-    aliases: dict[str, Any] = {}
+    aliases: dict[str, Any] = {
+        "legacy_decision": _build_legacy_decision_alias(recommendation),
+    }
+    if "decision" in raw_result and isinstance(raw_result.get("decision"), dict):
+        aliases["decision"] = raw_result.get("decision")
     if "regime_memory_state" in raw_result:
         aliases["regime_memory_state"] = raw_result.get("regime_memory_state")
     if "explanation" in raw_result:
@@ -307,6 +369,7 @@ def is_canonical_output(payload: Mapping[str, Any]) -> bool:
 
 __all__ = [
     "CANONICAL_SCHEMA_VERSION",
+    "OPERATOR_BOUNDARY_NOTE",
     "REQUIRED_FIELDS",
     "OPTIONAL_FIELDS",
     "build_canonical_output",

@@ -1226,47 +1226,7 @@ class StructuralMonitoringService:
     ) -> list[dict[str, Any]]:
         return self.store.list_service_history(limit=limit, run_id=run_id, customer_id=customer_id)
 
-    def get_memory_matches(
-        self,
-        *,
-        run_id: str | None = None,
-        customer_id: str | None = None,
-        site_id: str | None = None,
-        asset_id: str | None = None,
-        limit: int = 20,
-    ) -> list[dict[str, Any]]:
-        return self.store.list_structural_memory(
-            customer_id=customer_id,
-            run_id=run_id,
-            site_id=site_id,
-            asset_id=asset_id,
-            limit=limit,
-        )
-
-    def get_pattern_history(
-        self,
-        *,
-        customer_id: str | None = None,
-        family_label: str | None = None,
-        limit: int = 100,
-    ) -> list[dict[str, Any]]:
-        rows = self.store.list_structural_memory(customer_id=customer_id, limit=limit * 2)
-        if not family_label:
-            return rows[:limit]
-        target = str(family_label).strip().lower()
-        return [row for row in rows if str(row.get("family_label", "")).strip().lower() == target][:limit]
-
-    def get_novel_events(
-        self,
-        *,
-        customer_id: str | None = None,
-        run_id: str | None = None,
-        limit: int = 100,
-    ) -> list[dict[str, Any]]:
-        rows = self.store.list_structural_memory(customer_id=customer_id, run_id=run_id, limit=limit * 2)
-        return [row for row in rows if bool((row.get("novelty") or {}).get("is_novel", False))][:limit]
-
-    def get_latest_decision(
+    def get_latest_recommendation(
         self,
         *,
         run_id: str | None = None,
@@ -1275,6 +1235,33 @@ class StructuralMonitoringService:
         latest = self.get_current_state(run_id=run_id, customer_id=customer_id)
         if not isinstance(latest, dict):
             return None
+        recommendation = latest.get("operational_recommendation")
+        return recommendation if isinstance(recommendation, dict) else None
+
+    def get_latest_decision(
+        self,
+        *,
+        run_id: str | None = None,
+        customer_id: str | None = None,
+    ) -> dict[str, Any] | None:
+        """Deprecated compatibility alias. Prefer get_latest_recommendation."""
+        latest = self.get_current_state(run_id=run_id, customer_id=customer_id)
+        if not isinstance(latest, dict):
+            return None
+        recommendation = latest.get("operational_recommendation")
+        if isinstance(recommendation, dict):
+            status = recommendation.get("status") if isinstance(recommendation.get("status"), dict) else {}
+            return {
+                "state": "ALERT" if bool(status.get("available")) else "UNKNOWN",
+                "action": recommendation.get("recommended_action") or "none",
+                "reason": recommendation.get("rationale") or status.get("reason", "legacy_alias"),
+                "confidence": recommendation.get("recommendation_confidence", 0.0),
+                "status": {
+                    "available": bool(status.get("available")),
+                    "reason": status.get("reason", "recommendation_available"),
+                },
+                "deprecated": True,
+            }
         decision = latest.get("decision")
         return decision if isinstance(decision, dict) else None
 
