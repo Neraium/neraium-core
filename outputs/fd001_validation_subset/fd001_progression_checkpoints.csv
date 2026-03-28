@@ -1,3 +1,0 @@
-unit_id,cycles_evaluated,first_risk_rise_cycle,first_risk_elevated_cycle,first_stable_causal_hypothesis_cycle,first_nonfallback_decision_cycle,decision_confidence_start,decision_confidence_end,decision_confidence_delta,decision_confidence_spearman_vs_cycle,decision_action_flips,risk_level_flips,risk_trend_flips,attr_causal_alignment_hits,attr_causal_alignment_total
-1,120,12,,12,12,0.3744,0.3902,0.0158,-0.2349,0,0,4,0,109
-2,120,12,12,13,12,0.4919,0.3902,-0.1017,-0.2383,0,2,6,0,109
