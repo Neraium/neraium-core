@@ -21,7 +21,7 @@ from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Query, 
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, model_validator
-from starlette.responses import JSONResponse, Response
+from starlette.responses import JSONResponse, PlainTextResponse, Response
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from .integration import (
@@ -494,6 +494,19 @@ class AssistantResponse(BaseModel):
     text: str
     grounding: dict[str, Any]
     context: dict[str, Any]
+
+class ReportRequest(BaseModel):
+    run_id: str | None = None
+    customer_id: str | None = None
+    mode: Literal["client_report", "technician_summary", "inspection_brief", "handoff_note"]
+    history_limit: int = Field(default=20, ge=2, le=100)
+
+
+class ReportResponse(BaseModel):
+    mode: str
+    report_text: str
+    sections: dict[str, str]
+
 
 
 def _alert_thresholds() -> tuple[float, float]:
@@ -2683,6 +2696,45 @@ def create_app(
             customer_id=resolved_customer,
             history_limit=payload.history_limit,
         )
+
+    @app.post("/assistant/report", response_model=ReportResponse)
+    def assistant_report(
+        payload: ReportRequest,
+        _: None = Depends(require_api_key),
+    ) -> dict[str, Any]:
+        resolved_customer = _resolve_customer_id(payload.customer_id)
+        resolved_run = _resolve_run_id(service_instance, payload.run_id, customer_id=resolved_customer)
+        report = service_instance.generate_report_response(
+            mode=payload.mode,
+            run_id=resolved_run,
+            customer_id=resolved_customer,
+            history_limit=payload.history_limit,
+        )
+        return {
+            "mode": report.get("mode", payload.mode),
+            "report_text": str(report.get("report_text") or ""),
+            "sections": {k: str(v) for k, v in (report.get("sections") or {}).items()},
+        }
+
+    @app.post("/assistant/report/export")
+    def assistant_report_export(
+        payload: ReportRequest,
+        format: Literal["txt", "md"] = Query(default="txt"),
+        _: None = Depends(require_api_key),
+    ) -> PlainTextResponse:
+        resolved_customer = _resolve_customer_id(payload.customer_id)
+        resolved_run = _resolve_run_id(service_instance, payload.run_id, customer_id=resolved_customer)
+        report = service_instance.generate_report_response(
+            mode=payload.mode,
+            run_id=resolved_run,
+            customer_id=resolved_customer,
+            history_limit=payload.history_limit,
+        )
+        text = str(report.get("report_text") or "")
+        filename = f"{payload.mode}_{resolved_run or 'run'}.{format}"
+        media_type = "text/markdown; charset=utf-8" if format == "md" else "text/plain; charset=utf-8"
+        headers = {"Content-Disposition": f'attachment; filename="{filename}"'}
+        return PlainTextResponse(content=text, media_type=media_type, headers=headers)
 
     @app.post("/ingest/batch", response_model=ResultsEnvelope)
     def ingest_batch(
