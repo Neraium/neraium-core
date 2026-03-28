@@ -9,4 +9,4 @@ mkdir -p "$db_dir"
 # Optional integration config path can point to mounted read-only config.
 # If unset, app still starts and pull mapping falls back to defaults.
 
-exec python -m apps.api.main
+exec uvicorn apps.api.main:app --host 0.0.0.0 --port "${PORT:-8000}"
