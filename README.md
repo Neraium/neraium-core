@@ -18,6 +18,9 @@ Most tools optimize for **single sensors** or **component failure prediction**: 
 **Full customer-facing narrative (positioning vs predictive maintenance and AI monitoring):**  
 → **[docs/HOW_NERAIUM_IS_DIFFERENT.md](docs/HOW_NERAIUM_IS_DIFFERENT.md)**
 
+Operator workflow quickstart:
+→ **[docs/OPERATOR_WORKFLOW.md](docs/OPERATOR_WORKFLOW.md)**
+
 ---
 
 ## Deployment constraints
