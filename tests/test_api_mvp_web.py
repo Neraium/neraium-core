@@ -906,6 +906,7 @@ def test_operator_workflow_routes_and_assets_available(tmp_path) -> None:
     assert operator.status_code == 200
     assert "Neraium Operator Workflow" in operator.text
     assert "Recommended next step" in operator.text
+    assert "Generate Report" in operator.text
 
     workflow = client.get("/operator/workflow")
     assert workflow.status_code == 200
@@ -916,6 +917,8 @@ def test_operator_workflow_routes_and_assets_available(tmp_path) -> None:
     assert css.status_code == 200
     assert "renderTimeline" in js.text
     assert "memory_recall" in js.text
+    assert 'fetchJson("/assistant/report"' in js.text
+    assert "copyReportBtn" in js.text
 
 
 def test_operator_workflow_state_path_exposes_recommendation_and_memory(tmp_path) -> None:

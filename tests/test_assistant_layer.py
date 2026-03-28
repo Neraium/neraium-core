@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from neraium_core.assistant_layer import build_assistant_context, render_assistant_response
+from neraium_core.assistant_layer import build_assistant_context, render_assistant_report, render_assistant_response
 
 
 def _state(cycle: int = 3) -> dict[str, object]:
@@ -64,3 +64,62 @@ def test_supported_modes_render_without_missing_sections() -> None:
         assert isinstance(response["text"], str)
         assert response["text"]
         assert "context" in response
+
+
+def test_report_modes_include_required_sections() -> None:
+    context = build_assistant_context(current_state=_state(), recent_history=[_state(), _state(cycle=2)])
+
+    mode_expectations = {
+        "client_report": [
+            "Overview",
+            "Current System State",
+            "Risk Assessment",
+            "Recommended Next Step (advisory)",
+            "Supporting Evidence",
+            "Pattern Context (memory recall if present)",
+            "Confidence",
+            "Operator Note",
+        ],
+        "technician_summary": [
+            "Current state (concise)",
+            "What changed",
+            "Key drivers",
+            "Recommended next step",
+        ],
+        "inspection_brief": [
+            "Target system/component",
+            "Why inspection is recommended",
+            "What to check",
+            "Risk context",
+        ],
+        "handoff_note": [
+            "Overview",
+            "Current System State",
+            "Risk Assessment",
+            "Recommended Next Step (advisory)",
+            "Supporting Evidence",
+            "Pattern Context (memory recall if present)",
+            "Confidence",
+            "Operator Note",
+        ],
+    }
+
+    for mode, required_sections in mode_expectations.items():
+        response = render_assistant_report(mode=mode, context=context)
+        assert response["mode"] == mode
+        assert response["report_text"]
+        for section_name in required_sections:
+            assert section_name in response["sections"]
+
+
+def test_report_is_grounded_in_structured_fields() -> None:
+    context = build_assistant_context(current_state=_state(), recent_history=[_state(), _state(cycle=2)])
+
+    response = render_assistant_report(mode="client_report", context=context)
+
+    text = response["report_text"]
+    assert "MEDIUM" in text
+    assert "inspect pressure train" in text
+    assert "Pressure and temperature drifted together." in text
+    assert "deterioration_detected" in text
+    assert "Prior pressure drift incident" in text

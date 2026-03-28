@@ -7,6 +7,9 @@
   const seedDemoBtn = el("seedDemoBtn");
   const loadAssistantBtn = el("loadAssistantBtn");
   const assistantExplainMode = el("assistantExplainMode");
+  const reportModeSelect = el("reportMode");
+  const generateReportBtn = el("generateReportBtn");
+  const copyReportBtn = el("copyReportBtn");
   const statusLine = el("statusLine");
 
   async function fetchJson(path, params, options) {
@@ -195,6 +198,33 @@
     handoffEl.textContent = toText(handoff.text, "No assistant handoff available.");
   }
 
+
+  async function generateReport(scope) {
+    const reportText = el("reportText");
+    const mode = reportModeSelect && reportModeSelect.value ? reportModeSelect.value : "client_report";
+    const payload = {
+      customer_id: scope.customer_id,
+      run_id: scope.run_id,
+      mode,
+      history_limit: 20,
+    };
+    const report = await fetchJson("/assistant/report", null, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    reportText.textContent = toText(report.report_text, "No report available.");
+  }
+
+  async function copyReportText() {
+    const reportText = el("reportText");
+    const text = toText(reportText && reportText.textContent, "");
+    if (!text || text === "No report generated.") {
+      throw new Error("Generate a report first.");
+    }
+    await navigator.clipboard.writeText(text);
+  }
+
   async function ingestDemoFrames(scope) {
     const start = Date.now();
     const payloads = [
@@ -237,7 +267,8 @@
       renderStateView(stateEnvelope.state || null);
       renderTimeline(Array.isArray(historyEnvelope.history) ? historyEnvelope.history : []);
       await loadAssistantPanels(scope);
-      statusLine.textContent = `Loaded ${historyEnvelope.count || 0} history rows and assistant panels.`;
+      await generateReport(scope);
+      statusLine.textContent = `Loaded ${historyEnvelope.count || 0} history rows, assistant panels, and report.`;
     } catch (error) {
       statusLine.textContent = `Failed to load workflow: ${String(error.message || error)}`;
     }
@@ -274,6 +305,31 @@
       statusLine.textContent = "Assistant panels refreshed.";
     } catch (error) {
       statusLine.textContent = `Failed to load assistant panels: ${String(error.message || error)}`;
+    }
+  });
+
+
+  generateReportBtn.addEventListener("click", async () => {
+    const scope = {
+      customer_id: customerIdInput.value.trim(),
+      run_id: runIdInput.value.trim(),
+    };
+    statusLine.textContent = "Generating report...";
+    try {
+      await generateReport(scope);
+      statusLine.textContent = "Report generated.";
+    } catch (error) {
+      statusLine.textContent = `Failed to generate report: ${String(error.message || error)}`;
+    }
+  });
+
+  copyReportBtn.addEventListener("click", async () => {
+    statusLine.textContent = "Copying report...";
+    try {
+      await copyReportText();
+      statusLine.textContent = "Report copied to clipboard.";
+    } catch (error) {
+      statusLine.textContent = `Failed to copy report: ${String(error.message || error)}`;
     }
   });
 
