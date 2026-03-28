@@ -148,74 +148,48 @@ That helps reveal **structural change** earlier in the degradation path.
 
 ## Signal evaluation (current)
 
-Neraium currently includes a temporary, explicit **decision layer** that interprets raw SII outputs for operator-facing signaling.
+Neraium includes a temporary, explicit **advisory recommendation layer** that interprets raw SII outputs for operator-facing signaling.
 
-- It is **rule-based and deterministic**: no learned model, no opaque weighting.  
-- It evaluates recent `composite_instability`, `structural_drift_score`, and `phase` progression to decide whether to emit a signal.  
-- It suppresses noisy patterns (for example, sharp instability spike-and-drop behavior or unstable/stable oscillation).  
-- It returns structured decision output (`signal_emitted`, `signal_strength`, `confidence`, `reason`, `phase`, `risk_level`) for clear downstream reporting.  
+- It is **rule-based and deterministic**: no learned model, no opaque weighting.
+- It evaluates recent `composite_instability`, `structural_drift_score`, and `phase` progression to produce a recommended next step.
+- It suppresses noisy patterns (for example, sharp instability spike-and-drop behavior or unstable/stable oscillation).
+- It returns structured advisory output (`signal_emitted`, `signal_strength`, `confidence`, `reason`, `phase`, `risk_level`) for clear downstream reporting.
 
-This layer is temporary and will be replaced when formal interpretive governance is implemented.
+## Structural attribution and operational recommendation upgrade
 
-## Structural attribution and decision intelligence upgrade
+The SII platform upgrades from pure structural change detection to **structural attribution + advisory operational recommendation intelligence**.
 
-The SII platform now upgrades from pure structural change detection to **structural attribution + decision intelligence**:
-
-- **Attribution layer:** identifies highest-contributing sensors and sensor relationships by baseline-vs-recent relational delta and mean-shift evidence.
-- **Regime memory similarity:** compares current geometry/graph signatures to persisted regime prototypes and reports nearest prior matches + novelty.
-- **Forward-looking risk:** projects near-term risk trend from instability trend, acceleration, and persistence evidence.
-- **Operator decision support:** emits conservative, evidence-grounded inspection targets and prioritized recommended actions.
-
-These outputs are emitted directly by the production SII engine and flow through batch payload processing, file processing, and live-ingestion paths via shared `SIIEngine.process_frame()` runtime logic.
-
-Canonical top-level decision-intelligence contract:
+Canonical top-level contract:
 - `attribution`
 - `regime_memory`
 - `risk_assessment`
 - `operator_guidance`
 - `causal_analysis`
-- `decision`
+- `operational_recommendation` (canonical)
 
-Decision resolver behavior (deterministic compression layer):
-- Prefer `causal_analysis.best_next_action` when confidence is usable.
-- Else use top-ranked `causal_analysis.recommended_sequence` action.
-- Else use `operator_guidance.recommended_actions[0]` (with `first_inspection_target`).
-- Else synthesize a conservative inspection action from `attribution.top_sensors[0]`.
-- Else emit structured fallback with `decision.status.available=false` and explicit reason.
+`operational_recommendation.recommendation_confidence` is bounded to `[0,1]` and computed from converging evidence across causal hypotheses, risk trend clarity, localization strength, and source convergence.
 
-`decision.confidence` is bounded to `[0,1]` and computed from converging evidence across:
-- top causal hypothesis confidence/robustness/counterfactual strength,
-- risk trend clarity + projected risk,
-- attribution localization strength,
-- source convergence count.
-
-Example decision payload:
+Example canonical recommendation payload:
 ```json
 {
-  "decision": {
-    "action": "Inspect subsystem/cluster first: cluster_A.",
-    "target": "cluster_A",
+  "operational_recommendation": {
+    "status": {"available": true, "advisory": true, "reason": "recommendation_available"},
+    "recommended_action": "Inspect subsystem/cluster first: cluster_A.",
+    "recommended_target": "cluster_A",
     "priority": 1,
-    "confidence": 0.74,
-    "reason": "Prioritized 'Inspect subsystem/cluster first: cluster_A.' from causal ranking, operator guidance, risk trend (increasing); confidence=0.74.",
-    "evidence": [
-      {"signal": "causal_analysis.best_next_action", "value": "Inspect subsystem/cluster first: cluster_A.", "confidence": 0.72},
-      {"signal": "risk_assessment.projected_near_term_trend", "value": "increasing", "risk_score": 0.68}
+    "recommendation_confidence": 0.74,
+    "urgency": "medium",
+    "rationale": "Recommendation available from converging structural evidence.",
+    "supporting_evidence": [
+      {"driver": "cluster_A", "score": 0.72}
     ],
-    "source": {
-      "from_causal_analysis": true,
-      "from_operator_guidance": true,
-      "from_risk_assessment": true,
-      "from_attribution": true
-    },
-    "status": {"available": true, "reason": "decision_available"}
+    "operator_note": "Recommendations are advisory outputs intended to support, not replace, qualified operator judgment and site-specific procedures."
   }
 }
 ```
 
-Fallback interpretation:
-- `decision.status.available=true`: single prioritized action is available.
-- `decision.status.available=false`: warmup or insufficient converging evidence; continue monitoring.
+Compatibility note:
+- Legacy `decision` views remain available only through deprecated compatibility aliases and endpoints.
 
 ---
 

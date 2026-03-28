@@ -441,7 +441,7 @@ class CanonicalOutputResponse(BaseModel):
     regime_memory: dict[str, Any]
     risk_assessment: dict[str, Any]
     causal_analysis: dict[str, Any]
-    decision: dict[str, Any]
+    operational_recommendation: dict[str, Any]
     confidence: float
     explanation_text: str
     events: list[str]
@@ -462,7 +462,13 @@ class HistoryEnvelope(BaseModel):
     history: list[CanonicalOutputResponse]
 
 
+class RecommendationEnvelope(BaseModel):
+    operational_recommendation: dict[str, Any] | None = None
+
+
 class DecisionEnvelope(BaseModel):
+    """Deprecated compatibility envelope. Prefer RecommendationEnvelope."""
+
     decision: dict[str, Any] | None = None
 
 
@@ -2556,7 +2562,21 @@ def create_app(
         )
         return {"count": len(history), "history": history}
 
-    @app.get("/decision", response_model=DecisionEnvelope)
+    @app.get("/recommendation", response_model=RecommendationEnvelope)
+    @app.get("/recommendations/latest", response_model=RecommendationEnvelope)
+    def get_recommendation(
+        run_id: str | None = Query(default=None),
+        customer_id: str | None = Query(default=None),
+    ) -> dict[str, Any]:
+        resolved_customer = _resolve_customer_id(customer_id)
+        resolved_run = _resolve_run_id(service_instance, run_id, customer_id=resolved_customer)
+        recommendation = service_instance.get_latest_recommendation(
+            run_id=resolved_run,
+            customer_id=resolved_customer,
+        )
+        return {"operational_recommendation": recommendation}
+
+    @app.get("/decision", response_model=DecisionEnvelope, deprecated=True)
     def get_decision(
         run_id: str | None = Query(default=None),
         customer_id: str | None = Query(default=None),
