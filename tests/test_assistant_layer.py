@@ -123,3 +123,29 @@ def test_report_is_grounded_in_structured_fields() -> None:
     assert "Pressure and temperature drifted together." in text
     assert "deterioration_detected" in text
     assert "Prior pressure drift incident" in text
+
+
+def test_report_text_avoids_none_and_raw_dict_repr() -> None:
+    sparse = _state()
+    sparse["confidence"] = None
+    sparse["operational_recommendation"] = {
+        "recommended_action": "inspect pressure train",
+        "recommendation_confidence": None,
+        "rationale": "Instability and trend are rising.",
+        "operator_note": "Advisory only.",
+        "supporting_evidence": {"source": "trend_model", "signal": None},
+        "status": {"available": True, "advisory": True},
+    }
+    sparse["memory_recall"] = {
+        "novelty": {"is_novel": None},
+        "nearest_match": {"found": False, "summary": None},
+        "top_matches": [],
+        "pattern_family": {"label": None, "confidence": None},
+    }
+    context = build_assistant_context(current_state=sparse, recent_history=[sparse, _state(cycle=2)])
+
+    for mode in ("client_report", "technician_summary", "inspection_brief", "handoff_note"):
+        response = render_assistant_report(mode=mode, context=context)
+        text = response["report_text"]
+        assert "None" not in text
+        assert "{'" not in text

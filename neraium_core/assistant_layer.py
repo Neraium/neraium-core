@@ -117,6 +117,49 @@ def _join_sections(title: str, sections: list[tuple[str, str]]) -> str:
     return "\n".join(chunks)
 
 
+def _display_value(value: Any, *, fallback: str = "not available") -> str:
+    if value in (None, "", [], {}):
+        return fallback
+    if isinstance(value, dict):
+        parts = []
+        for key, item in value.items():
+            if item in (None, "", [], {}):
+                continue
+            parts.append(f"{key}: {item}")
+        return "; ".join(parts) if parts else fallback
+    if isinstance(value, list):
+        cleaned = [str(item).strip() for item in value if item not in (None, "", [], {})]
+        return "; ".join(cleaned) if cleaned else fallback
+    return str(value)
+
+
+def _format_list(items: Any, *, fallback: str = "none reported") -> str:
+    if not isinstance(items, list) or not items:
+        return fallback
+    cleaned = [str(item).strip() for item in items if item not in (None, "")]
+    if not cleaned:
+        return fallback
+    return "; ".join(cleaned)
+
+
+def _format_match_item(item: Any) -> str:
+    if not isinstance(item, dict):
+        return _display_value(item)
+    summary = _display_value(item.get("summary"), fallback="unnamed pattern")
+    similarity = item.get("similarity")
+    scope = _display_value(item.get("scope"), fallback="scope unavailable")
+    if similarity is None:
+        return f"{summary} ({scope})"
+    return f"{summary} (similarity {similarity}, {scope})"
+
+
+def _format_matches(matches: Any, *, fallback: str = "no comparable prior patterns listed") -> str:
+    if not isinstance(matches, list) or not matches:
+        return fallback
+    rendered = [_format_match_item(item) for item in matches[:3]]
+    return "; ".join(rendered)
+
+
 def render_assistant_response(*, mode: AssistantMode, context: dict[str, Any]) -> dict[str, Any]:
     if mode not in ASSISTANT_MODES:
         raise ValueError(f"Unsupported assistant mode: {mode}")
@@ -254,27 +297,48 @@ def render_assistant_report(*, mode: ReportMode, context: dict[str, Any]) -> dic
     explanation = context.get("explanation") or "No explanation text available"
 
     confidence_text = (
-        f"Recommendation confidence: {rec_confidence}; state confidence: {state.get('confidence')}"
+        (
+            f"Recommendation confidence is {_display_value(rec_confidence)}. "
+            f"State confidence is {_display_value(state.get('confidence'))}."
+        )
         if rec_confidence is not None or state.get("confidence") is not None
-        else "Confidence values unavailable"
+        else "Confidence values are not available."
+    )
+    nearest_found = bool(nearest.get("found"))
+    nearest_similarity_text = (
+        f" with similarity {_display_value(nearest.get('similarity'))}" if nearest_found else ""
     )
 
     shared_sections = {
         "Current System State": (
-            f"run_id={state.get('run_id')}, site_id={state.get('site_id')}, asset_id={state.get('asset_id')}, "
-            f"cycle={state.get('cycle')}, timestamp={state.get('timestamp')}"
+            "Run "
+            f"{_display_value(state.get('run_id'))} at site {_display_value(state.get('site_id'))} for asset "
+            f"{_display_value(state.get('asset_id'))}, cycle {_display_value(state.get('cycle'))}, timestamp "
+            f"{_display_value(state.get('timestamp'))}."
         ),
         "Risk Assessment": (
-            f"risk_level={risk.get('risk_level')}, trend={risk.get('trend')}, latest_instability={risk.get('latest_instability')}"
+            f"Risk level is {_display_value(risk.get('risk_level'))} with a "
+            f"{_display_value(risk.get('trend'), fallback='unknown')} trend. "
+            f"Latest instability score is {_display_value(risk.get('latest_instability'))}."
         ),
         "Recommended Next Step (advisory)": (
-            f"{rec_action}. Rationale: {rec_rationale}. Recommendation confidence: {rec_confidence}."
+            f"Recommended advisory action: {rec_action}. "
+            f"Rationale: {rec_rationale}. "
+            f"Recommendation confidence: {_display_value(rec_confidence)}."
         ),
         "Supporting Evidence": (
-            f"explanation_text={explanation}; events={events}; supporting_evidence={supporting_evidence}"
+            f"Explanation: {explanation} "
+            f"Observed events: {_format_list(events)}. "
+            f"Supporting evidence: {_display_value(supporting_evidence, fallback='none provided')}."
         ),
         "Pattern Context (memory recall if present)": (
-            f"novelty={novelty}; nearest_match={nearest}; pattern_family={pattern_family}"
+            f"Novelty flag is {_display_value(novelty.get('is_novel'))}. "
+            f"Nearest prior match was "
+            f"{'found' if nearest_found else 'not found'}{nearest_similarity_text}. "
+            f"Nearest match summary: {_display_value(nearest.get('summary'), fallback='not available')}. "
+            f"Pattern family: {_display_value(pattern_family.get('label'), fallback='not available')} "
+            f"(confidence {_display_value(pattern_family.get('confidence'))}). "
+            f"Top matches: {_format_matches(memory.get('top_matches'))}."
         ),
         "Confidence": confidence_text,
         "Operator Note": str(operator_note),
@@ -284,7 +348,8 @@ def render_assistant_report(*, mode: ReportMode, context: dict[str, Any]) -> dic
         sections = [
             (
                 "Overview",
-                f"Client-ready advisory report for current Neraium state at {state.get('timestamp')} (cycle {state.get('cycle')}).",
+                "This advisory report summarizes the current operating condition and recommended next step "
+                f"for cycle {_display_value(state.get('cycle'))} at {_display_value(state.get('timestamp'))}.",
             ),
             *shared_sections.items(),
         ]
@@ -293,20 +358,30 @@ def render_assistant_report(*, mode: ReportMode, context: dict[str, Any]) -> dic
         sections = [
             (
                 "Current state (concise)",
-                f"risk_level={risk.get('risk_level')}, trend={risk.get('trend')}, action={rec_action}, cycle={state.get('cycle')}",
+                f"Risk is {_display_value(risk.get('risk_level'))} and trend is "
+                f"{_display_value(risk.get('trend'), fallback='unknown')}. "
+                f"Current advisory action: {rec_action}. Cycle {_display_value(state.get('cycle'))}.",
             ),
             (
                 "What changed",
-                f"risk_change={recent_changes.get('risk_level')}; new_events={recent_changes.get('new_events')}; "
-                f"window={recent_changes.get('previous_timestamp')} -> {recent_changes.get('latest_timestamp')}",
+                f"Risk changed from {_display_value(_as_dict(recent_changes.get('risk_level')).get('previous'))} "
+                f"to {_display_value(_as_dict(recent_changes.get('risk_level')).get('current'))}. "
+                f"New events: {_format_list(recent_changes.get('new_events'))}. "
+                f"Window: {_display_value(recent_changes.get('previous_timestamp'))} to "
+                f"{_display_value(recent_changes.get('latest_timestamp'))}.",
             ),
             (
                 "Key drivers",
-                f"explanation_text={explanation}; supporting_evidence={supporting_evidence}; events={events}",
+                f"Explanation: {explanation} "
+                f"Supporting evidence: {_display_value(supporting_evidence, fallback='none provided')}. "
+                f"Events: {_format_list(events)}.",
             ),
             (
                 "Recommended next step",
-                f"Advisory action={rec_action}; rationale={rec_rationale}; confidence={rec_confidence}; operator_note={operator_note}",
+                f"Advisory action: {rec_action}. "
+                f"Rationale: {rec_rationale}. "
+                f"Recommendation confidence: {_display_value(rec_confidence)}. "
+                f"Operator note: {_display_value(operator_note)}.",
             ),
         ]
         text = _join_sections("Technician Summary", sections)
@@ -314,25 +389,34 @@ def render_assistant_report(*, mode: ReportMode, context: dict[str, Any]) -> dic
         sections = [
             (
                 "Target system/component",
-                f"recommended_target={recommendation.get('recommended_target')}; action={rec_action}",
+                f"Recommended target: {_display_value(recommendation.get('recommended_target'))}. "
+                f"Advisory action: {rec_action}.",
             ),
             (
                 "Why inspection is recommended",
-                f"rationale={rec_rationale}; explanation_text={explanation}",
+                f"Rationale: {rec_rationale}. Explanation: {explanation}",
             ),
             (
                 "What to check",
-                f"supporting_evidence={supporting_evidence}; events={events}",
+                f"Supporting evidence: {_display_value(supporting_evidence, fallback='none provided')}. "
+                f"Observed events: {_format_list(events)}.",
             ),
             (
                 "Risk context",
-                f"risk_level={risk.get('risk_level')}; trend={risk.get('trend')}; latest_instability={risk.get('latest_instability')}; confidence={rec_confidence}",
+                f"Risk level {_display_value(risk.get('risk_level'))}, trend "
+                f"{_display_value(risk.get('trend'), fallback='unknown')}, latest instability "
+                f"{_display_value(risk.get('latest_instability'))}, recommendation confidence "
+                f"{_display_value(rec_confidence)}.",
             ),
         ]
         text = _join_sections("Inspection Brief", sections)
     else:
         sections = [
-            ("Overview", f"Handoff for run={state.get('run_id')} at cycle={state.get('cycle')} timestamp={state.get('timestamp')}"),
+            (
+                "Overview",
+                f"Handoff for run {_display_value(state.get('run_id'))}, cycle {_display_value(state.get('cycle'))}, "
+                f"timestamp {_display_value(state.get('timestamp'))}.",
+            ),
             ("Current System State", shared_sections["Current System State"]),
             ("Risk Assessment", shared_sections["Risk Assessment"]),
             ("Recommended Next Step (advisory)", shared_sections["Recommended Next Step (advisory)"]),
