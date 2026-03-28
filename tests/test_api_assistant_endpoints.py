@@ -76,3 +76,34 @@ def test_assistant_explain_rejects_unsupported_mode(tmp_path) -> None:
 
     assert response.status_code == 400
     assert "mode must be one of" in response.json()["detail"]
+
+
+def test_assistant_report_endpoint_supports_all_modes(tmp_path) -> None:
+    client = _build_client(tmp_path)
+    _seed(client)
+
+    for mode in ("client_report", "technician_summary", "inspection_brief", "handoff_note"):
+        response = client.post(
+            "/assistant/report",
+            json={"customer_id": "customer-a", "run_id": "run-assistant", "mode": mode, "history_limit": 20},
+        )
+        assert response.status_code == 200
+        body = response.json()
+        assert body["mode"] == mode
+        assert isinstance(body["sections"], dict)
+        assert isinstance(body["report_text"], str)
+        assert body["report_text"]
+
+
+def test_assistant_report_export_downloads_text(tmp_path) -> None:
+    client = _build_client(tmp_path)
+    _seed(client)
+
+    response = client.post(
+        "/assistant/report/export?format=md",
+        json={"customer_id": "customer-a", "run_id": "run-assistant", "mode": "client_report", "history_limit": 20},
+    )
+
+    assert response.status_code == 200
+    assert "attachment; filename=" in response.headers.get("content-disposition", "")
+    assert "Client Report" in response.text
