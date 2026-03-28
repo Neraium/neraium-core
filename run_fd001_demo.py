@@ -42,6 +42,24 @@ def _parse_units(value: str) -> list[int] | None:
     return [int(part.strip()) for part in value.split(",") if part.strip()]
 
 
+def _print_confidence_comparison(summary: list[dict[str, object]], *, unit_id: int, start_cycle: int = 12, end_cycle: int = 40) -> None:
+    rows = [
+        row
+        for row in summary
+        if int(row.get("unit_id", -1) or -1) == int(unit_id)
+        and start_cycle <= int(row.get("cycle", 0) or 0) <= end_cycle
+    ]
+    if not rows:
+        return
+    print(f"confidence_comparison_unit={unit_id} cycles={start_cycle}-{end_cycle}")
+    print("cycle,decision_conf_raw,decision_conf_smoothed")
+    for row in rows:
+        cycle = int(row.get("cycle", 0) or 0)
+        raw = float(row.get("decision_confidence_raw", 0.0) or 0.0)
+        smoothed = float(row.get("decision_confidence", 0.0) or 0.0)
+        print(f"{cycle},{raw:.4f},{smoothed:.4f}")
+
+
 def main() -> int:
     args = parse_args()
     rows = load_fd001_dataset(args.input)
@@ -80,6 +98,8 @@ def main() -> int:
     print(f"summary_csv={csv_path}")
     print(f"milestones_csv={milestones_csv_path}")
     print(f"quick_report={quick_report_path}")
+    if unit_ids:
+        _print_confidence_comparison(summary, unit_id=unit_ids[0], start_cycle=12, end_cycle=40)
     return 0
 
 
