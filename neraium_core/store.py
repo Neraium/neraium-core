@@ -117,6 +117,25 @@ class ResultStore:
                 )
                 """
             )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS service_history (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    created_at TEXT NOT NULL,
+                    customer_id TEXT NOT NULL DEFAULT 'default-customer',
+                    run_id TEXT,
+                    timestamp TEXT,
+                    cycle INTEGER,
+                    risk_state TEXT,
+                    decision TEXT,
+                    confidence REAL,
+                    top_drivers_json TEXT NOT NULL,
+                    explanation_text TEXT,
+                    event_flags_json TEXT NOT NULL,
+                    record_json TEXT NOT NULL
+                )
+                """
+            )
             self._ensure_column(
                 conn,
                 "events",
@@ -149,6 +168,10 @@ class ResultStore:
                 "CREATE INDEX IF NOT EXISTS idx_runs_customer_active "
                 "ON runs(customer_id, is_active, updated_at DESC)"
             )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_service_history_customer_run_id_id "
+                "ON service_history(customer_id, run_id, id DESC)"
+            )
 
     @staticmethod
     def _ensure_column(conn: sqlite3.Connection, table: str, column: str, column_sql: str) -> None:
@@ -162,6 +185,127 @@ class ResultStore:
         with self._conn() as conn:
             conn.execute("DELETE FROM events")
             conn.execute("DELETE FROM results")
+            conn.execute("DELETE FROM service_history")
+
+    def save_service_history(
+        self,
+        record: dict[str, Any],
+        *,
+        run_id: str | None = None,
+        customer_id: str | None = None,
+    ) -> dict[str, Any]:
+        resolved_customer = _normalize_customer_id(customer_id)
+        now = _utc_now()
+        risk_assessment = record.get("risk_assessment") if isinstance(record.get("risk_assessment"), dict) else {}
+        risk_state = str(risk_assessment.get("risk_level", "UNKNOWN"))
+        decision = record.get("decision") if isinstance(record.get("decision"), dict) else {}
+        decision_label = str(
+            decision.get("action")
+            or decision.get("state")
+            or decision.get("resolved_action")
+            or "unknown"
+        )
+        attribution = record.get("attribution") if isinstance(record.get("attribution"), dict) else {}
+        top_drivers = attribution.get("top_drivers")
+        if not isinstance(top_drivers, list):
+            top_drivers = []
+        top_drivers = top_drivers[:5]
+        events = record.get("events")
+        if not isinstance(events, list):
+            events = []
+        with self._conn() as conn:
+            cur = conn.execute(
+                """
+                INSERT INTO service_history (
+                    created_at,
+                    customer_id,
+                    run_id,
+                    timestamp,
+                    cycle,
+                    risk_state,
+                    decision,
+                    confidence,
+                    top_drivers_json,
+                    explanation_text,
+                    event_flags_json,
+                    record_json
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    now,
+                    resolved_customer,
+                    run_id,
+                    record.get("timestamp"),
+                    int(record.get("cycle")) if record.get("cycle") is not None else None,
+                    risk_state,
+                    decision_label,
+                    float(record.get("confidence", 0.0) or 0.0),
+                    json.dumps(_json_safe(top_drivers)),
+                    str(record.get("explanation_text", "")),
+                    json.dumps(_json_safe(events)),
+                    json.dumps(_json_safe(record)),
+                ),
+            )
+            history_id = int(cur.lastrowid)
+        return {"history_id": history_id, "persisted_at": now, "customer_id": resolved_customer, "run_id": run_id}
+
+    @staticmethod
+    def _decode_service_history_row(row: sqlite3.Row) -> dict[str, Any]:
+        try:
+            record = json.loads(row["record_json"])
+        except Exception:
+            record = {}
+        if not isinstance(record, dict):
+            record = {}
+        record["history_id"] = int(row["id"])
+        record["persisted_at"] = row["created_at"]
+        record["customer_id"] = row["customer_id"]
+        record["run_id"] = row["run_id"]
+        return record
+
+    def get_latest_service_history(
+        self,
+        *,
+        run_id: str | None = None,
+        customer_id: str | None = None,
+    ) -> dict[str, Any] | None:
+        items = self.list_service_history(limit=1, run_id=run_id, customer_id=customer_id)
+        return items[0] if items else None
+
+    def list_service_history(
+        self,
+        limit: int = 100,
+        *,
+        run_id: str | None = None,
+        customer_id: str | None = None,
+    ) -> list[dict[str, Any]]:
+        safe_limit = max(1, min(int(limit), 1000))
+        resolved_customer = _normalize_customer_id(customer_id)
+        with self._conn() as conn:
+            if run_id is None:
+                rows = conn.execute(
+                    """
+                    SELECT id, created_at, customer_id, run_id, record_json
+                    FROM service_history
+                    WHERE customer_id = ?
+                    ORDER BY id DESC
+                    LIMIT ?
+                    """,
+                    (resolved_customer, safe_limit),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    """
+                    SELECT id, created_at, customer_id, run_id, record_json
+                    FROM service_history
+                    WHERE customer_id = ? AND run_id = ?
+                    ORDER BY id DESC
+                    LIMIT ?
+                    """,
+                    (resolved_customer, run_id, safe_limit),
+                ).fetchall()
+        return [self._decode_service_history_row(row) for row in rows]
 
     def save_result(
         self,
