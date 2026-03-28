@@ -69,12 +69,18 @@ def test_api_endpoints_registered(tmp_path) -> None:
     assert "/health" in paths
     assert "/client-errors" in paths
     assert "/ingest" in paths
+    assert "/ingest/frame" in paths
     assert "/ingest/batch" in paths
     assert "/ingest/csv" in paths
     assert "/ingest/csv/preview" in paths
     assert "/reset" in paths
     assert "/results/latest" in paths
     assert "/results/recent" in paths
+    assert "/state" in paths
+    assert "/history" in paths
+    assert "/decision" in paths
+    assert "/explanation" in paths
+    assert "/events/latest" in paths
 
 
 def test_operator_fields_present_and_structural_skip_for_single_signal(tmp_path) -> None:

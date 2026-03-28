@@ -231,6 +231,16 @@ class IngestRequest(BaseModel):
     sensor_values: dict[str, Any] = Field(default_factory=dict)
 
 
+class IngestFrameRequest(BaseModel):
+    """Production API payload for a single telemetry frame."""
+
+    timestamp: str
+    site_id: str
+    asset_id: str
+    sensor_values: dict[str, Any] = Field(default_factory=dict)
+    customer_id: str | None = None
+
+
 class BatchIngestRequest(BaseModel):
     items: list[IngestRequest]
 
@@ -421,6 +431,49 @@ class PullIntegrationStatusEnvelope(BaseModel):
 class AlertsEnvelope(BaseModel):
     count: int
     alerts: list[dict[str, Any]]
+
+
+class CanonicalOutputResponse(BaseModel):
+    schema_version: str
+    timestamp: str
+    cycle: int
+    attribution: dict[str, Any]
+    regime_memory: dict[str, Any]
+    risk_assessment: dict[str, Any]
+    causal_analysis: dict[str, Any]
+    decision: dict[str, Any]
+    confidence: float
+    explanation_text: str
+    events: list[str]
+    session: dict[str, Any] | None = None
+    aliases: dict[str, Any] | None = None
+    history_id: int | None = None
+    persisted_at: str | None = None
+    customer_id: str | None = None
+    run_id: str | None = None
+
+
+class CurrentStateEnvelope(BaseModel):
+    state: CanonicalOutputResponse | None = None
+
+
+class HistoryEnvelope(BaseModel):
+    count: int
+    history: list[CanonicalOutputResponse]
+
+
+class DecisionEnvelope(BaseModel):
+    decision: dict[str, Any] | None = None
+
+
+class ExplanationEnvelope(BaseModel):
+    explanation_text: str | None = None
+
+
+class EventsEnvelope(BaseModel):
+    events: list[str] = Field(default_factory=list)
+    cycle: int | None = None
+    timestamp: str | None = None
 
 
 def _alert_thresholds() -> tuple[float, float]:
@@ -2452,6 +2505,102 @@ def create_app(
             logger.warning("validation failure ingest: %s", e)
             raise HTTPException(status_code=400, detail=_actionable_validation_detail(str(e)))
         return _results_envelope([result], latest=result)
+
+    @app.post("/ingest/frame", response_model=CanonicalOutputResponse)
+    def ingest_frame(
+        payload: IngestFrameRequest,
+        _: None = Depends(require_api_key),
+        run_id: str | None = Query(default=None),
+        customer_id: str | None = Query(default=None),
+    ) -> dict[str, Any]:
+        try:
+            resolved_customer = _resolve_customer_id(customer_id or payload.customer_id)
+            resolved_run = _resolve_run_id_with_default(
+                service_instance,
+                run_id,
+                customer_id=resolved_customer,
+            )
+            return service_instance.ingest_frame(
+                payload.model_dump(exclude_none=True),
+                run_id=resolved_run,
+                customer_id=resolved_customer,
+            )
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=_actionable_validation_detail(str(exc)))
+
+    @app.get("/state", response_model=CurrentStateEnvelope)
+    def get_state(
+        run_id: str | None = Query(default=None),
+        customer_id: str | None = Query(default=None),
+    ) -> dict[str, Any]:
+        resolved_customer = _resolve_customer_id(customer_id)
+        resolved_run = _resolve_run_id(service_instance, run_id, customer_id=resolved_customer)
+        state = service_instance.get_current_state(
+            run_id=resolved_run,
+            customer_id=resolved_customer,
+        )
+        return {"state": state}
+
+    @app.get("/history", response_model=HistoryEnvelope)
+    def get_history(
+        limit: int = Query(default=100, ge=1, le=1000),
+        run_id: str | None = Query(default=None),
+        customer_id: str | None = Query(default=None),
+    ) -> dict[str, Any]:
+        resolved_customer = _resolve_customer_id(customer_id)
+        resolved_run = _resolve_run_id(service_instance, run_id, customer_id=resolved_customer)
+        history = service_instance.get_recent_history(
+            limit=limit,
+            run_id=resolved_run,
+            customer_id=resolved_customer,
+        )
+        return {"count": len(history), "history": history}
+
+    @app.get("/decision", response_model=DecisionEnvelope)
+    def get_decision(
+        run_id: str | None = Query(default=None),
+        customer_id: str | None = Query(default=None),
+    ) -> dict[str, Any]:
+        resolved_customer = _resolve_customer_id(customer_id)
+        resolved_run = _resolve_run_id(service_instance, run_id, customer_id=resolved_customer)
+        decision = service_instance.get_latest_decision(
+            run_id=resolved_run,
+            customer_id=resolved_customer,
+        )
+        return {"decision": decision}
+
+    @app.get("/explanation", response_model=ExplanationEnvelope)
+    def get_explanation(
+        run_id: str | None = Query(default=None),
+        customer_id: str | None = Query(default=None),
+    ) -> dict[str, Any]:
+        resolved_customer = _resolve_customer_id(customer_id)
+        resolved_run = _resolve_run_id(service_instance, run_id, customer_id=resolved_customer)
+        explanation_text = service_instance.get_latest_explanation(
+            run_id=resolved_run,
+            customer_id=resolved_customer,
+        )
+        return {"explanation_text": explanation_text}
+
+    @app.get("/events/latest", response_model=EventsEnvelope)
+    def get_events_latest(
+        run_id: str | None = Query(default=None),
+        customer_id: str | None = Query(default=None),
+    ) -> dict[str, Any]:
+        resolved_customer = _resolve_customer_id(customer_id)
+        resolved_run = _resolve_run_id(service_instance, run_id, customer_id=resolved_customer)
+        state = service_instance.get_current_state(
+            run_id=resolved_run,
+            customer_id=resolved_customer,
+        )
+        if not isinstance(state, dict):
+            return {"events": [], "cycle": None, "timestamp": None}
+        events = state.get("events")
+        return {
+            "events": list(events) if isinstance(events, list) else [],
+            "cycle": state.get("cycle"),
+            "timestamp": state.get("timestamp"),
+        }
 
     @app.post("/ingest/batch", response_model=ResultsEnvelope)
     def ingest_batch(
