@@ -136,6 +136,31 @@ class ResultStore:
                 )
                 """
             )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS structural_memory (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    created_at TEXT NOT NULL,
+                    customer_id TEXT NOT NULL DEFAULT 'default-customer',
+                    run_id TEXT,
+                    site_id TEXT,
+                    asset_id TEXT,
+                    timestamp TEXT,
+                    cycle INTEGER,
+                    memory_key TEXT NOT NULL,
+                    family_label TEXT,
+                    novelty_is_novel INTEGER NOT NULL DEFAULT 1,
+                    novelty_score REAL NOT NULL DEFAULT 1.0,
+                    signature_json TEXT NOT NULL,
+                    summary TEXT,
+                    decision TEXT,
+                    risk_level TEXT,
+                    event_flags_json TEXT NOT NULL,
+                    source_history_id INTEGER,
+                    metadata_json TEXT NOT NULL
+                )
+                """
+            )
             self._ensure_column(
                 conn,
                 "events",
@@ -172,6 +197,18 @@ class ResultStore:
                 "CREATE INDEX IF NOT EXISTS idx_service_history_customer_run_id_id "
                 "ON service_history(customer_id, run_id, id DESC)"
             )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_structural_memory_scope_cycle "
+                "ON structural_memory(customer_id, site_id, asset_id, cycle DESC, id DESC)"
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_structural_memory_customer_id "
+                "ON structural_memory(customer_id, id DESC)"
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_structural_memory_memory_key "
+                "ON structural_memory(customer_id, memory_key, id DESC)"
+            )
 
     @staticmethod
     def _ensure_column(conn: sqlite3.Connection, table: str, column: str, column_sql: str) -> None:
@@ -186,6 +223,7 @@ class ResultStore:
             conn.execute("DELETE FROM events")
             conn.execute("DELETE FROM results")
             conn.execute("DELETE FROM service_history")
+            conn.execute("DELETE FROM structural_memory")
 
     def save_service_history(
         self,
@@ -249,6 +287,136 @@ class ResultStore:
             )
             history_id = int(cur.lastrowid)
         return {"history_id": history_id, "persisted_at": now, "customer_id": resolved_customer, "run_id": run_id}
+
+    @staticmethod
+    def _decode_structural_memory_row(row: sqlite3.Row) -> dict[str, Any]:
+        try:
+            signature = json.loads(row["signature_json"])
+        except Exception:
+            signature = {}
+        if not isinstance(signature, dict):
+            signature = {}
+        try:
+            events = json.loads(row["event_flags_json"])
+        except Exception:
+            events = []
+        if not isinstance(events, list):
+            events = []
+        try:
+            metadata = json.loads(row["metadata_json"])
+        except Exception:
+            metadata = {}
+        if not isinstance(metadata, dict):
+            metadata = {}
+        return {
+            "memory_id": int(row["id"]),
+            "persisted_at": row["created_at"],
+            "customer_id": row["customer_id"],
+            "run_id": row["run_id"],
+            "site_id": row["site_id"],
+            "asset_id": row["asset_id"],
+            "timestamp": row["timestamp"],
+            "cycle": row["cycle"],
+            "memory_key": row["memory_key"],
+            "family_label": row["family_label"],
+            "novelty": {
+                "is_novel": bool(int(row["novelty_is_novel"])),
+                "score": float(row["novelty_score"] or 0.0),
+            },
+            "signature": signature,
+            "summary": row["summary"],
+            "decision": row["decision"],
+            "risk_level": row["risk_level"],
+            "event_flags": events,
+            "source_history_id": row["source_history_id"],
+            "metadata": metadata,
+        }
+
+    def save_structural_memory(
+        self,
+        record: dict[str, Any],
+        *,
+        customer_id: str | None = None,
+    ) -> dict[str, Any]:
+        now = _utc_now()
+        resolved_customer = _normalize_customer_id(customer_id or record.get("customer_id"))
+        novelty = record.get("novelty") if isinstance(record.get("novelty"), dict) else {}
+        signature = record.get("signature") if isinstance(record.get("signature"), dict) else {}
+        events = record.get("event_flags") if isinstance(record.get("event_flags"), list) else []
+        metadata = record.get("metadata") if isinstance(record.get("metadata"), dict) else {}
+        with self._conn() as conn:
+            cur = conn.execute(
+                """
+                INSERT INTO structural_memory (
+                    created_at, customer_id, run_id, site_id, asset_id, timestamp, cycle, memory_key,
+                    family_label, novelty_is_novel, novelty_score, signature_json, summary, decision,
+                    risk_level, event_flags_json, source_history_id, metadata_json
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    now,
+                    resolved_customer,
+                    record.get("run_id"),
+                    record.get("site_id"),
+                    record.get("asset_id"),
+                    record.get("timestamp"),
+                    int(record.get("cycle")) if record.get("cycle") is not None else None,
+                    str(record.get("memory_key", "")),
+                    record.get("family_label"),
+                    1 if bool(novelty.get("is_novel", True)) else 0,
+                    float(novelty.get("score", 1.0) or 1.0),
+                    json.dumps(_json_safe(signature)),
+                    record.get("summary"),
+                    record.get("decision"),
+                    record.get("risk_level"),
+                    json.dumps(_json_safe(events)),
+                    int(record.get("source_history_id")) if record.get("source_history_id") is not None else None,
+                    json.dumps(_json_safe(metadata)),
+                ),
+            )
+            memory_id = int(cur.lastrowid)
+        return {"memory_id": memory_id, "persisted_at": now, "customer_id": resolved_customer}
+
+    def list_structural_memory(
+        self,
+        *,
+        customer_id: str | None = None,
+        run_id: str | None = None,
+        site_id: str | None = None,
+        asset_id: str | None = None,
+        limit: int = 100,
+        exclude_cycle: int | None = None,
+    ) -> list[dict[str, Any]]:
+        safe_limit = max(1, min(int(limit), 2000))
+        resolved_customer = _normalize_customer_id(customer_id)
+        clauses = ["customer_id = ?"]
+        args: list[Any] = [resolved_customer]
+        if run_id is not None:
+            clauses.append("run_id = ?")
+            args.append(run_id)
+        if site_id is not None:
+            clauses.append("site_id = ?")
+            args.append(site_id)
+        if asset_id is not None:
+            clauses.append("asset_id = ?")
+            args.append(asset_id)
+        if exclude_cycle is not None:
+            clauses.append("(cycle IS NULL OR cycle <> ?)")
+            args.append(int(exclude_cycle))
+        where = " AND ".join(clauses)
+        args.append(safe_limit)
+        with self._conn() as conn:
+            rows = conn.execute(
+                f"""
+                SELECT * FROM structural_memory
+                WHERE {where}
+                ORDER BY id DESC
+                LIMIT ?
+                """,
+                tuple(args),
+            ).fetchall()
+        return [self._decode_structural_memory_row(row) for row in rows]
 
     @staticmethod
     def _decode_service_history_row(row: sqlite3.Row) -> dict[str, Any]:

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Mapping
 
 
 def _to_confidence_label(confidence: str | float | int | None) -> str:
@@ -20,6 +20,35 @@ def _to_confidence_label(confidence: str | float | int | None) -> str:
     return "low"
 
 
+def build_memory_context_text(memory_recall: Mapping[str, Any] | None) -> str | None:
+    if not isinstance(memory_recall, Mapping):
+        return None
+
+    novelty = memory_recall.get("novelty") if isinstance(memory_recall.get("novelty"), Mapping) else {}
+    nearest = memory_recall.get("nearest_match") if isinstance(memory_recall.get("nearest_match"), Mapping) else {}
+
+    if bool(nearest.get("found", False)):
+        similarity = float(nearest.get("similarity", 0.0) or 0.0)
+        asset_id = nearest.get("asset_id")
+        run_id = nearest.get("run_id")
+        cycle = nearest.get("cycle")
+        target = "prior stored structure"
+        if asset_id:
+            target = f"asset {asset_id}"
+        details = []
+        if run_id:
+            details.append(f"run {run_id}")
+        if cycle is not None:
+            details.append(f"cycle {cycle}")
+        extra = f" ({', '.join(details)})" if details else ""
+        return f"Current structure resembles a prior pattern from {target}{extra} (similarity {similarity:.2f})."
+
+    if bool(novelty.get("is_novel", False)):
+        reason = str(novelty.get("reason", "limited historical overlap")).replace("_", " ")
+        return f"Current structure appears novel relative to stored history ({reason})."
+    return None
+
+
 def build_explanation_text(
     *,
     current_decision: str,
@@ -27,6 +56,7 @@ def build_explanation_text(
     risk: str | float | int | None,
     confidence: str | float | int | None,
     recommended_action: str | None = None,
+    memory_recall: Mapping[str, Any] | None = None,
 ) -> str:
     """Create a concise, signal-grounded explanation string for pipeline outputs."""
     decision = str(current_decision or "NOMINAL_STRUCTURE").strip() or "NOMINAL_STRUCTURE"
@@ -46,8 +76,12 @@ def build_explanation_text(
         f"Confidence is {confidence_text}.",
     ]
 
+    memory_line = build_memory_context_text(memory_recall)
+    if memory_line:
+        sentences.append(memory_line)
+
     action = str(recommended_action or "").strip()
     if action:
         sentences.append(f"Recommended action: {action}.")
 
-    return " ".join(sentences[:4])
+    return " ".join(sentences[:5])

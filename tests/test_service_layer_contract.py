@@ -38,6 +38,8 @@ def test_ingest_frame_returns_canonical_contract_and_persists_history(tmp_path) 
     assert is_canonical_output(out)
     assert out["schema_version"] == CANONICAL_SCHEMA_VERSION
     assert REQUIRED_FIELDS.issubset(set(out.keys()))
+    assert "memory_recall" in out
+    assert "novelty" in out["memory_recall"]
 
     latest = service.get_current_state(run_id="run-prod", customer_id="customer-a")
     assert latest is not None
@@ -92,6 +94,6 @@ def test_contract_stability_required_and_optional_keys(tmp_path) -> None:
     out = service.ingest_frame(_frame(0, 50.0), run_id="run-prod", customer_id="customer-a")
 
     required = REQUIRED_FIELDS
-    optional = {"aliases", "session", "history_id", "persisted_at", "customer_id", "run_id"}
+    optional = {"aliases", "session", "history_id", "persisted_at", "customer_id", "run_id", "memory_recall"}
     unknown = set(out.keys()) - required - optional
     assert not unknown
