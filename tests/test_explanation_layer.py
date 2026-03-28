@@ -29,3 +29,24 @@ def test_build_explanation_text_without_recommendation() -> None:
     assert "no dominant driver" in text
     assert "Confidence is high" in text
     assert "Recommended action" not in text
+
+
+def test_build_explanation_text_with_memory_context() -> None:
+    text = build_explanation_text(
+        current_decision="WATCH",
+        attribution={"top_drivers": ["sensor_7"]},
+        risk="MEDIUM",
+        confidence=0.6,
+        memory_recall={
+            "nearest_match": {
+                "found": True,
+                "similarity": 0.84,
+                "asset_id": "unit-14",
+                "run_id": "run-x",
+                "cycle": 12,
+            },
+            "novelty": {"is_novel": False, "reason": "resembles_known_structural_pattern"},
+        },
+    )
+    assert "resembles a prior pattern" in text
+    assert "unit-14" in text

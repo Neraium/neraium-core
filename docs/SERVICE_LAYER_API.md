@@ -31,8 +31,14 @@ All service methods emit or persist a canonical output envelope with one stable 
 
 ### Optional fields
 
-- `session`: `{run_id, customer_id}`
+- `session`: `{run_id, customer_id, site_id, asset_id}`
 - `aliases`: isolated legacy/experimental aliases (`explanation`, `regime_memory_state`)
+- `memory_recall`: structural-memory recall block
+  - `status`: recall enabled/scope/count metadata
+  - `novelty`: `{is_novel, score, reason}`
+  - `nearest_match`: best prior memory match with IDs and scope
+  - `top_matches`: top-k evidence matches
+  - `pattern_family`: deterministic family label when confidence is sufficient
 
 ## Service Interface
 
@@ -44,6 +50,9 @@ Implemented on `StructuralMonitoringService`:
 - `get_recent_history(limit=100, *, run_id=None, customer_id=None)`
 - `get_latest_decision(*, run_id=None, customer_id=None)`
 - `get_latest_explanation(*, run_id=None, customer_id=None)`
+- `get_memory_matches(*, run_id=None, customer_id=None, site_id=None, asset_id=None, limit=20)`
+- `get_pattern_history(*, customer_id=None, family_label=None, limit=100)`
+- `get_novel_events(*, customer_id=None, run_id=None, limit=100)`
 
 ## Persistence / History
 
@@ -58,6 +67,16 @@ SQLite-backed `service_history` table stores, per cycle:
 - event flags
 - full canonical record JSON
 
+SQLite-backed `structural_memory` table stores deterministic memory signatures and recall evidence:
+
+- signature fields (top drivers, concentration, regime/risk/decision/hypothesis buckets)
+- scoped identifiers (`customer_id`, `run_id`, `site_id`, `asset_id`, `cycle`, `timestamp`)
+- novelty marker (`is_novel`, `score`)
+- pattern family label (optional deterministic label)
+- event flags and trace metadata
+
+Near-duplicate suppression is enabled for repeated same-asset states with very high similarity.
+
 ## Event Semantics
 
 Events are derived strictly from existing engine outputs:
@@ -67,6 +86,38 @@ Events are derived strictly from existing engine outputs:
 - `decision_available`: decision state/action available
 - `inspection_recommended`: high risk or inspect/diagnose action cues
 - `deterioration_detected`: rising trend or instability jump
+- `known_pattern_recalled`: nearest structural memory match found
+- `novel_pattern_detected`: current pattern below conservative similarity/overlap thresholds
+- `cross_asset_pattern_match`: nearest recalled match came from a different asset
+- `recurring_degradation_pattern`: high-confidence recurring medium/high-risk degradation pattern
+
+## Structural memory signature (deterministic)
+
+The first-pass structural memory signature is compact and explainable:
+
+- top attribution drivers (top 3 names)
+- attribution concentration (`max_driver_abs_score / sum_abs_scores`)
+- regime key (from regime memory labels/state)
+- risk level + trend
+- instability bucket (`latest_instability` normalized and clipped)
+- decision state + action + derived action target token
+- dominant hypothesis (from causal analysis dominant hypothesis/driver)
+- confidence bucket
+
+## Similarity and novelty
+
+Similarity score is fully deterministic and interpretable:
+
+- **categorical match score** across regime/risk/decision/hypothesis fields
+- **driver overlap score** (Jaccard overlap of top drivers)
+- **numeric closeness score** across concentration/instability/confidence buckets
+- weighted total: `0.5 * categorical + 0.3 * driver_overlap + 0.2 * numeric`
+
+Novelty is conservative:
+
+- novel when either total similarity `< 0.72` **or** driver overlap `< 0.45`
+- if no prior memory exists, mark novel with reason `no_prior_structural_memory`
+- novelty reason always returned for traceability
 
 ## Example flow
 
