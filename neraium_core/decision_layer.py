@@ -488,14 +488,19 @@ def decision_output(
 
     if _response_recommendations_enabled():
         scenario_projections = forecast.get("scenario_projections") if isinstance(forecast, dict) else None
-        out["response_recommendations"] = _response_recommendations(
+        recommendations = _response_recommendations(
             state=state,
             risk_level=risk_level,
             time_to_instability=time_to_instability,
             scenario_projections=scenario_projections,
         )
+        out["operational_recommendation"] = recommendations[0] if recommendations else None
+        out["recommendation_available"] = bool(recommendations)
+        out["response_recommendations"] = recommendations  # deprecated compatibility alias
         out["autonomous_response_enabled"] = True
     else:
+        out["operational_recommendation"] = None
+        out["recommendation_available"] = False
         out["autonomous_response_enabled"] = False
 
     if classification_stability is not None:

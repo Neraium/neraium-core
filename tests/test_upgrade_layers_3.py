@@ -114,7 +114,7 @@ def test_engine_outputs_uncertainty_and_root_cause_chains(monkeypatch):
         assert isinstance(last["root_cause_narrative"], str)
 
 
-def test_engine_outputs_ranked_response_recommendations(monkeypatch):
+def test_engine_outputs_canonical_operational_recommendation(monkeypatch):
     """
     When NERAIUM_AUTONOMOUS_RESPONSE=1, decision layer should emit ranked
     recommendations with risk/cost/time tiers.
@@ -150,6 +150,8 @@ def test_engine_outputs_ranked_response_recommendations(monkeypatch):
         assert last.get("autonomous_response_enabled") is True
         recs = last.get("response_recommendations")
         assert isinstance(recs, list) and recs
-        r0 = recs[0]
+        assert last.get("recommendation_available") is True
+        r0 = last.get("operational_recommendation")
+        assert isinstance(r0, dict)
         for k in ("rank", "risk", "cost_tier", "time_impact_tier", "action_type", "rationale"):
             assert k in r0
