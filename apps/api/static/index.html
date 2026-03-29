@@ -55,8 +55,8 @@
           </button>
           <a href="/dashboard" class="topbar-wordmark">Neraium</a>
           <div class="title-block telemetry-title">
-            <h2 id="pageTitle">SII Dashboard</h2>
-            <p id="pageSubtitle" class="subtitle page-subtitle-truncate">NASA CMAPSS FD004 demonstration workspace</p>
+            <h2 id="pageTitle">Pilot Operations Dashboard</h2>
+            <p id="pageSubtitle" class="subtitle page-subtitle-truncate">Pilot-ready Systemic Infrastructure Intelligence workspace</p>
           </div>
         </div>
         <div class="telemetry-status-strip" aria-label="System telemetry status">
@@ -75,8 +75,8 @@
           <section class="panel sii-hero" aria-label="Systemic Infrastructure Intelligence framing">
             <div class="sii-hero-copy">
               <p class="sii-hero-kicker">Systemic Infrastructure Intelligence</p>
-              <h3>NASA CMAPSS FD004 Demonstration</h3>
-              <p class="subtitle">Run a real historical degradation replay through Neraium’s SII pipeline to surface structural state, relationship drift, pattern memory, and emerging instability.</p>
+              <h3>Pilot-ready Operational Dashboard</h3>
+              <p class="subtitle">Monitor live and pilot telemetry through Neraium’s SII pipeline to surface structural state, relationship drift, pattern memory, and emerging instability. Historical validation replay remains available as a secondary workflow.</p>
             </div>
             <div class="sii-hero-tags" aria-label="SII core signals">
               <span class="chip">Structural State</span>
@@ -86,10 +86,10 @@
             </div>
           </section>
           <div class="dashboard-grid-v2">
-            <section class="panel control-panel" aria-label="Run demonstration controls">
-              <div class="panel-header"><h3>Run Demonstration</h3></div>
-              <div class="control-stack" role="group" aria-label="Demonstration actions">
-                <button id="seedDemoBtn" type="button" class="primary demo-primary-btn">Run NASA CMAPSS FD004 Demo</button>
+            <section class="panel control-panel" aria-label="Operational and reference controls">
+              <div class="panel-header"><h3>Pilot Operations</h3></div>
+              <div class="control-stack" role="group" aria-label="Operational actions">
+                <button id="seedDemoBtn" type="button" class="primary demo-primary-btn">Run NASA CMAPSS FD004 Reference Replay</button>
                 <button id="refreshBtn" type="button" class="secondary control-secondary-btn">Refresh</button>
               </div>
               <div id="demoProgressPanel" class="demo-progress-panel hidden" aria-live="polite">
@@ -101,7 +101,7 @@
                 <p id="demoProgressText" class="subtitle">Waiting for ingest.</p>
               </div>
               <div id="statusMessageRail" class="status-message-rail">
-                <p id="statusMessageText" class="status-message-line">NASA CMAPSS FD004 scenario ready.</p>
+                <p id="statusMessageText" class="status-message-line">Operational workspace ready. Reference replay available.</p>
               </div>
             </section>
 
@@ -212,7 +212,7 @@
             </div>
             <div id="dashboardEmpty" class="empty-state hidden">
               <p>No results for the active run yet.</p>
-              <p class="subtitle">Use <strong>Upload</strong> or <strong>Run NASA CMAPSS Dataset</strong> to begin.</p>
+              <p class="subtitle">Use <strong>Upload</strong> to start pilot monitoring, or run <strong>NASA CMAPSS reference replay</strong> for historical validation.</p>
             </div>
             <div class="table-wrap">
               <table class="data-table dashboard-results-table">
@@ -374,11 +374,11 @@
             <div id="runTransitionStrip" class="timeline-transition-strip hidden"></div>
             <div id="runDetailDemoHero" class="run-detail-demo-hero hidden" role="dialog" aria-modal="true" aria-labelledby="runDetailDemoHeroTitle">
               <div class="run-detail-demo-hero-card">
-                <p class="run-detail-demo-hero-kicker">Demo scenario</p>
-                <h3 id="runDetailDemoHeroTitle">Watch this escalation unfold?</h3>
-                <p class="subtitle">Add <span class="mono-inline">?hero=1</span> to the URL to show this overlay on first visit. Use Play to start the timeline.</p>
+                <p class="run-detail-demo-hero-kicker">Historical validation scenario</p>
+                <h3 id="runDetailDemoHeroTitle">Review this escalation replay?</h3>
+                <p class="subtitle">Add <span class="mono-inline">?hero=1</span> to the URL to show this overlay on first visit. Use replay mode to step through the timeline.</p>
                 <div class="row">
-                  <button type="button" id="runDetailDemoHeroPlayBtn" class="btn-hero-demo">Play demo timeline</button>
+                  <button type="button" id="runDetailDemoHeroPlayBtn" class="btn-hero-demo">Play validation replay</button>
                   <button type="button" id="runDetailDemoHeroDismissBtn" class="secondary">Not now</button>
                 </div>
               </div>
@@ -414,24 +414,24 @@
             <section id="demoPlaybackPanel" class="demo-playback hidden">
               <div class="demo-playback-head">
                 <div class="demo-playback-title-row">
-                  <strong>Timeline playback</strong>
+                  <strong>Historical replay</strong>
                   <span id="demoPlaybackBadge" class="demo-playback-badge" aria-hidden="true"></span>
                 </div>
-                <span id="demoPlaybackProgress" class="subtitle">Demo Mode off</span>
+                <span id="demoPlaybackProgress" class="subtitle">Replay mode off</span>
               </div>
               <div class="demo-playback-bar-wrap" aria-hidden="true">
                 <div id="demoPlaybackBar" class="demo-playback-bar"></div>
               </div>
               <p id="demoPlaybackNarration" class="demo-playback-narration subtitle"></p>
               <div class="row">
-                <button id="demoPlayPauseBtn" type="button" class="secondary">Play timeline</button>
+                <button id="demoPlayPauseBtn" type="button" class="secondary">Play replay</button>
                 <button id="demoReplayBtn" type="button" class="secondary">Replay</button>
               </div>
             </section>
             <section id="demoKeyEventsPanel" class="demo-key-events hidden">
               <div class="panel-header">
                 <h4>Key events</h4>
-                <p class="subtitle">Risk spikes and structural drift changes for fast walkthroughs.</p>
+                <p class="subtitle">Risk spikes and structural drift changes for operator review.</p>
               </div>
               <ul id="demoKeyEventsList" class="demo-key-events-list"></ul>
             </section>
@@ -444,7 +444,7 @@
             </article>
             <div id="runDetailEmpty" class="empty-state hidden">
               <p>No results available for this run.</p>
-              <p class="subtitle">Upload a CSV file or run the NASA CMAPSS FD004 historical run replay to generate results.</p>
+              <p class="subtitle">Upload a CSV file for pilot monitoring, or run NASA CMAPSS FD004 historical replay for validation results.</p>
             </div>
           </section>
 
