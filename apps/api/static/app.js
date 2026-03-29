@@ -1098,28 +1098,40 @@ async function ingestFramesForRun(runId, items, customerId, options = {}) {
   return { count: total, processed: total, run_id: runId };
 }
 
-async function postDemoSeedWithRetry(runId, customerId, payload, options = {}) {
-  const attempts = Math.max(1, Number(options.maxAttempts || 3));
-  let lastErr = null;
-  for (let attempt = 1; attempt <= attempts; attempt += 1) {
-    try {
-      if (attempt > 1) setStatus(`Retrying demo ingest request (${attempt}/${attempts})…`, true, true);
-      return await fetchJson(apiUrl("/demo/seed", tenantScopeParams({ run_id: runId })), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...payload,
-          customer_id: customerId,
-        }),
-      });
-    } catch (err) {
-      lastErr = err;
-      if (attempt < attempts) {
-        await new Promise((resolve) => window.setTimeout(resolve, 350 * attempt));
-      }
+async function startDemoSeedJob(runId, customerId, payload) {
+  return fetchJson(apiUrl("/demo/seed/start", tenantScopeParams({ run_id: runId })), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      ...payload,
+      customer_id: customerId,
+    }),
+  });
+}
+
+async function getDemoSeedJobStatus(jobId) {
+  return fetchJson(apiUrl("/demo/seed/status", tenantScopeParams({ job_id: jobId })), {
+    method: "GET",
+  });
+}
+
+async function waitForDemoSeedJob(jobId, options = {}) {
+  const intervalMs = Math.max(300, Number(options.intervalMs || 900));
+  const timeoutMs = Math.max(60000, Number(options.timeoutMs || 7 * 60 * 1000));
+  const started = Date.now();
+  let lastStatus = null;
+  while (Date.now() - started < timeoutMs) {
+    const status = await getDemoSeedJobStatus(jobId);
+    lastStatus = status;
+    const stateLabel = String(status?.status || "").toLowerCase();
+    if (options.onProgress) options.onProgress(status);
+    if (stateLabel === "complete") return status;
+    if (stateLabel === "error") {
+      throw new Error(String(status?.error || status?.message || "Demo seed failed on server."));
     }
+    await new Promise((resolve) => window.setTimeout(resolve, intervalMs));
   }
-  throw lastErr || new Error("Demo ingest failed after retries.");
+  throw new Error(`Timed out waiting for demo seed job ${jobId}. Last status: ${JSON.stringify(lastStatus || {})}`);
 }
 
 function demoScenarioListForMode(mode) {
@@ -1163,7 +1175,8 @@ async function prepareDemoRuns(options = {}) {
         });
         const run = runEnv.run;
         setLoading(true, "Preparing demo runs…");
-        const out = await postDemoSeedWithRetry(
+        setStatus("Preparing demo run...", true);
+        const started = await startDemoSeedJob(
           run.run_id,
           cust,
           {
@@ -1172,18 +1185,35 @@ async function prepareDemoRuns(options = {}) {
             site_id: scenario.siteId,
             asset_id: scenario.assetId,
           },
-          { maxAttempts: 3 },
         );
-        if (String(out?.status || "ok").toLowerCase() !== "ok") {
-          throw new Error(`Demo seed request failed during cloud ingest${out?.error ? `: ${out.error}` : ""}`);
+        const jobId = String(started?.job_id || "");
+        if (!jobId) {
+          throw new Error("Demo seed did not return a job ID.");
         }
+        const out = await waitForDemoSeedJob(jobId, {
+          intervalMs: 900,
+          onProgress: (job) => {
+            const processed = Number(job?.processed || 0);
+            const totalFrames = Number(job?.total_frames || 120);
+            const percent = Number(job?.progress || 0);
+            setStatus("Seeding telemetry on server...", true);
+            setDemoProgress({
+              visible: true,
+              phase: "Streaming data",
+              current: Math.min(totalFrames, processed || Math.round((totalFrames * percent) / 100)),
+              total: totalFrames,
+              text: `Seeding telemetry on server... (${Math.max(0, Math.min(100, percent))}%)`,
+            });
+          },
+        });
         setDemoProgress({
           visible: true,
           phase: "Rendering model",
           current: idx + 1,
           total: scenarios.length,
-          text: `Seeding telemetry… (${idx + 1}/${scenarios.length})`,
+          text: "Loading structural visualization...",
         });
+        setStatus("Loading structural visualization...", true);
         return run;
       }),
     );
@@ -1211,7 +1241,8 @@ async function prepareDemoRuns(options = {}) {
       state.demo.activeRunId = focusRun.run_id;
     }
     state.demo.prepared = true;
-    setDemoProgress({ visible: true, phase: "Ready", current: scenarios.length, total: scenarios.length, text: "Demo runs ready." });
+    setDemoProgress({ visible: true, phase: "Ready", current: scenarios.length, total: scenarios.length, text: "Demo ready." });
+    setStatus("Demo ready.");
     window.setTimeout(() => setDemoProgress({ visible: false }), 1200);
     return focusRun;
   } finally {
@@ -6670,20 +6701,38 @@ async function seedDemoData() {
   updateActiveRunHeader(run);
   const runId = run.run_id;
   try {
-    setDemoProgress({ visible: true, phase: "Initializing run", current: 0, total: 120, text: "Initializing run" });
-    setLoading(true, "Seeding demo data in cloud…");
-    setDemoProgress({ visible: true, phase: "Streaming data", current: 38, total: 120, text: "Seeding telemetry… (38/120)" });
-    const out = await postDemoSeedWithRetry(
+    setStatus("Preparing demo run...", true);
+    setDemoProgress({ visible: true, phase: "Initializing run", current: 0, total: 120, text: "Preparing demo run..." });
+    setLoading(true, "Preparing demo runs…");
+    const started = await startDemoSeedJob(
       runId,
       customerIdValue(state.tenant.customerId),
       { profile: "sample", minutes: 120, site_id: "demo-site", asset_id: "demo-asset" },
-      { maxAttempts: 3 },
     );
-    if (String(out?.status || "ok").toLowerCase() !== "ok") {
-      throw new Error(`Demo seed request failed during cloud ingest${out?.error ? `: ${out.error}` : ""}`);
+    const jobId = String(started?.job_id || "");
+    if (!jobId) {
+      throw new Error("Demo seed did not return a job ID.");
     }
+    const out = await waitForDemoSeedJob(jobId, {
+      intervalMs: 900,
+      onProgress: (job) => {
+        const processed = Number(job?.processed || 0);
+        const totalFrames = Number(job?.total_frames || 120);
+        const percent = Number(job?.progress || 0);
+        setStatus("Seeding telemetry on server...", true);
+        setDemoProgress({
+          visible: true,
+          phase: "Streaming data",
+          current: Math.min(totalFrames, processed || Math.round((totalFrames * percent) / 100)),
+          total: totalFrames,
+          text: `Seeding telemetry on server... (${Math.max(0, Math.min(100, percent))}%)`,
+        });
+      },
+    });
+    setStatus("Loading structural visualization...", true);
     setDemoProgress({ visible: true, phase: "Ready", current: 120, total: 120, text: "Ready" });
     window.setTimeout(() => setDemoProgress({ visible: false }), 1200);
+    setStatus("Demo ready.");
     return {
       count: Number(out?.processed || 0),
       processed: Number(out?.processed || 0),
@@ -6691,7 +6740,7 @@ async function seedDemoData() {
     };
   } catch (err) {
     setDemoProgress({ visible: false });
-    throw new Error(`Demo ingest failed after retries: ${String(err.message || err)}`);
+    throw new Error(`Demo seed failed: ${String(err.message || err)}`);
   }
 }
 

@@ -211,16 +211,60 @@ def test_operator_workflow_uses_relative_same_origin_fetch_urls(tmp_path) -> Non
     assert "const url = query ? `${path}?${query}` : path;" in source
 
 
-def test_dashboard_demo_seeding_uses_ingest_frame_flow(tmp_path) -> None:
+def test_dashboard_demo_seeding_uses_single_backend_seed_job_flow(tmp_path) -> None:
     client = _client(tmp_path)
     js = client.get("/web/app.js")
     assert js.status_code == 200
     source = js.text
-    assert 'apiUrl("/ingest/frame"' in source
+    assert 'apiUrl("/demo/seed/start"' in source
+    assert 'apiUrl("/demo/seed/status"' in source
     assert "async function seedDemoData()" in source
     seed_block = source.split("async function seedDemoData()", 1)[1].split("function destroyCharts()", 1)[0]
-    assert "ingestFramesForRun(" in seed_block
-    assert "ingestBatchForRun(" not in seed_block
+    assert "startDemoSeedJob(" in seed_block
+    assert "waitForDemoSeedJob(" in seed_block
+    assert "postDemoSeedWithRetry(" not in seed_block
+
+
+def test_demo_seed_async_job_endpoints_return_json_and_seed_real_results(tmp_path) -> None:
+    client = _client(tmp_path)
+    run = client.post(
+        _customer_path("/runs", customer_id="customer-a"),
+        json={"name": "demo-seed-job", "activate": True, "config": {"baseline_window": 5, "recent_window": 3}},
+    )
+    assert run.status_code == 200
+    run_id = run.json()["run"]["run_id"]
+
+    started = client.post(
+        _customer_path(f"/demo/seed/start?run_id={run_id}", customer_id="customer-a"),
+        json={"minutes": 10, "profile": "sample", "site_id": "demo-site", "asset_id": "demo-asset"},
+    )
+    assert started.status_code == 200
+    started_body = started.json()
+    assert started_body["status"] == "started"
+    job_id = started_body["job_id"]
+    assert isinstance(job_id, str) and job_id
+
+    final_status = None
+    for _ in range(80):
+        polled = client.get(_customer_path(f"/demo/seed/status?job_id={job_id}", customer_id="customer-a"))
+        assert polled.status_code == 200
+        body = polled.json()
+        assert "status" in body
+        assert "progress" in body
+        assert "run_id" in body
+        if body["status"] == "complete":
+            final_status = body
+            break
+        if body["status"] == "error":
+            pytest.fail(f"demo seed job failed: {body}")
+        time.sleep(0.05)
+    assert final_status is not None, "demo seed job did not complete in time"
+    assert final_status["processed"] >= 10
+    assert final_status["run_id"] == run_id
+
+    history = client.get(_customer_path(f"/history?run_id={run_id}&limit=5", customer_id="customer-a"))
+    assert history.status_code == 200
+    assert history.json()["count"] >= 1
 
 
 def test_cors_middleware_requires_explicit_origin_configuration(tmp_path, monkeypatch) -> None:
