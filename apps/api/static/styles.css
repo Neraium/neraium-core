@@ -4639,6 +4639,34 @@ textarea {
   margin-top: 0.2rem;
 }
 
+.analysis-run-header {
+  margin-top: 0.5rem;
+  border: 1px solid rgba(139, 170, 220, 0.24);
+  border-radius: 12px;
+  padding: 0.75rem;
+  background: rgba(8, 14, 26, 0.72);
+}
+
+.analysis-run-header-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.6rem;
+}
+
+.analysis-run-header-item {
+  border: 1px solid rgba(117, 148, 196, 0.2);
+  border-radius: 10px;
+  padding: 0.55rem 0.6rem;
+  background: rgba(13, 22, 38, 0.58);
+}
+
+.analysis-run-header-item strong {
+  display: block;
+  margin-top: 0.2rem;
+  color: #e9f1ff;
+  font-size: 0.9rem;
+}
+
 .analysis-map {
   display: flex;
   flex-wrap: wrap;
@@ -4646,25 +4674,33 @@ textarea {
   margin: 0.65rem 0 0.25rem;
   border-bottom: 1px solid rgba(130, 160, 210, 0.2);
   padding-bottom: 0.55rem;
+  position: sticky;
+  top: 92px;
+  z-index: 4;
+  background: rgba(6, 11, 20, 0.9);
+  backdrop-filter: blur(8px);
 }
 
 .analysis-tab {
-  border: 0;
-  border-radius: 8px 8px 0 0;
-  padding: 0.38rem 0.66rem 0.46rem;
+  border: 1px solid rgba(111, 142, 191, 0.34);
+  border-radius: 999px;
+  padding: 0.38rem 0.72rem;
   color: #c8dbff;
   font-size: 0.8rem;
-  background: rgba(70, 98, 145, 0.08);
+  background: rgba(20, 36, 63, 0.42);
   cursor: pointer;
   font-weight: 600;
+  text-decoration: none;
 }
 
 .analysis-tab:hover {
   background: rgba(70, 98, 145, 0.2);
+  text-decoration: none;
 }
 
 .analysis-tab.active {
-  background: rgba(82, 126, 191, 0.28);
+  background: rgba(82, 126, 191, 0.38);
+  border-color: rgba(162, 193, 245, 0.6);
   color: #e6f0ff;
 }
 
@@ -4698,9 +4734,28 @@ textarea {
   .analysis-map {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
+    position: static;
+    background: transparent;
+    backdrop-filter: none;
   }
   .analysis-tab {
     text-align: center;
+  }
+  .analysis-run-header-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 720px) {
+  .analysis-run-header-grid {
+    grid-template-columns: 1fr;
+  }
+  .analysis-run-header-item strong {
+    font-size: 0.86rem;
+  }
+  .telemetry-status-strip .chip {
+    font-size: 11px;
+    padding: 6px 9px;
   }
 }
 

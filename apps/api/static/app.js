@@ -5993,6 +5993,7 @@ function inferErrorContext(message = "") {
   const route = getRoute();
   const page = String(route?.page || "").toLowerCase();
   const text = String(message || "").toLowerCase();
+  if (text.includes("geometry") || text.includes("structural view")) return "geometry";
   if (page === "upload" || text.includes("ingest") || text.includes("upload") || text.includes("csv")) return "ingest";
   if (page === "validation" || state.demo.enabled || text.includes("replay") || text.includes("demo")) return "replay";
   return "analysis";
@@ -6001,12 +6002,14 @@ function inferErrorContext(message = "") {
 function deriveOperationalStatus({ latest = null, isError = false } = {}) {
   const route = getRoute();
   const page = String(route?.page || "").toLowerCase();
+  const replayContext = page === "validation" || (state.demo.enabled && (page === "run-detail" || page === "runs"));
   if (isError) {
-    if (page === "validation" || state.demo.enabled) return "VALIDATION RUN";
+    if (replayContext) return "HISTORICAL VALIDATION";
     return "ANALYSIS ERROR";
   }
   if (page === "validation") return "VALIDATION RUN";
-  if (state.demo.enabled && (page === "run-detail" || page === "runs")) return "REPLAY ACTIVE";
+  if (state.demo.enabled && page === "run-detail") return "REPLAY ACTIVE";
+  if (state.demo.enabled && page === "runs") return "HISTORICAL VALIDATION";
   const alertStatus = state.dashboardCurrentAlertStatus || (latest && latest.alert_status) || null;
   const alertState = String(alertStatus?.state || alertStatus?.alert_state || "").toUpperCase();
   const hasActiveAlert = Boolean(alertStatus?.alert_active) || alertState === "ESCALATED" || alertState === "PENDING_ALERT";
@@ -6151,11 +6154,6 @@ function activateAnalysisWorkspaceTab(tabName = "executive") {
   qsa("[data-analysis-tab]").forEach((btn) => {
     const active = btn.getAttribute("data-analysis-tab") === target;
     btn.classList.toggle("active", active);
-    btn.setAttribute("aria-selected", active ? "true" : "false");
-  });
-  qsa("[data-analysis-panel]").forEach((panel) => {
-    const visible = panel.getAttribute("data-analysis-panel") === target;
-    panel.classList.toggle("hidden", !visible);
   });
 }
 
@@ -6163,11 +6161,48 @@ function initAnalysisWorkspaceTabs() {
   const tabs = qsa("[data-analysis-tab]");
   if (!tabs.length) return;
   tabs.forEach((tab) => {
-    tab.addEventListener("click", () => {
-      activateAnalysisWorkspaceTab(tab.getAttribute("data-analysis-tab") || "executive");
+    tab.addEventListener("click", (event) => {
+      const target = tab.getAttribute("data-analysis-tab") || "executive";
+      activateAnalysisWorkspaceTab(target);
+      const href = tab.getAttribute("href");
+      if (href && href.startsWith("#")) {
+        const section = qs(href);
+        if (section) {
+          event.preventDefault();
+          section.scrollIntoView({ behavior: "smooth", block: "start" });
+        }
+      }
     });
   });
   activateAnalysisWorkspaceTab("executive");
+}
+
+function renderRunDetailHeaderContext(run, latest) {
+  const modeEl = qs("#runDetailModeLabel");
+  const statusEl = qs("#runDetailStatusLabel");
+  const updateEl = qs("#runDetailLastUpdate");
+  const recEl = qs("#runDetailRecommendationContext");
+  const isReplay = Boolean(state.demo.enabled);
+  const risk = normalizeRiskLevel(latest?.risk_level);
+  const recommendation = String(latest?.operator_message || "").trim();
+  const ts = latest?.timestamp || latest?.persisted_at || latest?.created_at || "";
+  if (modeEl) modeEl.textContent = isReplay ? "Validation replay" : "Pilot telemetry";
+  if (statusEl) {
+    if (!latest) statusEl.textContent = isReplay ? "Historical validation" : "Waiting for telemetry";
+    else statusEl.textContent = isReplay ? "Replay active" : "Active monitoring";
+  }
+  if (updateEl) updateEl.textContent = ts ? String(ts) : "No data yet";
+  if (recEl) {
+    if (!latest) recEl.textContent = isReplay
+      ? "Validation replay ready. Start NASA CMAPSS playback when ready."
+      : "Upload telemetry to begin structural analysis.";
+    else if (recommendation) recEl.textContent = recommendation;
+    else recEl.textContent = risk === "HIGH"
+      ? "Alert context: high-risk structural behavior detected."
+      : risk === "MEDIUM"
+        ? "Watch context: moderate drift and instability detected."
+        : "Monitoring context: no immediate intervention recommended.";
+  }
 }
 
 function updateUploadRunInfo() {
@@ -7405,6 +7440,9 @@ function syncStructuralFlowTimeline(points, latestResultId = null) {
 function renderRunDetailFromState() {
   setFlowModeButtonState();
   const hasResults = state.runRecent.length > 0;
+  const latestResult = hasResults ? state.runRecent[0] : null;
+  setConnectionStatus(deriveOperationalStatus({ latest: latestResult }));
+  renderRunDetailHeaderContext(state.activeRun, latestResult);
   const runDetailEmpty = qs("#runDetailEmpty");
   const geomPanel = qs(".geometry-panel");
   if (runDetailEmpty) {
@@ -7490,7 +7528,7 @@ async function loadRunDetail(runId) {
   const title = qs("#runDetailTitle");
   const meta = qs("#runDetailMeta");
   if (title) title.textContent = `Run analysis · ${run.name}`;
-  if (meta) meta.textContent = `Run ${run.run_id} · status ${run.status} · created ${run.created_at} · analysis workspace`;
+  if (meta) meta.textContent = `Run ${run.run_id} · ${state.demo.enabled ? "validation replay workspace" : "pilot telemetry workspace"} · created ${run.created_at}`;
   const recentEnv = await fetchRecentResults({ run_id: runId, limit: 1000 });
   state.runRecent = Array.isArray(recentEnv?.results) ? recentEnv.results : [];
   if (state.demo.enabled) {
@@ -7544,7 +7582,7 @@ async function loadRunDetail(runId) {
       : null;
   scheduleHeavyWork(() => {
     loadRunGeometry(runId, resultIdForGeometry).catch((_err) => {
-      setStatus("Geometry load delayed. Retry refresh if needed.", true, true);
+      setGeometrySurfaceState("Structural view is unavailable for the current snapshot.", "error");
     });
   });
 
