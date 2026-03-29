@@ -3,8 +3,8 @@
 Neraium SII - comparative A/B/C/D benchmark (Colab-friendly, single file).
 
 Nodes (comparative structure preserved):
-  A = Control      - full SII structural pipeline, no GAL-2 timing channel
-  B = GAL-2        - temporal coherence from GAL-2-informed timestamps (isolated)
+  A = Control      - full SII structural pipeline, no AUX-TIME timing channel
+  B = AUX-TIME        - temporal coherence from AUX-TIME-informed timestamps (isolated)
   C = Raw          - minimal relational processing; volatility-forward instability
   D = Combined     - explicit fusion of structural SII + temporal intelligence
 
@@ -13,14 +13,14 @@ Explicit pipeline stages (see class section markers):
   structural feature extraction
   relational / coupling extraction
   regime memory
-  temporal coherence (GAL-2 traceable where applicable)
+  temporal coherence (AUX-TIME traceable where applicable)
   variant enhancement layer
   confidence estimation
   state decision
   stability estimation (composite, from observed runs - no per-variant score hacks)
   attribution / explanation
 
-GAL-2: os.environ["GAL2_API_KEY"], os.environ.get("GAL2_TIME_URL", ...)
+AUX-TIME: os.environ["AUX_TIME_API_KEY"], os.environ.get("AUX_TIME_TIME_URL", ...)
 """
 
 from __future__ import annotations
@@ -57,7 +57,7 @@ from neraium_core.staged_pipeline import (
     RelationalInstabilityStage,
     StructuralDriftStage,
     TemporalCoherenceStage,
-    adaptive_gal2_fusion_coherence,
+    adaptive_aux_time_fusion_coherence,
     clamp,
     decide_state_with_calibration,
     decision_adjusted_score,
@@ -103,10 +103,10 @@ OUTPUT_VERDICT_CSV = "upgraded_multinode_test_verdict.csv"
 CALIBRATION_PATH = "benchmark_calibration.json"
 
 # Variant keys (semantic)
-# A=Control SII, B=GAL-2 temporal, C=raw/minimal, D=combined fusion
+# A=Control SII, B=AUX-TIME temporal, C=raw/minimal, D=combined fusion
 NODE_VARIANTS: Dict[str, str] = {
     "A": "control_sii",
-    "B": "gal2_temporal",
+    "B": "aux_time_temporal",
     "C": "raw_telemetry",
     "D": "combined_fusion",
 }
@@ -314,12 +314,12 @@ def build_condition_metrics(df_rows: pd.DataFrame, condition: str) -> dict[str, 
         "baseline_behavioral_stability": baseline_behavioral_stability,
         "nominal_behavioral_stability": nominal_behavioral_stability,
         "baseline_stability_A_control": per_node_baseline_strict["A"],
-        "baseline_stability_B_gal2": per_node_baseline_strict["B"],
+        "baseline_stability_B_aux_time": per_node_baseline_strict["B"],
         "baseline_stability_C_raw": per_node_baseline_strict["C"],
         "baseline_stability_D_combined": per_node_baseline_strict["D"],
         "recovery_quality": recovery_quality,
         "recovery_stability_A_control": per_node_recovery_strict["A"],
-        "recovery_stability_B_gal2": per_node_recovery_strict["B"],
+        "recovery_stability_B_aux_time": per_node_recovery_strict["B"],
         "recovery_stability_C_raw": per_node_recovery_strict["C"],
         "recovery_stability_D_combined": per_node_recovery_strict["D"],
         "nominal_consistency_mean": nominal_consistency_mean,
@@ -343,7 +343,7 @@ def build_condition_metrics(df_rows: pd.DataFrame, condition: str) -> dict[str, 
         "mean_raw_minimal_path_score_all_nodes": _safe_mean(s["raw_minimal_path_score"].astype(float)),
         "mean_timestamp_irregularity": _safe_mean(s["timestamp_irregularity"].astype(float)),
         "recall_A_control": recalls["A"],
-        "recall_B_gal2": recalls["B"],
+        "recall_B_aux_time": recalls["B"],
         "recall_C_raw": recalls["C"],
         "recall_D_combined": recalls["D"],
     }
@@ -583,24 +583,24 @@ class NodeNominalModel:
 
 
 # =============================================================================
-# 2) GAL-2 temporal channel (isolated from structural drift)
+# 2) AUX-TIME temporal channel (isolated from structural drift)
 # =============================================================================
-def _get_gal2_time() -> float | None:
-    api_key = os.getenv("GAL2_API_KEY")
-    url = os.getenv("GAL2_TIME_URL", "https://api-v2.gal-2.com/time")
+def _get_aux_time_time() -> float | None:
+    api_key = os.getenv("AUX_TIME_API_KEY")
+    url = os.getenv("AUX_TIME_TIME_URL", "https://api-v2.aux-time.com/time")
     if not api_key:
         return None
     try:
         req = urllib.request.Request(url, headers={"x-api-key": api_key})
         with urllib.request.urlopen(req, timeout=5) as resp:
             data = json.loads(resp.read().decode())
-            t = data.get("time") or data.get("gal2_time")
+            t = data.get("time") or data.get("aux_time_time")
             return float(t) if t is not None else None
     except Exception:
         return None
 
 
-def gal2_timing_distortion_index(ts_recent: list[float] | None, expected_dt: float = 1.0) -> float:
+def aux_time_timing_distortion_index(ts_recent: list[float] | None, expected_dt: float = 1.0) -> float:
     """
     Scalar in [0,1]: how distorted timing is vs uniform spacing, independent of sensor drift.
     Does not inflate structural scores; used for temporal coherence / confidence only.
@@ -615,7 +615,7 @@ def gal2_timing_distortion_index(ts_recent: list[float] | None, expected_dt: flo
 
 
 def temporal_coherence_score(distortion_index: float) -> float:
-    """High when timing is coherent; GAL-2 jitter lowers this without touching raw sensor drift."""
+    """High when timing is coherent; AUX-TIME jitter lowers this without touching raw sensor drift."""
     return float(clamp(1.0 - distortion_index, 0.0, 1.0))
 
 
@@ -641,7 +641,7 @@ def stage_structural_and_relational(
 
     Variant paths differ by modeling assumptions, not post-hoc thresholds:
       - control_sii / combined_fusion: calibrated normalized geometry + coupling
-      - gal2_temporal: same structural core as control (temporal channel diverges later)
+      - aux_time_temporal: same structural core as control (temporal channel diverges later)
       - raw_telemetry: minimally processed absolute relational geometry
     """
     raw_s, norm_s = StructuralDriftStage.score(feats, bp)
@@ -662,7 +662,7 @@ def build_variant_regime_signature(
     variant: str,
     feats: dict[str, Any],
     norm_temp: float,
-    gal2_distortion: float,
+    aux_time_distortion: float,
     temporal_coh: float,
 ) -> np.ndarray:
     """Variant-specific regime signature to enforce architectural separation."""
@@ -674,14 +674,14 @@ def build_variant_regime_signature(
     external_sig = np.asarray(
         [
             float(max(0.0, norm_temp)),
-            float(max(0.0, gal2_distortion)),
+            float(max(0.0, aux_time_distortion)),
             float(max(0.0, 1.0 - temporal_coh)),
         ],
         dtype=float,
     )
     if variant == "control_sii":
         return structural_sig
-    if variant == "gal2_temporal":
+    if variant == "aux_time_temporal":
         return external_sig
     if variant == "raw_telemetry":
         return np.concatenate([rec_mean, rec_std], dtype=float)
@@ -699,7 +699,7 @@ def stage_temporal_raw(ts_recent: list[float] | None, bp: NodeBaselineProfile) -
 
 
 # =============================================================================
-# 4) Variant enhancement: isolate GAL-2; fuse Combined; keep Control clean
+# 4) Variant enhancement: isolate AUX-TIME; fuse Combined; keep Control clean
 # =============================================================================
 def control_sii_instability(comp: dict[str, float]) -> float:
     """Control path: structural SII only (no external timing channel)."""
@@ -721,13 +721,13 @@ def _saturating_score(x: float) -> float:
 def external_context_instability(
     *,
     temporal_distortion: float,
-    gal2_distortion: float,
+    aux_time_distortion: float,
     timestamp_irregularity: float,
     temporal_coherence: float,
 ) -> float:
     """Variant-1 path: external timing/context risk only."""
     coherence_loss = 1.0 - float(clamp(temporal_coherence, 0.0, 1.0))
-    cross_channel_disagreement = abs(float(gal2_distortion) - float(timestamp_irregularity))
+    cross_channel_disagreement = abs(float(aux_time_distortion) - float(timestamp_irregularity))
     terms = [
         _saturating_score(float(temporal_distortion)),
         _saturating_score(float(coherence_loss)),
@@ -751,9 +751,9 @@ def raw_minimal_instability(
     return float(np.mean(np.asarray(terms, dtype=float)))
 
 
-def adaptive_gal2_fusion_enabled() -> bool:
-    """NERAIUM_ADAPTIVE_GAL2_FUSION=0|false disables adaptive GAL-2 calibration for A/B evaluation."""
-    return os.environ.get("NERAIUM_ADAPTIVE_GAL2_FUSION", "1").strip().lower() not in (
+def adaptive_aux_time_fusion_enabled() -> bool:
+    """NERAIUM_ADAPTIVE_AUX_TIME_FUSION=0|false disables adaptive AUX-TIME calibration for A/B evaluation."""
+    return os.environ.get("NERAIUM_ADAPTIVE_AUX_TIME_FUSION", "1").strip().lower() not in (
         "0",
         "false",
         "no",
@@ -763,13 +763,13 @@ def adaptive_gal2_fusion_enabled() -> bool:
 
 def effective_fusion_coherence(
     temporal_coh: float,
-    gal2_isolated_distortion: float,
+    aux_time_isolated_distortion: float,
     phase: str,
 ) -> float:
     """Coherence factor used in Combined fusion multiplicative terms."""
-    if phase == "perturbation" and adaptive_gal2_fusion_enabled():
-        return adaptive_gal2_fusion_coherence(
-            temporal_coh, gal2_isolated_distortion, enabled=True
+    if phase == "perturbation" and adaptive_aux_time_fusion_enabled():
+        return adaptive_aux_time_fusion_coherence(
+            temporal_coh, aux_time_isolated_distortion, enabled=True
         )
     return float(temporal_coh)
 
@@ -790,8 +790,8 @@ def combined_fusion_instability(
     """
     structural = float(comp.get("sii_structural_path_score", 0.0))
     external = float(comp.get("external_context_path_score", 0.0))
-    gal2_d = float(comp.get("gal2_isolated_distortion", 0.0))
-    coh_fuse = effective_fusion_coherence(temporal_coh, gal2_d, phase)
+    aux_time_d = float(comp.get("aux_time_isolated_distortion", 0.0))
+    coh_fuse = effective_fusion_coherence(temporal_coh, aux_time_d, phase)
     loc_gate = float(clamp(loc, 0.0, 1.0))
 
     # Harmonic term enforces joint evidence: either weak branch lowers fused score.
@@ -813,7 +813,7 @@ def apply_variant_enhancement(
     norm_temp: float,
     norm_graph: float,
     norm_structural_coherence_loss: float,
-    gal2_distortion: float,
+    aux_time_distortion: float,
     temporal_coh: float,
     dq: dict[str, Any],
 ) -> dict[str, float]:
@@ -822,7 +822,7 @@ def apply_variant_enhancement(
 
     Distinct architectural paths:
       - control_sii: SII structural model only
-      - gal2_temporal: external/context temporal model only
+      - aux_time_temporal: external/context temporal model only
       - raw_telemetry: minimally processed raw model
       - combined_fusion: explicit structural + external fusion model
     """
@@ -833,10 +833,10 @@ def apply_variant_enhancement(
         "temporal_distortion": float(norm_temp),
         "graph_deformation": float(norm_graph),
         "structural_coherence_loss": float(norm_structural_coherence_loss),
-        "gal2_isolated_distortion": float(gal2_distortion),
+        "aux_time_isolated_distortion": float(aux_time_distortion),
         "timestamp_irregularity": float(dq["timestamp_irregularity"]),
         "sensor_coverage": float(dq["sensor_coverage"]),
-        "gal2_trace": 0.0,
+        "aux_time_trace": 0.0,
         "fusion_structural_weight": 0.0,
         "fusion_temporal_weight": 0.0,
         "sii_structural_path_score": 0.0,
@@ -848,7 +848,7 @@ def apply_variant_enhancement(
     out["sii_structural_path_score"] = control_sii_instability(out)
     out["external_context_path_score"] = external_context_instability(
         temporal_distortion=out["temporal_distortion"],
-        gal2_distortion=out["gal2_isolated_distortion"],
+        aux_time_distortion=out["aux_time_isolated_distortion"],
         timestamp_irregularity=out["timestamp_irregularity"],
         temporal_coherence=temporal_coh,
     )
@@ -861,16 +861,16 @@ def apply_variant_enhancement(
     if variant == "control_sii":
         out["variant_path_signature"] = "control_structural_only"
 
-    elif variant == "gal2_temporal":
+    elif variant == "aux_time_temporal":
         out["variant_path_signature"] = "external_temporal_context_only"
-        out["gal2_trace"] = 1.0 if condition == "disturbed_time" else 0.0
+        out["aux_time_trace"] = 1.0 if condition == "disturbed_time" else 0.0
 
     elif variant == "raw_telemetry":
         out["variant_path_signature"] = "raw_minimal_processing"
 
     elif variant == "combined_fusion":
         out["variant_path_signature"] = "explicit_structural_external_fusion"
-        out["gal2_trace"] = 1.0 if condition == "disturbed_time" else 0.0
+        out["aux_time_trace"] = 1.0 if condition == "disturbed_time" else 0.0
         total = out["sii_structural_path_score"] + out["external_context_path_score"]
         if total > 1e-9:
             out["fusion_structural_weight"] = out["sii_structural_path_score"] / total
@@ -984,9 +984,9 @@ def coherent_timestamps(n_steps: int) -> tuple[list[str], bool]:
 
 
 def disturbed_timestamps(n_steps: int, rng: np.random.Generator) -> tuple[list[str], bool]:
-    gal2_base = _get_gal2_time()
-    if gal2_base is not None:
-        base = np.array([gal2_base + i for i in range(n_steps)], dtype=float)
+    aux_time_base = _get_aux_time_time()
+    if aux_time_base is not None:
+        base = np.array([aux_time_base + i for i in range(n_steps)], dtype=float)
         used = True
     else:
         base = np.linspace(0, n_steps - 1, n_steps, dtype=float)
@@ -1026,7 +1026,7 @@ def generate_sensors(
     phase = phase_for_step(step)
     # Defensible path diversity (not metric constants): timing/coupling micro-jitter vs fusion stack
     if phase != "perturbation":
-        if variant == "gal2_temporal":
+        if variant == "aux_time_temporal":
             s2 += 0.014 * float(rng.normal(0.0, 1.0))
         elif variant == "combined_fusion":
             s2 += 0.006 * float(rng.normal(0.0, 1.0))
@@ -1083,7 +1083,7 @@ def summarize_fusion_coherence_lift(
     """
     Behavioral robustness diagnostic: how much adaptive fusion raises effective coherence
     in perturbation (node D). Spread (disturbed − coherent) is near 0 when adaptive is off;
-    positive when disturbance drives low tc + meaningful GAL-2 distortion (structurally expected).
+    positive when disturbance drives low tc + meaningful AUX-TIME distortion (structurally expected).
     """
     if not samples:
         return {
@@ -1113,14 +1113,14 @@ def run_benchmark() -> tuple[
 ]:
     rng_time = np.random.default_rng(SEED + 11)
     timestamps_by_condition: dict[str, list[str]] = {}
-    gal2_used_by_condition: dict[str, bool] = {}
+    aux_time_used_by_condition: dict[str, bool] = {}
     for condition in CONDITIONS:
         if condition == "coherent_time":
             ts, used = coherent_timestamps(N_STEPS)
         else:
             ts, used = disturbed_timestamps(N_STEPS, rng_time)
         timestamps_by_condition[condition] = ts
-        gal2_used_by_condition[condition] = used
+        aux_time_used_by_condition[condition] = used
 
     rows: list[dict[str, Any]] = []
     node_summaries: list[dict[str, Any]] = []
@@ -1175,8 +1175,8 @@ def run_benchmark() -> tuple[
                 if rt.baseline_profile.corr_baseline is None:
                     rt.baseline_profile.corr_baseline = feats["corr_base"].copy()
 
-                gal2_d = gal2_timing_distortion_index(ts_recent, expected_dt=1.0)
-                t_coh = temporal_coherence_score(gal2_d)
+                aux_time_d = aux_time_timing_distortion_index(ts_recent, expected_dt=1.0)
+                t_coh = temporal_coherence_score(aux_time_d)
 
                 raw_s, raw_r, norm_s, norm_r = stage_structural_and_relational(feats, rt.baseline_profile, variant)
                 raw_temp, norm_temp = stage_temporal_raw(ts_recent, rt.baseline_profile)
@@ -1184,7 +1184,7 @@ def run_benchmark() -> tuple[
                     variant=variant,
                     feats=feats,
                     norm_temp=norm_temp,
-                    gal2_distortion=gal2_d,
+                    aux_time_distortion=aux_time_d,
                     temporal_coh=t_coh,
                 )
                 regime_distance = stage_regime(rt, regime_sig)
@@ -1214,7 +1214,7 @@ def run_benchmark() -> tuple[
                     norm_temp=norm_temp,
                     norm_graph=graph_deformation_norm,
                     norm_structural_coherence_loss=structural_coherence_loss,
-                    gal2_distortion=gal2_d,
+                    aux_time_distortion=aux_time_d,
                     temporal_coh=t_coh,
                     dq=dq,
                 )
@@ -1229,7 +1229,7 @@ def run_benchmark() -> tuple[
 
                 if variant == "control_sii":
                     inst = float(comp.get("sii_structural_path_score", 0.0))
-                elif variant == "gal2_temporal":
+                elif variant == "aux_time_temporal":
                     inst = float(comp.get("external_context_path_score", 0.0))
                 elif variant == "raw_telemetry":
                     inst = float(comp.get("raw_minimal_path_score", 0.0))
@@ -1272,7 +1272,7 @@ def run_benchmark() -> tuple[
                     "relational_instability_score": raw_r,
                     "regime_distance": float(regime_distance),
                     "temporal_distortion_score": raw_temp,
-                    "gal2_timing_distortion_index": gal2_d,
+                    "aux_time_timing_distortion_index": aux_time_d,
                     "temporal_coherence_score": t_coh,
                     "nominal_consistency_score": ncs,
                     "baseline_deviation_zscore": bdz,
@@ -1328,15 +1328,15 @@ def run_benchmark() -> tuple[
                         tc = float(p["temporal_coherence_score"])
                         gd = float(
                             p["components"].get(
-                                "gal2_isolated_distortion",
-                                p["gal2_timing_distortion_index"],
+                                "aux_time_isolated_distortion",
+                                p["aux_time_timing_distortion_index"],
                             )
                         )
                         coh_eff = effective_fusion_coherence(tc, gd, phase)
                         fusion_coherence_lift_samples.append((condition, coh_eff - tc))
                 elif variant == "control_sii":
                     adj = float(p["components"].get("sii_structural_path_score", p["latest_instability"]))
-                elif variant == "gal2_temporal":
+                elif variant == "aux_time_temporal":
                     adj = float(p["components"].get("external_context_path_score", p["latest_instability"]))
                 elif variant == "raw_telemetry":
                     adj = float(p["components"].get("raw_minimal_path_score", p["latest_instability"]))
@@ -1393,7 +1393,7 @@ def run_benchmark() -> tuple[
                     driver_hist[node].append(str(dom))
                 p["explanation"] = (
                     f"{state} [{variant}] ({p['components'].get('variant_path_signature', 'unknown')}): {msg} "
-                    f"(t_coh={p['temporal_coherence_score']:.3f}, gal2_d={p['gal2_timing_distortion_index']:.3f}, "
+                    f"(t_coh={p['temporal_coherence_score']:.3f}, aux_time_d={p['aux_time_timing_distortion_index']:.3f}, "
                     f"sii={p['components'].get('sii_structural_path_score', 0.0):.3f}, "
                     f"ext={p['components'].get('external_context_path_score', 0.0):.3f}, "
                     f"raw={p['components'].get('raw_minimal_path_score', 0.0):.3f})"
@@ -1433,7 +1433,7 @@ def run_benchmark() -> tuple[
                         "raw_minimal_path_score": round(float(p["components"].get("raw_minimal_path_score", 0.0)), 6),
                         "temporal_distortion_score": round(float(p["temporal_distortion_score"]), 6),
                         "temporal_coherence_score": round(float(p["temporal_coherence_score"]), 6),
-                        "gal2_timing_distortion_index": round(float(p["gal2_timing_distortion_index"]), 6),
+                        "aux_time_timing_distortion_index": round(float(p["aux_time_timing_distortion_index"]), 6),
                         "nominal_consistency_score": round(float(p["nominal_consistency_score"]), 6),
                         "baseline_deviation_zscore": round(float(p["baseline_deviation_zscore"]), 6),
                         "decision_adjusted_score": round(float(p["decision_adjusted_score"]), 6),
@@ -1679,7 +1679,7 @@ def run_benchmark() -> tuple[
         df_metrics,
         df_phase_conf,
         df_diagnostics,
-        gal2_used_by_condition,
+        aux_time_used_by_condition,
         fusion_coherence_stats,
     )
 
@@ -1694,7 +1694,7 @@ def _warmup_row(ts: str, condition: str, node: str, phase: str) -> dict[str, Any
         "relational_instability_score": 0.0,
         "regime_distance": 0.0,
         "temporal_distortion_score": 0.0,
-        "gal2_timing_distortion_index": 0.0,
+        "aux_time_timing_distortion_index": 0.0,
         "temporal_coherence_score": 0.0,
         "nominal_consistency_score": 0.5,
         "baseline_deviation_zscore": 0.0,
@@ -1729,7 +1729,7 @@ def write_outputs(
     df_verdict: pd.DataFrame,
     df_phase_conf: pd.DataFrame,
     df_diagnostics: pd.DataFrame,
-    gal2_used_by_condition: dict[str, bool],
+    aux_time_used_by_condition: dict[str, bool],
     fusion_coherence_stats: dict[str, float],
     overall_verdict: dict[str, Any],
     separation_metrics: dict[str, float],
@@ -1742,7 +1742,7 @@ def write_outputs(
     df_diagnostics.to_csv(OUTPUT_DIAGNOSTICS_CSV, index=False)
     out_json = {
         "description": (
-            "Neraium SII comparative benchmark: node-specific nominal modeling, GAL-2 isolation, "
+            "Neraium SII comparative benchmark: node-specific nominal modeling, AUX-TIME isolation, "
             "and operational_stability_index computed from observed nominal-window behavior (no per-variant anchor hacks)."
         ),
         "nodes": NODES,
@@ -1755,10 +1755,10 @@ def write_outputs(
             "recovery_start": RECOVERY_START,
         },
         "engine": {"baseline_window": BASELINE_WINDOW, "recent_window": RECENT_WINDOW},
-        "gal2_api_configured": bool(os.getenv("GAL2_API_KEY")),
-        "gal2_time_url": os.getenv("GAL2_TIME_URL", "https://api-v2.gal-2.com/time"),
-        "gal2_used_for_disturbed_time": bool(gal2_used_by_condition.get("disturbed_time", False)),
-        "adaptive_gal2_fusion_enabled": adaptive_gal2_fusion_enabled(),
+        "aux_time_api_configured": bool(os.getenv("AUX_TIME_API_KEY")),
+        "aux_time_time_url": os.getenv("AUX_TIME_TIME_URL", "https://api-v2.aux-time.com/time"),
+        "aux_time_used_for_disturbed_time": bool(aux_time_used_by_condition.get("disturbed_time", False)),
+        "adaptive_aux_time_fusion_enabled": adaptive_aux_time_fusion_enabled(),
         "fusion_coherence_robustness": fusion_coherence_stats,
         "coherent_vs_disturbed_mean_operational_stability_gap": coherent_disturbed_operational_gap(df_metrics),
         "coherent_vs_disturbed_separation_metrics": separation_metrics,
@@ -1905,7 +1905,7 @@ def main() -> int:
         df_metrics,
         df_phase_conf,
         df_diagnostics,
-        gal2_used,
+        aux_time_used,
         fusion_coherence_stats,
     ) = run_benchmark()
     calibration = load_benchmark_calibration(CALIBRATION_PATH)
@@ -1922,7 +1922,7 @@ def main() -> int:
         df_verdict,
         df_phase_conf,
         df_diagnostics,
-        gal2_used,
+        aux_time_used,
         fusion_coherence_stats,
         overall_verdict,
         separation_metrics,

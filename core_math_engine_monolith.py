@@ -1492,27 +1492,27 @@ def decision_adjusted_score(instability: float, confidence: float, localization:
     return DecisionStage.adjusted_instability(instability, confidence, localization)
 
 
-def adaptive_gal2_fusion_coherence(
+def adaptive_aux_time_fusion_coherence(
     temporal_coherence: float,
-    gal2_timing_distortion_index: float,
+    aux_time_timing_distortion_index: float,
     *,
     enabled: bool = True,
 ) -> float:
     """
-    Adaptive GAL-2 calibration for SII+GAL-2 *fusion* paths.
+    Adaptive AUX-TIME calibration for SII+AUX-TIME *fusion* paths.
 
-    Under disturbed clocks, raw temporal_coherence is often low while GAL-2 still reports
+    Under disturbed clocks, raw temporal_coherence is often low while AUX-TIME still reports
     meaningful timing distortion. Multiplicative fusion terms (instability × coherence) then
     collapse and the Combined lane is underpowered. This blends in a bounded, distortion-driven
     coupling term: higher distortion raises effective coherence only where coherence was weak,
     preserving strong-coherent regimes unchanged.
 
-    Toggle at call sites (e.g. env NERAIUM_ADAPTIVE_GAL2_FUSION) - not a global threshold hack.
+    Toggle at call sites (e.g. env NERAIUM_ADAPTIVE_AUX_TIME_FUSION) - not a global threshold hack.
     """
     if not enabled:
         return float(clamp(temporal_coherence, 0.0, 1.0))
     tc = float(clamp(temporal_coherence, 0.0, 1.0))
-    g = float(clamp(gal2_timing_distortion_index, 0.0, 1.0))
+    g = float(clamp(aux_time_timing_distortion_index, 0.0, 1.0))
     # Distortion acts as a second, complementary signal when coherence alone is pessimistic
     return float(clamp(tc + 0.45 * g * (1.0 - tc), 0.0, 1.0))
 

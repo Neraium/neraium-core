@@ -179,9 +179,9 @@
       "baseline_window": 50,
       "recent_window": 12
     },
-    "gal2_api_configured": true,
-    "gal2_time_url": "https://api-v2.gal-2.com/time",
-    "gal2_used_for_disturbed_time": true,
+    "aux_time_api_configured": true,
+    "aux_time_time_url": "https://api-v2.aux-time.com/time",
+    "aux_time_used_for_disturbed_time": true,
     "aggregate_metrics": [
       {
         "condition": "coherent_time",

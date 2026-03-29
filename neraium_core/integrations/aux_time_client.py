@@ -7,7 +7,7 @@ from dataclasses import dataclass
 from typing import Any, Callable
 from urllib import error, request
 
-GAL2_TIME_URL = "https://api-v2.gal-2.com/time"
+AUX_TIME_TIME_URL = "https://api-v2.aux-time.com/time"
 
 
 Gal2Payload = dict[str, Any]
@@ -17,7 +17,7 @@ def unavailable_payload(reason: str) -> Gal2Payload:
     return {
         "available": False,
         "reason": reason,
-        "gal2_time": None,
+        "aux_time_time": None,
         "drift_ms": None,
         "wobble_ms": None,
         "live_ms": None,
@@ -26,7 +26,7 @@ def unavailable_payload(reason: str) -> Gal2Payload:
 
 
 @dataclass
-class GAL2Client:
+class AUX_TIMEClient:
     timeout_seconds: float = 3.0
     max_attempts: int = 3
     cache_ms: int = 0
@@ -36,9 +36,9 @@ class GAL2Client:
     _cache_expiration_epoch_ms: float = 0.0
 
     def _headers(self) -> dict[str, str]:
-        api_key = os.getenv("GAL2_KEY")
+        api_key = os.getenv("AUX_TIME_KEY")
         if not api_key:
-            raise RuntimeError("GAL2_KEY is not set")
+            raise RuntimeError("AUX_TIME_KEY is not set")
         return {
             "x-api-key": api_key,
             "Accept": "application/json",
@@ -51,7 +51,7 @@ class GAL2Client:
         return {
             "available": True,
             "reason": None,
-            "gal2_time": payload.get("gal2_time"),
+            "aux_time_time": payload.get("aux_time_time"),
             "drift_ms": payload.get("drift_ms"),
             "wobble_ms": payload.get("wobble_ms"),
             "live_ms": payload.get("live_ms"),
@@ -61,7 +61,7 @@ class GAL2Client:
         }
 
     def _get_from_api(self) -> Gal2Payload:
-        req = request.Request(GAL2_TIME_URL, headers=self._headers(), method="GET")
+        req = request.Request(AUX_TIME_TIME_URL, headers=self._headers(), method="GET")
 
         for attempt in range(1, self.max_attempts + 1):
             try:

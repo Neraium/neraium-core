@@ -13,7 +13,7 @@ from neraium_core.fd004_transition import (
     save_transition_artifacts,
     summarize_fd004_transitions,
 )
-from neraium_core.integrations.gal2_client import GAL2Client, unavailable_payload
+from neraium_core.integrations.aux_time_client import AUX_TIMEClient, unavailable_payload
 from run_engine import StructuralEngine
 
 
@@ -27,8 +27,8 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--input", type=Path, default=Path("test_FD001.txt"), help="Path to CMAPSS dataset text file.")
     parser.add_argument("--output", type=Path, default=Path("fd_results.csv"), help="Path to output CSV file.")
-    parser.add_argument("--use-gal2", action="store_true", help="Use GAL-2 aligned time as an optional timestamp source.")
-    parser.add_argument("--gal2-cache-ms", type=int, default=500, help="Optional GAL-2 cache duration in milliseconds.")
+    parser.add_argument("--use-aux_time", action="store_true", help="Use AUX-TIME aligned time as an optional timestamp source.")
+    parser.add_argument("--aux_time-cache-ms", type=int, default=500, help="Optional AUX-TIME cache duration in milliseconds.")
     parser.add_argument("--max-units", type=int, default=None, help="Optional cap on number of units to replay.")
     parser.add_argument("--max-cycles", type=int, default=None, help="Optional cap on cycles per unit.")
     parser.add_argument(
@@ -68,7 +68,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--verbose",
         action="store_true",
-        help="Verbose replay logs (first JSON row, GAL2 debug). Set NERAIUM_DEBUG_ENGINE=1 for engine internals.",
+        help="Verbose replay logs (first JSON row, AUX_TIME debug). Set NERAIUM_DEBUG_ENGINE=1 for engine internals.",
     )
     return parser.parse_args()
 
@@ -110,7 +110,7 @@ def flatten_result(
     unit_id: int,
     cycle: int,
     result: dict[str, Any],
-    gal2: dict[str, Any] | None = None,
+    aux_time: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     experimental = _safe_get(result, "experimental_analytics") or {}
     geometry = _safe_get(result, "geometry") or {}
@@ -121,7 +121,7 @@ def flatten_result(
     continued_degradation = _safe_list_item(counterfactuals, 2)
     early_warning = _safe_get(result, "early_warning") or {}
     signal_degradation = _safe_get(result, "signal_degradation") or {}
-    gal2_payload = gal2 or unavailable_payload("disabled")
+    aux_time_payload = aux_time or unavailable_payload("disabled")
 
     return {
         "unit": unit_id,
@@ -200,82 +200,82 @@ def flatten_result(
         "counterfactual_continued_degradation_projected_path": _safe_get(
             continued_degradation or {}, "projected_path"
         ),
-        "gal2_time": gal2_payload.get("gal2_time"),
-        "gal2_drift_ms": gal2_payload.get("drift_ms"),
-        "gal2_wobble_ms": gal2_payload.get("wobble_ms"),
-        "gal2_live_ms": gal2_payload.get("live_ms"),
-        "gal2_fractal_factor": gal2_payload.get("fractal_factor"),
-        "gal2_available": gal2_payload.get("available", False),
-        "gal2_reason": gal2_payload.get("reason"),
+        "aux_time_time": aux_time_payload.get("aux_time_time"),
+        "aux_time_drift_ms": aux_time_payload.get("drift_ms"),
+        "aux_time_wobble_ms": aux_time_payload.get("wobble_ms"),
+        "aux_time_live_ms": aux_time_payload.get("live_ms"),
+        "aux_time_fractal_factor": aux_time_payload.get("fractal_factor"),
+        "aux_time_available": aux_time_payload.get("available", False),
+        "aux_time_reason": aux_time_payload.get("reason"),
     }
 
 
 def replay_unit(
     unit_df: pd.DataFrame,
     *,
-    use_gal2: bool = False,
-    gal2_cache_ms: int = 500,
+    use_aux_time: bool = False,
+    aux_time_cache_ms: int = 500,
     max_cycles: int | None = None,
     verbose: bool = False,
 ) -> list[dict[str, Any]]:
     engine = StructuralEngine()
     rows: list[dict[str, Any]] = []
     printed_debug_result = False
-    gal2_client = GAL2Client(cache_ms=0) if use_gal2 else None
-    printed_gal2_debug = 0
-    cache_ttl_ms = gal2_cache_ms
-    last_gal2_payload: dict[str, Any] | None = None
-    last_gal2_fetch_time = 0.0
-    gal2_api_calls = 0
+    aux_time_client = AUX_TIMEClient(cache_ms=0) if use_aux_time else None
+    printed_aux_time_debug = 0
+    cache_ttl_ms = aux_time_cache_ms
+    last_aux_time_payload: dict[str, Any] | None = None
+    last_aux_time_fetch_time = 0.0
+    aux_time_api_calls = 0
 
     ordered = unit_df.sort_values("cycle")
     if max_cycles is not None and max_cycles > 0:
         ordered = ordered.head(int(max_cycles))
     unit_id = int(ordered["unit"].iloc[0])
 
-    def get_cached_gal2_time() -> dict[str, Any]:
-        nonlocal last_gal2_payload, last_gal2_fetch_time, gal2_api_calls
+    def get_cached_aux_time_time() -> dict[str, Any]:
+        nonlocal last_aux_time_payload, last_aux_time_fetch_time, aux_time_api_calls
         current_time = time.time() * 1000  # ms
-        should_refresh = last_gal2_payload is None or (current_time - last_gal2_fetch_time) > cache_ttl_ms
+        should_refresh = last_aux_time_payload is None or (current_time - last_aux_time_fetch_time) > cache_ttl_ms
         if verbose:
-            print(f"GAL2 fetch reused: {not should_refresh}")
+            print(f"AUX_TIME fetch reused: {not should_refresh}")
 
         if should_refresh:
-            gal2_api_calls += 1
+            aux_time_api_calls += 1
             try:
-                last_gal2_payload = gal2_client.get_time() if gal2_client is not None else unavailable_payload("disabled")
-                last_gal2_fetch_time = current_time
+                last_aux_time_payload = aux_time_client.get_time() if aux_time_client is not None else unavailable_payload("disabled")
+                last_aux_time_fetch_time = current_time
             except Exception:
                 # fallback: reuse last known value
-                if last_gal2_payload is None:
-                    last_gal2_payload = unavailable_payload("error")
-                last_gal2_fetch_time = current_time
+                if last_aux_time_payload is None:
+                    last_aux_time_payload = unavailable_payload("error")
+                last_aux_time_fetch_time = current_time
 
-        if last_gal2_payload is None:
+        if last_aux_time_payload is None:
             return unavailable_payload("unavailable")
-        return last_gal2_payload
+        return last_aux_time_payload
 
     for _, row in ordered.iterrows():
         cycle = int(row["cycle"])
         sensor_values = {sensor: row[sensor] for sensor in SENSOR_COLUMNS}
 
         timestamp = str(cycle)
-        gal2_payload = unavailable_payload("disabled")
-        if gal2_client is not None:
-            gal2_payload = get_cached_gal2_time()
-            if gal2_payload.get("available") and gal2_payload.get("gal2_time") is not None:
-                timestamp = str(gal2_payload["gal2_time"])
+        aux_time_payload = unavailable_payload("disabled")
+        if aux_time_client is not None:
+            aux_time_payload = get_cached_aux_time_time()
+            if aux_time_payload.get("available") and aux_time_payload.get("aux_time_time") is not None:
+                timestamp = str(aux_time_payload["aux_time_time"])
             else:
-                gal2_payload = {**gal2_payload, "reason": gal2_payload.get("reason") or "unavailable"}
+                aux_time_payload = {**aux_time_payload, "reason": aux_time_payload.get("reason") or "unavailable"}
 
-            if verbose and printed_gal2_debug < 3:
+            if verbose and printed_aux_time_debug < 3:
                 print(
-                    "DEBUG GAL2:",
-                    f"available={gal2_payload.get('available', False)}",
-                    f"gal2_time={gal2_payload.get('gal2_time')}",
-                    f"drift_ms={gal2_payload.get('drift_ms')}",
+                    "DEBUG AUX_TIME:",
+                    f"available={aux_time_payload.get('available', False)}",
+                    f"aux_time_time={aux_time_payload.get('aux_time_time')}",
+                    f"drift_ms={aux_time_payload.get('drift_ms')}",
                 )
-                printed_gal2_debug += 1
+                printed_aux_time_debug += 1
 
         frame = {
             "timestamp": timestamp,
@@ -287,12 +287,12 @@ def replay_unit(
         if verbose and not printed_debug_result:
             print(json.dumps(result, indent=2)[:1000])
             printed_debug_result = True
-        rows.append(flatten_result(unit_id=unit_id, cycle=cycle, result=result, gal2=gal2_payload))
+        rows.append(flatten_result(unit_id=unit_id, cycle=cycle, result=result, aux_time=aux_time_payload))
     if verbose:
         print(f"unit={unit_id} rows={len(rows)} last_cycle={ordered['cycle'].iloc[-1] if len(ordered) else 'n/a'}")
 
-    if gal2_client is not None and verbose:
-        print(f"GAL2 API calls for unit {unit_id}: {gal2_api_calls} / rows={len(ordered)}")
+    if aux_time_client is not None and verbose:
+        print(f"AUX_TIME API calls for unit {unit_id}: {aux_time_api_calls} / rows={len(ordered)}")
 
     return rows
 
@@ -371,8 +371,8 @@ def main() -> None:
         all_rows.extend(
             replay_unit(
                 unit_df,
-                use_gal2=args.use_gal2,
-                gal2_cache_ms=args.gal2_cache_ms,
+                use_aux_time=args.use_aux_time,
+                aux_time_cache_ms=args.aux_time_cache_ms,
                 max_cycles=args.max_cycles,
                 verbose=bool(args.verbose),
             )

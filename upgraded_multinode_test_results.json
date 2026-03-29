@@ -1,5 +1,5 @@
 {
-  "description": "Neraium SII comparative benchmark: node-specific nominal modeling, GAL-2 isolation, and operational_stability_index computed from observed nominal-window behavior (no per-variant anchor hacks).",
+  "description": "Neraium SII comparative benchmark: node-specific nominal modeling, AUX-TIME isolation, and operational_stability_index computed from observed nominal-window behavior (no per-variant anchor hacks).",
   "nodes": [
     "A",
     "B",
@@ -8,7 +8,7 @@
   ],
   "node_variants": {
     "A": "control_sii",
-    "B": "gal2_temporal",
+    "B": "aux_time_temporal",
     "C": "raw_telemetry",
     "D": "combined_fusion"
   },
@@ -26,10 +26,10 @@
     "baseline_window": 50,
     "recent_window": 12
   },
-  "gal2_api_configured": false,
-  "gal2_time_url": "https://api-v2.gal-2.com/time",
-  "gal2_used_for_disturbed_time": false,
-  "adaptive_gal2_fusion_enabled": true,
+  "aux_time_api_configured": false,
+  "aux_time_time_url": "https://api-v2.aux-time.com/time",
+  "aux_time_used_for_disturbed_time": false,
+  "adaptive_aux_time_fusion_enabled": true,
   "fusion_coherence_robustness": {
     "mean_perturb_fusion_coherence_lift_disturbed": 0.030428109343417407,
     "mean_perturb_fusion_coherence_lift_coherent": 0.0,
@@ -65,12 +65,12 @@
       "baseline_behavioral_stability": 0.588403918,
       "nominal_behavioral_stability": 0.5996432297,
       "baseline_stability_A_control": 1.0,
-      "baseline_stability_B_gal2": 1.0,
+      "baseline_stability_B_aux_time": 1.0,
       "baseline_stability_C_raw": 0.775,
       "baseline_stability_D_combined": 0.85,
       "recovery_quality": 0.65,
       "recovery_stability_A_control": 0.95,
-      "recovery_stability_B_gal2": 1.0,
+      "recovery_stability_B_aux_time": 1.0,
       "recovery_stability_C_raw": 0.075,
       "recovery_stability_D_combined": 0.575,
       "nominal_consistency_mean": 0.236459775,
@@ -94,7 +94,7 @@
       "mean_raw_minimal_path_score_all_nodes": 0.4992218125,
       "mean_timestamp_irregularity": 0.0,
       "recall_A_control": 0.0875,
-      "recall_B_gal2": 0.0,
+      "recall_B_aux_time": 0.0,
       "recall_C_raw": 0.9875,
       "recall_D_combined": 0.875
     },
@@ -112,12 +112,12 @@
       "baseline_behavioral_stability": 0.5900470833,
       "nominal_behavioral_stability": 0.5658456073,
       "baseline_stability_A_control": 1.0,
-      "baseline_stability_B_gal2": 0.9125,
+      "baseline_stability_B_aux_time": 0.9125,
       "baseline_stability_C_raw": 0.675,
       "baseline_stability_D_combined": 0.8125,
       "recovery_quality": 0.559375,
       "recovery_stability_A_control": 0.95,
-      "recovery_stability_B_gal2": 0.5,
+      "recovery_stability_B_aux_time": 0.5,
       "recovery_stability_C_raw": 0.25,
       "recovery_stability_D_combined": 0.5375,
       "nominal_consistency_mean": 0.153254225,
@@ -141,7 +141,7 @@
       "mean_raw_minimal_path_score_all_nodes": 1.4314750031,
       "mean_timestamp_irregularity": 0.4206825167,
       "recall_A_control": 0.0875,
-      "recall_B_gal2": 0.0,
+      "recall_B_aux_time": 0.0,
       "recall_C_raw": 0.8875,
       "recall_D_combined": 0.7375
     }

@@ -7,7 +7,7 @@ from typing import Any, Protocol
 @dataclass(frozen=True)
 class ExternalContextSnapshot:
     """
-    Optional non-core context for future integration layers (e.g., GAL-2 timing context).
+    Optional non-core context for future integration layers (e.g., AUX-TIME timing context).
 
     This context is read-only metadata and must never trigger control actions.
     """
@@ -29,9 +29,9 @@ class ExternalContextProvider(Protocol):
 OptionalContextProvider = ExternalContextProvider
 
 
-class FutureGAL2Boundary(Protocol):
+class FutureAUX_TIMEBoundary(Protocol):
     """
-    Optional future ingestion boundary for GAL-2-like context sources.
+    Optional future ingestion boundary for AUX-TIME-like context sources.
 
     This is intentionally a protocol-only contract and not an active dependency.
     """

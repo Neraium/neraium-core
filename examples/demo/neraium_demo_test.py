@@ -35,9 +35,9 @@ from neraium_intelligence_core import StructuralEngine
 # Config and API
 # ---------------------------------------------------------------------------
 
-# GAL-2 API: set GAL2_API_KEY in environment (never commit the key).
-API_KEY = os.getenv("GAL2_API_KEY")
-GAL2_TIME_URL = os.getenv("GAL2_TIME_URL", "https://api-v2.gal-2.com/time")
+# AUX-TIME API: set AUX_TIME_API_KEY in environment (never commit the key).
+API_KEY = os.getenv("AUX_TIME_API_KEY")
+AUX_TIME_TIME_URL = os.getenv("AUX_TIME_TIME_URL", "https://api-v2.aux-time.com/time")
 
 SEED = 42
 random.seed(SEED)
@@ -47,18 +47,18 @@ TIME_STEPS = 120
 NODES = ["A", "B", "C", "D"]
 
 
-def get_gal2_time() -> float:
+def get_aux_time_time() -> float:
     if not API_KEY:
         return time.time()
     try:
         r = requests.get(
-            GAL2_TIME_URL,
+            AUX_TIME_TIME_URL,
             headers={"x-api-key": API_KEY},
             timeout=3,
         )
         r.raise_for_status()
         data = r.json()
-        return float(data.get("gal2_time", time.time()))
+        return float(data.get("aux_time_time", time.time()))
     except Exception:
         return time.time()
 
@@ -214,7 +214,7 @@ def run_structural_scenario(
     rows: list[dict] = []
     for t in range(TIME_STEPS):
         frame = {
-            "timestamp": get_gal2_time(),
+            "timestamp": get_aux_time_time(),
             "site_id": "demo_site",
             "asset_id": name,
             "sensor_values": fn(t),
@@ -303,7 +303,7 @@ def apply_coherent_time(frames: list[dict]) -> list[dict]:
     out: list[dict] = []
     last_ts = 0.0
     for f in frames:
-        ts = get_gal2_time()
+        ts = get_aux_time_time()
         ts = float(ts) if ts is not None else time.time()
         if ts <= last_ts:
             ts = last_ts + 1e-6
@@ -386,7 +386,7 @@ if __name__ == "__main__":
         results: list[dict] = []
         for t in range(TIME_STEPS):
             for node in NODES:
-                gal_t = get_gal2_time()
+                gal_t = get_aux_time_time()
                 jitter = random.uniform(-0.02, 0.02)
                 inversion_push = -0.05 if random.random() < 0.08 else 0.0
                 irregular_delay = random.uniform(0.0, 0.1) if random.random() < 0.15 else 0.0
@@ -397,7 +397,7 @@ if __name__ == "__main__":
                 results.append({
                     "logical_step": t,
                     "node": node,
-                    "gal2_time": gal_t,
+                    "aux_time_time": gal_t,
                     "bounded_monotonic_time": bounded_monotonic,
                     "jitter": jitter,
                     "inversion_attempt": inversion_push,

@@ -1,4 +1,4 @@
-# Neraium + GAL-2 test - Google Colab
+# Neraium + AUX-TIME test - Google Colab
 
 Copy each block below into a separate Colab cell and run in order.
 
@@ -21,14 +21,14 @@ If you uploaded the project to Colab or Drive instead:
 
 ---
 
-## Cell 2: Set GAL-2 API credentials (paste your key here)
+## Cell 2: Set AUX-TIME API credentials (paste your key here)
 
 ```python
 import os
 
-# Paste your GAL-2 API key and URL. Do not share this notebook with the key visible.
-os.environ["GAL2_API_KEY"] = "YOUR_GAL2_API_KEY_HERE"
-os.environ["GAL2_TIME_URL"] = "https://api-v2.gal-2.com/time"
+# Paste your AUX-TIME API key and URL. Do not share this notebook with the key visible.
+os.environ["AUX_TIME_API_KEY"] = "YOUR_AUX_TIME_API_KEY_HERE"
+os.environ["AUX_TIME_TIME_URL"] = "https://api-v2.aux-time.com/time"
 ```
 
 ---
@@ -42,7 +42,7 @@ os.environ["GAL2_TIME_URL"] = "https://api-v2.gal-2.com/time"
 
 ---
 
-## Cell 4: Run the upgraded multinode test (Neraium + GAL-2)
+## Cell 4: Run the upgraded multinode test (Neraium + AUX-TIME)
 
 ```python
 !python run_upgraded_multinode_test.py
@@ -59,9 +59,9 @@ from pathlib import Path
 path = Path("upgraded_multinode_test_results.json")
 if path.exists():
     data = json.loads(path.read_text(encoding="utf-8"))
-    print("GAL-2 configured:", data.get("gal2_api_configured"))
-    print("GAL-2 URL:", data.get("gal2_time_url"))
-    print("GAL-2 used for disturbed_time:", data.get("gal2_used_for_disturbed_time"))
+    print("AUX-TIME configured:", data.get("aux_time_api_configured"))
+    print("AUX-TIME URL:", data.get("aux_time_time_url"))
+    print("AUX-TIME used for disturbed_time:", data.get("aux_time_used_for_disturbed_time"))
     print("\nNodes:", data.get("nodes"))
     print("Conditions:", data.get("conditions"))
 else:
@@ -86,21 +86,21 @@ else:
 
 ## Alternative: Use Colab Secrets for the API key (recommended)
 
-Instead of pasting the key in Cell 2, use the key icon in the left sidebar to add a secret named `GAL2_API_KEY`, then run:
+Instead of pasting the key in Cell 2, use the key icon in the left sidebar to add a secret named `AUX_TIME_API_KEY`, then run:
 
 ```python
 import os
 from google.colab import userdata
 
-os.environ["GAL2_API_KEY"] = userdata.get("GAL2_API_KEY")
-os.environ["GAL2_TIME_URL"] = os.environ.get("GAL2_TIME_URL", "https://api-v2.gal-2.com/time")
+os.environ["AUX_TIME_API_KEY"] = userdata.get("AUX_TIME_API_KEY")
+os.environ["AUX_TIME_TIME_URL"] = os.environ.get("AUX_TIME_TIME_URL", "https://api-v2.aux-time.com/time")
 ```
 
 ---
 
 ## All-in-one cell (clone + install + set key + run)
 
-If you prefer one cell (replace `YOUR_GAL2_API_KEY_HERE` with your key or use Secrets):
+If you prefer one cell (replace `YOUR_AUX_TIME_API_KEY_HERE` with your key or use Secrets):
 
 ```python
 import os
@@ -111,9 +111,9 @@ import sys
 subprocess.run(["git", "clone", "https://github.com/YOUR_USER/neraium-core-1.git"], check=True)
 os.chdir("neraium-core-1")
 
-# 2) GAL-2 (set key; or use userdata.get("GAL2_API_KEY") if using Colab Secrets)
-os.environ["GAL2_API_KEY"] = os.environ.get("GAL2_API_KEY", "YOUR_GAL2_API_KEY_HERE")
-os.environ["GAL2_TIME_URL"] = os.environ.get("GAL2_TIME_URL", "https://api-v2.gal-2.com/time")
+# 2) AUX-TIME (set key; or use userdata.get("AUX_TIME_API_KEY") if using Colab Secrets)
+os.environ["AUX_TIME_API_KEY"] = os.environ.get("AUX_TIME_API_KEY", "YOUR_AUX_TIME_API_KEY_HERE")
+os.environ["AUX_TIME_TIME_URL"] = os.environ.get("AUX_TIME_TIME_URL", "https://api-v2.aux-time.com/time")
 
 # 3) Install
 subprocess.run([sys.executable, "-m", "pip", "install", "-q", "numpy"], check=True)

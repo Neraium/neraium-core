@@ -26,17 +26,17 @@ from neraium_core.alignment import StructuralEngine
 NODES: List[str] = ["A", "B", "C", "D"]
 
 
-def get_gal2_time(base_url: str = "https://api-v2.gal-2.com/time") -> float:
+def get_aux_time_time(base_url: str = "https://api-v2.aux-time.com/time") -> float:
     """
-    Return current time from GAL-2 API (requires GAL2_API_KEY in environment).
+    Return current time from AUX-TIME API (requires AUX_TIME_API_KEY in environment).
     On any failure (missing key, network error, etc.) fall back to local monotonic time.
-    No API keys are hardcoded; key must be supplied via GAL2_API_KEY.
+    No API keys are hardcoded; key must be supplied via AUX_TIME_API_KEY.
     """
     import time
 
-    api_key = os.getenv("GAL2_API_KEY")
+    api_key = os.getenv("AUX_TIME_API_KEY")
     if not api_key:
-        raise ValueError("GAL2_API_KEY not set")
+        raise ValueError("AUX_TIME_API_KEY not set")
 
     try:
         import requests
@@ -50,14 +50,14 @@ def get_gal2_time(base_url: str = "https://api-v2.gal-2.com/time") -> float:
         return time.time()
 
 
-def _use_gal2_from_config_and_env(config: Dict[str, Any]) -> bool:
-    """Resolve USE_GAL2: env USE_GAL2 overrides config use_gal2. No API keys read here."""
-    env_val = os.getenv("USE_GAL2", "").strip().lower()
+def _use_aux_time_from_config_and_env(config: Dict[str, Any]) -> bool:
+    """Resolve USE_AUX_TIME: env USE_AUX_TIME overrides config use_aux_time. No API keys read here."""
+    env_val = os.getenv("USE_AUX_TIME", "").strip().lower()
     if env_val in ("1", "true", "yes"):
         return True
     if env_val in ("0", "false", "no"):
         return False
-    return bool(config.get("use_gal2", False))
+    return bool(config.get("use_aux_time", False))
 
 
 def _parse_iso_to_epoch_seconds(ts: str) -> float:
@@ -150,8 +150,8 @@ def _js_divergence(p: np.ndarray, q: np.ndarray, eps: float = 1e-12) -> float:
 def build_base_frames(
     config: Dict[str, Any],
     seed: int,
-    use_gal2: bool = False,
-    gal2_base_url: str = "https://api-v2.gal-2.com/time",
+    use_aux_time: bool = False,
+    aux_time_base_url: str = "https://api-v2.aux-time.com/time",
 ) -> Dict[str, List[Dict[str, Any]]]:
     """
     Build identical underlying base telemetry for all conditions.
@@ -162,7 +162,7 @@ def build_base_frames(
       - Node C: partition-style jitter/noise after t=60
       - Node D: dropout/rejoin between t=60–80 (implemented as dropped frames)
 
-    When use_gal2 is True, frame timestamps come from get_gal2_time(gal2_base_url).
+    When use_aux_time is True, frame timestamps come from get_aux_time_time(aux_time_base_url).
     When False, timestamps are simulated from config (start_timestamp, dt_seconds).
     """
     rng = np.random.default_rng(seed)
@@ -268,8 +268,8 @@ def build_base_frames(
             node_values["D"] = d_vals
 
         # Materialize frames for nodes produced at this t.
-        if use_gal2:
-            epoch_seconds = get_gal2_time(gal2_base_url)
+        if use_aux_time:
+            epoch_seconds = get_aux_time_time(aux_time_base_url)
         else:
             epoch_seconds = base_epoch + t * dt_seconds
         ts_iso = _epoch_seconds_to_iso_z(epoch_seconds)
@@ -352,7 +352,7 @@ def enforce_coherent_time(frames: List[Dict[str, Any]], config: Dict[str, Any]) 
     Coherent-time B condition:
       - strict monotonic ordering
       - no jitter or reordering
-      - simulate ideal temporal substrate (GAL-2)
+      - simulate ideal temporal substrate (AUX-TIME)
     """
     dt_seconds = float(config.get("dt_seconds", 1.0))
     start_timestamp = str(config.get("start_timestamp", "2026-03-01T00:00:00Z"))
@@ -574,7 +574,7 @@ def _load_json_file(path: str) -> Dict[str, Any]:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Controlled A/B test for Neraium SII time substrate (GAL-2).")
+    parser = argparse.ArgumentParser(description="Controlled A/B test for Neraium SII time substrate (AUX-TIME).")
     parser.add_argument("config_path", type=str, help="Path to JSON config (e.g. test_config.json).")
     args = parser.parse_args()
 
@@ -598,18 +598,18 @@ def main() -> int:
         "window_stride": config.get("window_stride", 1),
     }
 
-    out_path = Path("ab_gal2_comparison.json")
+    out_path = Path("ab_aux_time_comparison.json")
 
-    USE_GAL2 = _use_gal2_from_config_and_env(config)
-    gal2_base_url = str(config.get("gal2_time_url", "https://api-v2.gal-2.com/time"))
+    USE_AUX_TIME = _use_aux_time_from_config_and_env(config)
+    aux_time_base_url = str(config.get("aux_time_time_url", "https://api-v2.aux-time.com/time"))
 
     results: Dict[str, Any] = {"standard_time": {"runs": []}, "coherent_time": {"runs": []}}
 
     # Use a single temporary directory per entire experiment so regime files don't collide.
-    with tempfile.TemporaryDirectory(prefix="neraium_ab_gal2_") as tmp_dir:
+    with tempfile.TemporaryDirectory(prefix="neraium_ab_aux_time_") as tmp_dir:
         for run_i, seed in enumerate(seeds):
             base_node_frames = build_base_frames(
-                config, seed=seed, use_gal2=USE_GAL2, gal2_base_url=gal2_base_url
+                config, seed=seed, use_aux_time=USE_AUX_TIME, aux_time_base_url=aux_time_base_url
             )
 
             std_run = run_condition(
