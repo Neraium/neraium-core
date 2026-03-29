@@ -42,8 +42,9 @@
       <nav class="nav">
         <p class="nav-section-title">Workspace</p>
         <a href="/dashboard" data-nav="dashboard">Dashboard</a>
-        <a href="/app/runs" data-nav="runs">Runs</a>
-        <a href="/upload" data-nav="upload">Upload</a>
+        <a href="/upload" data-nav="upload">Upload / Ingest</a>
+        <a href="/app/runs" data-nav="runs">Runs / Analysis</a>
+        <a href="/validation" data-nav="validation">Validation</a>
       </nav>
     </aside>
 
@@ -142,18 +143,9 @@
                 <a class="button-link secondary" id="dashboardOpenAnalysisLink" href="/app/runs">Open Analysis Workspace</a>
                 <p class="subtitle quick-link-note">Use analysis for geometry, timeline, trend charts, and full recommendation rationale.</p>
               </div>
-              <details class="reference-replay-panel">
-                <summary>Reference Replay · Historical Validation</summary>
-                <p class="subtitle">NASA CMAPSS FD004 replay remains available for validation and training scenarios.</p>
-                <button id="seedDemoBtn" type="button" class="secondary demo-primary-btn">Run NASA CMAPSS FD004 Replay</button>
-              </details>
-              <div id="demoProgressPanel" class="demo-progress-panel hidden" aria-live="polite">
-                <div class="demo-progress-head">
-                  <span id="demoProgressPhase">Initializing run</span>
-                  <span id="demoProgressCount">0/0</span>
-                </div>
-                <div class="demo-progress-track"><div id="demoProgressFill" class="demo-progress-fill"></div></div>
-                <p id="demoProgressText" class="subtitle">Waiting for ingest.</p>
+              <div class="quick-link-stack" aria-label="Validation workspace link">
+                <a class="button-link secondary" href="/validation">Open Validation Workspace</a>
+                <p class="subtitle quick-link-note">Reference replay and historical validation scenarios are available in the dedicated validation workflow.</p>
               </div>
             </section>
           </div>
@@ -394,7 +386,7 @@
             </article>
             <div id="runDetailEmpty" class="empty-state hidden">
               <p>No results available for this run.</p>
-              <p class="subtitle">Upload a CSV file for pilot monitoring, or run NASA CMAPSS FD004 historical replay for validation results.</p>
+              <p class="subtitle">Upload a CSV file for pilot monitoring, or open Validation to run NASA CMAPSS FD004 reference replay scenarios.</p>
             </div>
           </section>
 
@@ -637,6 +629,28 @@
             </div>
             <div id="runResultsEmpty" class="empty-state hidden">
               <p>No results match current filters.</p>
+            </div>
+          </section>
+        </section>
+
+        <!-- VALIDATION -->
+        <section id="page-validation" class="page hidden">
+          <section class="panel validation-hero" aria-label="Historical validation workspace">
+            <div class="panel-header">
+              <h3>Validation Workspace</h3>
+            </div>
+            <p class="subtitle">Use this secondary workspace for NASA CMAPSS FD004 reference replay and historical validation scenarios. Pilot operations remain in Dashboard, Upload, and Runs.</p>
+            <div class="control-stack" role="group" aria-label="Validation actions">
+              <button id="seedDemoBtn" type="button" class="secondary demo-primary-btn">Run NASA CMAPSS FD004 Reference Replay</button>
+              <a class="button-link secondary" href="/app/runs">Open Runs / Analysis</a>
+            </div>
+            <div id="demoProgressPanel" class="demo-progress-panel hidden" aria-live="polite">
+              <div class="demo-progress-head">
+                <span id="demoProgressPhase">Initializing validation run</span>
+                <span id="demoProgressCount">0/0</span>
+              </div>
+              <div class="demo-progress-track"><div id="demoProgressFill" class="demo-progress-fill"></div></div>
+              <p id="demoProgressText" class="subtitle">Waiting for validation ingest.</p>
             </div>
           </section>
         </section>

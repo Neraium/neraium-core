@@ -36,6 +36,18 @@ def build_web_router() -> APIRouter:
     def web_upload() -> FileResponse:
         return FileResponse(index_file, headers=html_headers)
 
+    @router.get("/validation", include_in_schema=False)
+    def web_validation() -> FileResponse:
+        return FileResponse(index_file, headers=html_headers)
+
+    @router.get("/reference", include_in_schema=False)
+    def web_reference() -> RedirectResponse:
+        return RedirectResponse(url="/validation", status_code=307)
+
+    @router.get("/historical-validation", include_in_schema=False)
+    def web_historical_validation() -> RedirectResponse:
+        return RedirectResponse(url="/validation", status_code=307)
+
     @router.get("/app/runs", include_in_schema=False)
     def web_runs() -> FileResponse:
         return FileResponse(index_file, headers=html_headers)
@@ -64,10 +76,10 @@ def build_web_router() -> APIRouter:
 
     @router.get("/demo", include_in_schema=False)
     def web_demo_entry_redirect() -> RedirectResponse:
-        return RedirectResponse(url="/dashboard?replay=1", status_code=307)
+        return RedirectResponse(url="/validation?replay=1", status_code=307)
 
     @router.get("/demo/full", include_in_schema=False)
     def web_demo_full_entry_redirect() -> RedirectResponse:
-        return RedirectResponse(url="/dashboard?replay=1&autoplay=1", status_code=307)
+        return RedirectResponse(url="/validation?replay=1&autoplay=1", status_code=307)
 
     return router
