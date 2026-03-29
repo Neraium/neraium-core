@@ -67,6 +67,7 @@ class StructuralMonitoringService:
         self._engines_by_asset: dict[tuple[str, str, str], StructuralEngine] = {}
         self._localization_by_site: dict[str, dict[str, float]] = {}
         self._cycle_by_run: dict[tuple[str, str], int] = {}
+        self._alert_control_by_run: dict[tuple[str, str], dict[str, Any]] = {}
         self.pilot_config: PilotConfig = pilot_config or load_pilot_config()
 
     def _next_cycle(self, *, run_id: str | None, customer_id: str) -> int:
@@ -74,6 +75,45 @@ class StructuralMonitoringService:
         next_cycle = self._cycle_by_run.get(key, 0) + 1
         self._cycle_by_run[key] = next_cycle
         return next_cycle
+
+    def _consume_alert_control(self, *, run_id: str | None, customer_id: str) -> dict[str, Any] | None:
+        key = (customer_id, str(run_id or "__default__"))
+        control = self._alert_control_by_run.pop(key, None)
+        if not isinstance(control, dict):
+            return None
+        return dict(control)
+
+    def acknowledge_alert(
+        self,
+        *,
+        run_id: str | None,
+        customer_id: str,
+        acknowledged_by: str | None = None,
+    ) -> dict[str, Any]:
+        key = (customer_id, str(run_id or "__default__"))
+        current = self._alert_control_by_run.get(key, {})
+        next_control = dict(current) if isinstance(current, dict) else {}
+        next_control["acknowledge"] = True
+        if acknowledged_by:
+            next_control["acknowledged_by"] = str(acknowledged_by)
+        self._alert_control_by_run[key] = next_control
+        return next_control
+
+    def resolve_alert(
+        self,
+        *,
+        run_id: str | None,
+        customer_id: str,
+        resolved_by: str | None = None,
+    ) -> dict[str, Any]:
+        key = (customer_id, str(run_id or "__default__"))
+        current = self._alert_control_by_run.get(key, {})
+        next_control = dict(current) if isinstance(current, dict) else {}
+        next_control["resolve"] = True
+        if resolved_by:
+            next_control["resolved_by"] = str(resolved_by)
+        self._alert_control_by_run[key] = next_control
+        return next_control
 
     def _persist_product_history(
         self,
@@ -85,8 +125,12 @@ class StructuralMonitoringService:
         previous = self.store.get_latest_service_history(run_id=run_id, customer_id=customer_id)
         cycle = self._next_cycle(run_id=run_id, customer_id=customer_id)
         memory_recall = self._build_memory_recall(result, cycle=cycle, run_id=run_id, customer_id=customer_id)
+        alert_control = self._consume_alert_control(run_id=run_id, customer_id=customer_id)
+        result_with_alert_control = dict(result)
+        if alert_control:
+            result_with_alert_control["alert_control"] = alert_control
         canonical = build_canonical_output(
-            result,
+            result_with_alert_control,
             cycle=cycle,
             run_id=run_id,
             customer_id=customer_id,

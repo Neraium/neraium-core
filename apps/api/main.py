@@ -579,6 +579,19 @@ class AssistantResponse(BaseModel):
     grounding: dict[str, Any]
     context: dict[str, Any]
 
+
+
+class AlertAcknowledgeRequest(BaseModel):
+    run_id: str | None = None
+    customer_id: str | None = None
+    acknowledged_by: str | None = None
+
+
+class AlertResolveRequest(BaseModel):
+    run_id: str | None = None
+    customer_id: str | None = None
+    resolved_by: str | None = None
+
 class ReportRequest(BaseModel):
     run_id: str | None = None
     customer_id: str | None = None
@@ -631,6 +644,7 @@ def _alert_context(result: dict[str, Any]) -> dict[str, Any]:
         "risk_level": result.get("risk_level"),
         "structural_drift_score": _safe_float(result.get("structural_drift_score"), 0.0),
         "composite_instability": _safe_float(result.get("latest_instability"), 0.0),
+        "alert_status": result.get("alert_status") if isinstance(result.get("alert_status"), dict) else {},
     }
 
 
@@ -641,76 +655,50 @@ def _evaluate_alerts(
     instability_threshold: float,
     rapid_drift_delta: float,
 ) -> list[dict[str, Any]]:
+    del instability_threshold, rapid_drift_delta
     if not isinstance(current, dict):
         return []
-    alerts: list[dict[str, Any]] = []
+
     now = _utc_now_iso()
-    current_risk = _normalize_risk_level(current.get("risk_level"))
-    prev_risk = _normalize_risk_level(previous.get("risk_level")) if isinstance(previous, dict) else "UNKNOWN"
+    current_status = current.get("alert_status") if isinstance(current.get("alert_status"), dict) else {}
+    previous_status = previous.get("alert_status") if isinstance(previous, dict) and isinstance(previous.get("alert_status"), dict) else {}
 
-    if current_risk == "HIGH" and prev_risk != "HIGH":
+    current_state = str(current_status.get("alert_state", "CLEAR")).upper()
+    previous_state = str(previous_status.get("alert_state", "CLEAR")).upper()
+
+    alerts: list[dict[str, Any]] = []
+    should_emit_activation = current_state in {"ACTIVE_UNACKNOWLEDGED", "ESCALATED"} and previous_state not in {"ACTIVE_UNACKNOWLEDGED", "ACTIVE_ACKNOWLEDGED", "ESCALATED"}
+    should_emit_renotify = bool(current_status.get("renotify_due")) and current_state in {"ACTIVE_UNACKNOWLEDGED", "ESCALATED"}
+
+    if should_emit_activation or should_emit_renotify:
+        severity = "critical" if current_state == "ESCALATED" else "high"
+        if should_emit_activation:
+            alert_type = "persistent_alert_activated"
+            message = f"Persistent alert activated after {int(current_status.get('hit_window_threshold', 3))} consecutive hits."
+        else:
+            alert_type = "persistent_alert_renotify"
+            message = "Persistent alert remains active and unacknowledged."
+
         alerts.append(
             {
                 "id": f"alert_{uuid4().hex[:12]}",
-                "type": "risk_high_transition",
-                "severity": "critical",
-                "message": f"Risk transitioned to HIGH (from {prev_risk}).",
-                "created_at": now,
-                "trigger": {"from": prev_risk, "to": current_risk},
-                "context": _alert_context(current),
-            }
-        )
-
-    current_instability = _safe_float(current.get("latest_instability"), 0.0)
-    prev_instability = (
-        _safe_float(previous.get("latest_instability"), 0.0) if isinstance(previous, dict) else None
-    )
-    crossed_up = prev_instability is None or prev_instability < instability_threshold
-    if current_instability >= instability_threshold and crossed_up:
-        alerts.append(
-            {
-                "id": f"alert_{uuid4().hex[:12]}",
-                "type": "instability_threshold_crossed",
-                "severity": "high",
-                "message": (
-                    f"Composite instability crossed threshold "
-                    f"({_fmt_num(current_instability)} >= {_fmt_num(instability_threshold)})."
-                ),
+                "type": alert_type,
+                "severity": severity,
+                "message": message,
                 "created_at": now,
                 "trigger": {
-                    "threshold": instability_threshold,
-                    "previous": prev_instability,
-                    "current": current_instability,
+                    "state": current_state,
+                    "reason": current_status.get("alert_reason"),
+                    "consecutive_hit_count": int(current_status.get("consecutive_hit_count", 0)),
+                    "hit_window_threshold": int(current_status.get("hit_window_threshold", 3)),
+                    "unacknowledged_duration": int(current_status.get("unacknowledged_duration", 0)),
                 },
                 "context": _alert_context(current),
             }
         )
 
-    current_drift = _safe_float(current.get("structural_drift_score"), 0.0)
-    prev_drift = _safe_float(previous.get("structural_drift_score"), 0.0) if isinstance(previous, dict) else None
-    if prev_drift is not None:
-        drift_delta = current_drift - prev_drift
-        if drift_delta >= rapid_drift_delta:
-            alerts.append(
-                {
-                    "id": f"alert_{uuid4().hex[:12]}",
-                    "type": "rapid_drift_detected",
-                    "severity": "high",
-                    "message": (
-                        f"Rapid drift detected (+{_fmt_num(drift_delta)} in latest update)."
-                    ),
-                    "created_at": now,
-                    "trigger": {
-                        "delta": drift_delta,
-                        "threshold": rapid_drift_delta,
-                        "previous": prev_drift,
-                        "current": current_drift,
-                    },
-                    "context": _alert_context(current),
-                }
-            )
-
     return alerts
+
 
 
 def _dispatch_alert_stubs(
@@ -3730,8 +3718,49 @@ def create_app(
             items = [dict(a) for a in alerts.get(resolved_customer, [])]
         if run_id:
             items = [a for a in items if str((a.get("context") or {}).get("run_id") or "") == str(run_id)]
+        latest = service_instance.get_current_state(run_id=run_id, customer_id=resolved_customer)
+        if isinstance(latest, dict) and isinstance(latest.get("alert_status"), dict):
+            status_item = {
+                "id": f"alert_state_{latest.get('cycle', 'latest')}",
+                "type": "alert_state",
+                "severity": "critical" if str(latest["alert_status"].get("alert_state", "")).upper() == "ESCALATED" else ("high" if latest["alert_status"].get("alert_active") else "info"),
+                "message": latest["alert_status"].get("alert_summary"),
+                "created_at": latest["alert_status"].get("last_evaluated_at") or latest.get("timestamp"),
+                "trigger": latest["alert_status"],
+                "context": _alert_context(latest),
+                "customer_id": resolved_customer,
+            }
+            items = [status_item, *items]
         items = items[:limit]
         return {"count": len(items), "alerts": items}
+
+    @app.post("/alerts/acknowledge", response_model=ActionResponse)
+    def acknowledge_alert(
+        payload: AlertAcknowledgeRequest,
+        _: None = Depends(require_api_key),
+    ) -> dict[str, bool]:
+        resolved_customer = _resolve_customer_id(payload.customer_id)
+        resolved_run_id = _request_run_id_or_active(service_instance, payload.run_id, customer_id=resolved_customer)
+        service_instance.acknowledge_alert(
+            run_id=resolved_run_id,
+            customer_id=resolved_customer,
+            acknowledged_by=payload.acknowledged_by,
+        )
+        return {"ok": True}
+
+    @app.post("/alerts/resolve", response_model=ActionResponse)
+    def resolve_alert(
+        payload: AlertResolveRequest,
+        _: None = Depends(require_api_key),
+    ) -> dict[str, bool]:
+        resolved_customer = _resolve_customer_id(payload.customer_id)
+        resolved_run_id = _request_run_id_or_active(service_instance, payload.run_id, customer_id=resolved_customer)
+        service_instance.resolve_alert(
+            run_id=resolved_run_id,
+            customer_id=resolved_customer,
+            resolved_by=payload.resolved_by,
+        )
+        return {"ok": True}
 
     @app.post("/alerts/test", response_model=ActionResponse)
     def emit_test_alert(
