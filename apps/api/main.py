@@ -13,7 +13,7 @@ import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Literal
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 from uuid import uuid4
 
 import numpy as np
@@ -66,10 +66,18 @@ class CacheControlStaticFiles(StaticFiles):
         response = await super().get_response(path, scope)
         response.headers.setdefault("Vary", "Accept-Encoding")
         ext = Path(path).suffix.lower()
+        query_string = scope.get("query_string", b"")
+        query_params = parse_qs(query_string.decode("utf-8", errors="ignore")) if query_string else {}
+        has_asset_version = bool(query_params.get("v", [None])[0])
         if ext in {".html"}:
             response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
-        elif ext in {".js", ".mjs", ".css", ".csv", ".txt", ".json", ".map"}:
-            response.headers["Cache-Control"] = "public, max-age=86400, stale-while-revalidate=3600"
+        elif ext in {".js", ".mjs", ".css"}:
+            if has_asset_version:
+                response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+            else:
+                response.headers["Cache-Control"] = "public, max-age=300, must-revalidate"
+        elif ext in {".csv", ".txt", ".json", ".map"}:
+            response.headers["Cache-Control"] = "public, max-age=3600, stale-while-revalidate=300"
         else:
             response.headers["Cache-Control"] = "public, max-age=604800, stale-while-revalidate=86400"
         return response
