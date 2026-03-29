@@ -50,27 +50,22 @@
     </aside>
 
     <div class="main">
-      <header class="topbar">
+      <header class="topbar command-topbar">
         <div class="topbar-main">
           <button type="button" id="mobileNavToggle" class="mobile-nav-toggle" aria-label="Open menu" aria-expanded="false" aria-controls="appSidebar">
             <span class="mobile-nav-toggle-bars" aria-hidden="true"></span>
           </button>
           <a href="/dashboard" class="topbar-wordmark">Neraium</a>
-          <div class="title-block">
+          <div class="title-block telemetry-title">
             <h2 id="pageTitle">Dashboard</h2>
-            <p id="pageSubtitle" class="subtitle page-subtitle-truncate">Active run snapshot</p>
+            <p id="pageSubtitle" class="subtitle page-subtitle-truncate">Real-time structural intelligence system</p>
           </div>
         </div>
-        <div class="topbar-controls topbar-controls-compact topbar-tools" aria-label="Demo and tools">
-          <div class="topbar-compact-row">
-            <label class="demo-toggle" for="demoModeToggle">
-              <input id="demoModeToggle" type="checkbox" />
-              <span>Demo</span>
-            </label>
-            <button id="prepareDemoBtn" type="button" class="secondary" title="Load sample runs and open the demo">Run demo</button>
-            <button id="seedDemoBtn" type="button" class="secondary" title="Seed sample telemetry into the active run">Sample data</button>
-            <button id="refreshBtn" type="button" class="topbar-refresh">Refresh</button>
-          </div>
+        <div class="telemetry-status-strip" aria-label="System telemetry status">
+          <span id="connectionBadge" class="chip chip-live"><span class="live-dot" aria-hidden="true"></span><span id="connectionLabel">LIVE</span></span>
+          <span class="chip">Run <strong id="topbarActiveRunId">--</strong></span>
+          <span class="chip">UTC <strong id="liveTimestamp">--:--:--</strong></span>
+          <span id="streamingBadge" class="chip streaming hidden">Streaming</span>
         </div>
       </header>
 
@@ -79,88 +74,111 @@
       <main class="content">
         <!-- DASHBOARD -->
         <section id="page-dashboard" class="page page-dashboard">
-          <section id="dashboardDemoHero" class="dashboard-demo-hero panel hidden" aria-labelledby="dashboardDemoHeroTitle">
-            <div class="dashboard-demo-hero-inner">
-              <div class="dashboard-demo-hero-copy">
-                <h3 id="dashboardDemoHeroTitle" class="dashboard-demo-hero-title">Try the demo</h3>
-                <p class="dashboard-demo-hero-sub">Scripted telemetry on the active run — no upload.</p>
-                <button type="button" class="btn-hero-demo" id="dashboardQuickDemoBtn">Run demo</button>
+          <div class="dashboard-grid-v2">
+            <section class="panel control-panel" aria-label="Control panel">
+              <div class="panel-header"><h3>Operations</h3></div>
+              <div class="control-stack">
+                <label class="demo-toggle" for="demoModeToggle">
+                  <input id="demoModeToggle" type="checkbox" />
+                  <span>Demo mode</span>
+                </label>
+                <button id="prepareDemoBtn" type="button" class="secondary">Run demo</button>
+                <button id="seedDemoBtn" type="button" class="secondary">Sample data</button>
+                <button id="refreshBtn" type="button" class="topbar-refresh">Refresh</button>
               </div>
-            </div>
-          </section>
+              <div id="demoProgressPanel" class="demo-progress-panel hidden" aria-live="polite">
+                <div class="demo-progress-head">
+                  <span id="demoProgressPhase">Initializing run</span>
+                  <span id="demoProgressCount">0/0</span>
+                </div>
+                <div class="demo-progress-track"><div id="demoProgressFill" class="demo-progress-fill"></div></div>
+                <p id="demoProgressText" class="subtitle">Waiting for ingest.</p>
+              </div>
+              <div id="statusMessageRail" class="status-message-rail">
+                <p id="statusMessageText" class="status-message-line">System ready.</p>
+              </div>
+            </section>
 
-          <section class="dashboard-hero panel control-center">
-            <div class="dashboard-hero-grid">
-              <div class="dashboard-hero-primary">
-                <p class="dashboard-hero-kicker">Active run</p>
-                <div class="dashboard-hero-score-row">
-                  <div class="dashboard-hero-health-col">
-                    <div class="health-ring-wrap" title="Composite health from risk, drift, and instability">
-                      <svg id="dashboardHealthRing" class="health-ring" viewBox="0 0 120 120" aria-hidden="true">
-                        <circle class="health-ring-bg" cx="60" cy="60" r="52" />
-                        <circle id="dashboardHealthArc" class="health-ring-arc" cx="60" cy="60" r="52" />
-                      </svg>
-                      <div class="health-ring-label">
-                        <span class="health-ring-value" id="dashboardHealthScore">-</span>
-                        <span class="health-ring-caption">Health</span>
-                      </div>
+            <section class="panel mission-panel" aria-label="Active run visual">
+              <p class="dashboard-hero-kicker">Active run visual</p>
+              <div class="dashboard-hero-score-row">
+                <div class="dashboard-hero-health-col">
+                  <div class="health-ring-wrap animated-ring" title="Composite health from risk, drift, and instability">
+                    <svg id="dashboardHealthRing" class="health-ring" viewBox="0 0 120 120" aria-hidden="true">
+                      <circle class="health-ring-bg" cx="60" cy="60" r="52" />
+                      <circle id="dashboardHealthArc" class="health-ring-arc" cx="60" cy="60" r="52" />
+                    </svg>
+                    <div class="health-ring-label">
+                      <span class="health-ring-value" id="dashboardHealthScore">-</span>
+                      <span class="health-ring-caption">Health</span>
                     </div>
-                  </div>
-                  <div class="dashboard-hero-state-block">
-                    <div class="dashboard-status-stack">
-                      <div class="dashboard-hero-primary-status">
-                        <p class="signal-caption">System state</p>
-                        <div class="signal-main-row dashboard-state-row">
-                          <p id="metricState" class="signal-state dashboard-state-primary">-</p>
-                          <div id="metricPhaseBadge"></div>
-                        </div>
-                      </div>
-                      <div class="dashboard-hero-secondary-status">
-                        <span class="signal-label">Risk</span>
-                        <div class="dashboard-risk-row">
-                          <p id="metricRisk" class="signal-risk dashboard-risk-value metric-risk">-</p>
-                          <div id="metricRiskBadge"></div>
-                        </div>
-                      </div>
-                      <p class="signal-trend dashboard-trend-line">Trend <strong id="metricTrend">-</strong></p>
-                    </div>
-                    <p class="dashboard-narrative-strip" id="dashboardNarrativeStrip">Awaiting telemetry.</p>
-                    <p id="metricOperatorMessage" class="operator-message dashboard-operator-line">
-                      No results yet. Upload telemetry or use Sample data.
-                    </p>
                   </div>
                 </div>
-              </div>
-              <aside class="dashboard-hero-aside">
-                <p class="dashboard-last-updated" id="dashboardLastUpdated">Last updated —</p>
-                <article class="insight-tile insight-tile-alert insight-tile-metrics-split" id="dashboardAlertTile">
-                  <div class="insight-metrics-row" aria-label="Alerts and snapshot count">
-                    <div class="insight-metric-block">
-                      <p class="insight-tile-label">Alerts</p>
-                      <p class="insight-tile-value insight-tile-value--sm" id="dashboardAlertCount">0</p>
+                <div class="dashboard-hero-state-block">
+                  <div class="dashboard-status-stack">
+                    <div class="dashboard-hero-primary-status">
+                      <p class="signal-caption">System state</p>
+                      <div class="signal-main-row dashboard-state-row">
+                        <p id="metricState" class="signal-state dashboard-state-primary">-</p>
+                        <div id="metricPhaseBadge"></div>
+                      </div>
                     </div>
-                    <div class="insight-metric-block">
-                      <p class="insight-tile-label">Snapshots</p>
-                      <p class="insight-tile-value insight-tile-value--sm" id="dashboardSnapshotCount">0</p>
+                    <div class="dashboard-hero-secondary-status">
+                      <span class="signal-label">Risk</span>
+                      <div class="dashboard-risk-row">
+                        <p id="metricRisk" class="signal-risk dashboard-risk-value metric-risk">-</p>
+                        <div id="metricRiskBadge"></div>
+                      </div>
                     </div>
+                    <p class="signal-trend dashboard-trend-line">Trend <strong id="metricTrend">-</strong></p>
                   </div>
-                  <p class="insight-tile-sub" id="dashboardAlertSummary">No open alerts for this run.</p>
-                </article>
-                <a class="dashboard-deep-link" id="dashboardOpenRunLink" href="/app/runs">Run detail →</a>
-              </aside>
-            </div>
-          </section>
+                  <p class="dashboard-narrative-strip" id="dashboardNarrativeStrip">Awaiting telemetry.</p>
+                  <p id="metricOperatorMessage" class="operator-message dashboard-operator-line">No results yet. Upload telemetry or use Sample data.</p>
+                </div>
+              </div>
+              <div class="run-meta-line">
+                <span id="dashboardLastUpdated">Last updated —</span>
+                <a class="dashboard-deep-link" id="dashboardOpenRunLink" href="/app/runs">Open run →</a>
+              </div>
+            </section>
+
+            <aside class="panel intelligence-panel" aria-label="System intelligence">
+              <div class="panel-header"><h3>System Intelligence</h3></div>
+              <div class="intelligence-grid">
+                <article class="intel-metric"><p>Anomaly score</p><strong id="intelAnomalyScore">--</strong></article>
+                <article class="intel-metric"><p>Trend direction</p><strong id="intelTrendDirection">--</strong></article>
+                <article class="intel-metric"><p>Predicted degradation</p><strong id="intelDegradation">--</strong></article>
+                <article class="intel-metric"><p>System confidence</p><strong id="intelConfidence">--</strong></article>
+              </div>
+              <article class="insight-tile insight-tile-alert insight-tile-metrics-split" id="dashboardAlertTile">
+                <div class="insight-metrics-row" aria-label="Alerts and snapshot count">
+                  <div class="insight-metric-block"><p class="insight-tile-label">Events</p><p class="insight-tile-value insight-tile-value--sm" id="dashboardAlertCount">0</p></div>
+                  <div class="insight-metric-block"><p class="insight-tile-label">Snapshots</p><p class="insight-tile-value insight-tile-value--sm" id="dashboardSnapshotCount">0</p></div>
+                </div>
+                <p class="insight-tile-sub" id="dashboardAlertSummary">No open alerts for this run.</p>
+              </article>
+              <div class="intelligence-feed">
+                <h4>Anomalies / model outputs / recommendations</h4>
+                <ul id="intelligenceFeedList" class="intelligence-list">
+                  <li>Awaiting telemetry stream.</li>
+                </ul>
+              </div>
+            </aside>
+          </div>
 
           <section class="panel dashboard-signals">
-            <div class="panel-header dashboard-section-head">
-              <h3>Trend</h3>
-            </div>
+            <div class="panel-header dashboard-section-head"><h3>Live trend</h3></div>
             <div class="sparkline-wrap">
               <div class="sparkline-canvas-wrap">
                 <canvas id="dashboardSparkline" width="900" height="140" aria-label="Drift and composite trend"></canvas>
                 <div id="dashboardSparklineTooltip" class="sparkline-tooltip hidden" role="tooltip"></div>
               </div>
             </div>
+          </section>
+
+          <section class="panel geometry-showcase" aria-label="Structural Geometry">
+            <div class="panel-header"><h3>Structural Geometry</h3></div>
+            <p id="dashboardGeometryState" class="subtitle">Geometry not available for this snapshot.</p>
           </section>
 
           <details class="panel disclosure-panel results-panel" id="dashboardResultsDisclosure">
@@ -174,21 +192,11 @@
             </div>
             <div id="dashboardEmpty" class="empty-state hidden">
               <p>No results for the active run yet.</p>
-              <p class="subtitle">Use <strong>Run quick demo</strong> above, <strong>Upload</strong> for CSV, or <strong>Sample data</strong> for a quick seed.</p>
+              <p class="subtitle">Use <strong>Run demo</strong>, <strong>Upload</strong>, or <strong>Sample data</strong> to begin.</p>
             </div>
             <div class="table-wrap">
               <table class="data-table dashboard-results-table">
-                <thead>
-                  <tr>
-                    <th>ID</th>
-                    <th>Timestamp</th>
-                    <th>Phase</th>
-                    <th>Risk</th>
-                    <th>Drift</th>
-                    <th>Composite</th>
-                    <th></th>
-                  </tr>
-                </thead>
+                <thead><tr><th>ID</th><th>Timestamp</th><th>Phase</th><th>Risk</th><th>Drift</th><th>Composite</th><th></th></tr></thead>
                 <tbody id="dashboardRecentBody"></tbody>
               </table>
             </div>

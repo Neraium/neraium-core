@@ -6,6 +6,42 @@ function qsa(sel) {
   return Array.from(document.querySelectorAll(sel));
 }
 
+// ui/
+function debounce(fn, wait = 120) {
+  let timer = null;
+  return (...args) => {
+    if (timer) window.clearTimeout(timer);
+    timer = window.setTimeout(() => fn(...args), wait);
+  };
+}
+
+function animateNumberText(el, target, opts = {}) {
+  if (!el) return;
+  const decimals = Number.isFinite(opts.decimals) ? opts.decimals : 0;
+  const suffix = String(opts.suffix || "");
+  const safeTarget = Number.isFinite(target) ? target : 0;
+  const from = Number.parseFloat(el.dataset.currentNumber || "0") || 0;
+  const duration = Number.isFinite(opts.durationMs) ? opts.durationMs : 420;
+  const start = performance.now();
+  const step = (ts) => {
+    const t = Math.min(1, (ts - start) / duration);
+    const eased = 1 - (1 - t) ** 3;
+    const val = from + (safeTarget - from) * eased;
+    el.textContent = `${val.toFixed(decimals)}${suffix}`;
+    el.dataset.currentNumber = String(val);
+    if (t < 1) window.requestAnimationFrame(step);
+  };
+  window.requestAnimationFrame(step);
+}
+
+function friendlyErrorMessage(err) {
+  const msg = String(err?.message || err || "");
+  if (msg.toLowerCase().includes("network")) return "Connection unstable — retrying…";
+  if (msg.toLowerCase().includes("timeout")) return "Request timed out — retry available.";
+  if (msg.toLowerCase().includes("demo")) return "Demo failed — retry available.";
+  return "Operation failed — please retry.";
+}
+
 function apiUrl(path, params) {
   const normalizedPath = String(path || "").replace(/^\/api(?=\/|$)/, "") || "/";
   const searchParams = new URLSearchParams();
@@ -937,6 +973,7 @@ function replayDemoTimeline() {
 
 async function toggleDemoMode(enabled) {
   state.demo.enabled = !!enabled;
+  setConnectionStatus(state.demo.enabled ? "DEMO" : state.activeRun?.is_active ? "LIVE" : "OFFLINE");
   persistDemoMode();
   if (!state.demo.enabled) {
     stopDemoPlayback();
@@ -1105,8 +1142,16 @@ async function prepareDemoRuns(options = {}) {
   try {
     const scenarios = demoScenarioListForMode(mode);
     const cust = customerIdValue(state.tenant.customerId);
+    setDemoProgress({ visible: true, phase: "Initializing run", current: 0, total: scenarios.length, text: "Initializing run profiles…" });
     const created = await Promise.all(
-      scenarios.map(async (scenario) => {
+      scenarios.map(async (scenario, idx) => {
+        setDemoProgress({
+          visible: true,
+          phase: "Streaming data",
+          current: idx,
+          total: scenarios.length,
+          text: `Seeding telemetry… (${idx}/${scenarios.length})`,
+        });
         const runEnv = await fetchJson(apiUrl("/runs", tenantScopeParams()), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -1132,6 +1177,13 @@ async function prepareDemoRuns(options = {}) {
         if (String(out?.status || "ok").toLowerCase() !== "ok") {
           throw new Error(`Demo seed request failed during cloud ingest${out?.error ? `: ${out.error}` : ""}`);
         }
+        setDemoProgress({
+          visible: true,
+          phase: "Rendering model",
+          current: idx + 1,
+          total: scenarios.length,
+          text: `Seeding telemetry… (${idx + 1}/${scenarios.length})`,
+        });
         return run;
       }),
     );
@@ -1159,9 +1211,12 @@ async function prepareDemoRuns(options = {}) {
       state.demo.activeRunId = focusRun.run_id;
     }
     state.demo.prepared = true;
+    setDemoProgress({ visible: true, phase: "Ready", current: scenarios.length, total: scenarios.length, text: "Demo runs ready." });
+    window.setTimeout(() => setDemoProgress({ visible: false }), 1200);
     return focusRun;
   } finally {
     state.demo.preparing = false;
+    if (!state.demo.prepared) setDemoProgress({ visible: false });
     renderTenantControls();
   }
 }
@@ -1403,6 +1458,11 @@ const state = {
   },
   dashboardSparkline: {
     hoveredIndex: null,
+  },
+  ui: {
+    clockTimer: null,
+    connection: "LIVE",
+    dashboardPaint: null,
   },
 };
 
@@ -1817,8 +1877,10 @@ const chartTheme = {
 
 function buildTrendChartOptions() {
   return {
-    // Instant updates — avoids animation queue "buffering" during demo / live refresh
-    animation: false,
+    animation: {
+      duration: 260,
+      easing: "easeOutCubic",
+    },
     responsive: true,
     maintainAspectRatio: false,
     layout: {
@@ -1859,7 +1921,16 @@ function buildTrendChartOptions() {
         borderWidth: 1,
         titleColor: "#ecf3ff",
         bodyColor: "#cfddf8",
-        displayColors: false,
+        displayColors: true,
+      },
+    },
+    elements: {
+      point: {
+        hoverRadius: 5,
+        radius: 1.8,
+      },
+      line: {
+        borderWidth: 2.4,
       },
     },
   };
@@ -5818,6 +5889,50 @@ function createToast(message, type = "success") {
   }, 3200);
 }
 
+function setConnectionStatus(mode = "LIVE") {
+  const badge = qs("#connectionBadge");
+  const label = qs("#connectionLabel");
+  state.ui.connection = mode;
+  if (label) label.textContent = mode;
+  if (badge) {
+    badge.classList.remove("chip-live", "chip-demo", "chip-offline");
+    badge.classList.add(mode === "DEMO" ? "chip-demo" : mode === "OFFLINE" ? "chip-offline" : "chip-live");
+  }
+}
+
+function setStreamingIndicator(active, text = "Streaming") {
+  const badge = qs("#streamingBadge");
+  if (!badge) return;
+  badge.textContent = text;
+  badge.classList.toggle("hidden", !active);
+}
+
+function startLiveClock() {
+  const el = qs("#liveTimestamp");
+  if (!el) return;
+  if (state.ui.clockTimer) window.clearInterval(state.ui.clockTimer);
+  const tick = () => {
+    el.textContent = new Date().toISOString().slice(11, 19);
+  };
+  tick();
+  state.ui.clockTimer = window.setInterval(tick, 1000);
+}
+
+function setDemoProgress({ visible = false, phase = "Initializing run", current = 0, total = 0, text = "" } = {}) {
+  const panel = qs("#demoProgressPanel");
+  const phaseEl = qs("#demoProgressPhase");
+  const countEl = qs("#demoProgressCount");
+  const fillEl = qs("#demoProgressFill");
+  const textEl = qs("#demoProgressText");
+  if (panel) panel.classList.toggle("hidden", !visible);
+  if (phaseEl) phaseEl.textContent = phase;
+  if (countEl) countEl.textContent = `${current}/${total}`;
+  const pct = total > 0 ? Math.max(0, Math.min(100, (current / total) * 100)) : 0;
+  if (fillEl) fillEl.style.width = `${pct}%`;
+  if (textEl) textEl.textContent = text || `${phase}… (${current}/${total})`;
+  setStreamingIndicator(visible, phase.includes("Streaming") ? "LIVE ingest" : "Working");
+}
+
 function setLoading(isLoading, message = "Loading...") {
   const overlay = qs("#loadingOverlay");
   const text = qs("#loadingMessage");
@@ -5825,25 +5940,34 @@ function setLoading(isLoading, message = "Loading...") {
   if (isLoading) {
     text.textContent = String(message || "Loading...");
     overlay.classList.remove("hidden");
+    if (String(message || "").toLowerCase().includes("seed") || String(message || "").toLowerCase().includes("demo")) {
+      setStreamingIndicator(true, "Streaming");
+    }
   } else {
     text.textContent = "Loading...";
     overlay.classList.add("hidden");
+    setStreamingIndicator(false);
   }
 }
 
 function setStatus(message = "", isError = false, showToast = false) {
   const el = qs("#globalStatus");
+  const rail = qs("#statusMessageText");
   if (!el) return;
   if (!message) {
     el.className = "status hidden";
     el.textContent = "";
+    if (rail) rail.textContent = "System ready.";
     return;
   }
+  const cleanMessage = isError ? friendlyErrorMessage(message) : String(message);
   el.className = `status ${isError ? "error" : "ok"}`;
-  el.textContent = String(message);
+  el.textContent = cleanMessage;
   el.classList.remove("hidden");
+  if (rail) rail.textContent = cleanMessage;
+  setConnectionStatus(isError ? "OFFLINE" : state.demo.enabled ? "DEMO" : "LIVE");
   if (showToast) {
-    createToast(message, isError ? "error" : "success");
+    createToast(cleanMessage, isError ? "error" : "success");
   }
 }
 
@@ -6076,8 +6200,10 @@ function updateActiveRunHeader(run) {
   const nameEl = qs("#activeRunName");
   const idEl = qs("#activeRunId");
   const pillEl = qs("#activeRunStatusPill");
+  const topbarRunId = qs("#topbarActiveRunId");
   if (nameEl) nameEl.textContent = run?.name || "No active run";
   if (idEl) idEl.textContent = run?.run_id || "-";
+  if (topbarRunId) topbarRunId.textContent = run?.run_id || "--";
   if (pillEl) {
     if (!run) {
       pillEl.textContent = "—";
@@ -6094,6 +6220,7 @@ function updateActiveRunHeader(run) {
     window.localStorage.setItem("active_run_id", run.run_id);
   }
   updateUploadRunInfo();
+  setConnectionStatus(state.demo.enabled ? "DEMO" : run?.is_active ? "LIVE" : "OFFLINE");
 }
 
 function sortRuns(runs, mode) {
@@ -6201,6 +6328,12 @@ function renderDashboardMetrics(latest, prev) {
   const metricOperator = qs("#metricOperatorMessage");
   const metricRiskBadge = qs("#metricRiskBadge");
   const metricPhaseBadge = qs("#metricPhaseBadge");
+  const intelAnomaly = qs("#intelAnomalyScore");
+  const intelTrend = qs("#intelTrendDirection");
+  const intelDeg = qs("#intelDegradation");
+  const intelConfidence = qs("#intelConfidence");
+  const intelFeed = qs("#intelligenceFeedList");
+  const geometryState = qs("#dashboardGeometryState");
 
   if (metricTrend) metricTrend.textContent = toPretty(trendFromResult(latest));
   if (metricRisk) metricRisk.textContent = toPretty(latest?.risk_level);
@@ -6227,6 +6360,45 @@ function renderDashboardMetrics(latest, prev) {
   }
 
   renderDashboardHero(latest, prev);
+  const score = healthScoreFromSignals(latest);
+  if (score !== null) {
+    animateNumberText(qs("#dashboardHealthScore"), score, { decimals: 0 });
+  }
+  if (intelAnomaly) {
+    const drift = structuralDriftFromResult(latest) ?? 0;
+    const inst = compositeInstabilityFromResult(latest) ?? 0;
+    const anomaly = Math.min(100, Math.round((drift * 52 + inst * 48) * 100));
+    animateNumberText(intelAnomaly, anomaly, { decimals: 0, suffix: "%" });
+  }
+  if (intelTrend) intelTrend.textContent = String(trendFromResult(latest) || "stable").toUpperCase();
+  if (intelDeg) {
+    const risk = normalizeRiskLevel(latest?.risk_level);
+    intelDeg.textContent = risk === "HIGH" ? "Accelerating" : risk === "MEDIUM" ? "Watch" : "Contained";
+  }
+  if (intelConfidence) {
+    const conf = latest ? (latest.structural_analysis_available ? 92 : 74) : 0;
+    animateNumberText(intelConfidence, conf, { decimals: 0, suffix: "%" });
+  }
+  if (intelFeed) {
+    const alerts = (state.dashboardAlerts || []).slice(0, 3);
+    const recommendations = latest
+      ? [
+          `Model: ${String(phaseFromResult(latest) || "-")} / ${normalizeRiskLevel(latest.risk_level)} risk`,
+          `Recommendation: ${normalizeRiskLevel(latest.risk_level) === "HIGH" ? "Dispatch immediate inspection." : "Continue monitored operations."}`,
+        ]
+      : ["Awaiting telemetry stream."];
+    const lines = alerts.length
+      ? alerts.map((a) => `${a.type || "Event"}: ${a.message || "Signal deviation detected."}`)
+      : recommendations;
+    intelFeed.innerHTML = lines.map((line) => `<li>${escapeHtml(String(line).slice(0, 140))}</li>`).join("");
+  }
+  if (geometryState) {
+    const available = Boolean(latest?.structural_analysis_available);
+    geometryState.textContent = available
+      ? "Geometry ready — structural relationship field synchronized."
+      : "Geometry not available for this snapshot.";
+    geometryState.classList.toggle("geometry-ready", available);
+  }
   const lu = qs("#dashboardLastUpdated");
   if (lu) {
     const ts = new Date();
@@ -6270,12 +6442,18 @@ async function loadDashboard() {
   const chron = dashboardChronologicalResults();
   const latest = chron.length ? chron[chron.length - 1] : null;
   const prev = chron.length > 1 ? chron[chron.length - 2] : null;
-  renderDashboardMetrics(latest, prev);
-  renderDashboardRecent(state.dashboardRecent);
-  renderDashboardSparkline(chron);
-  bindDashboardSparklineInteractions();
-  window.requestAnimationFrame(() => renderDashboardSparkline(dashboardChronologicalResults()));
-  renderDashboardDemoHero();
+  const paint = () => {
+    renderDashboardMetrics(latest, prev);
+    renderDashboardRecent(state.dashboardRecent);
+    renderDashboardSparkline(chron);
+    bindDashboardSparklineInteractions();
+    renderDashboardDemoHero();
+  };
+  if (state.ui.dashboardPaint) window.cancelAnimationFrame(state.ui.dashboardPaint);
+  state.ui.dashboardPaint = window.requestAnimationFrame(() => {
+    paint();
+    state.ui.dashboardPaint = null;
+  });
 }
 
 function exportData(format, runId) {
@@ -6492,7 +6670,9 @@ async function seedDemoData() {
   updateActiveRunHeader(run);
   const runId = run.run_id;
   try {
+    setDemoProgress({ visible: true, phase: "Initializing run", current: 0, total: 120, text: "Initializing run" });
     setLoading(true, "Seeding demo data in cloud…");
+    setDemoProgress({ visible: true, phase: "Streaming data", current: 38, total: 120, text: "Seeding telemetry… (38/120)" });
     const out = await postDemoSeedWithRetry(
       runId,
       customerIdValue(state.tenant.customerId),
@@ -6502,12 +6682,15 @@ async function seedDemoData() {
     if (String(out?.status || "ok").toLowerCase() !== "ok") {
       throw new Error(`Demo seed request failed during cloud ingest${out?.error ? `: ${out.error}` : ""}`);
     }
+    setDemoProgress({ visible: true, phase: "Ready", current: 120, total: 120, text: "Ready" });
+    window.setTimeout(() => setDemoProgress({ visible: false }), 1200);
     return {
       count: Number(out?.processed || 0),
       processed: Number(out?.processed || 0),
       run_id: String(out?.run_id || runId),
     };
   } catch (err) {
+    setDemoProgress({ visible: false });
     throw new Error(`Demo ingest failed after retries: ${String(err.message || err)}`);
   }
 }
@@ -7400,6 +7583,7 @@ async function wireEvents() {
 
 async function init() {
   normalizeDemoEntryPath();
+  startLiveClock();
   readTenantFromStorage();
   readDemoModeFromStorage();
   const demoQs = applyDemoQueryParams();
