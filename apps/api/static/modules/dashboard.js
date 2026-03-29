@@ -1187,6 +1187,8 @@ const state = {
     runDetailObserver: null,
     runDetailHydratedSections: {},
     runDetailDeferredPaint: null,
+    runDetailBackgroundHistoryPending: false,
+    runDetailBackgroundHistoryLoaded: false,
   },
   runtimeDegraded: false,
 };
@@ -1216,8 +1218,8 @@ const GEOMETRY_FLOW_PERF_KEY = "neraium_structural_flow_perf";
 /** Origin marker + debug visuals for structural flow. `true` always shows the marker; when `false`, use URL `?geomDebug=1` instead. */
 const DEBUG_GEOMETRY = false;
 
-const DASHBOARD_RECENT_LIMIT = 60;
-const RUN_DETAIL_INITIAL_LIMIT = 260;
+const DASHBOARD_RECENT_LIMIT = 12;
+const RUN_DETAIL_INITIAL_LIMIT = 96;
 const RUN_DETAIL_BACKGROUND_LIMIT = 1000;
 let chartJsLoadPromise = null;
 
@@ -1450,14 +1452,11 @@ function renderRunDetailHeaderContext(run, latest) {
   if (updateEl) updateEl.textContent = getLastUpdateDisplay(uiTruth, ts);
   if (recEl) {
     if (!latest) recEl.textContent = uiTruth.mode === "validation"
-      ? "Validation workspace ready. Start NASA CMAPSS FD004 replay when ready."
-      : "Upload telemetry to begin structural analysis.";
-    else if (recommendation) recEl.textContent = recommendation;
-    else recEl.textContent = risk === "HIGH"
-      ? "Alert context: high-risk structural behavior detected."
-      : risk === "MEDIUM"
-        ? "Watch context: moderate drift and instability detected."
-        : "Monitoring context: no immediate intervention recommended.";
+      ? "Primary action: start NASA CMAPSS FD004 replay when ready."
+      : "Primary action: upload telemetry to begin structural analysis.";
+    else if (risk === "HIGH") recEl.textContent = "Primary action: acknowledge alert and dispatch targeted inspection.";
+    else if (risk === "MEDIUM") recEl.textContent = "Primary action: maintain elevated watch and verify telemetry freshness.";
+    else recEl.textContent = recommendation || "Primary action: continue monitored operations.";
   }
 }
 
@@ -1863,7 +1862,7 @@ function renderOperationalSnapshot(latest) {
       nextAction = freshness.stale ? "Refresh active run or ingest fresh telemetry." : "System stable — continue monitoring.";
     }
   }
-  if (recEl) recEl.textContent = `${recommendation} ${nextAction}`;
+  if (recEl) recEl.textContent = latest ? recommendation : `${recommendation} ${nextAction}`;
 
   const ctaBtn = qs("#primaryPilotActionBtn");
   if (ctaBtn) {
@@ -2039,10 +2038,12 @@ function renderDashboardRecent(results) {
 
 async function loadDashboard() {
   const runId = state.activeRun?.run_id || "";
-  const recentEnv = await fetchRecentResults({ run_id: runId, limit: DASHBOARD_RECENT_LIMIT });
-  const alertsEnv = await fetchJson(apiUrl("/alerts", tenantScopeParams({ run_id: runId, limit: 20 })));
+  const [recentEnv, alertsEnv] = await Promise.all([
+    fetchRecentResults({ run_id: runId, limit: DASHBOARD_RECENT_LIMIT }),
+    fetchJson(apiUrl("/alerts", tenantScopeParams({ run_id: runId, limit: 8 }))),
+  ]);
   state.dashboardRecent = Array.isArray(recentEnv?.results) ? recentEnv.results : [];
-  state.dashboardAlerts = alertsEnv.alerts || [];
+  state.dashboardAlerts = Array.isArray(alertsEnv?.alerts) ? alertsEnv.alerts : [];
   state.dashboardCurrentAlertStatus = alertsEnv.current_status && typeof alertsEnv.current_status === "object"
     ? alertsEnv.current_status
     : null;
