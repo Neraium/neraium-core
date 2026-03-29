@@ -6131,7 +6131,7 @@ function setPage(page) {
     upload: ["Upload / Ingest", "Upload telemetry CSV into the active run"],
     runs: ["Active Runs", "Operational run list and entry point into analysis"],
     validation: ["Validation", "Reference replay and historical validation scenarios"],
-    "run-detail": ["Run Analysis Workspace", "Structural intelligence analysis: context, geometry, trends, and history"],
+    "run-detail": ["Run Analysis", "Structural intelligence analysis: context, geometry, trends, and history"],
     "result-detail": ["Result Detail", "Focused view for a single result"],
   };
   qsa(".page").forEach((p) => p.classList.add("hidden"));
