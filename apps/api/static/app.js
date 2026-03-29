@@ -1877,14 +1877,12 @@ function renderTenantControls() {
   const customerInput = qs("#customerFilterInput");
   const siteInput = qs("#siteFilterInput");
   const siteList = qs("#knownSitesList");
-  const demoToggle = qs("#demoModeToggle");
   if (customerInput) customerInput.value = customerIdValue(state.tenant.customerId);
   if (siteInput) siteInput.value = siteIdValue(state.tenant.siteId);
-  if (demoToggle) demoToggle.checked = !!state.demo.enabled;
   const seedDemoBtn = qs("#seedDemoBtn");
   if (seedDemoBtn) {
     seedDemoBtn.disabled = state.demo.preparing;
-    seedDemoBtn.textContent = state.demo.preparing ? "Preparing SII demo…" : "Run NASA CMAPSS Dataset";
+    seedDemoBtn.textContent = state.demo.preparing ? "Preparing SII demo…" : "Run NASA CMAPSS FD004 Demo";
   }
   if (siteList) {
     siteList.innerHTML = state.tenant.knownSites
@@ -6026,7 +6024,7 @@ function setStatus(message = "", isError = false, showToast = false) {
   if (!message) {
     el.className = "status hidden";
     el.textContent = "";
-    if (rail) rail.textContent = "System ready.";
+    if (rail) rail.textContent = "NASA CMAPSS FD004 scenario ready.";
     return;
   }
   const cleanMessage = isError ? friendlyErrorMessage(message) : String(message);
@@ -7497,22 +7495,6 @@ async function wireEvents() {
   qs("#flowHistoryToggle")?.addEventListener("change", (e) => {
     state.runDetailView.flowHistoryEnabled = Boolean(e.target?.checked);
   });
-  qs("#demoModeToggle")?.addEventListener("change", async (e) => {
-    const enabled = Boolean(e.target?.checked);
-    try {
-      if (enabled && !state.demo.prepared && state.runs.length === 0) {
-        await launchGuidedDemo({ mode: "all" });
-        return;
-      }
-      await toggleDemoMode(enabled);
-      setStatus(enabled ? "Demo Mode on — sample & scripted data" : "Demo Mode off", false, true);
-    } catch (err) {
-      setStatus(String(err.message || err), true, true);
-    } finally {
-      setLoading(false);
-    }
-  });
-
 
   qs("#dashboardQuickDemoBtn")?.addEventListener("click", async () => {
     await launchGuidedDemo({ mode: "all" });
