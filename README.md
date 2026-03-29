@@ -1,6 +1,6 @@
 # neraium-core
 
-`neraium-core` is a deployable, **read-only structural instability instrumentation system**.  
+`neraium-core` is a deployable, **pilot-ready Systemic Infrastructure Intelligence (SII) platform**.  
 It ingests multivariate telemetry, computes **Systemic Infrastructure Intelligence (SII)**, and returns operator-facing evidence outputs.
 
 ---
@@ -18,7 +18,7 @@ Most tools optimize for **single sensors** or **component failure prediction**: 
 **Full customer-facing narrative (positioning vs predictive maintenance and AI monitoring):**  
 → **[docs/HOW_NERAIUM_IS_DIFFERENT.md](docs/HOW_NERAIUM_IS_DIFFERENT.md)**
 
-Operator workflow quickstart:
+Pilot/operator workflow quickstart:
 → **[docs/OPERATOR_WORKFLOW.md](docs/OPERATOR_WORKFLOW.md)**
 
 AWS App Runner deployment (source repository):
@@ -34,6 +34,13 @@ Neraium is intentionally constrained for current deployments:
 - **Human-in-the-loop decision support only**  
 - **No infrastructure control path**  
 - **No automated actuation**  
+
+## Primary product path (pilot-first)
+
+- **Primary UI**: `/dashboard` (also `/pilot` and `/operations`) for pilot operations monitoring.
+- **Operational workflow**: create/activate runs, ingest live/batch telemetry, review risk/recommendation/history.
+- **Secondary reference flow**: `/demo` and `/demo/full` redirects into the dashboard with **replay mode** enabled for historical validation (NASA CMAPSS FD004).
+- **Operator compatibility route**: `/operator` remains supported and redirects to the primary operational dashboard.
 
 ## AWS deployment baseline (March 28, 2026)
 

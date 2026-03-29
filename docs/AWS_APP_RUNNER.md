@@ -25,8 +25,9 @@ This guide deploys Neraium from GitHub to AWS App Runner using the repository co
 
 - API docs (if enabled): `/docs`
 - Health: `/health`
-- Operator UI: `/operator`
-- Operator workflow: `/operator/workflow`
+- Primary operational UI: `/dashboard` (also `/pilot`, `/operations`)
+- Operator compatibility routes: `/operator`, `/operator/workflow` (redirect to `/dashboard`)
+- Historical replay routes: `/demo`, `/demo/full` (redirect with replay mode enabled)
 - Web static files mount: `/web/*`
 
 ## Why GitHub pushes may not update App Runner
@@ -82,6 +83,6 @@ IAM role needs at minimum:
    - Symptom: service starts but immediately exits or returns 502.
    - Fix: use `uvicorn apps.api.main:app --host 0.0.0.0 --port 8000 --proxy-headers`.
 
-5. **Static/operator file issues**
-   - Symptom: `/operator` 404 or missing JS/CSS.
+5. **Static web asset issues**
+   - Symptom: `/dashboard` (or `/operator` redirect) 404 or missing JS/CSS.
    - Fix: confirm `apps/api/static/*` exists in the deployed branch and source directory is root.

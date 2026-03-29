@@ -38,7 +38,7 @@ function friendlyErrorMessage(err) {
   const msg = String(err?.message || err || "");
   if (msg.toLowerCase().includes("network")) return "Connection interrupted — attempting telemetry recovery.";
   if (msg.toLowerCase().includes("timeout")) return "Telemetry request timed out — re-establishing stream.";
-  if (msg.toLowerCase().includes("demo")) return "Systemic Infrastructure Intelligence demo interrupted — retry available.";
+  if (msg.toLowerCase().includes("demo")) return "Systemic Infrastructure Intelligence reference replay interrupted — retry available.";
   return "Operational request interrupted — retry when ready.";
 }
 
@@ -317,7 +317,7 @@ function renderRiskExplanation(result, opts = {}, chronological = null) {
     panelEl.setAttribute("data-risk", "UNKNOWN");
     titleEl.textContent = "Why this risk level";
     bodyEl.textContent = state.demo.enabled
-      ? "Demo data is still loading or filters hid every snapshot — adjust range or refresh."
+      ? "Reference replay data is still loading or filters hid every snapshot — adjust range or refresh."
       : "No result available yet to explain risk.";
     if (badgeEl) badgeEl.innerHTML = riskBadgeHtml("UNKNOWN");
     return;
@@ -858,11 +858,11 @@ function setDemoPlaybackUI() {
   const show = state.demo.enabled && route.page === "run-detail" && total > 0;
   if (!show) {
     panel.classList.add("hidden");
-    progress.textContent = state.demo.enabled ? "Open a run to start playback" : "Demo Mode off";
+    progress.textContent = state.demo.enabled ? "Open a run to start replay" : "Replay mode off";
     if (badge) badge.textContent = "";
     if (bar) bar.style.width = "0%";
     if (narr) narr.textContent = "";
-    playPauseBtn.textContent = "Play timeline";
+    playPauseBtn.textContent = "Play replay";
     replayBtn.disabled = true;
     renderDemoKeyEvents([]);
     return;
@@ -870,10 +870,10 @@ function setDemoPlaybackUI() {
   panel.classList.remove("hidden");
   const cursor = Math.max(1, Math.min(total, Number(state.demo.cursor || total)));
   progress.textContent = `Snapshot ${cursor}/${total}`;
-  if (badge) badge.textContent = "Demo Mode on";
+  if (badge) badge.textContent = "Replay mode on";
   if (bar) bar.style.width = `${(cursor / Math.max(1, total)) * 100}%`;
   if (narr) narr.textContent = demoPlaybackNarrationText(cursor, total);
-  playPauseBtn.textContent = state.demo.isPlaying ? "Pause timeline" : "Play timeline";
+  playPauseBtn.textContent = state.demo.isPlaying ? "Pause replay" : "Play replay";
   replayBtn.disabled = total <= 1;
   renderDemoKeyEvents();
 }
@@ -940,7 +940,7 @@ function scheduleDemoTick() {
 
 function toggleDemoPlayback(forcePlay = null) {
   if (!state.demo.enabled) {
-    setStatus("Enable Demo Mode first.", true, true);
+    setStatus("Enable replay mode first.", true, true);
     return;
   }
   if (!state.runRecent.length) {
@@ -973,7 +973,7 @@ function replayDemoTimeline() {
 
 async function toggleDemoMode(enabled) {
   state.demo.enabled = !!enabled;
-  setConnectionStatus(state.demo.enabled ? "DEMO" : state.activeRun?.is_active ? "LIVE" : "OFFLINE");
+  setConnectionStatus(state.demo.enabled ? "REPLAY" : state.activeRun?.is_active ? "LIVE" : "OFFLINE");
   persistDemoMode();
   if (!state.demo.enabled) {
     stopDemoPlayback();
@@ -1180,7 +1180,7 @@ async function prepareDemoRuns(options = {}) {
     const cust = customerIdValue(state.tenant.customerId);
     setDemoProgress({
       visible: true,
-      phase: "Preparing Systemic Infrastructure Intelligence demo",
+      phase: "Preparing historical validation replay",
       current: 0,
       total: scenarios.length,
       text: "Seeding telemetry and building structural state…",
@@ -1204,8 +1204,8 @@ async function prepareDemoRuns(options = {}) {
           }),
         });
         const run = runEnv.run;
-        setLoading(true, "Preparing demo runs…");
-        setStatus("Preparing demo run...", true);
+        setLoading(true, "Preparing replay runs…");
+        setStatus("Preparing replay run...", true);
         const started = await startDemoSeedJob(
           run.run_id,
           cust,
@@ -1300,7 +1300,7 @@ function onDemoPlaybackComplete() {
   createToast("Ready to test your data? Opening upload with the drop zone highlighted.", "success");
   try {
     const cid = encodeURIComponent(customerIdValue(state.tenant.customerId));
-    window.location.href = `/upload?customer_id=${cid}&demo=1&highlight=upload`;
+    window.location.href = `/upload?customer_id=${cid}&replay=1&highlight=upload`;
   } catch (_e) {
     // no-op
   }
@@ -1374,7 +1374,7 @@ async function launchGuidedDemo({ mode = "all" } = {}) {
     state.demo.playbackCompleteNotified = false;
     if (focusRun?.run_id) {
       const cid = encodeURIComponent(customerIdValue(state.tenant.customerId));
-      window.location.href = `/app/runs/${encodeURIComponent(focusRun.run_id)}?customer_id=${cid}&demo=1&autoplay=1`;
+      window.location.href = `/app/runs/${encodeURIComponent(focusRun.run_id)}?customer_id=${cid}&replay=1&autoplay=1`;
       return;
     }
     setStatus("Demo runs ready — pick a run.", false, true);
@@ -1805,11 +1805,11 @@ function readDemoModeFromStorage() {
   }
 }
 
-/** ?demo=1 or ?share_demo=1 enables Demo Mode (for share links). Returns whether to auto-prepare runs. */
+/** ?replay=1 (and legacy ?demo=1) enables replay mode for share links. Returns whether to auto-prepare runs. */
 function applyDemoQueryParams() {
   try {
     const params = new URLSearchParams(window.location.search);
-    const d = params.get("demo") || params.get("share_demo");
+    const d = params.get("replay") || params.get("share_replay") || params.get("demo") || params.get("share_demo");
     if (d === "1" || d === "true" || d === "yes") {
       state.demo.enabled = true;
       persistDemoMode();
@@ -1882,7 +1882,7 @@ function renderTenantControls() {
   const seedDemoBtn = qs("#seedDemoBtn");
   if (seedDemoBtn) {
     seedDemoBtn.disabled = state.demo.preparing;
-    seedDemoBtn.textContent = state.demo.preparing ? "Preparing SII demo…" : "Run NASA CMAPSS FD004 Demo";
+    seedDemoBtn.textContent = state.demo.preparing ? "Preparing reference replay…" : "Run NASA CMAPSS FD004 Reference Replay";
   }
   if (siteList) {
     siteList.innerHTML = state.tenant.knownSites
@@ -5950,7 +5950,7 @@ function setConnectionStatus(mode = "LIVE") {
   if (label) label.textContent = mode;
   if (badge) {
     badge.classList.remove("chip-live", "chip-demo", "chip-offline");
-    badge.classList.add(mode === "DEMO" ? "chip-demo" : mode === "OFFLINE" ? "chip-offline" : "chip-live");
+    badge.classList.add(mode === "DEMO" || mode === "REPLAY" ? "chip-demo" : mode === "OFFLINE" ? "chip-offline" : "chip-live");
   }
 }
 
@@ -5991,7 +5991,7 @@ function normalizeLoadingMessage(message) {
   const msg = String(message || "Loading...");
   const lower = msg.toLowerCase();
   if (lower.includes("seed")) return "Processing NASA CMAPSS dataset...";
-  if (lower.includes("demo")) return "Preparing Systemic Infrastructure Intelligence demo...";
+  if (lower.includes("demo")) return "Preparing historical validation replay...";
   if (lower.includes("cmapss")) return "Processing NASA CMAPSS dataset...";
   if (lower.includes("structural visualization") || lower.includes("geometry")) return "Rendering SII Structural View...";
   if (lower.includes("refresh")) return "Refreshing Systemic Infrastructure Intelligence state...";
@@ -6024,7 +6024,7 @@ function setStatus(message = "", isError = false, showToast = false) {
   if (!message) {
     el.className = "status hidden";
     el.textContent = "";
-    if (rail) rail.textContent = "NASA CMAPSS FD004 scenario ready.";
+    if (rail) rail.textContent = "Operational workspace ready. Reference replay available.";
     return;
   }
   const cleanMessage = isError ? friendlyErrorMessage(message) : String(message);
@@ -6032,7 +6032,7 @@ function setStatus(message = "", isError = false, showToast = false) {
   el.textContent = cleanMessage;
   el.classList.remove("hidden");
   if (rail) rail.textContent = cleanMessage;
-  setConnectionStatus(isError ? "OFFLINE" : state.demo.enabled ? "DEMO" : "LIVE");
+  setConnectionStatus(isError ? "OFFLINE" : state.demo.enabled ? "REPLAY" : "LIVE");
   if (showToast) {
     createToast(cleanMessage, isError ? "error" : "success");
   }
@@ -6040,7 +6040,7 @@ function setStatus(message = "", isError = false, showToast = false) {
 
 function setPage(page) {
   const titles = {
-    dashboard: ["SII Dashboard", "Systemic Infrastructure Intelligence in action"],
+    dashboard: ["Pilot Operations Dashboard", "Pilot-ready Systemic Infrastructure Intelligence workspace"],
     runs: ["Runs", "Create, inspect, and activate runs"],
     upload: ["Upload", "Upload telemetry CSV into the active run"],
     "run-detail": ["Run Detail", "Deep inspection of run outputs"],
@@ -6066,11 +6066,11 @@ function updateUploadRunInfo() {
   if (state.activeRun?.run_id) {
     const base = `Active run: ${state.activeRun.name} (${state.activeRun.run_id})`;
     info.textContent = state.demo.enabled
-      ? `${base} — Upload your own CSV to replace demo telemetry. We'll auto-detect and map your fields.`
+      ? `${base} — Upload your own CSV to replace replay telemetry. We'll auto-detect and map your fields.`
       : base;
   } else {
     info.textContent = state.demo.enabled
-      ? "No active run selected. Create or activate a run, then upload — or stay in demo to explore seeded data."
+      ? "No active run selected. Create or activate a run, then upload — or stay in replay mode to explore seeded reference data."
       : "No active run selected.";
   }
 }
@@ -6285,7 +6285,7 @@ function updateActiveRunHeader(run) {
     window.localStorage.setItem("active_run_id", run.run_id);
   }
   updateUploadRunInfo();
-  setConnectionStatus(state.demo.enabled ? "DEMO" : run?.is_active ? "LIVE" : "OFFLINE");
+  setConnectionStatus(state.demo.enabled ? "REPLAY" : run?.is_active ? "LIVE" : "OFFLINE");
 }
 
 function sortRuns(runs, mode) {
@@ -6344,7 +6344,7 @@ function renderRunsList() {
       if (p) {
         p.textContent =
           state.runs.length === 0
-            ? "No runs yet. Create a run or use Run NASA CMAPSS Dataset to launch the demonstration."
+            ? "No runs yet. Create a run for pilot operations or run NASA CMAPSS reference replay for validation."
             : "No runs match your filters.";
       }
     } else empty.classList.add("hidden");
@@ -6763,15 +6763,15 @@ async function seedDemoData() {
   setDemoButtonsDisabled(true);
   renderTenantControls();
   try {
-    setStatus("Preparing Systemic Infrastructure Intelligence demo...", false);
+    setStatus("Preparing historical validation replay...", false);
     setDemoProgress({
       visible: true,
-      phase: "Preparing Systemic Infrastructure Intelligence demo",
+      phase: "Preparing historical validation replay",
       current: 0,
       total: 3,
       text: "Processing NASA CMAPSS dataset...",
     });
-    setLoading(true, "Preparing Systemic Infrastructure Intelligence demo...");
+    setLoading(true, "Preparing historical validation replay...");
     setDemoProgress({
       visible: true,
       phase: "Processing NASA CMAPSS dataset",
@@ -6781,7 +6781,7 @@ async function seedDemoData() {
     });
     const out = await startCmapssDemo(customerIdValue(state.tenant.customerId), { max_frames: 180 });
     const resolvedRunId = String(out?.run_id || "");
-    if (!resolvedRunId) throw new Error("NASA demo did not return a run ID.");
+    if (!resolvedRunId) throw new Error("NASA reference replay did not return a run ID.");
     setLoading(true, "Running NASA CMAPSS FD004 scenario...");
     setStatus("Building structural state...", false);
     setDemoProgress({
@@ -7522,10 +7522,10 @@ async function wireEvents() {
 
   qs("#seedDemoBtn")?.addEventListener("click", async () => {
     try {
-      setLoading(true, "Preparing Systemic Infrastructure Intelligence demo...");
+      setLoading(true, "Preparing historical validation replay...");
       const out = await seedDemoData();
       const cid = encodeURIComponent(customerIdValue(state.tenant.customerId));
-      window.location.href = `/app/runs/${encodeURIComponent(out.run_id)}?customer_id=${cid}&demo=1`;
+      window.location.href = `/app/runs/${encodeURIComponent(out.run_id)}?customer_id=${cid}&replay=1`;
     } catch (err) {
       setStatus(String(err.message || err), true, true);
     } finally {
@@ -7732,13 +7732,13 @@ async function init() {
     if (demoQs.shouldAutoPrepare && !state.demo.preparing && state.runs.length === 0) {
       sharedDemoPrep = true;
       try {
-        setLoading(true, "Preparing demo runs (shared link)…");
+        setLoading(true, "Preparing replay runs (shared link)…");
         await toggleDemoMode(true);
         const focusRun = await prepareDemoRuns({ mode: "all" });
         await refreshCurrentPage();
         if (focusRun?.run_id) {
           const cid = encodeURIComponent(customerIdValue(state.tenant.customerId));
-          window.location.href = `/app/runs/${encodeURIComponent(focusRun.run_id)}?customer_id=${cid}&demo=1&autoplay=1`;
+          window.location.href = `/app/runs/${encodeURIComponent(focusRun.run_id)}?customer_id=${cid}&replay=1&autoplay=1`;
           return;
         }
         setStatus("Demo runs ready — pick a run from the list.", false, true);
