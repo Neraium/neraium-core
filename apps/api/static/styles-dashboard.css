@@ -7,8 +7,7 @@
 .snapshot-item strong { display: block; margin-top: 0.22rem; font-size: 0.96rem; }
 .snapshot-actions-row { display: grid; grid-template-columns: 1fr; gap: 0.7rem; margin-top: 0.65rem; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 0.6rem; }
 .snapshot-recommendation { margin: 0.15rem 0 0; font-weight: 600; color: #e8f1ff; }
-.quick-link-stack { display: grid; gap: 0.35rem; margin-top: 0.55rem; padding-top: 0.45rem; border-top: 1px solid rgba(145, 167, 205, 0.14); }
-.quick-link-note { margin: 0; font-size: 0.84rem; color: #9db0cb; }
+.quick-link-stack { display: grid; gap: 0.25rem; margin-top: 0.42rem; padding-top: 0.35rem; border-top: 1px solid rgba(145, 167, 205, 0.14); }
 .control-stack { display: grid; gap: 12px; }
 @media (max-width: 1180px) {
   .dashboard-grid-v2 { grid-template-columns: 1fr; }
