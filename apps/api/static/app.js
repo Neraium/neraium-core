@@ -1116,12 +1116,25 @@ async function getDemoSeedJobStatus(jobId) {
 }
 
 async function waitForDemoSeedJob(jobId, options = {}) {
-  const intervalMs = Math.max(300, Number(options.intervalMs || 900));
+  const intervalMs = Math.max(300, Number(options.intervalMs || 800));
   const timeoutMs = Math.max(60000, Number(options.timeoutMs || 7 * 60 * 1000));
+  const maxSilentPollFailures = Math.max(0, Number(options.maxSilentPollFailures || 3));
   const started = Date.now();
   let lastStatus = null;
+  let pollFailures = 0;
   while (Date.now() - started < timeoutMs) {
-    const status = await getDemoSeedJobStatus(jobId);
+    let status;
+    try {
+      status = await getDemoSeedJobStatus(jobId);
+      pollFailures = 0;
+    } catch (err) {
+      pollFailures += 1;
+      if (pollFailures > maxSilentPollFailures) {
+        throw new Error("Demo failed — retry");
+      }
+      await new Promise((resolve) => window.setTimeout(resolve, intervalMs));
+      continue;
+    }
     lastStatus = status;
     const stateLabel = String(status?.status || "").toLowerCase();
     if (options.onProgress) options.onProgress(status);
@@ -1478,6 +1491,8 @@ const state = {
     enabled: false,
     prepared: false,
     preparing: false,
+    seedJobId: "",
+    seedRunId: "",
     isPlaying: false,
     timer: null,
     cursor: 0,
@@ -1881,6 +1896,19 @@ function renderTenantControls() {
   applyDemoUiShell();
   updateUploadRunInfo();
   renderDashboardDemoHero();
+}
+
+function setDemoButtonsDisabled(disabled) {
+  [
+    "#seedDemoBtn",
+    "#prepareDemoBtn",
+    "#dashboardQuickDemoBtn",
+    "#demoPlayPauseBtn",
+    "#demoReplayBtn",
+  ].forEach((selector) => {
+    const el = qs(selector);
+    if (el) el.disabled = !!disabled;
+  });
 }
 
 async function applyTenantFromControls() {
@@ -6700,8 +6728,13 @@ async function seedDemoData() {
   const run = state.activeRun || (await ensureActiveRun());
   updateActiveRunHeader(run);
   const runId = run.run_id;
+  state.demo.preparing = true;
+  state.demo.seedJobId = "";
+  state.demo.seedRunId = String(runId || "");
+  setDemoButtonsDisabled(true);
+  renderTenantControls();
   try {
-    setStatus("Preparing demo run...", true);
+    setStatus("Preparing demo…", false);
     setDemoProgress({ visible: true, phase: "Initializing run", current: 0, total: 120, text: "Preparing demo run..." });
     setLoading(true, "Preparing demo runs…");
     const started = await startDemoSeedJob(
@@ -6710,37 +6743,48 @@ async function seedDemoData() {
       { profile: "sample", minutes: 120, site_id: "demo-site", asset_id: "demo-asset" },
     );
     const jobId = String(started?.job_id || "");
+    const startedRunId = String(started?.run_id || runId || "");
     if (!jobId) {
       throw new Error("Demo seed did not return a job ID.");
     }
+    state.demo.seedJobId = jobId;
+    state.demo.seedRunId = startedRunId;
     const out = await waitForDemoSeedJob(jobId, {
-      intervalMs: 900,
+      intervalMs: 800,
+      maxSilentPollFailures: 3,
       onProgress: (job) => {
         const processed = Number(job?.processed || 0);
         const totalFrames = Number(job?.total_frames || 120);
         const percent = Number(job?.progress || 0);
-        setStatus("Seeding telemetry on server...", true);
+        const bounded = Math.max(0, Math.min(100, percent));
+        setStatus(`Preparing demo… (${bounded}%)`, false);
         setDemoProgress({
           visible: true,
           phase: "Streaming data",
-          current: Math.min(totalFrames, processed || Math.round((totalFrames * percent) / 100)),
+          current: Math.min(totalFrames, processed || Math.round((totalFrames * bounded) / 100)),
           total: totalFrames,
-          text: `Seeding telemetry on server... (${Math.max(0, Math.min(100, percent))}%)`,
+          text: `Preparing demo… (${bounded}%)`,
         });
       },
     });
-    setStatus("Loading structural visualization...", true);
+    const resolvedRunId = String(out?.run_id || state.demo.seedRunId || runId);
+    state.demo.seedRunId = resolvedRunId;
+    setStatus("Loading structural visualization...", false);
     setDemoProgress({ visible: true, phase: "Ready", current: 120, total: 120, text: "Ready" });
     window.setTimeout(() => setDemoProgress({ visible: false }), 1200);
     setStatus("Demo ready.");
     return {
       count: Number(out?.processed || 0),
       processed: Number(out?.processed || 0),
-      run_id: String(out?.run_id || runId),
+      run_id: resolvedRunId,
     };
   } catch (err) {
     setDemoProgress({ visible: false });
-    throw new Error(`Demo seed failed: ${String(err.message || err)}`);
+    throw new Error(String(err?.message || err || "Demo failed — retry"));
+  } finally {
+    state.demo.preparing = false;
+    setDemoButtonsDisabled(false);
+    renderTenantControls();
   }
 }
 
