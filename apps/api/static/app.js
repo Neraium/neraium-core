@@ -17,13 +17,14 @@ async function fetchRecentResults(params) {
 function buildFrontendUiState(latest = null, overrides = {}) {
   const route = getRoute();
   const page = String(route?.page || "dashboard").toLowerCase();
+  const dashboardSurface = page === "dashboard";
   const alertStatus = state.dashboardCurrentAlertStatus || (latest && latest.alert_status) || null;
   const alertState = String(alertStatus?.state || alertStatus?.alert_state || "").toUpperCase();
   const alertActive = Boolean(alertStatus?.alert_active) || alertState === "ESCALATED" || alertState === "PENDING_ALERT";
   const replayUiState = state.demo?.replay?.uiState || "idle";
   return deriveFrontendState({
     page,
-    demoEnabled: Boolean(state.demo.enabled),
+    demoEnabled: dashboardSurface ? false : Boolean(state.demo.enabled),
     replayUiState,
     hasLatest: Boolean(latest),
     hasTelemetrySeries: Array.isArray(state.dashboardRecent) && state.dashboardRecent.length > 0,
@@ -2058,11 +2059,7 @@ function normalizedAlertStatusText(latest) {
 }
 
 function noTelemetryOperationalMessage(uiTruth = null) {
-  const truth = uiTruth || buildFrontendUiState();
-  if (truth.mode === "validation") {
-    return "No replay frames loaded yet. Start NASA CMAPSS FD004 replay to establish structural state and recommendations.";
-  }
-  return "No telemetry in the active run. Upload telemetry to establish structural state and recommendations.";
+  return "No telemetry ingested yet. Upload telemetry to begin monitoring.";
 }
 
 function renderOperationalSnapshot(latest) {
@@ -2084,7 +2081,7 @@ function renderOperationalSnapshot(latest) {
     : confidenceValue >= 85
       ? `Confidence: ${confidenceValue}%`
       : "Confidence: moderate";
-  const alertText = uiTruth.mode === "validation" ? "Validation replay context" : normalizedAlertStatusText(latest);
+  const alertText = normalizedAlertStatusText(latest);
   const freshness = formatFreshnessLabel(latest, uiTruth);
 
   if (stateEl) stateEl.textContent = stateText;
@@ -2095,9 +2092,7 @@ function renderOperationalSnapshot(latest) {
   if (freshEl) freshEl.textContent = freshness.label;
 
   let recommendation = noTelemetryOperationalMessage(uiTruth);
-  let nextAction = uiTruth.mode === "validation"
-    ? "Start NASA CMAPSS FD004 replay to begin validation monitoring."
-    : "Upload telemetry to start active monitoring.";
+  let nextAction = "Upload telemetry to start active monitoring.";
   if (latest) {
     if (risk === "HIGH") {
       recommendation = "Investigate sustained instability in the active run.";
@@ -2116,18 +2111,8 @@ function renderOperationalSnapshot(latest) {
 
   const ctaBtn = qs("#primaryPilotActionBtn");
   if (ctaBtn) {
-    if (uiTruth.mode === "validation") {
-      ctaBtn.textContent = "Open Validation";
-      ctaBtn.setAttribute("href", "/validation");
-    } else if (!latest || freshness.stale) {
-      ctaBtn.textContent = "Upload Telemetry";
-      ctaBtn.setAttribute("href", "/upload");
-    } else {
-      ctaBtn.textContent = "Open Analysis";
-      const runId = state.activeRun?.run_id || "";
-      const customerId = encodeURIComponent(customerIdValue(state.tenant.customerId));
-      ctaBtn.setAttribute("href", runId ? `/app/runs/${encodeURIComponent(runId)}?customer_id=${customerId}` : "/app/runs");
-    }
+    ctaBtn.textContent = "Upload Telemetry";
+    ctaBtn.setAttribute("href", "/upload");
   }
 }
 
@@ -2212,7 +2197,7 @@ function renderDashboardMetrics(latest, prev) {
           `Model: ${String(phaseFromResult(latest) || "-")} / ${normalizeRiskLevel(latest.risk_level)} risk`,
           `Recommendation: ${normalizeRiskLevel(latest.risk_level) === "HIGH" ? "Dispatch immediate inspection." : "Continue monitored operations."}`,
         ]
-      : [uiTruth.mode === "validation" ? "Awaiting validation replay frames." : "Awaiting active-run telemetry upload."];
+      : ["Awaiting active-run telemetry upload."];
     const lines = alerts.length
       ? alerts.map((a) => `${a.type || "Event"}: ${a.message || "Signal deviation detected."}`)
       : recommendations;
@@ -2254,9 +2239,7 @@ function renderDashboardMetrics(latest, prev) {
     if (recommendationConfidenceBadge) recommendationConfidenceBadge.textContent = `Confidence ${confidence}%`;
     if (nextActionEl) {
       if (!latest) {
-        nextActionEl.textContent = uiTruth.mode === "validation"
-          ? "Start NASA CMAPSS FD004 replay to begin validation monitoring."
-          : "Upload telemetry to start active monitoring.";
+        nextActionEl.textContent = "Upload telemetry to start active monitoring.";
       } else if (risk === "HIGH") {
         nextActionEl.textContent = "Active alert requires acknowledgement and targeted inspection.";
       } else if (risk === "MEDIUM") {
@@ -2269,16 +2252,12 @@ function renderDashboardMetrics(latest, prev) {
   const lu = qs("#dashboardLastUpdated");
   if (lu) {
     const rawTs = latest?.timestamp || latest?.persisted_at || latest?.created_at || "";
-    if (uiTruth.mode === "validation") {
+    const tsMs = latestTelemetryTimestampMs(latest);
+    if (!tsMs) {
       lu.textContent = getLastUpdateDisplay(uiTruth, rawTs);
     } else {
-      const tsMs = latestTelemetryTimestampMs(latest);
-      if (!tsMs) {
-        lu.textContent = getLastUpdateDisplay(uiTruth, rawTs);
-      } else {
-        const ts = new Date(tsMs);
-        lu.textContent = `Last ingest ${ts.toLocaleString(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`;
-      }
+      const ts = new Date(tsMs);
+      lu.textContent = `Last ingest ${ts.toLocaleString(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`;
     }
   }
 }
