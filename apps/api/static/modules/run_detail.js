@@ -446,14 +446,8 @@ function renderRunDetailFromState(opts = {}) {
     disposeGeometryRenderer();
     clearGeometryModelsPanel();
     state.runGeometry = null;
-    renderRunSignals(null, null);
-    renderRunTransitionStrip(null, null);
-    renderPhaseTimeline([]);
-    renderOperatorMessages([]);
-    renderDemoKeyEvents([]);
     setDemoPlaybackUI();
     renderRunResultsTable([]);
-    renderRunCurrentStateGauges(null);
     renderRiskExplanation(null, {
       panelSelector: "#runRiskExplanationPanel",
       titleSelector: "#runRiskExplanationTitle",
@@ -487,19 +481,11 @@ function renderRunDetailFromState(opts = {}) {
   const ranged = currentRangeSlice(chronological);
   const flowTimeline = buildStructuralFlowTimeline(ranged);
   const latest = chronological.length ? chronological[chronological.length - 1] : state.runRecent[0];
-  const prev = chronological.length > 1 ? chronological[chronological.length - 2] : null;
-  renderRunSignals(latest, prev);
-  renderRunTransitionStrip(prev, latest);
-  renderRunCurrentStateGauges(latest);
   setDemoPlaybackUI();
   if (trendsHydrated) {
     renderRunDetailCharts(ranged);
   }
   syncStructuralFlowTimeline(flowTimeline, latest?.result_id);
-  if (trendsHydrated) {
-    renderPhaseTimeline(ranged);
-    renderOperatorMessages(ranged, { emphasize: state.demo.enabled });
-  }
   if (resultsHydrated) {
     const filtered = filterRunResults(ranged);
     const sorted = sortRunResults(filtered);
@@ -578,12 +564,7 @@ async function loadRunDetail(runId) {
   } catch (_e) {
     // ignore
   }
-  wireRunDetailDemoHero();
-  let heroBlocked = false;
-  if (!autoplayHandled && shouldShowRunDetailDemoHero() && state.runRecent.length > 1) {
-    heroBlocked = showRunDetailDemoHero();
-  }
-  if (!autoplayHandled && !heroBlocked) {
+  if (!autoplayHandled) {
     maybeAutoStartDemoPlayback();
   }
   state.ui.runDetailBackgroundHistoryLoaded = false;

@@ -204,3 +204,52 @@ async function seedDemoData() {
   state.demo.replay.launchPromise = launchPromise;
   return launchPromise;
 }
+
+function wireValidationEvents() {
+  const btn = qs("#seedDemoBtn");
+  if (!btn || btn.dataset.wired === "1") return;
+  btn.dataset.wired = "1";
+  btn.addEventListener("click", async () => {
+    try {
+      setLoading(true, "Preparing historical validation replay...");
+      const out = await seedDemoData();
+      const cid = encodeURIComponent(customerIdValue(state.tenant.customerId));
+      window.location.href = `/app/runs/${encodeURIComponent(out.run_id)}?customer_id=${cid}&replay=1&from=validation`;
+    } catch (err) {
+      setStatus(String(err.message || err), true, true);
+    } finally {
+      setLoading(false);
+    }
+  });
+}
+
+async function handleValidationStartupBehavior({
+  demoQuery = {},
+  refreshCurrentPage: refreshPage,
+} = {}) {
+  wireValidationEvents();
+  const shouldAutoPrepare = Boolean(demoQuery?.shouldAutoPrepare);
+  if (!shouldAutoPrepare || state.demo.preparing || state.runs.length !== 0) {
+    return false;
+  }
+  try {
+    setLoading(true, "Preparing replay runs (shared link)…");
+    await toggleDemoMode(true);
+    const focusRun = await prepareDemoRuns({ mode: "all" });
+    if (typeof refreshPage === "function") {
+      await refreshPage();
+    }
+    if (focusRun?.run_id) {
+      const cid = encodeURIComponent(customerIdValue(state.tenant.customerId));
+      window.location.href = `/app/runs/${encodeURIComponent(focusRun.run_id)}?customer_id=${cid}&replay=1&autoplay=1&from=validation`;
+      return true;
+    }
+    setStatus("Reference replay runs ready — pick a run from the list.", false, true);
+    return true;
+  } catch (err) {
+    setStatus(String(err.message || err), true, true);
+    return true;
+  } finally {
+    setLoading(false);
+  }
+}
