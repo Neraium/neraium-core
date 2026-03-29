@@ -405,6 +405,7 @@ class HealthResponse(BaseModel):
     core_runtime_mode: str = "full"
     core_runtime_fallback: bool = False
     core_runtime_notes: list[str] = Field(default_factory=list)
+    runtime_state_diagnostics: dict[str, Any] = Field(default_factory=dict)
 
 
 class ClientErrorReport(BaseModel):
@@ -979,9 +980,54 @@ def create_app(
     pull_integrations_lock = threading.Lock()
     alerts: dict[str, list[dict[str, Any]]] = {}
     alerts_lock = threading.Lock()
+    runtime_state_diagnostics: dict[str, Any] = {
+        "persisted_state_enabled": False,
+        "persisted_state_store": "none",
+        "memory_only_state": [
+            "demo_jobs",
+            "cmapss_fd004_cache",
+            "pull_integration_worker_threads",
+            "service_engine_runtime_memory",
+        ],
+    }
+    store_instance = getattr(service_instance, "store", None)
+    persisted_state_enabled = all(
+        hasattr(store_instance, method)
+        for method in ("upsert_operational_state", "list_operational_state", "delete_operational_state")
+    )
+    runtime_state_diagnostics["persisted_state_enabled"] = bool(persisted_state_enabled)
+    runtime_state_diagnostics["persisted_state_store"] = "sqlite_operational_state" if persisted_state_enabled else "none"
     alert_instability_threshold, alert_rapid_drift_delta = _alert_thresholds()
     alert_webhook_url = str(os.getenv("NERAIUM_ALERT_WEBHOOK_URL") or "").strip() or None
     alert_email_to = str(os.getenv("NERAIUM_ALERT_EMAIL_TO") or "").strip() or None
+    if not persisted_state_enabled:
+        log_structured(
+            logger,
+            event="operational_state_persistence_unavailable",
+            fields={"reason": "store_missing_operational_state_methods"},
+            level=logging.WARNING,
+        )
+
+    def _persist_operational_state(key: str, payload: dict[str, Any], *, customer_id: str | None = None, run_id: str | None = None) -> None:
+        if not persisted_state_enabled or store_instance is None:
+            return
+        try:
+            store_instance.upsert_operational_state(
+                state_key=key,
+                state=payload,
+                customer_id=customer_id,
+                run_id=run_id,
+            )
+        except Exception:
+            logger.exception("Failed to persist operational state key=%s", key)
+
+    def _delete_operational_state(key: str) -> None:
+        if not persisted_state_enabled or store_instance is None:
+            return
+        try:
+            store_instance.delete_operational_state(state_key=key)
+        except Exception:
+            logger.exception("Failed to delete operational state key=%s", key)
 
     def _record_alerts_for_customer(customer_id: str, items: list[dict[str, Any]]) -> list[dict[str, Any]]:
         if not items:
@@ -1003,6 +1049,11 @@ def create_app(
                 bucket.append(alert)
             bucket.sort(key=lambda a: str(a.get("created_at") or ""), reverse=True)
             del bucket[200:]
+            _persist_operational_state(
+                f"alerts:{resolved_customer}",
+                {"alerts": bucket, "customer_id": resolved_customer},
+                customer_id=resolved_customer,
+            )
         for alert in created:
             dispatch_alert_stubs(
                 logger=logger,
@@ -1081,6 +1132,7 @@ def create_app(
         }
 
     def _cleanup_ingest_jobs(max_jobs: int = 300) -> None:
+        removed_ids: list[str] = []
         with ingest_jobs_lock:
             if len(ingest_jobs) <= max_jobs:
                 return
@@ -1095,6 +1147,9 @@ def create_app(
             overflow = len(ingest_jobs) - max_jobs
             for jid in completed_ids[: max(0, overflow)]:
                 ingest_jobs.pop(jid, None)
+                removed_ids.append(jid)
+        for jid in removed_ids:
+            _delete_operational_state(f"ingest_job:{jid}")
 
     def _update_ingest_job(job_id: str, **fields: Any) -> dict[str, Any] | None:
         with ingest_jobs_lock:
@@ -1107,6 +1162,12 @@ def create_app(
                 job["partial_success"] = (
                     int(job.get("rows_succeeded", 0)) > 0 and int(job.get("rows_failed", 0)) > 0
                 )
+            _persist_operational_state(
+                f"ingest_job:{job_id}",
+                dict(job),
+                customer_id=_resolve_customer_id(job.get("customer_id")),
+                run_id=str(job.get("run_id")) if job.get("run_id") is not None else None,
+            )
             return dict(job)
 
     def _public_demo_job(job: dict[str, Any]) -> dict[str, Any]:
@@ -1363,6 +1424,16 @@ def create_app(
             if not k.startswith("_") and k not in private_keys
         }
 
+    def _persist_pull_state(customer_id: str, state: dict[str, Any]) -> None:
+        public_state = _public_pull_state(state, customer_id=customer_id)
+        public_state["resume_on_startup"] = bool(public_state.get("running"))
+        _persist_operational_state(
+            f"pull_integration:{customer_id}",
+            public_state,
+            customer_id=customer_id,
+            run_id=str(public_state.get("run_id")) if public_state.get("run_id") is not None else None,
+        )
+
     def _validate_endpoint_url(endpoint_url: str) -> str:
         text = str(endpoint_url or "").strip()
         if not text:
@@ -1449,6 +1520,7 @@ def create_app(
             state["status"] = "stopped"
             state["message"] = reason
             state["updated_at"] = _utc_now_iso()
+            _persist_pull_state(resolved_customer, state)
         if isinstance(stop_event, threading.Event):
             stop_event.set()
         if isinstance(thread, threading.Thread) and thread.is_alive() and thread is not threading.current_thread():
@@ -1478,6 +1550,7 @@ def create_app(
                         state["status"] = "running"
                         state["updated_at"] = _utc_now_iso()
                         state["message"] = "Polling upstream API."
+                        _persist_pull_state(resolved_customer, state)
                 if not is_running or not isinstance(stop_event, threading.Event):
                     return
                 if stop_event.is_set():
@@ -1491,6 +1564,7 @@ def create_app(
                             current["message"] = "Integration misconfigured: missing endpoint or run_id."
                             current["last_error"] = current["message"]
                             current["updated_at"] = _utc_now_iso()
+                            _persist_pull_state(resolved_customer, current)
                     return
 
                 success = False
@@ -1503,6 +1577,7 @@ def create_app(
                         current["last_poll_at"] = _utc_now_iso()
                         current["total_polls"] = int(current.get("total_polls", 0)) + 1
                         current["updated_at"] = _utc_now_iso()
+                        _persist_pull_state(resolved_customer, current)
                     try:
                         http_status, payload = _fetch_pull_payload(state)
                         rows = _coerce_pull_items(payload, customer_id=resolved_customer)
@@ -1524,6 +1599,7 @@ def create_app(
                             current["status"] = "running"
                             current["message"] = f"Last poll ingested {ingested} item(s)."
                             current["updated_at"] = now
+                            _persist_pull_state(resolved_customer, current)
                         log_structured(
                             logger,
                             event="pull_integration_poll_success",
@@ -1551,6 +1627,7 @@ def create_app(
                                 f"Poll attempt {attempt}/{retry_attempts} failed: {last_error}"
                             )
                             current["updated_at"] = _utc_now_iso()
+                            _persist_pull_state(resolved_customer, current)
                         log_structured(
                             logger,
                             event="pull_integration_poll_failure",
@@ -1578,6 +1655,7 @@ def create_app(
                         if current is not None:
                             current["message"] = "Polling will continue after previous failure."
                             current["updated_at"] = _utc_now_iso()
+                            _persist_pull_state(resolved_customer, current)
 
         worker = threading.Thread(target=_worker, daemon=True, name=f"pull-integration-{resolved_customer}")
         with pull_integrations_lock:
@@ -1586,6 +1664,88 @@ def create_app(
                 return
             state["_thread"] = worker
         worker.start()
+
+    def _restore_persisted_operational_state() -> None:
+        if not persisted_state_enabled or store_instance is None:
+            return
+        restored_alert_customers = 0
+        restored_ingest_jobs = 0
+        restored_pull_integrations = 0
+        try:
+            for row in store_instance.list_operational_state(key_prefix="alerts:"):
+                state = row.get("state")
+                if not isinstance(state, dict):
+                    continue
+                customer = _resolve_customer_id(state.get("customer_id") or row.get("customer_id"))
+                items = state.get("alerts")
+                if not isinstance(items, list):
+                    continue
+                with alerts_lock:
+                    alerts[customer] = [dict(x) for x in items if isinstance(x, dict)][:200]
+                restored_alert_customers += 1
+        except Exception:
+            logger.exception("Failed restoring persisted alerts state")
+        try:
+            for row in store_instance.list_operational_state(key_prefix="ingest_job:"):
+                state = row.get("state")
+                if not isinstance(state, dict):
+                    continue
+                job_id = str(state.get("job_id") or "")
+                if not job_id:
+                    continue
+                status = str(state.get("status") or "unknown")
+                # Upload/processing cannot resume safely across restart.
+                if status in {"uploading", "queued", "processing"}:
+                    state["status"] = "failed"
+                    state["message"] = "Job interrupted by process restart before completion."
+                    state["updated_at"] = _utc_now_iso()
+                    _persist_operational_state(
+                        f"ingest_job:{job_id}",
+                        state,
+                        customer_id=_resolve_customer_id(state.get("customer_id")),
+                        run_id=str(state.get("run_id")) if state.get("run_id") is not None else None,
+                    )
+                with ingest_jobs_lock:
+                    ingest_jobs[job_id] = dict(state)
+                restored_ingest_jobs += 1
+        except Exception:
+            logger.exception("Failed restoring persisted ingest job state")
+        try:
+            for row in store_instance.list_operational_state(key_prefix="pull_integration:"):
+                state = row.get("state")
+                if not isinstance(state, dict):
+                    continue
+                customer = _resolve_customer_id(state.get("customer_id") or row.get("customer_id"))
+                merged = _default_pull_state(customer)
+                merged.update({k: v for k, v in state.items() if not str(k).startswith("_")})
+                should_resume = bool(state.get("resume_on_startup"))
+                merged["running"] = should_resume
+                merged["status"] = "running" if should_resume else str(merged.get("status") or "stopped")
+                merged["message"] = (
+                    "Pull integration resumed after restart." if should_resume else str(merged.get("message") or "Pull integration is stopped.")
+                )
+                merged["_stop_event"] = threading.Event() if should_resume else None
+                merged["_thread"] = None
+                merged["updated_at"] = _utc_now_iso()
+                with pull_integrations_lock:
+                    pull_integrations[customer] = merged
+                _persist_pull_state(customer, merged)
+                if should_resume:
+                    _start_pull_worker(customer)
+                restored_pull_integrations += 1
+        except Exception:
+            logger.exception("Failed restoring persisted pull integration state")
+        runtime_state_diagnostics["restored_state_counts"] = {
+            "alert_customers": restored_alert_customers,
+            "ingest_jobs": restored_ingest_jobs,
+            "pull_integrations": restored_pull_integrations,
+        }
+        log_structured(
+            logger,
+            event="operational_state_restore_complete",
+            fields=runtime_state_diagnostics.get("restored_state_counts") or {},
+            level=logging.INFO,
+        )
 
     async def _stream_upload_to_tempfile(upload: UploadFile, target_path: Path, job_id: str) -> int:
         bytes_received = 0
@@ -1712,6 +1872,8 @@ def create_app(
 
         threading.Thread(target=_worker, daemon=True, name=f"ingest-job-{job_id}").start()
 
+    _restore_persisted_operational_state()
+
     def require_api_key(x_api_key: str | None = Header(default=None)) -> None:
         if not is_api_key_valid(api_key, x_api_key):
             raise HTTPException(
@@ -1726,6 +1888,7 @@ def create_app(
             persistence_available=persistence_available,
             app_version=app.version,
             resolve_customer_id=_resolve_customer_id,
+            runtime_state_diagnostics_provider=lambda: dict(runtime_state_diagnostics),
             health_response_model=HealthResponse,
             client_error_model=ClientErrorReport,
         )
@@ -2555,6 +2718,12 @@ def create_app(
         }
         with ingest_jobs_lock:
             ingest_jobs[job_id] = initial_job
+        _persist_operational_state(
+            f"ingest_job:{job_id}",
+            initial_job,
+            customer_id=resolved_customer,
+            run_id=resolved_run,
+        )
 
         try:
             bytes_received = await _stream_upload_to_tempfile(file, Path(temp_path), job_id)
@@ -2708,6 +2877,7 @@ def create_app(
                 "_thread": None,
             }
             state = dict(pull_integrations[resolved_customer])
+        _persist_pull_state(resolved_customer, state)
         _start_pull_worker(resolved_customer)
         log_structured(
             logger,
