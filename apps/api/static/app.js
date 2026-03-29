@@ -659,8 +659,9 @@ function renderDashboardHero(latest, prev) {
   if (countEl) countEl.textContent = String(chron.length);
 
   const alerts = state.dashboardAlerts || [];
-  const alertStatus = latest && latest.alert_status && typeof latest.alert_status === "object" ? latest.alert_status : null;
-  const alertState = String(alertStatus?.alert_state || "CLEAR").toUpperCase();
+  const alertStatus = state.dashboardCurrentAlertStatus
+    || (latest && latest.alert_status && typeof latest.alert_status === "object" ? latest.alert_status : null);
+  const alertState = String(alertStatus?.state || alertStatus?.alert_state || "CLEAR").toUpperCase();
   const pendingCount = Number(alertStatus?.consecutive_hit_count || 0);
   const threshold = Number(alertStatus?.hit_window_threshold || 3);
   if (alertCountEl) {
@@ -673,12 +674,17 @@ function renderDashboardHero(latest, prev) {
   if (alertSummaryEl) {
     if (alertStatus) {
       if (alertState === "PENDING_ALERT") {
-        alertSummaryEl.textContent = `Pending alert ${pendingCount}/${threshold}: ${String(alertStatus.alert_reason || "candidate active")}`.slice(0, 120);
+        alertSummaryEl.textContent = `Pending alert (${pendingCount}/${threshold} confirmations)`.slice(0, 120);
       } else if (alertStatus.alert_active) {
-        const ack = alertStatus.acknowledged ? "acknowledged" : "unacknowledged";
-        alertSummaryEl.textContent = `${alertState} (${ack}) since ${String(alertStatus.active_since || "n/a")}`.slice(0, 120);
+        if (alertState === "ESCALATED") {
+          alertSummaryEl.textContent = "Escalated alert".slice(0, 120);
+        } else if (alertStatus.acknowledged) {
+          alertSummaryEl.textContent = "Active alert — acknowledged".slice(0, 120);
+        } else {
+          alertSummaryEl.textContent = "Active alert — unacknowledged".slice(0, 120);
+        }
       } else if (alertState === "RESOLVED") {
-        alertSummaryEl.textContent = `Resolved: ${String(alertStatus.resolved_reason || "stabilized")}`.slice(0, 120);
+        alertSummaryEl.textContent = "Resolved after sustained recovery".slice(0, 120);
       } else {
         alertSummaryEl.textContent = "No open alerts for this run.";
       }
@@ -6553,6 +6559,9 @@ async function loadDashboard() {
   const alertsEnv = await fetchJson(apiUrl("/alerts", tenantScopeParams({ run_id: runId, limit: 20 })));
   state.dashboardRecent = Array.isArray(recentEnv?.results) ? recentEnv.results : [];
   state.dashboardAlerts = alertsEnv.alerts || [];
+  state.dashboardCurrentAlertStatus = alertsEnv.current_status && typeof alertsEnv.current_status === "object"
+    ? alertsEnv.current_status
+    : null;
   collectKnownSites(state.dashboardRecent);
   renderTenantControls();
   const chron = dashboardChronologicalResults();
