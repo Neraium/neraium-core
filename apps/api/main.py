@@ -302,7 +302,7 @@ class DemoSeedRequest(BaseModel):
 
 class DemoCmapssStartRequest(BaseModel):
     customer_id: str | None = None
-    max_frames: int = Field(default=180, ge=30, le=500)
+    max_frames: int = Field(default=10, ge=5, le=120)
 
 
 def _build_demo_sensor_values_row(i: int, p: float, drift_lift: float, vib_spike: float) -> dict[str, float]:
@@ -3000,6 +3000,15 @@ def create_app(
     ) -> dict[str, Any]:
         request_payload = payload or DemoCmapssStartRequest()
         resolved_customer = _resolve_customer_id(customer_id or request_payload.customer_id)
+        log_structured(
+            logger,
+            event="demo_cmapss_route_entry",
+            fields={
+                "customer_id": resolved_customer,
+                "requested_max_frames": int(request_payload.max_frames),
+            },
+            level=logging.INFO,
+        )
         run = service_instance.create_run(
             name=f"NASA CMAPSS FD004 Demo {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}",
             config={
@@ -3014,8 +3023,20 @@ def create_app(
         run_id = str(run.get("run_id") or "")
         if not run_id:
             raise HTTPException(status_code=500, detail="Failed to create demo run.")
+        log_structured(
+            logger,
+            event="demo_cmapss_run_created",
+            fields={"run_id": run_id, "customer_id": resolved_customer},
+            level=logging.INFO,
+        )
         try:
             rows = _load_cmapss_fd004_subset(request_payload.max_frames)
+            log_structured(
+                logger,
+                event="demo_cmapss_processing_start",
+                fields={"run_id": run_id, "customer_id": resolved_customer, "rows": len(rows)},
+                level=logging.INFO,
+            )
             payload_rows = [
                 {**row, "customer_id": resolved_customer}
                 for row in rows
@@ -3024,6 +3045,18 @@ def create_app(
                 payload_rows,
                 run_id=run_id,
                 customer_id=resolved_customer,
+            )
+            latest = service_instance.get_latest_result(run_id=run_id, customer_id=resolved_customer)
+            log_structured(
+                logger,
+                event="demo_cmapss_processing_complete",
+                fields={
+                    "run_id": run_id,
+                    "customer_id": resolved_customer,
+                    "processed": len(results),
+                    "latest_result_available": latest is not None,
+                },
+                level=logging.INFO,
             )
         except HTTPException:
             raise
