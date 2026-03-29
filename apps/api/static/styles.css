@@ -4631,11 +4631,64 @@ textarea {
   margin-top: 0.65rem;
 }
 
+.quick-link-note {
+  margin: 0;
+}
+
+.analysis-intent {
+  margin-top: 0.2rem;
+}
+
+.analysis-map {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin: 0.65rem 0 0.2rem;
+}
+
+.analysis-map a {
+  border: 1px solid rgba(130, 160, 210, 0.35);
+  border-radius: 999px;
+  padding: 0.28rem 0.62rem;
+  color: #c8dbff;
+  font-size: 0.8rem;
+  text-decoration: none;
+  background: rgba(70, 98, 145, 0.14);
+}
+
+.analysis-map a:hover {
+  background: rgba(70, 98, 145, 0.25);
+  border-color: rgba(140, 178, 232, 0.5);
+}
+
+.analysis-subsection {
+  margin-top: 0.85rem;
+}
+
+.panel-header-subsection h4 {
+  margin: 0;
+}
+
+#analysis-executive,
+#analysis-context,
+#analysis-geometry,
+#analysis-trends,
+#analysis-results {
+  scroll-margin-top: 92px;
+}
+
 @media (max-width: 980px) {
   .snapshot-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .snapshot-actions-row {
     grid-template-columns: 1fr;
+  }
+  .analysis-map {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .analysis-map a {
+    text-align: center;
   }
 }

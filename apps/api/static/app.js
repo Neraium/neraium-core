@@ -482,7 +482,7 @@ function renderDashboardHero(latest, prev) {
   const countEl = qs("#dashboardSnapshotCount");
   const alertCountEl = qs("#dashboardAlertCount");
   const alertSummaryEl = qs("#dashboardAlertSummary");
-  const link = qs("#dashboardOpenRunLink");
+  const link = qs("#dashboardOpenAnalysisLink");
   const alertTile = qs("#dashboardAlertTile");
 
   const score = healthScoreFromSignals(latest);
@@ -6112,7 +6112,7 @@ function setPage(page) {
     dashboard: ["Pilot Operations Dashboard", "Current system state, severity, and next operator action"],
     runs: ["Runs", "Create, inspect, and activate runs"],
     upload: ["Upload", "Upload telemetry CSV into the active run"],
-    "run-detail": ["Run Detail", "Deep inspection of run outputs"],
+    "run-detail": ["Run Analysis Workspace", "Structural intelligence analysis: context, geometry, trends, and history"],
     "result-detail": ["Result Detail", "Focused view for a single result"],
   };
   qsa(".page").forEach((p) => p.classList.add("hidden"));
@@ -6543,8 +6543,10 @@ function renderOperationalSnapshot(latest) {
       ctaBtn.textContent = "Upload Telemetry";
       ctaBtn.setAttribute("href", "/upload");
     } else {
-      ctaBtn.textContent = "Review Recommendation";
-      ctaBtn.setAttribute("href", "#recommendationPrimary");
+      ctaBtn.textContent = "Open Analysis";
+      const runId = state.activeRun?.run_id || "";
+      const customerId = encodeURIComponent(customerIdValue(state.tenant.customerId));
+      ctaBtn.setAttribute("href", runId ? `/app/runs/${encodeURIComponent(runId)}?customer_id=${customerId}` : "/app/runs");
     }
   }
 }
@@ -6655,8 +6657,8 @@ function renderDashboardMetrics(latest, prev) {
           : "Continue monitored operations under current control boundaries.";
     const rationaleText =
       risk === "UNKNOWN"
-        ? "SII is waiting for enough structural evidence to provide an operational recommendation."
-        : `Surfaced because structural state is ${String(latest?.state || latest?.interpreted_state || "unknown")} with ${risk} risk and ${trend} instability trend.`;
+        ? "Structural rationale will appear in the analysis workspace once enough evidence is available."
+        : `Summary only: ${String(latest?.state || latest?.interpreted_state || "unknown")} at ${risk} risk with ${trend} trend. Open Analysis Workspace for full rationale and structural context.`;
     const operatorNoteText =
       risk === "HIGH"
         ? "Prioritize assets showing strongest drift and validate containment assumptions before escalation."
@@ -7442,8 +7444,8 @@ async function loadRunDetail(runId) {
   const run = runRes.run;
   const title = qs("#runDetailTitle");
   const meta = qs("#runDetailMeta");
-  if (title) title.textContent = `Run: ${run.name}`;
-  if (meta) meta.textContent = `${run.run_id} · status=${run.status} · created=${run.created_at}`;
+  if (title) title.textContent = `Run analysis · ${run.name}`;
+  if (meta) meta.textContent = `Run ${run.run_id} · status ${run.status} · created ${run.created_at} · analysis workspace`;
   const recentEnv = await fetchRecentResults({ run_id: runId, limit: 1000 });
   state.runRecent = Array.isArray(recentEnv?.results) ? recentEnv.results : [];
   if (state.demo.enabled) {
