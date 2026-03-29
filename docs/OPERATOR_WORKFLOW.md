@@ -1,6 +1,6 @@
-# Operator-facing workflow (lightweight surface)
+# Operator-facing workflow (pilot-ready surface)
 
-This workflow adds a minimal operator-facing page on top of the existing validated API/service layer.
+This workflow defines the pilot-ready operator surface on top of the existing validated API/service layer.
 
 ## What it shows
 
@@ -37,23 +37,24 @@ The operator page presents the canonical service output in one place:
 uvicorn apps.api.main:app --reload --port 8000
 ```
 
-2. Open the operator workflow page:
+2. Open the operational dashboard:
 
-- `http://127.0.0.1:8000/operator`
-- or `http://127.0.0.1:8000/operator/workflow`
+- `http://127.0.0.1:8000/dashboard`
+- `http://127.0.0.1:8000/pilot`
+- (`/operator` and `/operator/workflow` remain compatibility redirects)
 
 3. In the page, set `customer_id` / `run_id`, then:
 
-- click **Seed demo frames** (quick path), or
+- click **Run NASA CMAPSS FD004 Reference Replay** (historical validation path), or
 - ingest your own data first with API calls.
 
-## End-to-end demo sequence
+## End-to-end reference replay sequence
 
 ### Option A: browser flow
 
-1. Open `/operator`.
+1. Open `/dashboard`.
 2. Keep defaults (`customer-a`, `run-operator-demo`).
-3. Click **Seed demo frames**.
+3. Click **Run NASA CMAPSS FD004 Reference Replay**.
 4. Observe:
    - current state + risk assessment
    - advisory recommendation block
@@ -64,7 +65,7 @@ uvicorn apps.api.main:app --reload --port 8000
 
 ### Option B: CLI flow
 
-Use the demo helper script to run ingest + retrieval in one command:
+Use the helper script to run ingest + retrieval in one command:
 
 ```bash
 python tools/run_operator_workflow_demo.py --base-url http://127.0.0.1:8000 --customer-id customer-a --run-id run-operator-demo
