@@ -1,5 +1,4 @@
 /* Analysis workspace (run detail) */
-.analysis-intent { margin-top: 0.2rem; }
 .analysis-run-header { margin-top: 0.45rem; border: 1px solid rgba(139, 170, 220, 0.24); border-radius: 12px; padding: 0.7rem; background: rgba(8, 14, 26, 0.72); }
 .analysis-run-header-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.6rem; }
 .analysis-run-header-item { border: 1px solid rgba(117, 148, 196, 0.2); border-radius: 10px; padding: 0.55rem 0.6rem; background: rgba(13, 22, 38, 0.58); }
@@ -17,6 +16,7 @@
 #analysis-results .table-wrap { content-visibility: auto; contain-intrinsic-size: 520px; }
 #analysis-geometry .geometry-layout { content-visibility: auto; contain-intrinsic-size: 760px; }
 .geometry-flow-playback { margin: 0.5rem 0 0.75rem; }
+.run-deferred-hint { margin: 0 0 0.5rem; font-size: 0.78rem; color: #93a8c8; }
 
 @media (max-width: 980px) {
   .analysis-run-header-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -39,10 +39,6 @@
 
 @media (max-width: 720px) {
   .analysis-run-header-grid { grid-template-columns: 1fr; }
-  .analysis-intent {
-    margin-top: 0.45rem;
-    line-height: 1.4;
-  }
   #analysis-executive {
     margin-bottom: 0.2rem;
   }
