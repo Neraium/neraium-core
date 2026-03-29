@@ -154,9 +154,7 @@ function renderRiskExplanation(result, opts = {}, chronological = null) {
     panelEl.classList.remove("hidden");
     panelEl.setAttribute("data-risk", "UNKNOWN");
     titleEl.textContent = "Why this risk level";
-    bodyEl.textContent = state.demo.enabled
-      ? "Reference replay data is still loading or filters hid every snapshot — adjust range or refresh."
-      : "No result available yet to explain risk.";
+    bodyEl.textContent = "No structural result available yet. Upload telemetry or refresh the active run to generate a risk explanation.";
     if (badgeEl) badgeEl.innerHTML = riskBadgeHtml("UNKNOWN");
     return;
   }
@@ -6412,7 +6410,7 @@ function renderRunsList() {
       if (p) {
         p.textContent =
           state.runs.length === 0
-            ? "No runs yet. Create a run for pilot operations, or open Validation for NASA CMAPSS reference replay."
+            ? "No runs yet. Create an active run, then upload telemetry to begin pilot operations."
             : "No runs match your filters.";
       }
     } else empty.classList.add("hidden");
@@ -6464,13 +6462,13 @@ function latestTelemetryTimestampMs(result) {
 
 function formatFreshnessLabel(result) {
   const ts = latestTelemetryTimestampMs(result);
-  if (!ts) return { label: "No telemetry ingested yet", stale: true };
+  if (!ts) return { label: "No telemetry uploaded to the active run", stale: true };
   const ageMs = Math.max(0, Date.now() - ts);
   const mins = Math.floor(ageMs / 60000);
-  if (mins < 2) return { label: "Updated just now", stale: false };
-  if (mins < 60) return { label: `Updated ${mins} minute${mins === 1 ? "" : "s"} ago`, stale: mins >= 15 };
+  if (mins < 2) return { label: "Fresh telemetry (updated just now)", stale: false };
+  if (mins < 60) return { label: `Freshness: ${mins} minute${mins === 1 ? "" : "s"} ago`, stale: mins >= 15 };
   const hours = Math.floor(mins / 60);
-  return { label: `Data stale — last ingest ${hours} hour${hours === 1 ? "" : "s"} ago`, stale: true };
+  return { label: `Stale telemetry — last upload ${hours} hour${hours === 1 ? "" : "s"} ago`, stale: true };
 }
 
 function normalizedAlertStatusText(latest) {
@@ -6479,13 +6477,17 @@ function normalizedAlertStatusText(latest) {
   const alertState = String(alertStatus?.state || alertStatus?.alert_state || "CLEAR").toUpperCase();
   const pendingCount = Number(alertStatus?.consecutive_hit_count || 0);
   const threshold = Number(alertStatus?.hit_window_threshold || 3);
-  if (!alertStatus) return "No active alert";
+  if (!alertStatus) return "Alert status clear";
   if (alertState === "PENDING_ALERT") return `Pending alert (${pendingCount}/${threshold} confirmations)`;
   if (alertStatus.alert_active && alertState === "ESCALATED") return "Escalated alert";
   if (alertStatus.alert_active && alertStatus.acknowledged) return "Active alert — acknowledged";
   if (alertStatus.alert_active) return "Active alert — unacknowledged";
   if (alertState === "RESOLVED") return "Resolved after sustained recovery";
-  return "No active alert";
+  return "Alert status clear";
+}
+
+function noTelemetryOperationalMessage() {
+  return "No telemetry in the active run. Upload telemetry to establish structural state and recommendations.";
 }
 
 function renderOperationalSnapshot(latest) {
@@ -6517,8 +6519,8 @@ function renderOperationalSnapshot(latest) {
   if (alertEl) alertEl.textContent = alertText;
   if (freshEl) freshEl.textContent = freshness.label;
 
-  let recommendation = "Upload fresh telemetry to resume monitoring.";
-  let nextAction = "Upload telemetry to begin monitoring.";
+  let recommendation = noTelemetryOperationalMessage();
+  let nextAction = "Upload telemetry to start active monitoring.";
   if (latest) {
     if (risk === "HIGH") {
       recommendation = "Investigate sustained instability in the active run.";
@@ -6603,7 +6605,7 @@ function renderDashboardMetrics(latest, prev) {
     animateNumberText(qs("#dashboardHealthScore"), score, { decimals: 0 });
     if (healthCaption) healthCaption.textContent = `${normalizeRiskLevel(latest?.risk_level)} risk`;
   } else if (healthCaption) {
-    healthCaption.textContent = "No telemetry";
+    healthCaption.textContent = "No active telemetry";
   }
   if (intelAnomaly) {
     const drift = structuralDriftFromResult(latest) ?? 0;
@@ -6630,7 +6632,7 @@ function renderDashboardMetrics(latest, prev) {
           `Model: ${String(phaseFromResult(latest) || "-")} / ${normalizeRiskLevel(latest.risk_level)} risk`,
           `Recommendation: ${normalizeRiskLevel(latest.risk_level) === "HIGH" ? "Dispatch immediate inspection." : "Continue monitored operations."}`,
         ]
-      : ["Awaiting Systemic Infrastructure Intelligence telemetry stream."];
+      : ["Awaiting active-run telemetry upload."];
     const lines = alerts.length
       ? alerts.map((a) => `${a.type || "Event"}: ${a.message || "Signal deviation detected."}`)
       : recommendations;
@@ -6649,13 +6651,17 @@ function renderDashboardMetrics(latest, prev) {
     const operatorSummaryClean = String(operatorSummary || "No recommendation yet.");
     const confidence = latest ? (latest.structural_analysis_available ? 92 : 74) : 0;
     const primaryText =
-      risk === "HIGH"
+      !latest
+        ? noTelemetryOperationalMessage()
+        : risk === "HIGH"
         ? "Dispatch targeted inspection and increase structural watch frequency."
         : risk === "MEDIUM"
           ? "Maintain operations with elevated watch on relationship drift."
           : "Continue monitored operations under current control boundaries.";
     const rationaleText =
-      risk === "UNKNOWN"
+      !latest
+        ? "After telemetry upload, analysis will populate structural state, relationship drift, pattern memory, and recommendation rationale."
+        : risk === "UNKNOWN"
         ? "Structural rationale will appear in the analysis workspace once enough evidence is available."
         : `Summary only: ${String(latest?.state || latest?.interpreted_state || "unknown")} at ${risk} risk with ${trend} trend. Open Analysis Workspace for full rationale and structural context.`;
     const operatorNoteText =
@@ -6668,7 +6674,7 @@ function renderDashboardMetrics(latest, prev) {
     if (recommendationConfidenceBadge) recommendationConfidenceBadge.textContent = `Confidence ${confidence}%`;
     if (nextActionEl) {
       if (!latest) {
-        nextActionEl.textContent = "Upload telemetry to begin monitoring.";
+        nextActionEl.textContent = "Upload telemetry to start active monitoring.";
       } else if (risk === "HIGH") {
         nextActionEl.textContent = "Active alert requires acknowledgement and targeted inspection.";
       } else if (risk === "MEDIUM") {
@@ -6682,7 +6688,7 @@ function renderDashboardMetrics(latest, prev) {
   if (lu) {
     const tsMs = latestTelemetryTimestampMs(latest);
     if (!tsMs) {
-      lu.textContent = "No recent update available. Refresh the active run or ingest new telemetry.";
+      lu.textContent = "No telemetry timestamp yet for this active run.";
     } else {
       const ts = new Date(tsMs);
       lu.textContent = `Last ingest ${ts.toLocaleString(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`;
@@ -7240,8 +7246,8 @@ function renderRunResultsTable(results, opts = {}) {
       const p = empty.querySelector("p");
       if (p) {
         p.textContent = state.demo.enabled
-          ? "No results match current filters — clear search or widen the time range."
-          : "No results match current filters.";
+          ? "No results match these filters — clear filters or widen the time range."
+          : "No results match these filters.";
       }
     } else empty.classList.add("hidden");
   }

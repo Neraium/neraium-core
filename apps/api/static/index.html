@@ -42,8 +42,8 @@
       <nav class="nav">
         <p class="nav-section-title">Workspace</p>
         <a href="/dashboard" data-nav="dashboard">Dashboard</a>
-        <a href="/upload" data-nav="upload">Upload / Ingest</a>
-        <a href="/app/runs" data-nav="runs">Runs / Analysis</a>
+        <a href="/upload" data-nav="upload">Upload Telemetry</a>
+        <a href="/app/runs" data-nav="runs">Active Runs</a>
         <a href="/validation" data-nav="validation">Validation</a>
       </nav>
     </aside>
@@ -57,7 +57,7 @@
           <a href="/dashboard" class="topbar-wordmark">Neraium</a>
           <div class="title-block telemetry-title">
             <h2 id="pageTitle">Pilot Operations Dashboard</h2>
-            <p id="pageSubtitle" class="subtitle page-subtitle-truncate">Pilot-ready Systemic Infrastructure Intelligence workspace</p>
+            <p id="pageSubtitle" class="subtitle page-subtitle-truncate">Operational-first Systemic Infrastructure Intelligence workspace</p>
           </div>
         </div>
         <div class="telemetry-status-strip" aria-label="System telemetry status">
@@ -141,11 +141,11 @@
               </div>
               <div class="quick-link-stack" aria-label="Open deeper analysis">
                 <a class="button-link secondary" id="dashboardOpenAnalysisLink" href="/app/runs">Open Analysis Workspace</a>
-                <p class="subtitle quick-link-note">Use analysis for geometry, timeline, trend charts, and full recommendation rationale.</p>
+                <p class="subtitle quick-link-note">Use analysis for structural state, relationship drift, pattern memory, and full operational rationale.</p>
               </div>
               <div class="quick-link-stack" aria-label="Validation workspace link">
                 <a class="button-link secondary" href="/validation">Open Validation Workspace</a>
-                <p class="subtitle quick-link-note">Reference replay and historical validation scenarios are available in the dedicated validation workflow.</p>
+                <p class="subtitle quick-link-note">Use validation for reference replay and historical verification workflows.</p>
               </div>
             </section>
           </div>
@@ -216,7 +216,7 @@
             <div class="upload-head">
               <div>
                 <p class="upload-kicker">Data ingest</p>
-                <h3>Upload CSV to active run</h3>
+                <h3>Upload telemetry CSV to active run</h3>
                 <p class="subtitle" id="uploadRunInfo"></p>
               </div>
               <span class="chip upload-head-chip">Semantic column mapping enabled</span>
@@ -385,8 +385,8 @@
               <p id="runRiskExplanationText" class="subtitle"></p>
             </article>
             <div id="runDetailEmpty" class="empty-state hidden">
-              <p>No results available for this run.</p>
-              <p class="subtitle">Upload a CSV file for pilot monitoring, or open Validation to run NASA CMAPSS FD004 reference replay scenarios.</p>
+              <p>No telemetry has been processed for this run yet.</p>
+              <p class="subtitle">Upload telemetry to generate structural state, relationship drift, and operational recommendations.</p>
             </div>
           </section>
 
@@ -507,12 +507,6 @@
                   <span class="metric-k">Link Agreement</span>
                   <span id="geometryFlowLinkAgreeInline" class="geometry-flow-manifold-line__v">—</span>
                 </p>
-                <div class="geometry-flow-legend geometry-flow-legend--compact" aria-label="Interpretation legend">
-                  <span class="geometry-flow-legend__item"><i class="geometry-flow-legend__swatch geometry-flow-legend__swatch--cyan"></i>Blue/cyan: stable/contained</span>
-                  <span class="geometry-flow-legend__item"><i class="geometry-flow-legend__swatch geometry-flow-legend__swatch--amber"></i>Yellow/orange: pressure</span>
-                  <span class="geometry-flow-legend__item"><i class="geometry-flow-legend__swatch geometry-flow-legend__swatch--red"></i>Red: escape/breach</span>
-                  <span class="geometry-flow-legend__item"><i class="geometry-flow-legend__swatch geometry-flow-legend__swatch--arrow"></i>Arrow: net drift</span>
-                </div>
                 <div class="geometry-run-metrics" id="geometryRunMetrics">
                   <div class="geometry-metric-row"><span class="metric-k">Flow state</span><span id="geometryStructuralAssessment" class="metric-v" title="">—</span></div>
                   <div class="geometry-metric-row"><span class="metric-k">Engine phase</span><span id="geometryEnginePhase" class="metric-v" title="">—</span></div>
