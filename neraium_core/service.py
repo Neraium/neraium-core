@@ -115,6 +115,42 @@ class StructuralMonitoringService:
         self._alert_control_by_run[key] = next_control
         return next_control
 
+    def _resolve_alert_policy(
+        self,
+        *,
+        run_id: str | None,
+        customer_id: str,
+        site_id: str | None,
+        asset_id: str | None,
+    ) -> dict[str, int] | None:
+        if run_id is None:
+            return None
+        run = self.store.get_run(str(run_id), customer_id=customer_id)
+        if not isinstance(run, dict):
+            return None
+        config = run.get("config")
+        if not isinstance(config, dict):
+            return None
+
+        policy: dict[str, Any] = {}
+        default_policy = config.get("alert_policy")
+        if isinstance(default_policy, dict):
+            policy.update(default_policy)
+
+        by_site = config.get("alert_policy_by_site")
+        if site_id is not None and isinstance(by_site, dict):
+            site_policy = by_site.get(str(site_id))
+            if isinstance(site_policy, dict):
+                policy.update(site_policy)
+
+        by_asset = config.get("alert_policy_by_asset")
+        if asset_id is not None and isinstance(by_asset, dict):
+            asset_policy = by_asset.get(str(asset_id))
+            if isinstance(asset_policy, dict):
+                policy.update(asset_policy)
+
+        return policy or None
+
     def _persist_product_history(
         self,
         result: dict[str, Any],
@@ -129,6 +165,14 @@ class StructuralMonitoringService:
         result_with_alert_control = dict(result)
         if alert_control:
             result_with_alert_control["alert_control"] = alert_control
+        alert_policy = self._resolve_alert_policy(
+            run_id=run_id,
+            customer_id=customer_id,
+            site_id=str(result.get("site_id")) if result.get("site_id") is not None else None,
+            asset_id=str(result.get("asset_id")) if result.get("asset_id") is not None else None,
+        )
+        if alert_policy:
+            result_with_alert_control["alert_policy"] = alert_policy
         canonical = build_canonical_output(
             result_with_alert_control,
             cycle=cycle,
