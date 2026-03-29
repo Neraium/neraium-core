@@ -1008,6 +1008,41 @@ async function ingestBatchForRun(runId, items, customerId) {
   });
 }
 
+async function ingestFramesForRun(runId, items, customerId, options = {}) {
+  const safeItems = Array.isArray(items) && items.length
+    ? items
+    : [
+        {
+          timestamp: new Date().toISOString(),
+          site_id: "demo-site",
+          asset_id: "demo-asset",
+          sensor_values: { pressure: 42, flow: 27, vibration: 6.2, temperature: 61.5 },
+        },
+      ];
+  const onProgress = typeof options.onProgress === "function" ? options.onProgress : null;
+  const total = safeItems.length;
+  for (let i = 0; i < safeItems.length; i += 1) {
+    const item = safeItems[i];
+    try {
+      await fetchJson(apiUrl("/ingest/frame", tenantScopeParams({ run_id: runId })), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...item,
+          customer_id: customerId,
+        }),
+      });
+    } catch (err) {
+      const step = i + 1;
+      throw new Error(`Demo ingest failed at frame ${step}/${total}: ${String(err.message || err)}`);
+    }
+    if (onProgress && (i === total - 1 || (i + 1) % 15 === 0)) {
+      onProgress(i + 1, total);
+    }
+  }
+  return { count: total, processed: total, run_id: runId };
+}
+
 function demoScenarioListForMode(mode) {
   const suffix = new Date().toISOString().slice(11, 16).replace(":", "");
   const all = [
@@ -1041,7 +1076,11 @@ async function prepareDemoRuns(options = {}) {
         });
         const run = runEnv.run;
         const items = buildDemoScenarioItems(scenario);
-        await ingestBatchForRun(run.run_id, items, cust);
+        await ingestFramesForRun(run.run_id, items, cust, {
+          onProgress: (done, total) => {
+            setLoading(true, `Preparing demo runs… (${done}/${total} frames)`);
+          },
+        });
         return run;
       }),
     );
@@ -6397,7 +6436,15 @@ async function seedDemoData() {
       sensor_values: buildDemoSensorValuesRow(i, p, driftFactor, driftFactor * 1.1),
     });
   }
-  return ingestBatchForRun(runId, items, customerIdValue(state.tenant.customerId));
+  try {
+    return await ingestFramesForRun(runId, items, customerIdValue(state.tenant.customerId), {
+      onProgress: (done, total) => {
+        setLoading(true, `Seeding demo data… (${done}/${total} frames)`);
+      },
+    });
+  } catch (err) {
+    throw new Error(`Unable to seed demo data: ${String(err.message || err)}`);
+  }
 }
 
 function destroyCharts() {
