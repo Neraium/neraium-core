@@ -294,3 +294,79 @@ if (typeof window !== "undefined") {
   window.NERAIUM_FEATURE_ENABLED = neraiumFeatureEnabled;
 }
 init();
+
+async function refreshCurrentPage() {
+  const route = getRoute();
+  if (route.page !== "run-detail") {
+    disposeGeometryRenderer();
+  }
+  await loadRuns();
+  if (route.page === "dashboard") await loadDashboard();
+  if (route.page === "runs") renderRunsList();
+  if (route.page === "upload") updateUploadRunInfo();
+  if (route.page === "validation") renderTenantControls();
+  if (route.page === "run-detail") await loadRunDetail(route.runId);
+  if (route.page === "result-detail") await loadResultDetail(route.resultId);
+  if (route.page !== "run-detail") clearRunDetailObserver();
+}
+
+const MOBILE_NAV_MQ = window.matchMedia("(max-width: 980px)");
+
+function setMobileNavOpen(open) {
+  const sidebar = qs("#appSidebar");
+  const backdrop = qs("#navBackdrop");
+  const toggle = qs("#mobileNavToggle");
+  if (!sidebar || !backdrop || !toggle) return;
+  if (open) {
+    sidebar.classList.add("nav-drawer-open");
+    backdrop.classList.remove("hidden");
+    toggle.setAttribute("aria-expanded", "true");
+    toggle.setAttribute("aria-label", "Close menu");
+    document.body.classList.add("nav-mobile-open");
+  } else {
+    sidebar.classList.remove("nav-drawer-open");
+    backdrop.classList.add("hidden");
+    toggle.setAttribute("aria-expanded", "false");
+    toggle.setAttribute("aria-label", "Open menu");
+    document.body.classList.remove("nav-mobile-open");
+  }
+}
+
+function wireMobileNav() {
+  const sidebar = qs("#appSidebar");
+  const backdrop = qs("#navBackdrop");
+  const toggle = qs("#mobileNavToggle");
+  if (!sidebar || !backdrop || !toggle || toggle.dataset.wired === "1") return;
+  toggle.dataset.wired = "1";
+
+  toggle.addEventListener("click", () => {
+    const open = !sidebar.classList.contains("nav-drawer-open");
+    setMobileNavOpen(open);
+  });
+
+  backdrop.addEventListener("click", () => {
+    setMobileNavOpen(false);
+  });
+
+  qsa(".nav a").forEach((a) => {
+    a.addEventListener("click", () => {
+      if (MOBILE_NAV_MQ.matches) setMobileNavOpen(false);
+    });
+  });
+
+  window.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && sidebar.classList.contains("nav-drawer-open")) {
+      setMobileNavOpen(false);
+      toggle.focus();
+    }
+  });
+
+  const onMq = () => {
+    if (!MOBILE_NAV_MQ.matches) setMobileNavOpen(false);
+  };
+  if (typeof MOBILE_NAV_MQ.addEventListener === "function") {
+    MOBILE_NAV_MQ.addEventListener("change", onMq);
+  } else {
+    MOBILE_NAV_MQ.addListener(onMq);
+  }
+}
