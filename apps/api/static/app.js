@@ -659,21 +659,44 @@ function renderDashboardHero(latest, prev) {
   if (countEl) countEl.textContent = String(chron.length);
 
   const alerts = state.dashboardAlerts || [];
-  if (alertCountEl) alertCountEl.textContent = String(alerts.length);
+  const alertStatus = latest && latest.alert_status && typeof latest.alert_status === "object" ? latest.alert_status : null;
+  const alertState = String(alertStatus?.alert_state || "CLEAR").toUpperCase();
+  const pendingCount = Number(alertStatus?.consecutive_hit_count || 0);
+  const threshold = Number(alertStatus?.hit_window_threshold || 3);
+  if (alertCountEl) {
+    if (alertStatus && (alertStatus.alert_active || alertState === "PENDING_ALERT")) {
+      alertCountEl.textContent = "1";
+    } else {
+      alertCountEl.textContent = String(alerts.length);
+    }
+  }
   if (alertSummaryEl) {
-    const first = alerts[0];
-    alertSummaryEl.textContent = first
-      ? String(first.message || first.type || "Alert").slice(0, 120)
-      : "No open alerts for this run.";
+    if (alertStatus) {
+      if (alertState === "PENDING_ALERT") {
+        alertSummaryEl.textContent = `Pending alert ${pendingCount}/${threshold}: ${String(alertStatus.alert_reason || "candidate active")}`.slice(0, 120);
+      } else if (alertStatus.alert_active) {
+        const ack = alertStatus.acknowledged ? "acknowledged" : "unacknowledged";
+        alertSummaryEl.textContent = `${alertState} (${ack}) since ${String(alertStatus.active_since || "n/a")}`.slice(0, 120);
+      } else if (alertState === "RESOLVED") {
+        alertSummaryEl.textContent = `Resolved: ${String(alertStatus.resolved_reason || "stabilized")}`.slice(0, 120);
+      } else {
+        alertSummaryEl.textContent = "No open alerts for this run.";
+      }
+    } else {
+      const first = alerts[0];
+      alertSummaryEl.textContent = first
+        ? String(first.message || first.type || "Alert").slice(0, 120)
+        : "No open alerts for this run.";
+    }
   }
   if (alertTile) {
-    const critical = alerts.some((a) => String(a.severity || "").toLowerCase() === "critical");
-    const high = alerts.some((a) => {
+    const critical = (alertStatus && alertState === "ESCALATED") || alerts.some((a) => String(a.severity || "").toLowerCase() === "critical");
+    const high = (alertStatus && (alertStatus.alert_active || alertState === "PENDING_ALERT")) || alerts.some((a) => {
       const s = String(a.severity || "").toLowerCase();
       return s === "high" || s === "critical";
     });
-    alertTile.classList.toggle("insight-tile-alert-critical", critical);
-    alertTile.classList.toggle("insight-tile-alert-watch", !critical && high);
+    alertTile.classList.toggle("insight-tile-alert-critical", Boolean(critical));
+    alertTile.classList.toggle("insight-tile-alert-watch", !critical && Boolean(high));
   }
 
   const runId = state.activeRun?.run_id || "";
