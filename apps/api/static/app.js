@@ -797,7 +797,12 @@ function applyDemoSnapshot() {
   const prev = chronological.length > 1 ? chronological[chronological.length - 2] : null;
   renderRunDetailFromState();
   const route = getRoute();
-  if (route.page === "run-detail" && route.runId && state.runRecent.length > 0) {
+  if (
+    route.page === "run-detail"
+    && route.runId
+    && state.runRecent.length > 0
+    && state.ui.runDetailHydratedSections.geometry
+  ) {
     const resultId = latest?.result_id ?? null;
     loadRunGeometry(route.runId, resultId);
   }
@@ -1424,6 +1429,9 @@ const state = {
     clockTimer: null,
     connection: "LIVE",
     dashboardPaint: null,
+    runDetailObserver: null,
+    runDetailHydratedSections: {},
+    runDetailDeferredPaint: null,
   },
   runtimeDegraded: false,
 };
@@ -1452,6 +1460,11 @@ const DEMO_UI_STATES = Object.freeze({
 const GEOMETRY_FLOW_PERF_KEY = "neraium_structural_flow_perf";
 /** Origin marker + debug visuals for structural flow. `true` always shows the marker; when `false`, use URL `?geomDebug=1` instead. */
 const DEBUG_GEOMETRY = false;
+
+const DASHBOARD_RECENT_LIMIT = 60;
+const RUN_DETAIL_INITIAL_LIMIT = 260;
+const RUN_DETAIL_BACKGROUND_LIMIT = 1000;
+let chartJsLoadPromise = null;
 
 /** Demo/sample ingest: 24 correlated channels for a dense structural flow field. */
 const DEMO_STRUCTURAL_SENSOR_KEYS = [
@@ -1594,12 +1607,10 @@ function setLoading(isLoading, message = "Loading...") {
 
 function setStatus(message = "", isError = false, showToast = false) {
   const el = qs("#globalStatus");
-  const rail = qs("#statusMessageText");
   if (!el) return;
   if (!message) {
     el.className = "status hidden";
     el.textContent = "";
-    if (rail) rail.textContent = "Pilot operations workspace ready. Upload telemetry to start monitoring.";
     return;
   }
   const uiTruth = buildFrontendUiState(null, { analysisInterrupted: isError && !state.demo.enabled });
@@ -1607,7 +1618,6 @@ function setStatus(message = "", isError = false, showToast = false) {
   el.className = `status ${isError ? "error" : "ok"}`;
   el.textContent = cleanMessage;
   el.classList.remove("hidden");
-  if (rail) rail.textContent = cleanMessage;
   setConnectionStatus(getOperationalBadgeDisplay(uiTruth));
   if (showToast && !isError) {
     createToast(cleanMessage, isError ? "error" : "success");
@@ -2063,7 +2073,6 @@ function renderOperationalSnapshot(latest) {
   const alertEl = qs("#snapshotAlertStatus");
   const freshEl = qs("#snapshotFreshness");
   const recEl = qs("#snapshotRecommendation");
-  const nextEl = qs("#snapshotNextAction");
 
   const uiTruth = buildFrontendUiState(latest);
   const risk = normalizeRiskLevel(latest?.risk_level);
@@ -2103,8 +2112,7 @@ function renderOperationalSnapshot(latest) {
       nextAction = freshness.stale ? "Refresh active run or ingest fresh telemetry." : "System stable — continue monitoring.";
     }
   }
-  if (recEl) recEl.textContent = recommendation;
-  if (nextEl) nextEl.textContent = nextAction;
+  if (recEl) recEl.textContent = `${recommendation} ${nextAction}`;
 
   const ctaBtn = qs("#primaryPilotActionBtn");
   if (ctaBtn) {
@@ -2302,7 +2310,7 @@ function renderDashboardRecent(results) {
 
 async function loadDashboard() {
   const runId = state.activeRun?.run_id || "";
-  const recentEnv = await fetchRecentResults({ run_id: runId, limit: 200 });
+  const recentEnv = await fetchRecentResults({ run_id: runId, limit: DASHBOARD_RECENT_LIMIT });
   const alertsEnv = await fetchJson(apiUrl("/alerts", tenantScopeParams({ run_id: runId, limit: 20 })));
   state.dashboardRecent = Array.isArray(recentEnv?.results) ? recentEnv.results : [];
   state.dashboardAlerts = alertsEnv.alerts || [];
@@ -2613,7 +2621,25 @@ function destroyCharts() {
   }
 }
 
+function ensureChartJsLoaded() {
+  if (window.Chart) return Promise.resolve();
+  if (chartJsLoadPromise) return chartJsLoadPromise;
+  chartJsLoadPromise = new Promise((resolve, reject) => {
+    const script = document.createElement("script");
+    script.src = "https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js";
+    script.defer = true;
+    script.onload = () => resolve();
+    script.onerror = () => reject(new Error("Chart runtime failed to load."));
+    document.head.appendChild(script);
+  }).catch((err) => {
+    chartJsLoadPromise = null;
+    throw err;
+  });
+  return chartJsLoadPromise;
+}
+
 function renderRunDetailCharts(results) {
+  if (!window.Chart) return;
   const labels = results.map((r) => String(r.timestamp || r.persisted_at || r.result_id || ""));
   const driftValues = results.map((r) => structuralDriftFromResult(r) ?? 0);
   const compositeValues = results.map((r) => compositeInstabilityFromResult(r) ?? 0);
@@ -2688,6 +2714,68 @@ function renderRunDetailCharts(results) {
     }
   }
   setTrendPlaybackCursorMarker(-1, labels.length);
+}
+
+function scheduleDeferredRunDetailPaint() {
+  if (state.ui.runDetailDeferredPaint) {
+    window.cancelAnimationFrame(state.ui.runDetailDeferredPaint);
+    state.ui.runDetailDeferredPaint = null;
+  }
+  state.ui.runDetailDeferredPaint = window.requestAnimationFrame(() => {
+    renderRunDetailFromState({ deferHeavy: false });
+    state.ui.runDetailDeferredPaint = null;
+  });
+}
+
+function clearRunDetailObserver() {
+  if (state.ui.runDetailObserver) {
+    state.ui.runDetailObserver.disconnect();
+    state.ui.runDetailObserver = null;
+  }
+}
+
+function setupRunDetailProgressiveHydration(runId) {
+  clearRunDetailObserver();
+  state.ui.runDetailHydratedSections = {};
+  if (!("IntersectionObserver" in window)) {
+    scheduleDeferredRunDetailPaint();
+    scheduleHeavyWork(() => {
+      loadRunGeometry(runId, state.runRecent[0]?.result_id ?? null).catch(() => {
+        setGeometrySurfaceState("Structural view is unavailable for the current snapshot.", "error");
+      });
+    });
+    return;
+  }
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach((entry) => {
+      if (!entry.isIntersecting) return;
+      const id = String(entry.target.id || "");
+      if (id === "analysis-trends" && !state.ui.runDetailHydratedSections.trends) {
+        state.ui.runDetailHydratedSections.trends = true;
+        ensureChartJsLoaded()
+          .then(() => scheduleDeferredRunDetailPaint())
+          .catch((err) => setStatus(String(err.message || err), true, true));
+      }
+      if (id === "analysis-results" && !state.ui.runDetailHydratedSections.results) {
+        state.ui.runDetailHydratedSections.results = true;
+        scheduleDeferredRunDetailPaint();
+      }
+      if (id === "analysis-geometry" && !state.ui.runDetailHydratedSections.geometry) {
+        state.ui.runDetailHydratedSections.geometry = true;
+        const resultId = state.runRecent[0]?.result_id ?? null;
+        scheduleHeavyWork(() => {
+          loadRunGeometry(runId, resultId).catch(() => {
+            setGeometrySurfaceState("Structural view is unavailable for the current snapshot.", "error");
+          });
+        });
+      }
+    });
+  }, { rootMargin: "220px 0px" });
+  state.ui.runDetailObserver = observer;
+  ["analysis-trends", "analysis-results", "analysis-geometry"].forEach((id) => {
+    const el = qs(`#${id}`);
+    if (el) observer.observe(el);
+  });
 }
 
 function setTrendPlaybackCursorMarker(idx, lengthHint = 0) {
@@ -2941,7 +3029,10 @@ function syncStructuralFlowTimeline(points, latestResultId = null) {
   }
 }
 
-function renderRunDetailFromState() {
+function renderRunDetailFromState(opts = {}) {
+  const deferHeavy = Boolean(opts.deferHeavy);
+  const trendsHydrated = !deferHeavy || Boolean(state.ui.runDetailHydratedSections.trends);
+  const resultsHydrated = !deferHeavy || Boolean(state.ui.runDetailHydratedSections.results);
   setFlowModeButtonState();
   const hasResults = state.runRecent.length > 0;
   const latestResult = hasResults ? state.runRecent[0] : null;
@@ -3007,13 +3098,21 @@ function renderRunDetailFromState() {
   renderRunTransitionStrip(prev, latest);
   renderRunCurrentStateGauges(latest);
   setDemoPlaybackUI();
-  renderRunDetailCharts(ranged);
+  if (trendsHydrated) {
+    renderRunDetailCharts(ranged);
+  }
   syncStructuralFlowTimeline(flowTimeline, latest?.result_id);
-  renderPhaseTimeline(ranged);
-  renderOperatorMessages(ranged, { emphasize: state.demo.enabled });
-  const filtered = filterRunResults(ranged);
-  const sorted = sortRunResults(filtered);
-  renderRunResultsTable(sorted, { latestResultId: latest?.result_id });
+  if (trendsHydrated) {
+    renderPhaseTimeline(ranged);
+    renderOperatorMessages(ranged, { emphasize: state.demo.enabled });
+  }
+  if (resultsHydrated) {
+    const filtered = filterRunResults(ranged);
+    const sorted = sortRunResults(filtered);
+    renderRunResultsTable(sorted, { latestResultId: latest?.result_id });
+  } else {
+    renderRunResultsTable([], { latestResultId: latest?.result_id });
+  }
   renderRiskExplanation(latest, {
     panelSelector: "#runRiskExplanationPanel",
     titleSelector: "#runRiskExplanationTitle",
@@ -3033,7 +3132,7 @@ async function loadRunDetail(runId) {
   const meta = qs("#runDetailMeta");
   if (title) title.textContent = `Run analysis · ${run.name}`;
   if (meta) meta.textContent = `Run ${run.run_id} · ${state.demo.enabled ? "validation replay workspace" : "pilot telemetry workspace"} · created ${run.created_at}`;
-  const recentEnv = await fetchRecentResults({ run_id: runId, limit: 1000 });
+  const recentEnv = await fetchRecentResults({ run_id: runId, limit: RUN_DETAIL_INITIAL_LIMIT });
   state.runRecent = Array.isArray(recentEnv?.results) ? recentEnv.results : [];
   if (state.demo.enabled) {
     if (state.demo.activeRunId !== runId) {
@@ -3052,7 +3151,8 @@ async function loadRunDetail(runId) {
   collectKnownSites(state.runRecent);
   renderTenantControls();
   setRangeButtonState(state.runDetailView.range);
-  renderRunDetailFromState();
+  renderRunDetailFromState({ deferHeavy: true });
+  setupRunDetailProgressiveHydration(runId);
   let autoplayHandled = false;
   try {
     if (new URLSearchParams(window.location.search).get("autoplay") === "1" && state.demo.enabled && state.runRecent.length > 1) {
@@ -3073,21 +3173,17 @@ async function loadRunDetail(runId) {
   if (!autoplayHandled && !heroBlocked) {
     maybeAutoStartDemoPlayback();
   }
-  const resultIdForGeometry =
-    state.demo.enabled && state.runRecent.length > 0
-      ? (state.runRecent
-          .slice()
-          .reverse()
-          .slice(
-            0,
-            Math.max(1, Number(state.demo.cursor || state.runRecent.length))
-          )
-          .pop()?.result_id ?? null)
-      : null;
-  scheduleHeavyWork(() => {
-    loadRunGeometry(runId, resultIdForGeometry).catch((_err) => {
-      setGeometrySurfaceState("Structural view is unavailable for the current snapshot.", "error");
-    });
+  scheduleHeavyWork(async () => {
+    try {
+      const fullEnv = await fetchRecentResults({ run_id: runId, limit: RUN_DETAIL_BACKGROUND_LIMIT });
+      const fullResults = Array.isArray(fullEnv?.results) ? fullEnv.results : [];
+      if (fullResults.length > state.runRecent.length) {
+        state.runRecent = fullResults;
+        renderRunDetailFromState({ deferHeavy: true });
+      }
+    } catch (_err) {
+      // best-effort background fetch; ignore failures.
+    }
   });
 
   const exportJson = qs("#runDetailExportJsonBtn");
@@ -3202,6 +3298,7 @@ async function refreshCurrentPage() {
   if (route.page === "validation") renderTenantControls();
   if (route.page === "run-detail") await loadRunDetail(route.runId);
   if (route.page === "result-detail") await loadResultDetail(route.resultId);
+  if (route.page !== "run-detail") clearRunDetailObserver();
 }
 
 const MOBILE_NAV_MQ = window.matchMedia("(max-width: 980px)");
@@ -3264,4 +3361,3 @@ function wireMobileNav() {
     MOBILE_NAV_MQ.addListener(onMq);
   }
 }
-
