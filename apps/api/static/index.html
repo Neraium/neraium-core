@@ -75,14 +75,15 @@
           <section class="panel sii-hero" aria-label="Systemic Infrastructure Intelligence framing">
             <div>
               <p class="sii-hero-kicker">Systemic Infrastructure Intelligence</p>
-              <h3>SII Command Surface</h3>
-              <p class="subtitle">Neraium tracks structural state, relationship drift, pattern memory, and emerging instability from live telemetry.</p>
+              <h3>Systemic Infrastructure Intelligence — NASA CMAPSS FD004</h3>
+              <p class="subtitle">Neraium tracks structural state, relationship drift, and predictive structural behavior across a real degradation scenario from the NASA CMAPSS FD004 dataset.</p>
             </div>
             <div class="sii-hero-tags" aria-label="SII capabilities">
               <span class="chip">Structural State</span>
               <span class="chip">Relationship Drift</span>
               <span class="chip">Pattern Memory</span>
               <span class="chip">Emerging Instability</span>
+              <span class="chip">NASA dataset</span>
             </div>
           </section>
           <div class="dashboard-grid-v2">
@@ -94,7 +95,7 @@
                   <span>SII demo mode</span>
                 </label>
                 <button id="prepareDemoBtn" type="button" class="secondary">Prepare SII demo</button>
-                <button id="seedDemoBtn" type="button" class="secondary">Seed telemetry</button>
+                <button id="seedDemoBtn" type="button" class="secondary">Run NASA CMAPSS Dataset</button>
                 <button id="refreshBtn" type="button" class="topbar-refresh">Refresh</button>
               </div>
               <div id="demoProgressPanel" class="demo-progress-panel hidden" aria-live="polite">
@@ -217,7 +218,7 @@
             </div>
             <div id="dashboardEmpty" class="empty-state hidden">
               <p>No results for the active run yet.</p>
-              <p class="subtitle">Use <strong>Prepare SII demo</strong>, <strong>Upload</strong>, or <strong>Seed telemetry</strong> to begin.</p>
+              <p class="subtitle">Use <strong>Prepare SII demo</strong>, <strong>Upload</strong>, or <strong>Run NASA CMAPSS Dataset</strong> to begin.</p>
             </div>
             <div class="table-wrap">
               <table class="data-table dashboard-results-table">
@@ -439,7 +440,7 @@
             </article>
             <div id="runDetailEmpty" class="empty-state hidden">
               <p>No results available for this run.</p>
-              <p class="subtitle">Upload a CSV file or seed demo data to generate results.</p>
+              <p class="subtitle">Upload a CSV file or run the NASA CMAPSS FD004 historical run replay to generate results.</p>
             </div>
           </section>
 
