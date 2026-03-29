@@ -1,44 +1,12 @@
 async function wireEvents() {
   wireMobileNav();
   initAnalysisWorkspaceTabs();
-  setFlowModeButtonState();
-  const flowSpeedSelect = qs("#flowPlaybackSpeedSelect");
-  if (flowSpeedSelect) flowSpeedSelect.value = String(state.runDetailView.flowPlaybackSpeed || 1);
-  const flowHistoryToggle = qs("#flowHistoryToggle");
-  if (flowHistoryToggle) flowHistoryToggle.checked = Boolean(state.runDetailView.flowHistoryEnabled);
-  qsa("[data-flow-mode]").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      state.runDetailView.flowPlaybackMode = String(btn.getAttribute("data-flow-mode") || "live");
-      const tf = state.geometry3d.temporalFlow || (state.geometry3d.temporalFlow = {});
-      if (state.runDetailView.flowPlaybackMode === "replay") {
-        tf.localTimeSec = 0;
-        tf.historyCentroid = [];
-        tf.historyDriftTip = [];
-        tf.historyContact = [];
-        tf.contactPersistence = 0;
-      }
-      setFlowModeButtonState();
-    });
-  });
-  qs("#flowPlaybackSpeedSelect")?.addEventListener("change", (e) => {
-    const next = Number.parseFloat(String(e.target?.value || "1"));
-    state.runDetailView.flowPlaybackSpeed = Number.isFinite(next) && next > 0 ? next : 1;
-  });
-  qs("#flowHistoryToggle")?.addEventListener("change", (e) => {
-    state.runDetailView.flowHistoryEnabled = Boolean(e.target?.checked);
-  });
+  wireRunDetailEvents();
 
   qs("#dashboardQuickDemoBtn")?.addEventListener("click", async () => {
     await launchGuidedDemo({ mode: "all" });
   });
 
-  qs("#demoPlayPauseBtn")?.addEventListener("click", () => {
-    toggleDemoPlayback();
-  });
-
-  qs("#demoReplayBtn")?.addEventListener("click", () => {
-    replayDemoTimeline();
-  });
 
   qs("#refreshBtn")?.addEventListener("click", async () => {
     try {
@@ -84,22 +52,6 @@ async function wireEvents() {
   qs("#runsSortSelect")?.addEventListener("change", (e) => {
     state.runsView.sort = String(e.target.value || "created_desc");
     renderRunsList();
-  });
-  qs("#runResultsSearchInput")?.addEventListener("input", (e) => {
-    state.runDetailView.search = String(e.target.value || "");
-    renderRunDetailFromState();
-  });
-  qs("#runResultsSortSelect")?.addEventListener("change", (e) => {
-    state.runDetailView.sort = String(e.target.value || "timestamp_desc");
-    renderRunDetailFromState();
-  });
-  qsa("#runRangeControls [data-range]").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const range = String(btn.getAttribute("data-range") || "200");
-      state.runDetailView.range = range;
-      setRangeButtonState(range);
-      renderRunDetailFromState();
-    });
   });
 
   qs("#csvUploadForm")?.addEventListener("submit", async (e) => {
@@ -217,8 +169,6 @@ async function init() {
   try {
     setLoading(true, "Initializing workspace...");
     await refreshRuntimeModeBanner();
-    const activeRun = await ensureActiveRun();
-    updateActiveRunHeader(activeRun);
     await loadRuns();
     if (route.page === "dashboard") await loadDashboard();
     if (route.page === "runs") renderRunsList();

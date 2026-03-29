@@ -64,7 +64,7 @@
           </div>
           <div class="title-block telemetry-title">
             <h2 id="pageTitle">Pilot Operations Dashboard</h2>
-            <p id="pageSubtitle" class="subtitle page-subtitle-truncate">Operational-first Systemic Infrastructure Intelligence workspace</p>
+            <p id="pageSubtitle" class="subtitle page-subtitle-truncate">Operator workspace</p>
           </div>
         </div>
         <div class="telemetry-status-strip" aria-label="System telemetry status">
@@ -110,11 +110,9 @@
               </div>
               <div class="quick-link-stack" aria-label="Open deeper analysis">
                 <a class="button-link secondary" id="dashboardOpenAnalysisLink" href="/app/runs">Open Analysis Workspace</a>
-                <p class="subtitle quick-link-note">Use analysis for structural state, relationship drift, pattern memory, and full operational rationale.</p>
               </div>
               <div class="quick-link-stack" aria-label="Validation workspace link">
                 <a class="button-link secondary" href="/validation">Validation / Historical Replay</a>
-                <p class="subtitle quick-link-note">Secondary workflow for NASA CMAPSS replay, historical verification, and validation checks.</p>
               </div>
             </section>
           </div>
@@ -274,7 +272,6 @@
                 </article>
               </div>
             </section>
-            <p class="subtitle analysis-intent">Focused analysis workspace for current state, structural geometry, trend timeline, and result history.</p>
             <section id="demoPlaybackPanel" class="demo-playback hidden">
               <div class="demo-playback-head">
                 <div class="demo-playback-title-row">
@@ -308,13 +305,14 @@
           <div class="run-detail-workspace-grid">
           <section id="analysis-trends" class="panel analysis-workspace-section" data-analysis-panel="trends">
             <div class="panel-header">
-              <h3>Trend workspace</h3>
+              <h3>Trends</h3>
               <div id="runRangeControls" class="range-controls">
                 <button type="button" data-range="50">Last 50</button>
                 <button type="button" data-range="200" class="active">Last 200</button>
                 <button type="button" data-range="all">All</button>
               </div>
             </div>
+            <p id="runTrendsDeferredHint" class="subtitle run-deferred-hint">Charts load when this section enters view.</p>
             <div class="chart-grid">
               <div class="chart-panel">
                 <h4>Structural drift score</h4>
@@ -330,9 +328,6 @@
           <section id="analysis-geometry" class="panel geometry-panel analysis-workspace-section" data-analysis-panel="geometry">
             <div class="panel-header">
               <h3>Structural geometry</h3>
-              <p id="geometryFlowSubtitle" class="subtitle geometry-subtitle">
-                Structural relationship geometry for the active run snapshot.
-              </p>
               <div id="geometryFlowLegend" class="geometry-flow-legend" aria-label="Flow visualization legend">
                 <span class="geometry-flow-legend__item"><i class="geometry-flow-legend__swatch geometry-flow-legend__swatch--cyan"></i>Blue/cyan: stable / contained</span>
                 <span class="geometry-flow-legend__item"><i class="geometry-flow-legend__swatch geometry-flow-legend__swatch--amber"></i>Yellow/orange: pressure</span>
@@ -340,9 +335,7 @@
                 <span class="geometry-flow-legend__item"><i class="geometry-flow-legend__swatch geometry-flow-legend__swatch--arrow"></i>Arrow: net drift</span>
               </div>
             </div>
-            <p id="geometryProjectionNote" class="subtitle geometry-meta geometry-meta-flow">
-              Structural projection and manifold interpretation for this run.
-            </p>
+            <p id="runGeometryDeferredHint" class="subtitle run-deferred-hint">Geometry initializes on view.</p>
             <div class="geometry-flow-playback" aria-label="Structural flow playback controls">
               <div class="geometry-flow-playback__modes" role="group" aria-label="Playback mode">
                 <button type="button" id="flowModeLiveBtn" class="flow-mode-btn active" data-flow-mode="live">Current snapshot</button>
@@ -470,35 +463,11 @@
             </div>
           </section>
 
-          <section class="panel geometry-models-panel hidden" id="geometryModelsPanel" aria-label="Graph and system state models">
-            <div class="panel-header">
-              <h3>Graph &amp; system state models</h3>
-              <p class="subtitle">
-                Correlation and causal graph metrics plus regime snapshot for the same engine result as the 3D view.
-              </p>
-            </div>
-            <div class="geometry-models-columns">
-              <article class="geometry-model-block">
-                <h4>Graph analytics</h4>
-                <p id="geometryGraphMetricsEmpty" class="subtitle geometry-model-empty hidden">No graph metrics in this result.</p>
-                <dl id="geometryGraphMetricsDl" class="geometry-model-dl"></dl>
-              </article>
-              <article class="geometry-model-block">
-                <h4>System state</h4>
-                <p id="geometrySystemStateEmpty" class="subtitle geometry-model-empty hidden">No system state snapshot.</p>
-                <dl id="geometrySystemStateDl" class="geometry-model-dl"></dl>
-              </article>
-            </div>
-          </section>
-
-          
-
-          
-
           <section id="analysis-results" class="panel analysis-workspace-section" data-analysis-panel="results">
             <div class="panel-header">
               <h3>Results history</h3>
             </div>
+            <p id="runResultsDeferredHint" class="subtitle run-deferred-hint">History loads on view.</p>
             <div class="row wrap filters">
               <input id="runResultsSearchInput" placeholder="Filter by message, phase, risk, state..." />
               <select id="runResultsSortSelect">
