@@ -161,6 +161,17 @@ class ResultStore:
                 )
                 """
             )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS operational_state (
+                    state_key TEXT PRIMARY KEY,
+                    customer_id TEXT NOT NULL DEFAULT 'default-customer',
+                    run_id TEXT,
+                    state_json TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                )
+                """
+            )
             self._ensure_column(
                 conn,
                 "events",
@@ -209,6 +220,10 @@ class ResultStore:
                 "CREATE INDEX IF NOT EXISTS idx_structural_memory_memory_key "
                 "ON structural_memory(customer_id, memory_key, id DESC)"
             )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_operational_state_customer_key "
+                "ON operational_state(customer_id, state_key)"
+            )
 
     @staticmethod
     def _ensure_column(conn: sqlite3.Connection, table: str, column: str, column_sql: str) -> None:
@@ -224,6 +239,112 @@ class ResultStore:
             conn.execute("DELETE FROM results")
             conn.execute("DELETE FROM service_history")
             conn.execute("DELETE FROM structural_memory")
+            conn.execute("DELETE FROM operational_state")
+
+    def upsert_operational_state(
+        self,
+        *,
+        state_key: str,
+        state: dict[str, Any],
+        customer_id: str | None = None,
+        run_id: str | None = None,
+    ) -> dict[str, Any]:
+        key = str(state_key or "").strip()
+        if not key:
+            raise ValueError("state_key is required")
+        resolved_customer = _normalize_customer_id(customer_id)
+        now = _utc_now()
+        with self._conn() as conn:
+            conn.execute(
+                """
+                INSERT INTO operational_state (state_key, customer_id, run_id, state_json, updated_at)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(state_key) DO UPDATE SET
+                    customer_id=excluded.customer_id,
+                    run_id=excluded.run_id,
+                    state_json=excluded.state_json,
+                    updated_at=excluded.updated_at
+                """,
+                (key, resolved_customer, run_id, json.dumps(_json_safe(state)), now),
+            )
+        return {"state_key": key, "customer_id": resolved_customer, "run_id": run_id, "updated_at": now}
+
+    def delete_operational_state(self, *, state_key: str) -> None:
+        key = str(state_key or "").strip()
+        if not key:
+            return
+        with self._conn() as conn:
+            conn.execute("DELETE FROM operational_state WHERE state_key = ?", (key,))
+
+    def get_operational_state(self, *, state_key: str) -> dict[str, Any] | None:
+        key = str(state_key or "").strip()
+        if not key:
+            return None
+        with self._conn() as conn:
+            row = conn.execute(
+                """
+                SELECT state_key, customer_id, run_id, state_json, updated_at
+                FROM operational_state
+                WHERE state_key = ?
+                LIMIT 1
+                """,
+                (key,),
+            ).fetchone()
+        if row is None:
+            return None
+        try:
+            decoded = json.loads(row["state_json"])
+        except Exception:
+            decoded = {}
+        if not isinstance(decoded, dict):
+            decoded = {}
+        return {
+            "state_key": str(row["state_key"]),
+            "customer_id": str(row["customer_id"]),
+            "run_id": row["run_id"],
+            "state": decoded,
+            "updated_at": str(row["updated_at"]),
+        }
+
+    def list_operational_state(self, *, key_prefix: str | None = None) -> list[dict[str, Any]]:
+        prefix = str(key_prefix or "").strip()
+        with self._conn() as conn:
+            if prefix:
+                rows = conn.execute(
+                    """
+                    SELECT state_key, customer_id, run_id, state_json, updated_at
+                    FROM operational_state
+                    WHERE state_key LIKE ?
+                    ORDER BY state_key ASC
+                    """,
+                    (f"{prefix}%",),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    """
+                    SELECT state_key, customer_id, run_id, state_json, updated_at
+                    FROM operational_state
+                    ORDER BY state_key ASC
+                    """
+                ).fetchall()
+        decoded_rows: list[dict[str, Any]] = []
+        for row in rows:
+            try:
+                payload = json.loads(row["state_json"])
+            except Exception:
+                payload = {}
+            if not isinstance(payload, dict):
+                payload = {}
+            decoded_rows.append(
+                {
+                    "state_key": str(row["state_key"]),
+                    "customer_id": str(row["customer_id"]),
+                    "run_id": row["run_id"],
+                    "state": payload,
+                    "updated_at": str(row["updated_at"]),
+                }
+            )
+        return decoded_rows
 
     def save_service_history(
         self,
