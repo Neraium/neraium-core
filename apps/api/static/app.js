@@ -39,7 +39,7 @@ async function fetchJson(path, opts) {
       [
         `[NETWORK before response] ${method} ${endpoint}`,
         `reason=${reason}`,
-        "Possible CORS/preflight rejection or network failure.",
+        "Connection dropped before response (same-origin cloud ingest/network failure).",
       ].join(" | "),
     );
     e.name = "ApiNetworkError";
@@ -102,7 +102,7 @@ async function fetchJson(path, opts) {
 }
 
 async function fetchRecentResults(params) {
-  const recentParams = tenantScopeParams(params || {});
+  const recentParams = tenantScopeParams({ ...(params || {}), compact: 1 });
   const env = await fetchJson(apiUrl("/runs", recentParams));
   if (env && Array.isArray(env.results)) return env;
   if (env && Array.isArray(env.runs)) return { latest: null, count: env.runs.length, results: [] };
@@ -1061,6 +1061,30 @@ async function ingestFramesForRun(runId, items, customerId, options = {}) {
   return { count: total, processed: total, run_id: runId };
 }
 
+async function postDemoSeedWithRetry(runId, customerId, payload, options = {}) {
+  const attempts = Math.max(1, Number(options.maxAttempts || 3));
+  let lastErr = null;
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    try {
+      if (attempt > 1) setStatus(`Retrying demo ingest request (${attempt}/${attempts})…`, true, true);
+      return await fetchJson(apiUrl("/demo/seed", tenantScopeParams({ run_id: runId })), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...payload,
+          customer_id: customerId,
+        }),
+      });
+    } catch (err) {
+      lastErr = err;
+      if (attempt < attempts) {
+        await new Promise((resolve) => window.setTimeout(resolve, 350 * attempt));
+      }
+    }
+  }
+  throw lastErr || new Error("Demo ingest failed after retries.");
+}
+
 function demoScenarioListForMode(mode) {
   const suffix = new Date().toISOString().slice(11, 16).replace(":", "");
   const all = [
@@ -1093,15 +1117,21 @@ async function prepareDemoRuns(options = {}) {
           }),
         });
         const run = runEnv.run;
-        const items = buildDemoScenarioItems(scenario);
-        await ingestFramesForRun(run.run_id, items, cust, {
-          onProgress: (done, total) => {
-            setLoading(true, `Preparing demo runs… (${done}/${total} frames)`);
+        setLoading(true, "Preparing demo runs…");
+        const out = await postDemoSeedWithRetry(
+          run.run_id,
+          cust,
+          {
+            profile: scenario.profile,
+            minutes: 120,
+            site_id: scenario.siteId,
+            asset_id: scenario.assetId,
           },
-          onError: (_err, step, total) => {
-            setStatus(`Demo ingest stalled at frame ${step}/${total}. Retrying may help.`, true, true);
-          },
-        });
+          { maxAttempts: 3 },
+        );
+        if (String(out?.status || "ok").toLowerCase() !== "ok") {
+          throw new Error(`Demo seed request failed during cloud ingest${out?.error ? `: ${out.error}` : ""}`);
+        }
         return run;
       }),
     );
@@ -1533,6 +1563,14 @@ function ensureThreeModulesLoaded() {
   if (window.__THREE_ESM) {
     return Promise.resolve();
   }
+  if (!window.__THREE_ESM_LOADING) {
+    window.__THREE_ESM_LOADING = true;
+    const script = document.createElement("script");
+    script.type = "module";
+    script.src = "/web/three-init.mjs";
+    script.async = true;
+    document.head.appendChild(script);
+  }
   return new Promise((resolve, reject) => {
     const deadline = Date.now() + 15000;
     const step = () => {
@@ -1543,7 +1581,7 @@ function ensureThreeModulesLoaded() {
       if (Date.now() > deadline) {
         reject(
           new Error(
-            "Three.js did not load (CDN + import map). Check DevTools Console / Network for cdn.jsdelivr.net/npm/three and /web/three-init.mjs. Offline/air-gapped: run `python scripts/download_three_vendor.py` and switch index.html import map back to /web/vendor paths.",
+            "Three.js did not load (on-demand module fetch failed). Check DevTools Console / Network for cdn.jsdelivr.net/npm/three and /web/three-init.mjs. Offline/air-gapped: run `python scripts/download_three_vendor.py` and switch index.html import map back to /web/vendor paths.",
           ),
         );
         return;
@@ -6241,7 +6279,7 @@ async function loadDashboard() {
 }
 
 function exportData(format, runId) {
-  const url = apiUrl("/results/export", tenantScopeParams({ format, run_id: runId || "", limit: 500 }));
+  const url = apiUrl("/results/export/download", tenantScopeParams({ format, run_id: runId || "", limit: 500 }));
   window.location.href = url;
 }
 
@@ -6453,30 +6491,24 @@ async function seedDemoData() {
   const run = state.activeRun || (await ensureActiveRun());
   updateActiveRunHeader(run);
   const runId = run.run_id;
-  const now = Date.now();
-  const items = [];
-  for (let i = 0; i < 120; i += 1) {
-    const t = new Date(now - (120 - i) * 60_000).toISOString();
-    const driftFactor = i < 40 ? 0.2 : i < 80 ? 0.6 : 1.0;
-    const p = i / 119;
-    items.push({
-      timestamp: t,
-      site_id: "demo-site",
-      asset_id: "demo-asset",
-      sensor_values: buildDemoSensorValuesRow(i, p, driftFactor, driftFactor * 1.1),
-    });
-  }
   try {
-    return await ingestFramesForRun(runId, items, customerIdValue(state.tenant.customerId), {
-      onProgress: (done, total) => {
-        setLoading(true, `Seeding demo data… (${done}/${total} frames)`);
-      },
-      onError: (_err, step, total) => {
-        setStatus(`Demo ingest failed at frame ${step}/${total}. Please retry.`, true, true);
-      },
-    });
+    setLoading(true, "Seeding demo data in cloud…");
+    const out = await postDemoSeedWithRetry(
+      runId,
+      customerIdValue(state.tenant.customerId),
+      { profile: "sample", minutes: 120, site_id: "demo-site", asset_id: "demo-asset" },
+      { maxAttempts: 3 },
+    );
+    if (String(out?.status || "ok").toLowerCase() !== "ok") {
+      throw new Error(`Demo seed request failed during cloud ingest${out?.error ? `: ${out.error}` : ""}`);
+    }
+    return {
+      count: Number(out?.processed || 0),
+      processed: Number(out?.processed || 0),
+      run_id: String(out?.run_id || runId),
+    };
   } catch (err) {
-    throw new Error(`Unable to seed demo data: ${String(err.message || err)}`);
+    throw new Error(`Demo ingest failed after retries: ${String(err.message || err)}`);
   }
 }
 
@@ -6955,7 +6987,11 @@ async function loadRunDetail(runId) {
           )
           .pop()?.result_id ?? null)
       : null;
-  await loadRunGeometry(runId, resultIdForGeometry);
+  scheduleHeavyWork(() => {
+    loadRunGeometry(runId, resultIdForGeometry).catch((_err) => {
+      setStatus("Geometry load delayed. Retry refresh if needed.", true, true);
+    });
+  });
 
   const exportJson = qs("#runDetailExportJsonBtn");
   const exportCsv = qs("#runDetailExportCsvBtn");

@@ -19,9 +19,10 @@ from uuid import uuid4
 import numpy as np
 from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Query, Request, UploadFile, status
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, model_validator
-from starlette.responses import JSONResponse, PlainTextResponse, Response
+from starlette.responses import JSONResponse, PlainTextResponse, Response, StreamingResponse
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from .integration import (
@@ -50,6 +51,26 @@ logger = logging.getLogger(__name__)
 mimetypes.add_type("text/javascript", ".mjs", strict=False)
 
 
+class CacheControlStaticFiles(StaticFiles):
+    """Static files with cache headers tuned for cloud delivery.
+
+    HTML stays non-cacheable to allow clean deploy updates.
+    Versionable assets (js/css/images/fonts) get long-lived public caching.
+    """
+
+    async def get_response(self, path: str, scope: Scope) -> Response:
+        response = await super().get_response(path, scope)
+        response.headers.setdefault("Vary", "Accept-Encoding")
+        ext = Path(path).suffix.lower()
+        if ext in {".html"}:
+            response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+        elif ext in {".js", ".mjs", ".css", ".csv", ".txt", ".json", ".map"}:
+            response.headers["Cache-Control"] = "public, max-age=86400, stale-while-revalidate=3600"
+        else:
+            response.headers["Cache-Control"] = "public, max-age=604800, stale-while-revalidate=86400"
+        return response
+
+
 def _mount_web_static(app: FastAPI) -> None:
     """Serve `apps/api/static` at `/web` (app.js, styles, three-init, …).
 
@@ -68,7 +89,7 @@ def _mount_web_static(app: FastAPI) -> None:
         return
     app.mount(
         "/web",
-        StaticFiles(directory=str(static_dir)),
+        CacheControlStaticFiles(directory=str(static_dir)),
         name="web",
     )
     logger.info("Serving static files at /web from %s", static_dir)
@@ -240,6 +261,60 @@ class IngestFrameRequest(BaseModel):
     asset_id: str
     sensor_values: dict[str, Any] = Field(default_factory=dict)
     customer_id: str | None = None
+
+
+DEMO_STRUCTURAL_SENSOR_KEYS = [
+    "pressure",
+    "flow",
+    "vibration",
+    "temperature",
+    "motor_current",
+    "bearing_temp",
+    "load_cell",
+    "rpm",
+    "humidity",
+    "displacement",
+    "valve_position",
+    "shaft_accel",
+    "lubrication_psi",
+    "seismic_x",
+    "seismic_y",
+    "winding_temp",
+    "inlet_guide",
+    "outlet_guide",
+    "torque_est",
+    "casing_vibe",
+    "oil_quality",
+    "stator_temp",
+    "field_bus_ok",
+    "coolant_flow",
+]
+
+
+class DemoSeedRequest(BaseModel):
+    run_id: str | None = None
+    customer_id: str | None = None
+    profile: Literal["sample", "stable", "watch", "critical"] = "sample"
+    minutes: int = Field(default=120, ge=10, le=240)
+    site_id: str = "demo-site"
+    asset_id: str = "demo-asset"
+
+
+def _build_demo_sensor_values_row(i: int, p: float, drift_lift: float, vib_spike: float) -> dict[str, float]:
+    out: dict[str, float] = {}
+    for k, key in enumerate(DEMO_STRUCTURAL_SENSOR_KEYS):
+        phase = k * 0.85
+        wave = math.sin(i / (5.2 + k * 0.11) + phase)
+        w2 = math.cos(i / (7.1 + k * 0.09) + phase * 0.65)
+        base = 18 + k * 6.2
+        out[key] = (
+            base
+            + wave * (1 + drift_lift * (0.45 + k * 0.025))
+            + w2 * (0.55 + vib_spike * 0.12)
+            + i * (0.011 + k * 0.0008)
+            + p * (0.15 + k * 0.02)
+        )
+    return out
 
 
 class BatchIngestRequest(BaseModel):
@@ -724,6 +799,16 @@ def is_api_key_valid(configured_key: str | None, provided_key: str | None) -> bo
 
 def _results_envelope(results: list[dict[str, Any]], latest: dict[str, Any] | None) -> dict[str, Any]:
     return {"latest": latest, "count": len(results), "results": results}
+
+
+def _compact_result_view(result: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not isinstance(result, dict):
+        return result
+    trimmed = dict(result)
+    # Geometry/sensor matrices are fetched from dedicated endpoints when needed.
+    for key in ("sensor_values", "sensor_relationships", "geometry"):
+        trimmed.pop(key, None)
+    return trimmed
 
 
 def _resolve_customer_id(customer_id: str | None) -> str:
@@ -1777,6 +1862,7 @@ def create_app(
 
     app = FastAPI(title="Neraium SII API", version="0.1.0")
     app.add_middleware(MaxRequestBodySizeMiddleware, max_body_size=request_body_limit)
+    app.add_middleware(GZipMiddleware, minimum_size=1024, compresslevel=5)
     cors_allow_origins = _cors_allow_origins()
     cors_allow_origin_regex = _cors_allow_origin_regex()
     if cors_allow_origins or cors_allow_origin_regex:
@@ -2622,6 +2708,106 @@ def create_app(
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=_actionable_validation_detail(str(exc)))
 
+    @app.post("/demo/seed")
+    def demo_seed(
+        payload: DemoSeedRequest,
+        _: None = Depends(require_api_key),
+        run_id: str | None = Query(default=None),
+        customer_id: str | None = Query(default=None),
+    ) -> dict[str, Any]:
+        resolved_customer = _resolve_customer_id(customer_id or payload.customer_id)
+        resolved_run = _resolve_run_id_with_default(
+            service_instance,
+            run_id or payload.run_id,
+            customer_id=resolved_customer,
+        )
+        minutes = int(payload.minutes)
+        total = max(10, min(240, minutes))
+        now = datetime.now(timezone.utc)
+        processed = 0
+        try:
+            log_structured(
+                logger,
+                event="demo_seed_start",
+                fields={
+                    "run_id": resolved_run,
+                    "customer_id": resolved_customer,
+                    "total_frames": total,
+                    "profile": payload.profile,
+                },
+            )
+            for i in range(total):
+                timestamp = (now.replace(microsecond=0).timestamp() - (total - i) * 60.0)
+                t = datetime.fromtimestamp(timestamp, tz=timezone.utc).isoformat()
+                if payload.profile == "watch":
+                    drift_lift = 0.35 + (i / max(1, total - 1)) * 0.35
+                    vib_spike = 0.55 + (i / max(1, total - 1)) * 0.45
+                elif payload.profile == "critical":
+                    drift_lift = 0.25 + (i / max(1, total - 1)) * 0.85
+                    vib_spike = 0.8 + (i / max(1, total - 1)) * 1.8
+                elif payload.profile == "sample":
+                    drift_lift = 0.2 if i < total // 3 else 0.6 if i < (2 * total) // 3 else 1.0
+                    vib_spike = drift_lift * 1.1
+                else:
+                    drift_lift = 0.12
+                    vib_spike = 0.2
+                p = i / max(1, total - 1)
+                frame = {
+                    "timestamp": t,
+                    "site_id": payload.site_id,
+                    "asset_id": payload.asset_id,
+                    "sensor_values": _build_demo_sensor_values_row(i, p, drift_lift, vib_spike),
+                    "customer_id": resolved_customer,
+                }
+                service_instance.ingest_frame(
+                    frame,
+                    run_id=resolved_run,
+                    customer_id=resolved_customer,
+                )
+                processed += 1
+                if processed % 20 == 0 or processed == total:
+                    log_structured(
+                        logger,
+                        event="demo_seed_progress",
+                        fields={
+                            "run_id": resolved_run,
+                            "customer_id": resolved_customer,
+                            "processed": processed,
+                            "total_frames": total,
+                        },
+                    )
+        except Exception as exc:
+            detail = summarize_exception_for_logs(exc)
+            log_structured(
+                logger,
+                event="demo_seed_failure",
+                fields={
+                    "run_id": resolved_run,
+                    "customer_id": resolved_customer,
+                    "processed": processed,
+                    "total_frames": total,
+                    "error": detail,
+                },
+                level=logging.ERROR,
+            )
+            return {
+                "status": "error",
+                "processed": processed,
+                "run_id": resolved_run,
+                "error": detail,
+            }
+        log_structured(
+            logger,
+            event="demo_seed_complete",
+            fields={
+                "run_id": resolved_run,
+                "customer_id": resolved_customer,
+                "processed": processed,
+                "total_frames": total,
+            },
+        )
+        return {"status": "ok", "processed": processed, "run_id": resolved_run, "error": None}
+
     @app.get("/state", response_model=CurrentStateEnvelope)
     def get_state(
         run_id: str | None = Query(default=None),
@@ -3318,6 +3504,7 @@ def create_app(
         run_id: str | None = Query(default=None),
         customer_id: str | None = Query(default=None),
         site_id: str | None = Query(default=None),
+        compact: bool = Query(default=False),
     ) -> dict[str, Any]:
         resolved_customer = _resolve_customer_id(customer_id)
         resolved = _resolve_run_id(service_instance, run_id, customer_id=resolved_customer)
@@ -3326,8 +3513,9 @@ def create_app(
             customer_id=resolved_customer,
             site_id=site_id,
         )
-        results = [latest] if latest is not None else []
-        return _results_envelope(results, latest=latest)
+        latest_out = _compact_result_view(latest) if compact else latest
+        results = [latest_out] if latest_out is not None else []
+        return _results_envelope(results, latest=latest_out)
 
     @app.get("/results/recent", response_model=ResultsEnvelope)
     def get_recent(
@@ -3335,6 +3523,7 @@ def create_app(
         run_id: str | None = Query(default=None),
         customer_id: str | None = Query(default=None),
         site_id: str | None = Query(default=None),
+        compact: bool = Query(default=False),
     ) -> dict[str, Any]:
         resolved_customer = _resolve_customer_id(customer_id)
         resolved = _resolve_run_id(service_instance, run_id, customer_id=resolved_customer)
@@ -3344,6 +3533,8 @@ def create_app(
             customer_id=resolved_customer,
             site_id=site_id,
         )
+        if compact:
+            results = [_compact_result_view(r) for r in results]
         latest = results[0] if results else None
         return _results_envelope(results, latest=latest)
 
@@ -3375,6 +3566,30 @@ def create_app(
             "filename": filename,
             "content": content,
         }
+
+    @app.get("/results/export/download")
+    def export_results_download(
+        format: Literal["json", "csv"] = Query(default="json"),
+        limit: int = Query(default=500, ge=1, le=5000),
+        run_id: str | None = Query(default=None),
+        customer_id: str | None = Query(default=None),
+        site_id: str | None = Query(default=None),
+    ) -> StreamingResponse:
+        env = export_results(
+            format=format,
+            limit=limit,
+            run_id=run_id,
+            customer_id=customer_id,
+            site_id=site_id,
+        )
+        filename = str(env.get("filename") or f"neraium_results.{format}")
+        content = str(env.get("content") or "")
+        media_type = str(env.get("content_type") or "text/plain; charset=utf-8")
+        headers = {
+            "Content-Disposition": f'attachment; filename="{filename}"',
+            "Cache-Control": "no-cache",
+        }
+        return StreamingResponse(iter([content.encode("utf-8")]), media_type=media_type, headers=headers)
 
     @app.get("/results/{result_id}", response_model=ResultEnvelope)
     def get_result_by_id(
