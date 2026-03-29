@@ -1,4 +1,4 @@
-# Share a live demo (external link)
+# Share a live reference replay (external link)
 
 The MVP web UI and API are **one server** (`python run_demo.py`). There is **no fixed public URL** in the repo—you expose your machine **while the process runs** using a tunnel.
 
@@ -50,16 +50,16 @@ Install ngrok for Windows and ensure `ngrok.exe` is on `PATH` (or run a differen
 
 ## 4. What to send to guests
 
-Send the **demo deep link** from the printed banner, for example:
+Send the **reference replay deep link** from the printed banner, for example:
 
 ```
-https://<your-tunnel-host>/dashboard?demo=1&prepare=1
+https://<your-tunnel-host>/dashboard?replay=1&prepare=1
 ```
 
 Guests get:
 
-- Demo Mode on  
-- Automatic preparation of the three demo runs (stable / watch / escalation) when there are no runs yet  
+- Replay mode on for historical validation  
+- Automatic preparation of the three reference runs (stable / watch / escalation) when there are no runs yet  
 - Redirect to the focus run detail  
 
 ## 5. Long-lived / production links
