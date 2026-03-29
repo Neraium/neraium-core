@@ -10,6 +10,9 @@
   <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/web/styles.css?v=__NERAIUM_ASSET_VERSION__" />
+  <link rel="stylesheet" href="/web/styles-layout.css?v=__NERAIUM_ASSET_VERSION__" />
+  <link rel="stylesheet" href="/web/styles-dashboard.css?v=__NERAIUM_ASSET_VERSION__" />
+  <link rel="stylesheet" href="/web/styles-analysis.css?v=__NERAIUM_ASSET_VERSION__" />
   <!-- Three.js from CDN (same version as scripts/download_three_vendor.py) — avoids /web/vendor static issues. -->
   <script type="importmap">
     {
@@ -88,12 +91,8 @@
             </div>
             <div class="snapshot-actions-row">
               <div>
-                <p class="recommendation-label">Operational Recommendation</p>
+                <p class="recommendation-label">Operational guidance</p>
                 <p id="snapshotRecommendation" class="snapshot-recommendation">Upload fresh telemetry to resume monitoring.</p>
-              </div>
-              <div>
-                <p class="recommendation-label">Next Action</p>
-                <p id="snapshotNextAction" class="snapshot-next">Upload telemetry to begin monitoring.</p>
               </div>
             </div>
           </section>
@@ -268,12 +267,12 @@
                   <strong id="runDetailLastUpdate">No data yet</strong>
                 </article>
                 <article class="analysis-run-header-item">
-                  <p class="recommendation-label">Recommendation context</p>
+                  <p class="recommendation-label">Operational summary</p>
                   <strong id="runDetailRecommendationContext">Upload telemetry to start analysis.</strong>
                 </article>
               </div>
             </section>
-            <p class="subtitle analysis-intent">Structural intelligence workspace for current state, recommendation rationale, geometry, trend timeline, and historical results.</p>
+            <p class="subtitle analysis-intent">Focused analysis workspace for current state, structural geometry, trend timeline, and result history.</p>
             
             <div id="runSignalSeparation" class="signal-separation hidden">
               <article class="signal-card state">
@@ -374,7 +373,7 @@
 
           <section id="analysis-trends" class="panel analysis-workspace-section" data-analysis-panel="trends">
             <div class="panel-header">
-              <h3>Trend and timeline</h3>
+              <h3>Trend workspace</h3>
               <div id="runRangeControls" class="range-controls">
                 <button type="button" data-range="50">Last 50</button>
                 <button type="button" data-range="200" class="active">Last 200</button>
@@ -563,7 +562,7 @@
 
           <section id="analysis-results" class="panel analysis-workspace-section" data-analysis-panel="results">
             <div class="panel-header">
-              <h3>Results history and export</h3>
+              <h3>Results history</h3>
             </div>
             <div class="row wrap filters">
               <input id="runResultsSearchInput" placeholder="Filter by message, phase, risk, state..." />
@@ -643,8 +642,7 @@
     </div>
   </div>
 
-  <script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-  <script defer src="/web/modules/ui.js?v=__NERAIUM_ASSET_VERSION__"></script>
+    <script defer src="/web/modules/ui.js?v=__NERAIUM_ASSET_VERSION__"></script>
   <script defer src="/web/modules/api.js?v=__NERAIUM_ASSET_VERSION__"></script>
   <script defer src="/web/modules/state.js?v=__NERAIUM_ASSET_VERSION__"></script>
   <script defer src="/web/sensor_graph_3d.js?v=__NERAIUM_ASSET_VERSION__"></script>
