@@ -36,10 +36,10 @@ function animateNumberText(el, target, opts = {}) {
 
 function friendlyErrorMessage(err) {
   const msg = String(err?.message || err || "");
-  if (msg.toLowerCase().includes("network")) return "Connection unstable — retrying…";
-  if (msg.toLowerCase().includes("timeout")) return "Request timed out — retry available.";
-  if (msg.toLowerCase().includes("demo")) return "Demo failed — retry available.";
-  return "Operation failed — please retry.";
+  if (msg.toLowerCase().includes("network")) return "Connection interrupted — attempting telemetry recovery.";
+  if (msg.toLowerCase().includes("timeout")) return "Telemetry request timed out — re-establishing stream.";
+  if (msg.toLowerCase().includes("demo")) return "Systemic Infrastructure Intelligence demo interrupted — retry available.";
+  return "Operational request interrupted — retry when ready.";
 }
 
 function apiUrl(path, params) {
@@ -1167,12 +1167,18 @@ async function prepareDemoRuns(options = {}) {
   try {
     const scenarios = demoScenarioListForMode(mode);
     const cust = customerIdValue(state.tenant.customerId);
-    setDemoProgress({ visible: true, phase: "Initializing run", current: 0, total: scenarios.length, text: "Initializing run profiles…" });
+    setDemoProgress({
+      visible: true,
+      phase: "Preparing Systemic Infrastructure Intelligence demo",
+      current: 0,
+      total: scenarios.length,
+      text: "Seeding telemetry and building structural state…",
+    });
     const created = await Promise.all(
       scenarios.map(async (scenario, idx) => {
         setDemoProgress({
           visible: true,
-          phase: "Streaming data",
+          phase: "Streaming telemetry",
           current: idx,
           total: scenarios.length,
           text: `Seeding telemetry… (${idx}/${scenarios.length})`,
@@ -1224,7 +1230,7 @@ async function prepareDemoRuns(options = {}) {
           phase: "Rendering model",
           current: idx + 1,
           total: scenarios.length,
-          text: "Loading structural visualization...",
+          text: "Rendering SII Structural View...",
         });
         setStatus("Loading structural visualization...", true);
         return run;
@@ -1867,7 +1873,7 @@ function renderTenantControls() {
   if (demoToggle) demoToggle.checked = !!state.demo.enabled;
   if (prepareDemoBtn) {
     prepareDemoBtn.disabled = state.demo.preparing;
-    prepareDemoBtn.textContent = state.demo.preparing ? "Preparing…" : "Run demo";
+    prepareDemoBtn.textContent = state.demo.preparing ? "Preparing SII demo…" : "Prepare SII demo";
   }
   if (siteList) {
     siteList.innerHTML = state.tenant.knownSites
@@ -5970,7 +5976,18 @@ function setDemoProgress({ visible = false, phase = "Initializing run", current 
   const pct = total > 0 ? Math.max(0, Math.min(100, (current / total) * 100)) : 0;
   if (fillEl) fillEl.style.width = `${pct}%`;
   if (textEl) textEl.textContent = text || `${phase}… (${current}/${total})`;
-  setStreamingIndicator(visible, phase.includes("Streaming") ? "LIVE ingest" : "Working");
+  setStreamingIndicator(visible, phase.includes("Streaming") ? "Telemetry live" : "SII preparing");
+}
+
+function normalizeLoadingMessage(message) {
+  const msg = String(message || "Loading...");
+  const lower = msg.toLowerCase();
+  if (lower.includes("seed")) return "Seeding telemetry and building structural state...";
+  if (lower.includes("demo")) return "Preparing Systemic Infrastructure Intelligence demo...";
+  if (lower.includes("structural visualization") || lower.includes("geometry")) return "Rendering SII Structural View...";
+  if (lower.includes("refresh")) return "Refreshing Systemic Infrastructure Intelligence state...";
+  if (lower.includes("initial")) return "Initializing Systemic Infrastructure Intelligence workspace...";
+  return msg;
 }
 
 function setLoading(isLoading, message = "Loading...") {
@@ -5978,10 +5995,11 @@ function setLoading(isLoading, message = "Loading...") {
   const text = qs("#loadingMessage");
   if (!overlay || !text) return;
   if (isLoading) {
-    text.textContent = String(message || "Loading...");
+    const normalized = normalizeLoadingMessage(message);
+    text.textContent = normalized;
     overlay.classList.remove("hidden");
-    if (String(message || "").toLowerCase().includes("seed") || String(message || "").toLowerCase().includes("demo")) {
-      setStreamingIndicator(true, "Streaming");
+    if (normalized.toLowerCase().includes("seeding") || normalized.toLowerCase().includes("demo")) {
+      setStreamingIndicator(true, "Telemetry live");
     }
   } else {
     text.textContent = "Loading...";
@@ -6013,7 +6031,7 @@ function setStatus(message = "", isError = false, showToast = false) {
 
 function setPage(page) {
   const titles = {
-    dashboard: ["Dashboard", "Active run snapshot"],
+    dashboard: ["SII Dashboard", "Systemic Infrastructure Intelligence in action"],
     runs: ["Runs", "Create, inspect, and activate runs"],
     upload: ["Upload", "Upload telemetry CSV into the active run"],
     "run-detail": ["Run Detail", "Deep inspection of run outputs"],
@@ -6372,6 +6390,10 @@ function renderDashboardMetrics(latest, prev) {
   const intelConfidence = qs("#intelConfidence");
   const intelFeed = qs("#intelligenceFeedList");
   const geometryState = qs("#dashboardGeometryState");
+  const recommendationPrimary = qs("#recommendationPrimary");
+  const recommendationRationale = qs("#recommendationRationale");
+  const recommendationOperatorNote = qs("#recommendationOperatorNote");
+  const recommendationConfidenceBadge = qs("#recommendationConfidenceBadge");
 
   if (metricTrend) metricTrend.textContent = toPretty(trendFromResult(latest));
   if (metricRisk) metricRisk.textContent = toPretty(latest?.risk_level);
@@ -6411,7 +6433,7 @@ function renderDashboardMetrics(latest, prev) {
   if (intelTrend) intelTrend.textContent = String(trendFromResult(latest) || "stable").toUpperCase();
   if (intelDeg) {
     const risk = normalizeRiskLevel(latest?.risk_level);
-    intelDeg.textContent = risk === "HIGH" ? "Accelerating" : risk === "MEDIUM" ? "Watch" : "Contained";
+    intelDeg.textContent = risk === "HIGH" ? "Unfamiliar pattern" : risk === "MEDIUM" ? "Mixed pattern" : "Familiar pattern";
   }
   if (intelConfidence) {
     const conf = latest ? (latest.structural_analysis_available ? 92 : 74) : 0;
@@ -6424,7 +6446,7 @@ function renderDashboardMetrics(latest, prev) {
           `Model: ${String(phaseFromResult(latest) || "-")} / ${normalizeRiskLevel(latest.risk_level)} risk`,
           `Recommendation: ${normalizeRiskLevel(latest.risk_level) === "HIGH" ? "Dispatch immediate inspection." : "Continue monitored operations."}`,
         ]
-      : ["Awaiting telemetry stream."];
+      : ["Awaiting Systemic Infrastructure Intelligence telemetry stream."];
     const lines = alerts.length
       ? alerts.map((a) => `${a.type || "Event"}: ${a.message || "Signal deviation detected."}`)
       : recommendations;
@@ -6433,9 +6455,33 @@ function renderDashboardMetrics(latest, prev) {
   if (geometryState) {
     const available = Boolean(latest?.structural_analysis_available);
     geometryState.textContent = available
-      ? "Geometry ready — structural relationship field synchronized."
-      : "Geometry not available for this snapshot.";
+      ? "Infrastructure State Geometry is synchronized with current structural relationships."
+      : "Infrastructure State Geometry is unavailable for this snapshot. Continue monitoring structural state and relationship drift.";
     geometryState.classList.toggle("geometry-ready", available);
+  }
+  if (recommendationPrimary || recommendationRationale || recommendationOperatorNote || recommendationConfidenceBadge) {
+    const risk = normalizeRiskLevel(latest?.risk_level);
+    const trend = String(trendFromResult(latest) || "stable").toLowerCase();
+    const operatorSummaryClean = String(operatorSummary || "No recommendation yet.");
+    const confidence = latest ? (latest.structural_analysis_available ? 92 : 74) : 0;
+    const primaryText =
+      risk === "HIGH"
+        ? "Dispatch targeted inspection and increase structural watch frequency."
+        : risk === "MEDIUM"
+          ? "Maintain operations with elevated watch on relationship drift."
+          : "Continue monitored operations under current control boundaries.";
+    const rationaleText =
+      risk === "UNKNOWN"
+        ? "SII is waiting for enough structural evidence to provide an operational recommendation."
+        : `Surfaced because structural state is ${String(latest?.state || latest?.interpreted_state || "unknown")} with ${risk} risk and ${trend} instability trend.`;
+    const operatorNoteText =
+      risk === "HIGH"
+        ? "Prioritize assets showing strongest drift and validate containment assumptions before escalation."
+        : operatorSummaryClean;
+    if (recommendationPrimary) recommendationPrimary.textContent = primaryText;
+    if (recommendationRationale) recommendationRationale.textContent = rationaleText;
+    if (recommendationOperatorNote) recommendationOperatorNote.textContent = operatorNoteText;
+    if (recommendationConfidenceBadge) recommendationConfidenceBadge.textContent = `Confidence ${confidence}%`;
   }
   const lu = qs("#dashboardLastUpdated");
   if (lu) {
@@ -6713,8 +6759,14 @@ async function seedDemoData() {
   setDemoButtonsDisabled(true);
   renderTenantControls();
   try {
-    setStatus("Preparing demo…", false);
-    setDemoProgress({ visible: true, phase: "Initializing run", current: 0, total: 120, text: "Preparing demo run..." });
+    setStatus("Preparing Systemic Infrastructure Intelligence demo...", false);
+    setDemoProgress({
+      visible: true,
+      phase: "Preparing Systemic Infrastructure Intelligence demo",
+      current: 0,
+      total: 120,
+      text: "Seeding telemetry and building structural state...",
+    });
     setLoading(true, "Preparing demo runs…");
     const started = await startDemoSeedJob(
       runId,
@@ -6736,13 +6788,13 @@ async function seedDemoData() {
         const totalFrames = Number(job?.total_frames || 120);
         const percent = Number(job?.progress || 0);
         const bounded = Math.max(0, Math.min(100, percent));
-        setStatus(`Preparing demo… (${bounded}%)`, false);
+        setStatus(`Preparing Systemic Infrastructure Intelligence demo... (${bounded}%)`, false);
         setDemoProgress({
           visible: true,
-          phase: "Streaming data",
+          phase: "Streaming telemetry",
           current: Math.min(totalFrames, processed || Math.round((totalFrames * bounded) / 100)),
           total: totalFrames,
-          text: `Preparing demo… (${bounded}%)`,
+          text: `Building SII structural state... (${bounded}%)`,
         });
       },
     });
