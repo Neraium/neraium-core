@@ -1,5 +1,6 @@
 const { qs, qsa, debounce, animateNumberText, friendlyErrorMessage, toPretty, formatBytes, escapeHtml } = window.NeraiumUI;
 const { apiUrl, fetchJson } = window.NeraiumApi;
+const { deriveFrontendState, getRunModeDisplay, getAnalysisStatusDisplay, getLastUpdateDisplay, getOperationalBadgeDisplay, getErrorDisplayContext } = window.NeraiumState;
 
 async function fetchRecentResults(params) {
   const recentParams = tenantScopeParams({ ...(params || {}), compact: 1 });
@@ -12,6 +13,27 @@ async function fetchRecentResults(params) {
 
 
 
+
+function buildFrontendUiState(latest = null, overrides = {}) {
+  const route = getRoute();
+  const page = String(route?.page || "dashboard").toLowerCase();
+  const alertStatus = state.dashboardCurrentAlertStatus || (latest && latest.alert_status) || null;
+  const alertState = String(alertStatus?.state || alertStatus?.alert_state || "").toUpperCase();
+  const alertActive = Boolean(alertStatus?.alert_active) || alertState === "ESCALATED" || alertState === "PENDING_ALERT";
+  const replayUiState = state.demo?.replay?.uiState || "idle";
+  return deriveFrontendState({
+    page,
+    demoEnabled: Boolean(state.demo.enabled),
+    replayUiState,
+    hasLatest: Boolean(latest),
+    hasTelemetrySeries: Array.isArray(state.dashboardRecent) && state.dashboardRecent.length > 0,
+    hasActiveRun: Boolean(state.activeRun?.run_id),
+    alertActive,
+    degradedRuntime: Boolean(state.runtimeDegraded),
+    analysisInterrupted: Boolean(overrides.analysisInterrupted),
+    latestTimestamp: latest?.timestamp || latest?.persisted_at || latest?.created_at || "",
+  });
+}
 function phaseFromResult(r) {
   if (!r) return "-";
   return r.phase || r.state || r.interpreted_state || "-";
@@ -838,7 +860,7 @@ function replayDemoTimeline() {
 
 async function toggleDemoMode(enabled) {
   state.demo.enabled = !!enabled;
-  setConnectionStatus(deriveOperationalStatus());
+  setConnectionStatus(getOperationalBadgeDisplay(buildFrontendUiState()));
   persistDemoMode();
   if (!state.demo.enabled) {
     stopDemoPlayback();
@@ -1403,6 +1425,7 @@ const state = {
     connection: "LIVE",
     dashboardPaint: null,
   },
+  runtimeDegraded: false,
 };
 
 const TENANT_STORAGE_KEY = "neraium_customer_id";
@@ -5979,7 +6002,7 @@ function setConnectionStatus(mode = "LIVE") {
   if (label) label.textContent = normalized;
   if (badge) {
     badge.classList.remove("chip-live", "chip-demo", "chip-offline");
-    if (normalized === "ALERT ACTIVE") {
+    if (["ALERT ACTIVE", "ANALYSIS INTERRUPTED", "REPLAY INTERRUPTED"].includes(normalized)) {
       badge.classList.add("chip-offline");
     } else if (normalized === "ACTIVE MONITORING") {
       badge.classList.add("chip-live");
@@ -5987,37 +6010,6 @@ function setConnectionStatus(mode = "LIVE") {
       badge.classList.add("chip-demo");
     }
   }
-}
-
-function inferErrorContext(message = "") {
-  const route = getRoute();
-  const page = String(route?.page || "").toLowerCase();
-  const text = String(message || "").toLowerCase();
-  if (text.includes("geometry") || text.includes("structural view")) return "geometry";
-  if (page === "upload" || text.includes("ingest") || text.includes("upload") || text.includes("csv")) return "ingest";
-  if (page === "validation" || state.demo.enabled || text.includes("replay") || text.includes("demo")) return "replay";
-  return "analysis";
-}
-
-function deriveOperationalStatus({ latest = null, isError = false } = {}) {
-  const route = getRoute();
-  const page = String(route?.page || "").toLowerCase();
-  const replayContext = page === "validation" || (state.demo.enabled && (page === "run-detail" || page === "runs"));
-  if (isError) {
-    if (replayContext) return "HISTORICAL VALIDATION";
-    return "ANALYSIS ERROR";
-  }
-  if (page === "validation") return "VALIDATION RUN";
-  if (state.demo.enabled && page === "run-detail") return "REPLAY ACTIVE";
-  if (state.demo.enabled && page === "runs") return "HISTORICAL VALIDATION";
-  const alertStatus = state.dashboardCurrentAlertStatus || (latest && latest.alert_status) || null;
-  const alertState = String(alertStatus?.state || alertStatus?.alert_state || "").toUpperCase();
-  const hasActiveAlert = Boolean(alertStatus?.alert_active) || alertState === "ESCALATED" || alertState === "PENDING_ALERT";
-  if (hasActiveAlert) return "ALERT ACTIVE";
-  const hasTelemetry = Boolean(latest) || (Array.isArray(state.dashboardRecent) && state.dashboardRecent.length > 0);
-  if (hasTelemetry) return "ACTIVE MONITORING";
-  if (state.activeRun?.run_id) return "WAITING FOR TELEMETRY";
-  return "NO DATA INGESTED";
 }
 
 function setStreamingIndicator(active, text = "Streaming") {
@@ -6093,12 +6085,13 @@ function setStatus(message = "", isError = false, showToast = false) {
     if (rail) rail.textContent = "Pilot operations workspace ready. Upload telemetry to start monitoring.";
     return;
   }
-  const cleanMessage = isError ? friendlyErrorMessage(message, inferErrorContext(message)) : String(message);
+  const uiTruth = buildFrontendUiState(null, { analysisInterrupted: isError && !state.demo.enabled });
+  const cleanMessage = isError ? friendlyErrorMessage(message, getErrorDisplayContext(uiTruth, message)) : String(message);
   el.className = `status ${isError ? "error" : "ok"}`;
   el.textContent = cleanMessage;
   el.classList.remove("hidden");
   if (rail) rail.textContent = cleanMessage;
-  setConnectionStatus(deriveOperationalStatus({ isError }));
+  setConnectionStatus(getOperationalBadgeDisplay(uiTruth));
   if (showToast && !isError) {
     createToast(cleanMessage, isError ? "error" : "success");
   }
@@ -6112,6 +6105,7 @@ async function refreshRuntimeModeBanner() {
   try {
     const health = await fetchJson(apiUrl("/health"));
     const degraded = Boolean(health?.core_runtime_fallback) || String(health?.status || "").toLowerCase() === "degraded";
+    state.runtimeDegraded = degraded;
     if (!degraded) {
       banner.classList.add("hidden");
       banner.textContent = "";
@@ -6122,6 +6116,7 @@ async function refreshRuntimeModeBanner() {
     banner.textContent = `Degraded runtime mode: fallback core modules are active. Pilot decisions should be treated as limited-confidence until full core runtime is restored.${noteText}`;
     banner.classList.remove("hidden");
   } catch (_err) {
+    state.runtimeDegraded = false;
     banner.classList.add("hidden");
   }
 }
@@ -6162,18 +6157,15 @@ function renderRunDetailHeaderContext(run, latest) {
   const statusEl = qs("#runDetailStatusLabel");
   const updateEl = qs("#runDetailLastUpdate");
   const recEl = qs("#runDetailRecommendationContext");
-  const isReplay = Boolean(state.demo.enabled);
+  const uiTruth = buildFrontendUiState(latest);
   const risk = normalizeRiskLevel(latest?.risk_level);
   const recommendation = String(latest?.operator_message || "").trim();
   const ts = latest?.timestamp || latest?.persisted_at || latest?.created_at || "";
-  if (modeEl) modeEl.textContent = isReplay ? "Validation reference workflow" : "Pilot telemetry monitoring";
-  if (statusEl) {
-    if (!latest) statusEl.textContent = isReplay ? "Ready for historical replay" : "No telemetry in active run";
-    else statusEl.textContent = isReplay ? "Historical replay loaded" : "Live monitoring active";
-  }
-  if (updateEl) updateEl.textContent = ts ? String(ts) : "No data yet";
+  if (modeEl) modeEl.textContent = getRunModeDisplay(uiTruth);
+  if (statusEl) statusEl.textContent = getAnalysisStatusDisplay(uiTruth);
+  if (updateEl) updateEl.textContent = getLastUpdateDisplay(uiTruth, ts);
   if (recEl) {
-    if (!latest) recEl.textContent = isReplay
+    if (!latest) recEl.textContent = uiTruth.mode === "validation"
       ? "Validation workspace ready. Start NASA CMAPSS FD004 replay when ready."
       : "Upload telemetry to begin structural analysis.";
     else if (recommendation) recEl.textContent = recommendation;
@@ -6407,7 +6399,7 @@ function updateActiveRunHeader(run) {
     window.localStorage.setItem("active_run_id", run.run_id);
   }
   updateUploadRunInfo();
-  setConnectionStatus(deriveOperationalStatus());
+  setConnectionStatus(getOperationalBadgeDisplay(buildFrontendUiState()));
 }
 
 function sortRuns(runs, mode) {
@@ -6516,15 +6508,11 @@ function latestTelemetryTimestampMs(result) {
   return Number.isFinite(ms) ? ms : 0;
 }
 
-function formatFreshnessLabel(result) {
-  const ts = latestTelemetryTimestampMs(result);
-  if (!ts) return { label: "No telemetry uploaded to the active run", stale: true };
-  const ageMs = Math.max(0, Date.now() - ts);
-  const mins = Math.floor(ageMs / 60000);
-  if (mins < 2) return { label: "Fresh telemetry (updated just now)", stale: false };
-  if (mins < 60) return { label: `Freshness: ${mins} minute${mins === 1 ? "" : "s"} ago`, stale: mins >= 15 };
-  const hours = Math.floor(mins / 60);
-  return { label: `Stale telemetry — last upload ${hours} hour${hours === 1 ? "" : "s"} ago`, stale: true };
+function formatFreshnessLabel(result, uiTruth = null) {
+  const truth = uiTruth || buildFrontendUiState(result);
+  const label = getLastUpdateDisplay(truth, result?.timestamp || result?.persisted_at || result?.created_at || "");
+  if (truth.mode === "validation") return { label, stale: false };
+  return { label, stale: label.toLowerCase().includes("stale") || label.toLowerCase().includes("no telemetry") };
 }
 
 function normalizedAlertStatusText(latest) {
@@ -6542,7 +6530,11 @@ function normalizedAlertStatusText(latest) {
   return "Alert status clear";
 }
 
-function noTelemetryOperationalMessage() {
+function noTelemetryOperationalMessage(uiTruth = null) {
+  const truth = uiTruth || buildFrontendUiState();
+  if (truth.mode === "validation") {
+    return "No replay frames loaded yet. Start NASA CMAPSS FD004 replay to establish structural state and recommendations.";
+  }
   return "No telemetry in the active run. Upload telemetry to establish structural state and recommendations.";
 }
 
@@ -6556,6 +6548,7 @@ function renderOperationalSnapshot(latest) {
   const recEl = qs("#snapshotRecommendation");
   const nextEl = qs("#snapshotNextAction");
 
+  const uiTruth = buildFrontendUiState(latest);
   const risk = normalizeRiskLevel(latest?.risk_level);
   const trend = String(trendFromResult(latest) || "UNKNOWN").toUpperCase();
   const stateText = String(latest?.state || latest?.interpreted_state || "Unknown");
@@ -6565,8 +6558,8 @@ function renderOperationalSnapshot(latest) {
     : confidenceValue >= 85
       ? `Confidence: ${confidenceValue}%`
       : "Confidence: moderate";
-  const alertText = normalizedAlertStatusText(latest);
-  const freshness = formatFreshnessLabel(latest);
+  const alertText = uiTruth.mode === "validation" ? "Validation replay context" : normalizedAlertStatusText(latest);
+  const freshness = formatFreshnessLabel(latest, uiTruth);
 
   if (stateEl) stateEl.textContent = stateText;
   if (riskEl) riskEl.textContent = risk;
@@ -6575,8 +6568,10 @@ function renderOperationalSnapshot(latest) {
   if (alertEl) alertEl.textContent = alertText;
   if (freshEl) freshEl.textContent = freshness.label;
 
-  let recommendation = noTelemetryOperationalMessage();
-  let nextAction = "Upload telemetry to start active monitoring.";
+  let recommendation = noTelemetryOperationalMessage(uiTruth);
+  let nextAction = uiTruth.mode === "validation"
+    ? "Start NASA CMAPSS FD004 replay to begin validation monitoring."
+    : "Upload telemetry to start active monitoring.";
   if (latest) {
     if (risk === "HIGH") {
       recommendation = "Investigate sustained instability in the active run.";
@@ -6596,7 +6591,10 @@ function renderOperationalSnapshot(latest) {
 
   const ctaBtn = qs("#primaryPilotActionBtn");
   if (ctaBtn) {
-    if (!latest || freshness.stale) {
+    if (uiTruth.mode === "validation") {
+      ctaBtn.textContent = "Open Validation";
+      ctaBtn.setAttribute("href", "/validation");
+    } else if (!latest || freshness.stale) {
       ctaBtn.textContent = "Upload Telemetry";
       ctaBtn.setAttribute("href", "/upload");
     } else {
@@ -6632,7 +6630,8 @@ function renderDashboardMetrics(latest, prev) {
   if (metricTrend) metricTrend.textContent = toPretty(trendFromResult(latest));
   if (metricRisk) metricRisk.textContent = toPretty(latest?.risk_level);
   if (metricState) metricState.textContent = toPretty(latest?.state || latest?.interpreted_state);
-  setConnectionStatus(deriveOperationalStatus({ latest }));
+  const uiTruth = buildFrontendUiState(latest);
+  setConnectionStatus(getOperationalBadgeDisplay(uiTruth));
   const operatorSummary = demoFriendlyOperatorMessage(latest, prev);
   if (metricOperator) metricOperator.textContent = operatorSummary;
   if (metricRiskBadge) metricRiskBadge.innerHTML = riskBadgeHtml(latest?.risk_level);
@@ -6688,7 +6687,7 @@ function renderDashboardMetrics(latest, prev) {
           `Model: ${String(phaseFromResult(latest) || "-")} / ${normalizeRiskLevel(latest.risk_level)} risk`,
           `Recommendation: ${normalizeRiskLevel(latest.risk_level) === "HIGH" ? "Dispatch immediate inspection." : "Continue monitored operations."}`,
         ]
-      : ["Awaiting active-run telemetry upload."];
+      : [uiTruth.mode === "validation" ? "Awaiting validation replay frames." : "Awaiting active-run telemetry upload."];
     const lines = alerts.length
       ? alerts.map((a) => `${a.type || "Event"}: ${a.message || "Signal deviation detected."}`)
       : recommendations;
@@ -6708,7 +6707,7 @@ function renderDashboardMetrics(latest, prev) {
     const confidence = latest ? (latest.structural_analysis_available ? 92 : 74) : 0;
     const primaryText =
       !latest
-        ? noTelemetryOperationalMessage()
+        ? noTelemetryOperationalMessage(uiTruth)
         : risk === "HIGH"
         ? "Dispatch targeted inspection and increase structural watch frequency."
         : risk === "MEDIUM"
@@ -6730,7 +6729,9 @@ function renderDashboardMetrics(latest, prev) {
     if (recommendationConfidenceBadge) recommendationConfidenceBadge.textContent = `Confidence ${confidence}%`;
     if (nextActionEl) {
       if (!latest) {
-        nextActionEl.textContent = "Upload telemetry to start active monitoring.";
+        nextActionEl.textContent = uiTruth.mode === "validation"
+          ? "Start NASA CMAPSS FD004 replay to begin validation monitoring."
+          : "Upload telemetry to start active monitoring.";
       } else if (risk === "HIGH") {
         nextActionEl.textContent = "Active alert requires acknowledgement and targeted inspection.";
       } else if (risk === "MEDIUM") {
@@ -6742,12 +6743,17 @@ function renderDashboardMetrics(latest, prev) {
   }
   const lu = qs("#dashboardLastUpdated");
   if (lu) {
-    const tsMs = latestTelemetryTimestampMs(latest);
-    if (!tsMs) {
-      lu.textContent = "No telemetry timestamp yet for this active run.";
+    const rawTs = latest?.timestamp || latest?.persisted_at || latest?.created_at || "";
+    if (uiTruth.mode === "validation") {
+      lu.textContent = getLastUpdateDisplay(uiTruth, rawTs);
     } else {
-      const ts = new Date(tsMs);
-      lu.textContent = `Last ingest ${ts.toLocaleString(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`;
+      const tsMs = latestTelemetryTimestampMs(latest);
+      if (!tsMs) {
+        lu.textContent = getLastUpdateDisplay(uiTruth, rawTs);
+      } else {
+        const ts = new Date(tsMs);
+        lu.textContent = `Last ingest ${ts.toLocaleString(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`;
+      }
     }
   }
 }
@@ -7422,7 +7428,7 @@ function renderRunDetailFromState() {
   setFlowModeButtonState();
   const hasResults = state.runRecent.length > 0;
   const latestResult = hasResults ? state.runRecent[0] : null;
-  setConnectionStatus(deriveOperationalStatus({ latest: latestResult }));
+  setConnectionStatus(getOperationalBadgeDisplay(buildFrontendUiState(latestResult)));
   renderRunDetailHeaderContext(state.activeRun, latestResult);
   const runDetailEmpty = qs("#runDetailEmpty");
   const geomPanel = qs(".geometry-panel");
