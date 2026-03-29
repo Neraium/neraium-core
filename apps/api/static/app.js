@@ -1115,7 +1115,7 @@ async function startCmapssDemo(customerId, options = {}) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       customer_id: customerId || null,
-      max_frames: Number(options.max_frames || 180),
+      max_frames: Number(options.max_frames || 10),
     }),
   });
 }
@@ -6779,7 +6779,7 @@ async function seedDemoData() {
       total: 3,
       text: "Running NASA CMAPSS FD004 scenario...",
     });
-    const out = await startCmapssDemo(customerIdValue(state.tenant.customerId), { max_frames: 180 });
+    const out = await startCmapssDemo(customerIdValue(state.tenant.customerId), { max_frames: 10 });
     const resolvedRunId = String(out?.run_id || "");
     if (!resolvedRunId) throw new Error("NASA demo did not return a run ID.");
     setLoading(true, "Running NASA CMAPSS FD004 scenario...");
