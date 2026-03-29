@@ -6109,7 +6109,7 @@ async function refreshRuntimeModeBanner() {
 }
 function setPage(page) {
   const titles = {
-    dashboard: ["Pilot Operations Dashboard", "Pilot-ready Systemic Infrastructure Intelligence workspace"],
+    dashboard: ["Pilot Operations Dashboard", "Current system state, severity, and next operator action"],
     runs: ["Runs", "Create, inspect, and activate runs"],
     upload: ["Upload", "Upload telemetry CSV into the active run"],
     "run-detail": ["Run Detail", "Deep inspection of run outputs"],
@@ -6730,9 +6730,6 @@ async function loadDashboard() {
   const prev = chron.length > 1 ? chron[chron.length - 2] : null;
   const paint = () => {
     renderDashboardMetrics(latest, prev);
-    renderDashboardRecent(state.dashboardRecent);
-    renderDashboardSparkline(chron);
-    bindDashboardSparklineInteractions();
     renderDashboardDemoHero();
   };
   if (state.ui.dashboardPaint) window.cancelAnimationFrame(state.ui.dashboardPaint);
