@@ -74,22 +74,23 @@
         <section id="page-dashboard" class="page page-dashboard">
           <section class="panel sii-hero" aria-label="Systemic Infrastructure Intelligence framing">
             <div class="sii-hero-copy">
-              <p class="sii-hero-kicker">Systemic Infrastructure Intelligence</p>
-              <h3>Pilot-ready Operational Dashboard</h3>
-              <p class="subtitle">Monitor live and pilot telemetry through Neraium’s SII pipeline to surface structural state, relationship drift, pattern memory, and emerging instability. Historical validation replay remains available as a secondary workflow.</p>
+              <p class="sii-hero-kicker">Pilot Operations</p>
+              <h3>Current System State</h3>
+              <p class="subtitle">Operational dashboard for live telemetry monitoring. Review current state, risk, trend, and confidence to determine immediate operator actions.</p>
             </div>
             <div class="sii-hero-tags" aria-label="SII core signals">
-              <span class="chip">Structural State</span>
-              <span class="chip">Relationship Drift</span>
-              <span class="chip">Pattern Memory</span>
-              <span class="chip">Emerging Instability</span>
+              <span class="chip">System state</span>
+              <span class="chip">Risk level</span>
+              <span class="chip">Trend</span>
+              <span class="chip">Confidence</span>
             </div>
           </section>
           <div class="dashboard-grid-v2">
             <section class="panel control-panel" aria-label="Operational and reference controls">
               <div class="panel-header"><h3>Pilot Operations</h3></div>
               <div class="control-stack" role="group" aria-label="Operational actions">
-                <button id="seedDemoBtn" type="button" class="primary demo-primary-btn">Run NASA CMAPSS FD004 Reference Replay</button>
+                <a id="primaryPilotActionBtn" href="/upload" class="button-link primary primary-pilot-btn">Upload Telemetry</a>
+                <button id="seedDemoBtn" type="button" class="secondary demo-primary-btn">Reference Replay: NASA CMAPSS FD004</button>
                 <button id="refreshBtn" type="button" class="secondary control-secondary-btn">Refresh</button>
               </div>
               <div id="demoProgressPanel" class="demo-progress-panel hidden" aria-live="polite">
@@ -106,17 +107,17 @@
             </section>
 
             <section class="panel mission-panel" aria-label="Active run visual">
-              <p class="dashboard-hero-kicker">Systemic Infrastructure Intelligence</p>
+              <p class="dashboard-hero-kicker">Current System State</p>
               <div class="dashboard-hero-score-row">
                 <div class="dashboard-hero-health-col">
-                  <div class="health-ring-wrap animated-ring" title="Composite health from risk, drift, and instability">
+                  <div class="health-ring-wrap" title="Operational state score derived from risk and structural telemetry">
                     <svg id="dashboardHealthRing" class="health-ring" viewBox="0 0 120 120" aria-hidden="true">
                       <circle class="health-ring-bg" cx="60" cy="60" r="52" />
                       <circle id="dashboardHealthArc" class="health-ring-arc" cx="60" cy="60" r="52" />
                     </svg>
                     <div class="health-ring-label">
                       <span class="health-ring-value" id="dashboardHealthScore">-</span>
-                      <span class="health-ring-caption">Health</span>
+                      <span class="health-ring-caption" id="dashboardHealthCaption">State score</span>
                     </div>
                   </div>
                 </div>
@@ -136,10 +137,10 @@
                         <div id="metricRiskBadge"></div>
                       </div>
                     </div>
-                    <p class="signal-trend dashboard-trend-line">Instability trend <strong id="metricTrend">-</strong></p>
+                    <p class="signal-trend dashboard-trend-line">Trend <strong id="metricTrend">-</strong> · Confidence <strong id="metricStateConfidence">--%</strong></p>
                   </div>
                   <p class="dashboard-narrative-strip" id="dashboardNarrativeStrip">Awaiting telemetry.</p>
-                  <p id="metricOperatorMessage" class="operator-message dashboard-operator-line">No results yet. Upload telemetry or use Sample data.</p>
+                  <p id="metricOperatorMessage" class="operator-message dashboard-operator-line">No telemetry available yet.</p>
                 </div>
               </div>
               <div class="run-meta-line">
@@ -173,6 +174,10 @@
                 <p id="recommendationRationale" class="subtitle">Telemetry ingestion is active but no current recommendation is available yet.</p>
                 <p class="recommendation-label">Operator note</p>
                 <p id="recommendationOperatorNote" class="subtitle">Maintain normal observation cadence until SII detects relationship drift.</p>
+              </article>
+              <article class="next-action-card" aria-label="Next action guidance">
+                <p class="recommendation-label">Next Action</p>
+                <p id="dashboardNextAction" class="next-action-primary">Upload telemetry to begin analysis.</p>
               </article>
               <div class="intelligence-feed">
                 <h4>Pattern memory and event feed</h4>
