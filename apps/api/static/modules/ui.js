@@ -34,12 +34,21 @@
     window.requestAnimationFrame(step);
   }
 
-  function friendlyErrorMessage(err) {
-    const msg = String(err?.message || err || "");
-    if (msg.toLowerCase().includes("network")) return "Connection interrupted — attempting telemetry recovery.";
-    if (msg.toLowerCase().includes("timeout")) return "Telemetry request timed out — re-establishing stream.";
-    if (msg.toLowerCase().includes("demo")) return "Reference replay interrupted — retry available.";
-    return "Operational request interrupted — retry when ready.";
+  function friendlyErrorMessage(err, context = "analysis") {
+    const msg = String(err?.message || err || "").toLowerCase();
+    const normalizedContext = String(context || "analysis").toLowerCase();
+    const networkText = msg.includes("network")
+      ? " Connection interrupted while contacting the service."
+      : msg.includes("timeout")
+        ? " Request timed out before the service responded."
+        : "";
+    if (normalizedContext === "replay" || msg.includes("replay") || msg.includes("demo")) {
+      return `Replay failed — validation run could not be completed.${networkText} Retry replay when ready.`;
+    }
+    if (normalizedContext === "ingest" || msg.includes("upload") || msg.includes("ingest") || msg.includes("csv")) {
+      return `Telemetry ingest failed — uploaded data was not processed.${networkText} Check CSV mapping and retry ingest.`;
+    }
+    return `Analysis failed — structural intelligence results were not generated.${networkText} Retry analysis when ready.`;
   }
 
   function toPretty(v) {
