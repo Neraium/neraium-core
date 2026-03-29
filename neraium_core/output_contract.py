@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Mapping
 
-CANONICAL_SCHEMA_VERSION = "2026-03-28"
+CANONICAL_SCHEMA_VERSION = "2026-03-29"
 
 OPERATOR_BOUNDARY_NOTE = (
     "Recommendations are advisory outputs intended to support, not replace, "
@@ -33,6 +33,7 @@ OPTIONAL_FIELDS = {
     "persisted_at",
     "customer_id",
     "run_id",
+    "alert_status",
 }
 
 _RISK_RANK = {"LOW": 0, "MEDIUM": 1, "HIGH": 2, "UNKNOWN": -1}
@@ -247,6 +248,189 @@ def _normalize_memory_recall(raw: Any) -> dict[str, Any]:
 
 
 
+def _safe_int(value: Any, default: int = 0) -> int:
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return int(default)
+
+
+def _safe_float(value: Any, default: float = 0.0) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return float(default)
+
+
+def _alert_candidate(
+    risk: Mapping[str, Any],
+    recommendation: Mapping[str, Any],
+    *,
+    confidence: float,
+    raw_result: Mapping[str, Any],
+) -> tuple[bool, str]:
+    level = str(risk.get("risk_level", "UNKNOWN")).upper()
+    trend = str(risk.get("trend", "UNKNOWN")).upper()
+    recommendation_status = recommendation.get("status") if isinstance(recommendation.get("status"), Mapping) else {}
+    recommendation_available = bool(recommendation_status.get("available", False))
+    transition_pressure = _safe_float(raw_result.get("transition_pressure"), 0.0)
+
+    if level == "HIGH":
+        return True, "risk_level_HIGH"
+    if level == "MEDIUM" and trend == "RISING" and confidence >= 0.6:
+        return True, "risk_medium_rising_confident"
+    if recommendation_available and transition_pressure >= 0.85 and level in {"MEDIUM", "HIGH"}:
+        return True, "recommendation_plus_transition_pressure"
+    return False, "candidate_not_met"
+
+
+def _build_alert_status(
+    *,
+    raw_result: Mapping[str, Any],
+    risk: Mapping[str, Any],
+    recommendation: Mapping[str, Any],
+    confidence: float,
+    cycle: int,
+    timestamp: str,
+    previous: Mapping[str, Any] | None,
+) -> dict[str, Any]:
+    threshold = 3
+    escalation_threshold_cycles = 6
+    renotify_interval_cycles = 3
+
+    prev_status = previous.get("alert_status") if isinstance(previous, Mapping) and isinstance(previous.get("alert_status"), Mapping) else {}
+    prev_state = str(prev_status.get("alert_state", "CLEAR")).upper()
+    prev_hits = _safe_int(prev_status.get("consecutive_hit_count"), 0)
+    prev_resolution_hits = _safe_int(prev_status.get("resolution_hit_count"), 0)
+    prev_acknowledged = bool(prev_status.get("acknowledged", False))
+    prev_active_cycle = prev_status.get("active_since_cycle")
+    prev_active_ts = prev_status.get("active_since")
+    control = raw_result.get("alert_control") if isinstance(raw_result.get("alert_control"), Mapping) else {}
+
+    acknowledge_requested = bool(control.get("acknowledge", False))
+    resolve_requested = bool(control.get("resolve", False))
+    acknowledged_by = control.get("acknowledged_by")
+    resolved_by = control.get("resolved_by")
+
+    candidate, reason = _alert_candidate(risk, recommendation, confidence=confidence, raw_result=raw_result)
+
+    active_states = {"ACTIVE_UNACKNOWLEDGED", "ACTIVE_ACKNOWLEDGED", "ESCALATED"}
+    state = "CLEAR"
+    hit_count = 0
+    resolution_hits = 0
+    active_since = None
+    active_since_cycle = None
+    acknowledged = False
+    acknowledged_at = None
+    resolved_at = None
+    resolved_reason = None
+    last_triggered_at = prev_status.get("last_triggered_at")
+
+    if prev_state in active_states:
+        active_since = prev_active_ts or timestamp
+        active_since_cycle = _safe_int(prev_active_cycle, cycle)
+        acknowledged = prev_acknowledged
+        acknowledged_at = prev_status.get("acknowledged_at")
+        hit_count = max(threshold, prev_hits)
+        if acknowledge_requested:
+            acknowledged = True
+            acknowledged_at = timestamp
+        if resolve_requested:
+            state = "RESOLVED"
+            resolution_hits = threshold
+            resolved_at = timestamp
+            resolved_reason = "manual_resolution"
+            candidate = False
+            reason = "manual_resolution"
+        elif candidate:
+            state = "ACTIVE_ACKNOWLEDGED" if acknowledged else "ACTIVE_UNACKNOWLEDGED"
+            resolution_hits = 0
+            last_triggered_at = timestamp
+        else:
+            resolution_hits = min(threshold, prev_resolution_hits + 1)
+            if resolution_hits >= threshold:
+                state = "RESOLVED"
+                resolved_at = timestamp
+                resolved_reason = "auto_resolved_after_3_clean_windows"
+                reason = "auto_resolved_after_3_clean_windows"
+            else:
+                state = "ACTIVE_ACKNOWLEDGED" if acknowledged else "ACTIVE_UNACKNOWLEDGED"
+
+        if state == "ACTIVE_UNACKNOWLEDGED" and active_since_cycle is not None:
+            if cycle - active_since_cycle >= escalation_threshold_cycles:
+                state = "ESCALATED"
+
+    else:
+        if candidate:
+            hit_count = min(threshold, prev_hits + 1 if prev_state in {"CLEAR", "PENDING_ALERT"} else 1)
+            if hit_count >= threshold:
+                state = "ACTIVE_UNACKNOWLEDGED"
+                active_since = timestamp
+                active_since_cycle = cycle
+                acknowledged = False
+                acknowledged_at = None
+                last_triggered_at = timestamp
+            else:
+                state = "PENDING_ALERT"
+        else:
+            hit_count = 0
+            if prev_state == "RESOLVED":
+                state = "CLEAR"
+            else:
+                state = "CLEAR"
+
+    if state == "RESOLVED":
+        active_since = prev_active_ts
+        active_since_cycle = prev_active_cycle
+        acknowledged = bool(prev_acknowledged or acknowledge_requested)
+        acknowledged_at = prev_status.get("acknowledged_at") or (timestamp if acknowledge_requested else None)
+        hit_count = 0
+
+    if state in {"CLEAR", "PENDING_ALERT"}:
+        resolution_hits = 0
+        resolved_at = None
+        resolved_reason = None
+
+    unack_duration = 0
+    if state in active_states and not acknowledged and active_since_cycle is not None:
+        unack_duration = max(0, cycle - _safe_int(active_since_cycle, cycle))
+
+    renotify_due = bool(state in {"ACTIVE_UNACKNOWLEDGED", "ESCALATED"} and unack_duration > 0 and unack_duration % renotify_interval_cycles == 0)
+    escalation_due = bool(state in {"ACTIVE_UNACKNOWLEDGED", "ESCALATED"} and unack_duration >= escalation_threshold_cycles)
+
+    summary = f"{state}: {reason}"
+    if state == "PENDING_ALERT":
+        summary = f"PENDING_ALERT {hit_count}/{threshold}: {reason}"
+    elif state in active_states:
+        ack_text = "acknowledged" if acknowledged else "unacknowledged"
+        summary = f"{state} ({ack_text}) reason={reason}"
+
+    return {
+        "alert_state": state,
+        "alert_active": state in active_states,
+        "hit_window_threshold": threshold,
+        "consecutive_hit_count": int(hit_count),
+        "resolution_hit_count": int(resolution_hits),
+        "candidate_met": bool(candidate),
+        "alert_reason": str(reason),
+        "alert_summary": summary,
+        "active_since": active_since,
+        "active_since_cycle": active_since_cycle,
+        "acknowledged": bool(acknowledged),
+        "acknowledged_at": acknowledged_at,
+        "acknowledged_by": acknowledged_by if acknowledge_requested else prev_status.get("acknowledged_by"),
+        "resolved_at": resolved_at,
+        "resolved_reason": resolved_reason,
+        "resolved_by": resolved_by if resolve_requested else prev_status.get("resolved_by"),
+        "last_triggered_at": last_triggered_at,
+        "last_evaluated_at": timestamp,
+        "renotify_due": renotify_due,
+        "escalation_due": escalation_due,
+        "unacknowledged_duration": int(unack_duration),
+    }
+
+
+
 def derive_product_events(current: Mapping[str, Any], previous: Mapping[str, Any] | None = None) -> list[str]:
     events: list[str] = []
     risk = current.get("risk_assessment") if isinstance(current.get("risk_assessment"), dict) else {}
@@ -315,6 +499,16 @@ def build_canonical_output(
     regime_memory = raw_result.get("regime_memory") if isinstance(raw_result.get("regime_memory"), dict) else {}
 
     recommendation = _coerce_recommendation(raw_result)
+    alert_status = _build_alert_status(
+        raw_result=raw_result,
+        risk=_normalize_risk(raw_result),
+        recommendation=recommendation,
+        confidence=_normalize_confidence(raw_result, recommendation),
+        cycle=cycle,
+        timestamp=str(raw_result.get("timestamp", "")),
+        previous=previous,
+    )
+
     canonical = {
         "schema_version": CANONICAL_SCHEMA_VERSION,
         "timestamp": str(raw_result.get("timestamp", "")),
@@ -334,6 +528,7 @@ def build_canonical_output(
         "causal_analysis": causal_analysis,
         "operational_recommendation": recommendation,
         "confidence": _normalize_confidence(raw_result, recommendation),
+        "alert_status": alert_status,
         "explanation_text": str(raw_result.get("explanation_text") or raw_result.get("explanation") or ""),
         "memory_recall": _normalize_memory_recall(memory_recall if memory_recall is not None else raw_result.get("memory_recall")),
         "recommendation_available": bool(raw_result.get("recommendation_available", bool(recommendation))),
