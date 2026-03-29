@@ -77,7 +77,7 @@
             <div class="sii-hero-copy">
               <p class="sii-hero-kicker">Pilot Operations</p>
               <h3>Current System State</h3>
-              <p class="subtitle">Operational dashboard for live telemetry monitoring. Review current state, risk, trend, and confidence to determine immediate operator actions.</p>
+              <p class="subtitle">Operational home screen for live system state, severity, and immediate operator direction.</p>
             </div>
             <div class="sii-hero-tags" aria-label="SII core signals">
               <span class="chip">System state</span>
@@ -94,8 +94,6 @@
               <article class="snapshot-item" role="listitem"><p>Risk</p><strong id="snapshotRisk">UNKNOWN</strong></article>
               <article class="snapshot-item" role="listitem"><p>Trend</p><strong id="snapshotTrend">UNKNOWN</strong></article>
               <article class="snapshot-item" role="listitem"><p>Confidence</p><strong id="snapshotConfidence">Low confidence</strong></article>
-              <article class="snapshot-item" role="listitem"><p>Alert Status</p><strong id="snapshotAlertStatus">No active alert</strong></article>
-              <article class="snapshot-item" role="listitem"><p>Data Freshness</p><strong id="snapshotFreshness">No telemetry ingested yet</strong></article>
             </div>
             <div class="snapshot-actions-row">
               <div>
@@ -110,17 +108,44 @@
           </section>
 
           <div class="dashboard-grid-v2">
+            <section class="panel operations-decision-panel" aria-label="Alert and recommendation">
+              <div class="panel-header"><h3>Alert &amp; Recommendation</h3></div>
+              <div class="decision-grid" role="list" aria-label="Severity and action guidance">
+                <article class="decision-item" role="listitem">
+                  <p class="recommendation-label">Alert Status</p>
+                  <p id="snapshotAlertStatus" class="decision-value">No active alert</p>
+                </article>
+                <article class="decision-item" role="listitem">
+                  <p class="recommendation-label">Data Freshness</p>
+                  <p id="snapshotFreshness" class="decision-value">No telemetry ingested yet</p>
+                </article>
+                <article class="decision-item" role="listitem">
+                  <p class="recommendation-label">Recommended Action</p>
+                  <p id="recommendationPrimary" class="decision-value">Upload fresh telemetry to resume monitoring.</p>
+                  <p id="recommendationRationale" class="subtitle">Recommendation rationale will appear after telemetry ingest.</p>
+                </article>
+                <article class="decision-item" role="listitem">
+                  <p class="recommendation-label">Next Operator Step</p>
+                  <p id="dashboardNextAction" class="decision-value">Upload telemetry to begin monitoring.</p>
+                  <p id="dashboardLastUpdated" class="subtitle">No recent update available. Refresh the active run or ingest new telemetry.</p>
+                </article>
+              </div>
+            </section>
+
             <section class="panel control-panel" aria-label="Pilot operations controls">
-              <div class="panel-header"><h3>Pilot Operations Control</h3></div>
+              <div class="panel-header"><h3>Primary Pilot Workflow</h3></div>
               <div class="control-stack" role="group" aria-label="Operational actions">
                 <a id="primaryPilotActionBtn" href="/upload" class="button-link primary primary-pilot-btn">Upload Telemetry</a>
                 <button id="refreshBtn" type="button" class="secondary control-secondary-btn">Refresh Active Run</button>
-                <a href="/upload" class="button-link secondary">Open Upload & Ingest</a>
               </div>
-              
+              <div class="quick-link-stack" aria-label="Open deeper analysis">
+                <a class="button-link secondary" id="dashboardOpenRunLink" href="/app/runs">Open Active Run</a>
+                <a class="button-link secondary" href="/app/runs">Open Run Analysis</a>
+                <a class="button-link secondary" href="/app/runs">View Structural Analysis</a>
+              </div>
               <details class="reference-replay-panel">
                 <summary>Reference Replay · Historical Validation</summary>
-                <p class="subtitle">NASA CMAPSS FD004 replay remains available for validation, but pilot telemetry is the primary workflow.</p>
+                <p class="subtitle">NASA CMAPSS FD004 replay remains available for validation and training scenarios.</p>
                 <button id="seedDemoBtn" type="button" class="secondary demo-primary-btn">Run NASA CMAPSS FD004 Replay</button>
               </details>
               <div id="demoProgressPanel" class="demo-progress-panel hidden" aria-live="polite">
@@ -131,131 +156,8 @@
                 <div class="demo-progress-track"><div id="demoProgressFill" class="demo-progress-fill"></div></div>
                 <p id="demoProgressText" class="subtitle">Waiting for ingest.</p>
               </div>
-              <div id="statusMessageRail" class="status-message-rail">
-                <p id="statusMessageText" class="status-message-line">Pilot operations workspace ready. Upload telemetry to start active monitoring.</p>
-              </div>
             </section>
-
-            <section class="panel mission-panel" aria-label="Active run visual">
-              <p class="dashboard-hero-kicker">Current System State</p>
-              <div class="dashboard-hero-score-row">
-                <div class="dashboard-hero-health-col">
-                  <div class="health-ring-wrap" title="Operational state score derived from risk and structural telemetry">
-                    <svg id="dashboardHealthRing" class="health-ring" viewBox="0 0 120 120" aria-hidden="true">
-                      <circle class="health-ring-bg" cx="60" cy="60" r="52" />
-                      <circle id="dashboardHealthArc" class="health-ring-arc" cx="60" cy="60" r="52" />
-                    </svg>
-                    <div class="health-ring-label">
-                      <span class="health-ring-value" id="dashboardHealthScore">-</span>
-                      <span class="health-ring-caption" id="dashboardHealthCaption">State score</span>
-                    </div>
-                  </div>
-                </div>
-                <div class="dashboard-hero-state-block">
-                  <div class="dashboard-status-stack">
-                    <div class="dashboard-hero-primary-status">
-                      <p class="signal-caption">Structural state</p>
-                      <div class="signal-main-row dashboard-state-row">
-                        <p id="metricState" class="signal-state dashboard-state-primary">-</p>
-                        <div id="metricPhaseBadge"></div>
-                      </div>
-                    </div>
-                    <div class="dashboard-hero-secondary-status">
-                      <span class="signal-label">Risk classification</span>
-                      <div class="dashboard-risk-row">
-                        <p id="metricRisk" class="signal-risk dashboard-risk-value metric-risk">-</p>
-                        <div id="metricRiskBadge"></div>
-                      </div>
-                    </div>
-                    <p class="signal-trend dashboard-trend-line">Trend <strong id="metricTrend">-</strong> · Confidence <strong id="metricStateConfidence">--%</strong></p>
-                  </div>
-                  <p class="dashboard-narrative-strip" id="dashboardNarrativeStrip">No active telemetry yet.</p>
-                  <p id="metricOperatorMessage" class="operator-message dashboard-operator-line">Upload telemetry to establish current system state.</p>
-                </div>
-              </div>
-              <div class="run-meta-line">
-                <span id="dashboardLastUpdated">Last updated —</span>
-                <a class="dashboard-deep-link" id="dashboardOpenRunLink" href="/app/runs">Open run →</a>
-              </div>
-            </section>
-
-            <aside class="panel intelligence-panel" aria-label="System intelligence">
-              <div class="panel-header"><h3>System Intelligence</h3></div>
-              <div class="intelligence-grid">
-                <article class="intel-metric"><p>Structural coherence</p><strong id="intelAnomalyScore">--</strong></article>
-                <article class="intel-metric"><p>Instability trend</p><strong id="intelTrendDirection">--</strong></article>
-                <article class="intel-metric"><p>Pattern memory</p><strong id="intelDegradation">--</strong></article>
-                <article class="intel-metric"><p>System intelligence confidence</p><strong id="intelConfidence">--</strong></article>
-              </div>
-              <article class="insight-tile insight-tile-alert insight-tile-metrics-split" id="dashboardAlertTile">
-                <div class="insight-metrics-row" aria-label="Alerts and snapshot count">
-                  <div class="insight-metric-block"><p class="insight-tile-label">Emerging events</p><p class="insight-tile-value insight-tile-value--sm" id="dashboardAlertCount">0</p></div>
-                  <div class="insight-metric-block"><p class="insight-tile-label">Pattern memory</p><p class="insight-tile-value insight-tile-value--sm" id="dashboardSnapshotCount">0</p></div>
-                </div>
-                <p class="insight-tile-sub" id="dashboardAlertSummary">No open alerts for this run.</p>
-              </article>
-              <article class="recommendation-card" aria-label="Operational recommendation">
-                <div class="panel-header recommendation-head">
-                  <h4>Operational Recommendation</h4>
-                  <span id="recommendationConfidenceBadge" class="chip">Confidence --</span>
-                </div>
-                <p id="recommendationPrimary" class="recommendation-primary">Awaiting recommendation from Systemic Infrastructure Intelligence.</p>
-                <p class="recommendation-label">Why this is being surfaced</p>
-                <p id="recommendationRationale" class="subtitle">Telemetry ingestion is active but no current recommendation is available yet.</p>
-                <p class="recommendation-label">Operator note</p>
-                <p id="recommendationOperatorNote" class="subtitle">Maintain normal observation cadence until SII detects relationship drift.</p>
-              </article>
-              <article class="next-action-card" aria-label="Next action guidance">
-                <p class="recommendation-label">Next Action</p>
-                <p id="dashboardNextAction" class="next-action-primary">Upload telemetry to begin analysis.</p>
-              </article>
-              <div class="intelligence-feed">
-                <h4>Alert lifecycle and pattern memory feed</h4>
-                <ul id="intelligenceFeedList" class="intelligence-list">
-                  <li>Awaiting telemetry stream.</li>
-                </ul>
-              </div>
-            </aside>
           </div>
-
-          <section class="panel dashboard-signals">
-            <div class="panel-header dashboard-section-head"><h3>SII Timeline</h3></div>
-            <div class="sparkline-wrap">
-              <div class="sparkline-canvas-wrap">
-                <canvas id="dashboardSparkline" width="900" height="140" aria-label="Drift and composite trend"></canvas>
-                <div id="dashboardSparklineTooltip" class="sparkline-tooltip hidden" role="tooltip"></div>
-              </div>
-            </div>
-          </section>
-
-          <section class="panel geometry-showcase" aria-label="Structural Geometry">
-            <div class="panel-header">
-              <h3>Structural Geometry View</h3>
-              <p class="subtitle">Default structural insight for the active run. Expand advanced graph/system-state views below when needed.</p>
-            </div>
-            <p id="dashboardGeometryState" class="subtitle">Structural geometry is unavailable for the current snapshot. Continue with drift, trend, and recommendation until new telemetry arrives.</p>
-          </section>
-
-          <details class="panel disclosure-panel results-panel" id="dashboardResultsDisclosure">
-            <summary class="disclosure-summary">
-              <span class="disclosure-title">Recent history and export</span>
-              <span class="disclosure-hint">Export &amp; open snapshots</span>
-            </summary>
-            <div class="row panel-actions disclosure-actions">
-              <button id="exportJsonBtn" type="button">Export JSON</button>
-              <button id="exportCsvBtn" type="button" class="secondary">Export CSV</button>
-            </div>
-            <div id="dashboardEmpty" class="empty-state hidden">
-              <p>No telemetry snapshots have been processed for this active run yet.</p>
-              <p class="subtitle">Use <strong>Upload Telemetry</strong> to start pilot monitoring. Use <strong>Reference Replay</strong> only for historical validation.</p>
-            </div>
-            <div class="table-wrap">
-              <table class="data-table dashboard-results-table">
-                <thead><tr><th>ID</th><th>Timestamp</th><th>Phase</th><th>Risk</th><th>Drift</th><th>Composite</th><th></th></tr></thead>
-                <tbody id="dashboardRecentBody"></tbody>
-              </table>
-            </div>
-          </details>
         </section>
 
         <section id="page-runs" class="page hidden">
