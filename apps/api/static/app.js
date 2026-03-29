@@ -1109,6 +1109,17 @@ async function startDemoSeedJob(runId, customerId, payload) {
   });
 }
 
+async function startCmapssDemo(customerId, options = {}) {
+  return fetchJson(apiUrl("/demo/cmapss/start", tenantScopeParams()), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      customer_id: customerId || null,
+      max_frames: Number(options.max_frames || 180),
+    }),
+  });
+}
+
 async function getDemoSeedJobStatus(jobId) {
   return fetchJson(apiUrl("/demo/seed/status", tenantScopeParams({ job_id: jobId })), {
     method: "GET",
@@ -5982,8 +5993,9 @@ function setDemoProgress({ visible = false, phase = "Initializing run", current 
 function normalizeLoadingMessage(message) {
   const msg = String(message || "Loading...");
   const lower = msg.toLowerCase();
-  if (lower.includes("seed")) return "Seeding telemetry and building structural state...";
+  if (lower.includes("seed")) return "Processing NASA CMAPSS dataset...";
   if (lower.includes("demo")) return "Preparing Systemic Infrastructure Intelligence demo...";
+  if (lower.includes("cmapss")) return "Processing NASA CMAPSS dataset...";
   if (lower.includes("structural visualization") || lower.includes("geometry")) return "Rendering SII Structural View...";
   if (lower.includes("refresh")) return "Refreshing Systemic Infrastructure Intelligence state...";
   if (lower.includes("initial")) return "Initializing Systemic Infrastructure Intelligence workspace...";
@@ -5998,7 +6010,7 @@ function setLoading(isLoading, message = "Loading...") {
     const normalized = normalizeLoadingMessage(message);
     text.textContent = normalized;
     overlay.classList.remove("hidden");
-    if (normalized.toLowerCase().includes("seeding") || normalized.toLowerCase().includes("demo")) {
+    if (normalized.toLowerCase().includes("processing nasa cmapss") || normalized.toLowerCase().includes("demo")) {
       setStreamingIndicator(true, "Telemetry live");
     }
   } else {
@@ -6335,7 +6347,7 @@ function renderRunsList() {
       if (p) {
         p.textContent =
           state.runs.length === 0
-            ? "No runs yet. Create a run or use Run demo to seed sample scenarios."
+            ? "No runs yet. Create a run or use Run NASA CMAPSS Dataset to launch the demonstration."
             : "No runs match your filters.";
       }
     } else empty.classList.add("hidden");
@@ -6750,12 +6762,7 @@ async function createRunFromForm() {
 }
 
 async function seedDemoData() {
-  const run = state.activeRun || (await ensureActiveRun());
-  updateActiveRunHeader(run);
-  const runId = run.run_id;
   state.demo.preparing = true;
-  state.demo.seedJobId = "";
-  state.demo.seedRunId = String(runId || "");
   setDemoButtonsDisabled(true);
   renderTenantControls();
   try {
@@ -6764,46 +6771,35 @@ async function seedDemoData() {
       visible: true,
       phase: "Preparing Systemic Infrastructure Intelligence demo",
       current: 0,
-      total: 120,
-      text: "Seeding telemetry and building structural state...",
+      total: 3,
+      text: "Processing NASA CMAPSS dataset...",
     });
-    setLoading(true, "Preparing demo runs…");
-    const started = await startDemoSeedJob(
-      runId,
-      customerIdValue(state.tenant.customerId),
-      { profile: "sample", minutes: 120, site_id: "demo-site", asset_id: "demo-asset" },
-    );
-    const jobId = String(started?.job_id || "");
-    const startedRunId = String(started?.run_id || runId || "");
-    if (!jobId) {
-      throw new Error("Demo seed did not return a job ID.");
-    }
-    state.demo.seedJobId = jobId;
-    state.demo.seedRunId = startedRunId;
-    const out = await waitForDemoSeedJob(jobId, {
-      intervalMs: 800,
-      maxSilentPollFailures: 3,
-      onProgress: (job) => {
-        const processed = Number(job?.processed || 0);
-        const totalFrames = Number(job?.total_frames || 120);
-        const percent = Number(job?.progress || 0);
-        const bounded = Math.max(0, Math.min(100, percent));
-        setStatus(`Preparing Systemic Infrastructure Intelligence demo... (${bounded}%)`, false);
-        setDemoProgress({
-          visible: true,
-          phase: "Streaming telemetry",
-          current: Math.min(totalFrames, processed || Math.round((totalFrames * bounded) / 100)),
-          total: totalFrames,
-          text: `Building SII structural state... (${bounded}%)`,
-        });
-      },
+    setLoading(true, "Preparing Systemic Infrastructure Intelligence demo...");
+    setDemoProgress({
+      visible: true,
+      phase: "Processing NASA CMAPSS dataset",
+      current: 1,
+      total: 3,
+      text: "Running NASA CMAPSS FD004 scenario...",
     });
-    const resolvedRunId = String(out?.run_id || state.demo.seedRunId || runId);
-    state.demo.seedRunId = resolvedRunId;
-    setStatus("Loading structural visualization...", false);
-    setDemoProgress({ visible: true, phase: "Ready", current: 120, total: 120, text: "Ready" });
-    window.setTimeout(() => setDemoProgress({ visible: false }), 1200);
-    setStatus("Demo ready.");
+    const out = await startCmapssDemo(customerIdValue(state.tenant.customerId), { max_frames: 180 });
+    const resolvedRunId = String(out?.run_id || "");
+    if (!resolvedRunId) throw new Error("NASA demo did not return a run ID.");
+    setLoading(true, "Running NASA CMAPSS FD004 scenario...");
+    setStatus("Building structural state...", false);
+    setDemoProgress({
+      visible: true,
+      phase: "Building structural state",
+      current: 2,
+      total: 3,
+      text: "Predictive structural behavior is being calculated...",
+    });
+    await loadRuns();
+    const resolvedRun = state.runs.find((r) => String(r.run_id || "") === resolvedRunId) || null;
+    if (resolvedRun) updateActiveRunHeader(resolvedRun);
+    setDemoProgress({ visible: true, phase: "Ready", current: 3, total: 3, text: "NASA CMAPSS FD004 run ready." });
+    window.setTimeout(() => setDemoProgress({ visible: false }), 900);
+    setStatus(`NASA CMAPSS FD004 ready (${Number(out?.processed || 0)} frames processed).`, false, true);
     return {
       count: Number(out?.processed || 0),
       processed: Number(out?.processed || 0),
@@ -7548,10 +7544,10 @@ async function wireEvents() {
 
   qs("#seedDemoBtn")?.addEventListener("click", async () => {
     try {
-      setLoading(true, "Seeding demo data...");
+      setLoading(true, "Preparing Systemic Infrastructure Intelligence demo...");
       const out = await seedDemoData();
-      await refreshCurrentPage();
-      setStatus(`Demo data seeded (${out.count} rows processed)`, false, true);
+      const cid = encodeURIComponent(customerIdValue(state.tenant.customerId));
+      window.location.href = `/app/runs/${encodeURIComponent(out.run_id)}?customer_id=${cid}&demo=1`;
     } catch (err) {
       setStatus(String(err.message || err), true, true);
     } finally {
