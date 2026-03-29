@@ -152,9 +152,9 @@ def test_mvp_routes_available(tmp_path) -> None:
     assert home.status_code == 200
     assert "text/html" in home.headers.get("content-type", "")
     assert "cdn.jsdelivr.net/npm/three@0.162.0" in home.text
-    demo_tour = client.get("/demo/sii")
-    assert demo_tour.status_code == 200
-    assert "text/html" in demo_tour.headers.get("content-type", "")
+    demo_tour = client.get("/demo/sii", follow_redirects=False)
+    assert demo_tour.status_code == 307
+    assert demo_tour.headers.get("location") == "/dashboard"
     js = client.get("/web/app.js")
     css = client.get("/web/styles.css")
     three_init = client.get("/web/three-init.mjs")
@@ -200,15 +200,6 @@ def test_web_js_uses_relative_same_origin_api_paths(tmp_path) -> None:
     assert "window.NERAIUM_API_BASE_URL" not in source
     assert "resolveApiBaseUrl" not in source
     assert "return query ? `${normalizedPath}?${query}` : normalizedPath;" in source
-
-
-def test_operator_workflow_uses_relative_same_origin_fetch_urls(tmp_path) -> None:
-    client = _client(tmp_path)
-    js = client.get("/web/operator.js")
-    assert js.status_code == 200
-    source = js.text
-    assert "new URL(path, window.location.origin)" not in source
-    assert "const url = query ? `${path}?${query}` : path;" in source
 
 
 def test_dashboard_demo_seeding_uses_single_backend_seed_job_flow(tmp_path) -> None:
@@ -1031,25 +1022,15 @@ def test_alerts_trigger_on_rapid_drift_detected(tmp_path, monkeypatch) -> None:
 
 
 
-def test_operator_workflow_routes_and_assets_available(tmp_path) -> None:
+def test_legacy_operator_routes_redirect_to_dashboard(tmp_path) -> None:
     client = _client(tmp_path)
-    operator = client.get("/operator")
-    assert operator.status_code == 200
-    assert "Neraium Operator Workflow" in operator.text
-    assert "Recommended next step" in operator.text
-    assert "Generate Report" in operator.text
+    operator = client.get("/operator", follow_redirects=False)
+    assert operator.status_code == 307
+    assert operator.headers.get("location") == "/dashboard"
 
-    workflow = client.get("/operator/workflow")
-    assert workflow.status_code == 200
-
-    js = client.get("/web/operator.js")
-    css = client.get("/web/operator.css")
-    assert js.status_code == 200
-    assert css.status_code == 200
-    assert "renderTimeline" in js.text
-    assert "memory_recall" in js.text
-    assert 'fetchJson("/assistant/report"' in js.text
-    assert "copyReportBtn" in js.text
+    workflow = client.get("/operator/workflow", follow_redirects=False)
+    assert workflow.status_code == 307
+    assert workflow.headers.get("location") == "/dashboard"
 
 
 def test_operator_workflow_state_path_exposes_recommendation_and_memory(tmp_path) -> None:

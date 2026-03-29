@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from fastapi import APIRouter
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, RedirectResponse
 
 
 def build_web_router() -> APIRouter:
@@ -42,27 +42,24 @@ def build_web_router() -> APIRouter:
         _ = result_id
         return FileResponse(index_file, headers=html_headers)
 
-
     @router.get("/operator", include_in_schema=False)
-    def web_operator() -> FileResponse:
-        return FileResponse(static_dir / "operator.html", headers=html_headers)
+    def web_operator_redirect() -> RedirectResponse:
+        return RedirectResponse(url="/dashboard", status_code=307)
 
     @router.get("/operator/workflow", include_in_schema=False)
-    def web_operator_workflow() -> FileResponse:
-        return FileResponse(static_dir / "operator.html", headers=html_headers)
+    def web_operator_workflow_redirect() -> RedirectResponse:
+        return RedirectResponse(url="/dashboard", status_code=307)
 
     @router.get("/demo/sii", include_in_schema=False)
-    def web_demo_sii() -> FileResponse:
-        return FileResponse(index_file, headers=html_headers)
+    def web_demo_sii_redirect() -> RedirectResponse:
+        return RedirectResponse(url="/dashboard", status_code=307)
 
     @router.get("/demo", include_in_schema=False)
-    def web_demo_entry() -> FileResponse:
-        """Entry point for share links; client redirects to dashboard with demo query flags."""
-        return FileResponse(index_file, headers=html_headers)
+    def web_demo_entry_redirect() -> RedirectResponse:
+        return RedirectResponse(url="/dashboard?demo=1", status_code=307)
 
     @router.get("/demo/full", include_in_schema=False)
-    def web_demo_full_entry() -> FileResponse:
-        """Full product demo entry; client normalizes to dashboard demo flow and opens run detail."""
-        return FileResponse(index_file, headers=html_headers)
+    def web_demo_full_entry_redirect() -> RedirectResponse:
+        return RedirectResponse(url="/dashboard?demo=1&autoplay=1", status_code=307)
 
     return router
