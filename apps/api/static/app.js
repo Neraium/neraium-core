@@ -1070,7 +1070,7 @@ async function prepareDemoRuns(options = {}) {
         });
         const run = runEnv.run;
         setLoading(true, "Preparing replay runs…");
-        setStatus("Preparing reference replay run...", true);
+        setStatus("Preparing reference replay run...", false);
         const started = await startDemoSeedJob(
           run.run_id,
           cust,
@@ -1091,7 +1091,7 @@ async function prepareDemoRuns(options = {}) {
             const processed = Number(job?.processed || 0);
             const totalFrames = Number(job?.total_frames || 120);
             const percent = Number(job?.progress || 0);
-            setStatus("Seeding telemetry on server...", true);
+            setStatus("Seeding telemetry on server...", false);
             setDemoProgress({
               visible: true,
               phase: "Streaming data",
@@ -1108,7 +1108,7 @@ async function prepareDemoRuns(options = {}) {
           total: scenarios.length,
           text: "Rendering SII Structural View...",
         });
-        setStatus("Loading structural visualization...", true);
+        setStatus("Loading structural visualization...", false);
         return run;
       }),
     );
@@ -5989,8 +5989,24 @@ function setConnectionStatus(mode = "LIVE") {
   }
 }
 
+function inferErrorContext(message = "") {
+  const route = getRoute();
+  const page = String(route?.page || "").toLowerCase();
+  const text = String(message || "").toLowerCase();
+  if (page === "upload" || text.includes("ingest") || text.includes("upload") || text.includes("csv")) return "ingest";
+  if (page === "validation" || state.demo.enabled || text.includes("replay") || text.includes("demo")) return "replay";
+  return "analysis";
+}
+
 function deriveOperationalStatus({ latest = null, isError = false } = {}) {
-  if (isError) return "WAITING FOR TELEMETRY";
+  const route = getRoute();
+  const page = String(route?.page || "").toLowerCase();
+  if (isError) {
+    if (page === "validation" || state.demo.enabled) return "VALIDATION RUN";
+    return "ANALYSIS ERROR";
+  }
+  if (page === "validation") return "VALIDATION RUN";
+  if (state.demo.enabled && (page === "run-detail" || page === "runs")) return "REPLAY ACTIVE";
   const alertStatus = state.dashboardCurrentAlertStatus || (latest && latest.alert_status) || null;
   const alertState = String(alertStatus?.state || alertStatus?.alert_state || "").toUpperCase();
   const hasActiveAlert = Boolean(alertStatus?.alert_active) || alertState === "ESCALATED" || alertState === "PENDING_ALERT";
@@ -6074,13 +6090,13 @@ function setStatus(message = "", isError = false, showToast = false) {
     if (rail) rail.textContent = "Pilot operations workspace ready. Upload telemetry to start monitoring.";
     return;
   }
-  const cleanMessage = isError ? friendlyErrorMessage(message) : String(message);
+  const cleanMessage = isError ? friendlyErrorMessage(message, inferErrorContext(message)) : String(message);
   el.className = `status ${isError ? "error" : "ok"}`;
   el.textContent = cleanMessage;
   el.classList.remove("hidden");
   if (rail) rail.textContent = cleanMessage;
   setConnectionStatus(deriveOperationalStatus({ isError }));
-  if (showToast) {
+  if (showToast && !isError) {
     createToast(cleanMessage, isError ? "error" : "success");
   }
 }
@@ -6128,6 +6144,30 @@ function setPage(page) {
   if (page === "upload") qs('[data-nav="upload"]')?.classList.add("active");
   if (page === "runs" || page === "run-detail") qs('[data-nav="runs"]')?.classList.add("active");
   if (page === "validation") qs('[data-nav="validation"]')?.classList.add("active");
+}
+
+function activateAnalysisWorkspaceTab(tabName = "executive") {
+  const target = String(tabName || "executive");
+  qsa("[data-analysis-tab]").forEach((btn) => {
+    const active = btn.getAttribute("data-analysis-tab") === target;
+    btn.classList.toggle("active", active);
+    btn.setAttribute("aria-selected", active ? "true" : "false");
+  });
+  qsa("[data-analysis-panel]").forEach((panel) => {
+    const visible = panel.getAttribute("data-analysis-panel") === target;
+    panel.classList.toggle("hidden", !visible);
+  });
+}
+
+function initAnalysisWorkspaceTabs() {
+  const tabs = qsa("[data-analysis-tab]");
+  if (!tabs.length) return;
+  tabs.forEach((tab) => {
+    tab.addEventListener("click", () => {
+      activateAnalysisWorkspaceTab(tab.getAttribute("data-analysis-tab") || "executive");
+    });
+  });
+  activateAnalysisWorkspaceTab("executive");
 }
 
 function updateUploadRunInfo() {
@@ -7685,6 +7725,7 @@ function wireMobileNav() {
 
 async function wireEvents() {
   wireMobileNav();
+  initAnalysisWorkspaceTabs();
   setFlowModeButtonState();
   const flowSpeedSelect = qs("#flowPlaybackSpeedSelect");
   if (flowSpeedSelect) flowSpeedSelect.value = String(state.runDetailView.flowPlaybackSpeed || 1);
