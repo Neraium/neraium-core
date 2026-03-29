@@ -300,6 +300,11 @@ class DemoSeedRequest(BaseModel):
     asset_id: str = "demo-asset"
 
 
+class DemoCmapssStartRequest(BaseModel):
+    customer_id: str | None = None
+    max_frames: int = Field(default=180, ge=30, le=500)
+
+
 def _build_demo_sensor_values_row(i: int, p: float, drift_lift: float, vib_spike: float) -> dict[str, float]:
     out: dict[str, float] = {}
     for k, key in enumerate(DEMO_STRUCTURAL_SENSOR_KEYS):
@@ -2182,6 +2187,62 @@ def create_app(
             },
         )
 
+    cmapss_fd004_cache: dict[int, list[dict[str, Any]]] = {}
+    cmapss_fd004_cache_lock = threading.Lock()
+
+    def _load_cmapss_fd004_subset(max_frames: int) -> list[dict[str, Any]]:
+        limited = max(30, min(500, int(max_frames)))
+        with cmapss_fd004_cache_lock:
+            cached = cmapss_fd004_cache.get(limited)
+            if cached is not None:
+                return list(cached)
+
+        dataset_path = Path(__file__).resolve().parents[2] / "train_FD004.txt"
+        if not dataset_path.is_file():
+            raise FileNotFoundError(f"CMAPSS FD004 dataset file missing at {dataset_path}")
+
+        rows: list[dict[str, Any]] = []
+        now = datetime.now(timezone.utc).replace(microsecond=0)
+        sensor_keys = [f"sensor_{i}" for i in range(1, 22)]
+        with dataset_path.open("r", encoding="utf-8") as handle:
+            for raw in handle:
+                line = raw.strip()
+                if not line:
+                    continue
+                parts = line.split()
+                if len(parts) < 26:
+                    continue
+                unit = int(float(parts[0]))
+                cycle = int(float(parts[1]))
+                op1 = float(parts[2])
+                op2 = float(parts[3])
+                op3 = float(parts[4])
+                sensors = [float(v) for v in parts[5:26]]
+                sensor_values = {
+                    "cycle": float(cycle),
+                    "op_setting_1": op1,
+                    "op_setting_2": op2,
+                    "op_setting_3": op3,
+                }
+                for idx, key in enumerate(sensor_keys):
+                    sensor_values[key] = sensors[idx]
+                timestamp = (now.timestamp() - max(0, limited - len(rows)) * 60.0)
+                rows.append(
+                    {
+                        "timestamp": datetime.fromtimestamp(timestamp, tz=timezone.utc).isoformat(),
+                        "site_id": "nasa-cmapss-fd004",
+                        "asset_id": f"engine-{unit:03d}",
+                        "sensor_values": sensor_values,
+                    }
+                )
+                if len(rows) >= limited:
+                    break
+        if not rows:
+            raise ValueError("CMAPSS FD004 subset is empty.")
+        with cmapss_fd004_cache_lock:
+            cmapss_fd004_cache[limited] = list(rows)
+        return rows
+
     def _default_pull_state(customer_id: str) -> dict[str, Any]:
         now = _utc_now_iso()
         return {
@@ -2930,6 +2991,57 @@ def create_app(
                 "error": "job_not_found",
             }
         return _public_demo_job(job)
+
+    @app.post("/demo/cmapss/start")
+    def demo_cmapss_start(
+        payload: DemoCmapssStartRequest | None = None,
+        _: None = Depends(require_api_key),
+        customer_id: str | None = Query(default=None),
+    ) -> dict[str, Any]:
+        request_payload = payload or DemoCmapssStartRequest()
+        resolved_customer = _resolve_customer_id(customer_id or request_payload.customer_id)
+        run = service_instance.create_run(
+            name=f"NASA CMAPSS FD004 Demo {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}",
+            config={
+                "source": "nasa-cmapss-fd004",
+                "dataset": "NASA CMAPSS FD004",
+                "demo": "cmapss_fd004",
+                "historical_run_replay": True,
+            },
+            activate=True,
+            customer_id=resolved_customer,
+        )
+        run_id = str(run.get("run_id") or "")
+        if not run_id:
+            raise HTTPException(status_code=500, detail="Failed to create demo run.")
+        try:
+            rows = _load_cmapss_fd004_subset(request_payload.max_frames)
+            payload_rows = [
+                {**row, "customer_id": resolved_customer}
+                for row in rows
+            ]
+            results = service_instance.ingest_batch(
+                payload_rows,
+                run_id=run_id,
+                customer_id=resolved_customer,
+            )
+        except HTTPException:
+            raise
+        except Exception as exc:
+            detail = summarize_exception_for_logs(exc)
+            log_structured(
+                logger,
+                event="demo_cmapss_start_failure",
+                fields={"run_id": run_id, "customer_id": resolved_customer, "error": detail},
+                level=logging.ERROR,
+            )
+            raise HTTPException(status_code=500, detail=f"Failed to run NASA CMAPSS FD004 demo: {detail}")
+        return {
+            "status": "ok",
+            "run_id": run_id,
+            "processed": len(results),
+            "demo": "cmapss_fd004",
+        }
 
     @app.get("/state", response_model=CurrentStateEnvelope)
     def get_state(

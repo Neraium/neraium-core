@@ -207,12 +207,10 @@ def test_dashboard_demo_seeding_uses_single_backend_seed_job_flow(tmp_path) -> N
     js = client.get("/web/app.js")
     assert js.status_code == 200
     source = js.text
-    assert 'apiUrl("/demo/seed/start"' in source
-    assert 'apiUrl("/demo/seed/status"' in source
+    assert 'apiUrl("/demo/cmapss/start"' in source
     assert "async function seedDemoData()" in source
     seed_block = source.split("async function seedDemoData()", 1)[1].split("function destroyCharts()", 1)[0]
-    assert "startDemoSeedJob(" in seed_block
-    assert "waitForDemoSeedJob(" in seed_block
+    assert "startCmapssDemo(" in seed_block
     assert "postDemoSeedWithRetry(" not in seed_block
 
 
@@ -252,6 +250,31 @@ def test_demo_seed_async_job_endpoints_return_json_and_seed_real_results(tmp_pat
     assert final_status is not None, "demo seed job did not complete in time"
     assert final_status["processed"] >= 10
     assert final_status["run_id"] == run_id
+
+    history = client.get(_customer_path(f"/history?run_id={run_id}&limit=5", customer_id="customer-a"))
+    assert history.status_code == 200
+    assert history.json()["count"] >= 1
+
+
+def test_demo_cmapss_start_returns_run_and_processes_real_results(tmp_path) -> None:
+    client = _client(tmp_path)
+    started = client.post(
+        _customer_path("/demo/cmapss/start", customer_id="customer-a"),
+        json={"max_frames": 60},
+    )
+    assert started.status_code == 200
+    body = started.json()
+    assert body["status"] == "ok"
+    assert body["demo"] == "cmapss_fd004"
+    run_id = str(body["run_id"])
+    assert run_id
+    assert int(body["processed"]) >= 30
+
+    run = client.get(_customer_path(f"/runs/{run_id}", customer_id="customer-a"))
+    assert run.status_code == 200
+    run_body = run.json()["run"]
+    assert run_body["is_active"] is True
+    assert run_body["config"]["dataset"] == "NASA CMAPSS FD004"
 
     history = client.get(_customer_path(f"/history?run_id={run_id}&limit=5", customer_id="customer-a"))
     assert history.status_code == 200
