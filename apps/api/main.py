@@ -1895,6 +1895,8 @@ def create_app(
     app.state.integration_config_path_override = integration_config_path
     ingest_jobs: dict[str, dict[str, Any]] = {}
     ingest_jobs_lock = threading.Lock()
+    demo_jobs: dict[str, dict[str, Any]] = {}
+    demo_jobs_lock = threading.Lock()
     pull_integrations: dict[str, dict[str, Any]] = {}
     pull_integrations_lock = threading.Lock()
     alerts: dict[str, list[dict[str, Any]]] = {}
@@ -2026,6 +2028,159 @@ def create_app(
                     int(job.get("rows_succeeded", 0)) > 0 and int(job.get("rows_failed", 0)) > 0
                 )
             return dict(job)
+
+    def _public_demo_job(job: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "job_id": str(job.get("job_id")),
+            "status": str(job.get("status", "unknown")),
+            "run_id": str(job.get("run_id") or ""),
+            "customer_id": _resolve_customer_id(job.get("customer_id")),
+            "progress": max(0, min(100, int(job.get("progress", 0)))),
+            "processed": max(0, int(job.get("processed", 0))),
+            "total_frames": max(0, int(job.get("total_frames", 0))),
+            "message": str(job.get("message") or ""),
+            "error": job.get("error"),
+            "created_at": str(job.get("created_at") or _utc_now_iso()),
+            "updated_at": str(job.get("updated_at") or _utc_now_iso()),
+        }
+
+    def _update_demo_job(job_id: str, **fields: Any) -> dict[str, Any] | None:
+        with demo_jobs_lock:
+            job = demo_jobs.get(job_id)
+            if job is None:
+                return None
+            job.update(fields)
+            job["updated_at"] = _utc_now_iso()
+            return dict(job)
+
+    def _run_demo_seed_job(
+        *,
+        job_id: str,
+        resolved_run: str,
+        resolved_customer: str,
+        payload: DemoSeedRequest,
+    ) -> None:
+        minutes = int(payload.minutes)
+        total = max(10, min(240, minutes))
+        now = datetime.now(timezone.utc)
+        processed = 0
+        failure_frame = None
+        _update_demo_job(
+            job_id,
+            status="running",
+            message="Seeding telemetry on server...",
+            total_frames=total,
+            progress=0,
+            processed=0,
+            run_id=resolved_run,
+            customer_id=resolved_customer,
+        )
+        log_structured(
+            logger,
+            event="demo_seed_start",
+            fields={
+                "job_id": job_id,
+                "run_id": resolved_run,
+                "customer_id": resolved_customer,
+                "total_frames": total,
+                "profile": payload.profile,
+            },
+        )
+        try:
+            for i in range(total):
+                failure_frame = i + 1
+                timestamp = (now.replace(microsecond=0).timestamp() - (total - i) * 60.0)
+                t = datetime.fromtimestamp(timestamp, tz=timezone.utc).isoformat()
+                if payload.profile == "watch":
+                    drift_lift = 0.35 + (i / max(1, total - 1)) * 0.35
+                    vib_spike = 0.55 + (i / max(1, total - 1)) * 0.45
+                elif payload.profile == "critical":
+                    drift_lift = 0.25 + (i / max(1, total - 1)) * 0.85
+                    vib_spike = 0.8 + (i / max(1, total - 1)) * 1.8
+                elif payload.profile == "sample":
+                    drift_lift = 0.2 if i < total // 3 else 0.6 if i < (2 * total) // 3 else 1.0
+                    vib_spike = drift_lift * 1.1
+                else:
+                    drift_lift = 0.12
+                    vib_spike = 0.2
+                p = i / max(1, total - 1)
+                frame = {
+                    "timestamp": t,
+                    "site_id": payload.site_id,
+                    "asset_id": payload.asset_id,
+                    "sensor_values": _build_demo_sensor_values_row(i, p, drift_lift, vib_spike),
+                    "customer_id": resolved_customer,
+                }
+                service_instance.ingest_frame(
+                    frame,
+                    run_id=resolved_run,
+                    customer_id=resolved_customer,
+                )
+                processed += 1
+                if processed % 10 == 0 or processed == total:
+                    progress = int((processed / max(1, total)) * 100)
+                    _update_demo_job(
+                        job_id,
+                        progress=progress,
+                        processed=processed,
+                        message=f"Seeding telemetry on server... ({processed}/{total})",
+                    )
+                    log_structured(
+                        logger,
+                        event="demo_seed_progress",
+                        fields={
+                            "job_id": job_id,
+                            "run_id": resolved_run,
+                            "customer_id": resolved_customer,
+                            "processed": processed,
+                            "total_frames": total,
+                            "progress": progress,
+                        },
+                    )
+        except Exception as exc:
+            detail = summarize_exception_for_logs(exc)
+            _update_demo_job(
+                job_id,
+                status="error",
+                progress=int((processed / max(1, total)) * 100),
+                processed=processed,
+                message="Demo seed failed.",
+                error=detail,
+            )
+            log_structured(
+                logger,
+                event="demo_seed_failure",
+                fields={
+                    "job_id": job_id,
+                    "run_id": resolved_run,
+                    "customer_id": resolved_customer,
+                    "processed": processed,
+                    "total_frames": total,
+                    "failure_frame": failure_frame,
+                    "error": detail,
+                },
+                level=logging.ERROR,
+            )
+            return
+        _update_demo_job(
+            job_id,
+            status="complete",
+            progress=100,
+            processed=processed,
+            message="Demo seeded successfully",
+            error=None,
+        )
+        log_structured(
+            logger,
+            event="demo_seed_complete",
+            fields={
+                "job_id": job_id,
+                "run_id": resolved_run,
+                "customer_id": resolved_customer,
+                "processed": processed,
+                "total_frames": total,
+            },
+        )
 
     def _default_pull_state(customer_id: str) -> dict[str, Any]:
         now = _utc_now_iso()
@@ -2708,8 +2863,8 @@ def create_app(
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=_actionable_validation_detail(str(exc)))
 
-    @app.post("/demo/seed")
-    def demo_seed(
+    @app.post("/demo/seed/start")
+    def demo_seed_start(
         payload: DemoSeedRequest,
         _: None = Depends(require_api_key),
         run_id: str | None = Query(default=None),
@@ -2721,92 +2876,60 @@ def create_app(
             run_id or payload.run_id,
             customer_id=resolved_customer,
         )
-        minutes = int(payload.minutes)
-        total = max(10, min(240, minutes))
-        now = datetime.now(timezone.utc)
-        processed = 0
-        try:
-            log_structured(
-                logger,
-                event="demo_seed_start",
-                fields={
-                    "run_id": resolved_run,
-                    "customer_id": resolved_customer,
-                    "total_frames": total,
-                    "profile": payload.profile,
-                },
-            )
-            for i in range(total):
-                timestamp = (now.replace(microsecond=0).timestamp() - (total - i) * 60.0)
-                t = datetime.fromtimestamp(timestamp, tz=timezone.utc).isoformat()
-                if payload.profile == "watch":
-                    drift_lift = 0.35 + (i / max(1, total - 1)) * 0.35
-                    vib_spike = 0.55 + (i / max(1, total - 1)) * 0.45
-                elif payload.profile == "critical":
-                    drift_lift = 0.25 + (i / max(1, total - 1)) * 0.85
-                    vib_spike = 0.8 + (i / max(1, total - 1)) * 1.8
-                elif payload.profile == "sample":
-                    drift_lift = 0.2 if i < total // 3 else 0.6 if i < (2 * total) // 3 else 1.0
-                    vib_spike = drift_lift * 1.1
-                else:
-                    drift_lift = 0.12
-                    vib_spike = 0.2
-                p = i / max(1, total - 1)
-                frame = {
-                    "timestamp": t,
-                    "site_id": payload.site_id,
-                    "asset_id": payload.asset_id,
-                    "sensor_values": _build_demo_sensor_values_row(i, p, drift_lift, vib_spike),
-                    "customer_id": resolved_customer,
-                }
-                service_instance.ingest_frame(
-                    frame,
-                    run_id=resolved_run,
-                    customer_id=resolved_customer,
-                )
-                processed += 1
-                if processed % 20 == 0 or processed == total:
-                    log_structured(
-                        logger,
-                        event="demo_seed_progress",
-                        fields={
-                            "run_id": resolved_run,
-                            "customer_id": resolved_customer,
-                            "processed": processed,
-                            "total_frames": total,
-                        },
-                    )
-        except Exception as exc:
-            detail = summarize_exception_for_logs(exc)
-            log_structured(
-                logger,
-                event="demo_seed_failure",
-                fields={
-                    "run_id": resolved_run,
-                    "customer_id": resolved_customer,
-                    "processed": processed,
-                    "total_frames": total,
-                    "error": detail,
-                },
-                level=logging.ERROR,
-            )
+        job_id = str(uuid4())
+        now = _utc_now_iso()
+        job = {
+            "job_id": job_id,
+            "status": "pending",
+            "run_id": resolved_run,
+            "customer_id": resolved_customer,
+            "progress": 0,
+            "processed": 0,
+            "total_frames": int(payload.minutes),
+            "message": "Preparing demo run...",
+            "error": None,
+            "created_at": now,
+            "updated_at": now,
+        }
+        with demo_jobs_lock:
+            demo_jobs[job_id] = job
+        worker = threading.Thread(
+            target=_run_demo_seed_job,
+            kwargs={
+                "job_id": job_id,
+                "resolved_run": resolved_run,
+                "resolved_customer": resolved_customer,
+                "payload": payload,
+            },
+            daemon=True,
+        )
+        worker.start()
+        return {
+            "status": "started",
+            "job_id": job_id,
+            "run_id": resolved_run,
+            "message": "Demo seeding started.",
+        }
+
+    @app.get("/demo/seed/status")
+    def demo_seed_status(
+        job_id: str = Query(..., min_length=1),
+        _: None = Depends(require_api_key),
+    ) -> dict[str, Any]:
+        with demo_jobs_lock:
+            job = demo_jobs.get(job_id)
+        if job is None:
             return {
                 "status": "error",
-                "processed": processed,
-                "run_id": resolved_run,
-                "error": detail,
+                "job_id": job_id,
+                "progress": 0,
+                "run_id": "",
+                "processed": 0,
+                "total_frames": 0,
+                "message": "Demo seed job not found.",
+                "error": "job_not_found",
             }
-        log_structured(
-            logger,
-            event="demo_seed_complete",
-            fields={
-                "run_id": resolved_run,
-                "customer_id": resolved_customer,
-                "processed": processed,
-                "total_frames": total,
-            },
-        )
-        return {"status": "ok", "processed": processed, "run_id": resolved_run, "error": None}
+        return _public_demo_job(job)
 
     @app.get("/state", response_model=CurrentStateEnvelope)
     def get_state(
