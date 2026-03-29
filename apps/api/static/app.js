@@ -1546,6 +1546,17 @@ const state = {
     /** stable | watch | critical -> run_id after prepare */
     scenarioRunMap: {},
     playbackCompleteNotified: false,
+    replay: {
+      uiState: "idle",
+      runId: "",
+      pollTimer: null,
+      pollFailures: 0,
+      pollBackoffMs: 900,
+      startingSinceMs: 0,
+      errorMessage: "",
+      launchInFlight: false,
+      launchPromise: null,
+    },
   },
   dashboardSparkline: {
     hoveredIndex: null,
@@ -1563,6 +1574,20 @@ const DEMO_MODE_STORAGE_KEY = "neraium_demo_mode";
 const DEMO_PLAYBACK_INTERVAL_MS = 1600;
 /** How often to poll `/ingest/jobs/{id}` after CSV upload (lower = snappier status UI). */
 const INGEST_JOB_POLL_MS = 400;
+/** Replay launch/status polling cadence + resilience controls. */
+const DEMO_REPLAY_INITIAL_POLL_MS = 900;
+const DEMO_REPLAY_MAX_POLL_MS = 8000;
+const DEMO_REPLAY_STARTING_TIMEOUT_MS = 45000;
+const DEMO_REPLAY_MAX_TRANSIENT_ERRORS = 4;
+const DEMO_UI_STATES = Object.freeze({
+  idle: "idle",
+  starting: "starting",
+  running: "running",
+  offline: "offline",
+  interrupted: "interrupted",
+  failed: "failed",
+  completed: "completed",
+});
 /** Default on: lighter WebGL + simpler motion. Set localStorage "neraium_structural_flow_perf" to "0" for richer visuals. */
 const GEOMETRY_FLOW_PERF_KEY = "neraium_structural_flow_perf";
 /** Origin marker + debug visuals for structural flow. `true` always shows the marker; when `false`, use URL `?geomDebug=1` instead. */
@@ -5972,6 +5997,143 @@ function createToast(message, type = "success") {
   }, 3200);
 }
 
+function clearDemoReplayPollTimer() {
+  if (state.demo.replay.pollTimer) {
+    window.clearTimeout(state.demo.replay.pollTimer);
+    state.demo.replay.pollTimer = null;
+  }
+}
+
+function setDemoUiState(nextState, reason = "") {
+  const normalized = DEMO_UI_STATES[nextState] || DEMO_UI_STATES.idle;
+  const prev = state.demo.replay.uiState || DEMO_UI_STATES.idle;
+  if (prev === normalized) return;
+  console.info("[demo] ui-state transition", {
+    from: prev,
+    to: normalized,
+    run_id: state.demo.replay.runId || state.demo.seedRunId || state.activeRun?.run_id || "",
+    reason: String(reason || ""),
+  });
+  state.demo.replay.uiState = normalized;
+}
+
+function normalizeReplayUiState({
+  runStatus = "",
+  hasTelemetry = false,
+  explicitFailed = false,
+  explicitCompleted = false,
+} = {}) {
+  if (explicitFailed) return DEMO_UI_STATES.failed;
+  if (explicitCompleted) return DEMO_UI_STATES.completed;
+  const normalizedRunStatus = String(runStatus || "").trim().toLowerCase();
+  if (hasTelemetry) return DEMO_UI_STATES.running;
+  if (!normalizedRunStatus) return DEMO_UI_STATES.starting;
+  if (["active", "running", "live", "streaming", "monitoring"].includes(normalizedRunStatus)) return DEMO_UI_STATES.running;
+  if (["starting", "pending", "queued", "initializing", "created", "open"].includes(normalizedRunStatus)) {
+    return DEMO_UI_STATES.starting;
+  }
+  if (["offline", "no_data", "idle", "waiting", "paused"].includes(normalizedRunStatus)) return DEMO_UI_STATES.offline;
+  if (["completed", "complete", "done", "finished"].includes(normalizedRunStatus)) return DEMO_UI_STATES.completed;
+  if (["failed", "error", "aborted", "cancelled"].includes(normalizedRunStatus)) return DEMO_UI_STATES.failed;
+  return DEMO_UI_STATES.offline;
+}
+
+function scheduleReplayStatusPoll(runId, delayMs) {
+  clearDemoReplayPollTimer();
+  state.demo.replay.pollTimer = window.setTimeout(() => {
+    pollReplayStatus(runId).catch((err) => {
+      console.warn("[demo] replay poll tick failed", { run_id: runId, error: String(err?.message || err) });
+    });
+  }, Math.max(120, Number(delayMs || DEMO_REPLAY_INITIAL_POLL_MS)));
+}
+
+async function pollReplayStatus(runId) {
+  const replayRunId = String(runId || state.demo.replay.runId || state.demo.seedRunId || "");
+  if (!replayRunId) return;
+  if (state.demo.replay.runId && state.demo.replay.runId !== replayRunId) return;
+  const startedMs = Number(state.demo.replay.startingSinceMs || Date.now());
+  try {
+    const runRes = await fetchJson(apiUrl(`/runs/${encodeURIComponent(replayRunId)}`, tenantScopeParams()));
+    const run = runRes?.run || null;
+    const recentEnv = await fetchRecentResults({ run_id: replayRunId, limit: 5 });
+    const results = Array.isArray(recentEnv?.results) ? recentEnv.results : [];
+    const uiState = normalizeReplayUiState({
+      runStatus: String(run?.status || ""),
+      hasTelemetry: results.length > 0,
+    });
+    state.demo.replay.pollFailures = 0;
+    state.demo.replay.pollBackoffMs = DEMO_REPLAY_INITIAL_POLL_MS;
+    setDemoUiState(uiState, `run.status=${String(run?.status || "-")} results=${results.length}`);
+    if (uiState === DEMO_UI_STATES.running) {
+      state.demo.replay.errorMessage = "";
+      setStatus("");
+      if (state.activeRun?.run_id === replayRunId && results.length > 0) {
+        state.runRecent = results;
+        renderRunDetailFromState();
+      }
+      return;
+    }
+    const elapsed = Date.now() - startedMs;
+    if (uiState === DEMO_UI_STATES.starting && elapsed < DEMO_REPLAY_STARTING_TIMEOUT_MS) {
+      scheduleReplayStatusPoll(replayRunId, state.demo.replay.pollBackoffMs);
+      return;
+    }
+    if (uiState === DEMO_UI_STATES.offline) {
+      state.demo.replay.pollBackoffMs = Math.min(DEMO_REPLAY_MAX_POLL_MS, state.demo.replay.pollBackoffMs * 2);
+      scheduleReplayStatusPoll(replayRunId, state.demo.replay.pollBackoffMs);
+      return;
+    }
+    if (uiState === DEMO_UI_STATES.starting) {
+      setDemoUiState(DEMO_UI_STATES.interrupted, "starting-timeout");
+      state.demo.replay.errorMessage = "Replay launch timed out while waiting for live telemetry.";
+      setStatus(`${state.demo.replay.errorMessage} Tap retry.`, true, true);
+      return;
+    }
+    if (uiState === DEMO_UI_STATES.failed) {
+      state.demo.replay.errorMessage = "Replay backend reported a failed run state.";
+      setStatus(`${state.demo.replay.errorMessage} Tap retry.`, true, true);
+      return;
+    }
+  } catch (err) {
+    const message = String(err?.message || err || "Replay status check failed");
+    const notFound = message.includes("status=404");
+    state.demo.replay.pollFailures += 1;
+    const transient = notFound || state.demo.replay.pollFailures <= DEMO_REPLAY_MAX_TRANSIENT_ERRORS;
+    console.warn("[demo] replay poll error", {
+      run_id: replayRunId,
+      poll_failures: state.demo.replay.pollFailures,
+      transient,
+      error: message,
+    });
+    if (transient) {
+      setDemoUiState(DEMO_UI_STATES.starting, notFound ? "run-not-yet-visible" : "transient-error");
+      state.demo.replay.pollBackoffMs = Math.min(DEMO_REPLAY_MAX_POLL_MS, state.demo.replay.pollBackoffMs * 2);
+      scheduleReplayStatusPoll(replayRunId, state.demo.replay.pollBackoffMs);
+      return;
+    }
+    setDemoUiState(DEMO_UI_STATES.interrupted, "persistent-poll-error");
+    state.demo.replay.errorMessage = `Replay monitoring interrupted: ${message}`;
+    setStatus(`${state.demo.replay.errorMessage} Tap retry.`, true, true);
+  }
+}
+
+function beginReplayStatusMonitoring(runId) {
+  const replayRunId = String(runId || "").trim();
+  if (!replayRunId) return;
+  clearDemoReplayPollTimer();
+  state.demo.seedRunId = replayRunId;
+  state.demo.replay.runId = replayRunId;
+  state.demo.replay.pollFailures = 0;
+  state.demo.replay.pollBackoffMs = DEMO_REPLAY_INITIAL_POLL_MS;
+  state.demo.replay.startingSinceMs = Date.now();
+  state.demo.replay.errorMessage = "";
+  setDemoUiState(DEMO_UI_STATES.starting, "launch");
+  console.info("[demo] replay monitoring started", { run_id: replayRunId });
+  pollReplayStatus(replayRunId).catch((err) => {
+    console.warn("[demo] first replay status fetch failed", { run_id: replayRunId, error: String(err?.message || err) });
+  });
+}
+
 function setConnectionStatus(mode = "LIVE") {
   const badge = qs("#connectionBadge");
   const label = qs("#connectionLabel");
@@ -6831,11 +6993,17 @@ async function createRunFromForm() {
 }
 
 async function seedDemoData() {
+  if (state.demo.replay.launchInFlight && state.demo.replay.launchPromise) {
+    return state.demo.replay.launchPromise;
+  }
+  state.demo.replay.launchInFlight = true;
   state.demo.preparing = true;
   setDemoButtonsDisabled(true);
   renderTenantControls();
-  try {
+  const launchPromise = (async () => {
     setStatus("Preparing historical validation replay...", false);
+    state.demo.replay.errorMessage = "";
+    setDemoUiState(DEMO_UI_STATES.starting, "launch-begin");
     setDemoProgress({
       visible: true,
       phase: "Preparing historical validation replay",
@@ -6854,6 +7022,9 @@ async function seedDemoData() {
     const out = await startCmapssDemo(customerIdValue(state.tenant.customerId), { max_frames: 10 });
     const resolvedRunId = String(out?.run_id || "");
     if (!resolvedRunId) throw new Error("NASA reference replay did not return a run ID.");
+    state.demo.seedRunId = resolvedRunId;
+    state.demo.replay.runId = resolvedRunId;
+    beginReplayStatusMonitoring(resolvedRunId);
     setLoading(true, "Running NASA CMAPSS FD004 scenario...");
     setStatus("Building structural state...", false);
     setDemoProgress({
@@ -6874,14 +7045,19 @@ async function seedDemoData() {
       processed: Number(out?.processed || 0),
       run_id: resolvedRunId,
     };
-  } catch (err) {
+  })().catch((err) => {
+    setDemoUiState(DEMO_UI_STATES.failed, "launch-failure");
     setDemoProgress({ visible: false });
     throw new Error(String(err?.message || err || "Demo failed — retry"));
-  } finally {
+  }).finally(() => {
+    state.demo.replay.launchInFlight = false;
+    state.demo.replay.launchPromise = null;
     state.demo.preparing = false;
     setDemoButtonsDisabled(false);
     renderTenantControls();
-  }
+  });
+  state.demo.replay.launchPromise = launchPromise;
+  return launchPromise;
 }
 
 function destroyCharts() {
@@ -7302,6 +7478,10 @@ function renderRunDetailFromState() {
 }
 
 async function loadRunDetail(runId) {
+  if (runId) {
+    state.demo.seedRunId = String(runId);
+    beginReplayStatusMonitoring(runId);
+  }
   const runRes = await fetchJson(apiUrl(`/runs/${encodeURIComponent(runId)}`, tenantScopeParams()));
   const run = runRes.run;
   const title = qs("#runDetailTitle");
