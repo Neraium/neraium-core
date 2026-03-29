@@ -398,6 +398,9 @@ class HealthResponse(BaseModel):
     auth_configured: bool
     persistence_available: bool
     latest_result_available: bool
+    core_runtime_mode: str = "full"
+    core_runtime_fallback: bool = False
+    core_runtime_notes: list[str] = Field(default_factory=list)
 
 
 class ClientErrorReport(BaseModel):
@@ -2639,12 +2642,19 @@ def create_app(
         latest = service_instance.get_latest_result(
             customer_id=_resolve_customer_id(os.getenv("NERAIUM_DEFAULT_CUSTOMER_ID"))
         )
+        runtime_status = get_core_runtime_status()
+        runtime_fallback = bool(runtime_status.get("using_fallback", False))
+        persistence_ok = bool(persistence_available)
+        overall_ok = persistence_ok and not runtime_fallback
         return HealthResponse(
-            status="ok" if persistence_available else "degraded",
+            status="ok" if overall_ok else "degraded",
             version=app.version,
             auth_configured=bool(api_key),
-            persistence_available=persistence_available,
+            persistence_available=persistence_ok,
             latest_result_available=latest is not None,
+            core_runtime_mode="degraded" if runtime_fallback else "full",
+            core_runtime_fallback=runtime_fallback,
+            core_runtime_notes=[str(x) for x in runtime_status.get("notes", [])],
         )
 
     @app.post("/client-errors", status_code=status.HTTP_204_NO_CONTENT)
