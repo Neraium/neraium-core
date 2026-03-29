@@ -4066,6 +4066,46 @@ body {
   gap: 16px;
 }
 
+.sii-hero {
+  margin-bottom: 14px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 16px 18px;
+  background:
+    radial-gradient(70% 120% at 8% 0%, rgba(95, 151, 255, 0.18), transparent 52%),
+    linear-gradient(160deg, rgba(13, 22, 38, 0.88), rgba(9, 14, 26, 0.82));
+}
+
+.sii-hero-kicker {
+  margin: 0 0 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 11px;
+  color: #9fc2ff;
+}
+
+.sii-hero h3 {
+  margin: 0;
+  font-size: 1.18rem;
+  color: #f3f8ff;
+}
+
+.sii-hero .subtitle {
+  margin: 6px 0 0;
+  max-width: 780px;
+  color: #b9cceb;
+}
+
+.sii-hero-tags {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .panel {
   background: var(--glass-bg);
   border: 1px solid var(--glass-border);
@@ -4107,13 +4147,67 @@ button:active, .button-link:active { transform: translateY(1px) scale(0.99); }
 .geometry-showcase { margin-top: 16px; }
 #dashboardGeometryState.geometry-ready { color: #8effd7; }
 
+.recommendation-card {
+  margin-top: 12px;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(129, 170, 255, 0.28);
+  background: linear-gradient(180deg, rgba(13, 24, 42, 0.8), rgba(9, 17, 30, 0.78));
+}
+
+.recommendation-head {
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.recommendation-head h4 {
+  margin: 0;
+  letter-spacing: 0.01em;
+}
+
+.recommendation-primary {
+  margin: 0 0 10px;
+  color: #ecf3ff;
+  font-weight: 600;
+}
+
+.recommendation-label {
+  margin: 8px 0 3px;
+  font-size: 11px;
+  color: #9cb7df;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+}
+
+.recommendation-card .subtitle {
+  margin: 0;
+}
+
 .sparkline-canvas-wrap canvas { transition: filter 220ms ease; }
 .sparkline-canvas-wrap canvas:hover { filter: drop-shadow(0 0 14px rgba(100,148,255,.26)); }
 
 @media (max-width: 1180px) {
   .dashboard-grid-v2 { grid-template-columns: 1fr; }
   .intelligence-grid { grid-template-columns: repeat(2, minmax(0,1fr)); }
+  .sii-hero {
+    flex-direction: column;
+  }
+  .sii-hero-tags {
+    justify-content: flex-start;
+  }
 }
 @media (max-width: 720px) {
   .intelligence-grid { grid-template-columns: 1fr; }
+  .sii-hero {
+    padding: 14px;
+  }
+  .sii-hero h3 {
+    font-size: 1.02rem;
+  }
+  .chip {
+    padding: 8px 11px;
+  }
+  .recommendation-card {
+    padding: 11px;
+  }
 }
