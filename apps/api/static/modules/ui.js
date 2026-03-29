@@ -38,17 +38,20 @@
     const msg = String(err?.message || err || "").toLowerCase();
     const normalizedContext = String(context || "analysis").toLowerCase();
     const networkText = msg.includes("network")
-      ? " Connection interrupted while contacting the service."
+      ? " Connection to the service was interrupted."
       : msg.includes("timeout")
-        ? " Request timed out before the service responded."
+        ? " The request timed out before completion."
         : "";
-    if (normalizedContext === "replay" || msg.includes("replay") || msg.includes("demo")) {
-      return `Replay failed — validation run could not be completed.${networkText} Retry replay when ready.`;
+    if (normalizedContext === "replay" || msg.includes("replay") || msg.includes("demo") || msg.includes("validation")) {
+      return `Validation replay interrupted. Restart the NASA CMAPSS replay.${networkText}`;
     }
     if (normalizedContext === "ingest" || msg.includes("upload") || msg.includes("ingest") || msg.includes("csv")) {
-      return `Telemetry ingest failed — uploaded data was not processed.${networkText} Check CSV mapping and retry ingest.`;
+      return `Telemetry ingest did not complete. Upload fresh data and retry.${networkText}`;
     }
-    return `Analysis failed — structural intelligence results were not generated.${networkText} Retry analysis when ready.`;
+    if (normalizedContext === "geometry" || msg.includes("geometry") || msg.includes("structural view")) {
+      return `Structural view is unavailable for the current snapshot.${networkText}`;
+    }
+    return `Analysis could not complete. Refresh the run or try again.${networkText}`;
   }
 
   function toPretty(v) {
