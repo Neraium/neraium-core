@@ -17,14 +17,16 @@ async function fetchRecentResults(params) {
 function buildFrontendUiState(latest = null, overrides = {}) {
   const route = getRoute();
   const page = String(route?.page || "dashboard").toLowerCase();
-  const dashboardSurface = page === "dashboard";
+  const requestedMode = page === "validation" ? "validation" : "pilot";
   const alertStatus = state.dashboardCurrentAlertStatus || (latest && latest.alert_status) || null;
   const alertState = String(alertStatus?.state || alertStatus?.alert_state || "").toUpperCase();
   const alertActive = Boolean(alertStatus?.alert_active) || alertState === "ESCALATED" || alertState === "PENDING_ALERT";
   const replayUiState = state.demo?.replay?.uiState || "idle";
   return deriveFrontendState({
     page,
-    demoEnabled: dashboardSurface ? false : Boolean(state.demo.enabled),
+    routeMode: requestedMode,
+    requestedMode,
+    validationContext: Boolean(state.demo.enabled) && page === "validation",
     replayUiState,
     hasLatest: Boolean(latest),
     hasTelemetrySeries: Array.isArray(state.dashboardRecent) && state.dashboardRecent.length > 0,
@@ -184,7 +186,8 @@ function renderRiskExplanation(result, opts = {}, chronological = null) {
 
   const explanation = summarizeRiskDrivers(result);
   let bodyText = explanation.text;
-  if (state.demo.enabled && Array.isArray(chronological) && chronological.length >= 3) {
+  const uiTruth = buildFrontendUiState(result);
+  if (uiTruth.mode === "validation" && Array.isArray(chronological) && chronological.length >= 3) {
     bodyText += buildSeriesRiskInsight(result, chronological);
   }
   panelEl.classList.remove("hidden");
@@ -1614,7 +1617,9 @@ function setStatus(message = "", isError = false, showToast = false) {
     el.textContent = "";
     return;
   }
-  const uiTruth = buildFrontendUiState(null, { analysisInterrupted: isError && !state.demo.enabled });
+  const route = getRoute();
+  const isValidationPage = String(route?.page || "").toLowerCase() === "validation";
+  const uiTruth = buildFrontendUiState(null, { analysisInterrupted: isError && !isValidationPage });
   const cleanMessage = isError ? friendlyErrorMessage(message, getErrorDisplayContext(uiTruth, message)) : String(message);
   el.className = `status ${isError ? "error" : "ok"}`;
   el.textContent = cleanMessage;
@@ -2252,13 +2257,7 @@ function renderDashboardMetrics(latest, prev) {
   const lu = qs("#dashboardLastUpdated");
   if (lu) {
     const rawTs = latest?.timestamp || latest?.persisted_at || latest?.created_at || "";
-    const tsMs = latestTelemetryTimestampMs(latest);
-    if (!tsMs) {
-      lu.textContent = getLastUpdateDisplay(uiTruth, rawTs);
-    } else {
-      const ts = new Date(tsMs);
-      lu.textContent = `Last ingest ${ts.toLocaleString(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`;
-    }
+    lu.textContent = getLastUpdateDisplay(uiTruth, rawTs);
   }
 }
 
@@ -2891,7 +2890,8 @@ function renderRunResultsTable(results, opts = {}) {
       empty.classList.remove("hidden");
       const p = empty.querySelector("p");
       if (p) {
-        p.textContent = state.demo.enabled
+        const uiTruth = buildFrontendUiState();
+        p.textContent = uiTruth.mode === "validation"
           ? "No results match these filters — clear filters or widen the time range."
           : "No results match these filters.";
       }
@@ -3110,7 +3110,9 @@ async function loadRunDetail(runId) {
   const title = qs("#runDetailTitle");
   const meta = qs("#runDetailMeta");
   if (title) title.textContent = `Run analysis · ${run.name}`;
-  if (meta) meta.textContent = `Run ${run.run_id} · ${state.demo.enabled ? "validation replay workspace" : "pilot telemetry workspace"} · created ${run.created_at}`;
+  const runTruth = buildFrontendUiState(null);
+  const workspaceLabel = runTruth.mode === "validation" ? "validation replay workspace" : "pilot telemetry workspace";
+  if (meta) meta.textContent = `Run ${run.run_id} · ${workspaceLabel} · created ${run.created_at}`;
   const recentEnv = await fetchRecentResults({ run_id: runId, limit: RUN_DETAIL_INITIAL_LIMIT });
   state.runRecent = Array.isArray(recentEnv?.results) ? recentEnv.results : [];
   if (state.demo.enabled) {
