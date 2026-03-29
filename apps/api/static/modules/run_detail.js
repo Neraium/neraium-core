@@ -147,6 +147,11 @@ function setupRunDetailProgressiveHydration(runId) {
       if (id === "analysis-results" && !state.ui.runDetailHydratedSections.results) {
         state.ui.runDetailHydratedSections.results = true;
         scheduleDeferredRunDetailPaint();
+        scheduleHeavyWork(() => {
+          loadRunDetailBackgroundHistory(runId).catch(() => {
+            /* best effort */
+          });
+        });
       }
       if (id === "analysis-geometry" && !state.ui.runDetailHydratedSections.geometry) {
         state.ui.runDetailHydratedSections.geometry = true;
@@ -158,7 +163,7 @@ function setupRunDetailProgressiveHydration(runId) {
         });
       }
     });
-  }, { rootMargin: "220px 0px" });
+  }, { rootMargin: window.matchMedia("(max-width: 740px)").matches ? "80px 0px" : "180px 0px" });
   state.ui.runDetailObserver = observer;
   ["analysis-trends", "analysis-results", "analysis-geometry"].forEach((id) => {
     const el = qs(`#${id}`);
@@ -510,6 +515,23 @@ function renderRunDetailFromState(opts = {}) {
   }, chronologicalFull);
 }
 
+
+async function loadRunDetailBackgroundHistory(runId) {
+  if (state.ui.runDetailBackgroundHistoryLoaded || state.ui.runDetailBackgroundHistoryPending) return;
+  state.ui.runDetailBackgroundHistoryPending = true;
+  try {
+    const fullEnv = await fetchRecentResults({ run_id: runId, limit: RUN_DETAIL_BACKGROUND_LIMIT });
+    const fullResults = Array.isArray(fullEnv?.results) ? fullEnv.results : [];
+    if (fullResults.length > state.runRecent.length) {
+      state.runRecent = fullResults;
+      renderRunDetailFromState({ deferHeavy: true });
+    }
+    state.ui.runDetailBackgroundHistoryLoaded = true;
+  } finally {
+    state.ui.runDetailBackgroundHistoryPending = false;
+  }
+}
+
 async function loadRunDetail(runId) {
   if (runId) {
     state.demo.seedRunId = String(runId);
@@ -564,18 +586,7 @@ async function loadRunDetail(runId) {
   if (!autoplayHandled && !heroBlocked) {
     maybeAutoStartDemoPlayback();
   }
-  scheduleHeavyWork(async () => {
-    try {
-      const fullEnv = await fetchRecentResults({ run_id: runId, limit: RUN_DETAIL_BACKGROUND_LIMIT });
-      const fullResults = Array.isArray(fullEnv?.results) ? fullEnv.results : [];
-      if (fullResults.length > state.runRecent.length) {
-        state.runRecent = fullResults;
-        renderRunDetailFromState({ deferHeavy: true });
-      }
-    } catch (_err) {
-      // best-effort background fetch; ignore failures.
-    }
-  });
+  state.ui.runDetailBackgroundHistoryLoaded = false;
 
   const exportJson = qs("#runDetailExportJsonBtn");
   const exportCsv = qs("#runDetailExportCsvBtn");
