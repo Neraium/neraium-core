@@ -94,8 +94,7 @@
                   <input id="demoModeToggle" type="checkbox" />
                   <span>SII demo mode</span>
                 </label>
-                <button id="prepareDemoBtn" type="button" class="secondary">Prepare SII demo</button>
-                <button id="seedDemoBtn" type="button" class="secondary">Run NASA CMAPSS Dataset</button>
+                <button id="seedDemoBtn" type="button" class="primary demo-primary-btn">Run NASA CMAPSS Dataset</button>
                 <button id="refreshBtn" type="button" class="topbar-refresh">Refresh</button>
               </div>
               <div id="demoProgressPanel" class="demo-progress-panel hidden" aria-live="polite">
@@ -218,7 +217,7 @@
             </div>
             <div id="dashboardEmpty" class="empty-state hidden">
               <p>No results for the active run yet.</p>
-              <p class="subtitle">Use <strong>Prepare SII demo</strong>, <strong>Upload</strong>, or <strong>Run NASA CMAPSS Dataset</strong> to begin.</p>
+              <p class="subtitle">Use <strong>Upload</strong> or <strong>Run NASA CMAPSS Dataset</strong> to begin.</p>
             </div>
             <div class="table-wrap">
               <table class="data-table dashboard-results-table">
@@ -291,17 +290,27 @@
         <!-- UPLOAD -->
         <section id="page-upload" class="page hidden">
           <section class="panel upload-panel">
-            <h3>Upload CSV to active run</h3>
-            <p class="subtitle" id="uploadRunInfo"></p>
+            <div class="upload-head">
+              <div>
+                <p class="upload-kicker">Data ingest</p>
+                <h3>Upload CSV to active run</h3>
+                <p class="subtitle" id="uploadRunInfo"></p>
+              </div>
+              <span class="chip upload-head-chip">Semantic column mapping enabled</span>
+            </div>
             <form id="csvUploadForm" class="stack">
               <label id="uploadDropZone" class="upload-dropzone">
                 <input id="csvFileInput" type="file" accept=".csv,text/csv" required />
-                <span class="upload-cta">Choose or drop a CSV file</span>
-                <span class="upload-hint">Any column names — we detect time, asset, optional site, and numeric sensors.</span>
+                <span class="upload-dropzone-icon" aria-hidden="true">⬆</span>
+                <span class="upload-cta">Drop CSV here or browse files</span>
+                <span class="upload-hint">Any column names are supported — Neraium semantically maps timestamp, asset, optional site, and numeric sensors.</span>
                 <span id="selectedFileName" class="upload-file-name">No file selected</span>
               </label>
               <section id="csvMappingPanel" class="csv-mapping-panel hidden" aria-label="CSV column mapping">
-                <h4>Column mapping</h4>
+                <div class="csv-mapping-head">
+                  <h4>Column mapping</h4>
+                  <span class="chip csv-mapping-chip">Review before ingest</span>
+                </div>
                 <p id="csvMappingSummary" class="subtitle"></p>
                 <ul id="csvMappingIssues" class="csv-mapping-messages"></ul>
                 <div class="csv-mapping-grid">

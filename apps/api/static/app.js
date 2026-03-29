@@ -1878,13 +1878,13 @@ function renderTenantControls() {
   const siteInput = qs("#siteFilterInput");
   const siteList = qs("#knownSitesList");
   const demoToggle = qs("#demoModeToggle");
-  const prepareDemoBtn = qs("#prepareDemoBtn");
   if (customerInput) customerInput.value = customerIdValue(state.tenant.customerId);
   if (siteInput) siteInput.value = siteIdValue(state.tenant.siteId);
   if (demoToggle) demoToggle.checked = !!state.demo.enabled;
-  if (prepareDemoBtn) {
-    prepareDemoBtn.disabled = state.demo.preparing;
-    prepareDemoBtn.textContent = state.demo.preparing ? "Preparing SII demo…" : "Prepare SII demo";
+  const seedDemoBtn = qs("#seedDemoBtn");
+  if (seedDemoBtn) {
+    seedDemoBtn.disabled = state.demo.preparing;
+    seedDemoBtn.textContent = state.demo.preparing ? "Preparing SII demo…" : "Run NASA CMAPSS Dataset";
   }
   if (siteList) {
     siteList.innerHTML = state.tenant.knownSites
@@ -1899,7 +1899,6 @@ function renderTenantControls() {
 function setDemoButtonsDisabled(disabled) {
   [
     "#seedDemoBtn",
-    "#prepareDemoBtn",
     "#dashboardQuickDemoBtn",
     "#demoPlayPauseBtn",
     "#demoReplayBtn",
@@ -7514,9 +7513,6 @@ async function wireEvents() {
     }
   });
 
-  qs("#prepareDemoBtn")?.addEventListener("click", async () => {
-    await launchGuidedDemo({ mode: "all" });
-  });
 
   qs("#dashboardQuickDemoBtn")?.addEventListener("click", async () => {
     await launchGuidedDemo({ mode: "all" });
