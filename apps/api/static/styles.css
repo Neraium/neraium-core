@@ -4361,6 +4361,7 @@ textarea {
 /* ==== SII dashboard mission-control refinement (2026-03) ==== */
 .command-topbar {
   padding: 10px 20px 12px;
+  padding-top: max(10px, env(safe-area-inset-top, 0px));
 }
 
 .telemetry-title h2 {
@@ -4490,6 +4491,7 @@ textarea {
 @media (max-width: 740px) {
   .command-topbar {
     padding: 10px 14px 11px;
+    padding-top: max(10px, env(safe-area-inset-top, 0px));
   }
 
   .topbar-main {
