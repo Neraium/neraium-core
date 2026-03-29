@@ -4357,3 +4357,135 @@ textarea {
   .upload-dropzone { min-height: 152px; padding: var(--space-5) var(--space-4); }
   button, .button-link { min-height: 44px; }
 }
+
+/* ==== SII dashboard mission-control refinement (2026-03) ==== */
+.command-topbar {
+  padding: 10px 20px 12px;
+}
+
+.telemetry-title h2 {
+  font-size: clamp(1.28rem, 1.05rem + 0.95vw, 1.72rem);
+  letter-spacing: -0.02em;
+}
+
+.telemetry-title .subtitle {
+  margin-top: 4px;
+  font-size: 12px;
+  color: #9db0cf;
+}
+
+.telemetry-status-strip {
+  gap: 7px;
+}
+
+.sii-hero {
+  margin-bottom: 10px;
+  gap: 16px;
+  padding: 16px 18px;
+}
+
+.sii-hero-copy {
+  min-width: 0;
+}
+
+.sii-hero h3 {
+  font-size: clamp(1.12rem, 0.98rem + 0.55vw, 1.34rem);
+  line-height: 1.2;
+}
+
+.sii-hero .subtitle {
+  margin-top: 8px;
+  max-width: 72ch;
+  color: #c2d3ec;
+}
+
+.sii-hero-tags .chip {
+  letter-spacing: 0.05em;
+  text-transform: none;
+  font-weight: 600;
+  background: rgba(16, 27, 46, 0.76);
+}
+
+.control-panel .panel-header {
+  margin-bottom: 10px;
+}
+
+.control-panel .panel-header h3 {
+  font-size: 1.03rem;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: #c8dbff;
+}
+
+.control-stack {
+  gap: 12px;
+}
+
+.demo-primary-btn {
+  min-height: 54px;
+  font-size: 1.03rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  box-shadow: 0 12px 30px rgba(75, 126, 232, 0.44);
+}
+
+.control-secondary-btn {
+  min-height: 42px;
+  font-size: 0.92rem;
+  color: #c9daf6;
+  background: rgba(17, 29, 48, 0.78);
+}
+
+.status-message-rail {
+  margin-top: 12px;
+  padding: 11px 12px;
+}
+
+.status-message-line {
+  margin: 0;
+  color: #d5e5ff;
+  font-size: 0.9rem;
+  font-weight: 500;
+}
+
+@media (max-width: 740px) {
+  .command-topbar {
+    padding: 10px 14px 11px;
+  }
+
+  .topbar-main {
+    gap: 10px;
+  }
+
+  .telemetry-status-strip {
+    gap: 6px;
+  }
+
+  .sii-hero {
+    padding: 14px;
+    gap: 12px;
+  }
+
+  .sii-hero .subtitle {
+    margin-top: 7px;
+    font-size: 13px;
+    line-height: 1.48;
+  }
+
+  .control-panel {
+    padding: 14px;
+  }
+
+  .demo-primary-btn {
+    min-height: 56px;
+    font-size: 1.02rem;
+  }
+
+  .control-secondary-btn {
+    min-height: 44px;
+  }
+
+  .status-message-rail {
+    margin-top: 10px;
+  }
+}
