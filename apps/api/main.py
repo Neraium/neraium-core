@@ -2805,11 +2805,15 @@ def create_app(
         customer_id: str | None = Query(default=None),
     ) -> dict[str, Any]:
         batch_size = len(payload.items)
-        logger.info(
-            "ingest_batch request_received batch_size=%s query_run_id=%s query_customer_id=%s",
-            batch_size,
-            run_id,
-            customer_id,
+        log_structured(
+            logger,
+            event="ingest_batch_request_received",
+            fields={
+                "batch_size": batch_size,
+                "query_run_id": run_id,
+                "query_customer_id": customer_id,
+            },
+            level=logging.INFO,
         )
         resolved: str | None = None
         results: list[dict[str, Any]] = []
@@ -2824,11 +2828,15 @@ def create_app(
                 run_id,
                 customer_id=resolved_customer,
             )
-            logger.info(
-                "ingest_batch starting_ingest batch_size=%s run_id=%s customer_id=%s",
-                batch_size,
-                resolved,
-                resolved_customer,
+            log_structured(
+                logger,
+                event="ingest_batch_starting_ingest",
+                fields={
+                    "batch_size": batch_size,
+                    "run_id": resolved,
+                    "customer_id": resolved_customer,
+                },
+                level=logging.INFO,
             )
             results = service_instance.ingest_batch(
                 [item.model_dump(exclude_none=True) for item in payload.items],
@@ -2851,30 +2859,53 @@ def create_app(
                     previous_result=previous_result,
                 )
         except ValueError as e:
-            logger.warning(
-                "ingest_batch validation_failure batch_size=%s run_id=%s customer_id=%s error_type=%s error=%s",
-                batch_size,
-                resolved,
-                resolved_customer,
-                type(e).__name__,
-                e,
+            detail = _actionable_validation_detail(str(e))
+            log_structured(
+                logger,
+                event="ingest_batch_validation_failure",
+                fields={
+                    "batch_size": batch_size,
+                    "run_id": resolved,
+                    "customer_id": resolved_customer,
+                    "error_type": type(e).__name__,
+                    "detail": detail,
+                },
+                level=logging.WARNING,
             )
-            raise HTTPException(status_code=400, detail=_actionable_validation_detail(str(e)))
+            return JSONResponse(
+                status_code=400,
+                content={
+                    "status": "error",
+                    "message": "ingest failed",
+                    "detail": detail,
+                    "run_id": resolved,
+                    "customer_id": resolved_customer,
+                    "batch_size": batch_size,
+                    "processed": 0,
+                    "count": 0,
+                    "results": [],
+                    "latest": None,
+                },
+            )
         except Exception as e:  # noqa: BLE001 - ensure the route never leaks unhandled exceptions.
-            logger.exception(
-                "ingest_batch unhandled_failure batch_size=%s run_id=%s customer_id=%s error_type=%s error=%s",
-                batch_size,
-                resolved,
-                resolved_customer,
-                type(e).__name__,
-                e,
+            log_structured(
+                logger,
+                event="ingest_batch_unhandled_failure",
+                fields={
+                    "batch_size": batch_size,
+                    "run_id": resolved,
+                    "customer_id": resolved_customer,
+                    "error_type": type(e).__name__,
+                    "detail": str(e),
+                },
+                level=logging.ERROR,
             )
+            logger.exception("ingest_batch unhandled exception")
             return JSONResponse(
                 status_code=500,
                 content={
                     "status": "error",
                     "message": "ingest failed",
-                    "error_type": type(e).__name__,
                     "detail": str(e),
                     "run_id": resolved,
                     "customer_id": resolved_customer,
@@ -2885,12 +2916,16 @@ def create_app(
                     "latest": None,
                 },
             )
-        logger.info(
-            "ingest_batch completed batch_size=%s processed=%s run_id=%s customer_id=%s",
-            batch_size,
-            len(results),
-            resolved,
-            resolved_customer,
+        log_structured(
+            logger,
+            event="ingest_batch_completed",
+            fields={
+                "batch_size": batch_size,
+                "processed": len(results),
+                "run_id": resolved,
+                "customer_id": resolved_customer,
+            },
+            level=logging.INFO,
         )
         envelope = _results_envelope(results, latest=results[-1] if results else None)
         envelope["status"] = "ok"

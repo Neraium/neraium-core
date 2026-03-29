@@ -996,16 +996,32 @@ async function ingestBatchForRun(runId, items, customerId) {
           sensor_values: { pressure: 42, flow: 27, vibration: 6.2, temperature: 61.5 },
         },
       ];
-  return fetchJson(apiUrl("/ingest/batch", tenantScopeParams({ run_id: runId })), {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      items: safeItems.map((item) => ({
-        ...item,
-        customer_id: customerId,
-      })),
-    }),
-  });
+  const chunkSize = 20;
+  let processed = 0;
+  for (let i = 0; i < safeItems.length; i += chunkSize) {
+    const chunk = safeItems.slice(i, i + chunkSize);
+    try {
+      const out = await fetchJson(apiUrl("/ingest/batch", tenantScopeParams({ run_id: runId })), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          items: chunk.map((item) => ({
+            ...item,
+            customer_id: customerId,
+          })),
+        }),
+      });
+      const maybeProcessed = Number(out?.processed);
+      processed += Number.isFinite(maybeProcessed) && maybeProcessed > 0 ? maybeProcessed : chunk.length;
+    } catch (err) {
+      await ingestFramesForRun(runId, chunk, customerId);
+      processed += chunk.length;
+      if (typeof console !== "undefined" && console.warn) {
+        console.warn("[demo] batch ingest chunk failed, falling back to /ingest/frame", err);
+      }
+    }
+  }
+  return { status: "ok", count: processed, processed, run_id: runId };
 }
 
 async function ingestFramesForRun(runId, items, customerId, options = {}) {
@@ -1020,6 +1036,7 @@ async function ingestFramesForRun(runId, items, customerId, options = {}) {
         },
       ];
   const onProgress = typeof options.onProgress === "function" ? options.onProgress : null;
+  const onError = typeof options.onError === "function" ? options.onError : null;
   const total = safeItems.length;
   for (let i = 0; i < safeItems.length; i += 1) {
     const item = safeItems[i];
@@ -1034,6 +1051,7 @@ async function ingestFramesForRun(runId, items, customerId, options = {}) {
       });
     } catch (err) {
       const step = i + 1;
+      if (onError) onError(err, step, total);
       throw new Error(`Demo ingest failed at frame ${step}/${total}: ${String(err.message || err)}`);
     }
     if (onProgress && (i === total - 1 || (i + 1) % 15 === 0)) {
@@ -1079,6 +1097,9 @@ async function prepareDemoRuns(options = {}) {
         await ingestFramesForRun(run.run_id, items, cust, {
           onProgress: (done, total) => {
             setLoading(true, `Preparing demo runs… (${done}/${total} frames)`);
+          },
+          onError: (_err, step, total) => {
+            setStatus(`Demo ingest stalled at frame ${step}/${total}. Retrying may help.`, true, true);
           },
         });
         return run;
@@ -1649,11 +1670,14 @@ function applyDemoQueryParams() {
 function normalizeDemoEntryPath() {
   try {
     const path = window.location.pathname.replace(/\/$/, "") || "/";
-    if (path === "/demo") {
+    if (path === "/demo" || path === "/demo/full") {
       const u = new URL(window.location.href);
       u.pathname = "/dashboard";
       if (!u.searchParams.has("demo")) u.searchParams.set("demo", "1");
       if (!u.searchParams.has("prepare")) u.searchParams.set("prepare", "1");
+      if (path === "/demo/full" && !u.searchParams.has("autoplay")) {
+        u.searchParams.set("autoplay", "1");
+      }
       window.history.replaceState({}, "", u.toString());
     }
   } catch (_e) {
@@ -5691,8 +5715,14 @@ async function loadRunGeometry(runId, resultId = null) {
   } catch (_err) {
     clearGeometryModelsPanel();
     if (statusEl) statusEl.classList.add("hidden");
+    setGeometrySurfaceState("Geometry unavailable for this snapshot yet. Structural charts remain active.", "info");
+    const fallback = qs("#geometryFallback");
+    if (fallback) {
+      fallback.textContent = "Geometry not available yet for this run/result. Continue with drift and instability trends.";
+      fallback.classList.remove("hidden");
+    }
     setGeometryViewportLoading(false);
-    throw _err;
+    return;
   }
   state.runGeometry = payload;
   renderGeometryModelsPanel(payload);
@@ -6440,6 +6470,9 @@ async function seedDemoData() {
     return await ingestFramesForRun(runId, items, customerIdValue(state.tenant.customerId), {
       onProgress: (done, total) => {
         setLoading(true, `Seeding demo data… (${done}/${total} frames)`);
+      },
+      onError: (_err, step, total) => {
+        setStatus(`Demo ingest failed at frame ${step}/${total}. Please retry.`, true, true);
       },
     });
   } catch (err) {
