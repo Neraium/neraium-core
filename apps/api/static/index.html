@@ -285,13 +285,33 @@
               </div>
             </div>
             <p id="runDetailMeta" class="subtitle"></p>
-            <p class="subtitle analysis-intent">Dedicated structural intelligence workspace for state, risk, trend, geometry, and history.</p>
-            <nav id="analysisWorkspaceTabs" class="analysis-map" aria-label="Run analysis sections" role="tablist">
-              <button type="button" class="analysis-tab active" role="tab" aria-selected="true" data-analysis-tab="executive">State / risk / trend</button>
-              <button type="button" class="analysis-tab" role="tab" aria-selected="false" data-analysis-tab="context">Recommendation context</button>
-              <button type="button" class="analysis-tab" role="tab" aria-selected="false" data-analysis-tab="geometry">Structural geometry</button>
-              <button type="button" class="analysis-tab" role="tab" aria-selected="false" data-analysis-tab="trends">Charts & timeline</button>
-              <button type="button" class="analysis-tab" role="tab" aria-selected="false" data-analysis-tab="results">Results / history / export</button>
+            <section class="analysis-run-header" aria-label="Run analysis header">
+              <div class="analysis-run-header-grid">
+                <article class="analysis-run-header-item">
+                  <p class="recommendation-label">Run mode</p>
+                  <strong id="runDetailModeLabel">Pilot telemetry</strong>
+                </article>
+                <article class="analysis-run-header-item">
+                  <p class="recommendation-label">Analysis status</p>
+                  <strong id="runDetailStatusLabel">Waiting for telemetry</strong>
+                </article>
+                <article class="analysis-run-header-item">
+                  <p class="recommendation-label">Last update</p>
+                  <strong id="runDetailLastUpdate">No data yet</strong>
+                </article>
+                <article class="analysis-run-header-item">
+                  <p class="recommendation-label">Recommendation context</p>
+                  <strong id="runDetailRecommendationContext">Upload telemetry to start analysis.</strong>
+                </article>
+              </div>
+            </section>
+            <p class="subtitle analysis-intent">Structural intelligence workspace for current state, recommendation rationale, geometry, trend timeline, and historical results.</p>
+            <nav id="analysisWorkspaceTabs" class="analysis-map" aria-label="Jump to analysis sections">
+              <a class="analysis-tab active" data-analysis-tab="executive" href="#analysis-executive">Current analysis summary</a>
+              <a class="analysis-tab" data-analysis-tab="context" href="#analysis-context">Recommendation context</a>
+              <a class="analysis-tab" data-analysis-tab="geometry" href="#analysis-geometry">Structural geometry</a>
+              <a class="analysis-tab" data-analysis-tab="trends" href="#analysis-trends">Trend & timeline</a>
+              <a class="analysis-tab" data-analysis-tab="results" href="#analysis-results">Results / history / export</a>
             </nav>
             <div id="runSignalSeparation" class="signal-separation hidden">
               <article class="signal-card state">
@@ -321,8 +341,8 @@
             </div>
             <section id="runCurrentStateCard" class="run-current-state hidden" aria-label="Current snapshot metrics">
               <div class="run-current-state-head">
-                <strong>Current state</strong>
-                <span class="subtitle">Latest snapshot in the table below</span>
+                <strong>Current analysis summary</strong>
+                <span class="subtitle">Current state, risk, trend, and confidence from the latest structural snapshot</span>
               </div>
               <div class="run-current-state-grid">
                 <div class="mini-gauge">
@@ -373,8 +393,8 @@
             </section>
             <section id="analysis-context" class="analysis-subsection analysis-workspace-section" data-analysis-panel="context">
               <div class="panel-header panel-header-subsection">
-                <h4>Alert &amp; recommendation context</h4>
-                <p class="subtitle">Operational rationale tied directly to the latest structural signal state.</p>
+                <h4>Current recommendation context</h4>
+                <p class="subtitle">Operator-facing rationale tied to risk, drift behavior, and current recommendation path.</p>
               </div>
             </section>
             <article id="runRiskExplanationPanel" class="risk-explanation hidden">
@@ -392,7 +412,7 @@
 
           <section id="analysis-trends" class="panel analysis-workspace-section" data-analysis-panel="trends">
             <div class="panel-header">
-              <h3>Trend charts</h3>
+              <h3>Trend / Timeline Workspace</h3>
               <div id="runRangeControls" class="range-controls">
                 <button type="button" data-range="50">Last 50</button>
                 <button type="button" data-range="200" class="active">Last 200</button>
@@ -413,9 +433,9 @@
 
           <section id="analysis-geometry" class="panel geometry-panel analysis-workspace-section" data-analysis-panel="geometry">
             <div class="panel-header">
-              <h3>Structural flow</h3>
+              <h3>Structural Geometry Workspace</h3>
               <p id="geometryFlowSubtitle" class="subtitle geometry-subtitle">
-                Relationship geometry loads with this run.
+                Structural relationship geometry for the active run snapshot.
               </p>
               <div id="geometryFlowLegend" class="geometry-flow-legend" aria-label="Flow visualization legend">
                 <span class="geometry-flow-legend__item"><i class="geometry-flow-legend__swatch geometry-flow-legend__swatch--cyan"></i>Blue/cyan: stable / contained</span>
@@ -425,7 +445,7 @@
               </div>
             </div>
             <p id="geometryProjectionNote" class="subtitle geometry-meta geometry-meta-flow">
-              Encoding loads with the run.
+              Structural projection and manifold interpretation for this run.
             </p>
             <div class="geometry-flow-playback" aria-label="Structural flow playback controls">
               <div class="geometry-flow-playback__modes" role="group" aria-label="Playback mode">
