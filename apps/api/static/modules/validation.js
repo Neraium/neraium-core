@@ -136,3 +136,71 @@ function beginReplayStatusMonitoring(runId) {
 }
 
 
+
+async function seedDemoData() {
+  if (state.demo.replay.launchInFlight && state.demo.replay.launchPromise) {
+    return state.demo.replay.launchPromise;
+  }
+  state.demo.replay.launchInFlight = true;
+  state.demo.preparing = true;
+  setDemoButtonsDisabled(true);
+  renderTenantControls();
+  const launchPromise = (async () => {
+    setStatus("Preparing historical validation replay (secondary workflow)...", false);
+    state.demo.replay.errorMessage = "";
+    setDemoUiState(DEMO_UI_STATES.starting, "launch-begin");
+    setDemoProgress({
+      visible: true,
+      phase: "Preparing historical validation replay",
+      current: 0,
+      total: 3,
+      text: "Processing NASA CMAPSS dataset...",
+    });
+    setLoading(true, "Preparing historical validation replay...");
+    setDemoProgress({
+      visible: true,
+      phase: "Processing NASA CMAPSS dataset",
+      current: 1,
+      total: 3,
+      text: "Running NASA CMAPSS FD004 scenario...",
+    });
+    const out = await startCmapssDemo(customerIdValue(state.tenant.customerId), { max_frames: 10 });
+    const resolvedRunId = String(out?.run_id || "");
+    if (!resolvedRunId) throw new Error("NASA reference replay did not return a run ID.");
+    state.demo.seedRunId = resolvedRunId;
+    state.demo.replay.runId = resolvedRunId;
+    beginReplayStatusMonitoring(resolvedRunId);
+    setLoading(true, "Running NASA CMAPSS FD004 scenario...");
+    setStatus("Building structural state...", false);
+    setDemoProgress({
+      visible: true,
+      phase: "Building structural state",
+      current: 2,
+      total: 3,
+      text: "Predictive structural behavior is being calculated...",
+    });
+    await loadRuns();
+    const resolvedRun = state.runs.find((r) => String(r.run_id || "") === resolvedRunId) || null;
+    if (resolvedRun) updateActiveRunHeader(resolvedRun);
+    setDemoProgress({ visible: true, phase: "Ready", current: 3, total: 3, text: "NASA CMAPSS FD004 run ready." });
+    window.setTimeout(() => setDemoProgress({ visible: false }), 900);
+    setStatus(`Reference replay ready: NASA CMAPSS FD004 (${Number(out?.processed || 0)} frames processed).`, false, true);
+    return {
+      count: Number(out?.processed || 0),
+      processed: Number(out?.processed || 0),
+      run_id: resolvedRunId,
+    };
+  })().catch((err) => {
+    setDemoUiState(DEMO_UI_STATES.failed, "launch-failure");
+    setDemoProgress({ visible: false });
+    throw new Error(String(err?.message || err || "Demo failed — retry"));
+  }).finally(() => {
+    state.demo.replay.launchInFlight = false;
+    state.demo.replay.launchPromise = null;
+    state.demo.preparing = false;
+    setDemoButtonsDisabled(false);
+    renderTenantControls();
+  });
+  state.demo.replay.launchPromise = launchPromise;
+  return launchPromise;
+}
