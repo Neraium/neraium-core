@@ -1233,7 +1233,7 @@ function wireRunDetailDemoHero() {
 
 async function launchGuidedDemo({ mode = "all" } = {}) {
   try {
-    setLoading(true, "Loading demo…");
+    setLoading(true, "Loading validation scenario…");
     await toggleDemoMode(true);
     await prepareDemoRuns({ mode });
     await refreshCurrentPage();
@@ -1255,6 +1255,7 @@ async function launchGuidedDemo({ mode = "all" } = {}) {
 function getRoute() {
   const parts = window.location.pathname.split("/").filter(Boolean);
   if (parts.length === 0 || parts[0] === "dashboard") return { page: "dashboard" };
+  if (parts[0] === "validation" || parts[0] === "reference" || parts[0] === "historical-validation") return { page: "validation" };
   if (parts[0] === "upload") return { page: "upload" };
   if (parts[0] === "app" && parts[1] === "runs" && parts[2]) return { page: "run-detail", runId: parts[2] };
   if (parts[0] === "app" && parts[1] === "runs") return { page: "runs" };
@@ -1774,7 +1775,7 @@ function renderTenantControls() {
   const seedDemoBtn = qs("#seedDemoBtn");
   if (seedDemoBtn) {
     seedDemoBtn.disabled = state.demo.preparing;
-    seedDemoBtn.textContent = state.demo.preparing ? "Preparing reference replay…" : "Reference Replay: NASA CMAPSS FD004";
+    seedDemoBtn.textContent = state.demo.preparing ? "Preparing reference replay…" : "Run NASA CMAPSS FD004 Reference Replay";
   }
   if (siteList) {
     siteList.innerHTML = state.tenant.knownSites
@@ -6110,8 +6111,9 @@ async function refreshRuntimeModeBanner() {
 function setPage(page) {
   const titles = {
     dashboard: ["Pilot Operations Dashboard", "Current system state, severity, and next operator action"],
-    runs: ["Runs", "Create, inspect, and activate runs"],
-    upload: ["Upload", "Upload telemetry CSV into the active run"],
+    upload: ["Upload / Ingest", "Upload telemetry CSV into the active run"],
+    runs: ["Runs / Analysis", "Create, inspect, and activate runs"],
+    validation: ["Validation", "Reference replay and historical validation scenarios"],
     "run-detail": ["Run Analysis Workspace", "Structural intelligence analysis: context, geometry, trends, and history"],
     "result-detail": ["Result Detail", "Focused view for a single result"],
   };
@@ -6125,8 +6127,9 @@ function setPage(page) {
   if (subtitleEl) subtitleEl.textContent = subtitle;
   qsa(".nav a").forEach((a) => a.classList.remove("active"));
   if (page === "dashboard") qs('[data-nav="dashboard"]')?.classList.add("active");
-  if (page === "runs" || page === "run-detail") qs('[data-nav="runs"]')?.classList.add("active");
   if (page === "upload") qs('[data-nav="upload"]')?.classList.add("active");
+  if (page === "runs" || page === "run-detail") qs('[data-nav="runs"]')?.classList.add("active");
+  if (page === "validation") qs('[data-nav="validation"]')?.classList.add("active");
 }
 
 function updateUploadRunInfo() {
@@ -6134,13 +6137,9 @@ function updateUploadRunInfo() {
   if (!info) return;
   if (state.activeRun?.run_id) {
     const base = `Active run: ${state.activeRun.name} (${state.activeRun.run_id})`;
-    info.textContent = state.demo.enabled
-      ? `${base} — Upload your own CSV to replace replay telemetry. We'll auto-detect and map your fields.`
-      : base;
+    info.textContent = base;
   } else {
-    info.textContent = state.demo.enabled
-      ? "No active run selected. Create or activate a run, then upload — or stay in replay mode to explore seeded reference data."
-      : "No active run selected.";
+    info.textContent = "No active run selected.";
   }
 }
 
@@ -6413,7 +6412,7 @@ function renderRunsList() {
       if (p) {
         p.textContent =
           state.runs.length === 0
-            ? "No runs yet. Create a run for pilot operations or run NASA CMAPSS reference replay for validation."
+            ? "No runs yet. Create a run for pilot operations, or open Validation for NASA CMAPSS reference replay."
             : "No runs match your filters.";
       }
     } else empty.classList.add("hidden");
@@ -7612,6 +7611,7 @@ async function refreshCurrentPage() {
   if (route.page === "dashboard") await loadDashboard();
   if (route.page === "runs") renderRunsList();
   if (route.page === "upload") updateUploadRunInfo();
+  if (route.page === "validation") renderTenantControls();
   if (route.page === "run-detail") await loadRunDetail(route.runId);
   if (route.page === "result-detail") await loadResultDetail(route.resultId);
 }
@@ -7735,7 +7735,7 @@ async function wireEvents() {
       setLoading(true, "Preparing historical validation replay...");
       const out = await seedDemoData();
       const cid = encodeURIComponent(customerIdValue(state.tenant.customerId));
-      window.location.href = `/app/runs/${encodeURIComponent(out.run_id)}?customer_id=${cid}&replay=1`;
+      window.location.href = `/app/runs/${encodeURIComponent(out.run_id)}?customer_id=${cid}&replay=1&from=validation`;
     } catch (err) {
       setStatus(String(err.message || err), true, true);
     } finally {
@@ -7902,10 +7902,11 @@ async function init() {
     upload: "upload",
     "run-detail": "run-detail",
     "result-detail": "result-detail",
+    validation: "validation",
   };
   setPage(routeToPage[route.page] || "dashboard");
   try {
-    setLoading(true, "Initializing pilot operations...");
+    setLoading(true, "Initializing workspace...");
     await refreshRuntimeModeBanner();
     const activeRun = await ensureActiveRun();
     updateActiveRunHeader(activeRun);
@@ -7913,6 +7914,7 @@ async function init() {
     if (route.page === "dashboard") await loadDashboard();
     if (route.page === "runs") renderRunsList();
     if (route.page === "upload") updateUploadRunInfo();
+    if (route.page === "validation") renderTenantControls();
     if (route.page === "run-detail") await loadRunDetail(route.runId);
     if (route.page === "result-detail") await loadResultDetail(route.resultId);
     await wireEvents();
@@ -7949,7 +7951,7 @@ async function init() {
         await refreshCurrentPage();
         if (focusRun?.run_id) {
           const cid = encodeURIComponent(customerIdValue(state.tenant.customerId));
-          window.location.href = `/app/runs/${encodeURIComponent(focusRun.run_id)}?customer_id=${cid}&replay=1&autoplay=1`;
+          window.location.href = `/app/runs/${encodeURIComponent(focusRun.run_id)}?customer_id=${cid}&replay=1&autoplay=1&from=validation`;
           return;
         }
         setStatus("Reference replay runs ready — pick a run from the list.", false, true);
