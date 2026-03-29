@@ -515,6 +515,8 @@ class PullIntegrationStatusEnvelope(BaseModel):
 class AlertsEnvelope(BaseModel):
     count: int
     alerts: list[dict[str, Any]]
+    current_status: dict[str, Any] | None = None
+    active_alert: dict[str, Any] | None = None
 
 
 class CanonicalOutputResponse(BaseModel):
@@ -663,8 +665,8 @@ def _evaluate_alerts(
     current_status = current.get("alert_status") if isinstance(current.get("alert_status"), dict) else {}
     previous_status = previous.get("alert_status") if isinstance(previous, dict) and isinstance(previous.get("alert_status"), dict) else {}
 
-    current_state = str(current_status.get("alert_state", "CLEAR")).upper()
-    previous_state = str(previous_status.get("alert_state", "CLEAR")).upper()
+    current_state = str(current_status.get("state") or current_status.get("alert_state", "CLEAR")).upper()
+    previous_state = str(previous_status.get("state") or previous_status.get("alert_state", "CLEAR")).upper()
 
     alerts: list[dict[str, Any]] = []
     should_emit_activation = current_state in {"ACTIVE_UNACKNOWLEDGED", "ESCALATED"} and previous_state not in {"ACTIVE_UNACKNOWLEDGED", "ACTIVE_ACKNOWLEDGED", "ESCALATED"}
@@ -688,7 +690,7 @@ def _evaluate_alerts(
                 "created_at": now,
                 "trigger": {
                     "state": current_state,
-                    "reason": current_status.get("alert_reason"),
+                    "reason": current_status.get("reason") or current_status.get("alert_reason"),
                     "consecutive_hit_count": int(current_status.get("consecutive_hit_count", 0)),
                     "hit_window_threshold": int(current_status.get("hit_window_threshold", 3)),
                     "unacknowledged_duration": int(current_status.get("unacknowledged_duration", 0)),
@@ -3719,11 +3721,15 @@ def create_app(
         if run_id:
             items = [a for a in items if str((a.get("context") or {}).get("run_id") or "") == str(run_id)]
         latest = service_instance.get_current_state(run_id=run_id, customer_id=resolved_customer)
+        active_alert: dict[str, Any] | None = None
+        current_status: dict[str, Any] | None = None
         if isinstance(latest, dict) and isinstance(latest.get("alert_status"), dict):
+            current_status = dict(latest["alert_status"])
+            current_state = str(current_status.get("state") or current_status.get("alert_state", "")).upper()
             status_item = {
                 "id": f"alert_state_{latest.get('cycle', 'latest')}",
                 "type": "alert_state",
-                "severity": "critical" if str(latest["alert_status"].get("alert_state", "")).upper() == "ESCALATED" else ("high" if latest["alert_status"].get("alert_active") else "info"),
+                "severity": "critical" if current_state == "ESCALATED" else ("high" if latest["alert_status"].get("alert_active") else "info"),
                 "message": latest["alert_status"].get("alert_summary"),
                 "created_at": latest["alert_status"].get("last_evaluated_at") or latest.get("timestamp"),
                 "trigger": latest["alert_status"],
@@ -3731,8 +3737,10 @@ def create_app(
                 "customer_id": resolved_customer,
             }
             items = [status_item, *items]
+            if bool(current_status.get("alert_active")):
+                active_alert = status_item
         items = items[:limit]
-        return {"count": len(items), "alerts": items}
+        return {"count": len(items), "alerts": items, "current_status": current_status, "active_alert": active_alert}
 
     @app.post("/alerts/acknowledge", response_model=ActionResponse)
     def acknowledge_alert(

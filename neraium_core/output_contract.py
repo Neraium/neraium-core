@@ -262,6 +262,23 @@ def _safe_float(value: Any, default: float = 0.0) -> float:
         return float(default)
 
 
+def _resolve_alert_policy(raw_policy: Mapping[str, Any] | None) -> dict[str, int]:
+    defaults = {
+        "trigger_hit_threshold": 3,
+        "resolve_clean_window_threshold": 3,
+        "renotify_interval_cycles": 3,
+        "escalation_unacknowledged_cycles": 6,
+        "escalation_renotify_count": 2,
+    }
+    if not isinstance(raw_policy, Mapping):
+        return defaults
+    policy = dict(defaults)
+    for key in defaults:
+        if key in raw_policy:
+            policy[key] = max(1, _safe_int(raw_policy.get(key), defaults[key]))
+    return policy
+
+
 def _alert_candidate(
     risk: Mapping[str, Any],
     recommendation: Mapping[str, Any],
@@ -294,9 +311,13 @@ def _build_alert_status(
     timestamp: str,
     previous: Mapping[str, Any] | None,
 ) -> dict[str, Any]:
-    threshold = 3
-    escalation_threshold_cycles = 6
-    renotify_interval_cycles = 3
+    raw_policy = raw_result.get("alert_policy") if isinstance(raw_result.get("alert_policy"), Mapping) else None
+    policy = _resolve_alert_policy(raw_policy)
+    threshold = int(policy["trigger_hit_threshold"])
+    resolve_threshold = int(policy["resolve_clean_window_threshold"])
+    escalation_threshold_cycles = int(policy["escalation_unacknowledged_cycles"])
+    renotify_interval_cycles = int(policy["renotify_interval_cycles"])
+    escalation_renotify_count = int(policy["escalation_renotify_count"])
 
     prev_status = previous.get("alert_status") if isinstance(previous, Mapping) and isinstance(previous.get("alert_status"), Mapping) else {}
     prev_state = str(prev_status.get("alert_state", "CLEAR")).upper()
@@ -305,6 +326,10 @@ def _build_alert_status(
     prev_acknowledged = bool(prev_status.get("acknowledged", False))
     prev_active_cycle = prev_status.get("active_since_cycle")
     prev_active_ts = prev_status.get("active_since")
+    prev_last_notified_at = prev_status.get("last_notified_at")
+    prev_next_notification_due_cycle = prev_status.get("next_notification_due_cycle")
+    prev_notification_count = _safe_int(prev_status.get("notification_count"), 0)
+    prev_renotify_count = _safe_int(prev_status.get("renotify_count"), 0)
     control = raw_result.get("alert_control") if isinstance(raw_result.get("alert_control"), Mapping) else {}
 
     acknowledge_requested = bool(control.get("acknowledge", False))
@@ -324,6 +349,11 @@ def _build_alert_status(
     acknowledged_at = None
     resolved_at = None
     resolved_reason = None
+    escalation_reason = None
+    last_notified_at = prev_last_notified_at
+    next_notification_due_cycle = _safe_int(prev_next_notification_due_cycle, cycle + renotify_interval_cycles)
+    notification_count = max(0, prev_notification_count)
+    renotify_count = max(0, prev_renotify_count)
     last_triggered_at = prev_status.get("last_triggered_at")
 
     if prev_state in active_states:
@@ -335,9 +365,10 @@ def _build_alert_status(
         if acknowledge_requested:
             acknowledged = True
             acknowledged_at = timestamp
+            escalation_reason = None
         if resolve_requested:
             state = "RESOLVED"
-            resolution_hits = threshold
+            resolution_hits = resolve_threshold
             resolved_at = timestamp
             resolved_reason = "manual_resolution"
             candidate = False
@@ -347,8 +378,8 @@ def _build_alert_status(
             resolution_hits = 0
             last_triggered_at = timestamp
         else:
-            resolution_hits = min(threshold, prev_resolution_hits + 1)
-            if resolution_hits >= threshold:
+            resolution_hits = min(resolve_threshold, prev_resolution_hits + 1)
+            if resolution_hits >= resolve_threshold:
                 state = "RESOLVED"
                 resolved_at = timestamp
                 resolved_reason = "auto_resolved_after_3_clean_windows"
@@ -356,13 +387,27 @@ def _build_alert_status(
             else:
                 state = "ACTIVE_ACKNOWLEDGED" if acknowledged else "ACTIVE_UNACKNOWLEDGED"
 
-        if state == "ACTIVE_UNACKNOWLEDGED" and active_since_cycle is not None:
-            if cycle - active_since_cycle >= escalation_threshold_cycles:
+        unack_duration = 0
+        if state in active_states and not acknowledged and active_since_cycle is not None:
+            unack_duration = max(0, cycle - _safe_int(active_since_cycle, cycle))
+            if (
+                (str(risk.get("risk_level", "UNKNOWN")).upper() == "HIGH" and str(risk.get("trend", "UNKNOWN")).upper() in {"RISING", "UP"})
+                or unack_duration >= escalation_threshold_cycles
+                or renotify_count >= escalation_renotify_count
+            ):
                 state = "ESCALATED"
+                if unack_duration >= escalation_threshold_cycles:
+                    escalation_reason = "prolonged_unacknowledged_alert"
+                elif renotify_count >= escalation_renotify_count:
+                    escalation_reason = "repeated_renotify_without_acknowledgement"
+                else:
+                    escalation_reason = "worsening_risk_severity"
+        elif state == "ACTIVE_ACKNOWLEDGED":
+            escalation_reason = None
 
     else:
         if candidate:
-            hit_count = min(threshold, prev_hits + 1 if prev_state in {"CLEAR", "PENDING_ALERT"} else 1)
+            hit_count = min(threshold, prev_hits + 1 if prev_state in {"CLEAR", "PENDING_ALERT", "RESOLVED"} else 1)
             if hit_count >= threshold:
                 state = "ACTIVE_UNACKNOWLEDGED"
                 active_since = timestamp
@@ -370,12 +415,16 @@ def _build_alert_status(
                 acknowledged = False
                 acknowledged_at = None
                 last_triggered_at = timestamp
+                last_notified_at = timestamp
+                next_notification_due_cycle = cycle + renotify_interval_cycles
+                notification_count = 1
+                renotify_count = 0
             else:
                 state = "PENDING_ALERT"
         else:
             hit_count = 0
             if prev_state == "RESOLVED":
-                state = "CLEAR"
+                state = "RESOLVED"
             else:
                 state = "CLEAR"
 
@@ -385,29 +434,59 @@ def _build_alert_status(
         acknowledged = bool(prev_acknowledged or acknowledge_requested)
         acknowledged_at = prev_status.get("acknowledged_at") or (timestamp if acknowledge_requested else None)
         hit_count = 0
+        last_notified_at = prev_last_notified_at
+        next_notification_due_cycle = _safe_int(prev_next_notification_due_cycle, cycle + renotify_interval_cycles)
 
     if state in {"CLEAR", "PENDING_ALERT"}:
         resolution_hits = 0
         resolved_at = None
         resolved_reason = None
+        escalation_reason = None
+        last_notified_at = None
+        next_notification_due_cycle = None
+        notification_count = 0
+        renotify_count = 0
 
     unack_duration = 0
     if state in active_states and not acknowledged and active_since_cycle is not None:
         unack_duration = max(0, cycle - _safe_int(active_since_cycle, cycle))
+    renotify_due = False
+    if state in {"ACTIVE_UNACKNOWLEDGED", "ESCALATED"} and not acknowledged and next_notification_due_cycle is not None:
+        renotify_due = cycle >= _safe_int(next_notification_due_cycle, cycle + renotify_interval_cycles)
+    if renotify_due:
+        last_notified_at = timestamp
+        next_notification_due_cycle = cycle + renotify_interval_cycles
+        notification_count += 1
+        renotify_count += 1
 
-    renotify_due = bool(state in {"ACTIVE_UNACKNOWLEDGED", "ESCALATED"} and unack_duration > 0 and unack_duration % renotify_interval_cycles == 0)
-    escalation_due = bool(state in {"ACTIVE_UNACKNOWLEDGED", "ESCALATED"} and unack_duration >= escalation_threshold_cycles)
+    escalation_due = bool(
+        state in {"ACTIVE_UNACKNOWLEDGED", "ESCALATED"}
+        and not acknowledged
+        and (
+            unack_duration >= escalation_threshold_cycles
+            or renotify_count >= escalation_renotify_count
+            or (str(risk.get("risk_level", "UNKNOWN")).upper() == "HIGH" and str(risk.get("trend", "UNKNOWN")).upper() in {"RISING", "UP"})
+        )
+    )
 
     summary = f"{state}: {reason}"
     if state == "PENDING_ALERT":
-        summary = f"PENDING_ALERT {hit_count}/{threshold}: {reason}"
+        summary = f"Pending alert ({hit_count}/{threshold} confirmations)"
     elif state in active_states:
-        ack_text = "acknowledged" if acknowledged else "unacknowledged"
-        summary = f"{state} ({ack_text}) reason={reason}"
+        if state == "ESCALATED":
+            summary = "Escalated alert"
+        elif acknowledged:
+            summary = "Active alert — acknowledged"
+        else:
+            summary = "Active alert — unacknowledged"
+    elif state == "RESOLVED":
+        summary = "Resolved after sustained recovery"
 
     return {
+        "state": state,
         "alert_state": state,
         "alert_active": state in active_states,
+        "reason": str(reason),
         "hit_window_threshold": threshold,
         "consecutive_hit_count": int(hit_count),
         "resolution_hit_count": int(resolution_hits),
@@ -424,9 +503,15 @@ def _build_alert_status(
         "resolved_by": resolved_by if resolve_requested else prev_status.get("resolved_by"),
         "last_triggered_at": last_triggered_at,
         "last_evaluated_at": timestamp,
+        "last_notified_at": last_notified_at,
+        "next_notification_due_cycle": next_notification_due_cycle,
+        "notification_count": int(notification_count),
+        "renotify_count": int(renotify_count),
         "renotify_due": renotify_due,
         "escalation_due": escalation_due,
+        "escalation_reason": escalation_reason,
         "unacknowledged_duration": int(unack_duration),
+        "policy": policy,
     }
 
 

@@ -1045,6 +1045,90 @@ def test_alerts_trigger_on_rapid_drift_detected(tmp_path, monkeypatch) -> None:
 
 
 
+def test_alerts_endpoint_separates_current_status_from_event_history(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("NERAIUM_PILOT_DRIFT_HIGH_THRESHOLD", "0.0")
+    monkeypatch.setenv("NERAIUM_PILOT_DRIFT_WATCH_THRESHOLD", "0.0")
+    client = _client(tmp_path)
+    run = client.post(
+        _customer_path("/runs", customer_id="alert-customer-shape"),
+        json={"name": "alert-shape-run", "activate": True, "config": {"baseline_window": 5, "recent_window": 3}},
+    )
+    assert run.status_code == 200
+    run_id = run.json()["run"]["run_id"]
+
+    for i in range(3):
+        ing = client.post(
+            _customer_path(f"/ingest?run_id={run_id}", customer_id="alert-customer-shape"),
+            json={
+                "timestamp": f"2026-01-01T00:01:{i:02d}+00:00",
+                "customer_id": "alert-customer-shape",
+                "site_id": "site-alert",
+                "asset_id": "asset-alert",
+                "sensor_values": {"pressure": 55.0 + i * 6.0, "flow": 25.0 + i * 4.0, "vibration": 3.5 + i, "temperature": 62.0 + i * 2.0},
+            },
+        )
+        assert ing.status_code == 200
+
+    resp = client.get(_customer_path(f"/alerts?run_id={run_id}&limit=20", customer_id="alert-customer-shape"))
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert isinstance(payload.get("current_status"), dict)
+    assert payload["current_status"].get("state") in {"ACTIVE_UNACKNOWLEDGED", "ESCALATED"}
+    assert isinstance(payload.get("alerts"), list)
+    assert any(str(a.get("type")) == "persistent_alert_activated" for a in payload["alerts"])
+
+
+
+def test_alert_policy_configurable_per_run(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("NERAIUM_PILOT_DRIFT_HIGH_THRESHOLD", "0.0")
+    monkeypatch.setenv("NERAIUM_PILOT_DRIFT_WATCH_THRESHOLD", "0.0")
+    client = _client(tmp_path)
+    run = client.post(
+        _customer_path("/runs", customer_id="alert-policy-run"),
+        json={
+            "name": "alert-policy",
+            "activate": True,
+            "config": {
+                "baseline_window": 5,
+                "recent_window": 3,
+                "alert_policy": {"trigger_hit_threshold": 4, "resolve_clean_window_threshold": 2},
+            },
+        },
+    )
+    assert run.status_code == 200
+    run_id = run.json()["run"]["run_id"]
+
+    for i in range(3):
+        ing = client.post(
+            _customer_path(f"/ingest?run_id={run_id}", customer_id="alert-policy-run"),
+            json={
+                "timestamp": f"2026-01-01T00:02:{i:02d}+00:00",
+                "customer_id": "alert-policy-run",
+                "site_id": "site-alert",
+                "asset_id": "asset-alert",
+                "sensor_values": {"pressure": 56.0 + i * 5.0, "flow": 24.0 + i * 4.0, "vibration": 3.2 + i, "temperature": 63.0 + i * 3.0},
+            },
+        )
+        assert ing.status_code == 200
+        assert ing.json().get("alert_status", {}).get("alert_state") == "PENDING_ALERT"
+
+    fourth = client.post(
+        _customer_path(f"/ingest?run_id={run_id}", customer_id="alert-policy-run"),
+        json={
+            "timestamp": "2026-01-01T00:02:03+00:00",
+            "customer_id": "alert-policy-run",
+            "site_id": "site-alert",
+            "asset_id": "asset-alert",
+            "sensor_values": {"pressure": 90.0, "flow": 65.0, "vibration": 8.5, "temperature": 92.0},
+        },
+    )
+    assert fourth.status_code == 200
+    status = fourth.json().get("alert_status") or {}
+    assert status.get("alert_state") in {"ACTIVE_UNACKNOWLEDGED", "ESCALATED"}
+    assert (status.get("policy") or {}).get("trigger_hit_threshold") == 4
+
+
+
 def test_legacy_operator_routes_redirect_to_dashboard(tmp_path) -> None:
     client = _client(tmp_path)
     operator = client.get("/operator", follow_redirects=False)
