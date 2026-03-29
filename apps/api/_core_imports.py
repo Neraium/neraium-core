@@ -12,6 +12,33 @@ from datetime import datetime, timezone
 from typing import Any, Callable
 
 
+CORE_RUNTIME_STATUS: dict[str, Any] = {
+    "mode": "full",
+    "using_fallback": False,
+    "fallback_modules": [],
+    "notes": [],
+}
+
+
+def _mark_fallback(module_name: str, note: str) -> None:
+    CORE_RUNTIME_STATUS["using_fallback"] = True
+    CORE_RUNTIME_STATUS["mode"] = "degraded"
+    mods = CORE_RUNTIME_STATUS.setdefault("fallback_modules", [])
+    notes = CORE_RUNTIME_STATUS.setdefault("notes", [])
+    if module_name not in mods:
+        mods.append(module_name)
+    notes.append(note)
+
+
+def get_core_runtime_status() -> dict[str, Any]:
+    return {
+        "mode": CORE_RUNTIME_STATUS.get("mode", "full"),
+        "using_fallback": bool(CORE_RUNTIME_STATUS.get("using_fallback", False)),
+        "fallback_modules": list(CORE_RUNTIME_STATUS.get("fallback_modules", [])),
+        "notes": list(CORE_RUNTIME_STATUS.get("notes", [])),
+    }
+
+
 try:
     from neraium_core.csv_mapping import (
         infer_semantic_mapping,
@@ -30,6 +57,7 @@ except ImportError:
             validate_mapping,
         )
     except ImportError:
+        _mark_fallback("csv_mapping", "Semantic CSV mapping core unavailable; using limited stub mapping.")
     # Fallback stubs keep app startup healthy when core modules are not vendored.
         def parse_csv_sample_for_mapping(csv_text: str, max_rows: int = 16) -> tuple[list[str], list[dict[str, str]]]:
             _ = max_rows
@@ -70,6 +98,7 @@ except ImportError:
     try:
         from logging_utils import log_structured, summarize_exception_for_logs
     except ImportError:
+        _mark_fallback("logging_utils", "Structured logging helpers unavailable; using basic logger fallback.")
         import logging
 
         def log_structured(logger: logging.Logger, *, event: str, fields: dict[str, Any], level: int = logging.INFO) -> None:
@@ -85,6 +114,7 @@ except ImportError:
     try:
         from store import ResultStore
     except ImportError:
+        _mark_fallback("store", "Persistent ResultStore core unavailable; using minimal store shim.")
         class ResultStore:
             def __init__(self, db_path: str = "neraium.db"):
                 self.db_path = db_path
@@ -104,6 +134,7 @@ except ImportError:
     try:
         from service import StructuralMonitoringService
     except ImportError:
+        _mark_fallback("service", "Structural monitoring core unavailable; using boot-safe in-memory fallback service.")
         class StructuralMonitoringService:
             """Boot-safe fallback service when core runtime modules are unavailable."""
 
@@ -209,4 +240,5 @@ __all__ = [
     "row_to_frame_kwargs",
     "validate_mapping",
     "summarize_exception_for_logs",
+    "get_core_runtime_status",
 ]

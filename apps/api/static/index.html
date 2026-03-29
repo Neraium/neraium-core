@@ -67,6 +67,7 @@
         </div>
       </header>
 
+      <div id="runtimeModeBanner" class="status status-warning hidden" role="status" aria-live="polite"></div>
       <div id="globalStatus" class="status hidden"></div>
 
       <main class="content">
@@ -85,14 +86,43 @@
               <span class="chip">Confidence</span>
             </div>
           </section>
+
+          <section class="panel operational-snapshot" aria-label="Top operational summary">
+            <div class="panel-header"><h3>Operational Snapshot</h3></div>
+            <div class="snapshot-grid" role="list" aria-label="Current operational picture">
+              <article class="snapshot-item" role="listitem"><p>Current State</p><strong id="snapshotState">Unknown</strong></article>
+              <article class="snapshot-item" role="listitem"><p>Risk</p><strong id="snapshotRisk">UNKNOWN</strong></article>
+              <article class="snapshot-item" role="listitem"><p>Trend</p><strong id="snapshotTrend">UNKNOWN</strong></article>
+              <article class="snapshot-item" role="listitem"><p>Confidence</p><strong id="snapshotConfidence">Low confidence</strong></article>
+              <article class="snapshot-item" role="listitem"><p>Alert Status</p><strong id="snapshotAlertStatus">No active alert</strong></article>
+              <article class="snapshot-item" role="listitem"><p>Data Freshness</p><strong id="snapshotFreshness">No telemetry ingested yet</strong></article>
+            </div>
+            <div class="snapshot-actions-row">
+              <div>
+                <p class="recommendation-label">Operational Recommendation</p>
+                <p id="snapshotRecommendation" class="snapshot-recommendation">Upload fresh telemetry to resume monitoring.</p>
+              </div>
+              <div>
+                <p class="recommendation-label">Next Action</p>
+                <p id="snapshotNextAction" class="snapshot-next">Upload telemetry to begin monitoring.</p>
+              </div>
+            </div>
+          </section>
+
           <div class="dashboard-grid-v2">
-            <section class="panel control-panel" aria-label="Operational and reference controls">
-              <div class="panel-header"><h3>Pilot Operations</h3></div>
+            <section class="panel control-panel" aria-label="Pilot operations controls">
+              <div class="panel-header"><h3>Pilot Operations Control</h3></div>
               <div class="control-stack" role="group" aria-label="Operational actions">
                 <a id="primaryPilotActionBtn" href="/upload" class="button-link primary primary-pilot-btn">Upload Telemetry</a>
-                <button id="seedDemoBtn" type="button" class="secondary demo-primary-btn">Reference Replay: NASA CMAPSS FD004</button>
-                <button id="refreshBtn" type="button" class="secondary control-secondary-btn">Refresh</button>
+                <button id="refreshBtn" type="button" class="secondary control-secondary-btn">Refresh Active Run</button>
+                <a href="/upload" class="button-link secondary">Open Upload & Ingest</a>
               </div>
+              
+              <details class="reference-replay-panel">
+                <summary>Reference Replay · Historical Validation</summary>
+                <p class="subtitle">NASA CMAPSS FD004 replay remains available for validation, but pilot telemetry is the primary workflow.</p>
+                <button id="seedDemoBtn" type="button" class="secondary demo-primary-btn">Run NASA CMAPSS FD004 Replay</button>
+              </details>
               <div id="demoProgressPanel" class="demo-progress-panel hidden" aria-live="polite">
                 <div class="demo-progress-head">
                   <span id="demoProgressPhase">Initializing run</span>
@@ -102,7 +132,7 @@
                 <p id="demoProgressText" class="subtitle">Waiting for ingest.</p>
               </div>
               <div id="statusMessageRail" class="status-message-rail">
-                <p id="statusMessageText" class="status-message-line">Operational workspace ready. Reference replay available.</p>
+                <p id="statusMessageText" class="status-message-line">Pilot operations workspace ready. Upload telemetry to start active monitoring.</p>
               </div>
             </section>
 
@@ -139,8 +169,8 @@
                     </div>
                     <p class="signal-trend dashboard-trend-line">Trend <strong id="metricTrend">-</strong> · Confidence <strong id="metricStateConfidence">--%</strong></p>
                   </div>
-                  <p class="dashboard-narrative-strip" id="dashboardNarrativeStrip">Awaiting telemetry.</p>
-                  <p id="metricOperatorMessage" class="operator-message dashboard-operator-line">No telemetry available yet.</p>
+                  <p class="dashboard-narrative-strip" id="dashboardNarrativeStrip">No active telemetry yet.</p>
+                  <p id="metricOperatorMessage" class="operator-message dashboard-operator-line">Upload telemetry to establish current system state.</p>
                 </div>
               </div>
               <div class="run-meta-line">
@@ -180,7 +210,7 @@
                 <p id="dashboardNextAction" class="next-action-primary">Upload telemetry to begin analysis.</p>
               </article>
               <div class="intelligence-feed">
-                <h4>Pattern memory and event feed</h4>
+                <h4>Alert lifecycle and pattern memory feed</h4>
                 <ul id="intelligenceFeedList" class="intelligence-list">
                   <li>Awaiting telemetry stream.</li>
                 </ul>
@@ -200,15 +230,15 @@
 
           <section class="panel geometry-showcase" aria-label="Structural Geometry">
             <div class="panel-header">
-              <h3>SII Structural View</h3>
-              <p class="subtitle">Infrastructure State Geometry and system relationship topology for the active run.</p>
+              <h3>Structural Geometry View</h3>
+              <p class="subtitle">Default structural insight for the active run. Expand advanced graph/system-state views below when needed.</p>
             </div>
-            <p id="dashboardGeometryState" class="subtitle">Infrastructure State Geometry is not available for this snapshot.</p>
+            <p id="dashboardGeometryState" class="subtitle">Structural geometry is unavailable for the current snapshot. Continue with drift, trend, and recommendation until new telemetry arrives.</p>
           </section>
 
           <details class="panel disclosure-panel results-panel" id="dashboardResultsDisclosure">
             <summary class="disclosure-summary">
-              <span class="disclosure-title">Recent results</span>
+              <span class="disclosure-title">Recent history and export</span>
               <span class="disclosure-hint">Export &amp; open snapshots</span>
             </summary>
             <div class="row panel-actions disclosure-actions">
@@ -216,8 +246,8 @@
               <button id="exportCsvBtn" type="button" class="secondary">Export CSV</button>
             </div>
             <div id="dashboardEmpty" class="empty-state hidden">
-              <p>No results for the active run yet.</p>
-              <p class="subtitle">Use <strong>Upload</strong> to start pilot monitoring, or run <strong>NASA CMAPSS reference replay</strong> for historical validation.</p>
+              <p>No telemetry snapshots have been processed for this active run yet.</p>
+              <p class="subtitle">Use <strong>Upload Telemetry</strong> to start pilot monitoring. Use <strong>Reference Replay</strong> only for historical validation.</p>
             </div>
             <div class="table-wrap">
               <table class="data-table dashboard-results-table">
@@ -715,6 +745,8 @@
   </div>
 
   <script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script defer src="/web/modules/ui.js"></script>
+  <script defer src="/web/modules/api.js"></script>
   <script defer src="/web/sensor_graph_3d.js"></script>
   <script defer src="/web/app.js"></script>
 </body>

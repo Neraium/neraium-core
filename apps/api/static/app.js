@@ -1,141 +1,5 @@
-function qs(sel) {
-  return document.querySelector(sel);
-}
-
-function qsa(sel) {
-  return Array.from(document.querySelectorAll(sel));
-}
-
-// ui/
-function debounce(fn, wait = 120) {
-  let timer = null;
-  return (...args) => {
-    if (timer) window.clearTimeout(timer);
-    timer = window.setTimeout(() => fn(...args), wait);
-  };
-}
-
-function animateNumberText(el, target, opts = {}) {
-  if (!el) return;
-  const decimals = Number.isFinite(opts.decimals) ? opts.decimals : 0;
-  const suffix = String(opts.suffix || "");
-  const safeTarget = Number.isFinite(target) ? target : 0;
-  const from = Number.parseFloat(el.dataset.currentNumber || "0") || 0;
-  const duration = Number.isFinite(opts.durationMs) ? opts.durationMs : 420;
-  const start = performance.now();
-  const step = (ts) => {
-    const t = Math.min(1, (ts - start) / duration);
-    const eased = 1 - (1 - t) ** 3;
-    const val = from + (safeTarget - from) * eased;
-    el.textContent = `${val.toFixed(decimals)}${suffix}`;
-    el.dataset.currentNumber = String(val);
-    if (t < 1) window.requestAnimationFrame(step);
-  };
-  window.requestAnimationFrame(step);
-}
-
-function friendlyErrorMessage(err) {
-  const msg = String(err?.message || err || "");
-  if (msg.toLowerCase().includes("network")) return "Connection interrupted — attempting telemetry recovery.";
-  if (msg.toLowerCase().includes("timeout")) return "Telemetry request timed out — re-establishing stream.";
-  if (msg.toLowerCase().includes("demo")) return "Systemic Infrastructure Intelligence reference replay interrupted — retry available.";
-  return "Operational request interrupted — retry when ready.";
-}
-
-function apiUrl(path, params) {
-  const normalizedPath = String(path || "").replace(/^\/api(?=\/|$)/, "") || "/";
-  const searchParams = new URLSearchParams();
-  if (params) {
-    Object.entries(params).forEach(([k, v]) => {
-      if (v !== undefined && v !== null && String(v).length > 0) {
-        searchParams.set(k, String(v));
-      }
-    });
-  }
-  const query = searchParams.toString();
-  return query ? `${normalizedPath}?${query}` : normalizedPath;
-}
-
-async function fetchJson(path, opts) {
-  const method = String((opts && opts.method) || "GET").toUpperCase();
-  let res;
-  try {
-    res = await fetch(path, opts);
-  } catch (err) {
-    const endpoint = String(path || "");
-    const reason = String((err && err.message) || err || "network error");
-    console.error("API network/preflight failure", {
-      endpoint,
-      method,
-      reason,
-      requestHeaders: opts && opts.headers ? opts.headers : null,
-      requestBody: opts && typeof opts.body === "string" ? opts.body.slice(0, 1000) : null,
-    });
-    const e = new Error(
-      [
-        `[NETWORK before response] ${method} ${endpoint}`,
-        `reason=${reason}`,
-        "Connection dropped before response (same-origin cloud ingest/network failure).",
-      ].join(" | "),
-    );
-    e.name = "ApiNetworkError";
-    e.apiError = {
-      stage: "before_response",
-      method,
-      endpoint,
-      reason,
-      status: null,
-      responseText: null,
-    };
-    throw e;
-  }
-  const endpoint = String(path || res.url || "");
-  const raw = await res.text();
-  let body = null;
-  if (raw) {
-    try {
-      body = JSON.parse(raw);
-    } catch (_err) {
-      body = null;
-    }
-  }
-  if (!res.ok) {
-    const detail =
-      body && typeof body === "object" && body.detail
-        ? String(body.detail)
-        : raw
-          ? raw.slice(0, 500)
-          : "empty response body";
-    console.error("API request failed", {
-      endpoint,
-      method,
-      status: res.status,
-      statusText: res.statusText || "",
-      responseText: raw ? raw.slice(0, 1000) : "",
-    });
-    const e = new Error(
-      [
-        `[HTTP after response] ${method} ${endpoint}`,
-        `status=${res.status} ${res.statusText || ""}`.trim(),
-        `detail=${detail}`,
-      ].join(" | "),
-    );
-    e.name = "ApiHttpError";
-    e.apiError = {
-      stage: "after_response",
-      method,
-      endpoint,
-      status: res.status,
-      statusText: res.statusText || "",
-      detail,
-      responseText: raw || "",
-    };
-    throw e;
-  }
-  if (!raw) return {};
-  if (body !== null) return body;
-  return {};
-}
+const { qs, qsa, debounce, animateNumberText, friendlyErrorMessage, toPretty, formatBytes, escapeHtml } = window.NeraiumUI;
+const { apiUrl, fetchJson } = window.NeraiumApi;
 
 async function fetchRecentResults(params) {
   const recentParams = tenantScopeParams({ ...(params || {}), compact: 1 });
@@ -145,34 +9,8 @@ async function fetchRecentResults(params) {
   return { latest: null, count: 0, results: [] };
 }
 
-function toPretty(v) {
-  if (v === null || v === undefined) return "-";
-  if (typeof v === "number") return Number.isFinite(v) ? v.toFixed(2) : "-";
-  return String(v);
-}
 
-function formatBytes(bytes) {
-  const n = Number(bytes || 0);
-  if (!Number.isFinite(n) || n <= 0) return "0 B";
-  const units = ["B", "KB", "MB", "GB"];
-  let value = n;
-  let i = 0;
-  while (value >= 1024 && i < units.length - 1) {
-    value /= 1024;
-    i += 1;
-  }
-  const digits = value >= 100 ? 0 : value >= 10 ? 1 : 2;
-  return `${value.toFixed(digits)} ${units[i]}`;
-}
 
-function escapeHtml(text) {
-  return String(text)
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll("\"", "&quot;")
-    .replaceAll("'", "&#39;");
-}
 
 function phaseFromResult(r) {
   if (!r) return "-";
@@ -1234,7 +1072,7 @@ async function prepareDemoRuns(options = {}) {
         });
         const run = runEnv.run;
         setLoading(true, "Preparing replay runs…");
-        setStatus("Preparing replay run...", true);
+        setStatus("Preparing reference replay run...", true);
         const started = await startDemoSeedJob(
           run.run_id,
           cust,
@@ -1300,8 +1138,8 @@ async function prepareDemoRuns(options = {}) {
       state.demo.activeRunId = focusRun.run_id;
     }
     state.demo.prepared = true;
-    setDemoProgress({ visible: true, phase: "Ready", current: scenarios.length, total: scenarios.length, text: "Demo ready." });
-    setStatus("Demo ready.");
+    setDemoProgress({ visible: true, phase: "Ready", current: scenarios.length, total: scenarios.length, text: "Reference replay ready." });
+    setStatus("Reference replay ready.");
     window.setTimeout(() => setDemoProgress({ visible: false }), 1200);
     return focusRun;
   } finally {
@@ -1406,7 +1244,7 @@ async function launchGuidedDemo({ mode = "all" } = {}) {
       window.location.href = `/app/runs/${encodeURIComponent(focusRun.run_id)}?customer_id=${cid}&replay=1&autoplay=1`;
       return;
     }
-    setStatus("Demo runs ready — pick a run.", false, true);
+    setStatus("Reference replay runs ready — select a run.", false, true);
   } catch (err) {
     setStatus(String(err.message || err), true, true);
   } finally {
@@ -5935,7 +5773,7 @@ async function loadRunGeometry(runId, resultId = null) {
     setGeometrySurfaceState("Geometry unavailable for this snapshot yet. Structural charts remain active.", "info");
     const fallback = qs("#geometryFallback");
     if (fallback) {
-      fallback.textContent = "Geometry not available yet for this run/result. Continue with drift and instability trends.";
+      fallback.textContent = "Structural geometry is unavailable for this snapshot. Continue with structural drift, instability trend, and operational recommendation.";
       fallback.classList.remove("hidden");
     }
     setGeometryViewportLoading(false);
@@ -5951,7 +5789,7 @@ async function loadRunGeometry(runId, resultId = null) {
   if (fallback) {
     fallback.setAttribute("title", projectionNote);
     if (!payload?.available) {
-      fallback.textContent = payload?.reason || "No relationship graph available for this snapshot.";
+      fallback.textContent = payload?.reason || "No structural relationship graph is available for this snapshot.";
     }
   }
   if (summary) summary.textContent = geometryStructureSummary(payload);
@@ -6248,6 +6086,27 @@ function setStatus(message = "", isError = false, showToast = false) {
   }
 }
 
+
+
+async function refreshRuntimeModeBanner() {
+  const banner = qs("#runtimeModeBanner");
+  if (!banner) return;
+  try {
+    const health = await fetchJson(apiUrl("/health"));
+    const degraded = Boolean(health?.core_runtime_fallback) || String(health?.status || "").toLowerCase() === "degraded";
+    if (!degraded) {
+      banner.classList.add("hidden");
+      banner.textContent = "";
+      return;
+    }
+    const notes = Array.isArray(health?.core_runtime_notes) ? health.core_runtime_notes.filter(Boolean) : [];
+    const noteText = notes.length ? ` ${notes.slice(0, 2).join(" ")}` : "";
+    banner.textContent = `Degraded runtime mode: fallback core modules are active. Pilot decisions should be treated as limited-confidence until full core runtime is restored.${noteText}`;
+    banner.classList.remove("hidden");
+  } catch (_err) {
+    banner.classList.add("hidden");
+  }
+}
 function setPage(page) {
   const titles = {
     dashboard: ["Pilot Operations Dashboard", "Pilot-ready Systemic Infrastructure Intelligence workspace"],
@@ -6596,6 +6455,100 @@ function renderRunsList() {
   });
 }
 
+function latestTelemetryTimestampMs(result) {
+  if (!result) return 0;
+  const raw = result.timestamp || result.persisted_at || result.created_at || null;
+  if (!raw) return 0;
+  const ms = Date.parse(String(raw));
+  return Number.isFinite(ms) ? ms : 0;
+}
+
+function formatFreshnessLabel(result) {
+  const ts = latestTelemetryTimestampMs(result);
+  if (!ts) return { label: "No telemetry ingested yet", stale: true };
+  const ageMs = Math.max(0, Date.now() - ts);
+  const mins = Math.floor(ageMs / 60000);
+  if (mins < 2) return { label: "Updated just now", stale: false };
+  if (mins < 60) return { label: `Updated ${mins} minute${mins === 1 ? "" : "s"} ago`, stale: mins >= 15 };
+  const hours = Math.floor(mins / 60);
+  return { label: `Data stale — last ingest ${hours} hour${hours === 1 ? "" : "s"} ago`, stale: true };
+}
+
+function normalizedAlertStatusText(latest) {
+  const alertStatus = state.dashboardCurrentAlertStatus
+    || (latest && latest.alert_status && typeof latest.alert_status === "object" ? latest.alert_status : null);
+  const alertState = String(alertStatus?.state || alertStatus?.alert_state || "CLEAR").toUpperCase();
+  const pendingCount = Number(alertStatus?.consecutive_hit_count || 0);
+  const threshold = Number(alertStatus?.hit_window_threshold || 3);
+  if (!alertStatus) return "No active alert";
+  if (alertState === "PENDING_ALERT") return `Pending alert (${pendingCount}/${threshold} confirmations)`;
+  if (alertStatus.alert_active && alertState === "ESCALATED") return "Escalated alert";
+  if (alertStatus.alert_active && alertStatus.acknowledged) return "Active alert — acknowledged";
+  if (alertStatus.alert_active) return "Active alert — unacknowledged";
+  if (alertState === "RESOLVED") return "Resolved after sustained recovery";
+  return "No active alert";
+}
+
+function renderOperationalSnapshot(latest) {
+  const stateEl = qs("#snapshotState");
+  const riskEl = qs("#snapshotRisk");
+  const trendEl = qs("#snapshotTrend");
+  const confEl = qs("#snapshotConfidence");
+  const alertEl = qs("#snapshotAlertStatus");
+  const freshEl = qs("#snapshotFreshness");
+  const recEl = qs("#snapshotRecommendation");
+  const nextEl = qs("#snapshotNextAction");
+
+  const risk = normalizeRiskLevel(latest?.risk_level);
+  const trend = String(trendFromResult(latest) || "UNKNOWN").toUpperCase();
+  const stateText = String(latest?.state || latest?.interpreted_state || "Unknown");
+  const confidenceValue = latest ? (latest.structural_analysis_available ? 92 : 74) : 0;
+  const confidenceText = !latest
+    ? "Low confidence — more telemetry needed"
+    : confidenceValue >= 85
+      ? `Confidence: ${confidenceValue}%`
+      : "Confidence: moderate";
+  const alertText = normalizedAlertStatusText(latest);
+  const freshness = formatFreshnessLabel(latest);
+
+  if (stateEl) stateEl.textContent = stateText;
+  if (riskEl) riskEl.textContent = risk;
+  if (trendEl) trendEl.textContent = trend;
+  if (confEl) confEl.textContent = confidenceText;
+  if (alertEl) alertEl.textContent = alertText;
+  if (freshEl) freshEl.textContent = freshness.label;
+
+  let recommendation = "Upload fresh telemetry to resume monitoring.";
+  let nextAction = "Upload telemetry to begin monitoring.";
+  if (latest) {
+    if (risk === "HIGH") {
+      recommendation = "Investigate sustained instability in the active run.";
+      nextAction = alertText.startsWith("Active") || alertText.startsWith("Escalated")
+        ? "Acknowledge active alert and inspect relationship drift."
+        : "Inspect latest drift and recommendation details.";
+    } else if (risk === "MEDIUM") {
+      recommendation = "Acknowledge active alert and inspect relationship drift.";
+      nextAction = "Review active alert state and monitor incoming telemetry.";
+    } else {
+      recommendation = "Continue monitoring — no intervention recommended.";
+      nextAction = freshness.stale ? "Refresh active run or ingest fresh telemetry." : "System stable — continue monitoring.";
+    }
+  }
+  if (recEl) recEl.textContent = recommendation;
+  if (nextEl) nextEl.textContent = nextAction;
+
+  const ctaBtn = qs("#primaryPilotActionBtn");
+  if (ctaBtn) {
+    if (!latest || freshness.stale) {
+      ctaBtn.textContent = "Upload Telemetry";
+      ctaBtn.setAttribute("href", "/upload");
+    } else {
+      ctaBtn.textContent = "Review Recommendation";
+      ctaBtn.setAttribute("href", "#recommendationPrimary");
+    }
+  }
+}
+
 function renderDashboardMetrics(latest, prev) {
   const metricTrend = qs("#metricTrend");
   const metricRisk = qs("#metricRisk");
@@ -6643,6 +6596,7 @@ function renderDashboardMetrics(latest, prev) {
   }
 
   renderDashboardHero(latest, prev);
+  renderOperationalSnapshot(latest);
   const score = healthScoreFromSignals(latest);
   if (score !== null) {
     animateNumberText(qs("#dashboardHealthScore"), score, { decimals: 0 });
@@ -6713,7 +6667,7 @@ function renderDashboardMetrics(latest, prev) {
     if (recommendationConfidenceBadge) recommendationConfidenceBadge.textContent = `Confidence ${confidence}%`;
     if (nextActionEl) {
       if (!latest) {
-        nextActionEl.textContent = "Upload telemetry to begin analysis.";
+        nextActionEl.textContent = "Upload telemetry to begin monitoring.";
       } else if (risk === "HIGH") {
         nextActionEl.textContent = "Active alert requires acknowledgement and targeted inspection.";
       } else if (risk === "MEDIUM") {
@@ -6725,8 +6679,13 @@ function renderDashboardMetrics(latest, prev) {
   }
   const lu = qs("#dashboardLastUpdated");
   if (lu) {
-    const ts = new Date();
-    lu.textContent = `Last updated ${ts.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`;
+    const tsMs = latestTelemetryTimestampMs(latest);
+    if (!tsMs) {
+      lu.textContent = "No recent update available. Refresh the active run or ingest new telemetry.";
+    } else {
+      const ts = new Date(tsMs);
+      lu.textContent = `Last ingest ${ts.toLocaleString(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`;
+    }
   }
 }
 
@@ -7001,7 +6960,7 @@ async function seedDemoData() {
   setDemoButtonsDisabled(true);
   renderTenantControls();
   const launchPromise = (async () => {
-    setStatus("Preparing historical validation replay...", false);
+    setStatus("Preparing historical validation replay (secondary workflow)...", false);
     state.demo.replay.errorMessage = "";
     setDemoUiState(DEMO_UI_STATES.starting, "launch-begin");
     setDemoProgress({
@@ -7039,7 +6998,7 @@ async function seedDemoData() {
     if (resolvedRun) updateActiveRunHeader(resolvedRun);
     setDemoProgress({ visible: true, phase: "Ready", current: 3, total: 3, text: "NASA CMAPSS FD004 run ready." });
     window.setTimeout(() => setDemoProgress({ visible: false }), 900);
-    setStatus(`NASA CMAPSS FD004 ready (${Number(out?.processed || 0)} frames processed).`, false, true);
+    setStatus(`Reference replay ready: NASA CMAPSS FD004 (${Number(out?.processed || 0)} frames processed).`, false, true);
     return {
       count: Number(out?.processed || 0),
       processed: Number(out?.processed || 0),
@@ -7947,7 +7906,8 @@ async function init() {
   };
   setPage(routeToPage[route.page] || "dashboard");
   try {
-    setLoading(true, "Initializing...");
+    setLoading(true, "Initializing pilot operations...");
+    await refreshRuntimeModeBanner();
     const activeRun = await ensureActiveRun();
     updateActiveRunHeader(activeRun);
     await loadRuns();
@@ -7993,7 +7953,7 @@ async function init() {
           window.location.href = `/app/runs/${encodeURIComponent(focusRun.run_id)}?customer_id=${cid}&replay=1&autoplay=1`;
           return;
         }
-        setStatus("Demo runs ready — pick a run from the list.", false, true);
+        setStatus("Reference replay runs ready — pick a run from the list.", false, true);
       } catch (err) {
         setStatus(String(err.message || err), true, true);
       }
