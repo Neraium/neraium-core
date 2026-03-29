@@ -4692,3 +4692,70 @@ textarea {
     text-align: center;
   }
 }
+
+/* ==== Final coherence pass (operational-first) ==== */
+.panel {
+  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.32);
+}
+
+.sii-hero {
+  margin-bottom: 8px;
+  padding: 14px 16px;
+}
+
+.sii-hero-tags {
+  gap: 6px;
+}
+
+.sii-hero-tags .chip {
+  font-size: 11px;
+}
+
+.snapshot-grid {
+  gap: 0.45rem;
+}
+
+.snapshot-item,
+.decision-item {
+  background: rgba(255, 255, 255, 0.015);
+  border-color: rgba(170, 190, 220, 0.2);
+}
+
+.decision-item .subtitle {
+  margin-top: 0.35rem;
+}
+
+.quick-link-stack {
+  gap: 0.35rem;
+  margin-top: 0.55rem;
+  padding-top: 0.45rem;
+  border-top: 1px solid rgba(145, 167, 205, 0.14);
+}
+
+.quick-link-note {
+  font-size: 0.84rem;
+  color: #9db0cb;
+}
+
+.empty-state {
+  padding: 14px 16px;
+  border-radius: 12px;
+  border: 1px solid rgba(130, 154, 196, 0.24);
+  background: rgba(12, 19, 32, 0.7);
+}
+
+.empty-state p:first-child {
+  font-weight: 600;
+  color: #e9f1ff;
+}
+
+@media (max-width: 720px) {
+  .sii-hero {
+    padding: 12px 13px;
+  }
+
+  .snapshot-item strong,
+  .decision-value {
+    font-size: 0.92rem;
+  }
+}
