@@ -1,0 +1,101 @@
+(function attachApiModule(globalObj) {
+  function apiUrl(path, params) {
+    const normalizedPath = String(path || "").replace(/^\/api(?=\/|$)/, "") || "/";
+    const searchParams = new URLSearchParams();
+    if (params) {
+      Object.entries(params).forEach(([k, v]) => {
+        if (v !== undefined && v !== null && String(v).length > 0) {
+          searchParams.set(k, String(v));
+        }
+      });
+    }
+    const query = searchParams.toString();
+    return query ? `${normalizedPath}?${query}` : normalizedPath;
+  }
+
+  async function fetchJson(path, opts) {
+    const method = String((opts && opts.method) || "GET").toUpperCase();
+    let res;
+    try {
+      res = await fetch(path, opts);
+    } catch (err) {
+      const endpoint = String(path || "");
+      const reason = String((err && err.message) || err || "network error");
+      console.error("API network/preflight failure", {
+        endpoint,
+        method,
+        reason,
+        requestHeaders: opts && opts.headers ? opts.headers : null,
+        requestBody: opts && typeof opts.body === "string" ? opts.body.slice(0, 1000) : null,
+      });
+      const e = new Error(
+        [
+          `[NETWORK before response] ${method} ${endpoint}`,
+          `reason=${reason}`,
+          "Connection dropped before response (same-origin cloud ingest/network failure).",
+        ].join(" | "),
+      );
+      e.name = "ApiNetworkError";
+      e.apiError = {
+        stage: "before_response",
+        method,
+        endpoint,
+        reason,
+        status: null,
+        responseText: null,
+      };
+      throw e;
+    }
+    const endpoint = String(path || res.url || "");
+    const raw = await res.text();
+    let body = null;
+    if (raw) {
+      try {
+        body = JSON.parse(raw);
+      } catch (_err) {
+        body = null;
+      }
+    }
+    if (!res.ok) {
+      const detail =
+        body && typeof body === "object" && body.detail
+          ? String(body.detail)
+          : raw
+            ? raw.slice(0, 500)
+            : "empty response body";
+      console.error("API request failed", {
+        endpoint,
+        method,
+        status: res.status,
+        statusText: res.statusText || "",
+        responseText: raw ? raw.slice(0, 1000) : "",
+      });
+      const e = new Error(
+        [
+          `[HTTP after response] ${method} ${endpoint}`,
+          `status=${res.status} ${res.statusText || ""}`.trim(),
+          `detail=${detail}`,
+        ].join(" | "),
+      );
+      e.name = "ApiHttpError";
+      e.apiError = {
+        stage: "after_response",
+        method,
+        endpoint,
+        status: res.status,
+        statusText: res.statusText || "",
+        detail,
+        responseText: raw || "",
+      };
+      throw e;
+    }
+    if (!raw) return {};
+    if (body !== null) return body;
+    return {};
+  }
+
+  globalObj.NeraiumApi = {
+    apiUrl,
+    fetchJson,
+  };
+})(window);
