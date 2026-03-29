@@ -1372,7 +1372,6 @@ function getRoute() {
   const parts = window.location.pathname.split("/").filter(Boolean);
   if (parts.length === 0 || parts[0] === "dashboard") return { page: "dashboard" };
   if (parts[0] === "upload") return { page: "upload" };
-  if (parts[0] === "demo" && parts[1] === "sii") return { page: "demo-sii" };
   if (parts[0] === "app" && parts[1] === "runs" && parts[2]) return { page: "run-detail", runId: parts[2] };
   if (parts[0] === "app" && parts[1] === "runs") return { page: "runs" };
   if (parts[0] === "app" && parts[1] === "results" && parts[2]) return { page: "result-detail", resultId: parts[2] };
@@ -1808,24 +1807,6 @@ function applyDemoQueryParams() {
     return { shouldAutoPrepare };
   } catch (_err) {
     return { shouldAutoPrepare: false };
-  }
-}
-
-function normalizeDemoEntryPath() {
-  try {
-    const path = window.location.pathname.replace(/\/$/, "") || "/";
-    if (path === "/demo" || path === "/demo/full") {
-      const u = new URL(window.location.href);
-      u.pathname = "/dashboard";
-      if (!u.searchParams.has("demo")) u.searchParams.set("demo", "1");
-      if (!u.searchParams.has("prepare")) u.searchParams.set("prepare", "1");
-      if (path === "/demo/full" && !u.searchParams.has("autoplay")) {
-        u.searchParams.set("autoplay", "1");
-      }
-      window.history.replaceState({}, "", u.toString());
-    }
-  } catch (_e) {
-    // no-op
   }
 }
 
@@ -6037,7 +6018,6 @@ function setPage(page) {
     upload: ["Upload", "Upload telemetry CSV into the active run"],
     "run-detail": ["Run Detail", "Deep inspection of run outputs"],
     "result-detail": ["Result Detail", "Focused view for a single result"],
-    "demo-sii": ["SII tour", "Narrative walkthrough for demos and onboarding"],
   };
   qsa(".page").forEach((p) => p.classList.add("hidden"));
   const pageEl = qs(`#page-${page}`);
@@ -6051,7 +6031,6 @@ function setPage(page) {
   if (page === "dashboard") qs('[data-nav="dashboard"]')?.classList.add("active");
   if (page === "runs" || page === "run-detail") qs('[data-nav="runs"]')?.classList.add("active");
   if (page === "upload") qs('[data-nav="upload"]')?.classList.add("active");
-  if (page === "demo-sii") qs('[data-nav="demo-sii"]')?.classList.add("active");
 }
 
 function updateUploadRunInfo() {
@@ -7653,14 +7632,6 @@ async function wireEvents() {
   qs("#exportJsonBtn")?.addEventListener("click", () => exportData("json", state.activeRun?.run_id || ""));
   qs("#exportCsvBtn")?.addEventListener("click", () => exportData("csv", state.activeRun?.run_id || ""));
 
-  qs("#demoTourEnableBtn")?.addEventListener("click", () => {
-    const toggle = qs("#demoModeToggle");
-    if (toggle) {
-      toggle.checked = true;
-      toggle.dispatchEvent(new Event("change", { bubbles: true }));
-    }
-  });
-
   let resizeTimer = null;
   window.addEventListener("resize", () => {
     if (resizeTimer) window.clearTimeout(resizeTimer);
@@ -7675,7 +7646,6 @@ async function wireEvents() {
 }
 
 async function init() {
-  normalizeDemoEntryPath();
   startLiveClock();
   readTenantFromStorage();
   readDemoModeFromStorage();
@@ -7696,7 +7666,6 @@ async function init() {
     upload: "upload",
     "run-detail": "run-detail",
     "result-detail": "result-detail",
-    "demo-sii": "demo-sii",
   };
   setPage(routeToPage[route.page] || "dashboard");
   try {
@@ -7707,7 +7676,6 @@ async function init() {
     if (route.page === "dashboard") await loadDashboard();
     if (route.page === "runs") renderRunsList();
     if (route.page === "upload") updateUploadRunInfo();
-    if (route.page === "demo-sii") renderTenantControls();
     if (route.page === "run-detail") await loadRunDetail(route.runId);
     if (route.page === "result-detail") await loadResultDetail(route.resultId);
     await wireEvents();
