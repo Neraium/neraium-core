@@ -1,7 +1,34 @@
 (function attachStateModule(globalObj) {
-  function isReplayMode(page, demoEnabled) {
-    const p = String(page || "").toLowerCase();
-    return p === "validation" || Boolean(demoEnabled);
+  const STATUS = Object.freeze({
+    NO_DATA_INGESTED: "NO DATA INGESTED",
+    WAITING_FOR_TELEMETRY: "WAITING FOR TELEMETRY",
+    ACTIVE_MONITORING: "ACTIVE MONITORING",
+    ALERT_ACTIVE: "ALERT ACTIVE",
+    VALIDATION_READY: "VALIDATION READY",
+    HISTORICAL_VALIDATION: "HISTORICAL VALIDATION",
+    REPLAY_INTERRUPTED: "REPLAY INTERRUPTED",
+    ANALYSIS_INTERRUPTED: "ANALYSIS INTERRUPTED",
+  });
+
+  function normalizeMode(value) {
+    const v = String(value || "").toLowerCase();
+    if (v === "validation" || v === "pilot") return v;
+    return "";
+  }
+
+  function deriveMode(input = {}) {
+    const page = String(input.page || "").toLowerCase();
+    const backendMode = normalizeMode(input.backendMode);
+    const routeMode = normalizeMode(input.routeMode);
+    const requestedMode = normalizeMode(input.requestedMode);
+    if (backendMode) return backendMode;
+    if (routeMode) return routeMode;
+    if (requestedMode) return requestedMode;
+    if (page === "validation") return "validation";
+    if (page === "dashboard" || page === "upload" || page === "runs" || page === "run-detail" || page === "result-detail") {
+      return "pilot";
+    }
+    return Boolean(input.validationContext) ? "validation" : "pilot";
   }
 
   function normalizeReplayUiState(value) {
@@ -17,7 +44,8 @@
 
   function deriveFrontendState(input = {}) {
     const page = String(input.page || "dashboard").toLowerCase();
-    const replayMode = isReplayMode(page, input.demoEnabled);
+    const mode = deriveMode(input);
+    const replayMode = mode === "validation";
     const replayUiState = normalizeReplayUiState(input.replayUiState);
     const hasLatest = Boolean(input.hasLatest);
     const hasTelemetrySeries = Boolean(input.hasTelemetrySeries);
@@ -33,7 +61,7 @@
     if (analysisInterrupted) statusKey = "analysis_interrupted";
     else if (replayInterrupted) statusKey = "replay_interrupted";
     else if (replayMode) {
-      if (replayActive || hasTelemetry) statusKey = "replay_active";
+      if (replayActive || hasTelemetry) statusKey = "historical_validation";
       else statusKey = "validation_ready";
     } else if (alertActive) statusKey = "alert_active";
     else if (hasTelemetry) statusKey = "active_monitoring";
@@ -41,7 +69,7 @@
 
     return {
       page,
-      mode: replayMode ? "validation" : "pilot",
+      mode,
       replayMode,
       hasTelemetry,
       hasActiveRun,
@@ -63,47 +91,29 @@
   }
 
   function getAnalysisStatusDisplay(state) {
-    if (!state) return "No data";
+    if (!state) return STATUS.NO_DATA_INGESTED;
     switch (state.statusKey) {
       case "analysis_interrupted":
-        return "Analysis interrupted";
+        return STATUS.ANALYSIS_INTERRUPTED;
       case "replay_interrupted":
-        return "Replay interrupted";
-      case "replay_active":
-        return "Historical replay active";
+        return STATUS.REPLAY_INTERRUPTED;
+      case "historical_validation":
+        return STATUS.HISTORICAL_VALIDATION;
       case "validation_ready":
-        return "Ready for historical replay";
+        return STATUS.VALIDATION_READY;
       case "alert_active":
-        return "Alert active";
+        return STATUS.ALERT_ACTIVE;
       case "active_monitoring":
-        return "Live monitoring active";
+        return STATUS.ACTIVE_MONITORING;
       case "waiting_for_telemetry":
-        return "Waiting for telemetry";
+        return STATUS.WAITING_FOR_TELEMETRY;
       default:
-        return "No telemetry in active run";
+        return STATUS.NO_DATA_INGESTED;
     }
   }
 
   function getOperationalBadgeDisplay(state) {
-    if (!state) return "NO DATA INGESTED";
-    switch (state.statusKey) {
-      case "analysis_interrupted":
-        return "ANALYSIS INTERRUPTED";
-      case "replay_interrupted":
-        return "REPLAY INTERRUPTED";
-      case "replay_active":
-        return "HISTORICAL VALIDATION";
-      case "validation_ready":
-        return "VALIDATION RUN";
-      case "alert_active":
-        return "ALERT ACTIVE";
-      case "active_monitoring":
-        return "ACTIVE MONITORING";
-      case "waiting_for_telemetry":
-        return "WAITING FOR TELEMETRY";
-      default:
-        return "NO DATA INGESTED";
-    }
+    return getAnalysisStatusDisplay(state);
   }
 
   function getLastUpdateDisplay(state, latestTimestamp, nowMs = Date.now()) {
@@ -111,10 +121,10 @@
     if (!state) return "No data yet";
     if (!tsMs) {
       return state.mode === "validation"
-        ? "No replay frame timestamp yet"
-        : "No telemetry timestamp yet for this active run.";
+        ? "No historical validation timestamp yet."
+        : "No telemetry timestamp yet.";
     }
-    if (state.mode === "validation") return String(latestTimestamp);
+    if (state.mode === "validation") return `Validation frame time: ${String(latestTimestamp)}`;
     const ageMs = Math.max(0, nowMs - tsMs);
     const mins = Math.floor(ageMs / 60000);
     if (mins < 2) return "Fresh telemetry (updated just now)";
@@ -134,6 +144,7 @@
   }
 
   globalObj.NeraiumState = {
+    STATUS,
     deriveFrontendState,
     getRunModeDisplay,
     getAnalysisStatusDisplay,
