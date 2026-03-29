@@ -55,8 +55,8 @@
           </button>
           <a href="/dashboard" class="topbar-wordmark">Neraium</a>
           <div class="title-block telemetry-title">
-            <h2 id="pageTitle">Dashboard</h2>
-            <p id="pageSubtitle" class="subtitle page-subtitle-truncate">Real-time structural intelligence system</p>
+            <h2 id="pageTitle">SII Dashboard</h2>
+            <p id="pageSubtitle" class="subtitle page-subtitle-truncate">NASA CMAPSS FD004 demonstration workspace</p>
           </div>
         </div>
         <div class="telemetry-status-strip" aria-label="System telemetry status">
@@ -73,29 +73,24 @@
         <!-- DASHBOARD -->
         <section id="page-dashboard" class="page page-dashboard">
           <section class="panel sii-hero" aria-label="Systemic Infrastructure Intelligence framing">
-            <div>
+            <div class="sii-hero-copy">
               <p class="sii-hero-kicker">Systemic Infrastructure Intelligence</p>
-              <h3>Systemic Infrastructure Intelligence — NASA CMAPSS FD004</h3>
-              <p class="subtitle">Neraium tracks structural state, relationship drift, and predictive structural behavior across a real degradation scenario from the NASA CMAPSS FD004 dataset.</p>
+              <h3>NASA CMAPSS FD004 Demonstration</h3>
+              <p class="subtitle">Run a real historical degradation replay through Neraium’s SII pipeline to surface structural state, relationship drift, pattern memory, and emerging instability.</p>
             </div>
-            <div class="sii-hero-tags" aria-label="SII capabilities">
+            <div class="sii-hero-tags" aria-label="SII core signals">
               <span class="chip">Structural State</span>
               <span class="chip">Relationship Drift</span>
               <span class="chip">Pattern Memory</span>
               <span class="chip">Emerging Instability</span>
-              <span class="chip">NASA dataset</span>
             </div>
           </section>
           <div class="dashboard-grid-v2">
-            <section class="panel control-panel" aria-label="Control panel">
-              <div class="panel-header"><h3>Operations Control</h3></div>
-              <div class="control-stack">
-                <label class="demo-toggle" for="demoModeToggle">
-                  <input id="demoModeToggle" type="checkbox" />
-                  <span>SII demo mode</span>
-                </label>
-                <button id="seedDemoBtn" type="button" class="primary demo-primary-btn">Run NASA CMAPSS Dataset</button>
-                <button id="refreshBtn" type="button" class="topbar-refresh">Refresh</button>
+            <section class="panel control-panel" aria-label="Run demonstration controls">
+              <div class="panel-header"><h3>Run Demonstration</h3></div>
+              <div class="control-stack" role="group" aria-label="Demonstration actions">
+                <button id="seedDemoBtn" type="button" class="primary demo-primary-btn">Run NASA CMAPSS FD004 Demo</button>
+                <button id="refreshBtn" type="button" class="secondary control-secondary-btn">Refresh</button>
               </div>
               <div id="demoProgressPanel" class="demo-progress-panel hidden" aria-live="polite">
                 <div class="demo-progress-head">
@@ -106,7 +101,7 @@
                 <p id="demoProgressText" class="subtitle">Waiting for ingest.</p>
               </div>
               <div id="statusMessageRail" class="status-message-rail">
-                <p id="statusMessageText" class="status-message-line">System ready.</p>
+                <p id="statusMessageText" class="status-message-line">NASA CMAPSS FD004 scenario ready.</p>
               </div>
             </section>
 
