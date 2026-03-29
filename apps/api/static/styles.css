@@ -4448,6 +4448,46 @@ textarea {
   font-weight: 500;
 }
 
+.dashboard-grid-v2 {
+  grid-template-columns: minmax(470px, 1.7fr) minmax(240px, 0.78fr) minmax(300px, 1fr);
+  grid-template-areas: "mission control intelligence";
+}
+
+.mission-panel { grid-area: mission; }
+.control-panel { grid-area: control; }
+.intelligence-panel { grid-area: intelligence; }
+
+.primary-pilot-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+  min-height: 52px;
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.demo-primary-btn {
+  min-height: 40px;
+  font-size: 0.86rem;
+  font-weight: 600;
+  box-shadow: none;
+}
+
+.next-action-card {
+  margin-top: 12px;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(139, 176, 236, 0.32);
+  background: rgba(9, 18, 32, 0.72);
+}
+
+.next-action-primary {
+  margin: 0;
+  color: #e8f1ff;
+  font-weight: 600;
+}
+
 @media (max-width: 740px) {
   .command-topbar {
     padding: 10px 14px 11px;
@@ -4487,5 +4527,15 @@ textarea {
 
   .status-message-rail {
     margin-top: 10px;
+  }
+}
+
+@media (max-width: 1180px) {
+  .dashboard-grid-v2 {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "mission"
+      "intelligence"
+      "control";
   }
 }
