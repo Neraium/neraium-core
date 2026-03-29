@@ -211,6 +211,18 @@ def test_operator_workflow_uses_relative_same_origin_fetch_urls(tmp_path) -> Non
     assert "const url = query ? `${path}?${query}` : path;" in source
 
 
+def test_dashboard_demo_seeding_uses_ingest_frame_flow(tmp_path) -> None:
+    client = _client(tmp_path)
+    js = client.get("/web/app.js")
+    assert js.status_code == 200
+    source = js.text
+    assert 'apiUrl("/ingest/frame"' in source
+    assert "async function seedDemoData()" in source
+    seed_block = source.split("async function seedDemoData()", 1)[1].split("function destroyCharts()", 1)[0]
+    assert "ingestFramesForRun(" in seed_block
+    assert "ingestBatchForRun(" not in seed_block
+
+
 def test_cors_middleware_requires_explicit_origin_configuration(tmp_path, monkeypatch) -> None:
     monkeypatch.delenv("NERAIUM_CORS_ALLOW_ORIGINS", raising=False)
     monkeypatch.delenv("NERAIUM_CORS_ALLOW_ORIGIN_REGEX", raising=False)
