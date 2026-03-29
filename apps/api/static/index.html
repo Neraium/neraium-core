@@ -276,7 +276,7 @@
 
         <!-- RUN DETAIL -->
         <section id="page-run-detail" class="page hidden">
-          <section id="analysis-executive" class="panel">
+          <section id="analysis-executive" class="panel analysis-workspace-section" data-analysis-panel="executive">
             <div class="panel-header">
               <h3 id="runDetailTitle">Run analysis workspace</h3>
               <div class="row panel-actions">
@@ -286,12 +286,12 @@
             </div>
             <p id="runDetailMeta" class="subtitle"></p>
             <p class="subtitle analysis-intent">Dedicated structural intelligence workspace for state, risk, trend, geometry, and history.</p>
-            <nav class="analysis-map" aria-label="Run analysis sections">
-              <a href="#analysis-executive">State / risk / trend</a>
-              <a href="#analysis-context">Recommendation context</a>
-              <a href="#analysis-geometry">Structural geometry</a>
-              <a href="#analysis-trends">Charts & timeline</a>
-              <a href="#analysis-results">Results / history / export</a>
+            <nav id="analysisWorkspaceTabs" class="analysis-map" aria-label="Run analysis sections" role="tablist">
+              <button type="button" class="analysis-tab active" role="tab" aria-selected="true" data-analysis-tab="executive">State / risk / trend</button>
+              <button type="button" class="analysis-tab" role="tab" aria-selected="false" data-analysis-tab="context">Recommendation context</button>
+              <button type="button" class="analysis-tab" role="tab" aria-selected="false" data-analysis-tab="geometry">Structural geometry</button>
+              <button type="button" class="analysis-tab" role="tab" aria-selected="false" data-analysis-tab="trends">Charts & timeline</button>
+              <button type="button" class="analysis-tab" role="tab" aria-selected="false" data-analysis-tab="results">Results / history / export</button>
             </nav>
             <div id="runSignalSeparation" class="signal-separation hidden">
               <article class="signal-card state">
@@ -371,7 +371,7 @@
               </div>
               <ul id="demoKeyEventsList" class="demo-key-events-list"></ul>
             </section>
-            <section id="analysis-context" class="analysis-subsection">
+            <section id="analysis-context" class="analysis-subsection analysis-workspace-section" data-analysis-panel="context">
               <div class="panel-header panel-header-subsection">
                 <h4>Alert &amp; recommendation context</h4>
                 <p class="subtitle">Operational rationale tied directly to the latest structural signal state.</p>
@@ -390,7 +390,7 @@
             </div>
           </section>
 
-          <section id="analysis-trends" class="panel">
+          <section id="analysis-trends" class="panel analysis-workspace-section" data-analysis-panel="trends">
             <div class="panel-header">
               <h3>Trend charts</h3>
               <div id="runRangeControls" class="range-controls">
@@ -411,7 +411,7 @@
             </div>
           </section>
 
-          <section id="analysis-geometry" class="panel geometry-panel">
+          <section id="analysis-geometry" class="panel geometry-panel analysis-workspace-section" data-analysis-panel="geometry">
             <div class="panel-header">
               <h3>Structural flow</h3>
               <p id="geometryFlowSubtitle" class="subtitle geometry-subtitle">
@@ -585,7 +585,7 @@
             <ul id="operatorMessagesList" class="messages"></ul>
           </section>
 
-          <section id="analysis-results" class="panel">
+          <section id="analysis-results" class="panel analysis-workspace-section" data-analysis-panel="results">
             <div class="panel-header">
               <h3>Results table · history and export</h3>
             </div>
