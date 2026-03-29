@@ -72,16 +72,29 @@
       <main class="content">
         <!-- DASHBOARD -->
         <section id="page-dashboard" class="page page-dashboard">
+          <section class="panel sii-hero" aria-label="Systemic Infrastructure Intelligence framing">
+            <div>
+              <p class="sii-hero-kicker">Systemic Infrastructure Intelligence</p>
+              <h3>SII Command Surface</h3>
+              <p class="subtitle">Neraium tracks structural state, relationship drift, pattern memory, and emerging instability from live telemetry.</p>
+            </div>
+            <div class="sii-hero-tags" aria-label="SII capabilities">
+              <span class="chip">Structural State</span>
+              <span class="chip">Relationship Drift</span>
+              <span class="chip">Pattern Memory</span>
+              <span class="chip">Emerging Instability</span>
+            </div>
+          </section>
           <div class="dashboard-grid-v2">
             <section class="panel control-panel" aria-label="Control panel">
-              <div class="panel-header"><h3>Operations</h3></div>
+              <div class="panel-header"><h3>Operations Control</h3></div>
               <div class="control-stack">
                 <label class="demo-toggle" for="demoModeToggle">
                   <input id="demoModeToggle" type="checkbox" />
-                  <span>Demo mode</span>
+                  <span>SII demo mode</span>
                 </label>
-                <button id="prepareDemoBtn" type="button" class="secondary">Run demo</button>
-                <button id="seedDemoBtn" type="button" class="secondary">Sample data</button>
+                <button id="prepareDemoBtn" type="button" class="secondary">Prepare SII demo</button>
+                <button id="seedDemoBtn" type="button" class="secondary">Seed telemetry</button>
                 <button id="refreshBtn" type="button" class="topbar-refresh">Refresh</button>
               </div>
               <div id="demoProgressPanel" class="demo-progress-panel hidden" aria-live="polite">
@@ -98,7 +111,7 @@
             </section>
 
             <section class="panel mission-panel" aria-label="Active run visual">
-              <p class="dashboard-hero-kicker">Active run visual</p>
+              <p class="dashboard-hero-kicker">Systemic Infrastructure Intelligence</p>
               <div class="dashboard-hero-score-row">
                 <div class="dashboard-hero-health-col">
                   <div class="health-ring-wrap animated-ring" title="Composite health from risk, drift, and instability">
@@ -115,20 +128,20 @@
                 <div class="dashboard-hero-state-block">
                   <div class="dashboard-status-stack">
                     <div class="dashboard-hero-primary-status">
-                      <p class="signal-caption">System state</p>
+                      <p class="signal-caption">Structural state</p>
                       <div class="signal-main-row dashboard-state-row">
                         <p id="metricState" class="signal-state dashboard-state-primary">-</p>
                         <div id="metricPhaseBadge"></div>
                       </div>
                     </div>
                     <div class="dashboard-hero-secondary-status">
-                      <span class="signal-label">Risk</span>
+                      <span class="signal-label">Risk classification</span>
                       <div class="dashboard-risk-row">
                         <p id="metricRisk" class="signal-risk dashboard-risk-value metric-risk">-</p>
                         <div id="metricRiskBadge"></div>
                       </div>
                     </div>
-                    <p class="signal-trend dashboard-trend-line">Trend <strong id="metricTrend">-</strong></p>
+                    <p class="signal-trend dashboard-trend-line">Instability trend <strong id="metricTrend">-</strong></p>
                   </div>
                   <p class="dashboard-narrative-strip" id="dashboardNarrativeStrip">Awaiting telemetry.</p>
                   <p id="metricOperatorMessage" class="operator-message dashboard-operator-line">No results yet. Upload telemetry or use Sample data.</p>
@@ -143,20 +156,31 @@
             <aside class="panel intelligence-panel" aria-label="System intelligence">
               <div class="panel-header"><h3>System Intelligence</h3></div>
               <div class="intelligence-grid">
-                <article class="intel-metric"><p>Anomaly score</p><strong id="intelAnomalyScore">--</strong></article>
-                <article class="intel-metric"><p>Trend direction</p><strong id="intelTrendDirection">--</strong></article>
-                <article class="intel-metric"><p>Predicted degradation</p><strong id="intelDegradation">--</strong></article>
-                <article class="intel-metric"><p>System confidence</p><strong id="intelConfidence">--</strong></article>
+                <article class="intel-metric"><p>Structural coherence</p><strong id="intelAnomalyScore">--</strong></article>
+                <article class="intel-metric"><p>Instability trend</p><strong id="intelTrendDirection">--</strong></article>
+                <article class="intel-metric"><p>Pattern memory</p><strong id="intelDegradation">--</strong></article>
+                <article class="intel-metric"><p>System intelligence confidence</p><strong id="intelConfidence">--</strong></article>
               </div>
               <article class="insight-tile insight-tile-alert insight-tile-metrics-split" id="dashboardAlertTile">
                 <div class="insight-metrics-row" aria-label="Alerts and snapshot count">
-                  <div class="insight-metric-block"><p class="insight-tile-label">Events</p><p class="insight-tile-value insight-tile-value--sm" id="dashboardAlertCount">0</p></div>
-                  <div class="insight-metric-block"><p class="insight-tile-label">Snapshots</p><p class="insight-tile-value insight-tile-value--sm" id="dashboardSnapshotCount">0</p></div>
+                  <div class="insight-metric-block"><p class="insight-tile-label">Emerging events</p><p class="insight-tile-value insight-tile-value--sm" id="dashboardAlertCount">0</p></div>
+                  <div class="insight-metric-block"><p class="insight-tile-label">Pattern memory</p><p class="insight-tile-value insight-tile-value--sm" id="dashboardSnapshotCount">0</p></div>
                 </div>
                 <p class="insight-tile-sub" id="dashboardAlertSummary">No open alerts for this run.</p>
               </article>
+              <article class="recommendation-card" aria-label="Operational recommendation">
+                <div class="panel-header recommendation-head">
+                  <h4>Operational Recommendation</h4>
+                  <span id="recommendationConfidenceBadge" class="chip">Confidence --</span>
+                </div>
+                <p id="recommendationPrimary" class="recommendation-primary">Awaiting recommendation from Systemic Infrastructure Intelligence.</p>
+                <p class="recommendation-label">Why this is being surfaced</p>
+                <p id="recommendationRationale" class="subtitle">Telemetry ingestion is active but no current recommendation is available yet.</p>
+                <p class="recommendation-label">Operator note</p>
+                <p id="recommendationOperatorNote" class="subtitle">Maintain normal observation cadence until SII detects relationship drift.</p>
+              </article>
               <div class="intelligence-feed">
-                <h4>Anomalies / model outputs / recommendations</h4>
+                <h4>Pattern memory and event feed</h4>
                 <ul id="intelligenceFeedList" class="intelligence-list">
                   <li>Awaiting telemetry stream.</li>
                 </ul>
@@ -165,7 +189,7 @@
           </div>
 
           <section class="panel dashboard-signals">
-            <div class="panel-header dashboard-section-head"><h3>Live trend</h3></div>
+            <div class="panel-header dashboard-section-head"><h3>SII Timeline</h3></div>
             <div class="sparkline-wrap">
               <div class="sparkline-canvas-wrap">
                 <canvas id="dashboardSparkline" width="900" height="140" aria-label="Drift and composite trend"></canvas>
@@ -175,8 +199,11 @@
           </section>
 
           <section class="panel geometry-showcase" aria-label="Structural Geometry">
-            <div class="panel-header"><h3>Structural Geometry</h3></div>
-            <p id="dashboardGeometryState" class="subtitle">Geometry not available for this snapshot.</p>
+            <div class="panel-header">
+              <h3>SII Structural View</h3>
+              <p class="subtitle">Infrastructure State Geometry and system relationship topology for the active run.</p>
+            </div>
+            <p id="dashboardGeometryState" class="subtitle">Infrastructure State Geometry is not available for this snapshot.</p>
           </section>
 
           <details class="panel disclosure-panel results-panel" id="dashboardResultsDisclosure">
@@ -190,7 +217,7 @@
             </div>
             <div id="dashboardEmpty" class="empty-state hidden">
               <p>No results for the active run yet.</p>
-              <p class="subtitle">Use <strong>Run demo</strong>, <strong>Upload</strong>, or <strong>Sample data</strong> to begin.</p>
+              <p class="subtitle">Use <strong>Prepare SII demo</strong>, <strong>Upload</strong>, or <strong>Seed telemetry</strong> to begin.</p>
             </div>
             <div class="table-wrap">
               <table class="data-table dashboard-results-table">
