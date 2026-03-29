@@ -6407,9 +6407,10 @@ function updateActiveRunHeader(run) {
   const idEl = qs("#activeRunId");
   const pillEl = qs("#activeRunStatusPill");
   const topbarRunId = qs("#topbarActiveRunId");
+  const normalizedTopbarRunId = String(run?.run_id || "").replace(/^run_/i, "");
   if (nameEl) nameEl.textContent = run?.name || "No active run";
   if (idEl) idEl.textContent = run?.run_id || "-";
-  if (topbarRunId) topbarRunId.textContent = run?.run_id || "--";
+  if (topbarRunId) topbarRunId.textContent = normalizedTopbarRunId || "--";
   if (pillEl) {
     if (!run) {
       pillEl.textContent = "—";
