@@ -52,19 +52,6 @@ async function wireEvents() {
     }
   });
 
-  qs("#seedDemoBtn")?.addEventListener("click", async () => {
-    try {
-      setLoading(true, "Preparing historical validation replay...");
-      const out = await seedDemoData();
-      const cid = encodeURIComponent(customerIdValue(state.tenant.customerId));
-      window.location.href = `/app/runs/${encodeURIComponent(out.run_id)}?customer_id=${cid}&replay=1&from=validation`;
-    } catch (err) {
-      setStatus(String(err.message || err), true, true);
-    } finally {
-      setLoading(false);
-    }
-  });
-
   qs("#runCreateForm")?.addEventListener("submit", async (e) => {
     e.preventDefault();
     try {
@@ -263,25 +250,11 @@ async function init() {
     } catch (_e) {
       // no-op
     }
-    let sharedDemoPrep = false;
-    if (demoQs.shouldAutoPrepare && !state.demo.preparing && state.runs.length === 0) {
-      sharedDemoPrep = true;
-      try {
-        setLoading(true, "Preparing replay runs (shared link)…");
-        await toggleDemoMode(true);
-        const focusRun = await prepareDemoRuns({ mode: "all" });
-        await refreshCurrentPage();
-        if (focusRun?.run_id) {
-          const cid = encodeURIComponent(customerIdValue(state.tenant.customerId));
-          window.location.href = `/app/runs/${encodeURIComponent(focusRun.run_id)}?customer_id=${cid}&replay=1&autoplay=1&from=validation`;
-          return;
-        }
-        setStatus("Reference replay runs ready — pick a run from the list.", false, true);
-      } catch (err) {
-        setStatus(String(err.message || err), true, true);
-      }
-    }
-    if (!sharedDemoPrep) setStatus("");
+    const startupHandled = await handleValidationStartupBehavior({
+      demoQuery: demoQs,
+      refreshCurrentPage,
+    });
+    if (!startupHandled) setStatus("");
   } catch (err) {
     setStatus(String(err.message || err), true, true);
   } finally {
