@@ -17,6 +17,7 @@ def build_health_router(
     persistence_available: bool,
     app_version: str,
     resolve_customer_id,
+    runtime_state_diagnostics_provider,
     health_response_model,
     client_error_model,
 ) -> APIRouter:
@@ -39,6 +40,7 @@ def build_health_router(
             core_runtime_mode="degraded" if runtime_fallback else "full",
             core_runtime_fallback=runtime_fallback,
             core_runtime_notes=[str(x) for x in runtime_status.get("notes", [])],
+            runtime_state_diagnostics=runtime_state_diagnostics_provider(),
         )
 
     @router.post("/client-errors", status_code=status.HTTP_204_NO_CONTENT)
