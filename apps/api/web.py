@@ -55,4 +55,9 @@ def build_web_router() -> APIRouter:
         """Entry point for share links; client redirects to dashboard with demo query flags."""
         return FileResponse(index_file)
 
+    @router.get("/demo/full", include_in_schema=False)
+    def web_demo_full_entry() -> FileResponse:
+        """Full product demo entry; client normalizes to dashboard demo flow and opens run detail."""
+        return FileResponse(index_file)
+
     return router
