@@ -169,6 +169,38 @@ function setupRunDetailProgressiveHydration(runId) {
     const el = qs(`#${id}`);
     if (el) observer.observe(el);
   });
+  const intentHydrate = (section) => {
+    if (section === "trends" && !state.ui.runDetailHydratedSections.trends) {
+      state.ui.runDetailHydratedSections.trends = true;
+      ensureChartJsLoaded()
+        .then(() => scheduleDeferredRunDetailPaint())
+        .catch((err) => setStatus(String(err.message || err), true, true));
+    }
+    if (section === "results" && !state.ui.runDetailHydratedSections.results) {
+      state.ui.runDetailHydratedSections.results = true;
+      scheduleDeferredRunDetailPaint();
+      scheduleHeavyWork(() => {
+        loadRunDetailBackgroundHistory(runId).catch(() => {
+          /* best effort */
+        });
+      });
+    }
+    if (section === "geometry" && !state.ui.runDetailHydratedSections.geometry) {
+      state.ui.runDetailHydratedSections.geometry = true;
+      const resultId = state.runRecent[0]?.result_id ?? null;
+      scheduleHeavyWork(() => {
+        loadRunGeometry(runId, resultId).catch(() => {
+          setGeometrySurfaceState("Structural view is unavailable for the current snapshot.", "error");
+        });
+      });
+    }
+  };
+  qs("#analysis-trends")?.addEventListener("pointerdown", () => intentHydrate("trends"), { once: true });
+  qs("#analysis-results")?.addEventListener("pointerdown", () => intentHydrate("results"), { once: true });
+  qs("#analysis-geometry")?.addEventListener("pointerdown", () => intentHydrate("geometry"), { once: true });
+  qs("#analysis-trends")?.addEventListener("focusin", () => intentHydrate("trends"), { once: true });
+  qs("#analysis-results")?.addEventListener("focusin", () => intentHydrate("results"), { once: true });
+  qs("#analysis-geometry")?.addEventListener("focusin", () => intentHydrate("geometry"), { once: true });
 }
 
 function setTrendPlaybackCursorMarker(idx, lengthHint = 0) {
@@ -347,44 +379,6 @@ function setRangeButtonState(rangeValue) {
   });
 }
 
-function renderRunCurrentStateGauges(latest) {
-  const card = qs("#runCurrentStateCard");
-  if (!card) return;
-  if (!latest) {
-    card.classList.add("hidden");
-    return;
-  }
-  card.classList.remove("hidden");
-  const drift = structuralDriftFromResult(latest);
-  const inst = compositeInstabilityFromResult(latest);
-  const risk = normalizeRiskLevel(latest.risk_level);
-  const health = healthScoreFromSignals(latest);
-  const driftFill = qs("#gaugeDriftFill");
-  const instFill = qs("#gaugeInstFill");
-  const riskFill = qs("#gaugeRiskFill");
-  const healthFill = qs("#gaugeHealthFill");
-  const toPct = (val, cap) => {
-    if (typeof val !== "number" || !Number.isFinite(val)) return 0;
-    return Math.max(0, Math.min(100, (val / cap) * 100));
-  };
-  if (driftFill) driftFill.style.width = `${toPct(drift, 2.5)}%`;
-  if (instFill) instFill.style.width = `${toPct(inst, 2.5)}%`;
-  if (riskFill) {
-    const rp = risk === "HIGH" ? 92 : risk === "MEDIUM" ? 58 : risk === "LOW" ? 24 : 38;
-    riskFill.style.width = `${rp}%`;
-  }
-  if (healthFill) healthFill.style.width = `${typeof health === "number" ? Math.max(0, Math.min(100, health)) : 0}%`;
-  const dv = qs("#gaugeDriftVal");
-  const iv = qs("#gaugeInstVal");
-  const rv = qs("#gaugeRiskVal");
-  const hv = qs("#gaugeHealthVal");
-  if (dv) dv.textContent = typeof drift === "number" ? drift.toFixed(2) : "—";
-  if (iv) iv.textContent = typeof inst === "number" ? inst.toFixed(2) : "—";
-  if (rv) rv.textContent = risk;
-  if (hv) hv.textContent = typeof health === "number" ? String(health) : "—";
-  card.setAttribute("data-risk", risk);
-}
-
 function currentRangeSlice(resultsChronological) {
   const range = state.runDetailView.range;
   if (range === "all") return resultsChronological.slice();
@@ -427,6 +421,10 @@ function renderRunDetailFromState(opts = {}) {
   const deferHeavy = Boolean(opts.deferHeavy);
   const trendsHydrated = !deferHeavy || Boolean(state.ui.runDetailHydratedSections.trends);
   const resultsHydrated = !deferHeavy || Boolean(state.ui.runDetailHydratedSections.results);
+  const geometryHydrated = !deferHeavy || Boolean(state.ui.runDetailHydratedSections.geometry);
+  qs("#runTrendsDeferredHint")?.classList.toggle("hidden", trendsHydrated);
+  qs("#runResultsDeferredHint")?.classList.toggle("hidden", resultsHydrated);
+  qs("#runGeometryDeferredHint")?.classList.toggle("hidden", geometryHydrated);
   setFlowModeButtonState();
   const hasResults = state.runRecent.length > 0;
   const latestResult = hasResults ? state.runRecent[0] : null;
@@ -523,7 +521,11 @@ async function loadRunDetail(runId) {
     state.demo.seedRunId = String(runId);
     beginReplayStatusMonitoring(runId);
   }
-  const runRes = await fetchJson(apiUrl(`/runs/${encodeURIComponent(runId)}`, tenantScopeParams()));
+  const runReq = fetchJson(apiUrl(`/runs/${encodeURIComponent(runId)}`, tenantScopeParams()));
+  const recentReq = fetchRecentResults({ run_id: runId, limit: RUN_DETAIL_INITIAL_LIMIT });
+  state.runRecent = [];
+  renderRunDetailFromState({ deferHeavy: true });
+  const [runRes, recentEnv] = await Promise.all([runReq, recentReq]);
   const run = runRes.run;
   const title = qs("#runDetailTitle");
   const meta = qs("#runDetailMeta");
@@ -531,7 +533,6 @@ async function loadRunDetail(runId) {
   const runTruth = buildFrontendUiState(null);
   const workspaceLabel = runTruth.mode === "validation" ? "validation replay workspace" : "pilot telemetry workspace";
   if (meta) meta.textContent = `Run ${run.run_id} · ${workspaceLabel} · created ${run.created_at}`;
-  const recentEnv = await fetchRecentResults({ run_id: runId, limit: RUN_DETAIL_INITIAL_LIMIT });
   state.runRecent = Array.isArray(recentEnv?.results) ? recentEnv.results : [];
   if (state.demo.enabled) {
     if (state.demo.activeRunId !== runId) {
@@ -573,6 +574,59 @@ async function loadRunDetail(runId) {
   const exportCsv = qs("#runDetailExportCsvBtn");
   if (exportJson) exportJson.onclick = () => exportData("json", runId);
   if (exportCsv) exportCsv.onclick = () => exportData("csv", runId);
+}
+
+function wireRunDetailEvents() {
+  if (qs("#analysis-executive")?.dataset.wired === "1") return;
+  const marker = qs("#analysis-executive");
+  if (marker) marker.dataset.wired = "1";
+  const flowSpeedSelect = qs("#flowPlaybackSpeedSelect");
+  if (flowSpeedSelect) flowSpeedSelect.value = String(state.runDetailView.flowPlaybackSpeed || 1);
+  const flowHistoryToggle = qs("#flowHistoryToggle");
+  if (flowHistoryToggle) flowHistoryToggle.checked = Boolean(state.runDetailView.flowHistoryEnabled);
+  qsa("[data-flow-mode]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      state.runDetailView.flowPlaybackMode = String(btn.getAttribute("data-flow-mode") || "live");
+      const tf = state.geometry3d.temporalFlow || (state.geometry3d.temporalFlow = {});
+      if (state.runDetailView.flowPlaybackMode === "replay") {
+        tf.localTimeSec = 0;
+        tf.historyCentroid = [];
+        tf.historyDriftTip = [];
+        tf.historyContact = [];
+        tf.contactPersistence = 0;
+      }
+      setFlowModeButtonState();
+    });
+  });
+  qs("#flowPlaybackSpeedSelect")?.addEventListener("change", (e) => {
+    const next = Number.parseFloat(String(e.target?.value || "1"));
+    state.runDetailView.flowPlaybackSpeed = Number.isFinite(next) && next > 0 ? next : 1;
+  });
+  qs("#flowHistoryToggle")?.addEventListener("change", (e) => {
+    state.runDetailView.flowHistoryEnabled = Boolean(e.target?.checked);
+  });
+  qs("#runResultsSearchInput")?.addEventListener("input", (e) => {
+    state.runDetailView.search = String(e.target.value || "");
+    renderRunDetailFromState();
+  });
+  qs("#runResultsSortSelect")?.addEventListener("change", (e) => {
+    state.runDetailView.sort = String(e.target.value || "timestamp_desc");
+    renderRunDetailFromState();
+  });
+  qsa("#runRangeControls [data-range]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const range = String(btn.getAttribute("data-range") || "200");
+      state.runDetailView.range = range;
+      setRangeButtonState(range);
+      renderRunDetailFromState();
+    });
+  });
+  qs("#demoPlayPauseBtn")?.addEventListener("click", () => {
+    toggleDemoPlayback();
+  });
+  qs("#demoReplayBtn")?.addEventListener("click", () => {
+    replayDemoTimeline();
+  });
 }
 
 async function loadResultDetail(resultId) {

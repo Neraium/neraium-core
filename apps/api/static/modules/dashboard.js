@@ -1189,6 +1189,10 @@ const state = {
     runDetailDeferredPaint: null,
     runDetailBackgroundHistoryPending: false,
     runDetailBackgroundHistoryLoaded: false,
+    loadRunsPromise: null,
+    loadDashboardPromise: null,
+    recentResultsCache: new Map(),
+    recentResultsInflight: new Map(),
   },
   runtimeDegraded: false,
 };
@@ -1218,8 +1222,8 @@ const GEOMETRY_FLOW_PERF_KEY = "neraium_structural_flow_perf";
 /** Origin marker + debug visuals for structural flow. `true` always shows the marker; when `false`, use URL `?geomDebug=1` instead. */
 const DEBUG_GEOMETRY = false;
 
-const DASHBOARD_RECENT_LIMIT = 12;
-const RUN_DETAIL_INITIAL_LIMIT = 96;
+const DASHBOARD_RECENT_LIMIT = 1;
+const RUN_DETAIL_INITIAL_LIMIT = 24;
 const RUN_DETAIL_BACKGROUND_LIMIT = 1000;
 let chartJsLoadPromise = null;
 
@@ -1716,16 +1720,27 @@ function filteredSortedRuns() {
 }
 
 async function loadRuns() {
+  if (state.ui.loadRunsPromise) return state.ui.loadRunsPromise;
+  state.ui.loadRunsPromise = (async () => {
   const runsEnv = await fetchJson(apiUrl("/runs", tenantScopeParams({ limit: 500 })));
   state.runs = runsEnv.runs || [];
   collectKnownSites(state.runs);
   if (runsEnv.active_run) {
     updateActiveRunHeader(runsEnv.active_run);
+  } else if (state.runs.length > 0) {
+    updateActiveRunHeader(state.runs.find((run) => run.is_active) || null);
   } else {
-    updateActiveRunHeader(null);
+    const created = await ensureActiveRun();
+    updateActiveRunHeader(created || null);
   }
   renderTenantControls();
   renderRunsList();
+  })();
+  try {
+    await state.ui.loadRunsPromise;
+  } finally {
+    state.ui.loadRunsPromise = null;
+  }
 }
 
 function renderRunsList() {
@@ -2037,6 +2052,8 @@ function renderDashboardRecent(results) {
 }
 
 async function loadDashboard() {
+  if (state.ui.loadDashboardPromise) return state.ui.loadDashboardPromise;
+  state.ui.loadDashboardPromise = (async () => {
   const runId = state.activeRun?.run_id || "";
   const [recentEnv, alertsEnv] = await Promise.all([
     fetchRecentResults({ run_id: runId, limit: DASHBOARD_RECENT_LIMIT }),
@@ -2061,4 +2078,10 @@ async function loadDashboard() {
     paint();
     state.ui.dashboardPaint = null;
   });
+  })();
+  try {
+    await state.ui.loadDashboardPromise;
+  } finally {
+    state.ui.loadDashboardPromise = null;
+  }
 }

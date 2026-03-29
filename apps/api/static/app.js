@@ -4,7 +4,31 @@ const { deriveFrontendState, getRunModeDisplay, getAnalysisStatusDisplay, getLas
 
 async function fetchRecentResults(params) {
   const recentParams = tenantScopeParams({ ...(params || {}), compact: 1 });
-  const env = await fetchJson(apiUrl("/runs", recentParams));
+  const cacheKey = JSON.stringify(recentParams);
+  const now = Date.now();
+  const cached = state?.ui?.recentResultsCache?.get(cacheKey);
+  if (cached && now - cached.ts < 2000) {
+    return cached.value;
+  }
+  if (state?.ui?.recentResultsInflight?.has(cacheKey)) {
+    return state.ui.recentResultsInflight.get(cacheKey);
+  }
+  const request = fetchJson(apiUrl("/runs", recentParams)).then((env) => {
+    const normalized =
+      env && Array.isArray(env.results)
+        ? env
+        : env && Array.isArray(env.runs)
+          ? { latest: null, count: env.runs.length, results: [] }
+          : { latest: null, count: 0, results: [] };
+    if (state?.ui?.recentResultsCache) {
+      state.ui.recentResultsCache.set(cacheKey, { ts: Date.now(), value: normalized });
+    }
+    return normalized;
+  }).finally(() => {
+    state?.ui?.recentResultsInflight?.delete(cacheKey);
+  });
+  state?.ui?.recentResultsInflight?.set(cacheKey, request);
+  const env = await request;
   if (env && Array.isArray(env.results)) return env;
   if (env && Array.isArray(env.runs)) return { latest: null, count: env.runs.length, results: [] };
   return { latest: null, count: 0, results: [] };
