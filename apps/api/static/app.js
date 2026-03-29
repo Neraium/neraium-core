@@ -6129,7 +6129,7 @@ function setPage(page) {
   const titles = {
     dashboard: ["Pilot Operations Dashboard", "Current system state, severity, and next operator action"],
     upload: ["Upload / Ingest", "Upload telemetry CSV into the active run"],
-    runs: ["Runs / Analysis", "Create, inspect, and activate runs"],
+    runs: ["Active Runs", "Operational run list and entry point into analysis"],
     validation: ["Validation", "Reference replay and historical validation scenarios"],
     "run-detail": ["Run Analysis Workspace", "Structural intelligence analysis: context, geometry, trends, and history"],
     "result-detail": ["Result Detail", "Focused view for a single result"],
@@ -6149,32 +6149,12 @@ function setPage(page) {
   if (page === "validation") qs('[data-nav="validation"]')?.classList.add("active");
 }
 
-function activateAnalysisWorkspaceTab(tabName = "executive") {
-  const target = String(tabName || "executive");
-  qsa("[data-analysis-tab]").forEach((btn) => {
-    const active = btn.getAttribute("data-analysis-tab") === target;
-    btn.classList.toggle("active", active);
-  });
+function activateAnalysisWorkspaceTab(_tabName = "executive") {
+  // Workspace tabs removed in coherence cleanup; retained as compatibility no-op.
 }
 
 function initAnalysisWorkspaceTabs() {
-  const tabs = qsa("[data-analysis-tab]");
-  if (!tabs.length) return;
-  tabs.forEach((tab) => {
-    tab.addEventListener("click", (event) => {
-      const target = tab.getAttribute("data-analysis-tab") || "executive";
-      activateAnalysisWorkspaceTab(target);
-      const href = tab.getAttribute("href");
-      if (href && href.startsWith("#")) {
-        const section = qs(href);
-        if (section) {
-          event.preventDefault();
-          section.scrollIntoView({ behavior: "smooth", block: "start" });
-        }
-      }
-    });
-  });
-  activateAnalysisWorkspaceTab("executive");
+  // Workspace tabs removed in coherence cleanup; retained as compatibility no-op.
 }
 
 function renderRunDetailHeaderContext(run, latest) {
@@ -6186,15 +6166,15 @@ function renderRunDetailHeaderContext(run, latest) {
   const risk = normalizeRiskLevel(latest?.risk_level);
   const recommendation = String(latest?.operator_message || "").trim();
   const ts = latest?.timestamp || latest?.persisted_at || latest?.created_at || "";
-  if (modeEl) modeEl.textContent = isReplay ? "Validation replay" : "Pilot telemetry";
+  if (modeEl) modeEl.textContent = isReplay ? "Validation reference workflow" : "Pilot telemetry monitoring";
   if (statusEl) {
-    if (!latest) statusEl.textContent = isReplay ? "Historical validation" : "Waiting for telemetry";
-    else statusEl.textContent = isReplay ? "Replay active" : "Active monitoring";
+    if (!latest) statusEl.textContent = isReplay ? "Ready for historical replay" : "No telemetry in active run";
+    else statusEl.textContent = isReplay ? "Historical replay loaded" : "Live monitoring active";
   }
   if (updateEl) updateEl.textContent = ts ? String(ts) : "No data yet";
   if (recEl) {
     if (!latest) recEl.textContent = isReplay
-      ? "Validation replay ready. Start NASA CMAPSS playback when ready."
+      ? "Validation workspace ready. Start NASA CMAPSS FD004 replay when ready."
       : "Upload telemetry to begin structural analysis.";
     else if (recommendation) recEl.textContent = recommendation;
     else recEl.textContent = risk === "HIGH"
