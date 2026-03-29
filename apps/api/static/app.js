@@ -1002,7 +1002,7 @@ function replayDemoTimeline() {
 
 async function toggleDemoMode(enabled) {
   state.demo.enabled = !!enabled;
-  setConnectionStatus(state.demo.enabled ? "REPLAY" : state.activeRun?.is_active ? "LIVE" : "OFFLINE");
+  setConnectionStatus(deriveOperationalStatus());
   persistDemoMode();
   if (!state.demo.enabled) {
     stopDemoPlayback();
@@ -1911,7 +1911,7 @@ function renderTenantControls() {
   const seedDemoBtn = qs("#seedDemoBtn");
   if (seedDemoBtn) {
     seedDemoBtn.disabled = state.demo.preparing;
-    seedDemoBtn.textContent = state.demo.preparing ? "Preparing reference replay…" : "Run NASA CMAPSS FD004 Reference Replay";
+    seedDemoBtn.textContent = state.demo.preparing ? "Preparing reference replay…" : "Reference Replay: NASA CMAPSS FD004";
   }
   if (siteList) {
     siteList.innerHTML = state.tenant.knownSites
@@ -5975,12 +5975,31 @@ function createToast(message, type = "success") {
 function setConnectionStatus(mode = "LIVE") {
   const badge = qs("#connectionBadge");
   const label = qs("#connectionLabel");
-  state.ui.connection = mode;
-  if (label) label.textContent = mode;
+  const normalized = String(mode || "NO DATA INGESTED").toUpperCase();
+  state.ui.connection = normalized;
+  if (label) label.textContent = normalized;
   if (badge) {
     badge.classList.remove("chip-live", "chip-demo", "chip-offline");
-    badge.classList.add(mode === "DEMO" || mode === "REPLAY" ? "chip-demo" : mode === "OFFLINE" ? "chip-offline" : "chip-live");
+    if (normalized === "ALERT ACTIVE") {
+      badge.classList.add("chip-offline");
+    } else if (normalized === "ACTIVE MONITORING") {
+      badge.classList.add("chip-live");
+    } else {
+      badge.classList.add("chip-demo");
+    }
   }
+}
+
+function deriveOperationalStatus({ latest = null, isError = false } = {}) {
+  if (isError) return "WAITING FOR TELEMETRY";
+  const alertStatus = state.dashboardCurrentAlertStatus || (latest && latest.alert_status) || null;
+  const alertState = String(alertStatus?.state || alertStatus?.alert_state || "").toUpperCase();
+  const hasActiveAlert = Boolean(alertStatus?.alert_active) || alertState === "ESCALATED" || alertState === "PENDING_ALERT";
+  if (hasActiveAlert) return "ALERT ACTIVE";
+  const hasTelemetry = Boolean(latest) || (Array.isArray(state.dashboardRecent) && state.dashboardRecent.length > 0);
+  if (hasTelemetry) return "ACTIVE MONITORING";
+  if (state.activeRun?.run_id) return "WAITING FOR TELEMETRY";
+  return "NO DATA INGESTED";
 }
 
 function setStreamingIndicator(active, text = "Streaming") {
@@ -6053,7 +6072,7 @@ function setStatus(message = "", isError = false, showToast = false) {
   if (!message) {
     el.className = "status hidden";
     el.textContent = "";
-    if (rail) rail.textContent = "Operational workspace ready. Reference replay available.";
+    if (rail) rail.textContent = "Pilot operations workspace ready. Upload telemetry to start monitoring.";
     return;
   }
   const cleanMessage = isError ? friendlyErrorMessage(message) : String(message);
@@ -6061,7 +6080,7 @@ function setStatus(message = "", isError = false, showToast = false) {
   el.textContent = cleanMessage;
   el.classList.remove("hidden");
   if (rail) rail.textContent = cleanMessage;
-  setConnectionStatus(isError ? "OFFLINE" : state.demo.enabled ? "REPLAY" : "LIVE");
+  setConnectionStatus(deriveOperationalStatus({ isError }));
   if (showToast) {
     createToast(cleanMessage, isError ? "error" : "success");
   }
@@ -6314,7 +6333,7 @@ function updateActiveRunHeader(run) {
     window.localStorage.setItem("active_run_id", run.run_id);
   }
   updateUploadRunInfo();
-  setConnectionStatus(state.demo.enabled ? "REPLAY" : run?.is_active ? "LIVE" : "OFFLINE");
+  setConnectionStatus(deriveOperationalStatus());
 }
 
 function sortRuns(runs, mode) {
@@ -6419,7 +6438,9 @@ function renderDashboardMetrics(latest, prev) {
   const metricTrend = qs("#metricTrend");
   const metricRisk = qs("#metricRisk");
   const metricState = qs("#metricState");
+  const metricStateConfidence = qs("#metricStateConfidence");
   const metricOperator = qs("#metricOperatorMessage");
+  const healthCaption = qs("#dashboardHealthCaption");
   const metricRiskBadge = qs("#metricRiskBadge");
   const metricPhaseBadge = qs("#metricPhaseBadge");
   const intelAnomaly = qs("#intelAnomalyScore");
@@ -6432,10 +6453,12 @@ function renderDashboardMetrics(latest, prev) {
   const recommendationRationale = qs("#recommendationRationale");
   const recommendationOperatorNote = qs("#recommendationOperatorNote");
   const recommendationConfidenceBadge = qs("#recommendationConfidenceBadge");
+  const nextActionEl = qs("#dashboardNextAction");
 
   if (metricTrend) metricTrend.textContent = toPretty(trendFromResult(latest));
   if (metricRisk) metricRisk.textContent = toPretty(latest?.risk_level);
   if (metricState) metricState.textContent = toPretty(latest?.state || latest?.interpreted_state);
+  setConnectionStatus(deriveOperationalStatus({ latest }));
   const operatorSummary = demoFriendlyOperatorMessage(latest, prev);
   if (metricOperator) metricOperator.textContent = operatorSummary;
   if (metricRiskBadge) metricRiskBadge.innerHTML = riskBadgeHtml(latest?.risk_level);
@@ -6461,6 +6484,9 @@ function renderDashboardMetrics(latest, prev) {
   const score = healthScoreFromSignals(latest);
   if (score !== null) {
     animateNumberText(qs("#dashboardHealthScore"), score, { decimals: 0 });
+    if (healthCaption) healthCaption.textContent = `${normalizeRiskLevel(latest?.risk_level)} risk`;
+  } else if (healthCaption) {
+    healthCaption.textContent = "No telemetry";
   }
   if (intelAnomaly) {
     const drift = structuralDriftFromResult(latest) ?? 0;
@@ -6476,6 +6502,9 @@ function renderDashboardMetrics(latest, prev) {
   if (intelConfidence) {
     const conf = latest ? (latest.structural_analysis_available ? 92 : 74) : 0;
     animateNumberText(intelConfidence, conf, { decimals: 0, suffix: "%" });
+    if (metricStateConfidence) metricStateConfidence.textContent = `${conf}%`;
+  } else if (metricStateConfidence) {
+    metricStateConfidence.textContent = "--%";
   }
   if (intelFeed) {
     const alerts = (state.dashboardAlerts || []).slice(0, 3);
@@ -6520,6 +6549,17 @@ function renderDashboardMetrics(latest, prev) {
     if (recommendationRationale) recommendationRationale.textContent = rationaleText;
     if (recommendationOperatorNote) recommendationOperatorNote.textContent = operatorNoteText;
     if (recommendationConfidenceBadge) recommendationConfidenceBadge.textContent = `Confidence ${confidence}%`;
+    if (nextActionEl) {
+      if (!latest) {
+        nextActionEl.textContent = "Upload telemetry to begin analysis.";
+      } else if (risk === "HIGH") {
+        nextActionEl.textContent = "Active alert requires acknowledgement and targeted inspection.";
+      } else if (risk === "MEDIUM") {
+        nextActionEl.textContent = "Maintain elevated watch and verify incoming telemetry quality.";
+      } else {
+        nextActionEl.textContent = "System stable — monitoring continues.";
+      }
+    }
   }
   const lu = qs("#dashboardLastUpdated");
   if (lu) {
