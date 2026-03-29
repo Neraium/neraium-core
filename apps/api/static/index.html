@@ -74,19 +74,7 @@
       <main class="content">
         <!-- DASHBOARD -->
         <section id="page-dashboard" class="page page-dashboard">
-          <section class="panel sii-hero" aria-label="Systemic Infrastructure Intelligence framing">
-            <div class="sii-hero-copy">
-              <p class="sii-hero-kicker">Pilot Operations</p>
-              <h3>Current System State</h3>
-              <p class="subtitle">Operational home screen for live system state, severity, and immediate operator direction.</p>
-            </div>
-            <div class="sii-hero-tags" aria-label="SII core signals">
-              <span class="chip">System state</span>
-              <span class="chip">Risk level</span>
-              <span class="chip">Trend</span>
-              <span class="chip">Confidence</span>
-            </div>
-          </section>
+          
 
           <section class="panel operational-snapshot" aria-label="Top operational summary">
             <div class="panel-header"><h3>Operational Snapshot</h3></div>
@@ -109,29 +97,7 @@
           </section>
 
           <div class="dashboard-grid-v2">
-            <section class="panel operations-decision-panel" aria-label="Alert and recommendation">
-              <div class="panel-header"><h3>Alert &amp; Recommendation</h3></div>
-              <div class="decision-grid" role="list" aria-label="Severity and action guidance">
-                <article class="decision-item" role="listitem">
-                  <p class="recommendation-label">Alert Status</p>
-                  <p id="snapshotAlertStatus" class="decision-value">No active alert</p>
-                </article>
-                <article class="decision-item" role="listitem">
-                  <p class="recommendation-label">Data Freshness</p>
-                  <p id="snapshotFreshness" class="decision-value">No telemetry ingested yet</p>
-                </article>
-                <article class="decision-item" role="listitem">
-                  <p class="recommendation-label">Recommended Action</p>
-                  <p id="recommendationPrimary" class="decision-value">Upload fresh telemetry to resume monitoring.</p>
-                  <p id="recommendationRationale" class="subtitle">Recommendation rationale will appear after telemetry ingest.</p>
-                </article>
-                <article class="decision-item" role="listitem">
-                  <p class="recommendation-label">Next Operator Step</p>
-                  <p id="dashboardNextAction" class="decision-value">Upload telemetry to begin monitoring.</p>
-                  <p id="dashboardLastUpdated" class="subtitle">No recent update available. Refresh the active run or ingest new telemetry.</p>
-                </article>
-              </div>
-            </section>
+            
 
             <section class="panel control-panel" aria-label="Pilot operations controls">
               <div class="panel-header"><h3>Primary Pilot Workflow</h3></div>
@@ -306,13 +272,7 @@
               </div>
             </section>
             <p class="subtitle analysis-intent">Structural intelligence workspace for current state, recommendation rationale, geometry, trend timeline, and historical results.</p>
-            <nav id="analysisWorkspaceTabs" class="analysis-map" aria-label="Jump to analysis sections">
-              <a class="analysis-tab active" data-analysis-tab="executive" href="#analysis-executive">Current analysis summary</a>
-              <a class="analysis-tab" data-analysis-tab="context" href="#analysis-context">Recommendation context</a>
-              <a class="analysis-tab" data-analysis-tab="geometry" href="#analysis-geometry">Structural geometry</a>
-              <a class="analysis-tab" data-analysis-tab="trends" href="#analysis-trends">Trend & timeline</a>
-              <a class="analysis-tab" data-analysis-tab="results" href="#analysis-results">Results / history / export</a>
-            </nav>
+            
             <div id="runSignalSeparation" class="signal-separation hidden">
               <article class="signal-card state">
                 <span class="k">State</span>
@@ -341,7 +301,7 @@
             </div>
             <section id="runCurrentStateCard" class="run-current-state hidden" aria-label="Current snapshot metrics">
               <div class="run-current-state-head">
-                <strong>Current analysis summary</strong>
+                <strong>Operator analysis summary</strong>
                 <span class="subtitle">Current state, risk, trend, and confidence from the latest structural snapshot</span>
               </div>
               <div class="run-current-state-grid">
@@ -412,7 +372,7 @@
 
           <section id="analysis-trends" class="panel analysis-workspace-section" data-analysis-panel="trends">
             <div class="panel-header">
-              <h3>Trend / Timeline Workspace</h3>
+              <h3>Trend and timeline</h3>
               <div id="runRangeControls" class="range-controls">
                 <button type="button" data-range="50">Last 50</button>
                 <button type="button" data-range="200" class="active">Last 200</button>
@@ -433,7 +393,7 @@
 
           <section id="analysis-geometry" class="panel geometry-panel analysis-workspace-section" data-analysis-panel="geometry">
             <div class="panel-header">
-              <h3>Structural Geometry Workspace</h3>
+              <h3>Structural geometry</h3>
               <p id="geometryFlowSubtitle" class="subtitle geometry-subtitle">
                 Structural relationship geometry for the active run snapshot.
               </p>
@@ -449,8 +409,8 @@
             </p>
             <div class="geometry-flow-playback" aria-label="Structural flow playback controls">
               <div class="geometry-flow-playback__modes" role="group" aria-label="Playback mode">
-                <button type="button" id="flowModeLiveBtn" class="flow-mode-btn active" data-flow-mode="live">Live</button>
-                <button type="button" id="flowModeReplayBtn" class="flow-mode-btn" data-flow-mode="replay">Replay window</button>
+                <button type="button" id="flowModeLiveBtn" class="flow-mode-btn active" data-flow-mode="live">Current snapshot</button>
+                <button type="button" id="flowModeReplayBtn" class="flow-mode-btn" data-flow-mode="replay">Historical window</button>
               </div>
               <label class="geometry-flow-playback__speed">
                 <span>Speed</span>
@@ -595,19 +555,13 @@
             </div>
           </section>
 
-          <section class="panel">
-            <h3>State / risk timeline</h3>
-            <div id="phaseTimeline" class="timeline"></div>
-          </section>
+          
 
-          <section class="panel">
-            <h3>Operator messages</h3>
-            <ul id="operatorMessagesList" class="messages"></ul>
-          </section>
+          
 
           <section id="analysis-results" class="panel analysis-workspace-section" data-analysis-panel="results">
             <div class="panel-header">
-              <h3>Results table · history and export</h3>
+              <h3>Results history and export</h3>
             </div>
             <div class="row wrap filters">
               <input id="runResultsSearchInput" placeholder="Filter by message, phase, risk, state..." />
@@ -653,9 +607,9 @@
             <div class="panel-header">
               <h3>Validation Workspace</h3>
             </div>
-            <p class="subtitle">Use this secondary workspace for NASA CMAPSS FD004 reference replay and historical validation scenarios. Pilot operations remain in Dashboard, Upload, and Runs.</p>
+            <p class="subtitle">Secondary workflow for NASA CMAPSS FD004 reference replay and historical validation. Core pilot operations stay in Dashboard, Upload Telemetry, and Active Runs.</p>
             <div class="control-stack" role="group" aria-label="Validation actions">
-              <button id="seedDemoBtn" type="button" class="secondary demo-primary-btn">Run NASA CMAPSS FD004 Reference Replay</button>
+              <button id="seedDemoBtn" type="button" class="secondary demo-primary-btn">Start NASA CMAPSS FD004 Reference Replay</button>
               <a class="button-link secondary" href="/app/runs">Open Runs / Analysis</a>
             </div>
             <div id="demoProgressPanel" class="demo-progress-panel hidden" aria-live="polite">
