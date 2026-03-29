@@ -212,6 +212,23 @@ def test_dashboard_demo_seeding_uses_single_backend_seed_job_flow(tmp_path) -> N
     seed_block = source.split("async function seedDemoData()", 1)[1].split("function destroyCharts()", 1)[0]
     assert "startCmapssDemo(" in seed_block
     assert "postDemoSeedWithRetry(" not in seed_block
+    assert "launchInFlight" in seed_block
+    assert "beginReplayStatusMonitoring(" in seed_block
+
+
+def test_dashboard_demo_replay_status_state_machine_and_polling_present(tmp_path) -> None:
+    client = _client(tmp_path)
+    js = client.get("/web/app.js")
+    assert js.status_code == 200
+    source = js.text
+    assert "const DEMO_UI_STATES = Object.freeze" in source
+    for token in ['idle: "idle"', 'starting: "starting"', 'running: "running"', 'offline: "offline"', 'interrupted: "interrupted"', 'failed: "failed"', 'completed: "completed"']:
+        assert token in source
+    assert "function normalizeReplayUiState(" in source
+    assert "function beginReplayStatusMonitoring(runId)" in source
+    assert "async function pollReplayStatus(runId)" in source
+    assert "DEMO_REPLAY_MAX_TRANSIENT_ERRORS" in source
+    assert 'setDemoUiState(DEMO_UI_STATES.interrupted, "persistent-poll-error")' in source
 
 
 def test_demo_seed_async_job_endpoints_return_json_and_seed_real_results(tmp_path) -> None:
