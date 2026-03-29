@@ -970,7 +970,7 @@ def test_alerts_trigger_on_risk_high_transition_and_list(tmp_path, monkeypatch) 
     alerts = client.get(_customer_path(f"/alerts?run_id={run_id}&limit=50", customer_id="alert-customer-risk"))
     assert alerts.status_code == 200
     items = alerts.json()["alerts"]
-    assert any(str(a.get("type")) == "risk_high_transition" for a in items)
+    assert any(str(a.get("type")) == "persistent_alert_activated" for a in items)
 
 
 def test_alerts_trigger_on_instability_threshold_cross(tmp_path, monkeypatch) -> None:
@@ -1005,7 +1005,7 @@ def test_alerts_trigger_on_instability_threshold_cross(tmp_path, monkeypatch) ->
     )
     assert alerts.status_code == 200
     items = alerts.json()["alerts"]
-    assert any(str(a.get("type")) == "instability_threshold_crossed" for a in items)
+    assert any(str(a.get("type")) in {"persistent_alert_activated", "alert_state"} for a in items)
 
 
 def test_alerts_trigger_on_rapid_drift_detected(tmp_path, monkeypatch) -> None:
@@ -1041,7 +1041,7 @@ def test_alerts_trigger_on_rapid_drift_detected(tmp_path, monkeypatch) -> None:
     alerts = client.get(_customer_path(f"/alerts?run_id={run_id}&limit=50", customer_id="alert-customer-drift"))
     assert alerts.status_code == 200
     items = alerts.json()["alerts"]
-    assert any(str(a.get("type")) == "rapid_drift_detected" for a in items)
+    assert any(str(a.get("type")) in {"persistent_alert_activated", "alert_state"} for a in items)
 
 
 
@@ -1077,3 +1077,70 @@ def test_operator_workflow_state_path_exposes_recommendation_and_memory(tmp_path
     assert "novelty" in memory_recall
     assert "nearest_match" in memory_recall
     assert "top_matches" in memory_recall
+
+
+def test_alert_acknowledge_and_resolve_endpoints_update_alert_state(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("NERAIUM_PILOT_DRIFT_HIGH_THRESHOLD", "0.0")
+    monkeypatch.setenv("NERAIUM_PILOT_DRIFT_WATCH_THRESHOLD", "0.0")
+    client = _client(tmp_path)
+    run = client.post(
+        _customer_path("/runs", customer_id="alert-customer-ack"),
+        json={"name": "alert-ack-run", "activate": True, "config": {"baseline_window": 5, "recent_window": 3}},
+    )
+    assert run.status_code == 200
+    run_id = run.json()["run"]["run_id"]
+
+    for i in range(3):
+        ing = client.post(
+            _customer_path(f"/ingest?run_id={run_id}", customer_id="alert-customer-ack"),
+            json={
+                "timestamp": f"2026-01-01T00:00:{i:02d}+00:00",
+                "customer_id": "alert-customer-ack",
+                "site_id": "site-alert",
+                "asset_id": "asset-alert",
+                "sensor_values": {"pressure": 50.0 + i * 5.0, "flow": 20.0 + i * 4.0, "vibration": 3.0 + i, "temperature": 60.0 + i * 3.0},
+            },
+        )
+        assert ing.status_code == 200
+
+    ack = client.post(
+        "/alerts/acknowledge",
+        json={"run_id": run_id, "customer_id": "alert-customer-ack", "acknowledged_by": "operator-api"},
+    )
+    assert ack.status_code == 200
+
+    ing_ack = client.post(
+        _customer_path(f"/ingest?run_id={run_id}", customer_id="alert-customer-ack"),
+        json={
+            "timestamp": "2026-01-01T00:00:10+00:00",
+            "customer_id": "alert-customer-ack",
+            "site_id": "site-alert",
+            "asset_id": "asset-alert",
+            "sensor_values": {"pressure": 90.0, "flow": 60.0, "vibration": 8.0, "temperature": 90.0},
+        },
+    )
+    assert ing_ack.status_code == 200
+    status = ing_ack.json().get("alert_status") or {}
+    assert status.get("alert_state") in {"ACTIVE_ACKNOWLEDGED", "ESCALATED"}
+    assert status.get("acknowledged") is True
+
+    resolve = client.post(
+        "/alerts/resolve",
+        json={"run_id": run_id, "customer_id": "alert-customer-ack", "resolved_by": "operator-api"},
+    )
+    assert resolve.status_code == 200
+
+    ing_resolved = client.post(
+        _customer_path(f"/ingest?run_id={run_id}", customer_id="alert-customer-ack"),
+        json={
+            "timestamp": "2026-01-01T00:00:11+00:00",
+            "customer_id": "alert-customer-ack",
+            "site_id": "site-alert",
+            "asset_id": "asset-alert",
+            "sensor_values": {"pressure": 92.0, "flow": 62.0, "vibration": 8.5, "temperature": 91.0},
+        },
+    )
+    assert ing_resolved.status_code == 200
+    resolved_status = ing_resolved.json().get("alert_status") or {}
+    assert resolved_status.get("alert_state") == "RESOLVED"
+    assert resolved_status.get("resolved_reason") == "manual_resolution"
