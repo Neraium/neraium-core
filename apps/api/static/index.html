@@ -275,61 +275,6 @@
               </div>
             </section>
             <p class="subtitle analysis-intent">Focused analysis workspace for current state, structural geometry, trend timeline, and result history.</p>
-            
-            <div id="runSignalSeparation" class="signal-separation hidden">
-              <article class="signal-card state">
-                <span class="k">State</span>
-                <div id="runSignalState" class="v">-</div>
-              </article>
-              <article class="signal-card risk">
-                <span class="k">Risk</span>
-                <div id="runSignalRisk" class="v">-</div>
-              </article>
-              <article class="signal-card trend">
-                <span class="k">Trend</span>
-                <div id="runSignalTrend" class="v">-</div>
-              </article>
-            </div>
-            <div id="runTransitionStrip" class="timeline-transition-strip hidden"></div>
-            <div id="runDetailDemoHero" class="run-detail-demo-hero hidden" role="dialog" aria-modal="true" aria-labelledby="runDetailDemoHeroTitle">
-              <div class="run-detail-demo-hero-card">
-                <p class="run-detail-demo-hero-kicker">Historical validation scenario</p>
-                <h3 id="runDetailDemoHeroTitle">Review this escalation replay?</h3>
-                <p class="subtitle">Add <span class="mono-inline">?hero=1</span> to the URL to show this overlay on first visit. Use replay mode to step through the timeline.</p>
-                <div class="row">
-                  <button type="button" id="runDetailDemoHeroPlayBtn" class="btn-hero-demo">Play validation replay</button>
-                  <button type="button" id="runDetailDemoHeroDismissBtn" class="secondary">Not now</button>
-                </div>
-              </div>
-            </div>
-            <section id="runCurrentStateCard" class="run-current-state hidden" aria-label="Current snapshot metrics">
-              <div class="run-current-state-head">
-                <strong>Operator analysis summary</strong>
-                <span class="subtitle">Current state, risk, trend, and confidence from the latest structural snapshot</span>
-              </div>
-              <div class="run-current-state-grid">
-                <div class="mini-gauge">
-                  <span class="mini-gauge-label">Drift</span>
-                  <div class="mini-gauge-track"><div id="gaugeDriftFill" class="mini-gauge-fill mini-gauge-fill-drift"></div></div>
-                  <span id="gaugeDriftVal" class="mini-gauge-val">—</span>
-                </div>
-                <div class="mini-gauge">
-                  <span class="mini-gauge-label">Instability</span>
-                  <div class="mini-gauge-track"><div id="gaugeInstFill" class="mini-gauge-fill mini-gauge-fill-inst"></div></div>
-                  <span id="gaugeInstVal" class="mini-gauge-val">—</span>
-                </div>
-                <div class="mini-gauge">
-                  <span class="mini-gauge-label">Risk</span>
-                  <div class="mini-gauge-track"><div id="gaugeRiskFill" class="mini-gauge-fill mini-gauge-fill-risk"></div></div>
-                  <span id="gaugeRiskVal" class="mini-gauge-val">—</span>
-                </div>
-                <div class="mini-gauge">
-                  <span class="mini-gauge-label">Health</span>
-                  <div class="mini-gauge-track"><div id="gaugeHealthFill" class="mini-gauge-fill mini-gauge-fill-health"></div></div>
-                  <span id="gaugeHealthVal" class="mini-gauge-val">—</span>
-                </div>
-              </div>
-            </section>
             <section id="demoPlaybackPanel" class="demo-playback hidden">
               <div class="demo-playback-head">
                 <div class="demo-playback-title-row">
@@ -347,19 +292,6 @@
                 <button id="demoReplayBtn" type="button" class="secondary">Replay</button>
               </div>
             </section>
-            <section id="demoKeyEventsPanel" class="demo-key-events hidden">
-              <div class="panel-header">
-                <h4>Key events</h4>
-                <p class="subtitle">Risk spikes and structural drift changes for operator review.</p>
-              </div>
-              <ul id="demoKeyEventsList" class="demo-key-events-list"></ul>
-            </section>
-            <section id="analysis-context" class="analysis-subsection analysis-workspace-section" data-analysis-panel="context">
-              <div class="panel-header panel-header-subsection">
-                <h4>Operational truth surface</h4>
-                <p class="subtitle">Single operator-facing rationale tied to current risk and structural behavior.</p>
-              </div>
-            </section>
             <article id="runRiskExplanationPanel" class="risk-explanation hidden">
               <div class="risk-explanation-head">
                 <h4 id="runRiskExplanationTitle">Why this risk level</h4>
@@ -373,6 +305,7 @@
             </div>
           </section>
 
+          <div class="run-detail-workspace-grid">
           <section id="analysis-trends" class="panel analysis-workspace-section" data-analysis-panel="trends">
             <div class="panel-header">
               <h3>Trend workspace</h3>
@@ -602,6 +535,7 @@
               <p>No results match current filters.</p>
             </div>
           </section>
+          </div>
         </section>
 
         <!-- VALIDATION -->

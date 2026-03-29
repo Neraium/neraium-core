@@ -5,6 +5,12 @@
 .analysis-run-header-item { border: 1px solid rgba(117, 148, 196, 0.2); border-radius: 10px; padding: 0.55rem 0.6rem; background: rgba(13, 22, 38, 0.58); }
 .analysis-run-header-item strong { display: block; margin-top: 0.2rem; color: #e9f1ff; font-size: 0.9rem; }
 .analysis-subsection { margin-top: 0.65rem; }
+.run-detail-workspace-grid {
+  margin-top: 0.8rem;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.8rem;
+}
 
 /* Heavy sections: paint only when entering viewport */
 #analysis-trends .chart-grid,
@@ -15,8 +21,53 @@
 @media (max-width: 980px) {
   .analysis-run-header-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .content { padding: 16px; }
+  #analysis-executive {
+    padding: 0.85rem;
+  }
+  #analysis-executive .panel-header {
+    gap: 0.5rem;
+  }
+  #analysis-executive .panel-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+  #analysis-executive .panel-actions button {
+    flex: 1 1 auto;
+    min-width: 0;
+  }
 }
 
 @media (max-width: 720px) {
   .analysis-run-header-grid { grid-template-columns: 1fr; }
+  .analysis-intent {
+    margin-top: 0.45rem;
+    line-height: 1.4;
+  }
+  #analysis-executive {
+    margin-bottom: 0.2rem;
+  }
+  .run-detail-workspace-grid {
+    gap: 0.65rem;
+  }
+  #analysis-trends .panel-header,
+  #analysis-results .panel-header,
+  #analysis-geometry .panel-header {
+    gap: 0.45rem;
+  }
+  #analysis-trends .chart-grid {
+    gap: 0.55rem;
+  }
+  #analysis-results .row.wrap.filters {
+    gap: 0.45rem;
+  }
+  #analysis-results .row.wrap.filters input,
+  #analysis-results .row.wrap.filters select {
+    width: 100%;
+  }
+  #analysis-results .table-wrap {
+    overflow-x: auto;
+  }
+  #analysis-results .run-results-table {
+    min-width: 780px;
+  }
 }
