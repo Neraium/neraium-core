@@ -36,6 +36,15 @@ from .routers.health import build_health_router
 from .routers.alerts import build_alerts_router
 from .routers.geometry import build_geometry_router
 from .services.alerts import alert_thresholds as service_alert_thresholds, evaluate_alerts, dispatch_alert_stubs
+from .services.request_context import (
+    resolve_customer_id,
+    resolve_run_id,
+    require_run_id,
+    request_run_id_or_active,
+    resolve_run_id_with_default,
+)
+from .services.validation_utils import actionable_validation_detail
+from .services.export_utils import build_export
 from ._core_imports import (
     ResultStore,
     StructuralMonitoringService,
@@ -634,7 +643,7 @@ def _ensure_default_run(
     *,
     customer_id: str | None,
 ) -> dict[str, Any]:
-    resolved_customer = _resolve_customer_id(customer_id)
+    resolved_customer = resolve_customer_id(customer_id)
     existing = service.get_active_run(customer_id=resolved_customer)
     if existing is not None:
         return existing
@@ -700,210 +709,8 @@ def _compact_result_view(result: dict[str, Any] | None) -> dict[str, Any] | None
     return trimmed
 
 
-def _resolve_customer_id(customer_id: str | None) -> str:
-    text = str(customer_id or "").strip()
-    return text or "default-customer"
-
-
 def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
-
-
-def _actionable_validation_detail(message: str) -> str:
-    text = str(message or "").strip()
-    if not text:
-        return "Validation failed. Check required fields and payload structure."
-    if text.startswith("Invalid CSV row"):
-        if "Invalid timestamp" in text:
-            return (
-                f"{text} Use ISO-8601 timestamps like "
-                "2026-01-01T00:00:00+00:00."
-            )
-        if "Invalid signal value" in text or "Invalid signal type" in text:
-            return f"{text} Ensure all sensor values are numeric or blank."
-        return text
-    if "Invalid timestamp" in text:
-        return (
-            "Invalid timestamp format. Use ISO-8601 timestamps like "
-            "2026-01-01T00:00:00+00:00."
-        )
-    if "CSV must include" in text or "missing required columns" in text:
-        return (
-            f"{text} Ensure CSV header includes timestamp, site_id, asset_id "
-            "plus at least one sensor column."
-        )
-    if "Could not infer" in text or "Provide a column_mapping" in text:
-        return (
-            f"{text} Use POST /ingest/csv/preview with a sample of your file, "
-            "then send column_mapping (timestamp, asset_id, optional site_id, sensor_columns) with ingest."
-        )
-    if "Mapping requires" in text or "not present in the CSV header" in text:
-        return (
-            f"{text} Open the upload mapping panel and assign time, asset/entity, "
-            "optional site, and one or more numeric sensor columns."
-        )
-    if "Invalid signal value" in text or "Invalid signal type" in text:
-        return (
-            f"{text} Ensure all sensor values are numeric or blank."
-        )
-    return text
-
-
-def _resolve_run_id(
-    service: StructuralMonitoringService,
-    run_id: str | None,
-    *,
-    customer_id: str | None,
-) -> str | None:
-    if run_id is not None and str(run_id).strip():
-        return str(run_id).strip()
-    active = service.get_active_run(customer_id=_resolve_customer_id(customer_id))
-    if active is None:
-        return None
-    rid = active.get("run_id")
-    if rid is None:
-        return None
-    return str(rid)
-
-
-def _require_run_id(
-    service: StructuralMonitoringService,
-    run_id: str | None,
-    *,
-    customer_id: str | None,
-) -> str:
-    resolved = _resolve_run_id(service, run_id, customer_id=customer_id)
-    if resolved is None:
-        raise HTTPException(status_code=400, detail="No active run. Create or activate a run first.")
-    return resolved
-
-
-def _request_run_id_or_active(
-    service: StructuralMonitoringService,
-    run_id: str | None,
-    *,
-    customer_id: str | None,
-) -> str | None:
-    if run_id is None:
-        return _resolve_run_id(service, None, customer_id=customer_id)
-    text = str(run_id).strip()
-    if not text:
-        return _resolve_run_id(service, None, customer_id=customer_id)
-    return text
-
-
-def _resolve_run_id_with_default(
-    service: StructuralMonitoringService,
-    run_id: str | None,
-    *,
-    customer_id: str | None,
-) -> str:
-    resolved = _request_run_id_or_active(service, run_id, customer_id=customer_id)
-    if resolved is not None:
-        return resolved
-    created = _ensure_default_run(service, customer_id=_resolve_customer_id(customer_id))
-    return str(created.get("run_id"))
-
-
-def _csv_escape(value: Any) -> str:
-    text = "" if value is None else str(value)
-    if any(ch in text for ch in [",", "\"", "\n", "\r"]):
-        return "\"" + text.replace("\"", "\"\"") + "\""
-    return text
-
-
-def _build_export(results: list[dict[str, Any]], *, format_name: Literal["json", "csv"]) -> tuple[str, str]:
-    if format_name == "json":
-        return ("application/json; charset=utf-8", json.dumps(results, indent=2, sort_keys=False))
-
-    header = [
-        "result_id",
-        "run_id",
-        "timestamp",
-        "site_id",
-        "asset_id",
-        "state",
-        "phase",
-        "risk_level",
-        "trend",
-        "operator_message",
-        "structural_drift_score",
-        "composite_instability",
-        "persisted_at",
-        "geometry_path_length",
-        "geometry_local_velocity_norm",
-        "geometry_local_acceleration_norm",
-        "geometry_curvature",
-        "geometry_directional_consistency",
-        "geometry_angular_change",
-        "geometry_path_smoothness",
-        "state_space_statistics_local_volume",
-        "state_space_statistics_local_density",
-        "state_space_statistics_covariance_trace",
-        "state_space_statistics_principal_direction_strength",
-        "state_space_statistics_anisotropy",
-        "state_space_statistics_state_contraction_score",
-        "state_space_statistics_state_expansion_score",
-        "state_graph_node_count",
-        "state_graph_edge_count",
-        "state_graph_branching_factor",
-        "state_graph_transition_entropy",
-        "state_graph_revisit_rate",
-        "state_graph_path_commitment_score",
-        "state_graph_graph_divergence_score",
-    ]
-    lines = [",".join(header)]
-    for row in results:
-        composite = None
-        analytics = row.get("experimental_analytics")
-        if isinstance(analytics, dict):
-            raw = analytics.get("composite_instability")
-            if raw is not None:
-                try:
-                    composite = float(raw)
-                except (TypeError, ValueError):
-                    composite = None
-        geom = row.get("geometry") if isinstance(row.get("geometry"), dict) else {}
-        stats = row.get("state_space_statistics") if isinstance(row.get("state_space_statistics"), dict) else {}
-        sgraph = row.get("state_graph") if isinstance(row.get("state_graph"), dict) else {}
-        data = [
-            row.get("result_id"),
-            row.get("run_id"),
-            row.get("timestamp"),
-            row.get("site_id"),
-            row.get("asset_id"),
-            row.get("state"),
-            row.get("phase"),
-            row.get("risk_level"),
-            row.get("trend"),
-            row.get("operator_message"),
-            row.get("structural_drift_score"),
-            composite,
-            row.get("persisted_at"),
-            geom.get("path_length"),
-            geom.get("local_velocity_norm"),
-            geom.get("local_acceleration_norm"),
-            geom.get("curvature"),
-            geom.get("directional_consistency"),
-            geom.get("angular_change"),
-            geom.get("path_smoothness"),
-            stats.get("local_volume"),
-            stats.get("local_density"),
-            stats.get("covariance_trace"),
-            stats.get("principal_direction_strength"),
-            stats.get("anisotropy"),
-            stats.get("state_contraction_score"),
-            stats.get("state_expansion_score"),
-            sgraph.get("node_count"),
-            sgraph.get("edge_count"),
-            sgraph.get("branching_factor"),
-            sgraph.get("transition_entropy"),
-            sgraph.get("revisit_rate"),
-            sgraph.get("path_commitment_score"),
-            sgraph.get("graph_divergence_score"),
-        ]
-        lines.append(",".join(_csv_escape(v) for v in data))
-    return ("text/csv; charset=utf-8", "\n".join(lines))
 
 
 def _safe_float(value: Any, default: float = 0.0) -> float:
@@ -1040,7 +847,7 @@ def create_app(
     def _record_alerts_for_customer(customer_id: str, items: list[dict[str, Any]]) -> list[dict[str, Any]]:
         if not items:
             return []
-        resolved_customer = _resolve_customer_id(customer_id)
+        resolved_customer = resolve_customer_id(customer_id)
         created: list[dict[str, Any]] = []
         with alerts_lock:
             bucket = alerts.setdefault(resolved_customer, [])
@@ -1120,7 +927,7 @@ def create_app(
             "job_id": str(job.get("job_id")),
             "status": str(job.get("status", "unknown")),
             "run_id": job.get("run_id"),
-            "customer_id": _resolve_customer_id(job.get("customer_id")),
+            "customer_id": resolve_customer_id(job.get("customer_id")),
             "filename": str(job.get("filename") or "upload.csv"),
             "created_at": str(job.get("created_at") or _utc_now_iso()),
             "updated_at": str(job.get("updated_at") or _utc_now_iso()),
@@ -1173,7 +980,7 @@ def create_app(
             _persist_operational_state(
                 f"ingest_job:{job_id}",
                 dict(job),
-                customer_id=_resolve_customer_id(job.get("customer_id")),
+                customer_id=resolve_customer_id(job.get("customer_id")),
                 run_id=str(job.get("run_id")) if job.get("run_id") is not None else None,
             )
             return dict(job)
@@ -1183,7 +990,7 @@ def create_app(
             "job_id": str(job.get("job_id")),
             "status": str(job.get("status", "unknown")),
             "run_id": str(job.get("run_id") or ""),
-            "customer_id": _resolve_customer_id(job.get("customer_id")),
+            "customer_id": resolve_customer_id(job.get("customer_id")),
             "progress": max(0, min(100, int(job.get("progress", 0)))),
             "processed": max(0, int(job.get("processed", 0))),
             "total_frames": max(0, int(job.get("total_frames", 0))),
@@ -1223,7 +1030,7 @@ def create_app(
             processed=0,
             run_id=resolved_run,
             customer_id=resolved_customer,
-        )
+            )
         log_structured(
             logger,
             event="demo_seed_start",
@@ -1515,7 +1322,7 @@ def create_app(
         return len(results)
 
     def _stop_pull_integration(customer_id: str, *, reason: str) -> dict[str, Any]:
-        resolved_customer = _resolve_customer_id(customer_id)
+        resolved_customer = resolve_customer_id(customer_id)
         stop_event: threading.Event | None = None
         thread: threading.Thread | None = None
         with pull_integrations_lock:
@@ -1538,7 +1345,7 @@ def create_app(
             return _public_pull_state(final_state, customer_id=resolved_customer)
 
     def _start_pull_worker(customer_id: str) -> None:
-        resolved_customer = _resolve_customer_id(customer_id)
+        resolved_customer = resolve_customer_id(customer_id)
 
         def _worker() -> None:
             while True:
@@ -1684,7 +1491,7 @@ def create_app(
                 state = row.get("state")
                 if not isinstance(state, dict):
                     continue
-                customer = _resolve_customer_id(state.get("customer_id") or row.get("customer_id"))
+                customer = resolve_customer_id(state.get("customer_id") or row.get("customer_id"))
                 items = state.get("alerts")
                 if not isinstance(items, list):
                     continue
@@ -1710,7 +1517,7 @@ def create_app(
                     _persist_operational_state(
                         f"ingest_job:{job_id}",
                         state,
-                        customer_id=_resolve_customer_id(state.get("customer_id")),
+                        customer_id=resolve_customer_id(state.get("customer_id")),
                         run_id=str(state.get("run_id")) if state.get("run_id") is not None else None,
                     )
                 with ingest_jobs_lock:
@@ -1723,7 +1530,7 @@ def create_app(
                 state = row.get("state")
                 if not isinstance(state, dict):
                     continue
-                customer = _resolve_customer_id(state.get("customer_id") or row.get("customer_id"))
+                customer = resolve_customer_id(state.get("customer_id") or row.get("customer_id"))
                 merged = _default_pull_state(customer)
                 merged.update({k: v for k, v in state.items() if not str(k).startswith("_")})
                 should_resume = bool(state.get("resume_on_startup"))
@@ -1858,7 +1665,7 @@ def create_app(
                     level=logging.INFO,
                 )
             except Exception as exc:
-                message = _actionable_validation_detail(str(exc))
+                message = actionable_validation_detail(str(exc))
                 _update_ingest_job(job_id, status="failed", message=message)
                 log_structured(
                     logger,
@@ -1895,7 +1702,7 @@ def create_app(
             api_key=api_key,
             persistence_available=persistence_available,
             app_version=app.version,
-            resolve_customer_id=_resolve_customer_id,
+            resolve_customer_id=resolve_customer_id,
             runtime_state_diagnostics_provider=lambda: dict(runtime_state_diagnostics),
             health_response_model=HealthResponse,
             client_error_model=ClientErrorReport,
@@ -1904,7 +1711,7 @@ def create_app(
     app.include_router(
         build_geometry_router(
             service_instance=service_instance,
-            resolve_customer_id=_resolve_customer_id,
+            resolve_customer_id=resolve_customer_id,
             geometry_envelope_model=GeometryEnvelope,
         )
     )
@@ -1912,8 +1719,8 @@ def create_app(
         build_alerts_router(
             service_instance=service_instance,
             require_api_key=require_api_key,
-            resolve_customer_id=_resolve_customer_id,
-            request_run_id_or_active=_request_run_id_or_active,
+            resolve_customer_id=resolve_customer_id,
+            request_run_id_or_active=request_run_id_or_active,
             utc_now_iso=_utc_now_iso,
             alerts=alerts,
             alerts_lock=alerts_lock,
@@ -1936,7 +1743,7 @@ def create_app(
                 name=payload.name.strip(),
                 config=dict(payload.config),
                 activate=bool(payload.activate),
-                customer_id=_resolve_customer_id(customer_id),
+                customer_id=resolve_customer_id(customer_id),
             )
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc))
@@ -1951,7 +1758,7 @@ def create_app(
         try:
             run = service_instance.activate_run(
                 payload.run_id.strip(),
-                customer_id=_resolve_customer_id(customer_id),
+                customer_id=resolve_customer_id(customer_id),
             )
         except ValueError as exc:
             raise HTTPException(status_code=404, detail=str(exc))
@@ -1962,21 +1769,21 @@ def create_app(
         limit: int = Query(50, ge=1, le=500),
         customer_id: str | None = Query(default=None),
     ) -> dict[str, Any]:
-        resolved_customer = _resolve_customer_id(customer_id)
+        resolved_customer = resolve_customer_id(customer_id)
         runs = service_instance.list_runs(limit=limit, customer_id=resolved_customer)
         active = service_instance.get_active_run(customer_id=resolved_customer)
         return {"active_run": active, "count": len(runs), "runs": runs}
 
     @app.get("/runs/active", response_model=RunEnvelope)
     def get_active_run(customer_id: str | None = Query(default=None)) -> dict[str, Any]:
-        run = service_instance.get_active_run(customer_id=_resolve_customer_id(customer_id))
+        run = service_instance.get_active_run(customer_id=resolve_customer_id(customer_id))
         if run is None:
             return {"run": None}
         return {"run": run}
 
     @app.get("/runs/{run_id}", response_model=RunEnvelope)
     def get_run(run_id: str, customer_id: str | None = Query(default=None)) -> dict[str, Any]:
-        run = service_instance.get_run(run_id, customer_id=_resolve_customer_id(customer_id))
+        run = service_instance.get_run(run_id, customer_id=resolve_customer_id(customer_id))
         if run is None:
             raise HTTPException(status_code=404, detail=f"Unknown run_id: {run_id}")
         return {"run": run}
@@ -1994,7 +1801,7 @@ def create_app(
                 name=payload.name,
                 config=payload.config,
                 status=payload.status,
-                customer_id=_resolve_customer_id(customer_id),
+                customer_id=resolve_customer_id(customer_id),
             )
         except ValueError as exc:
             detail = str(exc)
@@ -2011,7 +1818,7 @@ def create_app(
         try:
             run = service_instance.activate_run(
                 run_id.strip(),
-                customer_id=_resolve_customer_id(customer_id),
+                customer_id=resolve_customer_id(customer_id),
             )
         except ValueError as exc:
             raise HTTPException(status_code=404, detail=str(exc))
@@ -2022,7 +1829,7 @@ def create_app(
         run_id: str,
         customer_id: str | None = Query(default=None),
     ) -> dict[str, Any]:
-        resolved_customer = _resolve_customer_id(customer_id)
+        resolved_customer = resolve_customer_id(customer_id)
         run = service_instance.get_run(run_id, customer_id=resolved_customer)
         if run is None:
             raise HTTPException(status_code=404, detail=f"Unknown run_id: {run_id}")
@@ -2034,7 +1841,7 @@ def create_app(
         _: None = Depends(require_api_key),
         customer_id: str | None = Query(default=None),
     ) -> dict[str, bool]:
-        resolved_customer = _resolve_customer_id(customer_id)
+        resolved_customer = resolve_customer_id(customer_id)
         run = service_instance.get_run(run_id, customer_id=resolved_customer)
         if run is None:
             raise HTTPException(status_code=404, detail=f"Unknown run_id: {run_id}")
@@ -2048,10 +1855,10 @@ def create_app(
         _: None = Depends(require_api_key),
         customer_id: str | None = Query(default=None),
     ) -> dict[str, Any]:
-        resolved_customer = _resolve_customer_id(customer_id)
+        resolved_customer = resolve_customer_id(customer_id)
         try:
             service_instance.lock_baseline_for_run(
-                run_id, locked=payload.locked, customer_id=resolved_customer
+                run_id, locked=payload.locked, customer_id=resolved_customer,
             )
         except ValueError as exc:
             raise HTTPException(status_code=404, detail=str(exc))
@@ -2069,12 +1876,12 @@ def create_app(
     ) -> dict[str, Any]:
         logger.info("ingest endpoint called")
         try:
-            resolved_customer = _resolve_customer_id(customer_id or payload.customer_id)
-            resolved = _resolve_run_id_with_default(
+            resolved_customer = resolve_customer_id(customer_id or payload.customer_id)
+            resolved = resolve_run_id_with_default(
                 service_instance,
                 run_id,
                 customer_id=resolved_customer,
-            )
+                )
             result = service_instance.ingest_payload(
                 payload.model_dump(exclude_none=True),
                 run_id=resolved,
@@ -2096,7 +1903,7 @@ def create_app(
             )
         except ValueError as e:
             logger.warning("validation failure ingest: %s", e)
-            raise HTTPException(status_code=400, detail=_actionable_validation_detail(str(e)))
+            raise HTTPException(status_code=400, detail=actionable_validation_detail(str(e)))
         return _results_envelope([result], latest=result)
 
     @app.post("/ingest/frame", response_model=CanonicalOutputResponse)
@@ -2107,19 +1914,19 @@ def create_app(
         customer_id: str | None = Query(default=None),
     ) -> dict[str, Any]:
         try:
-            resolved_customer = _resolve_customer_id(customer_id or payload.customer_id)
-            resolved_run = _resolve_run_id_with_default(
+            resolved_customer = resolve_customer_id(customer_id or payload.customer_id)
+            resolved_run = resolve_run_id_with_default(
                 service_instance,
                 run_id,
                 customer_id=resolved_customer,
-            )
+                )
             return service_instance.ingest_frame(
                 payload.model_dump(exclude_none=True),
                 run_id=resolved_run,
                 customer_id=resolved_customer,
             )
         except ValueError as exc:
-            raise HTTPException(status_code=400, detail=_actionable_validation_detail(str(exc)))
+            raise HTTPException(status_code=400, detail=actionable_validation_detail(str(exc)))
 
     @app.post("/demo/seed/start")
     def demo_seed_start(
@@ -2128,12 +1935,12 @@ def create_app(
         run_id: str | None = Query(default=None),
         customer_id: str | None = Query(default=None),
     ) -> dict[str, Any]:
-        resolved_customer = _resolve_customer_id(customer_id or payload.customer_id)
-        resolved_run = _resolve_run_id_with_default(
+        resolved_customer = resolve_customer_id(customer_id or payload.customer_id)
+        resolved_run = resolve_run_id_with_default(
             service_instance,
             run_id or payload.run_id,
             customer_id=resolved_customer,
-        )
+            )
         job_id = str(uuid4())
         now = _utc_now_iso()
         job = {
@@ -2196,7 +2003,7 @@ def create_app(
         customer_id: str | None = Query(default=None),
     ) -> dict[str, Any]:
         request_payload = payload or DemoCmapssStartRequest()
-        resolved_customer = _resolve_customer_id(customer_id or request_payload.customer_id)
+        resolved_customer = resolve_customer_id(customer_id or request_payload.customer_id)
         log_structured(
             logger,
             event="demo_cmapss_route_entry",
@@ -2216,7 +2023,7 @@ def create_app(
             },
             activate=True,
             customer_id=resolved_customer,
-        )
+            )
         run_id = str(run.get("run_id") or "")
         if not run_id:
             raise HTTPException(status_code=500, detail="Failed to create demo run.")
@@ -2278,12 +2085,12 @@ def create_app(
         run_id: str | None = Query(default=None),
         customer_id: str | None = Query(default=None),
     ) -> dict[str, Any]:
-        resolved_customer = _resolve_customer_id(customer_id)
-        resolved_run = _resolve_run_id(service_instance, run_id, customer_id=resolved_customer)
+        resolved_customer = resolve_customer_id(customer_id)
+        resolved_run = resolve_run_id(service_instance, run_id, customer_id=resolved_customer)
         state = service_instance.get_current_state(
             run_id=resolved_run,
             customer_id=resolved_customer,
-        )
+            )
         return {"state": state}
 
     @app.get("/history", response_model=HistoryEnvelope)
@@ -2292,13 +2099,13 @@ def create_app(
         run_id: str | None = Query(default=None),
         customer_id: str | None = Query(default=None),
     ) -> dict[str, Any]:
-        resolved_customer = _resolve_customer_id(customer_id)
-        resolved_run = _resolve_run_id(service_instance, run_id, customer_id=resolved_customer)
+        resolved_customer = resolve_customer_id(customer_id)
+        resolved_run = resolve_run_id(service_instance, run_id, customer_id=resolved_customer)
         history = service_instance.get_recent_history(
             limit=limit,
             run_id=resolved_run,
             customer_id=resolved_customer,
-        )
+            )
         return {"count": len(history), "history": history}
 
     @app.get("/recommendation", response_model=RecommendationEnvelope)
@@ -2307,12 +2114,12 @@ def create_app(
         run_id: str | None = Query(default=None),
         customer_id: str | None = Query(default=None),
     ) -> dict[str, Any]:
-        resolved_customer = _resolve_customer_id(customer_id)
-        resolved_run = _resolve_run_id(service_instance, run_id, customer_id=resolved_customer)
+        resolved_customer = resolve_customer_id(customer_id)
+        resolved_run = resolve_run_id(service_instance, run_id, customer_id=resolved_customer)
         recommendation = service_instance.get_latest_recommendation(
             run_id=resolved_run,
             customer_id=resolved_customer,
-        )
+            )
         return {"operational_recommendation": recommendation}
 
     @app.get("/decision", response_model=DecisionEnvelope, deprecated=True)
@@ -2320,12 +2127,12 @@ def create_app(
         run_id: str | None = Query(default=None),
         customer_id: str | None = Query(default=None),
     ) -> dict[str, Any]:
-        resolved_customer = _resolve_customer_id(customer_id)
-        resolved_run = _resolve_run_id(service_instance, run_id, customer_id=resolved_customer)
+        resolved_customer = resolve_customer_id(customer_id)
+        resolved_run = resolve_run_id(service_instance, run_id, customer_id=resolved_customer)
         decision = service_instance.get_latest_decision(
             run_id=resolved_run,
             customer_id=resolved_customer,
-        )
+            )
         return {"decision": decision}
 
     @app.get("/explanation", response_model=ExplanationEnvelope)
@@ -2333,12 +2140,12 @@ def create_app(
         run_id: str | None = Query(default=None),
         customer_id: str | None = Query(default=None),
     ) -> dict[str, Any]:
-        resolved_customer = _resolve_customer_id(customer_id)
-        resolved_run = _resolve_run_id(service_instance, run_id, customer_id=resolved_customer)
+        resolved_customer = resolve_customer_id(customer_id)
+        resolved_run = resolve_run_id(service_instance, run_id, customer_id=resolved_customer)
         explanation_text = service_instance.get_latest_explanation(
             run_id=resolved_run,
             customer_id=resolved_customer,
-        )
+            )
         return {"explanation_text": explanation_text}
 
     @app.get("/events/latest", response_model=EventsEnvelope)
@@ -2346,12 +2153,12 @@ def create_app(
         run_id: str | None = Query(default=None),
         customer_id: str | None = Query(default=None),
     ) -> dict[str, Any]:
-        resolved_customer = _resolve_customer_id(customer_id)
-        resolved_run = _resolve_run_id(service_instance, run_id, customer_id=resolved_customer)
+        resolved_customer = resolve_customer_id(customer_id)
+        resolved_run = resolve_run_id(service_instance, run_id, customer_id=resolved_customer)
         state = service_instance.get_current_state(
             run_id=resolved_run,
             customer_id=resolved_customer,
-        )
+            )
         if not isinstance(state, dict):
             return {"events": [], "cycle": None, "timestamp": None}
         events = state.get("events")
@@ -2366,8 +2173,8 @@ def create_app(
         payload: AssistantRequest,
         _: None = Depends(require_api_key),
     ) -> dict[str, Any]:
-        resolved_customer = _resolve_customer_id(payload.customer_id)
-        resolved_run = _resolve_run_id(service_instance, payload.run_id, customer_id=resolved_customer)
+        resolved_customer = resolve_customer_id(payload.customer_id)
+        resolved_run = resolve_run_id(service_instance, payload.run_id, customer_id=resolved_customer)
         return service_instance.generate_assistant_response(
             mode="summary",
             run_id=resolved_run,
@@ -2380,8 +2187,8 @@ def create_app(
         payload: AssistantRequest,
         _: None = Depends(require_api_key),
     ) -> dict[str, Any]:
-        resolved_customer = _resolve_customer_id(payload.customer_id)
-        resolved_run = _resolve_run_id(service_instance, payload.run_id, customer_id=resolved_customer)
+        resolved_customer = resolve_customer_id(payload.customer_id)
+        resolved_run = resolve_run_id(service_instance, payload.run_id, customer_id=resolved_customer)
         return service_instance.generate_assistant_response(
             mode="handoff",
             run_id=resolved_run,
@@ -2394,8 +2201,8 @@ def create_app(
         payload: AssistantRequest,
         _: None = Depends(require_api_key),
     ) -> dict[str, Any]:
-        resolved_customer = _resolve_customer_id(payload.customer_id)
-        resolved_run = _resolve_run_id(service_instance, payload.run_id, customer_id=resolved_customer)
+        resolved_customer = resolve_customer_id(payload.customer_id)
+        resolved_run = resolve_run_id(service_instance, payload.run_id, customer_id=resolved_customer)
         mode = payload.mode or "why_recommended"
         if mode not in {"why_recommended", "what_changed", "pattern_similarity"}:
             raise HTTPException(
@@ -2414,8 +2221,8 @@ def create_app(
         payload: ReportRequest,
         _: None = Depends(require_api_key),
     ) -> dict[str, Any]:
-        resolved_customer = _resolve_customer_id(payload.customer_id)
-        resolved_run = _resolve_run_id(service_instance, payload.run_id, customer_id=resolved_customer)
+        resolved_customer = resolve_customer_id(payload.customer_id)
+        resolved_run = resolve_run_id(service_instance, payload.run_id, customer_id=resolved_customer)
         report = service_instance.generate_report_response(
             mode=payload.mode,
             run_id=resolved_run,
@@ -2434,8 +2241,8 @@ def create_app(
         format: Literal["txt", "md"] = Query(default="txt"),
         _: None = Depends(require_api_key),
     ) -> PlainTextResponse:
-        resolved_customer = _resolve_customer_id(payload.customer_id)
-        resolved_run = _resolve_run_id(service_instance, payload.run_id, customer_id=resolved_customer)
+        resolved_customer = resolve_customer_id(payload.customer_id)
+        resolved_run = resolve_run_id(service_instance, payload.run_id, customer_id=resolved_customer)
         report = service_instance.generate_report_response(
             mode=payload.mode,
             run_id=resolved_run,
@@ -2473,12 +2280,12 @@ def create_app(
             payload_customer = None
             if payload.items:
                 payload_customer = payload.items[0].customer_id
-            resolved_customer = _resolve_customer_id(customer_id or payload_customer)
-            resolved = _resolve_run_id_with_default(
+            resolved_customer = resolve_customer_id(customer_id or payload_customer)
+            resolved = resolve_run_id_with_default(
                 service_instance,
                 run_id,
                 customer_id=resolved_customer,
-            )
+                )
             log_structured(
                 logger,
                 event="ingest_batch_starting_ingest",
@@ -2510,7 +2317,7 @@ def create_app(
                     previous_result=previous_result,
                 )
         except ValueError as e:
-            detail = _actionable_validation_detail(str(e))
+            detail = actionable_validation_detail(str(e))
             log_structured(
                 logger,
                 event="ingest_batch_validation_failure",
@@ -2593,12 +2400,12 @@ def create_app(
     ) -> dict[str, Any]:
         logger.info("ingest_csv endpoint called")
         try:
-            resolved_customer = _resolve_customer_id(customer_id or payload.customer_id)
-            resolved = _resolve_run_id_with_default(
+            resolved_customer = resolve_customer_id(customer_id or payload.customer_id)
+            resolved = resolve_run_id_with_default(
                 service_instance,
                 run_id,
                 customer_id=resolved_customer,
-            )
+                )
             results = service_instance.ingest_csv(
                 payload.csv_text,
                 run_id=resolved,
@@ -2622,7 +2429,7 @@ def create_app(
                 )
         except ValueError as e:
             logger.warning("validation failure ingest_csv: %s", e)
-            raise HTTPException(status_code=400, detail=_actionable_validation_detail(str(e)))
+            raise HTTPException(status_code=400, detail=actionable_validation_detail(str(e)))
         return _results_envelope(results, latest=results[-1] if results else None)
 
     @app.post("/ingest/csv/preview", response_model=CsvPreviewResponse)
@@ -2632,7 +2439,7 @@ def create_app(
         customer_id: str | None = Query(default=None),
     ) -> dict[str, Any]:
         """Infer semantic column roles from an arbitrary CSV header + sample rows."""
-        _ = _resolve_customer_id(customer_id)
+        _ = resolve_customer_id(customer_id)
         headers, rows = parse_csv_sample_for_mapping(payload.csv_sample, max_rows=16)
         if not headers:
             raise HTTPException(
@@ -2672,12 +2479,12 @@ def create_app(
                 status_code=400,
                 detail="Upload must be a .csv file.",
             )
-        resolved_customer = _resolve_customer_id(customer_id)
-        resolved_run = _resolve_run_id_with_default(
+        resolved_customer = resolve_customer_id(customer_id)
+        resolved_run = resolve_run_id_with_default(
             service_instance,
             run_id,
             customer_id=resolved_customer,
-        )
+            )
         column_mapping: dict[str, Any] | None = None
         if mapping:
             try:
@@ -2770,12 +2577,12 @@ def create_app(
         job_id: str,
         customer_id: str | None = Query(default=None),
     ) -> dict[str, Any]:
-        resolved_customer = _resolve_customer_id(customer_id)
+        resolved_customer = resolve_customer_id(customer_id)
         with ingest_jobs_lock:
             job = ingest_jobs.get(job_id)
             if job is None:
                 raise HTTPException(status_code=404, detail=f"Unknown ingest job: {job_id}")
-            if _resolve_customer_id(job.get("customer_id")) != resolved_customer:
+            if resolve_customer_id(job.get("customer_id")) != resolved_customer:
                 raise HTTPException(status_code=404, detail=f"Unknown ingest job: {job_id}")
             return _public_ingest_job(job)
 
@@ -2785,7 +2592,7 @@ def create_app(
         _: None = Depends(require_api_key),
         customer_id: str | None = Query(default=None),
     ) -> dict[str, Any]:
-        resolved_customer = _resolve_customer_id(customer_id)
+        resolved_customer = resolve_customer_id(customer_id)
         cfg_override = getattr(app.state, "integration_config_override", None)
         if isinstance(cfg_override, dict):
             cfg_doc = cfg_override
@@ -2847,11 +2654,11 @@ def create_app(
         if auth_type == "bearer" and not str(token or "").strip():
             raise HTTPException(status_code=400, detail="Bearer auth requires token.")
 
-        resolved_run = _resolve_run_id_with_default(
+        resolved_run = resolve_run_id_with_default(
             service_instance,
             payload.run_id,
             customer_id=resolved_customer,
-        )
+            )
         _stop_pull_integration(resolved_customer, reason="Restarting integration.")
         stop_event = threading.Event()
         started_at = _utc_now_iso()
@@ -2906,7 +2713,7 @@ def create_app(
         _: None = Depends(require_api_key),
         customer_id: str | None = Query(default=None),
     ) -> dict[str, Any]:
-        resolved_customer = _resolve_customer_id(customer_id)
+        resolved_customer = resolve_customer_id(customer_id)
         state = _stop_pull_integration(resolved_customer, reason="Pull integration stopped by operator.")
         log_structured(
             logger,
@@ -2918,7 +2725,7 @@ def create_app(
 
     @app.get("/integrations/pull/status", response_model=PullIntegrationStatusEnvelope)
     def pull_integration_status(customer_id: str | None = Query(default=None)) -> dict[str, Any]:
-        resolved_customer = _resolve_customer_id(customer_id)
+        resolved_customer = resolve_customer_id(customer_id)
         with pull_integrations_lock:
             state = pull_integrations.get(resolved_customer)
             return _public_pull_state(state, customer_id=resolved_customer)
@@ -2936,8 +2743,8 @@ def create_app(
         site_id: str | None = Query(default=None),
         compact: bool = Query(default=False),
     ) -> dict[str, Any]:
-        resolved_customer = _resolve_customer_id(customer_id)
-        resolved = _resolve_run_id(service_instance, run_id, customer_id=resolved_customer)
+        resolved_customer = resolve_customer_id(customer_id)
+        resolved = resolve_run_id(service_instance, run_id, customer_id=resolved_customer)
         latest = service_instance.get_latest_result(
             run_id=resolved,
             customer_id=resolved_customer,
@@ -2955,8 +2762,8 @@ def create_app(
         site_id: str | None = Query(default=None),
         compact: bool = Query(default=False),
     ) -> dict[str, Any]:
-        resolved_customer = _resolve_customer_id(customer_id)
-        resolved = _resolve_run_id(service_instance, run_id, customer_id=resolved_customer)
+        resolved_customer = resolve_customer_id(customer_id)
+        resolved = resolve_run_id(service_instance, run_id, customer_id=resolved_customer)
         results = service_instance.list_recent_results(
             limit=limit,
             run_id=resolved,
@@ -2976,15 +2783,15 @@ def create_app(
         customer_id: str | None = Query(default=None),
         site_id: str | None = Query(default=None),
     ) -> dict[str, Any]:
-        resolved_customer = _resolve_customer_id(customer_id)
-        resolved = _resolve_run_id(service_instance, run_id, customer_id=resolved_customer)
+        resolved_customer = resolve_customer_id(customer_id)
+        resolved = resolve_run_id(service_instance, run_id, customer_id=resolved_customer)
         results = service_instance.list_recent_results(
             limit=limit,
             run_id=resolved,
             customer_id=resolved_customer,
             site_id=site_id,
         )
-        content_type, content = _build_export(results, format_name=format)
+        content_type, content = build_export(results, format_name=format)
         suffix = "json" if format == "json" else "csv"
         file_id = f"{resolved_customer}_{resolved or 'all_runs'}"
         filename = f"neraium_results_{file_id}.{suffix}"
@@ -3027,13 +2834,13 @@ def create_app(
         run_id: str | None = Query(default=None),
         customer_id: str | None = Query(default=None),
     ) -> dict[str, Any]:
-        resolved_customer = _resolve_customer_id(customer_id)
-        resolved = _resolve_run_id(service_instance, run_id, customer_id=resolved_customer)
+        resolved_customer = resolve_customer_id(customer_id)
+        resolved = resolve_run_id(service_instance, run_id, customer_id=resolved_customer)
         result = service_instance.get_result_by_id(
             result_id,
             run_id=resolved,
             customer_id=resolved_customer,
-        )
+            )
         if result is None:
             raise HTTPException(status_code=404, detail=f"Unknown result_id: {result_id}")
         return {"result": result}
