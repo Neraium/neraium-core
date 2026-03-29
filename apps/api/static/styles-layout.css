@@ -19,8 +19,6 @@
 .live-dot { width: 8px; height: 8px; border-radius: 50%; background: #4bf0b8; display: inline-block; margin-right: 6px; animation: liveBlink 1.2s ease-in-out infinite; }
 .streaming { color: #b8ceff; animation: liveBlink 1s ease-in-out infinite; }
 @keyframes liveBlink { 0%,100% { opacity:.4; } 50% { opacity:1; } }
-.panel { border-radius: 16px; box-shadow: 0 10px 22px rgba(0, 0, 0, 0.32); }
-.status-warning { display: block; border: 1px solid rgba(245, 186, 46, 0.5); background: rgba(245, 186, 46, 0.12); color: #ffe1a3; margin: 0 1.1rem; }
 @media (max-width: 740px) {
   .command-topbar { padding: 12px 14px 12px; padding-top: max(10px, env(safe-area-inset-top, 0px)); }
 }
