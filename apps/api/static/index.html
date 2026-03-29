@@ -139,9 +139,8 @@
                 <button id="refreshBtn" type="button" class="secondary control-secondary-btn">Refresh Active Run</button>
               </div>
               <div class="quick-link-stack" aria-label="Open deeper analysis">
-                <a class="button-link secondary" id="dashboardOpenRunLink" href="/app/runs">Open Active Run</a>
-                <a class="button-link secondary" href="/app/runs">Open Run Analysis</a>
-                <a class="button-link secondary" href="/app/runs">View Structural Analysis</a>
+                <a class="button-link secondary" id="dashboardOpenAnalysisLink" href="/app/runs">Open Analysis Workspace</a>
+                <p class="subtitle quick-link-note">Use analysis for geometry, timeline, trend charts, and full recommendation rationale.</p>
               </div>
               <details class="reference-replay-panel">
                 <summary>Reference Replay · Historical Validation</summary>
@@ -285,15 +284,23 @@
 
         <!-- RUN DETAIL -->
         <section id="page-run-detail" class="page hidden">
-          <section class="panel">
+          <section id="analysis-executive" class="panel">
             <div class="panel-header">
-              <h3 id="runDetailTitle">Run detail</h3>
+              <h3 id="runDetailTitle">Run analysis workspace</h3>
               <div class="row panel-actions">
                 <button id="runDetailExportJsonBtn" type="button">Export JSON</button>
                 <button id="runDetailExportCsvBtn" type="button" class="secondary">Export CSV</button>
               </div>
             </div>
             <p id="runDetailMeta" class="subtitle"></p>
+            <p class="subtitle analysis-intent">Dedicated structural intelligence workspace for state, risk, trend, geometry, and history.</p>
+            <nav class="analysis-map" aria-label="Run analysis sections">
+              <a href="#analysis-executive">State / risk / trend</a>
+              <a href="#analysis-context">Recommendation context</a>
+              <a href="#analysis-geometry">Structural geometry</a>
+              <a href="#analysis-trends">Charts & timeline</a>
+              <a href="#analysis-results">Results / history / export</a>
+            </nav>
             <div id="runSignalSeparation" class="signal-separation hidden">
               <article class="signal-card state">
                 <span class="k">State</span>
@@ -372,6 +379,12 @@
               </div>
               <ul id="demoKeyEventsList" class="demo-key-events-list"></ul>
             </section>
+            <section id="analysis-context" class="analysis-subsection">
+              <div class="panel-header panel-header-subsection">
+                <h4>Alert &amp; recommendation context</h4>
+                <p class="subtitle">Operational rationale tied directly to the latest structural signal state.</p>
+              </div>
+            </section>
             <article id="runRiskExplanationPanel" class="risk-explanation hidden">
               <div class="risk-explanation-head">
                 <h4 id="runRiskExplanationTitle">Why this risk level</h4>
@@ -385,7 +398,7 @@
             </div>
           </section>
 
-          <section class="panel">
+          <section id="analysis-trends" class="panel">
             <div class="panel-header">
               <h3>Trend charts</h3>
               <div id="runRangeControls" class="range-controls">
@@ -406,7 +419,7 @@
             </div>
           </section>
 
-          <section class="panel geometry-panel">
+          <section id="analysis-geometry" class="panel geometry-panel">
             <div class="panel-header">
               <h3>Structural flow</h3>
               <p id="geometryFlowSubtitle" class="subtitle geometry-subtitle">
@@ -586,9 +599,9 @@
             <ul id="operatorMessagesList" class="messages"></ul>
           </section>
 
-          <section class="panel">
+          <section id="analysis-results" class="panel">
             <div class="panel-header">
-              <h3>Results table</h3>
+              <h3>Results table · history and export</h3>
             </div>
             <div class="row wrap filters">
               <input id="runResultsSearchInput" placeholder="Filter by message, phase, risk, state..." />
