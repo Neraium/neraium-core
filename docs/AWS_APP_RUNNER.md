@@ -10,6 +10,7 @@ This guide deploys Neraium from GitHub to AWS App Runner using the repository co
 - **Static assets:** served from `apps/api/static` through router + `/web` static mount.
 - **Health endpoint:** `GET /health` returns JSON `200`.
 - **Requirements layout:** root `requirements.txt` includes `-r apps/api/requirements.txt` so installs are unambiguous from repo root.
+- **Platform scope:** AWS App Runner (Railway is intentionally not part of the deployment path for this repo).
 
 ## App Runner console steps (source code repository)
 
@@ -86,3 +87,9 @@ IAM role needs at minimum:
 5. **Static web asset issues**
    - Symptom: `/dashboard` (or `/operator` redirect) 404 or missing JS/CSS.
    - Fix: confirm `apps/api/static/*` exists in the deployed branch and source directory is root.
+## Railway decommissioning note
+
+This repository is intentionally configured for AWS deployment workflows only.
+If a historical Railway service exists, treat it as decommissioned and keep Railway
+GitHub integration disabled to prevent accidental redeploys.
+

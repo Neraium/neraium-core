@@ -48,6 +48,7 @@ This repository is now streamlined for AWS deployments (App Runner / ECS / EKS):
 
 - Use `apprunner.yaml` as the canonical source-based deployment spec.
 - Use `Dockerfile` for container-based AWS deployment flows.
+- Railway deployment support is intentionally disabled; do not configure or reconnect Railway for this repository.
 - Use environment-driven CORS (`NERAIUM_CORS_ALLOW_ORIGINS`) for your AWS domain(s).
 - Keep writable persistence paths on ephemeral filesystems (for example `/tmp/neraium.db`) unless using managed storage.
 
