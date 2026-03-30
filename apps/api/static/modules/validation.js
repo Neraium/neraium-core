@@ -253,3 +253,14 @@ async function handleValidationStartupBehavior({
     setLoading(false);
   }
 }
+
+async function loadValidationPage() {
+  const demoQs = applyDemoQueryParams();
+  readDemoModeFromStorage();
+  applyDemoUiShell();
+  renderTenantControls();
+  await handleValidationStartupBehavior({
+    demoQuery: demoQs,
+    refreshCurrentPage,
+  });
+}
