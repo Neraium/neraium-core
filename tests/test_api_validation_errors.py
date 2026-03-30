@@ -124,3 +124,41 @@ def test_ingest_csv_malformed_payload_returns_400(tmp_path) -> None:
     assert response.status_code == 400
     assert response.status_code != 500
     assert "Invalid CSV row" in response.json()["detail"]
+
+
+def test_ingest_accepts_alias_signal_payload(tmp_path) -> None:
+    client = _build_client(tmp_path)
+    response = client.post(
+        _customer_path("/ingest"),
+        json={
+            "recorded_at": "2026-01-01T00:00:00Z",
+            "entity_id": "a1",
+            "location": "s1",
+            "variables": {"pressure": 12.3},
+        },
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["count"] == 1
+    assert body["results"][0]["asset_id"] == "a1"
+
+
+def test_ingest_batch_accepts_stream_records_shape(tmp_path) -> None:
+    client = _build_client(tmp_path)
+    response = client.post(
+        _customer_path("/ingest/batch"),
+        json={
+            "stream": {
+                "records": [
+                    {
+                        "recorded_at": "2026-01-01T00:00:00Z",
+                        "entity_id": "a1",
+                        "location": "s1",
+                        "variables": {"pressure": 10.0},
+                    }
+                ]
+            }
+        },
+    )
+    assert response.status_code == 200
+    assert response.json()["count"] == 1

@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import pytest
+
 from neraium_core.csv_mapping import (
     SemanticColumnMapping,
     infer_semantic_mapping,
     parse_csv_sample_for_mapping,
+    resolve_mapping,
     validate_mapping,
 )
 from neraium_core.pipeline import parse_csv_text
@@ -58,3 +61,9 @@ def test_validate_mapping_requires_sensors() -> None:
     )
     errs = validate_mapping(m, ["t", "a", "x"])
     assert any("at least one sensor" in e.lower() for e in errs)
+
+
+def test_resolve_mapping_requires_confirmation_on_ambiguous_headers() -> None:
+    headers = ["timestamp", "time", "recorded_at", "asset", "value"]
+    with pytest.raises(ValueError, match="ambiguous_mapping"):
+        resolve_mapping(headers, None)
