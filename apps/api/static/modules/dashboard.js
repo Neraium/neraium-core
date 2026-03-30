@@ -762,7 +762,7 @@ async function startCmapssDemo(customerId, options = {}) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       customer_id: customerId || null,
-      max_frames: Number(options.max_frames || 120),
+      max_frames: Number(options.max_frames || CMAPSS_REPLAY_DEFAULT_MAX_FRAMES),
     }),
   });
 }
@@ -1209,7 +1209,9 @@ const INGEST_JOB_POLL_MS = 400;
 const DEMO_REPLAY_INITIAL_POLL_MS = 900;
 const DEMO_REPLAY_MAX_POLL_MS = 8000;
 const DEMO_REPLAY_STARTING_TIMEOUT_MS = 45000;
+const DEMO_REPLAY_RESULTS_MATERIALIZATION_TIMEOUT_MS = 180000;
 const DEMO_REPLAY_MAX_TRANSIENT_ERRORS = 4;
+const CMAPSS_REPLAY_DEFAULT_MAX_FRAMES = 240;
 const DEMO_UI_STATES = Object.freeze({
   idle: "idle",
   starting: "starting",

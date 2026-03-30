@@ -35,7 +35,8 @@
   }
 
   function friendlyErrorMessage(err, context = "analysis") {
-    const msg = String(err?.message || err || "").toLowerCase();
+    const rawMessage = String(err?.message || err || "");
+    const msg = rawMessage.toLowerCase();
     const normalizedContext = String(context || "analysis").toLowerCase();
     const networkText = msg.includes("network")
       ? " Connection to the service was interrupted."
@@ -43,7 +44,16 @@
         ? " The request timed out before completion."
         : "";
     if (normalizedContext === "replay" || msg.includes("replay") || msg.includes("demo") || msg.includes("validation")) {
-      return `Validation replay interrupted. Restart the NASA CMAPSS replay.${networkText}`;
+      if (msg.includes("core_runtime_unavailable") || msg.includes("fallback mode is active") || msg.includes("analysis engine is unavailable")) {
+        return `Analysis engine unavailable: runtime is degraded/fallback. Restore full core runtime and retry replay.${networkText}`;
+      }
+      if (msg.includes("no analysis") || msg.includes("materialized")) {
+        return `Replay completed but no analysis was generated. Increase ingest window or verify runtime health.${networkText}`;
+      }
+      if (msg.includes("temporarily unavailable") || msg.includes("retrying status check")) {
+        return `Replay is still initializing; status visibility is temporarily delayed.${networkText}`;
+      }
+      return `Validation replay could not complete yet. Check replay status and retry only if this persists.${networkText}`;
     }
     if (normalizedContext === "ingest" || msg.includes("upload") || msg.includes("ingest") || msg.includes("csv")) {
       return `Telemetry ingest did not complete. Upload fresh data and retry.${networkText}`;

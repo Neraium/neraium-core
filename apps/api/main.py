@@ -371,6 +371,7 @@ DEMO_STRUCTURAL_SENSOR_KEYS = [
     "field_bus_ok",
     "coolant_flow",
 ]
+CMAPSS_REPLAY_DEFAULT_MAX_FRAMES = 240
 
 
 class DemoSeedRequest(BaseModel):
@@ -384,7 +385,7 @@ class DemoSeedRequest(BaseModel):
 
 class DemoCmapssStartRequest(BaseModel):
     customer_id: str | None = None
-    max_frames: int = Field(default=120, ge=30, le=500)
+    max_frames: int = Field(default=CMAPSS_REPLAY_DEFAULT_MAX_FRAMES, ge=30, le=500)
 
 
 def _build_demo_sensor_values_row(i: int, p: float, drift_lift: float, vib_spike: float) -> dict[str, float]:
@@ -510,6 +511,7 @@ class HealthResponse(BaseModel):
     core_runtime_mode: str = "full"
     core_runtime_fallback: bool = False
     core_runtime_notes: list[str] = Field(default_factory=list)
+    analysis_runtime_available: bool = True
     runtime_state_diagnostics: dict[str, Any] = Field(default_factory=dict)
 
 
