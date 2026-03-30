@@ -104,17 +104,6 @@ function renderRunDetailCharts(results) {
   setTrendPlaybackCursorMarker(-1, labels.length);
 }
 
-function scheduleDeferredRunDetailPaint() {
-  if (state.ui.runDetailDeferredPaint) {
-    window.cancelAnimationFrame(state.ui.runDetailDeferredPaint);
-    state.ui.runDetailDeferredPaint = null;
-  }
-  state.ui.runDetailDeferredPaint = window.requestAnimationFrame(() => {
-    renderRunDetailFromState({ deferHeavy: false });
-    state.ui.runDetailDeferredPaint = null;
-  });
-}
-
 function clearRunDetailObserver() {
   if (state.ui.runDetailObserver) {
     state.ui.runDetailObserver.disconnect();
@@ -122,85 +111,23 @@ function clearRunDetailObserver() {
   }
 }
 
-function setupRunDetailProgressiveHydration(runId) {
-  clearRunDetailObserver();
-  state.ui.runDetailHydratedSections = {};
-  if (!("IntersectionObserver" in window)) {
-    scheduleDeferredRunDetailPaint();
-    scheduleHeavyWork(() => {
-      loadRunGeometry(runId, state.runRecent[0]?.result_id ?? null).catch(() => {
-        setGeometrySurfaceState("Structural view is unavailable for the current snapshot.", "error");
-      });
-    });
+async function hydrateRunDetailSection(section, runId) {
+  if (section === "overview" || state.ui.runDetailHydratedSections[section]) return;
+  state.ui.runDetailHydratedSections[section] = true;
+  if (section === "trends") {
+    await ensureChartJsLoaded();
+    renderRunDetailFromState();
     return;
   }
-  const observer = new IntersectionObserver((entries) => {
-    entries.forEach((entry) => {
-      if (!entry.isIntersecting) return;
-      const id = String(entry.target.id || "");
-      if (id === "analysis-trends" && !state.ui.runDetailHydratedSections.trends) {
-        state.ui.runDetailHydratedSections.trends = true;
-        ensureChartJsLoaded()
-          .then(() => scheduleDeferredRunDetailPaint())
-          .catch((err) => setStatus(String(err.message || err), true, true));
-      }
-      if (id === "analysis-results" && !state.ui.runDetailHydratedSections.results) {
-        state.ui.runDetailHydratedSections.results = true;
-        scheduleDeferredRunDetailPaint();
-        scheduleHeavyWork(() => {
-          loadRunDetailBackgroundHistory(runId).catch(() => {
-            /* best effort */
-          });
-        });
-      }
-      if (id === "analysis-geometry" && !state.ui.runDetailHydratedSections.geometry) {
-        state.ui.runDetailHydratedSections.geometry = true;
-        const resultId = state.runRecent[0]?.result_id ?? null;
-        scheduleHeavyWork(() => {
-          loadRunGeometry(runId, resultId).catch(() => {
-            setGeometrySurfaceState("Structural view is unavailable for the current snapshot.", "error");
-          });
-        });
-      }
-    });
-  }, { rootMargin: window.matchMedia("(max-width: 740px)").matches ? "80px 0px" : "180px 0px" });
-  state.ui.runDetailObserver = observer;
-  ["analysis-trends", "analysis-results", "analysis-geometry"].forEach((id) => {
-    const el = qs(`#${id}`);
-    if (el) observer.observe(el);
-  });
-  const intentHydrate = (section) => {
-    if (section === "trends" && !state.ui.runDetailHydratedSections.trends) {
-      state.ui.runDetailHydratedSections.trends = true;
-      ensureChartJsLoaded()
-        .then(() => scheduleDeferredRunDetailPaint())
-        .catch((err) => setStatus(String(err.message || err), true, true));
-    }
-    if (section === "results" && !state.ui.runDetailHydratedSections.results) {
-      state.ui.runDetailHydratedSections.results = true;
-      scheduleDeferredRunDetailPaint();
-      scheduleHeavyWork(() => {
-        loadRunDetailBackgroundHistory(runId).catch(() => {
-          /* best effort */
-        });
-      });
-    }
-    if (section === "geometry" && !state.ui.runDetailHydratedSections.geometry) {
-      state.ui.runDetailHydratedSections.geometry = true;
-      const resultId = state.runRecent[0]?.result_id ?? null;
-      scheduleHeavyWork(() => {
-        loadRunGeometry(runId, resultId).catch(() => {
-          setGeometrySurfaceState("Structural view is unavailable for the current snapshot.", "error");
-        });
-      });
-    }
-  };
-  qs("#analysis-trends")?.addEventListener("pointerdown", () => intentHydrate("trends"), { once: true });
-  qs("#analysis-results")?.addEventListener("pointerdown", () => intentHydrate("results"), { once: true });
-  qs("#analysis-geometry")?.addEventListener("pointerdown", () => intentHydrate("geometry"), { once: true });
-  qs("#analysis-trends")?.addEventListener("focusin", () => intentHydrate("trends"), { once: true });
-  qs("#analysis-results")?.addEventListener("focusin", () => intentHydrate("results"), { once: true });
-  qs("#analysis-geometry")?.addEventListener("focusin", () => intentHydrate("geometry"), { once: true });
+  if (section === "results") {
+    await loadRunDetailBackgroundHistory(runId);
+    renderRunDetailFromState();
+    return;
+  }
+  if (section === "geometry") {
+    await loadRunGeometry(runId, state.runRecent[0]?.result_id ?? null);
+    renderRunDetailFromState();
+  }
 }
 
 function setTrendPlaybackCursorMarker(idx, lengthHint = 0) {
@@ -418,10 +345,16 @@ function syncStructuralFlowTimeline(points, latestResultId = null) {
 }
 
 function renderRunDetailFromState(opts = {}) {
-  const deferHeavy = Boolean(opts.deferHeavy);
-  const trendsHydrated = !deferHeavy || Boolean(state.ui.runDetailHydratedSections.trends);
-  const resultsHydrated = !deferHeavy || Boolean(state.ui.runDetailHydratedSections.results);
-  const geometryHydrated = !deferHeavy || Boolean(state.ui.runDetailHydratedSections.geometry);
+  const activeSection = String(state.runDetailView.section || "overview");
+  const trendsHydrated = Boolean(state.ui.runDetailHydratedSections.trends);
+  const resultsHydrated = Boolean(state.ui.runDetailHydratedSections.results);
+  const geometryHydrated = Boolean(state.ui.runDetailHydratedSections.geometry);
+  ["overview", "trends", "geometry", "results"].forEach((section) => {
+    qs(`#analysis-${section}`)?.classList.toggle("hidden", activeSection !== section);
+  });
+  qsa("#runDetailSectionTabs [data-run-section]").forEach((btn) => {
+    btn.classList.toggle("active", btn.getAttribute("data-run-section") === activeSection);
+  });
   qs("#runTrendsDeferredHint")?.classList.toggle("hidden", trendsHydrated);
   qs("#runResultsDeferredHint")?.classList.toggle("hidden", resultsHydrated);
   qs("#runGeometryDeferredHint")?.classList.toggle("hidden", geometryHydrated);
@@ -444,59 +377,26 @@ function renderRunDetailFromState(opts = {}) {
     disposeGeometryRenderer();
     clearGeometryModelsPanel();
     state.runGeometry = null;
-    setDemoPlaybackUI();
     renderRunResultsTable([]);
-    renderRiskExplanation(null, {
-      panelSelector: "#runRiskExplanationPanel",
-      titleSelector: "#runRiskExplanationTitle",
-      bodySelector: "#runRiskExplanationText",
-      badgeSelector: "#runRiskExplanationBadge",
-    });
     return;
   }
 
   const chronologicalFull = state.runRecent.slice().reverse();
-  const activeRunId = String(state.activeRun?.run_id || "");
-  if (state.demo.enabled) {
-    if (state.demo.activeRunId !== activeRunId) {
-      stopDemoPlayback();
-      state.demo.activeRunId = activeRunId;
-      state.demo.cursor = chronologicalFull.length;
-    }
-    if (!Number.isFinite(state.demo.cursor) || state.demo.cursor <= 0) {
-      state.demo.cursor = chronologicalFull.length;
-    }
-    state.demo.cursor = Math.max(1, Math.min(state.demo.cursor, chronologicalFull.length));
-    state.demo.keyEvents = extractDemoKeyEvents(chronologicalFull);
-  } else {
-    state.demo.activeRunId = activeRunId;
-    state.demo.cursor = chronologicalFull.length;
-    state.demo.keyEvents = [];
-  }
-  const chronological = state.demo.enabled
-    ? chronologicalFull.slice(0, Math.max(1, Number(state.demo.cursor || chronologicalFull.length)))
-    : chronologicalFull;
+  const chronological = chronologicalFull;
   const ranged = currentRangeSlice(chronological);
   const flowTimeline = buildStructuralFlowTimeline(ranged);
   const latest = chronological.length ? chronological[chronological.length - 1] : state.runRecent[0];
-  setDemoPlaybackUI();
-  if (trendsHydrated) {
+  if (activeSection === "trends" && trendsHydrated) {
     renderRunDetailCharts(ranged);
   }
   syncStructuralFlowTimeline(flowTimeline, latest?.result_id);
-  if (resultsHydrated) {
+  if (activeSection === "results" && resultsHydrated) {
     const filtered = filterRunResults(ranged);
     const sorted = sortRunResults(filtered);
     renderRunResultsTable(sorted, { latestResultId: latest?.result_id });
-  } else {
+  } else if (activeSection === "results") {
     renderRunResultsTable([], { latestResultId: latest?.result_id });
   }
-  renderRiskExplanation(latest, {
-    panelSelector: "#runRiskExplanationPanel",
-    titleSelector: "#runRiskExplanationTitle",
-    bodySelector: "#runRiskExplanationText",
-    badgeSelector: "#runRiskExplanationBadge",
-  }, chronologicalFull);
 }
 
 
@@ -517,57 +417,24 @@ async function loadRunDetailBackgroundHistory(runId) {
 }
 
 async function loadRunDetail(runId) {
-  if (runId) {
-    state.demo.seedRunId = String(runId);
-    beginReplayStatusMonitoring(runId);
-  }
   const runReq = fetchJson(apiUrl(`/runs/${encodeURIComponent(runId)}`, tenantScopeParams()));
   const recentReq = fetchRecentResults({ run_id: runId, limit: RUN_DETAIL_INITIAL_LIMIT });
   state.runRecent = [];
-  renderRunDetailFromState({ deferHeavy: true });
+  renderRunDetailFromState();
   const [runRes, recentEnv] = await Promise.all([runReq, recentReq]);
   const run = runRes.run;
   const title = qs("#runDetailTitle");
   const meta = qs("#runDetailMeta");
   if (title) title.textContent = `Run analysis · ${run.name}`;
-  const runTruth = buildFrontendUiState(null);
-  const workspaceLabel = runTruth.mode === "validation" ? "validation replay workspace" : "pilot telemetry workspace";
-  if (meta) meta.textContent = `Run ${run.run_id} · ${workspaceLabel} · created ${run.created_at}`;
+  if (meta) meta.textContent = `Run ${run.run_id} · created ${run.created_at}`;
   state.runRecent = Array.isArray(recentEnv?.results) ? recentEnv.results : [];
-  if (state.demo.enabled) {
-    if (state.demo.activeRunId !== runId) {
-      stopDemoPlayback();
-      state.demo.activeRunId = runId;
-      state.demo.cursor = state.runRecent.length;
-    } else if (!Number.isFinite(state.demo.cursor) || state.demo.cursor <= 0 || state.demo.cursor > state.runRecent.length) {
-      state.demo.cursor = state.runRecent.length;
-    }
-    state.demo.keyEvents = extractDemoKeyEvents(state.runRecent.slice().reverse());
-  } else {
-    state.demo.activeRunId = runId;
-    state.demo.cursor = state.runRecent.length;
-    state.demo.keyEvents = [];
-  }
   collectKnownSites(state.runRecent);
   renderTenantControls();
   setRangeButtonState(state.runDetailView.range);
-  renderRunDetailFromState({ deferHeavy: true });
-  setupRunDetailProgressiveHydration(runId);
-  let autoplayHandled = false;
-  try {
-    if (new URLSearchParams(window.location.search).get("autoplay") === "1" && state.demo.enabled && state.runRecent.length > 1) {
-      replayDemoTimeline();
-      autoplayHandled = true;
-      const u = new URL(window.location.href);
-      u.searchParams.delete("autoplay");
-      window.history.replaceState({}, "", u.pathname + u.search + u.hash);
-    }
-  } catch (_e) {
-    // ignore
-  }
-  if (!autoplayHandled) {
-    maybeAutoStartDemoPlayback();
-  }
+  state.runDetailView.section = "overview";
+  state.runDetailView.runId = runId;
+  state.ui.runDetailHydratedSections = { overview: true, trends: false, geometry: false, results: false };
+  renderRunDetailFromState();
   state.ui.runDetailBackgroundHistoryLoaded = false;
 
   const exportJson = qs("#runDetailExportJsonBtn");
@@ -621,11 +488,17 @@ function wireRunDetailEvents() {
       renderRunDetailFromState();
     });
   });
-  qs("#demoPlayPauseBtn")?.addEventListener("click", () => {
-    toggleDemoPlayback();
-  });
-  qs("#demoReplayBtn")?.addEventListener("click", () => {
-    replayDemoTimeline();
+  qsa("#runDetailSectionTabs [data-run-section]").forEach((btn) => {
+    btn.addEventListener("click", async () => {
+      const section = String(btn.getAttribute("data-run-section") || "overview");
+      state.runDetailView.section = section;
+      renderRunDetailFromState();
+      try {
+        await hydrateRunDetailSection(section, state.runDetailView.runId || state.activeRun?.run_id || "");
+      } catch (err) {
+        setStatus(String(err.message || err), true, true);
+      }
+    });
   });
 }
 
