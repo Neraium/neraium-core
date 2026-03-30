@@ -266,7 +266,27 @@ def build_ingest_router(
         os.close(fd)
         job_id = f"ingest_{uuid4().hex[:16]}"
         created_at = models.utc_now_iso()
-        initial_job = {"job_id": job_id, "status": "uploading", "run_id": resolved_run, "customer_id": resolved_customer, "filename": filename, "created_at": created_at, "updated_at": created_at, "rows_processed": 0, "rows_succeeded": 0, "rows_failed": 0, "partial_success": False, "upload_bytes_received": 0, "upload_bytes_total": content_length, "error_samples": [], "message": "Upload started.", "latest_result": None}
+        initial_job = {
+            "job_id": job_id,
+            "status": "uploading",
+            "run_id": resolved_run,
+            "customer_id": resolved_customer,
+            "filename": filename,
+            "created_at": created_at,
+            "updated_at": created_at,
+            "rows_processed": 0,
+            "rows_succeeded": 0,
+            "rows_failed": 0,
+            "partial_success": False,
+            "upload_bytes_received": 0,
+            "upload_bytes_total": content_length,
+            "error_samples": [],
+            "message": "Upload started.",
+            "latest_result": None,
+            "lifecycle_phase": "uploading",
+            "terminal_state": None,
+            "failure_category": None,
+        }
         with ingest_jobs_lock:
             ingest_jobs[job_id] = initial_job
         persist_operational_state(f"ingest_job:{job_id}", initial_job, customer_id=resolved_customer, run_id=resolved_run)

@@ -86,14 +86,18 @@ def test_replay_fd001_units_smoke():
         "cycle",
         "row_index",
         "decision_action",
+        "decision_confidence_raw",
         "decision_confidence",
         "risk_current_level",
         "risk_trend",
         "risk_trend_direction",
         "top_hypothesis_id",
+        "top_hypothesis_confidence_raw",
         "top_hypothesis_confidence",
         "top_attribution_driver",
     }
+    assert isinstance(summary[0]["decision_confidence"], float)
+    assert isinstance(summary[0]["top_hypothesis_confidence"], float)
     assert "first_risk_cycle" not in summary[0]
     assert "first_decision_cycle" not in summary[0]
     assert milestones[0]["unit_id"] == 1
