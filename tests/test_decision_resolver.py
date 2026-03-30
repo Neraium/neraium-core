@@ -67,6 +67,33 @@ def test_resolver_falls_back_to_recommended_sequence() -> None:
     assert out["target"] == "cluster_B"
 
 
+def test_resolver_hysteresis_not_overridden_for_recommended_sequence() -> None:
+    payload = _base_inputs()
+    payload["causal_analysis"] = {
+        "status": "ready",
+        "best_next_action": None,
+        "recommended_sequence": [
+            {"action": "Inspect subsystem/cluster first: cluster_B.", "target": "cluster_B", "priority": 1},
+        ],
+        "top_hypotheses": [{"hypothesis": "y", "confidence": 0.42, "robustness": 0.5, "counterfactual_strength": 0.4}],
+    }
+    out = resolve_best_action(
+        **payload,
+        decision_context={
+            "previous_action": "Inspect subsystem/cluster first: cluster_A.",
+            "previous_target": "cluster_A",
+            "previous_priority": 1,
+            "previous_score": 0.85,
+            "pending_action": None,
+            "pending_target": None,
+            "pending_streak": 0,
+        },
+    )
+    assert out["status"]["available"] is True
+    assert out["action"] == "Inspect subsystem/cluster first: cluster_A."
+    assert out["stabilization_debug"]["reason"] == "retain_previous_hysteresis"
+
+
 def test_resolver_falls_back_to_operator_guidance_without_causal_action() -> None:
     payload = _base_inputs()
     payload["causal_analysis"] = {"status": "ready", "best_next_action": None, "recommended_sequence": [], "top_hypotheses": []}

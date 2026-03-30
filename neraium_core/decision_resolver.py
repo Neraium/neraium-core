@@ -317,6 +317,7 @@ def resolve_best_action(
     action: str | None = None
     target: str | None = None
     priority: int | None = None
+    selected_from_best_next = False
 
     best_next = causal.get("best_next_action")
     top_h = {}
@@ -330,6 +331,7 @@ def resolve_best_action(
         action, target, priority = _extract_action_parts(best_next)
         action = _normalized_action_label(action)
         source["from_causal_analysis"] = bool(action)
+        selected_from_best_next = bool(action)
         selected_score = _clamp01(best_conf)
         if action:
             evidence.append(
@@ -450,7 +452,7 @@ def resolve_best_action(
         prior_pending_streak=prior_pending_streak,
         risk_assessment=risk,
     )
-    if source.get("from_causal_analysis") and prev_action and action and action != prev_action:
+    if selected_from_best_next and prev_action and action and action != prev_action:
         switch_applied = True
         switch_debug = {
             "reason": "switch_follow_causal_update",
