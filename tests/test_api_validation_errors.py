@@ -60,6 +60,10 @@ def test_ingest_malformed_payload_returns_422(tmp_path) -> None:
     assert response.status_code == 422
     assert response.status_code != 500
     assert "sensor_values" in str(response.json())
+    body = response.json()
+    assert body.get("type") == "validation_error"
+    assert isinstance(body.get("detail"), str)
+    assert isinstance(body.get("issue_details"), list)
 
 
 def test_ingest_batch_invalid_timestamp_returns_400(tmp_path) -> None:
@@ -124,6 +128,42 @@ def test_ingest_csv_malformed_payload_returns_400(tmp_path) -> None:
     assert response.status_code == 400
     assert response.status_code != 500
     assert "Invalid CSV row" in str(response.json())
+
+
+def test_ingest_csv_preview_accepts_legacy_csv_text_json_field(tmp_path) -> None:
+    client = _build_client(tmp_path)
+    response = client.post(
+        _customer_path("/ingest/csv/preview"),
+        json={"csv_text": "timestamp,asset,s1\n2026-01-01T00:00:00+00:00,a1,1.2\n"},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["headers"] == ["timestamp", "asset", "s1"]
+
+
+def test_ingest_csv_preview_accepts_multipart_file_upload(tmp_path) -> None:
+    client = _build_client(tmp_path)
+    response = client.post(
+        _customer_path("/ingest/csv/preview"),
+        files={"file": ("fd001.csv", "time,unit,s1\n2026-01-01T00:00:00+00:00,U1,0.2\n", "text/csv")},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["headers"] == ["time", "unit", "s1"]
+    assert body["suggested_mapping"] is not None
+
+
+def test_ingest_csv_preview_missing_payload_returns_structured_400(tmp_path) -> None:
+    client = _build_client(tmp_path)
+    response = client.post(
+        _customer_path("/ingest/csv/preview"),
+        json={},
+    )
+    assert response.status_code == 400
+    body = response.json()
+    assert body["type"] == "validation_error"
+    assert "actionable_detail" in body
+    assert "correlation_id" in body
 
 
 def test_ingest_accepts_alias_signal_payload(tmp_path) -> None:
