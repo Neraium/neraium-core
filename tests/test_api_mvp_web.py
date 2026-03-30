@@ -283,6 +283,8 @@ def test_demo_cmapss_start_returns_run_and_processes_real_results(tmp_path) -> N
     body = started.json()
     assert body["status"] == "ok"
     assert body["demo"] == "cmapss_fd004"
+    assert body["canonical_story"]["read_only"] is True
+    assert body["canonical_story"]["non_actuating"] is True
     run_id = str(body["run_id"])
     assert run_id
     assert int(body["processed"]) >= 30
@@ -296,6 +298,20 @@ def test_demo_cmapss_start_returns_run_and_processes_real_results(tmp_path) -> N
     history = client.get(_customer_path(f"/history?run_id={run_id}&limit=5", customer_id="customer-a"))
     assert history.status_code == 200
     assert history.json()["count"] >= 1
+
+    status = client.get(_customer_path(f"/demo/cmapss/status?run_id={run_id}", customer_id="customer-a"))
+    assert status.status_code == 200
+    status_body = status.json()
+    assert "canonical_story_stage" in status_body
+    assert "message" in status_body
+    assert "what_is_happening" in status_body["message"]
+
+    proof = client.get(_customer_path(f"/demo/cmapss/proof-summary?run_id={run_id}", customer_id="customer-a"))
+    assert proof.status_code == 200
+    proof_body = proof.json()
+    assert proof_body["run_id"] == run_id
+    assert "story" in proof_body
+    assert "proof" in proof_body
 
 
 def test_cors_middleware_requires_explicit_origin_configuration(tmp_path, monkeypatch) -> None:
