@@ -15,6 +15,7 @@
   <link rel="stylesheet" href="/web/styles-analysis.css?v=__NERAIUM_ASSET_VERSION__" />
   <link rel="stylesheet" href="/web/styles-upload.css?v=__NERAIUM_ASSET_VERSION__" />
   <link rel="stylesheet" href="/web/styles-validation.css?v=__NERAIUM_ASSET_VERSION__" />
+  <link rel="stylesheet" href="/web/styles-onboarding.css?v=__NERAIUM_ASSET_VERSION__" />
   <!-- Three.js from CDN (same version as scripts/download_three_vendor.py) — avoids /web/vendor static issues. -->
   <script type="importmap">
     {
@@ -50,6 +51,7 @@
         <a href="/upload" data-nav="upload">Upload Telemetry</a>
         <a href="/app/runs" data-nav="runs">Active Runs</a>
         <a href="/validation" data-nav="validation">Validation</a>
+        <a href="/onboarding" data-nav="onboarding">Onboarding</a>
       </nav>
     </aside>
 
@@ -514,6 +516,21 @@
           </section>
         </section>
 
+        <!-- ONBOARDING -->
+        <section id="page-onboarding" class="page hidden">
+          <section class="panel onboarding-panel">
+            <div class="panel-header"><h3>Customer Onboarding</h3></div>
+            <p class="subtitle" id="onboardingStepSubtitle">Connect Neraium in a few minutes.</p>
+            <div id="onboardingStatus" class="status hidden"></div>
+            <div id="onboardingWizard" class="onboarding-wizard"></div>
+            <div class="onboarding-actions">
+              <button id="onboardingBackBtn" type="button" class="secondary">Back</button>
+              <button id="onboardingNextBtn" type="button">Next</button>
+            </div>
+          </section>
+        </section>
+
+
         <!-- RESULT DETAIL -->
         <section id="page-result-detail" class="page hidden">
           <section class="panel">
@@ -541,6 +558,7 @@
   <script defer src="/web/modules/run_detail.js?v=__NERAIUM_ASSET_VERSION__"></script>
   <script defer src="/web/modules/geometry.js?v=__NERAIUM_ASSET_VERSION__"></script>
   <script defer src="/web/modules/validation.js?v=__NERAIUM_ASSET_VERSION__"></script>
+  <script defer src="/web/modules/onboarding.js?v=__NERAIUM_ASSET_VERSION__"></script>
   <script defer src="/web/modules/boot.js?v=__NERAIUM_ASSET_VERSION__"></script>
 </body>
 </html>

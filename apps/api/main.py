@@ -39,6 +39,7 @@ from .routers.geometry import build_geometry_router
 from .routers.ingest import build_ingest_router
 from .routers.demo import build_demo_router
 from .routers.integrations import build_integrations_router
+from .routers.onboarding import build_onboarding_router
 from .services.alerts import alert_thresholds as service_alert_thresholds, evaluate_alerts, dispatch_alert_stubs
 from .services.request_context import (
     resolve_customer_id,
@@ -2135,6 +2136,20 @@ def create_app(
             utc_now_iso=_utc_now_iso,
             log_structured=log_structured,
             models=type("IntegrationModels", (), {"PullIntegrationStartRequest": PullIntegrationStartRequest, "PullIntegrationStatusEnvelope": PullIntegrationStatusEnvelope}),
+        )
+    )
+
+    app.include_router(
+        build_onboarding_router(
+            resolve_customer_id=resolve_customer_id,
+            service_instance=service_instance,
+            normalize_external_payload=normalize_external_payload,
+            is_api_key_valid=is_api_key_valid,
+            configured_api_key=api_key,
+            ensure_default_run=_ensure_default_run,
+            persist_operational_state=_persist_operational_state,
+            store_instance=store_instance,
+            persisted_state_enabled=persisted_state_enabled,
         )
     )
 

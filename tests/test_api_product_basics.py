@@ -166,3 +166,57 @@ def test_recent_results_ordering_and_limit(tmp_path) -> None:
     assert body["count"] == 3
     timestamps = [item["timestamp"] for item in body["results"]]
     assert timestamps == sorted(timestamps, reverse=True)
+
+
+def test_onboarding_flow_bootstraps_run_and_test_frame(tmp_path) -> None:
+    client = _build_client(tmp_path)
+    customer_id = "onboarding-customer"
+
+    verify = client.post(
+        "/onboarding/verify",
+        json={"customer_id": customer_id, "api_key": "dev-key", "environment_label": "pilot"},
+    )
+    assert verify.status_code == 200
+    verify_body = verify.json()
+    assert verify_body["credentials_verified"] is True
+    assert "api_key" not in verify_body
+
+    profile = client.post(
+        _customer_path("/onboarding/profile", customer_id=customer_id),
+        json={
+            "customer_display_name": "Acme Manufacturing",
+            "site_name": "Site A",
+            "default_asset_id": "pump-01",
+            "asset_group": "north-line",
+            "ingestion_method": "api_push",
+        },
+    )
+    assert profile.status_code == 200
+
+    bootstrap = client.post(_customer_path("/onboarding/bootstrap-run", customer_id=customer_id))
+    assert bootstrap.status_code == 200
+    run_id = bootstrap.json()["run"]["run_id"]
+    assert run_id
+
+    test_frame = client.post(_customer_path("/onboarding/test-frame", customer_id=customer_id))
+    assert test_frame.status_code == 200
+    body = test_frame.json()
+    assert body["ingest_accepted"] is True
+    assert body["active_run_id"] == run_id
+
+    status = client.get(_customer_path("/onboarding/status", customer_id=customer_id))
+    assert status.status_code == 200
+    status_body = status.json()
+    assert status_body["ready"] is True
+    assert status_body["test_frame_sent"] is True
+
+
+def test_onboarding_verify_rejects_invalid_api_key(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("NERAIUM_API_KEY", "expected-secret")
+    service = _build_service(tmp_path)
+    with TestClient(create_app(service=service)) as client:
+        response = client.post(
+            "/onboarding/verify",
+            json={"customer_id": "cust-x", "api_key": "wrong"},
+        )
+    assert response.status_code == 401
