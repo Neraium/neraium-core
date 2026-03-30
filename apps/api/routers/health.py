@@ -43,6 +43,7 @@ def build_health_router(
             core_runtime_mode="degraded" if runtime_fallback else "full",
             core_runtime_fallback=runtime_fallback,
             core_runtime_notes=[str(x) for x in runtime_status.get("notes", [])],
+            analysis_runtime_available=not runtime_fallback,
             runtime_state_diagnostics=runtime_state,
         )
 
