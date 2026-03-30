@@ -62,6 +62,7 @@ from ._core_imports import (
     validate_mapping,
     summarize_exception_for_logs,
 )
+from neraium_core.ingestion_normalization import normalize_external_batch_payload, normalize_external_payload
 
 
 logger = logging.getLogger(__name__)
@@ -273,11 +274,27 @@ def _cors_allow_origin_regex() -> str | None:
 
 
 class IngestRequest(BaseModel):
+    model_config = {"extra": "allow"}
+
     customer_id: str | None = None
     timestamp: str | None = None
     site_id: str | None = None
     asset_id: str | None = None
     sensor_values: dict[str, Any] = Field(default_factory=dict)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _normalize_aliases(cls, data: Any) -> Any:
+        if not isinstance(data, dict):
+            return data
+        normalized = normalize_external_payload(data, customer_id=data.get("customer_id"))
+        return {
+            "customer_id": normalized.get("customer_id"),
+            "timestamp": normalized.get("timestamp"),
+            "site_id": normalized.get("site_id"),
+            "asset_id": normalized.get("asset_id"),
+            "sensor_values": normalized.get("sensor_values", {}),
+        }
 
 
 class IngestFrameRequest(BaseModel):
@@ -356,10 +373,17 @@ class BatchIngestRequest(BaseModel):
     @classmethod
     def _accept_records_alias(cls, data: Any) -> Any:
         """Accept legacy/front-end payloads that send `records` instead of `items`."""
-        if isinstance(data, dict) and "items" not in data and "records" in data:
-            remapped = dict(data)
-            remapped["items"] = remapped.pop("records")
-            return remapped
+        if isinstance(data, dict):
+            if "items" in data:
+                return data
+            if any(k in data for k in ("records", "payloads", "stream")):
+                normalized, _ = normalize_external_batch_payload(
+                    data,
+                    customer_id=data.get("customer_id"),
+                )
+                remapped = dict(data)
+                remapped["items"] = normalized
+                return remapped
         return data
 
 

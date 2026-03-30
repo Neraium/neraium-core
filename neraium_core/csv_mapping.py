@@ -375,6 +375,7 @@ def resolve_mapping(
     column_mapping: Mapping[str, Any] | SemanticColumnMapping | None,
     *,
     csv_sample: str | None = None,
+    require_confirmation_for_ambiguous: bool = True,
 ) -> Tuple[SemanticColumnMapping, List[str]]:
     """
     Resolve final mapping: explicit user mapping wins; otherwise infer from headers (+ optional sample rows).
@@ -403,4 +404,9 @@ def resolve_mapping(
         )
     # issues may contain ambiguity warnings — surface as non-fatal
     warnings = [i for i in issues if "Confirm" in i or "Multiple" in i]
+    if warnings and require_confirmation_for_ambiguous:
+        raise ValueError(
+            "ambiguous_mapping: inferred CSV mapping needs operator confirmation. "
+            + " ".join(warnings)
+        )
     return inferred, warnings
