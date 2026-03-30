@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 
 from neraium_core.ingestion_normalization import (
+    normalize_canonical_records_payload,
     normalize_external_batch_payload,
     normalize_external_payload,
 )
@@ -66,3 +67,48 @@ def test_missing_required_fields_raise_structured_errors() -> None:
         normalize_external_payload({"asset_id": "asset-1", "sensor_values": {"x": 1}})
     with pytest.raises(ValueError, match="no_usable_signals"):
         normalize_external_payload({"timestamp": "2026-01-01T00:00:00+00:00", "asset_id": "asset-1"})
+
+
+def test_json_array_payload_normalizes() -> None:
+    rows, _ = normalize_external_batch_payload(
+        [
+            {
+                "timestamp": "2026-01-01T00:00:00+00:00",
+                "asset_id": "a-1",
+                "signals": {"p": 1.1},
+            }
+        ],
+        customer_id="c1",
+    )
+    assert len(rows) == 1
+    assert rows[0]["asset_id"] == "a-1"
+
+
+def test_direct_canonical_records_payload() -> None:
+    rows = normalize_canonical_records_payload(
+        {
+            "records": [
+                {
+                    "timestamp": "2026-01-01T00:00:00+00:00",
+                    "asset_id": "a-1",
+                    "site_id": "s-1",
+                    "signals": {"pressure": 10.2},
+                }
+            ]
+        },
+        customer_id="c1",
+    )
+    assert len(rows) == 1
+    assert rows[0]["sensor_values"]["pressure"] == pytest.approx(10.2)
+
+
+def test_ambiguous_aliases_require_mapping() -> None:
+    with pytest.raises(ValueError, match="ambiguous_mapping"):
+        normalize_external_payload(
+            {
+                "timestamp": "2026-01-01T00:00:00+00:00",
+                "time": "2026-01-01T00:00:01+00:00",
+                "asset_id": "asset-1",
+                "signals": {"x": 1},
+            }
+        )
