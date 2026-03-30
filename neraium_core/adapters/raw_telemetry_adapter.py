@@ -190,10 +190,13 @@ def _load_tabular_rows(path: Path) -> list[dict[str, Any]]:
         if isinstance(obj, list):
             return [dict(r) for r in obj if isinstance(r, dict)]
         if isinstance(obj, dict):
+            if isinstance(obj.get("windows"), list):
+                return []
             if isinstance(obj.get("rows"), list):
                 return [dict(r) for r in obj["rows"] if isinstance(r, dict)]
             if isinstance(obj.get("data"), list):
                 return [dict(r) for r in obj["data"] if isinstance(r, dict)]
+            return [dict(obj)]
     return []
 
 
@@ -434,7 +437,11 @@ def ingest_raw_industrial_input(
         metadata_cols = list(schema.metadata_columns)
         effective_preprocessing = "none" if preprocessing_mode in {"auto", "none"} else preprocessing_mode
     else:
-        slices = load_raw_telemetry_windows(path)
+        if path.is_dir():
+            slices, slice_warnings = _load_directory_slices(path)
+            warnings.extend(slice_warnings)
+        else:
+            slices = load_raw_telemetry_windows(path)
         frames = raw_slices_to_structural_frames(slices, site_id=site_id, customer_id=customer_id)
         sensor_cols = sorted({k for frame in frames for k in frame.get("sensor_values", {}).keys()})
         metadata_cols = ["unit", "cycle", "operating_context"]
