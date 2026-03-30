@@ -50,10 +50,8 @@ def _normalized_action_label(action: str | None) -> str | None:
     if not text:
         return None
     lowered = text.lower()
-    if "inspect subsystem/cluster first" in lowered:
+    if lowered.rstrip(".") == "inspect subsystem/cluster first":
         return "Inspect subsystem/cluster first"
-    if ":" in text:
-        return text.split(":", 1)[0].strip() or text
     return text
 
 
@@ -452,6 +450,18 @@ def resolve_best_action(
         prior_pending_streak=prior_pending_streak,
         risk_assessment=risk,
     )
+    if source.get("from_causal_analysis") and prev_action and action and action != prev_action:
+        switch_applied = True
+        switch_debug = {
+            "reason": "switch_follow_causal_update",
+            "switch_margin": round(float(selected_score) - float(prev_score), 4),
+            "risk_escalation": round(_risk_escalation_score(risk), 4),
+        }
+        next_hysteresis = {
+            "pending_action": None,
+            "pending_target": None,
+            "pending_streak": 0,
+        }
     if not switch_applied and prev_action:
         selected_action = prev_action
         selected_target = prev_target
