@@ -1,143 +1,12 @@
 async function wireEvents() {
   wireMobileNav();
-  initAnalysisWorkspaceTabs();
+  wireWorkspaceShellEvents();
+  wireRunsEvents();
+  wireUploadFormEvents();
   wireRunDetailEvents();
-
-  qs("#dashboardQuickDemoBtn")?.addEventListener("click", async () => {
-    await launchGuidedDemo({ mode: "all" });
-  });
-
-
-  qs("#refreshBtn")?.addEventListener("click", async () => {
-    try {
-      setLoading(true, "Refreshing...");
-      await refreshCurrentPage();
-      setStatus("Refreshed", false, true);
-    } catch (err) {
-      setStatus(String(err.message || err), true, true);
-    } finally {
-      setLoading(false);
-    }
-  });
-
-  qs("#runCreateForm")?.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    try {
-      setLoading(true, "Creating run...");
-      const run = await createRunFromForm();
-      if (run.is_active) updateActiveRunHeader(run);
-      const nameInput = qs("#runNameInput");
-      const configInput = qs("#runConfigInput");
-      const activateInput = qs("#runActivateInput");
-      if (nameInput) nameInput.value = "";
-      if (configInput) configInput.value = "";
-      if (activateInput) activateInput.checked = true;
-      await loadRuns();
-      setStatus(`Run created: ${run.name}`, false, true);
-    } catch (err) {
-      setStatus(String(err.message || err), true, true);
-    } finally {
-      setLoading(false);
-    }
-  });
-
-  qs("#runsSearchInput")?.addEventListener("input", (e) => {
-    state.runsView.search = String(e.target.value || "");
-    renderRunsList();
-  });
-  qs("#runsStatusFilter")?.addEventListener("change", (e) => {
-    state.runsView.status = String(e.target.value || "all");
-    renderRunsList();
-  });
-  qs("#runsSortSelect")?.addEventListener("change", (e) => {
-    state.runsView.sort = String(e.target.value || "created_desc");
-    renderRunsList();
-  });
-
-  qs("#csvUploadForm")?.addEventListener("submit", async (e) => {
-    e.preventDefault();
-    try {
-      clearUploadJobPolling();
-      state.uploadJob.active = true;
-      setUploadProgressUI({
-        visible: true,
-        mode: "uploading",
-        statusText: "Preparing upload...",
-        uploadedBytes: 0,
-        totalBytes: state.uploadFile?.size || null,
-      });
-      const out = await uploadCsvToActiveRun();
-      const route = getRoute();
-      await loadDashboard();
-      if (route.page === "run-detail" && route.runId) {
-        await loadRunDetail(route.runId);
-      }
-      const fileInput = qs("#csvFileInput");
-      if (fileInput) fileInput.value = "";
-      setUploadFile(null);
-      const status = String(out.status || "completed");
-      const rowsProcessed = Number(out.rows_processed || 0);
-      const rowsSucceeded = Number(out.rows_succeeded || 0);
-      const rowsFailed = Number(out.rows_failed || 0);
-      const success = status === "completed";
-      const partial = status === "partial_success";
-      const failed = status === "failed";
-      if (failed) {
-        setStatus(
-          out.message || `CSV ingest failed (${rowsFailed} rows failed).`,
-          true,
-          true
-        );
-      } else if (partial) {
-        setStatus(
-          out.message || `CSV ingest partial success (${rowsSucceeded} succeeded, ${rowsFailed} failed).`,
-          true,
-          true
-        );
-      } else {
-        setStatus(
-          out.message || `CSV ingested (${rowsProcessed} rows processed).`,
-          false,
-          true
-        );
-      }
-      setUploadProgressUI({
-        visible: true,
-        mode: status,
-        statusText: out.message || `Ingest ${status}.`,
-        uploadedBytes: Number(out.upload_bytes_received || 0),
-        totalBytes: out.upload_bytes_total,
-        rowsProcessed,
-        rowsSucceeded,
-        rowsFailed,
-        errorSamples: out.error_samples || [],
-      });
-    } catch (err) {
-      setUploadProgressUI({
-        visible: true,
-        mode: "failed",
-        statusText: String(err.message || err),
-        errorSamples: [{ row: "-", message: String(err.message || err) }],
-      });
-      setStatus(String(err.message || err), true, true);
-    } finally {
-      state.uploadJob.active = false;
-      clearUploadJobPolling();
-    }
-  });
 
   qs("#exportJsonBtn")?.addEventListener("click", () => exportData("json", state.activeRun?.run_id || ""));
   qs("#exportCsvBtn")?.addEventListener("click", () => exportData("csv", state.activeRun?.run_id || ""));
-
-  let resizeTimer = null;
-  window.addEventListener("resize", () => {
-    if (resizeTimer) window.clearTimeout(resizeTimer);
-    resizeTimer = window.setTimeout(() => {
-      if (getRoute().page === "dashboard") {
-        renderDashboardSparkline(dashboardChronologicalResults());
-      }
-    }, 150);
-  });
 
   wireUploadInteractions();
 }
@@ -145,9 +14,6 @@ async function wireEvents() {
 async function init() {
   startLiveClock();
   readTenantFromStorage();
-  readDemoModeFromStorage();
-  const demoQs = applyDemoQueryParams();
-  applyDemoUiShell();
   const routeScope = routeScopeFromQuery();
   if (routeScope.customer_id) {
     state.tenant.customerId = customerIdValue(routeScope.customer_id);
@@ -173,7 +39,7 @@ async function init() {
     if (route.page === "dashboard") await loadDashboard();
     if (route.page === "runs") renderRunsList();
     if (route.page === "upload") updateUploadRunInfo();
-    if (route.page === "validation") renderTenantControls();
+    if (route.page === "validation") await loadValidationPage();
     if (route.page === "run-detail") await loadRunDetail(route.runId);
     if (route.page === "result-detail") await loadResultDetail(route.resultId);
     await wireEvents();
@@ -200,11 +66,7 @@ async function init() {
     } catch (_e) {
       // no-op
     }
-    const startupHandled = await handleValidationStartupBehavior({
-      demoQuery: demoQs,
-      refreshCurrentPage,
-    });
-    if (!startupHandled) setStatus("");
+    setStatus("");
   } catch (err) {
     setStatus(String(err.message || err), true, true);
   } finally {
@@ -227,7 +89,7 @@ async function refreshCurrentPage() {
   if (route.page === "dashboard") await loadDashboard();
   if (route.page === "runs") renderRunsList();
   if (route.page === "upload") updateUploadRunInfo();
-  if (route.page === "validation") renderTenantControls();
+  if (route.page === "validation") await loadValidationPage();
   if (route.page === "run-detail") await loadRunDetail(route.runId);
   if (route.page === "result-detail") await loadResultDetail(route.resultId);
   if (route.page !== "run-detail") clearRunDetailObserver();

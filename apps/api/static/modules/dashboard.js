@@ -1412,11 +1412,11 @@ async function refreshRuntimeModeBanner() {
 }
 function setPage(page) {
   const titles = {
-    dashboard: ["Pilot Operations Dashboard", "Current system state, severity, and next operator action"],
-    upload: ["Upload / Ingest", "Upload telemetry CSV into the active run"],
-    runs: ["Active Runs", "Operational run list and entry point into analysis"],
-    validation: ["Validation", "Reference replay and historical validation scenarios"],
-    "run-detail": ["Run Analysis", "Structural intelligence analysis: context, geometry, trends, and history"],
+    dashboard: ["Dashboard", "Current state"],
+    upload: ["Upload", "Ingest telemetry"],
+    runs: ["Runs", "Select a run"],
+    validation: ["Validation", "Replay workspace"],
+    "run-detail": ["Run Analysis", "Analyze this system"],
     "result-detail": ["Result Detail", "Focused view for a single result"],
   };
   qsa(".page").forEach((p) => p.classList.add("hidden"));
@@ -1443,24 +1443,120 @@ function initAnalysisWorkspaceTabs() {
 }
 
 function renderRunDetailHeaderContext(run, latest) {
-  const modeEl = qs("#runDetailModeLabel");
-  const statusEl = qs("#runDetailStatusLabel");
-  const updateEl = qs("#runDetailLastUpdate");
-  const recEl = qs("#runDetailRecommendationContext");
+  const stateEl = qs("#runStickyState");
+  const riskEl = qs("#runStickyRisk");
+  const alertEl = qs("#runStickyAlert");
+  const recEl = qs("#runStickyRecommendation");
+  const updateEl = qs("#runStickyUpdated");
   const uiTruth = buildFrontendUiState(latest);
   const risk = normalizeRiskLevel(latest?.risk_level);
+  const currentState = String(latest?.state || latest?.interpreted_state || "UNKNOWN");
+  const alertStatus = latest?.alert_status || state.dashboardCurrentAlertStatus || {};
+  const alertState = String(alertStatus?.state || alertStatus?.alert_state || "CLEAR").toUpperCase();
   const recommendation = String(latest?.operator_message || "").trim();
   const ts = latest?.timestamp || latest?.persisted_at || latest?.created_at || "";
-  if (modeEl) modeEl.textContent = getRunModeDisplay(uiTruth);
-  if (statusEl) statusEl.textContent = getAnalysisStatusDisplay(uiTruth);
+  if (stateEl) stateEl.textContent = currentState;
+  if (riskEl) riskEl.textContent = risk;
+  if (alertEl) alertEl.textContent = alertState;
   if (updateEl) updateEl.textContent = getLastUpdateDisplay(uiTruth, ts);
   if (recEl) {
-    if (!latest) recEl.textContent = uiTruth.mode === "validation"
-      ? "Primary action: start NASA CMAPSS FD004 replay when ready."
-      : "Primary action: upload telemetry to begin structural analysis.";
-    else if (risk === "HIGH") recEl.textContent = "Primary action: acknowledge alert and dispatch targeted inspection.";
-    else if (risk === "MEDIUM") recEl.textContent = "Primary action: maintain elevated watch and verify telemetry freshness.";
-    else recEl.textContent = recommendation || "Primary action: continue monitored operations.";
+    if (!latest) recEl.textContent = "Upload telemetry.";
+    else if (risk === "HIGH") recEl.textContent = "Acknowledge and inspect.";
+    else if (risk === "MEDIUM") recEl.textContent = "Maintain watch.";
+    else recEl.textContent = recommendation || "Continue monitoring.";
+  }
+  const overviewMap = [
+    ["#runOverviewState", currentState],
+    ["#runOverviewRisk", risk],
+    ["#runOverviewTrend", String(trendFromResult(latest) || "-")],
+    ["#runOverviewAlert", alertState],
+    ["#runOverviewRecommendation", recEl?.textContent || "Upload telemetry."],
+    ["#runOverviewUpdated", getLastUpdateDisplay(uiTruth, ts)],
+  ];
+  overviewMap.forEach(([selector, value]) => {
+    const el = qs(selector);
+    if (el) el.textContent = value;
+  });
+}
+
+function wireWorkspaceShellEvents() {
+  const refreshBtn = qs("#refreshBtn");
+  if (refreshBtn && refreshBtn.dataset.wired !== "1") {
+    refreshBtn.dataset.wired = "1";
+    refreshBtn.addEventListener("click", async () => {
+      try {
+        setLoading(true, "Refreshing...");
+        await refreshCurrentPage();
+        setStatus("Refreshed", false, true);
+      } catch (err) {
+        setStatus(String(err.message || err), true, true);
+      } finally {
+        setLoading(false);
+      }
+    });
+  }
+  if (window.__neraiumDashboardResizeBound !== true) {
+    window.__neraiumDashboardResizeBound = true;
+    let resizeTimer = null;
+    window.addEventListener("resize", () => {
+      if (resizeTimer) window.clearTimeout(resizeTimer);
+      resizeTimer = window.setTimeout(() => {
+        if (getRoute().page === "dashboard") {
+          renderDashboardSparkline(dashboardChronologicalResults());
+        }
+      }, 150);
+    });
+  }
+}
+
+function wireRunsEvents() {
+  const runCreateForm = qs("#runCreateForm");
+  if (runCreateForm && runCreateForm.dataset.wired !== "1") {
+    runCreateForm.dataset.wired = "1";
+    runCreateForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      try {
+        setLoading(true, "Creating run...");
+        const run = await createRunFromForm();
+        if (run.is_active) updateActiveRunHeader(run);
+        const nameInput = qs("#runNameInput");
+        const configInput = qs("#runConfigInput");
+        const activateInput = qs("#runActivateInput");
+        if (nameInput) nameInput.value = "";
+        if (configInput) configInput.value = "";
+        if (activateInput) activateInput.checked = true;
+        await loadRuns();
+        setStatus(`Run created: ${run.name}`, false, true);
+      } catch (err) {
+        setStatus(String(err.message || err), true, true);
+      } finally {
+        setLoading(false);
+      }
+    });
+  }
+  const searchInput = qs("#runsSearchInput");
+  if (searchInput && searchInput.dataset.wired !== "1") {
+    searchInput.dataset.wired = "1";
+    searchInput.addEventListener("input", (e) => {
+      state.runsView.search = String(e.target.value || "");
+      renderRunsList();
+    });
+  }
+  const statusFilter = qs("#runsStatusFilter");
+  if (statusFilter && statusFilter.dataset.wired !== "1") {
+    statusFilter.dataset.wired = "1";
+    statusFilter.addEventListener("change", (e) => {
+      state.runsView.status = String(e.target.value || "all");
+      renderRunsList();
+    });
+  }
+  const sortSelect = qs("#runsSortSelect");
+  if (sortSelect && sortSelect.dataset.wired !== "1") {
+    sortSelect.dataset.wired = "1";
+    sortSelect.addEventListener("change", (e) => {
+      state.runsView.sort = String(e.target.value || "created_desc");
+      renderRunsList();
+    });
   }
 }
 
