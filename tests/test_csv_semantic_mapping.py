@@ -112,3 +112,40 @@ def test_csv_pipeline_mixed_rows_only_emits_valid_canonical_records() -> None:
     codes = {i.code for i in result.issues}
     assert "invalid_timestamp" in codes
     assert "non_numeric_signal" in codes
+
+
+def test_csv_pipeline_fd001_style_columns_with_explicit_mapping() -> None:
+    csv_text = (
+        "recorded_at,cycle,unit,setting_1,setting_2,setting_3,s1,s2,s3,s4,s5\n"
+        "2026-01-01T00:00:01+00:00,1,fd001_unit_001,0.1,0.2,0.3,10.0,11.0,12.0,13.0,14.0\n"
+        "2026-01-01T00:00:02+00:00,2,fd001_unit_001,0.1,0.2,0.3,10.4,11.4,12.4,13.4,14.4\n"
+    )
+    override = {
+        "timestamp": "recorded_at",
+        "asset_id": "unit",
+        "site_id": None,
+        "sensor_columns": ["cycle", "setting_1", "setting_2", "setting_3", "s1", "s2", "s3", "s4", "s5"],
+    }
+    result = run_csv_ingestion_pipeline(csv_text, customer_id="cust-fd001", column_mapping=override)
+    assert len(result.issues) == 0
+    assert len(result.canonical_records) == 2
+    assert result.canonical_records[0].asset_id == "fd001_unit_001"
+    assert result.canonical_records[0].signals["s1"] == 10.0
+    assert result.canonical_records[1].signals["s5"] == 14.4
+
+
+def test_csv_pipeline_fd001_style_row_reports_signal_error_with_row_index() -> None:
+    csv_text = (
+        "recorded_at,unit,s1,s2,s3\n"
+        "2026-01-01T00:00:01+00:00,fd001_unit_099,1.0,2.0,3.0\n"
+        "2026-01-01T00:00:02+00:00,fd001_unit_099,1.2,NaNish,3.2\n"
+    )
+    override = {
+        "timestamp": "recorded_at",
+        "asset_id": "unit",
+        "site_id": None,
+        "sensor_columns": ["s1", "s2", "s3"],
+    }
+    result = run_csv_ingestion_pipeline(csv_text, customer_id="cust-fd001", column_mapping=override)
+    assert len(result.canonical_records) == 2
+    assert any(i.code == "non_numeric_signal" and i.row == 3 and i.column == "s2" for i in result.issues)

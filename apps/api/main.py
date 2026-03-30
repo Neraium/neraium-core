@@ -217,6 +217,39 @@ class MaxRequestBodySizeMiddleware:
         await response(scope, receive, send)
 
 
+class RequestCorrelationIdMiddleware:
+    """Ensure every request/response has a correlation ID for operator support."""
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope.get("type") != "http":
+            await self.app(scope, receive, send)
+            return
+        headers = {k.lower(): v for k, v in scope.get("headers", [])}
+        raw_id = headers.get(b"x-correlation-id") or headers.get(b"x-request-id")
+        if raw_id:
+            try:
+                correlation_id = raw_id.decode("utf-8").strip()
+            except UnicodeDecodeError:
+                correlation_id = ""
+        else:
+            correlation_id = ""
+        if not correlation_id:
+            correlation_id = f"api_{uuid4().hex[:12]}"
+        scope.setdefault("state", {})["correlation_id"] = correlation_id
+
+        async def send_with_header(message: Message) -> None:
+            if message.get("type") == "http.response.start":
+                headers_list = list(message.get("headers") or [])
+                headers_list.append((b"x-correlation-id", correlation_id.encode("utf-8")))
+                message["headers"] = headers_list
+            await send(message)
+
+        await self.app(scope, receive, send_with_header)
+
+
 def _request_body_limit_bytes() -> int:
     raw = os.getenv("NERAIUM_MAX_REQUEST_BODY_BYTES")
     if not raw:
@@ -810,8 +843,8 @@ def create_app(
     app = FastAPI(title="Neraium SII API", version="0.1.0")
 
     @app.exception_handler(HTTPException)
-    async def _http_exception_handler(_request: Request, exc: HTTPException) -> JSONResponse:
-        correlation_id = f"api_err_{uuid4().hex[:12]}"
+    async def _http_exception_handler(request: Request, exc: HTTPException) -> JSONResponse:
+        correlation_id = str(getattr(request.state, "correlation_id", "") or f"api_err_{uuid4().hex[:12]}")
         if isinstance(exc.detail, dict):
             detail_payload = dict(exc.detail)
             message = str(detail_payload.get("message") or detail_payload.get("detail") or "Request failed.")
@@ -835,7 +868,7 @@ def create_app(
 
     @app.exception_handler(RequestValidationError)
     async def _request_validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
-        correlation_id = f"api_val_{uuid4().hex[:12]}"
+        correlation_id = str(getattr(request.state, "correlation_id", "") or f"api_val_{uuid4().hex[:12]}")
         issue_details = []
         for issue in exc.errors():
             location = issue.get("loc", [])
@@ -869,7 +902,8 @@ def create_app(
         )
 
     @app.exception_handler(Exception)
-    async def _unhandled_exception_handler(_request: Request, exc: Exception) -> JSONResponse:
+    async def _unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
+        correlation_id = str(getattr(request.state, "correlation_id", "") or f"api_unh_{uuid4().hex[:12]}")
         logger.exception("Unhandled API error")
         msg = "Internal server error."
         return JSONResponse(
@@ -878,8 +912,10 @@ def create_app(
                 "type": "internal_error",
                 "message": msg,
                 "actionable_detail": "Retry request or contact support if issue persists.",
+                "correlation_id": correlation_id,
             },
         )
+    app.add_middleware(RequestCorrelationIdMiddleware)
     app.add_middleware(MaxRequestBodySizeMiddleware, max_body_size=request_body_limit)
     app.add_middleware(GZipMiddleware, minimum_size=1024, compresslevel=5)
     cors_allow_origins = _cors_allow_origins()
@@ -923,6 +959,11 @@ def create_app(
     runtime_state_diagnostics: dict[str, Any] = {
         "persisted_state_enabled": False,
         "persisted_state_store": "none",
+        "request_body_limit_bytes": int(request_body_limit),
+        "db_path": db_path,
+        "db_path_writable": os.access(str(Path(db_path).parent), os.W_OK),
+        "temp_dir": tempfile.gettempdir(),
+        "temp_dir_writable": os.access(tempfile.gettempdir(), os.W_OK),
         "memory_only_state": [
             "demo_jobs",
             "cmapss_fd004_cache",
