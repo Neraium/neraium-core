@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile, status
+from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Query, Request, UploadFile, status
 from starlette.responses import JSONResponse
 
 logger = logging.getLogger(__name__)
@@ -135,11 +135,12 @@ def build_ingest_router(
         file: UploadFile | None = File(default=None),
         csv_sample: str | None = Form(default=None),
         csv_text: str | None = Form(default=None),
+        json_payload: Any | None = Body(default=None),
         _: None = Depends(require_api_key),
         customer_id: str | None = Query(default=None),
     ) -> dict[str, Any]:
         _ = resolve_customer_id(customer_id)
-        correlation_id = f"ing_prev_{uuid4().hex[:12]}"
+        correlation_id = str(getattr(request.state, "correlation_id", "") or f"ing_prev_{uuid4().hex[:12]}")
         ingest_path = "csv_preview"
         body_sample: str | None = None
         if file is not None:
@@ -149,6 +150,13 @@ def build_ingest_router(
         elif csv_sample is not None or csv_text is not None:
             body_sample = str(csv_sample if csv_sample is not None else csv_text)
             ingest_path = "csv_preview_form"
+        elif isinstance(json_payload, dict):
+            if json_payload.get("csv_sample") is not None:
+                body_sample = str(json_payload.get("csv_sample"))
+                ingest_path = "csv_preview_json_body_model"
+            elif json_payload.get("csv_text") is not None:
+                body_sample = str(json_payload.get("csv_text"))
+                ingest_path = "csv_preview_json_legacy_csv_text"
         else:
             try:
                 raw = await request.json()
@@ -220,9 +228,18 @@ def build_ingest_router(
 
     @router.post("/ingest/csv/upload", response_model=models.IngestJobEnvelope)
     async def ingest_csv_upload(request: Request, file: UploadFile = File(...), _: None = Depends(require_api_key), run_id: str | None = Query(default=None), customer_id: str | None = Query(default=None), mapping: str | None = Form(default=None)) -> dict[str, Any]:
+        correlation_id = str(getattr(request.state, "correlation_id", "") or f"ing_up_{uuid4().hex[:12]}")
         filename = str(file.filename or "upload.csv")
         if not filename.lower().endswith(".csv"):
-            raise HTTPException(status_code=400, detail="Upload must be a .csv file.")
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "type": "csv_upload_invalid_file_type",
+                    "message": "Upload must be a .csv file.",
+                    "actionable_detail": "Rename or export the telemetry file as .csv and retry.",
+                    "correlation_id": correlation_id,
+                },
+            )
         resolved_customer = resolve_customer_id(customer_id)
         resolved_run = resolve_run_id_with_default(service_instance, run_id, customer_id=resolved_customer)
         column_mapping = None
@@ -231,7 +248,16 @@ def build_ingest_router(
                 parsed = json.loads(mapping)
                 column_mapping = models.CsvColumnMappingPayload.model_validate(parsed).model_dump()
             except Exception as exc:
-                raise HTTPException(status_code=400, detail=f"Invalid column_mapping: {exc}") from exc
+                raise HTTPException(
+                    status_code=400,
+                    detail={
+                        "type": "csv_upload_invalid_mapping",
+                        "message": "Invalid column mapping for CSV upload.",
+                        "actionable_detail": "Review timestamp/entity/sensor mapping selections and retry.",
+                        "detail": str(exc),
+                        "correlation_id": correlation_id,
+                    },
+                ) from exc
         content_length = normalize_content_length(request)
         if content_length is not None and content_length > request_body_limit:
             max_mb = request_body_limit / (1024 * 1024)
@@ -249,7 +275,19 @@ def build_ingest_router(
         except Exception as exc:
             Path(temp_path).unlink(missing_ok=True)
             update_ingest_job(job_id, status="failed", message=f"Upload failed: {exc}")
-            raise HTTPException(status_code=400, detail="Failed to read upload stream.") from exc
+            logger.exception(
+                "ingest_csv_upload_stream_failed",
+                extra={"correlation_id": correlation_id, "job_id": job_id, "run_id": resolved_run, "customer_id": resolved_customer},
+            )
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "type": "csv_upload_stream_error",
+                    "message": "Failed to read upload stream.",
+                    "actionable_detail": "Retry upload. If this persists, split the CSV file and retry.",
+                    "correlation_id": correlation_id,
+                },
+            ) from exc
         update_ingest_job(job_id, status="queued", upload_bytes_received=bytes_received, upload_bytes_total=content_length if content_length is not None else bytes_received, message=f"Upload complete ({bytes_received} bytes). Queueing ingest job.")
         start_ingest_job_worker(job_id=job_id, temp_path=temp_path, run_id=resolved_run, customer_id=resolved_customer, column_mapping=column_mapping)
         with ingest_jobs_lock:
