@@ -10,9 +10,12 @@ from typing import Any, Callable, TextIO
 from neraium_core.alignment import StructuralEngine
 from neraium_core.adapters.raw_telemetry_adapter import ingest_raw_industrial_input
 from neraium_core.csv_mapping import row_to_frame_kwargs, resolve_mapping
+from neraium_core.ingestion_normalization import (
+    normalize_external_batch_payload,
+    normalize_external_payload,
+)
 from neraium_core.pipeline import (
     build_frame,
-    normalize_rest_payload,
     parse_csv_text,
     pilot_hardening_enabled,
 )
@@ -671,7 +674,11 @@ class StructuralMonitoringService:
                 level=logging.INFO,
             )
         try:
-            frame = normalize_rest_payload(payload)
+            frame = normalize_external_payload(
+                payload,
+                customer_id=customer_id,
+                require_confirmed_mapping=False,
+            )
             resolved_customer = self._effective_customer_id(
                 request_customer_id=customer_id,
                 payload_customer_id=frame.get("customer_id"),
@@ -744,7 +751,7 @@ class StructuralMonitoringService:
 
     def ingest_batch(
         self,
-        payloads: list[dict[str, Any]],
+        payloads: list[dict[str, Any]] | dict[str, Any],
         *,
         run_id: str | None = None,
         customer_id: str | None = None,
@@ -758,19 +765,31 @@ class StructuralMonitoringService:
         log_structured(
             logger,
             event="ingest_batch_in",
-            fields={"items": len(payloads)},
+            fields={"items": len(payloads) if isinstance(payloads, list) else 1},
             level=logging.INFO,
         )
         pairs: list[tuple[dict[str, Any], dict[str, Any]]] = []
         results: list[dict[str, Any]] = []
+        normalized_payloads: list[dict[str, Any]]
+        if isinstance(payloads, dict):
+            normalized_payloads, _ = normalize_external_batch_payload(
+                payloads,
+                customer_id=customer_id,
+            )
+        else:
+            normalized_payloads = list(payloads)
         resolved_customer = self._effective_customer_id(
             request_customer_id=customer_id,
-            payload_customer_id=payloads[0].get("customer_id") if payloads else None,
+            payload_customer_id=normalized_payloads[0].get("customer_id") if normalized_payloads else None,
         )
-        for payload in payloads:
+        for payload in normalized_payloads:
             item_timer = Timer()
             try:
-                frame = normalize_rest_payload(payload)
+                frame = normalize_external_payload(
+                    payload,
+                    customer_id=customer_id,
+                    require_confirmed_mapping=False,
+                )
                 frame_customer = self._effective_customer_id(
                     request_customer_id=customer_id,
                     payload_customer_id=frame.get("customer_id"),
