@@ -57,7 +57,11 @@ from ._core_imports import (
     log_structured,
     summarize_exception_for_logs,
 )
-from neraium_core.ingestion_normalization import normalize_external_batch_payload, normalize_external_payload
+from neraium_core.ingestion_normalization import (
+    normalize_canonical_records_payload,
+    normalize_external_batch_payload,
+    normalize_external_payload,
+)
 from neraium_core.pipeline import infer_csv_mapping_stage, issue_to_dict, parse_csv_rows, validate_csv_mapping_stage
 
 
@@ -382,6 +386,23 @@ class BatchIngestRequest(BaseModel):
                 return remapped
         return data
 
+
+
+
+class JsonIngestRequest(BaseModel):
+    model_config = {"extra": "allow"}
+
+    customer_id: str | None = None
+    mapping: dict[str, Any] | None = None
+    items: list[dict[str, Any]] | None = None
+    records: list[dict[str, Any]] | None = None
+    payloads: list[dict[str, Any]] | None = None
+
+
+class CanonicalIngestRequest(BaseModel):
+    customer_id: str | None = None
+    records: list[dict[str, Any]] | None = None
+    items: list[dict[str, Any]] | None = None
 
 class CsvColumnMappingPayload(BaseModel):
     """Semantic roles: which CSV columns map to time, entity, optional site, and numeric sensors."""
@@ -2418,6 +2439,56 @@ def create_app(
         envelope["processed"] = len(results)
         envelope["run_id"] = resolved
         return envelope
+
+    @app.post("/ingest/json", response_model=ResultsEnvelope)
+    def ingest_json(
+        payload: dict[str, Any] | list[dict[str, Any]],
+        _: None = Depends(require_api_key),
+        run_id: str | None = Query(default=None),
+        customer_id: str | None = Query(default=None),
+    ) -> dict[str, Any]:
+        try:
+            payload_customer = payload.get("customer_id") if isinstance(payload, dict) else None
+            resolved_customer = resolve_customer_id(customer_id or payload_customer)
+            resolved = resolve_run_id_with_default(
+                service_instance,
+                run_id,
+                customer_id=resolved_customer,
+                )
+            frames, _review = normalize_external_batch_payload(payload, customer_id=resolved_customer)
+            results = service_instance.ingest_normalized_frames(
+                frames,
+                run_id=resolved,
+                customer_id=resolved_customer,
+            )
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=actionable_validation_detail(str(e)))
+        return _results_envelope(results, latest=results[-1] if results else None)
+
+    @app.post("/ingest/canonical", response_model=ResultsEnvelope)
+    def ingest_canonical(
+        payload: dict[str, Any] | list[dict[str, Any]],
+        _: None = Depends(require_api_key),
+        run_id: str | None = Query(default=None),
+        customer_id: str | None = Query(default=None),
+    ) -> dict[str, Any]:
+        try:
+            payload_customer = payload.get("customer_id") if isinstance(payload, dict) else None
+            resolved_customer = resolve_customer_id(customer_id or payload_customer)
+            resolved = resolve_run_id_with_default(
+                service_instance,
+                run_id,
+                customer_id=resolved_customer,
+                )
+            frames = normalize_canonical_records_payload(payload, customer_id=resolved_customer)
+            results = service_instance.ingest_normalized_frames(
+                frames,
+                run_id=resolved,
+                customer_id=resolved_customer,
+            )
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=actionable_validation_detail(str(e)))
+        return _results_envelope(results, latest=results[-1] if results else None)
 
     @app.post("/ingest/csv", response_model=ResultsEnvelope)
     def ingest_csv(
