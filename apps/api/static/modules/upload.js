@@ -29,48 +29,25 @@ function setUploadStage(stage) {
 
 function structuredErrorFrom(err, fallbackStage = "request") {
   const apiErr = err && err.apiError ? err.apiError : null;
-  const body = apiErr && apiErr.body && typeof apiErr.body === "object" ? apiErr.body : null;
-  const detailObj = body && body.detail && typeof body.detail === "object" ? body.detail : null;
-  const src = body || detailObj || {};
-  const issueDetails = Array.isArray(src.issue_details) ? src.issue_details : [];
-  const warningDetails = Array.isArray(src.warning_details) ? src.warning_details : [];
-  return {
-    stage: String(src.stage || fallbackStage),
-    type: String(src.type || ""),
-    message: String(src.message || err?.message || "Request failed."),
-    actionable_detail: String(src.actionable_detail || ""),
-    issue_details: issueDetails,
-    warning_details: warningDetails,
-    correlation_id: src.correlation_id ? String(src.correlation_id) : "",
-    status: apiErr ? apiErr.status : null,
-  };
-}
-
-function operatorErrorMessage(err, fallback = "Ingest failed.") {
-  const normalized = structuredErrorFrom(err, "ingest");
-  const parts = [normalized.message || String(err?.message || fallback), normalized.actionable_detail];
-  const issueTop = normalized.issue_details
-    .slice(0, 2)
-    .map((d) => (d && d.message ? String(d.message) : "Invalid field"))
-    .join("; ");
-  if (issueTop) parts.push(issueTop);
-  if (normalized.correlation_id) parts.push(`Reference: ${normalized.correlation_id}`);
-  if (normalized.status === 413) return "Upload is too large for this environment. Split the CSV and retry.";
-  return parts.filter(Boolean).join(" ");
-}
-
-function resetUploadAttemptState() {
-  clearUploadJobPolling();
-  state.uploadJob.id = null;
-  state.uploadJob.active = false;
-  state.uploadCsv.preview = null;
-  state.uploadCsv.headers = [];
-  state.uploadCsv.issues = [];
-  state.uploadCsv.warnings = [];
-  state.uploadCsv.requiresConfirmation = false;
-  state.uploadCsv.mapping = null;
-  setStatus("");
-  setUploadProgressUI({ visible: false });
+  const msg = String(err?.message || fallback);
+  const rawResponse = String(apiErr?.responseText || "");
+  let parsed = null;
+  if (rawResponse) {
+    try {
+      parsed = JSON.parse(rawResponse);
+    } catch (_err) {
+      parsed = null;
+    }
+  }
+  const correlation = parsed && parsed.correlation_id ? ` (ref ${String(parsed.correlation_id)})` : "";
+  const structuredMessage = parsed && parsed.message ? String(parsed.message) : "";
+  const actionable = parsed && parsed.actionable_detail ? String(parsed.actionable_detail) : "";
+  const composed = [structuredMessage, actionable].filter(Boolean).join(" ");
+  if (!apiErr) return msg;
+  if (apiErr.status === 422) return `Upload validation failed. ${composed || msg}${correlation}`;
+  if (apiErr.status === 413) return "Upload is too large for this environment. Split the CSV and retry.";
+  if (composed) return `${composed}${correlation}`;
+  return msg;
 }
 
 function clearUploadJobPolling() {
@@ -156,6 +133,12 @@ function resetUploadPanelIfIdle() {
   setUploadProgressUI({ visible: false });
 }
 
+function resetUploadFlowState() {
+  clearUploadJobPolling();
+  state.uploadJob.id = null;
+  state.uploadJob.active = false;
+}
+
 async function uploadCsvFileWithProgress(file, runId, columnMapping = null) {
   const url = apiUrl("/ingest/csv/upload", tenantScopeParams({ run_id: runId }));
   const form = new FormData();
@@ -187,8 +170,17 @@ async function uploadCsvFileWithProgress(file, runId, columnMapping = null) {
     xhr.onload = () => {
       const body = xhr.response || {};
       if (xhr.status < 200 || xhr.status >= 300) {
-        const detail = body && body.detail ? String(body.detail) : `HTTP ${xhr.status}`;
-        reject(new Error(detail));
+        const message =
+          (body && typeof body.message === "string" && body.message) ||
+          (body && typeof body.actionable_detail === "string" && body.actionable_detail) ||
+          (body && typeof body.detail === "string" && body.detail) ||
+          `HTTP ${xhr.status}`;
+        const err = new Error(message);
+        err.apiError = {
+          status: xhr.status,
+          responseText: JSON.stringify(body || {}),
+        };
+        reject(err);
         return;
       }
       resolve(body);
@@ -255,18 +247,26 @@ function parseCsvText(file) {
 }
 
 function setUploadFile(file) {
-  resetUploadAttemptState();
+  setUploadStage(file ? "file_selected" : "idle");
   state.uploadFile = file || null;
   const el = qs("#selectedFileName");
   if (!el) return;
   el.textContent = state.uploadFile ? `${state.uploadFile.name} (${state.uploadFile.size} bytes)` : "No file selected";
   if (!file) {
+    resetUploadFlowState();
+    state.uploadCsv.preview = null;
+    state.uploadCsv.headers = [];
+    state.uploadCsv.issues = [];
+    state.uploadCsv.warnings = [];
+    state.uploadCsv.requiresConfirmation = false;
+    state.uploadCsv.mapping = null;
     setUploadStage("idle");
     renderUploadMappingPanel();
     return;
   }
   setUploadStage("file_selected");
   runCsvPreviewForFile(file).catch((err) => {
+    resetUploadFlowState();
     setUploadStage("failed");
     const normalized = structuredErrorFrom(err, "preview");
     setStatus(operatorErrorMessage(err, "CSV preview failed."), true, true);
@@ -298,6 +298,10 @@ async function runCsvPreviewForFile(file) {
   state.uploadCsv.requiresConfirmation = !!out.requires_confirmation;
   state.uploadCsv.mapping = out.suggested_mapping || null;
   setUploadStage(state.uploadCsv.requiresConfirmation ? "preview_blocked" : "preview_ready");
+  const hasBlockingIssues = state.uploadCsv.issues.length > 0 && !state.uploadCsv.mapping;
+  const apiPreviewState = String(out.preview_state || "");
+  if (apiPreviewState === "preview_blocked" || hasBlockingIssues) setUploadStage("preview_blocked");
+  else setUploadStage("preview_ready");
   renderUploadMappingPanel();
   if (state.uploadCsv.requiresConfirmation) {
     const guidance =
@@ -530,6 +534,7 @@ function wireUploadFormEvents() {
     try {
       resetUploadAttemptState();
       state.uploadJob.active = true;
+      resetUploadFlowState();
       setUploadStage("uploading");
       setUploadProgressUI({
         visible: true,
@@ -571,9 +576,8 @@ function wireUploadFormEvents() {
         errorSamples: out.error_samples || [],
       });
     } catch (err) {
-      const normalized = structuredErrorFrom(err, "ingest");
-      const isPreviewFailure = normalized.stage === "preview";
-      setUploadStage(isPreviewFailure ? "preview_blocked" : "failed");
+      resetUploadFlowState();
+      setUploadStage(state.uploadCsv?.issues?.length ? "preview_blocked" : "failed");
       setUploadProgressUI({
         visible: !isPreviewFailure,
         mode: "failed",
@@ -585,8 +589,7 @@ function wireUploadFormEvents() {
         : operatorErrorMessage(err);
       setStatus(failureCopy, true, true);
     } finally {
-      state.uploadJob.active = false;
-      clearUploadJobPolling();
+      resetUploadFlowState();
     }
   });
 }

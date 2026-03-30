@@ -157,11 +157,12 @@ def build_ingest_router(
         file: UploadFile | None = File(default=None),
         csv_sample: str | None = Form(default=None),
         csv_text: str | None = Form(default=None),
+        json_payload: Any | None = Body(default=None),
         _: None = Depends(require_api_key),
         customer_id: str | None = Query(default=None),
     ) -> dict[str, Any]:
-        _ = resolve_customer_id(customer_id)
-        correlation_id = f"ing_prev_{uuid4().hex[:12]}"
+        resolved_customer = resolve_customer_id(customer_id)
+        correlation_id = str(getattr(request.state, "correlation_id", "") or f"ing_prev_{uuid4().hex[:12]}")
         ingest_path = "csv_preview"
         body_sample: str | None = None
         logger.info(
@@ -201,13 +202,24 @@ def build_ingest_router(
                 elif raw_csv_text is not None:
                     body_sample = str(raw_csv_text)
                     ingest_path = "csv_preview_json_legacy_csv_text"
+        logger.info(
+            "ingest_csv_preview_received",
+            extra={
+                "correlation_id": correlation_id,
+                "request_id": correlation_id,
+                "ingest_path": ingest_path,
+                "customer_id": resolved_customer,
+                "filename": str(getattr(file, "filename", "") or ""),
+                "stage": "preview_received",
+            },
+        )
         if body_sample is None or not str(body_sample).strip():
             logger.warning(
                 "ingest_csv_preview_invalid_request",
                 extra={
                     "correlation_id": correlation_id,
                     "ingest_path": ingest_path,
-                    "customer_id": customer_id or "default-customer",
+                    "customer_id": resolved_customer,
                 },
             )
             raise HTTPException(
@@ -226,10 +238,11 @@ def build_ingest_router(
             extra={
                 "correlation_id": correlation_id,
                 "ingest_path": ingest_path,
-                "customer_id": customer_id or "default-customer",
+                "customer_id": resolved_customer,
                 "header_count": len(headers),
                 "sample_row_count": len(rows),
                 "parse_issue_count": len(parse_issues),
+                "stage": "file_parsed",
             },
         )
         if not headers:
@@ -278,13 +291,23 @@ def build_ingest_router(
             issue_details=[issue_to_dict(i) for i in hard_issues],
             warning_details=[issue_to_dict(i) for i in warning_issues],
             requires_confirmation=(mapping is None or stage.requires_confirmation),
+            preview_state=preview_state,
         )
 
     @router.post("/ingest/csv/upload", response_model=models.IngestJobEnvelope)
     async def ingest_csv_upload(request: Request, file: UploadFile = File(...), _: None = Depends(require_api_key), run_id: str | None = Query(default=None), customer_id: str | None = Query(default=None), mapping: str | None = Form(default=None)) -> dict[str, Any]:
+        correlation_id = str(getattr(request.state, "correlation_id", "") or f"ing_up_{uuid4().hex[:12]}")
         filename = str(file.filename or "upload.csv")
         if not filename.lower().endswith(".csv"):
-            raise HTTPException(status_code=400, detail="Upload must be a .csv file.")
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "type": "csv_upload_invalid_file_type",
+                    "message": "Upload must be a .csv file.",
+                    "actionable_detail": "Rename or export the telemetry file as .csv and retry.",
+                    "correlation_id": correlation_id,
+                },
+            )
         resolved_customer = resolve_customer_id(customer_id)
         resolved_run = resolve_run_id_with_default(service_instance, run_id, customer_id=resolved_customer)
         column_mapping = None
@@ -293,7 +316,16 @@ def build_ingest_router(
                 parsed = json.loads(mapping)
                 column_mapping = models.CsvColumnMappingPayload.model_validate(parsed).model_dump()
             except Exception as exc:
-                raise HTTPException(status_code=400, detail=f"Invalid column_mapping: {exc}") from exc
+                raise HTTPException(
+                    status_code=400,
+                    detail={
+                        "type": "csv_upload_invalid_mapping",
+                        "message": "Invalid column mapping for CSV upload.",
+                        "actionable_detail": "Review timestamp/entity/sensor mapping selections and retry.",
+                        "detail": str(exc),
+                        "correlation_id": correlation_id,
+                    },
+                ) from exc
         content_length = normalize_content_length(request)
         if content_length is not None and content_length > request_body_limit:
             max_mb = request_body_limit / (1024 * 1024)
@@ -302,7 +334,28 @@ def build_ingest_router(
         os.close(fd)
         job_id = f"ingest_{uuid4().hex[:16]}"
         created_at = models.utc_now_iso()
-        initial_job = {"job_id": job_id, "status": "uploading", "run_id": resolved_run, "customer_id": resolved_customer, "filename": filename, "created_at": created_at, "updated_at": created_at, "rows_processed": 0, "rows_succeeded": 0, "rows_failed": 0, "partial_success": False, "upload_bytes_received": 0, "upload_bytes_total": content_length, "error_samples": [], "message": "Upload started.", "latest_result": None}
+        initial_job = {
+            "job_id": job_id,
+            "status": "uploading",
+            "run_id": resolved_run,
+            "customer_id": resolved_customer,
+            "filename": filename,
+            "created_at": created_at,
+            "updated_at": created_at,
+            "rows_processed": 0,
+            "rows_succeeded": 0,
+            "rows_failed": 0,
+            "partial_success": False,
+            "upload_bytes_received": 0,
+            "upload_bytes_total": content_length,
+            "error_samples": [],
+            "message": "Upload started.",
+            "latest_result": None,
+            "lifecycle_phase": "uploading",
+            "ui_state": "uploading",
+            "terminal_state": None,
+            "failure_category": None,
+        }
         with ingest_jobs_lock:
             ingest_jobs[job_id] = initial_job
         persist_operational_state(f"ingest_job:{job_id}", initial_job, customer_id=resolved_customer, run_id=resolved_run)
@@ -311,8 +364,33 @@ def build_ingest_router(
         except Exception as exc:
             Path(temp_path).unlink(missing_ok=True)
             update_ingest_job(job_id, status="failed", message=f"Upload failed: {exc}")
-            raise HTTPException(status_code=400, detail="Failed to read upload stream.") from exc
+            logger.exception(
+                "ingest_csv_upload_stream_failed",
+                extra={"correlation_id": correlation_id, "job_id": job_id, "run_id": resolved_run, "customer_id": resolved_customer},
+            )
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "type": "csv_upload_stream_error",
+                    "message": "Failed to read upload stream.",
+                    "actionable_detail": "Retry upload. If this persists, split the CSV file and retry.",
+                    "correlation_id": correlation_id,
+                },
+            ) from exc
         update_ingest_job(job_id, status="queued", upload_bytes_received=bytes_received, upload_bytes_total=content_length if content_length is not None else bytes_received, message=f"Upload complete ({bytes_received} bytes). Queueing ingest job.")
+        logger.info(
+            "ingest_csv_upload_queued",
+            extra={
+                "correlation_id": correlation_id,
+                "request_id": correlation_id,
+                "job_id": job_id,
+                "run_id": resolved_run,
+                "customer_id": resolved_customer,
+                "filename": filename,
+                "ingest_path": "csv_upload",
+                "stage": "ingest_started",
+            },
+        )
         start_ingest_job_worker(job_id=job_id, temp_path=temp_path, run_id=resolved_run, customer_id=resolved_customer, column_mapping=column_mapping)
         with ingest_jobs_lock:
             job = dict(ingest_jobs[job_id])

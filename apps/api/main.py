@@ -217,6 +217,39 @@ class MaxRequestBodySizeMiddleware:
         await response(scope, receive, send)
 
 
+class RequestCorrelationIdMiddleware:
+    """Ensure every request/response has a correlation ID for operator support."""
+
+    def __init__(self, app: ASGIApp) -> None:
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope.get("type") != "http":
+            await self.app(scope, receive, send)
+            return
+        headers = {k.lower(): v for k, v in scope.get("headers", [])}
+        raw_id = headers.get(b"x-correlation-id") or headers.get(b"x-request-id")
+        if raw_id:
+            try:
+                correlation_id = raw_id.decode("utf-8").strip()
+            except UnicodeDecodeError:
+                correlation_id = ""
+        else:
+            correlation_id = ""
+        if not correlation_id:
+            correlation_id = f"api_{uuid4().hex[:12]}"
+        scope.setdefault("state", {})["correlation_id"] = correlation_id
+
+        async def send_with_header(message: Message) -> None:
+            if message.get("type") == "http.response.start":
+                headers_list = list(message.get("headers") or [])
+                headers_list.append((b"x-correlation-id", correlation_id.encode("utf-8")))
+                message["headers"] = headers_list
+            await send(message)
+
+        await self.app(scope, receive, send_with_header)
+
+
 def _request_body_limit_bytes() -> int:
     raw = os.getenv("NERAIUM_MAX_REQUEST_BODY_BYTES")
     if not raw:
@@ -435,6 +468,7 @@ class CsvPreviewResponse(BaseModel):
     issue_details: list[dict[str, Any]] = Field(default_factory=list)
     warning_details: list[dict[str, Any]] = Field(default_factory=list)
     requires_confirmation: bool = False
+    preview_state: str = "preview_ready"
 
 
 class CreateRunRequest(BaseModel):
@@ -551,6 +585,10 @@ class IngestJobEnvelope(BaseModel):
     error_samples: list[dict[str, Any]] = Field(default_factory=list)
     message: str | None = None
     latest_result: dict[str, Any] | None = None
+    lifecycle_phase: str | None = None
+    ui_state: str | None = None
+    terminal_state: str | None = None
+    failure_category: str | None = None
 
 
 class PullIntegrationStartRequest(BaseModel):
@@ -714,6 +752,17 @@ def _persistence_available(db_path: str) -> bool:
         db_file.parent.mkdir(parents=True, exist_ok=True)
         with db_file.open("a", encoding="utf-8"):
             pass
+        return True
+    except OSError:
+        return False
+
+
+def _dir_is_writable(path: str) -> bool:
+    try:
+        fd, probe_path = tempfile.mkstemp(prefix="neraium_probe_", dir=path)
+        os.close(fd)
+        probe = Path(probe_path)
+        probe.unlink(missing_ok=True)
         return True
     except OSError:
         return False
@@ -889,7 +938,7 @@ def create_app(
 
     @app.exception_handler(RequestValidationError)
     async def _request_validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
-        correlation_id = f"api_val_{uuid4().hex[:12]}"
+        correlation_id = str(getattr(request.state, "correlation_id", "") or f"api_val_{uuid4().hex[:12]}")
         issue_details = []
         for issue in exc.errors():
             location = issue.get("loc", [])
@@ -937,6 +986,7 @@ def create_app(
                 correlation_id=correlation_id,
             ),
         )
+    app.add_middleware(RequestCorrelationIdMiddleware)
     app.add_middleware(MaxRequestBodySizeMiddleware, max_body_size=request_body_limit)
     app.add_middleware(GZipMiddleware, minimum_size=1024, compresslevel=5)
     cors_allow_origins = _cors_allow_origins()
@@ -980,6 +1030,13 @@ def create_app(
     runtime_state_diagnostics: dict[str, Any] = {
         "persisted_state_enabled": False,
         "persisted_state_store": "none",
+        "request_body_limit_bytes": int(request_body_limit),
+        "db_path": db_path,
+        "db_path_writable": os.access(str(Path(db_path).parent), os.W_OK),
+        "temp_dir": tempfile.gettempdir(),
+        "temp_dir_writable": _dir_is_writable(tempfile.gettempdir()),
+        "upload_temp_dir": tempfile.gettempdir(),
+        "upload_temp_dir_writable": _dir_is_writable(tempfile.gettempdir()),
         "memory_only_state": [
             "demo_jobs",
             "cmapss_fd004_cache",
@@ -1003,6 +1060,13 @@ def create_app(
             event="operational_state_persistence_unavailable",
             fields={"reason": "store_missing_operational_state_methods"},
             level=logging.WARNING,
+        )
+    if not runtime_state_diagnostics.get("temp_dir_writable"):
+        log_structured(
+            logger,
+            event="startup_temp_dir_unwritable",
+            fields={"temp_dir": runtime_state_diagnostics.get("temp_dir")},
+            level=logging.ERROR,
         )
 
     def _persist_operational_state(key: str, payload: dict[str, Any], *, customer_id: str | None = None, run_id: str | None = None) -> None:
@@ -1105,9 +1169,20 @@ def create_app(
         return value if value >= 0 else None
 
     def _public_ingest_job(job: dict[str, Any]) -> dict[str, Any]:
+        status = str(job.get("status", "unknown"))
+        ui_state = str(job.get("ui_state") or "")
+        if not ui_state:
+            if status == "uploading":
+                ui_state = "uploading"
+            elif status in {"queued", "processing"}:
+                ui_state = "ingesting"
+            elif status in {"completed", "partial_success", "failed"}:
+                ui_state = status
+            else:
+                ui_state = "idle"
         return {
             "job_id": str(job.get("job_id")),
-            "status": str(job.get("status", "unknown")),
+            "status": status,
             "run_id": job.get("run_id"),
             "customer_id": resolve_customer_id(job.get("customer_id")),
             "filename": str(job.get("filename") or "upload.csv"),
@@ -1126,6 +1201,10 @@ def create_app(
             "error_samples": list(job.get("error_samples") or []),
             "message": job.get("message"),
             "latest_result": job.get("latest_result"),
+            "lifecycle_phase": job.get("lifecycle_phase"),
+            "ui_state": ui_state,
+            "terminal_state": job.get("terminal_state"),
+            "failure_category": job.get("failure_category"),
         }
 
     def _cleanup_ingest_jobs(max_jobs: int = 300) -> None:
@@ -1153,12 +1232,41 @@ def create_app(
             job = ingest_jobs.get(job_id)
             if job is None:
                 return None
+            current_status = str(job.get("status") or "")
+            next_status = str(fields.get("status") or current_status)
+            terminal_statuses = {"completed", "partial_success", "failed"}
+            if current_status in terminal_statuses and next_status not in terminal_statuses:
+                return dict(job)
             job.update(fields)
             job["updated_at"] = _utc_now_iso()
             if "partial_success" not in fields:
                 job["partial_success"] = (
                     int(job.get("rows_succeeded", 0)) > 0 and int(job.get("rows_failed", 0)) > 0
                 )
+            status_value = str(job.get("status") or "")
+            if status_value in {"uploading"}:
+                job["lifecycle_phase"] = "uploading"
+                job["ui_state"] = "uploading"
+                job["terminal_state"] = None
+                job["failure_category"] = None
+            elif status_value in {"queued"}:
+                job["lifecycle_phase"] = "queued"
+                job["ui_state"] = "ingesting"
+                job["terminal_state"] = None
+                job["failure_category"] = None
+            elif status_value in {"processing"}:
+                job["lifecycle_phase"] = "processing"
+                job["ui_state"] = "ingesting"
+                job["terminal_state"] = None
+                job["failure_category"] = None
+            elif status_value in {"completed", "partial_success", "failed"}:
+                job["lifecycle_phase"] = "terminal"
+                job["ui_state"] = status_value
+                job["terminal_state"] = status_value
+                if status_value == "failed":
+                    job["failure_category"] = str(job.get("failure_category") or "ingest_failed")
+                else:
+                    job["failure_category"] = None
             _persist_operational_state(
                 f"ingest_job:{job_id}",
                 dict(job),
@@ -1778,12 +1886,27 @@ def create_app(
                 status="processing",
                 message="Upload complete. Ingest processing started.",
             )
+            log_structured(
+                logger,
+                event="ingest_job_started",
+                fields={
+                    "job_id": job_id,
+                    "run_id": run_id,
+                    "customer_id": customer_id,
+                    "ingest_path": "csv_upload",
+                    "stage": "ingesting",
+                },
+                level=logging.INFO,
+            )
             try:
                 def _on_progress(progress: dict[str, Any]) -> None:
                     progress_status = str(progress.get("status") or "processing")
+                    mapped_status = "processing"
+                    if progress_status not in {"processing", "completed"}:
+                        mapped_status = "processing"
                     _update_ingest_job(
                         job_id,
-                        status=progress_status if progress_status in {"processing", "completed"} else "processing",
+                        status=mapped_status,
                         rows_processed=int(progress.get("rows_processed", 0)),
                         rows_succeeded=int(progress.get("rows_succeeded", 0)),
                         rows_failed=int(progress.get("rows_failed", 0)),
@@ -1841,12 +1964,14 @@ def create_app(
                         "rows_succeeded": int(summary.get("rows_succeeded", 0)),
                         "rows_failed": int(summary.get("rows_failed", 0)),
                         "partial_success": bool(summary.get("partial_success", False)),
+                        "ingest_path": "csv_upload",
+                        "stage": final_status,
                     },
                     level=logging.INFO,
                 )
             except Exception as exc:
                 message = actionable_validation_detail(str(exc))
-                _update_ingest_job(job_id, status="failed", message=message)
+                _update_ingest_job(job_id, status="failed", message=message, failure_category="ingest_failed")
                 log_structured(
                     logger,
                     event="ingest_job_failed",
@@ -1854,6 +1979,9 @@ def create_app(
                         "job_id": job_id,
                         "run_id": run_id,
                         "customer_id": customer_id,
+                        "ingest_path": "csv_upload",
+                        "stage": "failed",
+                        "error_type": "ingest_failed",
                         **summarize_exception_for_logs(exc),
                     },
                     level=logging.ERROR,
