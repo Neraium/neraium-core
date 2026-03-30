@@ -43,6 +43,27 @@ def build_ingest_router(
 ) -> APIRouter:
     router = APIRouter(tags=["ingest"])
 
+    def _failure(
+        *,
+        stage: str,
+        type_name: str,
+        message: str,
+        actionable_detail: str,
+        correlation_id: str,
+        issue_details: list[dict[str, Any]] | None = None,
+        warning_details: list[dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
+        return {
+            "ok": False,
+            "stage": stage,
+            "type": type_name,
+            "message": message,
+            "actionable_detail": actionable_detail,
+            "issue_details": list(issue_details or []),
+            "warning_details": list(warning_details or []),
+            "correlation_id": correlation_id,
+        }
+
     @router.post("/ingest", response_model=models.ResultsEnvelope)
     def ingest(payload: models.IngestRequest, _: None = Depends(require_api_key), run_id: str | None = Query(default=None), customer_id: str | None = Query(default=None)) -> dict[str, Any]:
         try:
@@ -132,6 +153,7 @@ def build_ingest_router(
     @router.post("/ingest/csv/preview", response_model=models.CsvPreviewResponse)
     async def ingest_csv_preview(
         request: Request,
+        payload: Any | None = Body(default=None),
         file: UploadFile | None = File(default=None),
         csv_sample: str | None = Form(default=None),
         csv_text: str | None = Form(default=None),
@@ -143,6 +165,14 @@ def build_ingest_router(
         correlation_id = str(getattr(request.state, "correlation_id", "") or f"ing_prev_{uuid4().hex[:12]}")
         ingest_path = "csv_preview"
         body_sample: str | None = None
+        logger.info(
+            "ingest_csv_preview_received",
+            extra={
+                "correlation_id": correlation_id,
+                "customer_id": customer_id or "default-customer",
+                "content_type": request.headers.get("content-type", ""),
+            },
+        )
         if file is not None:
             preview_bytes = await file.read(524_288)
             body_sample = preview_bytes.decode("utf-8", errors="replace")
@@ -150,12 +180,14 @@ def build_ingest_router(
         elif csv_sample is not None or csv_text is not None:
             body_sample = str(csv_sample if csv_sample is not None else csv_text)
             ingest_path = "csv_preview_form"
-        elif isinstance(json_payload, dict):
-            if json_payload.get("csv_sample") is not None:
-                body_sample = str(json_payload.get("csv_sample"))
-                ingest_path = "csv_preview_json_body_model"
-            elif json_payload.get("csv_text") is not None:
-                body_sample = str(json_payload.get("csv_text"))
+        elif isinstance(payload, dict):
+            raw_csv_sample = payload.get("csv_sample")
+            raw_csv_text = payload.get("csv_text")
+            if raw_csv_sample is not None:
+                body_sample = str(raw_csv_sample)
+                ingest_path = "csv_preview_json"
+            elif raw_csv_text is not None:
+                body_sample = str(raw_csv_text)
                 ingest_path = "csv_preview_json_legacy_csv_text"
         else:
             try:
@@ -192,12 +224,13 @@ def build_ingest_router(
             )
             raise HTTPException(
                 status_code=400,
-                detail={
-                    "type": "validation_error",
-                    "message": "CSV preview request is missing CSV content.",
-                    "actionable_detail": "Send csv_sample/csv_text JSON, or upload a CSV file in multipart form.",
-                    "correlation_id": correlation_id,
-                },
+                detail=_failure(
+                    stage="preview",
+                    type_name="validation_error",
+                    message="CSV preview request is missing CSV content.",
+                    actionable_detail="Send csv_sample/csv_text JSON, or upload a CSV file in multipart form.",
+                    correlation_id=correlation_id,
+                ),
             )
         headers, rows, parse_issues = parse_csv_rows(body_sample)
         logger.info(
@@ -215,32 +248,41 @@ def build_ingest_router(
         if not headers:
             raise HTTPException(
                 status_code=400,
-                detail={
-                    "type": "csv_preview_empty_or_missing_header",
-                    "message": "CSV preview could not find a header row.",
-                    "actionable_detail": "Ensure the first row contains column names and retry preview.",
-                    "issue_details": [issue_to_dict(i) for i in parse_issues],
-                    "correlation_id": correlation_id,
-                },
+                detail=_failure(
+                    stage="preview",
+                    type_name="csv_preview_empty_or_missing_header",
+                    message="CSV preview could not find a header row.",
+                    actionable_detail="Ensure the first row contains column names and retry preview.",
+                    issue_details=[issue_to_dict(i) for i in parse_issues],
+                    correlation_id=correlation_id,
+                ),
             )
         stage = infer_csv_mapping_stage(headers, rows=rows, column_mapping=None)
         mapping = stage.mapping
         mapping_issues = validate_csv_mapping_stage(mapping, headers) if mapping is not None else []
         hard_issues = [*parse_issues, *stage.issues, *mapping_issues]
         warning_issues = list(stage.warnings)
-        preview_state = "preview_blocked" if (mapping is None or hard_issues) else "preview_ready"
         logger.info(
-            "ingest_csv_preview_mapping",
+            "ingest_csv_preview_mapping_inferred",
             extra={
                 "correlation_id": correlation_id,
-                "request_id": correlation_id,
-                "customer_id": resolved_customer,
                 "ingest_path": ingest_path,
-                "stage": "mapping_blocked" if preview_state == "preview_blocked" else "mapping_inferred",
-                "preview_state": preview_state,
-                "error_type": (hard_issues[0].code if hard_issues else None),
+                "customer_id": customer_id or "default-customer",
+                "requires_confirmation": bool(mapping is None or stage.requires_confirmation),
+                "issue_count": len(hard_issues),
+                "warning_count": len(warning_issues),
             },
         )
+        if mapping is None or stage.requires_confirmation:
+            logger.warning(
+                "ingest_csv_preview_mapping_blocked",
+                extra={
+                    "correlation_id": correlation_id,
+                    "customer_id": customer_id or "default-customer",
+                    "error_type": "ambiguous_mapping",
+                    "issue_count": len(hard_issues),
+                },
+            )
         return models.CsvPreviewResponse(
             headers=headers,
             suggested_mapping=mapping.to_dict() if mapping else None,
