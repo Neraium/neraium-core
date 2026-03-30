@@ -441,3 +441,65 @@ function wireUploadInteractions() {
     }
   });
 }
+
+function wireUploadFormEvents() {
+  const form = qs("#csvUploadForm");
+  if (!form || form.dataset.wired === "1") return;
+  form.dataset.wired = "1";
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    try {
+      clearUploadJobPolling();
+      state.uploadJob.active = true;
+      setUploadProgressUI({
+        visible: true,
+        mode: "uploading",
+        statusText: "Preparing upload...",
+        uploadedBytes: 0,
+        totalBytes: state.uploadFile?.size || null,
+      });
+      const out = await uploadCsvToActiveRun();
+      const route = getRoute();
+      await loadDashboard();
+      if (route.page === "run-detail" && route.runId) {
+        await loadRunDetail(route.runId);
+      }
+      const fileInput = qs("#csvFileInput");
+      if (fileInput) fileInput.value = "";
+      setUploadFile(null);
+      const status = String(out.status || "completed");
+      const rowsProcessed = Number(out.rows_processed || 0);
+      const rowsSucceeded = Number(out.rows_succeeded || 0);
+      const rowsFailed = Number(out.rows_failed || 0);
+      if (status === "failed") {
+        setStatus(out.message || `CSV ingest failed (${rowsFailed} rows failed).`, true, true);
+      } else if (status === "partial_success") {
+        setStatus(out.message || `CSV ingest partial success (${rowsSucceeded} succeeded, ${rowsFailed} failed).`, true, true);
+      } else {
+        setStatus(out.message || `CSV ingested (${rowsProcessed} rows processed).`, false, true);
+      }
+      setUploadProgressUI({
+        visible: true,
+        mode: status,
+        statusText: out.message || `Ingest ${status}.`,
+        uploadedBytes: Number(out.upload_bytes_received || 0),
+        totalBytes: out.upload_bytes_total,
+        rowsProcessed,
+        rowsSucceeded,
+        rowsFailed,
+        errorSamples: out.error_samples || [],
+      });
+    } catch (err) {
+      setUploadProgressUI({
+        visible: true,
+        mode: "failed",
+        statusText: String(err.message || err),
+        errorSamples: [{ row: "-", message: String(err.message || err) }],
+      });
+      setStatus(String(err.message || err), true, true);
+    } finally {
+      state.uploadJob.active = false;
+      clearUploadJobPolling();
+    }
+  });
+}

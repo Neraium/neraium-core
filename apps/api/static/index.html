@@ -89,11 +89,11 @@
               <article class="snapshot-item" role="listitem"><p>Current State</p><strong id="snapshotState">Unknown</strong></article>
               <article class="snapshot-item" role="listitem"><p>Risk</p><strong id="snapshotRisk">UNKNOWN</strong></article>
               <article class="snapshot-item" role="listitem"><p>Trend</p><strong id="snapshotTrend">UNKNOWN</strong></article>
-              <article class="snapshot-item" role="listitem"><p>Confidence</p><strong id="snapshotConfidence">Low confidence</strong></article>
+              <article class="snapshot-item" role="listitem"><p>Alerts</p><strong id="snapshotConfidence">None</strong></article>
             </div>
             <div class="snapshot-actions-row">
               <div>
-                <p class="recommendation-label">Operational guidance</p>
+                <p class="recommendation-label">Recommendation</p>
                 <p id="snapshotRecommendation" class="snapshot-recommendation">Upload fresh telemetry to resume monitoring.</p>
               </div>
             </div>
@@ -103,16 +103,16 @@
             
 
             <section class="panel control-panel" aria-label="Pilot operations controls">
-              <div class="panel-header"><h3>Primary Pilot Workflow</h3></div>
+              <div class="panel-header"><h3>Actions</h3></div>
               <div class="control-stack" role="group" aria-label="Operational actions">
                 <a id="primaryPilotActionBtn" href="/upload" class="button-link primary primary-pilot-btn">Upload Telemetry</a>
                 <button id="refreshBtn" type="button" class="secondary control-secondary-btn">Refresh Active Run</button>
               </div>
               <div class="quick-link-stack" aria-label="Open deeper analysis">
-                <a class="button-link secondary" id="dashboardOpenAnalysisLink" href="/app/runs">Open Analysis Workspace</a>
+                <a class="button-link secondary" id="dashboardOpenAnalysisLink" href="/app/runs">Open Run Analysis</a>
               </div>
               <div class="quick-link-stack" aria-label="Validation workspace link">
-                <a class="button-link secondary" href="/validation">Validation / Historical Replay</a>
+                <a class="button-link secondary" href="/validation">Open Validation</a>
               </div>
             </section>
           </div>
@@ -245,65 +245,50 @@
         <section id="page-run-detail" class="page hidden">
           <section id="analysis-executive" class="panel analysis-workspace-section" data-analysis-panel="executive">
             <div class="panel-header">
-              <h3 id="runDetailTitle">Run analysis workspace</h3>
+              <h3 id="runDetailTitle">Run analysis</h3>
               <div class="row panel-actions">
                 <button id="runDetailExportJsonBtn" type="button">Export JSON</button>
                 <button id="runDetailExportCsvBtn" type="button" class="secondary">Export CSV</button>
               </div>
             </div>
             <p id="runDetailMeta" class="subtitle"></p>
-            <section class="analysis-run-header" aria-label="Run analysis header">
+            <section class="analysis-run-header" aria-label="Run operator bar">
               <div class="analysis-run-header-grid">
-                <article class="analysis-run-header-item">
-                  <p class="recommendation-label">Run mode</p>
-                  <strong id="runDetailModeLabel">Pilot telemetry</strong>
-                </article>
-                <article class="analysis-run-header-item">
-                  <p class="recommendation-label">Analysis status</p>
-                  <strong id="runDetailStatusLabel">WAITING FOR TELEMETRY</strong>
-                </article>
-                <article class="analysis-run-header-item">
-                  <p class="recommendation-label">Last update</p>
-                  <strong id="runDetailLastUpdate">No telemetry timestamp yet.</strong>
-                </article>
-                <article class="analysis-run-header-item">
-                  <p class="recommendation-label">Operational summary</p>
-                  <strong id="runDetailRecommendationContext">Upload telemetry to start analysis.</strong>
-                </article>
+                <article class="analysis-run-header-item"><p class="recommendation-label">State</p><strong id="runStickyState">-</strong></article>
+                <article class="analysis-run-header-item"><p class="recommendation-label">Risk</p><strong id="runStickyRisk">UNKNOWN</strong></article>
+                <article class="analysis-run-header-item"><p class="recommendation-label">Alert</p><strong id="runStickyAlert">CLEAR</strong></article>
+                <article class="analysis-run-header-item"><p class="recommendation-label">Recommendation</p><strong id="runStickyRecommendation">Upload telemetry.</strong></article>
+                <article class="analysis-run-header-item"><p class="recommendation-label">Updated</p><strong id="runStickyUpdated">No telemetry timestamp.</strong></article>
               </div>
             </section>
-            <section id="demoPlaybackPanel" class="demo-playback hidden">
-              <div class="demo-playback-head">
-                <div class="demo-playback-title-row">
-                  <strong>Historical replay</strong>
-                  <span id="demoPlaybackBadge" class="demo-playback-badge" aria-hidden="true"></span>
-                </div>
-                <span id="demoPlaybackProgress" class="subtitle">Replay mode off</span>
-              </div>
-              <div class="demo-playback-bar-wrap" aria-hidden="true">
-                <div id="demoPlaybackBar" class="demo-playback-bar"></div>
-              </div>
-              <p id="demoPlaybackNarration" class="demo-playback-narration subtitle"></p>
-              <div class="row">
-                <button id="demoPlayPauseBtn" type="button" class="secondary">Play replay</button>
-                <button id="demoReplayBtn" type="button" class="secondary">Replay</button>
-              </div>
-            </section>
-            <article id="runRiskExplanationPanel" class="risk-explanation hidden">
-              <div class="risk-explanation-head">
-                <h4 id="runRiskExplanationTitle">Why this risk level</h4>
-                <div id="runRiskExplanationBadge"></div>
-              </div>
-              <p id="runRiskExplanationText" class="subtitle"></p>
-            </article>
             <div id="runDetailEmpty" class="empty-state hidden">
               <p>No telemetry has been processed for this run yet.</p>
-              <p class="subtitle">Upload telemetry to generate structural state, relationship drift, and operational recommendations.</p>
+              <p class="subtitle">Upload telemetry to start analysis.</p>
+            </div>
+          </section>
+
+          <section class="panel">
+            <div id="runDetailSectionTabs" class="range-controls">
+              <button type="button" data-run-section="overview" class="active">Overview</button>
+              <button type="button" data-run-section="trends">Trends</button>
+              <button type="button" data-run-section="geometry">Geometry</button>
+              <button type="button" data-run-section="results">Results</button>
             </div>
           </section>
 
           <div class="run-detail-workspace-grid">
-          <section id="analysis-trends" class="panel analysis-workspace-section" data-analysis-panel="trends">
+          <section id="analysis-overview" class="panel analysis-workspace-section" data-analysis-panel="overview">
+            <div class="panel-header"><h3>Overview</h3></div>
+            <div class="snapshot-grid">
+              <article class="snapshot-item"><p>State</p><strong id="runOverviewState">-</strong></article>
+              <article class="snapshot-item"><p>Risk</p><strong id="runOverviewRisk">UNKNOWN</strong></article>
+              <article class="snapshot-item"><p>Trend</p><strong id="runOverviewTrend">-</strong></article>
+              <article class="snapshot-item"><p>Alert</p><strong id="runOverviewAlert">CLEAR</strong></article>
+              <article class="snapshot-item"><p>Recommendation</p><strong id="runOverviewRecommendation">Upload telemetry.</strong></article>
+              <article class="snapshot-item"><p>Last updated</p><strong id="runOverviewUpdated">No telemetry timestamp.</strong></article>
+            </div>
+          </section>
+          <section id="analysis-trends" class="panel analysis-workspace-section hidden" data-analysis-panel="trends">
             <div class="panel-header">
               <h3>Trends</h3>
               <div id="runRangeControls" class="range-controls">
@@ -312,7 +297,7 @@
                 <button type="button" data-range="all">All</button>
               </div>
             </div>
-            <p id="runTrendsDeferredHint" class="subtitle run-deferred-hint">Charts load when this section enters view.</p>
+            <p id="runTrendsDeferredHint" class="subtitle run-deferred-hint">Open this section to load charts.</p>
             <div class="chart-grid">
               <div class="chart-panel">
                 <h4>Structural drift score</h4>
@@ -325,7 +310,7 @@
             </div>
           </section>
 
-          <section id="analysis-geometry" class="panel geometry-panel analysis-workspace-section" data-analysis-panel="geometry">
+          <section id="analysis-geometry" class="panel geometry-panel analysis-workspace-section hidden" data-analysis-panel="geometry">
             <div class="panel-header">
               <h3>Structural geometry</h3>
               <div id="geometryFlowLegend" class="geometry-flow-legend" aria-label="Flow visualization legend">
@@ -335,7 +320,7 @@
                 <span class="geometry-flow-legend__item"><i class="geometry-flow-legend__swatch geometry-flow-legend__swatch--arrow"></i>Arrow: net drift</span>
               </div>
             </div>
-            <p id="runGeometryDeferredHint" class="subtitle run-deferred-hint">Geometry initializes on view.</p>
+            <p id="runGeometryDeferredHint" class="subtitle run-deferred-hint">Open this section to load geometry.</p>
             <div class="geometry-flow-playback" aria-label="Structural flow playback controls">
               <div class="geometry-flow-playback__modes" role="group" aria-label="Playback mode">
                 <button type="button" id="flowModeLiveBtn" class="flow-mode-btn active" data-flow-mode="live">Current snapshot</button>
@@ -463,11 +448,11 @@
             </div>
           </section>
 
-          <section id="analysis-results" class="panel analysis-workspace-section" data-analysis-panel="results">
+          <section id="analysis-results" class="panel analysis-workspace-section hidden" data-analysis-panel="results">
             <div class="panel-header">
               <h3>Results history</h3>
             </div>
-            <p id="runResultsDeferredHint" class="subtitle run-deferred-hint">History loads on view.</p>
+            <p id="runResultsDeferredHint" class="subtitle run-deferred-hint">Open this section to load results.</p>
             <div class="row wrap filters">
               <input id="runResultsSearchInput" placeholder="Filter by message, phase, risk, state..." />
               <select id="runResultsSortSelect">
