@@ -139,6 +139,7 @@ def test_ingest_csv_preview_accepts_legacy_csv_text_json_field(tmp_path) -> None
     assert response.status_code == 200
     body = response.json()
     assert body["headers"] == ["timestamp", "asset", "s1"]
+    assert body["preview_state"] in {"preview_ready", "preview_blocked"}
 
 
 def test_ingest_csv_preview_accepts_csv_sample_json_field(tmp_path) -> None:
@@ -150,6 +151,7 @@ def test_ingest_csv_preview_accepts_csv_sample_json_field(tmp_path) -> None:
     assert response.status_code == 200
     body = response.json()
     assert body["headers"] == ["timestamp", "asset", "s1"]
+    assert body["preview_state"] in {"preview_ready", "preview_blocked"}
 
 
 def test_ingest_csv_preview_accepts_multipart_file_upload(tmp_path) -> None:
@@ -162,6 +164,7 @@ def test_ingest_csv_preview_accepts_multipart_file_upload(tmp_path) -> None:
     body = response.json()
     assert body["headers"] == ["time", "unit", "s1"]
     assert body["suggested_mapping"] is not None
+    assert body["preview_state"] == "preview_ready"
 
 
 def test_ingest_csv_preview_missing_payload_returns_structured_400(tmp_path) -> None:

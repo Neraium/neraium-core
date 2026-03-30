@@ -139,7 +139,7 @@ def build_ingest_router(
         _: None = Depends(require_api_key),
         customer_id: str | None = Query(default=None),
     ) -> dict[str, Any]:
-        _ = resolve_customer_id(customer_id)
+        resolved_customer = resolve_customer_id(customer_id)
         correlation_id = str(getattr(request.state, "correlation_id", "") or f"ing_prev_{uuid4().hex[:12]}")
         ingest_path = "csv_preview"
         body_sample: str | None = None
@@ -170,13 +170,24 @@ def build_ingest_router(
                 elif raw_csv_text is not None:
                     body_sample = str(raw_csv_text)
                     ingest_path = "csv_preview_json_legacy_csv_text"
+        logger.info(
+            "ingest_csv_preview_received",
+            extra={
+                "correlation_id": correlation_id,
+                "request_id": correlation_id,
+                "ingest_path": ingest_path,
+                "customer_id": resolved_customer,
+                "filename": str(getattr(file, "filename", "") or ""),
+                "stage": "preview_received",
+            },
+        )
         if body_sample is None or not str(body_sample).strip():
             logger.warning(
                 "ingest_csv_preview_invalid_request",
                 extra={
                     "correlation_id": correlation_id,
                     "ingest_path": ingest_path,
-                    "customer_id": customer_id or "default-customer",
+                    "customer_id": resolved_customer,
                 },
             )
             raise HTTPException(
@@ -194,10 +205,11 @@ def build_ingest_router(
             extra={
                 "correlation_id": correlation_id,
                 "ingest_path": ingest_path,
-                "customer_id": customer_id or "default-customer",
+                "customer_id": resolved_customer,
                 "header_count": len(headers),
                 "sample_row_count": len(rows),
                 "parse_issue_count": len(parse_issues),
+                "stage": "file_parsed",
             },
         )
         if not headers:
@@ -216,6 +228,19 @@ def build_ingest_router(
         mapping_issues = validate_csv_mapping_stage(mapping, headers) if mapping is not None else []
         hard_issues = [*parse_issues, *stage.issues, *mapping_issues]
         warning_issues = list(stage.warnings)
+        preview_state = "preview_blocked" if (mapping is None or hard_issues) else "preview_ready"
+        logger.info(
+            "ingest_csv_preview_mapping",
+            extra={
+                "correlation_id": correlation_id,
+                "request_id": correlation_id,
+                "customer_id": resolved_customer,
+                "ingest_path": ingest_path,
+                "stage": "mapping_blocked" if preview_state == "preview_blocked" else "mapping_inferred",
+                "preview_state": preview_state,
+                "error_type": (hard_issues[0].code if hard_issues else None),
+            },
+        )
         return models.CsvPreviewResponse(
             headers=headers,
             suggested_mapping=mapping.to_dict() if mapping else None,
@@ -224,6 +249,7 @@ def build_ingest_router(
             issue_details=[issue_to_dict(i) for i in hard_issues],
             warning_details=[issue_to_dict(i) for i in warning_issues],
             requires_confirmation=(mapping is None or stage.requires_confirmation),
+            preview_state=preview_state,
         )
 
     @router.post("/ingest/csv/upload", response_model=models.IngestJobEnvelope)
@@ -284,6 +310,7 @@ def build_ingest_router(
             "message": "Upload started.",
             "latest_result": None,
             "lifecycle_phase": "uploading",
+            "ui_state": "uploading",
             "terminal_state": None,
             "failure_category": None,
         }
@@ -309,6 +336,19 @@ def build_ingest_router(
                 },
             ) from exc
         update_ingest_job(job_id, status="queued", upload_bytes_received=bytes_received, upload_bytes_total=content_length if content_length is not None else bytes_received, message=f"Upload complete ({bytes_received} bytes). Queueing ingest job.")
+        logger.info(
+            "ingest_csv_upload_queued",
+            extra={
+                "correlation_id": correlation_id,
+                "request_id": correlation_id,
+                "job_id": job_id,
+                "run_id": resolved_run,
+                "customer_id": resolved_customer,
+                "filename": filename,
+                "ingest_path": "csv_upload",
+                "stage": "ingest_started",
+            },
+        )
         start_ingest_job_worker(job_id=job_id, temp_path=temp_path, run_id=resolved_run, customer_id=resolved_customer, column_mapping=column_mapping)
         with ingest_jobs_lock:
             job = dict(ingest_jobs[job_id])
