@@ -130,17 +130,93 @@ def build_ingest_router(
             raise HTTPException(status_code=400, detail=actionable_validation_detail(str(exc))) from exc
 
     @router.post("/ingest/csv/preview", response_model=models.CsvPreviewResponse)
-    def ingest_csv_preview(payload: models.CsvPreviewRequest, _: None = Depends(require_api_key), customer_id: str | None = Query(default=None)) -> dict[str, Any]:
+    async def ingest_csv_preview(
+        request: Request,
+        file: UploadFile | None = File(default=None),
+        csv_sample: str | None = Form(default=None),
+        csv_text: str | None = Form(default=None),
+        _: None = Depends(require_api_key),
+        customer_id: str | None = Query(default=None),
+    ) -> dict[str, Any]:
         _ = resolve_customer_id(customer_id)
-        headers, rows, parse_issues = parse_csv_rows(payload.csv_sample)
+        correlation_id = f"ing_prev_{uuid4().hex[:12]}"
+        ingest_path = "csv_preview"
+        body_sample: str | None = None
+        if file is not None:
+            preview_bytes = await file.read(524_288)
+            body_sample = preview_bytes.decode("utf-8", errors="replace")
+            ingest_path = "csv_preview_multipart_file"
+        elif csv_sample is not None or csv_text is not None:
+            body_sample = str(csv_sample if csv_sample is not None else csv_text)
+            ingest_path = "csv_preview_form"
+        else:
+            try:
+                raw = await request.json()
+            except Exception:
+                raw = None
+            if isinstance(raw, dict):
+                raw_csv_sample = raw.get("csv_sample")
+                raw_csv_text = raw.get("csv_text")
+                if raw_csv_sample is not None:
+                    body_sample = str(raw_csv_sample)
+                elif raw_csv_text is not None:
+                    body_sample = str(raw_csv_text)
+                    ingest_path = "csv_preview_json_legacy_csv_text"
+        if body_sample is None or not str(body_sample).strip():
+            logger.warning(
+                "ingest_csv_preview_invalid_request",
+                extra={
+                    "correlation_id": correlation_id,
+                    "ingest_path": ingest_path,
+                    "customer_id": customer_id or "default-customer",
+                },
+            )
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "type": "validation_error",
+                    "message": "CSV preview request is missing CSV content.",
+                    "actionable_detail": "Send csv_sample/csv_text JSON, or upload a CSV file in multipart form.",
+                    "correlation_id": correlation_id,
+                },
+            )
+        headers, rows, parse_issues = parse_csv_rows(body_sample)
+        logger.info(
+            "ingest_csv_preview_parsed",
+            extra={
+                "correlation_id": correlation_id,
+                "ingest_path": ingest_path,
+                "customer_id": customer_id or "default-customer",
+                "header_count": len(headers),
+                "sample_row_count": len(rows),
+                "parse_issue_count": len(parse_issues),
+            },
+        )
         if not headers:
-            raise HTTPException(status_code=400, detail="CSV sample has no header row.")
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "type": "csv_preview_empty_or_missing_header",
+                    "message": "CSV preview could not find a header row.",
+                    "actionable_detail": "Ensure the first row contains column names and retry preview.",
+                    "issue_details": [issue_to_dict(i) for i in parse_issues],
+                    "correlation_id": correlation_id,
+                },
+            )
         stage = infer_csv_mapping_stage(headers, rows=rows, column_mapping=None)
         mapping = stage.mapping
         mapping_issues = validate_csv_mapping_stage(mapping, headers) if mapping is not None else []
         hard_issues = [*parse_issues, *stage.issues, *mapping_issues]
         warning_issues = list(stage.warnings)
-        return models.CsvPreviewResponse(headers=headers, suggested_mapping=mapping.to_dict() if mapping else None, issues=[i.message for i in hard_issues], warnings=[i.message for i in warning_issues], issue_details=[issue_to_dict(i) for i in hard_issues], warning_details=[issue_to_dict(i) for i in warning_issues], requires_confirmation=(mapping is None or stage.requires_confirmation))
+        return models.CsvPreviewResponse(
+            headers=headers,
+            suggested_mapping=mapping.to_dict() if mapping else None,
+            issues=[i.message for i in hard_issues],
+            warnings=[i.message for i in warning_issues],
+            issue_details=[issue_to_dict(i) for i in hard_issues],
+            warning_details=[issue_to_dict(i) for i in warning_issues],
+            requires_confirmation=(mapping is None or stage.requires_confirmation),
+        )
 
     @router.post("/ingest/csv/upload", response_model=models.IngestJobEnvelope)
     async def ingest_csv_upload(request: Request, file: UploadFile = File(...), _: None = Depends(require_api_key), run_id: str | None = Query(default=None), customer_id: str | None = Query(default=None), mapping: str | None = Form(default=None)) -> dict[str, Any]:

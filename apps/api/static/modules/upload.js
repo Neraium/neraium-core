@@ -9,6 +9,31 @@ function updateUploadRunInfo() {
   }
 }
 
+const UPLOAD_STAGES = new Set([
+  "idle",
+  "validating",
+  "preview_ready",
+  "uploading",
+  "ingesting",
+  "partial_success",
+  "failed",
+  "completed",
+]);
+
+function setUploadStage(stage) {
+  const normalized = UPLOAD_STAGES.has(stage) ? stage : "idle";
+  state.uploadCsv.stage = normalized;
+}
+
+function operatorErrorMessage(err, fallback = "Ingest failed.") {
+  const apiErr = err && err.apiError ? err.apiError : null;
+  const msg = String(err?.message || fallback);
+  if (!apiErr) return msg;
+  if (apiErr.status === 422) return `Upload validation failed. ${msg}`;
+  if (apiErr.status === 413) return "Upload is too large for this environment. Split the CSV and retry.";
+  return msg;
+}
+
 function clearUploadJobPolling() {
   if (state.uploadJob.pollTimer) {
     window.clearTimeout(state.uploadJob.pollTimer);
@@ -150,6 +175,7 @@ async function waitForIngestJob(jobId) {
       try {
         const job = await fetchIngestJob(jobId);
         const status = String(job.status || "processing");
+        if (status === "processing" || status === "queued") setUploadStage("ingesting");
         setUploadProgressUI({
           visible: true,
           mode: status,
@@ -190,6 +216,7 @@ function parseCsvText(file) {
 }
 
 function setUploadFile(file) {
+  setUploadStage("validating");
   state.uploadFile = file || null;
   const el = qs("#selectedFileName");
   if (!el) return;
@@ -201,15 +228,18 @@ function setUploadFile(file) {
     state.uploadCsv.warnings = [];
     state.uploadCsv.requiresConfirmation = false;
     state.uploadCsv.mapping = null;
+    setUploadStage("idle");
     renderUploadMappingPanel();
     return;
   }
   runCsvPreviewForFile(file).catch((err) => {
-    setStatus(String(err.message || err), true, true);
+    setUploadStage("failed");
+    setStatus(operatorErrorMessage(err), true, true);
   });
 }
 
 async function runCsvPreviewForFile(file) {
+  setUploadStage("validating");
   const chunk = file.slice(0, Math.min(file.size, 65536));
   const text = await new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -228,6 +258,7 @@ async function runCsvPreviewForFile(file) {
   state.uploadCsv.warnings = Array.isArray(out.warnings) ? out.warnings : [];
   state.uploadCsv.requiresConfirmation = !!out.requires_confirmation;
   state.uploadCsv.mapping = out.suggested_mapping || null;
+  setUploadStage("preview_ready");
   renderUploadMappingPanel();
   if (state.uploadCsv.issues.length && !out.suggested_mapping) {
     setStatus(state.uploadCsv.issues.join(" "), true, false);
@@ -350,6 +381,7 @@ async function uploadCsvToActiveRun() {
   const mapping = collectUploadMappingFromDom();
   const verr = validateUploadMapping(mapping);
   if (verr) throw new Error(verr);
+  setUploadStage("uploading");
   const started = await uploadCsvFileWithProgress(file, runId, mapping);
   const jobId = String(started.job_id || "");
   if (!jobId) {
@@ -451,6 +483,7 @@ function wireUploadFormEvents() {
     try {
       clearUploadJobPolling();
       state.uploadJob.active = true;
+      setUploadStage("uploading");
       setUploadProgressUI({
         visible: true,
         mode: "uploading",
@@ -468,6 +501,7 @@ function wireUploadFormEvents() {
       if (fileInput) fileInput.value = "";
       setUploadFile(null);
       const status = String(out.status || "completed");
+      setUploadStage(status === "failed" ? "failed" : status === "partial_success" ? "partial_success" : "completed");
       const rowsProcessed = Number(out.rows_processed || 0);
       const rowsSucceeded = Number(out.rows_succeeded || 0);
       const rowsFailed = Number(out.rows_failed || 0);
@@ -490,13 +524,14 @@ function wireUploadFormEvents() {
         errorSamples: out.error_samples || [],
       });
     } catch (err) {
+      setUploadStage("failed");
       setUploadProgressUI({
         visible: true,
         mode: "failed",
-        statusText: String(err.message || err),
-        errorSamples: [{ row: "-", message: String(err.message || err) }],
+        statusText: operatorErrorMessage(err),
+        errorSamples: [{ row: "-", message: operatorErrorMessage(err) }],
       });
-      setStatus(String(err.message || err), true, true);
+      setStatus(operatorErrorMessage(err), true, true);
     } finally {
       state.uploadJob.active = false;
       clearUploadJobPolling();

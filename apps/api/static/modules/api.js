@@ -57,12 +57,33 @@
       }
     }
     if (!res.ok) {
+      const detailValue = body && typeof body === "object" ? body.detail : null;
       const detail =
-        body && typeof body === "object" && body.detail
-          ? String(body.detail)
-          : raw
-            ? raw.slice(0, 500)
-            : "empty response body";
+        typeof detailValue === "string"
+          ? detailValue
+          : detailValue && typeof detailValue === "object"
+            ? JSON.stringify(detailValue)
+            : raw
+              ? raw.slice(0, 500)
+              : "empty response body";
+      const issueSummary =
+        body && Array.isArray(body.issue_details) && body.issue_details.length
+          ? body.issue_details
+              .slice(0, 3)
+              .map((i) => (i && i.message ? String(i.message) : "Invalid field"))
+              .join("; ")
+          : "";
+      const actionable =
+        body && typeof body === "object" && body.actionable_detail
+          ? String(body.actionable_detail)
+          : "";
+      const correlation =
+        body && typeof body === "object" && body.correlation_id
+          ? ` (ref ${String(body.correlation_id)})`
+          : "";
+      const userMessage = [body && body.message ? String(body.message) : "", actionable, issueSummary]
+        .filter((x) => x && x.trim().length > 0)
+        .join(" ");
       console.error("API request failed", {
         endpoint,
         method,
@@ -75,6 +96,7 @@
           `[HTTP after response] ${method} ${endpoint}`,
           `status=${res.status} ${res.statusText || ""}`.trim(),
           `detail=${detail}`,
+          userMessage ? `message=${userMessage}${correlation}` : "",
         ].join(" | "),
       );
       e.name = "ApiHttpError";
