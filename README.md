@@ -21,6 +21,13 @@ Most tools optimize for **single sensors** or **component failure prediction**: 
 Pilot/operator workflow quickstart:
 → **[docs/OPERATOR_WORKFLOW.md](docs/OPERATOR_WORKFLOW.md)**
 
+Canonical investor/demo artifact workflow:
+```bash
+python tools/run_investor_proof_demo.py
+```
+This emits deterministic proof artifacts under `reports/demo_proof/` showing a single-run narrative:
+`Normal -> Drift -> Rising Instability -> Critical`.
+
 AWS App Runner deployment (source repository):
 → **[docs/AWS_APP_RUNNER.md](docs/AWS_APP_RUNNER.md)**
 
