@@ -45,6 +45,12 @@ from .services.request_context import (
 )
 from .services.validation_utils import actionable_validation_detail
 from .services.export_utils import build_export
+from .services.geometry import (
+    STRUCTURAL_FLOW_PLANE_MAX_N,
+    _build_geometry_edges,
+    _diamond_plane_positions_four,
+    _plane_ring_positions,
+)
 from ._core_imports import (
     ResultStore,
     StructuralMonitoringService,
