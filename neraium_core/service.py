@@ -9,15 +9,19 @@ from typing import Any, Callable, TextIO
 
 from neraium_core.alignment import StructuralEngine
 from neraium_core.adapters.raw_telemetry_adapter import ingest_raw_industrial_input
-from neraium_core.csv_mapping import row_to_frame_kwargs, resolve_mapping
 from neraium_core.ingestion_normalization import (
     normalize_external_batch_payload,
     normalize_external_payload,
 )
 from neraium_core.pipeline import (
-    build_frame,
+    canonical_records_to_frames,
+    infer_csv_mapping_stage,
+    issue_to_dict,
+    normalize_csv_rows_to_canonical,
     parse_csv_text,
+    parse_csv_rows,
     pilot_hardening_enabled,
+    validate_csv_mapping_stage,
 )
 from neraium_core.logging_utils import (
     Timer,
@@ -1133,14 +1137,20 @@ class StructuralMonitoringService:
             raise ValueError("CSV has no parseable header row.")
 
         header_names = [str(name).strip() for name in reader.fieldnames if name is not None]
-        try:
-            mapping, _map_warnings = resolve_mapping(
-                header_names,
-                column_mapping,
-                csv_sample=sample_for_infer if column_mapping is None else None,
-            )
-        except ValueError as exc:
-            raise ValueError(str(exc)) from exc
+        _, sample_rows, parse_issues = parse_csv_rows(sample_for_infer)
+        map_stage = infer_csv_mapping_stage(
+            header_names,
+            rows=sample_rows,
+            column_mapping=column_mapping,
+        )
+        mapping = map_stage.mapping
+        mapping_issues = validate_csv_mapping_stage(mapping, header_names) if mapping is not None else []
+        blocking_mapping_issues = [*parse_issues, *map_stage.issues, *mapping_issues]
+        if mapping is None or blocking_mapping_issues:
+            first = blocking_mapping_issues[0] if blocking_mapping_issues else None
+            if first is None:
+                raise ValueError("CSV mapping could not be resolved.")
+            raise ValueError(first.message)
 
         buffered_pairs: list[tuple[dict[str, Any], dict[str, Any]]] = []
         rows_processed = 0
@@ -1162,10 +1172,14 @@ class StructuralMonitoringService:
             if row is None:
                 continue
             rows_processed += 1
+            row_issues: list[Any] = []
             try:
-                kwargs = row_to_frame_kwargs(row, mapping, customer_id=resolved_customer)
-                frame = build_frame(**kwargs)
-                frame["customer_id"] = resolved_customer
+                canonical_records, row_issues = normalize_csv_rows_to_canonical([dict(row, __row_index__=row_index)], mapping=mapping)
+                if row_issues:
+                    raise ValueError(row_issues[0].message)
+                if not canonical_records:
+                    raise ValueError("Row normalization produced no canonical record.")
+                frame = canonical_records_to_frames(canonical_records, customer_id=resolved_customer)[0]
                 engine = self._engine_for_frame(frame, run_config=run_config)
                 result = self._decorate_result(engine.process_frame(frame))
                 result["customer_id"] = resolved_customer
@@ -1184,7 +1198,18 @@ class StructuralMonitoringService:
                 rows_failed += 1
                 msg = self._csv_validation_error_message(exc, row_index=row_index)
                 if len(error_samples) < safe_error_samples:
-                    error_samples.append({"row": row_index, "message": msg})
+                    issue_dict = (
+                        issue_to_dict(row_issues[0])
+                        if "row_issues" in locals() and row_issues
+                        else {"code": "row_error", "message": msg, "row": row_index}
+                    )
+                    error_samples.append(
+                        {
+                            "row": row_index,
+                            "message": msg,
+                            "issue": issue_dict,
+                        }
+                    )
                 log_structured(
                     logger,
                     event="ingest_csv_stream_row_error",
