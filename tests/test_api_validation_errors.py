@@ -61,9 +61,11 @@ def test_ingest_malformed_payload_returns_422(tmp_path) -> None:
     assert response.status_code != 500
     assert "sensor_values" in str(response.json())
     body = response.json()
+    assert body.get("ok") is False
+    assert body.get("stage") == "normalize"
     assert body.get("type") == "validation_error"
-    assert isinstance(body.get("detail"), str)
     assert isinstance(body.get("issue_details"), list)
+    assert isinstance(body.get("warning_details"), list)
 
 
 def test_ingest_batch_invalid_timestamp_returns_400(tmp_path) -> None:
@@ -175,10 +177,49 @@ def test_ingest_csv_preview_missing_payload_returns_structured_400(tmp_path) -> 
     )
     assert response.status_code == 400
     body = response.json()
+    assert body["ok"] is False
+    assert body["stage"] == "preview"
     assert body["type"] == "validation_error"
     assert "actionable_detail" in body
     assert "correlation_id" in body
     assert response.headers.get("x-correlation-id")
+
+
+def test_ingest_csv_preview_fd001_style_shape_returns_mapping(tmp_path) -> None:
+    client = _build_client(tmp_path)
+    response = client.post(
+        _customer_path("/ingest/csv/preview"),
+        json={
+            "csv_sample": (
+                "time,unit,s1,s2,s3\n"
+                "1,1,518.67,641.82,1589.7\n"
+                "2,1,518.67,642.15,1591.82\n"
+            )
+        },
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["headers"] == ["time", "unit", "s1", "s2", "s3"]
+    assert body["suggested_mapping"]["timestamp"] == "time"
+    assert body["suggested_mapping"]["asset_id"] == "unit"
+    assert set(body["suggested_mapping"]["sensor_columns"]) >= {"s1", "s2", "s3"}
+
+
+def test_ingest_csv_preview_ambiguous_mapping_sets_blocking_confirmation(tmp_path) -> None:
+    client = _build_client(tmp_path)
+    response = client.post(
+        _customer_path("/ingest/csv/preview"),
+        json={
+            "csv_sample": (
+                "timestamp,time,asset_id,s1\n"
+                "2026-01-01T00:00:00+00:00,2026-01-01T00:00:01+00:00,a1,1.0\n"
+            )
+        },
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["requires_confirmation"] is True
+    assert any("timestamp" in str(msg).lower() for msg in body.get("warnings", []))
 
 
 def test_ingest_accepts_alias_signal_payload(tmp_path) -> None:

@@ -27,7 +27,7 @@ function setUploadStage(stage) {
   state.uploadCsv.stage = normalized;
 }
 
-function operatorErrorMessage(err, fallback = "Ingest failed.") {
+function structuredErrorFrom(err, fallbackStage = "request") {
   const apiErr = err && err.apiError ? err.apiError : null;
   const msg = String(err?.message || fallback);
   const rawResponse = String(apiErr?.responseText || "");
@@ -264,10 +264,16 @@ function setUploadFile(file) {
     renderUploadMappingPanel();
     return;
   }
+  setUploadStage("file_selected");
   runCsvPreviewForFile(file).catch((err) => {
     resetUploadFlowState();
     setUploadStage("failed");
-    setStatus(operatorErrorMessage(err), true, true);
+    const normalized = structuredErrorFrom(err, "preview");
+    setStatus(operatorErrorMessage(err, "CSV preview failed."), true, true);
+    if (normalized.stage === "preview") {
+      state.uploadCsv.issues = normalized.issue_details.map((i) => String(i.message || "Preview validation issue."));
+      renderUploadMappingPanel();
+    }
   });
 }
 
@@ -291,12 +297,18 @@ async function runCsvPreviewForFile(file) {
   state.uploadCsv.warnings = Array.isArray(out.warnings) ? out.warnings : [];
   state.uploadCsv.requiresConfirmation = !!out.requires_confirmation;
   state.uploadCsv.mapping = out.suggested_mapping || null;
+  setUploadStage(state.uploadCsv.requiresConfirmation ? "preview_blocked" : "preview_ready");
   const hasBlockingIssues = state.uploadCsv.issues.length > 0 && !state.uploadCsv.mapping;
   const apiPreviewState = String(out.preview_state || "");
   if (apiPreviewState === "preview_blocked" || hasBlockingIssues) setUploadStage("preview_blocked");
   else setUploadStage("preview_ready");
   renderUploadMappingPanel();
-  if (state.uploadCsv.issues.length && !out.suggested_mapping) {
+  if (state.uploadCsv.requiresConfirmation) {
+    const guidance =
+      out.actionable_detail ||
+      "Preview found ambiguous mapping. Review timestamp, asset/entity, and sensor columns before upload.";
+    setStatus(guidance, true, false);
+  } else if (state.uploadCsv.issues.length && !out.suggested_mapping) {
     setStatus(state.uploadCsv.issues.join(" "), true, false);
   } else {
     setStatus("");
@@ -413,6 +425,9 @@ async function uploadCsvToActiveRun() {
   if (!state.uploadCsv.headers.length) {
     await runCsvPreviewForFile(file);
   }
+  if (state.uploadCsv.requiresConfirmation) {
+    setUploadStage("preview_blocked");
+  }
   renderUploadMappingPanel();
   const mapping = collectUploadMappingFromDom();
   const verr = validateUploadMapping(mapping);
@@ -517,6 +532,8 @@ function wireUploadFormEvents() {
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
     try {
+      resetUploadAttemptState();
+      state.uploadJob.active = true;
       resetUploadFlowState();
       setUploadStage("uploading");
       setUploadProgressUI({
@@ -562,12 +579,15 @@ function wireUploadFormEvents() {
       resetUploadFlowState();
       setUploadStage(state.uploadCsv?.issues?.length ? "preview_blocked" : "failed");
       setUploadProgressUI({
-        visible: true,
+        visible: !isPreviewFailure,
         mode: "failed",
-        statusText: operatorErrorMessage(err),
-        errorSamples: [{ row: "-", message: operatorErrorMessage(err) }],
+        statusText: operatorErrorMessage(err, isPreviewFailure ? "CSV preview blocked upload." : "Ingest failed."),
+        errorSamples: isPreviewFailure ? [] : [{ row: "-", message: operatorErrorMessage(err) }],
       });
-      setStatus(operatorErrorMessage(err), true, true);
+      const failureCopy = isPreviewFailure
+        ? `CSV preview is blocked. ${operatorErrorMessage(err, "Review mapping and retry preview.")}`
+        : operatorErrorMessage(err);
+      setStatus(failureCopy, true, true);
     } finally {
       resetUploadFlowState();
     }
