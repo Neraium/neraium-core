@@ -905,6 +905,89 @@ class StructuralMonitoringService:
         resolved_customer = self._resolve_customer_id(customer_id or result.get("customer_id"))
         return self._persist_product_history(result, run_id=run_id, customer_id=resolved_customer)
 
+    def ingest_normalized_frames(
+        self,
+        frames: list[dict[str, Any]],
+        *,
+        run_id: str | None = None,
+        customer_id: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Ingest already-normalized canonical frames without remapping."""
+
+        resolved_customer = self._resolve_customer_id(customer_id)
+        run_config: dict[str, Any] | None = None
+        if run_id:
+            run_obj = self.store.get_run(run_id, customer_id=resolved_customer)
+            if run_obj and isinstance(run_obj.get("config"), dict):
+                run_config = run_obj["config"]
+
+        pairs: list[tuple[dict[str, Any], dict[str, Any]]] = []
+        results: list[dict[str, Any]] = []
+        for frame in frames:
+            clean_frame = dict(frame)
+            clean_frame["customer_id"] = resolved_customer
+            engine = self._engine_for_frame(clean_frame, run_config=run_config)
+            result = self._decorate_result(engine.process_frame(clean_frame))
+            result["customer_id"] = resolved_customer
+            if pilot_hardening_enabled():
+                result.update(build_pilot_output(frame=clean_frame, result=result))
+            results.append(result)
+            pairs.append((clean_frame, result))
+
+        self.store.save_ingestion_batch(pairs, run_id=run_id, customer_id=resolved_customer)
+        persisted_recent = self.store.list_recent_results(
+            limit=len(results),
+            run_id=run_id,
+            customer_id=resolved_customer,
+        )
+        persisted_map: dict[tuple[str, str, str, str], dict[str, Any]] = {}
+        for item in persisted_recent:
+            key = (
+                str(item.get("customer_id", "")),
+                str(item.get("timestamp", "")),
+                str(item.get("site_id", "")),
+                str(item.get("asset_id", "")),
+            )
+            persisted_map[key] = item
+
+        results_with_ids: list[dict[str, Any]] = []
+        for result in results:
+            key = (
+                str(result.get("customer_id", "")),
+                str(result.get("timestamp", "")),
+                str(result.get("site_id", "")),
+                str(result.get("asset_id", "")),
+            )
+            persisted = persisted_map.get(key)
+            if persisted is None:
+                results_with_ids.append(
+                    self._with_result_metadata(
+                        result,
+                        customer_id=resolved_customer,
+                        run_id=run_id,
+                        result_id=None,
+                        persisted_at=None,
+                    )
+                )
+            else:
+                results_with_ids.append(
+                    self._with_result_metadata(
+                        result,
+                        customer_id=persisted.get("customer_id"),
+                        run_id=persisted.get("run_id"),
+                        result_id=persisted.get("result_id"),
+                        persisted_at=persisted.get("persisted_at"),
+                    )
+                )
+        for result in results_with_ids:
+            result["canonical_output"] = self._persist_product_history(
+                result,
+                run_id=run_id,
+                customer_id=resolved_customer,
+            )
+            result["events"] = list(result["canonical_output"].get("events", []))
+        return results_with_ids
+
     def ingest_csv(
         self,
         csv_text: str,
