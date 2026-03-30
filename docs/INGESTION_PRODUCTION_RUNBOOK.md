@@ -57,6 +57,7 @@ Symptoms:
 
 - Preview call returns `422 Unprocessable Entity`
 - UI previously displayed opaque content like `[object Object]`
+- Operator cannot progress from preview to upload state because mapping panel is not populated
 
 Actions:
 
@@ -68,7 +69,35 @@ Actions:
 4. If mapping is ambiguous, continue via guided mapping UI (not a hard ingest failure).
 5. Retry preview, then proceed to upload only after preview returns headers and mapping guidance.
 
-## 7) Logging and observability notes
+## 7) Runbook: preview succeeds but upload/ingest fails
+
+Symptoms:
+
+- Preview returns headers and suggested mapping, but upload fails or job ends in `failed` / `partial_success`.
+- Operator message includes actionable text and a `ref <correlation_id>`.
+
+Actions:
+
+1. **Capture correlation IDs from both phases.**
+   - Preview errors use API validation IDs.
+   - Upload errors return stream/mapping/file-type IDs and are echoed in `X-Correlation-ID`.
+2. **Validate mapping continuity between preview and upload.**
+   - Ensure `timestamp` and `asset_id` are still selected after any manual changes.
+   - Ensure at least one sensor column is selected.
+3. **Check ingest job status payload (`/ingest/jobs/{job_id}`).**
+   - Inspect `rows_failed`, `error_samples`, and `message`.
+   - Distinguish:
+     - `failed`: zero successful rows.
+     - `partial_success`: at least one row succeeded; inspect failed rows before retry.
+4. **Apply row-level remediation from `error_samples`.**
+   - Common causes: non-numeric sensor text, invalid timestamp values, or malformed row column counts.
+5. **Retry with narrowed file when needed.**
+   - If stream limits or transport instability occurs, split large CSVs and retry smaller chunks.
+6. **Escalation checklist for support/on-call.**
+   - Provide correlation ID(s), run ID, customer ID, job ID, and a sanitized sample of failed rows.
+   - Confirm health endpoint state (`/health`) for persistence/runtime degradation before deeper investigation.
+
+## 8) Logging and observability notes
 
 Preview and validation paths should log:
 

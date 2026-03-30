@@ -141,6 +141,17 @@ def test_ingest_csv_preview_accepts_legacy_csv_text_json_field(tmp_path) -> None
     assert body["headers"] == ["timestamp", "asset", "s1"]
 
 
+def test_ingest_csv_preview_accepts_csv_sample_json_field(tmp_path) -> None:
+    client = _build_client(tmp_path)
+    response = client.post(
+        _customer_path("/ingest/csv/preview"),
+        json={"csv_sample": "timestamp,asset,s1\n2026-01-01T00:00:00+00:00,a1,1.2\n"},
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["headers"] == ["timestamp", "asset", "s1"]
+
+
 def test_ingest_csv_preview_accepts_multipart_file_upload(tmp_path) -> None:
     client = _build_client(tmp_path)
     response = client.post(
@@ -164,6 +175,7 @@ def test_ingest_csv_preview_missing_payload_returns_structured_400(tmp_path) -> 
     assert body["type"] == "validation_error"
     assert "actionable_detail" in body
     assert "correlation_id" in body
+    assert response.headers.get("x-correlation-id")
 
 
 def test_ingest_accepts_alias_signal_payload(tmp_path) -> None:
