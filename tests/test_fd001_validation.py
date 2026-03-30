@@ -42,6 +42,16 @@ def test_group_rows_by_unit_keeps_timelines_separate_and_sorted():
     assert [r.cycle for r in grouped[2]] == [3]
 
 
+def test_group_rows_by_unit_is_deterministic_for_duplicate_cycles():
+    rows = [
+        Fd001Row(unit_id=1, cycle=1, operating_settings=(0.0, 0.1, 0.2), sensors=tuple(float(i + 1) for i in range(21))),
+        Fd001Row(unit_id=1, cycle=1, operating_settings=(0.0, 0.1, 0.2), sensors=tuple(float(i) for i in range(21))),
+    ]
+    grouped = group_rows_by_unit(rows)
+    assert grouped[1][0].sensors[0] == 0.0
+    assert grouped[1][1].sensors[0] == 1.0
+
+
 def test_fd001_row_to_payload_mapping_shape():
     row = Fd001Row(
         unit_id=7,
