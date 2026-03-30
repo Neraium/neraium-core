@@ -762,7 +762,7 @@ async function startCmapssDemo(customerId, options = {}) {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       customer_id: customerId || null,
-      max_frames: Number(options.max_frames || 10),
+      max_frames: Number(options.max_frames || 120),
     }),
   });
 }
@@ -1169,6 +1169,7 @@ const state = {
     replay: {
       uiState: "idle",
       runId: "",
+      launchProcessed: 0,
       pollTimer: null,
       pollFailures: 0,
       pollBackoffMs: 900,
