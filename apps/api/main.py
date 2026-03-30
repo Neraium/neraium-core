@@ -18,6 +18,7 @@ from uuid import uuid4
 
 import numpy as np
 from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Query, Request, UploadFile, status
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -810,14 +811,60 @@ def create_app(
 
     @app.exception_handler(HTTPException)
     async def _http_exception_handler(_request: Request, exc: HTTPException) -> JSONResponse:
-        message = str(exc.detail)
+        correlation_id = f"api_err_{uuid4().hex[:12]}"
+        if isinstance(exc.detail, dict):
+            detail_payload = dict(exc.detail)
+            message = str(detail_payload.get("message") or detail_payload.get("detail") or "Request failed.")
+            type_name = str(detail_payload.get("type") or "http_error")
+            actionable = str(detail_payload.get("actionable_detail") or actionable_validation_detail(message))
+        else:
+            message = str(exc.detail)
+            detail_payload = message
+            type_name = "http_error"
+            actionable = actionable_validation_detail(message)
         return JSONResponse(
             status_code=exc.status_code,
             content={
-                "type": "http_error",
+                "type": type_name,
                 "message": message,
-                "actionable_detail": actionable_validation_detail(message),
-                "detail": message,
+                "actionable_detail": actionable,
+                "detail": detail_payload,
+                "correlation_id": correlation_id,
+            },
+        )
+
+    @app.exception_handler(RequestValidationError)
+    async def _request_validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
+        correlation_id = f"api_val_{uuid4().hex[:12]}"
+        issue_details = []
+        for issue in exc.errors():
+            location = issue.get("loc", [])
+            issue_details.append(
+                {
+                    "code": issue.get("type", "validation_error"),
+                    "message": issue.get("msg", "Invalid request payload."),
+                    "field": ".".join(str(part) for part in location if part not in {"body"}),
+                    "input": issue.get("input"),
+                }
+            )
+        logger.warning(
+            "request_validation_error",
+            extra={
+                "correlation_id": correlation_id,
+                "path": request.url.path,
+                "method": request.method,
+                "issue_count": len(issue_details),
+            },
+        )
+        return JSONResponse(
+            status_code=422,
+            content={
+                "type": "validation_error",
+                "message": "Request validation failed.",
+                "actionable_detail": "Review request fields and retry. See issue_details for field-level guidance.",
+                "detail": "Request validation failed.",
+                "issue_details": issue_details,
+                "correlation_id": correlation_id,
             },
         )
 
