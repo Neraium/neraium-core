@@ -58,9 +58,11 @@ async function pollReplayStatus(runId) {
     const run = runRes?.run || null;
     const recentEnv = await fetchRecentResults({ run_id: replayRunId, limit: 5 });
     const results = Array.isArray(recentEnv?.results) ? recentEnv.results : [];
+    const processedAtLaunch = Number(state.demo.replay.launchProcessed || 0);
+    const hasProcessedFrames = processedAtLaunch > 0;
     const uiState = normalizeReplayUiState({
       runStatus: String(run?.status || ""),
-      hasTelemetry: results.length > 0,
+      hasTelemetry: results.length > 0 || hasProcessedFrames,
     });
     state.demo.replay.pollFailures = 0;
     state.demo.replay.pollBackoffMs = DEMO_REPLAY_INITIAL_POLL_MS;
@@ -85,6 +87,12 @@ async function pollReplayStatus(runId) {
       return;
     }
     if (uiState === DEMO_UI_STATES.starting) {
+      if (hasProcessedFrames) {
+        setDemoUiState(DEMO_UI_STATES.offline, "starting-timeout-processed-launch");
+        state.demo.replay.pollBackoffMs = Math.min(DEMO_REPLAY_MAX_POLL_MS, state.demo.replay.pollBackoffMs * 2);
+        scheduleReplayStatusPoll(replayRunId, state.demo.replay.pollBackoffMs);
+        return;
+      }
       setDemoUiState(DEMO_UI_STATES.interrupted, "starting-timeout");
       state.demo.replay.errorMessage = "Replay launch timed out while waiting for live telemetry.";
       setStatus(`${state.demo.replay.errorMessage} Tap retry.`, true, true);
@@ -148,6 +156,7 @@ async function seedDemoData() {
   const launchPromise = (async () => {
     setStatus("Preparing historical validation replay (secondary workflow)...", false);
     state.demo.replay.errorMessage = "";
+    state.demo.replay.launchProcessed = 0;
     setDemoUiState(DEMO_UI_STATES.starting, "launch-begin");
     setDemoProgress({
       visible: true,
@@ -164,9 +173,10 @@ async function seedDemoData() {
       total: 3,
       text: "Running NASA CMAPSS FD004 scenario...",
     });
-    const out = await startCmapssDemo(customerIdValue(state.tenant.customerId), { max_frames: 10 });
+    const out = await startCmapssDemo(customerIdValue(state.tenant.customerId), { max_frames: 120 });
     const resolvedRunId = String(out?.run_id || "");
     if (!resolvedRunId) throw new Error("NASA reference replay did not return a run ID.");
+    state.demo.replay.launchProcessed = Number(out?.processed || 0);
     state.demo.seedRunId = resolvedRunId;
     state.demo.replay.runId = resolvedRunId;
     beginReplayStatusMonitoring(resolvedRunId);
