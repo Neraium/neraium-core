@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 
 from neraium_core.ingestion_normalization import (
+    infer_payload_mapping,
     normalize_canonical_records_payload,
     normalize_external_batch_payload,
     normalize_external_payload,
@@ -142,3 +143,18 @@ def test_malformed_batch_payload_rejected() -> None:
 def test_missing_asset_id_strict_error() -> None:
     with pytest.raises(ValueError, match="missing_asset_id"):
         normalize_external_payload({"timestamp": "2026-01-01T00:00:00+00:00", "signals": {"x": 1}})
+
+
+def test_infer_payload_mapping_returns_resolved_aliases() -> None:
+    review = infer_payload_mapping(
+        {
+            "recorded_at": "2026-01-01T00:00:00+00:00",
+            "entity_id": "asset-9",
+            "site": "site-a",
+            "measurements": {"vibration": 1.2},
+        }
+    )
+    assert review.inferred_mapping["timestamp"] == "recorded_at"
+    assert review.inferred_mapping["asset_id"] == "entity_id"
+    assert review.inferred_mapping["site_id"] == "site"
+    assert review.inferred_mapping["signals"] == "measurements"
