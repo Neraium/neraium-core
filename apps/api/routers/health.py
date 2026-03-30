@@ -28,9 +28,12 @@ def build_health_router(
         latest = service_instance.get_latest_result(
             customer_id=resolve_customer_id(os.getenv("NERAIUM_DEFAULT_CUSTOMER_ID"))
         )
+        runtime_state = runtime_state_diagnostics_provider()
         runtime_status = get_core_runtime_status()
         runtime_fallback = bool(runtime_status.get("using_fallback", False))
-        overall_ok = persistence_available and not runtime_fallback
+        temp_dir_writable = bool((runtime_state or {}).get("temp_dir_writable", True))
+        db_path_writable = bool((runtime_state or {}).get("db_path_writable", True))
+        overall_ok = persistence_available and not runtime_fallback and temp_dir_writable and db_path_writable
         return health_response_model(
             status="ok" if overall_ok else "degraded",
             version=app_version,
@@ -40,7 +43,7 @@ def build_health_router(
             core_runtime_mode="degraded" if runtime_fallback else "full",
             core_runtime_fallback=runtime_fallback,
             core_runtime_notes=[str(x) for x in runtime_status.get("notes", [])],
-            runtime_state_diagnostics=runtime_state_diagnostics_provider(),
+            runtime_state_diagnostics=runtime_state,
         )
 
     @router.post("/client-errors", status_code=status.HTTP_204_NO_CONTENT)

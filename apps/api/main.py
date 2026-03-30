@@ -584,6 +584,9 @@ class IngestJobEnvelope(BaseModel):
     error_samples: list[dict[str, Any]] = Field(default_factory=list)
     message: str | None = None
     latest_result: dict[str, Any] | None = None
+    lifecycle_phase: str | None = None
+    terminal_state: str | None = None
+    failure_category: str | None = None
 
 
 class PullIntegrationStartRequest(BaseModel):
@@ -1110,6 +1113,9 @@ def create_app(
             "error_samples": list(job.get("error_samples") or []),
             "message": job.get("message"),
             "latest_result": job.get("latest_result"),
+            "lifecycle_phase": job.get("lifecycle_phase"),
+            "terminal_state": job.get("terminal_state"),
+            "failure_category": job.get("failure_category"),
         }
 
     def _cleanup_ingest_jobs(max_jobs: int = 300) -> None:
@@ -1137,12 +1143,37 @@ def create_app(
             job = ingest_jobs.get(job_id)
             if job is None:
                 return None
+            current_status = str(job.get("status") or "")
+            next_status = str(fields.get("status") or current_status)
+            terminal_statuses = {"completed", "partial_success", "failed"}
+            if current_status in terminal_statuses and next_status not in terminal_statuses:
+                return dict(job)
             job.update(fields)
             job["updated_at"] = _utc_now_iso()
             if "partial_success" not in fields:
                 job["partial_success"] = (
                     int(job.get("rows_succeeded", 0)) > 0 and int(job.get("rows_failed", 0)) > 0
                 )
+            status_value = str(job.get("status") or "")
+            if status_value in {"uploading"}:
+                job["lifecycle_phase"] = "uploading"
+                job["terminal_state"] = None
+                job["failure_category"] = None
+            elif status_value in {"queued"}:
+                job["lifecycle_phase"] = "queued"
+                job["terminal_state"] = None
+                job["failure_category"] = None
+            elif status_value in {"processing"}:
+                job["lifecycle_phase"] = "processing"
+                job["terminal_state"] = None
+                job["failure_category"] = None
+            elif status_value in {"completed", "partial_success", "failed"}:
+                job["lifecycle_phase"] = "terminal"
+                job["terminal_state"] = status_value
+                if status_value == "failed":
+                    job["failure_category"] = str(job.get("failure_category") or "ingest_failed")
+                else:
+                    job["failure_category"] = None
             _persist_operational_state(
                 f"ingest_job:{job_id}",
                 dict(job),
@@ -1765,9 +1796,12 @@ def create_app(
             try:
                 def _on_progress(progress: dict[str, Any]) -> None:
                     progress_status = str(progress.get("status") or "processing")
+                    mapped_status = "processing"
+                    if progress_status not in {"processing", "completed"}:
+                        mapped_status = "processing"
                     _update_ingest_job(
                         job_id,
-                        status=progress_status if progress_status in {"processing", "completed"} else "processing",
+                        status=mapped_status,
                         rows_processed=int(progress.get("rows_processed", 0)),
                         rows_succeeded=int(progress.get("rows_succeeded", 0)),
                         rows_failed=int(progress.get("rows_failed", 0)),
@@ -1830,7 +1864,7 @@ def create_app(
                 )
             except Exception as exc:
                 message = actionable_validation_detail(str(exc))
-                _update_ingest_job(job_id, status="failed", message=message)
+                _update_ingest_job(job_id, status="failed", message=message, failure_category="ingest_failed")
                 log_structured(
                     logger,
                     event="ingest_job_failed",
