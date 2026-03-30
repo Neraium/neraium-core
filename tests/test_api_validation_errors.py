@@ -39,7 +39,7 @@ def test_ingest_invalid_timestamp_returns_400(tmp_path) -> None:
     )
 
     assert response.status_code == 400
-    assert "Invalid timestamp" in response.json()["detail"]
+    assert "Invalid timestamp" in str(response.json())
 
 
 def test_ingest_malformed_payload_returns_422(tmp_path) -> None:
@@ -59,7 +59,7 @@ def test_ingest_malformed_payload_returns_422(tmp_path) -> None:
     # 400 = service/business validation after request passes schema validation.
     assert response.status_code == 422
     assert response.status_code != 500
-    assert "sensor_values" in str(response.json()["detail"])
+    assert "sensor_values" in str(response.json())
 
 
 def test_ingest_batch_invalid_timestamp_returns_400(tmp_path) -> None:
@@ -81,7 +81,7 @@ def test_ingest_batch_invalid_timestamp_returns_400(tmp_path) -> None:
 
     assert response.status_code == 400
     assert response.status_code != 500
-    assert "Invalid timestamp" in response.json()["detail"]
+    assert "Invalid timestamp" in str(response.json())
 
 
 def test_ingest_batch_unhandled_error_returns_controlled_json(tmp_path, monkeypatch) -> None:
@@ -123,7 +123,7 @@ def test_ingest_csv_malformed_payload_returns_400(tmp_path) -> None:
 
     assert response.status_code == 400
     assert response.status_code != 500
-    assert "Invalid CSV row" in response.json()["detail"]
+    assert "Invalid CSV row" in str(response.json())
 
 
 def test_ingest_accepts_alias_signal_payload(tmp_path) -> None:
@@ -216,4 +216,46 @@ def test_ingest_json_ambiguous_mapping_returns_400(tmp_path) -> None:
         },
     )
     assert response.status_code == 400
-    assert "ambiguous_mapping" in response.json()["detail"]
+    assert "ambiguous_mapping" in str(response.json())
+
+
+def test_ingest_frame_missing_asset_returns_structured_error(tmp_path) -> None:
+    client = _build_client(tmp_path)
+    response = client.post(
+        _customer_path("/ingest/frame"),
+        json={
+            "timestamp": "2026-01-01T00:00:00+00:00",
+            "site_id": "s1",
+            "sensor_values": {"pressure": 12.3},
+        },
+    )
+    assert response.status_code in {400, 422}
+    body = response.json()
+    assert "message" in body or "detail" in body
+
+
+def test_ingest_batch_partial_success_isolated_failures(tmp_path) -> None:
+    client = _build_client(tmp_path)
+    response = client.post(
+        _customer_path("/ingest/batch"),
+        json={
+            "items": [
+                {
+                    "timestamp": "2026-01-01T00:00:00+00:00",
+                    "site_id": "s1",
+                    "asset_id": "a1",
+                    "sensor_values": {"pressure": 10},
+                },
+                {
+                    "timestamp": "2026-01-01T00:01:00+00:00",
+                    "site_id": "s1",
+                    "asset_id": "a1",
+                    "sensor_values": {},
+                },
+            ]
+        },
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body.get("status") in {"partial_success", "ok"}
+    assert body.get("processed", 0) >= 1

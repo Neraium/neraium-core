@@ -35,6 +35,9 @@ from .web import build_web_router
 from .routers.health import build_health_router
 from .routers.alerts import build_alerts_router
 from .routers.geometry import build_geometry_router
+from .routers.ingest import build_ingest_router
+from .routers.demo import build_demo_router
+from .routers.integrations import build_integrations_router
 from .services.alerts import alert_thresholds as service_alert_thresholds, evaluate_alerts, dispatch_alert_stubs
 from .services.request_context import (
     resolve_customer_id,
@@ -804,6 +807,32 @@ def create_app(
     )
 
     app = FastAPI(title="Neraium SII API", version="0.1.0")
+
+    @app.exception_handler(HTTPException)
+    async def _http_exception_handler(_request: Request, exc: HTTPException) -> JSONResponse:
+        message = str(exc.detail)
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={
+                "type": "http_error",
+                "message": message,
+                "actionable_detail": actionable_validation_detail(message),
+                "detail": message,
+            },
+        )
+
+    @app.exception_handler(Exception)
+    async def _unhandled_exception_handler(_request: Request, exc: Exception) -> JSONResponse:
+        logger.exception("Unhandled API error")
+        msg = "Internal server error."
+        return JSONResponse(
+            status_code=500,
+            content={
+                "type": "internal_error",
+                "message": msg,
+                "actionable_detail": "Retry request or contact support if issue persists.",
+            },
+        )
     app.add_middleware(MaxRequestBodySizeMiddleware, max_body_size=request_body_limit)
     app.add_middleware(GZipMiddleware, minimum_size=1024, compresslevel=5)
     cors_allow_origins = _cors_allow_origins()
@@ -1364,10 +1393,8 @@ def create_app(
     def _ingest_pull_items(*, rows: list[dict[str, Any]], run_id: str, customer_id: str) -> int:
         if not rows:
             return 0
-        if len(rows) == 1:
-            service_instance.ingest_payload(rows[0], run_id=run_id, customer_id=customer_id)
-            return 1
-        results = service_instance.ingest_batch(rows, run_id=run_id, customer_id=customer_id)
+        normalized, _ = normalize_external_batch_payload(rows, customer_id=customer_id)
+        results = service_instance.ingest_normalized_frames(normalized, run_id=run_id, customer_id=customer_id)
         return len(results)
 
     def _stop_pull_integration(customer_id: str, *, reason: str) -> dict[str, Any]:
@@ -1780,6 +1807,84 @@ def create_app(
             alert_resolve_model=AlertResolveRequest,
         )
     )
+    app.include_router(
+        build_ingest_router(
+            service_instance=service_instance,
+            require_api_key=require_api_key,
+            resolve_customer_id=resolve_customer_id,
+            resolve_run_id_with_default=resolve_run_id_with_default,
+            actionable_validation_detail=actionable_validation_detail,
+            normalize_external_payload=normalize_external_payload,
+            normalize_external_batch_payload=normalize_external_batch_payload,
+            normalize_canonical_records_payload=normalize_canonical_records_payload,
+            process_alerts_after_ingest=_process_alerts_after_ingest,
+            results_envelope=_results_envelope,
+            parse_csv_rows=parse_csv_rows,
+            infer_csv_mapping_stage=infer_csv_mapping_stage,
+            validate_csv_mapping_stage=validate_csv_mapping_stage,
+            issue_to_dict=issue_to_dict,
+            request_body_limit=request_body_limit,
+            normalize_content_length=_normalize_content_length,
+            stream_upload_to_tempfile=_stream_upload_to_tempfile,
+            update_ingest_job=_update_ingest_job,
+            public_ingest_job=_public_ingest_job,
+            persist_operational_state=_persist_operational_state,
+            start_ingest_job_worker=_start_ingest_job_worker,
+            ingest_jobs=ingest_jobs,
+            ingest_jobs_lock=ingest_jobs_lock,
+            models=type("IngestModels", (), {
+                "ResultsEnvelope": ResultsEnvelope,
+                "IngestRequest": IngestRequest,
+                "IngestFrameRequest": IngestFrameRequest,
+                "BatchIngestRequest": BatchIngestRequest,
+                "CanonicalOutputResponse": CanonicalOutputResponse,
+                "CsvIngestRequest": CsvIngestRequest,
+                "CsvPreviewRequest": CsvPreviewRequest,
+                "CsvPreviewResponse": CsvPreviewResponse,
+                "IngestJobEnvelope": IngestJobEnvelope,
+                "CsvColumnMappingPayload": CsvColumnMappingPayload,
+                "utc_now_iso": _utc_now_iso,
+            }),
+        )
+    )
+    app.include_router(
+        build_demo_router(
+            service_instance=service_instance,
+            require_api_key=require_api_key,
+            resolve_customer_id=resolve_customer_id,
+            resolve_run_id_with_default=resolve_run_id_with_default,
+            run_demo_seed_job=_run_demo_seed_job,
+            public_demo_job=_public_demo_job,
+            demo_jobs=demo_jobs,
+            demo_jobs_lock=demo_jobs_lock,
+            load_cmapss_fd004_subset=_load_cmapss_fd004_subset,
+            log_structured=log_structured,
+            summarize_exception_for_logs=summarize_exception_for_logs,
+            models=type("DemoModels", (), {"DemoSeedRequest": DemoSeedRequest, "DemoCmapssStartRequest": DemoCmapssStartRequest}),
+            utc_now_iso=_utc_now_iso,
+        )
+    )
+    app.include_router(
+        build_integrations_router(
+            app=app,
+            require_api_key=require_api_key,
+            resolve_customer_id=resolve_customer_id,
+            resolve_run_id_with_default=resolve_run_id_with_default,
+            service_instance=service_instance,
+            stop_pull_integration=_stop_pull_integration,
+            start_pull_worker=_start_pull_worker,
+            public_pull_state=_public_pull_state,
+            pull_integrations=pull_integrations,
+            pull_integrations_lock=pull_integrations_lock,
+            persist_pull_state=_persist_pull_state,
+            validate_endpoint_url=_validate_endpoint_url,
+            parse_finite_float=_parse_finite_float,
+            parse_int=_parse_int,
+            utc_now_iso=_utc_now_iso,
+            log_structured=log_structured,
+            models=type("IntegrationModels", (), {"PullIntegrationStartRequest": PullIntegrationStartRequest, "PullIntegrationStatusEnvelope": PullIntegrationStatusEnvelope}),
+        )
+    )
 
     @app.post("/runs", response_model=RunEnvelope)
     def create_run(
@@ -1915,219 +2020,6 @@ def create_app(
         if run is None:
             raise HTTPException(status_code=404, detail=f"Unknown run_id: {run_id}")
         return {"run": run}
-
-    @app.post("/ingest", response_model=ResultsEnvelope)
-    def ingest(
-        payload: IngestRequest,
-        _: None = Depends(require_api_key),
-        run_id: str | None = Query(default=None),
-        customer_id: str | None = Query(default=None),
-    ) -> dict[str, Any]:
-        logger.info("ingest endpoint called")
-        try:
-            resolved_customer = resolve_customer_id(customer_id or payload.customer_id)
-            resolved = resolve_run_id_with_default(
-                service_instance,
-                run_id,
-                customer_id=resolved_customer,
-                )
-            result = service_instance.ingest_payload(
-                payload.model_dump(exclude_none=True),
-                run_id=resolved,
-                customer_id=resolved_customer,
-            )
-            previous_result = None
-            recent_for_alerts = service_instance.list_recent_results(
-                limit=2,
-                run_id=resolved,
-                customer_id=resolved_customer,
-            )
-            if len(recent_for_alerts) >= 2:
-                previous_result = recent_for_alerts[1]
-            _process_alerts_after_ingest(
-                customer_id=resolved_customer,
-                run_id=resolved,
-                latest_result=result,
-                previous_result=previous_result,
-            )
-        except ValueError as e:
-            logger.warning("validation failure ingest: %s", e)
-            raise HTTPException(status_code=400, detail=actionable_validation_detail(str(e)))
-        return _results_envelope([result], latest=result)
-
-    @app.post("/ingest/frame", response_model=CanonicalOutputResponse)
-    def ingest_frame(
-        payload: IngestFrameRequest,
-        _: None = Depends(require_api_key),
-        run_id: str | None = Query(default=None),
-        customer_id: str | None = Query(default=None),
-    ) -> dict[str, Any]:
-        try:
-            resolved_customer = resolve_customer_id(customer_id or payload.customer_id)
-            resolved_run = resolve_run_id_with_default(
-                service_instance,
-                run_id,
-                customer_id=resolved_customer,
-                )
-            return service_instance.ingest_frame(
-                payload.model_dump(exclude_none=True),
-                run_id=resolved_run,
-                customer_id=resolved_customer,
-            )
-        except ValueError as exc:
-            raise HTTPException(status_code=400, detail=actionable_validation_detail(str(exc)))
-
-    @app.post("/demo/seed/start")
-    def demo_seed_start(
-        payload: DemoSeedRequest,
-        _: None = Depends(require_api_key),
-        run_id: str | None = Query(default=None),
-        customer_id: str | None = Query(default=None),
-    ) -> dict[str, Any]:
-        resolved_customer = resolve_customer_id(customer_id or payload.customer_id)
-        resolved_run = resolve_run_id_with_default(
-            service_instance,
-            run_id or payload.run_id,
-            customer_id=resolved_customer,
-            )
-        job_id = str(uuid4())
-        now = _utc_now_iso()
-        job = {
-            "job_id": job_id,
-            "status": "pending",
-            "run_id": resolved_run,
-            "customer_id": resolved_customer,
-            "progress": 0,
-            "processed": 0,
-            "total_frames": int(payload.minutes),
-            "message": "Preparing demo run...",
-            "error": None,
-            "created_at": now,
-            "updated_at": now,
-        }
-        with demo_jobs_lock:
-            demo_jobs[job_id] = job
-        worker = threading.Thread(
-            target=_run_demo_seed_job,
-            kwargs={
-                "job_id": job_id,
-                "resolved_run": resolved_run,
-                "resolved_customer": resolved_customer,
-                "payload": payload,
-            },
-            daemon=True,
-        )
-        worker.start()
-        return {
-            "status": "started",
-            "job_id": job_id,
-            "run_id": resolved_run,
-            "message": "Demo seeding started.",
-        }
-
-    @app.get("/demo/seed/status")
-    def demo_seed_status(
-        job_id: str = Query(..., min_length=1),
-        _: None = Depends(require_api_key),
-    ) -> dict[str, Any]:
-        with demo_jobs_lock:
-            job = demo_jobs.get(job_id)
-        if job is None:
-            return {
-                "status": "error",
-                "job_id": job_id,
-                "progress": 0,
-                "run_id": "",
-                "processed": 0,
-                "total_frames": 0,
-                "message": "Demo seed job not found.",
-                "error": "job_not_found",
-            }
-        return _public_demo_job(job)
-
-    @app.post("/demo/cmapss/start")
-    def demo_cmapss_start(
-        payload: DemoCmapssStartRequest | None = None,
-        _: None = Depends(require_api_key),
-        customer_id: str | None = Query(default=None),
-    ) -> dict[str, Any]:
-        request_payload = payload or DemoCmapssStartRequest()
-        resolved_customer = resolve_customer_id(customer_id or request_payload.customer_id)
-        log_structured(
-            logger,
-            event="demo_cmapss_route_entry",
-            fields={
-                "customer_id": resolved_customer,
-                "requested_max_frames": int(request_payload.max_frames),
-            },
-            level=logging.INFO,
-        )
-        run = service_instance.create_run(
-            name=f"NASA CMAPSS FD004 Demo {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}",
-            config={
-                "source": "nasa-cmapss-fd004",
-                "dataset": "NASA CMAPSS FD004",
-                "demo": "cmapss_fd004",
-                "historical_run_replay": True,
-            },
-            activate=True,
-            customer_id=resolved_customer,
-            )
-        run_id = str(run.get("run_id") or "")
-        if not run_id:
-            raise HTTPException(status_code=500, detail="Failed to create demo run.")
-        log_structured(
-            logger,
-            event="demo_cmapss_run_created",
-            fields={"run_id": run_id, "customer_id": resolved_customer},
-            level=logging.INFO,
-        )
-        try:
-            rows = _load_cmapss_fd004_subset(request_payload.max_frames)
-            log_structured(
-                logger,
-                event="demo_cmapss_processing_start",
-                fields={"run_id": run_id, "customer_id": resolved_customer, "rows": len(rows)},
-                level=logging.INFO,
-            )
-            payload_rows = [
-                {**row, "customer_id": resolved_customer}
-                for row in rows
-            ]
-            results = service_instance.ingest_batch(
-                payload_rows,
-                run_id=run_id,
-                customer_id=resolved_customer,
-            )
-            latest = service_instance.get_latest_result(run_id=run_id, customer_id=resolved_customer)
-            log_structured(
-                logger,
-                event="demo_cmapss_processing_complete",
-                fields={
-                    "run_id": run_id,
-                    "customer_id": resolved_customer,
-                    "processed": len(results),
-                    "latest_result_available": latest is not None,
-                },
-                level=logging.INFO,
-            )
-        except HTTPException:
-            raise
-        except Exception as exc:
-            detail = summarize_exception_for_logs(exc)
-            log_structured(
-                logger,
-                event="demo_cmapss_start_failure",
-                fields={"run_id": run_id, "customer_id": resolved_customer, "error": detail},
-                level=logging.ERROR,
-            )
-            raise HTTPException(status_code=500, detail=f"Failed to run NASA CMAPSS FD004 demo: {detail}")
-        return {
-            "status": "ok",
-            "run_id": run_id,
-            "processed": len(results),
-            "demo": "cmapss_fd004",
-        }
 
     @app.get("/state", response_model=CurrentStateEnvelope)
     def get_state(
@@ -2303,529 +2195,6 @@ def create_app(
         media_type = "text/markdown; charset=utf-8" if format == "md" else "text/plain; charset=utf-8"
         headers = {"Content-Disposition": f'attachment; filename="{filename}"'}
         return PlainTextResponse(content=text, media_type=media_type, headers=headers)
-
-    @app.post("/ingest/batch", response_model=ResultsEnvelope)
-    def ingest_batch(
-        payload: BatchIngestRequest,
-        _: None = Depends(require_api_key),
-        run_id: str | None = Query(default=None),
-        customer_id: str | None = Query(default=None),
-    ) -> dict[str, Any]:
-        batch_size = len(payload.items)
-        log_structured(
-            logger,
-            event="ingest_batch_request_received",
-            fields={
-                "batch_size": batch_size,
-                "query_run_id": run_id,
-                "query_customer_id": customer_id,
-            },
-            level=logging.INFO,
-        )
-        resolved: str | None = None
-        results: list[dict[str, Any]] = []
-        resolved_customer: str | None = None
-        try:
-            payload_customer = None
-            if payload.items:
-                payload_customer = payload.items[0].customer_id
-            resolved_customer = resolve_customer_id(customer_id or payload_customer)
-            resolved = resolve_run_id_with_default(
-                service_instance,
-                run_id,
-                customer_id=resolved_customer,
-                )
-            log_structured(
-                logger,
-                event="ingest_batch_starting_ingest",
-                fields={
-                    "batch_size": batch_size,
-                    "run_id": resolved,
-                    "customer_id": resolved_customer,
-                },
-                level=logging.INFO,
-            )
-            results = service_instance.ingest_batch(
-                [item.model_dump(exclude_none=True) for item in payload.items],
-                run_id=resolved,
-                customer_id=resolved_customer,
-            )
-            if results:
-                previous_result = None
-                recent_for_alerts = service_instance.list_recent_results(
-                    limit=2,
-                    run_id=resolved,
-                    customer_id=resolved_customer,
-                )
-                if len(recent_for_alerts) >= 2:
-                    previous_result = recent_for_alerts[1]
-                _process_alerts_after_ingest(
-                    customer_id=resolved_customer,
-                    run_id=resolved,
-                    latest_result=results[-1],
-                    previous_result=previous_result,
-                )
-        except ValueError as e:
-            detail = actionable_validation_detail(str(e))
-            log_structured(
-                logger,
-                event="ingest_batch_validation_failure",
-                fields={
-                    "batch_size": batch_size,
-                    "run_id": resolved,
-                    "customer_id": resolved_customer,
-                    "error_type": type(e).__name__,
-                    "detail": detail,
-                },
-                level=logging.WARNING,
-            )
-            return JSONResponse(
-                status_code=400,
-                content={
-                    "status": "error",
-                    "message": "ingest failed",
-                    "detail": detail,
-                    "run_id": resolved,
-                    "customer_id": resolved_customer,
-                    "batch_size": batch_size,
-                    "processed": 0,
-                    "count": 0,
-                    "results": [],
-                    "latest": None,
-                },
-            )
-        except Exception as e:  # noqa: BLE001 - ensure the route never leaks unhandled exceptions.
-            log_structured(
-                logger,
-                event="ingest_batch_unhandled_failure",
-                fields={
-                    "batch_size": batch_size,
-                    "run_id": resolved,
-                    "customer_id": resolved_customer,
-                    "error_type": type(e).__name__,
-                    "detail": str(e),
-                },
-                level=logging.ERROR,
-            )
-            logger.exception("ingest_batch unhandled exception")
-            return JSONResponse(
-                status_code=500,
-                content={
-                    "status": "error",
-                    "message": "ingest failed",
-                    "detail": str(e),
-                    "run_id": resolved,
-                    "customer_id": resolved_customer,
-                    "batch_size": batch_size,
-                    "processed": 0,
-                    "count": 0,
-                    "results": [],
-                    "latest": None,
-                },
-            )
-        log_structured(
-            logger,
-            event="ingest_batch_completed",
-            fields={
-                "batch_size": batch_size,
-                "processed": len(results),
-                "run_id": resolved,
-                "customer_id": resolved_customer,
-            },
-            level=logging.INFO,
-        )
-        envelope = _results_envelope(results, latest=results[-1] if results else None)
-        envelope["status"] = "ok"
-        envelope["processed"] = len(results)
-        envelope["run_id"] = resolved
-        return envelope
-
-    @app.post("/ingest/json", response_model=ResultsEnvelope)
-    def ingest_json(
-        payload: dict[str, Any] | list[dict[str, Any]],
-        _: None = Depends(require_api_key),
-        run_id: str | None = Query(default=None),
-        customer_id: str | None = Query(default=None),
-    ) -> dict[str, Any]:
-        try:
-            payload_customer = payload.get("customer_id") if isinstance(payload, dict) else None
-            resolved_customer = resolve_customer_id(customer_id or payload_customer)
-            resolved = resolve_run_id_with_default(
-                service_instance,
-                run_id,
-                customer_id=resolved_customer,
-                )
-            frames, _review = normalize_external_batch_payload(payload, customer_id=resolved_customer)
-            results = service_instance.ingest_normalized_frames(
-                frames,
-                run_id=resolved,
-                customer_id=resolved_customer,
-            )
-        except ValueError as e:
-            raise HTTPException(status_code=400, detail=actionable_validation_detail(str(e)))
-        return _results_envelope(results, latest=results[-1] if results else None)
-
-    @app.post("/ingest/canonical", response_model=ResultsEnvelope)
-    def ingest_canonical(
-        payload: dict[str, Any] | list[dict[str, Any]],
-        _: None = Depends(require_api_key),
-        run_id: str | None = Query(default=None),
-        customer_id: str | None = Query(default=None),
-    ) -> dict[str, Any]:
-        try:
-            payload_customer = payload.get("customer_id") if isinstance(payload, dict) else None
-            resolved_customer = resolve_customer_id(customer_id or payload_customer)
-            resolved = resolve_run_id_with_default(
-                service_instance,
-                run_id,
-                customer_id=resolved_customer,
-                )
-            frames = normalize_canonical_records_payload(payload, customer_id=resolved_customer)
-            results = service_instance.ingest_normalized_frames(
-                frames,
-                run_id=resolved,
-                customer_id=resolved_customer,
-            )
-        except ValueError as e:
-            raise HTTPException(status_code=400, detail=actionable_validation_detail(str(e)))
-        return _results_envelope(results, latest=results[-1] if results else None)
-
-    @app.post("/ingest/csv", response_model=ResultsEnvelope)
-    def ingest_csv(
-        payload: CsvIngestRequest,
-        _: None = Depends(require_api_key),
-        run_id: str | None = Query(default=None),
-        customer_id: str | None = Query(default=None),
-    ) -> dict[str, Any]:
-        logger.info("ingest_csv endpoint called")
-        try:
-            resolved_customer = resolve_customer_id(customer_id or payload.customer_id)
-            resolved = resolve_run_id_with_default(
-                service_instance,
-                run_id,
-                customer_id=resolved_customer,
-                )
-            results = service_instance.ingest_csv(
-                payload.csv_text,
-                run_id=resolved,
-                customer_id=resolved_customer,
-                column_mapping=payload.column_mapping.model_dump() if payload.column_mapping else None,
-            )
-            if results:
-                previous_result = None
-                recent_for_alerts = service_instance.list_recent_results(
-                    limit=2,
-                    run_id=resolved,
-                    customer_id=resolved_customer,
-                )
-                if len(recent_for_alerts) >= 2:
-                    previous_result = recent_for_alerts[1]
-                _process_alerts_after_ingest(
-                    customer_id=resolved_customer,
-                    run_id=resolved,
-                    latest_result=results[-1],
-                    previous_result=previous_result,
-                )
-        except ValueError as e:
-            logger.warning("validation failure ingest_csv: %s", e)
-            raise HTTPException(status_code=400, detail=actionable_validation_detail(str(e)))
-        return _results_envelope(results, latest=results[-1] if results else None)
-
-    @app.post("/ingest/csv/preview", response_model=CsvPreviewResponse)
-    def ingest_csv_preview(
-        payload: CsvPreviewRequest,
-        _: None = Depends(require_api_key),
-        customer_id: str | None = Query(default=None),
-    ) -> dict[str, Any]:
-        """Infer semantic column roles from an arbitrary CSV header + sample rows."""
-        _ = resolve_customer_id(customer_id)
-        headers, rows, parse_issues = parse_csv_rows(payload.csv_sample)
-        if not headers:
-            raise HTTPException(
-                status_code=400,
-                detail="CSV sample has no header row.",
-            )
-        stage = infer_csv_mapping_stage(headers, rows=rows, column_mapping=None)
-        mapping = stage.mapping
-        mapping_issues = validate_csv_mapping_stage(mapping, headers) if mapping is not None else []
-        hard_issues = [*parse_issues, *stage.issues, *mapping_issues]
-        warning_issues = list(stage.warnings)
-        requires_confirmation = mapping is None or stage.requires_confirmation
-        return CsvPreviewResponse(
-            headers=headers,
-            suggested_mapping=mapping.to_dict() if mapping else None,
-            issues=[i.message for i in hard_issues],
-            warnings=[i.message for i in warning_issues],
-            issue_details=[issue_to_dict(i) for i in hard_issues],
-            warning_details=[issue_to_dict(i) for i in warning_issues],
-            requires_confirmation=requires_confirmation,
-        )
-
-    @app.post("/ingest/csv/upload", response_model=IngestJobEnvelope)
-    async def ingest_csv_upload(
-        request: Request,
-        file: UploadFile = File(...),
-        _: None = Depends(require_api_key),
-        run_id: str | None = Query(default=None),
-        customer_id: str | None = Query(default=None),
-        mapping: str | None = Form(default=None),
-    ) -> dict[str, Any]:
-        filename = str(file.filename or "upload.csv")
-        if not filename.lower().endswith(".csv"):
-            raise HTTPException(
-                status_code=400,
-                detail="Upload must be a .csv file.",
-            )
-        resolved_customer = resolve_customer_id(customer_id)
-        resolved_run = resolve_run_id_with_default(
-            service_instance,
-            run_id,
-            customer_id=resolved_customer,
-            )
-        column_mapping: dict[str, Any] | None = None
-        if mapping:
-            try:
-                parsed = json.loads(mapping)
-            except json.JSONDecodeError as exc:
-                raise HTTPException(
-                    status_code=400,
-                    detail="column_mapping must be valid JSON (timestamp, asset_id, optional site_id, sensor_columns).",
-                ) from exc
-            try:
-                column_mapping = CsvColumnMappingPayload.model_validate(parsed).model_dump()
-            except Exception as exc:
-                raise HTTPException(
-                    status_code=400,
-                    detail="Invalid column_mapping: " + str(exc),
-                ) from exc
-        content_length = _normalize_content_length(request)
-        if content_length is not None and content_length > request_body_limit:
-            max_mb = request_body_limit / (1024 * 1024)
-            raise HTTPException(
-                status_code=status.HTTP_413_CONTENT_TOO_LARGE,
-                detail=f"Request body too large (max {max_mb:.1f}MB).",
-            )
-
-        fd, temp_path = tempfile.mkstemp(prefix="neraium_ingest_", suffix=".csv")
-        os.close(fd)
-        job_id = f"ingest_{uuid4().hex[:16]}"
-        created_at = _utc_now_iso()
-        initial_job = {
-            "job_id": job_id,
-            "status": "uploading",
-            "run_id": resolved_run,
-            "customer_id": resolved_customer,
-            "filename": filename,
-            "created_at": created_at,
-            "updated_at": created_at,
-            "rows_processed": 0,
-            "rows_succeeded": 0,
-            "rows_failed": 0,
-            "partial_success": False,
-            "upload_bytes_received": 0,
-            "upload_bytes_total": content_length,
-            "error_samples": [],
-            "message": "Upload started.",
-            "latest_result": None,
-        }
-        with ingest_jobs_lock:
-            ingest_jobs[job_id] = initial_job
-        _persist_operational_state(
-            f"ingest_job:{job_id}",
-            initial_job,
-            customer_id=resolved_customer,
-            run_id=resolved_run,
-        )
-
-        try:
-            bytes_received = await _stream_upload_to_tempfile(file, Path(temp_path), job_id)
-        except Exception as exc:
-            try:
-                Path(temp_path).unlink(missing_ok=True)
-            except OSError:
-                logger.debug("Unable to remove temp upload file after failure: %s", temp_path, exc_info=True)
-            _update_ingest_job(
-                job_id,
-                status="failed",
-                message=f"Upload failed: {str(exc)}",
-            )
-            raise HTTPException(status_code=400, detail="Failed to read upload stream.") from exc
-
-        _update_ingest_job(
-            job_id,
-            status="queued",
-            upload_bytes_received=bytes_received,
-            upload_bytes_total=content_length if content_length is not None else bytes_received,
-            message=f"Upload complete ({bytes_received} bytes). Queueing ingest job.",
-        )
-        _start_ingest_job_worker(
-            job_id=job_id,
-            temp_path=temp_path,
-            run_id=resolved_run,
-            customer_id=resolved_customer,
-            column_mapping=column_mapping,
-        )
-        with ingest_jobs_lock:
-            job = dict(ingest_jobs[job_id])
-        return _public_ingest_job(job)
-
-    @app.get("/ingest/jobs/{job_id}", response_model=IngestJobEnvelope)
-    def get_ingest_job(
-        job_id: str,
-        customer_id: str | None = Query(default=None),
-    ) -> dict[str, Any]:
-        resolved_customer = resolve_customer_id(customer_id)
-        with ingest_jobs_lock:
-            job = ingest_jobs.get(job_id)
-            if job is None:
-                raise HTTPException(status_code=404, detail=f"Unknown ingest job: {job_id}")
-            if resolve_customer_id(job.get("customer_id")) != resolved_customer:
-                raise HTTPException(status_code=404, detail=f"Unknown ingest job: {job_id}")
-            return _public_ingest_job(job)
-
-    @app.post("/integrations/pull/start", response_model=PullIntegrationStatusEnvelope)
-    def start_pull_integration(
-        payload: PullIntegrationStartRequest,
-        _: None = Depends(require_api_key),
-        customer_id: str | None = Query(default=None),
-    ) -> dict[str, Any]:
-        resolved_customer = resolve_customer_id(customer_id)
-        cfg_override = getattr(app.state, "integration_config_override", None)
-        if isinstance(cfg_override, dict):
-            cfg_doc = cfg_override
-        else:
-            path_override = getattr(app.state, "integration_config_path_override", None)
-            path = str(path_override or "").strip() or os.getenv("NERAIUM_INTEGRATION_CONFIG_PATH")
-            cfg_doc = load_integration_config(path)
-        resolved_cfg = resolve_customer_integration(
-            customer_id=resolved_customer,
-            config_doc=cfg_doc,
-        )
-
-        endpoint_url = _validate_endpoint_url(
-            payload.endpoint_url
-            or str(resolved_cfg.get("endpoint_url") or "")
-        )
-        auth_type = str(payload.auth_type or resolved_cfg.get("auth_type") or "none")
-        username = payload.username if payload.username is not None else resolved_cfg.get("username")
-        password = payload.password if payload.password is not None else resolved_cfg.get("password")
-        token = payload.token if payload.token is not None else resolved_cfg.get("token")
-        polling_interval_seconds = _parse_finite_float(
-            payload.polling_interval_seconds
-            if payload.polling_interval_seconds is not None
-            else resolved_cfg.get("polling_interval_seconds") or 30.0,
-            field_name="polling_interval_seconds",
-        )
-        retry_max_attempts = _parse_int(
-            payload.retry_max_attempts
-            if payload.retry_max_attempts is not None
-            else resolved_cfg.get("retry_max_attempts") or 3,
-            field_name="retry_max_attempts",
-        )
-        retry_backoff_seconds = _parse_finite_float(
-            payload.retry_backoff_seconds
-            if payload.retry_backoff_seconds is not None
-            else resolved_cfg.get("retry_backoff_seconds") or 1.0,
-            field_name="retry_backoff_seconds",
-        )
-        request_timeout_seconds = _parse_finite_float(
-            payload.request_timeout_seconds
-            if payload.request_timeout_seconds is not None
-            else resolved_cfg.get("request_timeout_seconds") or 10.0,
-            field_name="request_timeout_seconds",
-        )
-        if polling_interval_seconds < 0.2:
-            raise HTTPException(status_code=400, detail="polling_interval_seconds must be >= 0.2.")
-        if retry_max_attempts < 1:
-            raise HTTPException(status_code=400, detail="retry_max_attempts must be >= 1.")
-        if retry_backoff_seconds < 0.05:
-            raise HTTPException(status_code=400, detail="retry_backoff_seconds must be >= 0.05.")
-        if request_timeout_seconds < 1.0:
-            raise HTTPException(status_code=400, detail="request_timeout_seconds must be >= 1.0.")
-        if auth_type == "basic":
-            if not str(username or "").strip() or password is None:
-                raise HTTPException(
-                    status_code=400,
-                    detail="Basic auth requires username and password.",
-                )
-        if auth_type == "bearer" and not str(token or "").strip():
-            raise HTTPException(status_code=400, detail="Bearer auth requires token.")
-
-        resolved_run = resolve_run_id_with_default(
-            service_instance,
-            payload.run_id,
-            customer_id=resolved_customer,
-            )
-        _stop_pull_integration(resolved_customer, reason="Restarting integration.")
-        stop_event = threading.Event()
-        started_at = _utc_now_iso()
-        with pull_integrations_lock:
-            pull_integrations[resolved_customer] = {
-                "customer_id": resolved_customer,
-                "endpoint_url": endpoint_url,
-                "run_id": resolved_run,
-                "auth_type": auth_type,
-                "username": username,
-                "password": password,
-                "token": token,
-                "running": True,
-                "status": "running",
-                "polling_interval_seconds": polling_interval_seconds,
-                "retry_max_attempts": retry_max_attempts,
-                "retry_backoff_seconds": retry_backoff_seconds,
-                "request_timeout_seconds": request_timeout_seconds,
-                "started_at": started_at,
-                "updated_at": started_at,
-                "last_poll_at": None,
-                "last_success_at": None,
-                "last_error": None,
-                "last_http_status": None,
-                "total_polls": 0,
-                "total_failures": 0,
-                "consecutive_failures": 0,
-                "total_ingested": 0,
-                "message": "Pull integration started.",
-                "_stop_event": stop_event,
-                "_thread": None,
-            }
-            state = dict(pull_integrations[resolved_customer])
-        _persist_pull_state(resolved_customer, state)
-        _start_pull_worker(resolved_customer)
-        log_structured(
-            logger,
-            event="pull_integration_started",
-            fields={
-                "customer_id": resolved_customer,
-                "run_id": resolved_run,
-                "endpoint_url": endpoint_url,
-                "polling_interval_seconds": polling_interval_seconds,
-                "auth_type": auth_type,
-            },
-            level=logging.INFO,
-        )
-        return _public_pull_state(state, customer_id=resolved_customer)
-
-    @app.post("/integrations/pull/stop", response_model=PullIntegrationStatusEnvelope)
-    def stop_pull_integration(
-        _: None = Depends(require_api_key),
-        customer_id: str | None = Query(default=None),
-    ) -> dict[str, Any]:
-        resolved_customer = resolve_customer_id(customer_id)
-        state = _stop_pull_integration(resolved_customer, reason="Pull integration stopped by operator.")
-        log_structured(
-            logger,
-            event="pull_integration_stopped",
-            fields={"customer_id": resolved_customer},
-            level=logging.INFO,
-        )
-        return state
-
-    @app.get("/integrations/pull/status", response_model=PullIntegrationStatusEnvelope)
-    def pull_integration_status(customer_id: str | None = Query(default=None)) -> dict[str, Any]:
-        resolved_customer = resolve_customer_id(customer_id)
-        with pull_integrations_lock:
-            state = pull_integrations.get(resolved_customer)
-            return _public_pull_state(state, customer_id=resolved_customer)
 
     @app.post("/reset", response_model=ActionResponse)
     def reset(_: None = Depends(require_api_key)) -> dict[str, bool]:

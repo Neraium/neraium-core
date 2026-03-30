@@ -1,4 +1,13 @@
-async function wireEvents() {
+const PAGE_LOADERS = {
+  dashboard: () => loadDashboard(),
+  runs: () => Promise.resolve(renderRunsList()),
+  upload: () => Promise.resolve(updateUploadRunInfo()),
+  validation: () => loadValidationPage(),
+  "run-detail": (route) => loadRunDetail(route.runId),
+  "result-detail": (route) => loadResultDetail(route.resultId),
+};
+
+function mountCoreModules() {
   wireMobileNav();
   wireWorkspaceShellEvents();
   wireRunsEvents();
@@ -9,6 +18,16 @@ async function wireEvents() {
   qs("#exportCsvBtn")?.addEventListener("click", () => exportData("csv", state.activeRun?.run_id || ""));
 
   wireUploadInteractions();
+}
+
+
+async function wireEvents() {
+  mountCoreModules();
+}
+
+async function loadCurrentPage(route) {
+  const loader = PAGE_LOADERS[route.page];
+  if (loader) await loader(route);
 }
 
 async function init() {
@@ -36,12 +55,7 @@ async function init() {
     setLoading(true, "Initializing workspace...");
     await refreshRuntimeModeBanner();
     await loadRuns();
-    if (route.page === "dashboard") await loadDashboard();
-    if (route.page === "runs") renderRunsList();
-    if (route.page === "upload") updateUploadRunInfo();
-    if (route.page === "validation") await loadValidationPage();
-    if (route.page === "run-detail") await loadRunDetail(route.runId);
-    if (route.page === "result-detail") await loadResultDetail(route.resultId);
+    await loadCurrentPage(route);
     await wireEvents();
     resetUploadPanelIfIdle();
     try {
@@ -86,12 +100,7 @@ async function refreshCurrentPage() {
     disposeGeometryRenderer();
   }
   await loadRuns();
-  if (route.page === "dashboard") await loadDashboard();
-  if (route.page === "runs") renderRunsList();
-  if (route.page === "upload") updateUploadRunInfo();
-  if (route.page === "validation") await loadValidationPage();
-  if (route.page === "run-detail") await loadRunDetail(route.runId);
-  if (route.page === "result-detail") await loadResultDetail(route.resultId);
+  await loadCurrentPage(route);
   if (route.page !== "run-detail") clearRunDetailObserver();
 }
 
