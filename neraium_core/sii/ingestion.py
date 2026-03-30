@@ -216,7 +216,12 @@ def ingestion_record_from_payload(
     if not isinstance(payload, dict):
         raise SIIValidationError("Payload must be an object")
 
-    timestamp = _normalize_timestamp_to_epoch_seconds(payload.get("timestamp")) or "0"
+    timestamp_issues: list[str] = []
+    normalized_timestamp = _normalize_timestamp_to_epoch_seconds(payload.get("timestamp"))
+    if normalized_timestamp is None:
+        normalized_timestamp = "0"
+        timestamp_issues.append("invalid_or_missing_timestamp_defaulted_to_epoch_zero")
+    timestamp = normalized_timestamp
     site_id = _as_str_or_default(payload.get("site_id"), default=DEFAULT_SITE_ID)
     system_id = _as_str_or_default(payload.get("system_id"), default=DEFAULT_SYSTEM_ID)
     asset_id = _as_str_or_default(payload.get("asset_id"), default=DEFAULT_ASSET_ID)
@@ -226,7 +231,7 @@ def ingestion_record_from_payload(
     quality_metadata = _build_quality_metadata(
         variables=variables,
         raw_quality=payload.get("quality_metadata"),
-        validation_issues=variable_issues,
+        validation_issues=[*timestamp_issues, *variable_issues],
     )
     source_metadata = _build_source_metadata(
         raw_source=payload.get("source_metadata"),
@@ -409,6 +414,23 @@ def build_canonical_analysis_window(
                 ts = float("inf")
         return (ts, record.site_id, record.system_id, record.asset_id, record.node_id)
 
+    raw_timestamps: list[float] = []
+    for rec in selected:
+        normalized = _normalize_timestamp_to_epoch_seconds(rec.timestamp)
+        if normalized is None:
+            continue
+        try:
+            raw_timestamps.append(float(normalized))
+        except Exception:
+            continue
+    reordered_timestamps_detected = any(
+        b < a for a, b in zip(raw_timestamps, raw_timestamps[1:])
+    ) if len(raw_timestamps) >= 2 else False
+    duplicate_timestamp_count = int(
+        sum(1 for a, b in zip(raw_timestamps, raw_timestamps[1:]) if abs(b - a) < 1e-9)
+    ) if len(raw_timestamps) >= 2 else 0
+    invalid_timestamp_count = int(len(selected) - len(raw_timestamps))
+
     selected.sort(key=_sort_key)
     if len(selected) < recent_window:
         return None
@@ -442,6 +464,9 @@ def build_canonical_analysis_window(
             sum(len(r.quality_metadata.validation_issues) for r in selected)
         ),
         "source_statuses": sorted({r.quality_metadata.source_status for r in selected}),
+        "invalid_timestamp_count": invalid_timestamp_count,
+        "reordered_timestamps_detected": bool(reordered_timestamps_detected),
+        "duplicate_timestamp_count": duplicate_timestamp_count,
     }
     focal = selected[-1]
     return CanonicalAnalysisWindow(
@@ -580,4 +605,3 @@ def load_frames_from_csv(path: str) -> list[dict[str, Any]]:
             }
         )
     return out
-
