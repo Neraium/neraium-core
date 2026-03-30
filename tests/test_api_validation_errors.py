@@ -162,3 +162,58 @@ def test_ingest_batch_accepts_stream_records_shape(tmp_path) -> None:
     )
     assert response.status_code == 200
     assert response.json()["count"] == 1
+
+
+def test_ingest_json_items_shape(tmp_path) -> None:
+    client = _build_client(tmp_path)
+    response = client.post(
+        _customer_path("/ingest/json"),
+        json={
+            "items": [
+                {
+                    "recorded_at": "2026-01-01T00:00:00Z",
+                    "entity_id": "a1",
+                    "variables": {"pressure": 10.5},
+                }
+            ]
+        },
+    )
+    assert response.status_code == 200
+    assert response.json()["count"] == 1
+
+
+def test_ingest_canonical_direct_path(tmp_path) -> None:
+    client = _build_client(tmp_path)
+    response = client.post(
+        _customer_path("/ingest/canonical"),
+        json={
+            "records": [
+                {
+                    "timestamp": "2026-01-01T00:00:00+00:00",
+                    "asset_id": "a1",
+                    "signals": {"pressure": 9.0},
+                }
+            ]
+        },
+    )
+    assert response.status_code == 200
+    assert response.json()["count"] == 1
+
+
+def test_ingest_json_ambiguous_mapping_returns_400(tmp_path) -> None:
+    client = _build_client(tmp_path)
+    response = client.post(
+        _customer_path("/ingest/json"),
+        json={
+            "items": [
+                {
+                    "timestamp": "2026-01-01T00:00:00+00:00",
+                    "time": "2026-01-01T00:00:01+00:00",
+                    "asset_id": "a1",
+                    "signals": {"pressure": 9.0},
+                }
+            ]
+        },
+    )
+    assert response.status_code == 400
+    assert "ambiguous_mapping" in response.json()["detail"]
