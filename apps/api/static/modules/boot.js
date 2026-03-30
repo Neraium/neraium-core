@@ -3,6 +3,7 @@ const PAGE_LOADERS = {
   runs: () => Promise.resolve(renderRunsList()),
   upload: () => Promise.resolve(updateUploadRunInfo()),
   validation: () => loadValidationPage(),
+  onboarding: () => loadOnboardingPage(),
   "run-detail": (route) => loadRunDetail(route.runId),
   "result-detail": (route) => loadResultDetail(route.resultId),
 };
@@ -13,6 +14,7 @@ function mountCoreModules() {
   wireRunsEvents();
   wireUploadFormEvents();
   wireRunDetailEvents();
+  wireOnboardingEvents();
 
   qs("#exportJsonBtn")?.addEventListener("click", () => exportData("json", state.activeRun?.run_id || ""));
   qs("#exportCsvBtn")?.addEventListener("click", () => exportData("csv", state.activeRun?.run_id || ""));
@@ -49,6 +51,7 @@ async function init() {
     "run-detail": "run-detail",
     "result-detail": "result-detail",
     validation: "validation",
+    onboarding: "onboarding",
   };
   setPage(routeToPage[route.page] || "dashboard");
   try {
