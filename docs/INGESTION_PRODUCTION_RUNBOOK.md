@@ -31,6 +31,12 @@ CSV flow:
 3. **Upload** (`/ingest/csv/upload`): stream file and start ingest job.
 4. **Ingest job polling** (`/ingest/jobs/{job_id}`): monitor queued/processing/completed/partial_success/failed.
 
+Job payloads now include explicit lifecycle fields to prevent state ambiguity:
+
+- `lifecycle_phase`: `uploading` → `queued` → `processing` → `terminal`
+- `terminal_state`: one of `completed`, `partial_success`, `failed` (terminal only)
+- `failure_category`: currently `ingest_failed` for terminal failures caused during ingest processing
+
 ## 4) Structured error envelope
 
 All API failures should return a structured envelope:
@@ -93,11 +99,23 @@ Actions:
    - Common causes: non-numeric sensor text, invalid timestamp values, or malformed row column counts.
 5. **Retry with narrowed file when needed.**
    - If stream limits or transport instability occurs, split large CSVs and retry smaller chunks.
+   - A preview-blocked request (mapping/header issue before upload) is not an ingest job failure; treat it separately.
 6. **Escalation checklist for support/on-call.**
    - Provide correlation ID(s), run ID, customer ID, job ID, and a sanitized sample of failed rows.
    - Confirm health endpoint state (`/health`) for persistence/runtime degradation before deeper investigation.
 
-## 8) Logging and observability notes
+## 8) FD001 replay/validation expectations
+
+- `flatten_validation_result` intentionally includes both raw and smoothed confidence fields:
+  - `decision_confidence_raw` and `decision_confidence`
+  - `top_hypothesis_confidence_raw` and `top_hypothesis_confidence`
+- Replay summaries are expected to keep per-row detail (`unit_id`, `cycle`, `row_index`) separate from per-unit milestone outputs (`first_*_cycle`, `max_cycle_observed`).
+- For smoke checks, confirm:
+  - replay returns per-row `decision` and `risk_assessment`
+  - summary row confidence values are numeric
+  - milestone rows remain unit-level only
+
+## 9) Logging and observability notes
 
 Preview and validation paths should log:
 
