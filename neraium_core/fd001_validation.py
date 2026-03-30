@@ -2,11 +2,15 @@ from __future__ import annotations
 
 import csv
 import json
+import logging
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable
 
 from neraium_core.sii import SIIEngine
+from neraium_core.logging_utils import log_structured, summarize_exception_for_logs
+
+logger = logging.getLogger(__name__)
 
 EXPECTED_FD001_COLUMNS = 26
 OPERATING_SETTING_COUNT = 3
@@ -52,7 +56,12 @@ def group_rows_by_unit(rows: Iterable[Fd001Row]) -> dict[int, list[Fd001Row]]:
     for row in rows:
         grouped.setdefault(row.unit_id, []).append(row)
     for unit_id in list(grouped):
-        grouped[unit_id] = sorted(grouped[unit_id], key=lambda r: r.cycle)
+        # Deterministic ordering: cycle can collide after upstream normalization/replay exports.
+        # Use all value columns as stable tie-breakers so repeated replays are bit-for-bit ordered.
+        grouped[unit_id] = sorted(
+            grouped[unit_id],
+            key=lambda r: (r.cycle, r.operating_settings, r.sensors),
+        )
     return grouped
 
 
@@ -288,6 +297,12 @@ def _run_unit_timeline(
     first_stable_hypothesis_cycle: int | None = None
     max_cycle_observed: int | None = None
 
+    log_structured(
+        logger,
+        event="fd001_replay_started",
+        fields={"unit_id": unit_id, "max_cycles": max_cycles, "ingest_path": "fd001_replay"},
+        level=logging.INFO,
+    )
     try:
         for row_index, row in enumerate(capped_rows, start=1):
             payload = fd001_row_to_payload(row, site_id=site_id)
@@ -335,6 +350,14 @@ def _run_unit_timeline(
             summary_row["decision_confidence"] = decision_smoothed
             summary_row["top_hypothesis_confidence"] = hypothesis_smoothed
             unit_summary.append(summary_row)
+    except Exception as exc:
+        log_structured(
+            logger,
+            event="fd001_replay_failed",
+            fields={"unit_id": unit_id, "stage": "run_unit_timeline", **summarize_exception_for_logs(exc)},
+            level=logging.ERROR,
+        )
+        raise
     finally:
         engine.close()
 
@@ -345,6 +368,19 @@ def _run_unit_timeline(
         "first_stable_hypothesis_cycle": first_stable_hypothesis_cycle,
         "max_cycle_observed": max_cycle_observed,
     }
+    log_structured(
+        logger,
+        event="fd001_replay_completed",
+        fields={
+            "unit_id": unit_id,
+            "rows_replayed": len(unit_full),
+            "max_cycle_observed": max_cycle_observed,
+            "first_decision_cycle": first_decision_cycle,
+            "first_risk_cycle": first_risk_cycle,
+            "ingest_path": "fd001_replay",
+        },
+        level=logging.INFO,
+    )
     return unit_full, unit_summary, milestones
 
 

@@ -468,6 +468,7 @@ class CsvPreviewResponse(BaseModel):
     issue_details: list[dict[str, Any]] = Field(default_factory=list)
     warning_details: list[dict[str, Any]] = Field(default_factory=list)
     requires_confirmation: bool = False
+    preview_state: str = "preview_ready"
 
 
 class CreateRunRequest(BaseModel):
@@ -585,6 +586,7 @@ class IngestJobEnvelope(BaseModel):
     message: str | None = None
     latest_result: dict[str, Any] | None = None
     lifecycle_phase: str | None = None
+    ui_state: str | None = None
     terminal_state: str | None = None
     failure_category: str | None = None
 
@@ -750,6 +752,17 @@ def _persistence_available(db_path: str) -> bool:
         db_file.parent.mkdir(parents=True, exist_ok=True)
         with db_file.open("a", encoding="utf-8"):
             pass
+        return True
+    except OSError:
+        return False
+
+
+def _dir_is_writable(path: str) -> bool:
+    try:
+        fd, probe_path = tempfile.mkstemp(prefix="neraium_probe_", dir=path)
+        os.close(fd)
+        probe = Path(probe_path)
+        probe.unlink(missing_ok=True)
         return True
     except OSError:
         return False
@@ -966,7 +979,9 @@ def create_app(
         "db_path": db_path,
         "db_path_writable": os.access(str(Path(db_path).parent), os.W_OK),
         "temp_dir": tempfile.gettempdir(),
-        "temp_dir_writable": os.access(tempfile.gettempdir(), os.W_OK),
+        "temp_dir_writable": _dir_is_writable(tempfile.gettempdir()),
+        "upload_temp_dir": tempfile.gettempdir(),
+        "upload_temp_dir_writable": _dir_is_writable(tempfile.gettempdir()),
         "memory_only_state": [
             "demo_jobs",
             "cmapss_fd004_cache",
@@ -990,6 +1005,13 @@ def create_app(
             event="operational_state_persistence_unavailable",
             fields={"reason": "store_missing_operational_state_methods"},
             level=logging.WARNING,
+        )
+    if not runtime_state_diagnostics.get("temp_dir_writable"):
+        log_structured(
+            logger,
+            event="startup_temp_dir_unwritable",
+            fields={"temp_dir": runtime_state_diagnostics.get("temp_dir")},
+            level=logging.ERROR,
         )
 
     def _persist_operational_state(key: str, payload: dict[str, Any], *, customer_id: str | None = None, run_id: str | None = None) -> None:
@@ -1092,9 +1114,20 @@ def create_app(
         return value if value >= 0 else None
 
     def _public_ingest_job(job: dict[str, Any]) -> dict[str, Any]:
+        status = str(job.get("status", "unknown"))
+        ui_state = str(job.get("ui_state") or "")
+        if not ui_state:
+            if status == "uploading":
+                ui_state = "uploading"
+            elif status in {"queued", "processing"}:
+                ui_state = "ingesting"
+            elif status in {"completed", "partial_success", "failed"}:
+                ui_state = status
+            else:
+                ui_state = "idle"
         return {
             "job_id": str(job.get("job_id")),
-            "status": str(job.get("status", "unknown")),
+            "status": status,
             "run_id": job.get("run_id"),
             "customer_id": resolve_customer_id(job.get("customer_id")),
             "filename": str(job.get("filename") or "upload.csv"),
@@ -1114,6 +1147,7 @@ def create_app(
             "message": job.get("message"),
             "latest_result": job.get("latest_result"),
             "lifecycle_phase": job.get("lifecycle_phase"),
+            "ui_state": ui_state,
             "terminal_state": job.get("terminal_state"),
             "failure_category": job.get("failure_category"),
         }
@@ -1157,18 +1191,22 @@ def create_app(
             status_value = str(job.get("status") or "")
             if status_value in {"uploading"}:
                 job["lifecycle_phase"] = "uploading"
+                job["ui_state"] = "uploading"
                 job["terminal_state"] = None
                 job["failure_category"] = None
             elif status_value in {"queued"}:
                 job["lifecycle_phase"] = "queued"
+                job["ui_state"] = "ingesting"
                 job["terminal_state"] = None
                 job["failure_category"] = None
             elif status_value in {"processing"}:
                 job["lifecycle_phase"] = "processing"
+                job["ui_state"] = "ingesting"
                 job["terminal_state"] = None
                 job["failure_category"] = None
             elif status_value in {"completed", "partial_success", "failed"}:
                 job["lifecycle_phase"] = "terminal"
+                job["ui_state"] = status_value
                 job["terminal_state"] = status_value
                 if status_value == "failed":
                     job["failure_category"] = str(job.get("failure_category") or "ingest_failed")
@@ -1793,6 +1831,18 @@ def create_app(
                 status="processing",
                 message="Upload complete. Ingest processing started.",
             )
+            log_structured(
+                logger,
+                event="ingest_job_started",
+                fields={
+                    "job_id": job_id,
+                    "run_id": run_id,
+                    "customer_id": customer_id,
+                    "ingest_path": "csv_upload",
+                    "stage": "ingesting",
+                },
+                level=logging.INFO,
+            )
             try:
                 def _on_progress(progress: dict[str, Any]) -> None:
                     progress_status = str(progress.get("status") or "processing")
@@ -1859,6 +1909,8 @@ def create_app(
                         "rows_succeeded": int(summary.get("rows_succeeded", 0)),
                         "rows_failed": int(summary.get("rows_failed", 0)),
                         "partial_success": bool(summary.get("partial_success", False)),
+                        "ingest_path": "csv_upload",
+                        "stage": final_status,
                     },
                     level=logging.INFO,
                 )
@@ -1872,6 +1924,9 @@ def create_app(
                         "job_id": job_id,
                         "run_id": run_id,
                         "customer_id": customer_id,
+                        "ingest_path": "csv_upload",
+                        "stage": "failed",
+                        "error_type": "ingest_failed",
                         **summarize_exception_for_logs(exc),
                     },
                     level=logging.ERROR,
