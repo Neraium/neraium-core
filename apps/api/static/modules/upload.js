@@ -11,7 +11,9 @@ function updateUploadRunInfo() {
 
 const UPLOAD_STAGES = new Set([
   "idle",
-  "validating",
+  "file_selected",
+  "previewing",
+  "preview_blocked",
   "preview_ready",
   "uploading",
   "ingesting",
@@ -25,13 +27,50 @@ function setUploadStage(stage) {
   state.uploadCsv.stage = normalized;
 }
 
-function operatorErrorMessage(err, fallback = "Ingest failed.") {
+function structuredErrorFrom(err, fallbackStage = "request") {
   const apiErr = err && err.apiError ? err.apiError : null;
-  const msg = String(err?.message || fallback);
-  if (!apiErr) return msg;
-  if (apiErr.status === 422) return `Upload validation failed. ${msg}`;
-  if (apiErr.status === 413) return "Upload is too large for this environment. Split the CSV and retry.";
-  return msg;
+  const body = apiErr && apiErr.body && typeof apiErr.body === "object" ? apiErr.body : null;
+  const detailObj = body && body.detail && typeof body.detail === "object" ? body.detail : null;
+  const src = body || detailObj || {};
+  const issueDetails = Array.isArray(src.issue_details) ? src.issue_details : [];
+  const warningDetails = Array.isArray(src.warning_details) ? src.warning_details : [];
+  return {
+    stage: String(src.stage || fallbackStage),
+    type: String(src.type || ""),
+    message: String(src.message || err?.message || "Request failed."),
+    actionable_detail: String(src.actionable_detail || ""),
+    issue_details: issueDetails,
+    warning_details: warningDetails,
+    correlation_id: src.correlation_id ? String(src.correlation_id) : "",
+    status: apiErr ? apiErr.status : null,
+  };
+}
+
+function operatorErrorMessage(err, fallback = "Ingest failed.") {
+  const normalized = structuredErrorFrom(err, "ingest");
+  const parts = [normalized.message || String(err?.message || fallback), normalized.actionable_detail];
+  const issueTop = normalized.issue_details
+    .slice(0, 2)
+    .map((d) => (d && d.message ? String(d.message) : "Invalid field"))
+    .join("; ");
+  if (issueTop) parts.push(issueTop);
+  if (normalized.correlation_id) parts.push(`Reference: ${normalized.correlation_id}`);
+  if (normalized.status === 413) return "Upload is too large for this environment. Split the CSV and retry.";
+  return parts.filter(Boolean).join(" ");
+}
+
+function resetUploadAttemptState() {
+  clearUploadJobPolling();
+  state.uploadJob.id = null;
+  state.uploadJob.active = false;
+  state.uploadCsv.preview = null;
+  state.uploadCsv.headers = [];
+  state.uploadCsv.issues = [];
+  state.uploadCsv.warnings = [];
+  state.uploadCsv.requiresConfirmation = false;
+  state.uploadCsv.mapping = null;
+  setStatus("");
+  setUploadProgressUI({ visible: false });
 }
 
 function clearUploadJobPolling() {
@@ -216,30 +255,30 @@ function parseCsvText(file) {
 }
 
 function setUploadFile(file) {
-  setUploadStage("validating");
+  resetUploadAttemptState();
   state.uploadFile = file || null;
   const el = qs("#selectedFileName");
   if (!el) return;
   el.textContent = state.uploadFile ? `${state.uploadFile.name} (${state.uploadFile.size} bytes)` : "No file selected";
   if (!file) {
-    state.uploadCsv.preview = null;
-    state.uploadCsv.headers = [];
-    state.uploadCsv.issues = [];
-    state.uploadCsv.warnings = [];
-    state.uploadCsv.requiresConfirmation = false;
-    state.uploadCsv.mapping = null;
     setUploadStage("idle");
     renderUploadMappingPanel();
     return;
   }
+  setUploadStage("file_selected");
   runCsvPreviewForFile(file).catch((err) => {
     setUploadStage("failed");
-    setStatus(operatorErrorMessage(err), true, true);
+    const normalized = structuredErrorFrom(err, "preview");
+    setStatus(operatorErrorMessage(err, "CSV preview failed."), true, true);
+    if (normalized.stage === "preview") {
+      state.uploadCsv.issues = normalized.issue_details.map((i) => String(i.message || "Preview validation issue."));
+      renderUploadMappingPanel();
+    }
   });
 }
 
 async function runCsvPreviewForFile(file) {
-  setUploadStage("validating");
+  setUploadStage("previewing");
   const chunk = file.slice(0, Math.min(file.size, 65536));
   const text = await new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -258,9 +297,14 @@ async function runCsvPreviewForFile(file) {
   state.uploadCsv.warnings = Array.isArray(out.warnings) ? out.warnings : [];
   state.uploadCsv.requiresConfirmation = !!out.requires_confirmation;
   state.uploadCsv.mapping = out.suggested_mapping || null;
-  setUploadStage("preview_ready");
+  setUploadStage(state.uploadCsv.requiresConfirmation ? "preview_blocked" : "preview_ready");
   renderUploadMappingPanel();
-  if (state.uploadCsv.issues.length && !out.suggested_mapping) {
+  if (state.uploadCsv.requiresConfirmation) {
+    const guidance =
+      out.actionable_detail ||
+      "Preview found ambiguous mapping. Review timestamp, asset/entity, and sensor columns before upload.";
+    setStatus(guidance, true, false);
+  } else if (state.uploadCsv.issues.length && !out.suggested_mapping) {
     setStatus(state.uploadCsv.issues.join(" "), true, false);
   } else {
     setStatus("");
@@ -377,6 +421,9 @@ async function uploadCsvToActiveRun() {
   if (!state.uploadCsv.headers.length) {
     await runCsvPreviewForFile(file);
   }
+  if (state.uploadCsv.requiresConfirmation) {
+    setUploadStage("preview_blocked");
+  }
   renderUploadMappingPanel();
   const mapping = collectUploadMappingFromDom();
   const verr = validateUploadMapping(mapping);
@@ -481,7 +528,7 @@ function wireUploadFormEvents() {
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
     try {
-      clearUploadJobPolling();
+      resetUploadAttemptState();
       state.uploadJob.active = true;
       setUploadStage("uploading");
       setUploadProgressUI({
@@ -524,14 +571,19 @@ function wireUploadFormEvents() {
         errorSamples: out.error_samples || [],
       });
     } catch (err) {
-      setUploadStage("failed");
+      const normalized = structuredErrorFrom(err, "ingest");
+      const isPreviewFailure = normalized.stage === "preview";
+      setUploadStage(isPreviewFailure ? "preview_blocked" : "failed");
       setUploadProgressUI({
-        visible: true,
+        visible: !isPreviewFailure,
         mode: "failed",
-        statusText: operatorErrorMessage(err),
-        errorSamples: [{ row: "-", message: operatorErrorMessage(err) }],
+        statusText: operatorErrorMessage(err, isPreviewFailure ? "CSV preview blocked upload." : "Ingest failed."),
+        errorSamples: isPreviewFailure ? [] : [{ row: "-", message: operatorErrorMessage(err) }],
       });
-      setStatus(operatorErrorMessage(err), true, true);
+      const failureCopy = isPreviewFailure
+        ? `CSV preview is blocked. ${operatorErrorMessage(err, "Review mapping and retry preview.")}`
+        : operatorErrorMessage(err);
+      setStatus(failureCopy, true, true);
     } finally {
       state.uploadJob.active = false;
       clearUploadJobPolling();
