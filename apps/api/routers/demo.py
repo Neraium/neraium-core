@@ -12,6 +12,66 @@ from .._core_imports import get_core_runtime_status
 
 logger = logging.getLogger(__name__)
 CMAPSS_DEFAULT_MAX_FRAMES = 240
+CMAPSS_MIN_FRAMES = 30
+CMAPSS_MAX_FRAMES = 500
+
+
+def _canonical_demo_stage(*, frames_processed: int, risk_level: str, run_status: str) -> str:
+    risk = str(risk_level or "UNKNOWN").upper()
+    run = str(run_status or "").lower()
+    if frames_processed <= 0 and run in {"starting", "pending", "queued", "initializing", "created", "open"}:
+        return "warmup"
+    if risk in {"LOW", "UNKNOWN"}:
+        return "normal"
+    if risk == "MEDIUM":
+        return "early_structural_drift"
+    if risk == "HIGH":
+        return "rising_instability_actionable"
+    return "stabilizing"
+
+
+def _canonical_demo_message(*, stage: str, risk_level: str, trend: str) -> dict[str, Any]:
+    normalized_risk = str(risk_level or "UNKNOWN").upper()
+    normalized_trend = str(trend or "UNKNOWN").upper()
+    if stage == "warmup":
+        return {
+            "what_is_happening": "Replay started and is building enough history for structural interpretation.",
+            "why_we_believe_this": "The model needs baseline and recent windows before relational drift can be scored.",
+            "operator_next_step": "Continue replay for at least one full warmup window.",
+            "confidence": 0.55,
+            "system_not_claiming": "No incident is being claimed during warmup.",
+        }
+    if stage == "normal":
+        return {
+            "what_is_happening": "System structure is currently stable.",
+            "why_we_believe_this": "Composite instability and drift remain in low-risk bands.",
+            "operator_next_step": "Continue monitoring and keep ingest uninterrupted.",
+            "confidence": 0.72,
+            "system_not_claiming": "This does not claim zero risk; only no current structural escalation.",
+        }
+    if stage == "early_structural_drift":
+        return {
+            "what_is_happening": "Early structural drift is present before hard threshold alarms.",
+            "why_we_believe_this": f"Risk is {normalized_risk} with trend {normalized_trend}, indicating relationship-level change.",
+            "operator_next_step": "Inspect implicated subsystem and increase observation cadence.",
+            "confidence": 0.8,
+            "system_not_claiming": "This is advisory and not an automated actuation decision.",
+        }
+    if stage == "rising_instability_actionable":
+        return {
+            "what_is_happening": "Instability is rising and operational risk is actionable.",
+            "why_we_believe_this": f"Risk is {normalized_risk} with persistent structural deterioration signals.",
+            "operator_next_step": "Execute site procedure for high-risk review and targeted inspection.",
+            "confidence": 0.87,
+            "system_not_claiming": "This is not a guaranteed failure-time prediction.",
+        }
+    return {
+        "what_is_happening": "Structural conditions are changing; continue monitored review.",
+        "why_we_believe_this": "Recent telemetry indicates non-static relational behavior.",
+        "operator_next_step": "Review current run detail and corroborate with domain procedures.",
+        "confidence": 0.68,
+        "system_not_claiming": "Neraium is read-only and does not actuate infrastructure.",
+    }
 
 
 def build_demo_router(*, service_instance: Any, require_api_key: Any, resolve_customer_id: Any, resolve_run_id_with_default: Any, run_demo_seed_job: Any, public_demo_job: Any, demo_jobs: dict[str, Any], demo_jobs_lock: Any, load_cmapss_fd004_subset: Any, log_structured: Any, summarize_exception_for_logs: Any, models: Any, utc_now_iso: Any) -> APIRouter:
@@ -53,6 +113,7 @@ def build_demo_router(*, service_instance: Any, require_api_key: Any, resolve_cu
                 },
             )
         requested_frames = int(request_payload.max_frames or CMAPSS_DEFAULT_MAX_FRAMES)
+        requested_frames = max(CMAPSS_MIN_FRAMES, min(CMAPSS_MAX_FRAMES, requested_frames))
         log_structured(
             logger,
             event="demo_cmapss_start_requested",
@@ -104,6 +165,17 @@ def build_demo_router(*, service_instance: Any, require_api_key: Any, resolve_cu
             "requested_frames": requested_frames,
             "launch_succeeded": processed > 0,
             "demo": "cmapss_fd004",
+            "canonical_story": {
+                "sequence": [
+                    "normal",
+                    "early_structural_drift",
+                    "rising_instability_actionable",
+                    "critical_review",
+                ],
+                "read_only": True,
+                "non_actuating": True,
+                "human_in_the_loop": True,
+            },
         }
 
     @router.get("/demo/cmapss/status")
@@ -164,6 +236,8 @@ def build_demo_router(*, service_instance: Any, require_api_key: Any, resolve_cu
         history_count = len(history or [])
         has_state = isinstance(current_state, dict) and bool(current_state)
         frames_processed = int(results_count)
+        risk_level = str((current_state or {}).get("risk_level") or "")
+        trend = str((current_state or {}).get("trend") or "")
         launch_succeeded = frames_processed > 0
         if launch_succeeded:
             status = "ready"
@@ -197,6 +271,12 @@ def build_demo_router(*, service_instance: Any, require_api_key: Any, resolve_cu
             },
         )
 
+        stage = _canonical_demo_stage(
+            frames_processed=frames_processed,
+            risk_level=risk_level,
+            run_status=str(run.get("status", "")),
+        )
+        canonical_message = _canonical_demo_message(stage=stage, risk_level=risk_level, trend=trend)
         return {
             "run_id": run_id,
             "launch_succeeded": launch_succeeded,
@@ -208,6 +288,68 @@ def build_demo_router(*, service_instance: Any, require_api_key: Any, resolve_cu
             "status": status,
             "run_status": str(run.get("status", "")),
             "error_message": error_message,
+            "canonical_story_stage": stage,
+            "risk_level": (risk_level or "UNKNOWN").upper(),
+            "trend": (trend or "UNKNOWN").upper(),
+            "message": canonical_message,
+        }
+
+    @router.get("/demo/cmapss/proof-summary")
+    def demo_cmapss_proof_summary(
+        run_id: str = Query(..., min_length=1),
+        customer_id: str | None = Query(default=None),
+        _: None = Depends(require_api_key),
+    ) -> dict[str, Any]:
+        resolved_customer = resolve_customer_id(customer_id)
+        run = service_instance.get_run(run_id, customer_id=resolved_customer)
+        if run is None:
+            raise HTTPException(status_code=404, detail=f"Unknown run_id: {run_id}")
+        recent_results = service_instance.list_recent_results(limit=64, run_id=run_id, customer_id=resolved_customer)
+        if not recent_results:
+            return {
+                "run_id": run_id,
+                "story": _canonical_demo_message(stage="warmup", risk_level="UNKNOWN", trend="UNKNOWN"),
+                "proof": {
+                    "first_medium_risk_index": None,
+                    "first_high_risk_index": None,
+                    "threshold_detection_index": None,
+                    "neraium_lead_vs_threshold_frames": None,
+                },
+            }
+        first_medium = next((i for i, row in enumerate(recent_results) if str(row.get("risk_level", "")).upper() == "MEDIUM"), None)
+        first_high = next((i for i, row in enumerate(recent_results) if str(row.get("risk_level", "")).upper() == "HIGH"), None)
+        threshold_idx = next(
+            (
+                i
+                for i, row in enumerate(recent_results)
+                if float((row.get("experimental_analytics") or {}).get("composite_instability") or 0.0) >= 0.85
+            ),
+            None,
+        )
+        lead = (
+            int(threshold_idx) - int(first_medium)
+            if first_medium is not None and threshold_idx is not None
+            else None
+        )
+        latest = recent_results[-1]
+        latest_stage = _canonical_demo_stage(
+            frames_processed=len(recent_results),
+            risk_level=str(latest.get("risk_level") or "UNKNOWN"),
+            run_status=str(run.get("status") or ""),
+        )
+        return {
+            "run_id": run_id,
+            "story": _canonical_demo_message(
+                stage=latest_stage,
+                risk_level=str(latest.get("risk_level") or "UNKNOWN"),
+                trend=str(latest.get("trend") or "UNKNOWN"),
+            ),
+            "proof": {
+                "first_medium_risk_index": first_medium,
+                "first_high_risk_index": first_high,
+                "threshold_detection_index": threshold_idx,
+                "neraium_lead_vs_threshold_frames": lead,
+            },
         }
 
     return router

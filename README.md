@@ -28,6 +28,13 @@ python tools/run_investor_proof_demo.py
 This emits deterministic proof artifacts under `reports/demo_proof/` showing a single-run narrative:
 `Normal -> Drift -> Rising Instability -> Critical`.
 
+Canonical founder-safe live demo workflow (live + backup mode in one command):
+```bash
+python tools/run_canonical_demo.py --base-url http://127.0.0.1:7860 --customer-id customer-a --max-frames 240
+```
+Runbook:
+→ **[docs/CANONICAL_DEMO_RUNBOOK.md](docs/CANONICAL_DEMO_RUNBOOK.md)**
+
 AWS App Runner deployment (source repository):
 → **[docs/AWS_APP_RUNNER.md](docs/AWS_APP_RUNNER.md)**
 
