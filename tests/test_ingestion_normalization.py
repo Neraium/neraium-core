@@ -112,3 +112,33 @@ def test_ambiguous_aliases_require_mapping() -> None:
                 "signals": {"x": 1},
             }
         )
+
+
+def test_batch_mixed_valid_invalid_rows_reports_row_index() -> None:
+    with pytest.raises(ValueError, match="batch_item_2"):
+        normalize_external_batch_payload(
+            {
+                "items": [
+                    {
+                        "timestamp": "2026-01-01T00:00:00+00:00",
+                        "asset_id": "a-1",
+                        "signals": {"p": 1.0},
+                    },
+                    {
+                        "timestamp": "2026-01-01T00:01:00+00:00",
+                        "asset_id": "a-2",
+                        "signals": {},
+                    },
+                ]
+            }
+        )
+
+
+def test_malformed_batch_payload_rejected() -> None:
+    with pytest.raises(ValueError, match="unsupported_payload_shape"):
+        normalize_external_batch_payload({"items": "bad-shape"})
+
+
+def test_missing_asset_id_strict_error() -> None:
+    with pytest.raises(ValueError, match="missing_asset_id"):
+        normalize_external_payload({"timestamp": "2026-01-01T00:00:00+00:00", "signals": {"x": 1}})
