@@ -58,6 +58,7 @@ from .services.geometry import (
 from ._core_imports import (
     ResultStore,
     StructuralMonitoringService,
+    get_core_runtime_status,
     log_structured,
     summarize_exception_for_logs,
 )
@@ -383,7 +384,7 @@ class DemoSeedRequest(BaseModel):
 
 class DemoCmapssStartRequest(BaseModel):
     customer_id: str | None = None
-    max_frames: int = Field(default=10, ge=5, le=120)
+    max_frames: int = Field(default=120, ge=30, le=500)
 
 
 def _build_demo_sensor_values_row(i: int, p: float, drift_lift: float, vib_spike: float) -> dict[str, float]:
@@ -890,6 +891,25 @@ def create_app(
         if max_request_body_bytes is not None
         else _request_body_limit_bytes()
     )
+
+    runtime_status = get_core_runtime_status()
+    runtime_fallback_active = bool(runtime_status.get("using_fallback", False))
+    runtime_env = str(
+        os.getenv("NERAIUM_RUNTIME_ENV")
+        or os.getenv("NERAIUM_ENV")
+        or os.getenv("APP_ENV")
+        or ""
+    ).strip().lower()
+    strict_runtime_flag = str(os.getenv("NERAIUM_REQUIRE_FULL_CORE_RUNTIME", "")).strip().lower()
+    require_full_runtime = strict_runtime_flag in {"1", "true", "yes", "on"}
+    if strict_runtime_flag == "":
+        require_full_runtime = runtime_env in {"prod", "production"}
+    if require_full_runtime and runtime_fallback_active:
+        notes = ", ".join(str(x) for x in runtime_status.get("notes", []))
+        raise RuntimeError(
+            "Core runtime fallback is active while strict runtime mode is enabled. "
+            f"runtime_env={runtime_env or 'unknown'} notes={notes or 'n/a'}"
+        )
 
     app = FastAPI(title="Neraium SII API", version="0.1.0")
 

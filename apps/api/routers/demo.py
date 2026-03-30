@@ -8,6 +8,8 @@ from uuid import uuid4
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 
+from .._core_imports import get_core_runtime_status
+
 logger = logging.getLogger(__name__)
 
 
@@ -37,6 +39,18 @@ def build_demo_router(*, service_instance: Any, require_api_key: Any, resolve_cu
     def demo_cmapss_start(payload: models.DemoCmapssStartRequest | None = None, _: None = Depends(require_api_key), customer_id: str | None = Query(default=None)) -> dict[str, Any]:
         request_payload = payload or models.DemoCmapssStartRequest()
         resolved_customer = resolve_customer_id(customer_id or request_payload.customer_id)
+        runtime_status = get_core_runtime_status()
+        if bool(runtime_status.get("using_fallback", False)):
+            raise HTTPException(
+                status_code=503,
+                detail={
+                    "message": "NASA CMAPSS replay requires full core runtime modules; fallback mode is active.",
+                    "type": "core_runtime_unavailable",
+                    "stage": "demo_replay_start",
+                    "actionable_detail": "Deploy with full neraium_core runtime (disable fallback mode) and retry replay.",
+                    "runtime_notes": [str(x) for x in runtime_status.get("notes", [])],
+                },
+            )
         run = service_instance.create_run(name=f"NASA CMAPSS FD004 Demo {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}", config={"source": "nasa-cmapss-fd004", "dataset": "NASA CMAPSS FD004", "demo": "cmapss_fd004", "historical_run_replay": True}, activate=True, customer_id=resolved_customer)
         run_id = str(run.get("run_id") or "")
         if not run_id:
