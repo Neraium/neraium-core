@@ -1,4 +1,15 @@
 (function attachApiModule(globalObj) {
+  function asOperatorText(value) {
+    if (typeof value === "string") return value;
+    if (value && typeof value === "object") {
+      const message = value.message ? String(value.message) : "";
+      const actionable = value.actionable_detail ? String(value.actionable_detail) : "";
+      const correlation = value.correlation_id ? `ref ${String(value.correlation_id)}` : "";
+      return [message, actionable, correlation].filter((x) => x && x.trim().length > 0).join(" | ");
+    }
+    return "";
+  }
+
   function apiUrl(path, params) {
     const normalizedPath = String(path || "").replace(/^\/api(?=\/|$)/, "") || "/";
     const searchParams = new URLSearchParams();
@@ -62,7 +73,7 @@
         typeof detailValue === "string"
           ? detailValue
           : detailValue && typeof detailValue === "object"
-            ? JSON.stringify(detailValue)
+            ? asOperatorText(detailValue) || JSON.stringify(detailValue)
             : raw
               ? raw.slice(0, 500)
               : "empty response body";
@@ -84,6 +95,8 @@
       const userMessage = [body && body.message ? String(body.message) : "", actionable, issueSummary]
         .filter((x) => x && x.trim().length > 0)
         .join(" ");
+      const fallback = asOperatorText(detailValue);
+      const displayMessage = userMessage || fallback;
       console.error("API request failed", {
         endpoint,
         method,
@@ -96,7 +109,7 @@
           `[HTTP after response] ${method} ${endpoint}`,
           `status=${res.status} ${res.statusText || ""}`.trim(),
           `detail=${detail}`,
-          userMessage ? `message=${userMessage}${correlation}` : "",
+          displayMessage ? `message=${displayMessage}${correlation}` : "",
         ].join(" | "),
       );
       e.name = "ApiHttpError";

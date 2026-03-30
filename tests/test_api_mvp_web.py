@@ -611,6 +611,162 @@ def test_streamed_csv_upload_reports_partial_success(tmp_path) -> None:
     assert done["partial_success"] is True
     assert done["error_samples"]
     assert "Row" in str(done["error_samples"][0].get("message", ""))
+    assert done["lifecycle_phase"] == "terminal"
+    assert done["terminal_state"] == "partial_success"
+    assert done["failure_category"] is None
+
+
+def test_ingest_csv_preview_upload_and_result_detail_smoke(tmp_path) -> None:
+    client = _client(tmp_path)
+    run = client.post(
+        _customer_path("/runs"),
+        json={"name": "fd001-smoke", "activate": True, "config": {}},
+    )
+    assert run.status_code == 200
+    run_id = run.json()["run"]["run_id"]
+
+    csv_text = (
+        "recorded_at,unit,setting_1,setting_2,setting_3,s1,s2,s3\n"
+        "2026-01-01T00:00:01+00:00,fd001_unit_001,0.1,0.2,0.3,10.0,11.0,12.0\n"
+        "2026-01-01T00:00:02+00:00,fd001_unit_001,0.1,0.2,0.3,10.1,11.1,12.1\n"
+    )
+    preview = client.post(
+        _customer_path("/ingest/csv/preview"),
+        json={"csv_sample": csv_text},
+    )
+    assert preview.status_code == 200
+    preview_body = preview.json()
+    assert preview_body["headers"][0] == "recorded_at"
+    assert preview_body["requires_confirmation"] is False
+    mapping = preview_body["suggested_mapping"]
+    assert isinstance(mapping, dict)
+    assert mapping["timestamp"] == "recorded_at"
+    assert mapping["asset_id"] == "unit"
+
+    started = client.post(
+        _customer_path(f"/ingest/csv/upload?run_id={run_id}"),
+        files={"file": ("fd001.csv", csv_text.encode("utf-8"), "text/csv")},
+        data={"mapping": json.dumps(mapping)},
+    )
+    assert started.status_code == 200
+    job_id = started.json()["job_id"]
+    done = _wait_for_ingest_job(client, job_id)
+    assert done["status"] == "completed"
+    assert done["rows_succeeded"] == 2
+    assert done["rows_failed"] == 0
+    assert done["lifecycle_phase"] == "terminal"
+    assert done["terminal_state"] == "completed"
+
+    recent = client.get(_customer_path(f"/results/recent?run_id={run_id}&limit=1"))
+    assert recent.status_code == 200
+    recent_body = recent.json()
+    assert recent_body["count"] == 1
+    latest = recent_body["results"][0]
+    assert latest["run_id"] == run_id
+
+    detail = client.get(_customer_path(f"/results/{latest['result_id']}?run_id={run_id}"))
+    assert detail.status_code == 200
+    detail_result = detail.json()["result"]
+    assert detail_result["run_id"] == run_id
+    assert detail_result["asset_id"] == "fd001_unit_001"
+
+
+def test_fd001_realistic_end_to_end_smoke_with_preview_block_then_success(tmp_path) -> None:
+    client = _client(tmp_path)
+    run = client.post(
+        _customer_path("/runs"),
+        json={"name": "fd001-realistic-smoke", "activate": True, "config": {}},
+    )
+    assert run.status_code == 200
+    run_id = run.json()["run"]["run_id"]
+
+    blocked_csv = (
+        "unit,setting_1,setting_2,setting_3,s1,s2,s3\n"
+        "fd001_unit_001,0.1,0.2,0.3,10.0,11.0,12.0\n"
+    )
+    blocked_preview = client.post(
+        _customer_path("/ingest/csv/preview"),
+        json={"csv_sample": blocked_csv},
+    )
+    assert blocked_preview.status_code == 200
+    blocked_body = blocked_preview.json()
+    assert blocked_body["preview_state"] == "preview_blocked"
+    assert blocked_body["requires_confirmation"] is True
+    assert blocked_body["suggested_mapping"] is None
+    assert blocked_body["issues"]
+
+    csv_text = (
+        "cycle,recorded_at,unit,setting_1,setting_2,setting_3,s1,s2,s3,s4,s5\n"
+        "1,2026-01-01T00:00:01+00:00,fd001_unit_001,0.1,0.2,0.3,10.0,11.0,12.0,13.0,14.0\n"
+        "2,2026-01-01T00:00:02+00:00,fd001_unit_001,0.1,0.2,0.3,10.1,11.1,12.1,13.1,14.1\n"
+        "3,2026-01-01T00:00:03+00:00,fd001_unit_001,0.1,0.2,0.3,10.2,11.2,12.2,13.2,14.2\n"
+    )
+    preview = client.post(
+        _customer_path("/ingest/csv/preview"),
+        json={"csv_sample": csv_text},
+    )
+    assert preview.status_code == 200
+    preview_body = preview.json()
+    assert preview_body["preview_state"] == "preview_ready"
+    assert preview_body["requires_confirmation"] is False
+    mapping = preview_body["suggested_mapping"]
+    assert mapping["timestamp"] == "recorded_at"
+    assert mapping["asset_id"] == "unit"
+    assert "setting_1" in mapping["sensor_columns"]
+
+    started = client.post(
+        _customer_path(f"/ingest/csv/upload?run_id={run_id}"),
+        files={"file": ("fd001_realistic.csv", csv_text.encode("utf-8"), "text/csv")},
+        data={"mapping": json.dumps(mapping)},
+    )
+    assert started.status_code == 200
+    assert started.json()["ui_state"] in {"uploading", "ingesting", "completed"}
+
+    done = _wait_for_ingest_job(client, started.json()["job_id"])
+    assert done["status"] == "completed"
+    assert done["terminal_state"] == "completed"
+    assert done["ui_state"] == "completed"
+    assert done["rows_processed"] == 3
+    assert done["rows_failed"] == 0
+
+    run_detail = client.get(_customer_path(f"/runs/{run_id}"))
+    assert run_detail.status_code == 200
+    assert run_detail.json()["run"]["run_id"] == run_id
+    assert run_detail.json()["run"]["status"] in {"active", "ready", "running"}
+
+    recent = client.get(_customer_path(f"/results/recent?run_id={run_id}&limit=5"))
+    assert recent.status_code == 200
+    body = recent.json()
+    assert body["count"] >= 3
+    latest = body["results"][0]
+    assert latest["run_id"] == run_id
+    assert latest["asset_id"] == "fd001_unit_001"
+
+    detail = client.get(_customer_path(f"/results/{latest['result_id']}?run_id={run_id}"))
+    assert detail.status_code == 200
+    assert detail.json()["result"]["run_id"] == run_id
+
+
+def test_ingest_job_terminal_state_is_not_overwritten_by_late_progress(tmp_path) -> None:
+    client = _client(tmp_path)
+    run = client.post(
+        _customer_path("/runs"),
+        json={"name": "stream-upload-failed", "activate": True, "config": {}},
+    )
+    assert run.status_code == 200
+    run_id = run.json()["run"]["run_id"]
+
+    csv_bytes = b"timestamp,asset_id\n2026-01-01T00:00:00+00:00,asset-a\n"
+    started = client.post(
+        _customer_path(f"/ingest/csv/upload?run_id={run_id}"),
+        files={"file": ("broken.csv", csv_bytes, "text/csv")},
+    )
+    assert started.status_code == 200
+    done = _wait_for_ingest_job(client, started.json()["job_id"])
+    assert done["status"] == "failed"
+    assert done["terminal_state"] == "failed"
+    assert done["lifecycle_phase"] == "terminal"
+    assert done["failure_category"] == "ingest_failed"
 
 
 def test_stream_upload_rejects_non_csv_extension(tmp_path) -> None:
