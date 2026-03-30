@@ -11,7 +11,9 @@ function updateUploadRunInfo() {
 
 const UPLOAD_STAGES = new Set([
   "idle",
-  "validating",
+  "file_selected",
+  "previewing",
+  "preview_blocked",
   "preview_ready",
   "uploading",
   "ingesting",
@@ -245,7 +247,7 @@ function parseCsvText(file) {
 }
 
 function setUploadFile(file) {
-  setUploadStage("validating");
+  setUploadStage(file ? "file_selected" : "idle");
   state.uploadFile = file || null;
   const el = qs("#selectedFileName");
   if (!el) return;
@@ -270,7 +272,7 @@ function setUploadFile(file) {
 }
 
 async function runCsvPreviewForFile(file) {
-  setUploadStage("validating");
+  setUploadStage("previewing");
   const chunk = file.slice(0, Math.min(file.size, 65536));
   const text = await new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -289,7 +291,10 @@ async function runCsvPreviewForFile(file) {
   state.uploadCsv.warnings = Array.isArray(out.warnings) ? out.warnings : [];
   state.uploadCsv.requiresConfirmation = !!out.requires_confirmation;
   state.uploadCsv.mapping = out.suggested_mapping || null;
-  setUploadStage("preview_ready");
+  const hasBlockingIssues = state.uploadCsv.issues.length > 0 && !state.uploadCsv.mapping;
+  const apiPreviewState = String(out.preview_state || "");
+  if (apiPreviewState === "preview_blocked" || hasBlockingIssues) setUploadStage("preview_blocked");
+  else setUploadStage("preview_ready");
   renderUploadMappingPanel();
   if (state.uploadCsv.issues.length && !out.suggested_mapping) {
     setStatus(state.uploadCsv.issues.join(" "), true, false);
@@ -555,7 +560,7 @@ function wireUploadFormEvents() {
       });
     } catch (err) {
       resetUploadFlowState();
-      setUploadStage("failed");
+      setUploadStage(state.uploadCsv?.issues?.length ? "preview_blocked" : "failed");
       setUploadProgressUI({
         visible: true,
         mode: "failed",
