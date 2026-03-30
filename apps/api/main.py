@@ -55,14 +55,10 @@ from ._core_imports import (
     ResultStore,
     StructuralMonitoringService,
     log_structured,
-    infer_semantic_mapping,
-    parse_csv_sample_for_mapping,
-    resolve_mapping,
-    row_to_frame_kwargs,
-    validate_mapping,
     summarize_exception_for_logs,
 )
 from neraium_core.ingestion_normalization import normalize_external_batch_payload, normalize_external_payload
+from neraium_core.pipeline import infer_csv_mapping_stage, issue_to_dict, parse_csv_rows, validate_csv_mapping_stage
 
 
 logger = logging.getLogger(__name__)
@@ -411,6 +407,8 @@ class CsvPreviewResponse(BaseModel):
     suggested_mapping: dict[str, Any] | None = None
     issues: list[str] = Field(default_factory=list)
     warnings: list[str] = Field(default_factory=list)
+    issue_details: list[dict[str, Any]] = Field(default_factory=list)
+    warning_details: list[dict[str, Any]] = Field(default_factory=list)
     requires_confirmation: bool = False
 
 
@@ -2470,27 +2468,25 @@ def create_app(
     ) -> dict[str, Any]:
         """Infer semantic column roles from an arbitrary CSV header + sample rows."""
         _ = resolve_customer_id(customer_id)
-        headers, rows = parse_csv_sample_for_mapping(payload.csv_sample, max_rows=16)
+        headers, rows, parse_issues = parse_csv_rows(payload.csv_sample)
         if not headers:
             raise HTTPException(
                 status_code=400,
                 detail="CSV sample has no header row.",
             )
-        mapping, issues, _debug = infer_semantic_mapping(headers, sample_rows=rows)
-        warnings = [i for i in issues if "Confirm" in i or "Multiple" in i]
-        infer_blocking = [i for i in issues if i not in warnings]
-        hard_issues: list[str] = list(infer_blocking)
-        if mapping is not None:
-            errs = validate_mapping(mapping, headers)
-            if errs:
-                hard_issues.extend(errs)
-                mapping = None
-        requires_confirmation = mapping is None or len(warnings) > 0
+        stage = infer_csv_mapping_stage(headers, rows=rows, column_mapping=None)
+        mapping = stage.mapping
+        mapping_issues = validate_csv_mapping_stage(mapping, headers) if mapping is not None else []
+        hard_issues = [*parse_issues, *stage.issues, *mapping_issues]
+        warning_issues = list(stage.warnings)
+        requires_confirmation = mapping is None or stage.requires_confirmation
         return CsvPreviewResponse(
             headers=headers,
             suggested_mapping=mapping.to_dict() if mapping else None,
-            issues=hard_issues,
-            warnings=warnings,
+            issues=[i.message for i in hard_issues],
+            warnings=[i.message for i in warning_issues],
+            issue_details=[issue_to_dict(i) for i in hard_issues],
+            warning_details=[issue_to_dict(i) for i in warning_issues],
             requires_confirmation=requires_confirmation,
         )
 
