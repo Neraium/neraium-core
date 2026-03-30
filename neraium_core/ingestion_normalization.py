@@ -62,6 +62,13 @@ def _pick_first(payload: Mapping[str, Any], keys: Sequence[str]) -> Any:
     return None
 
 
+def _pick_first_key(payload: Mapping[str, Any], keys: Sequence[str]) -> str | None:
+    for key in keys:
+        if key in payload and payload.get(key) is not None and str(payload.get(key)).strip() != "":
+            return key
+    return None
+
+
 def _present_keys(payload: Mapping[str, Any], keys: Sequence[str]) -> list[str]:
     return [k for k in keys if k in payload and payload.get(k) is not None and str(payload.get(k)).strip() != ""]
 
@@ -83,7 +90,7 @@ def _pick_mapped_or_inferred(
     if len(candidates) > 1:
         raise ValueError(
             f"ambiguous_mapping: multiple candidate {role} fields found: {', '.join(candidates)}. "
-            f"Provide explicit mapping.{role}"
+            f"Provide explicit mapping for {role}."
         )
     if len(candidates) == 1:
         return payload.get(candidates[0])
@@ -146,16 +153,20 @@ def _extract_signal_map(
 
 
 def infer_payload_mapping(payload: Mapping[str, Any]) -> MappingReview:
+    timestamp_key = _pick_first_key(payload, _TIMESTAMP_KEYS)
+    asset_key = _pick_first_key(payload, _ASSET_KEYS)
+    site_key = _pick_first_key(payload, _SITE_KEYS)
+    signals_key = _pick_first_key(payload, _SIGNAL_KEYS)
     inferred = {
-        "timestamp": _pick_first(payload, _TIMESTAMP_KEYS),
-        "asset_id": _pick_first(payload, _ASSET_KEYS),
-        "site_id": _pick_first(payload, _SITE_KEYS),
-        "signals_key": _pick_first(payload, _SIGNAL_KEYS),
+        "timestamp": timestamp_key,
+        "asset_id": asset_key,
+        "site_id": site_key,
+        "signals": signals_key,
     }
     warnings: list[str] = []
-    if inferred["timestamp"] is None:
+    if timestamp_key is None:
         warnings.append("missing_timestamp: could not infer timestamp alias")
-    if inferred["asset_id"] is None:
+    if asset_key is None:
         warnings.append("missing_asset_id: could not infer asset/entity identifier alias")
     if len(_present_keys(payload, _TIMESTAMP_KEYS)) > 1:
         warnings.append("ambiguous_mapping: multiple timestamp aliases found")
@@ -163,18 +174,13 @@ def infer_payload_mapping(payload: Mapping[str, Any]) -> MappingReview:
         warnings.append("ambiguous_mapping: multiple asset aliases found")
 
     requires_confirmation = False
-    if inferred["signals_key"] is None:
+    if signals_key is None:
         candidate_keys = [k for k in payload.keys() if str(k).strip().lower() not in _RESERVED_TOP_LEVEL]
         if not candidate_keys:
             warnings.append("no_usable_signals: payload has no signals object and no signal-like fields")
             requires_confirmation = True
     return MappingReview(
-        inferred_mapping={
-            "timestamp": "timestamp|time|ts|recorded_at|event_time",
-            "asset_id": "asset_id|asset|entity_id|entity|device_id|machine|unit",
-            "site_id": "site_id|site|system_id|location|plant",
-            "signals": "signals|sensor_values|variables|measurements|values|top-level numeric-like fields",
-        },
+        inferred_mapping=inferred,
         warnings=warnings,
         requires_confirmation=requires_confirmation or bool(warnings),
     )
