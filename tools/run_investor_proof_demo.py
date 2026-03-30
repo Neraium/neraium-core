@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import csv
 import json
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
@@ -87,7 +88,7 @@ def _threshold_alarm_cycle(points: list[DemoPoint], *, vibration_threshold: floa
     return None
 
 
-def run_demo(output_dir: Path) -> tuple[Path, Path]:
+def run_demo(output_dir: Path) -> tuple[Path, Path, Path]:
     output_dir.mkdir(parents=True, exist_ok=True)
     config = SIIConfig(
         baseline_window=12,
@@ -141,6 +142,11 @@ def run_demo(output_dir: Path) -> tuple[Path, Path]:
         if first_non_nominal is not None and threshold_cycle is not None
         else None
     )
+    threshold_lead_statement = (
+        f"Neraium reached non-nominal structure {lead_cycles} cycle(s) before threshold alarm."
+        if isinstance(lead_cycles, int)
+        else "Lead vs threshold alarm could not be computed."
+    )
     summary = {
         "scenario": "normal_to_drift_to_instability_to_critical",
         "first_non_nominal_cycle": first_non_nominal,
@@ -151,11 +157,13 @@ def run_demo(output_dir: Path) -> tuple[Path, Path]:
         "proof_points": [
             "Structural interpretation exits NOMINAL before hard vibration threshold alarm.",
             "State progression is monotonic through normal -> drift -> instability -> critical in the canonical scenario.",
+            threshold_lead_statement,
         ],
         "timeline": timeline,
     }
     json_path = output_dir / "investor_demo_report.json"
     md_path = output_dir / "investor_demo_report.md"
+    csv_path = output_dir / "investor_demo_timeline.csv"
     json_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
     md_path.write_text(
         "\n".join(
@@ -169,24 +177,51 @@ def run_demo(output_dir: Path) -> tuple[Path, Path]:
                 f"- First threshold alarm cycle (vibration >= 5.2): `{threshold_cycle}`",
                 f"- Early warning lead cycles: `{lead_cycles}`",
                 "",
+                "## Canonical operator story",
+                "1. Normal system structure",
+                "2. Early structural drift detected",
+                "3. Instability rising",
+                "4. Risk becomes actionable",
+                "5. Operator receives advisory next step",
+                "",
                 "## Why this matters",
                 "- Neraium emits interpretable structural risk progression before obvious threshold alarm behavior.",
                 "- The sequence demonstrates normal operation, drift onset, rising instability, and critical state transition in one deterministic run.",
+                "",
+                "## Confidence and limits",
+                "- Confidence is based on deterministic structural metrics and progression consistency.",
+                "- This report is read-only evidence and is not an actuation or guaranteed failure-time claim.",
             ]
         )
         + "\n",
         encoding="utf-8",
     )
-    return json_path, md_path
+    with csv_path.open("w", encoding="utf-8", newline="") as fh:
+        writer = csv.DictWriter(
+            fh,
+            fieldnames=[
+                "cycle",
+                "phase",
+                "state",
+                "interpreted_state",
+                "risk_level",
+                "structural_drift_score",
+                "composite_instability",
+            ],
+        )
+        writer.writeheader()
+        writer.writerows(timeline)
+    return json_path, md_path, csv_path
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Generate deterministic investor-facing Neraium demo proof artifacts.")
     parser.add_argument("--output-dir", default="reports/demo_proof")
     args = parser.parse_args()
-    json_path, md_path = run_demo(Path(args.output_dir))
+    json_path, md_path, csv_path = run_demo(Path(args.output_dir))
     print(f"Wrote: {json_path}")
     print(f"Wrote: {md_path}")
+    print(f"Wrote: {csv_path}")
 
 
 if __name__ == "__main__":
