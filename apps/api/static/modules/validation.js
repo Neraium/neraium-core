@@ -48,26 +48,35 @@ function scheduleReplayStatusPoll(runId, delayMs) {
   }, Math.max(120, Number(delayMs || DEMO_REPLAY_INITIAL_POLL_MS)));
 }
 
+async function getCmapssReplayStatus(runId) {
+  return fetchJson(apiUrl("/demo/cmapss/status", tenantScopeParams({ run_id: runId })));
+}
+
 async function pollReplayStatus(runId) {
   const replayRunId = String(runId || state.demo.replay.runId || state.demo.seedRunId || "");
   if (!replayRunId) return;
   if (state.demo.replay.runId && state.demo.replay.runId !== replayRunId) return;
   const startedMs = Number(state.demo.replay.startingSinceMs || Date.now());
   try {
-    const runRes = await fetchJson(apiUrl(`/runs/${encodeURIComponent(replayRunId)}`, tenantScopeParams()));
-    const run = runRes?.run || null;
-    const recentEnv = await fetchRecentResults({ run_id: replayRunId, limit: 5 });
+    const status = await getCmapssReplayStatus(replayRunId);
+    const recentEnv = await fetchRecentResults({ run_id: replayRunId, limit: 5 }).catch(() => ({ results: [] }));
     const results = Array.isArray(recentEnv?.results) ? recentEnv.results : [];
     const processedAtLaunch = Number(state.demo.replay.launchProcessed || 0);
-    const hasProcessedFrames = processedAtLaunch > 0;
-    const uiState = normalizeReplayUiState({
-      runStatus: String(run?.status || ""),
-      hasTelemetry: results.length > 0 || hasProcessedFrames,
-    });
+    const processedByStatus = Number(status?.frames_processed || 0);
+    const framesRequested = Number(status?.frames_requested || 0);
+    const hasProcessedFrames = processedAtLaunch > 0 || processedByStatus > 0;
+    const replayStatus = String(status?.status || "").toLowerCase();
+    const runStatus = String(status?.run_status || "");
     state.demo.replay.pollFailures = 0;
     state.demo.replay.pollBackoffMs = DEMO_REPLAY_INITIAL_POLL_MS;
-    setDemoUiState(uiState, `run.status=${String(run?.status || "-")} results=${results.length}`);
-    if (uiState === DEMO_UI_STATES.running) {
+    if (replayStatus === "failed") {
+      setDemoUiState(DEMO_UI_STATES.failed, `status=${replayStatus}`);
+      state.demo.replay.errorMessage = String(status?.error_message || "Replay backend reported a failure.");
+      setStatus(`Replay launch failed: ${state.demo.replay.errorMessage} Tap retry.`, true, true);
+      return;
+    }
+    if (replayStatus === "ready" || results.length > 0) {
+      setDemoUiState(DEMO_UI_STATES.running, `status=${replayStatus} results=${results.length}`);
       state.demo.replay.errorMessage = "";
       setStatus("");
       if (state.activeRun?.run_id === replayRunId && results.length > 0) {
@@ -76,37 +85,44 @@ async function pollReplayStatus(runId) {
       }
       return;
     }
-    const elapsed = Date.now() - startedMs;
-    if (uiState === DEMO_UI_STATES.starting && elapsed < DEMO_REPLAY_STARTING_TIMEOUT_MS) {
-      scheduleReplayStatusPoll(replayRunId, state.demo.replay.pollBackoffMs);
+    if (replayStatus === "empty") {
+      setDemoUiState(DEMO_UI_STATES.completed, "replay-completed-empty");
+      state.demo.replay.errorMessage = "Replay completed but generated no analysis outputs.";
+      setStatus("Replay completed, but no analysis was materialized. Increase frames or verify runtime health.", true, true);
       return;
     }
-    if (uiState === DEMO_UI_STATES.offline) {
+    const elapsed = Date.now() - startedMs;
+    if (replayStatus === "starting" || replayStatus === "ingesting" || hasProcessedFrames) {
+      const progressText = hasProcessedFrames
+        ? `Replay launch succeeded (${processedByStatus || processedAtLaunch}/${framesRequested || "?"} frames processed). Materializing analysis…`
+        : "Replay launch acknowledged. Initializing NASA CMAPSS ingest…";
+      setDemoUiState(DEMO_UI_STATES.starting, `status=${replayStatus || "pending"} run_status=${runStatus}`);
+      setStatus(progressText, false, true);
       state.demo.replay.pollBackoffMs = Math.min(DEMO_REPLAY_MAX_POLL_MS, state.demo.replay.pollBackoffMs * 2);
       scheduleReplayStatusPoll(replayRunId, state.demo.replay.pollBackoffMs);
       return;
     }
-    if (uiState === DEMO_UI_STATES.starting) {
-      if (hasProcessedFrames) {
-        setDemoUiState(DEMO_UI_STATES.offline, "starting-timeout-processed-launch");
-        state.demo.replay.pollBackoffMs = Math.min(DEMO_REPLAY_MAX_POLL_MS, state.demo.replay.pollBackoffMs * 2);
-        scheduleReplayStatusPoll(replayRunId, state.demo.replay.pollBackoffMs);
-        return;
-      }
+    if (elapsed >= DEMO_REPLAY_RESULTS_MATERIALIZATION_TIMEOUT_MS) {
       setDemoUiState(DEMO_UI_STATES.interrupted, "starting-timeout");
-      state.demo.replay.errorMessage = "Replay launch timed out while waiting for live telemetry.";
-      setStatus(`${state.demo.replay.errorMessage} Tap retry.`, true, true);
+      state.demo.replay.errorMessage = "Replay launch succeeded, but analysis did not materialize before timeout.";
+      setStatus(`${state.demo.replay.errorMessage} Verify runtime health and retry.`, true, true);
       return;
     }
-    if (uiState === DEMO_UI_STATES.failed) {
-      state.demo.replay.errorMessage = "Replay backend reported a failed run state.";
-      setStatus(`${state.demo.replay.errorMessage} Tap retry.`, true, true);
-      return;
-    }
+    setDemoUiState(DEMO_UI_STATES.starting, `fallback-run-status=${runStatus || "-"}`);
+    scheduleReplayStatusPoll(replayRunId, state.demo.replay.pollBackoffMs);
   } catch (err) {
+    const apiStatus = Number(err?.apiError?.status || 0);
+    const body = err?.apiError?.body || {};
+    const runtimeUnavailable = apiStatus === 503 && String(body?.type || "").includes("core_runtime_unavailable");
     const message = String(err?.message || err || "Replay status check failed");
     const notFound = message.includes("status=404");
     state.demo.replay.pollFailures += 1;
+    if (runtimeUnavailable) {
+      setDemoUiState(DEMO_UI_STATES.failed, "runtime-unavailable");
+      state.demo.replay.errorMessage = String(body?.message || "Analysis engine is unavailable in degraded runtime mode.");
+      setStatus(`${state.demo.replay.errorMessage} ${String(body?.actionable_detail || "")}`.trim(), true, true);
+      return;
+    }
     const transient = notFound || state.demo.replay.pollFailures <= DEMO_REPLAY_MAX_TRANSIENT_ERRORS;
     console.warn("[demo] replay poll error", {
       run_id: replayRunId,
@@ -118,10 +134,11 @@ async function pollReplayStatus(runId) {
       setDemoUiState(DEMO_UI_STATES.starting, notFound ? "run-not-yet-visible" : "transient-error");
       state.demo.replay.pollBackoffMs = Math.min(DEMO_REPLAY_MAX_POLL_MS, state.demo.replay.pollBackoffMs * 2);
       scheduleReplayStatusPoll(replayRunId, state.demo.replay.pollBackoffMs);
+      setStatus("Replay status temporarily unavailable. Retrying status check…", false, true);
       return;
     }
     setDemoUiState(DEMO_UI_STATES.interrupted, "persistent-poll-error");
-    state.demo.replay.errorMessage = `Replay monitoring interrupted: ${message}`;
+    state.demo.replay.errorMessage = `Replay monitoring failed after repeated retries: ${message}`;
     setStatus(`${state.demo.replay.errorMessage} Tap retry.`, true, true);
   }
 }
@@ -173,10 +190,13 @@ async function seedDemoData() {
       total: 3,
       text: "Running NASA CMAPSS FD004 scenario...",
     });
-    const out = await startCmapssDemo(customerIdValue(state.tenant.customerId), { max_frames: 120 });
+    const out = await startCmapssDemo(customerIdValue(state.tenant.customerId), { max_frames: CMAPSS_REPLAY_DEFAULT_MAX_FRAMES });
     const resolvedRunId = String(out?.run_id || "");
     if (!resolvedRunId) throw new Error("NASA reference replay did not return a run ID.");
     state.demo.replay.launchProcessed = Number(out?.processed || 0);
+    if (out?.launch_succeeded === false && state.demo.replay.launchProcessed <= 0) {
+      throw new Error("Replay launch completed but produced zero processed frames. Verify runtime health and try a larger frame window.");
+    }
     state.demo.seedRunId = resolvedRunId;
     state.demo.replay.runId = resolvedRunId;
     beginReplayStatusMonitoring(resolvedRunId);
@@ -203,6 +223,11 @@ async function seedDemoData() {
   })().catch((err) => {
     setDemoUiState(DEMO_UI_STATES.failed, "launch-failure");
     setDemoProgress({ visible: false });
+    const apiStatus = Number(err?.apiError?.status || 0);
+    const apiBody = err?.apiError?.body || {};
+    if (apiStatus === 503 && String(apiBody?.type || "").includes("core_runtime_unavailable")) {
+      throw new Error(`${String(apiBody?.message || "Analysis engine unavailable.")} ${String(apiBody?.actionable_detail || "")}`.trim());
+    }
     throw new Error(String(err?.message || err || "Demo failed — retry"));
   }).finally(() => {
     state.demo.replay.launchInFlight = false;
