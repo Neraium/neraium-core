@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections import Counter, deque
 from dataclasses import dataclass
+from datetime import datetime, timezone
 import logging
 from typing import Any
 
@@ -119,6 +120,19 @@ class SystemicInfrastructureIntelligenceEngine:
 
     @staticmethod
     def _to_float_timestamp(value: str, fallback: float) -> float:
+        text = str(value or "").strip()
+        if text:
+            try:
+                return float(text)
+            except (TypeError, ValueError):
+                pass
+            try:
+                dt = datetime.fromisoformat(text.replace("Z", "+00:00"))
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                return float(dt.timestamp())
+            except Exception:
+                pass
         try:
             return float(value)
         except (TypeError, ValueError):
@@ -447,9 +461,50 @@ class SystemicInfrastructureIntelligenceEngine:
     def process_frame(self, frame: TelemetryFrame) -> SIIResult:
         try:
             self._ensure_sensor_order(frame)
+            frame_ts = self._to_float_timestamp(frame.timestamp, self.state.processed_frames)
+            if self.state.timestamps and frame_ts < float(self.state.timestamps[-1]):
+                self.logger.warning(
+                    "out_of_order_frame_dropped",
+                    extra={
+                        "timestamp": frame.timestamp,
+                        "last_timestamp": self.state.timestamps[-1],
+                        "site_id": frame.site_id,
+                        "asset_id": frame.asset_id,
+                    },
+                )
+                dropped = self._warmup_output(frame)
+                dropped["confidence_reasoning"] = list(
+                    dict.fromkeys([*dropped.get("confidence_reasoning", []), "out_of_order_timestamp_dropped"])
+                )
+                dropped["explanation"] = (
+                    "Dropped out-of-order telemetry frame to preserve deterministic windowed analysis."
+                )
+                dropped["data_quality_summary"] = {
+                    **dropped.get("data_quality_summary", {}),
+                    "statuses": ["TEMPORAL_IRREGULARITY", "FRAME_DROPPED"],
+                    "gate_passed": False,
+                }
+                dropped["experimental_analytics"] = {
+                    **dropped.get("experimental_analytics", {}),
+                    "processing": {
+                        "status": "warning",
+                        "code": "out_of_order_timestamp_dropped",
+                        "dropped": True,
+                    },
+                }
+                dropped["decision"] = resolve_best_action(
+                    attribution=dropped["attribution"],
+                    regime_memory=dropped["regime_memory"],
+                    risk_assessment=dropped["risk_assessment"],
+                    operator_guidance=dropped["operator_guidance"],
+                    causal_analysis=dropped["causal_analysis"],
+                    readiness={"ready": False, "reason": "out_of_order_timestamp_dropped"},
+                )
+                return dropped
+
             vec = self._vectorize(frame)
             self.state.vectors.append(vec)
-            self.state.timestamps.append(self._to_float_timestamp(frame.timestamp, self.state.processed_frames))
+            self.state.timestamps.append(frame_ts)
             self.state.processed_frames += 1
 
             baseline, recent = self._history_windows()
@@ -586,6 +641,9 @@ class SystemicInfrastructureIntelligenceEngine:
                 stability=classification_stability,
                 config=self.config,
             )
+            if not bool(dq.gate_passed):
+                interpreted = "NOMINAL_STRUCTURE"
+                decision_state = "STABLE"
             if self.state.processed_frames < int(self.config.min_samples_for_alerts):
                 decision_state = "STABLE"
 
@@ -622,6 +680,8 @@ class SystemicInfrastructureIntelligenceEngine:
                 regime_support=float(reg_assign.regime_support),
             )
             confidence = confidence_to_level(float(conf.score))
+            if not bool(dq.gate_passed):
+                confidence = "low"
             if confidence not in ALLOWED_CONFIDENCE:
                 confidence = "low"
 
@@ -873,6 +933,11 @@ class SystemicInfrastructureIntelligenceEngine:
                         "support": reg_assign.regime_support,
                     },
                     "context": context,
+                    "processing": {
+                        "status": "success" if bool(dq.gate_passed) else "warning",
+                        "code": "data_quality_gate_passed" if bool(dq.gate_passed) else "data_quality_gate_failed",
+                        "dropped": False,
+                    },
                 },
             }
             out["decision"] = resolve_best_action(
