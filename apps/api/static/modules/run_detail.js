@@ -426,7 +426,7 @@ async function loadRunDetail(runId) {
   const title = qs("#runDetailTitle");
   const meta = qs("#runDetailMeta");
   if (title) title.textContent = `Run analysis · ${run.name}`;
-  if (meta) meta.textContent = `Run ${run.run_id} · created ${run.created_at}`;
+  if (meta) meta.textContent = `${run.run_id} · created ${run.created_at}`;
   state.runRecent = Array.isArray(recentEnv?.results) ? recentEnv.results : [];
   collectKnownSites(state.runRecent);
   renderTenantControls();
