@@ -1058,6 +1058,7 @@ const state = {
   },
   /** CSV semantic mapping (preview + user overrides before ingest). */
   uploadCsv: {
+    stage: "idle",
     preview: null,
     headers: [],
     issues: [],

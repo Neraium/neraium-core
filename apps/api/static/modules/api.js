@@ -57,7 +57,7 @@
       }
     }
     if (!res.ok) {
-      const detailValue = body && typeof body === "object" ? body.detail : null;
+      const detailValue = body && typeof body === "object" ? (body.detail ?? body.message) : null;
       const detail =
         typeof detailValue === "string"
           ? detailValue
@@ -107,6 +107,7 @@
         status: res.status,
         statusText: res.statusText || "",
         detail,
+        body,
         responseText: raw || "",
       };
       throw e;

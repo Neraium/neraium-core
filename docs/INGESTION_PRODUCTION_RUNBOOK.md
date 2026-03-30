@@ -35,11 +35,12 @@ CSV flow:
 
 All API failures should return a structured envelope:
 
+- `ok` (always `false` for failures)
+- `stage` (`preview`, `normalize`, `ingest`, `integration_pull`, or `request`)
 - `type`
 - `message`
 - `actionable_detail`
-- `detail`
-- optional `issue_details`, `warning_details`
+- `issue_details` / `warning_details`
 - `correlation_id` for support/debug correlation
 
 For request-schema failures, `type=validation_error` and `issue_details` includes field-level validation hints.
@@ -65,7 +66,7 @@ Actions:
 3. Verify preview request body includes one of:
    - JSON: `csv_sample` (preferred) or legacy `csv_text`
    - multipart form: `file` upload, or `csv_sample`/`csv_text`
-4. If mapping is ambiguous, continue via guided mapping UI (not a hard ingest failure).
+4. If mapping is ambiguous, preview returns `requires_confirmation=true`; keep operator in review-blocked state until mapping is confirmed.
 5. Retry preview, then proceed to upload only after preview returns headers and mapping guidance.
 
 ## 7) Logging and observability notes
