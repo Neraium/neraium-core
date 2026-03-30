@@ -32,6 +32,16 @@ Canonical founder-safe live demo workflow (live + backup mode in one command):
 ```bash
 python tools/run_canonical_demo.py --base-url http://127.0.0.1:7860 --customer-id customer-a --max-frames 240
 ```
+
+
+Canonical multi-scenario proof package (threshold comparison baseline + founder artifact):
+```bash
+python tools/run_proof_package.py
+```
+This emits deterministic artifacts under `reports/proof_package/` across stable, drift, spike, progressive-critical, and messy-data scenarios with scenario-level timelines, summaries, and a one-glance founder/investor brief.
+Workflow doc:
+→ **[docs/PROOF_PACKAGE_WORKFLOW.md](docs/PROOF_PACKAGE_WORKFLOW.md)**
+
 Runbook:
 → **[docs/CANONICAL_DEMO_RUNBOOK.md](docs/CANONICAL_DEMO_RUNBOOK.md)**
 
