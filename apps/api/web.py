@@ -47,6 +47,10 @@ def build_web_router() -> APIRouter:
     def web_validation() -> HTMLResponse:
         return _render_index()
 
+    @router.get("/onboarding", include_in_schema=False)
+    def web_onboarding() -> HTMLResponse:
+        return _render_index()
+
     @router.get("/reference", include_in_schema=False)
     def web_reference() -> RedirectResponse:
         return RedirectResponse(url="/validation", status_code=307)

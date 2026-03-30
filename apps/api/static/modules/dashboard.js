@@ -1036,6 +1036,7 @@ function getRoute() {
   const parts = window.location.pathname.split("/").filter(Boolean);
   if (parts.length === 0 || parts[0] === "dashboard") return { page: "dashboard" };
   if (parts[0] === "validation" || parts[0] === "reference" || parts[0] === "historical-validation") return { page: "validation" };
+  if (parts[0] === "onboarding") return { page: "onboarding" };
   if (parts[0] === "upload") return { page: "upload" };
   if (parts[0] === "app" && parts[1] === "runs" && parts[2]) return { page: "run-detail", runId: parts[2] };
   if (parts[0] === "app" && parts[1] === "runs") return { page: "runs" };
@@ -1420,6 +1421,7 @@ function setPage(page) {
     upload: ["Upload", "Ingest telemetry"],
     runs: ["Runs", "Select a run"],
     validation: ["Validation", "Replay workspace"],
+    onboarding: ["Onboarding", "Connect your customer workspace"],
     "run-detail": ["Run Analysis", "Analyze this system"],
     "result-detail": ["Result Detail", "Focused view for a single result"],
   };
@@ -1436,6 +1438,7 @@ function setPage(page) {
   if (page === "upload") qs('[data-nav="upload"]')?.classList.add("active");
   if (page === "runs" || page === "run-detail") qs('[data-nav="runs"]')?.classList.add("active");
   if (page === "validation") qs('[data-nav="validation"]')?.classList.add("active");
+  if (page === "onboarding") qs('[data-nav="onboarding"]')?.classList.add("active");
 }
 
 function activateAnalysisWorkspaceTab(_tabName = "executive") {
