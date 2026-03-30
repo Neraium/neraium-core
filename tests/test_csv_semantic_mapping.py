@@ -10,6 +10,7 @@ from neraium_core.csv_mapping import (
     validate_mapping,
 )
 from neraium_core.pipeline import parse_csv_text
+from neraium_core.pipeline import run_csv_ingestion_pipeline
 
 
 def test_infer_arbitrary_headers() -> None:
@@ -67,3 +68,47 @@ def test_resolve_mapping_requires_confirmation_on_ambiguous_headers() -> None:
     headers = ["timestamp", "time", "recorded_at", "asset", "value"]
     with pytest.raises(ValueError, match="ambiguous_mapping"):
         resolve_mapping(headers, None)
+
+
+def test_csv_pipeline_generates_canonical_records() -> None:
+    csv_text = (
+        "when,unit,site,temp,pressure\n"
+        "2026-01-01T00:00:00+00:00,A-1,plant-1,10.2,50.1\n"
+    )
+    result = run_csv_ingestion_pipeline(csv_text, customer_id="cust-a")
+    assert result.mapping is not None
+    assert len(result.canonical_records) == 1
+    rec = result.canonical_records[0]
+    assert rec.asset_id == "A-1"
+    assert rec.site_id == "plant-1"
+    assert rec.timestamp.startswith("2026-01-01T00:00:00")
+    assert set(rec.signals.keys()) == {"temp", "pressure"}
+
+
+def test_csv_pipeline_explicit_mapping_override() -> None:
+    csv_text = "t,a,sig\n2026-01-01T00:00:00+00:00,asset-x,3.2\n"
+    override = {"timestamp": "t", "asset_id": "a", "site_id": None, "sensor_columns": ["sig"]}
+    result = run_csv_ingestion_pipeline(csv_text, customer_id="cust-a", column_mapping=override)
+    assert result.mapping is not None
+    assert len(result.issues) == 0
+    assert result.canonical_records[0].signals["sig"] == 3.2
+
+
+def test_csv_pipeline_validation_failures_and_malformed_rows() -> None:
+    csv_text = "t,a,sig\n2026-01-01T00:00:00+00:00,asset-x,1.0,EXTRA\n"
+    result = run_csv_ingestion_pipeline(csv_text, customer_id="cust-a")
+    assert any(i.code == "malformed_row" for i in result.issues)
+
+
+def test_csv_pipeline_mixed_rows_only_emits_valid_canonical_records() -> None:
+    csv_text = (
+        "timestamp,asset,s1\n"
+        "2026-01-01T00:00:00+00:00,ok-a,1.1\n"
+        "bad-ts,ok-b,1.2\n"
+        "2026-01-01T00:00:02+00:00,ok-c,bad\n"
+    )
+    result = run_csv_ingestion_pipeline(csv_text, customer_id="cust-a")
+    assert len(result.canonical_records) == 1
+    codes = {i.code for i in result.issues}
+    assert "invalid_timestamp" in codes
+    assert "non_numeric_signal" in codes
