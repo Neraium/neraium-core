@@ -50,7 +50,9 @@ class StructuralSystemIntelligencePlatform:
             )
 
         merged: dict[str, Any] = {**production, **advisory, **experimental}
-        compatibility = to_operator_compatibility(merged)
+        # Production boundary hardening:
+        # Operator-facing compatibility output must remain driven by production-grade layers only.
+        compatibility = to_operator_compatibility(production)
 
         out = {
             "operating_mode": mode,
