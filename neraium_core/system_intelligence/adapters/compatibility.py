@@ -26,6 +26,9 @@ def to_operator_compatibility(intel: dict[str, Any]) -> dict[str, Any]:
     calibrated_rec = ((reliability.get("intervention_recommendation") or {}).get("recommendation_calibrated_confidence"))
     rec_confidence = float(calibrated_rec if calibrated_rec is not None else best_ranked.get("confidence", 0.0))
     reliability_warnings = list((((reliability.get("intervention_recommendation") or {}).get("reliability_trace") or {}).get("warnings") or []))
+    novelty = float((intel.get("trajectory_intelligence") or {}).get("novelty_score", 0.0) or 0.0)
+    support_count = int((intel.get("trajectory_intelligence") or {}).get("support_count", 0) or 0)
+    drift_warning = bool(((intel.get("reliability_intelligence") or {}).get("risk_advisory") or {}).get("drift_warning", False))
     trajectory = intel.get("trajectory_archetypes") or intel.get("trajectory_intelligence") or {}
     novelty = float(trajectory.get("novelty_score", 0.0) or 0.0)
     support_count = int(trajectory.get("support", trajectory.get("support_count", 0)) or 0)
@@ -68,7 +71,7 @@ def to_operator_compatibility(intel: dict[str, Any]) -> dict[str, Any]:
         advisory_text = f"{advisory_text} Reliability notes: {reliability_warnings[0]}"
     if fallback_triggered:
         advisory_text = "Fallback active: insufficient trusted evidence for aggressive intervention; continue monitoring."
-    if bool(structural_uncertainty.get("active", False)):
+p    if bool(structural_uncertainty.get("active", False)):
         advisory_text = "Structural uncertainty mode active: human review required; keep posture bounded and monitoring-first."
     if override_applied:
         advisory_text = "Structural uncertainty override applied: intervention forced to monitor; human review is required."
