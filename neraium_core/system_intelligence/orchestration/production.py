@@ -13,7 +13,16 @@ from ..transition_model.transition_dynamics import LatentTransitionModel
 
 
 class ProductionIntelligenceOrchestrator:
-    """Minimal production-safe path for deployable operator-facing intelligence."""
+    """Minimal production-safe path for deployable operator-facing intelligence.
+
+    Production boundary (decision-grade):
+    - latent_structural_state
+    - transition_dynamics
+    - trajectory_archetypes / trajectory_forecast
+    - intervention_intelligence
+    - reliability_intelligence
+    Advisory/experimental layers are intentionally excluded from this class.
+    """
 
     def __init__(self) -> None:
         self.latent = LatentStructuralStateEncoder(latent_dim=3)
@@ -103,6 +112,36 @@ class ProductionIntelligenceOrchestrator:
             best = intervention["recommendation"]["best_intervention"]
             best["raw_confidence"] = best.get("confidence", 0.0)
             best["confidence"] = round(rec_cal, 6)
+        ranked = list((intervention.get("recommendation") or {}).get("ranked_interventions") or [])
+        best_ranked = dict((intervention.get("recommendation") or {}).get("best_intervention") or {})
+        reliability_trace = dict(((reliability.get("intervention_recommendation") or {}).get("reliability_trace") or {}))
+        warnings = list(reliability_trace.get("warnings") or [])
+        memory_summary = dict(((intervention.get("historical_evidence") or {}).get("support_summary") or {}))
+        evidence_classes = {
+            "helpful": len(list(memory_summary.get("helpful_interventions") or [])),
+            "harmful": len(list(memory_summary.get("harmful_interventions") or [])),
+            "neutral": len(list(memory_summary.get("neutral_interventions") or [])),
+        }
+        trace = {
+            "state_context": {
+                "regime": transition.regime,
+                "transition_path": transition.transition_path,
+                "trajectory_family": trajectory.get("current_trajectory_path_family", trajectory.get("current_trajectory_family", "unknown")),
+                "escalation_probability": round(float(transition.escalation_probability), 6),
+            },
+            "top_intervention_factors": list((best_ranked.get("ranking_factors") or {}).items())[:5],
+            "calibrated_confidence": round(rec_cal, 6),
+            "intervention_history_evidence": {
+                "support_count": int(memory_summary.get("support_count", 0) or 0),
+                "evidence_classes": evidence_classes,
+            },
+            "law_influence": {
+                "status": "excluded_from_core_trace",
+                "reason": "Law influence is advisory unless decision-grade governance is explicitly active.",
+            },
+            "warnings_or_blockers": warnings,
+            "audit_note": "Trace includes only production decision-grade layers.",
+        }
 
         return {
             "latent_structural_state": {
@@ -126,4 +165,5 @@ class ProductionIntelligenceOrchestrator:
             "trajectory_forecast": forecast,
             "intervention_intelligence": intervention,
             "reliability_intelligence": reliability,
+            "core_decision_trace": trace,
         }

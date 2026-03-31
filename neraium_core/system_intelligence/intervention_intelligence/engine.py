@@ -56,7 +56,11 @@ class InterventionIntelligenceEngine:
                 intervention_target=str(intervention_observation.get("target", "system")),
                 context=context,
                 pre_state=pre_or_post_state,
-                metadata={"source": "operator_input", "confidence": float(intervention_observation.get("confidence", 0.5))},
+                metadata={
+                    "source": "operator_input",
+                    "confidence": float(intervention_observation.get("confidence", 0.5)),
+                    "latent_state": list(context.get("latent_state") or []),
+                },
             )
 
         candidates = []
