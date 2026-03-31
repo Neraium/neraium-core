@@ -5,6 +5,7 @@ from typing import Any
 from .adapters.compatibility import to_operator_compatibility
 from .archetypes.archetype_memory import StructuralArchetypeMemory
 from .counterfactuals.intervention_engine import CounterfactualInterventionEngine
+from .federation.layer import CrossSystemStructuralIntelligenceLayer
 from .forecast.trajectory_conditioned import TrajectoryConditionedForecaster
 from .intervention_intelligence.engine import InterventionIntelligenceEngine
 from .law_engine import StructuralLawDecisionEngine
@@ -29,6 +30,7 @@ class StructuralSystemIntelligencePlatform:
         self.law_extractor = StructuralLawExtractor()
         self.law_engine = StructuralLawDecisionEngine()
         self.intervention_intelligence = InterventionIntelligenceEngine()
+        self.cross_system = CrossSystemStructuralIntelligenceLayer()
 
     def update(self, observation: dict[str, Any]) -> dict[str, Any]:
         latent_snapshot = self.latent.encode(observation)
@@ -116,6 +118,13 @@ class StructuralSystemIntelligencePlatform:
             counterfactuals=cf,
         )
 
+
+        cross_system = self.cross_system.update(
+            trajectory_info=traj,
+            law_info=laws,
+            intervention_info=intervention_intelligence,
+        )
+
         output = {
             "latent_structural_state": {
                 "embedding": [round(float(v), 6) for v in latent_snapshot.embedding],
@@ -140,6 +149,7 @@ class StructuralSystemIntelligencePlatform:
             "law_engine_decision": law_decision_support,
             "mechanism_discovery": mech,
             "intervention_intelligence": intervention_intelligence,
+            **cross_system,
         }
         output["compatibility"] = to_operator_compatibility(output)
         return output
