@@ -13,7 +13,8 @@ def compute_backtest_metrics(decision_logs: list[dict[str, Any]], outcomes: list
             "calibration_under_real_world_noise": 0.0,
             "decision_accuracy": 0.0,
             "harm_rate": 0.0,
-            "calibration": 0.0,
+            "calibration_error": 1.0,
+            "calibration_quality": 0.0,
             "per_step": [],
         }
 
@@ -55,16 +56,17 @@ def compute_backtest_metrics(decision_logs: list[dict[str, Any]], outcomes: list
 
     n = len(decision_logs)
     calibration_error = sum(abs(float(r["confidence"]) - float(r["correct"])) for r in per_step) / n
-    calibration = max(0.0, 1.0 - calibration_error)
+    calibration_quality = max(0.0, 1.0 - calibration_error)
 
     return {
         "decision_alignment_with_successful_outcomes": round(aligned_success / n, 6),
         "intervention_success_rate_vs_operator": round(model_success / max(1, operator_success), 6),
         "avoided_failures": avoided_failures,
         "false_confidence_events": false_confidence,
-        "calibration_under_real_world_noise": round(calibration, 6),
+        "calibration_under_real_world_noise": round(calibration_error, 6),
         "decision_accuracy": round(sum(r["correct"] for r in per_step) / n, 6),
         "harm_rate": round(harms / n, 6),
-        "calibration": round(calibration, 6),
+        "calibration_error": round(calibration_error, 6),
+        "calibration_quality": round(calibration_quality, 6),
         "per_step": per_step,
     }

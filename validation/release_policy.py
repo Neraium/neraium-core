@@ -26,7 +26,7 @@ CORPUS_CLASS_RULES: dict[str, CorpusClassRule] = {
     "adversarial": CorpusClassRule(
         required=False,
         max_failure_ratio=0.34,
-        catastrophic_gates=("maximum_harm_rate", "minimum_calibration_quality", "maximum_false_confidence_rate"),
+        catastrophic_gates=("maximum_harm_rate", "maximum_calibration_error", "maximum_false_confidence_rate"),
     ),
     "transfer_cross_domain": CorpusClassRule(
         required=True,
@@ -40,28 +40,28 @@ CORPUS_TYPE_THRESHOLDS: dict[str, ReleaseGateThresholds] = {
     "baseline_clean": ReleaseGateThresholds(
         min_decision_accuracy=0.74,
         max_harm_rate=0.18,
-        min_calibration_quality=0.70,
+        max_calibration_error=0.30,
         max_false_confidence_rate=0.08,
         max_drift_warning_rate=0.22,
     ),
     "noisy_realistic": ReleaseGateThresholds(
         min_decision_accuracy=0.69,
         max_harm_rate=0.22,
-        min_calibration_quality=0.63,
+        max_calibration_error=0.37,
         max_false_confidence_rate=0.12,
         max_drift_warning_rate=0.30,
     ),
     "adversarial": ReleaseGateThresholds(
         min_decision_accuracy=0.62,
         max_harm_rate=0.27,
-        min_calibration_quality=0.58,
+        max_calibration_error=0.42,
         max_false_confidence_rate=0.15,
         max_drift_warning_rate=0.36,
     ),
     "transfer_cross_domain": ReleaseGateThresholds(
         min_decision_accuracy=0.66,
         max_harm_rate=0.25,
-        min_calibration_quality=0.60,
+        max_calibration_error=0.40,
         max_false_confidence_rate=0.14,
         max_drift_warning_rate=0.32,
     ),
@@ -75,7 +75,7 @@ def classify_failure_modes(corpus_type: str, gate_breakdown: list[dict[str, Any]
         tags.add("trajectory_misclassification")
     if "maximum_harm_rate" in failed:
         tags.add("intervention_ranking_error")
-    if "minimum_calibration_quality" in failed or "maximum_false_confidence_rate" in failed:
+    if "maximum_calibration_error" in failed or "maximum_false_confidence_rate" in failed:
         tags.add("calibration_failure")
     if "minimum_domain_coverage" in failed or "minimum_asset_coverage" in failed:
         tags.add("attribution_error")

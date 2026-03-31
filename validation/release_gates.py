@@ -8,7 +8,7 @@ from typing import Any
 class ReleaseGateThresholds:
     min_decision_accuracy: float = 0.70
     max_harm_rate: float = 0.20
-    min_calibration_quality: float = 0.65
+    max_calibration_error: float = 0.35
     max_false_confidence_rate: float = 0.10
     max_drift_warning_rate: float = 0.25
     min_records: int = 50
@@ -17,7 +17,7 @@ class ReleaseGateThresholds:
     min_intervention_memory_contribution: float | None = None
     regression_accuracy_drop_limit: float = 0.03
     regression_harm_increase_limit: float = 0.02
-    regression_calibration_drop_limit: float = 0.03
+    regression_calibration_error_increase_limit: float = 0.03
     regression_drift_increase_limit: float = 0.05
 
 
@@ -50,7 +50,7 @@ def compare_against_previous(
     metrics = {
         "decision_accuracy": (1.0, thresholds.regression_accuracy_drop_limit),
         "harm_rate": (-1.0, thresholds.regression_harm_increase_limit),
-        "calibration_quality": (1.0, thresholds.regression_calibration_drop_limit),
+        "calibration_error": (-1.0, thresholds.regression_calibration_error_increase_limit),
         "drift_warning_rate": (-1.0, thresholds.regression_drift_increase_limit),
     }
 
@@ -98,7 +98,7 @@ def evaluate_release_gates(
 
     decision_accuracy = float(summary.get("decision_accuracy", 0.0))
     harm_rate = float(summary.get("harm_rate", 1.0))
-    calibration_quality = float(summary.get("calibration_quality", 0.0))
+    calibration_error = float(summary.get("calibration_error", 1.0))
     false_confidence_rate = float(summary.get("false_confidence_rate", 1.0))
     drift_warning_rate = float(summary.get("drift_warning_rate", 1.0))
     intervention_memory = summary.get("intervention_memory_contribution")
@@ -140,11 +140,11 @@ def evaluate_release_gates(
             None if harm_rate <= thresholds.max_harm_rate else "Harm rate exceeds safe operating bound",
         ),
         _gate_result(
-            "minimum_calibration_quality",
-            calibration_quality >= thresholds.min_calibration_quality,
-            round(calibration_quality, 6),
-            f">= {thresholds.min_calibration_quality}",
-            None if calibration_quality >= thresholds.min_calibration_quality else "Calibration quality degraded below floor",
+            "maximum_calibration_error",
+            calibration_error <= thresholds.max_calibration_error,
+            round(calibration_error, 6),
+            f"<= {thresholds.max_calibration_error}",
+            None if calibration_error <= thresholds.max_calibration_error else "Calibration error exceeds release limit",
         ),
         _gate_result(
             "maximum_false_confidence_rate",
@@ -163,7 +163,14 @@ def evaluate_release_gates(
     ]
 
     if thresholds.min_intervention_memory_contribution is not None:
-        observed = float(intervention_memory or 0.0)
+        observed = 0.0
+        if isinstance(intervention_memory, dict):
+            if str(intervention_memory.get("status")) != "available":
+                observed = -1.0
+            else:
+                observed = float(intervention_memory.get("mean_best_confidence_delta", 0.0) or 0.0)
+        else:
+            observed = float(intervention_memory or 0.0)
         gates.append(
             _gate_result(
                 "minimum_intervention_memory_contribution",
@@ -173,6 +180,19 @@ def evaluate_release_gates(
                 None if observed >= thresholds.min_intervention_memory_contribution else "Intervention-memory contribution below floor",
             )
         )
+
+    representativeness = dict((corpus.get("representativeness") or {}))
+    representativeness_warnings = set(str(w) for w in list(representativeness.get("warnings") or []))
+    severe = sorted(w for w in representativeness_warnings if w in {"dominant_asset_skew", "weak_domain_diversity"})
+    gates.append(
+        _gate_result(
+            "representativeness_safety",
+            len(severe) == 0,
+            ",".join(severe) if severe else "none",
+            "no severe representativeness warnings",
+            None if not severe else "Corpus representativeness warnings indicate dominant or weakly diverse replay data",
+        )
+    )
 
     regression = compare_against_previous(core_validation_report, previous_core_report, thresholds)
     if regression["release_regression_blockers"]:
