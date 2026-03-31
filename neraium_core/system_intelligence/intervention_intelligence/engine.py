@@ -218,14 +218,6 @@ class InterventionIntelligenceEngine:
                 item["confidence"] = round(min(float(item.get("confidence", 0.0)), bounded_conf), 4)
                 item.setdefault("warnings", [])
                 item["warnings"] = sorted(set([*item["warnings"], "fallback_conservative_bounding"]))
-            ranked.setdefault("decision_trace", {})
-            ranked["decision_trace"]["fallback_policy"] = {
-                "triggered": True,
-                "reasons": sorted(set(reasons)),
-                "high_novelty_weak_support": high_novelty_weak_support,
-                "posture": ranked["recommended_posture"],
-                "max_allowed_confidence": round(bounded_conf, 4),
-            }
         else:
             ranked["fallback_triggered"] = False
             ranked["fallback_reasons"] = []
