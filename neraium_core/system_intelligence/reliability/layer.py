@@ -280,3 +280,32 @@ class StructuralReliabilityLayer:
             },
             "record_store": self.store.inspect(limit=24),
         }
+
+    def ingest_feedback_records(self, *, asset_id: str, step: int, feedback_records: list[dict[str, Any]]) -> int:
+        finalized = 0
+        for row in feedback_records:
+            confidence = float(row.get("confidence", 0.5))
+            label = str(row.get("outcome_label", "neutral"))
+            realized = 1.0 if label in {"helpful", "recovery-associated"} else 0.0 if label == "harmful" else 0.5
+            context = self._build_context(
+                trajectory_family=str(row.get("trajectory_family", "unknown")),
+                transition_path=str(row.get("transition_path", "unknown")),
+                regime=str(row.get("regime", "unknown")),
+                novelty=float(row.get("novelty", 0.5)),
+                support_count=int(row.get("support_count", 1)),
+                mechanism_family="feedback",
+                local_weight=1.0,
+            )
+            rec_id = self.store.issue(
+                asset_id=asset_id,
+                family="intervention_recommendation_confidence",
+                context=context,
+                raw_confidence=confidence,
+                local_evidence_weight=1.0,
+                transferred_evidence_weight=0.0,
+                step=step,
+                metadata={"calibration_bucket": f"feedback|{label}"},
+            )
+            if self.store.finalize(record_id=rec_id, realized_outcome=realized, horizon="short_term", step=step):
+                finalized += 1
+        return finalized

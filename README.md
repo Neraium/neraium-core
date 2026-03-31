@@ -116,6 +116,24 @@ Operational systems / telemetry sources
 → Systemic Infrastructure Intelligence (read-only computation)  
 → Human operators and evidence outputs (API results, CSV, reports)  
 
+### System intelligence operating modes (March 31, 2026 refactor)
+
+The structural intelligence stack now has explicit operating boundaries:
+
+- `production` (**default, deploy-safe**): latent structural state, transition dynamics, trajectory intelligence, intervention intelligence, reliability calibration, compatibility adapter.
+- `research_assistive` (**advisory-only**): mechanism discovery, law extraction, law decision support, cross-system intelligence.
+- `experimental` (**opt-in, non-actionable**): universal layer, falsification, active learning, structural sandbox.
+- `full` (**explicit combined mode**): runs all production + advisory + experimental sections together for research/debug workflows.
+
+Canonical platform outputs are grouped under:
+
+- `production_intelligence`
+- `advisory_intelligence`
+- `experimental_intelligence`
+- `capability_boundaries` (machine-readable status/actionability metadata per capability)
+
+Top-level legacy sections are still mirrored for transition compatibility, but production consumers should prefer `production_intelligence`.
+
 ---
 
 ## What SII does (technical)

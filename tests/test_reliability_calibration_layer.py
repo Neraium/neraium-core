@@ -179,3 +179,37 @@ def test_calibrated_confidence_tracks_empirical_success_better_than_raw() -> Non
     assert abs(rec["recommendation_calibrated_confidence"] - transition["escalation_probability"]) < abs(
         rec["recommendation_raw_confidence"] - transition["escalation_probability"]
     )
+
+
+def test_repeated_high_confidence_failures_are_penalized() -> None:
+    layer = StructuralReliabilityLayer()
+    transition, forecast, laws, intervention, cross = _base_inputs(rec_support=6, rec_conf=0.9)
+    for step in range(1, 7):
+        layer.ingest_feedback_records(
+            asset_id="asset",
+            step=step,
+            feedback_records=[
+                {
+                    "outcome_label": "harmful",
+                    "confidence": 0.92,
+                    "trajectory_family": "escalating",
+                    "transition_path": "escalating",
+                    "regime": "critical",
+                    "novelty": 0.1,
+                    "support_count": 6,
+                }
+            ],
+        )
+
+    out = layer.calibrate_all(
+        asset_id="asset",
+        step=20,
+        transition=transition,
+        trajectory_forecast=forecast,
+        laws=laws,
+        intervention=intervention,
+        cross=cross,
+    )
+    trace = out["intervention_recommendation"]["reliability_trace"]
+    assert out["intervention_recommendation"]["recommendation_calibrated_confidence"] < 0.7
+    assert any("high-confidence misses" in msg.lower() for msg in trace["warnings"])
