@@ -368,3 +368,36 @@ def test_override_divergence_clusters_are_recorded() -> None:
         "operator_wrong_system_better",
         "unresolved_tradeoff",
     }
+
+
+def test_baseline_context_with_support_count_does_not_force_fallback_or_monitor() -> None:
+    engine = InterventionIntelligenceEngine()
+    out = engine.update(
+        asset_id="baseline-1",
+        observation={
+            "latent_embedding": [0.2, 0.22, 0.21],
+            "calibration": {"reliability": 0.92},
+        },
+        transition={
+            "regime": "transitional",
+            "transition_path": "stable",
+            "escalation_probability": 0.34,
+            "reversibility_score": 0.72,
+            "distance_to_critical_region": 0.65,
+        },
+        trajectory={
+            "current_trajectory_path_family": "stable_family",
+            "novelty_score": 0.0,
+            "support_count": 8,
+        },
+        mechanism={"mechanism_candidates": []},
+        laws={"law_candidates": []},
+        counterfactuals={"scenario_rankings": [{"name": "restore_relationship_cluster_to_baseline", "risk_delta": 0.08}]},
+    )
+
+    recommendation = out["recommendation"]
+    mode = out["structural_uncertainty_mode"]
+    assert out["context"]["support_count"] == 8
+    assert recommendation["fallback_triggered"] is False
+    assert recommendation["best_intervention"]["name"] != "monitor"
+    assert mode["active"] is False
