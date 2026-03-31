@@ -16,6 +16,22 @@ class StructuralSystemIntelligencePlatform:
         self.operating_mode: OperatingMode = operating_mode
         self.production = ProductionIntelligenceOrchestrator()
         self.research = ResearchExperimentalOrchestrator()
+        self._real_world_validation: dict[str, Any] = {
+            "decision_accuracy": 0.0,
+            "harm_rate": 0.0,
+            "calibration": 0.0,
+            "law_validation": {},
+            "drift_signals": {},
+        }
+
+    def set_real_world_validation(self, payload: dict[str, Any]) -> None:
+        self._real_world_validation = {
+            "decision_accuracy": float(payload.get("decision_accuracy", 0.0)),
+            "harm_rate": float(payload.get("harm_rate", 0.0)),
+            "calibration": float(payload.get("calibration", 0.0)),
+            "law_validation": dict(payload.get("law_validation") or {}),
+            "drift_signals": dict(payload.get("drift_signals") or {}),
+        }
 
     def update(self, observation: dict[str, Any], *, operating_mode: OperatingMode | None = None) -> dict[str, Any]:
         mode = operating_mode or self.operating_mode
@@ -53,6 +69,7 @@ class StructuralSystemIntelligencePlatform:
                 "legacy_top_level_sections": sorted(merged.keys()),
                 "note": "Top-level legacy sections are preserved for transition compatibility.",
             },
+            "real_world_validation": self._real_world_validation,
             **merged,
         }
         return out
