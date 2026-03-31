@@ -788,6 +788,7 @@ class SystemicInfrastructureIntelligenceEngine:
                     "evidence": risk_assessment_data.evidence,
                 },
             )
+            law_support: dict[str, Any] | None = None
 
             top_sensors = attribution.top_sensors if isinstance(attribution.top_sensors, list) else []
             attribution_sensor_names = [
@@ -870,6 +871,34 @@ class SystemicInfrastructureIntelligenceEngine:
             }
             structural_intelligence = self.intelligence.update(intelligence_observation)
             self.state.intelligence_history.append(structural_intelligence)
+            law_support = structural_intelligence.get("law_engine_decision") if isinstance(structural_intelligence, dict) else None
+            law_adjusted_risk = None
+            if isinstance(law_support, dict):
+                law_adjusted_risk = law_support.get("law_adjusted_risk")
+                if isinstance(law_adjusted_risk, (int, float)):
+                    risk_assessment_data = risk_assessment_data.__class__(
+                        current_risk_level=risk_assessment_data.current_risk_level,
+                        projected_near_term_trend=risk_assessment_data.projected_near_term_trend,
+                        trajectory=risk_assessment_data.trajectory,
+                        risk_score=risk_assessment_data.risk_score,
+                        projected_score=max(
+                            0.0,
+                            min(1.0, float(risk_assessment_data.projected_score) + 0.5 * float(law_support.get("law_risk_delta", 0.0))),
+                        ),
+                        evidence={
+                            **dict(risk_assessment_data.evidence),
+                            "law_influence_weight": round(float(law_support.get("law_influence_weight", 0.0)), 4),
+                            "law_risk_delta": round(float(law_support.get("law_risk_delta", 0.0)), 4),
+                        },
+                    )
+                    if law_support.get("law_informed_recommendations"):
+                        operator_guidance = operator_guidance.__class__(
+                            concise_summary=f"{operator_guidance.concise_summary} {law_support.get('law_layer_message', '')}".strip(),
+                            concern=operator_guidance.concern,
+                            first_inspection_target=operator_guidance.first_inspection_target,
+                            recommended_actions=list(law_support.get("law_informed_recommendations") or operator_guidance.recommended_actions),
+                        )
+                    causal_analysis["law_linked_interventions"] = list(law_support.get("law_linked_interventions") or [])
             context = None
             if self.config.allow_context_provider:
                 try:
@@ -937,6 +966,11 @@ class SystemicInfrastructureIntelligenceEngine:
                     "projected_score": risk_assessment_data.projected_score,
                     "cumulative_risk_pressure": self.state.cumulative_risk_pressure,
                     "evidence": risk_assessment_data.evidence,
+                    "base_risk": (law_support or {}).get("base_risk") if isinstance(law_support, dict) else None,
+                    "law_adjusted_risk": (law_support or {}).get("law_adjusted_risk") if isinstance(law_support, dict) else None,
+                    "law_risk_delta": (law_support or {}).get("law_risk_delta") if isinstance(law_support, dict) else None,
+                    "law_influence_weight": (law_support or {}).get("law_influence_weight") if isinstance(law_support, dict) else None,
+                    "confidence_adjustment": (law_support or {}).get("confidence_adjustment") if isinstance(law_support, dict) else None,
                 },
                 "operator_guidance": {
                     "status": "ready",
@@ -944,6 +978,8 @@ class SystemicInfrastructureIntelligenceEngine:
                     "concern": operator_guidance.concern,
                     "first_inspection_target": operator_guidance.first_inspection_target,
                     "recommended_actions": operator_guidance.recommended_actions,
+                    "law_layer_message": (law_support or {}).get("law_layer_message") if isinstance(law_support, dict) else None,
+                    "matched_law_ids": (law_support or {}).get("matched_law_ids") if isinstance(law_support, dict) else [],
                 },
                 "causal_analysis": causal_analysis,
                 "structural_system_intelligence": structural_intelligence,
@@ -1011,6 +1047,10 @@ class SystemicInfrastructureIntelligenceEngine:
                 decision_context=self.state.decision_hysteresis_state,
             )
             if isinstance(out.get("decision"), dict):
+                if isinstance(law_support, dict):
+                    out["decision"]["law_decision_trace"] = law_support.get("law_decision_trace")
+                    out["decision"]["law_influence_weight"] = law_support.get("law_influence_weight")
+                    out["decision"]["matched_law_ids"] = law_support.get("matched_law_ids")
                 next_hysteresis = out["decision"].get("hysteresis_state")
                 if isinstance(next_hysteresis, dict):
                     self.state.decision_hysteresis_state = dict(next_hysteresis)
