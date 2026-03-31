@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from .active_learning import ActiveStructuralLearningEngine
 from .adapters.compatibility import to_operator_compatibility
 from .archetypes.archetype_memory import StructuralArchetypeMemory
 from .counterfactuals.intervention_engine import CounterfactualInterventionEngine
@@ -37,6 +38,7 @@ class StructuralSystemIntelligencePlatform:
         self.reliability = StructuralReliabilityLayer()
         self.experimental_universal = ExperimentalUniversalStructuralLayer()
         self.falsification = StructuralFalsificationEngine()
+        self.active_learning = ActiveStructuralLearningEngine()
 
     def update(self, observation: dict[str, Any]) -> dict[str, Any]:
         latent_snapshot = self.latent.encode(observation)
@@ -182,6 +184,22 @@ class StructuralSystemIntelligencePlatform:
             universal=universal,
         )
 
+        active_learning = self.active_learning.update(
+            observation=observation,
+            transition={
+                "regime": transition.regime,
+                "transition_path": transition.transition_path,
+                "escalation_probability": transition.escalation_probability,
+                "uncertainty": transition.uncertainty,
+            },
+            trajectory=traj,
+            mechanism=mech,
+            laws=laws,
+            intervention=intervention_intelligence,
+            reliability=reliability,
+            cross_system=(cross_system.get("cross_system_structural_intelligence") or {}),
+        )
+
         output = {
             "latent_structural_state": {
                 "embedding": [round(float(v), 6) for v in latent_snapshot.embedding],
@@ -207,6 +225,7 @@ class StructuralSystemIntelligencePlatform:
             "mechanism_discovery": mech,
             "intervention_intelligence": intervention_intelligence,
             "reliability_intelligence": reliability,
+            "active_learning": active_learning,
             **cross_system,
             **universal,
             **falsification,
