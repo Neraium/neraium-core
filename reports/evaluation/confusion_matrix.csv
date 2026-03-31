@@ -1,0 +1,6 @@
+model_id,tp,tn,fp,fn
+baseline_threshold,15,3,0,0
+baseline_anomaly_zscore,15,1,2,0
+baseline_trend_extrapolation,8,3,0,7
+neraium_core,15,3,0,0
+neraium_full_stack,15,3,0,0
