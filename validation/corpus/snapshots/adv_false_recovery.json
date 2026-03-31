@@ -1,21 +1,27 @@
 {
-  "corpus_id": "corpus_v1",
-  "description": "Initial canonical replay corpus for Neraium Core validation.",
+  "corpus_id": "adv_false_recovery",
+  "description": "Temporary recovery is followed by eventual failure.",
   "created_at": "2026-03-31T00:00:00Z",
   "schema_version": "1.0",
+  "corpus_type": "adversarial",
+  "expected_difficulty": "high",
+  "coverage_tags": [
+    "false_recovery",
+    "temporary_improvement"
+  ],
   "source_datasets": [
     {
-      "name": "FD004 subset canonical sample",
-      "origin": "local repository",
-      "notes": "Small seed corpus; extend before production release decisions."
+      "name": "synthetic release-policy corpus",
+      "origin": "repository",
+      "notes": "Deterministic and interpretable."
     }
   ],
   "metadata_summary": {
     "domain_coverage": [
-      "unknown"
+      "water"
     ],
     "system_types": [
-      "unknown"
+      "pump"
     ],
     "number_of_trajectories": 1,
     "intervention_coverage": "tracked at runtime"
@@ -25,20 +31,15 @@
     "normalization": "validation.replay.adapters._normalize_record"
   },
   "quality_requirements": {
-    "min_dataset_size": 3,
+    "min_dataset_size": 4,
     "min_intervention_coverage": 0.0,
     "min_domain_diversity": 1
   },
   "data_files": [
     {
-      "path": "snapshots/data/corpus_v1_events.json",
+      "path": "snapshots/data/adv_false_recovery.json",
       "format": "json",
-      "sha256": "d19be312f640972c080a5d34fa99f104a0904af656f1d584b1cf43030bad0afe"
+      "sha256": "386d1ead3dcfb7b7eb0e8fd63d849c630d1cbf12da39391371d58f9667f90f3e"
     }
-  ],
-  "corpus_type": "baseline_clean",
-  "expected_difficulty": "low",
-  "coverage_tags": [
-    "legacy_baseline"
   ]
 }
