@@ -126,9 +126,14 @@ class HistoricalReplayEngine:
         recommendation = dict(reliability.get("intervention_recommendation") or {})
         trace = dict(recommendation.get("reliability_trace") or {})
         warnings = [str(w) for w in list(trace.get("warnings") or [])]
+        structural_uncertainty = dict((output.get("intervention_intelligence") or {}).get("structural_uncertainty_mode") or {})
         transfer = dict(output.get("transfer_adaptation") or {})
         transfer_mismatch = float((transfer.get("transfer_metrics") or {}).get("mismatch_penalty", 0.0) or 0.0)
         calibrated_conf = self._float_or_default(recommendation.get("recommendation_calibrated_confidence"), confidence)
+        family_similarity = self._float_or_default(
+            ((output.get("trajectory_archetypes") or {}).get("family_similarity")),
+            1.0,
+        )
 
         reasons: list[str] = []
         if drift_warning:
@@ -143,6 +148,10 @@ class HistoricalReplayEngine:
             reasons.append("weak_calibration_support")
         if warnings:
             reasons.append("reliability_warning")
+        if family_similarity <= 0.45:
+            reasons.append("low_structural_similarity")
+        if bool(structural_uncertainty.get("active", False)):
+            reasons.append("structural_uncertainty_mode")
 
         high_risk = drift_warning or novelty >= 0.75 or transfer_mismatch >= 0.65
         weak_support = support_count <= 2 or calibrated_conf < 0.55 or bool(warnings)
@@ -152,7 +161,7 @@ class HistoricalReplayEngine:
                 "confidence": min(confidence, 0.35),
                 "fallback_triggered": True,
                 "fallback_reasons": sorted(set(reasons)),
-                "advisory_mode": "conservative_monitoring",
+                "advisory_mode": "human_review_required",
             }
         if reasons:
             return {

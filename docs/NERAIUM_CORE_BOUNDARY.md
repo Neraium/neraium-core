@@ -38,7 +38,11 @@ These are excluded from production recommendation flow.
 
 ## Evidence and governance principles
 
+- Core philosophy: **not impressively intelligent, reliably correct and safely uncertain**.
+- High novelty + weak support must degrade to monitor/bounded advisory with explicit human-review posture.
+- Structural Uncertainty Mode is part of production-safe output and compatibility output for downstream gating.
 - Intervention memory must materially influence ranking when support and context match are strong.
+- Intervention ranking includes bounded correlation-trap penalties (generic-improvement and stabilizing-context checks), not causal claims.
 - Outcome attribution remains conservative and includes explicit confidence/assumption fields.
 - Reliability calibration is bounded and penalizes repeated high-confidence misses.
 - Law governance requires real-world and intervention-sensitive evidence for decision-grade stages.
