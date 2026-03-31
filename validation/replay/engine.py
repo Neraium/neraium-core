@@ -19,6 +19,10 @@ class ReplayStepResult:
     predicted_state: dict[str, Any]
     recommended_intervention: str | None
     confidence: float
+    advisory_mode: str
+    fallback_triggered: bool
+    fallback_reasons: list[str]
+    intervention_memory_contribution: dict[str, Any] | None
     law_usage: list[str]
     actual_intervention: str | None
     actual_outcome: str | None
@@ -61,6 +65,15 @@ class HistoricalReplayEngine:
                 0.0,
             )
             confidence = max(0.0, min(1.0, confidence))
+            recommendation_trace = dict(intervention.get("intervention_memory_contribution") or {})
+            fallback = self._fallback_policy(
+                row=row,
+                output=output,
+                recommended_intervention=str(recommended) if recommended else None,
+                confidence=confidence,
+            )
+            recommended = fallback["recommended_intervention"]
+            confidence = fallback["confidence"]
             governance = dict((output.get("structural_law_intelligence") or {}).get("structural_law_governance") or {})
             law_usage = [
                 str(l.get("law_id"))
@@ -82,6 +95,10 @@ class HistoricalReplayEngine:
                 predicted_state=transition,
                 recommended_intervention=str(recommended) if recommended else None,
                 confidence=confidence,
+                advisory_mode=str(fallback["advisory_mode"]),
+                fallback_triggered=bool(fallback["fallback_triggered"]),
+                fallback_reasons=list(fallback["fallback_reasons"]),
+                intervention_memory_contribution=recommendation_trace or None,
                 law_usage=law_usage,
                 actual_intervention=row.get("actual_intervention"),
                 actual_outcome=row.get("outcome_label"),
@@ -92,4 +109,63 @@ class HistoricalReplayEngine:
         return {
             "step_logs": [asdict(s) for s in step_logs],
             "trajectory_logs": trajectory_logs,
+        }
+
+    def _fallback_policy(
+        self,
+        *,
+        row: dict[str, Any],
+        output: dict[str, Any],
+        recommended_intervention: str | None,
+        confidence: float,
+    ) -> dict[str, Any]:
+        novelty = max(0.0, min(1.0, self._float_or_default(row.get("novelty"), 0.0)))
+        support_count = max(0, self._int_or_default(row.get("support_count"), 0))
+        drift_warning = bool(row.get("drift_warning", False))
+        reliability = dict(output.get("reliability_intelligence") or {})
+        recommendation = dict(reliability.get("intervention_recommendation") or {})
+        trace = dict(recommendation.get("reliability_trace") or {})
+        warnings = [str(w) for w in list(trace.get("warnings") or [])]
+        transfer = dict(output.get("transfer_adaptation") or {})
+        transfer_mismatch = float((transfer.get("transfer_metrics") or {}).get("mismatch_penalty", 0.0) or 0.0)
+        calibrated_conf = self._float_or_default(recommendation.get("recommendation_calibrated_confidence"), confidence)
+
+        reasons: list[str] = []
+        if drift_warning:
+            reasons.append("drift_warning")
+        if novelty >= 0.75:
+            reasons.append("high_novelty")
+        if support_count <= 2:
+            reasons.append("sparse_support")
+        if transfer_mismatch >= 0.65:
+            reasons.append("transfer_mismatch")
+        if calibrated_conf < 0.55:
+            reasons.append("weak_calibration_support")
+        if warnings:
+            reasons.append("reliability_warning")
+
+        high_risk = drift_warning or novelty >= 0.75 or transfer_mismatch >= 0.65
+        weak_support = support_count <= 2 or calibrated_conf < 0.55 or bool(warnings)
+        if high_risk and weak_support:
+            return {
+                "recommended_intervention": "monitor",
+                "confidence": min(confidence, 0.35),
+                "fallback_triggered": True,
+                "fallback_reasons": sorted(set(reasons)),
+                "advisory_mode": "conservative_monitoring",
+            }
+        if reasons:
+            return {
+                "recommended_intervention": recommended_intervention,
+                "confidence": min(confidence, 0.55),
+                "fallback_triggered": True,
+                "fallback_reasons": sorted(set(reasons)),
+                "advisory_mode": "bounded_advisory",
+            }
+        return {
+            "recommended_intervention": recommended_intervention,
+            "confidence": confidence,
+            "fallback_triggered": False,
+            "fallback_reasons": [],
+            "advisory_mode": "standard_advisory",
         }
