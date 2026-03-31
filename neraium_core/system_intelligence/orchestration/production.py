@@ -199,6 +199,13 @@ class ProductionIntelligenceOrchestrator:
             drift_warning=drift_warning,
         )
 
+        fallback_policy = {
+            "triggered": bool(recommendation.get("fallback_triggered", False)),
+            "reasons": list(recommendation.get("fallback_reasons") or []),
+            "high_novelty_weak_support": bool(novelty >= 0.72 and support_count <= 2),
+            "posture": str(recommendation.get("recommended_posture", "standard_advisory")),
+            "max_allowed_confidence": round(float(recommendation.get("recommendation_confidence", recommendation.get("confidence", 0.0))), 6),
+        }
         ranked = list((intervention.get("recommendation") or {}).get("ranked_interventions") or [])
         best_ranked = dict((intervention.get("recommendation") or {}).get("best_intervention") or {})
         evidence_classes = {
@@ -225,6 +232,7 @@ class ProductionIntelligenceOrchestrator:
             },
             "warnings_or_blockers": warnings,
             "structural_uncertainty_mode": structural_uncertainty,
+            "fallback_policy": fallback_policy,
             "override_applied": override_applied,
             "override_reason": "structural_uncertainty" if override_applied else None,
             "original_top_intervention": original_top_intervention,
