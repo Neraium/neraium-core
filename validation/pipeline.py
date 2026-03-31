@@ -10,6 +10,13 @@ from validation.metrics import compute_backtest_metrics
 from validation.outcomes import OutcomeAttributor
 from validation.replay import HistoricalReplayEngine
 
+CALIBRATION_METRIC_DOC = {
+    "canonical_metric": "calibration_error",
+    "definition": "mean_absolute_error between decision confidence and binary outcome correctness",
+    "direction": "lower_is_better",
+    "quality_transform": "calibration_quality = 1 - calibration_error (bounded to [0,1])",
+}
+
 
 class RealWorldValidationPipeline:
     def __init__(self, decision_fn) -> None:
@@ -42,7 +49,8 @@ class RealWorldValidationPipeline:
             "real_world_validation": {
                 "decision_accuracy": metrics["decision_accuracy"],
                 "harm_rate": metrics["harm_rate"],
-                "calibration": metrics["calibration"],
+                "calibration_error": metrics["calibration_error"],
+                "calibration_quality": metrics["calibration_quality"],
                 "law_validation": {},
                 "drift_signals": drift,
             },
@@ -78,6 +86,19 @@ class RealWorldValidationPipeline:
         if timestamps:
             time_range = {"min_timestamp": min(timestamps), "max_timestamp": max(timestamps)}
 
+        total = max(1, len(step_logs))
+        dominant_asset_count = max(assets.values()) if assets else 0
+        dominant_domain_count = max(domains.values()) if domains else 0
+        dominant_asset_share = dominant_asset_count / total
+        dominant_domain_share = dominant_domain_count / total
+        warnings: list[str] = []
+        if dominant_asset_share >= 0.55:
+            warnings.append("dominant_asset_skew")
+        if len(domains) < 2:
+            warnings.append("weak_domain_diversity")
+        if any(count < 5 for count in assets.values()):
+            warnings.append("low_cohort_support")
+
         return {
             "total_records": len(step_logs),
             "domain_count": len(domains),
@@ -89,6 +110,11 @@ class RealWorldValidationPipeline:
             "by_scenario_family": dict(sorted(scenarios.items())),
             "by_system_type": dict(sorted(system_types.items())),
             "time_range": time_range,
+            "representativeness": {
+                "dominant_asset_share": round(dominant_asset_share, 6),
+                "dominant_domain_share": round(dominant_domain_share, 6),
+                "warnings": warnings,
+            },
         }
 
     @classmethod
@@ -98,6 +124,7 @@ class RealWorldValidationPipeline:
                 "count": 0,
                 "decision_accuracy": 0.0,
                 "harm_rate": 0.0,
+                "calibration_error": 1.0,
                 "calibration_quality": 0.0,
                 "false_confidence_rate": 0.0,
             }
@@ -110,6 +137,7 @@ class RealWorldValidationPipeline:
             "count": n,
             "decision_accuracy": round(correct / n, 6),
             "harm_rate": round(harms / n, 6),
+            "calibration_error": round(calibration_error, 6),
             "calibration_quality": round(max(0.0, 1.0 - calibration_error), 6),
             "false_confidence_rate": round(false_conf / n, 6),
         }
@@ -139,11 +167,17 @@ class RealWorldValidationPipeline:
             else:
                 intervention_missing.append(row)
 
+        per_domain = {k: cls._cohort_metrics(v) for k, v in sorted(by_domain.items())}
+        per_asset = {k: cls._cohort_metrics(v) for k, v in sorted(by_asset.items())}
         return {
             "overall": cls._cohort_metrics(timeline),
-            "per_domain": {k: cls._cohort_metrics(v) for k, v in sorted(by_domain.items())},
-            "per_asset": {k: cls._cohort_metrics(v) for k, v in sorted(by_asset.items())},
+            "per_domain": per_domain,
+            "per_asset": per_asset,
             "per_system_type": {k: cls._cohort_metrics(v) for k, v in sorted(by_system_type.items())},
+            "macro_metrics": {
+                "domain_macro_decision_accuracy": round(sum(v["decision_accuracy"] for v in per_domain.values()) / max(1, len(per_domain)), 6),
+                "asset_macro_decision_accuracy": round(sum(v["decision_accuracy"] for v in per_asset.values()) / max(1, len(per_asset)), 6),
+            },
             "sparse_data_subset": cls._cohort_metrics(sparse_data),
             "drifted_or_high_novelty_subset": cls._cohort_metrics(drifted),
             "intervention_present_subset": cls._cohort_metrics(intervention_present),
@@ -178,6 +212,10 @@ class RealWorldValidationPipeline:
                 "actual_intervention": row.get("actual_intervention"),
                 "outcome_label": label,
                 "confidence": round(confidence, 6),
+                "advisory_mode": row.get("advisory_mode", "standard_advisory"),
+                "fallback_triggered": bool(row.get("fallback_triggered", False)),
+                "fallback_reasons": list(row.get("fallback_reasons") or []),
+                "intervention_memory_contribution": row.get("intervention_memory_contribution"),
                 "attribution_confidence": round(float(outcome.get("attribution_confidence", 0.0) or 0.0), 6),
                 "novelty": round(float(row.get("novelty", 0.0) or 0.0), 6),
                 "support_count": int(row.get("support_count", 0) or 0),
@@ -212,8 +250,14 @@ class RealWorldValidationPipeline:
                 ignored_harmful += 1
         n = max(1, len(timeline))
         false_confidence_rate = float(metrics.get("false_confidence_events", 0) or 0) / n
-        memory_contribution = round((accepted_helpful / max(1, accepted_total)) - (ignored_harmful / n), 6)
         drift_warning_rate = round(len(drift.get("warnings", [])) / n, 6)
+        memory_samples = [
+            dict(row.get("intervention_memory_contribution") or {})
+            for row in timeline
+            if isinstance(row.get("intervention_memory_contribution"), dict)
+            and str((row.get("intervention_memory_contribution") or {}).get("status")) == "available"
+        ]
+        memory_contribution = RealWorldValidationPipeline._summarize_intervention_memory_contribution(memory_samples)
 
         cohort_breakdowns = RealWorldValidationPipeline._build_cohort_breakdowns(timeline)
         corpus_summary = RealWorldValidationPipeline._build_corpus_summary(step_logs)
@@ -225,7 +269,8 @@ class RealWorldValidationPipeline:
             "summary": {
                 "decision_accuracy": metrics.get("decision_accuracy", 0.0),
                 "harm_rate": metrics.get("harm_rate", 0.0),
-                "calibration_quality": metrics.get("calibration", 0.0),
+                "calibration_error": metrics.get("calibration_error", 1.0),
+                "calibration_quality": metrics.get("calibration_quality", 0.0),
                 "false_confidence_events": metrics.get("false_confidence_events", 0),
                 "false_confidence_rate": round(false_confidence_rate, 6),
                 "intervention_memory_contribution": memory_contribution,
@@ -234,6 +279,7 @@ class RealWorldValidationPipeline:
                 "drift_warning_rate": drift_warning_rate,
             },
             "cohort_breakdowns": cohort_breakdowns,
+            "metric_semantics": {"calibration": CALIBRATION_METRIC_DOC},
             "timeline": timeline[-200:],
             "law_changes": [],
             "drift_summary": drift,
@@ -248,3 +294,23 @@ class RealWorldValidationPipeline:
         out.parent.mkdir(parents=True, exist_ok=True)
         out.write_text(__import__("json").dumps(report, indent=2), encoding="utf-8")
         return out
+
+    @classmethod
+    def _summarize_intervention_memory_contribution(cls, samples: list[dict[str, Any]]) -> dict[str, Any]:
+        if len(samples) < 5:
+            return {
+                "status": "insufficient_evidence",
+                "method": "candidate_score_ablation_delta",
+                "sample_count": len(samples),
+                "message": "Not enough recommendation steps with memory ablation diagnostics.",
+            }
+        deltas = [cls._safe_float(s.get("best_confidence_delta"), fallback=0.0) for s in samples]
+        changed = [1.0 if bool(s.get("choice_changed_without_memory")) else 0.0 for s in samples]
+        return {
+            "status": "available",
+            "method": "candidate_score_ablation_delta",
+            "sample_count": len(samples),
+            "mean_best_confidence_delta": round(sum(deltas) / len(deltas), 6),
+            "positive_delta_rate": round(sum(1.0 for d in deltas if d > 0) / len(deltas), 6),
+            "top_choice_change_rate_without_memory": round(sum(changed) / len(changed), 6),
+        }

@@ -22,6 +22,7 @@ Overall release decision:
 - fail if any required corpus class is missing or blocked
 - fail if blocking corpus classes exist
 - output includes per-corpus pass/fail, blocking classes, and failing corpora
+- fail when severe representativeness warnings indicate skewed replay evidence
 
 ## Adversarial/OOD design
 Adversarial snapshots (deterministic, interpretable):
@@ -40,7 +41,7 @@ Transfer snapshots:
 Failed gates map to failure modes:
 - `minimum_decision_accuracy` -> `trajectory_misclassification`
 - `maximum_harm_rate` -> `intervention_ranking_error`
-- calibration gates -> `calibration_failure`
+- `maximum_calibration_error` / false-confidence gates -> `calibration_failure`
 - domain/asset coverage failures -> `attribution_error`
 - any transfer corpus failures additionally -> `transfer_failure`
 
@@ -64,7 +65,22 @@ Outputs:
 ## Trend tracking
 `validation/history/trends.py` now emits:
 - `trend_summary.json` (legacy)
-- `multi_corpus_trend_summary.json` with per-corpus accuracy/harm/pass-fail and cross-corpus stability statistics
+- `multi_corpus_trend_summary.json` with per-corpus accuracy/harm/**calibration-error**/pass-fail and cross-corpus stability statistics
+
+## Calibration and representativeness semantics
+
+Multi-corpus artifacts follow canonical calibration semantics:
+
+- primary metric: `calibration_error` (lower is better)
+- derived display metric: `calibration_quality = 1 - calibration_error`
+
+Corpus summaries now include representativeness diagnostics and warnings:
+
+- `dominant_asset_skew`
+- `low_cohort_support`
+- `weak_domain_diversity`
+
+Core validation also emits macro cohort metrics (domain/asset macro decision accuracy) alongside micro metrics so minority cohort failure cannot be hidden by aggregate dominance.
 
 ## Current limitations
 - corpus size remains intentionally small for reproducible CI
