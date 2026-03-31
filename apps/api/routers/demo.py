@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import threading
 from datetime import datetime, timezone
 from typing import Any
 from uuid import uuid4
@@ -74,7 +73,7 @@ def _canonical_demo_message(*, stage: str, risk_level: str, trend: str) -> dict[
     }
 
 
-def build_demo_router(*, service_instance: Any, require_api_key: Any, resolve_customer_id: Any, resolve_run_id_with_default: Any, run_demo_seed_job: Any, public_demo_job: Any, demo_jobs: dict[str, Any], demo_jobs_lock: Any, load_cmapss_fd004_subset: Any, log_structured: Any, summarize_exception_for_logs: Any, models: Any, utc_now_iso: Any) -> APIRouter:
+def build_demo_router(*, service_instance: Any, require_api_key: Any, resolve_customer_id: Any, resolve_run_id_with_default: Any, start_demo_seed_job: Any, public_demo_job: Any, demo_jobs: dict[str, Any], demo_jobs_lock: Any, load_cmapss_fd004_subset: Any, log_structured: Any, summarize_exception_for_logs: Any, models: Any, utc_now_iso: Any) -> APIRouter:
     router = APIRouter(tags=["demo"])
 
     @router.post("/demo/seed/start")
@@ -85,7 +84,7 @@ def build_demo_router(*, service_instance: Any, require_api_key: Any, resolve_cu
         now = utc_now_iso()
         with demo_jobs_lock:
             demo_jobs[job_id] = {"job_id": job_id, "status": "pending", "run_id": resolved_run, "customer_id": resolved_customer, "progress": 0, "processed": 0, "total_frames": int(payload.minutes), "message": "Preparing demo run...", "error": None, "created_at": now, "updated_at": now}
-        threading.Thread(target=run_demo_seed_job, kwargs={"job_id": job_id, "resolved_run": resolved_run, "resolved_customer": resolved_customer, "payload": payload}, daemon=True).start()
+        start_demo_seed_job(job_id=job_id, resolved_run=resolved_run, resolved_customer=resolved_customer, payload=payload)
         return {"status": "started", "job_id": job_id, "run_id": resolved_run, "message": "Demo seeding started."}
 
     @router.get("/demo/seed/status")
