@@ -151,6 +151,7 @@ class RealWorldValidationPipeline:
         drifted: list[dict[str, Any]] = []
         intervention_present: list[dict[str, Any]] = []
         intervention_missing: list[dict[str, Any]] = []
+        novelty_blockers: list[dict[str, Any]] = []
 
         for row in timeline:
             by_domain[str(row.get("domain") or "unknown")].append(row)
@@ -162,6 +163,8 @@ class RealWorldValidationPipeline:
                 sparse_data.append(row)
             if bool(row.get("drift_warning")) or novelty >= 0.7:
                 drifted.append(row)
+            if novelty >= 0.75 and support_count <= 2 and bool(row.get("drift_warning")):
+                novelty_blockers.append(row)
             if row.get("actual_intervention"):
                 intervention_present.append(row)
             else:
@@ -180,6 +183,7 @@ class RealWorldValidationPipeline:
             },
             "sparse_data_subset": cls._cohort_metrics(sparse_data),
             "drifted_or_high_novelty_subset": cls._cohort_metrics(drifted),
+            "novelty_weak_support_drift_subset": cls._cohort_metrics(novelty_blockers),
             "intervention_present_subset": cls._cohort_metrics(intervention_present),
             "no_intervention_subset": cls._cohort_metrics(intervention_missing),
         }
@@ -220,6 +224,11 @@ class RealWorldValidationPipeline:
                 "novelty": round(float(row.get("novelty", 0.0) or 0.0), 6),
                 "support_count": int(row.get("support_count", 0) or 0),
                 "drift_warning": bool(row.get("drift_warning", False)),
+                "novelty_blocker_case": bool(
+                    float(row.get("novelty", 0.0) or 0.0) >= 0.75
+                    and int(row.get("support_count", 0) or 0) <= 2
+                    and bool(row.get("drift_warning", False))
+                ),
             }
             timeline.append(entry)
             if label == "harmful":

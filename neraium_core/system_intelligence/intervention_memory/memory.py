@@ -127,17 +127,40 @@ class InterventionMemoryStore:
         intervention_target: str | None = None,
         min_match: float = 0.35,
     ) -> list[dict[str, Any]]:
-        out: list[dict[str, Any]] = []
+        scored: list[tuple[float, InterventionEvidenceRecord]] = []
         for rec in self.records:
             if rec.intervention_type != intervention_type:
                 continue
             if intervention_target and rec.intervention_target != intervention_target:
                 continue
-            match = self._context_match(rec, context)
-            if match < min_match:
-                continue
-            out.append({"match_quality": round(match, 4), "record": self._record_to_dict(rec)})
-        return sorted(out, key=lambda x: x["match_quality"], reverse=True)
+            scored.append((self._context_match(rec, context), rec))
+
+        if not scored:
+            return []
+
+        scored = sorted(scored, key=lambda x: x[0], reverse=True)
+        strict_matches = [
+            {"match_quality": round(match, 4), "record": self._record_to_dict(rec)}
+            for match, rec in scored
+            if match >= min_match
+        ]
+        if strict_matches:
+            return strict_matches
+
+        relaxed_threshold = max(0.08, min_match * 0.5)
+        relaxed_matches = [
+            {"match_quality": round(match, 4), "record": self._record_to_dict(rec)}
+            for match, rec in scored
+            if match >= relaxed_threshold
+        ]
+        if relaxed_matches:
+            return relaxed_matches[:5]
+
+        # Final fallback: nearest-neighbor retrieval to avoid zero-support collapse.
+        return [
+            {"match_quality": round(match, 4), "record": self._record_to_dict(rec)}
+            for match, rec in scored[:3]
+        ]
 
     def support_summary(self) -> dict[str, Any]:
         helpful: list[dict[str, Any]] = []
@@ -175,6 +198,87 @@ class InterventionMemoryStore:
             "recovery_associated_interventions": recovery,
             "support_count": len(self.records),
             "feedback_evidence": self.feedback_evidence,
+            "override_divergence_clusters": self.override_divergence_clusters(),
+        }
+
+    def override_divergence_clusters(self) -> dict[str, Any]:
+        clusters: dict[str, dict[str, float]] = {}
+        for key, bucket in self.feedback_evidence.items():
+            system_better = float(bucket.get("accepted_success", 0.0))
+            operator_better = float(bucket.get("overridden", 0.0))
+            harmful_accepts = float(bucket.get("accepted_harmful", 0.0))
+            unresolved = float(bucket.get("ignored", 0.0))
+            total = max(1.0, system_better + operator_better + harmful_accepts + unresolved)
+            if operator_better >= max(system_better, harmful_accepts, unresolved):
+                pattern = "system_wrong_operator_better"
+            elif harmful_accepts >= max(operator_better, system_better, unresolved):
+                pattern = "operator_wrong_system_better"
+            else:
+                pattern = "unresolved_tradeoff"
+            clusters[key] = {
+                "pattern": pattern,
+                "support_count": round(total, 4),
+                "operator_override_rate": round(operator_better / total, 6),
+                "system_success_rate": round(system_better / total, 6),
+                "accepted_harmful_rate": round(harmful_accepts / total, 6),
+                "unresolved_rate": round(unresolved / total, 6),
+            }
+        return clusters
+
+    def counterfactual_support_profile(
+        self,
+        *,
+        context: dict[str, Any],
+        intervention_type: str,
+        intervention_target: str | None = None,
+        min_match: float = 0.2,
+    ) -> dict[str, Any]:
+        matched_total = 0
+        matched_with_intervention = 0
+        matched_without_intervention_improvement = 0
+        intervention_in_stabilizing_context = 0
+        intervention_improvement_specific = 0
+        intervention_improvement_generic = 0
+
+        for rec in self.records:
+            match = self._context_match(rec, context)
+            if match < min_match:
+                continue
+            matched_total += 1
+            is_candidate = rec.intervention_type == intervention_type and (
+                intervention_target is None or rec.intervention_target == intervention_target
+            )
+            improvement = (
+                float(rec.outcome_delta.get("escalation_reduction", 0.0))
+                + float(rec.outcome_delta.get("reversibility_improvement", 0.0))
+                + float(rec.outcome_delta.get("distance_from_critical_improvement", 0.0))
+            )
+            pre_escalation = float(rec.pre_intervention_state.get("escalation_probability", 0.0))
+            post_escalation = float(rec.post_intervention_state.get("escalation_probability", 0.0))
+            stabilizing = post_escalation <= pre_escalation + 0.01
+            if is_candidate:
+                matched_with_intervention += 1
+                if stabilizing:
+                    intervention_in_stabilizing_context += 1
+                if improvement >= 0.08:
+                    intervention_improvement_specific += 1
+                elif improvement >= 0.03:
+                    intervention_improvement_generic += 1
+            elif improvement >= 0.08:
+                matched_without_intervention_improvement += 1
+
+        generic_improvement_rate = matched_without_intervention_improvement / max(1, matched_total - matched_with_intervention)
+        intervention_stabilizing_rate = intervention_in_stabilizing_context / max(1, matched_with_intervention)
+        specificity_gap = (
+            intervention_improvement_specific / max(1, matched_with_intervention)
+        ) - generic_improvement_rate
+        return {
+            "matched_total": matched_total,
+            "matched_with_intervention": matched_with_intervention,
+            "matched_without_intervention_improvement": matched_without_intervention_improvement,
+            "generic_improvement_rate": round(generic_improvement_rate, 6),
+            "intervention_in_stabilizing_context_rate": round(intervention_stabilizing_rate, 6),
+            "specificity_gap": round(specificity_gap, 6),
         }
 
     def ingest_feedback_event(

@@ -89,7 +89,11 @@ def evaluate_corpus_release(core_validation_report: dict[str, Any], *, corpus_ty
     gate = evaluate_release_gates(core_validation_report, thresholds=thresholds)
     gate["corpus_type"] = corpus_type
     gate["policy_thresholds"] = asdict(thresholds)
-    gate["failure_mode_tags"] = classify_failure_modes(corpus_type, gate.get("gate_breakdown", []))
+    tags = set(classify_failure_modes(corpus_type, gate.get("gate_breakdown", [])))
+    novelty_subset = ((core_validation_report.get("cohort_breakdowns") or {}).get("novelty_weak_support_drift_subset") or {})
+    if float(novelty_subset.get("false_confidence_rate", 0.0) or 0.0) > 0.08 or float(novelty_subset.get("harm_rate", 0.0) or 0.0) > 0.2:
+        tags.add("novelty_fallback_failure")
+    gate["failure_mode_tags"] = sorted(tags)
     return gate
 
 
