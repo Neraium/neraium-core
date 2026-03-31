@@ -1417,13 +1417,13 @@ async function refreshRuntimeModeBanner() {
 }
 function setPage(page) {
   const titles = {
-    dashboard: ["Dashboard", "Current state"],
-    upload: ["Upload", "Ingest telemetry"],
-    runs: ["Runs", "Select a run"],
-    validation: ["Validation", "Replay workspace"],
-    onboarding: ["Onboarding", "Connect your customer workspace"],
-    "run-detail": ["Run Analysis", "Analyze this system"],
-    "result-detail": ["Result Detail", "Focused view for a single result"],
+    dashboard: ["Monitor risk", "See risk now. Act now."],
+    upload: ["Upload telemetry", "Send new CSV data to the active run."],
+    runs: ["Investigate runs", "Find one run and inspect the timeline."],
+    validation: ["Validation replay", "Run historical replay for model checks."],
+    onboarding: ["Onboarding setup", "Connect source and confirm required fields."],
+    "run-detail": ["Investigate run", "Review trend, risk, and next action."],
+    "result-detail": ["Result detail", "Inspect one result and why it was scored this way."],
   };
   qsa(".page").forEach((p) => p.classList.add("hidden"));
   const pageEl = qs(`#page-${page}`);

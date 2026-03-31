@@ -16,6 +16,7 @@
   <link rel="stylesheet" href="/web/styles-upload.css?v=__NERAIUM_ASSET_VERSION__" />
   <link rel="stylesheet" href="/web/styles-validation.css?v=__NERAIUM_ASSET_VERSION__" />
   <link rel="stylesheet" href="/web/styles-onboarding.css?v=__NERAIUM_ASSET_VERSION__" />
+  <link rel="stylesheet" href="/web/styles-brutal.css?v=__NERAIUM_ASSET_VERSION__" />
   <!-- Three.js from CDN (same version as scripts/download_three_vendor.py) — avoids /web/vendor static issues. -->
   <script type="importmap">
     {
@@ -46,12 +47,13 @@
         </div>
       </div>
       <nav class="nav">
-        <p class="nav-section-title">Workspace</p>
-        <a href="/dashboard" data-nav="dashboard">Dashboard</a>
-        <a href="/upload" data-nav="upload">Upload Telemetry</a>
-        <a href="/app/runs" data-nav="runs">Active Runs</a>
-        <a href="/validation" data-nav="validation">Validation</a>
-        <a href="/onboarding" data-nav="onboarding">Onboarding</a>
+        <p class="nav-section-title">Core workflow</p>
+        <a href="/dashboard" data-nav="dashboard">1. Monitor risk</a>
+        <a href="/upload" data-nav="upload">2. Upload telemetry</a>
+        <a href="/app/runs" data-nav="runs">3. Investigate run</a>
+        <p class="nav-section-title nav-section-title-secondary">Setup</p>
+        <a href="/onboarding" data-nav="onboarding">Onboarding setup</a>
+        <a href="/validation" data-nav="validation">Validation replay</a>
       </nav>
     </aside>
 
@@ -65,8 +67,8 @@
             <a href="/dashboard" class="topbar-wordmark">Neraium</a>
           </div>
           <div class="title-block telemetry-title">
-            <h2 id="pageTitle">Pilot Operations Dashboard</h2>
-            <p id="pageSubtitle" class="subtitle page-subtitle-truncate">Operator workspace</p>
+            <h2 id="pageTitle">Monitor risk</h2>
+            <p id="pageSubtitle" class="subtitle page-subtitle-truncate">See risk now. Act now.</p>
           </div>
         </div>
         <div class="telemetry-status-strip" aria-label="System telemetry status">
@@ -86,17 +88,17 @@
           
 
           <section class="panel operational-snapshot" aria-label="Top operational summary">
-            <div class="panel-header"><h3>Operational Snapshot</h3></div>
+            <div class="panel-header"><h3>Current system status</h3></div>
             <div class="snapshot-grid" role="list" aria-label="Current operational picture">
-              <article class="snapshot-item" role="listitem"><p>Current State</p><strong id="snapshotState">Unknown</strong></article>
+              <article class="snapshot-item" role="listitem"><p>System state</p><strong id="snapshotState">Unknown</strong></article>
               <article class="snapshot-item" role="listitem"><p>Risk</p><strong id="snapshotRisk">UNKNOWN</strong></article>
               <article class="snapshot-item" role="listitem"><p>Trend</p><strong id="snapshotTrend">UNKNOWN</strong></article>
-              <article class="snapshot-item" role="listitem"><p>Alerts</p><strong id="snapshotConfidence">None</strong></article>
+              <article class="snapshot-item" role="listitem"><p>Alert status</p><strong id="snapshotConfidence">None</strong></article>
             </div>
             <div class="snapshot-actions-row">
               <div>
                 <p class="recommendation-label">Recommendation</p>
-                <p id="snapshotRecommendation" class="snapshot-recommendation">Upload fresh telemetry to resume monitoring.</p>
+                <p id="snapshotRecommendation" class="snapshot-recommendation">No data yet. Upload telemetry to start monitoring.</p>
               </div>
             </div>
           </section>
@@ -105,16 +107,18 @@
             
 
             <section class="panel control-panel" aria-label="Pilot operations controls">
-              <div class="panel-header"><h3>Actions</h3></div>
+              <div class="panel-header"><h3>Next action</h3></div>
               <div class="control-stack" role="group" aria-label="Operational actions">
-                <a id="primaryPilotActionBtn" href="/upload" class="button-link primary primary-pilot-btn">Upload Telemetry</a>
-                <button id="refreshBtn" type="button" class="secondary control-secondary-btn">Refresh Active Run</button>
+                <a id="primaryPilotActionBtn" href="/upload" class="button-link primary primary-pilot-btn">Upload telemetry now</a>
+                <button id="refreshBtn" type="button" class="secondary control-secondary-btn">Refresh status</button>
               </div>
               <div class="quick-link-stack" aria-label="Open deeper analysis">
-                <a class="button-link secondary" id="dashboardOpenAnalysisLink" href="/app/runs">Open Run Analysis</a>
+                <a class="button-link secondary" id="dashboardOpenAnalysisLink" href="/app/runs">Open run investigation</a>
               </div>
-              <div class="quick-link-stack" aria-label="Validation workspace link">
-                <a class="button-link secondary" href="/validation">Open Validation</a>
+              <div class="quick-link-stack" aria-label="Failure handling">
+                <p class="subtitle brutal-hint">
+                  If refresh fails: check connection badge, then upload a new CSV, then open run investigation.
+                </p>
               </div>
             </section>
           </div>
@@ -122,7 +126,7 @@
 
         <section id="page-runs" class="page hidden">
           <section class="panel">
-            <h3>Create run</h3>
+            <h3>Create run (if needed)</h3>
             <form id="runCreateForm" class="stack">
               <label>
                 Run name
@@ -143,12 +147,12 @@
 
           <section class="panel">
             <div class="panel-header">
-              <h3>Runs</h3>
+                <h3>Run investigation</h3>
             </div>
             <div class="row wrap filters">
-              <input id="runsSearchInput" placeholder="Search run name or run ID" />
+              <input id="runsSearchInput" placeholder="Find run by name or ID" />
               <select id="runsStatusFilter">
-                <option value="all">All statuses</option>
+                <option value="all">All</option>
                 <option value="active">Active</option>
                 <option value="open">Open</option>
               </select>
@@ -160,7 +164,8 @@
               </select>
             </div>
             <div id="runsEmptyHint" class="empty-state hidden">
-              <p>No runs match your filters.</p>
+              <p>No runs found.</p>
+              <p class="subtitle">Create a run or clear filters.</p>
             </div>
             <div class="table-wrap">
               <table class="data-table runs-table">
@@ -185,23 +190,23 @@
             <div class="upload-head">
               <div>
                 <p class="upload-kicker">Data ingest</p>
-                <h3>Upload telemetry CSV to active run</h3>
+                <h3>Upload telemetry CSV</h3>
                 <p class="subtitle" id="uploadRunInfo"></p>
               </div>
-              <span class="chip upload-head-chip">Semantic column mapping enabled</span>
+              <span class="chip upload-head-chip">Column mapping auto-detected</span>
             </div>
             <form id="csvUploadForm" class="stack">
               <label id="uploadDropZone" class="upload-dropzone">
                 <input id="csvFileInput" type="file" accept=".csv,text/csv" required />
                 <span class="upload-dropzone-icon" aria-hidden="true">⬆</span>
-                <span class="upload-cta">Drop CSV here or browse files</span>
-                <span class="upload-hint">Any column names are supported — Neraium semantically maps timestamp, asset, optional site, and numeric sensors.</span>
+                <span class="upload-cta">Drop CSV here or choose file</span>
+                <span class="upload-hint">Required: timestamp + asset + at least one numeric sensor column.</span>
                 <span id="selectedFileName" class="upload-file-name">No file selected</span>
               </label>
               <section id="csvMappingPanel" class="csv-mapping-panel hidden" aria-label="CSV column mapping">
                 <div class="csv-mapping-head">
                   <h4>Column mapping</h4>
-                  <span class="chip csv-mapping-chip">Review before ingest</span>
+                <span class="chip csv-mapping-chip">Confirm before upload</span>
                 </div>
                 <p id="csvMappingSummary" class="subtitle"></p>
                 <ul id="csvMappingIssues" class="csv-mapping-messages"></ul>
@@ -222,7 +227,7 @@
                 </fieldset>
               </section>
               <div class="row">
-                <button id="uploadSubmitBtn" type="submit">Upload and ingest</button>
+                <button id="uploadSubmitBtn" type="submit">Start upload</button>
               </div>
               <section id="uploadProgressPanel" class="upload-progress hidden" aria-live="polite">
                 <div class="upload-progress-top">
@@ -238,7 +243,7 @@
               </section>
             </form>
             <p id="uploadHelpMessage" class="subtitle">
-              Uploads stream to the server with progress tracking. Headers are mapped semantically — no fixed column names required.
+              If upload fails, fix the highlighted column mapping and retry.
             </p>
           </section>
         </section>
