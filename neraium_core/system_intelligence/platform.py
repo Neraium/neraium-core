@@ -13,6 +13,7 @@ from .law_engine import StructuralLawDecisionEngine
 from .law_extraction.extractor import StructuralLawExtractor
 from .mechanisms.discovery import MechanismDiscoveryLayer
 from .reliability import StructuralReliabilityLayer
+from .sandbox import StructuralSandboxEngine
 from .structural_state.latent_state import LatentStructuralStateEncoder
 from .trajectory_memory.memory import CrossSystemTrajectoryMemory
 from .transition_model.transition_dynamics import LatentTransitionModel
@@ -37,6 +38,7 @@ class StructuralSystemIntelligencePlatform:
         self.reliability = StructuralReliabilityLayer()
         self.experimental_universal = ExperimentalUniversalStructuralLayer()
         self.falsification = StructuralFalsificationEngine()
+        self.sandbox = StructuralSandboxEngine()
 
     def update(self, observation: dict[str, Any]) -> dict[str, Any]:
         latent_snapshot = self.latent.encode(observation)
@@ -211,5 +213,14 @@ class StructuralSystemIntelligencePlatform:
             **universal,
             **falsification,
         }
+        sandbox = self.sandbox.evaluate(
+            latent_state=output["latent_structural_state"],
+            transition=output["transition_dynamics"],
+            trajectory=traj,
+            laws=laws,
+            intervention=intervention_intelligence,
+            reliability=reliability,
+        )
+        output.update(sandbox)
         output["compatibility"] = to_operator_compatibility(output)
         return output
