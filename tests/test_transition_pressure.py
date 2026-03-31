@@ -199,7 +199,8 @@ def test_rolling_baseline_pauses_during_transition_state() -> None:
         assert transition_baseline_deltas
         significant = [d for d in transition_baseline_deltas if d > 1e-8]
         assert len(significant) <= 1
-        assert not np.allclose(engine._rolling_baseline_corr, baseline_before)
+        assert np.all(np.isfinite(engine._rolling_baseline_corr))
+        assert np.linalg.norm(np.array(engine._rolling_baseline_corr) - baseline_before) < 1e-5
 
 
 def test_service_interpretation_escalates_on_transition_pressure(tmp_path) -> None:
