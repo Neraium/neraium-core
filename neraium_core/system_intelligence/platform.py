@@ -3,11 +3,45 @@ from __future__ import annotations
 from typing import Any, Literal
 
 from .adapters.compatibility import to_operator_compatibility
+from .archetypes.archetype_memory import StructuralArchetypeMemory
+from .counterfactuals.intervention_engine import CounterfactualInterventionEngine
+from .federation.layer import CrossSystemStructuralIntelligenceLayer
+from .forecast.trajectory_conditioned import TrajectoryConditionedForecaster
+from .falsification import StructuralFalsificationEngine
+from .intervention_intelligence.engine import InterventionIntelligenceEngine
+from .law_engine import StructuralLawDecisionEngine
+from .law_extraction.extractor import StructuralLawExtractor
+from .mechanisms.discovery import MechanismDiscoveryLayer
+from .reliability import StructuralReliabilityLayer
+from .sandbox import StructuralSandboxEngine
+from .structural_state.latent_state import LatentStructuralStateEncoder
+from .trajectory_memory.memory import CrossSystemTrajectoryMemory
+from .transition_model.transition_dynamics import LatentTransitionModel
+from .universal import ExperimentalUniversalStructuralLayer
 from .capability_boundaries import boundaries_for_sections
 from .orchestration import ProductionIntelligenceOrchestrator, ResearchExperimentalOrchestrator
 
 OperatingMode = Literal["production", "research_assistive", "experimental", "full"]
 
+class StructuralSystemIntelligencePlatform:
+    """Integrated, bounded intelligence stack for structural state and intervention support."""
+
+    def __init__(self) -> None:
+        self.latent = LatentStructuralStateEncoder(latent_dim=3)
+        self.transitions = LatentTransitionModel()
+        self.counterfactuals = CounterfactualInterventionEngine()
+        self.archetypes = StructuralArchetypeMemory()
+        self.trajectory_memory = CrossSystemTrajectoryMemory(window_size=10)
+        self.trajectory_forecast = TrajectoryConditionedForecaster()
+        self.mechanisms = MechanismDiscoveryLayer()
+        self.law_extractor = StructuralLawExtractor()
+        self.law_engine = StructuralLawDecisionEngine()
+        self.intervention_intelligence = InterventionIntelligenceEngine()
+        self.cross_system = CrossSystemStructuralIntelligenceLayer()
+        self.reliability = StructuralReliabilityLayer()
+        self.experimental_universal = ExperimentalUniversalStructuralLayer()
+        self.falsification = StructuralFalsificationEngine()
+        self.sandbox = StructuralSandboxEngine()
 
 class StructuralSystemIntelligencePlatform:
     """Layered structural intelligence with explicit production/advisory/experimental boundaries."""
@@ -74,4 +108,15 @@ class StructuralSystemIntelligencePlatform:
             "real_world_validation": self._real_world_validation,
             **merged,
         }
+        sandbox = self.sandbox.evaluate(
+            latent_state=output["latent_structural_state"],
+            transition=output["transition_dynamics"],
+            trajectory=traj,
+            laws=laws,
+            intervention=intervention_intelligence,
+            reliability=reliability,
+        )
+        output.update(sandbox)
+        output["compatibility"] = to_operator_compatibility(output)
+        return output
         return out
