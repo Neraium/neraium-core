@@ -264,3 +264,54 @@ def test_intervention_memory_ablation_meaningfully_changes_ranking_quality() -> 
     seeded_conf = float(seeded["recommendation"]["confidence"])
     cold_conf = float(cold["recommendation"]["confidence"])
     assert seeded_conf - cold_conf >= 0.12
+
+
+def test_structural_uncertainty_mode_activates_for_high_novelty_weak_support() -> None:
+    engine = InterventionIntelligenceEngine()
+    out = engine.update(
+        asset_id="uncertain-1",
+        observation={"latent_embedding": [0.85, 0.83, 0.82], "drift_warning": True},
+        transition={"regime": "critical", "transition_path": "escalating", "escalation_probability": 0.9, "reversibility_score": 0.1, "distance_to_critical_region": 0.04},
+        trajectory={"current_trajectory_path_family": "unknown_new_family", "novelty_score": 0.97, "family_similarity": 0.2, "support": 0},
+        mechanism={"mechanism_candidates": []},
+        laws={"law_candidates": []},
+        counterfactuals={"scenario_rankings": [{"name": "remove_top_driver_contribution", "risk_delta": 0.4}]},
+    )
+    mode = out["structural_uncertainty_mode"]
+    assert mode["active"] is True
+    assert mode["recommended_posture"] == "human_review_required"
+    assert out["recommendation"]["best_intervention"]["name"] == "monitor"
+    assert out["recommendation"]["fallback_triggered"] is True
+
+
+def test_correlation_trap_penalty_is_exposed_in_ranking_trace() -> None:
+    engine = InterventionIntelligenceEngine()
+    _simulate_record(engine, helpful=True)
+    _simulate_record(engine, helpful=True)
+    out = engine.update(
+        asset_id="corr-1",
+        observation={"latent_embedding": [0.1, 0.2, 0.3]},
+        transition={"regime": "critical", "transition_path": "escalating", "escalation_probability": 0.82, "reversibility_score": 0.2, "distance_to_critical_region": 0.1},
+        trajectory={"current_trajectory_path_family": "escalating", "novelty_score": 0.2, "family_similarity": 0.8, "support": 4},
+        mechanism={"mechanism_candidates": [{"mechanism": "cluster_decoupling:a->b"}]},
+        laws={"law_candidates": [{"law": "cluster_decoupling"}]},
+        counterfactuals={"scenario_rankings": [{"name": "remove_top_driver_contribution", "risk_delta": 0.2}]},
+    )
+    ranked = out["recommendation"]["ranked_interventions"][0]
+    assert "correlation_trap_penalty" in ranked["ranking_factors"]
+    assert "counterfactual_specificity_guard" in out["recommendation"]["decision_trace"]["confidence_contributions"]
+
+
+def test_override_divergence_clusters_are_recorded() -> None:
+    engine = InterventionIntelligenceEngine()
+    engine.memory.ingest_feedback_event(intervention_type="remove_or_suppress_top_driver", action="overridden", outcome_label="helpful")
+    engine.memory.ingest_feedback_event(intervention_type="remove_or_suppress_top_driver", action="overridden", outcome_label="neutral")
+    engine.memory.ingest_feedback_event(intervention_type="remove_or_suppress_top_driver", action="accepted", outcome_label="harmful")
+    summary = engine.memory.support_summary()
+    clusters = summary["override_divergence_clusters"]
+    assert "remove_or_suppress_top_driver" in clusters
+    assert clusters["remove_or_suppress_top_driver"]["pattern"] in {
+        "system_wrong_operator_better",
+        "operator_wrong_system_better",
+        "unresolved_tradeoff",
+    }
