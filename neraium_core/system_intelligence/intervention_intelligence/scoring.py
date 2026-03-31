@@ -10,7 +10,7 @@ def _clip01(value: float) -> float:
 
 
 class InterventionEffectivenessScorer:
-    """Empirical structural effectiveness estimator (non-causal)."""
+    """Empirical structural effectiveness estimator (non-causal, advisory only)."""
 
     def __init__(self, memory: InterventionMemoryStore) -> None:
         self.memory = memory
@@ -65,7 +65,16 @@ class InterventionEffectivenessScorer:
             + 0.10 * model_reduction
             - 0.40 * worsening
         )
-        effectiveness = _clip01(expected_improvement * (1.0 - 0.55 * novelty_penalty) * (1.0 - 0.45 * uncertainty))
+        raw_effectiveness = _clip01(expected_improvement * (1.0 - 0.55 * novelty_penalty) * (1.0 - 0.45 * uncertainty))
+
+        harmful_signal = worsening > max(0.03, escalation_reduction)
+        sparse_support = support < 2
+        safety_gate = 1.0
+        if sparse_support:
+            safety_gate *= 0.75
+        if harmful_signal:
+            safety_gate *= 0.55
+        effectiveness = _clip01(raw_effectiveness * safety_gate)
 
         return {
             "intervention_effectiveness": round(effectiveness, 4),
@@ -80,6 +89,11 @@ class InterventionEffectivenessScorer:
             "novelty_penalty": round(novelty_penalty, 4),
             "context_match_quality": round(avg_match, 4),
             "worsening_signal": round(worsening, 4),
+            "support_quality": "strong" if support >= 4 else "moderate" if support >= 2 else "weak",
             "assumption_boundary": "Empirical structural effectiveness estimate from historical/contextual similarity and model projections; not a proven causal effect.",
+            "safety_flags": {
+                "sparse_support": sparse_support,
+                "harmful_signal": harmful_signal,
+            },
             "matched_records": matches[:5],
         }
