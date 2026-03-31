@@ -101,6 +101,12 @@ class InterventionIntelligenceEngine:
             )
 
         ranked = self.ranker.rank(candidates=candidates, scored=scored, context=context)
+        memory_support = max((int((scored.get(c.get("name", "")) or {}).get("support", 0)) for c in candidates), default=0)
+        memory_match_quality = max(
+            (float((scored.get(c.get("name", "")) or {}).get("context_match_quality", 0.0)) for c in candidates),
+            default=0.0,
+        )
+        context["support_count"] = max(int(context.get("support_count", 0) or 0), memory_support)
         ranked = self._apply_conservative_fallback(ranked=ranked, context=context)
         recommendation_confidence = float(ranked.get("recommendation_confidence", 0.0))
 
@@ -120,6 +126,8 @@ class InterventionIntelligenceEngine:
                 **ranked,
                 "advisory": True,
                 "disclaimer": "Intervention ranking is decision support only, based on bounded historical evidence and model projections.",
+                "memory_match_count": memory_support,
+                "memory_match_quality": round(memory_match_quality, 4),
             },
             "structural_uncertainty_mode": self._structural_uncertainty_mode(ranked=ranked, context=context),
             "uncertainty_summary": {
