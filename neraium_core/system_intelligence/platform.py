@@ -7,6 +7,7 @@ from .archetypes.archetype_memory import StructuralArchetypeMemory
 from .counterfactuals.intervention_engine import CounterfactualInterventionEngine
 from .federation.layer import CrossSystemStructuralIntelligenceLayer
 from .forecast.trajectory_conditioned import TrajectoryConditionedForecaster
+from .falsification import StructuralFalsificationEngine
 from .intervention_intelligence.engine import InterventionIntelligenceEngine
 from .law_engine import StructuralLawDecisionEngine
 from .law_extraction.extractor import StructuralLawExtractor
@@ -35,6 +36,7 @@ class StructuralSystemIntelligencePlatform:
         self.cross_system = CrossSystemStructuralIntelligenceLayer()
         self.reliability = StructuralReliabilityLayer()
         self.experimental_universal = ExperimentalUniversalStructuralLayer()
+        self.falsification = StructuralFalsificationEngine()
 
     def update(self, observation: dict[str, Any]) -> dict[str, Any]:
         latent_snapshot = self.latent.encode(observation)
@@ -167,6 +169,19 @@ class StructuralSystemIntelligencePlatform:
             intervention_info=intervention_intelligence,
         )
 
+        falsification = self.falsification.update(
+            domain=str(observation.get("domain") or observation.get("industry") or "unknown"),
+            transition={
+                "regime": transition.regime,
+                "transition_path": transition.transition_path,
+                "escalation_probability": transition.escalation_probability,
+            },
+            trajectory=traj,
+            laws=laws,
+            intervention=intervention_intelligence,
+            universal=universal,
+        )
+
         output = {
             "latent_structural_state": {
                 "embedding": [round(float(v), 6) for v in latent_snapshot.embedding],
@@ -194,6 +209,7 @@ class StructuralSystemIntelligencePlatform:
             "reliability_intelligence": reliability,
             **cross_system,
             **universal,
+            **falsification,
         }
         output["compatibility"] = to_operator_compatibility(output)
         return output
