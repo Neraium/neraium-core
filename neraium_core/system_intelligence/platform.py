@@ -9,6 +9,7 @@ from .forecast.trajectory_conditioned import TrajectoryConditionedForecaster
 from .law_engine import StructuralLawDecisionEngine
 from .law_extraction.extractor import StructuralLawExtractor
 from .mechanisms.discovery import MechanismDiscoveryLayer
+from .intervention_intelligence.engine import InterventionIntelligenceEngine
 from .structural_state.latent_state import LatentStructuralStateEncoder
 from .trajectory_memory.memory import CrossSystemTrajectoryMemory
 from .transition_model.transition_dynamics import LatentTransitionModel
@@ -26,7 +27,17 @@ class StructuralSystemIntelligencePlatform:
         self.trajectory_forecast = TrajectoryConditionedForecaster()
         self.mechanisms = MechanismDiscoveryLayer()
         self.law_extractor = StructuralLawExtractor()
-        self.law_engine = StructuralLawDecisionEngine()
+if rec_confidence > 0.6:
+    operational_recommendation = f"Advisory focus: {rec_name}"
+else:
+    operational_recommendation = "Continue monitoring system behavior and investigate anomalies."
+
+return {
+    "phase": regime,
+    "trend": transition.get("trend"),
+    "risk_level": "high" if transition.get("escalation_probability", 0) > 0.7 else "moderate",
+    "operational_recommendation": operational_recommendation,
+}
 
     def update(self, observation: dict[str, Any]) -> dict[str, Any]:
         latent_snapshot = self.latent.encode(observation)
@@ -98,6 +109,22 @@ class StructuralSystemIntelligencePlatform:
             counterfactuals=cf,
         )
 
+        intervention_intelligence = self.intervention_intelligence.update(
+            asset_id=str(observation.get("asset_id", "unknown")),
+            observation={**observation, "latent_embedding": latent_snapshot.embedding},
+            transition={
+                "regime": transition.regime,
+                "transition_path": transition.transition_path,
+                "escalation_probability": transition.escalation_probability,
+                "reversibility_score": transition.reversibility_score,
+                "distance_to_critical_region": transition.distance_to_critical_region,
+            },
+            trajectory=traj,
+            mechanism=mech,
+            laws=laws,
+            counterfactuals=cf,
+        )
+
         output = {
             "latent_structural_state": {
                 "embedding": [round(float(v), 6) for v in latent_snapshot.embedding],
@@ -121,6 +148,7 @@ class StructuralSystemIntelligencePlatform:
             "structural_law_candidates": laws,
             "law_engine_decision": law_decision_support,
             "mechanism_discovery": mech,
+            "intervention_intelligence": intervention_intelligence,
         }
         output["compatibility"] = to_operator_compatibility(output)
         return output
