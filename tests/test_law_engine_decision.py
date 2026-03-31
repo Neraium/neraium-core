@@ -81,7 +81,7 @@ def test_conflicting_laws_reduce_influence_weight() -> None:
 
 
 def test_platform_exposes_traceable_law_decision_outputs() -> None:
-    platform = StructuralSystemIntelligencePlatform()
+    platform = StructuralSystemIntelligencePlatform(operating_mode="research_assistive")
     out = {}
     for i in range(30):
         out = platform.update(
