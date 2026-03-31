@@ -39,3 +39,10 @@ def test_client_errors_accepts_minimal_body(tmp_path) -> None:
     client = TestClient(app)
     res = client.post("/client-errors", json={})
     assert res.status_code == 204
+
+
+def test_openapi_schema_builds_with_client_error_model(tmp_path) -> None:
+    app = create_app(service=_build_service(tmp_path))
+    schema = app.openapi()
+    assert schema.get("paths")
+    assert "/client-errors" in schema["paths"]
