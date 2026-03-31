@@ -251,6 +251,112 @@ function bindDashboardSparklineInteractions() {
   });
 }
 
+function renderRiskProgression(latest) {
+  const stages = qsa("#dashboardRiskProgression .risk-stage");
+  if (!stages.length) return;
+  const risk = normalizeRiskLevel(latest?.risk_level);
+  const order = ["LOW", "MEDIUM", "HIGH"];
+  stages.forEach((el, idx) => {
+    const active = order.indexOf(risk) >= idx && order.indexOf(risk) >= 0;
+    el.classList.toggle("active", active);
+  });
+}
+
+function _graphMatrixFromResult(result, mode = "current", prevResult = null) {
+  const analytics = result?.experimental_analytics && typeof result.experimental_analytics === "object"
+    ? result.experimental_analytics
+    : {};
+  const cg = analytics.correlation_geometry && typeof analytics.correlation_geometry === "object"
+    ? analytics.correlation_geometry
+    : {};
+  const current = Array.isArray(cg.current) ? cg.current : null;
+  const baseline = Array.isArray(cg.baseline) ? cg.baseline : null;
+  const prevAnalytics = prevResult?.experimental_analytics && typeof prevResult.experimental_analytics === "object"
+    ? prevResult.experimental_analytics
+    : {};
+  const prevCg = prevAnalytics.correlation_geometry && typeof prevAnalytics.correlation_geometry === "object"
+    ? prevAnalytics.correlation_geometry
+    : {};
+  const prevCurrent = Array.isArray(prevCg.current) ? prevCg.current : null;
+  if (mode === "baseline") return baseline || current || prevCurrent;
+  if (mode === "delta") return current || prevCurrent || baseline;
+  return current || baseline || prevCurrent;
+}
+
+function _graphSensorNames(result, matrix) {
+  const analytics = result?.experimental_analytics && typeof result.experimental_analytics === "object"
+    ? result.experimental_analytics
+    : {};
+  let names = Array.isArray(analytics.valid_sensor_names) ? analytics.valid_sensor_names : null;
+  if (!names || !names.length) names = Array.isArray(analytics.feature_names) ? analytics.feature_names : null;
+  if ((!names || !names.length) && Array.isArray(result?.sensor_relationships)) names = result.sensor_relationships;
+  if ((!names || !names.length) && result?.sensor_values && typeof result.sensor_values === "object") {
+    names = Object.keys(result.sensor_values);
+  }
+  const count = Array.isArray(matrix) ? matrix.length : 0;
+  const normalized = Array.isArray(names) ? names.map((n, i) => String(n || `sensor_${i + 1}`)) : [];
+  while (normalized.length < count) normalized.push(`sensor_${normalized.length + 1}`);
+  return normalized.slice(0, count);
+}
+
+function buildRelationshipGraphFrames(results = state.dashboardRecent || []) {
+  const chron = Array.isArray(results) ? results.slice().reverse() : [];
+  return chron.map((result, idx) => {
+    const prev = idx > 0 ? chron[idx - 1] : null;
+    const currentMatrix = _graphMatrixFromResult(result, "current", prev);
+    const baselineMatrix = _graphMatrixFromResult(result, "baseline", prev);
+    const names = _graphSensorNames(result, currentMatrix || baselineMatrix || []);
+    const size = names.length;
+    if (!size || !Array.isArray(currentMatrix)) return null;
+    const nodes = names.map((name, i) => {
+      let importance = 0.45;
+      let avgAbs = 0;
+      let count = 0;
+      for (let j = 0; j < size; j += 1) {
+        if (i === j) continue;
+        const v = Number(currentMatrix?.[i]?.[j]);
+        if (Number.isFinite(v)) {
+          avgAbs += Math.abs(v);
+          count += 1;
+        }
+      }
+      if (count > 0) importance = Math.min(1, avgAbs / count);
+      return {
+        id: `sensor_${i}`,
+        label: String(name),
+        importance,
+        riskContribution: importance,
+        group: `cluster_${Math.floor((i / Math.max(1, size)) * 4) + 1}`,
+      };
+    });
+    const links = [];
+    for (let i = 0; i < size; i += 1) {
+      for (let j = i + 1; j < size; j += 1) {
+        const nowV = Number(currentMatrix?.[i]?.[j]);
+        if (!Number.isFinite(nowV)) continue;
+        const baseV = Number(baselineMatrix?.[i]?.[j]);
+        const prevV = Number(prev?.experimental_analytics?.correlation_geometry?.current?.[i]?.[j]);
+        const ref = Number.isFinite(baseV) ? baseV : (Number.isFinite(prevV) ? prevV : nowV);
+        const drift = Math.abs(nowV - ref);
+        links.push({
+          source: `sensor_${i}`,
+          target: `sensor_${j}`,
+          weight: Math.abs(nowV),
+          drift,
+          signedWeight: nowV,
+          isCritical: drift >= 0.18 || Math.abs(nowV) >= 0.75,
+        });
+      }
+    }
+    links.sort((a, b) => (b.weight + b.drift) - (a.weight + a.drift));
+    return {
+      timestamp: String(result.timestamp || result.persisted_at || result.created_at || ""),
+      nodes,
+      links: links.slice(0, 280),
+    };
+  }).filter(Boolean);
+}
+
 function renderDashboardHero(latest, prev) {
   const scoreEl = qs("#dashboardHealthScore");
   const narrative = qs("#dashboardNarrativeStrip");
@@ -1183,6 +1289,21 @@ const state = {
   dashboardSparkline: {
     hoveredIndex: null,
   },
+  relationshipGraph: {
+    mode: "current",
+    frameIndex: 0,
+    playing: false,
+    timer: null,
+    edgeThreshold: 0.2,
+    frames: [],
+    nodes: [],
+    links: [],
+    positions: {},
+    hoveredNodeId: "",
+    hoveredEdgeId: "",
+    selectedNodeId: "",
+    selectedEdgeId: "",
+  },
   ui: {
     clockTimer: null,
     connection: "LIVE",
@@ -1227,7 +1348,7 @@ const GEOMETRY_FLOW_PERF_KEY = "neraium_structural_flow_perf";
 /** Origin marker + debug visuals for structural flow. `true` always shows the marker; when `false`, use URL `?geomDebug=1` instead. */
 const DEBUG_GEOMETRY = false;
 
-const DASHBOARD_RECENT_LIMIT = 1;
+const DASHBOARD_RECENT_LIMIT = 60;
 const RUN_DETAIL_INITIAL_LIMIT = 24;
 const RUN_DETAIL_BACKGROUND_LIMIT = 1000;
 let chartJsLoadPromise = null;
@@ -2038,6 +2159,7 @@ function renderDashboardMetrics(latest, prev) {
 
   renderDashboardHero(latest, prev);
   renderOperationalSnapshot(latest);
+  renderRiskProgression(latest);
   const score = healthScoreFromSignals(latest);
   if (score !== null) {
     animateNumberText(qs("#dashboardHealthScore"), score, { decimals: 0 });
@@ -2127,6 +2249,9 @@ function renderDashboardMetrics(latest, prev) {
     const rawTs = latest?.timestamp || latest?.persisted_at || latest?.created_at || "";
     lu.textContent = getLastUpdateDisplay(uiTruth, rawTs);
   }
+  if (qs("#recommendationConfidenceBadge")) {
+    qs("#recommendationConfidenceBadge").textContent = latest ? "Confidence informed by structural evidence." : "";
+  }
 }
 
 function renderDashboardRecent(results) {
@@ -2154,6 +2279,200 @@ function renderDashboardRecent(results) {
   });
 }
 
+function stopRelationshipGraphPlayback() {
+  if (state.relationshipGraph.timer) {
+    window.clearInterval(state.relationshipGraph.timer);
+    state.relationshipGraph.timer = null;
+  }
+  state.relationshipGraph.playing = false;
+}
+
+function renderRelationshipGraph() {
+  const canvas = qs("#relationshipGraphCanvas");
+  const empty = qs("#relationshipGraphEmpty");
+  const tooltip = qs("#relationshipGraphTooltip");
+  const detailTitle = qs("#relationshipGraphDetailTitle");
+  const detailBody = qs("#relationshipGraphDetailBody");
+  const frameLabel = qs("#relationshipGraphTimeLabel");
+  const scrubber = qs("#relationshipGraphTimeScrubber");
+  if (!canvas || !canvas.getContext) return;
+  const frames = state.relationshipGraph.frames || [];
+  if (!frames.length) {
+    if (empty) {
+      empty.classList.remove("hidden");
+      empty.textContent = "No relationship data available yet. Upload or replay telemetry to render structure.";
+    }
+    const ctx = canvas.getContext("2d");
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    if (scrubber) scrubber.max = "0";
+    if (frameLabel) frameLabel.textContent = "Replay unavailable";
+    return;
+  }
+  if (empty) empty.classList.add("hidden");
+  const frameIndex = Math.max(0, Math.min(frames.length - 1, Number(state.relationshipGraph.frameIndex || 0)));
+  const mode = state.relationshipGraph.mode || "current";
+  const frame = frames[frameIndex];
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const width = canvas.clientWidth || 960;
+  const height = 520;
+  canvas.width = Math.floor(width * dpr);
+  canvas.height = Math.floor(height * dpr);
+  canvas.style.height = `${height}px`;
+  const ctx = canvas.getContext("2d");
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, width, height);
+
+  const cx = width / 2;
+  const cy = height / 2;
+  const radius = Math.max(120, Math.min(width, height) * 0.34);
+  const nodes = frame.nodes || [];
+  const links = (frame.links || []).filter((l) => (mode === "delta" ? l.drift : l.weight) >= state.relationshipGraph.edgeThreshold);
+  if (scrubber) {
+    scrubber.max = String(Math.max(0, frames.length - 1));
+    scrubber.value = String(frameIndex);
+  }
+  if (frameLabel) frameLabel.textContent = frame.timestamp ? `Frame ${frameIndex + 1}/${frames.length} · ${frame.timestamp}` : `Frame ${frameIndex + 1}/${frames.length}`;
+
+  state.relationshipGraph.nodes = nodes;
+  state.relationshipGraph.links = links;
+  nodes.forEach((node, idx) => {
+    const angle = (Math.PI * 2 * idx) / Math.max(1, nodes.length) - Math.PI / 2;
+    const target = { x: cx + Math.cos(angle) * radius, y: cy + Math.sin(angle) * radius };
+    const prev = state.relationshipGraph.positions[node.id] || target;
+    state.relationshipGraph.positions[node.id] = {
+      x: prev.x + (target.x - prev.x) * 0.28,
+      y: prev.y + (target.y - prev.y) * 0.28,
+    };
+  });
+
+  links.forEach((link) => {
+    const a = state.relationshipGraph.positions[link.source];
+    const b = state.relationshipGraph.positions[link.target];
+    if (!a || !b) return;
+    const widthPx = 1 + (mode === "delta" ? link.drift : link.weight) * 5;
+    ctx.beginPath();
+    ctx.moveTo(a.x, a.y);
+    ctx.lineTo(b.x, b.y);
+    const driftColor = link.drift > 0.2 ? "rgba(230,120,92,0.9)" : "rgba(110,136,171,0.5)";
+    ctx.strokeStyle = mode === "delta" ? driftColor : "rgba(126, 156, 200, 0.42)";
+    ctx.lineWidth = widthPx;
+    ctx.stroke();
+  });
+
+  nodes.forEach((node) => {
+    const p = state.relationshipGraph.positions[node.id];
+    if (!p) return;
+    const selected = state.relationshipGraph.selectedNodeId === node.id;
+    const r = 6 + (node.importance || 0.4) * 11;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+    ctx.fillStyle = selected ? "rgba(130, 184, 255, 0.95)" : "rgba(96, 140, 212, 0.9)";
+    ctx.fill();
+    ctx.lineWidth = selected ? 2.4 : 1;
+    ctx.strokeStyle = selected ? "rgba(228, 240, 255, 0.9)" : "rgba(200,218,255,0.25)";
+    ctx.stroke();
+  });
+
+  if (detailTitle && detailBody) {
+    if (state.relationshipGraph.selectedNodeId) {
+      const node = nodes.find((n) => n.id === state.relationshipGraph.selectedNodeId);
+      const connected = links.filter((l) => l.source === node?.id || l.target === node?.id).length;
+      detailTitle.textContent = node ? `${node.label} · ${connected} direct relationships` : "Select a node or edge.";
+      detailBody.textContent = node ? `Importance ${(node.importance || 0).toFixed(2)} · Risk contribution ${(node.riskContribution || 0).toFixed(2)}.` : "";
+    } else if (state.relationshipGraph.selectedEdgeId) {
+      const edge = links.find((l) => `${l.source}:${l.target}` === state.relationshipGraph.selectedEdgeId);
+      detailTitle.textContent = edge ? `${edge.source} ↔ ${edge.target}` : "Select a node or edge.";
+      detailBody.textContent = edge ? `Strength ${edge.weight.toFixed(2)} · Drift ${edge.drift.toFixed(2)}.` : "";
+    } else {
+      detailTitle.textContent = "Select a node or edge.";
+      detailBody.textContent = "Hover and click the graph to inspect local structure, risk contribution, and drift.";
+    }
+  }
+  if (tooltip) tooltip.classList.add("hidden");
+}
+
+function wireRelationshipGraphInteractions() {
+  const canvas = qs("#relationshipGraphCanvas");
+  const tooltip = qs("#relationshipGraphTooltip");
+  const modeButtons = qsa("#relationshipGraphModeControls button");
+  const scrubber = qs("#relationshipGraphTimeScrubber");
+  const playBtn = qs("#relationshipGraphPlayBtn");
+  const edgeFilter = qs("#relationshipGraphEdgeFilter");
+  if (!canvas || canvas.dataset.graphWired === "1") return;
+  canvas.dataset.graphWired = "1";
+  modeButtons.forEach((btn) => {
+    btn.addEventListener("click", () => {
+      state.relationshipGraph.mode = String(btn.dataset.graphMode || "current");
+      modeButtons.forEach((el) => el.classList.toggle("active", el === btn));
+      renderRelationshipGraph();
+    });
+  });
+  if (scrubber) scrubber.addEventListener("input", () => {
+    state.relationshipGraph.frameIndex = Number(scrubber.value || 0);
+    renderRelationshipGraph();
+  });
+  if (edgeFilter) edgeFilter.addEventListener("input", () => {
+    state.relationshipGraph.edgeThreshold = Number(edgeFilter.value || 0.2);
+    renderRelationshipGraph();
+  });
+  if (playBtn) playBtn.addEventListener("click", () => {
+    if (state.relationshipGraph.playing) {
+      stopRelationshipGraphPlayback();
+      playBtn.textContent = "Play";
+      return;
+    }
+    stopRelationshipGraphPlayback();
+    state.relationshipGraph.playing = true;
+    playBtn.textContent = "Pause";
+    state.relationshipGraph.timer = window.setInterval(() => {
+      const max = Math.max(0, (state.relationshipGraph.frames || []).length - 1);
+      if (max <= 0) {
+        stopRelationshipGraphPlayback();
+        playBtn.textContent = "Play";
+        return;
+      }
+      state.relationshipGraph.frameIndex = state.relationshipGraph.frameIndex >= max ? 0 : state.relationshipGraph.frameIndex + 1;
+      renderRelationshipGraph();
+    }, 1100);
+  });
+
+  canvas.addEventListener("click", (evt) => {
+    const rect = canvas.getBoundingClientRect();
+    const x = evt.clientX - rect.left;
+    const y = evt.clientY - rect.top;
+    const nodes = state.relationshipGraph.nodes || [];
+    const picked = nodes.find((n) => {
+      const p = state.relationshipGraph.positions[n.id];
+      const r = 6 + (n.importance || 0.4) * 11;
+      return p && Math.hypot(p.x - x, p.y - y) <= r + 2;
+    });
+    state.relationshipGraph.selectedNodeId = picked ? picked.id : "";
+    state.relationshipGraph.selectedEdgeId = "";
+    renderRelationshipGraph();
+  });
+  canvas.addEventListener("mousemove", (evt) => {
+    if (!tooltip) return;
+    const rect = canvas.getBoundingClientRect();
+    const x = evt.clientX - rect.left;
+    const y = evt.clientY - rect.top;
+    const nodes = state.relationshipGraph.nodes || [];
+    const picked = nodes.find((n) => {
+      const p = state.relationshipGraph.positions[n.id];
+      const r = 6 + (n.importance || 0.4) * 11;
+      return p && Math.hypot(p.x - x, p.y - y) <= r + 3;
+    });
+    if (!picked) {
+      tooltip.classList.add("hidden");
+      return;
+    }
+    tooltip.classList.remove("hidden");
+    tooltip.style.left = `${Math.min(rect.width - 170, x + 12)}px`;
+    tooltip.style.top = `${Math.max(8, y - 18)}px`;
+    tooltip.innerHTML = `<strong>${escapeHtml(picked.label)}</strong><br/>Importance ${(picked.importance || 0).toFixed(2)}<br/>Risk contribution ${(picked.riskContribution || 0).toFixed(2)}`;
+  });
+  canvas.addEventListener("mouseleave", () => tooltip?.classList.add("hidden"));
+}
+
 async function loadDashboard() {
   if (state.ui.loadDashboardPromise) return state.ui.loadDashboardPromise;
   state.ui.loadDashboardPromise = (async () => {
@@ -2174,6 +2493,14 @@ async function loadDashboard() {
   const prev = chron.length > 1 ? chron[chron.length - 2] : null;
   const paint = () => {
     renderDashboardMetrics(latest, prev);
+    renderDashboardSparkline(chron);
+    bindDashboardSparklineInteractions();
+    state.relationshipGraph.frames = buildRelationshipGraphFrames(state.dashboardRecent);
+    if (state.relationshipGraph.frameIndex >= state.relationshipGraph.frames.length) {
+      state.relationshipGraph.frameIndex = Math.max(0, state.relationshipGraph.frames.length - 1);
+    }
+    wireRelationshipGraphInteractions();
+    renderRelationshipGraph();
     renderDashboardDemoHero();
   };
   if (state.ui.dashboardPaint) window.cancelAnimationFrame(state.ui.dashboardPaint);
