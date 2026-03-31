@@ -129,6 +129,14 @@ class HistoricalReplayEngine:
         transfer = dict(output.get("transfer_adaptation") or {})
         transfer_mismatch = float((transfer.get("transfer_metrics") or {}).get("mismatch_penalty", 0.0) or 0.0)
         calibrated_conf = self._float_or_default(recommendation.get("recommendation_calibrated_confidence"), confidence)
+        structural_uncertainty = dict((output.get("intervention_intelligence") or {}).get("structural_uncertainty_mode") or {})
+        transfer = dict(output.get("transfer_adaptation") or {})
+        transfer_mismatch = float((transfer.get("transfer_metrics") or {}).get("mismatch_penalty", 0.0) or 0.0)
+        calibrated_conf = self._float_or_default(recommendation.get("recommendation_calibrated_confidence"), confidence)
+        family_similarity = self._float_or_default(
+            ((output.get("trajectory_archetypes") or {}).get("family_similarity")),
+            1.0,
+        )
 
         reasons: list[str] = []
         if drift_warning:
@@ -153,6 +161,7 @@ class HistoricalReplayEngine:
                 "fallback_triggered": True,
                 "fallback_reasons": sorted(set(reasons)),
                 "advisory_mode": "conservative_monitoring",
+                "advisory_mode": "human_review_required",
             }
         if reasons:
             return {

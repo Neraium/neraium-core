@@ -32,6 +32,7 @@ class InterventionRecommendationRanker:
             worsening_signal = float(score.get("worsening_signal", 0.0))
             memory_weight = float(score.get("memory_effect_weight", 0.0))
             harmful_strength = float(score.get("harmful_signal_strength", worsening_signal))
+            correlation_penalty = float(score.get("correlation_trap_penalty", 0.0))
 
             consistent_with_laws = 1.0 if any(term in name for term in law_candidates) else 0.6
             family_consistency = 1.0 if family in {"escalating", "reversible", "drift", "stable"} else 0.7
@@ -46,6 +47,7 @@ class InterventionRecommendationRanker:
                 - 0.14 * uncertainty
                 - 0.10 * novelty
                 - 0.16 * harmful_strength
+                - 0.14 * correlation_penalty
             )
             confidence = self._final_confidence(composite=composite, support=support, harmful_strength=harmful_strength)
             memory_ablated = self._final_confidence(
@@ -53,6 +55,19 @@ class InterventionRecommendationRanker:
                 support=support,
                 harmful_strength=harmful_strength,
             )
+                novelty=novelty,
+                reliability=float(context.get("calibration_reliability", 1.0)),
+                drift_warning=bool(context.get("drift_warning", False)),
+            )
+            confidence_info = self.compute_final_confidence(
+                composite=composite,
+                support=support,
+                harmful_strength=harmful_strength,
+                novelty=novelty,
+                reliability=float(context.get("calibration_reliability", 1.0)),
+                drift_warning=bool(context.get("drift_warning", False)),
+            )
+            confidence = confidence_info["confidence"]
 
             ranked.append(
                 {
@@ -61,6 +76,9 @@ class InterventionRecommendationRanker:
                     "intervention_target": cand["intervention_target"],
                     "rank_score": round(confidence, 4),
                     "confidence": round(confidence, 4),
+                    "confidence_regime": confidence_info["confidence_regime"],
+                    "confidence_pre_calibration": round(confidence_info["confidence_pre_calibration"], 4),
+                    "confidence_post_calibration": round(confidence_info["confidence_post_calibration"], 4),
                     "rationale": "Advisory ranking from bounded evidence and projection signals; not proof of causal effect.",
                     "ranking_factors": {
                         "expected_effectiveness": round(expected, 4),
@@ -71,6 +89,12 @@ class InterventionRecommendationRanker:
                         "harmful_signal_strength": round(harmful_strength, 4),
                         "context_match": round(context_match, 4),
                         "memory_effect_weight": round(memory_weight, 4),
+                        "correlation_trap_penalty": round(correlation_penalty, 4),
+                    },
+                    "memory_ablation": {
+                        "confidence_with_memory": round(confidence, 4),
+                        "confidence_without_memory": round(memory_ablated, 4),
+                        "confidence_delta": round(confidence - memory_ablated, 6),
                     },
                     "memory_ablation": {
                         "confidence_with_memory": round(confidence, 4),
@@ -81,6 +105,11 @@ class InterventionRecommendationRanker:
                         "model_based_projection": cand.get("model_projection") or {},
                         "historical_evidence": score,
                     },
+                    "warnings": [
+                        "correlation_trap_risk_penalized"
+                    ]
+                    if correlation_penalty >= 0.45
+                    else [],
                 }
             )
 
@@ -120,12 +149,17 @@ class InterventionRecommendationRanker:
                 "choice_changed_without_memory": bool(best and best_without_memory and best["name"] != best_without_memory["name"]),
             },
             "decision_trace": {
+                "confidence_regime": (best or {}).get("confidence_regime"),
+                "confidence_pre_calibration": (best or {}).get("confidence_pre_calibration"),
+                "confidence_post_calibration": (best or {}).get("confidence_post_calibration"),
                 "confidence_contributions": {
                     "historical_evidence": "primary when support and context match are strong",
                 "counterfactual_projection": "secondary projection input",
                 "law_and_trajectory_consistency": "consistency signal",
                 "uncertainty_and_novelty_penalties": "always applied to keep recommendations conservative",
                 "intervention_memory_weighting": "increases with repeated, context-matched supportive outcomes and decreases sharply under harmful history",
+                "counterfactual_specificity_guard": "penalizes interventions that track generic regime improvement or already-stabilizing contexts",
+                "dual_regime_confidence": "normal regime calibrates confidence; uncertain regime caps confidence for safety",
             },
                 "assumptions_remaining": [
                     "Historical similarity may omit hidden confounders.",
@@ -143,3 +177,57 @@ class InterventionRecommendationRanker:
         if harmful_strength > 0.05:
             confidence *= 0.62
         return confidence
+    def calibrate_confidence(*, raw_confidence: float, regime: str) -> float:
+        raw = _clip01(raw_confidence)
+        if regime == "uncertain":
+            return round(min(0.2, 0.03 + 0.17 * raw), 6)
+        calibrated = 0.10 + 0.88 * (raw**0.72)
+        return round(min(0.95, _clip01(calibrated)), 6)
+
+    def compute_final_confidence(
+        self,
+        *,
+        composite: float,
+        support: float,
+        harmful_strength: float,
+        novelty: float,
+        reliability: float,
+        drift_warning: bool,
+    ) -> dict[str, float | str]:
+        pre_calibration = _clip01(composite)
+        uncertain = bool(
+            novelty >= 0.7
+            or support <= 2
+            or reliability < 0.5
+            or drift_warning
+            or harmful_strength >= 0.28
+        )
+        regime = "uncertain" if uncertain else "normal"
+
+        post_calibration = self.calibrate_confidence(raw_confidence=pre_calibration, regime=regime)
+        return {
+            "confidence": float(post_calibration),
+            "confidence_regime": regime,
+            "confidence_pre_calibration": float(pre_calibration),
+            "confidence_post_calibration": float(post_calibration),
+        }
+
+    def _final_confidence(
+        self,
+        *,
+        composite: float,
+        support: float,
+        harmful_strength: float,
+        novelty: float,
+        reliability: float,
+        drift_warning: bool,
+    ) -> float:
+        info = self.compute_final_confidence(
+            composite=composite,
+            support=support,
+            harmful_strength=harmful_strength,
+            novelty=novelty,
+            reliability=reliability,
+            drift_warning=drift_warning,
+        )
+        return float(info["confidence"])

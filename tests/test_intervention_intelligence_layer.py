@@ -264,3 +264,140 @@ def test_intervention_memory_ablation_meaningfully_changes_ranking_quality() -> 
     seeded_conf = float(seeded["recommendation"]["confidence"])
     cold_conf = float(cold["recommendation"]["confidence"])
     assert seeded_conf - cold_conf >= 0.12
+
+
+def test_structural_uncertainty_mode_activates_for_high_novelty_weak_support() -> None:
+    engine = InterventionIntelligenceEngine()
+    out = engine.update(
+        asset_id="uncertain-1",
+        observation={"latent_embedding": [0.85, 0.83, 0.82], "drift_warning": True},
+        transition={"regime": "critical", "transition_path": "escalating", "escalation_probability": 0.9, "reversibility_score": 0.1, "distance_to_critical_region": 0.04},
+        trajectory={"current_trajectory_path_family": "unknown_new_family", "novelty_score": 0.97, "family_similarity": 0.2, "support": 0},
+        mechanism={"mechanism_candidates": []},
+        laws={"law_candidates": []},
+        counterfactuals={"scenario_rankings": [{"name": "remove_top_driver_contribution", "risk_delta": 0.4}]},
+    )
+    mode = out["structural_uncertainty_mode"]
+    assert mode["active"] is True
+    assert mode["recommended_posture"] == "human_review_required"
+    assert out["recommendation"]["best_intervention"]["name"] == "monitor"
+    assert out["recommendation"]["fallback_triggered"] is True
+    assert "core_decision_trace" not in out
+    assert "fallback_policy" not in (out["recommendation"].get("decision_trace") or {})
+
+
+def test_production_hard_override_forces_monitor_and_human_review(monkeypatch) -> None:
+    platform = StructuralSystemIntelligencePlatform(operating_mode="production")
+
+    def _mock_intervention_update(**_: object) -> dict[str, object]:
+        return {
+            "recommendation": {
+                "best_intervention": {"name": "remove_top_driver_contribution", "confidence": 0.91, "rank_score": 0.91},
+                "ranked_interventions": [
+                    {"name": "remove_top_driver_contribution", "confidence": 0.91},
+                    {"name": "restore_relationship_cluster_to_baseline", "confidence": 0.62},
+                ],
+                "fallback_triggered": False,
+                "fallback_reasons": [],
+                "recommended_posture": "standard_advisory",
+            },
+            "historical_evidence": {"support_summary": {"support_count": 1}},
+            "structural_uncertainty_mode": {
+                "active": True,
+                "reason": "high_novelty,weak_support",
+                "novelty": 0.97,
+                "support": 1,
+                "reliability": 0.3,
+                "recommended_posture": "human_review_required",
+            },
+        }
+
+    monkeypatch.setattr(platform.production.intervention_intelligence, "update", _mock_intervention_update)
+    out = platform.update(
+        {
+            **_state(0),
+            "asset_id": "override-1",
+            "drift_warning": True,
+        }
+    )
+
+    intervention = out["production_intelligence"]["intervention_intelligence"]
+    recommendation = intervention["recommendation"]
+    compatibility = out["compatibility"]
+    trace = out["production_intelligence"]["core_decision_trace"]
+
+    assert recommendation["best_intervention"]["name"] == "monitor"
+    assert recommendation["recommended_posture"] == "human_review_required"
+    assert recommendation["override_applied"] is True
+    assert compatibility["recommended_intervention"] == "monitor"
+    assert compatibility["forced_posture"] == "human_review_required"
+    assert compatibility["intervention_overridden"] is True
+    assert trace["override_applied"] is True
+    assert trace["fallback_policy"]["triggered"] is True
+    assert "structural_uncertainty_mode" in trace["fallback_policy"]["reasons"]
+
+
+def test_correlation_trap_penalty_is_exposed_in_ranking_trace() -> None:
+    engine = InterventionIntelligenceEngine()
+    _simulate_record(engine, helpful=True)
+    _simulate_record(engine, helpful=True)
+    out = engine.update(
+        asset_id="corr-1",
+        observation={"latent_embedding": [0.1, 0.2, 0.3]},
+        transition={"regime": "critical", "transition_path": "escalating", "escalation_probability": 0.82, "reversibility_score": 0.2, "distance_to_critical_region": 0.1},
+        trajectory={"current_trajectory_path_family": "escalating", "novelty_score": 0.2, "family_similarity": 0.8, "support": 4},
+        mechanism={"mechanism_candidates": [{"mechanism": "cluster_decoupling:a->b"}]},
+        laws={"law_candidates": [{"law": "cluster_decoupling"}]},
+        counterfactuals={"scenario_rankings": [{"name": "remove_top_driver_contribution", "risk_delta": 0.2}]},
+    )
+    ranked = out["recommendation"]["ranked_interventions"][0]
+    assert "correlation_trap_penalty" in ranked["ranking_factors"]
+    assert "counterfactual_specificity_guard" in out["recommendation"]["decision_trace"]["confidence_contributions"]
+
+
+def test_override_divergence_clusters_are_recorded() -> None:
+    engine = InterventionIntelligenceEngine()
+    engine.memory.ingest_feedback_event(intervention_type="remove_or_suppress_top_driver", action="overridden", outcome_label="helpful")
+    engine.memory.ingest_feedback_event(intervention_type="remove_or_suppress_top_driver", action="overridden", outcome_label="neutral")
+    engine.memory.ingest_feedback_event(intervention_type="remove_or_suppress_top_driver", action="accepted", outcome_label="harmful")
+    summary = engine.memory.support_summary()
+    clusters = summary["override_divergence_clusters"]
+    assert "remove_or_suppress_top_driver" in clusters
+    assert clusters["remove_or_suppress_top_driver"]["pattern"] in {
+        "system_wrong_operator_better",
+        "operator_wrong_system_better",
+        "unresolved_tradeoff",
+    }
+
+
+def test_baseline_context_with_support_count_does_not_force_fallback_or_monitor() -> None:
+    engine = InterventionIntelligenceEngine()
+    out = engine.update(
+        asset_id="baseline-1",
+        observation={
+            "latent_embedding": [0.2, 0.22, 0.21],
+            "calibration": {"reliability": 0.92},
+        },
+        transition={
+            "regime": "transitional",
+            "transition_path": "stable",
+            "escalation_probability": 0.34,
+            "reversibility_score": 0.72,
+            "distance_to_critical_region": 0.65,
+        },
+        trajectory={
+            "current_trajectory_path_family": "stable_family",
+            "novelty_score": 0.0,
+            "support_count": 8,
+        },
+        mechanism={"mechanism_candidates": []},
+        laws={"law_candidates": []},
+        counterfactuals={"scenario_rankings": [{"name": "restore_relationship_cluster_to_baseline", "risk_delta": 0.08}]},
+    )
+
+    recommendation = out["recommendation"]
+    mode = out["structural_uncertainty_mode"]
+    assert out["context"]["support_count"] == 8
+    assert recommendation["fallback_triggered"] is False
+    assert recommendation["best_intervention"]["name"] != "monitor"
+    assert mode["active"] is False
