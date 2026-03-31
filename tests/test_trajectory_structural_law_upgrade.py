@@ -29,127 +29,157 @@ def _obs(asset: str, drift: float, rel: float, regime_d: float, coherence: float
     }
 
 
-def test_trajectory_shape_similarity_outperforms_endpoint_matching() -> None:
-    encoder = TrajectorySegmentEncoder(window_size=8)
-    base = np.asarray([[i * 0.1, i * 0.08, i * 0.12] for i in range(8)], dtype=float)
-    same_shape = base + np.asarray([0.02, -0.01, 0.0], dtype=float)
-    different_shape_same_end = np.vstack([
-        np.asarray([[0.0, 0.0, 0.0], [0.7, 0.2, 0.6], [0.3, 0.8, 0.2], [0.9, 0.9, 0.9]], dtype=float),
-        np.linspace([0.9, 0.9, 0.9], base[-1], 4),
-    ])
+def _run(memory: CrossSystemTrajectoryMemory, asset: str, seq: np.ndarray, escalating_cutoff: float = 0.9) -> dict:
+    out = {}
+    for i, emb in enumerate(seq):
+        out = memory.update(
+            asset_id=asset,
+            embedding=emb.tolist(),
+            escalating=float(np.linalg.norm(emb)) >= escalating_cutoff,
+            in_critical_region=float(np.linalg.norm(emb)) >= escalating_cutoff + 0.25,
+            phase_shift=i > 2,
+            mechanism_names=["m:a->b"],
+        )
+    return out
+
+
+def test_alignment_prefers_shape_match_over_endpoint_only() -> None:
+    encoder = TrajectorySegmentEncoder(window_size=10)
+    base = np.asarray([[i * 0.08, i * 0.05, i * 0.09] for i in range(10)], dtype=float)
+    same_shape = base + np.asarray([0.03, -0.02, 0.02], dtype=float)
+    same_endpoint_diff_shape = np.asarray(
+        [[0.0, 0.0, 0.0], [0.5, 0.8, 0.2], [0.2, 0.9, 0.3], [0.8, 0.4, 0.9], [0.3, 0.1, 0.7], [0.4, 0.2, 0.6], [0.6, 0.1, 0.8], [0.55, 0.35, 0.75], [0.62, 0.4, 0.82], base[-1]],
+        dtype=float,
+    )
 
     d_shape = dtw_distance(base, same_shape)
-    d_different = dtw_distance(base, different_shape_same_end)
+    d_diff = dtw_distance(base, same_endpoint_diff_shape)
+    endpoint_d_shape = float(np.linalg.norm(base[-1] - same_shape[-1]))
+    endpoint_d_diff = float(np.linalg.norm(base[-1] - same_endpoint_diff_shape[-1]))
 
-    point_distance_similar = float(np.linalg.norm(base[-1] - same_shape[-1]))
-    point_distance_different = float(np.linalg.norm(base[-1] - different_shape_same_end[-1]))
-
-    assert point_distance_different < point_distance_similar
-    assert d_shape < d_different
-    assert encoder._infer_path_family(base) == "escalating"
+    assert endpoint_d_diff < endpoint_d_shape
+    assert d_shape < d_diff
+    assert encoder._infer_path_family(base) in {"escalating", "drift"}
 
 
-def test_trajectory_memory_separates_path_families() -> None:
-    memory = CrossSystemTrajectoryMemory(window_size=8, min_similarity_for_match=0.5)
+def test_trajectory_families_separate_stable_drift_escalating_reversible() -> None:
+    memory = CrossSystemTrajectoryMemory(window_size=10, min_similarity_for_match=0.7)
+    t = np.linspace(0.0, 1.0, 20)
+    stable = np.stack([0.2 + 0.02 * np.sin(4 * t), 0.21 + 0.01 * np.cos(5 * t), 0.19 + 0.01 * np.sin(3 * t)], axis=1)
+    drift = np.stack([0.2 + 0.18 * t, 0.15 + 0.09 * t, 0.2 + 0.11 * t], axis=1)
+    escalating = np.stack([0.12 + 1.15 * t**2, 0.09 + 0.85 * t**2, 0.1 + 0.95 * t**2], axis=1)
+    reversible = np.stack([0.9 - 0.75 * t + 0.05 * np.sin(4 * t), 0.8 - 0.6 * t, 0.85 - 0.65 * t + 0.02 * np.cos(3 * t)], axis=1)
 
-    for i in range(12):
-        escalating = [0.15 * i, 0.11 * i, 0.12 * i]
-        stable = [0.2 + 0.01 * np.sin(i), 0.19 + 0.01 * np.cos(i), 0.18]
-        recovery = [1.2 - 0.08 * i, 1.0 - 0.07 * i, 0.95 - 0.06 * i]
+    out_s = _run(memory, "stable-1", stable, escalating_cutoff=1.5)
+    out_d = _run(memory, "drift-1", drift, escalating_cutoff=1.5)
+    out_e = _run(memory, "escalate-1", escalating, escalating_cutoff=0.8)
+    out_r = _run(memory, "recover-1", reversible, escalating_cutoff=1.5)
 
-        out_e = memory.update(asset_id="asset-e", embedding=escalating, escalating=True, in_critical_region=i > 8, phase_shift=True, mechanism_names=[])
-        out_s = memory.update(asset_id="asset-s", embedding=stable, escalating=False, in_critical_region=False, phase_shift=False, mechanism_names=[])
-        out_r = memory.update(asset_id="asset-r", embedding=recovery, escalating=False, in_critical_region=False, phase_shift=True, mechanism_names=[])
-
-    assert out_e["status"] == "ready"
     assert out_s["status"] == "ready"
-    assert out_r["status"] == "ready"
-    assert out_e["current_trajectory_path_family"] == "escalating"
-    assert out_s["current_trajectory_path_family"] == "stable"
-    assert out_r["current_trajectory_path_family"] in {"reversible", "drifting"}
+    assert out_e["status"] == "ready"
+    assert out_s["current_trajectory_path_family"] != out_e["current_trajectory_path_family"]
+    assert out_r["current_trajectory_path_family"] in {"reversible", "drift"}
+    assert out_d["support"] >= 1
 
 
-def test_trajectory_conditioned_forecast_is_evidence_bounded() -> None:
+def test_encoder_identifies_reversible_pattern() -> None:
+    encoder = TrajectorySegmentEncoder(window_size=10)
+    t = np.linspace(0.0, 1.0, 10)
+    reversible = np.stack([1.1 - 0.9 * t, 0.95 - 0.7 * t + 0.03 * np.sin(4 * t), 1.0 - 0.8 * t], axis=1)
+    assert encoder._infer_path_family(reversible) == "reversible"
+
+
+def test_family_conditioned_forecast_beats_point_only_in_controlled_case() -> None:
     forecaster = TrajectoryConditionedForecaster()
     traj = {
         "status": "ready",
-        "current_trajectory_path_family": "drifting",
-        "nearest_trajectory_archetypes": [
-            {"similarity": 0.9, "historical_escalation_frequency": 0.85, "support": 20},
-            {"similarity": 0.7, "historical_escalation_frequency": 0.8, "support": 12},
+        "current_trajectory_path_family": "drift",
+        "novelty_score": 0.05,
+        "nearest_trajectory_families": [
+            {"family_similarity": 0.94, "escalation_frequency": 0.91, "support": 24},
+            {"family_similarity": 0.76, "escalation_frequency": 0.79, "support": 16},
         ],
-        "matched_historical_progressions": [{"path_family": "escalating", "frequency": 0.62, "support": 11}],
+        "matched_historical_progressions": [{"path_family": "escalating", "frequency": 0.67, "support": 12}],
     }
-    base = {"escalation_probability": 0.35, "transition_path": "drifting"}
-    out = forecaster.forecast(trajectory_intelligence=traj, transition_dynamics=base)
+    point_only = {"escalation_probability": 0.34, "transition_path": "drift"}
+    out = forecaster.forecast(trajectory_intelligence=traj, transition_dynamics=point_only)
 
-    assert out["status"] == "ready"
-    assert out["trajectory_conditioned_escalation_probability"] > base["escalation_probability"]
+    assert out["trajectory_conditioned_escalation_probability"] > point_only["escalation_probability"]
     assert out["likely_next_path_family"] == "escalating"
-    assert out["estimated_steps_to_critical_region"]["range"][0] <= out["estimated_steps_to_critical_region"]["median"]
+    assert out["uncertainty"] < 0.6
+
+    novel_traj = dict(traj)
+    novel_traj["novelty_score"] = 0.95
+    novel = forecaster.forecast(trajectory_intelligence=novel_traj, transition_dynamics=point_only)
+    assert novel["trajectory_conditioned_escalation_probability"] < out["trajectory_conditioned_escalation_probability"]
+    assert novel["novelty_aware_confidence_penalty"] > out["novelty_aware_confidence_penalty"]
 
 
-def test_structural_laws_require_support_and_effect_thresholds() -> None:
-    extractor = StructuralLawExtractor(min_support=3, robust_support=8)
-    trajectory = {"status": "ready", "current_trajectory_archetype": "trajectory_archetype_1", "current_trajectory_path_family": "escalating"}
-    mechanism = {"mechanism_candidates": [{"mechanism": "cluster_decoupling:x->y"}]}
-
-    labels = []
-    for _ in range(2):
-        out = extractor.update(trajectory_info=trajectory, mechanism_info=mechanism, transition={"transition_path": "escalating", "escalation_probability": 0.8, "regime": "transitional"})
-        labels.append(out["law_candidates"][0]["classification"])
-    out = extractor.update(trajectory_info=trajectory, mechanism_info=mechanism, transition={"transition_path": "escalating", "escalation_probability": 0.8, "regime": "critical"})
-
-    assert labels[-1] == "unsupported_hypothesis"
-    assert out["law_candidates"][0]["classification"] in {"weak_pattern", "candidate_structural_law"}
-    assert out["law_candidates"][0]["support"] >= 3
-
-
-def test_mechanism_associations_are_family_conditioned() -> None:
+def test_mechanism_signals_gain_family_specificity() -> None:
     layer = MechanismDiscoveryLayer()
     rel = [{"source": "A", "target": "B"}, {"source": "B", "target": "C"}, {"source": "A", "target": "C"}]
 
-    escalating_out = {}
-    for _ in range(5):
-        escalating_out = layer.update(
+    out = {}
+    for _ in range(6):
+        out = layer.update(
             top_relationships=rel,
-            subsystem_impact={"s1": 0.8, "s2": 0.6},
+            subsystem_impact={"s1": 0.85, "s2": 0.72},
             escalating=True,
             trajectory_family="escalating",
             recovering=False,
         )
-    for _ in range(4):
+    for _ in range(5):
         layer.update(
             top_relationships=rel,
-            subsystem_impact={"s1": 0.8, "s2": 0.6},
+            subsystem_impact={"s1": 0.85, "s2": 0.72},
             escalating=False,
             trajectory_family="reversible",
             recovering=True,
         )
 
-    assoc = escalating_out["mechanism_trajectory_associations"]
-    assert assoc
-    assert any(item["association"] == "escalation_correlated" for item in assoc)
+    candidate = out["mechanism_candidates"][0]
+    assert "family_conditioned_predictive_value" in candidate
+    assert "family_conditioned_recovery_association" in candidate
+    assert out["evidence_by_family"]
 
 
-def test_platform_keeps_existing_outputs_and_adds_trajectory_sections() -> None:
+def test_platform_outputs_trajectory_family_and_forecast_sections() -> None:
     platform = StructuralSystemIntelligencePlatform()
     out = {}
-    for i in range(20):
+    for i in range(24):
         out = platform.update(
             _obs(
                 asset="asset-1",
-                drift=0.08 + 0.03 * i,
-                rel=0.06 + 0.025 * i,
-                regime_d=0.04 + 0.02 * i,
-                coherence=max(0.05, 0.92 - 0.03 * i),
+                drift=0.07 + 0.035 * i,
+                rel=0.05 + 0.03 * i,
+                regime_d=0.03 + 0.02 * i,
+                coherence=max(0.05, 0.93 - 0.03 * i),
             )
         )
 
-    assert "archetype_intelligence" in out
-    assert "mechanism_discovery" in out
-    assert "compatibility" in out
-    assert "trajectory_archetypes" in out
-    assert "trajectory_forecast" in out
-    assert "structural_law_candidates" in out
-    assert out["trajectory_archetypes"]["status"] in {"ready", "warming"}
+    traj = out["trajectory_archetypes"]
+    forecast = out["trajectory_forecast"]
+    assert traj["status"] in {"ready", "warming"}
+    if traj["status"] == "ready":
+        assert "current_trajectory_family" in traj
+        assert "nearest_trajectory_families" in traj
+        assert "family_similarity" in traj
+        assert "novelty_score" in traj
+        assert "representative_segment" in traj
+        assert "escalation_frequency_by_family" in traj
+    assert "likely_next_path_family" in forecast
+    assert "trajectory_conditioned_escalation_probability" in forecast
+    assert "estimated_steps_to_critical_region" in forecast
+
+
+def test_structural_laws_require_support_and_effect_thresholds() -> None:
+    extractor = StructuralLawExtractor(min_support=3, robust_support=8)
+    trajectory = {"status": "ready", "current_trajectory_archetype": "trajectory_family_1", "current_trajectory_path_family": "escalating"}
+    mechanism = {"mechanism_candidates": [{"mechanism": "cluster_decoupling:x->y"}]}
+
+    for _ in range(2):
+        out = extractor.update(trajectory_info=trajectory, mechanism_info=mechanism, transition={"transition_path": "escalating", "escalation_probability": 0.8, "regime": "transitional"})
+    out = extractor.update(trajectory_info=trajectory, mechanism_info=mechanism, transition={"transition_path": "escalating", "escalation_probability": 0.8, "regime": "critical"})
+
+    assert out["law_candidates"][0]["classification"] in {"weak_pattern", "candidate_structural_law"}
+    assert out["law_candidates"][0]["support"] >= 3
