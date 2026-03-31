@@ -1677,6 +1677,73 @@ body {
 
 .dashboard-grid-v2 { display: grid; grid-template-columns: minmax(420px, 1.45fr); gap: 16px; align-items: start; }
 .operational-snapshot { margin-bottom: 0.5rem; }
+.operator-section {
+  padding: 16px 18px;
+}
+
+.risk-progression-strip {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.risk-stage {
+  border: 1px solid #2f4569;
+  border-radius: 10px;
+  padding: 8px 10px;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #a8bddf;
+  text-align: center;
+  background: rgba(9, 16, 30, 0.7);
+}
+
+.risk-stage.active {
+  border-color: #5e86d0;
+  color: #ebf2ff;
+  background: linear-gradient(180deg, #1b2f53, #14253f);
+}
+
+.dashboard-sparkline-tooltip {
+  position: absolute;
+  z-index: 3;
+  width: 160px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid #365079;
+  background: rgba(8, 13, 23, 0.95);
+  font-size: 11px;
+  line-height: 1.45;
+  pointer-events: none;
+}
+
+.relationship-graph-wrap {
+  position: relative;
+  margin-top: 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 12px;
+  background: linear-gradient(180deg, #070d18, #060a13);
+  overflow: hidden;
+}
+
+.relationship-graph-canvas {
+  width: 100%;
+  min-height: 380px;
+  display: block;
+}
+
+.graph-controls-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+
+.graph-controls-row input[type="range"] {
+  min-width: 170px;
+}
 .snapshot-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.55rem; }
 .snapshot-item, .decision-item { border: 1px solid var(--line); border-radius: 8px; padding: 0.55rem 0.65rem; background: #fff; }
 .snapshot-item p { margin: 0; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.03em; color: #5a5f66; }
