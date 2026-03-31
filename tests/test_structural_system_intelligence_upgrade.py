@@ -57,32 +57,39 @@ def test_structural_system_intelligence_layer_integrates_and_responds() -> None:
     intelligence = unstable_out.get("structural_system_intelligence")
     assert isinstance(intelligence, dict)
     assert set(intelligence.keys()) >= {
+        "production_intelligence",
+        "advisory_intelligence",
+        "experimental_intelligence",
+        "compatibility",
+        "capability_boundaries",
+    }
+    assert set(intelligence["production_intelligence"].keys()) >= {
         "latent_structural_state",
         "transition_dynamics",
         "counterfactuals",
         "archetype_intelligence",
-        "mechanism_discovery",
-        "compatibility",
     }
+    assert intelligence["advisory_intelligence"] == {}
 
     stable_prob = float(stable_out["structural_system_intelligence"]["transition_dynamics"].get("escalation_probability", 0.0))
     unstable_prob = float(unstable_out["structural_system_intelligence"]["transition_dynamics"].get("escalation_probability", 0.0))
     assert unstable_prob >= stable_prob
 
-    latent = intelligence["latent_structural_state"]
+    latent = intelligence["production_intelligence"]["latent_structural_state"]
     assert len(latent.get("embedding", [])) == 3
     assert len(latent.get("trajectory", [])) >= 2
 
-    counterfactual = intelligence["counterfactuals"]
+    counterfactual = intelligence["production_intelligence"]["counterfactuals"]
     observed = float(counterfactual["observed_evidence"]["base_composite_instability"])
     projected = float(counterfactual["best_intervention"]["projected_risk_score"])
     assert projected <= observed
 
-    archetype = intelligence["archetype_intelligence"]
+    archetype = intelligence["production_intelligence"]["archetype_intelligence"]
     assert archetype.get("nearest_archetypes")
 
-    mechanisms = intelligence["mechanism_discovery"]
-    assert isinstance(mechanisms.get("mechanism_candidates"), list)
+    boundary = intelligence["capability_boundaries"]["latent_structural_state"]
+    assert boundary["status"] == "production"
+    assert boundary["can_drive_operator_recommendations"] is True
 
     # Legacy-facing outputs remain intact.
     assert unstable_out.get("risk_assessment")
