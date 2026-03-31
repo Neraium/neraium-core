@@ -96,6 +96,12 @@ from .services.request_context import (
 )
 from .services.validation_utils import actionable_validation_detail
 from .services.export_utils import build_export
+from .services.state_store import RuntimeStateStore
+from .services.operational_state import OperationalStateService
+from .services.ingest_jobs import IngestJobsManager
+from .services.demo_jobs import DemoJobsManager
+from .services.pull_integrations import PullIntegrationsManager
+from .services.state_restore import OperationalStateRestoreService
 from .services.geometry import (
     STRUCTURAL_FLOW_PLANE_MAX_N,
     _build_geometry_edges,
@@ -119,9 +125,6 @@ from neraium_core.pipeline import infer_csv_mapping_stage, issue_to_dict, parse_
 
 logger = logging.getLogger(__name__)
 
-
-DEFAULT_UPLOAD_STREAM_CHUNK_BYTES = 1024 * 1024
-DEFAULT_INGEST_JOB_MAX_ERROR_SAMPLES = 25
 
 def _alert_thresholds() -> tuple[float, float]:
     """Backward-compatible shim; implementation moved to services.alerts."""
@@ -196,51 +199,6 @@ def _parse_int(value: Any, *, field_name: str) -> int:
         raise HTTPException(status_code=400, detail=f"{field_name} must be an integer.") from exc
 
 
-DEMO_STRUCTURAL_SENSOR_KEYS = [
-    "pressure",
-    "flow",
-    "vibration",
-    "temperature",
-    "motor_current",
-    "bearing_temp",
-    "load_cell",
-    "rpm",
-    "humidity",
-    "displacement",
-    "valve_position",
-    "shaft_accel",
-    "lubrication_psi",
-    "seismic_x",
-    "seismic_y",
-    "winding_temp",
-    "inlet_guide",
-    "outlet_guide",
-    "torque_est",
-    "casing_vibe",
-    "oil_quality",
-    "stator_temp",
-    "field_bus_ok",
-    "coolant_flow",
-]
-
-
-def _build_demo_sensor_values_row(i: int, p: float, drift_lift: float, vib_spike: float) -> dict[str, float]:
-    out: dict[str, float] = {}
-    for k, key in enumerate(DEMO_STRUCTURAL_SENSOR_KEYS):
-        phase = k * 0.85
-        wave = math.sin(i / (5.2 + k * 0.11) + phase)
-        w2 = math.cos(i / (7.1 + k * 0.09) + phase * 0.65)
-        base = 18 + k * 6.2
-        out[key] = (
-            base
-            + wave * (1 + drift_lift * (0.45 + k * 0.025))
-            + w2 * (0.55 + vib_spike * 0.12)
-            + i * (0.011 + k * 0.0008)
-            + p * (0.15 + k * 0.02)
-        )
-    return out
-
-
 def create_app(
     service: StructuralMonitoringService | None = None,
     *,
@@ -293,14 +251,7 @@ def create_app(
     integration_config = load_integration_config(integration_config_path)
     app.state.integration_config_override = integration_config
     app.state.integration_config_path_override = integration_config_path
-    ingest_jobs: dict[str, dict[str, Any]] = {}
-    ingest_jobs_lock = threading.Lock()
-    demo_jobs: dict[str, dict[str, Any]] = {}
-    demo_jobs_lock = threading.Lock()
-    pull_integrations: dict[str, dict[str, Any]] = {}
-    pull_integrations_lock = threading.Lock()
-    alerts: dict[str, list[dict[str, Any]]] = {}
-    alerts_lock = threading.Lock()
+    state_store = RuntimeStateStore()
     runtime_state_diagnostics: dict[str, Any] = build_runtime_state_diagnostics(
         request_body_limit=request_body_limit,
         db_path=db_path,
@@ -331,34 +282,21 @@ def create_app(
             level=logging.ERROR,
         )
 
+    operational_state = OperationalStateService(store_instance=store_instance, enabled=persisted_state_enabled, logger=logger)
+
     def _persist_operational_state(key: str, payload: dict[str, Any], *, customer_id: str | None = None, run_id: str | None = None) -> None:
-        if not persisted_state_enabled or store_instance is None:
-            return
-        try:
-            store_instance.upsert_operational_state(
-                state_key=key,
-                state=payload,
-                customer_id=customer_id,
-                run_id=run_id,
-            )
-        except Exception:
-            logger.exception("Failed to persist operational state key=%s", key)
+        operational_state.persist(key, payload, customer_id=customer_id, run_id=run_id)
 
     def _delete_operational_state(key: str) -> None:
-        if not persisted_state_enabled or store_instance is None:
-            return
-        try:
-            store_instance.delete_operational_state(state_key=key)
-        except Exception:
-            logger.exception("Failed to delete operational state key=%s", key)
+        operational_state.delete(key)
 
     def _record_alerts_for_customer(customer_id: str, items: list[dict[str, Any]]) -> list[dict[str, Any]]:
         if not items:
             return []
         resolved_customer = resolve_customer_id(customer_id)
         created: list[dict[str, Any]] = []
-        with alerts_lock:
-            bucket = alerts.setdefault(resolved_customer, [])
+        with state_store.alerts_lock:
+            bucket = state_store.alerts.setdefault(resolved_customer, [])
             for raw in items:
                 if not isinstance(raw, dict):
                     continue
@@ -430,834 +368,54 @@ def create_app(
             return None
         return value if value >= 0 else None
 
-    def _public_ingest_job(job: dict[str, Any]) -> dict[str, Any]:
-        status = str(job.get("status", "unknown"))
-        ui_state = str(job.get("ui_state") or "")
-        if not ui_state:
-            if status == "uploading":
-                ui_state = "uploading"
-            elif status in {"queued", "processing"}:
-                ui_state = "ingesting"
-            elif status in {"completed", "partial_success", "failed"}:
-                ui_state = status
-            else:
-                ui_state = "idle"
-        return {
-            "job_id": str(job.get("job_id")),
-            "status": status,
-            "run_id": job.get("run_id"),
-            "customer_id": resolve_customer_id(job.get("customer_id")),
-            "filename": str(job.get("filename") or "upload.csv"),
-            "created_at": str(job.get("created_at") or _utc_now_iso()),
-            "updated_at": str(job.get("updated_at") or _utc_now_iso()),
-            "rows_processed": int(job.get("rows_processed", 0)),
-            "rows_succeeded": int(job.get("rows_succeeded", 0)),
-            "rows_failed": int(job.get("rows_failed", 0)),
-            "partial_success": bool(job.get("partial_success", False)),
-            "upload_bytes_received": int(job.get("upload_bytes_received", 0)),
-            "upload_bytes_total": (
-                int(job.get("upload_bytes_total"))
-                if job.get("upload_bytes_total") is not None
-                else None
-            ),
-            "error_samples": list(job.get("error_samples") or []),
-            "message": job.get("message"),
-            "latest_result": job.get("latest_result"),
-            "lifecycle_phase": job.get("lifecycle_phase"),
-            "ui_state": ui_state,
-            "terminal_state": job.get("terminal_state"),
-            "failure_category": job.get("failure_category"),
-        }
-
-    def _cleanup_ingest_jobs(max_jobs: int = 300) -> None:
-        removed_ids: list[str] = []
-        with ingest_jobs_lock:
-            if len(ingest_jobs) <= max_jobs:
-                return
-            completed_ids = [
-                jid
-                for jid, job in ingest_jobs.items()
-                if str(job.get("status")) in {"completed", "partial_success", "failed"}
-            ]
-            completed_ids.sort(
-                key=lambda jid: str(ingest_jobs[jid].get("updated_at") or ingest_jobs[jid].get("created_at") or "")
-            )
-            overflow = len(ingest_jobs) - max_jobs
-            for jid in completed_ids[: max(0, overflow)]:
-                ingest_jobs.pop(jid, None)
-                removed_ids.append(jid)
-        for jid in removed_ids:
-            _delete_operational_state(f"ingest_job:{jid}")
-
-    def _update_ingest_job(job_id: str, **fields: Any) -> dict[str, Any] | None:
-        with ingest_jobs_lock:
-            job = ingest_jobs.get(job_id)
-            if job is None:
-                return None
-            current_status = str(job.get("status") or "")
-            next_status = str(fields.get("status") or current_status)
-            terminal_statuses = {"completed", "partial_success", "failed"}
-            if current_status in terminal_statuses and next_status not in terminal_statuses:
-                return dict(job)
-            job.update(fields)
-            job["updated_at"] = _utc_now_iso()
-            if "partial_success" not in fields:
-                job["partial_success"] = (
-                    int(job.get("rows_succeeded", 0)) > 0 and int(job.get("rows_failed", 0)) > 0
-                )
-            status_value = str(job.get("status") or "")
-            if status_value in {"uploading"}:
-                job["lifecycle_phase"] = "uploading"
-                job["ui_state"] = "uploading"
-                job["terminal_state"] = None
-                job["failure_category"] = None
-            elif status_value in {"queued"}:
-                job["lifecycle_phase"] = "queued"
-                job["ui_state"] = "ingesting"
-                job["terminal_state"] = None
-                job["failure_category"] = None
-            elif status_value in {"processing"}:
-                job["lifecycle_phase"] = "processing"
-                job["ui_state"] = "ingesting"
-                job["terminal_state"] = None
-                job["failure_category"] = None
-            elif status_value in {"completed", "partial_success", "failed"}:
-                job["lifecycle_phase"] = "terminal"
-                job["ui_state"] = status_value
-                job["terminal_state"] = status_value
-                if status_value == "failed":
-                    job["failure_category"] = str(job.get("failure_category") or "ingest_failed")
-                else:
-                    job["failure_category"] = None
-            _persist_operational_state(
-                f"ingest_job:{job_id}",
-                dict(job),
-                customer_id=resolve_customer_id(job.get("customer_id")),
-                run_id=str(job.get("run_id")) if job.get("run_id") is not None else None,
-            )
-            return dict(job)
-
-    def _public_demo_job(job: dict[str, Any]) -> dict[str, Any]:
-        return {
-            "job_id": str(job.get("job_id")),
-            "status": str(job.get("status", "unknown")),
-            "run_id": str(job.get("run_id") or ""),
-            "customer_id": resolve_customer_id(job.get("customer_id")),
-            "progress": max(0, min(100, int(job.get("progress", 0)))),
-            "processed": max(0, int(job.get("processed", 0))),
-            "total_frames": max(0, int(job.get("total_frames", 0))),
-            "message": str(job.get("message") or ""),
-            "error": job.get("error"),
-            "created_at": str(job.get("created_at") or _utc_now_iso()),
-            "updated_at": str(job.get("updated_at") or _utc_now_iso()),
-        }
-
-    def _update_demo_job(job_id: str, **fields: Any) -> dict[str, Any] | None:
-        with demo_jobs_lock:
-            job = demo_jobs.get(job_id)
-            if job is None:
-                return None
-            job.update(fields)
-            job["updated_at"] = _utc_now_iso()
-            return dict(job)
-
-    def _run_demo_seed_job(
-        *,
-        job_id: str,
-        resolved_run: str,
-        resolved_customer: str,
-        payload: DemoSeedRequest,
-    ) -> None:
-        minutes = int(payload.minutes)
-        total = max(10, min(240, minutes))
-        now = datetime.now(timezone.utc)
-        processed = 0
-        failure_frame = None
-        _update_demo_job(
-            job_id,
-            status="running",
-            message="Seeding telemetry on server...",
-            total_frames=total,
-            progress=0,
-            processed=0,
-            run_id=resolved_run,
-            customer_id=resolved_customer,
-            )
-        log_structured(
-            logger,
-            event="demo_seed_start",
-            fields={
-                "job_id": job_id,
-                "run_id": resolved_run,
-                "customer_id": resolved_customer,
-                "total_frames": total,
-                "profile": payload.profile,
-            },
-        )
-        try:
-            for i in range(total):
-                failure_frame = i + 1
-                timestamp = (now.replace(microsecond=0).timestamp() - (total - i) * 60.0)
-                t = datetime.fromtimestamp(timestamp, tz=timezone.utc).isoformat()
-                if payload.profile == "watch":
-                    drift_lift = 0.35 + (i / max(1, total - 1)) * 0.35
-                    vib_spike = 0.55 + (i / max(1, total - 1)) * 0.45
-                elif payload.profile == "critical":
-                    drift_lift = 0.25 + (i / max(1, total - 1)) * 0.85
-                    vib_spike = 0.8 + (i / max(1, total - 1)) * 1.8
-                elif payload.profile == "sample":
-                    drift_lift = 0.2 if i < total // 3 else 0.6 if i < (2 * total) // 3 else 1.0
-                    vib_spike = drift_lift * 1.1
-                else:
-                    drift_lift = 0.12
-                    vib_spike = 0.2
-                p = i / max(1, total - 1)
-                frame = {
-                    "timestamp": t,
-                    "site_id": payload.site_id,
-                    "asset_id": payload.asset_id,
-                    "sensor_values": _build_demo_sensor_values_row(i, p, drift_lift, vib_spike),
-                    "customer_id": resolved_customer,
-                }
-                service_instance.ingest_frame(
-                    frame,
-                    run_id=resolved_run,
-                    customer_id=resolved_customer,
-                )
-                processed += 1
-                if processed % 10 == 0 or processed == total:
-                    progress = int((processed / max(1, total)) * 100)
-                    _update_demo_job(
-                        job_id,
-                        progress=progress,
-                        processed=processed,
-                        message=f"Seeding telemetry on server... ({processed}/{total})",
-                    )
-                    log_structured(
-                        logger,
-                        event="demo_seed_progress",
-                        fields={
-                            "job_id": job_id,
-                            "run_id": resolved_run,
-                            "customer_id": resolved_customer,
-                            "processed": processed,
-                            "total_frames": total,
-                            "progress": progress,
-                        },
-                    )
-        except Exception as exc:
-            detail = summarize_exception_for_logs(exc)
-            _update_demo_job(
-                job_id,
-                status="error",
-                progress=int((processed / max(1, total)) * 100),
-                processed=processed,
-                message="Demo seed failed.",
-                error=detail,
-            )
-            log_structured(
-                logger,
-                event="demo_seed_failure",
-                fields={
-                    "job_id": job_id,
-                    "run_id": resolved_run,
-                    "customer_id": resolved_customer,
-                    "processed": processed,
-                    "total_frames": total,
-                    "failure_frame": failure_frame,
-                    "error": detail,
-                },
-                level=logging.ERROR,
-            )
-            return
-        _update_demo_job(
-            job_id,
-            status="complete",
-            progress=100,
-            processed=processed,
-            message="Demo seeded successfully",
-            error=None,
-        )
-        log_structured(
-            logger,
-            event="demo_seed_complete",
-            fields={
-                "job_id": job_id,
-                "run_id": resolved_run,
-                "customer_id": resolved_customer,
-                "processed": processed,
-                "total_frames": total,
-            },
-        )
-
-    cmapss_fd004_cache: dict[int, list[dict[str, Any]]] = {}
-    cmapss_fd004_cache_lock = threading.Lock()
-
-    def _load_cmapss_fd004_subset(max_frames: int) -> list[dict[str, Any]]:
-        limited = max(30, min(500, int(max_frames)))
-        with cmapss_fd004_cache_lock:
-            cached = cmapss_fd004_cache.get(limited)
-            if cached is not None:
-                return list(cached)
-
-        dataset_path = Path(__file__).resolve().parents[2] / "train_FD004.txt"
-        if not dataset_path.is_file():
-            raise FileNotFoundError(f"CMAPSS FD004 dataset file missing at {dataset_path}")
-
-        rows: list[dict[str, Any]] = []
-        now = datetime.now(timezone.utc).replace(microsecond=0)
-        sensor_keys = [f"sensor_{i}" for i in range(1, 22)]
-        with dataset_path.open("r", encoding="utf-8") as handle:
-            for raw in handle:
-                line = raw.strip()
-                if not line:
-                    continue
-                parts = line.split()
-                if len(parts) < 26:
-                    continue
-                unit = int(float(parts[0]))
-                cycle = int(float(parts[1]))
-                op1 = float(parts[2])
-                op2 = float(parts[3])
-                op3 = float(parts[4])
-                sensors = [float(v) for v in parts[5:26]]
-                sensor_values = {
-                    "cycle": float(cycle),
-                    "op_setting_1": op1,
-                    "op_setting_2": op2,
-                    "op_setting_3": op3,
-                }
-                for idx, key in enumerate(sensor_keys):
-                    sensor_values[key] = sensors[idx]
-                timestamp = (now.timestamp() - max(0, limited - len(rows)) * 60.0)
-                rows.append(
-                    {
-                        "timestamp": datetime.fromtimestamp(timestamp, tz=timezone.utc).isoformat(),
-                        "site_id": "nasa-cmapss-fd004",
-                        "asset_id": f"engine-{unit:03d}",
-                        "sensor_values": sensor_values,
-                    }
-                )
-                if len(rows) >= limited:
-                    break
-        if not rows:
-            raise ValueError("CMAPSS FD004 subset is empty.")
-        with cmapss_fd004_cache_lock:
-            cmapss_fd004_cache[limited] = list(rows)
-        return rows
-
-    def _default_pull_state(customer_id: str) -> dict[str, Any]:
-        now = _utc_now_iso()
-        return {
-            "customer_id": customer_id,
-            "endpoint_url": None,
-            "run_id": None,
-            "auth_type": "none",
-            "running": False,
-            "status": "stopped",
-            "polling_interval_seconds": None,
-            "retry_max_attempts": None,
-            "retry_backoff_seconds": None,
-            "request_timeout_seconds": None,
-            "started_at": None,
-            "updated_at": now,
-            "last_poll_at": None,
-            "last_success_at": None,
-            "last_error": None,
-            "last_http_status": None,
-            "total_polls": 0,
-            "total_failures": 0,
-            "consecutive_failures": 0,
-            "total_ingested": 0,
-            "message": "Pull integration is stopped.",
-            "_stop_event": None,
-            "_thread": None,
-        }
-
-    def _public_pull_state(state: dict[str, Any] | None, *, customer_id: str) -> dict[str, Any]:
-        base = _default_pull_state(customer_id)
-        private_keys = {"username", "password", "token"}
-        if state is None:
-            return {
-                k: v
-                for k, v in base.items()
-                if not k.startswith("_") and k not in private_keys
-            }
-        merged = dict(base)
-        merged.update(state)
-        return {
-            k: v
-            for k, v in merged.items()
-            if not k.startswith("_") and k not in private_keys
-        }
-
-    def _persist_pull_state(customer_id: str, state: dict[str, Any]) -> None:
-        public_state = _public_pull_state(state, customer_id=customer_id)
-        public_state["resume_on_startup"] = bool(public_state.get("running"))
-        _persist_operational_state(
-            f"pull_integration:{customer_id}",
-            public_state,
-            customer_id=customer_id,
-            run_id=str(public_state.get("run_id")) if public_state.get("run_id") is not None else None,
-        )
-
-    def _validate_endpoint_url(endpoint_url: str) -> str:
-        text = str(endpoint_url or "").strip()
-        if not text:
-            raise HTTPException(status_code=400, detail="endpoint_url is required.")
-        parsed = urlparse(text)
-        if parsed.scheme not in {"http", "https"} or not parsed.netloc:
-            raise HTTPException(
-                status_code=400,
-                detail="endpoint_url must be a valid http(s) URL.",
-            )
-        return text
-
-    def _pull_auth_header(state: dict[str, Any]) -> str | None:
-        auth_type = str(state.get("auth_type") or "none")
-        if auth_type == "bearer":
-            token = str(state.get("token") or "").strip()
-            if not token:
-                raise ValueError("Bearer token is empty.")
-            return f"Bearer {token}"
-        if auth_type == "basic":
-            username = str(state.get("username") or "")
-            password = str(state.get("password") or "")
-            raw = f"{username}:{password}".encode("utf-8")
-            return "Basic " + base64.b64encode(raw).decode("ascii")
-        return None
-
-    def _coerce_pull_items(payload: Any, *, customer_id: str) -> list[dict[str, Any]]:
-        cfg_override = getattr(app.state, "integration_config_override", None)
-        if isinstance(cfg_override, dict):
-            cfg = cfg_override
-        else:
-            path_override = getattr(app.state, "integration_config_path_override", None)
-            path = str(path_override or "").strip() or os.getenv("NERAIUM_INTEGRATION_CONFIG_PATH")
-            cfg = load_integration_config(path)
-        try:
-            rows = apply_integration_mapping(
-                payload,
-                customer_id=customer_id,
-                config=cfg,
-            )
-        except IntegrationMappingError as exc:
-            raise ValueError(str(exc)) from exc
-        return rows
-
-    def _fetch_pull_payload(state: dict[str, Any]) -> tuple[int, Any]:
-        endpoint_url = str(state.get("endpoint_url") or "").strip()
-        timeout_s = float(state.get("request_timeout_seconds") or 10.0)
-        headers = {"Accept": "application/json"}
-        auth_header = _pull_auth_header(state)
-        if auth_header:
-            headers["Authorization"] = auth_header
-        req = urllib.request.Request(endpoint_url, headers=headers, method="GET")
-        with urllib.request.urlopen(req, timeout=timeout_s) as response:
-            status_code = int(response.getcode() or 0)
-            body_bytes = response.read()
-        if status_code < 200 or status_code >= 300:
-            raise RuntimeError(f"Upstream returned HTTP {status_code}.")
-        try:
-            payload = json.loads(body_bytes.decode("utf-8"))
-        except json.JSONDecodeError as exc:
-            raise RuntimeError("Upstream response is not valid JSON.") from exc
-        return status_code, payload
-
-    def _ingest_pull_items(*, rows: list[dict[str, Any]], run_id: str, customer_id: str) -> int:
-        if not rows:
-            return 0
-        normalized, _ = normalize_external_batch_payload(rows, customer_id=customer_id)
-        results = service_instance.ingest_normalized_frames(normalized, run_id=run_id, customer_id=customer_id)
-        return len(results)
-
-    def _stop_pull_integration(customer_id: str, *, reason: str) -> dict[str, Any]:
-        resolved_customer = resolve_customer_id(customer_id)
-        stop_event: threading.Event | None = None
-        thread: threading.Thread | None = None
-        with pull_integrations_lock:
-            state = pull_integrations.get(resolved_customer)
-            if state is None:
-                return _public_pull_state(None, customer_id=resolved_customer)
-            stop_event = state.get("_stop_event")
-            thread = state.get("_thread")
-            state["running"] = False
-            state["status"] = "stopped"
-            state["message"] = reason
-            state["updated_at"] = _utc_now_iso()
-            _persist_pull_state(resolved_customer, state)
-        if isinstance(stop_event, threading.Event):
-            stop_event.set()
-        if isinstance(thread, threading.Thread) and thread.is_alive() and thread is not threading.current_thread():
-            thread.join(timeout=2.0)
-        with pull_integrations_lock:
-            final_state = pull_integrations.get(resolved_customer)
-            return _public_pull_state(final_state, customer_id=resolved_customer)
-
-    def _start_pull_worker(customer_id: str) -> None:
-        resolved_customer = resolve_customer_id(customer_id)
-
-        def _worker() -> None:
-            while True:
-                with pull_integrations_lock:
-                    state = pull_integrations.get(resolved_customer)
-                    if state is None:
-                        return
-                    stop_event = state.get("_stop_event")
-                    is_running = bool(state.get("running"))
-                    endpoint_url = str(state.get("endpoint_url") or "")
-                    poll_interval = _safe_float(state.get("polling_interval_seconds"), 30.0)
-                    retry_attempts = max(1, _parse_int(state.get("retry_max_attempts") or 3, field_name="retry_max_attempts"))
-                    retry_backoff = _safe_float(state.get("retry_backoff_seconds"), 1.0)
-                    run_id = str(state.get("run_id") or "")
-                    # Do not clobber "stopped" / running=False set by stop endpoint before we exit.
-                    if is_running:
-                        state["status"] = "running"
-                        state["updated_at"] = _utc_now_iso()
-                        state["message"] = "Polling upstream API."
-                        _persist_pull_state(resolved_customer, state)
-                if not is_running or not isinstance(stop_event, threading.Event):
-                    return
-                if stop_event.is_set():
-                    return
-                if not endpoint_url or not run_id:
-                    with pull_integrations_lock:
-                        current = pull_integrations.get(resolved_customer)
-                        if current is not None:
-                            current["running"] = False
-                            current["status"] = "error"
-                            current["message"] = "Integration misconfigured: missing endpoint or run_id."
-                            current["last_error"] = current["message"]
-                            current["updated_at"] = _utc_now_iso()
-                            _persist_pull_state(resolved_customer, current)
-                    return
-
-                success = False
-                last_error = ""
-                for attempt in range(1, max(1, retry_attempts) + 1):
-                    with pull_integrations_lock:
-                        current = pull_integrations.get(resolved_customer)
-                        if current is None:
-                            return
-                        current["last_poll_at"] = _utc_now_iso()
-                        current["total_polls"] = int(current.get("total_polls", 0)) + 1
-                        current["updated_at"] = _utc_now_iso()
-                        _persist_pull_state(resolved_customer, current)
-                    try:
-                        http_status, payload = _fetch_pull_payload(state)
-                        rows = _coerce_pull_items(payload, customer_id=resolved_customer)
-                        ingested = _ingest_pull_items(
-                            rows=rows,
-                            run_id=run_id,
-                            customer_id=resolved_customer,
-                        )
-                        now = _utc_now_iso()
-                        with pull_integrations_lock:
-                            current = pull_integrations.get(resolved_customer)
-                            if current is None:
-                                return
-                            current["last_http_status"] = int(http_status)
-                            current["last_error"] = None
-                            current["last_success_at"] = now
-                            current["consecutive_failures"] = 0
-                            current["total_ingested"] = int(current.get("total_ingested", 0)) + int(ingested)
-                            current["status"] = "running"
-                            current["message"] = f"Last poll ingested {ingested} item(s)."
-                            current["updated_at"] = now
-                            _persist_pull_state(resolved_customer, current)
-                        log_structured(
-                            logger,
-                            event="pull_integration_poll_success",
-                            fields={
-                                "customer_id": resolved_customer,
-                                "run_id": run_id,
-                                "ingested_items": int(ingested),
-                                "http_status": int(http_status),
-                            },
-                            level=logging.INFO,
-                        )
-                        success = True
-                        break
-                    except Exception as exc:
-                        last_error = str(exc)
-                        with pull_integrations_lock:
-                            current = pull_integrations.get(resolved_customer)
-                            if current is None:
-                                return
-                            current["total_failures"] = int(current.get("total_failures", 0)) + 1
-                            current["consecutive_failures"] = int(current.get("consecutive_failures", 0)) + 1
-                            current["status"] = "error"
-                            current["last_error"] = last_error
-                            current["message"] = (
-                                f"Poll attempt {attempt}/{retry_attempts} failed: {last_error}"
-                            )
-                            current["updated_at"] = _utc_now_iso()
-                            _persist_pull_state(resolved_customer, current)
-                        log_structured(
-                            logger,
-                            event="pull_integration_poll_failure",
-                            fields={
-                                "customer_id": resolved_customer,
-                                "run_id": run_id,
-                                "attempt": attempt,
-                                "retry_attempts": retry_attempts,
-                                "error": last_error,
-                                **summarize_exception_for_logs(exc),
-                            },
-                            level=logging.WARNING,
-                        )
-                        if attempt >= retry_attempts:
-                            break
-                        delay = max(0.05, _safe_float(retry_backoff, 1.0)) * (2 ** (attempt - 1))
-                        if stop_event.wait(delay):
-                            return
-
-                if stop_event.wait(max(0.2, _safe_float(poll_interval, 30.0))):
-                    return
-                if not success:
-                    with pull_integrations_lock:
-                        current = pull_integrations.get(resolved_customer)
-                        if current is not None:
-                            current["message"] = "Polling will continue after previous failure."
-                            current["updated_at"] = _utc_now_iso()
-                            _persist_pull_state(resolved_customer, current)
-
-        worker = threading.Thread(target=_worker, daemon=True, name=f"pull-integration-{resolved_customer}")
-        with pull_integrations_lock:
-            state = pull_integrations.get(resolved_customer)
-            if state is None:
-                return
-            state["_thread"] = worker
-        worker.start()
-
-    def _restore_persisted_operational_state() -> None:
-        if not persisted_state_enabled or store_instance is None:
-            return
-        restored_alert_customers = 0
-        restored_ingest_jobs = 0
-        restored_pull_integrations = 0
-        try:
-            for row in store_instance.list_operational_state(key_prefix="alerts:"):
-                state = row.get("state")
-                if not isinstance(state, dict):
-                    continue
-                customer = resolve_customer_id(state.get("customer_id") or row.get("customer_id"))
-                items = state.get("alerts")
-                if not isinstance(items, list):
-                    continue
-                with alerts_lock:
-                    alerts[customer] = [dict(x) for x in items if isinstance(x, dict)][:200]
-                restored_alert_customers += 1
-        except Exception:
-            logger.exception("Failed restoring persisted alerts state")
-        try:
-            for row in store_instance.list_operational_state(key_prefix="ingest_job:"):
-                state = row.get("state")
-                if not isinstance(state, dict):
-                    continue
-                job_id = str(state.get("job_id") or "")
-                if not job_id:
-                    continue
-                status = str(state.get("status") or "unknown")
-                # Upload/processing cannot resume safely across restart.
-                if status in {"uploading", "queued", "processing"}:
-                    state["status"] = "failed"
-                    state["message"] = "Job interrupted by process restart before completion."
-                    state["updated_at"] = _utc_now_iso()
-                    _persist_operational_state(
-                        f"ingest_job:{job_id}",
-                        state,
-                        customer_id=resolve_customer_id(state.get("customer_id")),
-                        run_id=str(state.get("run_id")) if state.get("run_id") is not None else None,
-                    )
-                with ingest_jobs_lock:
-                    ingest_jobs[job_id] = dict(state)
-                restored_ingest_jobs += 1
-        except Exception:
-            logger.exception("Failed restoring persisted ingest job state")
-        try:
-            for row in store_instance.list_operational_state(key_prefix="pull_integration:"):
-                state = row.get("state")
-                if not isinstance(state, dict):
-                    continue
-                customer = resolve_customer_id(state.get("customer_id") or row.get("customer_id"))
-                merged = _default_pull_state(customer)
-                merged.update({k: v for k, v in state.items() if not str(k).startswith("_")})
-                should_resume = bool(state.get("resume_on_startup"))
-                merged["running"] = should_resume
-                merged["status"] = "running" if should_resume else str(merged.get("status") or "stopped")
-                merged["message"] = (
-                    "Pull integration resumed after restart." if should_resume else str(merged.get("message") or "Pull integration is stopped.")
-                )
-                merged["_stop_event"] = threading.Event() if should_resume else None
-                merged["_thread"] = None
-                merged["updated_at"] = _utc_now_iso()
-                with pull_integrations_lock:
-                    pull_integrations[customer] = merged
-                _persist_pull_state(customer, merged)
-                if should_resume:
-                    _start_pull_worker(customer)
-                restored_pull_integrations += 1
-        except Exception:
-            logger.exception("Failed restoring persisted pull integration state")
-        runtime_state_diagnostics["restored_state_counts"] = {
-            "alert_customers": restored_alert_customers,
-            "ingest_jobs": restored_ingest_jobs,
-            "pull_integrations": restored_pull_integrations,
-        }
-        log_structured(
-            logger,
-            event="operational_state_restore_complete",
-            fields=runtime_state_diagnostics.get("restored_state_counts") or {},
-            level=logging.INFO,
-        )
-
-    async def _stream_upload_to_tempfile(upload: UploadFile, target_path: Path, job_id: str) -> int:
-        bytes_received = 0
-        chunk_size = max(16 * 1024, DEFAULT_UPLOAD_STREAM_CHUNK_BYTES)
-        try:
-            with target_path.open("wb") as out:
-                while True:
-                    chunk = await upload.read(chunk_size)
-                    if not chunk:
-                        break
-                    out.write(chunk)
-                    bytes_received += len(chunk)
-                    _update_ingest_job(
-                        job_id,
-                        status="uploading",
-                        upload_bytes_received=bytes_received,
-                        message=f"Uploading CSV ({bytes_received} bytes received)...",
-                    )
-                out.flush()
-        finally:
-            await upload.close()
-        return bytes_received
-
-    def _start_ingest_job_worker(
-        *,
-        job_id: str,
-        temp_path: str,
-        run_id: str,
-        customer_id: str,
-        column_mapping: dict[str, Any] | None = None,
-    ) -> None:
-        def _worker() -> None:
-            _update_ingest_job(
-                job_id,
-                status="processing",
-                message="Upload complete. Ingest processing started.",
-            )
-            log_structured(
-                logger,
-                event="ingest_job_started",
-                fields={
-                    "job_id": job_id,
-                    "run_id": run_id,
-                    "customer_id": customer_id,
-                    "ingest_path": "csv_upload",
-                    "stage": "ingesting",
-                },
-                level=logging.INFO,
-            )
-            try:
-                def _on_progress(progress: dict[str, Any]) -> None:
-                    progress_status = str(progress.get("status") or "processing")
-                    mapped_status = "processing"
-                    if progress_status not in {"processing", "completed"}:
-                        mapped_status = "processing"
-                    _update_ingest_job(
-                        job_id,
-                        status=mapped_status,
-                        rows_processed=int(progress.get("rows_processed", 0)),
-                        rows_succeeded=int(progress.get("rows_succeeded", 0)),
-                        rows_failed=int(progress.get("rows_failed", 0)),
-                        error_samples=list(progress.get("error_samples") or []),
-                        message=progress.get("message"),
-                    )
-
-                with Path(temp_path).open("r", encoding="utf-8", newline="") as stream:
-                    summary = service_instance.ingest_csv_stream(
-                        stream,
-                        run_id=run_id,
-                        customer_id=customer_id,
-                        column_mapping=column_mapping,
-                        max_error_samples=DEFAULT_INGEST_JOB_MAX_ERROR_SAMPLES,
-                        progress_callback=_on_progress,
-                    )
-                final_status = "completed"
-                if int(summary.get("rows_failed", 0)) > 0:
-                    final_status = "partial_success" if int(summary.get("rows_succeeded", 0)) > 0 else "failed"
-                _update_ingest_job(
-                    job_id,
-                    status=final_status,
-                    rows_processed=int(summary.get("rows_processed", 0)),
-                    rows_succeeded=int(summary.get("rows_succeeded", 0)),
-                    rows_failed=int(summary.get("rows_failed", 0)),
-                    partial_success=bool(summary.get("partial_success", False)),
-                    error_samples=list(summary.get("error_samples") or []),
-                    latest_result=summary.get("latest_result"),
-                    message=summary.get("message"),
-                )
-                latest_from_summary = summary.get("latest_result")
-                previous_for_alerts: dict[str, Any] | None = None
-                if isinstance(latest_from_summary, dict):
-                    recent_for_alerts = service_instance.list_recent_results(
-                        limit=2,
-                        run_id=run_id,
-                        customer_id=customer_id,
-                    )
-                    if len(recent_for_alerts) >= 2:
-                        previous_for_alerts = recent_for_alerts[1]
-                    _process_alerts_after_ingest(
-                        customer_id=customer_id,
-                        run_id=run_id,
-                        latest_result=latest_from_summary,
-                        previous_result=previous_for_alerts,
-                    )
-                log_structured(
-                    logger,
-                    event="ingest_job_completed",
-                    fields={
-                        "job_id": job_id,
-                        "run_id": run_id,
-                        "customer_id": customer_id,
-                        "rows_processed": int(summary.get("rows_processed", 0)),
-                        "rows_succeeded": int(summary.get("rows_succeeded", 0)),
-                        "rows_failed": int(summary.get("rows_failed", 0)),
-                        "partial_success": bool(summary.get("partial_success", False)),
-                        "ingest_path": "csv_upload",
-                        "stage": final_status,
-                    },
-                    level=logging.INFO,
-                )
-            except Exception as exc:
-                message = actionable_validation_detail(str(exc))
-                _update_ingest_job(job_id, status="failed", message=message, failure_category="ingest_failed")
-                log_structured(
-                    logger,
-                    event="ingest_job_failed",
-                    fields={
-                        "job_id": job_id,
-                        "run_id": run_id,
-                        "customer_id": customer_id,
-                        "ingest_path": "csv_upload",
-                        "stage": "failed",
-                        "error_type": "ingest_failed",
-                        **summarize_exception_for_logs(exc),
-                    },
-                    level=logging.ERROR,
-                )
-            finally:
-                try:
-                    Path(temp_path).unlink(missing_ok=True)
-                except OSError:
-                    logger.debug("Unable to remove temp upload file: %s", temp_path, exc_info=True)
-                _cleanup_ingest_jobs()
-
-        threading.Thread(target=_worker, daemon=True, name=f"ingest-job-{job_id}").start()
-
-    _restore_persisted_operational_state()
+    ingest_manager = IngestJobsManager(
+        store=state_store,
+        service_instance=service_instance,
+        operational_state=operational_state,
+        resolve_customer_id=resolve_customer_id,
+        utc_now_iso=_utc_now_iso,
+        process_alerts_after_ingest=_process_alerts_after_ingest,
+        actionable_validation_detail=actionable_validation_detail,
+        log_structured=log_structured,
+        summarize_exception_for_logs=summarize_exception_for_logs,
+        logger=logger,
+    )
+    demo_manager = DemoJobsManager(
+        store=state_store,
+        service_instance=service_instance,
+        resolve_customer_id=resolve_customer_id,
+        utc_now_iso=_utc_now_iso,
+        log_structured=log_structured,
+        summarize_exception_for_logs=summarize_exception_for_logs,
+        logger=logger,
+    )
+    pull_manager = PullIntegrationsManager(
+        app=app,
+        store=state_store,
+        service_instance=service_instance,
+        operational_state=operational_state,
+        resolve_customer_id=resolve_customer_id,
+        utc_now_iso=_utc_now_iso,
+        safe_float=_safe_float,
+        parse_int=_parse_int,
+        parse_finite_float=_parse_finite_float,
+        log_structured=log_structured,
+        summarize_exception_for_logs=summarize_exception_for_logs,
+        load_integration_config=load_integration_config,
+        apply_integration_mapping=apply_integration_mapping,
+        integration_mapping_error=IntegrationMappingError,
+        logger=logger,
+    )
+    OperationalStateRestoreService(
+        operational_state=operational_state,
+        store=state_store,
+        resolve_customer_id=resolve_customer_id,
+        utc_now_iso=_utc_now_iso,
+        pull_manager=pull_manager,
+        runtime_state_diagnostics=runtime_state_diagnostics,
+        logger=logger,
+        log_structured=log_structured,
+    ).restore()
 
     def require_api_key(x_api_key: str | None = Header(default=None)) -> None:
         if not is_api_key_valid(api_key, x_api_key):
@@ -1292,8 +450,8 @@ def create_app(
             resolve_customer_id=resolve_customer_id,
             request_run_id_or_active=request_run_id_or_active,
             utc_now_iso=_utc_now_iso,
-            alerts=alerts,
-            alerts_lock=alerts_lock,
+            alerts=state_store.alerts,
+            alerts_lock=state_store.alerts_lock,
             record_alerts_for_customer=_record_alerts_for_customer,
             alerts_envelope_model=AlertsEnvelope,
             action_response_model=ActionResponse,
@@ -1319,13 +477,13 @@ def create_app(
             issue_to_dict=issue_to_dict,
             request_body_limit=request_body_limit,
             normalize_content_length=_normalize_content_length,
-            stream_upload_to_tempfile=_stream_upload_to_tempfile,
-            update_ingest_job=_update_ingest_job,
-            public_ingest_job=_public_ingest_job,
+            stream_upload_to_tempfile=ingest_manager.stream_upload_to_tempfile,
+            update_ingest_job=ingest_manager.update_ingest_job,
+            public_ingest_job=ingest_manager.public_ingest_job,
             persist_operational_state=_persist_operational_state,
-            start_ingest_job_worker=_start_ingest_job_worker,
-            ingest_jobs=ingest_jobs,
-            ingest_jobs_lock=ingest_jobs_lock,
+            start_ingest_job_worker=ingest_manager.start_ingest_job_worker,
+            ingest_jobs=state_store.ingest_jobs,
+            ingest_jobs_lock=state_store.ingest_jobs_lock,
             models=type("IngestModels", (), {
                 "ResultsEnvelope": ResultsEnvelope,
                 "IngestRequest": IngestRequest,
@@ -1347,11 +505,11 @@ def create_app(
             require_api_key=require_api_key,
             resolve_customer_id=resolve_customer_id,
             resolve_run_id_with_default=resolve_run_id_with_default,
-            run_demo_seed_job=_run_demo_seed_job,
-            public_demo_job=_public_demo_job,
-            demo_jobs=demo_jobs,
-            demo_jobs_lock=demo_jobs_lock,
-            load_cmapss_fd004_subset=_load_cmapss_fd004_subset,
+            start_demo_seed_job=demo_manager.start_demo_seed_job,
+            public_demo_job=demo_manager.public_demo_job,
+            demo_jobs=state_store.demo_jobs,
+            demo_jobs_lock=state_store.demo_jobs_lock,
+            load_cmapss_fd004_subset=demo_manager.load_cmapss_fd004_subset,
             log_structured=log_structured,
             summarize_exception_for_logs=summarize_exception_for_logs,
             models=type("DemoModels", (), {"DemoSeedRequest": DemoSeedRequest, "DemoCmapssStartRequest": DemoCmapssStartRequest}),
@@ -1365,16 +523,7 @@ def create_app(
             resolve_customer_id=resolve_customer_id,
             resolve_run_id_with_default=resolve_run_id_with_default,
             service_instance=service_instance,
-            stop_pull_integration=_stop_pull_integration,
-            start_pull_worker=_start_pull_worker,
-            public_pull_state=_public_pull_state,
-            pull_integrations=pull_integrations,
-            pull_integrations_lock=pull_integrations_lock,
-            persist_pull_state=_persist_pull_state,
-            validate_endpoint_url=_validate_endpoint_url,
-            parse_finite_float=_parse_finite_float,
-            parse_int=_parse_int,
-            utc_now_iso=_utc_now_iso,
+            pull_manager=pull_manager,
             log_structured=log_structured,
             models=type("IntegrationModels", (), {"PullIntegrationStartRequest": PullIntegrationStartRequest, "PullIntegrationStatusEnvelope": PullIntegrationStatusEnvelope}),
         )
