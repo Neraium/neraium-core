@@ -1,3 +1,10 @@
 """Core package for Neraium."""
 
-__all__ = ["alignment", "models", "pipeline", "service", "store", "sii"]
+from importlib.metadata import PackageNotFoundError, version
+
+try:
+    __version__ = version("neraium-core")
+except PackageNotFoundError:
+    __version__ = "0+unknown"
+
+__all__ = ["alignment", "models", "pipeline", "service", "store", "sii", "__version__"]

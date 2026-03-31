@@ -5,6 +5,10 @@ on:
     branches: [main, master]
   push:
     branches: [main, master]
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
 
 jobs:
   smoke:
@@ -20,6 +24,7 @@ jobs:
         with:
           python-version: "3.11"
           cache: "pip"
+          cache: pip
 
       - name: Install dependencies
         run: |
@@ -31,5 +36,10 @@ jobs:
           ruff check neraium_core apps tests/test_package_import.py tests/test_api_product_basics.py
 
       - name: Pytest smoke suite
+      - name: Lint smoke targets
+        run: |
+          ruff check neraium_core apps tests/test_package_import.py tests/test_api_product_basics.py
+
+      - name: Test smoke targets
         run: |
           pytest -q tests/test_package_import.py tests/test_api_product_basics.py
