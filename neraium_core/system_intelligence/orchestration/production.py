@@ -118,6 +118,33 @@ class ProductionIntelligenceOrchestrator:
         warnings = list(reliability_trace.get("warnings") or [])
         memory_summary = dict(((intervention.get("historical_evidence") or {}).get("support_summary") or {}))
         structural_uncertainty = dict(intervention.get("structural_uncertainty_mode") or {})
+        recommendation = intervention.setdefault("recommendation", {})
+        original_top_intervention = str(best_ranked.get("name", "monitor"))
+        override_applied = False
+        if bool(structural_uncertainty.get("active", False)):
+            override_applied = True
+            fallback_reasons = sorted(set([*list(recommendation.get("fallback_reasons") or []), "structural_uncertainty_mode"]))
+            recommendation["fallback_triggered"] = True
+            recommendation["fallback_reasons"] = fallback_reasons
+            recommendation["recommended_posture"] = "human_review_required"
+            recommendation["override_applied"] = True
+            recommendation["override_reason"] = "structural_uncertainty"
+            recommendation["original_top_intervention"] = original_top_intervention
+            recommendation["best_intervention"] = {
+                "name": "monitor",
+                "intervention_type": "monitor",
+                "intervention_target": "system",
+                "confidence": round(min(rec_cal, 0.35), 6),
+                "rank_score": round(min(rec_cal, 0.35), 6),
+                "rationale": "Hard safety override: structural uncertainty mode active; require human review and monitoring posture.",
+            }
+            structural_uncertainty["recommended_posture"] = "human_review_required"
+            structural_uncertainty["override_applied"] = True
+            structural_uncertainty["override_reason"] = "structural_uncertainty"
+            structural_uncertainty["original_top_intervention"] = original_top_intervention
+
+        ranked = list((intervention.get("recommendation") or {}).get("ranked_interventions") or [])
+        best_ranked = dict((intervention.get("recommendation") or {}).get("best_intervention") or {})
         evidence_classes = {
             "helpful": len(list(memory_summary.get("helpful_interventions") or [])),
             "harmful": len(list(memory_summary.get("harmful_interventions") or [])),
@@ -142,6 +169,10 @@ class ProductionIntelligenceOrchestrator:
             },
             "warnings_or_blockers": warnings,
             "structural_uncertainty_mode": structural_uncertainty,
+            "override_applied": override_applied,
+            "override_reason": "structural_uncertainty" if override_applied else None,
+            "original_top_intervention": original_top_intervention,
+            "original_candidate_interventions": [str(item.get("name", "unknown")) for item in ranked],
             "audit_note": "Trace includes only production decision-grade layers.",
         }
 
