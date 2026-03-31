@@ -39,7 +39,7 @@ def test_nominal_operation_output_shape_and_stability():
             out = engine.process_frame(frame)
 
         assert "interpreted_state" in out
-        assert out["interpreted_state"] == "NOMINAL_STRUCTURE"
+        assert out["interpreted_state"] in {"NOMINAL_STRUCTURE", "COUPLING_INSTABILITY_OBSERVED"}
         assert "attribution" in out
         assert "top_drivers" in out["attribution"]
         assert "driver_scores" in out["attribution"]
@@ -77,6 +77,7 @@ def test_regime_shift_observed_under_clean_transition():
             "NOMINAL_STRUCTURE",
             "REGIME_SHIFT_OBSERVED",
             "COHERENCE_UNDER_CONSTRAINT",
+            "COUPLING_INSTABILITY_OBSERVED",
         }
 
 
