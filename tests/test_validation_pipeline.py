@@ -102,3 +102,82 @@ def test_outcome_attribution_surfaces_confidence_and_source() -> None:
     first = report["outcomes"][0]
     assert "attribution_confidence" in first
     assert "attribution_source" in first
+
+
+def test_novelty_fallback_forces_conservative_monitoring() -> None:
+    def decision_fn(_obs: dict) -> dict:
+        return {
+            "intervention_intelligence": {
+                "recommendation": {
+                    "best_intervention": {"name": "aggressive_action", "confidence": 0.91},
+                    "intervention_memory_contribution": {"status": "available", "best_confidence_delta": 0.03, "choice_changed_without_memory": False},
+                }
+            },
+            "reliability_intelligence": {
+                "intervention_recommendation": {
+                    "recommendation_calibrated_confidence": 0.42,
+                    "reliability_trace": {"warnings": ["weak_support"]},
+                }
+            },
+            "structural_law_intelligence": {"structural_law_governance": {"laws": []}},
+        }
+
+    pipeline = RealWorldValidationPipeline(decision_fn=decision_fn)
+    rows = [
+        {
+            "timestamp": 1,
+            "asset_id": "A",
+            "novelty": 0.9,
+            "support_count": 1,
+            "drift_warning": True,
+            "observation": {"x": 1.0},
+            "actual_intervention": "aggressive_action",
+            "outcome_label": "harmful",
+        }
+    ]
+    report = pipeline.run(rows)
+    step = report["replay"]["step_logs"][0]
+    assert step["recommended_intervention"] == "monitor"
+    assert step["fallback_triggered"] is True
+    assert step["advisory_mode"] == "conservative_monitoring"
+
+
+def test_corpus_summary_surfaces_representativeness_warnings() -> None:
+    def decision_fn(_obs: dict) -> dict:
+        return {"intervention_intelligence": {"recommendation": {"best_intervention": {"name": "monitor", "confidence": 0.3}}}}
+
+    pipeline = RealWorldValidationPipeline(decision_fn=decision_fn)
+    rows = [
+        {"timestamp": i, "asset_id": "dominant", "domain": "single", "observation": {"x": i}, "actual_intervention": None, "outcome_label": "neutral"}
+        for i in range(12)
+    ]
+    report = pipeline.run(rows)
+    warnings = set(report["core_validation_report"]["corpus_summary"]["representativeness"]["warnings"])
+    assert "dominant_asset_skew" in warnings
+    assert "weak_domain_diversity" in warnings
+
+
+def test_intervention_memory_contribution_not_mirrored_to_accuracy() -> None:
+    def decision_fn(_obs: dict) -> dict:
+        return {
+            "intervention_intelligence": {
+                "recommendation": {
+                    "best_intervention": {"name": "monitor", "confidence": 0.5},
+                    "intervention_memory_contribution": {
+                        "status": "available",
+                        "best_confidence_delta": 0.02,
+                        "choice_changed_without_memory": True,
+                    },
+                }
+            }
+        }
+
+    pipeline = RealWorldValidationPipeline(decision_fn=decision_fn)
+    rows = [
+        {"timestamp": i, "asset_id": f"A{i%2}", "domain": "d1", "observation": {"x": i}, "actual_intervention": None, "outcome_label": "neutral"}
+        for i in range(8)
+    ]
+    report = pipeline.run(rows)
+    contribution = report["core_validation_report"]["summary"]["intervention_memory_contribution"]
+    assert contribution["status"] == "available"
+    assert contribution["mean_best_confidence_delta"] != report["core_validation_report"]["summary"]["decision_accuracy"]

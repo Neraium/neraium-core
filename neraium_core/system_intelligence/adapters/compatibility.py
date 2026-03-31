@@ -25,6 +25,19 @@ def to_operator_compatibility(intel: dict[str, Any]) -> dict[str, Any]:
     calibrated_rec = ((reliability.get("intervention_recommendation") or {}).get("recommendation_calibrated_confidence"))
     rec_confidence = float(calibrated_rec if calibrated_rec is not None else best_ranked.get("confidence", 0.0))
     reliability_warnings = list((((reliability.get("intervention_recommendation") or {}).get("reliability_trace") or {}).get("warnings") or []))
+    novelty = float((intel.get("trajectory_intelligence") or {}).get("novelty_score", 0.0) or 0.0)
+    support_count = int((intel.get("trajectory_intelligence") or {}).get("support_count", 0) or 0)
+    drift_warning = bool(((intel.get("reliability_intelligence") or {}).get("risk_advisory") or {}).get("drift_warning", False))
+    fallback_reasons: list[str] = []
+    if novelty >= 0.75:
+        fallback_reasons.append("high_novelty")
+    if support_count <= 2:
+        fallback_reasons.append("sparse_support")
+    if drift_warning:
+        fallback_reasons.append("drift_warning")
+    if reliability_warnings:
+        fallback_reasons.append("reliability_warning")
+    fallback_triggered = bool(fallback_reasons)
 
     law_note = str(law.get("law_layer_message") or "").strip()
     matched = list(law.get("matched_law_ids") or [])
@@ -43,6 +56,8 @@ def to_operator_compatibility(intel: dict[str, Any]) -> dict[str, Any]:
 
     if reliability_warnings:
         advisory_text = f"{advisory_text} Reliability notes: {reliability_warnings[0]}"
+    if fallback_triggered:
+        advisory_text = "Fallback active: insufficient trusted evidence for aggressive intervention; continue monitoring."
 
     return {
         "phase": str(transition.get("regime", "unknown")),
@@ -54,4 +69,6 @@ def to_operator_compatibility(intel: dict[str, Any]) -> dict[str, Any]:
             if rec_confidence < 0.68
             else "Intervention advisory reflects bounded evidence and remains operator-discretionary."
         ),
+        "fallback_triggered": fallback_triggered,
+        "fallback_reasons": sorted(set(fallback_reasons)),
     }

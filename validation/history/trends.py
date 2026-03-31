@@ -43,7 +43,8 @@ def build_trend_summary(history_root: Path) -> dict[str, Any]:
         "run_count": total,
         "accuracy_over_time": _series(rows, "decision_accuracy"),
         "harm_rate_over_time": _series(rows, "harm_rate"),
-        "calibration_over_time": _series(rows, "calibration_quality"),
+        "calibration_error_over_time": _series(rows, "calibration_error"),
+        "calibration_quality_over_time": _series(rows, "calibration_quality"),
         "release_gate_pass_rate": round(release_pass / max(1, total), 6),
         "regression_frequency": round(regressions / max(1, total), 6),
     }
@@ -68,6 +69,7 @@ def build_multi_corpus_trend_summary(history_root: Path) -> dict[str, Any]:
             "corpus_type": latest.get("corpus_type", "unknown"),
             "accuracy_over_time": _series(ordered, "decision_accuracy"),
             "harm_rate_over_time": _series(ordered, "harm_rate"),
+            "calibration_error_over_time": _series(ordered, "calibration_error"),
             "pass_fail_over_time": [
                 {"timestamp": r.get("timestamp"), "run_id": r.get("run_id"), "release_passed": bool(r.get("release_passed"))}
                 for r in ordered
@@ -75,6 +77,7 @@ def build_multi_corpus_trend_summary(history_root: Path) -> dict[str, Any]:
             "latest": {
                 "decision_accuracy": latest.get("decision_accuracy"),
                 "harm_rate": latest.get("harm_rate"),
+                "calibration_error": latest.get("calibration_error"),
                 "release_passed": bool(latest.get("release_passed")),
             },
         }
