@@ -127,17 +127,40 @@ class InterventionMemoryStore:
         intervention_target: str | None = None,
         min_match: float = 0.35,
     ) -> list[dict[str, Any]]:
-        out: list[dict[str, Any]] = []
+        scored: list[tuple[float, InterventionEvidenceRecord]] = []
         for rec in self.records:
             if rec.intervention_type != intervention_type:
                 continue
             if intervention_target and rec.intervention_target != intervention_target:
                 continue
-            match = self._context_match(rec, context)
-            if match < min_match:
-                continue
-            out.append({"match_quality": round(match, 4), "record": self._record_to_dict(rec)})
-        return sorted(out, key=lambda x: x["match_quality"], reverse=True)
+            scored.append((self._context_match(rec, context), rec))
+
+        if not scored:
+            return []
+
+        scored = sorted(scored, key=lambda x: x[0], reverse=True)
+        strict_matches = [
+            {"match_quality": round(match, 4), "record": self._record_to_dict(rec)}
+            for match, rec in scored
+            if match >= min_match
+        ]
+        if strict_matches:
+            return strict_matches
+
+        relaxed_threshold = max(0.08, min_match * 0.5)
+        relaxed_matches = [
+            {"match_quality": round(match, 4), "record": self._record_to_dict(rec)}
+            for match, rec in scored
+            if match >= relaxed_threshold
+        ]
+        if relaxed_matches:
+            return relaxed_matches[:5]
+
+        # Final fallback: nearest-neighbor retrieval to avoid zero-support collapse.
+        return [
+            {"match_quality": round(match, 4), "record": self._record_to_dict(rec)}
+            for match, rec in scored[:3]
+        ]
 
     def support_summary(self) -> dict[str, Any]:
         helpful: list[dict[str, Any]] = []
