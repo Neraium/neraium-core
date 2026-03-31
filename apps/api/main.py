@@ -3,7 +3,6 @@ from __future__ import annotations
 import base64
 import json
 import logging
-import mimetypes
 import math
 import os
 import tempfile
@@ -13,18 +12,54 @@ import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Literal
-from urllib.parse import parse_qs, urlparse
-from uuid import uuid4
+from urllib.parse import urlparse
 
 import numpy as np
 from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Query, Request, UploadFile, status
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
-from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field, model_validator
+from pydantic import BaseModel
 from starlette.responses import JSONResponse, PlainTextResponse, Response, StreamingResponse
-from starlette.types import ASGIApp, Message, Receive, Scope, Send
+from starlette.types import Message
+
+from .bootstrap.static import _mount_web_static
+from .middleware.correlation import RequestCorrelationIdMiddleware
+from .middleware.request_limits import MaxRequestBodySizeMiddleware
+from .schemas.alerts import AlertAcknowledgeRequest, AlertResolveRequest, AlertsEnvelope
+from .schemas.assistant import AssistantRequest, AssistantResponse, ReportRequest, ReportResponse
+from .schemas.common import (
+    ActionResponse,
+    CanonicalOutputResponse,
+    ClientErrorReport,
+    CurrentStateEnvelope,
+    DecisionEnvelope,
+    EventsEnvelope,
+    ExplanationEnvelope,
+    ExportEnvelope,
+    GeometryEnvelope,
+    HealthResponse,
+    HistoryEnvelope,
+    RecommendationEnvelope,
+    ResultEnvelope,
+    ResultsEnvelope,
+)
+from .schemas.ingest import (
+    BatchIngestRequest,
+    CanonicalIngestRequest,
+    CsvColumnMappingPayload,
+    CsvIngestRequest,
+    CsvPreviewRequest,
+    CsvPreviewResponse,
+    DemoCmapssStartRequest,
+    DemoSeedRequest,
+    IngestFrameRequest,
+    IngestJobEnvelope,
+    IngestRequest,
+    JsonIngestRequest,
+)
+from .schemas.integrations import PullIntegrationStartRequest, PullIntegrationStatusEnvelope
+from .schemas.runs import ActivateRunRequest, CreateRunRequest, LockBaselineRequest, RunEnvelope, RunsEnvelope, UpdateRunRequest
 
 from .integration import (
     IntegrationMappingError,
@@ -73,63 +108,6 @@ from neraium_core.pipeline import infer_csv_mapping_stage, issue_to_dict, parse_
 
 logger = logging.getLogger(__name__)
 
-# Windows / older Python may omit .mjs; browsers refuse module scripts with wrong MIME.
-mimetypes.add_type("text/javascript", ".mjs", strict=False)
-
-
-class CacheControlStaticFiles(StaticFiles):
-    """Static files with cache headers tuned for cloud delivery.
-
-    HTML stays non-cacheable to allow clean deploy updates.
-    Versionable assets (js/css/images/fonts) get long-lived public caching.
-    """
-
-    async def get_response(self, path: str, scope: Scope) -> Response:
-        response = await super().get_response(path, scope)
-        response.headers.setdefault("Vary", "Accept-Encoding")
-        ext = Path(path).suffix.lower()
-        query_string = scope.get("query_string", b"")
-        query_params = parse_qs(query_string.decode("utf-8", errors="ignore")) if query_string else {}
-        has_asset_version = bool(query_params.get("v", [None])[0])
-        if ext in {".html"}:
-            response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
-        elif ext in {".js", ".mjs", ".css"}:
-            if has_asset_version:
-                response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
-            else:
-                response.headers["Cache-Control"] = "public, max-age=300, must-revalidate"
-        elif ext in {".csv", ".txt", ".json", ".map"}:
-            response.headers["Cache-Control"] = "public, max-age=3600, stale-while-revalidate=300"
-        else:
-            response.headers["Cache-Control"] = "public, max-age=604800, stale-while-revalidate=86400"
-        return response
-
-
-def _mount_web_static(app: FastAPI) -> None:
-    """Serve `apps/api/static` at `/web` (app.js, styles, three-init, …).
-
-    Uses Path(__file__) so the directory is correct regardless of process cwd.
-    Registered after the web router so explicit HTML routes win; /web/* is fully static.
-
-    If this mount is skipped, GET /web/... falls through to FastAPI's default 404
-    (JSON ``{"detail":"Not Found"}``), which is easy to mistake for an API error.
-    """
-    static_dir = Path(__file__).resolve().parent / "static"
-    if not static_dir.is_dir():
-        logger.error(
-            "Web static directory missing: %s — /web/* will 404. Clone or sync apps/api/static.",
-            static_dir,
-        )
-        return
-    app.mount(
-        "/web",
-        CacheControlStaticFiles(directory=str(static_dir)),
-        name="web",
-    )
-    logger.info("Serving static files at /web from %s", static_dir)
-    # Front-end modules are loaded via CDN import map in static/index.html.
-    # Keep startup resilient when /web/vendor/three is not deployed.
-
 
 DEFAULT_MAX_REQUEST_BODY_BYTES = 50 * 1024 * 1024
 # Keep parser allowance above app-level request cap so oversize requests
@@ -158,98 +136,6 @@ def _configure_logging() -> None:
         level=level,
         format="%(asctime)s %(levelname)s %(name)s %(message)s",
     )
-
-
-class RequestBodyTooLargeError(Exception):
-    """Raised when an incoming request body exceeds configured max size."""
-
-
-class MaxRequestBodySizeMiddleware:
-    def __init__(self, app: ASGIApp, max_body_size: int) -> None:
-        self.app = app
-        self.max_body_size = max(1, int(max_body_size))
-
-    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        if scope.get("type") != "http":
-            await self.app(scope, receive, send)
-            return
-
-        headers = {k.lower(): v for k, v in scope.get("headers", [])}
-        raw_content_length = headers.get(b"content-length")
-        if raw_content_length:
-            try:
-                content_length = int(raw_content_length.decode("ascii"))
-            except (ValueError, UnicodeDecodeError):
-                content_length = None
-            if content_length is not None and content_length > self.max_body_size:
-                await self._send_413(scope, receive, send)
-                return
-
-        bytes_seen = 0
-        response_started = False
-
-        async def guarded_receive() -> Message:
-            nonlocal bytes_seen
-            message = await receive()
-            if message.get("type") == "http.request":
-                body = message.get("body", b"")
-                bytes_seen += len(body)
-                if bytes_seen > self.max_body_size:
-                    raise RequestBodyTooLargeError
-            return message
-
-        async def tracked_send(message: Message) -> None:
-            nonlocal response_started
-            if message.get("type") == "http.response.start":
-                response_started = True
-            await send(message)
-
-        try:
-            await self.app(scope, guarded_receive, tracked_send)
-        except RequestBodyTooLargeError:
-            if not response_started:
-                await self._send_413(scope, receive, send)
-
-    async def _send_413(self, scope: Scope, receive: Receive, send: Send) -> None:
-        max_mb = self.max_body_size / (1024 * 1024)
-        response = JSONResponse(
-            status_code=status.HTTP_413_CONTENT_TOO_LARGE,
-            content={"detail": f"Request body too large (max {max_mb:.1f}MB)."},
-        )
-        await response(scope, receive, send)
-
-
-class RequestCorrelationIdMiddleware:
-    """Ensure every request/response has a correlation ID for operator support."""
-
-    def __init__(self, app: ASGIApp) -> None:
-        self.app = app
-
-    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
-        if scope.get("type") != "http":
-            await self.app(scope, receive, send)
-            return
-        headers = {k.lower(): v for k, v in scope.get("headers", [])}
-        raw_id = headers.get(b"x-correlation-id") or headers.get(b"x-request-id")
-        if raw_id:
-            try:
-                correlation_id = raw_id.decode("utf-8").strip()
-            except UnicodeDecodeError:
-                correlation_id = ""
-        else:
-            correlation_id = ""
-        if not correlation_id:
-            correlation_id = f"api_{uuid4().hex[:12]}"
-        scope.setdefault("state", {})["correlation_id"] = correlation_id
-
-        async def send_with_header(message: Message) -> None:
-            if message.get("type") == "http.response.start":
-                headers_list = list(message.get("headers") or [])
-                headers_list.append((b"x-correlation-id", correlation_id.encode("utf-8")))
-                message["headers"] = headers_list
-            await send(message)
-
-        await self.app(scope, receive, send_with_header)
 
 
 def _request_body_limit_bytes() -> int:
@@ -310,422 +196,6 @@ def _cors_allow_headers() -> list[str]:
 def _cors_allow_origin_regex() -> str | None:
     raw = str(os.getenv("NERAIUM_CORS_ALLOW_ORIGIN_REGEX") or "").strip()
     return raw or None
-
-
-class IngestRequest(BaseModel):
-    model_config = {"extra": "allow"}
-
-    customer_id: str | None = None
-    timestamp: str | None = None
-    site_id: str | None = None
-    asset_id: str | None = None
-    sensor_values: dict[str, Any] = Field(default_factory=dict)
-
-    @model_validator(mode="before")
-    @classmethod
-    def _normalize_aliases(cls, data: Any) -> Any:
-        if not isinstance(data, dict):
-            return data
-        normalized = normalize_external_payload(data, customer_id=data.get("customer_id"))
-        return {
-            "customer_id": normalized.get("customer_id"),
-            "timestamp": normalized.get("timestamp"),
-            "site_id": normalized.get("site_id"),
-            "asset_id": normalized.get("asset_id"),
-            "sensor_values": normalized.get("sensor_values", {}),
-        }
-
-
-class IngestFrameRequest(BaseModel):
-    """Production API payload for a single telemetry frame."""
-
-    timestamp: str
-    site_id: str
-    asset_id: str
-    sensor_values: dict[str, Any] = Field(default_factory=dict)
-    customer_id: str | None = None
-
-
-DEMO_STRUCTURAL_SENSOR_KEYS = [
-    "pressure",
-    "flow",
-    "vibration",
-    "temperature",
-    "motor_current",
-    "bearing_temp",
-    "load_cell",
-    "rpm",
-    "humidity",
-    "displacement",
-    "valve_position",
-    "shaft_accel",
-    "lubrication_psi",
-    "seismic_x",
-    "seismic_y",
-    "winding_temp",
-    "inlet_guide",
-    "outlet_guide",
-    "torque_est",
-    "casing_vibe",
-    "oil_quality",
-    "stator_temp",
-    "field_bus_ok",
-    "coolant_flow",
-]
-CMAPSS_REPLAY_DEFAULT_MAX_FRAMES = 240
-
-
-class DemoSeedRequest(BaseModel):
-    run_id: str | None = None
-    customer_id: str | None = None
-    profile: Literal["sample", "stable", "watch", "critical"] = "sample"
-    minutes: int = Field(default=120, ge=10, le=240)
-    site_id: str = "demo-site"
-    asset_id: str = "demo-asset"
-
-
-class DemoCmapssStartRequest(BaseModel):
-    customer_id: str | None = None
-    max_frames: int = Field(default=CMAPSS_REPLAY_DEFAULT_MAX_FRAMES, ge=30, le=500)
-
-
-def _build_demo_sensor_values_row(i: int, p: float, drift_lift: float, vib_spike: float) -> dict[str, float]:
-    out: dict[str, float] = {}
-    for k, key in enumerate(DEMO_STRUCTURAL_SENSOR_KEYS):
-        phase = k * 0.85
-        wave = math.sin(i / (5.2 + k * 0.11) + phase)
-        w2 = math.cos(i / (7.1 + k * 0.09) + phase * 0.65)
-        base = 18 + k * 6.2
-        out[key] = (
-            base
-            + wave * (1 + drift_lift * (0.45 + k * 0.025))
-            + w2 * (0.55 + vib_spike * 0.12)
-            + i * (0.011 + k * 0.0008)
-            + p * (0.15 + k * 0.02)
-        )
-    return out
-
-
-class BatchIngestRequest(BaseModel):
-    items: list[IngestRequest]
-
-    @model_validator(mode="before")
-    @classmethod
-    def _accept_records_alias(cls, data: Any) -> Any:
-        """Accept legacy/front-end payloads that send `records` instead of `items`."""
-        if isinstance(data, dict):
-            if "items" in data:
-                return data
-            if any(k in data for k in ("records", "payloads", "stream")):
-                normalized, _ = normalize_external_batch_payload(
-                    data,
-                    customer_id=data.get("customer_id"),
-                )
-                remapped = dict(data)
-                remapped["items"] = normalized
-                return remapped
-        return data
-
-
-
-
-class JsonIngestRequest(BaseModel):
-    model_config = {"extra": "allow"}
-
-    customer_id: str | None = None
-    mapping: dict[str, Any] | None = None
-    items: list[dict[str, Any]] | None = None
-    records: list[dict[str, Any]] | None = None
-    payloads: list[dict[str, Any]] | None = None
-
-
-class CanonicalIngestRequest(BaseModel):
-    customer_id: str | None = None
-    records: list[dict[str, Any]] | None = None
-    items: list[dict[str, Any]] | None = None
-
-class CsvColumnMappingPayload(BaseModel):
-    """Semantic roles: which CSV columns map to time, entity, optional site, and numeric sensors."""
-
-    timestamp: str = Field(min_length=1)
-    asset_id: str = Field(min_length=1)
-    site_id: str | None = None
-    sensor_columns: list[str] = Field(min_length=1)
-
-
-class CsvIngestRequest(BaseModel):
-    customer_id: str | None = None
-    csv_text: str
-    column_mapping: CsvColumnMappingPayload | None = None
-
-
-class CsvPreviewRequest(BaseModel):
-    csv_sample: str = Field(..., max_length=524_288)
-
-
-class CsvPreviewResponse(BaseModel):
-    headers: list[str]
-    suggested_mapping: dict[str, Any] | None = None
-    issues: list[str] = Field(default_factory=list)
-    warnings: list[str] = Field(default_factory=list)
-    issue_details: list[dict[str, Any]] = Field(default_factory=list)
-    warning_details: list[dict[str, Any]] = Field(default_factory=list)
-    requires_confirmation: bool = False
-    preview_state: str = "preview_ready"
-
-
-class CreateRunRequest(BaseModel):
-    name: str = Field(min_length=1, max_length=200)
-    activate: bool = True
-    config: dict[str, Any] = Field(default_factory=dict)
-
-
-class UpdateRunRequest(BaseModel):
-    name: str | None = None
-    config: dict[str, Any] | None = None
-    status: str | None = None
-
-
-class ActivateRunRequest(BaseModel):
-    run_id: str = Field(min_length=1, max_length=200)
-
-
-class LockBaselineRequest(BaseModel):
-    locked: bool = True
-
-
-class ExportEnvelope(BaseModel):
-    run_id: str | None = None
-    format: Literal["json", "csv"]
-    count: int
-    content_type: str
-    filename: str
-    content: str
-
-
-class HealthResponse(BaseModel):
-    status: str
-    version: str
-    auth_configured: bool
-    persistence_available: bool
-    latest_result_available: bool
-    core_runtime_mode: str = "full"
-    core_runtime_fallback: bool = False
-    core_runtime_notes: list[str] = Field(default_factory=list)
-    analysis_runtime_available: bool = True
-    runtime_state_diagnostics: dict[str, Any] = Field(default_factory=dict)
-
-
-class ClientErrorReport(BaseModel):
-    """Browser-reported script errors (product UI telemetry)."""
-
-    message: str = ""
-    stack: str | None = None
-    url: str | None = None
-    source: str | None = None
-    lineno: int | None = None
-    colno: int | None = None
-    reason: str | None = None
-
-
-class ResultsEnvelope(BaseModel):
-    status: str | None = None
-    run_id: str | None = None
-    processed: int | None = None
-    latest: dict[str, Any] | None = None
-    count: int
-    results: list[dict[str, Any]]
-
-
-class ActionResponse(BaseModel):
-    ok: bool
-
-
-class RunEnvelope(BaseModel):
-    run: dict[str, Any] | None
-
-
-class RunsEnvelope(BaseModel):
-    active_run: dict[str, Any] | None = None
-    count: int
-    runs: list[dict[str, Any]]
-
-
-class ResultEnvelope(BaseModel):
-    result: dict[str, Any]
-
-
-class GeometryEnvelope(BaseModel):
-    run_id: str | None = None
-    result_id: int | None = None
-    timestamp: str | None = None
-    available: bool
-    reason: str | None = None
-    metrics: dict[str, Any] = Field(default_factory=dict)
-    nodes: list[dict[str, Any]] = Field(default_factory=list)
-    edges: list[dict[str, Any]] = Field(default_factory=list)
-    views: dict[str, Any] = Field(default_factory=dict)
-    summary: dict[str, Any] = Field(default_factory=dict)
-    projection: dict[str, Any] = Field(default_factory=dict)
-    provenance: dict[str, Any] = Field(default_factory=dict)
-    graph_analytics: dict[str, Any] | None = None
-    system_state: dict[str, Any] | None = None
-
-
-class IngestJobEnvelope(BaseModel):
-    job_id: str
-    status: str
-    run_id: str | None = None
-    customer_id: str
-    filename: str
-    created_at: str
-    updated_at: str
-    rows_processed: int = 0
-    rows_succeeded: int = 0
-    rows_failed: int = 0
-    partial_success: bool = False
-    upload_bytes_received: int = 0
-    upload_bytes_total: int | None = None
-    error_samples: list[dict[str, Any]] = Field(default_factory=list)
-    message: str | None = None
-    latest_result: dict[str, Any] | None = None
-    lifecycle_phase: str | None = None
-    ui_state: str | None = None
-    terminal_state: str | None = None
-    failure_category: str | None = None
-
-
-class PullIntegrationStartRequest(BaseModel):
-    endpoint_url: str | None = Field(default=None, min_length=1, max_length=2000)
-    polling_interval_seconds: float | None = Field(default=None, ge=0.2, le=3600.0)
-    auth_type: Literal["none", "basic", "bearer"] | None = None
-    username: str | None = None
-    password: str | None = None
-    token: str | None = None
-    run_id: str | None = None
-    retry_max_attempts: int | None = Field(default=None, ge=1, le=10)
-    retry_backoff_seconds: float | None = Field(default=None, ge=0.05, le=60.0)
-    request_timeout_seconds: float | None = Field(default=None, ge=1.0, le=120.0)
-
-
-class PullIntegrationStatusEnvelope(BaseModel):
-    customer_id: str
-    endpoint_url: str | None = None
-    run_id: str | None = None
-    auth_type: str = "none"
-    running: bool
-    status: str
-    polling_interval_seconds: float | None = None
-    retry_max_attempts: int | None = None
-    retry_backoff_seconds: float | None = None
-    request_timeout_seconds: float | None = None
-    started_at: str | None = None
-    updated_at: str | None = None
-    last_poll_at: str | None = None
-    last_success_at: str | None = None
-    last_error: str | None = None
-    last_http_status: int | None = None
-    total_polls: int = 0
-    total_failures: int = 0
-    consecutive_failures: int = 0
-    total_ingested: int = 0
-    message: str | None = None
-
-
-class AlertsEnvelope(BaseModel):
-    count: int
-    alerts: list[dict[str, Any]]
-    current_status: dict[str, Any] | None = None
-    active_alert: dict[str, Any] | None = None
-
-
-class CanonicalOutputResponse(BaseModel):
-    schema_version: str
-    timestamp: str
-    cycle: int
-    attribution: dict[str, Any]
-    regime_memory: dict[str, Any]
-    risk_assessment: dict[str, Any]
-    causal_analysis: dict[str, Any]
-    operational_recommendation: dict[str, Any]
-    confidence: float
-    explanation_text: str
-    events: list[str]
-    session: dict[str, Any] | None = None
-    aliases: dict[str, Any] | None = None
-    history_id: int | None = None
-    persisted_at: str | None = None
-    customer_id: str | None = None
-    run_id: str | None = None
-
-
-class CurrentStateEnvelope(BaseModel):
-    state: CanonicalOutputResponse | None = None
-
-
-class HistoryEnvelope(BaseModel):
-    count: int
-    history: list[CanonicalOutputResponse]
-
-
-class RecommendationEnvelope(BaseModel):
-    operational_recommendation: dict[str, Any] | None = None
-
-
-class DecisionEnvelope(BaseModel):
-    """Deprecated compatibility envelope. Prefer RecommendationEnvelope."""
-
-    decision: dict[str, Any] | None = None
-
-
-class ExplanationEnvelope(BaseModel):
-    explanation_text: str | None = None
-
-
-class EventsEnvelope(BaseModel):
-    events: list[str] = Field(default_factory=list)
-    cycle: int | None = None
-    timestamp: str | None = None
-
-
-class AssistantRequest(BaseModel):
-    run_id: str | None = None
-    customer_id: str | None = None
-    mode: Literal["summary", "why_recommended", "what_changed", "pattern_similarity", "handoff"] | None = None
-    history_limit: int = Field(default=20, ge=2, le=100)
-
-
-class AssistantResponse(BaseModel):
-    mode: str
-    text: str
-    grounding: dict[str, Any]
-    context: dict[str, Any]
-
-
-
-class AlertAcknowledgeRequest(BaseModel):
-    run_id: str | None = None
-    customer_id: str | None = None
-    acknowledged_by: str | None = None
-
-
-class AlertResolveRequest(BaseModel):
-    run_id: str | None = None
-    customer_id: str | None = None
-    resolved_by: str | None = None
-
-class ReportRequest(BaseModel):
-    run_id: str | None = None
-    customer_id: str | None = None
-    mode: Literal["client_report", "technician_summary", "inspection_brief", "handoff_note"]
-    history_limit: int = Field(default=20, ge=2, le=100)
-
-
-class ReportResponse(BaseModel):
-    mode: str
-    report_text: str
-    sections: dict[str, str]
-
 
 
 def _alert_thresholds() -> tuple[float, float]:
@@ -879,6 +349,51 @@ def _parse_int(value: Any, *, field_name: str) -> int:
         return int(value)
     except (TypeError, ValueError) as exc:
         raise HTTPException(status_code=400, detail=f"{field_name} must be an integer.") from exc
+
+
+DEMO_STRUCTURAL_SENSOR_KEYS = [
+    "pressure",
+    "flow",
+    "vibration",
+    "temperature",
+    "motor_current",
+    "bearing_temp",
+    "load_cell",
+    "rpm",
+    "humidity",
+    "displacement",
+    "valve_position",
+    "shaft_accel",
+    "lubrication_psi",
+    "seismic_x",
+    "seismic_y",
+    "winding_temp",
+    "inlet_guide",
+    "outlet_guide",
+    "torque_est",
+    "casing_vibe",
+    "oil_quality",
+    "stator_temp",
+    "field_bus_ok",
+    "coolant_flow",
+]
+
+
+def _build_demo_sensor_values_row(i: int, p: float, drift_lift: float, vib_spike: float) -> dict[str, float]:
+    out: dict[str, float] = {}
+    for k, key in enumerate(DEMO_STRUCTURAL_SENSOR_KEYS):
+        phase = k * 0.85
+        wave = math.sin(i / (5.2 + k * 0.11) + phase)
+        w2 = math.cos(i / (7.1 + k * 0.09) + phase * 0.65)
+        base = 18 + k * 6.2
+        out[key] = (
+            base
+            + wave * (1 + drift_lift * (0.45 + k * 0.025))
+            + w2 * (0.55 + vib_spike * 0.12)
+            + i * (0.011 + k * 0.0008)
+            + p * (0.15 + k * 0.02)
+        )
+    return out
 
 
 def create_app(
