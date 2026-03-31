@@ -84,18 +84,31 @@ class InterventionIntelligenceEngine:
             )
 
         ranked = self.ranker.rank(candidates=candidates, scored=scored, context=context)
+        recommendation_confidence = float(ranked.get("recommendation_confidence", 0.0))
 
         return {
             "status": "active",
             "evidence_update": evidence_update or {"status": "no_new_record"},
             "context": context,
-            "model_based_projection": {
-                "source": "counterfactual_engine",
-                "scenario_rankings": counterfactuals.get("scenario_rankings") or [],
-            },
             "historical_evidence": {
                 "support_summary": self.memory.support_summary(),
                 "effectiveness_by_intervention": scored,
             },
-            "recommendation": ranked,
+            "model_based_projection": {
+                "source": "counterfactual_engine",
+                "scenario_rankings": counterfactuals.get("scenario_rankings") or [],
+            },
+            "recommendation": {
+                **ranked,
+                "advisory": True,
+                "disclaimer": "Intervention ranking is decision support only, based on bounded historical evidence and model projections.",
+            },
+            "uncertainty_summary": {
+                "confidence": round(recommendation_confidence, 4),
+                "confidence_band": "high" if recommendation_confidence >= 0.7 else "moderate" if recommendation_confidence >= 0.45 else "low",
+                "assumptions": [
+                    "Historical evidence is observational and context-conditioned.",
+                    "Model projections are approximate and not formal causal proof.",
+                ],
+            },
         }
