@@ -231,6 +231,7 @@ class SIIResult(TypedDict):
     decision: dict[str, Any]
     data_quality_summary: dict[str, Any]
     experimental_analytics: dict[str, Any]
+    structural_system_intelligence: dict[str, Any]
 
 
 def ingestion_record_to_frame(record: CanonicalIngestionRecord) -> SIIFrame:
