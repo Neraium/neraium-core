@@ -11,6 +11,7 @@ def _law(
     robustness: float,
     novelty_ready_conf: float,
     family: str = "escalating",
+    cf_consistency: float = 0.65,
 ) -> dict:
     return {
         "law_id": law_id,
@@ -21,22 +22,24 @@ def _law(
         "confidence": novelty_ready_conf,
         "consistency_across_assets_runs": 0.8,
         "trajectory_family_support": 0.82,
-        "counterfactual_consistency": 0.65,
+        "counterfactual_consistency": cf_consistency,
         "outcome": "Escalation tendency increases in subsequent transition phase.",
-        "applicability": {"trajectory_family": family},
+        "applicability": {"trajectory_family": family, "archetypes": ["degeneration"]},
     }
 
 
-def test_strong_supported_law_influences_recommendations() -> None:
+def test_strong_supported_law_influences_recommendations_when_decision_grade() -> None:
     engine = StructuralLawDecisionEngine()
-    out = engine.evaluate(
-        law_candidates={"status": "ready", "law_candidates": [_law("law::strong", 12, 0.42, 0.78, 0.72)]},
-        trajectory_info={"current_trajectory_path_family": "escalating", "novelty_score": 0.1},
-        mechanism_info={"mechanism_candidates": [{"mechanism": "triad_weakening:A|B|C", "family_conditioned_predictive_value": 0.88}]},
-        risk_assessment={"current_risk_level": "medium", "projected_score": 0.62},
-        operator_guidance={"recommended_actions": ["Inspect subsystem A"]},
-        counterfactuals={"best_intervention": {"name": "restore_relationship_cluster_to_baseline"}},
-    )
+    out = {}
+    for support in range(4, 13):
+        out = engine.evaluate(
+            law_candidates={"status": "ready", "law_candidates": [_law("law::strong", support, 0.42, 0.9, 0.88)]},
+            trajectory_info={"current_trajectory_path_family": "escalating", "novelty_score": 0.08},
+            mechanism_info={"mechanism_candidates": [{"mechanism": "triad_weakening:A|B|C", "family_conditioned_predictive_value": 0.88}]},
+            risk_assessment={"current_risk_level": "medium", "projected_score": 0.62},
+            operator_guidance={"recommended_actions": ["Inspect subsystem A"]},
+            counterfactuals={"best_intervention": {"name": "restore_relationship_cluster_to_baseline"}, "scenario_rankings": [{"risk_delta": 0.55}]},
+        )
 
     assert out["decision_eligible_laws"]
     assert out["matched_law_ids"] == ["law::strong"]
@@ -63,18 +66,20 @@ def test_weak_or_novel_law_stays_suppressed_and_bounded() -> None:
 
 def test_conflicting_laws_reduce_influence_weight() -> None:
     engine = StructuralLawDecisionEngine()
-    escalating = _law("law::escalate", 10, 0.33, 0.75, 0.71)
-    recovery = _law("law::recover", 10, -0.31, 0.72, 0.69)
+    escalating = _law("law::escalate", 10, 0.33, 0.88, 0.9, cf_consistency=0.6)
+    recovery = _law("law::recover", 10, -0.31, 0.86, 0.89, cf_consistency=0.58)
     recovery["outcome"] = "Recovery tendency increases under matched family."
 
-    out = engine.evaluate(
-        law_candidates={"status": "ready", "law_candidates": [escalating, recovery]},
-        trajectory_info={"current_trajectory_path_family": "escalating", "novelty_score": 0.05},
-        mechanism_info={"mechanism_candidates": []},
-        risk_assessment={"current_risk_level": "medium", "projected_score": 0.55},
-        operator_guidance={"recommended_actions": ["Inspect subsystem A"]},
-        counterfactuals={"best_intervention": {"name": "suppress_subsystem_instability"}},
-    )
+    out = {}
+    for _ in range(4):
+        out = engine.evaluate(
+            law_candidates={"status": "ready", "law_candidates": [escalating, recovery]},
+            trajectory_info={"current_trajectory_path_family": "escalating", "novelty_score": 0.05},
+            mechanism_info={"mechanism_candidates": []},
+            risk_assessment={"current_risk_level": "medium", "projected_score": 0.55},
+            operator_guidance={"recommended_actions": ["Inspect subsystem A"]},
+            counterfactuals={"best_intervention": {"name": "suppress_subsystem_instability"}, "scenario_rankings": [{"risk_delta": 0.6}]},
+        )
 
     assert len(out["matched_law_ids"]) == 2
     assert out["law_influence_weight"] <= 0.35
@@ -110,3 +115,4 @@ def test_platform_exposes_traceable_law_decision_outputs() -> None:
     assert "suppressed_candidates" in law
     assert "matched_law_ids" in law
     assert "law_adjusted_risk" in law
+    assert "structural_law_governance" in law

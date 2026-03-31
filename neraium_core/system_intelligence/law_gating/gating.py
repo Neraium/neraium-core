@@ -19,6 +19,7 @@ def evaluate_law_candidates(
     law_candidates: list[dict[str, Any]],
     trajectory_info: dict[str, Any],
     mechanism_info: dict[str, Any],
+    governance: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Gate structural law candidates before they can influence decisions."""
 
@@ -29,6 +30,9 @@ def evaluate_law_candidates(
         for item in list(mechanism_info.get("mechanism_candidates") or [])
         if isinstance(item, dict)
     }
+
+    governance = governance or {}
+    governance_laws = {str(item.get("law_id")): item for item in list(governance.get("laws") or []) if isinstance(item, dict)}
 
     eligible: list[dict[str, Any]] = []
     suppressed: list[dict[str, Any]] = []
@@ -64,6 +68,9 @@ def evaluate_law_candidates(
         )
         generalization_conf = _clamp01(0.45 * consistency + 0.35 * family_support + 0.20 * (1.0 - novelty))
 
+        gov_entry = governance_laws.get(str(law.get("law_id")), {})
+        law_stage = str(gov_entry.get("current_stage") or "observed_pattern")
+
         reasons: list[str] = []
         if support < 4:
             reasons.append("support_below_minimum")
@@ -77,6 +84,8 @@ def evaluate_law_candidates(
             reasons.append("high_novelty_penalty")
         if effective_conf < 0.52:
             reasons.append("insufficient_effective_law_confidence")
+        if law_stage != "decision_grade_heuristic":
+            reasons.append("not_decision_grade_heuristic")
 
         gated = {
             **law,
@@ -84,6 +93,11 @@ def evaluate_law_candidates(
             "law_generalization_confidence": round(generalization_conf, 4),
             "trajectory_family_match": round(family_match, 4),
             "novelty_penalty": round(novelty_penalty, 4),
+            "current_stage": law_stage,
+            "stage_confidence": gov_entry.get("stage_confidence"),
+            "promotion_eligibility": gov_entry.get("promotion_eligibility"),
+            "promotion_blockers": list(gov_entry.get("promotion_blockers") or []),
+            "risk_flags": list(gov_entry.get("risk_flags") or []),
         }
 
         if reasons:
@@ -99,4 +113,5 @@ def evaluate_law_candidates(
         "decision_eligible_laws": eligible,
         "suppressed_laws": suppressed,
         "suppression_reasons": {str(item.get("law_id")): list(item.get("suppression_reasons", [])) for item in suppressed},
+        "decision_grade_law_ids": [str(item.get("law_id")) for item in eligible],
     }
