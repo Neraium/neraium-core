@@ -1,0 +1,276 @@
+{
+  "replay": {
+    "step_logs": [
+      {
+        "timestep": 0,
+        "timestamp": 1.0,
+        "asset_id": "A",
+        "predicted_state": {
+          "regime": "stable",
+          "transition_path": "stable",
+          "escalation_probability": 0.0,
+          "reversibility_score": 0.5,
+          "distance_to_critical_region": 1.35,
+          "uncertainty": 0.707107
+        },
+        "recommended_intervention": "remove_top_driver_contribution",
+        "confidence": 0.0285,
+        "law_usage": [],
+        "actual_intervention": "remove_top_driver_contribution",
+        "actual_outcome": "helpful"
+      },
+      {
+        "timestep": 1,
+        "timestamp": 2.0,
+        "asset_id": "A",
+        "predicted_state": {
+          "regime": "stable",
+          "transition_path": "stable",
+          "escalation_probability": 0.0,
+          "reversibility_score": 0.5,
+          "distance_to_critical_region": 1.35,
+          "uncertainty": 0.707107
+        },
+        "recommended_intervention": "remove_top_driver_contribution",
+        "confidence": 0.0285,
+        "law_usage": [],
+        "actual_intervention": "restore_relationship_cluster_to_baseline",
+        "actual_outcome": "harmful"
+      }
+    ],
+    "trajectory_logs": {
+      "A": [
+        {
+          "timestep": 0,
+          "timestamp": 1.0,
+          "asset_id": "A",
+          "predicted_state": {
+            "regime": "stable",
+            "transition_path": "stable",
+            "escalation_probability": 0.0,
+            "reversibility_score": 0.5,
+            "distance_to_critical_region": 1.35,
+            "uncertainty": 0.707107
+          },
+          "recommended_intervention": "remove_top_driver_contribution",
+          "confidence": 0.0285,
+          "law_usage": [],
+          "actual_intervention": "remove_top_driver_contribution",
+          "actual_outcome": "helpful"
+        },
+        {
+          "timestep": 1,
+          "timestamp": 2.0,
+          "asset_id": "A",
+          "predicted_state": {
+            "regime": "stable",
+            "transition_path": "stable",
+            "escalation_probability": 0.0,
+            "reversibility_score": 0.5,
+            "distance_to_critical_region": 1.35,
+            "uncertainty": 0.707107
+          },
+          "recommended_intervention": "remove_top_driver_contribution",
+          "confidence": 0.0285,
+          "law_usage": [],
+          "actual_intervention": "restore_relationship_cluster_to_baseline",
+          "actual_outcome": "harmful"
+        }
+      ]
+    }
+  },
+  "outcomes": [
+    {
+      "timestep": 0,
+      "asset_id": "A",
+      "recommended_intervention": "remove_top_driver_contribution",
+      "actual_intervention": "remove_top_driver_contribution",
+      "outcome_label": "helpful",
+      "outcome_score": 1.0
+    },
+    {
+      "timestep": 1,
+      "asset_id": "A",
+      "recommended_intervention": "remove_top_driver_contribution",
+      "actual_intervention": "restore_relationship_cluster_to_baseline",
+      "outcome_label": "harmful",
+      "outcome_score": -1.0
+    }
+  ],
+  "feedback": [
+    {
+      "timestep": 0,
+      "asset_id": "A",
+      "recommended_intervention": "remove_top_driver_contribution",
+      "actual_intervention": "remove_top_driver_contribution",
+      "action": "accepted",
+      "operator_confidence": null,
+      "operator_rationale": null,
+      "outcome_label": "helpful",
+      "trajectory_context": {
+        "law_usage": [],
+        "predicted_state": {
+          "regime": "stable",
+          "transition_path": "stable",
+          "escalation_probability": 0.0,
+          "reversibility_score": 0.5,
+          "distance_to_critical_region": 1.35,
+          "uncertainty": 0.707107
+        }
+      }
+    },
+    {
+      "timestep": 1,
+      "asset_id": "A",
+      "recommended_intervention": "remove_top_driver_contribution",
+      "actual_intervention": "restore_relationship_cluster_to_baseline",
+      "action": "overridden",
+      "operator_confidence": null,
+      "operator_rationale": null,
+      "outcome_label": "harmful",
+      "trajectory_context": {
+        "law_usage": [],
+        "predicted_state": {
+          "regime": "stable",
+          "transition_path": "stable",
+          "escalation_probability": 0.0,
+          "reversibility_score": 0.5,
+          "distance_to_critical_region": 1.35,
+          "uncertainty": 0.707107
+        }
+      }
+    }
+  ],
+  "feedback_summary": {
+    "actions": {
+      "accepted": 1,
+      "overridden": 1
+    },
+    "outcomes": {
+      "helpful": 1,
+      "harmful": 1
+    },
+    "total": 2
+  },
+  "metrics": {
+    "decision_alignment_with_successful_outcomes": 0.5,
+    "intervention_success_rate_vs_operator": 1.0,
+    "avoided_failures": 1,
+    "false_confidence_events": 0,
+    "calibration_under_real_world_noise": 0.5,
+    "decision_accuracy": 0.5,
+    "harm_rate": 0.5,
+    "calibration": 0.5,
+    "per_step": [
+      {
+        "timestep": 0,
+        "correct": 1.0,
+        "confidence": 0.0285,
+        "outcome": "helpful"
+      },
+      {
+        "timestep": 1,
+        "correct": 0.0,
+        "confidence": 0.0285,
+        "outcome": "harmful"
+      }
+    ]
+  },
+  "real_world_validation": {
+    "decision_accuracy": 0.5,
+    "harm_rate": 0.5,
+    "calibration": 0.5,
+    "law_validation": {},
+    "drift_signals": {
+      "status": "insufficient_history",
+      "warnings": []
+    }
+  },
+  "evidence_summaries": {
+    "intervention_memory": {
+      "helpful_interventions": [],
+      "neutral_interventions": [],
+      "harmful_interventions": [],
+      "recovery_associated_interventions": [],
+      "support_count": 0,
+      "feedback_evidence": {
+        "remove_top_driver_contribution": {
+          "accepted_success": 1.0,
+          "accepted_harmful": 0.0,
+          "overridden": 1.0,
+          "ignored": 0.0
+        }
+      }
+    },
+    "reliability_store": {
+      "calibration_version": "reliability.v1",
+      "issued_pending_count": 6,
+      "finalized_count": 2,
+      "finalized_tail": [
+        {
+          "issued": {
+            "record_id": "rel::3::7",
+            "family": "intervention_recommendation_confidence",
+            "context": {
+              "trajectory_family": "unknown",
+              "transition_path": "unknown",
+              "regime": "unknown",
+              "novelty_level": 0.5,
+              "support_count": 1,
+              "mechanism_family": "feedback",
+              "evidence_mix": "local_dominant"
+            },
+            "raw_confidence": 0.8,
+            "local_evidence_weight": 1.0,
+            "transferred_evidence_weight": 0.0,
+            "calibration_version": "reliability.v1",
+            "issued_at_step": 3,
+            "issued_timestamp": "2026-03-31T20:26:29.641863+00:00",
+            "metadata": {
+              "calibration_bucket": "feedback|helpful"
+            }
+          },
+          "outcome": {
+            "record_id": "rel::3::7",
+            "family": "intervention_recommendation_confidence",
+            "horizon": "short_term",
+            "realized_outcome": 1.0,
+            "finalized_at_step": 3
+          }
+        },
+        {
+          "issued": {
+            "record_id": "rel::3::8",
+            "family": "intervention_recommendation_confidence",
+            "context": {
+              "trajectory_family": "unknown",
+              "transition_path": "unknown",
+              "regime": "unknown",
+              "novelty_level": 0.5,
+              "support_count": 1,
+              "mechanism_family": "feedback",
+              "evidence_mix": "local_dominant"
+            },
+            "raw_confidence": 0.4,
+            "local_evidence_weight": 1.0,
+            "transferred_evidence_weight": 0.0,
+            "calibration_version": "reliability.v1",
+            "issued_at_step": 3,
+            "issued_timestamp": "2026-03-31T20:26:29.641891+00:00",
+            "metadata": {
+              "calibration_bucket": "feedback|harmful"
+            }
+          },
+          "outcome": {
+            "record_id": "rel::3::8",
+            "family": "intervention_recommendation_confidence",
+            "horizon": "short_term",
+            "realized_outcome": 0.0,
+            "finalized_at_step": 3
+          }
+        }
+      ]
+    },
+    "law_validation": {}
+  }
+}

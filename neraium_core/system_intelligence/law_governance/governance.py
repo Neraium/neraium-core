@@ -49,6 +49,7 @@ class StructuralLawGovernance:
     def __init__(self, *, require_human_review_for_decision_grade: bool = False) -> None:
         self.require_human_review_for_decision_grade = bool(require_human_review_for_decision_grade)
         self._registry: dict[str, dict[str, Any]] = {}
+        self._real_world_evidence: dict[str, dict[str, float]] = {}
         self._tick: int = 0
 
     def evaluate(
@@ -77,7 +78,12 @@ class StructuralLawGovernance:
             previous_stage = str((previous or {}).get("current_stage") or "observed_pattern")
 
             support = max(0, int(_f(law.get("support"), 0)))
+            rw = self._real_world_evidence.get(law_id, {})
+            real_support = max(0.0, _f(rw.get("support_count"), 0.0))
+            real_contradiction = max(0.0, _f(rw.get("contradiction_count"), 0.0))
+            weighted_support = support + int(round(real_support * 1.8))
             contradiction_count = max(0, int(contradiction_by_law.get(law_id, round(max(0.0, support * (1.0 - _clamp01(_f(law.get("robustness"), 0.0))))))))
+            contradiction_count += int(round(real_contradiction * 1.8))
             contradiction_rate = _clamp01(contradiction_count / max(1.0, float(support + contradiction_count)))
             cross_domain_consistency = _clamp01(_f(law.get("consistency_across_assets_runs"), 0.0))
             domain_coverage = _clamp01(len(set((law.get("applicability") or {}).get("archetypes") or [])) / 3.0)
@@ -92,7 +98,7 @@ class StructuralLawGovernance:
             )
 
             evidence_strength = _clamp01(
-                0.35 * min(1.0, support / 14.0)
+                0.35 * min(1.0, weighted_support / 14.0)
                 + 0.20 * (1.0 - contradiction_rate)
                 + 0.20 * cross_domain_consistency
                 + 0.15 * calibrated_law_confidence
@@ -101,7 +107,7 @@ class StructuralLawGovernance:
             stage_confidence = _clamp01(evidence_strength * (1.0 - 0.5 * novelty_penalty) * (1.0 - 0.4 * transfer_penalty))
 
             target_stage, blockers, risk_flags = self._target_stage(
-                support=support,
+                support=weighted_support,
                 contradiction_rate=contradiction_rate,
                 domain_coverage=domain_coverage,
                 cross_domain_consistency=cross_domain_consistency,
@@ -155,12 +161,15 @@ class StructuralLawGovernance:
                 "promotion_history": history,
                 "evidence_metrics": {
                     "support_count": support,
+                    "real_world_support_count": int(real_support),
                     "contradiction_count": contradiction_count,
+                    "real_world_contradiction_count": int(real_contradiction),
                     "contradiction_rate": round(contradiction_rate, 4),
                     "domain_coverage": round(domain_coverage, 4),
                     "cross_domain_consistency": round(cross_domain_consistency, 4),
                     "intervention_effect_correlation": round(intervention_effect_correlation, 4),
                     "recency_weighting": round(recency_weight, 4),
+                    "real_world_validation_score": round(_f(rw.get("validation_score"), 0.0), 4),
                 },
                 "reliability": {
                     "calibrated_law_confidence": round(calibrated_law_confidence, 4),
@@ -203,6 +212,27 @@ class StructuralLawGovernance:
             "blocked_promotions": blocked_promotions,
             "demotions": demotions,
         }
+
+    def ingest_real_world_validation(
+        self,
+        *,
+        law_id: str,
+        helpful_count: int = 0,
+        harmful_count: int = 0,
+        neutral_count: int = 0,
+    ) -> dict[str, Any]:
+        total = max(1, helpful_count + harmful_count + neutral_count)
+        consistency = helpful_count / total
+        contradiction_rate = harmful_count / total
+        validation_score = _clamp01(0.7 * consistency + 0.3 * (1.0 - contradiction_rate))
+        row = self._real_world_evidence.setdefault(
+            law_id,
+            {"support_count": 0.0, "contradiction_count": 0.0, "validation_score": 0.0},
+        )
+        row["support_count"] += float(helpful_count + neutral_count)
+        row["contradiction_count"] += float(harmful_count)
+        row["validation_score"] = float(validation_score)
+        return dict(row)
 
     def _target_stage(
         self,
