@@ -29,6 +29,7 @@ class InterventionMemoryStore:
     def __init__(self) -> None:
         self.records: list[InterventionEvidenceRecord] = []
         self._pending: dict[str, dict[str, Any]] = {}
+        self.feedback_evidence: dict[str, dict[str, float]] = {}
 
     def register_intervention_start(
         self,
@@ -165,7 +166,35 @@ class InterventionMemoryStore:
             "harmful_interventions": harmful,
             "recovery_associated_interventions": recovery,
             "support_count": len(self.records),
+            "feedback_evidence": self.feedback_evidence,
         }
+
+    def ingest_feedback_event(
+        self,
+        *,
+        intervention_type: str,
+        action: str,
+        outcome_label: str,
+    ) -> None:
+        key = str(intervention_type or "other")
+        bucket = self.feedback_evidence.setdefault(
+            key,
+            {
+                "accepted_success": 0.0,
+                "accepted_harmful": 0.0,
+                "overridden": 0.0,
+                "ignored": 0.0,
+            },
+        )
+        label = str(outcome_label or "neutral")
+        if action == "accepted" and label in {"helpful", "recovery-associated"}:
+            bucket["accepted_success"] += 1.0
+        elif action == "accepted" and label == "harmful":
+            bucket["accepted_harmful"] += 1.0
+        elif action == "overridden":
+            bucket["overridden"] += 1.0
+        else:
+            bucket["ignored"] += 1.0
 
     @staticmethod
     def _record_to_dict(record: InterventionEvidenceRecord) -> dict[str, Any]:
