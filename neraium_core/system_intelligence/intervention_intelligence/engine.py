@@ -19,6 +19,14 @@ class InterventionIntelligenceEngine:
         self.memory = InterventionMemoryStore()
         self.scorer = InterventionEffectivenessScorer(self.memory)
         self.ranker = InterventionRecommendationRanker()
+        self._uncertainty_thresholds = {
+            "novelty": 0.72,
+            "low_similarity": 0.45,
+            "support": 2,
+            "calibration_reliability": 0.5,
+            "transfer_mismatch": 0.62,
+            "ambiguity": 0.12,
+        }
 
     def update(
         self,
@@ -44,6 +52,11 @@ class InterventionIntelligenceEngine:
             "mechanism_candidates": [str(m.get("mechanism", "")) for m in (mechanism.get("mechanism_candidates") or [])[:4]],
             "law_candidates": [str(l.get("law", "")) for l in (laws.get("law_candidates") or [])[:4]],
             "novelty_score": float(trajectory.get("novelty_score", 0.5)),
+            "family_similarity": float(trajectory.get("family_similarity", trajectory.get("trajectory_similarity", 0.0))),
+            "support_count": int(trajectory.get("support", 0) or 0),
+            "drift_warning": bool(observation.get("drift_alert", observation.get("drift_warning", False))),
+            "transfer_mismatch": float((observation.get("transfer_metrics") or {}).get("mismatch_penalty", 0.0) or 0.0),
+            "calibration_reliability": float((observation.get("calibration") or {}).get("reliability", 1.0) or 1.0),
         }
 
         evidence_update = self.memory.finalize_if_ready(asset_id=asset_id, post_state=pre_or_post_state)
@@ -88,6 +101,7 @@ class InterventionIntelligenceEngine:
             )
 
         ranked = self.ranker.rank(candidates=candidates, scored=scored, context=context)
+        ranked = self._apply_conservative_fallback(ranked=ranked, context=context)
         recommendation_confidence = float(ranked.get("recommendation_confidence", 0.0))
 
         return {
@@ -107,6 +121,7 @@ class InterventionIntelligenceEngine:
                 "advisory": True,
                 "disclaimer": "Intervention ranking is decision support only, based on bounded historical evidence and model projections.",
             },
+            "structural_uncertainty_mode": self._structural_uncertainty_mode(ranked=ranked, context=context),
             "uncertainty_summary": {
                 "confidence": round(recommendation_confidence, 4),
                 "confidence_band": "high" if recommendation_confidence >= 0.7 else "moderate" if recommendation_confidence >= 0.45 else "low",
@@ -116,3 +131,95 @@ class InterventionIntelligenceEngine:
                 ],
             },
         }
+
+    def _structural_uncertainty_mode(self, *, ranked: dict[str, Any], context: dict[str, Any]) -> dict[str, Any]:
+        novelty = float(context.get("novelty_score", 0.0))
+        similarity = float(context.get("family_similarity", 0.0))
+        support = int(context.get("support_count", 0) or 0)
+        reliability = float(context.get("calibration_reliability", 1.0))
+        mismatch = float(context.get("transfer_mismatch", 0.0))
+        reasons = list(ranked.get("fallback_reasons") or [])
+        active = bool(
+            novelty >= self._uncertainty_thresholds["novelty"]
+            or similarity <= self._uncertainty_thresholds["low_similarity"]
+            or support <= self._uncertainty_thresholds["support"]
+            or reliability < self._uncertainty_thresholds["calibration_reliability"]
+            or mismatch >= self._uncertainty_thresholds["transfer_mismatch"]
+            or bool(reasons)
+        )
+        reason = "stable_context"
+        if active:
+            reason = ",".join(reasons[:3]) if reasons else "low_trust_structural_context"
+        return {
+            "active": active,
+            "reason": reason,
+            "novelty": round(novelty, 6),
+            "support": support,
+            "reliability": round(reliability, 6),
+            "recommended_posture": "human_review_required" if active else "standard_advisory",
+        }
+
+    def _apply_conservative_fallback(self, *, ranked: dict[str, Any], context: dict[str, Any]) -> dict[str, Any]:
+        novelty = float(context.get("novelty_score", 0.0))
+        similarity = float(context.get("family_similarity", 0.0))
+        support = int(context.get("support_count", 0) or 0)
+        drift_warning = bool(context.get("drift_warning", False))
+        mismatch = float(context.get("transfer_mismatch", 0.0))
+        reliability = float(context.get("calibration_reliability", 1.0))
+        scores = [float(r.get("confidence", 0.0)) for r in list(ranked.get("ranked_interventions") or [])[:2]]
+        ambiguity = abs(scores[0] - scores[1]) if len(scores) >= 2 else 1.0
+        reasons: list[str] = []
+        if novelty >= self._uncertainty_thresholds["novelty"]:
+            reasons.append("high_novelty")
+        if similarity <= self._uncertainty_thresholds["low_similarity"]:
+            reasons.append("low_structural_similarity")
+        if support <= self._uncertainty_thresholds["support"]:
+            reasons.append("weak_support")
+        if drift_warning:
+            reasons.append("drift_warning")
+        if mismatch >= self._uncertainty_thresholds["transfer_mismatch"]:
+            reasons.append("transfer_mismatch")
+        if reliability < self._uncertainty_thresholds["calibration_reliability"]:
+            reasons.append("weak_calibration_reliability")
+        if ambiguity <= self._uncertainty_thresholds["ambiguity"]:
+            reasons.append("competing_explanations")
+
+        high_novelty_weak_support = (
+            (novelty >= self._uncertainty_thresholds["novelty"] or similarity <= self._uncertainty_thresholds["low_similarity"])
+            and support <= self._uncertainty_thresholds["support"]
+        )
+        if reasons:
+            bounded_conf = min(float(ranked.get("confidence", 0.0)), 0.52)
+            if high_novelty_weak_support or drift_warning:
+                bounded_conf = min(bounded_conf, 0.35)
+            ranked["confidence"] = round(bounded_conf, 4)
+            ranked["recommendation_confidence"] = round(bounded_conf, 4)
+            ranked["fallback_triggered"] = True
+            ranked["fallback_reasons"] = sorted(set(reasons))
+            ranked["recommended_posture"] = "human_review_required" if high_novelty_weak_support or drift_warning else "bounded_advisory"
+            if high_novelty_weak_support or drift_warning:
+                ranked["best_intervention"] = {
+                    "name": "monitor",
+                    "intervention_type": "monitor",
+                    "intervention_target": "system",
+                    "confidence": round(bounded_conf, 4),
+                    "rank_score": round(bounded_conf, 4),
+                    "rationale": "Insufficient trusted structural evidence for aggressive intervention; escalate to human review.",
+                }
+            for item in list(ranked.get("ranked_interventions") or []):
+                item["confidence"] = round(min(float(item.get("confidence", 0.0)), bounded_conf), 4)
+                item.setdefault("warnings", [])
+                item["warnings"] = sorted(set([*item["warnings"], "fallback_conservative_bounding"]))
+            ranked.setdefault("decision_trace", {})
+            ranked["decision_trace"]["fallback_policy"] = {
+                "triggered": True,
+                "reasons": sorted(set(reasons)),
+                "high_novelty_weak_support": high_novelty_weak_support,
+                "posture": ranked["recommended_posture"],
+                "max_allowed_confidence": round(bounded_conf, 4),
+            }
+        else:
+            ranked["fallback_triggered"] = False
+            ranked["fallback_reasons"] = []
+            ranked["recommended_posture"] = "standard_advisory"
+        return ranked

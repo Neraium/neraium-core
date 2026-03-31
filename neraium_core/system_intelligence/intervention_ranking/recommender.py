@@ -32,6 +32,7 @@ class InterventionRecommendationRanker:
             worsening_signal = float(score.get("worsening_signal", 0.0))
             memory_weight = float(score.get("memory_effect_weight", 0.0))
             harmful_strength = float(score.get("harmful_signal_strength", worsening_signal))
+            correlation_penalty = float(score.get("correlation_trap_penalty", 0.0))
 
             consistent_with_laws = 1.0 if any(term in name for term in law_candidates) else 0.6
             family_consistency = 1.0 if family in {"escalating", "reversible", "drift", "stable"} else 0.7
@@ -46,6 +47,7 @@ class InterventionRecommendationRanker:
                 - 0.14 * uncertainty
                 - 0.10 * novelty
                 - 0.16 * harmful_strength
+                - 0.14 * correlation_penalty
             )
             confidence = self._final_confidence(composite=composite, support=support, harmful_strength=harmful_strength)
             memory_ablated = self._final_confidence(
@@ -71,6 +73,7 @@ class InterventionRecommendationRanker:
                         "harmful_signal_strength": round(harmful_strength, 4),
                         "context_match": round(context_match, 4),
                         "memory_effect_weight": round(memory_weight, 4),
+                        "correlation_trap_penalty": round(correlation_penalty, 4),
                     },
                     "memory_ablation": {
                         "confidence_with_memory": round(confidence, 4),
@@ -81,6 +84,11 @@ class InterventionRecommendationRanker:
                         "model_based_projection": cand.get("model_projection") or {},
                         "historical_evidence": score,
                     },
+                    "warnings": [
+                        "correlation_trap_risk_penalized"
+                    ]
+                    if correlation_penalty >= 0.45
+                    else [],
                 }
             )
 
@@ -126,6 +134,7 @@ class InterventionRecommendationRanker:
                 "law_and_trajectory_consistency": "consistency signal",
                 "uncertainty_and_novelty_penalties": "always applied to keep recommendations conservative",
                 "intervention_memory_weighting": "increases with repeated, context-matched supportive outcomes and decreases sharply under harmful history",
+                "counterfactual_specificity_guard": "penalizes interventions that track generic regime improvement or already-stabilizing contexts",
             },
                 "assumptions_remaining": [
                     "Historical similarity may omit hidden confounders.",

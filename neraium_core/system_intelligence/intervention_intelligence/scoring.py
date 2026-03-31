@@ -50,6 +50,12 @@ class InterventionEffectivenessScorer:
             reversibility /= weight_total
             distance /= weight_total
             worsening /= weight_total
+        counterfactual_profile = self.memory.counterfactual_support_profile(
+            context=context,
+            intervention_type=intervention_type,
+            intervention_target=intervention_target,
+            min_match=0.2,
+        )
 
         model_proj = model_projection or {}
         model_reduction = _clip01(float(model_proj.get("expected_escalation_reduction", 0.0)))
@@ -70,12 +76,20 @@ class InterventionEffectivenessScorer:
 
         harmful_signal = harmful_signal_strength > max(0.04, helpful_signal * 0.8)
         sparse_support = support < 2
+        generic_rate = float(counterfactual_profile.get("generic_improvement_rate", 0.0))
+        stabilizing_rate = float(counterfactual_profile.get("intervention_in_stabilizing_context_rate", 0.0))
+        specificity_gap = float(counterfactual_profile.get("specificity_gap", 0.0))
+        correlation_trap_penalty = _clip01(
+            0.45 * generic_rate
+            + 0.35 * stabilizing_rate
+            + 0.25 * _clip01(0.25 - max(-1.0, min(1.0, specificity_gap)))
+        )
         safety_gate = 1.0
         if sparse_support:
             safety_gate *= 0.80
         if harmful_signal:
             safety_gate *= 0.45
-        effectiveness = _clip01(raw_effectiveness * safety_gate)
+        effectiveness = _clip01(raw_effectiveness * safety_gate * (1.0 - 0.55 * correlation_trap_penalty))
 
         return {
             "intervention_effectiveness": round(effectiveness, 4),
@@ -93,10 +107,13 @@ class InterventionEffectivenessScorer:
             "harmful_signal_strength": round(harmful_signal_strength, 4),
             "support_quality": "strong" if support >= 4 else "moderate" if support >= 2 else "weak",
             "memory_effect_weight": round(memory_effect_weight, 4),
+            "correlation_trap_penalty": round(correlation_trap_penalty, 4),
+            "counterfactual_support_profile": counterfactual_profile,
             "assumption_boundary": "Empirical structural effectiveness estimate from historical/contextual similarity and model projections; not a proven causal effect.",
             "safety_flags": {
                 "sparse_support": sparse_support,
                 "harmful_signal": harmful_signal,
+                "correlation_trap_risk": correlation_trap_penalty >= 0.45,
             },
             "matched_records": matches[:5],
         }

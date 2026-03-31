@@ -117,6 +117,7 @@ class ProductionIntelligenceOrchestrator:
         reliability_trace = dict(((reliability.get("intervention_recommendation") or {}).get("reliability_trace") or {}))
         warnings = list(reliability_trace.get("warnings") or [])
         memory_summary = dict(((intervention.get("historical_evidence") or {}).get("support_summary") or {}))
+        structural_uncertainty = dict(intervention.get("structural_uncertainty_mode") or {})
         evidence_classes = {
             "helpful": len(list(memory_summary.get("helpful_interventions") or [])),
             "harmful": len(list(memory_summary.get("harmful_interventions") or [])),
@@ -140,6 +141,7 @@ class ProductionIntelligenceOrchestrator:
                 "reason": "Law influence is advisory unless decision-grade governance is explicitly active.",
             },
             "warnings_or_blockers": warnings,
+            "structural_uncertainty_mode": structural_uncertainty,
             "audit_note": "Trace includes only production decision-grade layers.",
         }
 
