@@ -6,6 +6,8 @@ from typing import Any, Literal
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, Field
 
+from .dependencies import OnboardingRouterDependencies
+
 
 class OnboardingVerifyRequest(BaseModel):
     customer_id: str = Field(min_length=1, max_length=200)
@@ -23,15 +25,7 @@ class OnboardingProfileRequest(BaseModel):
 
 def build_onboarding_router(
     *,
-    resolve_customer_id: Any,
-    service_instance: Any,
-    normalize_external_payload: Any,
-    is_api_key_valid: Any,
-    configured_api_key: str | None,
-    ensure_default_run: Any,
-    persist_operational_state: Any,
-    store_instance: Any | None,
-    persisted_state_enabled: bool,
+    deps: OnboardingRouterDependencies,
 ) -> APIRouter:
     router = APIRouter(prefix="/onboarding", tags=["onboarding"])
 
@@ -58,14 +52,14 @@ def build_onboarding_router(
 
     def _load_state(customer_id: str) -> dict[str, Any]:
         default = _default_state(customer_id)
-        if not persisted_state_enabled or store_instance is None:
+        if not deps.persisted_state_enabled or deps.store_instance is None:
             return default
         row = None
         try:
-            if hasattr(store_instance, "get_operational_state"):
-                row = store_instance.get_operational_state(state_key=_state_key(customer_id))
+            if hasattr(deps.store_instance, "get_operational_state"):
+                row = deps.store_instance.get_operational_state(state_key=_state_key(customer_id))
             else:
-                rows = store_instance.list_operational_state(key_prefix=_state_key(customer_id))
+                rows = deps.store_instance.list_operational_state(key_prefix=_state_key(customer_id))
                 row = rows[0] if rows else None
         except Exception:
             row = None
@@ -110,7 +104,7 @@ def build_onboarding_router(
             "customer_id": customer_id,
             "updated_at": _utc_now_iso(),
         }
-        persist_operational_state(
+        deps.persist_operational_state(
             _state_key(customer_id),
             outgoing,
             customer_id=customer_id,
@@ -120,17 +114,17 @@ def build_onboarding_router(
 
     @router.get("/status")
     def onboarding_status(customer_id: str | None = Query(default=None)) -> dict[str, Any]:
-        resolved_customer = resolve_customer_id(customer_id)
+        resolved_customer = deps.resolve_customer_id(customer_id)
         state = _load_state(resolved_customer)
-        active = service_instance.get_active_run(customer_id=resolved_customer)
+        active = deps.service_instance.get_active_run(customer_id=resolved_customer)
         if active is not None and not state.get("active_run_id"):
             state["active_run_id"] = active.get("run_id")
         return _status_payload(state)
 
     @router.post("/verify")
     def onboarding_verify(payload: OnboardingVerifyRequest) -> dict[str, Any]:
-        resolved_customer = resolve_customer_id(payload.customer_id)
-        if not is_api_key_valid(configured_api_key, payload.api_key):
+        resolved_customer = deps.resolve_customer_id(payload.customer_id)
+        if not deps.is_api_key_valid(deps.configured_api_key, payload.api_key):
             raise HTTPException(status_code=401, detail="Credential verification failed: API key was rejected.")
         state = _load_state(resolved_customer)
         state.update(
@@ -149,7 +143,7 @@ def build_onboarding_router(
 
     @router.post("/profile")
     def onboarding_profile(payload: OnboardingProfileRequest, customer_id: str | None = Query(default=None)) -> dict[str, Any]:
-        resolved_customer = resolve_customer_id(customer_id)
+        resolved_customer = deps.resolve_customer_id(customer_id)
         state = _load_state(resolved_customer)
         state["profile_saved"] = True
         state["ingestion_method"] = payload.ingestion_method
@@ -168,8 +162,8 @@ def build_onboarding_router(
 
     @router.post("/bootstrap-run")
     def onboarding_bootstrap_run(customer_id: str | None = Query(default=None)) -> dict[str, Any]:
-        resolved_customer = resolve_customer_id(customer_id)
-        run = ensure_default_run(service_instance, customer_id=resolved_customer)
+        resolved_customer = deps.resolve_customer_id(customer_id)
+        run = deps.ensure_default_run(deps.service_instance, customer_id=resolved_customer)
         run_id = str(run.get("run_id") or "")
         state = _load_state(resolved_customer)
         state["active_run_id"] = run_id or None
@@ -182,15 +176,15 @@ def build_onboarding_router(
 
     @router.post("/test-frame")
     def onboarding_test_frame(customer_id: str | None = Query(default=None)) -> dict[str, Any]:
-        resolved_customer = resolve_customer_id(customer_id)
+        resolved_customer = deps.resolve_customer_id(customer_id)
         state = _load_state(resolved_customer)
-        run = ensure_default_run(service_instance, customer_id=resolved_customer)
+        run = deps.ensure_default_run(deps.service_instance, customer_id=resolved_customer)
         run_id = str(run.get("run_id") or "")
         profile = dict(state.get("profile") or {})
         site_name = str(profile.get("site_name") or "site-1")
         asset_id = str(profile.get("default_asset_id") or "asset-1")
 
-        synthetic = normalize_external_payload(
+        synthetic = deps.normalize_external_payload(
             {
                 "customer_id": resolved_customer,
                 "timestamp": _utc_now_iso(),
@@ -204,8 +198,8 @@ def build_onboarding_router(
             },
             customer_id=resolved_customer,
         )
-        ingest_out = service_instance.ingest_frame(synthetic, run_id=run_id, customer_id=resolved_customer)
-        recent = service_instance.list_recent_results(limit=1, run_id=run_id, customer_id=resolved_customer)
+        ingest_out = deps.service_instance.ingest_frame(synthetic, run_id=run_id, customer_id=resolved_customer)
+        recent = deps.service_instance.list_recent_results(limit=1, run_id=run_id, customer_id=resolved_customer)
         accepted = bool(ingest_out)
         has_results = bool(recent)
 
