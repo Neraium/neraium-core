@@ -108,6 +108,7 @@ def adapt_global_to_local(
         "evidence_source_weights": {
             "local_evidence_weight": round(local_evidence_weight, 4),
             "global_evidence_weight": round(global_evidence_weight, 4),
+            "transferred_evidence_weight": round(global_evidence_weight, 4),
             "mismatch_penalty": round(mismatch_penalty, 4),
         },
         "shared_trajectory_knowledge": {
@@ -123,6 +124,7 @@ def adapt_global_to_local(
             "local_sparse": local_support < 4,
             "calibration_buckets": [row.bucket for row in global_packet.calibration[:5]],
         },
+        "generalization_warning": "Global knowledge is assistive only and cannot override strong contradictory local evidence.",
         "generalization_warnings": [
             "Global knowledge is assistive only and cannot override strong contradictory local evidence."
         ],
