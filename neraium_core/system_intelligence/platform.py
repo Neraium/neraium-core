@@ -11,6 +11,7 @@ from .intervention_intelligence.engine import InterventionIntelligenceEngine
 from .law_engine import StructuralLawDecisionEngine
 from .law_extraction.extractor import StructuralLawExtractor
 from .mechanisms.discovery import MechanismDiscoveryLayer
+from .reliability import StructuralReliabilityLayer
 from .structural_state.latent_state import LatentStructuralStateEncoder
 from .trajectory_memory.memory import CrossSystemTrajectoryMemory
 from .transition_model.transition_dynamics import LatentTransitionModel
@@ -31,6 +32,7 @@ class StructuralSystemIntelligencePlatform:
         self.law_engine = StructuralLawDecisionEngine()
         self.intervention_intelligence = InterventionIntelligenceEngine()
         self.cross_system = CrossSystemStructuralIntelligenceLayer()
+        self.reliability = StructuralReliabilityLayer()
 
     def update(self, observation: dict[str, Any]) -> dict[str, Any]:
         latent_snapshot = self.latent.encode(observation)
@@ -124,6 +126,33 @@ class StructuralSystemIntelligencePlatform:
             law_info=laws,
             intervention_info=intervention_intelligence,
         )
+        self.reliability.finalize_due(
+            asset_id=str(observation.get("asset_id", "unknown")),
+            step=self.cross_system._step,
+            transition={
+                "escalation_probability": transition.escalation_probability,
+                "transition_path": transition.transition_path,
+                "regime": transition.regime,
+            },
+        )
+        reliability = self.reliability.calibrate_all(
+            asset_id=str(observation.get("asset_id", "unknown")),
+            step=self.cross_system._step,
+            transition={
+                "regime": transition.regime,
+                "transition_path": transition.transition_path,
+                "escalation_probability": transition.escalation_probability,
+                "uncertainty": transition.uncertainty,
+            },
+            trajectory_forecast=forecast,
+            laws=laws,
+            intervention=intervention_intelligence,
+            cross=(cross_system.get("cross_system_structural_intelligence") or {}),
+        )
+        rec_cal = float(((reliability.get("intervention_recommendation") or {}).get("recommendation_calibrated_confidence", 0.0)))
+        if intervention_intelligence.get("recommendation") and intervention_intelligence["recommendation"].get("best_intervention"):
+            intervention_intelligence["recommendation"]["best_intervention"]["raw_confidence"] = intervention_intelligence["recommendation"]["best_intervention"].get("confidence", 0.0)
+            intervention_intelligence["recommendation"]["best_intervention"]["confidence"] = round(rec_cal, 6)
 
         output = {
             "latent_structural_state": {
@@ -149,6 +178,7 @@ class StructuralSystemIntelligencePlatform:
             "law_engine_decision": law_decision_support,
             "mechanism_discovery": mech,
             "intervention_intelligence": intervention_intelligence,
+            "reliability_intelligence": reliability,
             **cross_system,
         }
         output["compatibility"] = to_operator_compatibility(output)
