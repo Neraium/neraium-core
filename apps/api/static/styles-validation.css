@@ -1,6 +1,0 @@
-/* Validation / replay workspace */
-.validation-hero .subtitle { max-width: 74ch; }
-.demo-progress-panel { margin-top: 10px; padding: 10px; border: 1px solid rgba(125,165,255,.24); border-radius: 12px; background: rgba(12,20,35,.7); }
-.demo-progress-head { display: flex; justify-content: space-between; font-size: 12px; text-transform: uppercase; letter-spacing: .08em; color: #b6caf0; }
-.demo-progress-track { height: 8px; border-radius: 999px; margin-top: 8px; background: rgba(90,130,210,.2); overflow: hidden; }
-.demo-progress-fill { height: 100%; width: 0%; background: linear-gradient(90deg, #5e99ff, #8f72ff); transition: width 260ms ease; }

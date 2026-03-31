@@ -10,13 +10,6 @@
   <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/web/styles.css?v=__NERAIUM_ASSET_VERSION__" />
-  <link rel="stylesheet" href="/web/styles-layout.css?v=__NERAIUM_ASSET_VERSION__" />
-  <link rel="stylesheet" href="/web/styles-dashboard.css?v=__NERAIUM_ASSET_VERSION__" />
-  <link rel="stylesheet" href="/web/styles-analysis.css?v=__NERAIUM_ASSET_VERSION__" />
-  <link rel="stylesheet" href="/web/styles-upload.css?v=__NERAIUM_ASSET_VERSION__" />
-  <link rel="stylesheet" href="/web/styles-validation.css?v=__NERAIUM_ASSET_VERSION__" />
-  <link rel="stylesheet" href="/web/styles-onboarding.css?v=__NERAIUM_ASSET_VERSION__" />
-  <link rel="stylesheet" href="/web/styles-brutal.css?v=__NERAIUM_ASSET_VERSION__" />
   <!-- Three.js from CDN (same version as scripts/download_three_vendor.py) — avoids /web/vendor static issues. -->
   <script type="importmap">
     {
@@ -126,29 +119,10 @@
 
         <section id="page-runs" class="page hidden">
           <section class="panel">
-            <h3>Create run (if needed)</h3>
-            <form id="runCreateForm" class="stack">
-              <label>
-                Run name
-                <input id="runNameInput" required placeholder="e.g. Plant A - Morning Batch" />
-              </label>
-              <label>
-                Run config (JSON)
-                <textarea id="runConfigInput" rows="4" placeholder='{"recent_window":8}'></textarea>
-              </label>
-              <p class="subtitle">Optional JSON for window sizes and engine options (see API docs).</p>
-              <label class="row">
-                <input id="runActivateInput" type="checkbox" checked />
-                <span>Set as active</span>
-              </label>
-              <button type="submit">Create run</button>
-            </form>
-          </section>
-
-          <section class="panel">
             <div class="panel-header">
-                <h3>Run investigation</h3>
+                <h3>Investigate run</h3>
             </div>
+            <p class="subtitle">Open a run to inspect trend, risk, and next action.</p>
             <div class="row wrap filters">
               <input id="runsSearchInput" placeholder="Find run by name or ID" />
               <select id="runsStatusFilter">
@@ -165,7 +139,7 @@
             </div>
             <div id="runsEmptyHint" class="empty-state hidden">
               <p>No runs found.</p>
-              <p class="subtitle">Create a run or clear filters.</p>
+              <p class="subtitle">Clear filters or create a new run below.</p>
             </div>
             <div class="table-wrap">
               <table class="data-table runs-table">
@@ -181,6 +155,25 @@
                 <tbody id="runsBody"></tbody>
               </table>
             </div>
+            <details class="inline-create-run">
+              <summary>Create run (only if no active run fits this investigation)</summary>
+              <form id="runCreateForm" class="stack">
+                <label>
+                  Run name
+                  <input id="runNameInput" required placeholder="e.g. Plant A - Morning Batch" />
+                </label>
+                <label>
+                  Run config (JSON)
+                  <textarea id="runConfigInput" rows="4" placeholder='{"recent_window":8}'></textarea>
+                </label>
+                <p class="subtitle">Optional JSON for window sizes and engine options.</p>
+                <label class="row">
+                  <input id="runActivateInput" type="checkbox" checked />
+                  <span>Set as active run</span>
+                </label>
+                <button type="submit">Create run</button>
+              </form>
+            </details>
           </section>
         </section>
 
@@ -252,7 +245,7 @@
         <section id="page-run-detail" class="page hidden">
           <section id="analysis-executive" class="panel analysis-workspace-section" data-analysis-panel="executive">
             <div class="panel-header">
-              <h3 id="runDetailTitle">Run analysis</h3>
+              <h3 id="runDetailTitle">Investigate run</h3>
               <div class="row panel-actions">
                 <button id="runDetailExportJsonBtn" type="button">Export JSON</button>
                 <button id="runDetailExportCsvBtn" type="button" class="secondary">Export CSV</button>
@@ -503,12 +496,12 @@
         <section id="page-validation" class="page hidden">
           <section class="panel validation-hero" aria-label="Historical validation workspace">
             <div class="panel-header">
-              <h3>Validation Workspace</h3>
+              <h3>Validation replay</h3>
             </div>
-            <p class="subtitle">Secondary workflow for NASA CMAPSS FD004 reference replay and historical validation. Core pilot operations stay in Dashboard, Upload Telemetry, and Active Runs.</p>
+            <p class="subtitle">Secondary setup workflow for NASA CMAPSS FD004 replay. Core operations stay in Monitor risk, Upload telemetry, and Investigate run.</p>
             <div class="control-stack" role="group" aria-label="Validation actions">
               <button id="seedDemoBtn" type="button" class="secondary demo-primary-btn">Start NASA CMAPSS FD004 Reference Replay</button>
-              <a class="button-link secondary" href="/app/runs">Open Runs / Analysis</a>
+              <a class="button-link secondary" href="/app/runs">Open Investigate run</a>
             </div>
             <div id="demoProgressPanel" class="demo-progress-panel hidden" aria-live="polite">
               <div class="demo-progress-head">
@@ -524,8 +517,8 @@
         <!-- ONBOARDING -->
         <section id="page-onboarding" class="page hidden">
           <section class="panel onboarding-panel">
-            <div class="panel-header"><h3>Customer Onboarding</h3></div>
-            <p class="subtitle" id="onboardingStepSubtitle">Connect Neraium in a few minutes.</p>
+            <div class="panel-header"><h3>Onboarding setup</h3></div>
+            <p class="subtitle" id="onboardingStepSubtitle">Connect telemetry inputs and validate before first live upload.</p>
             <div id="onboardingStatus" class="status hidden"></div>
             <div id="onboardingWizard" class="onboarding-wizard"></div>
             <div class="onboarding-actions">

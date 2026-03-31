@@ -52,7 +52,12 @@ This app helps operations teams detect system risk, upload fresh telemetry, and 
 - **Empty states:** each includes “what to do next”.
 - **Loading/Progress:** concise status messaging oriented around action completion.
 
-## Follow-up UX risks / open questions
-- Run detail still includes advanced geometry/trend sections that may be too dense for first-time users.
-- Validation and onboarding remain in the same shell; may need role-based access splitting.
-- Need usage analytics to confirm if users complete top-3 jobs faster after this pass.
+## Second-pass structural hardening (implemented)
+- Consolidated fragmented stylesheet overrides into a single `styles.css` so layout/visual rules live in one place.
+- Simplified Investigate run IA: run creation moved from top-level panel into inline fallback inside run list.
+- Rewrote remaining setup labels from legacy product language to explicit operator-job language.
+- Removed unused static asset remnants and dead boot wiring linked to non-existent controls.
+
+## Remaining UX risks / open questions
+- Run detail still contains dense geometry detail and can overwhelm first-time operators.
+- Client logic is spread across large JS files; a failure inside one large module can still disrupt multiple sections.
