@@ -15,6 +15,7 @@ from .reliability import StructuralReliabilityLayer
 from .structural_state.latent_state import LatentStructuralStateEncoder
 from .trajectory_memory.memory import CrossSystemTrajectoryMemory
 from .transition_model.transition_dynamics import LatentTransitionModel
+from .universal import ExperimentalUniversalStructuralLayer
 
 
 class StructuralSystemIntelligencePlatform:
@@ -33,6 +34,7 @@ class StructuralSystemIntelligencePlatform:
         self.intervention_intelligence = InterventionIntelligenceEngine()
         self.cross_system = CrossSystemStructuralIntelligenceLayer()
         self.reliability = StructuralReliabilityLayer()
+        self.experimental_universal = ExperimentalUniversalStructuralLayer()
 
     def update(self, observation: dict[str, Any]) -> dict[str, Any]:
         latent_snapshot = self.latent.encode(observation)
@@ -154,6 +156,17 @@ class StructuralSystemIntelligencePlatform:
             intervention_intelligence["recommendation"]["best_intervention"]["raw_confidence"] = intervention_intelligence["recommendation"]["best_intervention"].get("confidence", 0.0)
             intervention_intelligence["recommendation"]["best_intervention"]["confidence"] = round(rec_cal, 6)
 
+        top_mech = str((((mech.get("mechanism_candidates") or [{}])[0]).get("mechanism", "unknown")))
+        universal = self.experimental_universal.update(
+            system_id=str(observation.get("asset_id", "unknown")),
+            system_type=str(observation.get("system_type") or observation.get("asset_type") or "unknown"),
+            domain=str(observation.get("domain") or observation.get("industry") or "unknown"),
+            latent_trajectory=latent_snapshot.trajectory,
+            escalating=escalating,
+            mechanism_name=top_mech,
+            intervention_info=intervention_intelligence,
+        )
+
         output = {
             "latent_structural_state": {
                 "embedding": [round(float(v), 6) for v in latent_snapshot.embedding],
@@ -180,6 +193,7 @@ class StructuralSystemIntelligencePlatform:
             "intervention_intelligence": intervention_intelligence,
             "reliability_intelligence": reliability,
             **cross_system,
+            **universal,
         }
         output["compatibility"] = to_operator_compatibility(output)
         return output
