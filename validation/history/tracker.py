@@ -89,6 +89,7 @@ def record_validation_run(
         "release_recommendation": release_gate_report.get("release_recommendation"),
         "decision_accuracy": summary.get("decision_accuracy"),
         "harm_rate": summary.get("harm_rate"),
+        "calibration_error": summary.get("calibration_error"),
         "calibration_quality": summary.get("calibration_quality"),
         "core_validation_report_path": str(core_rel),
         "release_gate_report_path": str(gate_rel),

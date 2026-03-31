@@ -3,12 +3,13 @@ from __future__ import annotations
 from validation.release_policy import aggregate_multi_corpus_release, classify_failure_modes, evaluate_corpus_release
 
 
-def _core_report(acc: float = 0.82, harm: float = 0.08, calib: float = 0.79) -> dict:
+def _core_report(acc: float = 0.82, harm: float = 0.08, calibration_error: float = 0.21) -> dict:
     return {
         "summary": {
             "decision_accuracy": acc,
             "harm_rate": harm,
-            "calibration_quality": calib,
+            "calibration_error": calibration_error,
+            "calibration_quality": round(max(0.0, 1.0 - calibration_error), 6),
             "false_confidence_rate": 0.05,
             "drift_warning_rate": 0.1,
         },

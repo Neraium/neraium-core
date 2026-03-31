@@ -12,7 +12,7 @@ def test_multi_corpus_trend_summary_contains_cross_corpus_stability(tmp_path: Pa
     index = {
         "runs": [
             {"timestamp": "2026-03-31T00:00:01Z", "corpus_id": "b", "run_id": "1", "decision_accuracy": 0.9, "harm_rate": 0.1, "release_passed": True, "corpus_type": "baseline_clean"},
-            {"timestamp": "2026-03-31T00:00:02Z", "corpus_id": "t", "run_id": "2", "decision_accuracy": 0.7, "harm_rate": 0.2, "release_passed": False, "corpus_type": "transfer_cross_domain"},
+            {"timestamp": "2026-03-31T00:00:02Z", "corpus_id": "t", "run_id": "2", "decision_accuracy": 0.7, "harm_rate": 0.2, "release_passed": False, "corpus_type": "transfer_cross_domain", "calibration_error": 0.3},
         ]
     }
     (history_root / "index.json").write_text(json.dumps(index), encoding="utf-8")
@@ -21,3 +21,4 @@ def test_multi_corpus_trend_summary_contains_cross_corpus_stability(tmp_path: Pa
     assert "per_corpus" in summary
     assert "cross_corpus_stability" in summary
     assert summary["cross_corpus_stability"]["latest_accuracy_stddev"] > 0
+    assert "calibration_error_over_time" in summary["per_corpus"]["t"]

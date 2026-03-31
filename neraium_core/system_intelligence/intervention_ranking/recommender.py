@@ -47,11 +47,12 @@ class InterventionRecommendationRanker:
                 - 0.10 * novelty
                 - 0.16 * harmful_strength
             )
-            confidence = _clip01(composite)
-            if support < 2:
-                confidence *= 0.8
-            if harmful_strength > 0.05:
-                confidence *= 0.62
+            confidence = self._final_confidence(composite=composite, support=support, harmful_strength=harmful_strength)
+            memory_ablated = self._final_confidence(
+                composite=composite - 0.08 * memory_weight,
+                support=support,
+                harmful_strength=harmful_strength,
+            )
 
             ranked.append(
                 {
@@ -71,6 +72,11 @@ class InterventionRecommendationRanker:
                         "context_match": round(context_match, 4),
                         "memory_effect_weight": round(memory_weight, 4),
                     },
+                    "memory_ablation": {
+                        "confidence_with_memory": round(confidence, 4),
+                        "confidence_without_memory": round(memory_ablated, 4),
+                        "confidence_delta": round(confidence - memory_ablated, 6),
+                    },
                     "evidence_sources": {
                         "model_based_projection": cand.get("model_projection") or {},
                         "historical_evidence": score,
@@ -80,6 +86,12 @@ class InterventionRecommendationRanker:
 
         ranked.sort(key=lambda x: float(x["rank_score"]), reverse=True)
         best = ranked[0] if ranked else None
+        best_without_memory = None
+        if ranked:
+            best_without_memory = max(
+                ranked,
+                key=lambda row: float((row.get("memory_ablation") or {}).get("confidence_without_memory", 0.0)),
+            )
 
         for idx, item in enumerate(ranked):
             lower_reasons: list[str] = []
@@ -92,11 +104,21 @@ class InterventionRecommendationRanker:
             item["why_ranked_lower"] = lower_reasons[:2]
 
         best_conf = float(best["confidence"]) if best else 0.0
+        best_delta = float((best or {}).get("memory_ablation", {}).get("confidence_delta", 0.0))
+        contribution_status = "available" if ranked else "insufficient_evidence"
         return {
             "ranked_interventions": ranked,
             "best_intervention": best,
             "confidence": round(best_conf, 4),
             "recommendation_confidence": round(best_conf, 4),
+            "intervention_memory_contribution": {
+                "status": contribution_status,
+                "method": "candidate_score_ablation_delta",
+                "best_confidence_delta": round(best_delta, 6),
+                "best_choice_with_memory": (best or {}).get("name"),
+                "best_choice_without_memory": (best_without_memory or {}).get("name"),
+                "choice_changed_without_memory": bool(best and best_without_memory and best["name"] != best_without_memory["name"]),
+            },
             "decision_trace": {
                 "confidence_contributions": {
                     "historical_evidence": "primary when support and context match are strong",
@@ -112,3 +134,12 @@ class InterventionRecommendationRanker:
                 ],
             },
         }
+
+    @staticmethod
+    def _final_confidence(*, composite: float, support: float, harmful_strength: float) -> float:
+        confidence = _clip01(composite)
+        if support < 2:
+            confidence *= 0.8
+        if harmful_strength > 0.05:
+            confidence *= 0.62
+        return confidence
