@@ -1,0 +1,35 @@
+name: CI Smoke
+
+on:
+  pull_request:
+    branches: [main, master]
+  push:
+    branches: [main, master]
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .[dev]
+
+      - name: Ruff smoke check
+        run: |
+          ruff check neraium_core apps tests/test_package_import.py tests/test_api_product_basics.py
+
+      - name: Pytest smoke suite
+        run: |
+          pytest -q tests/test_package_import.py tests/test_api_product_basics.py
