@@ -28,6 +28,7 @@ from neraium_core.sii.dynamic_graph import compute_dynamic_graph_metrics
 from neraium_core.sii.hypothesis_scoring import score_structural_hypothesis
 from neraium_core.sii.regime_model import RegimeModel, RegimeObservation
 from neraium_core.sii.risk import assess_forward_risk
+from neraium_core.system_intelligence import StructuralSystemIntelligencePlatform
 from neraium_core.decision_resolver import resolve_best_action
 from neraium_core.sii.scoring import StructuralScoringModel
 from neraium_core.sii.types import (
@@ -64,6 +65,7 @@ class _State:
     smoothed_risk_trend: str
     cumulative_risk_pressure: float
     decision_hysteresis_state: dict[str, Any]
+    intelligence_history: deque[dict[str, Any]]
     prev_graph_adj: np.ndarray | None = None
     prev_degree_centrality: dict[str, float] | None = None
     processed_frames: int = 0
@@ -111,9 +113,11 @@ class SystemicInfrastructureIntelligenceEngine:
             smoothed_risk_trend="uncertain",
             cumulative_risk_pressure=0.0,
             decision_hysteresis_state={},
+            intelligence_history=deque(maxlen=120),
             prev_graph_adj=None,
             prev_degree_centrality=None,
         )
+        self.intelligence = StructuralSystemIntelligencePlatform()
         self.logger.info(
             "engine_initialized",
             extra={
@@ -391,6 +395,10 @@ class SystemicInfrastructureIntelligenceEngine:
                 "top_hypotheses": [],
                 "validation_plan": [],
                 "summary": "Warmup: causal prioritization unavailable until sufficient history is present.",
+            },
+            "structural_system_intelligence": {
+                "status": "warming_up",
+                "reason": "latent_state_unavailable_until_windows_are_populated",
             },
         }
         out["decision"] = resolve_best_action(
@@ -842,6 +850,26 @@ class SystemicInfrastructureIntelligenceEngine:
                 "validation_plan": validation_plan,
                 "summary": "Deterministic causal prioritization built from structural drift, coupling, and near-term risk trend.",
             }
+            intelligence_observation = {
+                "asset_id": frame.asset_id,
+                "structural_drift_score": structural_score,
+                "relational_instability_score": relational_score,
+                "regime_distance": regime_score,
+                "graph_deformation_score": graph_score,
+                "coherence_score": geom.coherence_score,
+                "coupling_instability_score": coupling_score,
+                "risk_pressure": self.state.cumulative_risk_pressure,
+                "path_length_shift": path_shift,
+                "subspace_rotation": raw_subspace_shift,
+                "mean_shift": raw_mean_shift,
+                "covariance_shift": raw_cov_shift,
+                "composite_instability": composite,
+                "contribution_scores": attribution.contribution_scores,
+                "top_relationships": attribution.top_relationships,
+                "subsystem_impact": attribution.subsystem_impact,
+            }
+            structural_intelligence = self.intelligence.update(intelligence_observation)
+            self.state.intelligence_history.append(structural_intelligence)
             context = None
             if self.config.allow_context_provider:
                 try:
@@ -918,6 +946,7 @@ class SystemicInfrastructureIntelligenceEngine:
                     "recommended_actions": operator_guidance.recommended_actions,
                 },
                 "causal_analysis": causal_analysis,
+                "structural_system_intelligence": structural_intelligence,
                 "data_quality_summary": summarize_quality(dq),
                 "experimental_analytics": {
                     "components": {k: round(float(v), 6) for k, v in components.items()},
