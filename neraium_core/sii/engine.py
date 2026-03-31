@@ -24,6 +24,8 @@ from neraium_core.sii.ingestion import (
 from neraium_core.sii.operator import build_operator_decision_support
 from neraium_core.sii.preprocessing import data_quality, impute_column_mean, summarize_quality
 from neraium_core.sii.regime_memory import summarize_regime_memory
+from neraium_core.sii.dynamic_graph import compute_dynamic_graph_metrics
+from neraium_core.sii.hypothesis_scoring import score_structural_hypothesis
 from neraium_core.sii.regime_model import RegimeModel, RegimeObservation
 from neraium_core.sii.risk import assess_forward_risk
 from neraium_core.decision_resolver import resolve_best_action
@@ -62,6 +64,8 @@ class _State:
     smoothed_risk_trend: str
     cumulative_risk_pressure: float
     decision_hysteresis_state: dict[str, Any]
+    prev_graph_adj: np.ndarray | None = None
+    prev_degree_centrality: dict[str, float] | None = None
     processed_frames: int = 0
 
 
@@ -107,6 +111,8 @@ class SystemicInfrastructureIntelligenceEngine:
             smoothed_risk_trend="uncertain",
             cumulative_risk_pressure=0.0,
             decision_hysteresis_state={},
+            prev_graph_adj=None,
+            prev_degree_centrality=None,
         )
         self.logger.info(
             "engine_initialized",
@@ -522,6 +528,8 @@ class SystemicInfrastructureIntelligenceEngine:
                 baseline_imp,
                 recent_imp,
                 reference_corr=self.state.baseline_corr,
+                dependence_backend=self.config.dependence_backend,
+                dependence_lag=self.config.dependence_lag,
             )
             gstate = graph_state(
                 geom.recent_corr,
@@ -593,6 +601,18 @@ class SystemicInfrastructureIntelligenceEngine:
             )
             path_shift_score = self._score_from_reference(path_shift, self.state.raw_path_shift_history, fallback_scale=0.35)
             coupling_score = self._clamp01(0.45 * relational_score + 0.35 * graph_score + 0.20 * coherence_loss_score)
+
+            curr_degree = {name: float(np.sum(gstate.adjacency[idx]) / max(1.0, float(gstate.adjacency.shape[0] - 1))) for idx, name in enumerate(gstate.feature_names)}
+            dyn_graph = compute_dynamic_graph_metrics(
+                current_adj=np.asarray(gstate.adjacency, dtype=float),
+                prev_adj=self.state.prev_graph_adj,
+                current_degree_centrality=curr_degree,
+                prev_degree_centrality=self.state.prev_degree_centrality,
+                structural_drift=float(structural_score),
+                coupling_score=float(coupling_score),
+            )
+            self.state.prev_graph_adj = np.asarray(gstate.adjacency, dtype=float)
+            self.state.prev_degree_centrality = dict(curr_degree)
 
             components = {
                 "structural_drift_score": structural_score,
@@ -711,6 +731,8 @@ class SystemicInfrastructureIntelligenceEngine:
                 nearest_matches=nearest_matches,
                 threshold=float(self.config.regime_distance_threshold),
             )
+            regime_confidence = round(float(max(regime_memory.confidence, reg_assign.regime_confidence)), 4)
+            regime_uncertainty = round(float(reg_assign.regime_uncertainty), 4)
             risk_assessment_data = assess_forward_risk(
                 composite_history=list(self.state.composite_history),
                 structural_score=float(structural_score),
@@ -745,7 +767,8 @@ class SystemicInfrastructureIntelligenceEngine:
                     "current_regime": regime_memory.current_regime,
                     "nearest_matches": regime_memory.nearest_matches,
                     "best_similarity": regime_memory.best_similarity,
-                    "confidence": regime_memory.confidence,
+                    "confidence": regime_confidence,
+                    "uncertainty": regime_uncertainty,
                     "is_novel": regime_memory.is_novel,
                 },
                 risk_assessment={
@@ -768,23 +791,22 @@ class SystemicInfrastructureIntelligenceEngine:
             attribution_set = set(attribution_sensor_names[:5])
             causal_set = set(primary_causal_drivers)
             overlap_score = self._clamp01(len(attribution_set & causal_set) / max(1, len(causal_set)))
+            hypo = score_structural_hypothesis(
+                leading_sensor=primary_causal_drivers[0] if primary_causal_drivers else "dominant subsystem",
+                localization=float(structural_score),
+                persistence=float(min(1.0, np.mean(np.asarray(list(self.state.composite_history)[-6:], dtype=float) > 0.55))) if self.state.composite_history else 0.0,
+                subsystem_coherence=float(max(0.0, min(1.0, geom.coherence_score))),
+                robustness=float(max(0.0, min(1.0, 1.0 - abs(structural_score - relational_score)))),
+                multi_signal_agreement=float(overlap_score),
+            )
             top_hypothesis = {
-                "hypothesis": f"Localized structural drift centered on {primary_causal_drivers[0] if primary_causal_drivers else 'dominant subsystem'}.",
-                "confidence": round(
-                    float(
-                        max(
-                            0.0,
-                            min(
-                                1.0,
-                                0.45 * structural_score + 0.20 * graph_score + 0.15 * regime_score + 0.20 * overlap_score,
-                            ),
-                        )
-                    ),
-                    4,
-                ),
-                "robustness": round(float(max(0.0, min(1.0, 1.0 - abs(structural_score - relational_score)))), 4),
+                "hypothesis": hypo.hypothesis,
+                "confidence": hypo.confidence,
+                "evidence_strength": hypo.evidence_strength,
+                "robustness": hypo.robustness,
                 "counterfactual_strength": round(float(max(0.0, min(1.0, 0.5 * coupling_score + 0.5 * graph_score))), 4),
                 "primary_drivers": primary_causal_drivers,
+                "score_breakdown": dict(hypo.score_breakdown),
             }
             validation_plan = [
                 {
@@ -873,7 +895,8 @@ class SystemicInfrastructureIntelligenceEngine:
                     "current_regime": regime_memory.current_regime,
                     "nearest_matches": regime_memory.nearest_matches,
                     "best_similarity": regime_memory.best_similarity,
-                    "confidence": regime_memory.confidence,
+                    "confidence": regime_confidence,
+                    "uncertainty": regime_uncertainty,
                     "is_novel": regime_memory.is_novel,
                 },
                 "risk_assessment": {
@@ -916,6 +939,8 @@ class SystemicInfrastructureIntelligenceEngine:
                         "covariance_shift_norm": round(float(geom.covariance_shift_norm), 6),
                         "subspace_rotation": round(float(geom.subspace_rotation), 6),
                         "coherence_score": round(float(geom.coherence_score), 6),
+                        "dependence_backend": str(self.config.dependence_backend),
+                        "dependence_lag": int(self.config.dependence_lag),
                     },
                     "graph_metrics": {
                         "density": round(float(gstate.density), 6),
@@ -923,6 +948,11 @@ class SystemicInfrastructureIntelligenceEngine:
                         "path_length": round(float(current_path), 6),
                         "path_length_shift": round(float(path_shift), 6),
                         "deformation": round(float(gstate.l1_deformation), 6),
+                        "edge_persistence": dyn_graph.edge_persistence,
+                        "edge_birth_rate": dyn_graph.edge_birth_rate,
+                        "edge_death_rate": dyn_graph.edge_death_rate,
+                        "centrality_shift": dyn_graph.centrality_shift,
+                        "dynamic_fragility": dyn_graph.fragility_score,
                     },
                     "regime": {
                         "name": reg_assign.regime_name,
@@ -931,6 +961,8 @@ class SystemicInfrastructureIntelligenceEngine:
                         "graph_distance": reg_assign.graph_distance,
                         "pending": not bool(reg_assign.regime_activated),
                         "support": reg_assign.regime_support,
+                        "confidence": reg_assign.regime_confidence,
+                        "uncertainty": reg_assign.regime_uncertainty,
                     },
                     "context": context,
                     "processing": {
