@@ -112,7 +112,7 @@ def test_experiment_plan_is_interpretable_and_hypothesis_conditioned() -> None:
 
 
 def test_platform_emits_active_learning_block_and_confusion_flags() -> None:
-    platform = StructuralSystemIntelligencePlatform()
+    platform = StructuralSystemIntelligencePlatform(operating_mode="experimental")
     latest = {}
     for i in range(18):
         latest = platform.update(
