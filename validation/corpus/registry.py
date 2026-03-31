@@ -38,6 +38,9 @@ class CorpusSnapshot:
     data_files: list[dict[str, Any]]
     quality_requirements: dict[str, Any]
     baseline_run_id: str | None = None
+    corpus_type: str = "baseline_clean"
+    expected_difficulty: str = "moderate"
+    coverage_tags: list[str] | None = None
 
     @classmethod
     def from_payload(cls, payload: dict[str, Any]) -> "CorpusSnapshot":
@@ -52,6 +55,9 @@ class CorpusSnapshot:
             data_files=list(payload.get("data_files") or []),
             quality_requirements=dict(payload.get("quality_requirements") or {}),
             baseline_run_id=payload.get("baseline_run_id"),
+            corpus_type=str(payload.get("corpus_type") or "baseline_clean"),
+            expected_difficulty=str(payload.get("expected_difficulty") or "moderate"),
+            coverage_tags=list(payload.get("coverage_tags") or []),
         )
 
 
@@ -60,6 +66,25 @@ class CorpusSnapshotRegistry:
         self.root = root or Path("validation/corpus")
         self.snapshots_dir = self.root / "snapshots"
         self.registry_path = self.root / "registry.json"
+
+
+    def list_snapshots(self) -> list[dict[str, Any]]:
+        payload = self.load_registry()
+        return list(payload.get("snapshots", []))
+
+    def list_corpus_ids_by_type(self, corpus_type: str) -> list[str]:
+        ids: list[str] = []
+        for row in self.list_snapshots():
+            cid = row.get("corpus_id")
+            ctype = row.get("corpus_type")
+            if not ctype and cid:
+                try:
+                    ctype = self.get_snapshot(str(cid)).corpus_type
+                except Exception:
+                    ctype = None
+            if ctype == corpus_type and cid:
+                ids.append(str(cid))
+        return ids
 
     def load_registry(self) -> dict[str, Any]:
         if not self.registry_path.exists():
@@ -72,7 +97,8 @@ class CorpusSnapshotRegistry:
             if row.get("corpus_id") == corpus_id:
                 path = self.root / str(row.get("snapshot_file"))
                 snap = json.loads(path.read_text(encoding="utf-8"))
-                return CorpusSnapshot.from_payload(snap)
+                snap_obj = CorpusSnapshot.from_payload(snap)
+                return snap_obj
         raise KeyError(f"Corpus snapshot not found: {corpus_id}")
 
 
@@ -187,6 +213,9 @@ def load_records_for_run(
                 "source_datasets": snapshot.source_datasets,
                 "metadata_summary": snapshot.metadata_summary,
                 "ingestion_parameters": snapshot.ingestion_parameters,
+                "corpus_type": snapshot.corpus_type,
+                "expected_difficulty": snapshot.expected_difficulty,
+                "coverage_tags": snapshot.coverage_tags or [],
                 "manifest": manifests,
                 "quality": quality,
             }

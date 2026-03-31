@@ -78,6 +78,8 @@ def record_validation_run(
         if row.get("corpus_id") == corpus_id and row.get("is_baseline") and mark_baseline:
             row["is_baseline"] = False
 
+    corpus_source = dict(core_validation_report.get("corpus_source") or {})
+
     row = {
         "corpus_id": corpus_id,
         "run_id": run_id,
@@ -92,6 +94,7 @@ def record_validation_run(
         "release_gate_report_path": str(gate_rel),
         "real_world_report_path": str(full_rel),
         "is_baseline": bool(mark_baseline),
+        "corpus_type": corpus_source.get("corpus_type", "unknown"),
     }
     index.setdefault("runs", []).append(row)
     index["runs"] = sorted(index["runs"], key=lambda r: (r.get("timestamp", ""), r.get("run_id", "")))

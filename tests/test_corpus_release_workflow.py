@@ -56,6 +56,9 @@ def _write_corpus(tmp_path: Path, corpus_id: str = "corpus_test") -> Path:
         "description": "test corpus",
         "created_at": "2026-03-31T00:00:00Z",
         "schema_version": "1.0",
+        "corpus_type": "baseline_clean",
+        "expected_difficulty": "low",
+        "coverage_tags": ["unit_test"],
         "source_datasets": [{"name": "synthetic"}],
         "metadata_summary": {
             "domain_coverage": ["water", "energy"],
@@ -74,7 +77,7 @@ def _write_corpus(tmp_path: Path, corpus_id: str = "corpus_test") -> Path:
     snap_path = root / "snapshots" / f"{corpus_id}.json"
     snap_path.write_text(json.dumps(snapshot), encoding="utf-8")
     (root / "registry.json").write_text(
-        json.dumps({"schema_version": "1.0", "snapshots": [{"corpus_id": corpus_id, "snapshot_file": f"snapshots/{corpus_id}.json"}]}),
+        json.dumps({"schema_version": "1.0", "snapshots": [{"corpus_id": corpus_id, "snapshot_file": f"snapshots/{corpus_id}.json", "corpus_type": "baseline_clean"}]}),
         encoding="utf-8",
     )
     return root
@@ -145,3 +148,11 @@ def test_baseline_resolution_uses_latest_passing_run(tmp_path: Path) -> None:
 def test_config_hash_is_stable() -> None:
     payload = {"corpus_id": "corpus_v1", "format": "json"}
     assert compute_config_hash(payload) == compute_config_hash(dict(payload))
+
+
+def test_corpus_classification_is_loaded(tmp_path: Path) -> None:
+    corpus_root = _write_corpus(tmp_path)
+    registry = CorpusSnapshotRegistry(root=corpus_root)
+    snap = registry.get_snapshot("corpus_test")
+    assert snap.corpus_type == "baseline_clean"
+    assert "unit_test" in (snap.coverage_tags or [])
