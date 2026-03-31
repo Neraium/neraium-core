@@ -94,6 +94,7 @@ class MechanismDiscoveryLayer:
                     },
                     "family_conditioned_predictive_value": round(float(conditioned_predictive), 4),
                     "family_conditioned_recovery_value": round(float(conditioned_recovery), 4),
+                    "family_conditioned_recovery_association": round(float(conditioned_recovery), 4),
                     "association": association,
                     "candidate_score": round(float(score), 4),
                     "classification": "candidate_mechanism",
@@ -101,7 +102,7 @@ class MechanismDiscoveryLayer:
             )
         ranked = sorted(ranked, key=lambda item: item["candidate_score"], reverse=True)[:5]
 
-        evidence_by_archetype = {
+        evidence_by_family = {
             item["mechanism"]: {
                 "trajectory_family": trajectory_family,
                 "support": int(self._family_counts[trajectory_family][item["mechanism"]]),
@@ -136,6 +137,7 @@ class MechanismDiscoveryLayer:
                 }
                 for item in ranked
             ],
-            "evidence_by_archetype": evidence_by_archetype,
+            "evidence_by_family": evidence_by_family,
+            "evidence_by_archetype": evidence_by_family,
             "disclaimer": "Mechanisms are ranked structural hypotheses from recurring motifs, not proven causal mechanisms.",
         }

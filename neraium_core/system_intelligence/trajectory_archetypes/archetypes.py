@@ -4,6 +4,8 @@ from dataclasses import dataclass, field
 
 import numpy as np
 
+from neraium_core.system_intelligence.trajectory_alignment import DTWAligner
+
 
 @dataclass
 class TrajectorySegment:
@@ -59,7 +61,10 @@ class TrajectorySegmentEncoder:
         flips = int(np.sum(signs[1:] * signs[:-1] < 0)) if signs.size > 1 else 0
         recovery = float(np.max(radius[:-1]) - radius[-1]) if radius.size > 2 else 0.0
         volatility = float(np.std(np.diff(radius))) if radius.size > 2 else 0.0
+        recent_drop = float(np.max(radius[-3:]) - radius[-1]) if radius.size >= 3 else 0.0
 
+        if drift > 1.4 and slope > 0.12:
+            return "rapid-collapse"
         if drift > 0.55 and slope > 0.04:
             return "escalating"
         if recovery > 0.25 and drift < -0.12:
@@ -68,42 +73,11 @@ class TrajectorySegmentEncoder:
             return "oscillatory"
         if abs(drift) < 0.18 and volatility < 0.06:
             return "stable"
-        return "drifting"
-
-    @staticmethod
-    def segment_feature_vector(points: np.ndarray) -> np.ndarray:
-        radius = np.linalg.norm(points, axis=1)
-        deltas = np.diff(radius) if radius.size > 1 else np.asarray([0.0])
-        signs = np.sign(deltas)
-        sign_flip_rate = float(np.mean(signs[1:] * signs[:-1] < 0)) if deltas.size > 1 else 0.0
-        curvature = np.diff(radius, n=2) if radius.size > 2 else np.asarray([0.0])
-        displacement = points[-1] - points[0]
-
-        features = np.asarray(
-            [
-                float(radius[-1]),
-                float(np.mean(radius)),
-                float(radius[-1] - radius[0]),
-                float(np.mean(deltas)) if deltas.size else 0.0,
-                float(np.std(deltas)) if deltas.size else 0.0,
-                float(np.mean(np.abs(curvature))) if curvature.size else 0.0,
-                float(sign_flip_rate),
-                float(np.linalg.norm(displacement)),
-            ],
-            dtype=float,
-        )
-        return features
+        if recent_drop > 0.3 and drift < 0.05:
+            return "reversible"
+        return "drift"
 
 
 def dtw_distance(a: np.ndarray, b: np.ndarray) -> float:
-    """Simple DTW over latent vectors for maintainable path-shape matching."""
-    if a.ndim != 2 or b.ndim != 2 or a.shape[1] != b.shape[1]:
-        return float("inf")
-    na, nb = a.shape[0], b.shape[0]
-    dp = np.full((na + 1, nb + 1), np.inf, dtype=float)
-    dp[0, 0] = 0.0
-    for i in range(1, na + 1):
-        for j in range(1, nb + 1):
-            cost = float(np.linalg.norm(a[i - 1] - b[j - 1]))
-            dp[i, j] = cost + min(dp[i - 1, j], dp[i, j - 1], dp[i - 1, j - 1])
-    return float(dp[na, nb] / max(1, na + nb))
+    aligner = DTWAligner(window_ratio=0.25, prefilter_weight=0.0)
+    return float(aligner.compare(a, b).normalized_distance)
