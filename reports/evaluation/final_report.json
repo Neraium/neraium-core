@@ -1,0 +1,404 @@
+{
+  "scenario_count": 18,
+  "models": [
+    "baseline_anomaly_zscore",
+    "baseline_threshold",
+    "baseline_trend_extrapolation",
+    "neraium_core",
+    "neraium_full_stack"
+  ],
+  "aggregate_metrics": {
+    "baseline_threshold": {
+      "decision_quality": {
+        "success_rate": 0.5,
+        "harmful_intervention_rate": 0.1111111111111111,
+        "neutral_intervention_rate": 0.3888888888888889
+      },
+      "early_warning_utility": {
+        "lead_time_before_critical": 0.07692307692307693,
+        "covered_critical_cases": 13
+      },
+      "false_positive_rate": 0.0,
+      "calibration": {
+        "brier_score": 0.05041336744719539,
+        "calibration_curve": [
+          {
+            "bucket": 0,
+            "count": 1,
+            "expected_accuracy": 0.18,
+            "observed_accuracy": 0.0
+          },
+          {
+            "bucket": 1,
+            "count": 2,
+            "expected_accuracy": 0.22192033936679162,
+            "observed_accuracy": 0.0
+          },
+          {
+            "bucket": 3,
+            "count": 9,
+            "expected_accuracy": 0.7214505566373765,
+            "observed_accuracy": 1.0
+          },
+          {
+            "bucket": 4,
+            "count": 6,
+            "expected_accuracy": 0.9054061959372807,
+            "observed_accuracy": 1.0
+          }
+        ]
+      },
+      "transfer_performance": {
+        "train_domain_success_rate": 0.6,
+        "cross_domain_success_rate": 0.0,
+        "transfer_delta": -0.6
+      },
+      "robustness": {
+        "base_success_rate": 0.5833333333333334,
+        "noise_missing_success_rate": 0.3333333333333333,
+        "robustness_delta": -0.25000000000000006
+      },
+      "confusion_matrix": {
+        "tp": 15,
+        "tn": 3,
+        "fp": 0,
+        "fn": 0
+      },
+      "num_scenarios": 18
+    },
+    "baseline_anomaly_zscore": {
+      "decision_quality": {
+        "success_rate": 0.3888888888888889,
+        "harmful_intervention_rate": 0.1111111111111111,
+        "neutral_intervention_rate": 0.5
+      },
+      "early_warning_utility": {
+        "lead_time_before_critical": 3.3333333333333335,
+        "covered_critical_cases": 12
+      },
+      "false_positive_rate": 0.6666666666666666,
+      "calibration": {
+        "brier_score": 0.133003157323551,
+        "calibration_curve": [
+          {
+            "bucket": 2,
+            "count": 1,
+            "expected_accuracy": 0.5,
+            "observed_accuracy": 0.0
+          },
+          {
+            "bucket": 4,
+            "count": 17,
+            "expected_accuracy": 0.9327128225216397,
+            "observed_accuracy": 0.8823529411764706
+          }
+        ]
+      },
+      "transfer_performance": {
+        "train_domain_success_rate": 0.4666666666666667,
+        "cross_domain_success_rate": 0.0,
+        "transfer_delta": -0.4666666666666667
+      },
+      "robustness": {
+        "base_success_rate": 0.4166666666666667,
+        "noise_missing_success_rate": 0.3333333333333333,
+        "robustness_delta": -0.08333333333333337
+      },
+      "confusion_matrix": {
+        "tp": 15,
+        "tn": 1,
+        "fp": 2,
+        "fn": 0
+      },
+      "num_scenarios": 18
+    },
+    "baseline_trend_extrapolation": {
+      "decision_quality": {
+        "success_rate": 0.2777777777777778,
+        "harmful_intervention_rate": 0.3888888888888889,
+        "neutral_intervention_rate": 0.3333333333333333
+      },
+      "early_warning_utility": {
+        "lead_time_before_critical": 1.0714285714285714,
+        "covered_critical_cases": 14
+      },
+      "false_positive_rate": 0.0,
+      "calibration": {
+        "brier_score": 0.18065590977291845,
+        "calibration_curve": [
+          {
+            "bucket": 0,
+            "count": 4,
+            "expected_accuracy": 0.16555300337834616,
+            "observed_accuracy": 0.25
+          },
+          {
+            "bucket": 1,
+            "count": 2,
+            "expected_accuracy": 0.2824180672268908,
+            "observed_accuracy": 1.0
+          },
+          {
+            "bucket": 2,
+            "count": 4,
+            "expected_accuracy": 0.4814433765331506,
+            "observed_accuracy": 1.0
+          },
+          {
+            "bucket": 3,
+            "count": 4,
+            "expected_accuracy": 0.7786116782759778,
+            "observed_accuracy": 1.0
+          },
+          {
+            "bucket": 4,
+            "count": 4,
+            "expected_accuracy": 0.9822142857142857,
+            "observed_accuracy": 1.0
+          }
+        ]
+      },
+      "transfer_performance": {
+        "train_domain_success_rate": 0.3333333333333333,
+        "cross_domain_success_rate": 0.0,
+        "transfer_delta": -0.3333333333333333
+      },
+      "robustness": {
+        "base_success_rate": 0.25,
+        "noise_missing_success_rate": 0.3333333333333333,
+        "robustness_delta": 0.08333333333333331
+      },
+      "confusion_matrix": {
+        "tp": 8,
+        "tn": 3,
+        "fp": 0,
+        "fn": 7
+      },
+      "num_scenarios": 18
+    },
+    "neraium_core": {
+      "decision_quality": {
+        "success_rate": 0.6666666666666666,
+        "harmful_intervention_rate": 0.05555555555555555,
+        "neutral_intervention_rate": 0.2777777777777778
+      },
+      "early_warning_utility": {
+        "lead_time_before_critical": 7.533333333333333,
+        "covered_critical_cases": 15
+      },
+      "false_positive_rate": 0.0,
+      "calibration": {
+        "brier_score": 0.009940355868444445,
+        "calibration_curve": [
+          {
+            "bucket": 0,
+            "count": 1,
+            "expected_accuracy": 0.0,
+            "observed_accuracy": 0.0
+          },
+          {
+            "bucket": 1,
+            "count": 2,
+            "expected_accuracy": 0.299104,
+            "observed_accuracy": 0.0
+          },
+          {
+            "bucket": 4,
+            "count": 15,
+            "expected_accuracy": 1.0,
+            "observed_accuracy": 1.0
+          }
+        ]
+      },
+      "transfer_performance": {
+        "train_domain_success_rate": 0.6,
+        "cross_domain_success_rate": 1.0,
+        "transfer_delta": 0.4
+      },
+      "robustness": {
+        "base_success_rate": 0.6666666666666666,
+        "noise_missing_success_rate": 0.6666666666666666,
+        "robustness_delta": 0.0
+      },
+      "confusion_matrix": {
+        "tp": 15,
+        "tn": 3,
+        "fp": 0,
+        "fn": 0
+      },
+      "num_scenarios": 18
+    },
+    "neraium_full_stack": {
+      "decision_quality": {
+        "success_rate": 0.6666666666666666,
+        "harmful_intervention_rate": 0.05555555555555555,
+        "neutral_intervention_rate": 0.2777777777777778
+      },
+      "early_warning_utility": {
+        "lead_time_before_critical": 7.533333333333333,
+        "covered_critical_cases": 15
+      },
+      "false_positive_rate": 0.0,
+      "calibration": {
+        "brier_score": 0.009940355868444445,
+        "calibration_curve": [
+          {
+            "bucket": 0,
+            "count": 1,
+            "expected_accuracy": 0.0,
+            "observed_accuracy": 0.0
+          },
+          {
+            "bucket": 1,
+            "count": 2,
+            "expected_accuracy": 0.299104,
+            "observed_accuracy": 0.0
+          },
+          {
+            "bucket": 4,
+            "count": 15,
+            "expected_accuracy": 1.0,
+            "observed_accuracy": 1.0
+          }
+        ]
+      },
+      "transfer_performance": {
+        "train_domain_success_rate": 0.6,
+        "cross_domain_success_rate": 1.0,
+        "transfer_delta": 0.4
+      },
+      "robustness": {
+        "base_success_rate": 0.6666666666666666,
+        "noise_missing_success_rate": 0.6666666666666666,
+        "robustness_delta": 0.0
+      },
+      "confusion_matrix": {
+        "tp": 15,
+        "tn": 3,
+        "fp": 0,
+        "fn": 0
+      },
+      "num_scenarios": 18
+    }
+  },
+  "ablation": {
+    "baseline": {
+      "decision_quality": {
+        "success_rate": 0.6666666666666666,
+        "harmful_intervention_rate": 0.05555555555555555,
+        "neutral_intervention_rate": 0.2777777777777778
+      },
+      "early_warning_utility": {
+        "lead_time_before_critical": 7.533333333333333,
+        "covered_critical_cases": 15
+      },
+      "false_positive_rate": 0.0,
+      "calibration": {
+        "brier_score": 0.009940355868444445,
+        "calibration_curve": [
+          {
+            "bucket": 0,
+            "count": 1,
+            "expected_accuracy": 0.0,
+            "observed_accuracy": 0.0
+          },
+          {
+            "bucket": 1,
+            "count": 2,
+            "expected_accuracy": 0.299104,
+            "observed_accuracy": 0.0
+          },
+          {
+            "bucket": 4,
+            "count": 15,
+            "expected_accuracy": 1.0,
+            "observed_accuracy": 1.0
+          }
+        ]
+      },
+      "transfer_performance": {
+        "train_domain_success_rate": 0.6,
+        "cross_domain_success_rate": 1.0,
+        "transfer_delta": 0.4
+      },
+      "robustness": {
+        "base_success_rate": 0.6666666666666666,
+        "noise_missing_success_rate": 0.6666666666666666,
+        "robustness_delta": 0.0
+      },
+      "confusion_matrix": {
+        "tp": 15,
+        "tn": 3,
+        "fp": 0,
+        "fn": 0
+      },
+      "num_scenarios": 18
+    },
+    "performance_delta_per_component": [
+      {
+        "component": "cross-system transfer",
+        "key": "cross_system_transfer",
+        "success_rate_full": 0.6364037999217778,
+        "success_rate_ablated": 0.4697371332551111,
+        "delta_success_rate": -0.16666666666666669,
+        "harmful_rate_ablated": 0.05555555555555555,
+        "transfer_delta_ablated": -0.6,
+        "robustness_delta_ablated": -0.25000000000000006
+      },
+      {
+        "component": "trajectory intelligence",
+        "key": "trajectory_intelligence",
+        "success_rate_full": 0.6364037999217778,
+        "success_rate_ablated": 0.5530704665884445,
+        "delta_success_rate": -0.08333333333333326,
+        "harmful_rate_ablated": 0.1111111111111111,
+        "transfer_delta_ablated": 0.4666666666666667,
+        "robustness_delta_ablated": 0.08333333333333326
+      },
+      {
+        "component": "law extraction / law engine",
+        "key": "law_engine",
+        "success_rate_full": 0.6364037999217778,
+        "success_rate_ablated": 0.608626022144,
+        "delta_success_rate": -0.02777777777777779,
+        "harmful_rate_ablated": 0.1111111111111111,
+        "transfer_delta_ablated": 0.4,
+        "robustness_delta_ablated": 0.0
+      },
+      {
+        "component": "reliability/calibration layer",
+        "key": "reliability_calibration",
+        "success_rate_full": 0.6364037999217778,
+        "success_rate_ablated": 0.633809773255111,
+        "delta_success_rate": -0.002594026666666749,
+        "harmful_rate_ablated": 0.05555555555555555,
+        "transfer_delta_ablated": 0.4,
+        "robustness_delta_ablated": 0.0
+      },
+      {
+        "component": "intervention intelligence memory",
+        "key": "intervention_memory",
+        "success_rate_full": 0.6364037999217778,
+        "success_rate_ablated": 0.6364037999217778,
+        "delta_success_rate": 0.0,
+        "harmful_rate_ablated": 0.05555555555555555,
+        "transfer_delta_ablated": 0.4,
+        "robustness_delta_ablated": 0.0
+      },
+      {
+        "component": "advisory layers",
+        "key": "advisory_layers",
+        "success_rate_full": 0.6364037999217778,
+        "success_rate_ablated": 0.6364037999217778,
+        "delta_success_rate": 0.0,
+        "harmful_rate_ablated": 0.05555555555555555,
+        "transfer_delta_ablated": 0.4,
+        "robustness_delta_ablated": 0.0
+      }
+    ],
+    "component_importance_report": {
+      "most_important_component": "cross-system transfer",
+      "largest_drop": -0.16666666666666669
+    }
+  }
+}
