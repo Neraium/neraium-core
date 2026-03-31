@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections import Counter, defaultdict, deque
+from collections import Counter, defaultdict
 from itertools import combinations
 from typing import Any
 
@@ -11,8 +11,20 @@ class MechanismDiscoveryLayer:
     def __init__(self) -> None:
         self._motif_counts: Counter[str] = Counter()
         self._motif_hits: Counter[str] = Counter()
+        self._motif_recovery_hits: Counter[str] = Counter()
+        self._family_counts: dict[str, Counter[str]] = defaultdict(Counter)
+        self._family_escalation_hits: dict[str, Counter[str]] = defaultdict(Counter)
+        self._family_recovery_hits: dict[str, Counter[str]] = defaultdict(Counter)
 
-    def update(self, *, top_relationships: list[dict[str, Any]], subsystem_impact: dict[str, float], escalating: bool) -> dict[str, Any]:
+    def update(
+        self,
+        *,
+        top_relationships: list[dict[str, Any]],
+        subsystem_impact: dict[str, float],
+        escalating: bool,
+        trajectory_family: str = "unknown",
+        recovering: bool = False,
+    ) -> dict[str, Any]:
         candidate_motifs: list[tuple[str, float]] = []
 
         rel_pairs = []
@@ -45,11 +57,32 @@ class MechanismDiscoveryLayer:
         ranked = []
         for key, strength in candidate_motifs[:8]:
             self._motif_counts[key] += 1
+            self._family_counts[trajectory_family][key] += 1
             if escalating:
                 self._motif_hits[key] += 1
+                self._family_escalation_hits[trajectory_family][key] += 1
+            if recovering:
+                self._motif_recovery_hits[key] += 1
+                self._family_recovery_hits[trajectory_family][key] += 1
+
             recurrence = float(self._motif_counts[key])
             predictive = float(self._motif_hits[key] / max(1, self._motif_counts[key]))
-            score = 0.45 * min(1.0, recurrence / 10.0) + 0.30 * strength + 0.25 * predictive
+            recovery_assoc = float(self._motif_recovery_hits[key] / max(1, self._motif_counts[key]))
+            conditioned_predictive = float(
+                self._family_escalation_hits[trajectory_family][key] / max(1, self._family_counts[trajectory_family][key])
+            )
+            conditioned_recovery = float(
+                self._family_recovery_hits[trajectory_family][key] / max(1, self._family_counts[trajectory_family][key])
+            )
+            delta = conditioned_predictive - conditioned_recovery
+            score = 0.35 * min(1.0, recurrence / 10.0) + 0.25 * strength + 0.25 * predictive + 0.15 * max(0.0, delta)
+
+            association = "common_but_weak"
+            if delta >= 0.18 and self._family_counts[trajectory_family][key] >= 3:
+                association = "escalation_correlated"
+            elif conditioned_recovery >= 0.55 and self._family_counts[trajectory_family][key] >= 3:
+                association = "recovery_associated"
+
             ranked.append(
                 {
                     "mechanism": key,
@@ -57,16 +90,52 @@ class MechanismDiscoveryLayer:
                         "recurrence": int(self._motif_counts[key]),
                         "strength": round(float(strength), 4),
                         "predictive_value": round(float(predictive), 4),
+                        "recovery_association": round(float(recovery_assoc), 4),
                     },
+                    "family_conditioned_predictive_value": round(float(conditioned_predictive), 4),
+                    "family_conditioned_recovery_value": round(float(conditioned_recovery), 4),
+                    "association": association,
                     "candidate_score": round(float(score), 4),
                     "classification": "candidate_mechanism",
                 }
             )
         ranked = sorted(ranked, key=lambda item: item["candidate_score"], reverse=True)[:5]
 
+        evidence_by_archetype = {
+            item["mechanism"]: {
+                "trajectory_family": trajectory_family,
+                "support": int(self._family_counts[trajectory_family][item["mechanism"]]),
+                "escalation_rate": round(
+                    float(
+                        self._family_escalation_hits[trajectory_family][item["mechanism"]]
+                        / max(1, self._family_counts[trajectory_family][item["mechanism"]])
+                    ),
+                    4,
+                ),
+                "recovery_rate": round(
+                    float(
+                        self._family_recovery_hits[trajectory_family][item["mechanism"]]
+                        / max(1, self._family_counts[trajectory_family][item["mechanism"]])
+                    ),
+                    4,
+                ),
+            }
+            for item in ranked
+        }
+
         return {
             "status": "ready",
             "method": "dynamic motif + subsystem decoupling recurrence",
             "mechanism_candidates": ranked,
+            "mechanism_trajectory_associations": [
+                {
+                    "mechanism": item["mechanism"],
+                    "trajectory_family": trajectory_family,
+                    "family_conditioned_predictive_value": item["family_conditioned_predictive_value"],
+                    "association": item["association"],
+                }
+                for item in ranked
+            ],
+            "evidence_by_archetype": evidence_by_archetype,
             "disclaimer": "Mechanisms are ranked structural hypotheses from recurring motifs, not proven causal mechanisms.",
         }
