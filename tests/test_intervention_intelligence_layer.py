@@ -167,3 +167,71 @@ def test_platform_integration_preserves_operator_flow_and_warmup_safe() -> None:
         )
     )
     assert out2["intervention_intelligence"]["evidence_update"]["status"] in {"no_new_record", "recorded"}
+
+
+def test_zero_memory_fallback_is_conservative() -> None:
+    engine = InterventionIntelligenceEngine()
+    out = engine.update(
+        asset_id="cold-start",
+        observation={"latent_embedding": [0.12, 0.22, 0.32]},
+        transition={"regime": "transitional", "transition_path": "drift", "escalation_probability": 0.51, "reversibility_score": 0.22, "distance_to_critical_region": 0.12},
+        trajectory={"current_trajectory_path_family": "drift", "novelty_score": 0.4},
+        mechanism={"mechanism_candidates": []},
+        laws={"law_candidates": []},
+        counterfactuals={"scenario_rankings": [{"name": "remove_top_driver_contribution", "risk_delta": 0.12}]},
+    )
+    rec = out["recommendation"]
+    assert out["historical_evidence"]["support_summary"]["support_count"] == 0
+    assert rec["confidence"] < 0.5
+    assert rec["advisory"] is True
+
+
+def test_novelty_penalty_reduces_recommendation_confidence() -> None:
+    engine = InterventionIntelligenceEngine()
+    for _ in range(4):
+        _simulate_record(engine, helpful=True)
+
+    low_novel = engine.update(
+        asset_id="low-novel",
+        observation={"latent_embedding": [0.2, 0.2, 0.2]},
+        transition={"regime": "critical", "transition_path": "escalating", "escalation_probability": 0.8, "reversibility_score": 0.2, "distance_to_critical_region": 0.1},
+        trajectory={"current_trajectory_path_family": "escalating", "novelty_score": 0.1},
+        mechanism={"mechanism_candidates": [{"mechanism": "cluster_decoupling:a->b"}]},
+        laws={"law_candidates": [{"law": "cluster_decoupling"}]},
+        counterfactuals={"scenario_rankings": [{"name": "remove_top_driver_contribution", "risk_delta": 0.2}]},
+    )
+    high_novel = engine.update(
+        asset_id="high-novel",
+        observation={"latent_embedding": [0.9, 0.9, 0.9]},
+        transition={"regime": "critical", "transition_path": "escalating", "escalation_probability": 0.8, "reversibility_score": 0.2, "distance_to_critical_region": 0.1},
+        trajectory={"current_trajectory_path_family": "unknown_new_family", "novelty_score": 0.95},
+        mechanism={"mechanism_candidates": [{"mechanism": "cluster_decoupling:a->b"}]},
+        laws={"law_candidates": [{"law": "cluster_decoupling"}]},
+        counterfactuals={"scenario_rankings": [{"name": "remove_top_driver_contribution", "risk_delta": 0.2}]},
+    )
+    assert high_novel["recommendation"]["confidence"] <= low_novel["recommendation"]["confidence"]
+
+
+def test_conflicting_evidence_keeps_confidence_moderate() -> None:
+    engine = InterventionIntelligenceEngine()
+    for _ in range(3):
+        _simulate_record(engine, helpful=True)
+        _simulate_record(engine, helpful=False)
+
+    out = engine.update(
+        asset_id="conflict-1",
+        observation={"latent_embedding": [0.2, 0.3, 0.4]},
+        transition={"regime": "critical", "transition_path": "escalating", "escalation_probability": 0.83, "reversibility_score": 0.2, "distance_to_critical_region": 0.08},
+        trajectory={"current_trajectory_path_family": "escalating", "novelty_score": 0.2},
+        mechanism={"mechanism_candidates": [{"mechanism": "cluster_decoupling:a->b"}]},
+        laws={"law_candidates": [{"law": "cluster_decoupling"}]},
+        counterfactuals={"scenario_rankings": [{"name": "remove_top_driver_contribution", "risk_delta": 0.22}]},
+    )
+    assert out["recommendation"]["confidence"] < 0.75
+
+
+def test_compatibility_adapter_stays_conservative_when_confidence_is_weak() -> None:
+    platform = StructuralSystemIntelligencePlatform()
+    out = platform.update(_state(0))
+    rec = str(out["compatibility"]["operational_recommendation"]).lower()
+    assert "evidence limited" in rec or "monitor" in rec

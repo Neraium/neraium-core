@@ -3,6 +3,10 @@ from __future__ import annotations
 from typing import Any
 
 
+def _clip01(value: float) -> float:
+    return max(0.0, min(1.0, value))
+
+
 class InterventionRecommendationRanker:
     """Ranks interventions for operator support with bounded, explainable scoring."""
 
@@ -25,20 +29,26 @@ class InterventionRecommendationRanker:
             uncertainty = float(score["uncertainty"])
             novelty = float(score["novelty_penalty"])
             context_match = float(score["context_match_quality"])
+            worsening_signal = float(score.get("worsening_signal", 0.0))
 
             consistent_with_laws = 1.0 if any(term in name for term in law_candidates) else 0.6
             family_consistency = 1.0 if family in {"escalating", "reversible", "drift", "stable"} else 0.7
 
             composite = (
-                0.40 * expected
-                + 0.15 * min(1.0, support / 6.0)
+                0.44 * expected
+                + 0.14 * min(1.0, support / 6.0)
                 + 0.10 * context_match
-                + 0.15 * consistent_with_laws
-                + 0.10 * family_consistency
-                - 0.10 * uncertainty
+                + 0.12 * consistent_with_laws
+                + 0.08 * family_consistency
+                - 0.14 * uncertainty
                 - 0.10 * novelty
+                - 0.12 * worsening_signal
             )
-            confidence = max(0.0, min(1.0, composite))
+            confidence = _clip01(composite)
+            if support < 2:
+                confidence *= 0.82
+            if worsening_signal > 0.05:
+                confidence *= 0.7
 
             ranked.append(
                 {
@@ -47,12 +57,18 @@ class InterventionRecommendationRanker:
                     "intervention_target": cand["intervention_target"],
                     "rank_score": round(confidence, 4),
                     "confidence": round(confidence, 4),
-                    "rationale": (
-                        "Advisory ranking based on expected structural benefit, support, uncertainty, novelty, and consistency with trajectory/law evidence."
-                    ),
+                    "rationale": "Advisory ranking from bounded evidence and projection signals; not proof of causal effect.",
+                    "ranking_factors": {
+                        "expected_effectiveness": round(expected, 4),
+                        "support": int(support),
+                        "uncertainty": round(uncertainty, 4),
+                        "novelty_penalty": round(novelty, 4),
+                        "worsening_signal": round(worsening_signal, 4),
+                        "context_match": round(context_match, 4),
+                    },
                     "evidence_sources": {
                         "model_based_projection": cand.get("model_projection") or {},
-                        "historical_effectiveness": score,
+                        "historical_evidence": score,
                     },
                 }
             )
@@ -61,21 +77,27 @@ class InterventionRecommendationRanker:
         best = ranked[0] if ranked else None
 
         for idx, item in enumerate(ranked):
-            lower = []
+            lower_reasons: list[str] = []
             for other in ranked[:idx]:
-                if float(other["rank_score"]) > float(item["rank_score"]):
-                    lower.append(f"Below {other['name']} due to lower support/effectiveness or higher novelty/uncertainty")
-            item["why_ranked_lower"] = lower[:2]
+                if float(other["rank_score"]) <= float(item["rank_score"]):
+                    continue
+                lower_reasons.append(
+                    f"Lower than {other['name']} due to weaker support/effectiveness or higher uncertainty/novelty."
+                )
+            item["why_ranked_lower"] = lower_reasons[:2]
 
+        best_conf = float(best["confidence"]) if best else 0.0
         return {
             "ranked_interventions": ranked,
             "best_intervention": best,
-            "confidence": round(float(best["confidence"]) if best else 0.0, 4),
+            "confidence": round(best_conf, 4),
+            "recommendation_confidence": round(best_conf, 4),
             "decision_trace": {
                 "confidence_contributions": {
-                    "historical_memory": "primary when support and context match are strong",
+                    "historical_evidence": "primary when support and context match are strong",
                     "counterfactual_projection": "secondary projection input",
-                    "law_and_trajectory_consistency": "consistency multiplier",
+                    "law_and_trajectory_consistency": "consistency signal",
+                    "uncertainty_and_novelty_penalties": "always applied to keep recommendations conservative",
                 },
                 "assumptions_remaining": [
                     "Historical similarity may omit hidden confounders.",

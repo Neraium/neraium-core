@@ -6,17 +6,17 @@ from .adapters.compatibility import to_operator_compatibility
 from .archetypes.archetype_memory import StructuralArchetypeMemory
 from .counterfactuals.intervention_engine import CounterfactualInterventionEngine
 from .forecast.trajectory_conditioned import TrajectoryConditionedForecaster
+from .intervention_intelligence.engine import InterventionIntelligenceEngine
 from .law_engine import StructuralLawDecisionEngine
 from .law_extraction.extractor import StructuralLawExtractor
 from .mechanisms.discovery import MechanismDiscoveryLayer
-from .intervention_intelligence.engine import InterventionIntelligenceEngine
 from .structural_state.latent_state import LatentStructuralStateEncoder
 from .trajectory_memory.memory import CrossSystemTrajectoryMemory
 from .transition_model.transition_dynamics import LatentTransitionModel
 
 
 class StructuralSystemIntelligencePlatform:
-    """Integrated structural intelligence stack for state, trajectories, interventions, archetypes, mechanisms."""
+    """Integrated, bounded intelligence stack for structural state and intervention support."""
 
     def __init__(self) -> None:
         self.latent = LatentStructuralStateEncoder(latent_dim=3)
@@ -27,17 +27,8 @@ class StructuralSystemIntelligencePlatform:
         self.trajectory_forecast = TrajectoryConditionedForecaster()
         self.mechanisms = MechanismDiscoveryLayer()
         self.law_extractor = StructuralLawExtractor()
-if rec_confidence > 0.6:
-    operational_recommendation = f"Advisory focus: {rec_name}"
-else:
-    operational_recommendation = "Continue monitoring system behavior and investigate anomalies."
-
-return {
-    "phase": regime,
-    "trend": transition.get("trend"),
-    "risk_level": "high" if transition.get("escalation_probability", 0) > 0.7 else "moderate",
-    "operational_recommendation": operational_recommendation,
-}
+        self.law_engine = StructuralLawDecisionEngine()
+        self.intervention_intelligence = InterventionIntelligenceEngine()
 
     def update(self, observation: dict[str, Any]) -> dict[str, Any]:
         latent_snapshot = self.latent.encode(observation)
@@ -53,7 +44,7 @@ return {
             escalating=escalating,
         )
 
-        relationship_names = [f"{str(r.get('source',''))}->{str(r.get('target',''))}" for r in list(observation.get("top_relationships") or [])[:3]]
+        relationship_names = [f"{str(r.get('source', ''))}->{str(r.get('target', ''))}" for r in list(observation.get("top_relationships") or [])[:3]]
         traj = self.trajectory_memory.update(
             asset_id=str(observation.get("asset_id", "unknown")),
             embedding=latent_snapshot.embedding,
