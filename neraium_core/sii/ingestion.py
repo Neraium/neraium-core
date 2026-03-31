@@ -219,6 +219,9 @@ def ingestion_record_from_payload(
     timestamp_issues: list[str] = []
     normalized_timestamp = _normalize_timestamp_to_epoch_seconds(payload.get("timestamp"))
     if normalized_timestamp is None:
+        # Hardening behavior for pilot ingest: keep the row processable while
+        # explicitly flagging the fallback in quality metadata for downstream
+        # observability and triage.
         normalized_timestamp = "0"
         timestamp_issues.append("invalid_or_missing_timestamp_defaulted_to_epoch_zero")
     timestamp = normalized_timestamp
