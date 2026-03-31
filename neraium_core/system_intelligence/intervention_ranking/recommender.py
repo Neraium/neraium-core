@@ -49,10 +49,12 @@ class InterventionRecommendationRanker:
                 - 0.16 * harmful_strength
                 - 0.14 * correlation_penalty
             )
+            confidence = self._final_confidence(composite=composite, support=support, harmful_strength=harmful_strength)
             memory_ablated = self._final_confidence(
                 composite=composite - 0.08 * memory_weight,
                 support=support,
                 harmful_strength=harmful_strength,
+            )
                 novelty=novelty,
                 reliability=float(context.get("calibration_reliability", 1.0)),
                 drift_warning=bool(context.get("drift_warning", False)),
@@ -88,6 +90,11 @@ class InterventionRecommendationRanker:
                         "context_match": round(context_match, 4),
                         "memory_effect_weight": round(memory_weight, 4),
                         "correlation_trap_penalty": round(correlation_penalty, 4),
+                    },
+                    "memory_ablation": {
+                        "confidence_with_memory": round(confidence, 4),
+                        "confidence_without_memory": round(memory_ablated, 4),
+                        "confidence_delta": round(confidence - memory_ablated, 6),
                     },
                     "memory_ablation": {
                         "confidence_with_memory": round(confidence, 4),
@@ -163,6 +170,13 @@ class InterventionRecommendationRanker:
         }
 
     @staticmethod
+    def _final_confidence(*, composite: float, support: float, harmful_strength: float) -> float:
+        confidence = _clip01(composite)
+        if support < 2:
+            confidence *= 0.8
+        if harmful_strength > 0.05:
+            confidence *= 0.62
+        return confidence
     def calibrate_confidence(*, raw_confidence: float, regime: str) -> float:
         raw = _clip01(raw_confidence)
         if regime == "uncertain":
