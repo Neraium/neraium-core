@@ -13,8 +13,9 @@ if str(ROOT) not in sys.path:
 from neraium_core.system_intelligence.law_governance import StructuralLawGovernance
 from neraium_core.system_intelligence.platform import StructuralSystemIntelligencePlatform
 from validation import RealWorldValidationPipeline
+from validation.corpus import CorpusQualityError, CorpusSnapshotRegistry, build_run_context, compute_config_hash, load_records_for_run
+from validation.history.tracker import record_validation_run, resolve_baseline_report
 from validation.release_gates import evaluate_release_gates
-from validation.replay import load_dataset
 
 
 def _build_feedback_rows(report: dict) -> list[dict]:
@@ -40,35 +41,63 @@ def _read_json_if_exists(path: Path) -> dict | None:
     return json.loads(path.read_text(encoding="utf-8"))
 
 
-def main() -> None:
-    parser = argparse.ArgumentParser(description="Run real-world replay + validation loop")
-    parser.add_argument("--input", required=True, help="Path to dataset")
-    parser.add_argument("--format", required=True, choices=["csv", "json", "event"], help="Dataset format")
-    parser.add_argument("--output", default="reports/validation/real_world_validation_report.json", help="Output report path")
-    parser.add_argument(
-        "--core-output",
-        default="reports/validation/core_validation_report.json",
-        help="Compact core validation artifact path",
-    )
-    parser.add_argument(
-        "--release-gate-output",
-        default="reports/validation/release_gate_report.json",
-        help="Release gate report artifact path",
-    )
-    parser.add_argument(
-        "--prior-core-report",
-        default=None,
-        help="Optional previous core validation artifact path; defaults to existing --core-output if present",
-    )
-    args = parser.parse_args()
+def _annotate_artifacts(report: dict, run_context: dict, canonical_source: dict) -> None:
+    release = report["release_gate_report"]
+    release_meta = {
+        "corpus_id": run_context["corpus_id"],
+        "run_id": run_context["run_id"],
+        "timestamp": run_context["timestamp"],
+        "code_version": run_context["code_version"],
+        "config_hash": run_context["config_hash"],
+        "canonical_run": run_context["canonical"],
+    }
+    report["run_metadata"] = release_meta
 
-    rows = load_dataset(args.input, args.format)
+    core = report["core_validation_report"]
+    core["run_metadata"] = release_meta
+    core["corpus_source"] = canonical_source["corpus"]
+    core["release_decision"] = {
+        "release_passed": release["release_passed"],
+        "release_recommendation": release["release_recommendation"],
+        "blocking_reasons": release["blocking_reasons"],
+    }
+    core["regression_comparison"] = release.get("regression_analysis", {})
+
+    release["run_metadata"] = release_meta
+    release["release_decision"] = {
+        "release_passed": release["release_passed"],
+        "release_recommendation": release["release_recommendation"],
+        "blocking_reasons": release["blocking_reasons"],
+    }
+    release["regression_comparison"] = release.get("regression_analysis", {})
+    release["corpus_id"] = run_context["corpus_id"]
+
+
+def execute_validation(args: argparse.Namespace) -> dict:
+    registry = CorpusSnapshotRegistry(root=Path(args.corpus_root))
+    records, canonical_source, canonical = load_records_for_run(
+        corpus_id=args.corpus_id,
+        input_path=args.input,
+        input_format=args.format,
+        registry=registry,
+    )
+
+    config_hash = compute_config_hash(
+        {
+            "corpus_id": args.corpus_id,
+            "input": args.input,
+            "format": args.format,
+            "corpus_root": str(args.corpus_root),
+            "history_root": str(args.history_root),
+        }
+    )
+    run_context = build_run_context(args.corpus_id or "non_canonical", canonical=canonical, config_hash=config_hash)
+
     platform = StructuralSystemIntelligencePlatform(operating_mode="production")
     law_governance = StructuralLawGovernance()
     pipeline = RealWorldValidationPipeline(decision_fn=platform.update)
-    report = pipeline.run(rows)
+    report = pipeline.run(records)
 
-    # Feedback integration loop A: intervention memory.
     intervention_memory = platform.production.intervention_intelligence.memory
     for rec in report.get("feedback", []):
         intervention_memory.ingest_feedback_event(
@@ -77,15 +106,13 @@ def main() -> None:
             outcome_label=str(rec.get("outcome_label") or "neutral"),
         )
 
-    # Feedback integration loop B: reliability.
     reliability = platform.production.reliability
     reliability.ingest_feedback_records(
         asset_id="validation_batch",
-        step=len(rows) + 1,
+        step=len(records) + 1,
         feedback_records=_build_feedback_rows(report),
     )
 
-    # Feedback integration loop C: law governance real evidence.
     law_counts = defaultdict(lambda: {"helpful": 0, "harmful": 0, "neutral": 0})
     outcome_by_step = {o.get("timestep"): o for o in report.get("outcomes", [])}
     for step in report.get("replay", {}).get("step_logs", []):
@@ -127,11 +154,12 @@ def main() -> None:
         "law_validation": law_validation_summary,
     }
 
-    core_output_path = Path(args.core_output)
-    prior_path = Path(args.prior_core_report) if args.prior_core_report else core_output_path
-    previous_core = _read_json_if_exists(prior_path)
+    history_root = Path(args.history_root)
+    baseline = resolve_baseline_report(history_root, run_context.corpus_id)
+    if args.prior_core_report:
+        baseline = _read_json_if_exists(Path(args.prior_core_report))
 
-    release_gate = evaluate_release_gates(report["core_validation_report"], previous_core_report=previous_core)
+    release_gate = evaluate_release_gates(report["core_validation_report"], previous_core_report=baseline)
     report["release_gate_report"] = release_gate
     report["core_validation_report"]["release_gate_results"] = {
         "release_passed": release_gate["release_passed"],
@@ -141,22 +169,71 @@ def main() -> None:
     report["core_validation_report"]["regression_analysis"] = release_gate["regression_analysis"]
     report["core_validation_report"]["release_regression_blockers"] = release_gate["regression_analysis"].get("release_regression_blockers", [])
 
+    if not canonical:
+        report["core_validation_report"]["non_canonical_reason"] = "raw_input_mode"
+        report["release_gate_report"]["non_canonical_reason"] = "raw_input_mode"
+
+    _annotate_artifacts(report, run_context.__dict__, canonical_source)
+
     platform.set_real_world_validation(report["real_world_validation"])
 
     out = Path(args.output)
-    out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_text(json.dumps(report, indent=2), encoding="utf-8")
-    core_output_path.parent.mkdir(parents=True, exist_ok=True)
-    core_output_path.write_text(json.dumps(report["core_validation_report"], indent=2), encoding="utf-8")
-
+    core_output_path = Path(args.core_output)
     release_out = Path(args.release_gate_output)
+    out.parent.mkdir(parents=True, exist_ok=True)
+    core_output_path.parent.mkdir(parents=True, exist_ok=True)
     release_out.parent.mkdir(parents=True, exist_ok=True)
+
+    out.write_text(json.dumps(report, indent=2), encoding="utf-8")
+    core_output_path.write_text(json.dumps(report["core_validation_report"], indent=2), encoding="utf-8")
     release_out.write_text(json.dumps(release_gate, indent=2), encoding="utf-8")
+
+    if args.write_history:
+        record_validation_run(
+            history_root=history_root,
+            run_context=run_context.__dict__,
+            core_validation_report=report["core_validation_report"],
+            release_gate_report=report["release_gate_report"],
+            real_world_report=report,
+            mark_baseline=bool(args.mark_baseline),
+        )
 
     print(str(out))
     print(str(core_output_path))
     print(str(release_out))
+    print(f"run_id={run_context.run_id}")
+    print(f"corpus_id={run_context.corpus_id}")
     print(f"release_recommendation={release_gate['release_recommendation']}")
+    return report
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description="Run real-world replay + validation loop")
+    parser.add_argument("--input", default=None, help="Path to dataset")
+    parser.add_argument("--format", default=None, choices=["csv", "json", "event"], help="Dataset format")
+    parser.add_argument("--corpus-id", default=None, help="Canonical corpus snapshot id")
+    parser.add_argument("--corpus-root", default="validation/corpus", help="Corpus registry root")
+    parser.add_argument("--output", default="reports/validation/real_world_validation_report.json", help="Output report path")
+    parser.add_argument("--core-output", default="reports/validation/core_validation_report.json", help="Compact core validation artifact path")
+    parser.add_argument("--release-gate-output", default="reports/validation/release_gate_report.json", help="Release gate report artifact path")
+    parser.add_argument("--prior-core-report", default=None, help="Optional override baseline report path")
+    parser.add_argument("--history-root", default="reports/validation/history")
+    parser.add_argument("--write-history", action="store_true", help="Persist run artifacts under history root")
+    parser.add_argument("--mark-baseline", action="store_true", help="Mark this run as explicit baseline")
+    args = parser.parse_args()
+
+    try:
+        execute_validation(args)
+    except CorpusQualityError as exc:
+        detail = json.loads(str(exc))
+        payload = {
+            "release_passed": False,
+            "release_recommendation": "no-ship",
+            "blocking_reasons": ["insufficient_corpus_quality"],
+            "corpus_quality": detail,
+        }
+        print(json.dumps(payload, indent=2))
+        raise SystemExit(2) from exc
 
 
 if __name__ == "__main__":
