@@ -34,6 +34,47 @@ class ProductionIntelligenceOrchestrator:
         self.intervention_intelligence = InterventionIntelligenceEngine()
         self.reliability = StructuralReliabilityLayer()
 
+    @staticmethod
+    def _clip01(value: Any) -> float:
+        try:
+            return max(0.0, min(1.0, float(value)))
+        except (TypeError, ValueError):
+            return 0.0
+
+    @classmethod
+    def _enforce_output_confidence(
+        cls,
+        *,
+        recommendation: dict[str, Any],
+        structural_uncertainty: dict[str, Any],
+        rec_cal: float,
+        novelty: float,
+        support_count: int,
+        drift_warning: bool,
+    ) -> None:
+        best = recommendation.get("best_intervention")
+        if not isinstance(best, dict):
+            return
+
+        uncertain = bool(structural_uncertainty.get("active", False) or novelty >= 0.7 or support_count <= 2 or drift_warning)
+        regime = "uncertain" if uncertain else "normal"
+        current_confidence = cls._clip01(best.get("confidence", 0.0))
+        calibrated_candidate = max(
+            cls._clip01(rec_cal),
+            cls._clip01(best.get("confidence_post_calibration", 0.0)),
+            current_confidence,
+        )
+        if regime == "uncertain":
+            enforced_confidence = min(0.2, max(0.0, calibrated_candidate))
+        else:
+            enforced_confidence = min(0.95, max(0.6, 0.6 + 0.35 * calibrated_candidate))
+
+        best["confidence"] = round(float(enforced_confidence), 6)
+        best["confidence_regime"] = regime
+        best["confidence_post_calibration"] = round(float(enforced_confidence), 6)
+        recommendation["confidence_regime"] = regime
+        recommendation["confidence_post_calibration"] = round(float(enforced_confidence), 6)
+
     def update(self, observation: dict[str, Any]) -> dict[str, Any]:
         latent_snapshot = self.latent.encode(observation)
         transition = self.transitions.assess(latent_snapshot.embedding)
@@ -142,6 +183,21 @@ class ProductionIntelligenceOrchestrator:
             structural_uncertainty["override_applied"] = True
             structural_uncertainty["override_reason"] = "structural_uncertainty"
             structural_uncertainty["original_top_intervention"] = original_top_intervention
+
+        drift_warning = bool(
+            ((intervention.get("context") or {}).get("drift_warning", False))
+            or ((reliability.get("risk_advisory") or {}).get("drift_warning", False))
+        )
+        novelty = self._clip01((intervention.get("context") or {}).get("novelty_score", trajectory.get("novelty_score", 0.0)))
+        support_count = int(memory_summary.get("support_count", (intervention.get("context") or {}).get("support_count", 0)) or 0)
+        self._enforce_output_confidence(
+            recommendation=recommendation,
+            structural_uncertainty=structural_uncertainty,
+            rec_cal=rec_cal,
+            novelty=novelty,
+            support_count=support_count,
+            drift_warning=drift_warning,
+        )
 
         ranked = list((intervention.get("recommendation") or {}).get("ranked_interventions") or [])
         best_ranked = dict((intervention.get("recommendation") or {}).get("best_intervention") or {})
