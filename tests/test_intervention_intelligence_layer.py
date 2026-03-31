@@ -282,6 +282,8 @@ def test_structural_uncertainty_mode_activates_for_high_novelty_weak_support() -
     assert mode["recommended_posture"] == "human_review_required"
     assert out["recommendation"]["best_intervention"]["name"] == "monitor"
     assert out["recommendation"]["fallback_triggered"] is True
+    assert "core_decision_trace" not in out
+    assert "fallback_policy" not in (out["recommendation"].get("decision_trace") or {})
 
 
 def test_production_hard_override_forces_monitor_and_human_review(monkeypatch) -> None:
@@ -331,6 +333,8 @@ def test_production_hard_override_forces_monitor_and_human_review(monkeypatch) -
     assert compatibility["forced_posture"] == "human_review_required"
     assert compatibility["intervention_overridden"] is True
     assert trace["override_applied"] is True
+    assert trace["fallback_policy"]["triggered"] is True
+    assert "structural_uncertainty_mode" in trace["fallback_policy"]["reasons"]
 
 
 def test_correlation_trap_penalty_is_exposed_in_ranking_trace() -> None:
