@@ -1,0 +1,54 @@
+{
+  "summary": {
+    "decision_accuracy": 0.75,
+    "harm_rate": 0.25,
+    "calibration_quality": 0.26425,
+    "intervention_memory_contribution": 0.75,
+    "drift_status": "insufficient_history"
+  },
+  "timeline": [
+    {
+      "timestep": 0,
+      "asset_id": "A",
+      "recommended_intervention": "remove_top_driver_contribution",
+      "outcome_label": "helpful",
+      "confidence": 0.0285,
+      "attribution_confidence": 1.0
+    },
+    {
+      "timestep": 1,
+      "asset_id": "A",
+      "recommended_intervention": "remove_top_driver_contribution",
+      "outcome_label": "harmful",
+      "confidence": 0.0285,
+      "attribution_confidence": 1.0
+    },
+    {
+      "timestep": 2,
+      "asset_id": "A",
+      "recommended_intervention": "remove_top_driver_contribution",
+      "outcome_label": "helpful",
+      "confidence": 0.0285,
+      "attribution_confidence": 0.533333
+    },
+    {
+      "timestep": 3,
+      "asset_id": "A",
+      "recommended_intervention": "remove_top_driver_contribution",
+      "outcome_label": "recovery-associated",
+      "confidence": 0.0285,
+      "attribution_confidence": 1.0
+    }
+  ],
+  "law_changes": [],
+  "drift_flags": [],
+  "major_failure_cases": [
+    {
+      "timestep": 1,
+      "asset_id": "A",
+      "recommended_intervention": "remove_top_driver_contribution",
+      "actual_intervention": "restore_relationship_cluster_to_baseline",
+      "confidence": 0.0285
+    }
+  ]
+}

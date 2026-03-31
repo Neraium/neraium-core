@@ -77,8 +77,15 @@ class StructuralCalibrationEngine:
             weak_support_penalty = 0.12
         elif support < 8:
             weak_support_penalty = 0.06
+        failure_signal = self.store.recent_high_confidence_failure_signal(family=inp.family)
+        repeated_failure_penalty = 0.0
+        if float(failure_signal.get("support", 0.0)) >= 3.0:
+            repeated_failure_penalty = 0.28 * _clip01(float(failure_signal.get("high_confidence_fail_rate", 0.0)))
 
-        total_penalty = min(0.65, novelty_penalty + uncertainty_penalty + transfer_penalty + stale_penalty + weak_support_penalty)
+        total_penalty = min(
+            0.72,
+            novelty_penalty + uncertainty_penalty + transfer_penalty + stale_penalty + weak_support_penalty + repeated_failure_penalty,
+        )
         calibrated = _clip01(support_adjusted * (1.0 - total_penalty))
 
         warnings: list[str] = []
@@ -88,6 +95,8 @@ class StructuralCalibrationEngine:
             warnings.append("Context is novel/out-of-family; reliability discounted.")
         if inp.transferred_evidence_weight > 0.45 and inp.mismatch_penalty > 0.35:
             warnings.append("Transferred evidence mismatch detected; local-first penalties applied.")
+        if repeated_failure_penalty >= 0.1:
+            warnings.append("Recent high-confidence misses detected; confidence penalized until reliability recovers.")
 
         return ReliabilityTrace(
             raw_confidence=raw,

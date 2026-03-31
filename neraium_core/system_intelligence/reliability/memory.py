@@ -177,3 +177,20 @@ class ReliabilityRecordStore:
                 for issued, outcome in finalized_tail
             ],
         }
+
+    def recent_high_confidence_failure_signal(self, *, family: OutputFamily, limit: int = 96) -> dict[str, float]:
+        rows = [
+            (issued, outcome)
+            for issued, outcome in self._finalized[-int(limit) :]
+            if issued.family == family
+        ]
+        if not rows:
+            return {"support": 0.0, "high_confidence_fail_rate": 0.0}
+        high_conf_rows = [(issued, outcome) for issued, outcome in rows if float(issued.raw_confidence) >= 0.72]
+        if not high_conf_rows:
+            return {"support": float(len(rows)), "high_confidence_fail_rate": 0.0}
+        failures = sum(1.0 for _, outcome in high_conf_rows if float(outcome.realized_outcome) <= 0.25)
+        return {
+            "support": float(len(high_conf_rows)),
+            "high_confidence_fail_rate": float(failures / max(1.0, float(len(high_conf_rows)))),
+        }
