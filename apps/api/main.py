@@ -16,13 +16,24 @@ from urllib.parse import urlparse
 
 import numpy as np
 from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Query, Request, UploadFile, status
-from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from pydantic import BaseModel
-from starlette.responses import JSONResponse, PlainTextResponse, Response, StreamingResponse
+from starlette.responses import PlainTextResponse, Response, StreamingResponse
 from starlette.types import Message
 
+from .bootstrap.config import (
+    cors_allow_headers,
+    cors_allow_origin_regex,
+    cors_allow_origins,
+    dir_is_writable,
+    request_body_limit_bytes,
+    resolve_db_path,
+    uvicorn_h11_max_incomplete_event_size,
+)
+from .bootstrap.errors import register_exception_handlers
+from .bootstrap.logging import configure_logging
+from .bootstrap.runtime import build_runtime_state_diagnostics, validate_runtime_or_raise
 from .bootstrap.static import _mount_web_static
 from .middleware.correlation import RequestCorrelationIdMiddleware
 from .middleware.request_limits import MaxRequestBodySizeMiddleware
@@ -109,94 +120,8 @@ from neraium_core.pipeline import infer_csv_mapping_stage, issue_to_dict, parse_
 logger = logging.getLogger(__name__)
 
 
-DEFAULT_MAX_REQUEST_BODY_BYTES = 50 * 1024 * 1024
-# Keep parser allowance above app-level request cap so oversize requests
-# are handled by middleware with a clean 413 response instead of reset.
-DEFAULT_UVICORN_H11_MAX_INCOMPLETE_EVENT_SIZE = 64 * 1024 * 1024
 DEFAULT_UPLOAD_STREAM_CHUNK_BYTES = 1024 * 1024
 DEFAULT_INGEST_JOB_MAX_ERROR_SAMPLES = 25
-DEFAULT_CORS_ALLOW_ORIGINS: tuple[str, ...] = ()
-DEFAULT_CORS_ALLOW_HEADERS = (
-    "Content-Type",
-    "Authorization",
-    "X-API-Key",
-    "Accept",
-    # Browser tracing stacks (Sentry/OpenTelemetry) can attach these automatically.
-    "baggage",
-    "sentry-trace",
-    "traceparent",
-    "tracestate",
-)
-
-
-def _configure_logging() -> None:
-    raw = str(os.getenv("NERAIUM_LOG_LEVEL", "INFO")).strip().upper()
-    level = getattr(logging, raw, logging.INFO)
-    logging.basicConfig(
-        level=level,
-        format="%(asctime)s %(levelname)s %(name)s %(message)s",
-    )
-
-
-def _request_body_limit_bytes() -> int:
-    raw = os.getenv("NERAIUM_MAX_REQUEST_BODY_BYTES")
-    if not raw:
-        return DEFAULT_MAX_REQUEST_BODY_BYTES
-    try:
-        value = int(raw)
-    except ValueError:
-        logger.warning(
-            "Invalid NERAIUM_MAX_REQUEST_BODY_BYTES=%r; using default=%s",
-            raw,
-            DEFAULT_MAX_REQUEST_BODY_BYTES,
-        )
-        return DEFAULT_MAX_REQUEST_BODY_BYTES
-    return max(value, DEFAULT_MAX_REQUEST_BODY_BYTES)
-
-
-def _uvicorn_h11_max_incomplete_event_size() -> int:
-    raw = os.getenv("NERAIUM_UVICORN_H11_MAX_INCOMPLETE_EVENT_SIZE")
-    if not raw:
-        return DEFAULT_UVICORN_H11_MAX_INCOMPLETE_EVENT_SIZE
-    try:
-        value = int(raw)
-    except ValueError:
-        logger.warning(
-            "Invalid NERAIUM_UVICORN_H11_MAX_INCOMPLETE_EVENT_SIZE=%r; using default=%s",
-            raw,
-            DEFAULT_UVICORN_H11_MAX_INCOMPLETE_EVENT_SIZE,
-        )
-        return DEFAULT_UVICORN_H11_MAX_INCOMPLETE_EVENT_SIZE
-    return max(value, DEFAULT_UVICORN_H11_MAX_INCOMPLETE_EVENT_SIZE)
-
-
-def _cors_allow_origins() -> list[str]:
-    raw = str(os.getenv("NERAIUM_CORS_ALLOW_ORIGINS") or "").strip()
-    configured = [x.strip() for x in raw.split(",") if x.strip()] if raw else []
-    merged: list[str] = []
-    for origin in [*DEFAULT_CORS_ALLOW_ORIGINS, *configured]:
-        if origin and origin not in merged:
-            merged.append(origin)
-    return merged
-
-
-def _cors_allow_headers() -> list[str]:
-    raw = str(os.getenv("NERAIUM_CORS_ALLOW_HEADERS") or "").strip()
-    configured = [x.strip() for x in raw.split(",") if x.strip()] if raw else []
-    merged: list[str] = []
-    seen: set[str] = set()
-    for header in [*DEFAULT_CORS_ALLOW_HEADERS, *configured]:
-        normalized = header.lower() if header else ""
-        if header and normalized not in seen:
-            merged.append(header)
-            seen.add(normalized)
-    return merged
-
-
-def _cors_allow_origin_regex() -> str | None:
-    raw = str(os.getenv("NERAIUM_CORS_ALLOW_ORIGIN_REGEX") or "").strip()
-    return raw or None
-
 
 def _alert_thresholds() -> tuple[float, float]:
     """Backward-compatible shim; implementation moved to services.alerts."""
@@ -220,51 +145,6 @@ def _ensure_default_run(
     )
  
 
-def _persistence_available(db_path: str) -> bool:
-    try:
-        db_file = Path(db_path)
-        db_file.parent.mkdir(parents=True, exist_ok=True)
-        with db_file.open("a", encoding="utf-8"):
-            pass
-        return True
-    except OSError:
-        return False
-
-
-def _dir_is_writable(path: str) -> bool:
-    try:
-        fd, probe_path = tempfile.mkstemp(prefix="neraium_probe_", dir=path)
-        os.close(fd)
-        probe = Path(probe_path)
-        probe.unlink(missing_ok=True)
-        return True
-    except OSError:
-        return False
-
-
-def _resolve_db_path(configured_db_path: str) -> tuple[str, bool]:
-    """Return a writable SQLite path and whether persistence is available."""
-    configured = str(configured_db_path or "").strip() or "neraium.db"
-    if _persistence_available(configured):
-        return configured, True
-
-    fallback = "/tmp/neraium.db"
-    if _persistence_available(fallback):
-        logger.warning(
-            "Configured NERAIUM_DB_PATH=%s is not writable; falling back to %s.",
-            configured,
-            fallback,
-        )
-        return fallback, True
-
-    logger.error(
-        "Configured NERAIUM_DB_PATH=%s and fallback=%s are not writable; using in-memory SQLite store.",
-        configured,
-        fallback,
-    )
-    return ":memory:", False
-
-
 def is_api_key_valid(configured_key: str | None, provided_key: str | None) -> bool:
     if not configured_key:
         return True
@@ -273,41 +153,6 @@ def is_api_key_valid(configured_key: str | None, provided_key: str | None) -> bo
 
 def _results_envelope(results: list[dict[str, Any]], latest: dict[str, Any] | None) -> dict[str, Any]:
     return {"latest": latest, "count": len(results), "results": results}
-
-
-def _infer_stage_from_path(path: str) -> str:
-    text = str(path or "").lower()
-    if "/ingest/csv/preview" in text:
-        return "preview"
-    if "/ingest/jobs/" in text or "/ingest/csv/upload" in text:
-        return "ingest"
-    if "/ingest/" in text:
-        return "normalize"
-    if "/integrations/" in text:
-        return "integration_pull"
-    return "request"
-
-
-def _failure_envelope(
-    *,
-    stage: str,
-    type_name: str,
-    message: str,
-    actionable_detail: str,
-    correlation_id: str,
-    issue_details: list[dict[str, Any]] | None = None,
-    warning_details: list[dict[str, Any]] | None = None,
-) -> dict[str, Any]:
-    return {
-        "ok": False,
-        "stage": stage,
-        "type": type_name,
-        "message": message,
-        "actionable_detail": actionable_detail,
-        "issue_details": list(issue_details or []),
-        "warning_details": list(warning_details or []),
-        "correlation_id": correlation_id,
-    }
 
 
 def _compact_result_view(result: dict[str, Any] | None) -> dict[str, Any] | None:
@@ -403,147 +248,38 @@ def create_app(
 ) -> FastAPI:
     api_key = os.getenv("NERAIUM_API_KEY")
     configured_db_path = os.getenv("NERAIUM_DB_PATH", "neraium.db")
-    db_path, persistence_available = _resolve_db_path(configured_db_path)
+    db_path, persistence_available = resolve_db_path(configured_db_path)
     request_body_limit = (
         int(max_request_body_bytes)
         if max_request_body_bytes is not None
-        else _request_body_limit_bytes()
+        else request_body_limit_bytes()
     )
 
     runtime_status = get_core_runtime_status()
-    runtime_fallback_active = bool(runtime_status.get("using_fallback", False))
-    runtime_env = str(
-        os.getenv("NERAIUM_RUNTIME_ENV")
-        or os.getenv("NERAIUM_ENV")
-        or os.getenv("APP_ENV")
-        or ""
-    ).strip().lower()
-    strict_runtime_flag = str(os.getenv("NERAIUM_REQUIRE_FULL_CORE_RUNTIME", "")).strip().lower()
-    require_full_runtime = strict_runtime_flag in {"1", "true", "yes", "on"}
-    if strict_runtime_flag == "":
-        require_full_runtime = runtime_env in {"prod", "production"}
-    if require_full_runtime and runtime_fallback_active:
-        notes = ", ".join(str(x) for x in runtime_status.get("notes", []))
-        raise RuntimeError(
-            "Core runtime fallback is active while strict runtime mode is enabled. "
-            f"runtime_env={runtime_env or 'unknown'} notes={notes or 'n/a'}"
-        )
+    validate_runtime_or_raise(runtime_status)
 
     app = FastAPI(title="Neraium SII API", version="0.1.0")
-
-    @app.exception_handler(HTTPException)
-    async def _http_exception_handler(request: Request, exc: HTTPException) -> JSONResponse:
-        correlation_id = f"api_err_{uuid4().hex[:12]}"
-        stage = _infer_stage_from_path(request.url.path)
-        issue_details: list[dict[str, Any]] = []
-        warning_details: list[dict[str, Any]] = []
-        if isinstance(exc.detail, dict):
-            detail_payload = dict(exc.detail)
-            message = str(detail_payload.get("message") or detail_payload.get("detail") or "Request failed.")
-            type_name = str(detail_payload.get("type") or "http_error")
-            actionable = str(detail_payload.get("actionable_detail") or actionable_validation_detail(message))
-            stage = str(detail_payload.get("stage") or stage)
-            correlation_id = str(detail_payload.get("correlation_id") or correlation_id)
-            issue_details = list(detail_payload.get("issue_details") or [])
-            warning_details = list(detail_payload.get("warning_details") or [])
-        else:
-            message = str(exc.detail)
-            type_name = "http_error"
-            actionable = actionable_validation_detail(message)
-        logger.warning(
-            "api_http_exception",
-            extra={
-                "path": request.url.path,
-                "method": request.method,
-                "status_code": exc.status_code,
-                "stage": stage,
-                "type": type_name,
-                "correlation_id": correlation_id,
-            },
-        )
-        return JSONResponse(
-            status_code=exc.status_code,
-            content=_failure_envelope(
-                stage=stage,
-                type_name=type_name,
-                message=message,
-                actionable_detail=actionable,
-                issue_details=issue_details,
-                warning_details=warning_details,
-                correlation_id=correlation_id,
-            ),
-        )
-
-    @app.exception_handler(RequestValidationError)
-    async def _request_validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
-        correlation_id = str(getattr(request.state, "correlation_id", "") or f"api_val_{uuid4().hex[:12]}")
-        issue_details = []
-        for issue in exc.errors():
-            location = issue.get("loc", [])
-            issue_details.append(
-                {
-                    "code": issue.get("type", "validation_error"),
-                    "message": issue.get("msg", "Invalid request payload."),
-                    "field": ".".join(str(part) for part in location if part not in {"body"}),
-                    "input": issue.get("input"),
-                }
-            )
-        logger.warning(
-            "request_validation_error",
-            extra={
-                "correlation_id": correlation_id,
-                "path": request.url.path,
-                "method": request.method,
-                "issue_count": len(issue_details),
-            },
-        )
-        return JSONResponse(
-            status_code=422,
-            content=_failure_envelope(
-                stage=_infer_stage_from_path(request.url.path),
-                type_name="validation_error",
-                message="Request validation failed.",
-                actionable_detail="Review request fields and retry. See issue_details for field-level guidance.",
-                issue_details=issue_details,
-                correlation_id=correlation_id,
-            ),
-        )
-
-    @app.exception_handler(Exception)
-    async def _unhandled_exception_handler(request: Request, exc: Exception) -> JSONResponse:
-        correlation_id = f"api_unh_{uuid4().hex[:12]}"
-        logger.exception("Unhandled API error")
-        msg = "Internal server error."
-        return JSONResponse(
-            status_code=500,
-            content=_failure_envelope(
-                stage=_infer_stage_from_path(request.url.path),
-                type_name="internal_error",
-                message=msg,
-                actionable_detail="Retry request or contact support if issue persists.",
-                correlation_id=correlation_id,
-            ),
-        )
+    register_exception_handlers(app, logger=logger)
     app.add_middleware(RequestCorrelationIdMiddleware)
     app.add_middleware(MaxRequestBodySizeMiddleware, max_body_size=request_body_limit)
     app.add_middleware(GZipMiddleware, minimum_size=1024, compresslevel=5)
-    cors_allow_origins = _cors_allow_origins()
-    cors_allow_origin_regex = _cors_allow_origin_regex()
-    if cors_allow_origins or cors_allow_origin_regex:
+    cors_allow_origins_list = cors_allow_origins()
+    cors_allow_origin_regex_value = cors_allow_origin_regex()
+    if cors_allow_origins_list or cors_allow_origin_regex_value:
         app.add_middleware(
             CORSMiddleware,
-            allow_origins=cors_allow_origins,
-            allow_origin_regex=cors_allow_origin_regex,
+            allow_origins=cors_allow_origins_list,
+            allow_origin_regex=cors_allow_origin_regex_value,
             allow_credentials=True,
             allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-            allow_headers=_cors_allow_headers(),
+            allow_headers=cors_allow_headers(),
         )
         log_structured(
             logger,
             event="cors_configured",
             fields={
-                "allow_origins_count": len(cors_allow_origins),
-                "allow_origin_regex": bool(cors_allow_origin_regex),
+                "allow_origins_count": len(cors_allow_origins_list),
+                "allow_origin_regex": bool(cors_allow_origin_regex_value),
             },
         )
     else:
@@ -565,23 +301,11 @@ def create_app(
     pull_integrations_lock = threading.Lock()
     alerts: dict[str, list[dict[str, Any]]] = {}
     alerts_lock = threading.Lock()
-    runtime_state_diagnostics: dict[str, Any] = {
-        "persisted_state_enabled": False,
-        "persisted_state_store": "none",
-        "request_body_limit_bytes": int(request_body_limit),
-        "db_path": db_path,
-        "db_path_writable": os.access(str(Path(db_path).parent), os.W_OK),
-        "temp_dir": tempfile.gettempdir(),
-        "temp_dir_writable": _dir_is_writable(tempfile.gettempdir()),
-        "upload_temp_dir": tempfile.gettempdir(),
-        "upload_temp_dir_writable": _dir_is_writable(tempfile.gettempdir()),
-        "memory_only_state": [
-            "demo_jobs",
-            "cmapss_fd004_cache",
-            "pull_integration_worker_threads",
-            "service_engine_runtime_memory",
-        ],
-    }
+    runtime_state_diagnostics: dict[str, Any] = build_runtime_state_diagnostics(
+        request_body_limit=request_body_limit,
+        db_path=db_path,
+        writable_checker=dir_is_writable,
+    )
     store_instance = getattr(service_instance, "store", None)
     persisted_state_enabled = all(
         hasattr(store_instance, method)
@@ -2117,6 +1841,7 @@ def create_app(
     return app
 
 
+configure_logging()
 app = create_app()
 
 
@@ -2127,5 +1852,5 @@ if __name__ == "__main__":
         "apps.api.main:app",
         host=os.getenv("HOST", "0.0.0.0"),
         port=int(os.getenv("PORT", "8000")),
-        h11_max_incomplete_event_size=_uvicorn_h11_max_incomplete_event_size(),
+        h11_max_incomplete_event_size=uvicorn_h11_max_incomplete_event_size(),
     )
