@@ -72,6 +72,8 @@ class ResearchExperimentalOrchestrator:
             risk_assessment=baseline_risk_assessment,
             operator_guidance={"recommended_actions": ["Inspect subsystem/cluster first."]},
             counterfactuals=counterfactuals,
+            reliability=reliability,
+            intervention_info=intervention,
         )
         cross_system = self.cross_system.update(
             trajectory_info=trajectory,
