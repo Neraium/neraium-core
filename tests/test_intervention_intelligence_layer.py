@@ -284,6 +284,55 @@ def test_structural_uncertainty_mode_activates_for_high_novelty_weak_support() -
     assert out["recommendation"]["fallback_triggered"] is True
 
 
+def test_production_hard_override_forces_monitor_and_human_review(monkeypatch) -> None:
+    platform = StructuralSystemIntelligencePlatform(operating_mode="production")
+
+    def _mock_intervention_update(**_: object) -> dict[str, object]:
+        return {
+            "recommendation": {
+                "best_intervention": {"name": "remove_top_driver_contribution", "confidence": 0.91, "rank_score": 0.91},
+                "ranked_interventions": [
+                    {"name": "remove_top_driver_contribution", "confidence": 0.91},
+                    {"name": "restore_relationship_cluster_to_baseline", "confidence": 0.62},
+                ],
+                "fallback_triggered": False,
+                "fallback_reasons": [],
+                "recommended_posture": "standard_advisory",
+            },
+            "historical_evidence": {"support_summary": {"support_count": 1}},
+            "structural_uncertainty_mode": {
+                "active": True,
+                "reason": "high_novelty,weak_support",
+                "novelty": 0.97,
+                "support": 1,
+                "reliability": 0.3,
+                "recommended_posture": "human_review_required",
+            },
+        }
+
+    monkeypatch.setattr(platform.production.intervention_intelligence, "update", _mock_intervention_update)
+    out = platform.update(
+        {
+            **_state(0),
+            "asset_id": "override-1",
+            "drift_warning": True,
+        }
+    )
+
+    intervention = out["production_intelligence"]["intervention_intelligence"]
+    recommendation = intervention["recommendation"]
+    compatibility = out["compatibility"]
+    trace = out["production_intelligence"]["core_decision_trace"]
+
+    assert recommendation["best_intervention"]["name"] == "monitor"
+    assert recommendation["recommended_posture"] == "human_review_required"
+    assert recommendation["override_applied"] is True
+    assert compatibility["recommended_intervention"] == "monitor"
+    assert compatibility["forced_posture"] == "human_review_required"
+    assert compatibility["intervention_overridden"] is True
+    assert trace["override_applied"] is True
+
+
 def test_correlation_trap_penalty_is_exposed_in_ranking_trace() -> None:
     engine = InterventionIntelligenceEngine()
     _simulate_record(engine, helpful=True)
