@@ -44,6 +44,11 @@ class InterventionIntelligenceEngine:
             "reversibility_score": float(transition.get("reversibility_score", 0.0)),
             "distance_to_critical_region": float(transition.get("distance_to_critical_region", 0.0)),
         }
+        novelty_score = float(trajectory.get("novelty_score", 0.5))
+        family_similarity = trajectory.get("family_similarity", trajectory.get("trajectory_similarity"))
+        if family_similarity is None:
+            family_similarity = 1.0 - novelty_score
+        support_count = trajectory.get("support", trajectory.get("support_count", 0))
         context = {
             "latent_state": list((observation.get("latent_embedding") or [])),
             "trajectory_family": str(trajectory.get("current_trajectory_path_family", trajectory.get("current_trajectory_family", "unknown"))),
@@ -51,9 +56,9 @@ class InterventionIntelligenceEngine:
             "regime": str(transition.get("regime", "unknown")),
             "mechanism_candidates": [str(m.get("mechanism", "")) for m in (mechanism.get("mechanism_candidates") or [])[:4]],
             "law_candidates": [str(l.get("law", "")) for l in (laws.get("law_candidates") or [])[:4]],
-            "novelty_score": float(trajectory.get("novelty_score", 0.5)),
-            "family_similarity": float(trajectory.get("family_similarity", trajectory.get("trajectory_similarity", 0.0))),
-            "support_count": int(trajectory.get("support", 0) or 0),
+            "novelty_score": novelty_score,
+            "family_similarity": float(family_similarity or 0.0),
+            "support_count": int(support_count or 0),
             "drift_warning": bool(observation.get("drift_alert", observation.get("drift_warning", False))),
             "transfer_mismatch": float((observation.get("transfer_metrics") or {}).get("mismatch_penalty", 0.0) or 0.0),
             "calibration_reliability": float((observation.get("calibration") or {}).get("reliability", 1.0) or 1.0),

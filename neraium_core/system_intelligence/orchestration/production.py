@@ -189,7 +189,9 @@ class ProductionIntelligenceOrchestrator:
             or ((reliability.get("risk_advisory") or {}).get("drift_warning", False))
         )
         novelty = self._clip01((intervention.get("context") or {}).get("novelty_score", trajectory.get("novelty_score", 0.0)))
-        support_count = int(memory_summary.get("support_count", (intervention.get("context") or {}).get("support_count", 0)) or 0)
+        context_support_count = int(((intervention.get("context") or {}).get("support_count", 0)) or 0)
+        memory_support_count = int((memory_summary.get("support_count", 0)) or 0)
+        support_count = max(context_support_count, memory_support_count)
         self._enforce_output_confidence(
             recommendation=recommendation,
             structural_uncertainty=structural_uncertainty,
@@ -223,7 +225,7 @@ class ProductionIntelligenceOrchestrator:
             "top_intervention_factors": list((best_ranked.get("ranking_factors") or {}).items())[:5],
             "calibrated_confidence": round(rec_cal, 6),
             "intervention_history_evidence": {
-                "support_count": int(memory_summary.get("support_count", 0) or 0),
+                "support_count": support_count,
                 "evidence_classes": evidence_classes,
             },
             "law_influence": {
