@@ -6,6 +6,7 @@ from .adapters.compatibility import to_operator_compatibility
 from .archetypes.archetype_memory import StructuralArchetypeMemory
 from .counterfactuals.intervention_engine import CounterfactualInterventionEngine
 from .forecast.trajectory_conditioned import TrajectoryConditionedForecaster
+from .law_engine import StructuralLawDecisionEngine
 from .law_extraction.extractor import StructuralLawExtractor
 from .mechanisms.discovery import MechanismDiscoveryLayer
 from .structural_state.latent_state import LatentStructuralStateEncoder
@@ -25,6 +26,7 @@ class StructuralSystemIntelligencePlatform:
         self.trajectory_forecast = TrajectoryConditionedForecaster()
         self.mechanisms = MechanismDiscoveryLayer()
         self.law_extractor = StructuralLawExtractor()
+        self.law_engine = StructuralLawDecisionEngine()
 
     def update(self, observation: dict[str, Any]) -> dict[str, Any]:
         latent_snapshot = self.latent.encode(observation)
@@ -72,6 +74,28 @@ class StructuralSystemIntelligencePlatform:
                 "transition_path": transition.transition_path,
                 "escalation_probability": transition.escalation_probability,
             },
+            counterfactual_info=cf,
+            asset_id=str(observation.get("asset_id", "unknown")),
+        )
+        baseline_risk_assessment = {
+            "current_risk_level": "high"
+            if float(transition.escalation_probability) >= 0.7
+            else ("medium" if float(transition.escalation_probability) >= 0.45 else "low"),
+            "projected_score": float(transition.escalation_probability),
+        }
+        baseline_operator_guidance = {
+            "recommended_actions": [
+                "Inspect subsystem/cluster first.",
+                "Validate top linked sensor pair and calibration.",
+            ]
+        }
+        law_decision_support = self.law_engine.evaluate(
+            law_candidates=laws,
+            trajectory_info=traj,
+            mechanism_info=mech,
+            risk_assessment=baseline_risk_assessment,
+            operator_guidance=baseline_operator_guidance,
+            counterfactuals=cf,
         )
 
         output = {
@@ -95,6 +119,7 @@ class StructuralSystemIntelligencePlatform:
             "trajectory_archetypes": traj,
             "trajectory_forecast": forecast,
             "structural_law_candidates": laws,
+            "law_engine_decision": law_decision_support,
             "mechanism_discovery": mech,
         }
         output["compatibility"] = to_operator_compatibility(output)
