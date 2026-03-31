@@ -1486,12 +1486,14 @@ class StructuralEngine:
 
                 regime_drift = 0.0
                 if regime_name is not None:
+                    persist_regime_state = False
                     if regime_name not in self.regime_baselines:
                         self.regime_baselines[regime_name] = {
                             "signature": signature.tolist(),
                             "correlation": corr_recent.tolist(),
                             "count": 1,
                         }
+                        persist_regime_state = True
                     else:
                         regime_corr = np.asarray(self.regime_baselines[regime_name]["correlation"], dtype=float)
                         if regime_corr.shape == corr_recent.shape:
@@ -1500,9 +1502,13 @@ class StructuralEngine:
                             alpha = 0.88
                             updated = alpha * regime_corr + (1.0 - alpha) * corr_recent
                             self.regime_baselines[regime_name]["correlation"] = updated.tolist()
-                            self.regime_baselines[regime_name]["count"] = int(
+                            regime_count = int(
                                 self.regime_baselines[regime_name].get("count", 0)
                             ) + 1
+                            self.regime_baselines[regime_name]["count"] = regime_count
+                            # Persist periodically to avoid high write/serialization overhead while
+                            # preserving durability over long-lived streams.
+                            persist_regime_state = (regime_count % 16) == 0
                         else:
                             self.regime_baselines[regime_name] = {
                                 "signature": signature.tolist(),
@@ -1510,8 +1516,10 @@ class StructuralEngine:
                                 "count": 1,
                             }
                             regime_drift = 0.0
+                            persist_regime_state = True
 
-                    self._persist_regime_state()
+                    if persist_regime_state:
+                        self._persist_regime_state()
 
                 signal_importance = signal_structural_importance(corr_recent)
                 adjacency = thresholded_adjacency(corr_recent, threshold=0.6)
