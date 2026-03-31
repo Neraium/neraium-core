@@ -2,12 +2,15 @@ from __future__ import annotations
 
 from typing import Any
 
+from .adapters.compatibility import to_operator_compatibility
 from .archetypes.archetype_memory import StructuralArchetypeMemory
 from .counterfactuals.intervention_engine import CounterfactualInterventionEngine
+from .forecast.trajectory_conditioned import TrajectoryConditionedForecaster
+from .law_extraction.extractor import StructuralLawExtractor
 from .mechanisms.discovery import MechanismDiscoveryLayer
 from .structural_state.latent_state import LatentStructuralStateEncoder
+from .trajectory_memory.memory import CrossSystemTrajectoryMemory
 from .transition_model.transition_dynamics import LatentTransitionModel
-from .adapters.compatibility import to_operator_compatibility
 
 
 class StructuralSystemIntelligencePlatform:
@@ -18,12 +21,17 @@ class StructuralSystemIntelligencePlatform:
         self.transitions = LatentTransitionModel()
         self.counterfactuals = CounterfactualInterventionEngine()
         self.archetypes = StructuralArchetypeMemory()
+        self.trajectory_memory = CrossSystemTrajectoryMemory(window_size=10)
+        self.trajectory_forecast = TrajectoryConditionedForecaster()
         self.mechanisms = MechanismDiscoveryLayer()
+        self.law_extractor = StructuralLawExtractor()
 
     def update(self, observation: dict[str, Any]) -> dict[str, Any]:
         latent_snapshot = self.latent.encode(observation)
         transition = self.transitions.assess(latent_snapshot.embedding)
         escalating = transition.transition_path in {"escalating"} or transition.escalation_probability > 0.65
+        recovering = transition.transition_path in {"reversible"}
+        in_critical = transition.regime == "critical"
 
         cf = self.counterfactuals.evaluate(observation, transition_escalation=transition.escalation_probability)
         arch = self.archetypes.update(
@@ -31,10 +39,39 @@ class StructuralSystemIntelligencePlatform:
             embedding=latent_snapshot.embedding,
             escalating=escalating,
         )
+
         mech = self.mechanisms.update(
             top_relationships=list(observation.get("top_relationships") or []),
             subsystem_impact=dict(observation.get("subsystem_impact") or {}),
             escalating=escalating,
+            trajectory_family=transition.transition_path,
+            recovering=recovering,
+        )
+        mechanism_names = [str(item.get("mechanism")) for item in mech.get("mechanism_candidates", [])]
+        traj = self.trajectory_memory.update(
+            asset_id=str(observation.get("asset_id", "unknown")),
+            embedding=latent_snapshot.embedding,
+            escalating=escalating,
+            in_critical_region=in_critical,
+            phase_shift=transition.transition_path in {"escalating", "reversible"},
+            mechanism_names=mechanism_names,
+        )
+        forecast = self.trajectory_forecast.forecast(
+            trajectory_intelligence=traj,
+            transition_dynamics={
+                "regime": transition.regime,
+                "transition_path": transition.transition_path,
+                "escalation_probability": transition.escalation_probability,
+            },
+        )
+        laws = self.law_extractor.update(
+            trajectory_info=traj,
+            mechanism_info=mech,
+            transition={
+                "regime": transition.regime,
+                "transition_path": transition.transition_path,
+                "escalation_probability": transition.escalation_probability,
+            },
         )
 
         output = {
@@ -55,6 +92,9 @@ class StructuralSystemIntelligencePlatform:
             },
             "counterfactuals": cf,
             "archetype_intelligence": arch,
+            "trajectory_archetypes": traj,
+            "trajectory_forecast": forecast,
+            "structural_law_candidates": laws,
             "mechanism_discovery": mech,
         }
         output["compatibility"] = to_operator_compatibility(output)
