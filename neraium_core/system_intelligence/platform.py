@@ -40,21 +40,21 @@ class StructuralSystemIntelligencePlatform:
             escalating=escalating,
         )
 
-        mech = self.mechanisms.update(
-            top_relationships=list(observation.get("top_relationships") or []),
-            subsystem_impact=dict(observation.get("subsystem_impact") or {}),
-            escalating=escalating,
-            trajectory_family=transition.transition_path,
-            recovering=recovering,
-        )
-        mechanism_names = [str(item.get("mechanism")) for item in mech.get("mechanism_candidates", [])]
+        relationship_names = [f"{str(r.get('source',''))}->{str(r.get('target',''))}" for r in list(observation.get("top_relationships") or [])[:3]]
         traj = self.trajectory_memory.update(
             asset_id=str(observation.get("asset_id", "unknown")),
             embedding=latent_snapshot.embedding,
             escalating=escalating,
             in_critical_region=in_critical,
             phase_shift=transition.transition_path in {"escalating", "reversible"},
-            mechanism_names=mechanism_names,
+            mechanism_names=relationship_names,
+        )
+        mech = self.mechanisms.update(
+            top_relationships=list(observation.get("top_relationships") or []),
+            subsystem_impact=dict(observation.get("subsystem_impact") or {}),
+            escalating=escalating,
+            trajectory_family=str(traj.get("current_trajectory_path_family", transition.transition_path)),
+            recovering=recovering,
         )
         forecast = self.trajectory_forecast.forecast(
             trajectory_intelligence=traj,
