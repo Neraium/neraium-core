@@ -26,6 +26,8 @@ class RegimeResult:
     regime_activated: bool
     geometry_distance: float = 0.0
     graph_distance: float = 0.0
+    regime_confidence: float = 0.0
+    regime_uncertainty: float = 1.0
 
 
 class RegimeModel:
@@ -38,6 +40,7 @@ class RegimeModel:
         self._regimes: list[dict[str, Any]] = []
         self._pending: dict[str, Any] | None = None
         self._store_path = Path(self.config.regime_store_path)
+        self._posterior: dict[str, float] = {}
         self.load()
 
     @staticmethod
@@ -141,6 +144,32 @@ class RegimeModel:
         matches.sort(key=lambda x: float(x.get("distance", float("inf"))))
         return matches[: max(1, int(top_k))]
 
+
+    def _update_posterior(self, distances: dict[str, float], focus_name: str) -> tuple[float, float]:
+        if not distances:
+            self._posterior = {focus_name: 1.0}
+            return 1.0, 0.0
+        likelihoods = {k: float(np.exp(-max(0.0, v))) for k, v in distances.items()}
+        total = float(sum(likelihoods.values())) + 1e-12
+        likelihoods = {k: v / total for k, v in likelihoods.items()}
+        if not self._posterior:
+            self._posterior = dict(likelihoods)
+        else:
+            blended: dict[str, float] = {}
+            all_keys = set(self._posterior) | set(likelihoods)
+            for key in all_keys:
+                prior = float(self._posterior.get(key, 1e-6))
+                like = float(likelihoods.get(key, 1e-6))
+                blended[key] = 0.82 * prior + 0.18 * like
+            norm = float(sum(blended.values())) + 1e-12
+            self._posterior = {k: v / norm for k, v in blended.items()}
+        focus_prob = float(self._posterior.get(focus_name, 0.0))
+        probs = np.asarray(list(self._posterior.values()), dtype=float)
+        ent = float(-np.sum(probs * np.log(probs + 1e-12)))
+        denom = float(np.log(max(2, probs.size)))
+        uncertainty = float(max(0.0, min(1.0, ent / max(1e-9, denom))))
+        return focus_prob, uncertainty
+
     def _append_prototype(
         self,
         reg: dict[str, Any],
@@ -194,10 +223,27 @@ class RegimeModel:
                 regime_activated=True,
                 geometry_distance=0.0,
                 graph_distance=0.0,
+                regime_confidence=1.0,
+                regime_uncertainty=0.0,
             )
 
         nearest, dist, geom_dist, graph_dist = self._nearest(geometry_signature, graph_signature)
         threshold = float(self.config.regime_distance_threshold)
+        dist_map: dict[str, float] = {}
+        for reg in self._regimes:
+            name = str(reg.get("name", "unknown"))
+            protos = reg.get("prototypes", [])
+            best = float("inf")
+            for p in protos:
+                if not isinstance(p, dict):
+                    continue
+                geom_proto = np.asarray(p.get("geometry_signature", []), dtype=float)
+                graph_proto = np.asarray(p.get("graph_signature", []), dtype=float)
+                cand, _, _ = self._weighted_distance(geom_a=geometry_signature, geom_b=geom_proto, graph_a=graph_signature, graph_b=graph_proto)
+                if cand < best:
+                    best = cand
+            if np.isfinite(best):
+                dist_map[name] = float(best)
         if nearest is not None and dist <= threshold:
             self._append_prototype(
                 nearest,
@@ -205,6 +251,7 @@ class RegimeModel:
                 graph_signature=graph_signature,
             )
             nearest["hits"] = int(nearest.get("hits", 0)) + 1
+            conf, unc = self._update_posterior(dist_map, str(nearest["name"]))
             return RegimeResult(
                 regime_name=str(nearest["name"]),
                 regime_distance=float(dist),
@@ -212,6 +259,8 @@ class RegimeModel:
                 regime_activated=False,
                 geometry_distance=float(geom_dist),
                 graph_distance=float(graph_dist),
+                regime_confidence=float(conf),
+                regime_uncertainty=float(unc),
             )
 
         # Pending regime candidate requires repeated observations.
@@ -275,6 +324,8 @@ class RegimeModel:
                     regime_activated=True,
                     geometry_distance=float(pending_geom_dist),
                     graph_distance=float(pending_graph_dist),
+                    regime_confidence=0.55,
+                    regime_uncertainty=0.45,
                 )
             return RegimeResult(
                 regime_name=str(self._pending["name"]),
@@ -283,6 +334,8 @@ class RegimeModel:
                 regime_activated=False,
                 geometry_distance=float(pending_geom_dist),
                 graph_distance=float(pending_graph_dist),
+                regime_confidence=0.35,
+                regime_uncertainty=0.65,
             )
 
         # Replace pending if it diverges too far from repeated evidence.
@@ -307,12 +360,15 @@ class RegimeModel:
             regime_activated=False,
             geometry_distance=float(geom_dist),
             graph_distance=float(graph_dist),
+            regime_confidence=0.2,
+            regime_uncertainty=0.9,
         )
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "regimes": list(self._regimes),
             "pending": None if self._pending is None else dict(self._pending),
+            "posterior": dict(self._posterior),
         }
 
     def _sanitize_loaded(self, raw: Any) -> None:
@@ -320,6 +376,7 @@ class RegimeModel:
             return
         regimes = raw.get("regimes")
         pending = raw.get("pending")
+        posterior = raw.get("posterior")
         if isinstance(regimes, list):
             safe_regimes: list[dict[str, Any]] = []
             for item in regimes:
@@ -407,6 +464,18 @@ class RegimeModel:
                     "hits": hits,
                 }
 
+
+        if isinstance(posterior, dict):
+            cleaned: dict[str, float] = {}
+            for k, v in posterior.items():
+                try:
+                    cleaned[str(k)] = float(v)
+                except Exception:
+                    continue
+            if cleaned:
+                norm = float(sum(cleaned.values()))
+                if norm > 0.0:
+                    self._posterior = {k: v / norm for k, v in cleaned.items()}
     def save(self) -> None:
         try:
             self._store_path.parent.mkdir(parents=True, exist_ok=True)
