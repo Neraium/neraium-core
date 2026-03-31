@@ -16,9 +16,6 @@ function mountCoreModules() {
   wireRunDetailEvents();
   wireOnboardingEvents();
 
-  qs("#exportJsonBtn")?.addEventListener("click", () => exportData("json", state.activeRun?.run_id || ""));
-  qs("#exportCsvBtn")?.addEventListener("click", () => exportData("csv", state.activeRun?.run_id || ""));
-
   wireUploadInteractions();
 }
 
