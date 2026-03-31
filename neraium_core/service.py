@@ -210,6 +210,13 @@ class StructuralMonitoringService:
         asset_id: str | None = None,
         limit: int = 100,
     ) -> list[dict[str, Any]]:
+        """Return persisted structural memory matches.
+
+        Compatibility note:
+        This accessor is kept as part of the service-layer public API so older
+        API routes and integration tests can retrieve memory recall rows without
+        reaching directly into ``ResultStore``.
+        """
         return self.store.list_structural_memory(
             customer_id=self._resolve_customer_id(customer_id),
             run_id=run_id,
