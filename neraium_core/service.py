@@ -4,6 +4,7 @@ import csv
 import io
 import logging
 import os
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, TextIO
 
@@ -199,6 +200,23 @@ class StructuralMonitoringService:
         memory_recall["source_history_id"] = persisted["history_id"]
         self._persist_structural_memory(canonical, memory_recall, customer_id=customer_id)
         return canonical
+
+    def get_memory_matches(
+        self,
+        *,
+        customer_id: str | None = None,
+        run_id: str | None = None,
+        site_id: str | None = None,
+        asset_id: str | None = None,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        return self.store.list_structural_memory(
+            customer_id=self._resolve_customer_id(customer_id),
+            run_id=run_id,
+            site_id=site_id,
+            asset_id=asset_id,
+            limit=limit,
+        )
 
     @staticmethod
     def _recall_scope(match: dict[str, Any], *, site_id: str | None, asset_id: str | None) -> str:
@@ -678,11 +696,42 @@ class StructuralMonitoringService:
                 level=logging.INFO,
             )
         try:
-            frame = normalize_external_payload(
-                payload,
-                customer_id=customer_id,
-                require_confirmed_mapping=False,
-            )
+            try:
+                frame = normalize_external_payload(
+                    payload,
+                    customer_id=customer_id,
+                    require_confirmed_mapping=False,
+                )
+            except ValueError as exc:
+                if not pilot_hardening_enabled():
+                    raise
+                message = str(exc)
+                if not isinstance(payload, dict):
+                    raise
+                if not (
+                    message.startswith("missing_timestamp:") or message.startswith("no_usable_signals:")
+                ):
+                    raise
+                patched_payload = dict(payload)
+                if message.startswith("missing_timestamp:"):
+                    patched_payload["timestamp"] = datetime.now(timezone.utc).isoformat()
+                if message.startswith("no_usable_signals:"):
+                    timestamp = patched_payload.get("timestamp")
+                    if timestamp is None:
+                        timestamp = datetime.now(timezone.utc).isoformat()
+                    frame = {
+                        "timestamp": str(timestamp),
+                        "site_id": str(patched_payload.get("site_id") or "default-site"),
+                        "asset_id": str(patched_payload.get("asset_id") or "default-asset"),
+                        "sensor_values": {},
+                        "customer_id": str(customer_id or patched_payload.get("customer_id") or "default-customer"),
+                    }
+                else:
+                    frame = normalize_external_payload(
+                        patched_payload,
+                        customer_id=customer_id,
+                        require_confirmed_mapping=False,
+                    )
             resolved_customer = self._effective_customer_id(
                 request_customer_id=customer_id,
                 payload_customer_id=frame.get("customer_id"),

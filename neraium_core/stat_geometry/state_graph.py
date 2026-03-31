@@ -67,6 +67,16 @@ def _bounded_ratio(value: float, *, midpoint: float, slope: float = 1.0) -> floa
     return float(1.0 - math.exp(-(x / m) * k))
 
 
+def _stack_common_dimension(path: list[np.ndarray]) -> np.ndarray:
+    flattened = [np.ravel(np.asarray(v, dtype=float)) for v in path if np.asarray(v).size > 0]
+    if not flattened:
+        return np.zeros((0, 0), dtype=float)
+    common_dim = min(vec.shape[0] for vec in flattened)
+    if common_dim <= 0:
+        return np.zeros((0, 0), dtype=float)
+    return np.vstack([vec[:common_dim] for vec in flattened])
+
+
 def compute_state_graph(
     path: list[np.ndarray],
     window: int = 16,
@@ -86,7 +96,19 @@ def compute_state_graph(
             "region_histogram": {},
         }
 
-    history = np.vstack([np.asarray(v, dtype=float) for v in path])
+    history = _stack_common_dimension([np.asarray(v, dtype=float) for v in path])
+    if history.size == 0:
+        return {
+            "node_count": 1,
+            "edge_count": 0,
+            "branching_factor": 0.0,
+            "transition_entropy": 0.0,
+            "revisit_rate": 0.0,
+            "path_commitment_score": 0.0,
+            "graph_divergence_score": 0.0,
+            "graph_density": 0.0,
+            "region_histogram": {},
+        }
     projected = _pca_reduce(history, dims=2)
     nodes = [_region_id(p) for p in projected]
     edges = list(zip(nodes[:-1], nodes[1:]))
