@@ -86,6 +86,12 @@ from .routers.ingest import build_ingest_router
 from .routers.demo import build_demo_router
 from .routers.integrations import build_integrations_router
 from .routers.onboarding import build_onboarding_router
+from .routers.dependencies import (
+    DemoRouterDependencies,
+    IngestRouterDependencies,
+    IntegrationsRouterDependencies,
+    OnboardingRouterDependencies,
+)
 from .services.alerts import alert_thresholds as service_alert_thresholds, evaluate_alerts, dispatch_alert_stubs
 from .services.request_context import (
     resolve_customer_id,
@@ -461,85 +467,79 @@ def create_app(
     )
     app.include_router(
         build_ingest_router(
-            service_instance=service_instance,
-            require_api_key=require_api_key,
-            resolve_customer_id=resolve_customer_id,
-            resolve_run_id_with_default=resolve_run_id_with_default,
-            actionable_validation_detail=actionable_validation_detail,
-            normalize_external_payload=normalize_external_payload,
-            normalize_external_batch_payload=normalize_external_batch_payload,
-            normalize_canonical_records_payload=normalize_canonical_records_payload,
-            process_alerts_after_ingest=_process_alerts_after_ingest,
-            results_envelope=_results_envelope,
-            parse_csv_rows=parse_csv_rows,
-            infer_csv_mapping_stage=infer_csv_mapping_stage,
-            validate_csv_mapping_stage=validate_csv_mapping_stage,
-            issue_to_dict=issue_to_dict,
-            request_body_limit=request_body_limit,
-            normalize_content_length=_normalize_content_length,
-            stream_upload_to_tempfile=ingest_manager.stream_upload_to_tempfile,
-            update_ingest_job=ingest_manager.update_ingest_job,
-            public_ingest_job=ingest_manager.public_ingest_job,
-            persist_operational_state=_persist_operational_state,
-            start_ingest_job_worker=ingest_manager.start_ingest_job_worker,
-            ingest_jobs=state_store.ingest_jobs,
-            ingest_jobs_lock=state_store.ingest_jobs_lock,
-            models=type("IngestModels", (), {
-                "ResultsEnvelope": ResultsEnvelope,
-                "IngestRequest": IngestRequest,
-                "IngestFrameRequest": IngestFrameRequest,
-                "BatchIngestRequest": BatchIngestRequest,
-                "CanonicalOutputResponse": CanonicalOutputResponse,
-                "CsvIngestRequest": CsvIngestRequest,
-                "CsvPreviewRequest": CsvPreviewRequest,
-                "CsvPreviewResponse": CsvPreviewResponse,
-                "IngestJobEnvelope": IngestJobEnvelope,
-                "CsvColumnMappingPayload": CsvColumnMappingPayload,
-                "utc_now_iso": _utc_now_iso,
-            }),
+            deps=IngestRouterDependencies(
+                service_instance=service_instance,
+                require_api_key=require_api_key,
+                resolve_customer_id=resolve_customer_id,
+                resolve_run_id_with_default=resolve_run_id_with_default,
+                actionable_validation_detail=actionable_validation_detail,
+                normalize_external_payload=normalize_external_payload,
+                normalize_external_batch_payload=normalize_external_batch_payload,
+                normalize_canonical_records_payload=normalize_canonical_records_payload,
+                process_alerts_after_ingest=_process_alerts_after_ingest,
+                results_envelope=_results_envelope,
+                parse_csv_rows=parse_csv_rows,
+                infer_csv_mapping_stage=infer_csv_mapping_stage,
+                validate_csv_mapping_stage=validate_csv_mapping_stage,
+                issue_to_dict=issue_to_dict,
+                request_body_limit=request_body_limit,
+                normalize_content_length=_normalize_content_length,
+                stream_upload_to_tempfile=ingest_manager.stream_upload_to_tempfile,
+                update_ingest_job=ingest_manager.update_ingest_job,
+                public_ingest_job=ingest_manager.public_ingest_job,
+                persist_operational_state=_persist_operational_state,
+                start_ingest_job_worker=ingest_manager.start_ingest_job_worker,
+                ingest_jobs=state_store.ingest_jobs,
+                ingest_jobs_lock=state_store.ingest_jobs_lock,
+                utc_now_iso=_utc_now_iso,
+            ),
         )
     )
     app.include_router(
         build_demo_router(
-            service_instance=service_instance,
-            require_api_key=require_api_key,
-            resolve_customer_id=resolve_customer_id,
-            resolve_run_id_with_default=resolve_run_id_with_default,
-            start_demo_seed_job=demo_manager.start_demo_seed_job,
-            public_demo_job=demo_manager.public_demo_job,
-            demo_jobs=state_store.demo_jobs,
-            demo_jobs_lock=state_store.demo_jobs_lock,
-            load_cmapss_fd004_subset=demo_manager.load_cmapss_fd004_subset,
-            log_structured=log_structured,
-            summarize_exception_for_logs=summarize_exception_for_logs,
-            models=type("DemoModels", (), {"DemoSeedRequest": DemoSeedRequest, "DemoCmapssStartRequest": DemoCmapssStartRequest}),
-            utc_now_iso=_utc_now_iso,
+            deps=DemoRouterDependencies(
+                service_instance=service_instance,
+                require_api_key=require_api_key,
+                resolve_customer_id=resolve_customer_id,
+                resolve_run_id_with_default=resolve_run_id_with_default,
+                start_demo_seed_job=demo_manager.start_demo_seed_job,
+                public_demo_job=demo_manager.public_demo_job,
+                demo_jobs=state_store.demo_jobs,
+                demo_jobs_lock=state_store.demo_jobs_lock,
+                load_cmapss_fd004_subset=demo_manager.load_cmapss_fd004_subset,
+                log_structured=log_structured,
+                summarize_exception_for_logs=summarize_exception_for_logs,
+                utc_now_iso=_utc_now_iso,
+            ),
         )
     )
     app.include_router(
         build_integrations_router(
-            app=app,
-            require_api_key=require_api_key,
-            resolve_customer_id=resolve_customer_id,
-            resolve_run_id_with_default=resolve_run_id_with_default,
-            service_instance=service_instance,
-            pull_manager=pull_manager,
-            log_structured=log_structured,
-            models=type("IntegrationModels", (), {"PullIntegrationStartRequest": PullIntegrationStartRequest, "PullIntegrationStatusEnvelope": PullIntegrationStatusEnvelope}),
+            deps=IntegrationsRouterDependencies(
+                app=app,
+                require_api_key=require_api_key,
+                resolve_customer_id=resolve_customer_id,
+                resolve_run_id_with_default=resolve_run_id_with_default,
+                service_instance=service_instance,
+                pull_manager=pull_manager,
+                log_structured=log_structured,
+            ),
         )
     )
 
     app.include_router(
         build_onboarding_router(
-            resolve_customer_id=resolve_customer_id,
-            service_instance=service_instance,
-            normalize_external_payload=normalize_external_payload,
-            is_api_key_valid=is_api_key_valid,
-            configured_api_key=api_key,
-            ensure_default_run=_ensure_default_run,
-            persist_operational_state=_persist_operational_state,
-            store_instance=store_instance,
-            persisted_state_enabled=persisted_state_enabled,
+            deps=OnboardingRouterDependencies(
+                resolve_customer_id=resolve_customer_id,
+                service_instance=service_instance,
+                normalize_external_payload=normalize_external_payload,
+                is_api_key_valid=is_api_key_valid,
+                configured_api_key=api_key,
+                ensure_default_run=_ensure_default_run,
+                persist_operational_state=_persist_operational_state,
+                store_instance=store_instance,
+                persisted_state_enabled=persisted_state_enabled,
+            ),
         )
     )
 
