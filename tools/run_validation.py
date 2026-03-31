@@ -10,9 +10,10 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from neraium_core.system_intelligence.platform import StructuralSystemIntelligencePlatform
 from neraium_core.system_intelligence.law_governance import StructuralLawGovernance
+from neraium_core.system_intelligence.platform import StructuralSystemIntelligencePlatform
 from validation import RealWorldValidationPipeline
+from validation.release_gates import evaluate_release_gates
 from validation.replay import load_dataset
 
 
@@ -33,6 +34,12 @@ def _build_feedback_rows(report: dict) -> list[dict]:
     return rows
 
 
+def _read_json_if_exists(path: Path) -> dict | None:
+    if not path.exists():
+        return None
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run real-world replay + validation loop")
     parser.add_argument("--input", required=True, help="Path to dataset")
@@ -42,6 +49,16 @@ def main() -> None:
         "--core-output",
         default="reports/validation/core_validation_report.json",
         help="Compact core validation artifact path",
+    )
+    parser.add_argument(
+        "--release-gate-output",
+        default="reports/validation/release_gate_report.json",
+        help="Release gate report artifact path",
+    )
+    parser.add_argument(
+        "--prior-core-report",
+        default=None,
+        help="Optional previous core validation artifact path; defaults to existing --core-output if present",
     )
     args = parser.parse_args()
 
@@ -70,8 +87,9 @@ def main() -> None:
 
     # Feedback integration loop C: law governance real evidence.
     law_counts = defaultdict(lambda: {"helpful": 0, "harmful": 0, "neutral": 0})
+    outcome_by_step = {o.get("timestep"): o for o in report.get("outcomes", [])}
     for step in report.get("replay", {}).get("step_logs", []):
-        label = str((next((o for o in report.get("outcomes", []) if o.get("timestep") == step.get("timestep")), {}) or {}).get("outcome_label", "neutral"))
+        label = str((outcome_by_step.get(step.get("timestep"), {}) or {}).get("outcome_label", "neutral"))
         for law_id in step.get("law_usage", []) or []:
             if label not in {"helpful", "harmful", "neutral", "recovery-associated"}:
                 label = "neutral"
@@ -109,15 +127,36 @@ def main() -> None:
         "law_validation": law_validation_summary,
     }
 
+    core_output_path = Path(args.core_output)
+    prior_path = Path(args.prior_core_report) if args.prior_core_report else core_output_path
+    previous_core = _read_json_if_exists(prior_path)
+
+    release_gate = evaluate_release_gates(report["core_validation_report"], previous_core_report=previous_core)
+    report["release_gate_report"] = release_gate
+    report["core_validation_report"]["release_gate_results"] = {
+        "release_passed": release_gate["release_passed"],
+        "release_recommendation": release_gate["release_recommendation"],
+        "blocking_reasons": release_gate["blocking_reasons"],
+    }
+    report["core_validation_report"]["regression_analysis"] = release_gate["regression_analysis"]
+    report["core_validation_report"]["release_regression_blockers"] = release_gate["regression_analysis"].get("release_regression_blockers", [])
+
     platform.set_real_world_validation(report["real_world_validation"])
 
     out = Path(args.output)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(report, indent=2), encoding="utf-8")
-    core_out = Path(args.core_output)
-    core_out.parent.mkdir(parents=True, exist_ok=True)
-    core_out.write_text(json.dumps(report["core_validation_report"], indent=2), encoding="utf-8")
+    core_output_path.parent.mkdir(parents=True, exist_ok=True)
+    core_output_path.write_text(json.dumps(report["core_validation_report"], indent=2), encoding="utf-8")
+
+    release_out = Path(args.release_gate_output)
+    release_out.parent.mkdir(parents=True, exist_ok=True)
+    release_out.write_text(json.dumps(release_gate, indent=2), encoding="utf-8")
+
     print(str(out))
+    print(str(core_output_path))
+    print(str(release_out))
+    print(f"release_recommendation={release_gate['release_recommendation']}")
 
 
 if __name__ == "__main__":
