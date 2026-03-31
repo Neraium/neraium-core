@@ -1,0 +1,134 @@
+:root {
+  --bg: #f6f7f8;
+  --panel: #ffffff;
+  --text: #111111;
+  --muted: #5a5f66;
+  --line: #d6d9de;
+  --primary: #0f172a;
+  --primary-text: #ffffff;
+  --danger: #9f1239;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: "IBM Plex Sans", system-ui, sans-serif;
+}
+
+.panel,
+.snapshot-item,
+.chart-panel,
+.table-wrap,
+.geometry-details,
+.geometry-canvas-wrap,
+.upload-dropzone {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: none;
+}
+
+h1,
+h2,
+h3,
+h4 {
+  letter-spacing: 0;
+  color: var(--text);
+}
+
+h2 { font-size: 1.4rem; }
+h3 { font-size: 1.1rem; }
+.subtitle,
+.metric-k,
+.upload-hint,
+.brutal-hint {
+  color: var(--muted);
+}
+
+.button-link,
+button,
+input,
+select,
+textarea {
+  border-radius: 6px;
+}
+
+.button-link.primary,
+button:not(.secondary) {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: var(--primary-text);
+}
+
+.button-link.secondary,
+button.secondary {
+  background: #fff;
+  color: var(--text);
+  border: 1px solid var(--line);
+}
+
+.nav a {
+  font-weight: 600;
+}
+
+.nav-section-title-secondary {
+  margin-top: var(--space-5);
+}
+
+.snapshot-grid {
+  gap: var(--space-3);
+}
+
+.snapshot-item p {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.snapshot-item strong {
+  font-size: 1.05rem;
+}
+
+.empty-state,
+.status,
+#runtimeModeBanner {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.status.error {
+  border-color: #f5c2ce;
+  color: var(--danger);
+  background: #fff4f6;
+}
+
+.table-wrap table th {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+}
+
+.table-wrap table td,
+.table-wrap table th {
+  border-bottom-color: var(--line);
+}
+
+.panel-header {
+  margin-bottom: var(--space-3);
+}
+
+.control-panel .quick-link-stack {
+  margin-top: var(--space-3);
+}
+
+@media (max-width: 980px) {
+  .main {
+    padding: var(--space-3);
+  }
+}
