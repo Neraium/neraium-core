@@ -49,6 +49,8 @@ class SIIConfig:
     relation_threshold: float = 0.6
     # Graph edge threshold is the primary graph sparsification threshold.
     graph_edge_threshold: float = 0.6
+    dependence_backend: str = "pearson"
+    dependence_lag: int = 0
     regime_distance_threshold: float = 2.0
     baseline_adaptation_alpha: float = 0.92
     freeze_baseline_frames: int = 12
@@ -85,6 +87,10 @@ class SIIConfig:
             raise SIIConfigurationError("relation_threshold must be in (0, 1]")
         if not (0.0 < self.graph_edge_threshold <= 1.0):
             raise SIIConfigurationError("graph_edge_threshold must be in (0, 1]")
+        if str(self.dependence_backend).strip().lower() not in {"pearson", "spearman", "partial"}:
+            raise SIIConfigurationError("dependence_backend must be one of: pearson, spearman, partial")
+        if self.dependence_lag < 0:
+            raise SIIConfigurationError("dependence_lag must be >= 0")
         if self.regime_distance_threshold <= 0.0:
             raise SIIConfigurationError("regime_distance_threshold must be > 0")
         if not (0.0 <= self.baseline_adaptation_alpha < 1.0):
@@ -173,6 +179,8 @@ class SIIConfig:
             max_history=_env_int("SII_MAX_HISTORY", 500),
             relation_threshold=_env_float("SII_RELATION_THRESHOLD", 0.6),
             graph_edge_threshold=_env_float("SII_GRAPH_EDGE_THRESHOLD", 0.6),
+            dependence_backend=os.getenv("SII_DEPENDENCE_BACKEND", "pearson").strip().lower(),
+            dependence_lag=_env_int("SII_DEPENDENCE_LAG", 0),
             regime_distance_threshold=_env_float("SII_REGIME_DISTANCE_THRESHOLD", 2.0),
             baseline_adaptation_alpha=_env_float("SII_BASELINE_ADAPTATION_ALPHA", 0.92),
             freeze_baseline_frames=_env_int("SII_FREEZE_BASELINE_FRAMES", 12),
