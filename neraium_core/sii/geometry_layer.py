@@ -4,6 +4,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from .dependence import DependenceBackend, estimate_dependence
 from .errors import SIIValidationError
 
 
@@ -31,17 +32,11 @@ def covariance_matrix(z_window: np.ndarray) -> np.ndarray:
     return cov
 
 
-def correlation_matrix(z_window: np.ndarray) -> np.ndarray:
+def correlation_matrix(z_window: np.ndarray, *, backend: DependenceBackend = "pearson", lag: int = 0) -> np.ndarray:
     z = np.asarray(z_window, dtype=float)
     if z.ndim != 2:
         raise SIIValidationError("correlation_matrix expects a 2D matrix")
-    with np.errstate(invalid="ignore", divide="ignore"):
-        corr = np.corrcoef(z.T)
-    corr = np.nan_to_num(corr, nan=0.0, posinf=0.0, neginf=0.0)
-    if corr.ndim == 0:
-        corr = np.asarray([[1.0]], dtype=float)
-    np.fill_diagonal(corr, 1.0)
-    return corr
+    return estimate_dependence(z, backend=backend, lag=lag).matrix
 
 
 def flatten_upper(corr: np.ndarray) -> np.ndarray:
@@ -141,14 +136,17 @@ def build_geometry_state(
     baseline_window: np.ndarray,
     recent_window: np.ndarray,
     reference_corr: np.ndarray | None = None,
+    *,
+    dependence_backend: DependenceBackend = "pearson",
+    dependence_lag: int = 0,
 ) -> GeometryFeatures:
     z_base, mean_base, std_base = normalize_window(baseline_window)
     z_recent, mean_recent, std_recent = normalize_window(recent_window)
 
     cov_base = covariance_matrix(z_base)
     cov_recent = covariance_matrix(z_recent)
-    corr_base = correlation_matrix(z_base)
-    corr_recent = correlation_matrix(z_recent)
+    corr_base = correlation_matrix(z_base, backend=dependence_backend, lag=dependence_lag)
+    corr_recent = correlation_matrix(z_recent, backend=dependence_backend, lag=dependence_lag)
 
     effective_ref_corr = (
         np.asarray(reference_corr, dtype=float)
