@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Any
+import math
 
 
 @dataclass
@@ -109,6 +110,13 @@ class InterventionMemoryStore:
         score += mech_overlap * 0.25
         score += law_overlap * 0.20
         total += 0.45
+        latent_now = [float(x) for x in list(context.get("latent_state") or [])]
+        latent_then = [float(x) for x in list((record.evidence_metadata or {}).get("latent_state") or [])]
+        if latent_now and latent_then and len(latent_now) == len(latent_then):
+            mse = sum((a - b) ** 2 for a, b in zip(latent_now, latent_then)) / max(1.0, float(len(latent_now)))
+            latent_similarity = 1.0 / (1.0 + math.sqrt(max(0.0, mse)))
+            score += latent_similarity * 0.20
+            total += 0.20
         return 0.0 if total <= 0 else score / total
 
     def query(

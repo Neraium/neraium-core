@@ -38,6 +38,11 @@ def main() -> None:
     parser.add_argument("--input", required=True, help="Path to dataset")
     parser.add_argument("--format", required=True, choices=["csv", "json", "event"], help="Dataset format")
     parser.add_argument("--output", default="reports/validation/real_world_validation_report.json", help="Output report path")
+    parser.add_argument(
+        "--core-output",
+        default="reports/validation/core_validation_report.json",
+        help="Compact core validation artifact path",
+    )
     args = parser.parse_args()
 
     rows = load_dataset(args.input, args.format)
@@ -89,6 +94,15 @@ def main() -> None:
         }
 
     report["real_world_validation"]["law_validation"] = law_validation_summary
+    report["core_validation_report"]["law_changes"] = [
+        {
+            "law_id": law_id,
+            "support_count": row["support_count"],
+            "contradiction_count": row["contradiction_count"],
+            "real_world_validation_score": row["real_world_validation_score"],
+        }
+        for law_id, row in law_validation_summary.items()
+    ][:25]
     report["evidence_summaries"] = {
         "intervention_memory": intervention_memory.support_summary(),
         "reliability_store": reliability.store.inspect(limit=32),
@@ -100,6 +114,9 @@ def main() -> None:
     out = Path(args.output)
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(report, indent=2), encoding="utf-8")
+    core_out = Path(args.core_output)
+    core_out.parent.mkdir(parents=True, exist_ok=True)
+    core_out.write_text(json.dumps(report["core_validation_report"], indent=2), encoding="utf-8")
     print(str(out))
 
 

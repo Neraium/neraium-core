@@ -44,6 +44,7 @@ def test_replay_and_outcome_pipeline_runs() -> None:
     assert len(report["outcomes"]) == 3
     assert "real_world_validation" in report
     assert "drift_signals" in report["real_world_validation"]
+    assert "core_validation_report" in report
 
 
 def test_feedback_updates_intervention_memory_and_reliability() -> None:
@@ -92,3 +93,12 @@ def test_json_adapter_supports_validation_inputs(tmp_path: Path) -> None:
     rows = load_dataset(path, "json")
     assert len(rows) == 3
     assert rows[0]["asset_id"] == "A"
+
+
+def test_outcome_attribution_surfaces_confidence_and_source() -> None:
+    platform = StructuralSystemIntelligencePlatform(operating_mode="production")
+    pipeline = RealWorldValidationPipeline(decision_fn=platform.update)
+    report = pipeline.run(_dataset())
+    first = report["outcomes"][0]
+    assert "attribution_confidence" in first
+    assert "attribution_source" in first
