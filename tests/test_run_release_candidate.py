@@ -153,3 +153,48 @@ def test_resolve_corpus_ids_excludes_deprecated_and_small_corpora(tmp_path: Path
     registry = CorpusSnapshotRegistry(root=corpus_root)
     resolved = _resolve_corpus_ids(registry, corpus_id=None, corpus_set="baseline_clean")
     assert resolved == ["baseline_clean_ops"]
+
+
+def test_run_release_candidate_partial_corpus_set_has_consistent_report(tmp_path: Path) -> None:
+    corpus_root = tmp_path / "validation" / "corpus"
+    _write_snapshot(corpus_root, "baseline_clean_ops", "baseline_clean", num_events=60)
+    (corpus_root / "registry.json").write_text(
+        json.dumps(
+            {
+                "schema_version": "1.0",
+                "snapshots": [
+                    {
+                        "corpus_id": "baseline_clean_ops",
+                        "snapshot_file": "snapshots/baseline_clean_ops.json",
+                        "corpus_type": "baseline_clean",
+                    }
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    report_path = tmp_path / "multi_report.json"
+    cmd = [
+        sys.executable,
+        "tools/run_release_candidate.py",
+        "--corpus-set",
+        "baseline_clean",
+        "--corpus-root",
+        str(corpus_root),
+        "--history-root",
+        str(tmp_path / "history"),
+        "--output",
+        str(tmp_path / "out.json"),
+        "--multi-corpus-output",
+        str(report_path),
+    ]
+    subprocess.run(cmd, check=True, capture_output=True, text=True)
+    payload = json.loads(report_path.read_text(encoding="utf-8"))
+
+    assert [row["corpus_id"] for row in payload["corpus_results"]] == ["baseline_clean_ops"]
+    assert payload["failing_corpora"] == [row["corpus_id"] for row in payload["corpus_results"] if not row["release_passed"]]
+    assert set(payload["blocking_corpus_classes"]) == {
+        row["corpus_type"] for row in payload["corpus_results"] if not row["release_passed"]
+    }
+    assert payload["missing_required_corpus_classes"] == ["noisy_realistic", "transfer_cross_domain"]

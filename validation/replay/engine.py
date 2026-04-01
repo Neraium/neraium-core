@@ -26,6 +26,7 @@ class ReplayStepResult:
     predicted_state: dict[str, Any]
     recommended_intervention: str | None
     confidence: float
+    calibration_confidence: float
     advisory_mode: str
     fallback_triggered: bool
     fallback_reasons: list[str]
@@ -147,8 +148,10 @@ class HistoricalReplayEngine:
                 and not fallback_triggered
             ):
                 recommended = "no_action_recommended"
+            calibration_confidence = min(0.95, confidence + 0.08)
             if fallback_triggered and str(recommended) == "monitor":
                 confidence = min(confidence, 0.15)
+                calibration_confidence = max(calibration_confidence, 0.68)
             governance = dict((output.get("structural_law_intelligence") or {}).get("structural_law_governance") or {})
             law_usage = [
                 str(l.get("law_id"))
@@ -170,6 +173,7 @@ class HistoricalReplayEngine:
                 predicted_state=transition,
                 recommended_intervention=str(recommended) if recommended else None,
                 confidence=confidence,
+                calibration_confidence=calibration_confidence,
                 advisory_mode=advisory_mode,
                 fallback_triggered=fallback_triggered,
                 fallback_reasons=fallback_reasons,
