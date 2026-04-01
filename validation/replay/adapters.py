@@ -85,7 +85,12 @@ def load_csv_telemetry(path: str | Path) -> list[dict[str, Any]]:
 
 def load_json_logs(path: str | Path) -> list[dict[str, Any]]:
     payload = json.loads(Path(path).read_text(encoding="utf-8"))
-    rows = payload.get("events", payload if isinstance(payload, list) else [])
+    if isinstance(payload, list):
+        rows = payload
+    elif isinstance(payload, dict):
+        rows = payload.get("events", [])
+    else:
+        rows = []
     normalized = [_normalize_record(dict(row), idx) for idx, row in enumerate(rows)]
     return sorted(normalized, key=lambda r: (float(r.get("timestamp", 0.0)), str(r.get("asset_id", "")), str(r.get("scenario_id", ""))))
 
