@@ -181,3 +181,31 @@ def test_intervention_memory_contribution_not_mirrored_to_accuracy() -> None:
     contribution = report["core_validation_report"]["summary"]["intervention_memory_contribution"]
     assert contribution["status"] == "available"
     assert contribution["mean_best_confidence_delta"] != report["core_validation_report"]["summary"]["decision_accuracy"]
+
+
+def test_baseline_replay_does_not_default_to_competing_explanations_fallback() -> None:
+    platform = StructuralSystemIntelligencePlatform(operating_mode="production")
+    pipeline = RealWorldValidationPipeline(decision_fn=platform.update)
+    rows = [
+        {
+            "timestamp": i + 1,
+            "asset_id": "baseline-A",
+            "domain": "water",
+            "scenario_family": "baseline",
+            "system_type": "pump",
+            "observation": {"x": 0.08 + 0.01 * i, "sensor": 1.0 + 0.02 * i},
+            "actual_intervention": "remove_top_driver_contribution" if i < 4 else None,
+            "outcome_label": "helpful" if i < 4 else "neutral",
+        }
+        for i in range(6)
+    ]
+
+    report = pipeline.run(rows)
+    step_logs = report["replay"]["step_logs"]
+    fallback_rate = sum(1 for step in step_logs if step["fallback_triggered"]) / len(step_logs)
+    competing_default = any("competing_explanations" in (step.get("fallback_reasons") or []) for step in step_logs)
+    max_support = max(int(step.get("support_count", 0) or 0) for step in step_logs)
+
+    assert fallback_rate < 1.0
+    assert competing_default is False
+    assert max_support > 0
