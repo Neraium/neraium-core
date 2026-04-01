@@ -15051,8 +15051,8 @@
     "release_regression_blockers": [],
     "run_metadata": {
       "corpus_id": "baseline_clean_ops",
-      "run_id": "baseline_clean_ops_20260401T044412Z_81b7e777",
-      "timestamp": "2026-04-01T04:44:12Z",
+      "run_id": "baseline_clean_ops_20260401T044416Z_908bdc7d",
+      "timestamp": "2026-04-01T04:44:16Z",
       "code_version": "85fd09e8ab92bd6fccbb4ece1f7a30f6cb6fd8ad",
       "config_hash": "0e3ec11812091c06f556908fae66df87347f724feca539b9e823c900558af51c",
       "canonical_run": true
@@ -15492,7 +15492,7 @@
             "transferred_evidence_weight": 0.0,
             "calibration_version": "reliability.v1",
             "issued_at_step": 101,
-            "issued_timestamp": "2026-04-01T04:44:12.777173+00:00",
+            "issued_timestamp": "2026-04-01T04:44:16.565193+00:00",
             "metadata": {
               "calibration_bucket": "feedback|neutral"
             }
@@ -15523,7 +15523,7 @@
             "transferred_evidence_weight": 0.0,
             "calibration_version": "reliability.v1",
             "issued_at_step": 101,
-            "issued_timestamp": "2026-04-01T04:44:12.777185+00:00",
+            "issued_timestamp": "2026-04-01T04:44:16.565214+00:00",
             "metadata": {
               "calibration_bucket": "feedback|neutral"
             }
@@ -15554,7 +15554,7 @@
             "transferred_evidence_weight": 0.0,
             "calibration_version": "reliability.v1",
             "issued_at_step": 101,
-            "issued_timestamp": "2026-04-01T04:44:12.777226+00:00",
+            "issued_timestamp": "2026-04-01T04:44:16.565234+00:00",
             "metadata": {
               "calibration_bucket": "feedback|neutral"
             }
@@ -15585,7 +15585,7 @@
             "transferred_evidence_weight": 0.0,
             "calibration_version": "reliability.v1",
             "issued_at_step": 101,
-            "issued_timestamp": "2026-04-01T04:44:12.777240+00:00",
+            "issued_timestamp": "2026-04-01T04:44:16.565282+00:00",
             "metadata": {
               "calibration_bucket": "feedback|neutral"
             }
@@ -15616,7 +15616,7 @@
             "transferred_evidence_weight": 0.0,
             "calibration_version": "reliability.v1",
             "issued_at_step": 101,
-            "issued_timestamp": "2026-04-01T04:44:12.777252+00:00",
+            "issued_timestamp": "2026-04-01T04:44:16.565303+00:00",
             "metadata": {
               "calibration_bucket": "feedback|harmful"
             }
@@ -15647,7 +15647,7 @@
             "transferred_evidence_weight": 0.0,
             "calibration_version": "reliability.v1",
             "issued_at_step": 101,
-            "issued_timestamp": "2026-04-01T04:44:12.777264+00:00",
+            "issued_timestamp": "2026-04-01T04:44:16.565345+00:00",
             "metadata": {
               "calibration_bucket": "feedback|neutral"
             }
@@ -15678,7 +15678,7 @@
             "transferred_evidence_weight": 0.0,
             "calibration_version": "reliability.v1",
             "issued_at_step": 101,
-            "issued_timestamp": "2026-04-01T04:44:12.777276+00:00",
+            "issued_timestamp": "2026-04-01T04:44:16.565389+00:00",
             "metadata": {
               "calibration_bucket": "feedback|neutral"
             }
@@ -15709,7 +15709,7 @@
             "transferred_evidence_weight": 0.0,
             "calibration_version": "reliability.v1",
             "issued_at_step": 101,
-            "issued_timestamp": "2026-04-01T04:44:12.777288+00:00",
+            "issued_timestamp": "2026-04-01T04:44:16.565411+00:00",
             "metadata": {
               "calibration_bucket": "feedback|neutral"
             }
@@ -15740,7 +15740,7 @@
             "transferred_evidence_weight": 0.0,
             "calibration_version": "reliability.v1",
             "issued_at_step": 101,
-            "issued_timestamp": "2026-04-01T04:44:12.777300+00:00",
+            "issued_timestamp": "2026-04-01T04:44:16.565433+00:00",
             "metadata": {
               "calibration_bucket": "feedback|neutral"
             }
@@ -15771,7 +15771,7 @@
             "transferred_evidence_weight": 0.0,
             "calibration_version": "reliability.v1",
             "issued_at_step": 101,
-            "issued_timestamp": "2026-04-01T04:44:12.777313+00:00",
+            "issued_timestamp": "2026-04-01T04:44:16.565457+00:00",
             "metadata": {
               "calibration_bucket": "feedback|neutral"
             }
@@ -15802,7 +15802,7 @@
             "transferred_evidence_weight": 0.0,
             "calibration_version": "reliability.v1",
             "issued_at_step": 101,
-            "issued_timestamp": "2026-04-01T04:44:12.777350+00:00",
+            "issued_timestamp": "2026-04-01T04:44:16.565476+00:00",
             "metadata": {
               "calibration_bucket": "feedback|neutral"
             }
@@ -15833,7 +15833,7 @@
             "transferred_evidence_weight": 0.0,
             "calibration_version": "reliability.v1",
             "issued_at_step": 101,
-            "issued_timestamp": "2026-04-01T04:44:12.777365+00:00",
+            "issued_timestamp": "2026-04-01T04:44:16.565497+00:00",
             "metadata": {
               "calibration_bucket": "feedback|neutral"
             }
@@ -15864,7 +15864,7 @@
             "transferred_evidence_weight": 0.0,
             "calibration_version": "reliability.v1",
             "issued_at_step": 101,
-            "issued_timestamp": "2026-04-01T04:44:12.777377+00:00",
+            "issued_timestamp": "2026-04-01T04:44:16.565518+00:00",
             "metadata": {
               "calibration_bucket": "feedback|neutral"
             }
@@ -15895,7 +15895,7 @@
             "transferred_evidence_weight": 0.0,
             "calibration_version": "reliability.v1",
             "issued_at_step": 101,
-            "issued_timestamp": "2026-04-01T04:44:12.777389+00:00",
+            "issued_timestamp": "2026-04-01T04:44:16.565539+00:00",
             "metadata": {
               "calibration_bucket": "feedback|neutral"
             }
@@ -15926,7 +15926,7 @@
             "transferred_evidence_weight": 0.0,
             "calibration_version": "reliability.v1",
             "issued_at_step": 101,
-            "issued_timestamp": "2026-04-01T04:44:12.777401+00:00",
+            "issued_timestamp": "2026-04-01T04:44:16.565561+00:00",
             "metadata": {
               "calibration_bucket": "feedback|neutral"
             }
@@ -15957,7 +15957,7 @@
             "transferred_evidence_weight": 0.0,
             "calibration_version": "reliability.v1",
             "issued_at_step": 101,
-            "issued_timestamp": "2026-04-01T04:44:12.777413+00:00",
+            "issued_timestamp": "2026-04-01T04:44:16.565584+00:00",
             "metadata": {
               "calibration_bucket": "feedback|neutral"
             }
@@ -15988,7 +15988,7 @@
             "transferred_evidence_weight": 0.0,
             "calibration_version": "reliability.v1",
             "issued_at_step": 101,
-            "issued_timestamp": "2026-04-01T04:44:12.777512+00:00",
+            "issued_timestamp": "2026-04-01T04:44:16.565714+00:00",
             "metadata": {
               "calibration_bucket": "feedback|harmful"
             }
@@ -16019,7 +16019,7 @@
             "transferred_evidence_weight": 0.0,
             "calibration_version": "reliability.v1",
             "issued_at_step": 101,
-            "issued_timestamp": "2026-04-01T04:44:12.777527+00:00",
+            "issued_timestamp": "2026-04-01T04:44:16.565742+00:00",
             "metadata": {
               "calibration_bucket": "feedback|neutral"
             }
@@ -16050,7 +16050,7 @@
             "transferred_evidence_weight": 0.0,
             "calibration_version": "reliability.v1",
             "issued_at_step": 101,
-            "issued_timestamp": "2026-04-01T04:44:12.777540+00:00",
+            "issued_timestamp": "2026-04-01T04:44:16.565765+00:00",
             "metadata": {
               "calibration_bucket": "feedback|neutral"
             }
@@ -16081,7 +16081,7 @@
             "transferred_evidence_weight": 0.0,
             "calibration_version": "reliability.v1",
             "issued_at_step": 101,
-            "issued_timestamp": "2026-04-01T04:44:12.777552+00:00",
+            "issued_timestamp": "2026-04-01T04:44:16.565787+00:00",
             "metadata": {
               "calibration_bucket": "feedback|neutral"
             }
@@ -16112,7 +16112,7 @@
             "transferred_evidence_weight": 0.0,
             "calibration_version": "reliability.v1",
             "issued_at_step": 101,
-            "issued_timestamp": "2026-04-01T04:44:12.777564+00:00",
+            "issued_timestamp": "2026-04-01T04:44:16.565854+00:00",
             "metadata": {
               "calibration_bucket": "feedback|harmful"
             }
@@ -16143,7 +16143,7 @@
             "transferred_evidence_weight": 0.0,
             "calibration_version": "reliability.v1",
             "issued_at_step": 101,
-            "issued_timestamp": "2026-04-01T04:44:12.777603+00:00",
+            "issued_timestamp": "2026-04-01T04:44:16.565904+00:00",
             "metadata": {
               "calibration_bucket": "feedback|neutral"
             }
@@ -16174,7 +16174,7 @@
             "transferred_evidence_weight": 0.0,
             "calibration_version": "reliability.v1",
             "issued_at_step": 101,
-            "issued_timestamp": "2026-04-01T04:44:12.777649+00:00",
+            "issued_timestamp": "2026-04-01T04:44:16.565929+00:00",
             "metadata": {
               "calibration_bucket": "feedback|neutral"
             }
@@ -16205,7 +16205,7 @@
             "transferred_evidence_weight": 0.0,
             "calibration_version": "reliability.v1",
             "issued_at_step": 101,
-            "issued_timestamp": "2026-04-01T04:44:12.777663+00:00",
+            "issued_timestamp": "2026-04-01T04:44:16.565951+00:00",
             "metadata": {
               "calibration_bucket": "feedback|neutral"
             }
@@ -16236,7 +16236,7 @@
             "transferred_evidence_weight": 0.0,
             "calibration_version": "reliability.v1",
             "issued_at_step": 101,
-            "issued_timestamp": "2026-04-01T04:44:12.777675+00:00",
+            "issued_timestamp": "2026-04-01T04:44:16.566001+00:00",
             "metadata": {
               "calibration_bucket": "feedback|harmful"
             }
@@ -16267,7 +16267,7 @@
             "transferred_evidence_weight": 0.0,
             "calibration_version": "reliability.v1",
             "issued_at_step": 101,
-            "issued_timestamp": "2026-04-01T04:44:12.777688+00:00",
+            "issued_timestamp": "2026-04-01T04:44:16.566029+00:00",
             "metadata": {
               "calibration_bucket": "feedback|neutral"
             }
@@ -16298,7 +16298,7 @@
             "transferred_evidence_weight": 0.0,
             "calibration_version": "reliability.v1",
             "issued_at_step": 101,
-            "issued_timestamp": "2026-04-01T04:44:12.777700+00:00",
+            "issued_timestamp": "2026-04-01T04:44:16.566053+00:00",
             "metadata": {
               "calibration_bucket": "feedback|neutral"
             }
@@ -16329,7 +16329,7 @@
             "transferred_evidence_weight": 0.0,
             "calibration_version": "reliability.v1",
             "issued_at_step": 101,
-            "issued_timestamp": "2026-04-01T04:44:12.777712+00:00",
+            "issued_timestamp": "2026-04-01T04:44:16.566075+00:00",
             "metadata": {
               "calibration_bucket": "feedback|helpful"
             }
@@ -16360,7 +16360,7 @@
             "transferred_evidence_weight": 0.0,
             "calibration_version": "reliability.v1",
             "issued_at_step": 101,
-            "issued_timestamp": "2026-04-01T04:44:12.777725+00:00",
+            "issued_timestamp": "2026-04-01T04:44:16.566098+00:00",
             "metadata": {
               "calibration_bucket": "feedback|harmful"
             }
@@ -16391,7 +16391,7 @@
             "transferred_evidence_weight": 0.0,
             "calibration_version": "reliability.v1",
             "issued_at_step": 101,
-            "issued_timestamp": "2026-04-01T04:44:12.777761+00:00",
+            "issued_timestamp": "2026-04-01T04:44:16.566120+00:00",
             "metadata": {
               "calibration_bucket": "feedback|neutral"
             }
@@ -16422,7 +16422,7 @@
             "transferred_evidence_weight": 0.0,
             "calibration_version": "reliability.v1",
             "issued_at_step": 101,
-            "issued_timestamp": "2026-04-01T04:44:12.777776+00:00",
+            "issued_timestamp": "2026-04-01T04:44:16.566144+00:00",
             "metadata": {
               "calibration_bucket": "feedback|neutral"
             }
@@ -16453,7 +16453,7 @@
             "transferred_evidence_weight": 0.0,
             "calibration_version": "reliability.v1",
             "issued_at_step": 101,
-            "issued_timestamp": "2026-04-01T04:44:12.777788+00:00",
+            "issued_timestamp": "2026-04-01T04:44:16.566194+00:00",
             "metadata": {
               "calibration_bucket": "feedback|neutral"
             }
@@ -16562,8 +16562,8 @@
     },
     "run_metadata": {
       "corpus_id": "baseline_clean_ops",
-      "run_id": "baseline_clean_ops_20260401T044412Z_81b7e777",
-      "timestamp": "2026-04-01T04:44:12Z",
+      "run_id": "baseline_clean_ops_20260401T044416Z_908bdc7d",
+      "timestamp": "2026-04-01T04:44:16Z",
       "code_version": "85fd09e8ab92bd6fccbb4ece1f7a30f6cb6fd8ad",
       "config_hash": "0e3ec11812091c06f556908fae66df87347f724feca539b9e823c900558af51c",
       "canonical_run": true
@@ -16583,8 +16583,8 @@
   },
   "run_metadata": {
     "corpus_id": "baseline_clean_ops",
-    "run_id": "baseline_clean_ops_20260401T044412Z_81b7e777",
-    "timestamp": "2026-04-01T04:44:12Z",
+    "run_id": "baseline_clean_ops_20260401T044416Z_908bdc7d",
+    "timestamp": "2026-04-01T04:44:16Z",
     "code_version": "85fd09e8ab92bd6fccbb4ece1f7a30f6cb6fd8ad",
     "config_hash": "0e3ec11812091c06f556908fae66df87347f724feca539b9e823c900558af51c",
     "canonical_run": true
