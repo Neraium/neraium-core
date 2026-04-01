@@ -170,11 +170,15 @@ def aggregate_multi_corpus_release(
         }
 
     missing_required = sorted(k for k, v in CORPUS_CLASS_RULES.items() if v.required and k not in by_class)
+<<<<<<< HEAD
     # Union: class-level failures (including optional classes that did not pass) plus required
     # classes with no evaluated corpus — the latter were missing from by_class and never
     # appeared in blocking_classes, which caused RELEASE_FAIL with empty blockers.
     blocking_corpus_classes = sorted(set(blocking_classes) | set(missing_required))
     release_passed = len(blocking_corpus_classes) == 0
+=======
+    release_passed = len(blocking_classes) == 0 and not missing_required
+>>>>>>> 3aedc7e4a4597802300889285e2fecafec7b2eee
 
     return {
         "release_passed": release_passed,
@@ -185,7 +189,11 @@ def aggregate_multi_corpus_release(
         "release_decision_minimum_records": min_credible_records,
         "release_decision_include_ineligible": include_ineligible,
         "class_summary": class_summaries,
+<<<<<<< HEAD
         "blocking_corpus_classes": blocking_corpus_classes,
+=======
+        "blocking_corpus_classes": sorted(set(blocking_classes)),
+>>>>>>> 3aedc7e4a4597802300889285e2fecafec7b2eee
         "missing_required_corpus_classes": missing_required,
         "failing_corpora": sorted(set(failing_corpora)),
         "failure_mode_frequency": dict(sorted(failure_frequency.items(), key=lambda kv: (-kv[1], kv[0]))),

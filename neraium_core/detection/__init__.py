@@ -14,13 +14,22 @@ from neraium_core.detection.transition_evaluation import (
     export_detection_tables,
     summarize_entity_transitions,
 )
-from neraium_core.detection.transition_plots import (
-    plot_normalized_detection_histogram,
-    plot_raw_position_histogram,
-    plot_signal_vs_outcome,
-    plot_timeseries_with_transition,
-    save_figure,
-)
+try:
+    from neraium_core.detection.transition_plots import (
+        plot_normalized_detection_histogram,
+        plot_raw_position_histogram,
+        plot_signal_vs_outcome,
+        plot_timeseries_with_transition,
+        save_figure,
+    )
+except ModuleNotFoundError:
+    # Optional plotting dependency (matplotlib). Runtime ingestion paths do not
+    # require plotting helpers, so keep imports usable without this extra.
+    plot_normalized_detection_histogram = None
+    plot_raw_position_histogram = None
+    plot_signal_vs_outcome = None
+    plot_timeseries_with_transition = None
+    save_figure = None
 
 __all__ = [
     "EngineReadinessState",

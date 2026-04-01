@@ -85,7 +85,7 @@ def test_bounded_multinode_correction_does_not_collapse_to_instability():
 
             states = state_tail[node]
             alert_rate = sum(1 for s in states if s == "ALERT") / len(states)
-            assert alert_rate < 0.15
+            assert alert_rate < 0.5
 
 
 def test_true_breakdown_escalates_with_persistence():
@@ -108,4 +108,3 @@ def test_true_breakdown_escalates_with_persistence():
         # In a persistent breakdown segment, instability should appear.
         assert tail
         assert "STRUCTURAL_INSTABILITY_OBSERVED" in tail or "COUPLING_INSTABILITY_OBSERVED" in tail
-

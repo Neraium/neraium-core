@@ -152,9 +152,9 @@ def test_mvp_routes_available(tmp_path) -> None:
     assert home.status_code == 200
     assert "text/html" in home.headers.get("content-type", "")
     assert "cdn.jsdelivr.net/npm/three@0.162.0" in home.text
-    demo_tour = client.get("/demo/sii")
-    assert demo_tour.status_code == 200
-    assert "text/html" in demo_tour.headers.get("content-type", "")
+    demo_tour = client.get("/demo/sii", follow_redirects=False)
+    assert demo_tour.status_code == 307
+    assert demo_tour.headers.get("location") == "/dashboard"
     js = client.get("/web/app.js")
     css = client.get("/web/styles.css")
     three_init = client.get("/web/three-init.mjs")
@@ -190,6 +190,158 @@ def test_web_js_smoke_wiring_for_demo_critical_controls(tmp_path) -> None:
     ]
     for token in expected_tokens:
         assert token in source
+
+
+def test_web_js_uses_relative_same_origin_api_paths(tmp_path) -> None:
+    client = _client(tmp_path)
+    js = client.get("/web/app.js")
+    assert js.status_code == 200
+    source = js.text
+    assert "window.NERAIUM_API_BASE_URL" not in source
+    assert "resolveApiBaseUrl" not in source
+    assert "return query ? `${normalizedPath}?${query}` : normalizedPath;" in source
+
+
+def test_dashboard_demo_seeding_uses_single_backend_seed_job_flow(tmp_path) -> None:
+    client = _client(tmp_path)
+    js = client.get("/web/app.js")
+    assert js.status_code == 200
+    source = js.text
+    assert 'apiUrl("/demo/cmapss/start"' in source
+    assert "async function seedDemoData()" in source
+    seed_block = source.split("async function seedDemoData()", 1)[1].split("function destroyCharts()", 1)[0]
+    assert "startCmapssDemo(" in seed_block
+    assert "postDemoSeedWithRetry(" not in seed_block
+    assert "launchInFlight" in seed_block
+    assert "beginReplayStatusMonitoring(" in seed_block
+
+
+def test_dashboard_demo_replay_status_state_machine_and_polling_present(tmp_path) -> None:
+    client = _client(tmp_path)
+    js = client.get("/web/app.js")
+    assert js.status_code == 200
+    source = js.text
+    assert "const DEMO_UI_STATES = Object.freeze" in source
+    for token in ['idle: "idle"', 'starting: "starting"', 'running: "running"', 'offline: "offline"', 'interrupted: "interrupted"', 'failed: "failed"', 'completed: "completed"']:
+        assert token in source
+    assert "function normalizeReplayUiState(" in source
+    assert "function beginReplayStatusMonitoring(runId)" in source
+    assert "async function pollReplayStatus(runId)" in source
+    assert "DEMO_REPLAY_MAX_TRANSIENT_ERRORS" in source
+    assert 'setDemoUiState(DEMO_UI_STATES.interrupted, "persistent-poll-error")' in source
+
+
+def test_demo_seed_async_job_endpoints_return_json_and_seed_real_results(tmp_path) -> None:
+    client = _client(tmp_path)
+    run = client.post(
+        _customer_path("/runs", customer_id="customer-a"),
+        json={"name": "demo-seed-job", "activate": True, "config": {"baseline_window": 5, "recent_window": 3}},
+    )
+    assert run.status_code == 200
+    run_id = run.json()["run"]["run_id"]
+
+    started = client.post(
+        _customer_path(f"/demo/seed/start?run_id={run_id}", customer_id="customer-a"),
+        json={"minutes": 10, "profile": "sample", "site_id": "demo-site", "asset_id": "demo-asset"},
+    )
+    assert started.status_code == 200
+    started_body = started.json()
+    assert started_body["status"] == "started"
+    job_id = started_body["job_id"]
+    assert isinstance(job_id, str) and job_id
+
+    final_status = None
+    for _ in range(80):
+        polled = client.get(_customer_path(f"/demo/seed/status?job_id={job_id}", customer_id="customer-a"))
+        assert polled.status_code == 200
+        body = polled.json()
+        assert "status" in body
+        assert "progress" in body
+        assert "run_id" in body
+        if body["status"] == "complete":
+            final_status = body
+            break
+        if body["status"] == "error":
+            pytest.fail(f"demo seed job failed: {body}")
+        time.sleep(0.05)
+    assert final_status is not None, "demo seed job did not complete in time"
+    assert final_status["processed"] >= 10
+    assert final_status["run_id"] == run_id
+
+    history = client.get(_customer_path(f"/history?run_id={run_id}&limit=5", customer_id="customer-a"))
+    assert history.status_code == 200
+    assert history.json()["count"] >= 1
+
+
+def test_demo_cmapss_start_returns_run_and_processes_real_results(tmp_path) -> None:
+    client = _client(tmp_path)
+    started = client.post(
+        _customer_path("/demo/cmapss/start", customer_id="customer-a"),
+        json={"max_frames": 60},
+    )
+    assert started.status_code == 200
+    body = started.json()
+    assert body["status"] == "ok"
+    assert body["demo"] == "cmapss_fd004"
+    assert body["canonical_story"]["read_only"] is True
+    assert body["canonical_story"]["non_actuating"] is True
+    run_id = str(body["run_id"])
+    assert run_id
+    assert int(body["processed"]) >= 30
+
+    run = client.get(_customer_path(f"/runs/{run_id}", customer_id="customer-a"))
+    assert run.status_code == 200
+    run_body = run.json()["run"]
+    assert run_body["is_active"] is True
+    assert run_body["config"]["dataset"] == "NASA CMAPSS FD004"
+
+    history = client.get(_customer_path(f"/history?run_id={run_id}&limit=5", customer_id="customer-a"))
+    assert history.status_code == 200
+    assert history.json()["count"] >= 1
+
+    status = client.get(_customer_path(f"/demo/cmapss/status?run_id={run_id}", customer_id="customer-a"))
+    assert status.status_code == 200
+    status_body = status.json()
+    assert "canonical_story_stage" in status_body
+    assert "message" in status_body
+    assert "what_is_happening" in status_body["message"]
+
+    proof = client.get(_customer_path(f"/demo/cmapss/proof-summary?run_id={run_id}", customer_id="customer-a"))
+    assert proof.status_code == 200
+    proof_body = proof.json()
+    assert proof_body["run_id"] == run_id
+    assert "story" in proof_body
+    assert "proof" in proof_body
+
+
+def test_cors_middleware_requires_explicit_origin_configuration(tmp_path, monkeypatch) -> None:
+    monkeypatch.delenv("NERAIUM_CORS_ALLOW_ORIGINS", raising=False)
+    monkeypatch.delenv("NERAIUM_CORS_ALLOW_ORIGIN_REGEX", raising=False)
+    client = _client(tmp_path)
+    preflight = client.options(
+        "/ingest/batch?customer_id=customer-a&run_id=run-a",
+        headers={
+            "Origin": "https://operator.example.com",
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "content-type",
+        },
+    )
+    assert "access-control-allow-origin" not in {
+        k.lower(): v for k, v in preflight.headers.items()
+    }
+
+    monkeypatch.setenv("NERAIUM_CORS_ALLOW_ORIGINS", "https://operator.example.com")
+    enabled_client = _client(tmp_path)
+    enabled_preflight = enabled_client.options(
+        "/ingest/batch?customer_id=customer-a&run_id=run-a",
+        headers={
+            "Origin": "https://operator.example.com",
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "content-type",
+        },
+    )
+    assert enabled_preflight.status_code == 200
+    assert enabled_preflight.headers.get("access-control-allow-origin") == "https://operator.example.com"
 
 
 def test_run_scoped_result_detail_and_recent(tmp_path) -> None:
@@ -475,6 +627,162 @@ def test_streamed_csv_upload_reports_partial_success(tmp_path) -> None:
     assert done["partial_success"] is True
     assert done["error_samples"]
     assert "Row" in str(done["error_samples"][0].get("message", ""))
+    assert done["lifecycle_phase"] == "terminal"
+    assert done["terminal_state"] == "partial_success"
+    assert done["failure_category"] is None
+
+
+def test_ingest_csv_preview_upload_and_result_detail_smoke(tmp_path) -> None:
+    client = _client(tmp_path)
+    run = client.post(
+        _customer_path("/runs"),
+        json={"name": "fd001-smoke", "activate": True, "config": {}},
+    )
+    assert run.status_code == 200
+    run_id = run.json()["run"]["run_id"]
+
+    csv_text = (
+        "recorded_at,unit,setting_1,setting_2,setting_3,s1,s2,s3\n"
+        "2026-01-01T00:00:01+00:00,fd001_unit_001,0.1,0.2,0.3,10.0,11.0,12.0\n"
+        "2026-01-01T00:00:02+00:00,fd001_unit_001,0.1,0.2,0.3,10.1,11.1,12.1\n"
+    )
+    preview = client.post(
+        _customer_path("/ingest/csv/preview"),
+        json={"csv_sample": csv_text},
+    )
+    assert preview.status_code == 200
+    preview_body = preview.json()
+    assert preview_body["headers"][0] == "recorded_at"
+    assert preview_body["requires_confirmation"] is False
+    mapping = preview_body["suggested_mapping"]
+    assert isinstance(mapping, dict)
+    assert mapping["timestamp"] == "recorded_at"
+    assert mapping["asset_id"] == "unit"
+
+    started = client.post(
+        _customer_path(f"/ingest/csv/upload?run_id={run_id}"),
+        files={"file": ("fd001.csv", csv_text.encode("utf-8"), "text/csv")},
+        data={"mapping": json.dumps(mapping)},
+    )
+    assert started.status_code == 200
+    job_id = started.json()["job_id"]
+    done = _wait_for_ingest_job(client, job_id)
+    assert done["status"] == "completed"
+    assert done["rows_succeeded"] == 2
+    assert done["rows_failed"] == 0
+    assert done["lifecycle_phase"] == "terminal"
+    assert done["terminal_state"] == "completed"
+
+    recent = client.get(_customer_path(f"/results/recent?run_id={run_id}&limit=1"))
+    assert recent.status_code == 200
+    recent_body = recent.json()
+    assert recent_body["count"] == 1
+    latest = recent_body["results"][0]
+    assert latest["run_id"] == run_id
+
+    detail = client.get(_customer_path(f"/results/{latest['result_id']}?run_id={run_id}"))
+    assert detail.status_code == 200
+    detail_result = detail.json()["result"]
+    assert detail_result["run_id"] == run_id
+    assert detail_result["asset_id"] == "fd001_unit_001"
+
+
+def test_fd001_realistic_end_to_end_smoke_with_preview_block_then_success(tmp_path) -> None:
+    client = _client(tmp_path)
+    run = client.post(
+        _customer_path("/runs"),
+        json={"name": "fd001-realistic-smoke", "activate": True, "config": {}},
+    )
+    assert run.status_code == 200
+    run_id = run.json()["run"]["run_id"]
+
+    blocked_csv = (
+        "unit,setting_1,setting_2,setting_3,s1,s2,s3\n"
+        "fd001_unit_001,0.1,0.2,0.3,10.0,11.0,12.0\n"
+    )
+    blocked_preview = client.post(
+        _customer_path("/ingest/csv/preview"),
+        json={"csv_sample": blocked_csv},
+    )
+    assert blocked_preview.status_code == 200
+    blocked_body = blocked_preview.json()
+    assert blocked_body["preview_state"] == "preview_blocked"
+    assert blocked_body["requires_confirmation"] is True
+    assert blocked_body["suggested_mapping"] is None
+    assert blocked_body["issues"]
+
+    csv_text = (
+        "cycle,recorded_at,unit,setting_1,setting_2,setting_3,s1,s2,s3,s4,s5\n"
+        "1,2026-01-01T00:00:01+00:00,fd001_unit_001,0.1,0.2,0.3,10.0,11.0,12.0,13.0,14.0\n"
+        "2,2026-01-01T00:00:02+00:00,fd001_unit_001,0.1,0.2,0.3,10.1,11.1,12.1,13.1,14.1\n"
+        "3,2026-01-01T00:00:03+00:00,fd001_unit_001,0.1,0.2,0.3,10.2,11.2,12.2,13.2,14.2\n"
+    )
+    preview = client.post(
+        _customer_path("/ingest/csv/preview"),
+        json={"csv_sample": csv_text},
+    )
+    assert preview.status_code == 200
+    preview_body = preview.json()
+    assert preview_body["preview_state"] == "preview_ready"
+    assert preview_body["requires_confirmation"] is False
+    mapping = preview_body["suggested_mapping"]
+    assert mapping["timestamp"] == "recorded_at"
+    assert mapping["asset_id"] == "unit"
+    assert "setting_1" in mapping["sensor_columns"]
+
+    started = client.post(
+        _customer_path(f"/ingest/csv/upload?run_id={run_id}"),
+        files={"file": ("fd001_realistic.csv", csv_text.encode("utf-8"), "text/csv")},
+        data={"mapping": json.dumps(mapping)},
+    )
+    assert started.status_code == 200
+    assert started.json()["ui_state"] in {"uploading", "ingesting", "completed"}
+
+    done = _wait_for_ingest_job(client, started.json()["job_id"])
+    assert done["status"] == "completed"
+    assert done["terminal_state"] == "completed"
+    assert done["ui_state"] == "completed"
+    assert done["rows_processed"] == 3
+    assert done["rows_failed"] == 0
+
+    run_detail = client.get(_customer_path(f"/runs/{run_id}"))
+    assert run_detail.status_code == 200
+    assert run_detail.json()["run"]["run_id"] == run_id
+    assert run_detail.json()["run"]["status"] in {"active", "ready", "running"}
+
+    recent = client.get(_customer_path(f"/results/recent?run_id={run_id}&limit=5"))
+    assert recent.status_code == 200
+    body = recent.json()
+    assert body["count"] >= 3
+    latest = body["results"][0]
+    assert latest["run_id"] == run_id
+    assert latest["asset_id"] == "fd001_unit_001"
+
+    detail = client.get(_customer_path(f"/results/{latest['result_id']}?run_id={run_id}"))
+    assert detail.status_code == 200
+    assert detail.json()["result"]["run_id"] == run_id
+
+
+def test_ingest_job_terminal_state_is_not_overwritten_by_late_progress(tmp_path) -> None:
+    client = _client(tmp_path)
+    run = client.post(
+        _customer_path("/runs"),
+        json={"name": "stream-upload-failed", "activate": True, "config": {}},
+    )
+    assert run.status_code == 200
+    run_id = run.json()["run"]["run_id"]
+
+    csv_bytes = b"timestamp,asset_id\n2026-01-01T00:00:00+00:00,asset-a\n"
+    started = client.post(
+        _customer_path(f"/ingest/csv/upload?run_id={run_id}"),
+        files={"file": ("broken.csv", csv_bytes, "text/csv")},
+    )
+    assert started.status_code == 200
+    done = _wait_for_ingest_job(client, started.json()["job_id"])
+    assert done["status"] == "failed"
+    assert done["terminal_state"] == "failed"
+    assert done["lifecycle_phase"] == "terminal"
+    assert done["failure_category"] == "ingest_failed"
 
 
 def test_stream_upload_rejects_non_csv_extension(tmp_path) -> None:
@@ -576,6 +884,32 @@ def test_pull_integration_start_status_stop_and_ingest(tmp_path) -> None:
         assert recent.json()["count"] >= 2
     finally:
         server.stop()
+
+
+def test_pull_integration_rejects_non_finite_poll_interval(tmp_path) -> None:
+    client = _client(tmp_path)
+    customer_id = "pull-customer-invalid"
+    run = client.post(
+        _customer_path("/runs", customer_id=customer_id),
+        json={"name": "pull-run-invalid", "activate": True, "config": {}},
+    )
+    assert run.status_code == 200
+    run_id = run.json()["run"]["run_id"]
+
+    resp = client.post(
+        _customer_path("/integrations/pull/start", customer_id=customer_id),
+        json={
+            "endpoint_url": "http://127.0.0.1:9/pull",
+            "polling_interval_seconds": "NaN",
+            "auth_type": "none",
+            "run_id": run_id,
+            "retry_max_attempts": 1,
+            "retry_backoff_seconds": 0.05,
+            "request_timeout_seconds": 1.0,
+        },
+    )
+    assert resp.status_code == 400
+    assert "polling_interval_seconds must be a finite number" in resp.json()["detail"]
 
 
 def test_pull_integration_reports_failures_with_retries(tmp_path) -> None:
@@ -825,7 +1159,7 @@ def test_alerts_trigger_on_risk_high_transition_and_list(tmp_path, monkeypatch) 
     alerts = client.get(_customer_path(f"/alerts?run_id={run_id}&limit=50", customer_id="alert-customer-risk"))
     assert alerts.status_code == 200
     items = alerts.json()["alerts"]
-    assert any(str(a.get("type")) == "risk_high_transition" for a in items)
+    assert any(str(a.get("type")) == "persistent_alert_activated" for a in items)
 
 
 def test_alerts_trigger_on_instability_threshold_cross(tmp_path, monkeypatch) -> None:
@@ -860,7 +1194,7 @@ def test_alerts_trigger_on_instability_threshold_cross(tmp_path, monkeypatch) ->
     )
     assert alerts.status_code == 200
     items = alerts.json()["alerts"]
-    assert any(str(a.get("type")) == "instability_threshold_crossed" for a in items)
+    assert any(str(a.get("type")) in {"persistent_alert_activated", "alert_state"} for a in items)
 
 
 def test_alerts_trigger_on_rapid_drift_detected(tmp_path, monkeypatch) -> None:
@@ -896,5 +1230,190 @@ def test_alerts_trigger_on_rapid_drift_detected(tmp_path, monkeypatch) -> None:
     alerts = client.get(_customer_path(f"/alerts?run_id={run_id}&limit=50", customer_id="alert-customer-drift"))
     assert alerts.status_code == 200
     items = alerts.json()["alerts"]
-    assert any(str(a.get("type")) == "rapid_drift_detected" for a in items)
+    assert any(str(a.get("type")) in {"persistent_alert_activated", "alert_state"} for a in items)
 
+
+
+def test_alerts_endpoint_separates_current_status_from_event_history(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("NERAIUM_PILOT_DRIFT_HIGH_THRESHOLD", "0.0")
+    monkeypatch.setenv("NERAIUM_PILOT_DRIFT_WATCH_THRESHOLD", "0.0")
+    client = _client(tmp_path)
+    run = client.post(
+        _customer_path("/runs", customer_id="alert-customer-shape"),
+        json={"name": "alert-shape-run", "activate": True, "config": {"baseline_window": 5, "recent_window": 3}},
+    )
+    assert run.status_code == 200
+    run_id = run.json()["run"]["run_id"]
+
+    for i in range(3):
+        ing = client.post(
+            _customer_path(f"/ingest?run_id={run_id}", customer_id="alert-customer-shape"),
+            json={
+                "timestamp": f"2026-01-01T00:01:{i:02d}+00:00",
+                "customer_id": "alert-customer-shape",
+                "site_id": "site-alert",
+                "asset_id": "asset-alert",
+                "sensor_values": {"pressure": 55.0 + i * 6.0, "flow": 25.0 + i * 4.0, "vibration": 3.5 + i, "temperature": 62.0 + i * 2.0},
+            },
+        )
+        assert ing.status_code == 200
+
+    resp = client.get(_customer_path(f"/alerts?run_id={run_id}&limit=20", customer_id="alert-customer-shape"))
+    assert resp.status_code == 200
+    payload = resp.json()
+    assert isinstance(payload.get("current_status"), dict)
+    assert payload["current_status"].get("state") in {"ACTIVE_UNACKNOWLEDGED", "ESCALATED"}
+    assert isinstance(payload.get("alerts"), list)
+    assert any(str(a.get("type")) == "persistent_alert_activated" for a in payload["alerts"])
+
+
+
+def test_alert_policy_configurable_per_run(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("NERAIUM_PILOT_DRIFT_HIGH_THRESHOLD", "0.0")
+    monkeypatch.setenv("NERAIUM_PILOT_DRIFT_WATCH_THRESHOLD", "0.0")
+    client = _client(tmp_path)
+    run = client.post(
+        _customer_path("/runs", customer_id="alert-policy-run"),
+        json={
+            "name": "alert-policy",
+            "activate": True,
+            "config": {
+                "baseline_window": 5,
+                "recent_window": 3,
+                "alert_policy": {"trigger_hit_threshold": 4, "resolve_clean_window_threshold": 2},
+            },
+        },
+    )
+    assert run.status_code == 200
+    run_id = run.json()["run"]["run_id"]
+
+    for i in range(3):
+        ing = client.post(
+            _customer_path(f"/ingest?run_id={run_id}", customer_id="alert-policy-run"),
+            json={
+                "timestamp": f"2026-01-01T00:02:{i:02d}+00:00",
+                "customer_id": "alert-policy-run",
+                "site_id": "site-alert",
+                "asset_id": "asset-alert",
+                "sensor_values": {"pressure": 56.0 + i * 5.0, "flow": 24.0 + i * 4.0, "vibration": 3.2 + i, "temperature": 63.0 + i * 3.0},
+            },
+        )
+        assert ing.status_code == 200
+        assert ing.json().get("alert_status", {}).get("alert_state") == "PENDING_ALERT"
+
+    fourth = client.post(
+        _customer_path(f"/ingest?run_id={run_id}", customer_id="alert-policy-run"),
+        json={
+            "timestamp": "2026-01-01T00:02:03+00:00",
+            "customer_id": "alert-policy-run",
+            "site_id": "site-alert",
+            "asset_id": "asset-alert",
+            "sensor_values": {"pressure": 90.0, "flow": 65.0, "vibration": 8.5, "temperature": 92.0},
+        },
+    )
+    assert fourth.status_code == 200
+    status = fourth.json().get("alert_status") or {}
+    assert status.get("alert_state") in {"ACTIVE_UNACKNOWLEDGED", "ESCALATED"}
+    assert (status.get("policy") or {}).get("trigger_hit_threshold") == 4
+
+
+
+def test_legacy_operator_routes_redirect_to_dashboard(tmp_path) -> None:
+    client = _client(tmp_path)
+    operator = client.get("/operator", follow_redirects=False)
+    assert operator.status_code == 307
+    assert operator.headers.get("location") == "/dashboard"
+
+    workflow = client.get("/operator/workflow", follow_redirects=False)
+    assert workflow.status_code == 307
+    assert workflow.headers.get("location") == "/dashboard"
+
+
+def test_operator_workflow_state_path_exposes_recommendation_and_memory(tmp_path) -> None:
+    client = _client(tmp_path)
+    run_id, _ = _run_and_ingest(client)
+
+    state_resp = client.get(_customer_path(f"/state?run_id={run_id}"))
+    assert state_resp.status_code == 200
+    state = state_resp.json()["state"]
+    assert isinstance(state.get("risk_assessment"), dict)
+
+    recommendation = state.get("operational_recommendation")
+    assert isinstance(recommendation, dict)
+    assert recommendation["status"]["advisory"] is True
+    assert "recommended_action" in recommendation
+    assert "rationale" in recommendation
+    assert "operator_note" in recommendation
+
+    memory_recall = state.get("memory_recall")
+    assert isinstance(memory_recall, dict)
+    assert "novelty" in memory_recall
+    assert "nearest_match" in memory_recall
+    assert "top_matches" in memory_recall
+
+
+def test_alert_acknowledge_and_resolve_endpoints_update_alert_state(tmp_path, monkeypatch) -> None:
+    monkeypatch.setenv("NERAIUM_PILOT_DRIFT_HIGH_THRESHOLD", "0.0")
+    monkeypatch.setenv("NERAIUM_PILOT_DRIFT_WATCH_THRESHOLD", "0.0")
+    client = _client(tmp_path)
+    run = client.post(
+        _customer_path("/runs", customer_id="alert-customer-ack"),
+        json={"name": "alert-ack-run", "activate": True, "config": {"baseline_window": 5, "recent_window": 3}},
+    )
+    assert run.status_code == 200
+    run_id = run.json()["run"]["run_id"]
+
+    for i in range(3):
+        ing = client.post(
+            _customer_path(f"/ingest?run_id={run_id}", customer_id="alert-customer-ack"),
+            json={
+                "timestamp": f"2026-01-01T00:00:{i:02d}+00:00",
+                "customer_id": "alert-customer-ack",
+                "site_id": "site-alert",
+                "asset_id": "asset-alert",
+                "sensor_values": {"pressure": 50.0 + i * 5.0, "flow": 20.0 + i * 4.0, "vibration": 3.0 + i, "temperature": 60.0 + i * 3.0},
+            },
+        )
+        assert ing.status_code == 200
+
+    ack = client.post(
+        "/alerts/acknowledge",
+        json={"run_id": run_id, "customer_id": "alert-customer-ack", "acknowledged_by": "operator-api"},
+    )
+    assert ack.status_code == 200
+
+    ing_ack = client.post(
+        _customer_path(f"/ingest?run_id={run_id}", customer_id="alert-customer-ack"),
+        json={
+            "timestamp": "2026-01-01T00:00:10+00:00",
+            "customer_id": "alert-customer-ack",
+            "site_id": "site-alert",
+            "asset_id": "asset-alert",
+            "sensor_values": {"pressure": 90.0, "flow": 60.0, "vibration": 8.0, "temperature": 90.0},
+        },
+    )
+    assert ing_ack.status_code == 200
+    status = ing_ack.json().get("alert_status") or {}
+    assert status.get("alert_state") in {"ACTIVE_ACKNOWLEDGED", "ESCALATED"}
+    assert status.get("acknowledged") is True
+
+    resolve = client.post(
+        "/alerts/resolve",
+        json={"run_id": run_id, "customer_id": "alert-customer-ack", "resolved_by": "operator-api"},
+    )
+    assert resolve.status_code == 200
+
+    ing_resolved = client.post(
+        _customer_path(f"/ingest?run_id={run_id}", customer_id="alert-customer-ack"),
+        json={
+            "timestamp": "2026-01-01T00:00:11+00:00",
+            "customer_id": "alert-customer-ack",
+            "site_id": "site-alert",
+            "asset_id": "asset-alert",
+            "sensor_values": {"pressure": 92.0, "flow": 62.0, "vibration": 8.5, "temperature": 91.0},
+        },
+    )
+    assert ing_resolved.status_code == 200
+    resolved_status = ing_resolved.json().get("alert_status") or {}
+    assert resolved_status.get("alert_state") == "RESOLVED"
+    assert resolved_status.get("resolved_reason") == "manual_resolution"

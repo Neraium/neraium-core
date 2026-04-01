@@ -6,7 +6,7 @@ This document tracks the status of Phase 1: the production-readiness upgrade (ca
 
 ## Phase 1 Scope (from UPGRADE_NOTES.md)
 
-1. **Causal Attribution** - `causal_attribution`, `dominant_driver`
+1. **Causal Attribution** - `attribution`, `dominant_driver`
 2. **Missing-Data Robustness** - `data_quality_summary`, degraded-path handling
 3. **Adaptive Baseline** - `baseline_mode`, `regime_memory_state`
 4. **Confidence Stabilization** - `confidence_score`, `classification_stability`
@@ -26,9 +26,16 @@ This document tracks the status of Phase 1: the production-readiness upgrade (ca
 | Full test suite (`pytest tests/`) | 89 passed |
 | Ruff check | Minor pre-existing issues in colab/utility scripts |
 
+### Post-merge hardening status
+
+- Canonical causal module path is `neraium_core.causal`; the legacy `neraium_core.casual` module remains a deprecated shim only.
+- Decision resolver fallback behavior is standardized for warmup and insufficient-evidence paths.
+- Canonical decision-intelligence output blocks remain stable across warmup and ready paths:
+  `causal_analysis`, `decision`, `attribution`, `risk_assessment`, `operator_guidance`, `regime_memory`.
+
 ### Upgrade Scenario Coverage
 
-- **Nominal operation** - output shape, NOMINAL_STRUCTURE, causal_attribution, data_quality_summary, baseline_mode
+- **Nominal operation** - output shape, NOMINAL_STRUCTURE, attribution, data_quality_summary, baseline_mode
 - **Regime shift** - REGIME_SHIFT_OBSERVED or NOMINAL under clean transition
 - **Coupling instability** - COUPLING_INSTABILITY_OBSERVED in tail when one channel goes noisy
 - **Structural instability** - STRUCTURAL_INSTABILITY_OBSERVED when relational drift + persistence

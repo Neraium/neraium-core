@@ -8,9 +8,10 @@
 | 2 | Frame | `service.py`: `_decorate_result(engine.process_frame(frame))` | result dict (enriched) |
 | 3 | Frame | **`alignment.py`: `StructuralEngine.process_frame(frame)`** | **Single source of structural result** |
 | 4 | Result | `decision_layer.py`: `decision_output(composite_score, components, forecast)` | phase, risk_level, signal_emitted, operator_message, interpreted_state, etc. |
-| 5 | Result | `service.py`: `_decorate_result` | Adds risk_level, action_state, operator_message, trend, confidence, interpretation, structural_analysis_metadata |
+| 5 | Result | `causal.py`: `generate_hypotheses` → `score_hypotheses` → `run_counterfactual_checks` → `generate_validation_plan` → `rank_actions` | `causal_analysis` block (hypotheses, top_hypothesis, counterfactual, validation plan, recommended sequence) |
+| 6 | Result | `service.py`: `_decorate_result` | Adds risk_level, action_state, operator_message, trend, confidence, interpretation, structural_analysis_metadata |
 
-**Conclusion:** The only execution path for structural analytics is `alignment.py` → `StructuralEngine.process_frame`. All new behavior must be wired there (or in modules it calls). No parallel pipeline.
+**Conclusion:** The only execution path for structural analytics is `alignment.py` → `StructuralEngine.process_frame`. Causal reasoning is integrated in that path via `neraium_core/causal.py`; there is no parallel pipeline.
 
 ---
 
@@ -104,3 +105,31 @@ frame
 - Prefer modifying existing pipeline: data quality and normalized score are single insertions in `process_frame` and one change in `scoring.py`.
 - Every new piece wired into main path: data quality runs on every frame that has windows; normalized score is the only composite used for decision and `latest_instability`.
 - No dead code: no parallel “legacy” path; optional `gate_passed` only controls what we attach (and optionally whether we run heavy analytics when gate fails).
+
+---
+
+## Pre-pilot decision resolver upgrade (SII runtime)
+
+`SIIEngine.process_frame()` now includes a deterministic decision-compression stage after the intelligence blocks are assembled:
+
+1. Build/emit canonical blocks:
+   - `attribution`
+   - `regime_memory`
+   - `risk_assessment`
+   - `operator_guidance`
+   - `causal_analysis`
+2. Resolve top-level `decision` via `neraium_core/decision_resolver.py::resolve_best_action(...)`.
+3. Emit structured fallback decisions during warmup/insufficient evidence instead of omitting the block.
+
+Decision selection hierarchy:
+1. `causal_analysis.best_next_action` (when confidence is usable)
+2. first ranked `causal_analysis.recommended_sequence` action
+3. `operator_guidance.recommended_actions[0]`
+4. conservative attribution-localized inspection action
+5. fallback (`decision.status.available = false`)
+
+Hardening note:
+- Canonical causal imports must use `neraium_core.causal`.
+- `neraium_core.casual` remains only as a deprecated compatibility shim.
+- Decision fallback is explicit and deterministic for warmup/insufficient-evidence cases.
+- Canonical output blocks (`causal_analysis`, `decision`, `attribution`, `risk_assessment`, `operator_guidance`, `regime_memory`) are always emitted.

@@ -9,10 +9,8 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
-  <link rel="stylesheet" href="/web/styles.css" />
-  <link rel="modulepreload" href="/web/three-init.mjs" />
+  <link rel="stylesheet" href="/web/styles.css?v=__NERAIUM_ASSET_VERSION__" />
   <!-- Three.js from CDN (same version as scripts/download_three_vendor.py) — avoids /web/vendor static issues. -->
-  <link rel="modulepreload" href="https://cdn.jsdelivr.net/npm/three@0.162.0/build/three.module.js" crossorigin />
   <script type="importmap">
     {
       "imports": {
@@ -42,293 +40,174 @@
         </div>
       </div>
       <nav class="nav">
-        <p class="nav-section-title">Workspace</p>
-        <a href="/dashboard" data-nav="dashboard">Dashboard</a>
-        <a href="/app/runs" data-nav="runs">Runs</a>
-        <a href="/upload" data-nav="upload">Upload</a>
-        <a href="/demo/sii" data-nav="demo-sii">SII tour</a>
+        <p class="nav-section-title">Core workflow</p>
+        <a href="/dashboard" data-nav="dashboard">1. Monitor risk</a>
+        <a href="/upload" data-nav="upload">2. Upload telemetry</a>
+        <a href="/app/runs" data-nav="runs">3. Investigate run</a>
+        <p class="nav-section-title nav-section-title-secondary">Setup</p>
+        <a href="/onboarding" data-nav="onboarding">Onboarding setup</a>
+        <a href="/validation" data-nav="validation">Validation replay</a>
       </nav>
     </aside>
 
     <div class="main">
-      <header class="topbar">
+      <header class="topbar command-topbar">
         <div class="topbar-main">
-          <button type="button" id="mobileNavToggle" class="mobile-nav-toggle" aria-label="Open menu" aria-expanded="false" aria-controls="appSidebar">
-            <span class="mobile-nav-toggle-bars" aria-hidden="true"></span>
-          </button>
-          <a href="/dashboard" class="topbar-wordmark">Neraium</a>
-          <div class="title-block">
-            <h2 id="pageTitle">Dashboard</h2>
-            <p id="pageSubtitle" class="subtitle page-subtitle-truncate">Active run snapshot</p>
+          <div class="topbar-brand-row">
+            <button type="button" id="mobileNavToggle" class="mobile-nav-toggle" aria-label="Open menu" aria-expanded="false" aria-controls="appSidebar">
+              <span class="mobile-nav-toggle-bars" aria-hidden="true"></span>
+            </button>
+            <a href="/dashboard" class="topbar-wordmark">Neraium</a>
+          </div>
+          <div class="title-block telemetry-title">
+            <h2 id="pageTitle">Monitor risk</h2>
+            <p id="pageSubtitle" class="subtitle page-subtitle-truncate">See risk now. Act now.</p>
           </div>
         </div>
-        <div class="topbar-controls topbar-controls-compact topbar-tools" aria-label="Demo and tools">
-          <div class="topbar-compact-row">
-            <label class="demo-toggle" for="demoModeToggle">
-              <input id="demoModeToggle" type="checkbox" />
-              <span>Demo</span>
-            </label>
-            <button id="prepareDemoBtn" type="button" class="secondary" title="Load sample runs and open the demo">Run demo</button>
-            <button id="seedDemoBtn" type="button" class="secondary" title="Seed sample telemetry into the active run">Sample data</button>
-            <button id="refreshBtn" type="button" class="topbar-refresh">Refresh</button>
-          </div>
+        <div class="telemetry-status-strip" aria-label="System telemetry status">
+          <span id="connectionBadge" class="chip chip-live"><span class="live-dot" aria-hidden="true"></span><span id="connectionLabel">LIVE</span></span>
+          <span class="chip">Run <strong id="topbarActiveRunId">--</strong></span>
+          <span class="chip">UTC <strong id="liveTimestamp">--:--:--</strong></span>
+          <span id="streamingBadge" class="chip streaming hidden">Streaming</span>
         </div>
       </header>
 
+      <div id="runtimeModeBanner" class="status status-warning hidden" role="status" aria-live="polite"></div>
       <div id="globalStatus" class="status hidden"></div>
 
       <main class="content">
         <!-- DASHBOARD -->
         <section id="page-dashboard" class="page page-dashboard">
-          <section id="dashboardDemoHero" class="dashboard-demo-hero panel hidden" aria-labelledby="dashboardDemoHeroTitle">
-            <div class="dashboard-demo-hero-inner">
-              <div class="dashboard-demo-hero-copy">
-                <h3 id="dashboardDemoHeroTitle" class="dashboard-demo-hero-title">Try the demo</h3>
-                <p class="dashboard-demo-hero-sub">Scripted telemetry on the active run — no upload.</p>
-                <button type="button" class="btn-hero-demo" id="dashboardQuickDemoBtn">Run demo</button>
-              </div>
-            </div>
-          </section>
-
-          <section class="dashboard-hero panel control-center">
-            <div class="dashboard-hero-grid">
+          <section class="panel dashboard-hero operator-hero" aria-label="Operator status">
+            <div class="dashboard-hero-grid operator-hero-grid">
               <div class="dashboard-hero-primary">
-                <p class="dashboard-hero-kicker">Active run</p>
+                <p class="dashboard-hero-kicker">Operator command summary</p>
                 <div class="dashboard-hero-score-row">
-                  <div class="dashboard-hero-health-col">
-                    <div class="health-ring-wrap" title="Composite health from risk, drift, and instability">
-                      <svg id="dashboardHealthRing" class="health-ring" viewBox="0 0 120 120" aria-hidden="true">
-                        <circle class="health-ring-bg" cx="60" cy="60" r="52" />
-                        <circle id="dashboardHealthArc" class="health-ring-arc" cx="60" cy="60" r="52" />
-                      </svg>
-                      <div class="health-ring-label">
-                        <span class="health-ring-value" id="dashboardHealthScore">-</span>
-                        <span class="health-ring-caption">Health</span>
-                      </div>
+                  <div class="health-ring-wrap dashboard-hero-health-col">
+                    <svg class="health-ring" viewBox="0 0 120 120" aria-hidden="true">
+                      <circle class="health-ring-bg" cx="60" cy="60" r="48"></circle>
+                      <circle id="dashboardHealthRingArc" class="health-ring-arc" cx="60" cy="60" r="48"></circle>
+                    </svg>
+                    <div class="health-ring-label">
+                      <span id="dashboardHealthScore" class="health-ring-value">-</span>
+                      <span id="dashboardHealthCaption" class="health-ring-caption">No active telemetry</span>
                     </div>
                   </div>
                   <div class="dashboard-hero-state-block">
-                    <div class="dashboard-status-stack">
-                      <div class="dashboard-hero-primary-status">
-                        <p class="signal-caption">System state</p>
-                        <div class="signal-main-row dashboard-state-row">
-                          <p id="metricState" class="signal-state dashboard-state-primary">-</p>
-                          <div id="metricPhaseBadge"></div>
-                        </div>
-                      </div>
-                      <div class="dashboard-hero-secondary-status">
-                        <span class="signal-label">Risk</span>
-                        <div class="dashboard-risk-row">
-                          <p id="metricRisk" class="signal-risk dashboard-risk-value metric-risk">-</p>
-                          <div id="metricRiskBadge"></div>
-                        </div>
-                      </div>
-                      <p class="signal-trend dashboard-trend-line">Trend <strong id="metricTrend">-</strong></p>
+                    <div class="dashboard-risk-row">
+                      <p class="signal-label">Current risk</p>
+                      <p id="snapshotRisk" class="dashboard-risk-value signal-risk-inline">UNKNOWN</p>
                     </div>
-                    <p class="dashboard-narrative-strip" id="dashboardNarrativeStrip">Awaiting telemetry.</p>
-                    <p id="metricOperatorMessage" class="operator-message dashboard-operator-line">
-                      No results yet. Upload telemetry or use Sample data.
-                    </p>
+                    <p id="snapshotTrend" class="dashboard-trend-line">UNKNOWN</p>
+                    <p id="snapshotRecommendation" class="dashboard-narrative-strip">No data yet. Upload telemetry to start monitoring.</p>
+                    <p id="metricOperatorMessage" class="dashboard-operator-line">Awaiting telemetry.</p>
                   </div>
                 </div>
               </div>
               <aside class="dashboard-hero-aside">
-                <p class="dashboard-last-updated" id="dashboardLastUpdated">Last updated —</p>
-                <article class="insight-tile insight-tile-alert insight-tile-metrics-split" id="dashboardAlertTile">
-                  <div class="insight-metrics-row" aria-label="Alerts and snapshot count">
-                    <div class="insight-metric-block">
-                      <p class="insight-tile-label">Alerts</p>
-                      <p class="insight-tile-value insight-tile-value--sm" id="dashboardAlertCount">0</p>
-                    </div>
-                    <div class="insight-metric-block">
-                      <p class="insight-tile-label">Snapshots</p>
-                      <p class="insight-tile-value insight-tile-value--sm" id="dashboardSnapshotCount">0</p>
-                    </div>
-                  </div>
-                  <p class="insight-tile-sub" id="dashboardAlertSummary">No open alerts for this run.</p>
+                <article class="insight-tile" id="dashboardAlertTile">
+                  <p class="insight-tile-label">Current system state</p>
+                  <p id="snapshotState" class="insight-tile-sub">Unknown</p>
+                  <p class="insight-tile-label">Latest operator message</p>
+                  <p id="dashboardAlertSummary" class="insight-tile-sub">No open alerts for this run.</p>
                 </article>
-                <a class="dashboard-deep-link" id="dashboardOpenRunLink" href="/app/runs">Run detail →</a>
+                <article class="insight-tile">
+                  <p class="insight-tile-label">What to do next</p>
+                  <p id="dashboardNextAction" class="insight-tile-sub">Upload telemetry to start active monitoring.</p>
+                  <p id="dashboardLastUpdated" class="dashboard-last-updated">No telemetry timestamp yet.</p>
+                </article>
               </aside>
             </div>
           </section>
 
-          <section class="panel dashboard-signals">
-            <div class="panel-header dashboard-section-head">
-              <h3>Trend</h3>
+          <section class="panel operator-section" aria-label="Progression">
+            <div class="panel-header"><h3>Progression and trajectory</h3></div>
+            <p class="subtitle">Track how risk and instability are moving over time.</p>
+            <div id="dashboardRiskProgression" class="risk-progression-strip">
+              <span class="risk-stage">LOW</span>
+              <span class="risk-stage">MEDIUM</span>
+              <span class="risk-stage">HIGH</span>
             </div>
             <div class="sparkline-wrap">
-              <div class="sparkline-canvas-wrap">
-                <canvas id="dashboardSparkline" width="900" height="140" aria-label="Drift and composite trend"></canvas>
-                <div id="dashboardSparklineTooltip" class="sparkline-tooltip hidden" role="tooltip"></div>
-              </div>
+              <canvas id="dashboardSparkline" aria-label="Drift and composite instability trend"></canvas>
+              <div id="dashboardSparklineTooltip" class="dashboard-sparkline-tooltip hidden"></div>
             </div>
           </section>
 
-          <details class="panel disclosure-panel results-panel" id="dashboardResultsDisclosure">
-            <summary class="disclosure-summary">
-              <span class="disclosure-title">Recent results</span>
-              <span class="disclosure-hint">Export &amp; open snapshots</span>
-            </summary>
-            <div class="row panel-actions disclosure-actions">
-              <button id="exportJsonBtn" type="button">Export JSON</button>
-              <button id="exportCsvBtn" type="button" class="secondary">Export CSV</button>
-            </div>
-            <div id="dashboardEmpty" class="empty-state hidden">
-              <p>No results for the active run yet.</p>
-              <p class="subtitle">Use <strong>Run quick demo</strong> above, <strong>Upload</strong> for CSV, or <strong>Sample data</strong> for a quick seed.</p>
-            </div>
-            <div class="table-wrap">
-              <table class="data-table dashboard-results-table">
-                <thead>
-                  <tr>
-                    <th>ID</th>
-                    <th>Timestamp</th>
-                    <th>Phase</th>
-                    <th>Risk</th>
-                    <th>Drift</th>
-                    <th>Composite</th>
-                    <th></th>
-                  </tr>
-                </thead>
-                <tbody id="dashboardRecentBody"></tbody>
-              </table>
-            </div>
-          </details>
-        </section>
-
-        <!-- DEMO TOUR (SII narrative) -->
-        <section id="page-demo-sii" class="page page-demo-sii hidden">
-          <section class="demo-hero panel">
-            <p class="demo-hero-eyebrow">Systemic Infrastructure Intelligence</p>
-            <h2 class="demo-hero-title">See the system. Surface the shift. Act before failure.</h2>
-            <p class="demo-hero-lead">
-              Neraium fuses sensor streams into structural relationships, then scores drift, instability, and risk in one operational surface built for live walkthroughs and real incident response.
-            </p>
-            <div class="demo-hero-actions">
-              <a class="button-link" href="/dashboard">Open dashboard</a>
-              <button type="button" class="secondary" id="demoTourEnableBtn">Enable demo mode</button>
-            </div>
-            <p class="subtitle demo-share-hint" style="margin-top: 1rem; max-width: 42rem">
-              <strong>External guests:</strong> run <code style="font-size: 0.9em">python run_demo.py --share</code>, copy the printed
-              <code>https://…trycloudflare.com</code> (or ngrok) URL, then append
-              <code>?demo=1&amp;prepare=1</code> after <code>/dashboard</code> so Demo Mode turns on and scripted runs load automatically.
-              See <code>docs/DEMO_SHARE.md</code>.
-            </p>
+          <section class="panel operator-section" aria-label="Why this assessment">
+            <div class="panel-header"><h3>Why the system says this</h3></div>
+            <p id="recommendationRationale" class="subtitle">Explanation appears once telemetry is available.</p>
+            <details>
+              <summary>Operator guidance details</summary>
+              <p id="recommendationPrimary" class="snapshot-recommendation">No recommendation available.</p>
+              <p id="recommendationOperatorNote" class="subtitle"></p>
+            </details>
           </section>
 
-          <section class="demo-steps">
-            <article class="demo-step panel">
-              <div class="demo-step-index">01</div>
-              <div class="demo-step-body">
-                <h3>Here is the system</h3>
-                <p class="subtitle">
-                  Every snapshot projects correlated sensors into a relationship field. You see nodes, stress, and coupling rather than isolated charts.
-                </p>
-                <ul class="demo-bullet-list">
-                  <li>Structural flow on run detail shows four sensors on a shared plane; out-of-range sensors lift vertically while links respond.</li>
-                  <li>Dashboard summarizes the latest envelope: state, phase, and health score.</li>
-                </ul>
-              </div>
-            </article>
-            <article class="demo-step panel">
-              <div class="demo-step-index">02</div>
-              <div class="demo-step-body">
-                <h3>Here is what is changing</h3>
-                <p class="subtitle">
-                  Drift and composite instability trend together. Transitions and key events are highlighted so motion in the system is obvious in seconds.
-                </p>
-                <ul class="demo-bullet-list">
-                  <li>Timeline on run detail encodes severity: normal, watch, critical.</li>
-                  <li>Demo mode plays the timeline forward for storytelling.</li>
-                </ul>
-              </div>
-            </article>
-            <article class="demo-step panel">
-              <div class="demo-step-index">03</div>
-              <div class="demo-step-body">
-                <h3>Here is the risk</h3>
-                <p class="subtitle">
-                  Risk is not a single threshold: it is interpreted from drift, instability, phase, and structural availability, with plain-language operator readouts.
-                </p>
-                <ul class="demo-bullet-list">
-                  <li>Alert rail surfaces platform-detected transitions and threshold crosses.</li>
-                  <li>“Why this risk” explains drivers without opening another tool.</li>
-                </ul>
-              </div>
-            </article>
-            <article class="demo-step panel">
-              <div class="demo-step-index">04</div>
-              <div class="demo-step-body">
-                <h3>Here is the prediction</h3>
-                <p class="subtitle">
-                  The engine scores forward-leaning structural stress so teams can stage maintenance, isolate subsystems, and brief leadership with a single narrative.
-                </p>
-                <ul class="demo-bullet-list">
-                  <li>Use <strong>Demo run</strong> for three scenarios: stable, watch, and escalation.</li>
-                  <li>Export JSON or CSV when you need evidence outside the console.</li>
-                </ul>
-              </div>
-            </article>
+          <section class="panel operator-section" aria-label="Metrics">
+            <div class="panel-header"><h3>Supporting metrics</h3></div>
+            <div class="snapshot-grid" role="list">
+              <article class="snapshot-item" role="listitem"><p>Trend</p><strong id="metricTrend">-</strong></article>
+              <article class="snapshot-item" role="listitem"><p>Phase</p><strong id="metricPhaseBadge">-</strong></article>
+              <article class="snapshot-item" role="listitem"><p>Risk</p><strong id="metricRiskBadge">-</strong></article>
+              <article class="snapshot-item" role="listitem"><p>Confidence</p><strong id="metricStateConfidence">--%</strong></article>
+            </div>
           </section>
 
-          <section class="panel demo-compare">
-            <div class="panel-header dashboard-section-head">
-              <div>
-                <h3>Without SII vs with SII</h3>
-                <p class="subtitle section-subtitle">Same telemetry. Different time-to-comprehension.</p>
+          <section class="panel operator-section" aria-label="Advanced diagnostics">
+            <div class="panel-header"><h3>Advanced diagnostics · Sensor relationships</h3></div>
+            <details open>
+              <summary>Structural relationship graph</summary>
+              <div class="graph-controls-row">
+                <div class="range-controls" id="relationshipGraphModeControls">
+                  <button type="button" data-graph-mode="baseline">Baseline</button>
+                  <button type="button" data-graph-mode="current" class="active">Current</button>
+                  <button type="button" data-graph-mode="delta">Delta / drift</button>
+                </div>
+                <label class="subtitle">Edge threshold
+                  <input id="relationshipGraphEdgeFilter" type="range" min="0" max="0.9" step="0.05" value="0.2" />
+                </label>
+                <button id="relationshipGraphPlayBtn" type="button" class="secondary">Play</button>
               </div>
+              <div class="graph-controls-row">
+                <input id="relationshipGraphTimeScrubber" type="range" min="0" max="0" step="1" value="0" />
+                <p id="relationshipGraphTimeLabel" class="subtitle">Replay unavailable</p>
+              </div>
+              <div id="relationshipGraphEmpty" class="empty-state hidden"></div>
+              <div class="relationship-graph-wrap">
+                <canvas id="relationshipGraphCanvas" class="relationship-graph-canvas" width="960" height="520" aria-label="Sensor relationship graph"></canvas>
+                <div id="relationshipGraphTooltip" class="dashboard-sparkline-tooltip hidden"></div>
+              </div>
+              <aside id="relationshipGraphDetail" class="geometry-details">
+                <p class="metric-k">Selected relationship detail</p>
+                <p id="relationshipGraphDetailTitle" class="metric-v">Select a node or edge.</p>
+                <p id="relationshipGraphDetailBody" class="subtitle">Hover and click the graph to inspect local structure, risk contribution, and drift.</p>
+              </aside>
+            </details>
+          </section>
+
+          <section class="panel control-panel" aria-label="Pilot operations controls">
+            <div class="panel-header"><h3>Operator actions</h3></div>
+            <div class="control-stack" role="group" aria-label="Operational actions">
+              <a id="primaryPilotActionBtn" href="/upload" class="button-link primary primary-pilot-btn">Upload telemetry now</a>
+              <button id="refreshBtn" type="button" class="secondary control-secondary-btn">Refresh status</button>
             </div>
-            <div class="compare-grid">
-              <article class="compare-card compare-before">
-                <h4>Without SII</h4>
-                <ul class="compare-list">
-                  <li>Raw sensor tiles and static thresholds</li>
-                  <li>Correlations discovered late in spreadsheets</li>
-                  <li>Incidents explained after the fact</li>
-                </ul>
-              </article>
-              <article class="compare-card compare-after">
-                <h4>With SII</h4>
-                <ul class="compare-list">
-                  <li>Structural field + drift / instability trajectory</li>
-                  <li>Risk narrative tied to evidence in one run</li>
-                  <li>Demo-ready playback for exec and field teams</li>
-                </ul>
-              </article>
+            <div class="quick-link-stack" aria-label="Open deeper analysis">
+              <a class="button-link secondary" id="dashboardOpenAnalysisLink" href="/app/runs">Open run investigation</a>
             </div>
           </section>
         </section>
 
-        <!-- RUNS LIST -->
         <section id="page-runs" class="page hidden">
           <section class="panel">
-            <h3>Create run</h3>
-            <form id="runCreateForm" class="stack">
-              <label>
-                Run name
-                <input id="runNameInput" required placeholder="e.g. Plant A - Morning Batch" />
-              </label>
-              <label>
-                Run config (JSON)
-                <textarea id="runConfigInput" rows="4" placeholder='{"recent_window":8}'></textarea>
-              </label>
-              <p class="subtitle">Optional JSON for window sizes and engine options (see API docs).</p>
-              <label class="row">
-                <input id="runActivateInput" type="checkbox" checked />
-                <span>Set as active</span>
-              </label>
-              <button type="submit">Create run</button>
-            </form>
-          </section>
-
-          <section class="panel">
             <div class="panel-header">
-              <h3>Runs</h3>
+                <h3>Investigate run</h3>
             </div>
+            <p class="subtitle">Open a run to inspect trend, risk, and next action.</p>
             <div class="row wrap filters">
-              <input id="runsSearchInput" placeholder="Search run name or run ID" />
+              <input id="runsSearchInput" placeholder="Find run by name or ID" />
               <select id="runsStatusFilter">
-                <option value="all">All statuses</option>
+                <option value="all">All</option>
                 <option value="active">Active</option>
                 <option value="open">Open</option>
               </select>
@@ -340,7 +219,8 @@
               </select>
             </div>
             <div id="runsEmptyHint" class="empty-state hidden">
-              <p>No runs match your filters.</p>
+              <p>No runs found.</p>
+              <p class="subtitle">Clear filters or create a new run below.</p>
             </div>
             <div class="table-wrap">
               <table class="data-table runs-table">
@@ -356,23 +236,52 @@
                 <tbody id="runsBody"></tbody>
               </table>
             </div>
+            <details class="inline-create-run">
+              <summary>Create run (only if no active run fits this investigation)</summary>
+              <form id="runCreateForm" class="stack">
+                <label>
+                  Run name
+                  <input id="runNameInput" required placeholder="e.g. Plant A - Morning Batch" />
+                </label>
+                <label>
+                  Run config (JSON)
+                  <textarea id="runConfigInput" rows="4" placeholder='{"recent_window":8}'></textarea>
+                </label>
+                <p class="subtitle">Optional JSON for window sizes and engine options.</p>
+                <label class="row">
+                  <input id="runActivateInput" type="checkbox" checked />
+                  <span>Set as active run</span>
+                </label>
+                <button type="submit">Create run</button>
+              </form>
+            </details>
           </section>
         </section>
 
         <!-- UPLOAD -->
         <section id="page-upload" class="page hidden">
           <section class="panel upload-panel">
-            <h3>Upload CSV to active run</h3>
-            <p class="subtitle" id="uploadRunInfo"></p>
+            <div class="upload-head">
+              <div>
+                <p class="upload-kicker">Data ingest</p>
+                <h3>Upload telemetry CSV</h3>
+                <p class="subtitle" id="uploadRunInfo"></p>
+              </div>
+              <span class="chip upload-head-chip">Column mapping auto-detected</span>
+            </div>
             <form id="csvUploadForm" class="stack">
               <label id="uploadDropZone" class="upload-dropzone">
                 <input id="csvFileInput" type="file" accept=".csv,text/csv" required />
-                <span class="upload-cta">Choose or drop a CSV file</span>
-                <span class="upload-hint">Any column names — we detect time, asset, optional site, and numeric sensors.</span>
+                <span class="upload-dropzone-icon" aria-hidden="true">⬆</span>
+                <span class="upload-cta">Drop CSV here or choose file</span>
+                <span class="upload-hint">Required: timestamp + asset + at least one numeric sensor column.</span>
                 <span id="selectedFileName" class="upload-file-name">No file selected</span>
               </label>
               <section id="csvMappingPanel" class="csv-mapping-panel hidden" aria-label="CSV column mapping">
-                <h4>Column mapping</h4>
+                <div class="csv-mapping-head">
+                  <h4>Column mapping</h4>
+                <span class="chip csv-mapping-chip">Confirm before upload</span>
+                </div>
                 <p id="csvMappingSummary" class="subtitle"></p>
                 <ul id="csvMappingIssues" class="csv-mapping-messages"></ul>
                 <div class="csv-mapping-grid">
@@ -392,7 +301,7 @@
                 </fieldset>
               </section>
               <div class="row">
-                <button id="uploadSubmitBtn" type="submit">Upload and ingest</button>
+                <button id="uploadSubmitBtn" type="submit">Start upload</button>
               </div>
               <section id="uploadProgressPanel" class="upload-progress hidden" aria-live="polite">
                 <div class="upload-progress-top">
@@ -408,122 +317,68 @@
               </section>
             </form>
             <p id="uploadHelpMessage" class="subtitle">
-              Uploads stream to the server with progress tracking. Headers are mapped semantically — no fixed column names required.
+              If upload fails, fix the highlighted column mapping and retry.
             </p>
           </section>
         </section>
 
         <!-- RUN DETAIL -->
         <section id="page-run-detail" class="page hidden">
-          <section class="panel">
+          <section id="analysis-executive" class="panel analysis-workspace-section" data-analysis-panel="executive">
             <div class="panel-header">
-              <h3 id="runDetailTitle">Run detail</h3>
+              <h3 id="runDetailTitle">Investigate run</h3>
               <div class="row panel-actions">
                 <button id="runDetailExportJsonBtn" type="button">Export JSON</button>
                 <button id="runDetailExportCsvBtn" type="button" class="secondary">Export CSV</button>
               </div>
             </div>
             <p id="runDetailMeta" class="subtitle"></p>
-            <div id="runSignalSeparation" class="signal-separation hidden">
-              <article class="signal-card state">
-                <span class="k">State</span>
-                <div id="runSignalState" class="v">-</div>
-              </article>
-              <article class="signal-card risk">
-                <span class="k">Risk</span>
-                <div id="runSignalRisk" class="v">-</div>
-              </article>
-              <article class="signal-card trend">
-                <span class="k">Trend</span>
-                <div id="runSignalTrend" class="v">-</div>
-              </article>
-            </div>
-            <div id="runTransitionStrip" class="timeline-transition-strip hidden"></div>
-            <div id="runDetailDemoHero" class="run-detail-demo-hero hidden" role="dialog" aria-modal="true" aria-labelledby="runDetailDemoHeroTitle">
-              <div class="run-detail-demo-hero-card">
-                <p class="run-detail-demo-hero-kicker">Demo scenario</p>
-                <h3 id="runDetailDemoHeroTitle">Watch this escalation unfold?</h3>
-                <p class="subtitle">Add <span class="mono-inline">?hero=1</span> to the URL to show this overlay on first visit. Use Play to start the timeline.</p>
-                <div class="row">
-                  <button type="button" id="runDetailDemoHeroPlayBtn" class="btn-hero-demo">Play demo timeline</button>
-                  <button type="button" id="runDetailDemoHeroDismissBtn" class="secondary">Not now</button>
-                </div>
-              </div>
-            </div>
-            <section id="runCurrentStateCard" class="run-current-state hidden" aria-label="Current snapshot metrics">
-              <div class="run-current-state-head">
-                <strong>Current state</strong>
-                <span class="subtitle">Latest snapshot in the table below</span>
-              </div>
-              <div class="run-current-state-grid">
-                <div class="mini-gauge">
-                  <span class="mini-gauge-label">Drift</span>
-                  <div class="mini-gauge-track"><div id="gaugeDriftFill" class="mini-gauge-fill mini-gauge-fill-drift"></div></div>
-                  <span id="gaugeDriftVal" class="mini-gauge-val">—</span>
-                </div>
-                <div class="mini-gauge">
-                  <span class="mini-gauge-label">Instability</span>
-                  <div class="mini-gauge-track"><div id="gaugeInstFill" class="mini-gauge-fill mini-gauge-fill-inst"></div></div>
-                  <span id="gaugeInstVal" class="mini-gauge-val">—</span>
-                </div>
-                <div class="mini-gauge">
-                  <span class="mini-gauge-label">Risk</span>
-                  <div class="mini-gauge-track"><div id="gaugeRiskFill" class="mini-gauge-fill mini-gauge-fill-risk"></div></div>
-                  <span id="gaugeRiskVal" class="mini-gauge-val">—</span>
-                </div>
-                <div class="mini-gauge">
-                  <span class="mini-gauge-label">Health</span>
-                  <div class="mini-gauge-track"><div id="gaugeHealthFill" class="mini-gauge-fill mini-gauge-fill-health"></div></div>
-                  <span id="gaugeHealthVal" class="mini-gauge-val">—</span>
-                </div>
+            <section class="analysis-run-header" aria-label="Run operator bar">
+              <div class="analysis-run-header-grid">
+                <article class="analysis-run-header-item"><p class="recommendation-label">State</p><strong id="runStickyState">-</strong></article>
+                <article class="analysis-run-header-item"><p class="recommendation-label">Risk</p><strong id="runStickyRisk">UNKNOWN</strong></article>
+                <article class="analysis-run-header-item"><p class="recommendation-label">Alert</p><strong id="runStickyAlert">CLEAR</strong></article>
+                <article class="analysis-run-header-item"><p class="recommendation-label">Recommendation</p><strong id="runStickyRecommendation">Upload telemetry.</strong></article>
+                <article class="analysis-run-header-item"><p class="recommendation-label">Updated</p><strong id="runStickyUpdated">No telemetry timestamp.</strong></article>
               </div>
             </section>
-            <section id="demoPlaybackPanel" class="demo-playback hidden">
-              <div class="demo-playback-head">
-                <div class="demo-playback-title-row">
-                  <strong>Timeline playback</strong>
-                  <span id="demoPlaybackBadge" class="demo-playback-badge" aria-hidden="true"></span>
-                </div>
-                <span id="demoPlaybackProgress" class="subtitle">Demo Mode off</span>
-              </div>
-              <div class="demo-playback-bar-wrap" aria-hidden="true">
-                <div id="demoPlaybackBar" class="demo-playback-bar"></div>
-              </div>
-              <p id="demoPlaybackNarration" class="demo-playback-narration subtitle"></p>
-              <div class="row">
-                <button id="demoPlayPauseBtn" type="button" class="secondary">Play timeline</button>
-                <button id="demoReplayBtn" type="button" class="secondary">Replay</button>
-              </div>
-            </section>
-            <section id="demoKeyEventsPanel" class="demo-key-events hidden">
-              <div class="panel-header">
-                <h4>Key events</h4>
-                <p class="subtitle">Risk spikes and structural drift changes for fast walkthroughs.</p>
-              </div>
-              <ul id="demoKeyEventsList" class="demo-key-events-list"></ul>
-            </section>
-            <article id="runRiskExplanationPanel" class="risk-explanation hidden">
-              <div class="risk-explanation-head">
-                <h4 id="runRiskExplanationTitle">Why this risk level</h4>
-                <div id="runRiskExplanationBadge"></div>
-              </div>
-              <p id="runRiskExplanationText" class="subtitle"></p>
-            </article>
             <div id="runDetailEmpty" class="empty-state hidden">
-              <p>No results available for this run.</p>
-              <p class="subtitle">Upload a CSV file or seed demo data to generate results.</p>
+              <p>No telemetry has been processed for this run yet.</p>
+              <p class="subtitle">Upload telemetry to start analysis.</p>
             </div>
           </section>
 
           <section class="panel">
+            <div id="runDetailSectionTabs" class="range-controls">
+              <button type="button" data-run-section="overview" class="active">Overview</button>
+              <button type="button" data-run-section="trends">Trends</button>
+              <button type="button" data-run-section="geometry">Geometry</button>
+              <button type="button" data-run-section="results">Results</button>
+            </div>
+          </section>
+
+          <div class="run-detail-workspace-grid">
+          <section id="analysis-overview" class="panel analysis-workspace-section" data-analysis-panel="overview">
+            <div class="panel-header"><h3>Overview</h3></div>
+            <div class="snapshot-grid">
+              <article class="snapshot-item"><p>State</p><strong id="runOverviewState">-</strong></article>
+              <article class="snapshot-item"><p>Risk</p><strong id="runOverviewRisk">UNKNOWN</strong></article>
+              <article class="snapshot-item"><p>Trend</p><strong id="runOverviewTrend">-</strong></article>
+              <article class="snapshot-item"><p>Alert</p><strong id="runOverviewAlert">CLEAR</strong></article>
+              <article class="snapshot-item"><p>Recommendation</p><strong id="runOverviewRecommendation">Upload telemetry.</strong></article>
+              <article class="snapshot-item"><p>Last updated</p><strong id="runOverviewUpdated">No telemetry timestamp.</strong></article>
+            </div>
+          </section>
+          <section id="analysis-trends" class="panel analysis-workspace-section hidden" data-analysis-panel="trends">
             <div class="panel-header">
-              <h3>Trend charts</h3>
+              <h3>Trends</h3>
               <div id="runRangeControls" class="range-controls">
                 <button type="button" data-range="50">Last 50</button>
                 <button type="button" data-range="200" class="active">Last 200</button>
                 <button type="button" data-range="all">All</button>
               </div>
             </div>
+            <p id="runTrendsDeferredHint" class="subtitle run-deferred-hint">Open this section to load charts.</p>
             <div class="chart-grid">
               <div class="chart-panel">
                 <h4>Structural drift score</h4>
@@ -536,12 +391,9 @@
             </div>
           </section>
 
-          <section class="panel geometry-panel">
+          <section id="analysis-geometry" class="panel geometry-panel analysis-workspace-section hidden" data-analysis-panel="geometry">
             <div class="panel-header">
-              <h3>Structural flow</h3>
-              <p id="geometryFlowSubtitle" class="subtitle geometry-subtitle">
-                Relationship geometry loads with this run.
-              </p>
+              <h3>Structural geometry</h3>
               <div id="geometryFlowLegend" class="geometry-flow-legend" aria-label="Flow visualization legend">
                 <span class="geometry-flow-legend__item"><i class="geometry-flow-legend__swatch geometry-flow-legend__swatch--cyan"></i>Blue/cyan: stable / contained</span>
                 <span class="geometry-flow-legend__item"><i class="geometry-flow-legend__swatch geometry-flow-legend__swatch--amber"></i>Yellow/orange: pressure</span>
@@ -549,13 +401,11 @@
                 <span class="geometry-flow-legend__item"><i class="geometry-flow-legend__swatch geometry-flow-legend__swatch--arrow"></i>Arrow: net drift</span>
               </div>
             </div>
-            <p id="geometryProjectionNote" class="subtitle geometry-meta geometry-meta-flow">
-              Encoding loads with the run.
-            </p>
+            <p id="runGeometryDeferredHint" class="subtitle run-deferred-hint">Open this section to load geometry.</p>
             <div class="geometry-flow-playback" aria-label="Structural flow playback controls">
               <div class="geometry-flow-playback__modes" role="group" aria-label="Playback mode">
-                <button type="button" id="flowModeLiveBtn" class="flow-mode-btn active" data-flow-mode="live">Live</button>
-                <button type="button" id="flowModeReplayBtn" class="flow-mode-btn" data-flow-mode="replay">Replay window</button>
+                <button type="button" id="flowModeLiveBtn" class="flow-mode-btn active" data-flow-mode="live">Current snapshot</button>
+                <button type="button" id="flowModeReplayBtn" class="flow-mode-btn" data-flow-mode="replay">Historical window</button>
               </div>
               <label class="geometry-flow-playback__speed">
                 <span>Speed</span>
@@ -632,12 +482,6 @@
                   <span class="metric-k">Link Agreement</span>
                   <span id="geometryFlowLinkAgreeInline" class="geometry-flow-manifold-line__v">—</span>
                 </p>
-                <div class="geometry-flow-legend geometry-flow-legend--compact" aria-label="Interpretation legend">
-                  <span class="geometry-flow-legend__item"><i class="geometry-flow-legend__swatch geometry-flow-legend__swatch--cyan"></i>Blue/cyan: stable/contained</span>
-                  <span class="geometry-flow-legend__item"><i class="geometry-flow-legend__swatch geometry-flow-legend__swatch--amber"></i>Yellow/orange: pressure</span>
-                  <span class="geometry-flow-legend__item"><i class="geometry-flow-legend__swatch geometry-flow-legend__swatch--red"></i>Red: escape/breach</span>
-                  <span class="geometry-flow-legend__item"><i class="geometry-flow-legend__swatch geometry-flow-legend__swatch--arrow"></i>Arrow: net drift</span>
-                </div>
                 <div class="geometry-run-metrics" id="geometryRunMetrics">
                   <div class="geometry-metric-row"><span class="metric-k">Flow state</span><span id="geometryStructuralAssessment" class="metric-v" title="">—</span></div>
                   <div class="geometry-metric-row"><span class="metric-k">Engine phase</span><span id="geometryEnginePhase" class="metric-v" title="">—</span></div>
@@ -685,41 +529,11 @@
             </div>
           </section>
 
-          <section class="panel geometry-models-panel hidden" id="geometryModelsPanel" aria-label="Graph and system state models">
+          <section id="analysis-results" class="panel analysis-workspace-section hidden" data-analysis-panel="results">
             <div class="panel-header">
-              <h3>Graph &amp; system state models</h3>
-              <p class="subtitle">
-                Correlation and causal graph metrics plus regime snapshot for the same engine result as the 3D view.
-              </p>
+              <h3>Results history</h3>
             </div>
-            <div class="geometry-models-columns">
-              <article class="geometry-model-block">
-                <h4>Graph analytics</h4>
-                <p id="geometryGraphMetricsEmpty" class="subtitle geometry-model-empty hidden">No graph metrics in this result.</p>
-                <dl id="geometryGraphMetricsDl" class="geometry-model-dl"></dl>
-              </article>
-              <article class="geometry-model-block">
-                <h4>System state</h4>
-                <p id="geometrySystemStateEmpty" class="subtitle geometry-model-empty hidden">No system state snapshot.</p>
-                <dl id="geometrySystemStateDl" class="geometry-model-dl"></dl>
-              </article>
-            </div>
-          </section>
-
-          <section class="panel">
-            <h3>State / risk timeline</h3>
-            <div id="phaseTimeline" class="timeline"></div>
-          </section>
-
-          <section class="panel">
-            <h3>Operator messages</h3>
-            <ul id="operatorMessagesList" class="messages"></ul>
-          </section>
-
-          <section class="panel">
-            <div class="panel-header">
-              <h3>Results table</h3>
-            </div>
+            <p id="runResultsDeferredHint" class="subtitle run-deferred-hint">Open this section to load results.</p>
             <div class="row wrap filters">
               <input id="runResultsSearchInput" placeholder="Filter by message, phase, risk, state..." />
               <select id="runResultsSortSelect">
@@ -756,7 +570,45 @@
               <p>No results match current filters.</p>
             </div>
           </section>
+          </div>
         </section>
+
+        <!-- VALIDATION -->
+        <section id="page-validation" class="page hidden">
+          <section class="panel validation-hero" aria-label="Historical validation workspace">
+            <div class="panel-header">
+              <h3>Validation replay</h3>
+            </div>
+            <p class="subtitle">Secondary setup workflow for NASA CMAPSS FD004 replay. Core operations stay in Monitor risk, Upload telemetry, and Investigate run.</p>
+            <div class="control-stack" role="group" aria-label="Validation actions">
+              <button id="seedDemoBtn" type="button" class="secondary demo-primary-btn">Start NASA CMAPSS FD004 Reference Replay</button>
+              <a class="button-link secondary" href="/app/runs">Open Investigate run</a>
+            </div>
+            <div id="demoProgressPanel" class="demo-progress-panel hidden" aria-live="polite">
+              <div class="demo-progress-head">
+                <span id="demoProgressPhase">Initializing validation run</span>
+                <span id="demoProgressCount">0/0</span>
+              </div>
+              <div class="demo-progress-track"><div id="demoProgressFill" class="demo-progress-fill"></div></div>
+              <p id="demoProgressText" class="subtitle">Waiting for validation ingest.</p>
+            </div>
+          </section>
+        </section>
+
+        <!-- ONBOARDING -->
+        <section id="page-onboarding" class="page hidden">
+          <section class="panel onboarding-panel">
+            <div class="panel-header"><h3>Onboarding setup</h3></div>
+            <p class="subtitle" id="onboardingStepSubtitle">Connect telemetry inputs and validate before first live upload.</p>
+            <div id="onboardingStatus" class="status hidden"></div>
+            <div id="onboardingWizard" class="onboarding-wizard"></div>
+            <div class="onboarding-actions">
+              <button id="onboardingBackBtn" type="button" class="secondary">Back</button>
+              <button id="onboardingNextBtn" type="button">Next</button>
+            </div>
+          </section>
+        </section>
+
 
         <!-- RESULT DETAIL -->
         <section id="page-result-detail" class="page hidden">
@@ -776,9 +628,16 @@
     </div>
   </div>
 
-  <script type="module" src="/web/three-init.mjs"></script>
-  <script defer src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
-  <script defer src="/web/sensor_graph_3d.js"></script>
-  <script defer src="/web/app.js"></script>
+    <script defer src="/web/modules/ui.js?v=__NERAIUM_ASSET_VERSION__"></script>
+  <script defer src="/web/modules/api.js?v=__NERAIUM_ASSET_VERSION__"></script>
+  <script defer src="/web/modules/state.js?v=__NERAIUM_ASSET_VERSION__"></script>
+  <script defer src="/web/app.js?v=__NERAIUM_ASSET_VERSION__"></script>
+  <script defer src="/web/modules/dashboard.js?v=__NERAIUM_ASSET_VERSION__"></script>
+  <script defer src="/web/modules/upload.js?v=__NERAIUM_ASSET_VERSION__"></script>
+  <script defer src="/web/modules/run_detail.js?v=__NERAIUM_ASSET_VERSION__"></script>
+  <script defer src="/web/modules/geometry.js?v=__NERAIUM_ASSET_VERSION__"></script>
+  <script defer src="/web/modules/validation.js?v=__NERAIUM_ASSET_VERSION__"></script>
+  <script defer src="/web/modules/onboarding.js?v=__NERAIUM_ASSET_VERSION__"></script>
+  <script defer src="/web/modules/boot.js?v=__NERAIUM_ASSET_VERSION__"></script>
 </body>
 </html>

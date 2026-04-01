@@ -1,0 +1,28 @@
+name: AWS App Runner Redeploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  redeploy:
+    name: Trigger App Runner deployment
+    runs-on: ubuntu-latest
+    if: ${{ vars.AWS_APP_RUNNER_SERVICE_ARN != '' }}
+
+    steps:
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-region: ${{ vars.AWS_REGION }}
+          role-to-assume: ${{ secrets.AWS_GITHUB_DEPLOY_ROLE_ARN }}
+
+      - name: Trigger App Runner deployment
+        run: |
+          aws apprunner start-deployment \
+            --service-arn "${{ vars.AWS_APP_RUNNER_SERVICE_ARN }}"

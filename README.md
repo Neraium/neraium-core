@@ -1,6 +1,6 @@
 # neraium-core
 
-`neraium-core` is a deployable, **read-only structural instability instrumentation system**.  
+`neraium-core` is a deployable, **pilot-ready Systemic Infrastructure Intelligence (SII) platform**.  
 It ingests multivariate telemetry, computes **Systemic Infrastructure Intelligence (SII)**, and returns operator-facing evidence outputs.
 
 ---
@@ -18,6 +18,36 @@ Most tools optimize for **single sensors** or **component failure prediction**: 
 **Full customer-facing narrative (positioning vs predictive maintenance and AI monitoring):**  
 → **[docs/HOW_NERAIUM_IS_DIFFERENT.md](docs/HOW_NERAIUM_IS_DIFFERENT.md)**
 
+Pilot/operator workflow quickstart:
+→ **[docs/OPERATOR_WORKFLOW.md](docs/OPERATOR_WORKFLOW.md)**
+
+Canonical investor/demo artifact workflow:
+```bash
+python tools/run_investor_proof_demo.py
+```
+This emits deterministic proof artifacts under `reports/demo_proof/` showing a single-run narrative:
+`Normal -> Drift -> Rising Instability -> Critical`.
+
+Canonical founder-safe live demo workflow (live + backup mode in one command):
+```bash
+python tools/run_canonical_demo.py --base-url http://127.0.0.1:7860 --customer-id customer-a --max-frames 240
+```
+
+
+Canonical multi-scenario proof package (threshold comparison baseline + founder artifact):
+```bash
+python tools/run_proof_package.py
+```
+This emits deterministic artifacts under `reports/proof_package/` across stable, drift, spike, progressive-critical, and messy-data scenarios with scenario-level timelines, summaries, and a one-glance founder/investor brief.
+Workflow doc:
+→ **[docs/PROOF_PACKAGE_WORKFLOW.md](docs/PROOF_PACKAGE_WORKFLOW.md)**
+
+Runbook:
+→ **[docs/CANONICAL_DEMO_RUNBOOK.md](docs/CANONICAL_DEMO_RUNBOOK.md)**
+
+AWS App Runner deployment (source repository):
+→ **[docs/AWS_APP_RUNNER.md](docs/AWS_APP_RUNNER.md)**
+
 ---
 
 ## Deployment constraints
@@ -28,6 +58,23 @@ Neraium is intentionally constrained for current deployments:
 - **Human-in-the-loop decision support only**  
 - **No infrastructure control path**  
 - **No automated actuation**  
+
+## Primary product path (pilot-first)
+
+- **Primary UI**: `/dashboard` (also `/pilot` and `/operations`) for pilot operations monitoring.
+- **Operational workflow**: create/activate runs, ingest live/batch telemetry, review risk/recommendation/history.
+- **Secondary reference flow**: `/demo` and `/demo/full` redirects into the dashboard with **replay mode** enabled for historical validation (NASA CMAPSS FD004).
+- **Operator compatibility route**: `/operator` remains supported and redirects to the primary operational dashboard.
+
+## AWS deployment baseline (March 28, 2026)
+
+This repository is now streamlined for AWS deployments (App Runner / ECS / EKS):
+
+- Use `apprunner.yaml` as the canonical source-based deployment spec.
+- Use `Dockerfile` for container-based AWS deployment flows.
+- Railway deployment support is intentionally disabled; do not configure or reconnect Railway for this repository.
+- Use environment-driven CORS (`NERAIUM_CORS_ALLOW_ORIGINS`) for your AWS domain(s).
+- Keep writable persistence paths on ephemeral filesystems (for example `/tmp/neraium.db`) unless using managed storage.
 
 ---
 
@@ -41,6 +88,7 @@ It does not write back into operational systems and does not execute control act
 - Multivariate telemetry from API ingest  
 - Batch CSV uploads  
 - Time-ordered streaming-like updates via repeated ingest calls  
+- Canonical raw industrial ingestion bridge (tabular rows or directory signal blocks): `docs/RAW_INGESTION.md`  
 
 ### Processing
 
@@ -56,6 +104,7 @@ It does not write back into operational systems and does not execute control act
 - `trend`  
 - `risk_level`  
 - `operator_message`  
+- `causal_analysis` (ranked hypotheses, counterfactual robustness, validation plan, value-of-information-ranked actions)  
 - Proof artifacts / reports where available (for example FD004 summaries, CSV timelines, and plots)  
 
 ---
@@ -66,6 +115,24 @@ Operational systems / telemetry sources
 → One-way data access (ingest only)  
 → Systemic Infrastructure Intelligence (read-only computation)  
 → Human operators and evidence outputs (API results, CSV, reports)  
+
+### System intelligence operating modes (March 31, 2026 refactor)
+
+The structural intelligence stack now has explicit operating boundaries:
+
+- `production` (**default, deploy-safe**): latent structural state, transition dynamics, trajectory intelligence, intervention intelligence, reliability calibration, compatibility adapter.
+- `research_assistive` (**advisory-only**): mechanism discovery, law extraction, law decision support, cross-system intelligence.
+- `experimental` (**opt-in, non-actionable**): universal layer, falsification, active learning, structural sandbox.
+- `full` (**explicit combined mode**): runs all production + advisory + experimental sections together for research/debug workflows.
+
+Canonical platform outputs are grouped under:
+
+- `production_intelligence`
+- `advisory_intelligence`
+- `experimental_intelligence`
+- `capability_boundaries` (machine-readable status/actionability metadata per capability)
+
+Top-level legacy sections are still mirrored for transition compatibility, but production consumers should prefer `production_intelligence`.
 
 ---
 
@@ -146,279 +213,131 @@ That helps reveal **structural change** earlier in the degradation path.
 
 ## Signal evaluation (current)
 
-Neraium currently includes a temporary, explicit **decision layer** that interprets raw SII outputs for operator-facing signaling.
+Neraium includes a temporary, explicit **advisory recommendation layer** that interprets raw SII outputs for operator-facing signaling.
 
-- It is **rule-based and deterministic**: no learned model, no opaque weighting.  
-- It evaluates recent `composite_instability`, `structural_drift_score`, and `phase` progression to decide whether to emit a signal.  
-- It suppresses noisy patterns (for example, sharp instability spike-and-drop behavior or unstable/stable oscillation).  
-- It returns structured decision output (`signal_emitted`, `signal_strength`, `confidence`, `reason`, `phase`, `risk_level`) for clear downstream reporting.  
+- It is **rule-based and deterministic**: no learned model, no opaque weighting.
+- It evaluates recent `composite_instability`, `structural_drift_score`, and `phase` progression to produce a recommended next step.
+- It suppresses noisy patterns (for example, sharp instability spike-and-drop behavior or unstable/stable oscillation).
+- It returns structured advisory output (`signal_emitted`, `signal_strength`, `confidence`, `reason`, `phase`, `risk_level`) for clear downstream reporting.
 
-This layer is temporary and will be replaced when formal interpretive governance is implemented.
+## Structural attribution and operational recommendation upgrade
 
----
+The SII platform upgrades from pure structural change detection to **structural attribution + advisory operational recommendation intelligence**.
 
-## Operator messages
+Canonical top-level contract:
+- `attribution`
+- `regime_memory`
+- `risk_assessment`
+- `operator_guidance`
+- `causal_analysis`
+- `operational_recommendation` (canonical)
 
-Neraium emits `operator_message` text from deterministic decision-layer logic.
+`operational_recommendation.recommendation_confidence` is bounded to `[0,1]` and computed from converging evidence across causal hypotheses, risk trend clarity, localization strength, and source convergence.
 
-- Messages are observational and intended for human review.  
-- Messages do not direct maintenance or operational actions.  
-- Neraium does not perform infrastructure control or automated actuation.  
-- Outputs are read-only decision-support artifacts and should be interpreted with the same scope as the underlying signal logic.  
-
-This messaging layer is a temporary interpretive wrapper pending future formal interpretive governance work.
-
----
-
-## Planned future extensions
-
-Interpretive governance and formal assurance layers are planned for a later funded phase.  
-They are **not** part of the required definition of the currently working Neraium core platform.
-
-Planned future work includes:
-
-- Interpretive governance guardrails around operator interpretation and escalation pathways  
-- Formal schematic and assurance guardrails for higher-assurance deployments  
-- External assurance collaboration discussions with Dr. Chason Coelho and NCC Group / Adelard  
-
-These roadmap items are not current operational dependencies for running `neraium-core` today.
-
----
-
-## Quick start
-
-```bash
-python -m pip install -e .[dev]
-python run_demo.py
-```
-
-Then open the web app at **http://127.0.0.1:7860/**.
-
-Canonical solo-dev commands:
-
-- Install: `python -m pip install -e .[dev]`
-- Run: `python run_demo.py`
-- Test: `ruff check . && pytest`
-
-**There is no separate Node/React dev server.** The MVP web UI is **static HTML/JS** under
-`apps/api/static/` (entry: `index.html` + `app.js`), served by the **same** FastAPI/uvicorn
-process as the REST API (`apps/api/web.py` mounts `/`, `/dashboard`, `/upload`, etc.).
-
-## Manual run
-
-If you want the API/UI without the demo helper:
-
-```bash
-uvicorn apps.api.main:app --host 0.0.0.0 --port 7860
-```
-
-Then open the **web app** (not only `/docs`):
-
-- **http://127.0.0.1:7860/** or **http://localhost:7860/dashboard**
-
-Options:
-
-- **Port:** `PORT` or `WEB_PORT` env, or `--port` (default **7860**).
-- **Host:** `--host` (default **0.0.0.0**).
-- **Public URL:** `--share` tries **cloudflared** or **ngrok** if installed. The process prints a **shareable HTTPS URL** (and a ready-made demo link) when the tunnel starts.
-
-- Full walkthrough: **[docs/DEMO_SHARE.md](docs/DEMO_SHARE.md)**
-- **Guest deep link pattern:** `https://<your-tunnel-host>/dashboard?demo=1&prepare=1`  
-  (enables Demo Mode and auto-seeds the three scripted demo runs when the DB has no runs yet)
-
-Examples:
-
-```bash
-PORT=8000 python run_demo.py
-python run_demo.py --port 8000 --host 0.0.0.0
-python run_demo.py --share
-```
-
-## Customer-hosted deployment (first-class path)
-
-For customer environments (server/VM or customer cloud VM), use the deployment guide:
-
-- **[docs/CUSTOMER_DEPLOYMENT.md](docs/CUSTOMER_DEPLOYMENT.md)**
-
-Quick start (Docker):
-
-```bash
-docker build -t neraium:latest .
-docker run --rm -p 8000:8000 \
-  -e HOST=0.0.0.0 \
-  -e PORT=8000 \
-  -e NERAIUM_API_KEY=change-me \
-  -e NERAIUM_DB_PATH=/data/neraium.db \
-  -e NERAIUM_CUSTOMER_API_BASE_URL=https://customer-api.internal/telemetry \
-  -e NERAIUM_CUSTOMER_API_AUTH_TYPE=bearer \
-  -e NERAIUM_INTEGRATION_CONFIG_PATH=/app/config/integration.json \
-  -v "$(pwd)/data:/data" \
-  -v "$(pwd)/config:/app/config:ro" \
-  neraium:latest
-```
-
-Quick start (Docker Compose):
-
-```bash
-docker compose up --build
-```
-
-One-command customer start:
-
-```bash
-cp .env.customer.example .env
-cp config/integration.customer.sample.json config/integration.json
-docker compose up --build
-```
-
-Notes:
-
-- Neraium stays **read-only** (no control/actuation path).
-- When deployed in customer environment, ingest, compute, and persistence stay local to that environment.
-- Pull integration is configurable via:
-  - `POST /integrations/pull/start`
-  - `POST /integrations/pull/stop`
-  - `GET /integrations/pull/status`
-
-### MVP Web App (thin layer)
-
-The repository includes a minimal **browser UI** (vanilla JS) on top of the API:
-
-- Open **`http://localhost:<port>/`** (same port as the API).
-- Create/activate runs, upload CSV telemetry, view results, export JSON/CSV.
-
-Key routes: `/`, `/dashboard`, `/upload`, `/app/runs`, etc. (all serve `index.html`; see `apps/api/web.py`).
-
-Key API endpoints used by the web app:
-
-- `POST /runs`, `GET /runs`, `GET /runs/active`, `PATCH /runs/{run_id}`, `POST /runs/{run_id}/activate`
-- `POST /ingest/csv`
-- `GET /results/latest`, `GET /results/recent`, `GET /results/{result_id}`
-- `GET /results/export` (and backward-compatible `GET /export`)
-
-## How to test
-
-```bash
-ruff check .
-pytest
-```
-
-Environment variables:
-
-- `NERAIUM_API_KEY` (optional)  
-- `NERAIUM_DB_PATH` (optional, default: `neraium.db`)  
-- `NERAIUM_MAX_REQUEST_BODY_BYTES` (optional, minimum/default: `52428800` = 50MB)  
-- `NERAIUM_UVICORN_H11_MAX_INCOMPLETE_EVENT_SIZE` (optional, minimum/default: `62914560` = 60MB parser ceiling)
-
-### Basic multi-tenant scoping (no auth/roles yet)
-
-The API now supports lightweight tenant scoping via `customer_id` query/body fields:
-
-- Ingest endpoints (`/ingest`, `/ingest/batch`, `/ingest/csv`) accept `customer_id`
-- Runs/results endpoints accept `customer_id` query parameter for isolated reads
-- Optional `site_id` query filter is supported on:
-  - `GET /results/latest`
-  - `GET /results/recent`
-  - `GET /results/export` and `GET /export`
-
-If omitted, `customer_id` defaults to `default-customer`.
-
-### Pilot hardening mode (optional)
-
-For pilot deployments, enable stricter validation and a stable, traceable response schema **in addition to** existing fields:
-
-| Variable | Effect |
-|----------|--------|
-| `NERAIUM_PILOT_HARDENING=1` | Strict sensor typing in the pipeline; append pilot keys on each ingest result: `timestamp`, `signals`, `score`, `status`, `aligned`, `anomaly`. |
-| `NERAIUM_DEBUG_PILOT=1` | Extra structured logs (still redacted; no raw secrets). |
-| `NERAIUM_PILOT_CONFIG_PATH` | Optional JSON file with `drift_high_threshold` / `drift_watch_threshold` (operator heuristic). |
-| `NERAIUM_PILOT_DRIFT_HIGH_THRESHOLD` / `NERAIUM_PILOT_DRIFT_WATCH_THRESHOLD` | Env overrides for the same thresholds. |
-
-**Pilot field meanings (append-only):**
-
-- **`signals`**: normalized sensor map from the request (`float` or `null` for missing / NaN in pilot mode).  
-- **`score`**: `latest_instability` (composite instability used for decisions).  
-- **`status`**: same family as `action_state` (`STABLE` / `WATCH` / `ALERT`).  
-- **`aligned`**: `data_quality_summary.gate_passed` (input alignment / quality gate).  
-- **`anomaly`**: `true` when `status` is `WATCH` or `ALERT`.  
-
-**CLI (pilot schema JSON):**
-
-The runner sets `NERAIUM_PILOT_HARDENING=1` for you.
-
-- **Dynamic scenario (default):** ≥100 timesteps, evolving signals (`stable` → `regime shift` → `instability`), plus injected degradations (missing sensors, duplicated frame, delayed timestamps, flatlined sensor). Each JSONL line includes `state`, `interpreted_state`, `confidence`, and optional `degraded` tags; **degradation notices** go to **stderr** via logger `neraium_pilot.scenario`.  
-  ```bash
-  python examples/pilot/run_pilot.py
-  ```
-  Options: `--timesteps` (default `120`), `--seed`, `--baseline-window`, `--recent-window`, `--output` (default `pilot_results.json`). The output file is a **document** `{"records": [...], "summary": {...}}`: each record has `timestep`, `signals`, **`state`** (thresholded from `score`: &lt;1.25 `STABLE`, 1.25–&lt;2.0 `WATCH`, ≥2.0 `ALERT`), **`interpreted_state`** (hysteresis-smoothed from the engine), `score`, **`frame_type`** (`normal` / `duplicate`), and `missing_data`. Duplicates mirror the first ingest’s pilot `score`/`state` for that timestep. The **`summary`** block includes first occurrence per state, counts, max/mean score (mean for timestep ≥60), duplicate/missing-data counts, and smoothing metadata.
-
-- **Static JSON file:** single payload, list, or `{ "payloads" | "items" | "sequence": [...] }`. Uses `--baseline-window` / `--recent-window` (defaults `24` / `8`) for the engine.  
-  ```bash
-  python examples/pilot/run_pilot.py --input examples/pilot/sample_payload.json
-  ```
-
-- **Bundled long-run scenarios (120 steps):** inputs live under `examples/pilot/scenarios/`. Regenerate deterministically, then run the pilot:
-  ```bash
-  python examples/pilot/scenarios/build_scenario_inputs.py
-  python run_pilot.py --input examples/pilot/scenarios/regime_shift_inputs.json --output pilot_regime_shift.json
-  python run_pilot.py --input examples/pilot/scenarios/structural_instability_inputs.json --output pilot_structural_instability.json
-  ```
-  - **regime_shift** - smooth cross-fade between two coherent relational regimes; tuned for **REGIME_SHIFT_OBSERVED** / low **WATCH** without **ALERT** (``interpreted_smoothing.consecutive_required`` may be set in the JSON).  
-  - **structural_instability** - calm phase then rising variance and diverging cross-sensor behavior (no missing data).
-
-  Optional input envelope keys (alongside ``payloads``): ``interpreted_smoothing: { \"consecutive_required\": 1–10 }`` overrides pilot hysteresis for that file only.
-
-Example files: `examples/pilot/sample_payload.json`, `examples/pilot/sample_output.json`.
-
-**Known limitations:** timestamp parsing and windowing affect irregularity-style features; single-frame scores may be `0.0` until history fills baseline/recent windows.
-
----
-
-## API consistency
-
-Result-bearing endpoints return a stable envelope:
-
+Example canonical recommendation payload:
 ```json
 {
-  "latest": {"...": "latest result or null"},
-  "count": 1,
-  "results": [{"...": "result list"}]
+  "operational_recommendation": {
+    "status": {"available": true, "advisory": true, "reason": "recommendation_available"},
+    "recommended_action": "Inspect subsystem/cluster first: cluster_A.",
+    "recommended_target": "cluster_A",
+    "priority": 1,
+    "recommendation_confidence": 0.74,
+    "urgency": "medium",
+    "rationale": "Recommendation available from converging structural evidence.",
+    "supporting_evidence": [
+      {"driver": "cluster_A", "score": 0.72}
+    ],
+    "operator_note": "Recommendations are advisory outputs intended to support, not replace, qualified operator judgment and site-specific procedures."
+  }
 }
 ```
 
-Endpoints:
-
-- `POST /ingest`  
-- `POST /ingest/batch`  
-- `POST /ingest/csv`  
-- `GET /results/latest`  
-- `GET /results/recent?limit=100`  
-
-`/results/recent` is ordered newest-first. `limit` controls max returned rows.
-
-Health endpoint:
-
-```json
-{
-  "status": "ok|degraded",
-  "version": "0.1.0",
-  "auth_configured": false,
-  "persistence_available": true,
-  "latest_result_available": false
-}
-```
-
-Validation semantics:
-
-- `422` = schema validation failure (FastAPI/Pydantic)  
-- `400` = semantic/business validation failure (service/pipeline)  
+Compatibility note:
+- Legacy `decision` views remain available only through deprecated compatibility aliases and endpoints.
 
 ---
 
-## Pilot / demo usage
+## Deprecated compatibility module note
 
-1. Start API and send single-sensor or multi-sensor telemetry with `/ingest`.  
-2. Monitor `risk_level`, `trend`, `confidence`, and `operator_message` for operator briefings.  
-3. Use `structural_analysis_available` and `skipped_reason` to explain when full relational metrics are unavailable.  
-4. Use `/results/recent` for timeline review and `/results/latest` for current state dashboards.  
-5. Use `/reset` to restart pilot sessions while preserving deployment configuration.  
+`neraium_core.casual` is deprecated and retained only as a temporary compatibility shim.
+All canonical runtime imports must use `neraium_core.causal`.
+
+Hardening constraints for the shim:
+- no causal logic is implemented in `casual.py`,
+- only minimal re-exports are allowed,
+- importing the shim emits a `DeprecationWarning`.
+
+---
+
+## Platform Output Structure
+
+Neraium’s canonical platform output is organized into top-level sections. The
+runtime canonical schema uses `operational_recommendation` as a **top-level**
+field (not nested under `operator_guidance`).
+
+- `attribution`
+  - `top_drivers`: ranked structural contributors.
+  - `group_contributions`: grouped structural contribution summary.
+
+- `regime_memory`
+  - `regime_name`: nearest known structural regime label.
+  - `regime_distance`: distance to nearest regime signature.
+  - `library_size` / `baseline_count`: regime memory depth and baseline confidence context.
+
+- `risk_assessment`
+  - `risk_level`: interpreted risk category from structural evidence.
+  - `trend`: stability trajectory direction.
+  - `latest_instability`: current composite instability.
+
+- `causal_analysis` *(additive layer)*
+  - `hypotheses`: competing causal hypotheses (`physical`, `sensor`, `systemic`) grounded in structural signals.
+  - `top_hypothesis`: highest-ranked current explanation candidate.
+  - `counterfactual`: lightweight robustness checks (`remove_top_driver`, `remove_relationship_change`, localization dependency).
+  - `validation_plan`: confirm/falsify actions with expected true/false outcomes.
+  - `recommended_sequence` / `best_next_action`: value-of-information-ranked execution order.
+  - `status`: availability state (`ok`, `warmup`, `insufficient_evidence`).
+
+- `operational_recommendation`
+  - Canonical top recommendation payload for actioning current risk.
+
+- `explanation_text`
+  - Canonical operator-facing explanation summary string.
+
+- `events`
+  - Canonical derived event flags for downstream monitoring/alert routing.
+
+- `aliases` *(deprecated compatibility only; optional)*
+  - `response_recommendations` is deprecated.
+  - Legacy decision/recommendation aliases are retained only for compatibility.
+  - Canonical consumers should use `operational_recommendation`.
+
+### Example: `causal_analysis`
+
+```json
+{
+  "causal_analysis": {
+    "hypotheses": [
+      {
+        "hypothesis_id": "hyp_physical_localized_degradation",
+        "type": "physical",
+        "confidence": 0.71
+      }
+    ],
+    "top_hypothesis": {},
+    "counterfactual": {
+      "counterfactual_checks": [],
+      "robustness": 0.67,
+      "interpretation": "Top hypothesis has mixed robustness; targeted validation is required."
+    },
+    "validation_plan": [],
+    "recommended_sequence": [],
+    "best_next_action": {},
+    "status": { "available": true, "reason": "ok" }
+  }
+}
+```
+
+> Compatibility note: `neraium_core/casual.py` is deprecated and will be removed in a future release. Use `neraium_core/causal.py`.
+
+---

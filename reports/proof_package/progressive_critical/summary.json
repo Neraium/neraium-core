@@ -1,0 +1,18 @@
+{
+  "scenario": "progressive_critical",
+  "title": "Progressive degradation to critical",
+  "description": "Long, compounding degradation eventually crosses hard operational thresholds.",
+  "expected_behavior": "Neraium warning appears materially earlier than threshold baseline.",
+  "neraium_warning_cycle": 26,
+  "threshold_first_trigger_cycle": 60,
+  "lead_cycles_neraium_vs_threshold": 34,
+  "progression_interpretable": true,
+  "warning_threshold": 0.18,
+  "sustained_warning_in_tail": false,
+  "quality_statuses_seen": [
+    "DATA_QUALITY_LIMITED"
+  ],
+  "max_composite_instability": 0.225495,
+  "max_structural_drift": 0.0429,
+  "notes": "Strongest founder-facing evidence scenario."
+}
