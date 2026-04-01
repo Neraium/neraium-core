@@ -5,6 +5,8 @@
       "corpus_id": "corpus_v1",
       "snapshot_file": "snapshots/corpus_v1.json",
       "immutable": true,
+      "deprecated": true,
+      "exclude_from_release_gating": true,
       "corpus_type": "baseline_clean",
       "expected_difficulty": "low",
       "coverage_tags": [
