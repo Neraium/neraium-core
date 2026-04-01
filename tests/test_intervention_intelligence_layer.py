@@ -466,3 +466,49 @@ def test_memory_support_is_propagated_into_context_when_trajectory_support_is_ze
 
     assert out["context"]["support_count"] >= 3
     assert out["recommendation"]["confidence"] > 0.0
+
+
+def test_confidence_discriminates_with_support_and_ranking_separation() -> None:
+    engine = InterventionIntelligenceEngine()
+    base_kwargs = {
+        "asset_id": "baseline-discriminative",
+        "observation": {"latent_embedding": [0.22, 0.2, 0.18], "calibration": {"reliability": 0.9}},
+        "transition": {
+            "regime": "transitional",
+            "transition_path": "stable",
+            "escalation_probability": 0.31,
+            "reversibility_score": 0.74,
+            "distance_to_critical_region": 0.71,
+        },
+        "trajectory": {
+            "current_trajectory_path_family": "baseline",
+            "novelty_score": 0.05,
+            "support_count": 1,
+        },
+        "mechanism": {"mechanism_candidates": []},
+        "laws": {"law_candidates": []},
+        "counterfactuals": {
+            "scenario_rankings": [
+                {"name": "remove_top_driver_contribution", "risk_delta": 0.16},
+                {"name": "restore_relationship_cluster_to_baseline", "risk_delta": 0.04},
+            ]
+        },
+    }
+
+    cold = engine.update(**base_kwargs)
+    cold_ranked = cold["recommendation"]["ranked_interventions"]
+    cold_conf = float(cold["recommendation"]["best_intervention"]["confidence"])
+    cold_delta = float(cold_ranked[0]["confidence"]) - float(cold_ranked[1]["confidence"])
+
+    for _ in range(4):
+        _simulate_record(engine, helpful=True)
+
+    warm = engine.update(**base_kwargs)
+    warm_ranked = warm["recommendation"]["ranked_interventions"]
+    warm_conf = float(warm["recommendation"]["best_intervention"]["confidence"])
+    warm_delta = float(warm_ranked[0]["confidence"]) - float(warm_ranked[1]["confidence"])
+
+    assert warm["context"]["support_count"] > cold["context"]["support_count"]
+    assert warm_conf > cold_conf
+    assert warm_delta > cold_delta
+    assert len({round(cold_conf, 6), round(warm_conf, 6)}) == 2
