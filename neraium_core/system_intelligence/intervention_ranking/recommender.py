@@ -209,8 +209,8 @@ class InterventionRecommendationRanker:
     def calibrate_confidence(*, raw_confidence: float, regime: str) -> float:
         raw = _clip01(raw_confidence)
         if regime == "uncertain":
-            return round(min(0.2, 0.02 + 0.16 * raw), 6)
-        calibrated = 0.04 + 0.78 * (raw**1.08)
+            return round(min(0.2, 0.015 + 0.145 * raw), 6)
+        calibrated = 0.02 + 0.30 * (raw**20.0)
         return round(min(0.95, _clip01(calibrated)), 6)
 
     def compute_final_confidence(
