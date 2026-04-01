@@ -123,10 +123,7 @@ def main() -> None:
                 "status": status,
                 "overall_release_decision": aggregate.get("release_recommendation"),
                 "blocking_corpus_classes": aggregate.get("blocking_corpus_classes", []),
-<<<<<<< HEAD
                 "missing_required_corpus_classes": aggregate.get("missing_required_corpus_classes", []),
-=======
->>>>>>> 3aedc7e4a4597802300889285e2fecafec7b2eee
                 "failing_corpora": aggregate.get("failing_corpora", []),
                 "failure_mode_frequency": aggregate.get("failure_mode_frequency", {}),
                 "corpus_results": [
