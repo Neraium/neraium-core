@@ -117,6 +117,7 @@ def aggregate_multi_corpus_release(
     min_credible_records: int = DEFAULT_MIN_CREDIBLE_RECORDS,
     include_ineligible: bool = False,
 ) -> dict[str, Any]:
+    executed_rows = list(results)
     decision_rows = list(results)
     excluded_non_credible_corpora: list[str] = []
     if not include_ineligible:
@@ -128,6 +129,11 @@ def aggregate_multi_corpus_release(
                 excluded_non_credible_corpora.append(str(row.get("corpus_id")))
 
     by_class: dict[str, list[dict[str, Any]]] = {}
+    executed_by_class: dict[str, list[dict[str, Any]]] = {}
+    for row in executed_rows:
+        corpus_type = str(row.get("corpus_type") or "unknown")
+        executed_by_class.setdefault(corpus_type, []).append(row)
+
     for row in decision_rows:
         corpus_type = str(row.get("corpus_type") or "unknown")
         by_class.setdefault(corpus_type, []).append(row)
@@ -142,7 +148,6 @@ def aggregate_multi_corpus_release(
         total = len(rows)
         failed_rows = [r for r in rows if not r.get("release_passed")]
         for r in failed_rows:
-            failing_corpora.append(str(r.get("corpus_id")))
             for tag in r.get("failure_mode_tags", []):
                 failure_frequency[tag] = failure_frequency.get(tag, 0) + 1
 
@@ -169,11 +174,35 @@ def aggregate_multi_corpus_release(
             "class_passed": class_passed,
         }
 
-    missing_required = sorted(k for k, v in CORPUS_CLASS_RULES.items() if v.required and k not in by_class)
-    # Union: class-level failures (including optional classes that did not pass) plus required
-    # classes with no evaluated corpus — the latter were missing from by_class and never
-    # appeared in blocking_classes, which caused RELEASE_FAIL with empty blockers.
-    blocking_corpus_classes = sorted(set(blocking_classes) | set(missing_required))
+    executed_classes = set(executed_by_class)
+    missing_required = sorted(k for k, v in CORPUS_CLASS_RULES.items() if v.required and k not in executed_classes)
+
+    # Required classes that were run but excluded from release decision due low credibility
+    # are blockers (insufficient evidence) but are not missing.
+    ineligible_required = sorted(
+        k
+        for k, v in CORPUS_CLASS_RULES.items()
+        if v.required and k in executed_classes and k not in by_class
+    )
+    blocking_corpus_classes = sorted(set(blocking_classes) | set(missing_required) | set(ineligible_required))
+    for corpus_type in ineligible_required:
+        class_summaries[corpus_type] = {
+            "required": True,
+            "total_corpora": 0,
+            "failed_corpora": [],
+            "failure_ratio": 1.0,
+            "max_failure_ratio": CORPUS_CLASS_RULES[corpus_type].max_failure_ratio,
+            "catastrophic_failures": [],
+            "class_passed": False,
+            "excluded_non_credible_corpora": [
+                str(r.get("corpus_id")) for r in executed_by_class.get(corpus_type, [])
+            ],
+            "insufficient_credible_coverage": True,
+        }
+
+    # failing_corpora reflects all executed corpus rows with failed release gates,
+    # independent of class eligibility for aggregate decision.
+    failing_corpora = sorted({str(r.get("corpus_id")) for r in executed_rows if not r.get("release_passed")})
     release_passed = len(blocking_corpus_classes) == 0
 
     return {
@@ -187,7 +216,7 @@ def aggregate_multi_corpus_release(
         "class_summary": class_summaries,
         "blocking_corpus_classes": blocking_corpus_classes,
         "missing_required_corpus_classes": missing_required,
-        "failing_corpora": sorted(set(failing_corpora)),
+        "failing_corpora": failing_corpora,
         "failure_mode_frequency": dict(sorted(failure_frequency.items(), key=lambda kv: (-kv[1], kv[0]))),
         "top_failure_modes": [k for k, _ in sorted(failure_frequency.items(), key=lambda kv: (-kv[1], kv[0]))[:3]],
     }
