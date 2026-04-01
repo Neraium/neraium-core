@@ -100,6 +100,13 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Verbose replay logs (first JSON result snippet). Set NERAIUM_DEBUG_ENGINE=1 for engine internals.",
     )
+    parser.add_argument(
+        "--fleet-summary-json",
+        type=Path,
+        default=None,
+        metavar="PATH",
+        help="Optional path for fleet priority summary JSON (per-asset ranks from slim replay rows).",
+    )
     return parser.parse_args()
 
 
@@ -185,6 +192,18 @@ def flatten_slim_result(unit_id: int, cycle: int, result: dict[str, Any]) -> dic
         ),
         "predicted_impact": _safe_get(result, "predicted_impact"),
         "structural_driver": _safe_get(result, "structural_driver"),
+        "decision_severity": _safe_get(result, "decision_layer", "severity"),
+        "decision_trajectory": _safe_get(result, "decision_layer", "trajectory"),
+        "decision_time_horizon": _safe_get(result, "decision_layer", "time_horizon"),
+        "decision_confidence": _safe_get(result, "decision_layer", "confidence"),
+        "decision_actionability": _safe_get(result, "decision_layer", "actionability"),
+        "recommended_next_action": _safe_get(result, "decision_layer", "recommended_next_action"),
+        "recommended_urgency": _safe_get(result, "decision_layer", "recommended_urgency"),
+        "inspection_priority": _safe_get(result, "decision_layer", "inspection_priority"),
+        "trust_score": _safe_get(result, "trust_layer", "trust_score"),
+        "safe_to_act": _safe_get(result, "trust_layer", "safe_to_act"),
+        "operational_status": _safe_get(result, "operational_recommendation", "status"),
+        "operational_recommendation_confidence": _safe_get(result, "operational_recommendation", "recommendation_confidence"),
     }
 
 
@@ -283,6 +302,10 @@ def flatten_diagnostics_result(
         "counterfactual_continued_degradation_projected_path": _safe_get(
             continued_degradation or {}, "projected_path"
         ),
+        "decision_layer_json": json.dumps(_safe_get(result, "decision_layer") or {}, default=str),
+        "attribution_json": json.dumps(_safe_get(result, "attribution") or {}, default=str),
+        "operational_recommendation_json": json.dumps(_safe_get(result, "operational_recommendation") or {}, default=str),
+        "trust_layer_json": json.dumps(_safe_get(result, "trust_layer") or {}, default=str),
     }
 
 
@@ -464,6 +487,13 @@ def main() -> None:
         dbg_path = args.debug_jsonl.expanduser().resolve()
         write_debug_jsonl(dbg_path, debug_records)
         print(f"Debug JSONL: {dbg_path}  rows={len(debug_records)}")
+
+    if args.fleet_summary_json is not None and all_slim:
+        fs_path = args.fleet_summary_json.expanduser().resolve()
+        fs_path.parent.mkdir(parents=True, exist_ok=True)
+        fleet_payload = build_fleet_summary(pd.DataFrame(all_slim))
+        fs_path.write_text(json.dumps(fleet_payload, indent=2), encoding="utf-8")
+        print(f"Fleet summary JSON: {fs_path}")
 
     print("CMAPSS replay complete")
     print(f"Input path: {input_path}")

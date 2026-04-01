@@ -10,6 +10,7 @@ def _engine_debug_enabled() -> bool:
     return os.environ.get("NERAIUM_DEBUG_ENGINE", "0").strip().lower() in {"1", "true", "yes", "on"}
 
 from neraium_core.detection.readiness import compute_engine_readiness
+from neraium_core.product import build_product_layer
 from neraium_core.stat_geometry import StatisticalGeometryLayer
 
 
@@ -1317,6 +1318,8 @@ class StructuralEngine:
             "readiness": rd_run.as_dict(),
             "transition_outputs_actionable": rd_run.transition_classification_ready,
         }
+
+        result.update(build_product_layer(result))
 
         self._frame_count += 1
         if _engine_debug_enabled():

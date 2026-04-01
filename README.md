@@ -107,6 +107,17 @@ It does not write back into operational systems and does not execute control act
 - `causal_analysis` (ranked hypotheses, counterfactual robustness, validation plan, value-of-information-ranked actions)  
 - Proof artifacts / reports where available (for example FD004 summaries, CSV timelines, and plots)  
 
+### Product decision layer (structural engine and FD replay)
+
+The bundled `run_engine.StructuralEngine` attaches **additive** operator-facing blocks on each `process_frame` result (existing keys unchanged):
+
+- **`decision_layer`**: current state, severity, trajectory label, time horizon, confidence, actionability, recommended next steps, urgency, inspection priority, narrative `why_this_now`, evidence lines, and a short trust summary string.
+- **`attribution`**: ranked signal drivers, pair scores, group contributions, primary shift text, localized vs systemic score and label, attribution confidence.
+- **`operational_recommendation`**: advisory status, recommended action text, target scope, priority, urgency, confidence, rationale, supporting evidence strings, and a fixed operator note (no automation).
+- **`trust_layer`**: readiness status, evidence persistence proxy, telemetry quality label, reasons, limiting factors, `safe_to_act` (whether outputs are fit to rely on for planning), and `trust_score`.
+
+`run_fd_test.py` adds optional slim CSV columns for key scalars (for example `decision_severity`, `trust_score`, `recommended_next_action`) and JSON columns on diagnostics rows. Use **`--fleet-summary-json PATH`** to write a ranked per-unit fleet summary from a completed slim replay.
+
 ---
 
 ## Architecture (high level)
