@@ -137,7 +137,15 @@ class HistoricalReplayEngine:
                     advisory_mode = str(fallback["advisory_mode"])
             if no_intervention_recommended and not fallback_triggered:
                 recommended = "no_action_recommended"
-            if recommended not in {None, "monitor", "no_action_recommended"} and confidence < 0.42 and not fallback_triggered:
+            escalation_probability = self._float_or_default(transition.get("escalation_probability"), 0.0)
+            distance_to_critical = self._float_or_default(transition.get("distance_to_critical_region"), 1.0)
+            intervention_pressure = max(0.0, min(1.0, 0.7 * escalation_probability + 0.3 * (1.0 - min(1.0, distance_to_critical))))
+            if (
+                recommended not in {None, "monitor", "no_action_recommended"}
+                and confidence < 0.42
+                and intervention_pressure < 0.35
+                and not fallback_triggered
+            ):
                 recommended = "no_action_recommended"
             if fallback_triggered and str(recommended) == "monitor":
                 confidence = min(confidence, 0.15)

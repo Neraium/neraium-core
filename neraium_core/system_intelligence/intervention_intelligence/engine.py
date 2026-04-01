@@ -27,11 +27,11 @@ class InterventionIntelligenceEngine:
         self.scorer = InterventionEffectivenessScorer(self.memory)
         self.ranker = InterventionRecommendationRanker()
         self._uncertainty_thresholds = {
-            "novelty": 0.72,
-            "low_similarity": 0.45,
+            "novelty": 0.74,
+            "low_similarity": 0.42,
             "support": 2,
             "calibration_reliability": 0.5,
-            "transfer_mismatch": 0.62,
+            "transfer_mismatch": 0.6,
             "ambiguity": 0.12,
         }
 
@@ -208,9 +208,8 @@ class InterventionIntelligenceEngine:
             or similarity <= self._uncertainty_thresholds["low_similarity"]
             or reliability < self._uncertainty_thresholds["calibration_reliability"]
             or mismatch >= self._uncertainty_thresholds["transfer_mismatch"]
-            or bool(reasons)
         )
-        active = bool(elevated_context_risk or (weak_support and bool(reasons)))
+        active = bool(elevated_context_risk or (weak_support and len(reasons) >= 2))
         reason = "stable_context"
         if active:
             reason = ",".join(reasons[:3]) if reasons else "low_trust_structural_context"
