@@ -112,7 +112,7 @@ It does not write back into operational systems and does not execute control act
 The bundled `run_engine.StructuralEngine` attaches **additive** operator-facing blocks on each `process_frame` result (existing keys unchanged):
 
 - **`decision_layer`**: current state, severity, trajectory label, time horizon, confidence, actionability, recommended next steps, urgency, inspection priority, narrative `why_this_now`, evidence lines, and a short trust summary string.
-- **`attribution`**: ranked signal drivers, pair scores, group contributions, primary shift text, localized vs systemic score and label, attribution confidence.
+- **`attribution`**: structural attribution from the engine (baseline vs recent covariance, per-signal drivers, pairwise relationship shifts, group contributions, primary shift label, localized vs systemic scope, confidence, rationale). Present on every frame; `available` may be false during warmup.
 - **`operational_recommendation`**: advisory status, recommended action text, target scope, priority, urgency, confidence, rationale, supporting evidence strings, and a fixed operator note (no automation).
 - **`trust_layer`**: readiness status, evidence persistence proxy, telemetry quality label, reasons, limiting factors, `safe_to_act` (whether outputs are fit to rely on for planning), and `trust_score`.
 

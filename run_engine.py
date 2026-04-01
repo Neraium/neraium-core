@@ -12,6 +12,7 @@ def _engine_debug_enabled() -> bool:
 from neraium_core.detection.readiness import compute_engine_readiness
 from neraium_core.product import build_product_layer
 from neraium_core.stat_geometry import StatisticalGeometryLayer
+from neraium_core.structural_attribution import compute_structural_attribution
 
 
 class StructuralEngine:
@@ -1173,6 +1174,40 @@ class StructuralEngine:
         }
         return result
 
+    def _compute_structural_attribution_payload(self, result: Dict) -> Dict:
+        """
+        Structural attribution from baseline vs recent windows and current vector.
+
+        Always returns a dict with ``available`` and schema fields for diagnostics.
+        """
+        baseline = self._baseline_stats()
+        baseline_frames = list(self.frames)[: self.baseline_window]
+        recent_frames = list(self.frames)[-self.recent_window :]
+        xb = self._smooth_matrix(self._valid_matrix(baseline_frames))
+        xr = self._smooth_matrix(self._valid_matrix(recent_frames))
+        vector = self.frames[-1]["_vector"]
+        rd = result.get("readiness") or {}
+        exp = result.get("experimental_analytics") or {}
+        min_h = int(result.get("engine_min_history_required", self.baseline_window + 8))
+        return compute_structural_attribution(
+            sensor_order=list(self.sensor_order),
+            baseline=baseline,
+            current_vector=vector,
+            baseline_matrix=xb,
+            recent_matrix=xr,
+            drift_score=float(result.get("structural_drift_score", 0.0)),
+            covariance_drift=float(result.get("covariance_drift_score", 0.0)),
+            transition_pressure=float(result.get("transition_pressure", 0.0)),
+            transition_state=str(result.get("transition_state", "NONE")),
+            experimental_analytics=exp if isinstance(exp, dict) else {},
+            readiness=rd if isinstance(rd, dict) else {},
+            frame_count=len(self.frames),
+            min_history_required=min_h,
+            geometry=result.get("geometry") if isinstance(result.get("geometry"), dict) else {},
+            state_space=result.get("state_space_statistics") if isinstance(result.get("state_space_statistics"), dict) else {},
+            state_graph=result.get("state_graph") if isinstance(result.get("state_graph"), dict) else {},
+        )
+
     def process_frame(self, frame: Dict) -> Dict:
         """
         Process one normalized telemetry frame and return the latest structural event.
@@ -1319,6 +1354,7 @@ class StructuralEngine:
             "transition_outputs_actionable": rd_run.transition_classification_ready,
         }
 
+        result["attribution"] = self._compute_structural_attribution_payload(result)
         result.update(build_product_layer(result))
 
         self._frame_count += 1

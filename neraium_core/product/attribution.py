@@ -1,4 +1,10 @@
-"""Attribution summaries from structural, geometry, and graph signals (explainable, deterministic)."""
+"""Legacy aggregate attribution helper (non per-signal).
+
+The runtime engine now emits structural ``attribution`` from
+``neraium_core.structural_attribution``. This module is retained only if
+callers import ``build_attribution`` directly; ``build_product_layer`` no
+longer uses it.
+"""
 
 from __future__ import annotations
 

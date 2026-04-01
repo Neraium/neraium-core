@@ -45,14 +45,13 @@ def test_build_product_layer_keys_and_nested():
     r = _minimal_result()
     pl = build_product_layer(r)
     assert "decision_layer" in pl
-    assert "attribution" in pl
     assert "trust_layer" in pl
     assert "operational_recommendation" in pl
+    assert "attribution" not in pl
     dl = pl["decision_layer"]
     assert dl["current_state"] == "WATCH"
     assert dl["trajectory"] == "DIVERGING"
     assert "evidence_summary" in dl and isinstance(dl["evidence_summary"], list)
-    assert "top_signal_drivers" in pl["attribution"]
     assert pl["trust_layer"]["safe_to_act"] is True
     assert pl["operational_recommendation"]["status"] == "observe"
 
