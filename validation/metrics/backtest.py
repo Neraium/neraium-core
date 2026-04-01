@@ -35,9 +35,10 @@ def compute_backtest_metrics(decision_logs: list[dict[str, Any]], outcomes: list
         rec = row.get("recommended_intervention")
         actual = row.get("actual_intervention")
 
+        intervention_correct = rec == actual
         success = label in {"helpful", "recovery-associated"}
         harmful = label == "harmful"
-        correct = 1.0 if success else 0.0
+        correct = 1.0 if intervention_correct else 0.0
 
         if rec == actual and success:
             aligned_success += 1
