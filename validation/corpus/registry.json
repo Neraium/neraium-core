@@ -16,11 +16,12 @@
       "snapshot_file": "snapshots/baseline_clean_ops.json",
       "immutable": true,
       "corpus_type": "baseline_clean",
-      "expected_difficulty": "low",
+      "expected_difficulty": "moderate",
       "coverage_tags": [
         "clean",
-        "balanced_outcomes",
-        "production_like"
+        "sequential",
+        "temporal_progression",
+        "baseline_release"
       ]
     },
     {
