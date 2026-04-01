@@ -27,6 +27,22 @@ class CrossSystemTrajectoryMemory:
         )
         self._asset_history: dict[str, deque[np.ndarray]] = defaultdict(lambda: deque(maxlen=240))
 
+    @staticmethod
+    def _warmup_similarity(history: deque[np.ndarray]) -> float:
+        if len(history) < 2:
+            return 0.5
+        points = np.asarray(list(history), dtype=float)
+        diffs = np.diff(points, axis=0)
+        if diffs.size == 0:
+            return 0.5
+        motion = float(np.mean(np.linalg.norm(diffs, axis=1)))
+        span = float(np.linalg.norm(points[-1] - points[0]))
+        denom = max(1e-6, span + motion + 1e-6)
+        normalized_motion = motion / denom
+        normalized_span = span / denom
+        stability = 1.0 - min(1.0, 0.65 * normalized_motion + 0.35 * normalized_span)
+        return max(0.0, min(1.0, stability))
+
     def update(
         self,
         *,
@@ -43,15 +59,17 @@ class CrossSystemTrajectoryMemory:
         trajectory = [x.astype(float).tolist() for x in hist]
         segment = self.encoder.build_segment(trajectory)
         if segment is None:
+            warmup_similarity = self._warmup_similarity(hist)
             return {
                 "status": "warming",
                 "current_trajectory_archetype": None,
                 "current_trajectory_family": None,
                 "nearest_trajectory_archetypes": [],
                 "nearest_trajectory_families": [],
-                "family_similarity": 0.5,
-                "trajectory_similarity": 0.5,
-                "novelty_score": 0.5,
+                "family_similarity": round(float(warmup_similarity), 4),
+                "trajectory_similarity": round(float(warmup_similarity), 4),
+                "novelty_score": round(float(1.0 - warmup_similarity), 4),
+                "support": max(0, len(hist) - 1),
                 "novelty_classification": "insufficient_history",
             }
 
