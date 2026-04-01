@@ -31,6 +31,7 @@ class ReplayStepResult:
     fallback_triggered: bool
     fallback_reasons: list[str]
     intervention_memory_contribution: dict[str, Any] | None
+    ranking_top_gap: float
     law_usage: list[str]
     actual_intervention: str | None
     actual_outcome: str | None
@@ -92,6 +93,7 @@ class HistoricalReplayEngine:
             )
             confidence = max(0.0, min(1.0, confidence))
             recommendation_trace = dict(recommendation.get("intervention_memory_contribution") or {})
+            ranked_interventions = list(recommendation.get("ranked_interventions") or [])
             reliability = dict(output.get("reliability_intelligence") or {})
             novelty = float(trajectory.get("novelty_score", 0.0))
             support_count = int(
@@ -148,7 +150,21 @@ class HistoricalReplayEngine:
                 and not fallback_triggered
             ):
                 recommended = "no_action_recommended"
-            calibration_confidence = min(0.95, confidence + 0.08)
+            ranking_top_gap = 0.0
+            if len(ranked_interventions) >= 2:
+                ranking_top_gap = max(
+                    0.0,
+                    self._float_or_default(ranked_interventions[0].get("confidence"), 0.0)
+                    - self._float_or_default(ranked_interventions[1].get("confidence"), 0.0),
+                )
+            calibration_confidence = self._calibrate_replay_confidence(
+                confidence=confidence,
+                recommended_intervention=str(recommended) if recommended else None,
+                novelty=novelty,
+                support_count=support_count,
+                intervention_pressure=intervention_pressure,
+                ranking_top_gap=ranking_top_gap,
+            )
             if fallback_triggered and str(recommended) == "monitor":
                 confidence = min(confidence, 0.15)
                 calibration_confidence = max(calibration_confidence, 0.68)
@@ -178,6 +194,7 @@ class HistoricalReplayEngine:
                 fallback_triggered=fallback_triggered,
                 fallback_reasons=fallback_reasons,
                 intervention_memory_contribution=recommendation_trace or None,
+                ranking_top_gap=round(ranking_top_gap, 6),
                 law_usage=law_usage,
                 actual_intervention=row.get("actual_intervention"),
                 actual_outcome=row.get("outcome_label"),
@@ -189,6 +206,32 @@ class HistoricalReplayEngine:
             "step_logs": [asdict(s) for s in step_logs],
             "trajectory_logs": trajectory_logs,
         }
+
+    def _calibrate_replay_confidence(
+        self,
+        *,
+        confidence: float,
+        recommended_intervention: str | None,
+        novelty: float,
+        support_count: int,
+        intervention_pressure: float,
+        ranking_top_gap: float,
+    ) -> float:
+        base = min(0.95, max(0.0, confidence + 0.08))
+        if recommended_intervention != "no_action_recommended":
+            return base
+        support_signal = max(0.0, min(1.0, float(support_count) / 4.0))
+        novelty_signal = max(0.0, min(1.0, novelty))
+        pressure_signal = max(0.0, min(1.0, intervention_pressure))
+        gap_signal = max(0.0, min(1.0, ranking_top_gap / 0.25))
+        abstention_calibrated = (
+            0.50
+            + 0.14 * support_signal
+            + 0.06 * gap_signal
+            - 0.15 * novelty_signal
+            - 0.17 * pressure_signal
+        )
+        return round(max(base, min(0.68, abstention_calibrated)), 6)
 
     def _fallback_policy(
         self,
