@@ -282,12 +282,12 @@ class StructuralEngine:
         hist = list(self._drift_history)
         if len(hist) >= max(12, self.recent_window * 2):
             baseline = np.asarray(hist[:-3] if len(hist) > 9 else hist, dtype=float)
-            watch_thr = float(np.quantile(baseline, 0.82))
-            alert_thr = float(np.quantile(baseline, 0.93))
-            watch_thr = max(1.1, watch_thr + 0.08)
-            alert_thr = max(watch_thr + 0.18, alert_thr + 0.12)
+            watch_thr = float(np.quantile(baseline, 0.86))
+            alert_thr = float(np.quantile(baseline, 0.945))
+            watch_thr = max(1.35, watch_thr + 0.12)
+            alert_thr = max(watch_thr + 0.22, alert_thr + 0.15)
         else:
-            watch_thr, alert_thr = 1.8, 3.2
+            watch_thr, alert_thr = 2.05, 3.45
         if drift_score > alert_thr:
             return "ALERT"
         if drift_score > watch_thr:
@@ -367,7 +367,7 @@ class StructuralEngine:
         self._metric_history["recovery_margin"].append(recovery_margin)
 
         # Entity-relative baseline (only from historically stable frames).
-        if drift_score <= 1.4 and pressure <= 0.46 and lock_in <= 0.34:
+        if drift_score <= 1.3 and pressure <= 0.4 and lock_in <= 0.32:
             self._entity_baseline_stability.append(float(drift_score))
         baseline_center = float(np.median(self._entity_baseline_stability)) if self._entity_baseline_stability else max(0.2, drift_score)
         baseline_spread = float(np.std(np.asarray(self._entity_baseline_stability, dtype=float))) if len(self._entity_baseline_stability) >= 6 else 0.12
@@ -460,26 +460,26 @@ class StructuralEngine:
         self._metric_history["pre_instability_score"].append(pre_instability_score)
 
         reasons: List[str] = []
-        if stability_erosion_score >= 0.44:
+        if stability_erosion_score >= 0.5:
             reasons.append("stability_erosion_persistent")
-        if coherence_breakdown_score >= 0.42:
+        if coherence_breakdown_score >= 0.48:
             reasons.append("coherence_breakdown_signals")
-        if pressure_persist >= 0.5:
+        if pressure_persist >= 0.55:
             reasons.append("transition_pressure_persistence")
-        if recovery_fall_persist >= 0.45:
+        if recovery_fall_persist >= 0.52:
             reasons.append("recovery_margin_shrinking")
-        if directional_fall_persist >= 0.45:
+        if directional_fall_persist >= 0.52:
             reasons.append("directional_coherence_loss")
-        if branch_pressure >= 0.42:
+        if branch_pressure >= 0.48:
             reasons.append("branching_tension_rising")
         if not reasons:
             reasons.append("no_persistent_early_instability")
 
-        if pre_instability_score >= 0.83 and pre_commitment_score >= 0.62:
+        if pre_instability_score >= 0.86 and pre_commitment_score >= 0.68:
             ew_state = "alert"
-        elif pre_instability_score >= 0.58 and (mid_confirmation >= 0.42 or short_hint >= 0.55):
+        elif pre_instability_score >= 0.64 and (mid_confirmation >= 0.48 or short_hint >= 0.6):
             ew_state = "emerging_instability"
-        elif pre_instability_score >= 0.38 and stability_erosion_score >= 0.34:
+        elif pre_instability_score >= 0.46 and stability_erosion_score >= 0.4:
             ew_state = "pre_instability"
         else:
             ew_state = "stable"
@@ -676,12 +676,12 @@ class StructuralEngine:
         pressure = self._clamp01(0.52 * evidence + 0.42 * contrast + 0.04 * graph_branching + 0.02 * graph_entropy)
         self._evidence_history.append(float(evidence))
         recent_evidence = list(self._evidence_history)[-5:]
-        evidence_persistence = self._clamp01(float(sum(1 for e in recent_evidence if e >= 0.55)) / max(1, len(recent_evidence)))
-        if pressure >= 0.78 and evidence_persistence >= 0.45:
+        evidence_persistence = self._clamp01(float(sum(1 for e in recent_evidence if e >= 0.58)) / max(1, len(recent_evidence)))
+        if pressure >= 0.82 and evidence_persistence >= 0.52:
             transition_state = "SUSTAINED_TRANSITION"
-        elif pressure >= 0.48 and evidence_persistence >= 0.32:
+        elif pressure >= 0.56 and evidence_persistence >= 0.38:
             transition_state = "EMERGING_TRANSITION"
-        elif pressure >= 0.2:
+        elif pressure >= 0.38:
             transition_state = "METASTABLE"
         else:
             transition_state = "NONE"
@@ -811,13 +811,13 @@ class StructuralEngine:
 
         alert_candidate = bool(
             onset_score >= onset_thr
-            and drift_dev >= 0.35
-            and drift_persistence >= 0.42
-            and pressure_persistence >= 0.1
-            and low_freq_alignment >= 0.34
-            and directional_consistency >= 0.55
-            and agreement >= 0.45
-            and smoothness >= 0.26
+            and drift_dev >= 0.38
+            and drift_persistence >= 0.46
+            and pressure_persistence >= 0.14
+            and low_freq_alignment >= 0.38
+            and directional_consistency >= 0.58
+            and agreement >= 0.48
+            and smoothness >= 0.28
         )
 
         self._onset_candidate_streak = self._onset_candidate_streak + 1 if alert_candidate else max(0, self._onset_candidate_streak - 1)
@@ -873,7 +873,7 @@ class StructuralEngine:
 
         if confirmed_alert:
             return "ALERT"
-        if onset_score >= watch_thr and drift_persistence >= 0.34 and directional_consistency >= 0.5:
+        if onset_score >= watch_thr and drift_persistence >= 0.4 and directional_consistency >= 0.54:
             return "WATCH"
         return "STABLE"
 
@@ -1223,7 +1223,7 @@ class StructuralEngine:
             vector=vector,
         )
         early_erosion = self._safe_float(early_warning.get("stability_erosion_score", 0.0))
-        pressure_boost = self._clamp01(early_erosion * 0.16)
+        pressure_boost = self._clamp01(early_erosion * 0.1)
         transition["transition_pressure"] = round(
             self._clamp01(self._safe_float(transition.get("transition_pressure", 0.0)) + pressure_boost), 4
         )
@@ -1240,8 +1240,12 @@ class StructuralEngine:
         )
         ew_state = str(early_warning.get("early_warning_state", "stable"))
         recent_ew = list(self._early_warning_state_history)[-6:]
-        ew_emerging_persist = sum(1 for s in recent_ew if s in {"pre_instability", "emerging_instability", "alert"}) >= 3
-        if refined_state == "STABLE" and ew_state in {"pre_instability", "emerging_instability"} and ew_emerging_persist:
+        ew_emerging_persist = sum(1 for s in recent_ew if s in {"pre_instability", "emerging_instability", "alert"}) >= 4
+        ew_upgrade_ok = refined_state == "STABLE" and ew_emerging_persist and (
+            ew_state == "emerging_instability"
+            or (ew_state == "pre_instability" and sum(1 for s in recent_ew if s == "pre_instability") >= 4)
+        )
+        if ew_upgrade_ok:
             refined_state = "WATCH"
         if refined_state == "WATCH" and ew_state == "alert":
             refined_state = "ALERT"
