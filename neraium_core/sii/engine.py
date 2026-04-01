@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections import Counter, deque
 from dataclasses import dataclass
+from datetime import datetime, timezone
 import logging
 from typing import Any
 
@@ -13,14 +14,22 @@ from neraium_core.sii.context import ExternalContextProvider, NoOpContextProvide
 from neraium_core.sii.decision import map_decision_state_with_config, map_to_interpreted_state
 from neraium_core.sii.errors import SIIError, SIIProcessingError
 from neraium_core.sii.explanation import build_explanation_text, dominant_drivers
+from neraium_core.sii.attribution import build_structural_attribution
 from neraium_core.sii.geometry_layer import build_geometry_state, flatten_upper
 from neraium_core.sii.graph_layer import graph_state
 from neraium_core.sii.ingestion import (
     canonical_records_from_payloads,
     frames_from_csv,
 )
+from neraium_core.sii.operator import build_operator_decision_support
 from neraium_core.sii.preprocessing import data_quality, impute_column_mean, summarize_quality
+from neraium_core.sii.regime_memory import summarize_regime_memory
+from neraium_core.sii.dynamic_graph import compute_dynamic_graph_metrics
+from neraium_core.sii.hypothesis_scoring import score_structural_hypothesis
 from neraium_core.sii.regime_model import RegimeModel, RegimeObservation
+from neraium_core.sii.risk import assess_forward_risk
+from neraium_core.system_intelligence import StructuralSystemIntelligencePlatform
+from neraium_core.decision_resolver import resolve_best_action
 from neraium_core.sii.scoring import StructuralScoringModel
 from neraium_core.sii.types import (
     ALLOWED_CONFIDENCE,
@@ -52,6 +61,13 @@ class _State:
     raw_cov_shift_history: deque[float]
     raw_subspace_shift_history: deque[float]
     raw_path_shift_history: deque[float]
+    risk_trend_history: deque[str]
+    smoothed_risk_trend: str
+    cumulative_risk_pressure: float
+    decision_hysteresis_state: dict[str, Any]
+    intelligence_history: deque[dict[str, Any]]
+    prev_graph_adj: np.ndarray | None = None
+    prev_degree_centrality: dict[str, float] | None = None
     processed_frames: int = 0
 
 
@@ -93,7 +109,15 @@ class SystemicInfrastructureIntelligenceEngine:
             raw_cov_shift_history=deque(maxlen=240),
             raw_subspace_shift_history=deque(maxlen=240),
             raw_path_shift_history=deque(maxlen=240),
+            risk_trend_history=deque(maxlen=5),
+            smoothed_risk_trend="uncertain",
+            cumulative_risk_pressure=0.0,
+            decision_hysteresis_state={},
+            intelligence_history=deque(maxlen=120),
+            prev_graph_adj=None,
+            prev_degree_centrality=None,
         )
+        self.intelligence = StructuralSystemIntelligencePlatform()
         self.logger.info(
             "engine_initialized",
             extra={
@@ -106,6 +130,19 @@ class SystemicInfrastructureIntelligenceEngine:
 
     @staticmethod
     def _to_float_timestamp(value: str, fallback: float) -> float:
+        text = str(value or "").strip()
+        if text:
+            try:
+                return float(text)
+            except (TypeError, ValueError):
+                pass
+            try:
+                dt = datetime.fromisoformat(text.replace("Z", "+00:00"))
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                return float(dt.timestamp())
+            except Exception:
+                pass
         try:
             return float(value)
         except (TypeError, ValueError):
@@ -192,6 +229,39 @@ class SystemicInfrastructureIntelligenceEngine:
         x = np.arange(vals.size, dtype=float)
         slope, _ = np.polyfit(x, vals, 1)
         return float(slope)
+
+    @staticmethod
+    def _risk_level_to_scalar(level: str) -> float:
+        normalized = str(level or "").strip().lower()
+        return {"low": 0.2, "medium": 0.6, "high": 0.9}.get(normalized, 0.35)
+
+    @staticmethod
+    def _trend_to_scalar(trend: str) -> float:
+        normalized = str(trend or "").strip().lower()
+        if normalized in {"increasing", "rising", "worsening", "up"}:
+            return 1.0
+        if normalized in {"flat", "stable", "uncertain", "drifting"}:
+            return 0.5
+        if normalized in {"decreasing", "falling", "improving", "down"}:
+            return 0.25
+        return 0.4
+
+    def _smooth_risk_trend(self, raw_trend: str) -> str:
+        trend = str(raw_trend or "uncertain").strip().lower() or "uncertain"
+        self.state.risk_trend_history.append(trend)
+        previous = str(self.state.smoothed_risk_trend or "uncertain").strip().lower()
+        window = list(self.state.risk_trend_history)[-3:]
+        votes = Counter(window)
+        majority, majority_count = max(votes.items(), key=lambda kv: (kv[1], kv[0]))
+        opposing = {("increasing", "decreasing"), ("decreasing", "increasing")}
+
+        smoothed = majority
+        if (previous, majority) in opposing and majority_count < 2:
+            smoothed = previous
+        elif previous != majority and majority_count == 1:
+            smoothed = previous
+        self.state.smoothed_risk_trend = smoothed
+        return smoothed
 
     @staticmethod
     def _avg_shortest_path_length(adj: np.ndarray) -> float:
@@ -285,7 +355,60 @@ class SystemicInfrastructureIntelligenceEngine:
                 "regime": {},
                 "context": None,
             },
+            "attribution": {
+                "status": "warming_up",
+                "top_sensors": [],
+                "top_relationships": [],
+                "subsystem_impact": {"primary_cluster": "none", "clusters": []},
+                "change_character": {"scope": "local", "tempo": "gradual"},
+                "contribution_scores": {},
+                "explanation": "Warmup: attribution unavailable until windows are populated.",
+            },
+            "regime_memory": {
+                "status": "warming_up",
+                "current_regime": "warmup",
+                "nearest_matches": [],
+                "best_similarity": 0.0,
+                "confidence": 0.0,
+                "is_novel": True,
+            },
+            "risk_assessment": {
+                "status": "warming_up",
+                "current_risk_level": "low",
+                "projected_near_term_trend": "uncertain",
+                "trajectory": "stabilizing",
+                "risk_score": 0.0,
+                "projected_score": 0.0,
+                "evidence": {},
+            },
+            "operator_guidance": {
+                "status": "warming_up",
+                "concise_summary": "Warmup: insufficient history for structural attribution or risk projection.",
+                "concern": "Insufficient history",
+                "first_inspection_target": "none",
+                "recommended_actions": ["Collect more telemetry to establish baseline and recent windows."],
+            },
+            "causal_analysis": {
+                "status": "warming_up",
+                "best_next_action": None,
+                "recommended_sequence": [],
+                "top_hypotheses": [],
+                "validation_plan": [],
+                "summary": "Warmup: causal prioritization unavailable until sufficient history is present.",
+            },
+            "structural_system_intelligence": {
+                "status": "warming_up",
+                "reason": "latent_state_unavailable_until_windows_are_populated",
+            },
         }
+        out["decision"] = resolve_best_action(
+            attribution=out["attribution"],
+            regime_memory=out["regime_memory"],
+            risk_assessment=out["risk_assessment"],
+            operator_guidance=out["operator_guidance"],
+            causal_analysis=out["causal_analysis"],
+            readiness={"ready": False, "reason": "Warmup window is incomplete."},
+        )
         return out
 
     def _update_adaptive_baseline(
@@ -352,9 +475,50 @@ class SystemicInfrastructureIntelligenceEngine:
     def process_frame(self, frame: TelemetryFrame) -> SIIResult:
         try:
             self._ensure_sensor_order(frame)
+            frame_ts = self._to_float_timestamp(frame.timestamp, self.state.processed_frames)
+            if self.state.timestamps and frame_ts < float(self.state.timestamps[-1]):
+                self.logger.warning(
+                    "out_of_order_frame_dropped",
+                    extra={
+                        "timestamp": frame.timestamp,
+                        "last_timestamp": self.state.timestamps[-1],
+                        "site_id": frame.site_id,
+                        "asset_id": frame.asset_id,
+                    },
+                )
+                dropped = self._warmup_output(frame)
+                dropped["confidence_reasoning"] = list(
+                    dict.fromkeys([*dropped.get("confidence_reasoning", []), "out_of_order_timestamp_dropped"])
+                )
+                dropped["explanation"] = (
+                    "Dropped out-of-order telemetry frame to preserve deterministic windowed analysis."
+                )
+                dropped["data_quality_summary"] = {
+                    **dropped.get("data_quality_summary", {}),
+                    "statuses": ["TEMPORAL_IRREGULARITY", "FRAME_DROPPED"],
+                    "gate_passed": False,
+                }
+                dropped["experimental_analytics"] = {
+                    **dropped.get("experimental_analytics", {}),
+                    "processing": {
+                        "status": "warning",
+                        "code": "out_of_order_timestamp_dropped",
+                        "dropped": True,
+                    },
+                }
+                dropped["decision"] = resolve_best_action(
+                    attribution=dropped["attribution"],
+                    regime_memory=dropped["regime_memory"],
+                    risk_assessment=dropped["risk_assessment"],
+                    operator_guidance=dropped["operator_guidance"],
+                    causal_analysis=dropped["causal_analysis"],
+                    readiness={"ready": False, "reason": "out_of_order_timestamp_dropped"},
+                )
+                return dropped
+
             vec = self._vectorize(frame)
             self.state.vectors.append(vec)
-            self.state.timestamps.append(self._to_float_timestamp(frame.timestamp, self.state.processed_frames))
+            self.state.timestamps.append(frame_ts)
             self.state.processed_frames += 1
 
             baseline, recent = self._history_windows()
@@ -372,6 +536,8 @@ class SystemicInfrastructureIntelligenceEngine:
                 baseline_imp,
                 recent_imp,
                 reference_corr=self.state.baseline_corr,
+                dependence_backend=self.config.dependence_backend,
+                dependence_lag=self.config.dependence_lag,
             )
             gstate = graph_state(
                 geom.recent_corr,
@@ -444,6 +610,18 @@ class SystemicInfrastructureIntelligenceEngine:
             path_shift_score = self._score_from_reference(path_shift, self.state.raw_path_shift_history, fallback_scale=0.35)
             coupling_score = self._clamp01(0.45 * relational_score + 0.35 * graph_score + 0.20 * coherence_loss_score)
 
+            curr_degree = {name: float(np.sum(gstate.adjacency[idx]) / max(1.0, float(gstate.adjacency.shape[0] - 1))) for idx, name in enumerate(gstate.feature_names)}
+            dyn_graph = compute_dynamic_graph_metrics(
+                current_adj=np.asarray(gstate.adjacency, dtype=float),
+                prev_adj=self.state.prev_graph_adj,
+                current_degree_centrality=curr_degree,
+                prev_degree_centrality=self.state.prev_degree_centrality,
+                structural_drift=float(structural_score),
+                coupling_score=float(coupling_score),
+            )
+            self.state.prev_graph_adj = np.asarray(gstate.adjacency, dtype=float)
+            self.state.prev_degree_centrality = dict(curr_degree)
+
             components = {
                 "structural_drift_score": structural_score,
                 "relational_instability_score": relational_score,
@@ -491,6 +669,9 @@ class SystemicInfrastructureIntelligenceEngine:
                 stability=classification_stability,
                 config=self.config,
             )
+            if not bool(dq.gate_passed):
+                interpreted = "NOMINAL_STRUCTURE"
+                decision_state = "STABLE"
             if self.state.processed_frames < int(self.config.min_samples_for_alerts):
                 decision_state = "STABLE"
 
@@ -527,11 +708,197 @@ class SystemicInfrastructureIntelligenceEngine:
                 regime_support=float(reg_assign.regime_support),
             )
             confidence = confidence_to_level(float(conf.score))
+            if not bool(dq.gate_passed):
+                confidence = "low"
             if confidence not in ALLOWED_CONFIDENCE:
                 confidence = "low"
 
             driver_scores = {**components, **component_extensions}
             driver_names = dominant_drivers(driver_scores, top_k=3)
+            attribution = build_structural_attribution(
+                sensor_names=list(self.state.sensor_order),
+                baseline_corr=np.asarray(geom.baseline_corr, dtype=float),
+                recent_corr=np.asarray(geom.recent_corr, dtype=float),
+                baseline_adj=np.asarray(self.state.baseline_adj, dtype=float) if self.state.baseline_adj is not None else np.asarray(gstate.adjacency, dtype=float),
+                recent_adj=np.asarray(gstate.adjacency, dtype=float),
+                baseline_mean=np.asarray(geom.baseline_mean, dtype=float),
+                recent_mean=np.asarray(geom.recent_mean, dtype=float),
+                structural_score=float(structural_score),
+                relational_score=float(relational_score),
+                graph_score=float(graph_score),
+                coupling_score=float(coupling_score),
+                recent_composite=list(self.state.composite_history),
+            )
+            nearest_matches = self.regimes.nearest_matches(
+                geometry_signature=np.asarray(geometry_signature, dtype=float),
+                graph_signature=np.asarray(graph_signature, dtype=float),
+                top_k=3,
+            )
+            regime_memory = summarize_regime_memory(
+                current_regime=str(reg_assign.regime_name),
+                nearest_matches=nearest_matches,
+                threshold=float(self.config.regime_distance_threshold),
+            )
+            regime_confidence = round(float(max(regime_memory.confidence, reg_assign.regime_confidence)), 4)
+            regime_uncertainty = round(float(reg_assign.regime_uncertainty), 4)
+            risk_assessment_data = assess_forward_risk(
+                composite_history=list(self.state.composite_history),
+                structural_score=float(structural_score),
+                regime_score=float(regime_score),
+                coupling_score=float(coupling_score),
+            )
+            raw_risk_trend = str(risk_assessment_data.projected_near_term_trend)
+            risk_trend_smoothed = self._smooth_risk_trend(raw_risk_trend)
+            instant_risk_pressure = self._clamp01(
+                0.45 * float(risk_assessment_data.projected_score)
+                + 0.30 * self._risk_level_to_scalar(str(risk_assessment_data.current_risk_level))
+                + 0.25 * self._trend_to_scalar(risk_trend_smoothed)
+            )
+            trend_reinforcement = 0.02 if risk_trend_smoothed == "increasing" else (0.005 if risk_trend_smoothed == "flat" else 0.0)
+            self.state.cumulative_risk_pressure = round(
+                self._clamp01(max(float(self.state.cumulative_risk_pressure) + trend_reinforcement, instant_risk_pressure)),
+                4,
+            )
+            operator_guidance = build_operator_decision_support(
+                interpreted_state=str(interpreted),
+                decision_state=str(decision_state),
+                confidence=str(confidence),
+                attribution={
+                    "top_sensors": attribution.top_sensors,
+                    "top_relationships": attribution.top_relationships,
+                    "subsystem_impact": attribution.subsystem_impact,
+                    "change_character": attribution.change_character,
+                    "contribution_scores": attribution.contribution_scores,
+                    "explanation": attribution.explanation,
+                },
+                regime_memory={
+                    "current_regime": regime_memory.current_regime,
+                    "nearest_matches": regime_memory.nearest_matches,
+                    "best_similarity": regime_memory.best_similarity,
+                    "confidence": regime_confidence,
+                    "uncertainty": regime_uncertainty,
+                    "is_novel": regime_memory.is_novel,
+                },
+                risk_assessment={
+                    "current_risk_level": risk_assessment_data.current_risk_level,
+                    "projected_near_term_trend": risk_assessment_data.projected_near_term_trend,
+                    "trajectory": risk_assessment_data.trajectory,
+                    "risk_score": risk_assessment_data.risk_score,
+                    "projected_score": risk_assessment_data.projected_score,
+                    "evidence": risk_assessment_data.evidence,
+                },
+            )
+            law_support: dict[str, Any] | None = None
+
+            top_sensors = attribution.top_sensors if isinstance(attribution.top_sensors, list) else []
+            attribution_sensor_names = [
+                str(item.get("sensor", "")).strip()
+                for item in top_sensors
+                if isinstance(item, dict) and str(item.get("sensor", "")).strip()
+            ]
+            primary_causal_drivers = attribution_sensor_names[:3] or (driver_names[:3] if driver_names else ["dominant subsystem"])
+            attribution_set = set(attribution_sensor_names[:5])
+            causal_set = set(primary_causal_drivers)
+            overlap_score = self._clamp01(len(attribution_set & causal_set) / max(1, len(causal_set)))
+            hypo = score_structural_hypothesis(
+                leading_sensor=primary_causal_drivers[0] if primary_causal_drivers else "dominant subsystem",
+                localization=float(structural_score),
+                persistence=float(min(1.0, np.mean(np.asarray(list(self.state.composite_history)[-6:], dtype=float) > 0.55))) if self.state.composite_history else 0.0,
+                subsystem_coherence=float(max(0.0, min(1.0, geom.coherence_score))),
+                robustness=float(max(0.0, min(1.0, 1.0 - abs(structural_score - relational_score)))),
+                multi_signal_agreement=float(overlap_score),
+            )
+            top_hypothesis = {
+                "hypothesis": hypo.hypothesis,
+                "confidence": hypo.confidence,
+                "evidence_strength": hypo.evidence_strength,
+                "robustness": hypo.robustness,
+                "counterfactual_strength": round(float(max(0.0, min(1.0, 0.5 * coupling_score + 0.5 * graph_score))), 4),
+                "primary_drivers": primary_causal_drivers,
+                "score_breakdown": dict(hypo.score_breakdown),
+            }
+            validation_plan = [
+                {
+                    "rank": 1,
+                    "step": str(operator_guidance.recommended_actions[0]) if operator_guidance.recommended_actions else "Inspect leading subsystem",
+                    "expected_voi": round(float(max(0.05, min(1.0, 0.55 + 0.35 * structural_score))), 4),
+                },
+                {
+                    "rank": 2,
+                    "step": "Validate top sensor calibration and strongest relationship pair.",
+                    "expected_voi": round(float(max(0.05, min(1.0, 0.35 + 0.35 * relational_score))), 4),
+                },
+            ]
+            causal_analysis = {
+                "status": "ready",
+                "best_next_action": {
+                    "action": str(operator_guidance.recommended_actions[0]) if operator_guidance.recommended_actions else "Inspect subsystem",
+                    "target": str(operator_guidance.first_inspection_target or "none"),
+                    "priority": 1,
+                    "confidence": round(float(max(0.0, min(1.0, 0.5 * top_hypothesis["confidence"] + 0.5 * risk_assessment_data.projected_score))), 4),
+                },
+                "recommended_sequence": [
+                    {
+                        "action": str(a),
+                        "target": str(operator_guidance.first_inspection_target or "none"),
+                        "priority": idx + 1,
+                    }
+                    for idx, a in enumerate(operator_guidance.recommended_actions[:3])
+                ],
+                "top_hypotheses": [top_hypothesis],
+                "primary_drivers": primary_causal_drivers,
+                "attribution_causal_overlap_score": round(float(overlap_score), 4),
+                "validation_plan": validation_plan,
+                "summary": "Deterministic causal prioritization built from structural drift, coupling, and near-term risk trend.",
+            }
+            intelligence_observation = {
+                "asset_id": frame.asset_id,
+                "structural_drift_score": structural_score,
+                "relational_instability_score": relational_score,
+                "regime_distance": regime_score,
+                "graph_deformation_score": graph_score,
+                "coherence_score": geom.coherence_score,
+                "coupling_instability_score": coupling_score,
+                "risk_pressure": self.state.cumulative_risk_pressure,
+                "path_length_shift": path_shift,
+                "subspace_rotation": raw_subspace_shift,
+                "mean_shift": raw_mean_shift,
+                "covariance_shift": raw_cov_shift,
+                "composite_instability": composite,
+                "contribution_scores": attribution.contribution_scores,
+                "top_relationships": attribution.top_relationships,
+                "subsystem_impact": attribution.subsystem_impact,
+            }
+            structural_intelligence = self.intelligence.update(intelligence_observation)
+            self.state.intelligence_history.append(structural_intelligence)
+            law_support = structural_intelligence.get("law_engine_decision") if isinstance(structural_intelligence, dict) else None
+            law_adjusted_risk = None
+            if isinstance(law_support, dict):
+                law_adjusted_risk = law_support.get("law_adjusted_risk")
+                if isinstance(law_adjusted_risk, (int, float)):
+                    risk_assessment_data = risk_assessment_data.__class__(
+                        current_risk_level=risk_assessment_data.current_risk_level,
+                        projected_near_term_trend=risk_assessment_data.projected_near_term_trend,
+                        trajectory=risk_assessment_data.trajectory,
+                        risk_score=risk_assessment_data.risk_score,
+                        projected_score=max(
+                            0.0,
+                            min(1.0, float(risk_assessment_data.projected_score) + 0.5 * float(law_support.get("law_risk_delta", 0.0))),
+                        ),
+                        evidence={
+                            **dict(risk_assessment_data.evidence),
+                            "law_influence_weight": round(float(law_support.get("law_influence_weight", 0.0)), 4),
+                            "law_risk_delta": round(float(law_support.get("law_risk_delta", 0.0)), 4),
+                        },
+                    )
+                    if law_support.get("law_informed_recommendations"):
+                        operator_guidance = operator_guidance.__class__(
+                            concise_summary=f"{operator_guidance.concise_summary} {law_support.get('law_layer_message', '')}".strip(),
+                            concern=operator_guidance.concern,
+                            first_inspection_target=operator_guidance.first_inspection_target,
+                            recommended_actions=list(law_support.get("law_informed_recommendations") or operator_guidance.recommended_actions),
+                        )
+                    causal_analysis["law_linked_interventions"] = list(law_support.get("law_linked_interventions") or [])
             context = None
             if self.config.allow_context_provider:
                 try:
@@ -571,6 +938,51 @@ class SystemicInfrastructureIntelligenceEngine:
                 ),
                 "read_only": True,
                 "system_health": system_health,
+                "attribution": {
+                    "status": "ready",
+                    "top_sensors": attribution.top_sensors,
+                    "top_relationships": attribution.top_relationships,
+                    "subsystem_impact": attribution.subsystem_impact,
+                    "change_character": attribution.change_character,
+                    "contribution_scores": attribution.contribution_scores,
+                    "explanation": attribution.explanation,
+                },
+                "regime_memory": {
+                    "status": "ready",
+                    "current_regime": regime_memory.current_regime,
+                    "nearest_matches": regime_memory.nearest_matches,
+                    "best_similarity": regime_memory.best_similarity,
+                    "confidence": regime_confidence,
+                    "uncertainty": regime_uncertainty,
+                    "is_novel": regime_memory.is_novel,
+                },
+                "risk_assessment": {
+                    "status": "ready",
+                    "current_risk_level": risk_assessment_data.current_risk_level,
+                    "projected_near_term_trend": risk_assessment_data.projected_near_term_trend,
+                    "risk_trend_smoothed": risk_trend_smoothed,
+                    "trajectory": risk_assessment_data.trajectory,
+                    "risk_score": risk_assessment_data.risk_score,
+                    "projected_score": risk_assessment_data.projected_score,
+                    "cumulative_risk_pressure": self.state.cumulative_risk_pressure,
+                    "evidence": risk_assessment_data.evidence,
+                    "base_risk": (law_support or {}).get("base_risk") if isinstance(law_support, dict) else None,
+                    "law_adjusted_risk": (law_support or {}).get("law_adjusted_risk") if isinstance(law_support, dict) else None,
+                    "law_risk_delta": (law_support or {}).get("law_risk_delta") if isinstance(law_support, dict) else None,
+                    "law_influence_weight": (law_support or {}).get("law_influence_weight") if isinstance(law_support, dict) else None,
+                    "confidence_adjustment": (law_support or {}).get("confidence_adjustment") if isinstance(law_support, dict) else None,
+                },
+                "operator_guidance": {
+                    "status": "ready",
+                    "concise_summary": operator_guidance.concise_summary,
+                    "concern": operator_guidance.concern,
+                    "first_inspection_target": operator_guidance.first_inspection_target,
+                    "recommended_actions": operator_guidance.recommended_actions,
+                    "law_layer_message": (law_support or {}).get("law_layer_message") if isinstance(law_support, dict) else None,
+                    "matched_law_ids": (law_support or {}).get("matched_law_ids") if isinstance(law_support, dict) else [],
+                },
+                "causal_analysis": causal_analysis,
+                "structural_system_intelligence": structural_intelligence,
                 "data_quality_summary": summarize_quality(dq),
                 "experimental_analytics": {
                     "components": {k: round(float(v), 6) for k, v in components.items()},
@@ -592,6 +1004,8 @@ class SystemicInfrastructureIntelligenceEngine:
                         "covariance_shift_norm": round(float(geom.covariance_shift_norm), 6),
                         "subspace_rotation": round(float(geom.subspace_rotation), 6),
                         "coherence_score": round(float(geom.coherence_score), 6),
+                        "dependence_backend": str(self.config.dependence_backend),
+                        "dependence_lag": int(self.config.dependence_lag),
                     },
                     "graph_metrics": {
                         "density": round(float(gstate.density), 6),
@@ -599,6 +1013,11 @@ class SystemicInfrastructureIntelligenceEngine:
                         "path_length": round(float(current_path), 6),
                         "path_length_shift": round(float(path_shift), 6),
                         "deformation": round(float(gstate.l1_deformation), 6),
+                        "edge_persistence": dyn_graph.edge_persistence,
+                        "edge_birth_rate": dyn_graph.edge_birth_rate,
+                        "edge_death_rate": dyn_graph.edge_death_rate,
+                        "centrality_shift": dyn_graph.centrality_shift,
+                        "dynamic_fragility": dyn_graph.fragility_score,
                     },
                     "regime": {
                         "name": reg_assign.regime_name,
@@ -607,10 +1026,34 @@ class SystemicInfrastructureIntelligenceEngine:
                         "graph_distance": reg_assign.graph_distance,
                         "pending": not bool(reg_assign.regime_activated),
                         "support": reg_assign.regime_support,
+                        "confidence": reg_assign.regime_confidence,
+                        "uncertainty": reg_assign.regime_uncertainty,
                     },
                     "context": context,
+                    "processing": {
+                        "status": "success" if bool(dq.gate_passed) else "warning",
+                        "code": "data_quality_gate_passed" if bool(dq.gate_passed) else "data_quality_gate_failed",
+                        "dropped": False,
+                    },
                 },
             }
+            out["decision"] = resolve_best_action(
+                attribution=out["attribution"],
+                regime_memory=out["regime_memory"],
+                risk_assessment=out["risk_assessment"],
+                operator_guidance=out["operator_guidance"],
+                causal_analysis=out.get("causal_analysis"),
+                readiness={"ready": True, "reason": "engine_ready"},
+                decision_context=self.state.decision_hysteresis_state,
+            )
+            if isinstance(out.get("decision"), dict):
+                if isinstance(law_support, dict):
+                    out["decision"]["law_decision_trace"] = law_support.get("law_decision_trace")
+                    out["decision"]["law_influence_weight"] = law_support.get("law_influence_weight")
+                    out["decision"]["matched_law_ids"] = law_support.get("matched_law_ids")
+                next_hysteresis = out["decision"].get("hysteresis_state")
+                if isinstance(next_hysteresis, dict):
+                    self.state.decision_hysteresis_state = dict(next_hysteresis)
             if out["state"] not in ALLOWED_STATES:
                 out["state"] = "STABLE"
             if out["interpreted_state"] not in ALLOWED_INTERPRETED_STATES:

@@ -1,5 +1,7 @@
 import pandas as pd
+import pytest
 
+pytest.importorskip("matplotlib")
 import run_fd_test
 
 

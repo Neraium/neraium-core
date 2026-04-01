@@ -4,17 +4,25 @@ import csv
 import io
 import logging
 import os
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable, TextIO
 
 from neraium_core.alignment import StructuralEngine
-from neraium_core.adapters.raw_telemetry_adapter import load_raw_telemetry_windows, raw_slices_to_structural_frames
-from neraium_core.csv_mapping import row_to_frame_kwargs, resolve_mapping
+from neraium_core.adapters.raw_telemetry_adapter import ingest_raw_industrial_input
+from neraium_core.ingestion_normalization import (
+    normalize_external_batch_payload,
+    normalize_external_payload,
+)
 from neraium_core.pipeline import (
-    build_frame,
-    normalize_rest_payload,
+    canonical_records_to_frames,
+    infer_csv_mapping_stage,
+    issue_to_dict,
+    normalize_csv_rows_to_canonical,
     parse_csv_text,
+    parse_csv_rows,
     pilot_hardening_enabled,
+    validate_csv_mapping_stage,
 )
 from neraium_core.logging_utils import (
     Timer,
@@ -24,9 +32,26 @@ from neraium_core.logging_utils import (
     summarize_payload_for_logs,
     summarize_result_for_logs,
 )
+from neraium_core.explanation_layer import build_memory_context_text
 from neraium_core.pilot_schema import build_pilot_output
 from neraium_core.pilot_config import PilotConfig, load_pilot_config
+from neraium_core.output_contract import build_canonical_output
+from neraium_core.memory_recall import (
+    DEDUPLICATE_SIMILARITY_THRESHOLD,
+    build_structural_memory_signature,
+    classify_novelty,
+    determine_pattern_family,
+    short_memory_summary,
+    signature_similarity,
+)
 from neraium_core.store import DEFAULT_CUSTOMER_ID, ResultStore
+from neraium_core.assistant_layer import (
+    AssistantMode,
+    ReportMode,
+    build_assistant_context,
+    render_assistant_report,
+    render_assistant_response,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -49,7 +74,299 @@ class StructuralMonitoringService:
         self.store = store or ResultStore()
         self._engines_by_asset: dict[tuple[str, str, str], StructuralEngine] = {}
         self._localization_by_site: dict[str, dict[str, float]] = {}
+        self._cycle_by_run: dict[tuple[str, str], int] = {}
+        self._alert_control_by_run: dict[tuple[str, str], dict[str, Any]] = {}
         self.pilot_config: PilotConfig = pilot_config or load_pilot_config()
+
+    def _next_cycle(self, *, run_id: str | None, customer_id: str) -> int:
+        key = (customer_id, str(run_id or "__default__"))
+        next_cycle = self._cycle_by_run.get(key, 0) + 1
+        self._cycle_by_run[key] = next_cycle
+        return next_cycle
+
+    def _consume_alert_control(self, *, run_id: str | None, customer_id: str) -> dict[str, Any] | None:
+        key = (customer_id, str(run_id or "__default__"))
+        control = self._alert_control_by_run.pop(key, None)
+        if not isinstance(control, dict):
+            return None
+        return dict(control)
+
+    def acknowledge_alert(
+        self,
+        *,
+        run_id: str | None,
+        customer_id: str,
+        acknowledged_by: str | None = None,
+    ) -> dict[str, Any]:
+        key = (customer_id, str(run_id or "__default__"))
+        current = self._alert_control_by_run.get(key, {})
+        next_control = dict(current) if isinstance(current, dict) else {}
+        next_control["acknowledge"] = True
+        if acknowledged_by:
+            next_control["acknowledged_by"] = str(acknowledged_by)
+        self._alert_control_by_run[key] = next_control
+        return next_control
+
+    def resolve_alert(
+        self,
+        *,
+        run_id: str | None,
+        customer_id: str,
+        resolved_by: str | None = None,
+    ) -> dict[str, Any]:
+        key = (customer_id, str(run_id or "__default__"))
+        current = self._alert_control_by_run.get(key, {})
+        next_control = dict(current) if isinstance(current, dict) else {}
+        next_control["resolve"] = True
+        if resolved_by:
+            next_control["resolved_by"] = str(resolved_by)
+        self._alert_control_by_run[key] = next_control
+        return next_control
+
+    def _resolve_alert_policy(
+        self,
+        *,
+        run_id: str | None,
+        customer_id: str,
+        site_id: str | None,
+        asset_id: str | None,
+    ) -> dict[str, int] | None:
+        if run_id is None:
+            return None
+        run = self.store.get_run(str(run_id), customer_id=customer_id)
+        if not isinstance(run, dict):
+            return None
+        config = run.get("config")
+        if not isinstance(config, dict):
+            return None
+
+        policy: dict[str, Any] = {}
+        default_policy = config.get("alert_policy")
+        if isinstance(default_policy, dict):
+            policy.update(default_policy)
+
+        by_site = config.get("alert_policy_by_site")
+        if site_id is not None and isinstance(by_site, dict):
+            site_policy = by_site.get(str(site_id))
+            if isinstance(site_policy, dict):
+                policy.update(site_policy)
+
+        by_asset = config.get("alert_policy_by_asset")
+        if asset_id is not None and isinstance(by_asset, dict):
+            asset_policy = by_asset.get(str(asset_id))
+            if isinstance(asset_policy, dict):
+                policy.update(asset_policy)
+
+        return policy or None
+
+    def _persist_product_history(
+        self,
+        result: dict[str, Any],
+        *,
+        run_id: str | None,
+        customer_id: str,
+    ) -> dict[str, Any]:
+        previous = self.store.get_latest_service_history(run_id=run_id, customer_id=customer_id)
+        cycle = self._next_cycle(run_id=run_id, customer_id=customer_id)
+        memory_recall = self._build_memory_recall(result, cycle=cycle, run_id=run_id, customer_id=customer_id)
+        alert_control = self._consume_alert_control(run_id=run_id, customer_id=customer_id)
+        result_with_alert_control = dict(result)
+        if alert_control:
+            result_with_alert_control["alert_control"] = alert_control
+        alert_policy = self._resolve_alert_policy(
+            run_id=run_id,
+            customer_id=customer_id,
+            site_id=str(result.get("site_id")) if result.get("site_id") is not None else None,
+            asset_id=str(result.get("asset_id")) if result.get("asset_id") is not None else None,
+        )
+        if alert_policy:
+            result_with_alert_control["alert_policy"] = alert_policy
+        canonical = build_canonical_output(
+            result_with_alert_control,
+            cycle=cycle,
+            run_id=run_id,
+            customer_id=customer_id,
+            previous=previous,
+            memory_recall=memory_recall,
+        )
+        memory_context = build_memory_context_text(canonical.get("memory_recall"))
+        if memory_context:
+            base_explanation = str(canonical.get("explanation_text", "")).strip()
+            if memory_context not in base_explanation:
+                canonical["explanation_text"] = f"{base_explanation} {memory_context}".strip()
+        persisted = self.store.save_service_history(canonical, run_id=run_id, customer_id=customer_id)
+        canonical["history_id"] = persisted["history_id"]
+        canonical["persisted_at"] = persisted["persisted_at"]
+        memory_recall["source_history_id"] = persisted["history_id"]
+        self._persist_structural_memory(canonical, memory_recall, customer_id=customer_id)
+        return canonical
+
+    def get_memory_matches(
+        self,
+        *,
+        customer_id: str | None = None,
+        run_id: str | None = None,
+        site_id: str | None = None,
+        asset_id: str | None = None,
+        limit: int = 100,
+    ) -> list[dict[str, Any]]:
+        """Return persisted structural memory matches.
+
+        Compatibility note:
+        This accessor is kept as part of the service-layer public API so older
+        API routes and integration tests can retrieve memory recall rows without
+        reaching directly into ``ResultStore``.
+        """
+        return self.store.list_structural_memory(
+            customer_id=self._resolve_customer_id(customer_id),
+            run_id=run_id,
+            site_id=site_id,
+            asset_id=asset_id,
+            limit=limit,
+        )
+
+    @staticmethod
+    def _recall_scope(match: dict[str, Any], *, site_id: str | None, asset_id: str | None) -> str:
+        if asset_id is not None and str(match.get("asset_id")) == str(asset_id):
+            return "same_asset"
+        if site_id is not None and str(match.get("site_id")) == str(site_id):
+            return "same_site"
+        return "cross_asset"
+
+    def _build_memory_recall(
+        self,
+        result: dict[str, Any],
+        *,
+        cycle: int,
+        run_id: str | None,
+        customer_id: str,
+        top_k: int = 5,
+    ) -> dict[str, Any]:
+        signature = build_structural_memory_signature(
+            build_canonical_output(
+                result,
+                cycle=cycle,
+                run_id=run_id,
+                customer_id=customer_id,
+                previous=None,
+                memory_recall=None,
+            )
+        )
+        site_id = str(result.get("site_id")) if result.get("site_id") is not None else None
+        asset_id = str(result.get("asset_id")) if result.get("asset_id") is not None else None
+        history = self.store.list_structural_memory(
+            customer_id=customer_id,
+            limit=1000,
+            exclude_cycle=cycle,
+        )
+        scored: list[dict[str, Any]] = []
+        for item in history:
+            prior_sig = item.get("signature")
+            if not isinstance(prior_sig, dict):
+                continue
+            breakdown = signature_similarity(signature, prior_sig)
+            scored.append(
+                {
+                    **item,
+                    "similarity": breakdown.total,
+                    "drivers_overlap": breakdown.drivers_overlap,
+                    "scope": self._recall_scope(item, site_id=site_id, asset_id=asset_id),
+                }
+            )
+        scored.sort(
+            key=lambda x: (
+                {"same_asset": 0, "same_site": 1, "cross_asset": 2}.get(str(x.get("scope")), 3),
+                -float(x.get("similarity", 0.0)),
+                -int(x.get("memory_id", 0)),
+            )
+        )
+        nearest = scored[0] if scored else None
+        best_similarity = float(nearest.get("similarity", 0.0)) if nearest else 0.0
+        best_overlap = float(nearest.get("drivers_overlap", 0.0)) if nearest else 0.0
+        novelty = classify_novelty(
+            best_similarity=best_similarity,
+            best_overlap=best_overlap,
+            memory_count=len(scored),
+        )
+        top_matches = []
+        for item in scored[:top_k]:
+            top_matches.append(
+                {
+                    "memory_id": item.get("memory_id"),
+                    "similarity": float(item.get("similarity", 0.0)),
+                    "asset_id": item.get("asset_id"),
+                    "run_id": item.get("run_id"),
+                    "cycle": item.get("cycle"),
+                    "summary": item.get("summary"),
+                    "scope": item.get("scope"),
+                }
+            )
+        pattern_family = determine_pattern_family(signature, similarity=best_similarity if nearest else None)
+        nearest_match = {
+            "found": nearest is not None,
+            "similarity": best_similarity,
+            "memory_id": nearest.get("memory_id") if nearest else None,
+            "asset_id": nearest.get("asset_id") if nearest else None,
+            "run_id": nearest.get("run_id") if nearest else None,
+            "cycle": nearest.get("cycle") if nearest else None,
+            "summary": nearest.get("summary") if nearest else None,
+            "scope": nearest.get("scope") if nearest else None,
+        }
+        return {
+            "status": {
+                "enabled": True,
+                "memory_records_considered": len(scored),
+                "scope": "customer",
+            },
+            "signature": signature,
+            "novelty": novelty,
+            "nearest_match": nearest_match,
+            "top_matches": top_matches,
+            "pattern_family": pattern_family,
+        }
+
+    def _persist_structural_memory(
+        self,
+        canonical: dict[str, Any],
+        memory_recall: dict[str, Any],
+        *,
+        customer_id: str,
+    ) -> dict[str, Any] | None:
+        signature = memory_recall.get("signature")
+        if not isinstance(signature, dict):
+            return None
+        nearest = memory_recall.get("nearest_match") if isinstance(memory_recall.get("nearest_match"), dict) else {}
+        nearest_similarity = float(nearest.get("similarity", 0.0) or 0.0)
+        if nearest_similarity >= DEDUPLICATE_SIMILARITY_THRESHOLD and nearest.get("scope") == "same_asset":
+            return None
+        risk = canonical.get("risk_assessment") if isinstance(canonical.get("risk_assessment"), dict) else {}
+        decision = canonical.get("decision") if isinstance(canonical.get("decision"), dict) else {}
+        session = canonical.get("session") if isinstance(canonical.get("session"), dict) else {}
+        family = memory_recall.get("pattern_family") if isinstance(memory_recall.get("pattern_family"), dict) else {}
+        novelty = memory_recall.get("novelty") if isinstance(memory_recall.get("novelty"), dict) else {}
+        record = {
+            "customer_id": customer_id,
+            "run_id": session.get("run_id"),
+            "site_id": session.get("site_id"),
+            "asset_id": session.get("asset_id"),
+            "timestamp": canonical.get("timestamp"),
+            "cycle": canonical.get("cycle"),
+            "memory_key": f"{signature.get('risk_level', 'UNKNOWN')}|{signature.get('decision_state', 'UNKNOWN')}|{signature.get('regime_key', 'unknown')}",
+            "family_label": family.get("label"),
+            "novelty": novelty,
+            "signature": signature,
+            "summary": short_memory_summary(signature),
+            "decision": decision.get("action"),
+            "risk_level": risk.get("risk_level"),
+            "event_flags": canonical.get("events", []),
+            "source_history_id": memory_recall.get("source_history_id"),
+            "metadata": {
+                "nearest_similarity": nearest_similarity,
+                "nearest_memory_id": nearest.get("memory_id"),
+                "pattern_family_confidence": family.get("confidence"),
+            },
+        }
+        return self.store.save_structural_memory(record, customer_id=customer_id)
 
     @staticmethod
     def _resolve_customer_id(customer_id: str | None) -> str:
@@ -312,18 +629,53 @@ class StructuralMonitoringService:
         run_id: str | None = None,
         customer_id: str | None = None,
         site_id: str = "raw-telemetry",
+        preprocessing_mode: str = "auto",
+        sample_size: int | None = None,
     ) -> list[dict[str, Any]]:
-        """Ingest raw waveform windows (from json/csv/npy/npz) through the existing structural engine."""
-        windows = load_raw_telemetry_windows(input_path)
-        frames = raw_slices_to_structural_frames(
-            windows,
+        """Backward-compatible wrapper for generic raw industrial ingestion."""
+        output = self.ingest_raw_industrial_data(
+            input_path,
+            run_id=run_id,
+            customer_id=customer_id,
             site_id=site_id,
-            customer_id=customer_id or DEFAULT_CUSTOMER_ID,
+            preprocessing_mode=preprocessing_mode,
+            sample_size=sample_size,
+        )
+        return list(output["results"])
+
+    def ingest_raw_industrial_data(
+        self,
+        input_path: str,
+        *,
+        run_id: str | None = None,
+        customer_id: str | None = None,
+        site_id: str = "raw-telemetry",
+        preprocessing_mode: str = "auto",
+        sample_size: int | None = None,
+    ) -> dict[str, Any]:
+        """Ingest raw industrial data (tabular rows or directory signal blocks) through runtime path."""
+        resolved_customer = self._resolve_customer_id(customer_id)
+        ingestion = ingest_raw_industrial_input(
+            input_path,
+            site_id=site_id,
+            customer_id=resolved_customer,
+            preprocessing_mode=preprocessing_mode,
+            sample_size=sample_size,
         )
         outputs: list[dict[str, Any]] = []
-        for frame in frames:
+        for frame in ingestion.frames:
             outputs.append(self.ingest_payload(frame, run_id=run_id, customer_id=customer_id))
-        return outputs
+        diagnostics = {
+            "detected_input_type": ingestion.diagnostics.detected_input_type,
+            "timestep_count": ingestion.diagnostics.timestep_count,
+            "sensor_count": ingestion.diagnostics.sensor_count,
+            "preprocessing_mode": ingestion.diagnostics.preprocessing_mode,
+            "has_valid_signals": ingestion.diagnostics.has_valid_signals,
+            "sensor_columns": ingestion.diagnostics.sensor_columns,
+            "metadata_columns": ingestion.diagnostics.metadata_columns,
+            "warnings": ingestion.diagnostics.warnings,
+        }
+        return {"diagnostics": diagnostics, "results": outputs}
 
     def ingest_payload(
         self,
@@ -351,7 +703,42 @@ class StructuralMonitoringService:
                 level=logging.INFO,
             )
         try:
-            frame = normalize_rest_payload(payload)
+            try:
+                frame = normalize_external_payload(
+                    payload,
+                    customer_id=customer_id,
+                    require_confirmed_mapping=False,
+                )
+            except ValueError as exc:
+                if not pilot_hardening_enabled():
+                    raise
+                message = str(exc)
+                if not isinstance(payload, dict):
+                    raise
+                if not (
+                    message.startswith("missing_timestamp:") or message.startswith("no_usable_signals:")
+                ):
+                    raise
+                patched_payload = dict(payload)
+                if message.startswith("missing_timestamp:"):
+                    patched_payload["timestamp"] = datetime.now(timezone.utc).isoformat()
+                if message.startswith("no_usable_signals:"):
+                    timestamp = patched_payload.get("timestamp")
+                    if timestamp is None:
+                        timestamp = datetime.now(timezone.utc).isoformat()
+                    frame = {
+                        "timestamp": str(timestamp),
+                        "site_id": str(patched_payload.get("site_id") or "default-site"),
+                        "asset_id": str(patched_payload.get("asset_id") or "default-asset"),
+                        "sensor_values": {},
+                        "customer_id": str(customer_id or patched_payload.get("customer_id") or "default-customer"),
+                    }
+                else:
+                    frame = normalize_external_payload(
+                        patched_payload,
+                        customer_id=customer_id,
+                        require_confirmed_mapping=False,
+                    )
             resolved_customer = self._effective_customer_id(
                 request_customer_id=customer_id,
                 payload_customer_id=frame.get("customer_id"),
@@ -377,6 +764,12 @@ class StructuralMonitoringService:
                 result_id=persisted.get("result_id"),
                 persisted_at=persisted.get("persisted_at"),
             )
+            result["canonical_output"] = self._persist_product_history(
+                result,
+                run_id=run_id,
+                customer_id=resolved_customer,
+            )
+            result["events"] = list(result["canonical_output"].get("events", []))
 
             out_fields = summarize_result_for_logs(result)
             out_fields["latency_ms"] = round(timer.ms(), 3)
@@ -418,7 +811,7 @@ class StructuralMonitoringService:
 
     def ingest_batch(
         self,
-        payloads: list[dict[str, Any]],
+        payloads: list[dict[str, Any]] | dict[str, Any],
         *,
         run_id: str | None = None,
         customer_id: str | None = None,
@@ -432,19 +825,31 @@ class StructuralMonitoringService:
         log_structured(
             logger,
             event="ingest_batch_in",
-            fields={"items": len(payloads)},
+            fields={"items": len(payloads) if isinstance(payloads, list) else 1},
             level=logging.INFO,
         )
         pairs: list[tuple[dict[str, Any], dict[str, Any]]] = []
         results: list[dict[str, Any]] = []
+        normalized_payloads: list[dict[str, Any]]
+        if isinstance(payloads, dict):
+            normalized_payloads, _ = normalize_external_batch_payload(
+                payloads,
+                customer_id=customer_id,
+            )
+        else:
+            normalized_payloads = list(payloads)
         resolved_customer = self._effective_customer_id(
             request_customer_id=customer_id,
-            payload_customer_id=payloads[0].get("customer_id") if payloads else None,
+            payload_customer_id=normalized_payloads[0].get("customer_id") if normalized_payloads else None,
         )
-        for payload in payloads:
+        for payload in normalized_payloads:
             item_timer = Timer()
             try:
-                frame = normalize_rest_payload(payload)
+                frame = normalize_external_payload(
+                    payload,
+                    customer_id=customer_id,
+                    require_confirmed_mapping=False,
+                )
                 frame_customer = self._effective_customer_id(
                     request_customer_id=customer_id,
                     payload_customer_id=frame.get("customer_id"),
@@ -527,12 +932,116 @@ class StructuralMonitoringService:
                         persisted_at=persisted.get("persisted_at"),
                     )
                 )
+        for result in results_with_ids:
+            result["canonical_output"] = self._persist_product_history(
+                result,
+                run_id=run_id,
+                customer_id=resolved_customer,
+            )
+            result["events"] = list(result["canonical_output"].get("events", []))
         log_structured(
             logger,
             event="ingest_batch_out",
             fields={"items": len(results), "latency_ms": round(batch_timer.ms(), 3)},
             level=logging.INFO,
         )
+        return results_with_ids
+
+    def ingest_frame(
+        self,
+        payload: dict[str, Any],
+        *,
+        run_id: str | None = None,
+        customer_id: str | None = None,
+    ) -> dict[str, Any]:
+        result = self.ingest_payload(payload, run_id=run_id, customer_id=customer_id)
+        canonical = result.get("canonical_output")
+        if isinstance(canonical, dict):
+            return canonical
+        resolved_customer = self._resolve_customer_id(customer_id or result.get("customer_id"))
+        return self._persist_product_history(result, run_id=run_id, customer_id=resolved_customer)
+
+    def ingest_normalized_frames(
+        self,
+        frames: list[dict[str, Any]],
+        *,
+        run_id: str | None = None,
+        customer_id: str | None = None,
+    ) -> list[dict[str, Any]]:
+        """Ingest already-normalized canonical frames without remapping."""
+
+        resolved_customer = self._resolve_customer_id(customer_id)
+        run_config: dict[str, Any] | None = None
+        if run_id:
+            run_obj = self.store.get_run(run_id, customer_id=resolved_customer)
+            if run_obj and isinstance(run_obj.get("config"), dict):
+                run_config = run_obj["config"]
+
+        pairs: list[tuple[dict[str, Any], dict[str, Any]]] = []
+        results: list[dict[str, Any]] = []
+        for frame in frames:
+            clean_frame = dict(frame)
+            clean_frame["customer_id"] = resolved_customer
+            engine = self._engine_for_frame(clean_frame, run_config=run_config)
+            result = self._decorate_result(engine.process_frame(clean_frame))
+            result["customer_id"] = resolved_customer
+            if pilot_hardening_enabled():
+                result.update(build_pilot_output(frame=clean_frame, result=result))
+            results.append(result)
+            pairs.append((clean_frame, result))
+
+        self.store.save_ingestion_batch(pairs, run_id=run_id, customer_id=resolved_customer)
+        persisted_recent = self.store.list_recent_results(
+            limit=len(results),
+            run_id=run_id,
+            customer_id=resolved_customer,
+        )
+        persisted_map: dict[tuple[str, str, str, str], dict[str, Any]] = {}
+        for item in persisted_recent:
+            key = (
+                str(item.get("customer_id", "")),
+                str(item.get("timestamp", "")),
+                str(item.get("site_id", "")),
+                str(item.get("asset_id", "")),
+            )
+            persisted_map[key] = item
+
+        results_with_ids: list[dict[str, Any]] = []
+        for result in results:
+            key = (
+                str(result.get("customer_id", "")),
+                str(result.get("timestamp", "")),
+                str(result.get("site_id", "")),
+                str(result.get("asset_id", "")),
+            )
+            persisted = persisted_map.get(key)
+            if persisted is None:
+                results_with_ids.append(
+                    self._with_result_metadata(
+                        result,
+                        customer_id=resolved_customer,
+                        run_id=run_id,
+                        result_id=None,
+                        persisted_at=None,
+                    )
+                )
+            else:
+                results_with_ids.append(
+                    self._with_result_metadata(
+                        result,
+                        customer_id=persisted.get("customer_id"),
+                        run_id=persisted.get("run_id"),
+                        result_id=persisted.get("result_id"),
+                        persisted_at=persisted.get("persisted_at"),
+                    )
+                )
+        for result in results_with_ids:
+            result["canonical_output"] = self._persist_product_history(
+                result,
+                run_id=run_id,
+                customer_id=resolved_customer,
+            )
+            result["events"] = list(result["canonical_output"].get("events", []))
         return results_with_ids
 
     def ingest_csv(
@@ -633,6 +1142,13 @@ class StructuralMonitoringService:
                             persisted_at=persisted.get("persisted_at"),
                         )
                     )
+            for result in results_with_ids:
+                result["canonical_output"] = self._persist_product_history(
+                    result,
+                    run_id=run_id,
+                    customer_id=resolved_customer,
+                )
+                result["events"] = list(result["canonical_output"].get("events", []))
             log_structured(
                 logger,
                 event="ingest_csv_out",
@@ -760,14 +1276,20 @@ class StructuralMonitoringService:
             raise ValueError("CSV has no parseable header row.")
 
         header_names = [str(name).strip() for name in reader.fieldnames if name is not None]
-        try:
-            mapping, _map_warnings = resolve_mapping(
-                header_names,
-                column_mapping,
-                csv_sample=sample_for_infer if column_mapping is None else None,
-            )
-        except ValueError as exc:
-            raise ValueError(str(exc)) from exc
+        _, sample_rows, parse_issues = parse_csv_rows(sample_for_infer)
+        map_stage = infer_csv_mapping_stage(
+            header_names,
+            rows=sample_rows,
+            column_mapping=column_mapping,
+        )
+        mapping = map_stage.mapping
+        mapping_issues = validate_csv_mapping_stage(mapping, header_names) if mapping is not None else []
+        blocking_mapping_issues = [*parse_issues, *map_stage.issues, *mapping_issues]
+        if mapping is None or blocking_mapping_issues:
+            first = blocking_mapping_issues[0] if blocking_mapping_issues else None
+            if first is None:
+                raise ValueError("CSV mapping could not be resolved.")
+            raise ValueError(first.message)
 
         buffered_pairs: list[tuple[dict[str, Any], dict[str, Any]]] = []
         rows_processed = 0
@@ -789,10 +1311,14 @@ class StructuralMonitoringService:
             if row is None:
                 continue
             rows_processed += 1
+            row_issues: list[Any] = []
             try:
-                kwargs = row_to_frame_kwargs(row, mapping, customer_id=resolved_customer)
-                frame = build_frame(**kwargs)
-                frame["customer_id"] = resolved_customer
+                canonical_records, row_issues = normalize_csv_rows_to_canonical([dict(row, __row_index__=row_index)], mapping=mapping)
+                if row_issues:
+                    raise ValueError(row_issues[0].message)
+                if not canonical_records:
+                    raise ValueError("Row normalization produced no canonical record.")
+                frame = canonical_records_to_frames(canonical_records, customer_id=resolved_customer)[0]
                 engine = self._engine_for_frame(frame, run_config=run_config)
                 result = self._decorate_result(engine.process_frame(frame))
                 result["customer_id"] = resolved_customer
@@ -800,12 +1326,29 @@ class StructuralMonitoringService:
                     result.update(build_pilot_output(frame=frame, result=result))
                 buffered_pairs.append((frame, result))
                 rows_succeeded += 1
+                result["canonical_output"] = self._persist_product_history(
+                    result,
+                    run_id=run_id,
+                    customer_id=resolved_customer,
+                )
+                result["events"] = list(result["canonical_output"].get("events", []))
                 last_result = result
             except Exception as exc:
                 rows_failed += 1
                 msg = self._csv_validation_error_message(exc, row_index=row_index)
                 if len(error_samples) < safe_error_samples:
-                    error_samples.append({"row": row_index, "message": msg})
+                    issue_dict = (
+                        issue_to_dict(row_issues[0])
+                        if "row_issues" in locals() and row_issues
+                        else {"code": "row_error", "message": msg, "row": row_index}
+                    )
+                    error_samples.append(
+                        {
+                            "row": row_index,
+                            "message": msg,
+                            "issue": issue_dict,
+                        }
+                    )
                 log_structured(
                     logger,
                     event="ingest_csv_stream_row_error",
@@ -943,6 +1486,115 @@ class StructuralMonitoringService:
             return items
         target = str(site_id).strip()
         return [item for item in items if str(item.get("site_id", "")).strip() == target]
+
+    def get_current_state(
+        self,
+        *,
+        run_id: str | None = None,
+        customer_id: str | None = None,
+    ) -> dict[str, Any] | None:
+        return self.store.get_latest_service_history(run_id=run_id, customer_id=customer_id)
+
+    def get_recent_history(
+        self,
+        limit: int = 100,
+        *,
+        run_id: str | None = None,
+        customer_id: str | None = None,
+    ) -> list[dict[str, Any]]:
+        return self.store.list_service_history(limit=limit, run_id=run_id, customer_id=customer_id)
+
+    def get_latest_recommendation(
+        self,
+        *,
+        run_id: str | None = None,
+        customer_id: str | None = None,
+    ) -> dict[str, Any] | None:
+        latest = self.get_current_state(run_id=run_id, customer_id=customer_id)
+        if not isinstance(latest, dict):
+            return None
+        recommendation = latest.get("operational_recommendation")
+        return recommendation if isinstance(recommendation, dict) else None
+
+    def get_latest_decision(
+        self,
+        *,
+        run_id: str | None = None,
+        customer_id: str | None = None,
+    ) -> dict[str, Any] | None:
+        """Deprecated compatibility alias. Prefer get_latest_recommendation."""
+        latest = self.get_current_state(run_id=run_id, customer_id=customer_id)
+        if not isinstance(latest, dict):
+            return None
+        recommendation = latest.get("operational_recommendation")
+        if isinstance(recommendation, dict):
+            status = recommendation.get("status") if isinstance(recommendation.get("status"), dict) else {}
+            return {
+                "state": "ALERT" if bool(status.get("available")) else "UNKNOWN",
+                "action": recommendation.get("recommended_action") or "none",
+                "reason": recommendation.get("rationale") or status.get("reason", "legacy_alias"),
+                "confidence": recommendation.get("recommendation_confidence", 0.0),
+                "status": {
+                    "available": bool(status.get("available")),
+                    "reason": status.get("reason", "recommendation_available"),
+                },
+                "deprecated": True,
+            }
+        decision = latest.get("decision")
+        return decision if isinstance(decision, dict) else None
+
+    def get_latest_explanation(
+        self,
+        *,
+        run_id: str | None = None,
+        customer_id: str | None = None,
+    ) -> str | None:
+        latest = self.get_current_state(run_id=run_id, customer_id=customer_id)
+        if not isinstance(latest, dict):
+            return None
+        text = latest.get("explanation_text")
+        return str(text) if text is not None else None
+
+    def build_assistant_context(
+        self,
+        *,
+        run_id: str | None = None,
+        customer_id: str | None = None,
+        history_limit: int = 20,
+    ) -> dict[str, Any]:
+        current = self.get_current_state(run_id=run_id, customer_id=customer_id)
+        history = self.get_recent_history(limit=history_limit, run_id=run_id, customer_id=customer_id)
+        return build_assistant_context(current_state=current, recent_history=history)
+
+    def generate_assistant_response(
+        self,
+        *,
+        mode: AssistantMode,
+        run_id: str | None = None,
+        customer_id: str | None = None,
+        history_limit: int = 20,
+    ) -> dict[str, Any]:
+        context = self.build_assistant_context(
+            run_id=run_id,
+            customer_id=customer_id,
+            history_limit=history_limit,
+        )
+        return render_assistant_response(mode=mode, context=context)
+
+    def generate_report_response(
+        self,
+        *,
+        mode: ReportMode,
+        run_id: str | None = None,
+        customer_id: str | None = None,
+        history_limit: int = 20,
+    ) -> dict[str, Any]:
+        context = self.build_assistant_context(
+            run_id=run_id,
+            customer_id=customer_id,
+            history_limit=history_limit,
+        )
+        return render_assistant_report(mode=mode, context=context)
 
     def get_result_by_id(
         self,

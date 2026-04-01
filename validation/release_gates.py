@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 ﻿from __future__ import annotations
+=======
+from __future__ import annotations
+>>>>>>> 3aedc7e4a4597802300889285e2fecafec7b2eee
 
 from dataclasses import asdict, dataclass
 from typing import Any

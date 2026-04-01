@@ -55,6 +55,16 @@ def _empty_state_statistics() -> dict[str, float]:
     }
 
 
+def _stack_common_dimension(vectors: list[np.ndarray]) -> np.ndarray:
+    cleaned = [np.ravel(np.asarray(v, dtype=float)) for v in vectors if np.asarray(v).size > 0]
+    if not cleaned:
+        return np.zeros((0, 0), dtype=float)
+    common_dim = min(arr.shape[0] for arr in cleaned)
+    if common_dim <= 0:
+        return np.zeros((0, 0), dtype=float)
+    return np.vstack([arr[:common_dim] for arr in cleaned])
+
+
 def compute_state_statistics(path: list[np.ndarray], window: int = 12, min_covariance_samples: int = 20) -> dict[str, float]:
     if not path:
         return _empty_state_statistics()
@@ -64,7 +74,9 @@ def compute_state_statistics(path: list[np.ndarray], window: int = 12, min_covar
         return _empty_state_statistics()
 
     tail_window = max(required, max(2, int(window)))
-    tail = np.vstack([np.asarray(v, dtype=float) for v in path[-tail_window:]])
+    tail = _stack_common_dimension([np.asarray(v, dtype=float) for v in path[-tail_window:]])
+    if tail.size == 0:
+        return _empty_state_statistics()
     center = np.mean(tail, axis=0)
     centered = tail - center
     epsilon = 1e-6
@@ -89,7 +101,9 @@ def compute_state_statistics(path: list[np.ndarray], window: int = 12, min_covar
     contraction = 0.0
     expansion = 0.0
     if first:
-        prev = np.vstack([np.asarray(v, dtype=float) for v in first])
+        prev = _stack_common_dimension([np.asarray(v, dtype=float) for v in first])
+        if prev.size == 0:
+            return _empty_state_statistics()
         prev_cov = _regularized_covariance(prev - np.mean(prev, axis=0), epsilon=epsilon)
         prev_trace = float(np.trace(prev_cov))
         delta = trace - prev_trace

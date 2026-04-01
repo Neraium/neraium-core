@@ -117,6 +117,61 @@ class ResultStore:
                 )
                 """
             )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS service_history (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    created_at TEXT NOT NULL,
+                    customer_id TEXT NOT NULL DEFAULT 'default-customer',
+                    run_id TEXT,
+                    timestamp TEXT,
+                    cycle INTEGER,
+                    risk_state TEXT,
+                    decision TEXT,
+                    confidence REAL,
+                    top_drivers_json TEXT NOT NULL,
+                    explanation_text TEXT,
+                    event_flags_json TEXT NOT NULL,
+                    record_json TEXT NOT NULL
+                )
+                """
+            )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS structural_memory (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    created_at TEXT NOT NULL,
+                    customer_id TEXT NOT NULL DEFAULT 'default-customer',
+                    run_id TEXT,
+                    site_id TEXT,
+                    asset_id TEXT,
+                    timestamp TEXT,
+                    cycle INTEGER,
+                    memory_key TEXT NOT NULL,
+                    family_label TEXT,
+                    novelty_is_novel INTEGER NOT NULL DEFAULT 1,
+                    novelty_score REAL NOT NULL DEFAULT 1.0,
+                    signature_json TEXT NOT NULL,
+                    summary TEXT,
+                    decision TEXT,
+                    risk_level TEXT,
+                    event_flags_json TEXT NOT NULL,
+                    source_history_id INTEGER,
+                    metadata_json TEXT NOT NULL
+                )
+                """
+            )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS operational_state (
+                    state_key TEXT PRIMARY KEY,
+                    customer_id TEXT NOT NULL DEFAULT 'default-customer',
+                    run_id TEXT,
+                    state_json TEXT NOT NULL,
+                    updated_at TEXT NOT NULL
+                )
+                """
+            )
             self._ensure_column(
                 conn,
                 "events",
@@ -149,6 +204,26 @@ class ResultStore:
                 "CREATE INDEX IF NOT EXISTS idx_runs_customer_active "
                 "ON runs(customer_id, is_active, updated_at DESC)"
             )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_service_history_customer_run_id_id "
+                "ON service_history(customer_id, run_id, id DESC)"
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_structural_memory_scope_cycle "
+                "ON structural_memory(customer_id, site_id, asset_id, cycle DESC, id DESC)"
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_structural_memory_customer_id "
+                "ON structural_memory(customer_id, id DESC)"
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_structural_memory_memory_key "
+                "ON structural_memory(customer_id, memory_key, id DESC)"
+            )
+            conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_operational_state_customer_key "
+                "ON operational_state(customer_id, state_key)"
+            )
 
     @staticmethod
     def _ensure_column(conn: sqlite3.Connection, table: str, column: str, column_sql: str) -> None:
@@ -162,6 +237,364 @@ class ResultStore:
         with self._conn() as conn:
             conn.execute("DELETE FROM events")
             conn.execute("DELETE FROM results")
+            conn.execute("DELETE FROM service_history")
+            conn.execute("DELETE FROM structural_memory")
+            conn.execute("DELETE FROM operational_state")
+
+    def upsert_operational_state(
+        self,
+        *,
+        state_key: str,
+        state: dict[str, Any],
+        customer_id: str | None = None,
+        run_id: str | None = None,
+    ) -> dict[str, Any]:
+        key = str(state_key or "").strip()
+        if not key:
+            raise ValueError("state_key is required")
+        resolved_customer = _normalize_customer_id(customer_id)
+        now = _utc_now()
+        with self._conn() as conn:
+            conn.execute(
+                """
+                INSERT INTO operational_state (state_key, customer_id, run_id, state_json, updated_at)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(state_key) DO UPDATE SET
+                    customer_id=excluded.customer_id,
+                    run_id=excluded.run_id,
+                    state_json=excluded.state_json,
+                    updated_at=excluded.updated_at
+                """,
+                (key, resolved_customer, run_id, json.dumps(_json_safe(state)), now),
+            )
+        return {"state_key": key, "customer_id": resolved_customer, "run_id": run_id, "updated_at": now}
+
+    def delete_operational_state(self, *, state_key: str) -> None:
+        key = str(state_key or "").strip()
+        if not key:
+            return
+        with self._conn() as conn:
+            conn.execute("DELETE FROM operational_state WHERE state_key = ?", (key,))
+
+    def get_operational_state(self, *, state_key: str) -> dict[str, Any] | None:
+        key = str(state_key or "").strip()
+        if not key:
+            return None
+        with self._conn() as conn:
+            row = conn.execute(
+                """
+                SELECT state_key, customer_id, run_id, state_json, updated_at
+                FROM operational_state
+                WHERE state_key = ?
+                LIMIT 1
+                """,
+                (key,),
+            ).fetchone()
+        if row is None:
+            return None
+        try:
+            decoded = json.loads(row["state_json"])
+        except Exception:
+            decoded = {}
+        if not isinstance(decoded, dict):
+            decoded = {}
+        return {
+            "state_key": str(row["state_key"]),
+            "customer_id": str(row["customer_id"]),
+            "run_id": row["run_id"],
+            "state": decoded,
+            "updated_at": str(row["updated_at"]),
+        }
+
+    def list_operational_state(self, *, key_prefix: str | None = None) -> list[dict[str, Any]]:
+        prefix = str(key_prefix or "").strip()
+        with self._conn() as conn:
+            if prefix:
+                rows = conn.execute(
+                    """
+                    SELECT state_key, customer_id, run_id, state_json, updated_at
+                    FROM operational_state
+                    WHERE state_key LIKE ?
+                    ORDER BY state_key ASC
+                    """,
+                    (f"{prefix}%",),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    """
+                    SELECT state_key, customer_id, run_id, state_json, updated_at
+                    FROM operational_state
+                    ORDER BY state_key ASC
+                    """
+                ).fetchall()
+        decoded_rows: list[dict[str, Any]] = []
+        for row in rows:
+            try:
+                payload = json.loads(row["state_json"])
+            except Exception:
+                payload = {}
+            if not isinstance(payload, dict):
+                payload = {}
+            decoded_rows.append(
+                {
+                    "state_key": str(row["state_key"]),
+                    "customer_id": str(row["customer_id"]),
+                    "run_id": row["run_id"],
+                    "state": payload,
+                    "updated_at": str(row["updated_at"]),
+                }
+            )
+        return decoded_rows
+
+    def save_service_history(
+        self,
+        record: dict[str, Any],
+        *,
+        run_id: str | None = None,
+        customer_id: str | None = None,
+    ) -> dict[str, Any]:
+        resolved_customer = _normalize_customer_id(customer_id)
+        now = _utc_now()
+        risk_assessment = record.get("risk_assessment") if isinstance(record.get("risk_assessment"), dict) else {}
+        risk_state = str(risk_assessment.get("risk_level", "UNKNOWN"))
+        decision = record.get("decision") if isinstance(record.get("decision"), dict) else {}
+        decision_label = str(
+            decision.get("action")
+            or decision.get("state")
+            or decision.get("resolved_action")
+            or "unknown"
+        )
+        attribution = record.get("attribution") if isinstance(record.get("attribution"), dict) else {}
+        top_drivers = attribution.get("top_drivers")
+        if not isinstance(top_drivers, list):
+            top_drivers = []
+        top_drivers = top_drivers[:5]
+        events = record.get("events")
+        if not isinstance(events, list):
+            events = []
+        with self._conn() as conn:
+            cur = conn.execute(
+                """
+                INSERT INTO service_history (
+                    created_at,
+                    customer_id,
+                    run_id,
+                    timestamp,
+                    cycle,
+                    risk_state,
+                    decision,
+                    confidence,
+                    top_drivers_json,
+                    explanation_text,
+                    event_flags_json,
+                    record_json
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    now,
+                    resolved_customer,
+                    run_id,
+                    record.get("timestamp"),
+                    int(record.get("cycle")) if record.get("cycle") is not None else None,
+                    risk_state,
+                    decision_label,
+                    float(record.get("confidence", 0.0) or 0.0),
+                    json.dumps(_json_safe(top_drivers)),
+                    str(record.get("explanation_text", "")),
+                    json.dumps(_json_safe(events)),
+                    json.dumps(_json_safe(record)),
+                ),
+            )
+            history_id = int(cur.lastrowid)
+        return {"history_id": history_id, "persisted_at": now, "customer_id": resolved_customer, "run_id": run_id}
+
+    @staticmethod
+    def _decode_structural_memory_row(row: sqlite3.Row) -> dict[str, Any]:
+        try:
+            signature = json.loads(row["signature_json"])
+        except Exception:
+            signature = {}
+        if not isinstance(signature, dict):
+            signature = {}
+        try:
+            events = json.loads(row["event_flags_json"])
+        except Exception:
+            events = []
+        if not isinstance(events, list):
+            events = []
+        try:
+            metadata = json.loads(row["metadata_json"])
+        except Exception:
+            metadata = {}
+        if not isinstance(metadata, dict):
+            metadata = {}
+        return {
+            "memory_id": int(row["id"]),
+            "persisted_at": row["created_at"],
+            "customer_id": row["customer_id"],
+            "run_id": row["run_id"],
+            "site_id": row["site_id"],
+            "asset_id": row["asset_id"],
+            "timestamp": row["timestamp"],
+            "cycle": row["cycle"],
+            "memory_key": row["memory_key"],
+            "family_label": row["family_label"],
+            "novelty": {
+                "is_novel": bool(int(row["novelty_is_novel"])),
+                "score": float(row["novelty_score"] or 0.0),
+            },
+            "signature": signature,
+            "summary": row["summary"],
+            "decision": row["decision"],
+            "risk_level": row["risk_level"],
+            "event_flags": events,
+            "source_history_id": row["source_history_id"],
+            "metadata": metadata,
+        }
+
+    def save_structural_memory(
+        self,
+        record: dict[str, Any],
+        *,
+        customer_id: str | None = None,
+    ) -> dict[str, Any]:
+        now = _utc_now()
+        resolved_customer = _normalize_customer_id(customer_id or record.get("customer_id"))
+        novelty = record.get("novelty") if isinstance(record.get("novelty"), dict) else {}
+        signature = record.get("signature") if isinstance(record.get("signature"), dict) else {}
+        events = record.get("event_flags") if isinstance(record.get("event_flags"), list) else []
+        metadata = record.get("metadata") if isinstance(record.get("metadata"), dict) else {}
+        with self._conn() as conn:
+            cur = conn.execute(
+                """
+                INSERT INTO structural_memory (
+                    created_at, customer_id, run_id, site_id, asset_id, timestamp, cycle, memory_key,
+                    family_label, novelty_is_novel, novelty_score, signature_json, summary, decision,
+                    risk_level, event_flags_json, source_history_id, metadata_json
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    now,
+                    resolved_customer,
+                    record.get("run_id"),
+                    record.get("site_id"),
+                    record.get("asset_id"),
+                    record.get("timestamp"),
+                    int(record.get("cycle")) if record.get("cycle") is not None else None,
+                    str(record.get("memory_key", "")),
+                    record.get("family_label"),
+                    1 if bool(novelty.get("is_novel", True)) else 0,
+                    float(novelty.get("score", 1.0) or 1.0),
+                    json.dumps(_json_safe(signature)),
+                    record.get("summary"),
+                    record.get("decision"),
+                    record.get("risk_level"),
+                    json.dumps(_json_safe(events)),
+                    int(record.get("source_history_id")) if record.get("source_history_id") is not None else None,
+                    json.dumps(_json_safe(metadata)),
+                ),
+            )
+            memory_id = int(cur.lastrowid)
+        return {"memory_id": memory_id, "persisted_at": now, "customer_id": resolved_customer}
+
+    def list_structural_memory(
+        self,
+        *,
+        customer_id: str | None = None,
+        run_id: str | None = None,
+        site_id: str | None = None,
+        asset_id: str | None = None,
+        limit: int = 100,
+        exclude_cycle: int | None = None,
+    ) -> list[dict[str, Any]]:
+        safe_limit = max(1, min(int(limit), 2000))
+        resolved_customer = _normalize_customer_id(customer_id)
+        clauses = ["customer_id = ?"]
+        args: list[Any] = [resolved_customer]
+        if run_id is not None:
+            clauses.append("run_id = ?")
+            args.append(run_id)
+        if site_id is not None:
+            clauses.append("site_id = ?")
+            args.append(site_id)
+        if asset_id is not None:
+            clauses.append("asset_id = ?")
+            args.append(asset_id)
+        if exclude_cycle is not None:
+            clauses.append("(cycle IS NULL OR cycle <> ?)")
+            args.append(int(exclude_cycle))
+        where = " AND ".join(clauses)
+        args.append(safe_limit)
+        with self._conn() as conn:
+            rows = conn.execute(
+                f"""
+                SELECT * FROM structural_memory
+                WHERE {where}
+                ORDER BY id DESC
+                LIMIT ?
+                """,
+                tuple(args),
+            ).fetchall()
+        return [self._decode_structural_memory_row(row) for row in rows]
+
+    @staticmethod
+    def _decode_service_history_row(row: sqlite3.Row) -> dict[str, Any]:
+        try:
+            record = json.loads(row["record_json"])
+        except Exception:
+            record = {}
+        if not isinstance(record, dict):
+            record = {}
+        record["history_id"] = int(row["id"])
+        record["persisted_at"] = row["created_at"]
+        record["customer_id"] = row["customer_id"]
+        record["run_id"] = row["run_id"]
+        return record
+
+    def get_latest_service_history(
+        self,
+        *,
+        run_id: str | None = None,
+        customer_id: str | None = None,
+    ) -> dict[str, Any] | None:
+        items = self.list_service_history(limit=1, run_id=run_id, customer_id=customer_id)
+        return items[0] if items else None
+
+    def list_service_history(
+        self,
+        limit: int = 100,
+        *,
+        run_id: str | None = None,
+        customer_id: str | None = None,
+    ) -> list[dict[str, Any]]:
+        safe_limit = max(1, min(int(limit), 1000))
+        resolved_customer = _normalize_customer_id(customer_id)
+        with self._conn() as conn:
+            if run_id is None:
+                rows = conn.execute(
+                    """
+                    SELECT id, created_at, customer_id, run_id, record_json
+                    FROM service_history
+                    WHERE customer_id = ?
+                    ORDER BY id DESC
+                    LIMIT ?
+                    """,
+                    (resolved_customer, safe_limit),
+                ).fetchall()
+            else:
+                rows = conn.execute(
+                    """
+                    SELECT id, created_at, customer_id, run_id, record_json
+                    FROM service_history
+                    WHERE customer_id = ? AND run_id = ?
+                    ORDER BY id DESC
+                    LIMIT ?
+                    """,
+                    (resolved_customer, run_id, safe_limit),
+                ).fetchall()
+        return [self._decode_service_history_row(row) for row in rows]
 
     def save_result(
         self,

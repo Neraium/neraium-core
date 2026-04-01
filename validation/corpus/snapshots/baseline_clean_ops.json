@@ -1,0 +1,64 @@
+{
+  "corpus_id": "baseline_clean_ops",
+  "description": "Sequential baseline corpus for release validation with multi-asset temporal progression.",
+  "created_at": "2026-04-01T00:00:00Z",
+  "schema_version": "1.1",
+  "corpus_type": "baseline_clean",
+  "expected_difficulty": "moderate",
+  "coverage_tags": [
+    "clean",
+    "sequential",
+    "temporal_progression",
+    "baseline_release"
+  ],
+  "source_datasets": [
+    {
+      "name": "synthetic sequential baseline corpus",
+      "origin": "repository",
+      "notes": "Deterministic multi-asset temporal trajectories for canonical release evaluation."
+    }
+  ],
+  "metadata_summary": {
+    "domain_coverage": [
+      "water",
+      "energy"
+    ],
+    "system_types": [
+      "pump",
+      "compressor",
+      "turbine",
+      "chiller"
+    ],
+    "asset_count": 4,
+    "records_per_asset": 25,
+    "total_records": 100,
+    "scenario_family_distribution": {
+      "stable_operations": 25,
+      "gradual_deterioration": 25,
+      "recoverable_perturbation": 25,
+      "intermittent_instability": 25
+    },
+    "baseline_purpose": [
+      "trajectory_continuity",
+      "novelty_and_support_evolution",
+      "intervention_ranking_quality",
+      "calibration_over_repeated_decisions"
+    ]
+  },
+  "ingestion_parameters": {
+    "sort": "timestamp,asset_id,scenario_id",
+    "normalization": "validation.replay.adapters._normalize_record"
+  },
+  "quality_requirements": {
+    "min_dataset_size": 90,
+    "min_intervention_coverage": 0.08,
+    "min_domain_diversity": 2
+  },
+  "data_files": [
+    {
+      "path": "snapshots/data/baseline_clean_ops.json",
+      "format": "json",
+      "sha256": "b5747d193cdbd4ba701c68f1d84930fd733f9ef84249c061976cf98f034b6a2c"
+    }
+  ]
+}
