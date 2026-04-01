@@ -60,10 +60,14 @@ def _run_one(args: argparse.Namespace, *, corpus_id: str, out_root: Path) -> dic
     report = execute_validation(run_args)
     ctype = str(report.get("core_validation_report", {}).get("corpus_source", {}).get("corpus_type") or "baseline_clean")
     per_corpus_gate = evaluate_corpus_release(report["core_validation_report"], corpus_type=ctype)
+    corpus_summary = report.get("core_validation_report", {}).get("corpus_summary", {})
+    total_records = int((corpus_summary or {}).get("total_records", 0) or 0)
     return {
         "corpus_id": corpus_id,
         "corpus_type": ctype,
         "summary_metrics": report.get("core_validation_report", {}).get("summary", {}),
+        "corpus_summary": corpus_summary,
+        "eligible_for_release_decision": total_records >= MIN_RELEASE_GATING_RECORDS,
         "gate_breakdown": per_corpus_gate.get("gate_breakdown", []),
         "release_passed": bool(per_corpus_gate.get("release_passed")),
         "release_recommendation": per_corpus_gate.get("release_recommendation"),
@@ -85,6 +89,7 @@ def main() -> None:
     parser.add_argument("--release-gate-output", default="reports/validation/release_gate_report.json")
     parser.add_argument("--multi-corpus-output", default="reports/validation/multi_corpus_release_report.json")
     parser.add_argument("--mark-baseline", action="store_true")
+    parser.add_argument("--include-non-credible-in-release-decision", action="store_true")
     args = parser.parse_args()
 
     registry = CorpusSnapshotRegistry(root=Path(args.corpus_root))
@@ -94,7 +99,11 @@ def main() -> None:
     out_root.mkdir(parents=True, exist_ok=True)
     corpus_results = [_run_one(args, corpus_id=cid, out_root=out_root) for cid in corpus_ids]
 
-    aggregate = aggregate_multi_corpus_release(corpus_results)
+    aggregate = aggregate_multi_corpus_release(
+        corpus_results,
+        min_credible_records=MIN_RELEASE_GATING_RECORDS,
+        include_ineligible=args.include_non_credible_in_release_decision,
+    )
     status = "RELEASE_PASS" if aggregate.get("release_passed") else "RELEASE_FAIL"
 
     Path(args.multi_corpus_output).parent.mkdir(parents=True, exist_ok=True)
@@ -121,6 +130,7 @@ def main() -> None:
                         "corpus_id": row.get("corpus_id"),
                         "corpus_type": row.get("corpus_type"),
                         "release_passed": row.get("release_passed"),
+                        "eligible_for_release_decision": row.get("eligible_for_release_decision", True),
                         "failure_mode_tags": row.get("failure_mode_tags", []),
                     }
                     for row in corpus_results
