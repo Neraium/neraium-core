@@ -20,6 +20,10 @@ class InterventionRecommendationRanker:
         ranked: list[dict[str, Any]] = []
         law_candidates = set(context.get("law_candidates") or [])
         family = str(context.get("trajectory_family", "unknown"))
+        escalation_probability = _clip01(float(context.get("escalation_probability", 0.0) or 0.0))
+        distance_to_critical = _clip01(float(context.get("distance_to_critical_region", 1.0) or 1.0))
+        reversibility = _clip01(float(context.get("reversibility_score", 0.0) or 0.0))
+        intervention_pressure = _clip01(0.65 * escalation_probability + 0.25 * (1.0 - distance_to_critical) + 0.10 * (1.0 - reversibility))
 
         for cand in candidates:
             name = str(cand["name"])
@@ -36,6 +40,7 @@ class InterventionRecommendationRanker:
 
             consistent_with_laws = 1.0 if any(term in name for term in law_candidates) else 0.6
             family_consistency = 1.0 if family in {"escalating", "reversible", "drift", "stable"} else 0.7
+            intervention_activation = _clip01(0.35 + 0.65 * intervention_pressure)
 
             composite = (
                 0.38 * expected
@@ -49,6 +54,7 @@ class InterventionRecommendationRanker:
                 - 0.16 * harmful_strength
                 - 0.14 * correlation_penalty
             )
+            composite *= intervention_activation
             confidence = self._final_confidence(
                 composite=composite,
                 support=support,
@@ -90,6 +96,8 @@ class InterventionRecommendationRanker:
                     "rationale": "Advisory ranking from bounded evidence and projection signals; not proof of causal effect.",
                     "ranking_factors": {
                         "expected_effectiveness": round(expected, 4),
+                        "intervention_pressure": round(intervention_pressure, 4),
+                        "intervention_activation": round(intervention_activation, 4),
                         "support": int(support),
                         "uncertainty": round(uncertainty, 4),
                         "novelty_penalty": round(novelty, 4),
@@ -141,6 +149,17 @@ class InterventionRecommendationRanker:
             item["why_ranked_lower"] = lower_reasons[:2]
 
         best_conf = float(best["confidence"]) if best else 0.0
+        no_intervention_recommended = False
+        if best:
+            threshold = 0.48 if intervention_pressure < 0.35 else 0.40
+            support_signal = _clip01(float(context.get("support_count", 0) or 0) / 8.0)
+            abstention_eligible = intervention_pressure < 0.22 and support_signal >= 0.25
+            if best_conf < threshold and abstention_eligible:
+                no_intervention_recommended = True
+                abstention_confidence = _clip01(0.78 + 0.16 * (1.0 - intervention_pressure) + 0.06 * support_signal)
+                best_conf = max(best_conf, abstention_confidence)
+                best["confidence"] = round(best_conf, 4)
+                best["rank_score"] = round(best_conf, 4)
         best_delta = float((best or {}).get("memory_ablation", {}).get("confidence_delta", 0.0))
         contribution_status = "available" if ranked else "insufficient_evidence"
         return {
@@ -148,6 +167,7 @@ class InterventionRecommendationRanker:
             "best_intervention": best,
             "confidence": round(best_conf, 4),
             "recommendation_confidence": round(best_conf, 4),
+            "no_intervention_recommended": no_intervention_recommended,
             "intervention_memory_contribution": {
                 "status": contribution_status,
                 "method": "candidate_score_ablation_delta",
@@ -189,8 +209,8 @@ class InterventionRecommendationRanker:
     def calibrate_confidence(*, raw_confidence: float, regime: str) -> float:
         raw = _clip01(raw_confidence)
         if regime == "uncertain":
-            return round(min(0.2, 0.03 + 0.17 * raw), 6)
-        calibrated = 0.10 + 0.88 * (raw**0.72)
+            return round(min(0.2, 0.02 + 0.16 * raw), 6)
+        calibrated = 0.04 + 0.78 * (raw**1.08)
         return round(min(0.95, _clip01(calibrated)), 6)
 
     def compute_final_confidence(
@@ -219,9 +239,9 @@ class InterventionRecommendationRanker:
         context_strength = _clip01(context_match)
         evidence_strength = _clip01(0.6 * support_strength + 0.4 * context_strength)
         if regime == "uncertain":
-            confidence = min(0.2, post_calibration + 0.05 * evidence_strength)
+            confidence = min(0.2, post_calibration + 0.03 * evidence_strength)
         else:
-            confidence = min(0.95, post_calibration + 0.08 * evidence_strength)
+            confidence = min(0.95, post_calibration + 0.05 * evidence_strength)
         return {
             "confidence": float(confidence),
             "confidence_regime": regime,

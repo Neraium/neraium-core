@@ -77,3 +77,33 @@ def test_baseline_clean_ops_is_loadable_by_validation_pipeline() -> None:
     assert corpus_summary["total_records"] >= 90
     assert corpus_summary["asset_count"] >= 4
     assert report["core_validation_report"]["summary"]["decision_accuracy"] >= 0.0
+
+
+def test_baseline_confidence_separates_high_support_from_low_support() -> None:
+    platform = StructuralSystemIntelligencePlatform(operating_mode="production")
+    pipeline = RealWorldValidationPipeline(decision_fn=platform.update)
+    report = pipeline.run(_load_baseline_records())
+    step_logs = report["replay"]["step_logs"]
+
+    low_support_conf = [float(step.get("confidence", 0.0)) for step in step_logs if int(step.get("support_count", 0) or 0) <= 2]
+    high_support_conf = [float(step.get("confidence", 0.0)) for step in step_logs if int(step.get("support_count", 0) or 0) >= 8]
+
+    assert low_support_conf
+    assert high_support_conf
+    assert (sum(high_support_conf) / len(high_support_conf)) > (sum(low_support_conf) / len(low_support_conf))
+
+
+def test_baseline_ranking_accuracy_and_calibration_quality_improved() -> None:
+    platform = StructuralSystemIntelligencePlatform(operating_mode="production")
+    pipeline = RealWorldValidationPipeline(decision_fn=platform.update)
+    report = pipeline.run(_load_baseline_records())
+    summary = report["core_validation_report"]["summary"]
+    step_logs = report["replay"]["step_logs"]
+
+    exact_match_count = sum(1 for step in step_logs if step.get("recommended_intervention") == step.get("actual_intervention"))
+    total = max(1, len(step_logs))
+    exact_match_rate = exact_match_count / total
+
+    assert summary["decision_accuracy"] >= 0.74
+    assert exact_match_rate >= 0.74
+    assert summary["calibration_error"] <= 0.35
