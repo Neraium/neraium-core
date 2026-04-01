@@ -61,14 +61,13 @@ class ProductionIntelligenceOrchestrator:
         regime = "uncertain" if uncertain else "normal"
         current_confidence = cls._clip01(best.get("confidence", 0.0))
         calibrated_candidate = max(
-            cls._clip01(rec_cal),
             cls._clip01(best.get("confidence_post_calibration", 0.0)),
             current_confidence,
         )
         if regime == "uncertain":
             enforced_confidence = min(0.2, max(0.0, calibrated_candidate))
         else:
-            enforced_confidence = min(0.95, max(0.6, 0.6 + 0.35 * calibrated_candidate))
+            enforced_confidence = min(0.95, max(0.05, calibrated_candidate))
 
         best["confidence"] = round(float(enforced_confidence), 6)
         best["confidence_regime"] = regime
@@ -154,7 +153,7 @@ class ProductionIntelligenceOrchestrator:
         if intervention.get("recommendation") and intervention["recommendation"].get("best_intervention"):
             best = intervention["recommendation"]["best_intervention"]
             best["raw_confidence"] = best.get("confidence", 0.0)
-            best["confidence"] = round(rec_cal, 6)
+            best["reliability_calibrated_confidence"] = round(rec_cal, 6)
         ranked = list((intervention.get("recommendation") or {}).get("ranked_interventions") or [])
         best_ranked = dict((intervention.get("recommendation") or {}).get("best_intervention") or {})
         reliability_trace = dict(((reliability.get("intervention_recommendation") or {}).get("reliability_trace") or {}))
