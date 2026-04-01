@@ -130,13 +130,91 @@ class InterventionRecommendationRanker:
             )
 
         ranked.sort(key=lambda x: float(x["rank_score"]), reverse=True)
-        best = ranked[0] if ranked else None
-        best_without_memory = None
-        if ranked:
-            best_without_memory = max(
-                ranked,
-                key=lambda row: float((row.get("memory_ablation") or {}).get("confidence_without_memory", 0.0)),
+        support_signal = _clip01(float(context.get("support_count", 0) or 0) / 8.0)
+        if not ranked:
+            no_candidate_confidence = self.calibrate_confidence(
+                raw_confidence=0.12,
+                regime="uncertain",
+                support=float(context.get("support_count", 0) or 0),
+                reliability=float(context.get("calibration_reliability", 1.0) or 1.0),
+                novelty=float(context.get("novelty_score", 0.0) or 0.0),
             )
+            monitor_rec = {
+                "name": "monitor",
+                "intervention_type": "monitor",
+                "intervention_target": "system",
+                "rank_score": round(no_candidate_confidence, 4),
+                "composite_score": 0.0,
+                "confidence": round(no_candidate_confidence, 4),
+                "confidence_regime": "uncertain",
+                "confidence_pre_calibration": 0.0,
+                "confidence_post_calibration": round(no_candidate_confidence, 4),
+                "rationale": "Insufficient evidence for targeted intervention; continue monitoring.",
+                "ranking_factors": {
+                    "expected_effectiveness": 0.0,
+                    "intervention_pressure": round(intervention_pressure, 4),
+                    "intervention_activation": round(_clip01(0.35 + 0.65 * intervention_pressure), 4),
+                    "support": int(context.get("support_count", 0) or 0),
+                    "uncertainty": 1.0,
+                    "novelty_penalty": round(float(context.get("novelty_score", 0.0) or 0.0), 4),
+                    "worsening_signal": 0.0,
+                    "harmful_signal_strength": 0.0,
+                    "context_match": 0.0,
+                    "memory_effect_weight": 0.0,
+                    "correlation_trap_penalty": 0.0,
+                },
+                "memory_ablation": {
+                    "confidence_with_memory": round(no_candidate_confidence, 4),
+                    "confidence_without_memory": round(no_candidate_confidence, 4),
+                    "confidence_delta": 0.0,
+                },
+                "evidence_sources": {
+                    "model_based_projection": {},
+                    "historical_evidence": {},
+                },
+                "warnings": ["no_candidate_interventions"],
+                "why_ranked_lower": [],
+            }
+            return {
+                "ranked_interventions": [],
+                "best_intervention": monitor_rec,
+                "confidence": round(no_candidate_confidence, 4),
+                "recommendation_confidence": round(no_candidate_confidence, 4),
+                "no_intervention_recommended": True,
+                "intervention_memory_contribution": {
+                    "status": "insufficient_evidence",
+                    "method": "candidate_score_ablation_delta",
+                    "best_confidence_delta": 0.0,
+                    "best_choice_with_memory": "monitor",
+                    "best_choice_without_memory": "monitor",
+                    "choice_changed_without_memory": False,
+                },
+                "decision_trace": {
+                    "confidence_regime": "uncertain",
+                    "confidence_pre_calibration": 0.0,
+                    "confidence_post_calibration": round(no_candidate_confidence, 4),
+                    "confidence_contributions": {
+                        "historical_evidence": "insufficient support during cold-start",
+                        "counterfactual_projection": "no actionable candidate available",
+                        "law_and_trajectory_consistency": "deferred until candidate evidence exists",
+                        "uncertainty_and_novelty_penalties": "monitor fallback retained",
+                        "intervention_memory_weighting": "no matching evidence yet",
+                        "counterfactual_specificity_guard": "not applicable without candidates",
+                        "dual_regime_confidence": "uncertain regime keeps confidence bounded",
+                    },
+                    "assumptions_remaining": [
+                        "Historical similarity may omit hidden confounders.",
+                        "Counterfactual projections are approximate structural simulations.",
+                        "Recommendations are advisory and require operator judgement.",
+                    ],
+                },
+            }
+
+        best = ranked[0]
+        best_without_memory = max(
+            ranked,
+            key=lambda row: float((row.get("memory_ablation") or {}).get("confidence_without_memory", 0.0)),
+        )
 
         for idx, item in enumerate(ranked):
             lower_reasons: list[str] = []
@@ -148,18 +226,16 @@ class InterventionRecommendationRanker:
                 )
             item["why_ranked_lower"] = lower_reasons[:2]
 
-        best_conf = float(best["confidence"]) if best else 0.0
+        best_conf = float(best["confidence"])
         no_intervention_recommended = False
-        if best:
-            threshold = 0.48 if intervention_pressure < 0.35 else 0.40
-            support_signal = _clip01(float(context.get("support_count", 0) or 0) / 8.0)
-            abstention_eligible = intervention_pressure < 0.22 and support_signal >= 0.25
-            if best_conf < threshold and abstention_eligible:
-                no_intervention_recommended = True
-                abstention_confidence = _clip01(0.78 + 0.16 * (1.0 - intervention_pressure) + 0.06 * support_signal)
-                best_conf = max(best_conf, abstention_confidence)
-                best["confidence"] = round(best_conf, 4)
-                best["rank_score"] = round(best_conf, 4)
+        threshold = 0.48 if intervention_pressure < 0.35 else 0.40
+        abstention_eligible = intervention_pressure < 0.22 and support_signal >= 0.25
+        if best_conf < threshold and abstention_eligible:
+            no_intervention_recommended = True
+            abstention_confidence = _clip01(0.78 + 0.16 * (1.0 - intervention_pressure) + 0.06 * support_signal)
+            best_conf = max(best_conf, abstention_confidence)
+            best["confidence"] = round(best_conf, 4)
+            best["rank_score"] = round(best_conf, 4)
         best_delta = float((best or {}).get("memory_ablation", {}).get("confidence_delta", 0.0))
         contribution_status = "available" if ranked else "insufficient_evidence"
         return {

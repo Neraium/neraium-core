@@ -113,6 +113,46 @@ def test_outcome_attribution_surfaces_confidence_and_source() -> None:
     assert "attribution_source" in first
 
 
+
+
+def test_cold_start_empty_candidates_emit_explicit_monitor_recommendation(monkeypatch) -> None:
+    platform = StructuralSystemIntelligencePlatform(operating_mode="production")
+
+    def _empty_counterfactuals(_observed: dict, transition_escalation: float) -> dict:
+        return {
+            "status": "approximate",
+            "observed_evidence": {"base_composite_instability": 0.0, "transition_escalation_probability": transition_escalation},
+            "model_inference": {"highest_leverage_component": "none", "assumption_boundary": "test"},
+            "scenario_rankings": [],
+            "best_intervention": {},
+        }
+
+    monkeypatch.setattr(platform.production.counterfactuals, "evaluate", _empty_counterfactuals)
+
+    output = platform.update({"asset_id": "cold-start-A", "x": 0.01, "sensor": 1.0})
+    best = output["production_intelligence"]["intervention_intelligence"]["recommendation"]["best_intervention"]
+    assert best["name"] == "monitor"
+    assert best["intervention_type"] == "monitor"
+    assert best["intervention_target"] == "system"
+
+    pipeline = RealWorldValidationPipeline(decision_fn=platform.update)
+    rows = [
+        {
+            "timestamp": i + 1,
+            "asset_id": "cold-start-A",
+            "domain": "baseline",
+            "scenario_family": "baseline",
+            "observation": {"x": 0.01 * (i + 1), "sensor": 1.0 + 0.01 * i},
+            "actual_intervention": None,
+            "outcome_label": None,
+        }
+        for i in range(3)
+    ]
+    report = pipeline.run(rows)
+    recs = [step.get("recommended_intervention") for step in report["replay"]["step_logs"]]
+
+    assert all(rec is not None for rec in recs)
+    assert set(recs).issubset({"monitor", "insufficient_support_monitor"})
 def test_novelty_fallback_forces_conservative_monitoring() -> None:
     def decision_fn(_obs: dict) -> dict:
         return {
