@@ -110,13 +110,22 @@ class CorpusSnapshotRegistry:
 
     def get_snapshot(self, corpus_id: str) -> CorpusSnapshot:
         payload = self.load_registry()
-        for row in payload.get("snapshots", []):
-            if row.get("corpus_id") == corpus_id:
-                path = self.root / str(row.get("snapshot_file"))
-                snap = json.loads(path.read_text(encoding="utf-8"))
-                snap_obj = CorpusSnapshot.from_payload(snap)
-                return snap_obj
-        raise KeyError(f"Corpus snapshot not found: {corpus_id}")
+        matches = [row for row in payload.get("snapshots", []) if row.get("corpus_id") == corpus_id]
+        if not matches:
+            raise KeyError(f"Corpus snapshot not found: {corpus_id}")
+        if len(matches) > 1:
+            raise ValueError(f"Duplicate corpus_id entries in registry: {corpus_id}")
+
+        row = matches[0]
+        path = self.root / str(row.get("snapshot_file"))
+        snap = json.loads(path.read_text(encoding="utf-8"))
+        snap_obj = CorpusSnapshot.from_payload(snap)
+        if snap_obj.corpus_id != corpus_id:
+            raise ValueError(
+                f"Snapshot identity mismatch for corpus_id={corpus_id}: "
+                f"snapshot declares corpus_id={snap_obj.corpus_id}"
+            )
+        return snap_obj
 
     def _exclude_from_release_gating(self, registry_row: dict[str, Any], *, minimum_records: int) -> bool:
         if bool(registry_row.get("deprecated")) or bool(registry_row.get("exclude_from_release_gating")):
