@@ -95,6 +95,15 @@ def test_json_adapter_supports_validation_inputs(tmp_path: Path) -> None:
     assert rows[0]["asset_id"] == "A"
 
 
+def test_json_adapter_supports_top_level_list_inputs(tmp_path: Path) -> None:
+    path = tmp_path / "events_list.json"
+    path.write_text(json.dumps(_dataset()), encoding="utf-8")
+
+    rows = load_dataset(path, "json")
+    assert len(rows) == 3
+    assert rows[0]["asset_id"] == "A"
+
+
 def test_outcome_attribution_surfaces_confidence_and_source() -> None:
     platform = StructuralSystemIntelligencePlatform(operating_mode="production")
     pipeline = RealWorldValidationPipeline(decision_fn=platform.update)
