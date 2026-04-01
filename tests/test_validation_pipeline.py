@@ -151,6 +151,40 @@ def test_novelty_fallback_forces_conservative_monitoring() -> None:
     assert step["advisory_mode"] == "conservative_monitoring"
 
 
+def test_high_pressure_low_confidence_keeps_non_monitor_recommendation() -> None:
+    def decision_fn(_obs: dict) -> dict:
+        return {
+            "transition_dynamics": {
+                "escalation_probability": 0.92,
+                "distance_to_critical_region": 0.05,
+            },
+            "intervention_intelligence": {
+                "recommendation": {
+                    "best_intervention": {"name": "remove_top_driver_contribution", "confidence": 0.3},
+                    "intervention_memory_contribution": {"status": "available", "best_confidence_delta": 0.02, "choice_changed_without_memory": False},
+                }
+            },
+            "structural_law_intelligence": {"structural_law_governance": {"laws": []}},
+        }
+
+    pipeline = RealWorldValidationPipeline(decision_fn=decision_fn)
+    rows = [
+        {
+            "timestamp": 1,
+            "asset_id": "A",
+            "novelty": 0.2,
+            "support_count": 3,
+            "drift_warning": False,
+            "observation": {"x": 1.0},
+            "actual_intervention": "remove_top_driver_contribution",
+            "outcome_label": "helpful",
+        }
+    ]
+    report = pipeline.run(rows)
+    step = report["replay"]["step_logs"][0]
+    assert step["recommended_intervention"] == "remove_top_driver_contribution"
+
+
 def test_corpus_summary_surfaces_representativeness_warnings() -> None:
     def decision_fn(_obs: dict) -> dict:
         return {"intervention_intelligence": {"recommendation": {"best_intervention": {"name": "monitor", "confidence": 0.3}}}}
