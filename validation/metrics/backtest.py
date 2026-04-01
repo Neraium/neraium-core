@@ -11,7 +11,7 @@ def _normalize_intervention_label(value: Any, *, fallback_triggered: bool = Fals
         return None
     if label == "monitor" and fallback_triggered and float(confidence) <= 0.2:
         return None
-    if label in {"no_action_recommended", "insufficient_support_monitor"}:
+    if label in {"no_action_recommended", "insufficient_support_monitor", "increase_monitoring_frequency"}:
         return None
     return str(value)
 
