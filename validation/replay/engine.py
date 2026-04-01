@@ -57,23 +57,50 @@ class HistoricalReplayEngine:
             output = self.decision_fn(observation)
 
             transition = dict(output.get("transition_dynamics") or {})
-            intervention = dict((output.get("intervention_intelligence") or {}).get("recommendation") or {})
+            trajectory = dict(output.get("trajectory_archetypes") or output.get("trajectory_intelligence") or {})
+            intervention = dict(output.get("intervention_intelligence") or {})
+            recommendation = dict(intervention.get("recommendation") or {})
             best = dict(intervention.get("best_intervention") or {})
+            if not best:
+                best = dict(recommendation.get("best_intervention") or {})
             recommended = best.get("name")
             confidence = self._float_or_default(
                 best.get("confidence", (output.get("reliability_intelligence") or {}).get("risk_advisory", {}).get("calibrated_confidence", 0.0)),
                 0.0,
             )
             confidence = max(0.0, min(1.0, confidence))
-            recommendation_trace = dict(intervention.get("intervention_memory_contribution") or {})
-            fallback = self._fallback_policy(
-                row=row,
-                output=output,
-                recommended_intervention=str(recommended) if recommended else None,
-                confidence=confidence,
+            recommendation_trace = dict(recommendation.get("intervention_memory_contribution") or {})
+            reliability = dict(output.get("reliability_intelligence") or {})
+            novelty = float(trajectory.get("novelty_score", 0.0))
+            support_count = int(
+                (intervention.get("context") or {}).get("support_count", 0)
+                or ((intervention.get("historical_evidence") or {}).get("support_summary") or {}).get("support_count", 0)
+                or trajectory.get("support_count", 0)
             )
-            recommended = fallback["recommended_intervention"]
-            confidence = fallback["confidence"]
+            drift_warning = bool(
+                trajectory.get("drift_warning", False)
+                or (reliability.get("risk_advisory") or {}).get("drift_warning", False)
+            )
+            fallback_triggered = bool(recommendation.get("fallback_triggered", False))
+            fallback_reasons = list(recommendation.get("fallback_reasons", []))
+            advisory_mode = str(recommendation.get("recommended_posture", "standard_advisory"))
+            if recommended is None or confidence == 0.0:
+                fallback = self._fallback_policy(
+                    row=row,
+                    output=output,
+                    recommended_intervention=str(recommended) if recommended else None,
+                    confidence=confidence,
+                )
+                if recommended is None:
+                    recommended = fallback["recommended_intervention"]
+                if confidence == 0.0:
+                    confidence = fallback["confidence"]
+                if not fallback_triggered:
+                    fallback_triggered = bool(fallback["fallback_triggered"])
+                if not fallback_reasons:
+                    fallback_reasons = list(fallback["fallback_reasons"])
+                if advisory_mode == "standard_advisory":
+                    advisory_mode = str(fallback["advisory_mode"])
             governance = dict((output.get("structural_law_intelligence") or {}).get("structural_law_governance") or {})
             law_usage = [
                 str(l.get("law_id"))
@@ -89,15 +116,15 @@ class HistoricalReplayEngine:
                 scenario_family=str(row.get("scenario_family") or row.get("scenario") or "unknown"),
                 scenario_id=str(row.get("scenario_id") or f"{row.get('asset_id', 'unknown')}::{idx}"),
                 system_type=str(row.get("system_type") or row.get("asset_type") or "unknown"),
-                novelty=max(0.0, min(1.0, self._float_or_default(row.get("novelty"), 0.0))),
-                support_count=max(0, self._int_or_default(row.get("support_count"), 0)),
-                drift_warning=bool(row.get("drift_warning", False)),
+                novelty=max(0.0, min(1.0, novelty)),
+                support_count=max(0, support_count),
+                drift_warning=drift_warning,
                 predicted_state=transition,
                 recommended_intervention=str(recommended) if recommended else None,
                 confidence=confidence,
-                advisory_mode=str(fallback["advisory_mode"]),
-                fallback_triggered=bool(fallback["fallback_triggered"]),
-                fallback_reasons=list(fallback["fallback_reasons"]),
+                advisory_mode=advisory_mode,
+                fallback_triggered=fallback_triggered,
+                fallback_reasons=fallback_reasons,
                 intervention_memory_contribution=recommendation_trace or None,
                 law_usage=law_usage,
                 actual_intervention=row.get("actual_intervention"),
@@ -130,9 +157,6 @@ class HistoricalReplayEngine:
         transfer_mismatch = float((transfer.get("transfer_metrics") or {}).get("mismatch_penalty", 0.0) or 0.0)
         calibrated_conf = self._float_or_default(recommendation.get("recommendation_calibrated_confidence"), confidence)
         structural_uncertainty = dict((output.get("intervention_intelligence") or {}).get("structural_uncertainty_mode") or {})
-        transfer = dict(output.get("transfer_adaptation") or {})
-        transfer_mismatch = float((transfer.get("transfer_metrics") or {}).get("mismatch_penalty", 0.0) or 0.0)
-        calibrated_conf = self._float_or_default(recommendation.get("recommendation_calibrated_confidence"), confidence)
         family_similarity = self._float_or_default(
             ((output.get("trajectory_archetypes") or {}).get("family_similarity")),
             1.0,
@@ -160,7 +184,6 @@ class HistoricalReplayEngine:
                 "confidence": min(confidence, 0.35),
                 "fallback_triggered": True,
                 "fallback_reasons": sorted(set(reasons)),
-                "advisory_mode": "conservative_monitoring",
                 "advisory_mode": "human_review_required",
             }
         if reasons:
