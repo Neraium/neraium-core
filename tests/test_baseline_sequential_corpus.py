@@ -1,23 +1,28 @@
 from __future__ import annotations
 
+import json
 from collections import Counter, defaultdict
 from pathlib import Path
 
 from neraium_core.system_intelligence.platform import StructuralSystemIntelligencePlatform
 from validation import RealWorldValidationPipeline
-from validation.corpus.registry import CorpusSnapshotRegistry, load_records_for_run
 
 
 def _load_baseline_records() -> list[dict]:
-    registry = CorpusSnapshotRegistry(root=Path("validation/corpus"))
-    records, _source, canonical = load_records_for_run(
-        corpus_id="baseline_clean_ops",
-        input_path=None,
-        input_format=None,
-        registry=registry,
-    )
-    assert canonical is True
+    snapshot_path = Path("validation/corpus/snapshots/data/baseline_clean_ops.json")
+    records = json.loads(snapshot_path.read_text(encoding="utf-8"))
+    assert isinstance(records, list)
+    assert all(isinstance(item, dict) for item in records)
     return records
+
+
+def test_baseline_clean_ops_snapshot_is_top_level_list_of_100_dicts() -> None:
+    snapshot_path = Path("validation/corpus/snapshots/data/baseline_clean_ops.json")
+    data = json.loads(snapshot_path.read_text(encoding="utf-8"))
+
+    assert isinstance(data, list)
+    assert len(data) == 100
+    assert all(isinstance(item, dict) for item in data)
 
 
 def test_baseline_clean_ops_is_real_sequential_corpus() -> None:

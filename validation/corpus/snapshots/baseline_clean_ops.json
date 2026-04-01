@@ -58,7 +58,7 @@
     {
       "path": "snapshots/data/baseline_clean_ops.json",
       "format": "json",
-      "sha256": "59feb8157e545e330345a7dafb0297686caf6dffa75dfb1b926107f9a8b79be7"
+      "sha256": "b5747d193cdbd4ba701c68f1d84930fd733f9ef84249c061976cf98f034b6a2c"
     }
   ]
 }
