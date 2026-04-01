@@ -45,6 +45,7 @@ def compute_backtest_metrics(decision_logs: list[dict[str, Any]], outcomes: list
         outcome = outcome_by_step.get(step, {})
         label = str(outcome.get("outcome_label", "neutral"))
         confidence = float(row.get("confidence", 0.0) or 0.0)
+        calibration_confidence = float(row.get("calibration_confidence", confidence) or confidence)
         rec = _normalize_intervention_label(
             row.get("recommended_intervention"),
             fallback_triggered=bool(row.get("fallback_triggered", False)),
@@ -65,12 +66,20 @@ def compute_backtest_metrics(decision_logs: list[dict[str, Any]], outcomes: list
             operator_success += 1
         if rec and actual and rec != actual and harmful:
             avoided_failures += 1
-        if confidence >= 0.7 and harmful:
+        if calibration_confidence >= 0.7 and harmful:
             false_confidence += 1
         if harmful:
             harms += 1
 
-        per_step.append({"timestep": step, "correct": correct, "confidence": confidence, "outcome": label})
+        per_step.append(
+            {
+                "timestep": step,
+                "correct": correct,
+                "confidence": calibration_confidence,
+                "operational_confidence": confidence,
+                "outcome": label,
+            }
+        )
 
     n = len(decision_logs)
     calibration_error = sum(abs(float(r["confidence"]) - float(r["correct"])) for r in per_step) / n

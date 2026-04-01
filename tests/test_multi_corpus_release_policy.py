@@ -70,3 +70,15 @@ def test_tiny_deprecated_corpora_excluded_from_default_release_decision() -> Non
     diagnostics_agg = aggregate_multi_corpus_release(results, min_credible_records=50, include_ineligible=True)
     assert diagnostics_agg["release_passed"] is False
     assert "baseline_clean" in diagnostics_agg["blocking_corpus_classes"]
+
+
+def test_missing_required_classes_reported_separately_from_blocking_failures() -> None:
+    results = [
+        {"corpus_id": "baseline_clean_ops", "corpus_type": "baseline_clean", "release_passed": False, "gate_breakdown": [{"gate": "maximum_calibration_error", "passed": False}], "failure_mode_tags": ["calibration_failure"]},
+    ]
+
+    agg = aggregate_multi_corpus_release(results)
+    assert agg["release_passed"] is False
+    assert agg["blocking_corpus_classes"] == ["baseline_clean"]
+    assert agg["missing_required_corpus_classes"] == ["noisy_realistic", "transfer_cross_domain"]
+    assert agg["failing_corpora"] == ["baseline_clean_ops"]
