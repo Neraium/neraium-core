@@ -28,3 +28,6 @@ cloudflared/config.yml
 outputs/
 *.jsonl
 *.csv
+
+# Large IMS archive (GitHub blocks blobs over 100MB)
+data/ims/**/*.zip
