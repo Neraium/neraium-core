@@ -169,9 +169,8 @@ def aggregate_multi_corpus_release(
             "class_passed": class_passed,
         }
 
-    missing_required = [k for k, v in CORPUS_CLASS_RULES.items() if v.required and k not in by_class]
-    blocking_classes.extend(missing_required)
-    release_passed = len(blocking_classes) == 0
+    missing_required = sorted(k for k, v in CORPUS_CLASS_RULES.items() if v.required and k not in by_class)
+    release_passed = len(blocking_classes) == 0 and not missing_required
 
     return {
         "release_passed": release_passed,
@@ -183,6 +182,7 @@ def aggregate_multi_corpus_release(
         "release_decision_include_ineligible": include_ineligible,
         "class_summary": class_summaries,
         "blocking_corpus_classes": sorted(set(blocking_classes)),
+        "missing_required_corpus_classes": missing_required,
         "failing_corpora": sorted(set(failing_corpora)),
         "failure_mode_frequency": dict(sorted(failure_frequency.items(), key=lambda kv: (-kv[1], kv[0]))),
         "top_failure_modes": [k for k, _ in sorted(failure_frequency.items(), key=lambda kv: (-kv[1], kv[0]))[:3]],
