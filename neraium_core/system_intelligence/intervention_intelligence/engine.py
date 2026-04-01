@@ -46,8 +46,11 @@ class InterventionIntelligenceEngine:
         }
         novelty_score = float(trajectory.get("novelty_score", 0.5))
         family_similarity = trajectory.get("family_similarity", trajectory.get("trajectory_similarity"))
+        novelty_implied_similarity = max(0.0, min(1.0, 1.0 - novelty_score))
         if family_similarity is None:
-            family_similarity = 1.0 - novelty_score
+            family_similarity = novelty_implied_similarity
+        else:
+            family_similarity = max(float(family_similarity), novelty_implied_similarity)
         support_count = trajectory.get("support", trajectory.get("support_count", 0))
         context = {
             "latent_state": list((observation.get("latent_embedding") or [])),
@@ -107,11 +110,12 @@ class InterventionIntelligenceEngine:
 
         ranked = self.ranker.rank(candidates=candidates, scored=scored, context=context)
         memory_support = max((int((scored.get(c.get("name", "")) or {}).get("support", 0)) for c in candidates), default=0)
+        memory_summary_support = int((self.memory.support_summary() or {}).get("support_count", 0) or 0)
         memory_match_quality = max(
             (float((scored.get(c.get("name", "")) or {}).get("context_match_quality", 0.0)) for c in candidates),
             default=0.0,
         )
-        context["support_count"] = max(int(context.get("support_count", 0) or 0), memory_support)
+        context["support_count"] = max(int(context.get("support_count", 0) or 0), memory_support, memory_summary_support)
         ranked = self._apply_conservative_fallback(ranked=ranked, context=context)
         recommendation_confidence = float(ranked.get("recommendation_confidence", 0.0))
 
@@ -152,14 +156,15 @@ class InterventionIntelligenceEngine:
         reliability = float(context.get("calibration_reliability", 1.0))
         mismatch = float(context.get("transfer_mismatch", 0.0))
         reasons = list(ranked.get("fallback_reasons") or [])
-        active = bool(
+        weak_support = support <= self._uncertainty_thresholds["support"]
+        elevated_context_risk = bool(
             novelty >= self._uncertainty_thresholds["novelty"]
             or similarity <= self._uncertainty_thresholds["low_similarity"]
-            or support <= self._uncertainty_thresholds["support"]
             or reliability < self._uncertainty_thresholds["calibration_reliability"]
             or mismatch >= self._uncertainty_thresholds["transfer_mismatch"]
             or bool(reasons)
         )
+        active = bool(elevated_context_risk or (weak_support and bool(reasons)))
         reason = "stable_context"
         if active:
             reason = ",".join(reasons[:3]) if reasons else "low_trust_structural_context"
@@ -186,7 +191,15 @@ class InterventionIntelligenceEngine:
             reasons.append("high_novelty")
         if similarity <= self._uncertainty_thresholds["low_similarity"]:
             reasons.append("low_structural_similarity")
-        if support <= self._uncertainty_thresholds["support"]:
+        weak_support = support <= self._uncertainty_thresholds["support"]
+        elevated_context_risk = (
+            novelty >= self._uncertainty_thresholds["novelty"]
+            or similarity <= self._uncertainty_thresholds["low_similarity"]
+            or drift_warning
+            or mismatch >= self._uncertainty_thresholds["transfer_mismatch"]
+            or reliability < self._uncertainty_thresholds["calibration_reliability"]
+        )
+        if weak_support and elevated_context_risk:
             reasons.append("weak_support")
         if drift_warning:
             reasons.append("drift_warning")

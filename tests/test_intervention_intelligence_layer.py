@@ -401,3 +401,68 @@ def test_baseline_context_with_support_count_does_not_force_fallback_or_monitor(
     assert recommendation["fallback_triggered"] is False
     assert recommendation["best_intervention"]["name"] != "monitor"
     assert mode["active"] is False
+
+
+def test_baseline_low_novelty_without_drift_does_not_auto_fallback_when_support_is_defaulted() -> None:
+    engine = InterventionIntelligenceEngine()
+    out = engine.update(
+        asset_id="baseline-defaulted-1",
+        observation={
+            "latent_embedding": [0.2, 0.21, 0.2],
+            "calibration": {"reliability": 0.88},
+        },
+        transition={
+            "regime": "transitional",
+            "transition_path": "stable",
+            "escalation_probability": 0.24,
+            "reversibility_score": 0.77,
+            "distance_to_critical_region": 0.76,
+        },
+        trajectory={
+            "current_trajectory_path_family": "baseline",
+            "novelty_score": 0.0,
+            "family_similarity": 0.0,
+            "support_count": 0,
+        },
+        mechanism={"mechanism_candidates": []},
+        laws={"law_candidates": []},
+        counterfactuals={"scenario_rankings": [{"name": "restore_relationship_cluster_to_baseline", "risk_delta": 0.06}]},
+    )
+
+    recommendation = out["recommendation"]
+    assert out["context"]["family_similarity"] == 1.0
+    assert out["context"]["support_count"] == 0
+    assert recommendation["fallback_triggered"] is False
+    assert recommendation["confidence"] > 0.0
+
+
+def test_memory_support_is_propagated_into_context_when_trajectory_support_is_zero() -> None:
+    engine = InterventionIntelligenceEngine()
+    for _ in range(3):
+        _simulate_record(engine, helpful=True)
+
+    out = engine.update(
+        asset_id="baseline-memory-supported",
+        observation={
+            "latent_embedding": [0.22, 0.21, 0.2],
+            "calibration": {"reliability": 0.9},
+        },
+        transition={
+            "regime": "transitional",
+            "transition_path": "stable",
+            "escalation_probability": 0.28,
+            "reversibility_score": 0.74,
+            "distance_to_critical_region": 0.72,
+        },
+        trajectory={
+            "current_trajectory_path_family": "baseline",
+            "novelty_score": 0.05,
+            "support_count": 0,
+        },
+        mechanism={"mechanism_candidates": []},
+        laws={"law_candidates": []},
+        counterfactuals={"scenario_rankings": [{"name": "remove_top_driver_contribution", "risk_delta": 0.12}]},
+    )
+
+    assert out["context"]["support_count"] >= 3
+    assert out["recommendation"]["confidence"] > 0.0
