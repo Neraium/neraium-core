@@ -3,6 +3,19 @@ from __future__ import annotations
 from typing import Any
 
 
+def _normalize_intervention_label(value: Any, *, fallback_triggered: bool = False, confidence: float = 1.0) -> str | None:
+    if value is None:
+        return None
+    label = str(value).strip().lower()
+    if label in {"", "none", "null"}:
+        return None
+    if label == "monitor" and fallback_triggered and float(confidence) <= 0.2:
+        return None
+    if label in {"no_action_recommended", "insufficient_support_monitor"}:
+        return None
+    return str(value)
+
+
 def compute_backtest_metrics(decision_logs: list[dict[str, Any]], outcomes: list[dict[str, Any]]) -> dict[str, Any]:
     if not decision_logs:
         return {
@@ -32,8 +45,12 @@ def compute_backtest_metrics(decision_logs: list[dict[str, Any]], outcomes: list
         outcome = outcome_by_step.get(step, {})
         label = str(outcome.get("outcome_label", "neutral"))
         confidence = float(row.get("confidence", 0.0) or 0.0)
-        rec = row.get("recommended_intervention")
-        actual = row.get("actual_intervention")
+        rec = _normalize_intervention_label(
+            row.get("recommended_intervention"),
+            fallback_triggered=bool(row.get("fallback_triggered", False)),
+            confidence=confidence,
+        )
+        actual = _normalize_intervention_label(row.get("actual_intervention"))
 
         intervention_correct = rec == actual
         success = label in {"helpful", "recovery-associated"}
