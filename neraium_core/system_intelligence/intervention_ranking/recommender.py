@@ -183,6 +183,7 @@ class InterventionRecommendationRanker:
         if harmful_strength > 0.05:
             confidence *= 0.62
         return confidence
+    @staticmethod
     def calibrate_confidence(*, raw_confidence: float, regime: str) -> float:
         raw = _clip01(raw_confidence)
         if regime == "uncertain":
