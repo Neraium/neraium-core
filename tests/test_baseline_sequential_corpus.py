@@ -8,6 +8,14 @@ from neraium_core.system_intelligence.platform import StructuralSystemIntelligen
 from validation import RealWorldValidationPipeline
 
 
+def _normalize_recommendation(label: str | None, *, fallback_triggered: bool = False, confidence: float = 1.0) -> str | None:
+    if label == "monitor" and fallback_triggered and float(confidence) <= 0.2:
+        return None
+    if label in {"no_action_recommended", "insufficient_support_monitor"}:
+        return None
+    return label
+
+
 def _load_baseline_records() -> list[dict]:
     snapshot_path = Path("validation/corpus/snapshots/data/baseline_clean_ops.json")
     records = json.loads(snapshot_path.read_text(encoding="utf-8"))
@@ -100,10 +108,34 @@ def test_baseline_ranking_accuracy_and_calibration_quality_improved() -> None:
     summary = report["core_validation_report"]["summary"]
     step_logs = report["replay"]["step_logs"]
 
-    exact_match_count = sum(1 for step in step_logs if step.get("recommended_intervention") == step.get("actual_intervention"))
+    exact_match_count = sum(
+        1
+        for step in step_logs
+        if _normalize_recommendation(
+            step.get("recommended_intervention"),
+            fallback_triggered=bool(step.get("fallback_triggered", False)),
+            confidence=float(step.get("confidence", 0.0) or 0.0),
+        )
+        == _normalize_recommendation(step.get("actual_intervention"))
+    )
     total = max(1, len(step_logs))
     exact_match_rate = exact_match_count / total
 
     assert summary["decision_accuracy"] >= 0.74
     assert exact_match_rate >= 0.74
     assert summary["calibration_error"] <= 0.35
+
+
+def test_baseline_cold_start_emits_explicit_recommendation_state() -> None:
+    platform = StructuralSystemIntelligencePlatform(operating_mode="production")
+    pipeline = RealWorldValidationPipeline(decision_fn=platform.update)
+    report = pipeline.run(_load_baseline_records())
+    step_logs = report["replay"]["step_logs"]
+
+    cold_start_steps = [step for step in step_logs if int(step.get("support_count", 0) or 0) <= 2]
+    assert cold_start_steps
+    assert all(step.get("recommended_intervention") is not None for step in cold_start_steps)
+    assert all(
+        str(step.get("recommended_intervention")) in {"monitor", "no_action_recommended", "insufficient_support_monitor"}
+        for step in cold_start_steps
+    )

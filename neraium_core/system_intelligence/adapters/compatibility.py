@@ -29,6 +29,8 @@ def to_operator_compatibility(intel: dict[str, Any]) -> dict[str, Any]:
     trajectory = intel.get("trajectory_archetypes") or intel.get("trajectory_intelligence") or {}
     novelty = float(trajectory.get("novelty_score", 0.0) or 0.0)
     support_count = int(trajectory.get("support", trajectory.get("support_count", 0)) or 0)
+    if bool(recommendation.get("no_intervention_recommended", False)) and support_count <= 2:
+        rec_name = "no_action_recommended"
     drift_warning = bool(((intel.get("reliability_intelligence") or {}).get("risk_advisory") or {}).get("drift_warning", False))
     structural_uncertainty = dict((intervention.get("structural_uncertainty_mode") or {}))
     override_applied = bool(recommendation.get("override_applied", False) or structural_uncertainty.get("override_applied", False))
