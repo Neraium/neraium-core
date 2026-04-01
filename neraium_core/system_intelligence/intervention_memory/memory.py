@@ -86,6 +86,57 @@ class InterventionMemoryStore:
             "record": self._record_to_dict(record),
         }
 
+    def ingest_observed_outcome(
+        self,
+        *,
+        asset_id: str,
+        intervention_type: str,
+        intervention_target: str,
+        context: dict[str, Any],
+        outcome_label: str,
+        state: dict[str, float],
+        metadata: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        label = str(outcome_label or "neutral").lower()
+        if label in {"helpful", "recovery-associated", "recovery_associated"}:
+            outcome = {
+                "escalation_reduction": 0.08,
+                "reversibility_improvement": 0.07,
+                "distance_from_critical_improvement": 0.07,
+                "escalation_worsening": 0.0,
+            }
+        elif label == "harmful":
+            outcome = {
+                "escalation_reduction": 0.0,
+                "reversibility_improvement": 0.0,
+                "distance_from_critical_improvement": 0.0,
+                "escalation_worsening": 0.09,
+            }
+        else:
+            outcome = {
+                "escalation_reduction": 0.02,
+                "reversibility_improvement": 0.01,
+                "distance_from_critical_improvement": 0.01,
+                "escalation_worsening": 0.0,
+            }
+
+        record = InterventionEvidenceRecord(
+            asset_id=asset_id,
+            pre_intervention_state=dict(state),
+            post_intervention_state=dict(state),
+            trajectory_family=str(context.get("trajectory_family", "unknown")),
+            transition_path=str(context.get("transition_path", "unknown")),
+            regime=str(context.get("regime", "unknown")),
+            mechanism_context=list(context.get("mechanism_candidates") or []),
+            law_context=list(context.get("law_candidates") or []),
+            intervention_type=str(intervention_type),
+            intervention_target=str(intervention_target),
+            outcome_delta=outcome,
+            evidence_metadata=dict(metadata or {}),
+        )
+        self.records.append(record)
+        return {"status": "recorded_from_observed_outcome", "record_count": len(self.records)}
+
     def _context_match(self, record: InterventionEvidenceRecord, context: dict[str, Any]) -> float:
         score = 0.0
         total = 0.0

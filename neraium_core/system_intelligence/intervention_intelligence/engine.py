@@ -14,6 +14,13 @@ _INTERVENTION_MAP = {
 }
 
 
+def _map_intervention(name: str, intervention_type: str | None = None, intervention_target: str | None = None) -> tuple[str, str]:
+    if intervention_type and intervention_target:
+        return str(intervention_type), str(intervention_target)
+    mapped_type, mapped_target = _INTERVENTION_MAP.get(str(name), ("other", "system"))
+    return str(intervention_type or mapped_type), str(intervention_target or mapped_target)
+
+
 class InterventionIntelligenceEngine:
     def __init__(self) -> None:
         self.memory = InterventionMemoryStore()
@@ -71,18 +78,39 @@ class InterventionIntelligenceEngine:
 
         intervention_observation = observation.get("applied_intervention") or observation.get("intervention_event")
         if isinstance(intervention_observation, dict):
-            self.memory.register_intervention_start(
-                asset_id=asset_id,
-                intervention_type=str(intervention_observation.get("type", "other")),
-                intervention_target=str(intervention_observation.get("target", "system")),
-                context=context,
-                pre_state=pre_or_post_state,
-                metadata={
-                    "source": "operator_input",
-                    "confidence": float(intervention_observation.get("confidence", 0.5)),
-                    "latent_state": list(context.get("latent_state") or []),
-                },
+            intervention_name = str(intervention_observation.get("name", intervention_observation.get("type", "other")))
+            intervention_type, intervention_target = _map_intervention(
+                intervention_name,
+                intervention_type=intervention_observation.get("type"),
+                intervention_target=intervention_observation.get("target"),
             )
+            outcome_label = intervention_observation.get("outcome_label")
+            if outcome_label is not None:
+                self.memory.ingest_observed_outcome(
+                    asset_id=asset_id,
+                    intervention_type=intervention_type,
+                    intervention_target=intervention_target,
+                    context=context,
+                    outcome_label=str(outcome_label),
+                    state=pre_or_post_state,
+                    metadata={
+                        "source": "replay_observed_outcome",
+                        "latent_state": list(context.get("latent_state") or []),
+                    },
+                )
+            else:
+                self.memory.register_intervention_start(
+                    asset_id=asset_id,
+                    intervention_type=intervention_type,
+                    intervention_target=intervention_target,
+                    context=context,
+                    pre_state=pre_or_post_state,
+                    metadata={
+                        "source": "operator_input",
+                        "confidence": float(intervention_observation.get("confidence", 0.5)),
+                        "latent_state": list(context.get("latent_state") or []),
+                    },
+                )
 
         candidates = []
         for scenario in counterfactuals.get("scenario_rankings") or []:
@@ -207,7 +235,11 @@ class InterventionIntelligenceEngine:
             reasons.append("transfer_mismatch")
         if reliability < self._uncertainty_thresholds["calibration_reliability"]:
             reasons.append("weak_calibration_reliability")
-        if ambiguity <= self._uncertainty_thresholds["ambiguity"]:
+        if (
+            ambiguity <= self._uncertainty_thresholds["ambiguity"]
+            and min(scores) >= 0.2
+            and (support > self._uncertainty_thresholds["support"] or elevated_context_risk)
+        ):
             reasons.append("competing_explanations")
 
         high_novelty_weak_support = (
