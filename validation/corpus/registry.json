@@ -35,7 +35,23 @@
       "coverage_tags": [
         "missing_signals",
         "timestamp_jitter",
-        "sensor_noise"
+        "sensor_noise",
+        "sequential_timesteps",
+        "multi_asset"
+      ]
+    },
+    {
+      "corpus_id": "noisy_realistic_ops_tiny_legacy",
+      "snapshot_file": "snapshots/noisy_realistic_ops_tiny_legacy.json",
+      "immutable": true,
+      "deprecated": true,
+      "exclude_from_release_gating": true,
+      "corpus_type": "noisy_realistic",
+      "expected_difficulty": "low",
+      "coverage_tags": [
+        "deprecated",
+        "tiny",
+        "diagnostic"
       ]
     },
     {
