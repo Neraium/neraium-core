@@ -209,3 +209,33 @@ def test_baseline_replay_does_not_default_to_competing_explanations_fallback() -
     assert fallback_rate < 1.0
     assert competing_default is False
     assert max_support > 0
+
+
+def test_baseline_replay_novelty_and_confidence_are_discriminative() -> None:
+    platform = StructuralSystemIntelligencePlatform(operating_mode="production")
+    pipeline = RealWorldValidationPipeline(decision_fn=platform.update)
+    rows = [
+        {
+            "timestamp": i + 1,
+            "asset_id": "baseline-discriminative",
+            "domain": "water",
+            "scenario_family": "baseline",
+            "system_type": "pump",
+            "observation": {"x": 0.05 + 0.018 * i, "sensor": 0.95 + 0.03 * i},
+            "actual_intervention": "remove_top_driver_contribution" if i < 5 else None,
+            "outcome_label": "helpful" if i < 5 else "neutral",
+        }
+        for i in range(8)
+    ]
+
+    step_logs = pipeline.run(rows)["replay"]["step_logs"]
+    novelties = [round(float(step.get("novelty", 0.0) or 0.0), 6) for step in step_logs]
+    confidences = [round(float(step.get("confidence", 0.0) or 0.0), 6) for step in step_logs]
+    supports = [int(step.get("support_count", 0) or 0) for step in step_logs]
+
+    assert len(set(novelties)) > 1 or len(set(confidences)) > 1
+    assert len(set(confidences)) > 1
+    early_conf = sum(confidences[:3]) / 3.0
+    late_conf = sum(confidences[-3:]) / 3.0
+    assert max(supports[-3:]) > max(supports[:3])
+    assert late_conf > early_conf
