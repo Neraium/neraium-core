@@ -1,7 +1,8 @@
 import math
 import os
 from collections import deque
-from typing import Dict, List, Optional
+from dataclasses import asdict
+from typing import Any, Dict, List, Optional
 
 import numpy as np
 
@@ -9,6 +10,7 @@ import numpy as np
 def _engine_debug_enabled() -> bool:
     return os.environ.get("NERAIUM_DEBUG_ENGINE", "0").strip().lower() in {"1", "true", "yes", "on"}
 
+from neraium_core.calibration import CalibrationProfile, resolve_calibration
 from neraium_core.detection.readiness import compute_engine_readiness
 from neraium_core.product import build_product_layer
 from neraium_core.stat_geometry import StatisticalGeometryLayer
@@ -27,6 +29,10 @@ class StructuralEngine:
     - combines both into a structural drift score
     - tracks drift velocity for early instability estimation
     - emits a pilot-friendly event/result object for each processed frame
+
+    Calibration presets (``conservative``, ``balanced``, ``early_warning``) tune drift,
+    transition, early warning, and onset thresholds without editing source. Pass
+    ``calibration`` to override individual fields from ``neraium_core.calibration``.
     """
 
     def __init__(
@@ -38,7 +44,13 @@ class StructuralEngine:
         cov_weight: float = 0.35,
         smoothing_window: int = 3,
         enable_vector_smoothing: bool = True,
+        calibration_profile: str = "balanced",
+        calibration: CalibrationProfile | dict[str, Any] | None = None,
     ):
+        """
+        ``calibration_profile`` selects a named preset. ``calibration`` merges overrides
+        (mapping or :class:`~neraium_core.calibration.CalibrationProfile`) on top of that preset.
+        """
         if baseline_window < 2:
             raise ValueError("baseline_window must be at least 2")
         if recent_window < 2:
@@ -60,6 +72,12 @@ class StructuralEngine:
         self.recent_window = recent_window
         self.smoothing_window = smoothing_window
         self.enable_vector_smoothing = enable_vector_smoothing
+
+        self.calibration = resolve_calibration(
+            calibration_profile=calibration_profile,
+            calibration=calibration,
+        )
+        self._calibration_profile_name = self.calibration.name
 
         self.frames = deque(maxlen=max_frames)
         self.sensor_order: List[str] = []
@@ -281,15 +299,16 @@ class StructuralEngine:
         """
         Convert drift score into a simple alert state.
         """
+        c = self.calibration
         hist = list(self._drift_history)
         if len(hist) >= max(12, self.recent_window * 2):
             baseline = np.asarray(hist[:-3] if len(hist) > 9 else hist, dtype=float)
-            watch_thr = float(np.quantile(baseline, 0.86))
-            alert_thr = float(np.quantile(baseline, 0.945))
-            watch_thr = max(1.35, watch_thr + 0.12)
-            alert_thr = max(watch_thr + 0.22, alert_thr + 0.15)
+            watch_thr = float(np.quantile(baseline, c.drift_watch_quantile))
+            alert_thr = float(np.quantile(baseline, c.drift_alert_quantile))
+            watch_thr = max(c.drift_watch_floor_min, watch_thr + c.drift_watch_band_add)
+            alert_thr = max(watch_thr + c.drift_alert_gap_min, alert_thr + c.drift_alert_band_add)
         else:
-            watch_thr, alert_thr = 2.05, 3.45
+            watch_thr, alert_thr = c.drift_cold_watch, c.drift_cold_alert
         if drift_score > alert_thr:
             return "ALERT"
         if drift_score > watch_thr:
@@ -369,7 +388,8 @@ class StructuralEngine:
         self._metric_history["recovery_margin"].append(recovery_margin)
 
         # Entity-relative baseline (only from historically stable frames).
-        if drift_score <= 1.3 and pressure <= 0.4 and lock_in <= 0.32:
+        c = self.calibration
+        if drift_score <= c.ew_entity_drift_max and pressure <= c.ew_entity_pressure_max and lock_in <= c.ew_entity_lock_max:
             self._entity_baseline_stability.append(float(drift_score))
         baseline_center = float(np.median(self._entity_baseline_stability)) if self._entity_baseline_stability else max(0.2, drift_score)
         baseline_spread = float(np.std(np.asarray(self._entity_baseline_stability, dtype=float))) if len(self._entity_baseline_stability) >= 6 else 0.12
@@ -462,26 +482,26 @@ class StructuralEngine:
         self._metric_history["pre_instability_score"].append(pre_instability_score)
 
         reasons: List[str] = []
-        if stability_erosion_score >= 0.5:
+        if stability_erosion_score >= c.ew_reason_stability_erosion:
             reasons.append("stability_erosion_persistent")
-        if coherence_breakdown_score >= 0.48:
+        if coherence_breakdown_score >= c.ew_reason_coherence:
             reasons.append("coherence_breakdown_signals")
-        if pressure_persist >= 0.55:
+        if pressure_persist >= c.ew_reason_pressure_persist:
             reasons.append("transition_pressure_persistence")
-        if recovery_fall_persist >= 0.52:
+        if recovery_fall_persist >= c.ew_reason_recovery_fall:
             reasons.append("recovery_margin_shrinking")
-        if directional_fall_persist >= 0.52:
+        if directional_fall_persist >= c.ew_reason_directional_fall:
             reasons.append("directional_coherence_loss")
-        if branch_pressure >= 0.48:
+        if branch_pressure >= c.ew_reason_branch_pressure:
             reasons.append("branching_tension_rising")
         if not reasons:
             reasons.append("no_persistent_early_instability")
 
-        if pre_instability_score >= 0.86 and pre_commitment_score >= 0.68:
+        if pre_instability_score >= c.ew_alert_pre and pre_commitment_score >= c.ew_alert_commit:
             ew_state = "alert"
-        elif pre_instability_score >= 0.64 and (mid_confirmation >= 0.48 or short_hint >= 0.6):
+        elif pre_instability_score >= c.ew_emerging_pre and (mid_confirmation >= c.ew_emerging_mid or short_hint >= c.ew_emerging_short):
             ew_state = "emerging_instability"
-        elif pre_instability_score >= 0.46 and stability_erosion_score >= 0.4:
+        elif pre_instability_score >= c.ew_pre_pre and stability_erosion_score >= c.ew_pre_erosion:
             ew_state = "pre_instability"
         else:
             ew_state = "stable"
@@ -551,7 +571,7 @@ class StructuralEngine:
         stability_score = self._relational_stability(cov_drift)
         health = self._system_health(drift_score, stability_score)
         state = self._alert_state(drift_score)
-        drift_alert = drift_score > 1.5
+        drift_alert = drift_score > self.calibration.drift_alert_threshold
 
         velocity = 0.0 if self.prev_drift is None else (drift_score - self.prev_drift)
         self.prev_drift = drift_score
@@ -677,13 +697,16 @@ class StructuralEngine:
             contrast = 0.5 * evidence
         pressure = self._clamp01(0.52 * evidence + 0.42 * contrast + 0.04 * graph_branching + 0.02 * graph_entropy)
         self._evidence_history.append(float(evidence))
+        c = self.calibration
         recent_evidence = list(self._evidence_history)[-5:]
-        evidence_persistence = self._clamp01(float(sum(1 for e in recent_evidence if e >= 0.58)) / max(1, len(recent_evidence)))
-        if pressure >= 0.82 and evidence_persistence >= 0.52:
+        evidence_persistence = self._clamp01(
+            float(sum(1 for e in recent_evidence if e >= c.trans_evidence_persist_min)) / max(1, len(recent_evidence))
+        )
+        if pressure >= c.trans_sustained_pressure and evidence_persistence >= c.trans_sustained_evidence_persist:
             transition_state = "SUSTAINED_TRANSITION"
-        elif pressure >= 0.56 and evidence_persistence >= 0.38:
+        elif pressure >= c.trans_emerging_pressure and evidence_persistence >= c.trans_emerging_evidence_persist:
             transition_state = "EMERGING_TRANSITION"
-        elif pressure >= 0.38:
+        elif pressure >= c.trans_metastable_min:
             transition_state = "METASTABLE"
         else:
             transition_state = "NONE"
@@ -736,6 +759,7 @@ class StructuralEngine:
         state_space_statistics: Optional[Dict] = None,
         state_graph: Optional[Dict] = None,
     ) -> str:
+        c = self.calibration
         center, spread = self._baseline_reference()
         drift_dev = self._clamp01((float(drift_score) - center) / (3.5 * spread + 1e-6))
         drift_excess = max(0.0, float(drift_score) - (center + 1.25 * spread))
@@ -754,7 +778,9 @@ class StructuralEngine:
             float(sum(1 for v in velocity_tail[-6:] if v >= 0.0)) / max(1, len(velocity_tail[-6:]))
         )
         drift_persistence = self._clamp01(float(sum(1 for d in drift_tail[-6:] if d > center + 1.1 * spread)) / 6.0)
-        pressure_persistence = self._clamp01(float(sum(1 for p in pressure_tail[-6:] if p >= 0.5)) / 6.0)
+        pressure_persistence = self._clamp01(
+            float(sum(1 for p in pressure_tail[-6:] if p >= c.onset_pressure_tail_gate)) / 6.0
+        )
         low_freq_alignment = self._clamp01(
             0.55 * self._clamp01(max(0.0, drift_slope_short) / 0.11)
             + 0.45 * self._clamp01(max(0.0, drift_slope_mid) / 0.08)
@@ -805,21 +831,21 @@ class StructuralEngine:
         prior_scores = list(self._onset_score_history)
         if len(prior_scores) >= 12:
             score_ref = np.asarray(prior_scores[-60:], dtype=float)
-            onset_thr = float(np.quantile(score_ref, 0.76) + 0.025)
-            watch_thr = float(np.quantile(score_ref, 0.68) + 0.02)
+            onset_thr = float(np.quantile(score_ref, c.onset_hist_quantile_onset) + c.onset_hist_add_onset)
+            watch_thr = float(np.quantile(score_ref, c.onset_hist_quantile_watch) + c.onset_hist_add_watch)
         else:
-            onset_thr = 0.5
-            watch_thr = 0.44
+            onset_thr = c.onset_cold_onset
+            watch_thr = c.onset_cold_watch
 
         alert_candidate = bool(
             onset_score >= onset_thr
-            and drift_dev >= 0.38
-            and drift_persistence >= 0.46
-            and pressure_persistence >= 0.14
-            and low_freq_alignment >= 0.38
-            and directional_consistency >= 0.58
-            and agreement >= 0.48
-            and smoothness >= 0.28
+            and drift_dev >= c.onset_alert_drift_dev
+            and drift_persistence >= c.onset_alert_drift_persist
+            and pressure_persistence >= c.onset_alert_pressure_persist
+            and low_freq_alignment >= c.onset_alert_low_freq
+            and directional_consistency >= c.onset_alert_directional
+            and agreement >= c.onset_alert_agreement
+            and smoothness >= c.onset_alert_smoothness
         )
 
         self._onset_candidate_streak = self._onset_candidate_streak + 1 if alert_candidate else max(0, self._onset_candidate_streak - 1)
@@ -865,17 +891,28 @@ class StructuralEngine:
         energy_confirmed = bool(
             self._cumulative_drift_excess >= energy_threshold
             and sustained_watch
-            and directional_consistency >= 0.5
+            and directional_consistency >= c.energy_directional_min
         )
         confirmed_alert = (
-            (self._onset_candidate_streak >= 2 and sum(1 for flag in recent_candidates if flag) >= 2)
+            (
+                self._onset_candidate_streak >= c.alert_candidate_streak_min
+                and sum(1 for flag in recent_candidates if flag) >= c.alert_recent_candidates_min
+            )
             or energy_confirmed
-            or (self._sensor_shift_streak >= 2 and drift_persistence >= 0.3 and directional_consistency >= 0.45)
+            or (
+                self._sensor_shift_streak >= c.sensor_shift_streak_min
+                and drift_persistence >= c.sensor_shift_drift_persist
+                and directional_consistency >= c.sensor_shift_directional
+            )
         )
 
         if confirmed_alert:
             return "ALERT"
-        if onset_score >= watch_thr and drift_persistence >= 0.4 and directional_consistency >= 0.54:
+        if (
+            onset_score >= watch_thr
+            and drift_persistence >= c.state_watch_drift_persist
+            and directional_consistency >= c.state_watch_directional
+        ):
             return "WATCH"
         return "STABLE"
 
@@ -1259,7 +1296,7 @@ class StructuralEngine:
             vector=vector,
         )
         early_erosion = self._safe_float(early_warning.get("stability_erosion_score", 0.0))
-        pressure_boost = self._clamp01(early_erosion * 0.1)
+        pressure_boost = self._clamp01(early_erosion * self.calibration.pressure_boost_from_erosion_scale)
         transition["transition_pressure"] = round(
             self._clamp01(self._safe_float(transition.get("transition_pressure", 0.0)) + pressure_boost), 4
         )
@@ -1275,11 +1312,18 @@ class StructuralEngine:
             state_graph=self._latest_state_graph,
         )
         ew_state = str(early_warning.get("early_warning_state", "stable"))
-        recent_ew = list(self._early_warning_state_history)[-6:]
-        ew_emerging_persist = sum(1 for s in recent_ew if s in {"pre_instability", "emerging_instability", "alert"}) >= 4
+        cal = self.calibration
+        recent_ew = list(self._early_warning_state_history)[-cal.ew_state_window_frames :]
+        ew_emerging_persist = (
+            sum(1 for s in recent_ew if s in {"pre_instability", "emerging_instability", "alert"})
+            >= cal.ew_emerging_persist_min
+        )
         ew_upgrade_ok = refined_state == "STABLE" and ew_emerging_persist and (
             ew_state == "emerging_instability"
-            or (ew_state == "pre_instability" and sum(1 for s in recent_ew if s == "pre_instability") >= 4)
+            or (
+                ew_state == "pre_instability"
+                and sum(1 for s in recent_ew if s == "pre_instability") >= cal.ew_pre_instability_count_required
+            )
         )
         if ew_upgrade_ok:
             refined_state = "WATCH"
@@ -1356,6 +1400,9 @@ class StructuralEngine:
 
         result["attribution"] = self._compute_structural_attribution_payload(result)
         result.update(build_product_layer(result))
+
+        result["calibration_profile"] = self._calibration_profile_name
+        result["calibration"] = asdict(self.calibration)
 
         self._frame_count += 1
         if _engine_debug_enabled():

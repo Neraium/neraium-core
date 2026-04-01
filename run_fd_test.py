@@ -101,6 +101,13 @@ def parse_args() -> argparse.Namespace:
         help="Verbose replay logs (first JSON result snippet). Set NERAIUM_DEBUG_ENGINE=1 for engine internals.",
     )
     parser.add_argument(
+        "--calibration-profile",
+        type=str,
+        default="balanced",
+        choices=["conservative", "balanced", "early_warning"],
+        help="StructuralEngine calibration preset (default: balanced).",
+    )
+    parser.add_argument(
         "--fleet-summary-json",
         type=Path,
         default=None,
@@ -324,8 +331,10 @@ def replay_unit(
     debug_records: list[dict[str, Any]] | None = None,
     collect_diagnostics: bool = True,
     collect_slim: bool = True,
+    calibration_profile: str = "balanced",
+    calibration: dict[str, Any] | None = None,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
-    engine = StructuralEngine()
+    engine = StructuralEngine(calibration_profile=calibration_profile, calibration=calibration)
     diag_rows: list[dict[str, Any]] = []
     slim_rows: list[dict[str, Any]] = []
     printed_debug_result = False
@@ -469,6 +478,7 @@ def main() -> None:
             debug_records=debug_records,
             collect_diagnostics=collect_diagnostics,
             collect_slim=collect_slim,
+            calibration_profile=str(args.calibration_profile),
         )
         all_diag.extend(drows)
         all_slim.extend(srows)
