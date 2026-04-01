@@ -49,9 +49,9 @@ class CrossSystemTrajectoryMemory:
                 "current_trajectory_family": None,
                 "nearest_trajectory_archetypes": [],
                 "nearest_trajectory_families": [],
-                "family_similarity": 0.0,
-                "trajectory_similarity": 0.0,
-                "novelty_score": 1.0,
+                "family_similarity": 0.5,
+                "trajectory_similarity": 0.5,
+                "novelty_score": 0.5,
                 "novelty_classification": "insufficient_history",
             }
 
