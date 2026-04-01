@@ -11,6 +11,8 @@ from typing import Any
 
 from validation.replay import load_dataset
 
+MIN_VALIDATION_RECORDS = 50
+
 
 class CorpusQualityError(ValueError):
     """Raised when a canonical corpus does not meet quality thresholds."""
@@ -249,6 +251,8 @@ def load_records_for_run(
             manifests.append({"path": str(file_path), "format": fmt, "sha256": observed})
 
         quality = _validate_quality(snapshot, collected)
+        if len(collected) < MIN_VALIDATION_RECORDS:
+            raise ValueError("Dataset too small for validation")
         source = {
             "corpus": {
                 "corpus_id": snapshot.corpus_id,
@@ -271,6 +275,8 @@ def load_records_for_run(
         raise ValueError("Either --corpus-id or both --input and --format are required")
 
     records = load_dataset(input_path, input_format)
+    if len(records) < MIN_VALIDATION_RECORDS:
+        raise ValueError("Dataset too small for validation")
     source = {
         "corpus": {
             "corpus_id": "non_canonical",
