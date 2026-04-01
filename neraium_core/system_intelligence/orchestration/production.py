@@ -33,6 +33,7 @@ class ProductionIntelligenceOrchestrator:
         self.trajectory_forecast = TrajectoryConditionedForecaster()
         self.intervention_intelligence = InterventionIntelligenceEngine()
         self.reliability = StructuralReliabilityLayer()
+        self._step = 0
 
     @staticmethod
     def _clip01(value: Any) -> float:
@@ -123,7 +124,8 @@ class ProductionIntelligenceOrchestrator:
         )
 
         asset_id = str(observation.get("asset_id", "unknown"))
-        step = int(getattr(self.trajectory_memory, "step", 0))
+        step = int(self._step)
+        self._step += 1
         self.reliability.finalize_due(
             asset_id=asset_id,
             step=step,
