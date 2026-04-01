@@ -206,9 +206,24 @@ class InterventionRecommendationRanker:
             confidence *= 0.62
         return confidence
     @staticmethod
-    def calibrate_confidence(*, raw_confidence: float, regime: str) -> float:
+    def calibrate_confidence(
+        *,
+        raw_confidence: float,
+        regime: str,
+        support: float = 0.0,
+        reliability: float = 1.0,
+        novelty: float = 0.0,
+    ) -> float:
         raw = _clip01(raw_confidence)
         if regime == "uncertain":
+            if support <= 1.0:
+                reliability_term = _clip01(reliability)
+                novelty_term = 1.0 - _clip01(novelty)
+                low_support_signal = _clip01(0.50 * raw + 0.30 * reliability_term + 0.20 * novelty_term)
+                floor = 0.02 if support <= 0.0 else 0.03
+                ceiling = 0.10 if support <= 0.0 else 0.12
+                calibrated_low_support = floor + 0.75 * (ceiling - floor) * low_support_signal
+                return round(min(ceiling, calibrated_low_support), 6)
             return round(min(0.2, 0.015 + 0.145 * raw), 6)
         calibrated = 0.02 + 0.30 * (raw**20.0)
         return round(min(0.95, _clip01(calibrated)), 6)
@@ -234,12 +249,20 @@ class InterventionRecommendationRanker:
         )
         regime = "uncertain" if uncertain else "normal"
 
-        post_calibration = self.calibrate_confidence(raw_confidence=pre_calibration, regime=regime)
+        post_calibration = self.calibrate_confidence(
+            raw_confidence=pre_calibration,
+            regime=regime,
+            support=support,
+            reliability=reliability,
+            novelty=novelty,
+        )
         support_strength = _clip01(support / 4.0)
         context_strength = _clip01(context_match)
         evidence_strength = _clip01(0.6 * support_strength + 0.4 * context_strength)
         if regime == "uncertain":
-            confidence = min(0.2, post_calibration + 0.03 * evidence_strength)
+            low_support_cap = 0.10 if support <= 0.0 else 0.12
+            cap = low_support_cap if support <= 1.0 else 0.2
+            confidence = min(cap, post_calibration + 0.03 * evidence_strength)
         else:
             confidence = min(0.95, post_calibration + 0.05 * evidence_strength)
         return {
