@@ -1,19 +1,19 @@
 {
-  "decision_accuracy": 0.84,
-  "harm_rate": 0.05,
-  "calibration_error": 0.299701,
-  "calibration_quality": 0.700299,
+  "decision_accuracy": 0.8,
+  "harm_rate": 0.333333,
+  "calibration_error": 0.465484,
+  "calibration_quality": 0.534516,
   "false_confidence_events": 0,
   "false_confidence_rate": 0.0,
   "intervention_memory_contribution": {
     "status": "available",
     "method": "candidate_score_ablation_delta",
-    "sample_count": 100,
-    "mean_best_confidence_delta": 0.006355,
-    "positive_delta_rate": 0.59,
-    "top_choice_change_rate_without_memory": 0.43
+    "sample_count": 60,
+    "mean_best_confidence_delta": 0.023365,
+    "positive_delta_rate": 0.916667,
+    "top_choice_change_rate_without_memory": 0.0
   },
-  "drift_status": "drift_detected",
-  "drift_warning_count": 2,
-  "drift_warning_rate": 0.02
+  "drift_status": "stable",
+  "drift_warning_count": 0,
+  "drift_warning_rate": 0.0
 }

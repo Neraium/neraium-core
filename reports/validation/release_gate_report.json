@@ -2,60 +2,113 @@
   "corpus_id": "baseline_clean_ops",
   "corpus_type": "baseline_clean",
   "summary_metrics": {
-    "decision_accuracy": 0.84,
-    "harm_rate": 0.05,
-    "calibration_error": 0.299701,
-    "calibration_quality": 0.700299,
+    "decision_accuracy": 0.8,
+    "harm_rate": 0.333333,
+    "calibration_error": 0.465484,
+    "calibration_quality": 0.534516,
     "false_confidence_events": 0,
     "false_confidence_rate": 0.0,
     "intervention_memory_contribution": {
       "status": "available",
       "method": "candidate_score_ablation_delta",
-      "sample_count": 100,
-      "mean_best_confidence_delta": 0.006355,
-      "positive_delta_rate": 0.59,
-      "top_choice_change_rate_without_memory": 0.43
+      "sample_count": 60,
+      "mean_best_confidence_delta": 0.023365,
+      "positive_delta_rate": 0.916667,
+      "top_choice_change_rate_without_memory": 0.0
     },
-    "drift_status": "drift_detected",
-    "drift_warning_count": 2,
-    "drift_warning_rate": 0.02
+    "drift_status": "stable",
+    "drift_warning_count": 0,
+    "drift_warning_rate": 0.0
   },
   "corpus_summary": {
-    "total_records": 100,
+    "total_records": 60,
     "domain_count": 2,
-    "asset_count": 4,
-    "scenario_family_count": 4,
-    "system_type_count": 4,
+    "asset_count": 60,
+    "scenario_family_count": 1,
+    "system_type_count": 2,
     "by_domain": {
-      "energy": 50,
-      "water": 50
+      "energy": 30,
+      "water": 30
     },
     "by_asset": {
-      "ops_deteriorating_compressor_B": 25,
-      "ops_intermittent_chiller_D": 25,
-      "ops_recoverable_turbine_C": 25,
-      "ops_stable_pump_A": 25
+      "baseline_clean_ops-0": 1,
+      "baseline_clean_ops-1": 1,
+      "baseline_clean_ops-10": 1,
+      "baseline_clean_ops-11": 1,
+      "baseline_clean_ops-12": 1,
+      "baseline_clean_ops-13": 1,
+      "baseline_clean_ops-14": 1,
+      "baseline_clean_ops-15": 1,
+      "baseline_clean_ops-16": 1,
+      "baseline_clean_ops-17": 1,
+      "baseline_clean_ops-18": 1,
+      "baseline_clean_ops-19": 1,
+      "baseline_clean_ops-2": 1,
+      "baseline_clean_ops-20": 1,
+      "baseline_clean_ops-21": 1,
+      "baseline_clean_ops-22": 1,
+      "baseline_clean_ops-23": 1,
+      "baseline_clean_ops-24": 1,
+      "baseline_clean_ops-25": 1,
+      "baseline_clean_ops-26": 1,
+      "baseline_clean_ops-27": 1,
+      "baseline_clean_ops-28": 1,
+      "baseline_clean_ops-29": 1,
+      "baseline_clean_ops-3": 1,
+      "baseline_clean_ops-30": 1,
+      "baseline_clean_ops-31": 1,
+      "baseline_clean_ops-32": 1,
+      "baseline_clean_ops-33": 1,
+      "baseline_clean_ops-34": 1,
+      "baseline_clean_ops-35": 1,
+      "baseline_clean_ops-36": 1,
+      "baseline_clean_ops-37": 1,
+      "baseline_clean_ops-38": 1,
+      "baseline_clean_ops-39": 1,
+      "baseline_clean_ops-4": 1,
+      "baseline_clean_ops-40": 1,
+      "baseline_clean_ops-41": 1,
+      "baseline_clean_ops-42": 1,
+      "baseline_clean_ops-43": 1,
+      "baseline_clean_ops-44": 1,
+      "baseline_clean_ops-45": 1,
+      "baseline_clean_ops-46": 1,
+      "baseline_clean_ops-47": 1,
+      "baseline_clean_ops-48": 1,
+      "baseline_clean_ops-49": 1,
+      "baseline_clean_ops-5": 1,
+      "baseline_clean_ops-50": 1,
+      "baseline_clean_ops-51": 1,
+      "baseline_clean_ops-52": 1,
+      "baseline_clean_ops-53": 1,
+      "baseline_clean_ops-54": 1,
+      "baseline_clean_ops-55": 1,
+      "baseline_clean_ops-56": 1,
+      "baseline_clean_ops-57": 1,
+      "baseline_clean_ops-58": 1,
+      "baseline_clean_ops-59": 1,
+      "baseline_clean_ops-6": 1,
+      "baseline_clean_ops-7": 1,
+      "baseline_clean_ops-8": 1,
+      "baseline_clean_ops-9": 1
     },
     "by_scenario_family": {
-      "gradual_deterioration": 25,
-      "intermittent_instability": 25,
-      "recoverable_perturbation": 25,
-      "stable_operations": 25
+      "unknown": 60
     },
     "by_system_type": {
-      "chiller": 25,
-      "compressor": 25,
-      "pump": 25,
-      "turbine": 25
+      "compressor": 30,
+      "pump": 30
     },
     "time_range": {
       "min_timestamp": 1.0,
-      "max_timestamp": 25.0
+      "max_timestamp": 60.0
     },
     "representativeness": {
-      "dominant_asset_share": 0.25,
+      "dominant_asset_share": 0.016667,
       "dominant_domain_share": 0.5,
-      "warnings": []
+      "warnings": [
+        "low_cohort_support"
+      ]
     }
   },
   "eligible_for_release_decision": true,
@@ -63,7 +116,7 @@
     {
       "gate": "minimum_data_volume",
       "passed": true,
-      "observed": 100,
+      "observed": 60,
       "threshold": ">= 50",
       "reason": null
     },
@@ -77,30 +130,30 @@
     {
       "gate": "minimum_asset_coverage",
       "passed": true,
-      "observed": 4,
+      "observed": 60,
       "threshold": ">= 3",
       "reason": null
     },
     {
       "gate": "minimum_decision_accuracy",
       "passed": true,
-      "observed": 0.84,
+      "observed": 0.8,
       "threshold": ">= 0.74",
       "reason": null
     },
     {
       "gate": "maximum_harm_rate",
-      "passed": true,
-      "observed": 0.05,
+      "passed": false,
+      "observed": 0.333333,
       "threshold": "<= 0.18",
-      "reason": null
+      "reason": "Harm rate exceeds safe operating bound"
     },
     {
       "gate": "maximum_calibration_error",
-      "passed": true,
-      "observed": 0.299701,
+      "passed": false,
+      "observed": 0.465484,
       "threshold": "<= 0.3",
-      "reason": null
+      "reason": "Calibration error exceeds release limit"
     },
     {
       "gate": "maximum_false_confidence_rate",
@@ -112,7 +165,7 @@
     {
       "gate": "maximum_drift_warning_rate",
       "passed": true,
-      "observed": 0.02,
+      "observed": 0.0,
       "threshold": "<= 0.22",
       "reason": null
     },
@@ -124,10 +177,16 @@
       "reason": null
     }
   ],
-  "release_passed": true,
-  "release_recommendation": "ship",
-  "blocking_reasons": [],
-  "failure_mode_tags": [],
+  "release_passed": false,
+  "release_recommendation": "no-ship",
+  "blocking_reasons": [
+    "Harm rate exceeds safe operating bound",
+    "Calibration error exceeds release limit"
+  ],
+  "failure_mode_tags": [
+    "calibration_failure",
+    "intervention_ranking_error"
+  ],
   "policy_thresholds": {
     "min_decision_accuracy": 0.74,
     "max_harm_rate": 0.18,
@@ -145,10 +204,10 @@
   },
   "run_metadata": {
     "corpus_id": "baseline_clean_ops",
-    "run_id": "baseline_clean_ops_20260401T044416Z_908bdc7d",
-    "timestamp": "2026-04-01T04:44:16Z",
-    "code_version": "85fd09e8ab92bd6fccbb4ece1f7a30f6cb6fd8ad",
-    "config_hash": "0e3ec11812091c06f556908fae66df87347f724feca539b9e823c900558af51c",
+    "run_id": "baseline_clean_ops_20260401T141747Z_3d4104e9",
+    "timestamp": "2026-04-01T14:17:47Z",
+    "code_version": "5cf3cebe928dc5a6ef3e077db1faaa086c336203",
+    "config_hash": "b84f57e73cfbf0993de2e62438ff132396f1cd3fd5d36d5509d73d491ce3a142",
     "canonical_run": true
   }
 }

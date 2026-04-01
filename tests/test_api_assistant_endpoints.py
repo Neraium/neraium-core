@@ -75,7 +75,9 @@ def test_assistant_explain_rejects_unsupported_mode(tmp_path) -> None:
     )
 
     assert response.status_code == 400
-    assert "mode must be one of" in response.json()["detail"]
+    body = response.json()
+    assert body.get("ok") is False
+    assert "mode must be one of" in str(body.get("message") or "")
 
 
 def test_assistant_report_endpoint_supports_all_modes(tmp_path) -> None:

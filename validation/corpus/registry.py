@@ -149,7 +149,16 @@ class CorpusSnapshotRegistry:
         return True
 
 
-def _sha256_file(path: Path) -> str:
+def _sha256_file(path: Path, *, data_format: str | None = None) -> str:
+    """SHA-256 of file contents.
+
+    For JSON text, newline sequences are normalized to ``\\n`` before hashing so
+    Windows CRLF checkouts match the LF hashes recorded in corpus snapshots.
+    """
+    fmt = (data_format or "").lower()
+    if fmt == "json" or path.suffix.lower() == ".json":
+        text = path.read_text(encoding="utf-8").replace("\r\n", "\n").replace("\r", "\n")
+        return hashlib.sha256(text.encode("utf-8")).hexdigest()
     h = hashlib.sha256()
     with path.open("rb") as f:
         for chunk in iter(lambda: f.read(8192), b""):
@@ -242,7 +251,8 @@ def load_records_for_run(
         for data_file in snapshot.data_files:
             file_path = _resolve_file(base, data_file)
             expected = data_file.get("sha256")
-            observed = _sha256_file(file_path)
+            fmt = str(data_file.get("format") or input_format or "json")
+            observed = _sha256_file(file_path, data_format=fmt)
             if expected and str(expected) != observed:
                 raise ValueError(f"Checksum mismatch for {file_path}")
             fmt = str(data_file.get("format") or input_format or "json")

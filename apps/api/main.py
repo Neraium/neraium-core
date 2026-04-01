@@ -23,6 +23,7 @@ from starlette.responses import PlainTextResponse, Response, StreamingResponse
 from starlette.types import Message
 
 from .bootstrap.config import (
+    DEFAULT_MAX_REQUEST_BODY_BYTES,
     cors_allow_headers,
     cors_allow_origin_regex,
     cors_allow_origins,

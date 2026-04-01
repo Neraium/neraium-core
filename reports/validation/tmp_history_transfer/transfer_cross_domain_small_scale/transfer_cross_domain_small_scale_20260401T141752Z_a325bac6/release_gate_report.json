@@ -1,0 +1,111 @@
+{
+  "release_passed": true,
+  "release_recommendation": "ship",
+  "gate_breakdown": [
+    {
+      "gate": "minimum_data_volume",
+      "passed": true,
+      "observed": 80,
+      "threshold": ">= 50",
+      "reason": null
+    },
+    {
+      "gate": "minimum_domain_coverage",
+      "passed": true,
+      "observed": 2,
+      "threshold": ">= 1",
+      "reason": null
+    },
+    {
+      "gate": "minimum_asset_coverage",
+      "passed": true,
+      "observed": 4,
+      "threshold": ">= 3",
+      "reason": null
+    },
+    {
+      "gate": "minimum_decision_accuracy",
+      "passed": true,
+      "observed": 0.9375,
+      "threshold": ">= 0.7",
+      "reason": null
+    },
+    {
+      "gate": "maximum_harm_rate",
+      "passed": true,
+      "observed": 0.0625,
+      "threshold": "<= 0.2",
+      "reason": null
+    },
+    {
+      "gate": "maximum_calibration_error",
+      "passed": true,
+      "observed": 0.205438,
+      "threshold": "<= 0.35",
+      "reason": null
+    },
+    {
+      "gate": "maximum_false_confidence_rate",
+      "passed": true,
+      "observed": 0.0125,
+      "threshold": "<= 0.1",
+      "reason": null
+    },
+    {
+      "gate": "maximum_drift_warning_rate",
+      "passed": true,
+      "observed": 0.025,
+      "threshold": "<= 0.25",
+      "reason": null
+    },
+    {
+      "gate": "representativeness_safety",
+      "passed": true,
+      "observed": "none",
+      "threshold": "no severe representativeness warnings",
+      "reason": null
+    }
+  ],
+  "blocking_reasons": [],
+  "policy_thresholds": {
+    "min_decision_accuracy": 0.7,
+    "max_harm_rate": 0.2,
+    "max_calibration_error": 0.35,
+    "max_false_confidence_rate": 0.1,
+    "max_drift_warning_rate": 0.25,
+    "min_records": 50,
+    "min_domain_count": 1,
+    "min_asset_count": 3,
+    "min_intervention_memory_contribution": null,
+    "regression_accuracy_drop_limit": 0.03,
+    "regression_harm_increase_limit": 0.02,
+    "regression_calibration_error_increase_limit": 0.03,
+    "regression_drift_increase_limit": 0.05
+  },
+  "regression_analysis": {
+    "has_baseline": true,
+    "regressions": [],
+    "improvements": [],
+    "release_regression_blockers": []
+  },
+  "run_metadata": {
+    "corpus_id": "transfer_cross_domain_small_scale",
+    "run_id": "transfer_cross_domain_small_scale_20260401T141752Z_a325bac6",
+    "timestamp": "2026-04-01T14:17:52Z",
+    "code_version": "5cf3cebe928dc5a6ef3e077db1faaa086c336203",
+    "config_hash": "7daf112c339f2a5010a7816a9231b60c2b6815905f73d6f1732372006164278d",
+    "canonical_run": true
+  },
+  "release_decision": {
+    "release_passed": true,
+    "release_recommendation": "ship",
+    "blocking_reasons": []
+  },
+  "regression_comparison": {
+    "has_baseline": true,
+    "regressions": [],
+    "improvements": [],
+    "release_regression_blockers": []
+  },
+  "corpus_id": "transfer_cross_domain_small_scale"
+}

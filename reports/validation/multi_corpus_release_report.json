@@ -3,63 +3,116 @@
   "release_recommendation": "no-ship",
   "corpus_results": [
     {
-      "corpus_id": "baseline_clean_ops",
+      "corpus_id": "corpus_test",
       "corpus_type": "baseline_clean",
       "summary_metrics": {
-        "decision_accuracy": 0.84,
-        "harm_rate": 0.05,
-        "calibration_error": 0.299701,
-        "calibration_quality": 0.700299,
+        "decision_accuracy": 0.8,
+        "harm_rate": 0.333333,
+        "calibration_error": 0.465484,
+        "calibration_quality": 0.534516,
         "false_confidence_events": 0,
         "false_confidence_rate": 0.0,
         "intervention_memory_contribution": {
           "status": "available",
           "method": "candidate_score_ablation_delta",
-          "sample_count": 100,
-          "mean_best_confidence_delta": 0.006355,
-          "positive_delta_rate": 0.59,
-          "top_choice_change_rate_without_memory": 0.43
+          "sample_count": 60,
+          "mean_best_confidence_delta": 0.023365,
+          "positive_delta_rate": 0.916667,
+          "top_choice_change_rate_without_memory": 0.0
         },
-        "drift_status": "drift_detected",
-        "drift_warning_count": 2,
-        "drift_warning_rate": 0.02
+        "drift_status": "stable",
+        "drift_warning_count": 0,
+        "drift_warning_rate": 0.0
       },
       "corpus_summary": {
-        "total_records": 100,
+        "total_records": 60,
         "domain_count": 2,
-        "asset_count": 4,
-        "scenario_family_count": 4,
-        "system_type_count": 4,
+        "asset_count": 60,
+        "scenario_family_count": 1,
+        "system_type_count": 2,
         "by_domain": {
-          "energy": 50,
-          "water": 50
+          "energy": 30,
+          "water": 30
         },
         "by_asset": {
-          "ops_deteriorating_compressor_B": 25,
-          "ops_intermittent_chiller_D": 25,
-          "ops_recoverable_turbine_C": 25,
-          "ops_stable_pump_A": 25
+          "corpus_test-0": 1,
+          "corpus_test-1": 1,
+          "corpus_test-10": 1,
+          "corpus_test-11": 1,
+          "corpus_test-12": 1,
+          "corpus_test-13": 1,
+          "corpus_test-14": 1,
+          "corpus_test-15": 1,
+          "corpus_test-16": 1,
+          "corpus_test-17": 1,
+          "corpus_test-18": 1,
+          "corpus_test-19": 1,
+          "corpus_test-2": 1,
+          "corpus_test-20": 1,
+          "corpus_test-21": 1,
+          "corpus_test-22": 1,
+          "corpus_test-23": 1,
+          "corpus_test-24": 1,
+          "corpus_test-25": 1,
+          "corpus_test-26": 1,
+          "corpus_test-27": 1,
+          "corpus_test-28": 1,
+          "corpus_test-29": 1,
+          "corpus_test-3": 1,
+          "corpus_test-30": 1,
+          "corpus_test-31": 1,
+          "corpus_test-32": 1,
+          "corpus_test-33": 1,
+          "corpus_test-34": 1,
+          "corpus_test-35": 1,
+          "corpus_test-36": 1,
+          "corpus_test-37": 1,
+          "corpus_test-38": 1,
+          "corpus_test-39": 1,
+          "corpus_test-4": 1,
+          "corpus_test-40": 1,
+          "corpus_test-41": 1,
+          "corpus_test-42": 1,
+          "corpus_test-43": 1,
+          "corpus_test-44": 1,
+          "corpus_test-45": 1,
+          "corpus_test-46": 1,
+          "corpus_test-47": 1,
+          "corpus_test-48": 1,
+          "corpus_test-49": 1,
+          "corpus_test-5": 1,
+          "corpus_test-50": 1,
+          "corpus_test-51": 1,
+          "corpus_test-52": 1,
+          "corpus_test-53": 1,
+          "corpus_test-54": 1,
+          "corpus_test-55": 1,
+          "corpus_test-56": 1,
+          "corpus_test-57": 1,
+          "corpus_test-58": 1,
+          "corpus_test-59": 1,
+          "corpus_test-6": 1,
+          "corpus_test-7": 1,
+          "corpus_test-8": 1,
+          "corpus_test-9": 1
         },
         "by_scenario_family": {
-          "gradual_deterioration": 25,
-          "intermittent_instability": 25,
-          "recoverable_perturbation": 25,
-          "stable_operations": 25
+          "unknown": 60
         },
         "by_system_type": {
-          "chiller": 25,
-          "compressor": 25,
-          "pump": 25,
-          "turbine": 25
+          "compressor": 30,
+          "pump": 30
         },
         "time_range": {
           "min_timestamp": 1.0,
-          "max_timestamp": 25.0
+          "max_timestamp": 60.0
         },
         "representativeness": {
-          "dominant_asset_share": 0.25,
+          "dominant_asset_share": 0.016667,
           "dominant_domain_share": 0.5,
-          "warnings": []
+          "warnings": [
+            "low_cohort_support"
+          ]
         }
       },
       "eligible_for_release_decision": true,
@@ -67,7 +120,7 @@
         {
           "gate": "minimum_data_volume",
           "passed": true,
-          "observed": 100,
+          "observed": 60,
           "threshold": ">= 50",
           "reason": null
         },
@@ -81,30 +134,30 @@
         {
           "gate": "minimum_asset_coverage",
           "passed": true,
-          "observed": 4,
+          "observed": 60,
           "threshold": ">= 3",
           "reason": null
         },
         {
           "gate": "minimum_decision_accuracy",
           "passed": true,
-          "observed": 0.84,
+          "observed": 0.8,
           "threshold": ">= 0.74",
           "reason": null
         },
         {
           "gate": "maximum_harm_rate",
-          "passed": true,
-          "observed": 0.05,
+          "passed": false,
+          "observed": 0.333333,
           "threshold": "<= 0.18",
-          "reason": null
+          "reason": "Harm rate exceeds safe operating bound"
         },
         {
           "gate": "maximum_calibration_error",
-          "passed": true,
-          "observed": 0.299701,
+          "passed": false,
+          "observed": 0.465484,
           "threshold": "<= 0.3",
-          "reason": null
+          "reason": "Calibration error exceeds release limit"
         },
         {
           "gate": "maximum_false_confidence_rate",
@@ -116,7 +169,7 @@
         {
           "gate": "maximum_drift_warning_rate",
           "passed": true,
-          "observed": 0.02,
+          "observed": 0.0,
           "threshold": "<= 0.22",
           "reason": null
         },
@@ -128,10 +181,16 @@
           "reason": null
         }
       ],
-      "release_passed": true,
-      "release_recommendation": "ship",
-      "blocking_reasons": [],
-      "failure_mode_tags": [],
+      "release_passed": false,
+      "release_recommendation": "no-ship",
+      "blocking_reasons": [
+        "Harm rate exceeds safe operating bound",
+        "Calibration error exceeds release limit"
+      ],
+      "failure_mode_tags": [
+        "calibration_failure",
+        "intervention_ranking_error"
+      ],
       "policy_thresholds": {
         "min_decision_accuracy": 0.74,
         "max_harm_rate": 0.18,
@@ -148,74 +207,127 @@
         "regression_drift_increase_limit": 0.05
       },
       "run_metadata": {
-        "corpus_id": "baseline_clean_ops",
-        "run_id": "baseline_clean_ops_20260401T044416Z_908bdc7d",
-        "timestamp": "2026-04-01T04:44:16Z",
-        "code_version": "85fd09e8ab92bd6fccbb4ece1f7a30f6cb6fd8ad",
-        "config_hash": "0e3ec11812091c06f556908fae66df87347f724feca539b9e823c900558af51c",
+        "corpus_id": "corpus_test",
+        "run_id": "corpus_test_20260401T141745Z_4570afea",
+        "timestamp": "2026-04-01T14:17:45Z",
+        "code_version": "5cf3cebe928dc5a6ef3e077db1faaa086c336203",
+        "config_hash": "9e692286a18af2309d77238f07de32c800b5b454856ba1cb2cab304378bc02c5",
         "canonical_run": true
       }
     }
   ],
   "release_decision_corpus_results": [
     {
-      "corpus_id": "baseline_clean_ops",
+      "corpus_id": "corpus_test",
       "corpus_type": "baseline_clean",
       "summary_metrics": {
-        "decision_accuracy": 0.84,
-        "harm_rate": 0.05,
-        "calibration_error": 0.299701,
-        "calibration_quality": 0.700299,
+        "decision_accuracy": 0.8,
+        "harm_rate": 0.333333,
+        "calibration_error": 0.465484,
+        "calibration_quality": 0.534516,
         "false_confidence_events": 0,
         "false_confidence_rate": 0.0,
         "intervention_memory_contribution": {
           "status": "available",
           "method": "candidate_score_ablation_delta",
-          "sample_count": 100,
-          "mean_best_confidence_delta": 0.006355,
-          "positive_delta_rate": 0.59,
-          "top_choice_change_rate_without_memory": 0.43
+          "sample_count": 60,
+          "mean_best_confidence_delta": 0.023365,
+          "positive_delta_rate": 0.916667,
+          "top_choice_change_rate_without_memory": 0.0
         },
-        "drift_status": "drift_detected",
-        "drift_warning_count": 2,
-        "drift_warning_rate": 0.02
+        "drift_status": "stable",
+        "drift_warning_count": 0,
+        "drift_warning_rate": 0.0
       },
       "corpus_summary": {
-        "total_records": 100,
+        "total_records": 60,
         "domain_count": 2,
-        "asset_count": 4,
-        "scenario_family_count": 4,
-        "system_type_count": 4,
+        "asset_count": 60,
+        "scenario_family_count": 1,
+        "system_type_count": 2,
         "by_domain": {
-          "energy": 50,
-          "water": 50
+          "energy": 30,
+          "water": 30
         },
         "by_asset": {
-          "ops_deteriorating_compressor_B": 25,
-          "ops_intermittent_chiller_D": 25,
-          "ops_recoverable_turbine_C": 25,
-          "ops_stable_pump_A": 25
+          "corpus_test-0": 1,
+          "corpus_test-1": 1,
+          "corpus_test-10": 1,
+          "corpus_test-11": 1,
+          "corpus_test-12": 1,
+          "corpus_test-13": 1,
+          "corpus_test-14": 1,
+          "corpus_test-15": 1,
+          "corpus_test-16": 1,
+          "corpus_test-17": 1,
+          "corpus_test-18": 1,
+          "corpus_test-19": 1,
+          "corpus_test-2": 1,
+          "corpus_test-20": 1,
+          "corpus_test-21": 1,
+          "corpus_test-22": 1,
+          "corpus_test-23": 1,
+          "corpus_test-24": 1,
+          "corpus_test-25": 1,
+          "corpus_test-26": 1,
+          "corpus_test-27": 1,
+          "corpus_test-28": 1,
+          "corpus_test-29": 1,
+          "corpus_test-3": 1,
+          "corpus_test-30": 1,
+          "corpus_test-31": 1,
+          "corpus_test-32": 1,
+          "corpus_test-33": 1,
+          "corpus_test-34": 1,
+          "corpus_test-35": 1,
+          "corpus_test-36": 1,
+          "corpus_test-37": 1,
+          "corpus_test-38": 1,
+          "corpus_test-39": 1,
+          "corpus_test-4": 1,
+          "corpus_test-40": 1,
+          "corpus_test-41": 1,
+          "corpus_test-42": 1,
+          "corpus_test-43": 1,
+          "corpus_test-44": 1,
+          "corpus_test-45": 1,
+          "corpus_test-46": 1,
+          "corpus_test-47": 1,
+          "corpus_test-48": 1,
+          "corpus_test-49": 1,
+          "corpus_test-5": 1,
+          "corpus_test-50": 1,
+          "corpus_test-51": 1,
+          "corpus_test-52": 1,
+          "corpus_test-53": 1,
+          "corpus_test-54": 1,
+          "corpus_test-55": 1,
+          "corpus_test-56": 1,
+          "corpus_test-57": 1,
+          "corpus_test-58": 1,
+          "corpus_test-59": 1,
+          "corpus_test-6": 1,
+          "corpus_test-7": 1,
+          "corpus_test-8": 1,
+          "corpus_test-9": 1
         },
         "by_scenario_family": {
-          "gradual_deterioration": 25,
-          "intermittent_instability": 25,
-          "recoverable_perturbation": 25,
-          "stable_operations": 25
+          "unknown": 60
         },
         "by_system_type": {
-          "chiller": 25,
-          "compressor": 25,
-          "pump": 25,
-          "turbine": 25
+          "compressor": 30,
+          "pump": 30
         },
         "time_range": {
           "min_timestamp": 1.0,
-          "max_timestamp": 25.0
+          "max_timestamp": 60.0
         },
         "representativeness": {
-          "dominant_asset_share": 0.25,
+          "dominant_asset_share": 0.016667,
           "dominant_domain_share": 0.5,
-          "warnings": []
+          "warnings": [
+            "low_cohort_support"
+          ]
         }
       },
       "eligible_for_release_decision": true,
@@ -223,7 +335,7 @@
         {
           "gate": "minimum_data_volume",
           "passed": true,
-          "observed": 100,
+          "observed": 60,
           "threshold": ">= 50",
           "reason": null
         },
@@ -237,30 +349,30 @@
         {
           "gate": "minimum_asset_coverage",
           "passed": true,
-          "observed": 4,
+          "observed": 60,
           "threshold": ">= 3",
           "reason": null
         },
         {
           "gate": "minimum_decision_accuracy",
           "passed": true,
-          "observed": 0.84,
+          "observed": 0.8,
           "threshold": ">= 0.74",
           "reason": null
         },
         {
           "gate": "maximum_harm_rate",
-          "passed": true,
-          "observed": 0.05,
+          "passed": false,
+          "observed": 0.333333,
           "threshold": "<= 0.18",
-          "reason": null
+          "reason": "Harm rate exceeds safe operating bound"
         },
         {
           "gate": "maximum_calibration_error",
-          "passed": true,
-          "observed": 0.299701,
+          "passed": false,
+          "observed": 0.465484,
           "threshold": "<= 0.3",
-          "reason": null
+          "reason": "Calibration error exceeds release limit"
         },
         {
           "gate": "maximum_false_confidence_rate",
@@ -272,7 +384,7 @@
         {
           "gate": "maximum_drift_warning_rate",
           "passed": true,
-          "observed": 0.02,
+          "observed": 0.0,
           "threshold": "<= 0.22",
           "reason": null
         },
@@ -284,10 +396,16 @@
           "reason": null
         }
       ],
-      "release_passed": true,
-      "release_recommendation": "ship",
-      "blocking_reasons": [],
-      "failure_mode_tags": [],
+      "release_passed": false,
+      "release_recommendation": "no-ship",
+      "blocking_reasons": [
+        "Harm rate exceeds safe operating bound",
+        "Calibration error exceeds release limit"
+      ],
+      "failure_mode_tags": [
+        "calibration_failure",
+        "intervention_ranking_error"
+      ],
       "policy_thresholds": {
         "min_decision_accuracy": 0.74,
         "max_harm_rate": 0.18,
@@ -304,11 +422,11 @@
         "regression_drift_increase_limit": 0.05
       },
       "run_metadata": {
-        "corpus_id": "baseline_clean_ops",
-        "run_id": "baseline_clean_ops_20260401T044416Z_908bdc7d",
-        "timestamp": "2026-04-01T04:44:16Z",
-        "code_version": "85fd09e8ab92bd6fccbb4ece1f7a30f6cb6fd8ad",
-        "config_hash": "0e3ec11812091c06f556908fae66df87347f724feca539b9e823c900558af51c",
+        "corpus_id": "corpus_test",
+        "run_id": "corpus_test_20260401T141745Z_4570afea",
+        "timestamp": "2026-04-01T14:17:45Z",
+        "code_version": "5cf3cebe928dc5a6ef3e077db1faaa086c336203",
+        "config_hash": "9e692286a18af2309d77238f07de32c800b5b454856ba1cb2cab304378bc02c5",
         "canonical_run": true
       }
     }
@@ -320,14 +438,17 @@
     "baseline_clean": {
       "required": true,
       "total_corpora": 1,
-      "failed_corpora": [],
-      "failure_ratio": 0.0,
+      "failed_corpora": [
+        "corpus_test"
+      ],
+      "failure_ratio": 1.0,
       "max_failure_ratio": 0.0,
       "catastrophic_failures": [],
-      "class_passed": true
+      "class_passed": false
     }
   },
   "blocking_corpus_classes": [
+    "baseline_clean",
     "noisy_realistic",
     "transfer_cross_domain"
   ],
@@ -335,7 +456,15 @@
     "noisy_realistic",
     "transfer_cross_domain"
   ],
-  "failing_corpora": [],
-  "failure_mode_frequency": {},
-  "top_failure_modes": []
+  "failing_corpora": [
+    "corpus_test"
+  ],
+  "failure_mode_frequency": {
+    "calibration_failure": 1,
+    "intervention_ranking_error": 1
+  },
+  "top_failure_modes": [
+    "calibration_failure",
+    "intervention_ranking_error"
+  ]
 }

@@ -1,0 +1,1259 @@
+{
+  "release_passed": true,
+  "release_recommendation": "ship",
+  "corpus_results": [
+    {
+      "corpus_id": "baseline_clean_ops",
+      "corpus_type": "baseline_clean",
+      "summary_metrics": {
+        "decision_accuracy": 0.88,
+        "harm_rate": 0.05,
+        "calibration_error": 0.23415,
+        "calibration_quality": 0.76585,
+        "false_confidence_events": 0,
+        "false_confidence_rate": 0.0,
+        "intervention_memory_contribution": {
+          "status": "available",
+          "method": "candidate_score_ablation_delta",
+          "sample_count": 100,
+          "mean_best_confidence_delta": 0.006355,
+          "positive_delta_rate": 0.59,
+          "top_choice_change_rate_without_memory": 0.43
+        },
+        "drift_status": "drift_detected",
+        "drift_warning_count": 1,
+        "drift_warning_rate": 0.01
+      },
+      "corpus_summary": {
+        "total_records": 100,
+        "domain_count": 2,
+        "asset_count": 4,
+        "scenario_family_count": 4,
+        "system_type_count": 4,
+        "by_domain": {
+          "energy": 50,
+          "water": 50
+        },
+        "by_asset": {
+          "ops_deteriorating_compressor_B": 25,
+          "ops_intermittent_chiller_D": 25,
+          "ops_recoverable_turbine_C": 25,
+          "ops_stable_pump_A": 25
+        },
+        "by_scenario_family": {
+          "gradual_deterioration": 25,
+          "intermittent_instability": 25,
+          "recoverable_perturbation": 25,
+          "stable_operations": 25
+        },
+        "by_system_type": {
+          "chiller": 25,
+          "compressor": 25,
+          "pump": 25,
+          "turbine": 25
+        },
+        "time_range": {
+          "min_timestamp": 1.0,
+          "max_timestamp": 25.0
+        },
+        "representativeness": {
+          "dominant_asset_share": 0.25,
+          "dominant_domain_share": 0.5,
+          "warnings": []
+        }
+      },
+      "eligible_for_release_decision": true,
+      "gate_breakdown": [
+        {
+          "gate": "minimum_data_volume",
+          "passed": true,
+          "observed": 100,
+          "threshold": ">= 50",
+          "reason": null
+        },
+        {
+          "gate": "minimum_domain_coverage",
+          "passed": true,
+          "observed": 2,
+          "threshold": ">= 1",
+          "reason": null
+        },
+        {
+          "gate": "minimum_asset_coverage",
+          "passed": true,
+          "observed": 4,
+          "threshold": ">= 3",
+          "reason": null
+        },
+        {
+          "gate": "minimum_decision_accuracy",
+          "passed": true,
+          "observed": 0.88,
+          "threshold": ">= 0.74",
+          "reason": null
+        },
+        {
+          "gate": "maximum_harm_rate",
+          "passed": true,
+          "observed": 0.05,
+          "threshold": "<= 0.18",
+          "reason": null
+        },
+        {
+          "gate": "maximum_calibration_error",
+          "passed": true,
+          "observed": 0.23415,
+          "threshold": "<= 0.3",
+          "reason": null
+        },
+        {
+          "gate": "maximum_false_confidence_rate",
+          "passed": true,
+          "observed": 0.0,
+          "threshold": "<= 0.08",
+          "reason": null
+        },
+        {
+          "gate": "maximum_drift_warning_rate",
+          "passed": true,
+          "observed": 0.01,
+          "threshold": "<= 0.22",
+          "reason": null
+        },
+        {
+          "gate": "representativeness_safety",
+          "passed": true,
+          "observed": "none",
+          "threshold": "no severe representativeness warnings",
+          "reason": null
+        }
+      ],
+      "release_passed": true,
+      "release_recommendation": "ship",
+      "blocking_reasons": [],
+      "failure_mode_tags": [],
+      "policy_thresholds": {
+        "min_decision_accuracy": 0.74,
+        "max_harm_rate": 0.18,
+        "max_calibration_error": 0.3,
+        "max_false_confidence_rate": 0.08,
+        "max_drift_warning_rate": 0.22,
+        "min_records": 50,
+        "min_domain_count": 1,
+        "min_asset_count": 3,
+        "min_intervention_memory_contribution": null,
+        "regression_accuracy_drop_limit": 0.03,
+        "regression_harm_increase_limit": 0.02,
+        "regression_calibration_error_increase_limit": 0.03,
+        "regression_drift_increase_limit": 0.05
+      },
+      "run_metadata": {
+        "corpus_id": "baseline_clean_ops",
+        "run_id": "baseline_clean_ops_20260401T141750Z_e3ea18cf",
+        "timestamp": "2026-04-01T14:17:50Z",
+        "code_version": "5cf3cebe928dc5a6ef3e077db1faaa086c336203",
+        "config_hash": "c5bf6fafa2dbbe5b6190ea178cb9db38896b6ee5535f5a39b80ecdf803653160",
+        "canonical_run": true
+      }
+    },
+    {
+      "corpus_id": "noisy_realistic_ops",
+      "corpus_type": "noisy_realistic",
+      "summary_metrics": {
+        "decision_accuracy": 0.88,
+        "harm_rate": 0.05,
+        "calibration_error": 0.24365,
+        "calibration_quality": 0.75635,
+        "false_confidence_events": 0,
+        "false_confidence_rate": 0.0,
+        "intervention_memory_contribution": {
+          "status": "available",
+          "method": "candidate_score_ablation_delta",
+          "sample_count": 100,
+          "mean_best_confidence_delta": 0.005898,
+          "positive_delta_rate": 0.58,
+          "top_choice_change_rate_without_memory": 0.41
+        },
+        "drift_status": "drift_detected",
+        "drift_warning_count": 2,
+        "drift_warning_rate": 0.02
+      },
+      "corpus_summary": {
+        "total_records": 100,
+        "domain_count": 2,
+        "asset_count": 4,
+        "scenario_family_count": 1,
+        "system_type_count": 4,
+        "by_domain": {
+          "energy": 50,
+          "water": 50
+        },
+        "by_asset": {
+          "ops_deteriorating_compressor_B": 25,
+          "ops_intermittent_chiller_D": 25,
+          "ops_recoverable_turbine_C": 25,
+          "ops_stable_pump_A": 25
+        },
+        "by_scenario_family": {
+          "realistic_noisy_ops": 100
+        },
+        "by_system_type": {
+          "chiller": 25,
+          "compressor": 25,
+          "pump": 25,
+          "turbine": 25
+        },
+        "time_range": {
+          "min_timestamp": 0.84,
+          "max_timestamp": 25.16
+        },
+        "representativeness": {
+          "dominant_asset_share": 0.25,
+          "dominant_domain_share": 0.5,
+          "warnings": []
+        }
+      },
+      "eligible_for_release_decision": true,
+      "gate_breakdown": [
+        {
+          "gate": "minimum_data_volume",
+          "passed": true,
+          "observed": 100,
+          "threshold": ">= 50",
+          "reason": null
+        },
+        {
+          "gate": "minimum_domain_coverage",
+          "passed": true,
+          "observed": 2,
+          "threshold": ">= 1",
+          "reason": null
+        },
+        {
+          "gate": "minimum_asset_coverage",
+          "passed": true,
+          "observed": 4,
+          "threshold": ">= 3",
+          "reason": null
+        },
+        {
+          "gate": "minimum_decision_accuracy",
+          "passed": true,
+          "observed": 0.88,
+          "threshold": ">= 0.69",
+          "reason": null
+        },
+        {
+          "gate": "maximum_harm_rate",
+          "passed": true,
+          "observed": 0.05,
+          "threshold": "<= 0.22",
+          "reason": null
+        },
+        {
+          "gate": "maximum_calibration_error",
+          "passed": true,
+          "observed": 0.24365,
+          "threshold": "<= 0.37",
+          "reason": null
+        },
+        {
+          "gate": "maximum_false_confidence_rate",
+          "passed": true,
+          "observed": 0.0,
+          "threshold": "<= 0.12",
+          "reason": null
+        },
+        {
+          "gate": "maximum_drift_warning_rate",
+          "passed": true,
+          "observed": 0.02,
+          "threshold": "<= 0.3",
+          "reason": null
+        },
+        {
+          "gate": "representativeness_safety",
+          "passed": true,
+          "observed": "none",
+          "threshold": "no severe representativeness warnings",
+          "reason": null
+        }
+      ],
+      "release_passed": true,
+      "release_recommendation": "ship",
+      "blocking_reasons": [],
+      "failure_mode_tags": [],
+      "policy_thresholds": {
+        "min_decision_accuracy": 0.69,
+        "max_harm_rate": 0.22,
+        "max_calibration_error": 0.37,
+        "max_false_confidence_rate": 0.12,
+        "max_drift_warning_rate": 0.3,
+        "min_records": 50,
+        "min_domain_count": 1,
+        "min_asset_count": 3,
+        "min_intervention_memory_contribution": null,
+        "regression_accuracy_drop_limit": 0.03,
+        "regression_harm_increase_limit": 0.02,
+        "regression_calibration_error_increase_limit": 0.03,
+        "regression_drift_increase_limit": 0.05
+      },
+      "run_metadata": {
+        "corpus_id": "noisy_realistic_ops",
+        "run_id": "noisy_realistic_ops_20260401T141751Z_88e0e5fc",
+        "timestamp": "2026-04-01T14:17:51Z",
+        "code_version": "5cf3cebe928dc5a6ef3e077db1faaa086c336203",
+        "config_hash": "b72d7707901b4e23dcb07745e6274c45ad991db9e52b42efb7164670f2af29e7",
+        "canonical_run": true
+      }
+    },
+    {
+      "corpus_id": "transfer_cross_domain_small_scale",
+      "corpus_type": "transfer_cross_domain",
+      "summary_metrics": {
+        "decision_accuracy": 0.9375,
+        "harm_rate": 0.0625,
+        "calibration_error": 0.205438,
+        "calibration_quality": 0.794562,
+        "false_confidence_events": 1,
+        "false_confidence_rate": 0.0125,
+        "intervention_memory_contribution": {
+          "status": "available",
+          "method": "candidate_score_ablation_delta",
+          "sample_count": 80,
+          "mean_best_confidence_delta": -0.00448,
+          "positive_delta_rate": 0.15,
+          "top_choice_change_rate_without_memory": 0.1125
+        },
+        "drift_status": "drift_detected",
+        "drift_warning_count": 2,
+        "drift_warning_rate": 0.025
+      },
+      "corpus_summary": {
+        "total_records": 80,
+        "domain_count": 2,
+        "asset_count": 4,
+        "scenario_family_count": 2,
+        "system_type_count": 2,
+        "by_domain": {
+          "building": 40,
+          "healthcare": 40
+        },
+        "by_asset": {
+          "campus_chiller_B": 20,
+          "clinic_hvac_A": 20,
+          "clinic_hvac_B": 20,
+          "lab_chiller_A": 20
+        },
+        "by_scenario_family": {
+          "transfer_small_chiller": 40,
+          "transfer_small_hvac": 40
+        },
+        "by_system_type": {
+          "chiller": 40,
+          "hvac": 40
+        },
+        "time_range": {
+          "min_timestamp": 1.0,
+          "max_timestamp": 20.03
+        },
+        "representativeness": {
+          "dominant_asset_share": 0.25,
+          "dominant_domain_share": 0.5,
+          "warnings": []
+        }
+      },
+      "eligible_for_release_decision": true,
+      "gate_breakdown": [
+        {
+          "gate": "minimum_data_volume",
+          "passed": true,
+          "observed": 80,
+          "threshold": ">= 50",
+          "reason": null
+        },
+        {
+          "gate": "minimum_domain_coverage",
+          "passed": true,
+          "observed": 2,
+          "threshold": ">= 1",
+          "reason": null
+        },
+        {
+          "gate": "minimum_asset_coverage",
+          "passed": true,
+          "observed": 4,
+          "threshold": ">= 3",
+          "reason": null
+        },
+        {
+          "gate": "minimum_decision_accuracy",
+          "passed": true,
+          "observed": 0.9375,
+          "threshold": ">= 0.66",
+          "reason": null
+        },
+        {
+          "gate": "maximum_harm_rate",
+          "passed": true,
+          "observed": 0.0625,
+          "threshold": "<= 0.25",
+          "reason": null
+        },
+        {
+          "gate": "maximum_calibration_error",
+          "passed": true,
+          "observed": 0.205438,
+          "threshold": "<= 0.4",
+          "reason": null
+        },
+        {
+          "gate": "maximum_false_confidence_rate",
+          "passed": true,
+          "observed": 0.0125,
+          "threshold": "<= 0.14",
+          "reason": null
+        },
+        {
+          "gate": "maximum_drift_warning_rate",
+          "passed": true,
+          "observed": 0.025,
+          "threshold": "<= 0.32",
+          "reason": null
+        },
+        {
+          "gate": "representativeness_safety",
+          "passed": true,
+          "observed": "none",
+          "threshold": "no severe representativeness warnings",
+          "reason": null
+        }
+      ],
+      "release_passed": true,
+      "release_recommendation": "ship",
+      "blocking_reasons": [],
+      "failure_mode_tags": [],
+      "policy_thresholds": {
+        "min_decision_accuracy": 0.66,
+        "max_harm_rate": 0.25,
+        "max_calibration_error": 0.4,
+        "max_false_confidence_rate": 0.14,
+        "max_drift_warning_rate": 0.32,
+        "min_records": 50,
+        "min_domain_count": 1,
+        "min_asset_count": 3,
+        "min_intervention_memory_contribution": null,
+        "regression_accuracy_drop_limit": 0.03,
+        "regression_harm_increase_limit": 0.02,
+        "regression_calibration_error_increase_limit": 0.03,
+        "regression_drift_increase_limit": 0.05
+      },
+      "run_metadata": {
+        "corpus_id": "transfer_cross_domain_small_scale",
+        "run_id": "transfer_cross_domain_small_scale_20260401T141752Z_a325bac6",
+        "timestamp": "2026-04-01T14:17:52Z",
+        "code_version": "5cf3cebe928dc5a6ef3e077db1faaa086c336203",
+        "config_hash": "7daf112c339f2a5010a7816a9231b60c2b6815905f73d6f1732372006164278d",
+        "canonical_run": true
+      }
+    },
+    {
+      "corpus_id": "transfer_cross_domain_large_scale",
+      "corpus_type": "transfer_cross_domain",
+      "summary_metrics": {
+        "decision_accuracy": 0.7625,
+        "harm_rate": 0.1,
+        "calibration_error": 0.322438,
+        "calibration_quality": 0.677562,
+        "false_confidence_events": 1,
+        "false_confidence_rate": 0.0125,
+        "intervention_memory_contribution": {
+          "status": "available",
+          "method": "candidate_score_ablation_delta",
+          "sample_count": 80,
+          "mean_best_confidence_delta": -0.001273,
+          "positive_delta_rate": 0.25,
+          "top_choice_change_rate_without_memory": 0.1125
+        },
+        "drift_status": "drift_detected",
+        "drift_warning_count": 3,
+        "drift_warning_rate": 0.0375
+      },
+      "corpus_summary": {
+        "total_records": 80,
+        "domain_count": 2,
+        "asset_count": 4,
+        "scenario_family_count": 3,
+        "system_type_count": 3,
+        "by_domain": {
+          "mining": 40,
+          "shipping": 40
+        },
+        "by_asset": {
+          "mine_conveyor_A": 20,
+          "mine_crusher_B": 20,
+          "port_engine_A": 20,
+          "port_engine_B": 20
+        },
+        "by_scenario_family": {
+          "transfer_large_conveyor": 20,
+          "transfer_large_crusher": 20,
+          "transfer_large_engine": 40
+        },
+        "by_system_type": {
+          "conveyor": 20,
+          "crusher": 20,
+          "engine": 40
+        },
+        "time_range": {
+          "min_timestamp": 1.0,
+          "max_timestamp": 20.03
+        },
+        "representativeness": {
+          "dominant_asset_share": 0.25,
+          "dominant_domain_share": 0.5,
+          "warnings": []
+        }
+      },
+      "eligible_for_release_decision": true,
+      "gate_breakdown": [
+        {
+          "gate": "minimum_data_volume",
+          "passed": true,
+          "observed": 80,
+          "threshold": ">= 50",
+          "reason": null
+        },
+        {
+          "gate": "minimum_domain_coverage",
+          "passed": true,
+          "observed": 2,
+          "threshold": ">= 1",
+          "reason": null
+        },
+        {
+          "gate": "minimum_asset_coverage",
+          "passed": true,
+          "observed": 4,
+          "threshold": ">= 3",
+          "reason": null
+        },
+        {
+          "gate": "minimum_decision_accuracy",
+          "passed": true,
+          "observed": 0.7625,
+          "threshold": ">= 0.66",
+          "reason": null
+        },
+        {
+          "gate": "maximum_harm_rate",
+          "passed": true,
+          "observed": 0.1,
+          "threshold": "<= 0.25",
+          "reason": null
+        },
+        {
+          "gate": "maximum_calibration_error",
+          "passed": true,
+          "observed": 0.322438,
+          "threshold": "<= 0.4",
+          "reason": null
+        },
+        {
+          "gate": "maximum_false_confidence_rate",
+          "passed": true,
+          "observed": 0.0125,
+          "threshold": "<= 0.14",
+          "reason": null
+        },
+        {
+          "gate": "maximum_drift_warning_rate",
+          "passed": true,
+          "observed": 0.0375,
+          "threshold": "<= 0.32",
+          "reason": null
+        },
+        {
+          "gate": "representativeness_safety",
+          "passed": true,
+          "observed": "none",
+          "threshold": "no severe representativeness warnings",
+          "reason": null
+        }
+      ],
+      "release_passed": true,
+      "release_recommendation": "ship",
+      "blocking_reasons": [],
+      "failure_mode_tags": [],
+      "policy_thresholds": {
+        "min_decision_accuracy": 0.66,
+        "max_harm_rate": 0.25,
+        "max_calibration_error": 0.4,
+        "max_false_confidence_rate": 0.14,
+        "max_drift_warning_rate": 0.32,
+        "min_records": 50,
+        "min_domain_count": 1,
+        "min_asset_count": 3,
+        "min_intervention_memory_contribution": null,
+        "regression_accuracy_drop_limit": 0.03,
+        "regression_harm_increase_limit": 0.02,
+        "regression_calibration_error_increase_limit": 0.03,
+        "regression_drift_increase_limit": 0.05
+      },
+      "run_metadata": {
+        "corpus_id": "transfer_cross_domain_large_scale",
+        "run_id": "transfer_cross_domain_large_scale_20260401T141752Z_9d7ff1ad",
+        "timestamp": "2026-04-01T14:17:52Z",
+        "code_version": "5cf3cebe928dc5a6ef3e077db1faaa086c336203",
+        "config_hash": "ac44e43fc49e1d778717a04f53aebc25e2917cf5711419bbdb5b36a15b98cec6",
+        "canonical_run": true
+      }
+    }
+  ],
+  "release_decision_corpus_results": [
+    {
+      "corpus_id": "baseline_clean_ops",
+      "corpus_type": "baseline_clean",
+      "summary_metrics": {
+        "decision_accuracy": 0.88,
+        "harm_rate": 0.05,
+        "calibration_error": 0.23415,
+        "calibration_quality": 0.76585,
+        "false_confidence_events": 0,
+        "false_confidence_rate": 0.0,
+        "intervention_memory_contribution": {
+          "status": "available",
+          "method": "candidate_score_ablation_delta",
+          "sample_count": 100,
+          "mean_best_confidence_delta": 0.006355,
+          "positive_delta_rate": 0.59,
+          "top_choice_change_rate_without_memory": 0.43
+        },
+        "drift_status": "drift_detected",
+        "drift_warning_count": 1,
+        "drift_warning_rate": 0.01
+      },
+      "corpus_summary": {
+        "total_records": 100,
+        "domain_count": 2,
+        "asset_count": 4,
+        "scenario_family_count": 4,
+        "system_type_count": 4,
+        "by_domain": {
+          "energy": 50,
+          "water": 50
+        },
+        "by_asset": {
+          "ops_deteriorating_compressor_B": 25,
+          "ops_intermittent_chiller_D": 25,
+          "ops_recoverable_turbine_C": 25,
+          "ops_stable_pump_A": 25
+        },
+        "by_scenario_family": {
+          "gradual_deterioration": 25,
+          "intermittent_instability": 25,
+          "recoverable_perturbation": 25,
+          "stable_operations": 25
+        },
+        "by_system_type": {
+          "chiller": 25,
+          "compressor": 25,
+          "pump": 25,
+          "turbine": 25
+        },
+        "time_range": {
+          "min_timestamp": 1.0,
+          "max_timestamp": 25.0
+        },
+        "representativeness": {
+          "dominant_asset_share": 0.25,
+          "dominant_domain_share": 0.5,
+          "warnings": []
+        }
+      },
+      "eligible_for_release_decision": true,
+      "gate_breakdown": [
+        {
+          "gate": "minimum_data_volume",
+          "passed": true,
+          "observed": 100,
+          "threshold": ">= 50",
+          "reason": null
+        },
+        {
+          "gate": "minimum_domain_coverage",
+          "passed": true,
+          "observed": 2,
+          "threshold": ">= 1",
+          "reason": null
+        },
+        {
+          "gate": "minimum_asset_coverage",
+          "passed": true,
+          "observed": 4,
+          "threshold": ">= 3",
+          "reason": null
+        },
+        {
+          "gate": "minimum_decision_accuracy",
+          "passed": true,
+          "observed": 0.88,
+          "threshold": ">= 0.74",
+          "reason": null
+        },
+        {
+          "gate": "maximum_harm_rate",
+          "passed": true,
+          "observed": 0.05,
+          "threshold": "<= 0.18",
+          "reason": null
+        },
+        {
+          "gate": "maximum_calibration_error",
+          "passed": true,
+          "observed": 0.23415,
+          "threshold": "<= 0.3",
+          "reason": null
+        },
+        {
+          "gate": "maximum_false_confidence_rate",
+          "passed": true,
+          "observed": 0.0,
+          "threshold": "<= 0.08",
+          "reason": null
+        },
+        {
+          "gate": "maximum_drift_warning_rate",
+          "passed": true,
+          "observed": 0.01,
+          "threshold": "<= 0.22",
+          "reason": null
+        },
+        {
+          "gate": "representativeness_safety",
+          "passed": true,
+          "observed": "none",
+          "threshold": "no severe representativeness warnings",
+          "reason": null
+        }
+      ],
+      "release_passed": true,
+      "release_recommendation": "ship",
+      "blocking_reasons": [],
+      "failure_mode_tags": [],
+      "policy_thresholds": {
+        "min_decision_accuracy": 0.74,
+        "max_harm_rate": 0.18,
+        "max_calibration_error": 0.3,
+        "max_false_confidence_rate": 0.08,
+        "max_drift_warning_rate": 0.22,
+        "min_records": 50,
+        "min_domain_count": 1,
+        "min_asset_count": 3,
+        "min_intervention_memory_contribution": null,
+        "regression_accuracy_drop_limit": 0.03,
+        "regression_harm_increase_limit": 0.02,
+        "regression_calibration_error_increase_limit": 0.03,
+        "regression_drift_increase_limit": 0.05
+      },
+      "run_metadata": {
+        "corpus_id": "baseline_clean_ops",
+        "run_id": "baseline_clean_ops_20260401T141750Z_e3ea18cf",
+        "timestamp": "2026-04-01T14:17:50Z",
+        "code_version": "5cf3cebe928dc5a6ef3e077db1faaa086c336203",
+        "config_hash": "c5bf6fafa2dbbe5b6190ea178cb9db38896b6ee5535f5a39b80ecdf803653160",
+        "canonical_run": true
+      }
+    },
+    {
+      "corpus_id": "noisy_realistic_ops",
+      "corpus_type": "noisy_realistic",
+      "summary_metrics": {
+        "decision_accuracy": 0.88,
+        "harm_rate": 0.05,
+        "calibration_error": 0.24365,
+        "calibration_quality": 0.75635,
+        "false_confidence_events": 0,
+        "false_confidence_rate": 0.0,
+        "intervention_memory_contribution": {
+          "status": "available",
+          "method": "candidate_score_ablation_delta",
+          "sample_count": 100,
+          "mean_best_confidence_delta": 0.005898,
+          "positive_delta_rate": 0.58,
+          "top_choice_change_rate_without_memory": 0.41
+        },
+        "drift_status": "drift_detected",
+        "drift_warning_count": 2,
+        "drift_warning_rate": 0.02
+      },
+      "corpus_summary": {
+        "total_records": 100,
+        "domain_count": 2,
+        "asset_count": 4,
+        "scenario_family_count": 1,
+        "system_type_count": 4,
+        "by_domain": {
+          "energy": 50,
+          "water": 50
+        },
+        "by_asset": {
+          "ops_deteriorating_compressor_B": 25,
+          "ops_intermittent_chiller_D": 25,
+          "ops_recoverable_turbine_C": 25,
+          "ops_stable_pump_A": 25
+        },
+        "by_scenario_family": {
+          "realistic_noisy_ops": 100
+        },
+        "by_system_type": {
+          "chiller": 25,
+          "compressor": 25,
+          "pump": 25,
+          "turbine": 25
+        },
+        "time_range": {
+          "min_timestamp": 0.84,
+          "max_timestamp": 25.16
+        },
+        "representativeness": {
+          "dominant_asset_share": 0.25,
+          "dominant_domain_share": 0.5,
+          "warnings": []
+        }
+      },
+      "eligible_for_release_decision": true,
+      "gate_breakdown": [
+        {
+          "gate": "minimum_data_volume",
+          "passed": true,
+          "observed": 100,
+          "threshold": ">= 50",
+          "reason": null
+        },
+        {
+          "gate": "minimum_domain_coverage",
+          "passed": true,
+          "observed": 2,
+          "threshold": ">= 1",
+          "reason": null
+        },
+        {
+          "gate": "minimum_asset_coverage",
+          "passed": true,
+          "observed": 4,
+          "threshold": ">= 3",
+          "reason": null
+        },
+        {
+          "gate": "minimum_decision_accuracy",
+          "passed": true,
+          "observed": 0.88,
+          "threshold": ">= 0.69",
+          "reason": null
+        },
+        {
+          "gate": "maximum_harm_rate",
+          "passed": true,
+          "observed": 0.05,
+          "threshold": "<= 0.22",
+          "reason": null
+        },
+        {
+          "gate": "maximum_calibration_error",
+          "passed": true,
+          "observed": 0.24365,
+          "threshold": "<= 0.37",
+          "reason": null
+        },
+        {
+          "gate": "maximum_false_confidence_rate",
+          "passed": true,
+          "observed": 0.0,
+          "threshold": "<= 0.12",
+          "reason": null
+        },
+        {
+          "gate": "maximum_drift_warning_rate",
+          "passed": true,
+          "observed": 0.02,
+          "threshold": "<= 0.3",
+          "reason": null
+        },
+        {
+          "gate": "representativeness_safety",
+          "passed": true,
+          "observed": "none",
+          "threshold": "no severe representativeness warnings",
+          "reason": null
+        }
+      ],
+      "release_passed": true,
+      "release_recommendation": "ship",
+      "blocking_reasons": [],
+      "failure_mode_tags": [],
+      "policy_thresholds": {
+        "min_decision_accuracy": 0.69,
+        "max_harm_rate": 0.22,
+        "max_calibration_error": 0.37,
+        "max_false_confidence_rate": 0.12,
+        "max_drift_warning_rate": 0.3,
+        "min_records": 50,
+        "min_domain_count": 1,
+        "min_asset_count": 3,
+        "min_intervention_memory_contribution": null,
+        "regression_accuracy_drop_limit": 0.03,
+        "regression_harm_increase_limit": 0.02,
+        "regression_calibration_error_increase_limit": 0.03,
+        "regression_drift_increase_limit": 0.05
+      },
+      "run_metadata": {
+        "corpus_id": "noisy_realistic_ops",
+        "run_id": "noisy_realistic_ops_20260401T141751Z_88e0e5fc",
+        "timestamp": "2026-04-01T14:17:51Z",
+        "code_version": "5cf3cebe928dc5a6ef3e077db1faaa086c336203",
+        "config_hash": "b72d7707901b4e23dcb07745e6274c45ad991db9e52b42efb7164670f2af29e7",
+        "canonical_run": true
+      }
+    },
+    {
+      "corpus_id": "transfer_cross_domain_small_scale",
+      "corpus_type": "transfer_cross_domain",
+      "summary_metrics": {
+        "decision_accuracy": 0.9375,
+        "harm_rate": 0.0625,
+        "calibration_error": 0.205438,
+        "calibration_quality": 0.794562,
+        "false_confidence_events": 1,
+        "false_confidence_rate": 0.0125,
+        "intervention_memory_contribution": {
+          "status": "available",
+          "method": "candidate_score_ablation_delta",
+          "sample_count": 80,
+          "mean_best_confidence_delta": -0.00448,
+          "positive_delta_rate": 0.15,
+          "top_choice_change_rate_without_memory": 0.1125
+        },
+        "drift_status": "drift_detected",
+        "drift_warning_count": 2,
+        "drift_warning_rate": 0.025
+      },
+      "corpus_summary": {
+        "total_records": 80,
+        "domain_count": 2,
+        "asset_count": 4,
+        "scenario_family_count": 2,
+        "system_type_count": 2,
+        "by_domain": {
+          "building": 40,
+          "healthcare": 40
+        },
+        "by_asset": {
+          "campus_chiller_B": 20,
+          "clinic_hvac_A": 20,
+          "clinic_hvac_B": 20,
+          "lab_chiller_A": 20
+        },
+        "by_scenario_family": {
+          "transfer_small_chiller": 40,
+          "transfer_small_hvac": 40
+        },
+        "by_system_type": {
+          "chiller": 40,
+          "hvac": 40
+        },
+        "time_range": {
+          "min_timestamp": 1.0,
+          "max_timestamp": 20.03
+        },
+        "representativeness": {
+          "dominant_asset_share": 0.25,
+          "dominant_domain_share": 0.5,
+          "warnings": []
+        }
+      },
+      "eligible_for_release_decision": true,
+      "gate_breakdown": [
+        {
+          "gate": "minimum_data_volume",
+          "passed": true,
+          "observed": 80,
+          "threshold": ">= 50",
+          "reason": null
+        },
+        {
+          "gate": "minimum_domain_coverage",
+          "passed": true,
+          "observed": 2,
+          "threshold": ">= 1",
+          "reason": null
+        },
+        {
+          "gate": "minimum_asset_coverage",
+          "passed": true,
+          "observed": 4,
+          "threshold": ">= 3",
+          "reason": null
+        },
+        {
+          "gate": "minimum_decision_accuracy",
+          "passed": true,
+          "observed": 0.9375,
+          "threshold": ">= 0.66",
+          "reason": null
+        },
+        {
+          "gate": "maximum_harm_rate",
+          "passed": true,
+          "observed": 0.0625,
+          "threshold": "<= 0.25",
+          "reason": null
+        },
+        {
+          "gate": "maximum_calibration_error",
+          "passed": true,
+          "observed": 0.205438,
+          "threshold": "<= 0.4",
+          "reason": null
+        },
+        {
+          "gate": "maximum_false_confidence_rate",
+          "passed": true,
+          "observed": 0.0125,
+          "threshold": "<= 0.14",
+          "reason": null
+        },
+        {
+          "gate": "maximum_drift_warning_rate",
+          "passed": true,
+          "observed": 0.025,
+          "threshold": "<= 0.32",
+          "reason": null
+        },
+        {
+          "gate": "representativeness_safety",
+          "passed": true,
+          "observed": "none",
+          "threshold": "no severe representativeness warnings",
+          "reason": null
+        }
+      ],
+      "release_passed": true,
+      "release_recommendation": "ship",
+      "blocking_reasons": [],
+      "failure_mode_tags": [],
+      "policy_thresholds": {
+        "min_decision_accuracy": 0.66,
+        "max_harm_rate": 0.25,
+        "max_calibration_error": 0.4,
+        "max_false_confidence_rate": 0.14,
+        "max_drift_warning_rate": 0.32,
+        "min_records": 50,
+        "min_domain_count": 1,
+        "min_asset_count": 3,
+        "min_intervention_memory_contribution": null,
+        "regression_accuracy_drop_limit": 0.03,
+        "regression_harm_increase_limit": 0.02,
+        "regression_calibration_error_increase_limit": 0.03,
+        "regression_drift_increase_limit": 0.05
+      },
+      "run_metadata": {
+        "corpus_id": "transfer_cross_domain_small_scale",
+        "run_id": "transfer_cross_domain_small_scale_20260401T141752Z_a325bac6",
+        "timestamp": "2026-04-01T14:17:52Z",
+        "code_version": "5cf3cebe928dc5a6ef3e077db1faaa086c336203",
+        "config_hash": "7daf112c339f2a5010a7816a9231b60c2b6815905f73d6f1732372006164278d",
+        "canonical_run": true
+      }
+    },
+    {
+      "corpus_id": "transfer_cross_domain_large_scale",
+      "corpus_type": "transfer_cross_domain",
+      "summary_metrics": {
+        "decision_accuracy": 0.7625,
+        "harm_rate": 0.1,
+        "calibration_error": 0.322438,
+        "calibration_quality": 0.677562,
+        "false_confidence_events": 1,
+        "false_confidence_rate": 0.0125,
+        "intervention_memory_contribution": {
+          "status": "available",
+          "method": "candidate_score_ablation_delta",
+          "sample_count": 80,
+          "mean_best_confidence_delta": -0.001273,
+          "positive_delta_rate": 0.25,
+          "top_choice_change_rate_without_memory": 0.1125
+        },
+        "drift_status": "drift_detected",
+        "drift_warning_count": 3,
+        "drift_warning_rate": 0.0375
+      },
+      "corpus_summary": {
+        "total_records": 80,
+        "domain_count": 2,
+        "asset_count": 4,
+        "scenario_family_count": 3,
+        "system_type_count": 3,
+        "by_domain": {
+          "mining": 40,
+          "shipping": 40
+        },
+        "by_asset": {
+          "mine_conveyor_A": 20,
+          "mine_crusher_B": 20,
+          "port_engine_A": 20,
+          "port_engine_B": 20
+        },
+        "by_scenario_family": {
+          "transfer_large_conveyor": 20,
+          "transfer_large_crusher": 20,
+          "transfer_large_engine": 40
+        },
+        "by_system_type": {
+          "conveyor": 20,
+          "crusher": 20,
+          "engine": 40
+        },
+        "time_range": {
+          "min_timestamp": 1.0,
+          "max_timestamp": 20.03
+        },
+        "representativeness": {
+          "dominant_asset_share": 0.25,
+          "dominant_domain_share": 0.5,
+          "warnings": []
+        }
+      },
+      "eligible_for_release_decision": true,
+      "gate_breakdown": [
+        {
+          "gate": "minimum_data_volume",
+          "passed": true,
+          "observed": 80,
+          "threshold": ">= 50",
+          "reason": null
+        },
+        {
+          "gate": "minimum_domain_coverage",
+          "passed": true,
+          "observed": 2,
+          "threshold": ">= 1",
+          "reason": null
+        },
+        {
+          "gate": "minimum_asset_coverage",
+          "passed": true,
+          "observed": 4,
+          "threshold": ">= 3",
+          "reason": null
+        },
+        {
+          "gate": "minimum_decision_accuracy",
+          "passed": true,
+          "observed": 0.7625,
+          "threshold": ">= 0.66",
+          "reason": null
+        },
+        {
+          "gate": "maximum_harm_rate",
+          "passed": true,
+          "observed": 0.1,
+          "threshold": "<= 0.25",
+          "reason": null
+        },
+        {
+          "gate": "maximum_calibration_error",
+          "passed": true,
+          "observed": 0.322438,
+          "threshold": "<= 0.4",
+          "reason": null
+        },
+        {
+          "gate": "maximum_false_confidence_rate",
+          "passed": true,
+          "observed": 0.0125,
+          "threshold": "<= 0.14",
+          "reason": null
+        },
+        {
+          "gate": "maximum_drift_warning_rate",
+          "passed": true,
+          "observed": 0.0375,
+          "threshold": "<= 0.32",
+          "reason": null
+        },
+        {
+          "gate": "representativeness_safety",
+          "passed": true,
+          "observed": "none",
+          "threshold": "no severe representativeness warnings",
+          "reason": null
+        }
+      ],
+      "release_passed": true,
+      "release_recommendation": "ship",
+      "blocking_reasons": [],
+      "failure_mode_tags": [],
+      "policy_thresholds": {
+        "min_decision_accuracy": 0.66,
+        "max_harm_rate": 0.25,
+        "max_calibration_error": 0.4,
+        "max_false_confidence_rate": 0.14,
+        "max_drift_warning_rate": 0.32,
+        "min_records": 50,
+        "min_domain_count": 1,
+        "min_asset_count": 3,
+        "min_intervention_memory_contribution": null,
+        "regression_accuracy_drop_limit": 0.03,
+        "regression_harm_increase_limit": 0.02,
+        "regression_calibration_error_increase_limit": 0.03,
+        "regression_drift_increase_limit": 0.05
+      },
+      "run_metadata": {
+        "corpus_id": "transfer_cross_domain_large_scale",
+        "run_id": "transfer_cross_domain_large_scale_20260401T141752Z_9d7ff1ad",
+        "timestamp": "2026-04-01T14:17:52Z",
+        "code_version": "5cf3cebe928dc5a6ef3e077db1faaa086c336203",
+        "config_hash": "ac44e43fc49e1d778717a04f53aebc25e2917cf5711419bbdb5b36a15b98cec6",
+        "canonical_run": true
+      }
+    }
+  ],
+  "excluded_non_credible_corpora": [],
+  "release_decision_minimum_records": 50,
+  "release_decision_include_ineligible": false,
+  "class_summary": {
+    "baseline_clean": {
+      "required": true,
+      "total_corpora": 1,
+      "failed_corpora": [],
+      "failure_ratio": 0.0,
+      "max_failure_ratio": 0.0,
+      "catastrophic_failures": [],
+      "class_passed": true
+    },
+    "noisy_realistic": {
+      "required": true,
+      "total_corpora": 1,
+      "failed_corpora": [],
+      "failure_ratio": 0.0,
+      "max_failure_ratio": 0.0,
+      "catastrophic_failures": [],
+      "class_passed": true
+    },
+    "transfer_cross_domain": {
+      "required": true,
+      "total_corpora": 2,
+      "failed_corpora": [],
+      "failure_ratio": 0.0,
+      "max_failure_ratio": 0.0,
+      "catastrophic_failures": [],
+      "class_passed": true
+    }
+  },
+  "blocking_corpus_classes": [],
+  "missing_required_corpus_classes": [],
+  "failing_corpora": [],
+  "failure_mode_frequency": {},
+  "top_failure_modes": []
+}

@@ -17,7 +17,8 @@ def infer_stage_from_path(path: str) -> str:
         return "preview"
     if "/ingest/jobs/" in text or "/ingest/csv/upload" in text:
         return "ingest"
-    if "/ingest/" in text:
+    # Match ``/ingest`` and ``/ingest/...`` (query strings omit a trailing slash after ``ingest``).
+    if "/ingest" in text and "/ingest/csv/preview" not in text and "/ingest/jobs/" not in text and "/ingest/csv/upload" not in text:
         return "normalize"
     if "/integrations/" in text:
         return "integration_pull"
