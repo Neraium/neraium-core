@@ -74,7 +74,10 @@ def _annotate_artifacts(report: dict, run_context: dict, canonical_source: dict)
 
 
 def execute_validation(args: argparse.Namespace) -> dict:
-    registry = CorpusSnapshotRegistry(root=Path(args.corpus_root))
+    corpus_root = Path(args.corpus_root)
+    if not corpus_root.is_absolute():
+        corpus_root = (ROOT / corpus_root).resolve()
+    registry = CorpusSnapshotRegistry(root=corpus_root)
     records, canonical_source, canonical = load_records_for_run(
         corpus_id=args.corpus_id,
         input_path=args.input,
@@ -87,7 +90,7 @@ def execute_validation(args: argparse.Namespace) -> dict:
             "corpus_id": args.corpus_id,
             "input": args.input,
             "format": args.format,
-            "corpus_root": str(args.corpus_root),
+            "corpus_root": str(corpus_root),
             "history_root": str(args.history_root),
         }
     )
