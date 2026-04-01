@@ -1,0 +1,1364 @@
+{
+  "events": [
+    {
+      "timestamp": 1.0,
+      "asset_id": "clinic_hvac_A",
+      "observation": {
+        "x": 0.083,
+        "sensor": 0.131,
+        "temperature": 20.0
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "healthcare",
+      "scenario_family": "transfer_small_hvac",
+      "system_type": "hvac",
+      "novelty": 0.25,
+      "support_count": 1,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 2.0,
+      "asset_id": "clinic_hvac_A",
+      "observation": {
+        "x": 0.098,
+        "sensor": 0.144,
+        "temperature": 20.349
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "healthcare",
+      "scenario_family": "transfer_small_hvac",
+      "system_type": "hvac",
+      "novelty": 0.26,
+      "support_count": 2,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 3.0,
+      "asset_id": "clinic_hvac_A",
+      "observation": {
+        "x": 0.112,
+        "sensor": 0.154,
+        "temperature": 20.696
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "healthcare",
+      "scenario_family": "transfer_small_hvac",
+      "system_type": "hvac",
+      "novelty": 0.27,
+      "support_count": 3,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 4.0,
+      "asset_id": "clinic_hvac_A",
+      "observation": {
+        "x": 0.126,
+        "sensor": 0.167,
+        "temperature": 21.036
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "healthcare",
+      "scenario_family": "transfer_small_hvac",
+      "system_type": "hvac",
+      "novelty": 0.28,
+      "support_count": 4,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 5.0,
+      "asset_id": "clinic_hvac_A",
+      "observation": {
+        "x": 0.138,
+        "sensor": 0.18,
+        "temperature": 21.368
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "healthcare",
+      "scenario_family": "transfer_small_hvac",
+      "system_type": "hvac",
+      "novelty": 0.29,
+      "support_count": 5,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 6.0,
+      "asset_id": "clinic_hvac_A",
+      "observation": {
+        "x": 0.149,
+        "sensor": 0.197,
+        "temperature": 21.69
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "healthcare",
+      "scenario_family": "transfer_small_hvac",
+      "system_type": "hvac",
+      "novelty": 0.3,
+      "support_count": 6,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 7.0,
+      "asset_id": "clinic_hvac_A",
+      "observation": {
+        "x": 0.159,
+        "sensor": 0.217,
+        "temperature": 21.999
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "healthcare",
+      "scenario_family": "transfer_small_hvac",
+      "system_type": "hvac",
+      "novelty": 0.31,
+      "support_count": 7,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 8.0,
+      "asset_id": "clinic_hvac_A",
+      "observation": {
+        "x": 0.169,
+        "sensor": 0.241,
+        "temperature": 22.297
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "healthcare",
+      "scenario_family": "transfer_small_hvac",
+      "system_type": "hvac",
+      "novelty": 0.32,
+      "support_count": 8,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 9.0,
+      "asset_id": "clinic_hvac_A",
+      "observation": {
+        "x": 0.177,
+        "sensor": 0.262,
+        "temperature": 22.582
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "healthcare",
+      "scenario_family": "transfer_small_hvac",
+      "system_type": "hvac",
+      "novelty": 0.33,
+      "support_count": 9,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 10.0,
+      "asset_id": "clinic_hvac_A",
+      "observation": {
+        "x": 0.186,
+        "sensor": 0.284,
+        "temperature": 22.856
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "healthcare",
+      "scenario_family": "transfer_small_hvac",
+      "system_type": "hvac",
+      "novelty": 0.34,
+      "support_count": 10,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 11.0,
+      "asset_id": "clinic_hvac_A",
+      "observation": {
+        "x": 0.195,
+        "sensor": 0.302,
+        "temperature": 23.12
+      },
+      "actual_intervention": "increase_monitoring_frequency",
+      "outcome_label": "helpful",
+      "domain": "healthcare",
+      "scenario_family": "transfer_small_hvac",
+      "system_type": "hvac",
+      "novelty": 0.35,
+      "support_count": 11,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 12.0,
+      "asset_id": "clinic_hvac_A",
+      "observation": {
+        "x": 0.204,
+        "sensor": 0.315,
+        "temperature": 23.376
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "healthcare",
+      "scenario_family": "transfer_small_hvac",
+      "system_type": "hvac",
+      "novelty": 0.36,
+      "support_count": 12,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 13.0,
+      "asset_id": "clinic_hvac_A",
+      "observation": {
+        "x": 0.215,
+        "sensor": 0.327,
+        "temperature": 23.628
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "healthcare",
+      "scenario_family": "transfer_small_hvac",
+      "system_type": "hvac",
+      "novelty": 0.37,
+      "support_count": 12,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 14.0,
+      "asset_id": "clinic_hvac_A",
+      "observation": {
+        "x": 0.226,
+        "sensor": 0.335,
+        "temperature": 23.878
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "healthcare",
+      "scenario_family": "transfer_small_hvac",
+      "system_type": "hvac",
+      "novelty": 0.38,
+      "support_count": 12,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 15.0,
+      "asset_id": "clinic_hvac_A",
+      "observation": {
+        "x": 0.238,
+        "sensor": 0.342,
+        "temperature": 24.13
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "healthcare",
+      "scenario_family": "transfer_small_hvac",
+      "system_type": "hvac",
+      "novelty": 0.39,
+      "support_count": 12,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 16.0,
+      "asset_id": "clinic_hvac_A",
+      "observation": {
+        "x": 0.252,
+        "sensor": 0.353,
+        "temperature": 24.386
+      },
+      "actual_intervention": "increase_monitoring_frequency",
+      "outcome_label": "helpful",
+      "domain": "healthcare",
+      "scenario_family": "transfer_small_hvac",
+      "system_type": "hvac",
+      "novelty": 0.4,
+      "support_count": 12,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 17.0,
+      "asset_id": "clinic_hvac_A",
+      "observation": {
+        "x": 0.266,
+        "sensor": 0.367,
+        "temperature": 24.649
+      },
+      "actual_intervention": "remove_top_driver_contribution",
+      "outcome_label": "harmful",
+      "domain": "healthcare",
+      "scenario_family": "transfer_small_hvac",
+      "system_type": "hvac",
+      "novelty": 0.41,
+      "support_count": 12,
+      "drift_warning": true
+    },
+    {
+      "timestamp": 18.0,
+      "asset_id": "clinic_hvac_A",
+      "observation": {
+        "x": 0.281,
+        "sensor": 0.388,
+        "temperature": 24.921
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "healthcare",
+      "scenario_family": "transfer_small_hvac",
+      "system_type": "hvac",
+      "novelty": 0.42,
+      "support_count": 12,
+      "drift_warning": true
+    },
+    {
+      "timestamp": 19.0,
+      "asset_id": "clinic_hvac_A",
+      "observation": {
+        "x": 0.297,
+        "sensor": 0.414,
+        "temperature": 25.204
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "healthcare",
+      "scenario_family": "transfer_small_hvac",
+      "system_type": "hvac",
+      "novelty": 0.43,
+      "support_count": 12,
+      "drift_warning": true
+    },
+    {
+      "timestamp": 20.0,
+      "asset_id": "clinic_hvac_A",
+      "observation": {
+        "x": 0.312,
+        "sensor": 0.443,
+        "temperature": 25.5
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "healthcare",
+      "scenario_family": "transfer_small_hvac",
+      "system_type": "hvac",
+      "novelty": 0.44,
+      "support_count": 12,
+      "drift_warning": true
+    },
+    {
+      "timestamp": 1.01,
+      "asset_id": "clinic_hvac_B",
+      "observation": {
+        "x": 0.13,
+        "sensor": 0.199,
+        "temperature": 21.5
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "healthcare",
+      "scenario_family": "transfer_small_hvac",
+      "system_type": "hvac",
+      "novelty": 0.28,
+      "support_count": 1,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 2.01,
+      "asset_id": "clinic_hvac_B",
+      "observation": {
+        "x": 0.142,
+        "sensor": 0.207,
+        "temperature": 21.849
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "healthcare",
+      "scenario_family": "transfer_small_hvac",
+      "system_type": "hvac",
+      "novelty": 0.29,
+      "support_count": 2,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 3.01,
+      "asset_id": "clinic_hvac_B",
+      "observation": {
+        "x": 0.153,
+        "sensor": 0.214,
+        "temperature": 22.196
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "healthcare",
+      "scenario_family": "transfer_small_hvac",
+      "system_type": "hvac",
+      "novelty": 0.3,
+      "support_count": 3,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 4.01,
+      "asset_id": "clinic_hvac_B",
+      "observation": {
+        "x": 0.163,
+        "sensor": 0.22,
+        "temperature": 22.536
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "healthcare",
+      "scenario_family": "transfer_small_hvac",
+      "system_type": "hvac",
+      "novelty": 0.31,
+      "support_count": 4,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 5.01,
+      "asset_id": "clinic_hvac_B",
+      "observation": {
+        "x": 0.173,
+        "sensor": 0.231,
+        "temperature": 22.868
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "healthcare",
+      "scenario_family": "transfer_small_hvac",
+      "system_type": "hvac",
+      "novelty": 0.32,
+      "support_count": 5,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 6.01,
+      "asset_id": "clinic_hvac_B",
+      "observation": {
+        "x": 0.181,
+        "sensor": 0.244,
+        "temperature": 23.19
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "healthcare",
+      "scenario_family": "transfer_small_hvac",
+      "system_type": "hvac",
+      "novelty": 0.33,
+      "support_count": 6,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 7.01,
+      "asset_id": "clinic_hvac_B",
+      "observation": {
+        "x": 0.19,
+        "sensor": 0.262,
+        "temperature": 23.499
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "healthcare",
+      "scenario_family": "transfer_small_hvac",
+      "system_type": "hvac",
+      "novelty": 0.34,
+      "support_count": 7,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 8.01,
+      "asset_id": "clinic_hvac_B",
+      "observation": {
+        "x": 0.199,
+        "sensor": 0.284,
+        "temperature": 23.797
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "healthcare",
+      "scenario_family": "transfer_small_hvac",
+      "system_type": "hvac",
+      "novelty": 0.35,
+      "support_count": 8,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 9.01,
+      "asset_id": "clinic_hvac_B",
+      "observation": {
+        "x": 0.208,
+        "sensor": 0.307,
+        "temperature": 24.082
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "healthcare",
+      "scenario_family": "transfer_small_hvac",
+      "system_type": "hvac",
+      "novelty": 0.36,
+      "support_count": 9,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 10.01,
+      "asset_id": "clinic_hvac_B",
+      "observation": {
+        "x": 0.219,
+        "sensor": 0.332,
+        "temperature": 24.356
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "healthcare",
+      "scenario_family": "transfer_small_hvac",
+      "system_type": "hvac",
+      "novelty": 0.37,
+      "support_count": 10,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 11.01,
+      "asset_id": "clinic_hvac_B",
+      "observation": {
+        "x": 0.23,
+        "sensor": 0.353,
+        "temperature": 24.62
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "healthcare",
+      "scenario_family": "transfer_small_hvac",
+      "system_type": "hvac",
+      "novelty": 0.38,
+      "support_count": 11,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 12.01,
+      "asset_id": "clinic_hvac_B",
+      "observation": {
+        "x": 0.242,
+        "sensor": 0.37,
+        "temperature": 24.876
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "healthcare",
+      "scenario_family": "transfer_small_hvac",
+      "system_type": "hvac",
+      "novelty": 0.39,
+      "support_count": 12,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 13.01,
+      "asset_id": "clinic_hvac_B",
+      "observation": {
+        "x": 0.256,
+        "sensor": 0.386,
+        "temperature": 25.128
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "healthcare",
+      "scenario_family": "transfer_small_hvac",
+      "system_type": "hvac",
+      "novelty": 0.4,
+      "support_count": 12,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 14.01,
+      "asset_id": "clinic_hvac_B",
+      "observation": {
+        "x": 0.27,
+        "sensor": 0.398,
+        "temperature": 25.378
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "healthcare",
+      "scenario_family": "transfer_small_hvac",
+      "system_type": "hvac",
+      "novelty": 0.41,
+      "support_count": 12,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 15.01,
+      "asset_id": "clinic_hvac_B",
+      "observation": {
+        "x": 0.285,
+        "sensor": 0.41,
+        "temperature": 25.63
+      },
+      "actual_intervention": "increase_monitoring_frequency",
+      "outcome_label": "helpful",
+      "domain": "healthcare",
+      "scenario_family": "transfer_small_hvac",
+      "system_type": "hvac",
+      "novelty": 0.42,
+      "support_count": 12,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 16.01,
+      "asset_id": "clinic_hvac_B",
+      "observation": {
+        "x": 0.301,
+        "sensor": 0.424,
+        "temperature": 25.886
+      },
+      "actual_intervention": "remove_top_driver_contribution",
+      "outcome_label": "harmful",
+      "domain": "healthcare",
+      "scenario_family": "transfer_small_hvac",
+      "system_type": "hvac",
+      "novelty": 0.43,
+      "support_count": 12,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 17.01,
+      "asset_id": "clinic_hvac_B",
+      "observation": {
+        "x": 0.316,
+        "sensor": 0.44,
+        "temperature": 26.149
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "healthcare",
+      "scenario_family": "transfer_small_hvac",
+      "system_type": "hvac",
+      "novelty": 0.44,
+      "support_count": 12,
+      "drift_warning": true
+    },
+    {
+      "timestamp": 18.01,
+      "asset_id": "clinic_hvac_B",
+      "observation": {
+        "x": 0.331,
+        "sensor": 0.46,
+        "temperature": 26.421
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "healthcare",
+      "scenario_family": "transfer_small_hvac",
+      "system_type": "hvac",
+      "novelty": 0.45,
+      "support_count": 12,
+      "drift_warning": true
+    },
+    {
+      "timestamp": 19.01,
+      "asset_id": "clinic_hvac_B",
+      "observation": {
+        "x": 0.345,
+        "sensor": 0.483,
+        "temperature": 26.704
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "healthcare",
+      "scenario_family": "transfer_small_hvac",
+      "system_type": "hvac",
+      "novelty": 0.46,
+      "support_count": 12,
+      "drift_warning": true
+    },
+    {
+      "timestamp": 20.01,
+      "asset_id": "clinic_hvac_B",
+      "observation": {
+        "x": 0.358,
+        "sensor": 0.51,
+        "temperature": 27.0
+      },
+      "actual_intervention": "remove_top_driver_contribution",
+      "outcome_label": "harmful",
+      "domain": "healthcare",
+      "scenario_family": "transfer_small_hvac",
+      "system_type": "hvac",
+      "novelty": 0.47,
+      "support_count": 12,
+      "drift_warning": true
+    },
+    {
+      "timestamp": 1.02,
+      "asset_id": "lab_chiller_A",
+      "observation": {
+        "x": 0.167,
+        "sensor": 0.253,
+        "temperature": 23.0
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "building",
+      "scenario_family": "transfer_small_chiller",
+      "system_type": "chiller",
+      "novelty": 0.31,
+      "support_count": 1,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 2.02,
+      "asset_id": "lab_chiller_A",
+      "observation": {
+        "x": 0.177,
+        "sensor": 0.258,
+        "temperature": 23.349
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "building",
+      "scenario_family": "transfer_small_chiller",
+      "system_type": "chiller",
+      "novelty": 0.32,
+      "support_count": 2,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 3.02,
+      "asset_id": "lab_chiller_A",
+      "observation": {
+        "x": 0.185,
+        "sensor": 0.26,
+        "temperature": 23.696
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "building",
+      "scenario_family": "transfer_small_chiller",
+      "system_type": "chiller",
+      "novelty": 0.33,
+      "support_count": 3,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 4.02,
+      "asset_id": "lab_chiller_A",
+      "observation": {
+        "x": 0.194,
+        "sensor": 0.265,
+        "temperature": 24.036
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "building",
+      "scenario_family": "transfer_small_chiller",
+      "system_type": "chiller",
+      "novelty": 0.34,
+      "support_count": 4,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 5.02,
+      "asset_id": "lab_chiller_A",
+      "observation": {
+        "x": 0.203,
+        "sensor": 0.275,
+        "temperature": 24.368
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "building",
+      "scenario_family": "transfer_small_chiller",
+      "system_type": "chiller",
+      "novelty": 0.35,
+      "support_count": 5,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 6.02,
+      "asset_id": "lab_chiller_A",
+      "observation": {
+        "x": 0.212,
+        "sensor": 0.289,
+        "temperature": 24.69
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "building",
+      "scenario_family": "transfer_small_chiller",
+      "system_type": "chiller",
+      "novelty": 0.36,
+      "support_count": 6,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 7.02,
+      "asset_id": "lab_chiller_A",
+      "observation": {
+        "x": 0.223,
+        "sensor": 0.31,
+        "temperature": 24.999
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "building",
+      "scenario_family": "transfer_small_chiller",
+      "system_type": "chiller",
+      "novelty": 0.37,
+      "support_count": 7,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 8.02,
+      "asset_id": "lab_chiller_A",
+      "observation": {
+        "x": 0.234,
+        "sensor": 0.335,
+        "temperature": 25.297
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "building",
+      "scenario_family": "transfer_small_chiller",
+      "system_type": "chiller",
+      "novelty": 0.38,
+      "support_count": 8,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 9.02,
+      "asset_id": "lab_chiller_A",
+      "observation": {
+        "x": 0.246,
+        "sensor": 0.362,
+        "temperature": 25.582
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "building",
+      "scenario_family": "transfer_small_chiller",
+      "system_type": "chiller",
+      "novelty": 0.39,
+      "support_count": 9,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 10.02,
+      "asset_id": "lab_chiller_A",
+      "observation": {
+        "x": 0.26,
+        "sensor": 0.391,
+        "temperature": 25.856
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "building",
+      "scenario_family": "transfer_small_chiller",
+      "system_type": "chiller",
+      "novelty": 0.4,
+      "support_count": 10,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 11.02,
+      "asset_id": "lab_chiller_A",
+      "observation": {
+        "x": 0.274,
+        "sensor": 0.417,
+        "temperature": 26.12
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "building",
+      "scenario_family": "transfer_small_chiller",
+      "system_type": "chiller",
+      "novelty": 0.41,
+      "support_count": 11,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 12.02,
+      "asset_id": "lab_chiller_A",
+      "observation": {
+        "x": 0.289,
+        "sensor": 0.439,
+        "temperature": 26.376
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "building",
+      "scenario_family": "transfer_small_chiller",
+      "system_type": "chiller",
+      "novelty": 0.42,
+      "support_count": 12,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 13.02,
+      "asset_id": "lab_chiller_A",
+      "observation": {
+        "x": 0.305,
+        "sensor": 0.457,
+        "temperature": 26.628
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "building",
+      "scenario_family": "transfer_small_chiller",
+      "system_type": "chiller",
+      "novelty": 0.43,
+      "support_count": 12,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 14.02,
+      "asset_id": "lab_chiller_A",
+      "observation": {
+        "x": 0.32,
+        "sensor": 0.471,
+        "temperature": 26.878
+      },
+      "actual_intervention": "increase_monitoring_frequency",
+      "outcome_label": "helpful",
+      "domain": "building",
+      "scenario_family": "transfer_small_chiller",
+      "system_type": "chiller",
+      "novelty": 0.44,
+      "support_count": 12,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 15.02,
+      "asset_id": "lab_chiller_A",
+      "observation": {
+        "x": 0.335,
+        "sensor": 0.483,
+        "temperature": 27.13
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "building",
+      "scenario_family": "transfer_small_chiller",
+      "system_type": "chiller",
+      "novelty": 0.45,
+      "support_count": 12,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 16.02,
+      "asset_id": "lab_chiller_A",
+      "observation": {
+        "x": 0.349,
+        "sensor": 0.494,
+        "temperature": 27.386
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "building",
+      "scenario_family": "transfer_small_chiller",
+      "system_type": "chiller",
+      "novelty": 0.46,
+      "support_count": 12,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 17.02,
+      "asset_id": "lab_chiller_A",
+      "observation": {
+        "x": 0.362,
+        "sensor": 0.507,
+        "temperature": 27.649
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "building",
+      "scenario_family": "transfer_small_chiller",
+      "system_type": "chiller",
+      "novelty": 0.47,
+      "support_count": 12,
+      "drift_warning": true
+    },
+    {
+      "timestamp": 18.02,
+      "asset_id": "lab_chiller_A",
+      "observation": {
+        "x": 0.374,
+        "sensor": 0.522,
+        "temperature": 27.921
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "building",
+      "scenario_family": "transfer_small_chiller",
+      "system_type": "chiller",
+      "novelty": 0.48,
+      "support_count": 12,
+      "drift_warning": true
+    },
+    {
+      "timestamp": 19.02,
+      "asset_id": "lab_chiller_A",
+      "observation": {
+        "x": 0.385,
+        "sensor": 0.541,
+        "temperature": 28.204
+      },
+      "actual_intervention": "remove_top_driver_contribution",
+      "outcome_label": "harmful",
+      "domain": "building",
+      "scenario_family": "transfer_small_chiller",
+      "system_type": "chiller",
+      "novelty": 0.49,
+      "support_count": 12,
+      "drift_warning": true
+    },
+    {
+      "timestamp": 20.02,
+      "asset_id": "lab_chiller_A",
+      "observation": {
+        "x": 0.395,
+        "sensor": 0.563,
+        "temperature": 28.5
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "building",
+      "scenario_family": "transfer_small_chiller",
+      "system_type": "chiller",
+      "novelty": 0.5,
+      "support_count": 12,
+      "drift_warning": true
+    },
+    {
+      "timestamp": 1.03,
+      "asset_id": "campus_chiller_B",
+      "observation": {
+        "x": 0.198,
+        "sensor": 0.298,
+        "temperature": 24.5
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "building",
+      "scenario_family": "transfer_small_chiller",
+      "system_type": "chiller",
+      "novelty": 0.34,
+      "support_count": 1,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 2.03,
+      "asset_id": "campus_chiller_B",
+      "observation": {
+        "x": 0.207,
+        "sensor": 0.302,
+        "temperature": 24.849
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "building",
+      "scenario_family": "transfer_small_chiller",
+      "system_type": "chiller",
+      "novelty": 0.35,
+      "support_count": 2,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 3.03,
+      "asset_id": "campus_chiller_B",
+      "observation": {
+        "x": 0.216,
+        "sensor": 0.305,
+        "temperature": 25.196
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "building",
+      "scenario_family": "transfer_small_chiller",
+      "system_type": "chiller",
+      "novelty": 0.36,
+      "support_count": 3,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 4.03,
+      "asset_id": "campus_chiller_B",
+      "observation": {
+        "x": 0.227,
+        "sensor": 0.313,
+        "temperature": 25.536
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "building",
+      "scenario_family": "transfer_small_chiller",
+      "system_type": "chiller",
+      "novelty": 0.37,
+      "support_count": 4,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 5.03,
+      "asset_id": "campus_chiller_B",
+      "observation": {
+        "x": 0.238,
+        "sensor": 0.325,
+        "temperature": 25.868
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "building",
+      "scenario_family": "transfer_small_chiller",
+      "system_type": "chiller",
+      "novelty": 0.38,
+      "support_count": 5,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 6.03,
+      "asset_id": "campus_chiller_B",
+      "observation": {
+        "x": 0.25,
+        "sensor": 0.344,
+        "temperature": 26.19
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "building",
+      "scenario_family": "transfer_small_chiller",
+      "system_type": "chiller",
+      "novelty": 0.39,
+      "support_count": 6,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 7.03,
+      "asset_id": "campus_chiller_B",
+      "observation": {
+        "x": 0.264,
+        "sensor": 0.37,
+        "temperature": 26.499
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "building",
+      "scenario_family": "transfer_small_chiller",
+      "system_type": "chiller",
+      "novelty": 0.4,
+      "support_count": 7,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 8.03,
+      "asset_id": "campus_chiller_B",
+      "observation": {
+        "x": 0.278,
+        "sensor": 0.399,
+        "temperature": 26.797
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "building",
+      "scenario_family": "transfer_small_chiller",
+      "system_type": "chiller",
+      "novelty": 0.41,
+      "support_count": 8,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 9.03,
+      "asset_id": "campus_chiller_B",
+      "observation": {
+        "x": 0.293,
+        "sensor": 0.431,
+        "temperature": 27.082
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "building",
+      "scenario_family": "transfer_small_chiller",
+      "system_type": "chiller",
+      "novelty": 0.42,
+      "support_count": 9,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 10.03,
+      "asset_id": "campus_chiller_B",
+      "observation": {
+        "x": 0.309,
+        "sensor": 0.462,
+        "temperature": 27.356
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "building",
+      "scenario_family": "transfer_small_chiller",
+      "system_type": "chiller",
+      "novelty": 0.43,
+      "support_count": 10,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 11.03,
+      "asset_id": "campus_chiller_B",
+      "observation": {
+        "x": 0.324,
+        "sensor": 0.489,
+        "temperature": 27.62
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "building",
+      "scenario_family": "transfer_small_chiller",
+      "system_type": "chiller",
+      "novelty": 0.44,
+      "support_count": 11,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 12.03,
+      "asset_id": "campus_chiller_B",
+      "observation": {
+        "x": 0.339,
+        "sensor": 0.511,
+        "temperature": 27.876
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "building",
+      "scenario_family": "transfer_small_chiller",
+      "system_type": "chiller",
+      "novelty": 0.45,
+      "support_count": 12,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 13.03,
+      "asset_id": "campus_chiller_B",
+      "observation": {
+        "x": 0.353,
+        "sensor": 0.527,
+        "temperature": 28.128
+      },
+      "actual_intervention": "increase_monitoring_frequency",
+      "outcome_label": "helpful",
+      "domain": "building",
+      "scenario_family": "transfer_small_chiller",
+      "system_type": "chiller",
+      "novelty": 0.46,
+      "support_count": 12,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 14.03,
+      "asset_id": "campus_chiller_B",
+      "observation": {
+        "x": 0.366,
+        "sensor": 0.538,
+        "temperature": 28.378
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "building",
+      "scenario_family": "transfer_small_chiller",
+      "system_type": "chiller",
+      "novelty": 0.47,
+      "support_count": 12,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 15.03,
+      "asset_id": "campus_chiller_B",
+      "observation": {
+        "x": 0.378,
+        "sensor": 0.545,
+        "temperature": 28.63
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "building",
+      "scenario_family": "transfer_small_chiller",
+      "system_type": "chiller",
+      "novelty": 0.48,
+      "support_count": 12,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 16.03,
+      "asset_id": "campus_chiller_B",
+      "observation": {
+        "x": 0.389,
+        "sensor": 0.552,
+        "temperature": 28.886
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "building",
+      "scenario_family": "transfer_small_chiller",
+      "system_type": "chiller",
+      "novelty": 0.49,
+      "support_count": 12,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 17.03,
+      "asset_id": "campus_chiller_B",
+      "observation": {
+        "x": 0.399,
+        "sensor": 0.56,
+        "temperature": 29.149
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "building",
+      "scenario_family": "transfer_small_chiller",
+      "system_type": "chiller",
+      "novelty": 0.5,
+      "support_count": 12,
+      "drift_warning": true
+    },
+    {
+      "timestamp": 18.03,
+      "asset_id": "campus_chiller_B",
+      "observation": {
+        "x": 0.408,
+        "sensor": 0.572,
+        "temperature": 29.421
+      },
+      "actual_intervention": "remove_top_driver_contribution",
+      "outcome_label": "harmful",
+      "domain": "building",
+      "scenario_family": "transfer_small_chiller",
+      "system_type": "chiller",
+      "novelty": 0.51,
+      "support_count": 12,
+      "drift_warning": true
+    },
+    {
+      "timestamp": 19.03,
+      "asset_id": "campus_chiller_B",
+      "observation": {
+        "x": 0.417,
+        "sensor": 0.588,
+        "temperature": 29.704
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "building",
+      "scenario_family": "transfer_small_chiller",
+      "system_type": "chiller",
+      "novelty": 0.52,
+      "support_count": 12,
+      "drift_warning": true
+    },
+    {
+      "timestamp": 20.03,
+      "asset_id": "campus_chiller_B",
+      "observation": {
+        "x": 0.426,
+        "sensor": 0.608,
+        "temperature": 30.0
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "building",
+      "scenario_family": "transfer_small_chiller",
+      "system_type": "chiller",
+      "novelty": 0.53,
+      "support_count": 12,
+      "drift_warning": true
+    }
+  ]
+}

@@ -34,15 +34,15 @@
     "normalization": "validation.replay.adapters._normalize_record"
   },
   "quality_requirements": {
-    "min_dataset_size": 4,
+    "min_dataset_size": 50,
     "min_intervention_coverage": 0.0,
     "min_domain_diversity": 1
   },
   "data_files": [
     {
-      "path": "snapshots/data/transfer_cross_domain_small_scale.json",
+      "path": "snapshots/data/transfer_cross_domain_small_scale_full.json",
       "format": "json",
-      "sha256": "69d0dcc159323e3cd67b7018e4a077fe088ff9befc90c0e0dfd5f2e14a020ab7"
+      "sha256": "89d6f3ed96caf0d5d7b890ebb125c50a1ad08832ab415b88703d8fd5312483c6"
     }
   ]
 }

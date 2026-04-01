@@ -223,3 +223,30 @@ def test_real_corpora_noisy_accuracy_improves_and_baseline_remains_passing() -> 
     noisy_core = repo_root / "reports" / "validation" / "release_candidate_runs" / "noisy_realistic_ops" / "core_validation_report.json"
     noisy_summary = json.loads(noisy_core.read_text(encoding="utf-8"))["summary"]
     assert noisy_summary["decision_accuracy"] >= 0.75
+
+
+def test_run_release_candidate_real_required_corpora_complete_without_value_error() -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    cmd = [
+        sys.executable,
+        "tools/run_release_candidate.py",
+        "--corpus-set",
+        "baseline_clean_ops,noisy_realistic_ops,transfer_cross_domain_small_scale,transfer_cross_domain_large_scale",
+        "--output",
+        str(repo_root / "reports" / "validation" / "tmp_out_transfer.json"),
+        "--multi-corpus-output",
+        str(repo_root / "reports" / "validation" / "tmp_multi_transfer.json"),
+        "--history-root",
+        str(repo_root / "reports" / "validation" / "tmp_history_transfer"),
+    ]
+    result = subprocess.run(cmd, cwd=repo_root, capture_output=True, text=True)
+    assert result.returncode == 0, result.stderr
+    assert "Dataset too small for validation" not in result.stderr
+    payload = json.loads((repo_root / "reports" / "validation" / "tmp_multi_transfer.json").read_text(encoding="utf-8"))
+    ids = {row["corpus_id"] for row in payload["corpus_results"]}
+    assert {
+        "baseline_clean_ops",
+        "noisy_realistic_ops",
+        "transfer_cross_domain_small_scale",
+        "transfer_cross_domain_large_scale",
+    }.issubset(ids)
