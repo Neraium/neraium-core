@@ -97,9 +97,38 @@ def evaluate_corpus_release(core_validation_report: dict[str, Any], *, corpus_ty
     return gate
 
 
-def aggregate_multi_corpus_release(results: list[dict[str, Any]]) -> dict[str, Any]:
+DEFAULT_MIN_CREDIBLE_RECORDS = 50
+
+
+def _is_credible_for_release(row: dict[str, Any], *, min_credible_records: int) -> bool:
+    explicit = row.get("eligible_for_release_decision")
+    if explicit is not None:
+        return bool(explicit)
+    if "corpus_summary" not in row:
+        return True
+    corpus_summary = dict(row.get("corpus_summary") or {})
+    total_records = int(corpus_summary.get("total_records", 0) or 0)
+    return total_records >= min_credible_records
+
+
+def aggregate_multi_corpus_release(
+    results: list[dict[str, Any]],
+    *,
+    min_credible_records: int = DEFAULT_MIN_CREDIBLE_RECORDS,
+    include_ineligible: bool = False,
+) -> dict[str, Any]:
+    decision_rows = list(results)
+    excluded_non_credible_corpora: list[str] = []
+    if not include_ineligible:
+        decision_rows = []
+        for row in results:
+            if _is_credible_for_release(row, min_credible_records=min_credible_records):
+                decision_rows.append(row)
+            else:
+                excluded_non_credible_corpora.append(str(row.get("corpus_id")))
+
     by_class: dict[str, list[dict[str, Any]]] = {}
-    for row in results:
+    for row in decision_rows:
         corpus_type = str(row.get("corpus_type") or "unknown")
         by_class.setdefault(corpus_type, []).append(row)
 
@@ -148,6 +177,10 @@ def aggregate_multi_corpus_release(results: list[dict[str, Any]]) -> dict[str, A
         "release_passed": release_passed,
         "release_recommendation": "ship" if release_passed else "no-ship",
         "corpus_results": results,
+        "release_decision_corpus_results": decision_rows,
+        "excluded_non_credible_corpora": sorted(set(excluded_non_credible_corpora)),
+        "release_decision_minimum_records": min_credible_records,
+        "release_decision_include_ineligible": include_ineligible,
         "class_summary": class_summaries,
         "blocking_corpus_classes": sorted(set(blocking_classes)),
         "failing_corpora": sorted(set(failing_corpora)),
