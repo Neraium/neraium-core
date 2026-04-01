@@ -71,7 +71,7 @@ def to_operator_compatibility(intel: dict[str, Any]) -> dict[str, Any]:
         advisory_text = f"{advisory_text} Reliability notes: {reliability_warnings[0]}"
     if fallback_triggered:
         advisory_text = "Fallback active: insufficient trusted evidence for aggressive intervention; continue monitoring."
-p    if bool(structural_uncertainty.get("active", False)):
+    if bool(structural_uncertainty.get("active", False)):
         advisory_text = "Structural uncertainty mode active: human review required; keep posture bounded and monitoring-first."
     if override_applied:
         advisory_text = "Structural uncertainty override applied: intervention forced to monitor; human review is required."
