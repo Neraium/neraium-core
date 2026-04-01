@@ -1,0 +1,6 @@
+# Default Colab output directory. After cloning under /content/, point notebooks at e.g.:
+#   /content/neraium-core/colab_outputs
+#   /content/neraium-core-1/colab_outputs
+# Keep this folder in git; ignore generated artifacts.
+*
+!.gitignore

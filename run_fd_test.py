@@ -1,6 +1,22 @@
+"""
+CMAPSS FD replay: run NASA FD00x test matrices through Neraium StructuralEngine.
+
+Output tiers (see --output-mode):
+  - slim: product-facing columns only
+  - diagnostics: wide flattening (legacy-style) for validation and research
+  - both: write slim and diagnostics CSVs (default)
+
+Examples:
+  python run_fd_test.py --input /path/test_FD004.txt --output /tmp/fd004_results.csv
+  python run_fd_test.py --input /path/test_FD004.txt --output-mode slim --slim-output /tmp/fd004_slim.csv
+  python run_fd_test.py --input /path/test_FD004.txt --output-mode both --debug-jsonl /tmp/fd004_debug.jsonl
+"""
+
+from __future__ import annotations
+
 import argparse
 import json
-import time
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -13,7 +29,6 @@ from neraium_core.fd004_transition import (
     save_transition_artifacts,
     summarize_fd004_transitions,
 )
-from neraium_core.integrations.gal2_client import GAL2Client, unavailable_payload
 from run_engine import StructuralEngine
 
 
@@ -21,14 +36,29 @@ CMAPSS_COLUMNS = ["unit", "cycle"] + ["op1", "op2", "op3"] + [f"s{i}" for i in r
 SENSOR_COLUMNS = [f"s{i}" for i in range(1, 22)]
 
 
+@dataclass(frozen=True)
+class ResolvedReplayOutputs:
+    """Paths for slim and diagnostics CSVs (None if that tier is not requested)."""
+
+    slim: Path | None
+    diagnostics: Path | None
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Replay a CMAPSS FD00x dataset through Neraium StructuralEngine and write CSV results."
     )
     parser.add_argument("--input", type=Path, default=Path("test_FD001.txt"), help="Path to CMAPSS dataset text file.")
-    parser.add_argument("--output", type=Path, default=Path("fd_results.csv"), help="Path to output CSV file.")
-    parser.add_argument("--use-gal2", action="store_true", help="Use GAL-2 aligned time as an optional timestamp source.")
-    parser.add_argument("--gal2-cache-ms", type=int, default=500, help="Optional GAL-2 cache duration in milliseconds.")
+    parser.add_argument("--output", type=Path, default=Path("fd_results.csv"), help="Base path for replay CSV outputs (stem used for default slim/diagnostics names).")
+    parser.add_argument(
+        "--output-mode",
+        choices=["slim", "diagnostics", "both"],
+        default="both",
+        help="Which replay CSV tiers to write (default: both).",
+    )
+    parser.add_argument("--slim-output", type=Path, default=None, help="Explicit path for slim product CSV.")
+    parser.add_argument("--diagnostics-output", type=Path, default=None, help="Explicit path for full diagnostics CSV.")
+    parser.add_argument("--debug-jsonl", type=Path, default=None, help="Optional JSONL path: one object per row with full engine result plus unit/cycle metadata.")
     parser.add_argument("--max-units", type=int, default=None, help="Optional cap on number of units to replay.")
     parser.add_argument("--max-cycles", type=int, default=None, help="Optional cap on cycles per unit.")
     parser.add_argument(
@@ -68,9 +98,31 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--verbose",
         action="store_true",
-        help="Verbose replay logs (first JSON row, GAL2 debug). Set NERAIUM_DEBUG_ENGINE=1 for engine internals.",
+        help="Verbose replay logs (first JSON result snippet). Set NERAIUM_DEBUG_ENGINE=1 for engine internals.",
     )
     return parser.parse_args()
+
+
+def resolve_output_paths(args: argparse.Namespace, base_output: Path) -> ResolvedReplayOutputs:
+    """Derive slim/diagnostics paths from --output stem and explicit overrides."""
+    parent = base_output.parent
+    stem = base_output.stem
+    default_slim = parent / f"{stem}_slim.csv"
+    default_diag = parent / f"{stem}_diagnostics.csv"
+
+    slim_explicit = args.slim_output.expanduser().resolve() if args.slim_output else None
+    diag_explicit = args.diagnostics_output.expanduser().resolve() if args.diagnostics_output else None
+
+    mode = args.output_mode
+    slim_path: Path | None = None
+    diag_path: Path | None = None
+
+    if mode in ("slim", "both"):
+        slim_path = slim_explicit or default_slim
+    if mode in ("diagnostics", "both"):
+        diag_path = diag_explicit or default_diag
+
+    return ResolvedReplayOutputs(slim=slim_path, diagnostics=diag_path)
 
 
 def load_dataset(path: Path) -> pd.DataFrame:
@@ -106,22 +158,10 @@ def _safe_list_item(items: Any, index: int) -> Any:
     return items[index]
 
 
-def flatten_result(
-    unit_id: int,
-    cycle: int,
-    result: dict[str, Any],
-    gal2: dict[str, Any] | None = None,
-) -> dict[str, Any]:
+def flatten_slim_result(unit_id: int, cycle: int, result: dict[str, Any]) -> dict[str, Any]:
+    """Product-facing columns for FD replay CSV (no research-only flattening)."""
     experimental = _safe_get(result, "experimental_analytics") or {}
-    geometry = _safe_get(result, "geometry") or {}
-    state_space_statistics = _safe_get(result, "state_space_statistics") or {}
-    state_graph = _safe_get(result, "state_graph") or {}
-    counterfactuals = _safe_get(experimental, "counterfactual_simulation", "counterfactuals")
-    pressure_relief = _safe_list_item(counterfactuals, 0)
-    continued_degradation = _safe_list_item(counterfactuals, 2)
     early_warning = _safe_get(result, "early_warning") or {}
-    signal_degradation = _safe_get(result, "signal_degradation") or {}
-    gal2_payload = gal2 or unavailable_payload("disabled")
 
     return {
         "unit": unit_id,
@@ -137,6 +177,49 @@ def flatten_result(
         "confidence_score": _safe_get(result, "confidence_score"),
         "interpreted_state": _safe_get(result, "interpreted_state"),
         "regime_name": _safe_get(result, "regime_name"),
+        "early_warning_state": _safe_get(early_warning, "early_warning_state"),
+        "early_warning_pre_instability_score": _safe_get(early_warning, "pre_instability_score"),
+        "horizon_analysis_risk_horizon": _safe_get(experimental, "horizon_analysis", "risk_horizon"),
+        "counterfactual_baseline_projected_horizon": _safe_get(
+            experimental, "counterfactual_simulation", "baseline_future", "projected_horizon"
+        ),
+        "predicted_impact": _safe_get(result, "predicted_impact"),
+        "structural_driver": _safe_get(result, "structural_driver"),
+    }
+
+
+def flatten_diagnostics_result(
+    unit_id: int,
+    cycle: int,
+    result: dict[str, Any],
+) -> dict[str, Any]:
+    """Wide flattening of engine payload for diagnostics and validation (legacy-style)."""
+    experimental = _safe_get(result, "experimental_analytics") or {}
+    geometry = _safe_get(result, "geometry") or {}
+    state_space_statistics = _safe_get(result, "state_space_statistics") or {}
+    state_graph = _safe_get(result, "state_graph") or {}
+    counterfactuals = _safe_get(experimental, "counterfactual_simulation", "counterfactuals")
+    pressure_relief = _safe_list_item(counterfactuals, 0)
+    continued_degradation = _safe_list_item(counterfactuals, 2)
+    early_warning = _safe_get(result, "early_warning") or {}
+    signal_degradation = _safe_get(result, "signal_degradation") or {}
+
+    return {
+        "unit": unit_id,
+        "cycle": cycle,
+        "state": _safe_get(result, "state"),
+        "structural_drift_score": _safe_get(result, "structural_drift_score"),
+        "latest_instability": _safe_get(result, "latest_instability"),
+        "transition_pressure": _safe_get(result, "transition_pressure"),
+        "transition_state": _safe_get(result, "transition_state"),
+        "transition_outputs_actionable": _safe_get(result, "transition_outputs_actionable"),
+        "engine_stabilization_progress": _safe_get(result, "engine_stabilization_progress"),
+        "readiness_reason": _safe_get(result, "readiness", "reason"),
+        "confidence_score": _safe_get(result, "confidence_score"),
+        "interpreted_state": _safe_get(result, "interpreted_state"),
+        "regime_name": _safe_get(result, "regime_name"),
+        "predicted_impact": _safe_get(result, "predicted_impact"),
+        "structural_driver": _safe_get(result, "structural_driver"),
         "trajectory_analysis_dominant_path": _safe_get(experimental, "trajectory_analysis", "dominant_path"),
         "trajectory_analysis_path_confidence": _safe_get(experimental, "trajectory_analysis", "path_confidence"),
         "branching_analysis_is_branching": _safe_get(experimental, "branching_analysis", "is_branching"),
@@ -200,85 +283,41 @@ def flatten_result(
         "counterfactual_continued_degradation_projected_path": _safe_get(
             continued_degradation or {}, "projected_path"
         ),
-        "gal2_time": gal2_payload.get("gal2_time"),
-        "gal2_drift_ms": gal2_payload.get("drift_ms"),
-        "gal2_wobble_ms": gal2_payload.get("wobble_ms"),
-        "gal2_live_ms": gal2_payload.get("live_ms"),
-        "gal2_fractal_factor": gal2_payload.get("fractal_factor"),
-        "gal2_available": gal2_payload.get("available", False),
-        "gal2_reason": gal2_payload.get("reason"),
     }
+
+
+def write_debug_jsonl(path: Path, records: list[dict[str, Any]]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("w", encoding="utf-8") as fh:
+        for rec in records:
+            fh.write(json.dumps(rec, default=str) + "\n")
 
 
 def replay_unit(
     unit_df: pd.DataFrame,
     *,
-    use_gal2: bool = False,
-    gal2_cache_ms: int = 500,
     max_cycles: int | None = None,
     verbose: bool = False,
-) -> list[dict[str, Any]]:
+    debug_records: list[dict[str, Any]] | None = None,
+    collect_diagnostics: bool = True,
+    collect_slim: bool = True,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     engine = StructuralEngine()
-    rows: list[dict[str, Any]] = []
+    diag_rows: list[dict[str, Any]] = []
+    slim_rows: list[dict[str, Any]] = []
     printed_debug_result = False
-    gal2_client = GAL2Client(cache_ms=0) if use_gal2 else None
-    printed_gal2_debug = 0
-    cache_ttl_ms = gal2_cache_ms
-    last_gal2_payload: dict[str, Any] | None = None
-    last_gal2_fetch_time = 0.0
-    gal2_api_calls = 0
 
     ordered = unit_df.sort_values("cycle")
     if max_cycles is not None and max_cycles > 0:
         ordered = ordered.head(int(max_cycles))
     unit_id = int(ordered["unit"].iloc[0])
 
-    def get_cached_gal2_time() -> dict[str, Any]:
-        nonlocal last_gal2_payload, last_gal2_fetch_time, gal2_api_calls
-        current_time = time.time() * 1000  # ms
-        should_refresh = last_gal2_payload is None or (current_time - last_gal2_fetch_time) > cache_ttl_ms
-        if verbose:
-            print(f"GAL2 fetch reused: {not should_refresh}")
-
-        if should_refresh:
-            gal2_api_calls += 1
-            try:
-                last_gal2_payload = gal2_client.get_time() if gal2_client is not None else unavailable_payload("disabled")
-                last_gal2_fetch_time = current_time
-            except Exception:
-                # fallback: reuse last known value
-                if last_gal2_payload is None:
-                    last_gal2_payload = unavailable_payload("error")
-                last_gal2_fetch_time = current_time
-
-        if last_gal2_payload is None:
-            return unavailable_payload("unavailable")
-        return last_gal2_payload
-
     for _, row in ordered.iterrows():
         cycle = int(row["cycle"])
         sensor_values = {sensor: row[sensor] for sensor in SENSOR_COLUMNS}
 
-        timestamp = str(cycle)
-        gal2_payload = unavailable_payload("disabled")
-        if gal2_client is not None:
-            gal2_payload = get_cached_gal2_time()
-            if gal2_payload.get("available") and gal2_payload.get("gal2_time") is not None:
-                timestamp = str(gal2_payload["gal2_time"])
-            else:
-                gal2_payload = {**gal2_payload, "reason": gal2_payload.get("reason") or "unavailable"}
-
-            if verbose and printed_gal2_debug < 3:
-                print(
-                    "DEBUG GAL2:",
-                    f"available={gal2_payload.get('available', False)}",
-                    f"gal2_time={gal2_payload.get('gal2_time')}",
-                    f"drift_ms={gal2_payload.get('drift_ms')}",
-                )
-                printed_gal2_debug += 1
-
         frame = {
-            "timestamp": timestamp,
+            "timestamp": str(cycle),
             "site_id": "cmapss",
             "asset_id": f"unit_{unit_id}",
             "sensor_values": sensor_values,
@@ -287,14 +326,28 @@ def replay_unit(
         if verbose and not printed_debug_result:
             print(json.dumps(result, indent=2)[:1000])
             printed_debug_result = True
-        rows.append(flatten_result(unit_id=unit_id, cycle=cycle, result=result, gal2=gal2_payload))
+
+        if collect_diagnostics:
+            diag_rows.append(flatten_diagnostics_result(unit_id=unit_id, cycle=cycle, result=result))
+        if collect_slim:
+            slim_rows.append(flatten_slim_result(unit_id=unit_id, cycle=cycle, result=result))
+
+        if debug_records is not None:
+            debug_records.append(
+                {
+                    "unit": unit_id,
+                    "cycle": cycle,
+                    "result": result,
+                }
+            )
+
     if verbose:
-        print(f"unit={unit_id} rows={len(rows)} last_cycle={ordered['cycle'].iloc[-1] if len(ordered) else 'n/a'}")
+        print(
+            f"unit={unit_id} replay_rows={len(ordered)} diag_rows={len(diag_rows)} slim_rows={len(slim_rows)} "
+            f"last_cycle={ordered['cycle'].iloc[-1] if len(ordered) else 'n/a'}"
+        )
 
-    if gal2_client is not None and verbose:
-        print(f"GAL2 API calls for unit {unit_id}: {gal2_api_calls} / rows={len(ordered)}")
-
-    return rows
+    return diag_rows, slim_rows
 
 
 def run_transition_postprocess(
@@ -346,49 +399,85 @@ def run_transition_postprocess(
             print(f"  plot skipped: unit {pu} not in replay data")
 
 
+def transition_dataframe_for_postprocess(
+    args: argparse.Namespace,
+    all_diag: list[dict[str, Any]],
+    all_slim: list[dict[str, Any]],
+) -> pd.DataFrame:
+    """Prefer diagnostics rows for transition analysis; fall back to slim."""
+    if args.output_mode in ("both", "diagnostics") and all_diag:
+        return pd.DataFrame(all_diag)
+    return pd.DataFrame(all_slim)
+
+
 def main() -> None:
     args = parse_args()
-    output_path = args.output.expanduser().resolve()
+    base_output = args.output.expanduser().resolve()
 
     if args.summary_only is not None:
         csv_in = args.summary_only.expanduser().resolve()
         if not csv_in.is_file():
             raise FileNotFoundError(f"--summary-only file not found: {csv_in}")
         replay_df = pd.read_csv(csv_in)
-        run_transition_postprocess(replay_df, args, output_path=csv_in)
+        run_transition_postprocess(replay_df, args, output_path=base_output)
         return
 
     input_path = args.input.expanduser().resolve()
     dataset = load_dataset(input_path)
 
-    all_rows: list[dict[str, Any]] = []
+    resolved = resolve_output_paths(args, base_output)
+    debug_records: list[dict[str, Any]] | None = [] if args.debug_jsonl else None
+
+    all_diag: list[dict[str, Any]] = []
+    all_slim: list[dict[str, Any]] = []
     unit_ids = sorted(dataset["unit"].unique())
     if args.max_units is not None and args.max_units > 0:
         unit_ids = unit_ids[: int(args.max_units)]
 
+    collect_diagnostics = args.output_mode in ("both", "diagnostics")
+    collect_slim = args.output_mode in ("both", "slim")
+
     for unit_id in unit_ids:
         unit_df = dataset[dataset["unit"] == unit_id]
-        all_rows.extend(
-            replay_unit(
-                unit_df,
-                use_gal2=args.use_gal2,
-                gal2_cache_ms=args.gal2_cache_ms,
-                max_cycles=args.max_cycles,
-                verbose=bool(args.verbose),
-            )
+        drows, srows = replay_unit(
+            unit_df,
+            max_cycles=args.max_cycles,
+            verbose=bool(args.verbose),
+            debug_records=debug_records,
+            collect_diagnostics=collect_diagnostics,
+            collect_slim=collect_slim,
         )
+        all_diag.extend(drows)
+        all_slim.extend(srows)
 
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    pd.DataFrame(all_rows).to_csv(output_path, index=False)
+    if resolved.slim:
+        resolved.slim.parent.mkdir(parents=True, exist_ok=True)
+    if resolved.diagnostics:
+        resolved.diagnostics.parent.mkdir(parents=True, exist_ok=True)
+
+    if args.output_mode in ("both", "slim") and resolved.slim is not None:
+        pd.DataFrame(all_slim).to_csv(resolved.slim, index=False)
+    if args.output_mode in ("both", "diagnostics") and resolved.diagnostics is not None:
+        pd.DataFrame(all_diag).to_csv(resolved.diagnostics, index=False)
+
+    if debug_records is not None and args.debug_jsonl:
+        dbg_path = args.debug_jsonl.expanduser().resolve()
+        write_debug_jsonl(dbg_path, debug_records)
+        print(f"Debug JSONL: {dbg_path}  rows={len(debug_records)}")
 
     print("CMAPSS replay complete")
     print(f"Input path: {input_path}")
-    print(f"Output path: {output_path}")
+    print(f"Base output: {base_output}")
+    if resolved.slim and args.output_mode in ("both", "slim"):
+        print(f"Slim CSV: {resolved.slim}")
+    if resolved.diagnostics and args.output_mode in ("both", "diagnostics"):
+        print(f"Diagnostics CSV: {resolved.diagnostics}")
     print(f"Units processed: {len(unit_ids)}")
-    print(f"Rows written: {len(all_rows)}")
+    print(f"Rows per tier: slim={len(all_slim)} diagnostics={len(all_diag)}")
 
     if not args.replay_only:
-        run_transition_postprocess(pd.DataFrame(all_rows), args, output_path=output_path)
+        tdf = transition_dataframe_for_postprocess(args, all_diag, all_slim)
+        run_transition_postprocess(tdf, args, output_path=base_output)
 
 
 if __name__ == "__main__":
