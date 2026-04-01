@@ -49,11 +49,21 @@ class InterventionRecommendationRanker:
                 - 0.16 * harmful_strength
                 - 0.14 * correlation_penalty
             )
-            confidence = self._final_confidence(composite=composite, support=support, harmful_strength=harmful_strength)
+            confidence = self._final_confidence(
+                composite=composite,
+                support=support,
+                harmful_strength=harmful_strength,
+                novelty=float(context.get("novelty_score", 0.0) or 0.0),
+                reliability=float(context.get("calibration_reliability", 1.0) or 1.0),
+                drift_warning=bool(context.get("drift_warning", False)),
+            )
             memory_ablated = self._final_confidence(
                 composite=composite - 0.08 * memory_weight,
                 support=support,
                 harmful_strength=harmful_strength,
+                novelty=float(context.get("novelty_score", 0.0) or 0.0),
+                reliability=float(context.get("calibration_reliability", 1.0) or 1.0),
+                drift_warning=bool(context.get("drift_warning", False)),
             )
             confidence_info = self.compute_final_confidence(
                 composite=composite,
