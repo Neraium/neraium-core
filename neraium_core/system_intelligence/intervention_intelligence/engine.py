@@ -148,6 +148,21 @@ class InterventionIntelligenceEngine:
         )
         context["support_count"] = max(int(context.get("support_count", 0) or 0), memory_support, memory_summary_support)
         ranked = self._apply_conservative_fallback(ranked=ranked, context=context)
+        if bool(ranked.get("no_intervention_recommended", False)) and int(context.get("support_count", 0) or 0) <= 2:
+            no_action_confidence = float(ranked.get("recommendation_confidence", ranked.get("confidence", 0.0)))
+            ranked["best_intervention"] = {
+                "name": "no_action_recommended",
+                "intervention_type": "monitor",
+                "intervention_target": "system",
+                "confidence": round(max(0.0, min(1.0, no_action_confidence)), 4),
+                "rank_score": round(max(0.0, min(1.0, no_action_confidence)), 4),
+                "rationale": "Evidence indicates no strong intervention candidate; remain in bounded monitoring posture.",
+            }
+            ranked.setdefault("fallback_triggered", True)
+            ranked["fallback_reasons"] = sorted(
+                set([*list(ranked.get("fallback_reasons") or []), "no_strong_candidate"])
+            )
+            ranked["recommended_posture"] = "bounded_advisory"
         recommendation_confidence = float(ranked.get("recommendation_confidence", 0.0))
 
         return {

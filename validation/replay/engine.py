@@ -84,8 +84,7 @@ class HistoricalReplayEngine:
             if not best:
                 best = dict(recommendation.get("best_intervention") or {})
             recommended = best.get("name")
-            if bool(recommendation.get("no_intervention_recommended", False)) and not bool(recommendation.get("fallback_triggered", False)):
-                recommended = None
+            no_intervention_recommended = bool(recommendation.get("no_intervention_recommended", False))
             confidence = self._float_or_default(
                 best.get("confidence", (output.get("reliability_intelligence") or {}).get("risk_advisory", {}).get("calibrated_confidence", 0.0)),
                 0.0,
@@ -136,8 +135,10 @@ class HistoricalReplayEngine:
                     fallback_triggered = True
                     fallback_reasons = list(fallback["fallback_reasons"])
                     advisory_mode = str(fallback["advisory_mode"])
-            if recommended not in {None, "monitor"} and confidence < 0.42 and not fallback_triggered:
-                recommended = None
+            if no_intervention_recommended and not fallback_triggered:
+                recommended = "no_action_recommended"
+            if recommended not in {None, "monitor", "no_action_recommended"} and confidence < 0.42 and not fallback_triggered:
+                recommended = "no_action_recommended"
             if fallback_triggered and str(recommended) == "monitor":
                 confidence = min(confidence, 0.15)
             governance = dict((output.get("structural_law_intelligence") or {}).get("structural_law_governance") or {})
