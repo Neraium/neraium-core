@@ -43,8 +43,11 @@ class TrajectoryFamilyClusterer:
     ) -> tuple[TrajectoryFamilyRecord, list[dict[str, object]], float]:
         match_id, best_similarity, nearest = self._nearest(segment)
         if match_id is None:
+            had_existing_families = bool(self._families)
             family = self._create_family(segment=segment, label=inferred_label)
-            best_similarity = 1.0 if not self._families else max(best_similarity, 0.0)
+            # First-ever family bootstrap should not be treated as maximally novel.
+            # If no history existed before this assignment, similarity is perfect by definition.
+            best_similarity = max(best_similarity, 0.0) if had_existing_families else 1.0
         else:
             family = self._families[match_id]
 
