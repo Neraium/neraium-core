@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 
 
-def _write_snapshot(corpus_root: Path, corpus_id: str, corpus_type: str, *, num_events: int = 4) -> None:
+def _write_snapshot(corpus_root: Path, corpus_id: str, corpus_type: str, *, num_events: int = 60) -> None:
     data_dir = corpus_root / "snapshots" / "data"
     data_dir.mkdir(parents=True, exist_ok=True)
     data_file = data_dir / f"{corpus_id}.json"

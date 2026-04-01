@@ -29,8 +29,17 @@ def test_noisy_realistic_ops_full_dataset_has_expected_scale_and_assets() -> Non
     records = _load_noisy_records()
 
     assert 90 <= len(records) <= 120
-    assert len({str(row.get("asset_id")) for row in records}) >= 4
+    assets = {str(row.get("asset_id")) for row in records}
+    assert len(assets) >= 4
     assert len({float(row.get("timestamp", 0.0)) for row in records}) >= 25
+    by_asset: dict[str, list[float]] = {}
+    for row in records:
+        by_asset.setdefault(str(row.get("asset_id")), []).append(float(row.get("timestamp", 0.0)))
+    assert by_asset
+    for times in by_asset.values():
+        ordered = sorted(times)
+        assert len(ordered) >= 20
+        assert all(curr > prev for prev, curr in zip(ordered, ordered[1:]))
 
 
 def test_noisy_realistic_ops_loads_by_corpus_id_via_validation_pipeline() -> None:
@@ -119,3 +128,34 @@ def test_registry_rejects_snapshot_identity_mismatch(tmp_path: Path) -> None:
         assert False, "expected snapshot identity mismatch failure"
     except ValueError as exc:
         assert "Snapshot identity mismatch" in str(exc)
+
+
+def test_load_records_for_run_rejects_tiny_corpus_for_validation(tmp_path: Path) -> None:
+    root = tmp_path / "validation" / "corpus"
+    snaps = root / "snapshots"
+    data = snaps / "data"
+    data.mkdir(parents=True)
+
+    tiny_events = {"events": [{"timestamp": i + 1, "asset_id": f"a{i}", "domain": "water"} for i in range(4)]}
+    (data / "tiny.json").write_text(json.dumps(tiny_events), encoding="utf-8")
+    (snaps / "tiny.json").write_text(
+        json.dumps(
+            {
+                "corpus_id": "tiny_corpus",
+                "data_files": [{"path": "snapshots/data/tiny.json", "format": "json"}],
+                "quality_requirements": {"min_dataset_size": 1, "min_intervention_coverage": 0.0, "min_domain_diversity": 1},
+            }
+        ),
+        encoding="utf-8",
+    )
+    (root / "registry.json").write_text(
+        json.dumps({"snapshots": [{"corpus_id": "tiny_corpus", "snapshot_file": "snapshots/tiny.json"}]}),
+        encoding="utf-8",
+    )
+
+    registry = CorpusSnapshotRegistry(root)
+    try:
+        load_records_for_run(corpus_id="tiny_corpus", input_path=None, input_format=None, registry=registry)
+        assert False, "expected minimum dataset guard to fail"
+    except ValueError as exc:
+        assert "Dataset too small for validation" in str(exc)
