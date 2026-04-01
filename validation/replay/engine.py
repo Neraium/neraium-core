@@ -4,6 +4,13 @@ from dataclasses import asdict, dataclass
 from typing import Any, Callable
 
 
+_INTERVENTION_EVENT_MAP: dict[str, tuple[str, str]] = {
+    "remove_top_driver_contribution": ("remove_or_suppress_top_driver", "top_driver"),
+    "restore_relationship_cluster_to_baseline": ("restore_relationship_cluster", "relationship_cluster"),
+    "suppress_subsystem_instability": ("damp_subsystem_instability", "subsystem"),
+}
+
+
 @dataclass
 class ReplayStepResult:
     timestep: int
@@ -54,6 +61,19 @@ class HistoricalReplayEngine:
             row = dict(row or {})
             observation = dict(row.get("observation") or {})
             observation["asset_id"] = row.get("asset_id", "unknown")
+            actual_intervention = row.get("actual_intervention")
+            if actual_intervention and "intervention_event" not in observation and "applied_intervention" not in observation:
+                mapped_type, mapped_target = _INTERVENTION_EVENT_MAP.get(
+                    str(actual_intervention),
+                    ("other", "system"),
+                )
+                observation["intervention_event"] = {
+                    "name": str(actual_intervention),
+                    "type": mapped_type,
+                    "target": mapped_target,
+                    "outcome_label": row.get("outcome_label"),
+                    "confidence": 0.7,
+                }
             output = self.decision_fn(observation)
 
             transition = dict(output.get("transition_dynamics") or {})
@@ -100,6 +120,19 @@ class HistoricalReplayEngine:
                 if not fallback_reasons:
                     fallback_reasons = list(fallback["fallback_reasons"])
                 if advisory_mode == "standard_advisory":
+                    advisory_mode = str(fallback["advisory_mode"])
+            elif not fallback_triggered:
+                fallback = self._fallback_policy(
+                    row=row,
+                    output=output,
+                    recommended_intervention=str(recommended) if recommended else None,
+                    confidence=confidence,
+                )
+                if bool(fallback["fallback_triggered"]):
+                    recommended = fallback["recommended_intervention"]
+                    confidence = fallback["confidence"]
+                    fallback_triggered = True
+                    fallback_reasons = list(fallback["fallback_reasons"])
                     advisory_mode = str(fallback["advisory_mode"])
             governance = dict((output.get("structural_law_intelligence") or {}).get("structural_law_governance") or {})
             law_usage = [
@@ -163,20 +196,20 @@ class HistoricalReplayEngine:
         )
 
         reasons: list[str] = []
+        high_risk = drift_warning or novelty >= 0.75 or transfer_mismatch >= 0.65
         if drift_warning:
             reasons.append("drift_warning")
         if novelty >= 0.75:
             reasons.append("high_novelty")
-        if support_count <= 2:
+        if support_count <= 2 and high_risk:
             reasons.append("sparse_support")
         if transfer_mismatch >= 0.65:
             reasons.append("transfer_mismatch")
-        if calibrated_conf < 0.55:
+        if calibrated_conf < 0.55 and high_risk:
             reasons.append("weak_calibration_support")
-        if warnings:
+        if warnings and high_risk:
             reasons.append("reliability_warning")
 
-        high_risk = drift_warning or novelty >= 0.75 or transfer_mismatch >= 0.65
         weak_support = support_count <= 2 or calibrated_conf < 0.55 or bool(warnings)
         if high_risk and weak_support:
             return {
@@ -184,7 +217,7 @@ class HistoricalReplayEngine:
                 "confidence": min(confidence, 0.35),
                 "fallback_triggered": True,
                 "fallback_reasons": sorted(set(reasons)),
-                "advisory_mode": "human_review_required",
+                "advisory_mode": "conservative_monitoring",
             }
         if reasons:
             return {
