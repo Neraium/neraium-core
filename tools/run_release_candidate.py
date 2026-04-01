@@ -14,6 +14,9 @@ from tools.run_validation import execute_validation
 from validation.corpus.registry import CorpusSnapshotRegistry
 from validation.release_policy import CORPUS_TYPES, aggregate_multi_corpus_release, evaluate_corpus_release
 
+DEFAULT_RELEASE_CORPUS_SET = "baseline_clean,noisy_realistic,adversarial,transfer_cross_domain"
+MIN_RELEASE_GATING_RECORDS = 50
+
 
 def _resolve_corpus_ids(registry: CorpusSnapshotRegistry, corpus_id: str | None, corpus_set: str | None) -> list[str]:
     if corpus_set:
@@ -21,7 +24,11 @@ def _resolve_corpus_ids(registry: CorpusSnapshotRegistry, corpus_id: str | None,
         resolved: list[str] = []
         for value in values:
             if value in CORPUS_TYPES:
-                resolved.extend(registry.list_corpus_ids_by_type(value))
+                resolved.extend(
+                    registry.list_release_gating_corpus_ids_by_type(
+                        value, minimum_records=MIN_RELEASE_GATING_RECORDS
+                    )
+                )
             else:
                 resolved.append(value)
         dedup = []
@@ -33,7 +40,7 @@ def _resolve_corpus_ids(registry: CorpusSnapshotRegistry, corpus_id: str | None,
         return dedup
     if corpus_id:
         return [corpus_id]
-    raise ValueError("Either --corpus-id or --corpus-set must be provided")
+    return _resolve_corpus_ids(registry, corpus_id=None, corpus_set=DEFAULT_RELEASE_CORPUS_SET)
 
 
 def _run_one(args: argparse.Namespace, *, corpus_id: str, out_root: Path) -> dict[str, Any]:

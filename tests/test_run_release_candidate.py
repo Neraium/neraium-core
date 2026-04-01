@@ -7,23 +7,23 @@ import sys
 from pathlib import Path
 
 
-def _write_snapshot(corpus_root: Path, corpus_id: str, corpus_type: str) -> None:
+def _write_snapshot(corpus_root: Path, corpus_id: str, corpus_type: str, *, num_events: int = 4) -> None:
     data_dir = corpus_root / "snapshots" / "data"
     data_dir.mkdir(parents=True, exist_ok=True)
     data_file = data_dir / f"{corpus_id}.json"
-    data_file.write_text(
-        json.dumps(
-            {
-                "events": [
-                    {"timestamp": 1, "asset_id": f"{corpus_id}-A", "observation": {"x": 1.0}, "outcome_label": "neutral", "domain": "water", "system_type": "pump"},
-                    {"timestamp": 2, "asset_id": f"{corpus_id}-B", "observation": {"x": 1.2}, "outcome_label": "helpful", "domain": "energy", "system_type": "compressor", "actual_intervention": "remove_top_driver_contribution"},
-                    {"timestamp": 3, "asset_id": f"{corpus_id}-C", "observation": {"x": 1.3}, "outcome_label": "harmful", "domain": "energy", "system_type": "compressor", "actual_intervention": "restore_relationship_cluster_to_baseline"},
-                    {"timestamp": 4, "asset_id": f"{corpus_id}-D", "observation": {"x": 0.9}, "outcome_label": "neutral", "domain": "water", "system_type": "pump"},
-                ]
-            }
-        ),
-        encoding="utf-8",
-    )
+    events = [
+        {
+            "timestamp": idx + 1,
+            "asset_id": f"{corpus_id}-{idx}",
+            "observation": {"x": float((idx % 7) + 1)},
+            "outcome_label": "neutral" if idx % 3 == 0 else ("helpful" if idx % 3 == 1 else "harmful"),
+            "domain": "water" if idx % 2 == 0 else "energy",
+            "system_type": "pump" if idx % 2 == 0 else "compressor",
+            "actual_intervention": "remove_top_driver_contribution" if idx % 5 == 0 else None,
+        }
+        for idx in range(num_events)
+    ]
+    data_file.write_text(json.dumps({"events": events}), encoding="utf-8")
     sha = hashlib.sha256(data_file.read_bytes()).hexdigest()
     snapshot = {
         "corpus_id": corpus_id,
@@ -72,10 +72,10 @@ def test_run_release_candidate_outputs_status(tmp_path: Path) -> None:
 
 def test_run_release_candidate_corpus_set_supports_types(tmp_path: Path) -> None:
     corpus_root = tmp_path / "validation" / "corpus"
-    _write_snapshot(corpus_root, "c_base", "baseline_clean")
-    _write_snapshot(corpus_root, "c_noise", "noisy_realistic")
-    _write_snapshot(corpus_root, "c_adv", "adversarial")
-    _write_snapshot(corpus_root, "c_transfer", "transfer_cross_domain")
+    _write_snapshot(corpus_root, "c_base", "baseline_clean", num_events=60)
+    _write_snapshot(corpus_root, "c_noise", "noisy_realistic", num_events=60)
+    _write_snapshot(corpus_root, "c_adv", "adversarial", num_events=60)
+    _write_snapshot(corpus_root, "c_transfer", "transfer_cross_domain", num_events=60)
     (corpus_root / "registry.json").write_text(
         json.dumps(
             {
@@ -111,3 +111,45 @@ def test_run_release_candidate_corpus_set_supports_types(tmp_path: Path) -> None
     assert "RELEASE_" in res.stdout
     assert payload["corpus_results"]
     assert "class_summary" in payload
+
+
+def test_resolve_corpus_ids_excludes_deprecated_and_small_corpora(tmp_path: Path) -> None:
+    from tools.run_release_candidate import _resolve_corpus_ids
+    from validation.corpus.registry import CorpusSnapshotRegistry
+
+    corpus_root = tmp_path / "validation" / "corpus"
+    _write_snapshot(corpus_root, "legacy_small", "baseline_clean")
+    _write_snapshot(corpus_root, "baseline_clean_ops", "baseline_clean")
+    big_data = corpus_root / "snapshots" / "data" / "baseline_clean_ops.json"
+    big_data.write_text(json.dumps({"events": [{"timestamp": i, "asset_id": f"a-{i}", "observation": {"x": i}} for i in range(100)]}), encoding="utf-8")
+    big_sha = hashlib.sha256(big_data.read_bytes()).hexdigest()
+    big_snapshot_path = corpus_root / "snapshots" / "baseline_clean_ops.json"
+    big_snapshot = json.loads(big_snapshot_path.read_text(encoding="utf-8"))
+    big_snapshot["data_files"] = [{"path": str(big_data), "format": "json", "sha256": big_sha}]
+    big_snapshot_path.write_text(json.dumps(big_snapshot), encoding="utf-8")
+
+    (corpus_root / "registry.json").write_text(
+        json.dumps(
+            {
+                "schema_version": "1.0",
+                "snapshots": [
+                    {
+                        "corpus_id": "legacy_small",
+                        "snapshot_file": "snapshots/legacy_small.json",
+                        "corpus_type": "baseline_clean",
+                        "deprecated": True,
+                        "exclude_from_release_gating": True,
+                    },
+                    {
+                        "corpus_id": "baseline_clean_ops",
+                        "snapshot_file": "snapshots/baseline_clean_ops.json",
+                        "corpus_type": "baseline_clean",
+                    },
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    registry = CorpusSnapshotRegistry(root=corpus_root)
+    resolved = _resolve_corpus_ids(registry, corpus_id=None, corpus_set="baseline_clean")
+    assert resolved == ["baseline_clean_ops"]

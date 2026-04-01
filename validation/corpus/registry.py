@@ -86,6 +86,23 @@ class CorpusSnapshotRegistry:
                 ids.append(str(cid))
         return ids
 
+    def list_release_gating_corpus_ids_by_type(self, corpus_type: str, *, minimum_records: int = 50) -> list[str]:
+        ids: list[str] = []
+        for row in self.list_snapshots():
+            cid = row.get("corpus_id")
+            ctype = row.get("corpus_type")
+            if not ctype and cid:
+                try:
+                    ctype = self.get_snapshot(str(cid)).corpus_type
+                except Exception:
+                    ctype = None
+            if ctype != corpus_type or not cid:
+                continue
+            if self._exclude_from_release_gating(row, minimum_records=minimum_records):
+                continue
+            ids.append(str(cid))
+        return ids
+
     def load_registry(self) -> dict[str, Any]:
         if not self.registry_path.exists():
             return {"schema_version": "1.0", "snapshots": []}
@@ -100,6 +117,25 @@ class CorpusSnapshotRegistry:
                 snap_obj = CorpusSnapshot.from_payload(snap)
                 return snap_obj
         raise KeyError(f"Corpus snapshot not found: {corpus_id}")
+
+    def _exclude_from_release_gating(self, registry_row: dict[str, Any], *, minimum_records: int) -> bool:
+        if bool(registry_row.get("deprecated")) or bool(registry_row.get("exclude_from_release_gating")):
+            return True
+        snapshot_file = registry_row.get("snapshot_file")
+        if not snapshot_file:
+            return True
+        snapshot_path = self.root / str(snapshot_file)
+        if not snapshot_path.exists():
+            return True
+        snapshot = CorpusSnapshot.from_payload(json.loads(snapshot_path.read_text(encoding="utf-8")))
+        records = 0
+        for data_file in snapshot.data_files:
+            file_path = _resolve_file(self.root, data_file)
+            fmt = str(data_file.get("format") or "json")
+            records += len(load_dataset(file_path, fmt))
+            if records >= minimum_records:
+                return False
+        return True
 
 
 def _sha256_file(path: Path) -> str:
