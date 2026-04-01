@@ -1,0 +1,1364 @@
+{
+  "events": [
+    {
+      "timestamp": 1.0,
+      "asset_id": "mine_conveyor_A",
+      "observation": {
+        "x": 5.099,
+        "sensor": 8.47,
+        "load": 60.0
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "mining",
+      "scenario_family": "transfer_large_conveyor",
+      "system_type": "conveyor",
+      "novelty": 0.35,
+      "support_count": 2,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 2.0,
+      "asset_id": "mine_conveyor_A",
+      "observation": {
+        "x": 5.542,
+        "sensor": 9.062,
+        "load": 61.199
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "mining",
+      "scenario_family": "transfer_large_conveyor",
+      "system_type": "conveyor",
+      "novelty": 0.362,
+      "support_count": 3,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 3.0,
+      "asset_id": "mine_conveyor_A",
+      "observation": {
+        "x": 5.973,
+        "sensor": 9.582,
+        "load": 62.395
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "mining",
+      "scenario_family": "transfer_large_conveyor",
+      "system_type": "conveyor",
+      "novelty": 0.374,
+      "support_count": 4,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 4.0,
+      "asset_id": "mine_conveyor_A",
+      "observation": {
+        "x": 6.387,
+        "sensor": 10.041,
+        "load": 63.582
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "mining",
+      "scenario_family": "transfer_large_conveyor",
+      "system_type": "conveyor",
+      "novelty": 0.386,
+      "support_count": 5,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 5.0,
+      "asset_id": "mine_conveyor_A",
+      "observation": {
+        "x": 6.78,
+        "sensor": 10.452,
+        "load": 64.759
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "mining",
+      "scenario_family": "transfer_large_conveyor",
+      "system_type": "conveyor",
+      "novelty": 0.398,
+      "support_count": 6,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 6.0,
+      "asset_id": "mine_conveyor_A",
+      "observation": {
+        "x": 7.149,
+        "sensor": 10.831,
+        "load": 65.921
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "mining",
+      "scenario_family": "transfer_large_conveyor",
+      "system_type": "conveyor",
+      "novelty": 0.41,
+      "support_count": 7,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 7.0,
+      "asset_id": "mine_conveyor_A",
+      "observation": {
+        "x": 7.494,
+        "sensor": 11.201,
+        "load": 67.066
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "mining",
+      "scenario_family": "transfer_large_conveyor",
+      "system_type": "conveyor",
+      "novelty": 0.422,
+      "support_count": 8,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 8.0,
+      "asset_id": "mine_conveyor_A",
+      "observation": {
+        "x": 7.814,
+        "sensor": 11.578,
+        "load": 68.193
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "mining",
+      "scenario_family": "transfer_large_conveyor",
+      "system_type": "conveyor",
+      "novelty": 0.434,
+      "support_count": 9,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 9.0,
+      "asset_id": "mine_conveyor_A",
+      "observation": {
+        "x": 8.111,
+        "sensor": 11.978,
+        "load": 69.3
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "mining",
+      "scenario_family": "transfer_large_conveyor",
+      "system_type": "conveyor",
+      "novelty": 0.446,
+      "support_count": 10,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 10.0,
+      "asset_id": "mine_conveyor_A",
+      "observation": {
+        "x": 8.389,
+        "sensor": 12.414,
+        "load": 70.387
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "mining",
+      "scenario_family": "transfer_large_conveyor",
+      "system_type": "conveyor",
+      "novelty": 0.458,
+      "support_count": 11,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 11.0,
+      "asset_id": "mine_conveyor_A",
+      "observation": {
+        "x": 8.653,
+        "sensor": 12.893,
+        "load": 71.455
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "mining",
+      "scenario_family": "transfer_large_conveyor",
+      "system_type": "conveyor",
+      "novelty": 0.47,
+      "support_count": 12,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 12.0,
+      "asset_id": "mine_conveyor_A",
+      "observation": {
+        "x": 8.906,
+        "sensor": 13.412,
+        "load": 72.504
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "mining",
+      "scenario_family": "transfer_large_conveyor",
+      "system_type": "conveyor",
+      "novelty": 0.482,
+      "support_count": 13,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 13.0,
+      "asset_id": "mine_conveyor_A",
+      "observation": {
+        "x": 9.157,
+        "sensor": 13.971,
+        "load": 73.538
+      },
+      "actual_intervention": "adjust_flow_rate",
+      "outcome_label": "helpful",
+      "domain": "mining",
+      "scenario_family": "transfer_large_conveyor",
+      "system_type": "conveyor",
+      "novelty": 0.494,
+      "support_count": 14,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 14.0,
+      "asset_id": "mine_conveyor_A",
+      "observation": {
+        "x": 9.41,
+        "sensor": 14.558,
+        "load": 74.558
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "mining",
+      "scenario_family": "transfer_large_conveyor",
+      "system_type": "conveyor",
+      "novelty": 0.506,
+      "support_count": 14,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 15.0,
+      "asset_id": "mine_conveyor_A",
+      "observation": {
+        "x": 9.671,
+        "sensor": 15.16,
+        "load": 75.567
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "mining",
+      "scenario_family": "transfer_large_conveyor",
+      "system_type": "conveyor",
+      "novelty": 0.518,
+      "support_count": 14,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 16.0,
+      "asset_id": "mine_conveyor_A",
+      "observation": {
+        "x": 9.947,
+        "sensor": 15.767,
+        "load": 76.571
+      },
+      "actual_intervention": "remove_top_driver_contribution",
+      "outcome_label": "harmful",
+      "domain": "mining",
+      "scenario_family": "transfer_large_conveyor",
+      "system_type": "conveyor",
+      "novelty": 0.53,
+      "support_count": 14,
+      "drift_warning": true
+    },
+    {
+      "timestamp": 17.0,
+      "asset_id": "mine_conveyor_A",
+      "observation": {
+        "x": 10.242,
+        "sensor": 16.365,
+        "load": 77.571
+      },
+      "actual_intervention": "adjust_flow_rate",
+      "outcome_label": "helpful",
+      "domain": "mining",
+      "scenario_family": "transfer_large_conveyor",
+      "system_type": "conveyor",
+      "novelty": 0.542,
+      "support_count": 14,
+      "drift_warning": true
+    },
+    {
+      "timestamp": 18.0,
+      "asset_id": "mine_conveyor_A",
+      "observation": {
+        "x": 10.559,
+        "sensor": 16.943,
+        "load": 78.572
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "mining",
+      "scenario_family": "transfer_large_conveyor",
+      "system_type": "conveyor",
+      "novelty": 0.554,
+      "support_count": 14,
+      "drift_warning": true
+    },
+    {
+      "timestamp": 19.0,
+      "asset_id": "mine_conveyor_A",
+      "observation": {
+        "x": 10.9,
+        "sensor": 17.494,
+        "load": 79.579
+      },
+      "actual_intervention": "remove_top_driver_contribution",
+      "outcome_label": "harmful",
+      "domain": "mining",
+      "scenario_family": "transfer_large_conveyor",
+      "system_type": "conveyor",
+      "novelty": 0.566,
+      "support_count": 14,
+      "drift_warning": true
+    },
+    {
+      "timestamp": 20.0,
+      "asset_id": "mine_conveyor_A",
+      "observation": {
+        "x": 11.266,
+        "sensor": 18.019,
+        "load": 80.594
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "mining",
+      "scenario_family": "transfer_large_conveyor",
+      "system_type": "conveyor",
+      "novelty": 0.578,
+      "support_count": 14,
+      "drift_warning": true
+    },
+    {
+      "timestamp": 1.01,
+      "asset_id": "mine_crusher_B",
+      "observation": {
+        "x": 7.88,
+        "sensor": 12.781,
+        "load": 66.0
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "mining",
+      "scenario_family": "transfer_large_crusher",
+      "system_type": "crusher",
+      "novelty": 0.37,
+      "support_count": 2,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 2.01,
+      "asset_id": "mine_crusher_B",
+      "observation": {
+        "x": 8.249,
+        "sensor": 13.257,
+        "load": 67.199
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "mining",
+      "scenario_family": "transfer_large_crusher",
+      "system_type": "crusher",
+      "novelty": 0.382,
+      "support_count": 3,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 3.01,
+      "asset_id": "mine_crusher_B",
+      "observation": {
+        "x": 8.594,
+        "sensor": 13.645,
+        "load": 68.395
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "mining",
+      "scenario_family": "transfer_large_crusher",
+      "system_type": "crusher",
+      "novelty": 0.394,
+      "support_count": 4,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 4.01,
+      "asset_id": "mine_crusher_B",
+      "observation": {
+        "x": 8.914,
+        "sensor": 13.958,
+        "load": 69.582
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "mining",
+      "scenario_family": "transfer_large_crusher",
+      "system_type": "crusher",
+      "novelty": 0.406,
+      "support_count": 5,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 5.01,
+      "asset_id": "mine_crusher_B",
+      "observation": {
+        "x": 9.211,
+        "sensor": 14.22,
+        "load": 70.759
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "mining",
+      "scenario_family": "transfer_large_crusher",
+      "system_type": "crusher",
+      "novelty": 0.418,
+      "support_count": 6,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 6.01,
+      "asset_id": "mine_crusher_B",
+      "observation": {
+        "x": 9.489,
+        "sensor": 14.458,
+        "load": 71.921
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "mining",
+      "scenario_family": "transfer_large_crusher",
+      "system_type": "crusher",
+      "novelty": 0.43,
+      "support_count": 7,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 7.01,
+      "asset_id": "mine_crusher_B",
+      "observation": {
+        "x": 9.753,
+        "sensor": 14.703,
+        "load": 73.066
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "mining",
+      "scenario_family": "transfer_large_crusher",
+      "system_type": "crusher",
+      "novelty": 0.442,
+      "support_count": 8,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 8.01,
+      "asset_id": "mine_crusher_B",
+      "observation": {
+        "x": 10.006,
+        "sensor": 14.976,
+        "load": 74.193
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "mining",
+      "scenario_family": "transfer_large_crusher",
+      "system_type": "crusher",
+      "novelty": 0.454,
+      "support_count": 9,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 9.01,
+      "asset_id": "mine_crusher_B",
+      "observation": {
+        "x": 10.257,
+        "sensor": 15.304,
+        "load": 75.3
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "mining",
+      "scenario_family": "transfer_large_crusher",
+      "system_type": "crusher",
+      "novelty": 0.466,
+      "support_count": 10,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 10.01,
+      "asset_id": "mine_crusher_B",
+      "observation": {
+        "x": 10.51,
+        "sensor": 15.701,
+        "load": 76.387
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "mining",
+      "scenario_family": "transfer_large_crusher",
+      "system_type": "crusher",
+      "novelty": 0.478,
+      "support_count": 11,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 11.01,
+      "asset_id": "mine_crusher_B",
+      "observation": {
+        "x": 10.771,
+        "sensor": 16.176,
+        "load": 77.455
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "mining",
+      "scenario_family": "transfer_large_crusher",
+      "system_type": "crusher",
+      "novelty": 0.49,
+      "support_count": 12,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 12.01,
+      "asset_id": "mine_crusher_B",
+      "observation": {
+        "x": 11.047,
+        "sensor": 16.731,
+        "load": 78.504
+      },
+      "actual_intervention": "adjust_flow_rate",
+      "outcome_label": "helpful",
+      "domain": "mining",
+      "scenario_family": "transfer_large_crusher",
+      "system_type": "crusher",
+      "novelty": 0.502,
+      "support_count": 13,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 13.01,
+      "asset_id": "mine_crusher_B",
+      "observation": {
+        "x": 11.342,
+        "sensor": 17.358,
+        "load": 79.538
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "mining",
+      "scenario_family": "transfer_large_crusher",
+      "system_type": "crusher",
+      "novelty": 0.514,
+      "support_count": 14,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 14.01,
+      "asset_id": "mine_crusher_B",
+      "observation": {
+        "x": 11.659,
+        "sensor": 18.044,
+        "load": 80.558
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "mining",
+      "scenario_family": "transfer_large_crusher",
+      "system_type": "crusher",
+      "novelty": 0.526,
+      "support_count": 14,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 15.01,
+      "asset_id": "mine_crusher_B",
+      "observation": {
+        "x": 12.0,
+        "sensor": 18.77,
+        "load": 81.567
+      },
+      "actual_intervention": "remove_top_driver_contribution",
+      "outcome_label": "harmful",
+      "domain": "mining",
+      "scenario_family": "transfer_large_crusher",
+      "system_type": "crusher",
+      "novelty": 0.538,
+      "support_count": 14,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 16.01,
+      "asset_id": "mine_crusher_B",
+      "observation": {
+        "x": 12.366,
+        "sensor": 19.516,
+        "load": 82.571
+      },
+      "actual_intervention": "adjust_flow_rate",
+      "outcome_label": "helpful",
+      "domain": "mining",
+      "scenario_family": "transfer_large_crusher",
+      "system_type": "crusher",
+      "novelty": 0.55,
+      "support_count": 14,
+      "drift_warning": true
+    },
+    {
+      "timestamp": 17.01,
+      "asset_id": "mine_crusher_B",
+      "observation": {
+        "x": 12.756,
+        "sensor": 20.261,
+        "load": 83.571
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "mining",
+      "scenario_family": "transfer_large_crusher",
+      "system_type": "crusher",
+      "novelty": 0.562,
+      "support_count": 14,
+      "drift_warning": true
+    },
+    {
+      "timestamp": 18.01,
+      "asset_id": "mine_crusher_B",
+      "observation": {
+        "x": 13.168,
+        "sensor": 20.987,
+        "load": 84.572
+      },
+      "actual_intervention": "remove_top_driver_contribution",
+      "outcome_label": "harmful",
+      "domain": "mining",
+      "scenario_family": "transfer_large_crusher",
+      "system_type": "crusher",
+      "novelty": 0.574,
+      "support_count": 14,
+      "drift_warning": true
+    },
+    {
+      "timestamp": 19.01,
+      "asset_id": "mine_crusher_B",
+      "observation": {
+        "x": 13.597,
+        "sensor": 21.675,
+        "load": 85.579
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "mining",
+      "scenario_family": "transfer_large_crusher",
+      "system_type": "crusher",
+      "novelty": 0.586,
+      "support_count": 14,
+      "drift_warning": true
+    },
+    {
+      "timestamp": 20.01,
+      "asset_id": "mine_crusher_B",
+      "observation": {
+        "x": 14.038,
+        "sensor": 22.315,
+        "load": 86.594
+      },
+      "actual_intervention": "adjust_flow_rate",
+      "outcome_label": "helpful",
+      "domain": "mining",
+      "scenario_family": "transfer_large_crusher",
+      "system_type": "crusher",
+      "novelty": 0.598,
+      "support_count": 14,
+      "drift_warning": true
+    },
+    {
+      "timestamp": 1.02,
+      "asset_id": "port_engine_A",
+      "observation": {
+        "x": 9.311,
+        "sensor": 14.999,
+        "load": 72.0
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "shipping",
+      "scenario_family": "transfer_large_engine",
+      "system_type": "engine",
+      "novelty": 0.39,
+      "support_count": 2,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 2.02,
+      "asset_id": "port_engine_A",
+      "observation": {
+        "x": 9.589,
+        "sensor": 15.334,
+        "load": 73.199
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "shipping",
+      "scenario_family": "transfer_large_engine",
+      "system_type": "engine",
+      "novelty": 0.402,
+      "support_count": 3,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 3.02,
+      "asset_id": "port_engine_A",
+      "observation": {
+        "x": 9.853,
+        "sensor": 15.596,
+        "load": 74.395
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "shipping",
+      "scenario_family": "transfer_large_engine",
+      "system_type": "engine",
+      "novelty": 0.414,
+      "support_count": 4,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 4.02,
+      "asset_id": "port_engine_A",
+      "observation": {
+        "x": 10.106,
+        "sensor": 15.805,
+        "load": 75.582
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "shipping",
+      "scenario_family": "transfer_large_engine",
+      "system_type": "engine",
+      "novelty": 0.426,
+      "support_count": 5,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 5.02,
+      "asset_id": "port_engine_A",
+      "observation": {
+        "x": 10.357,
+        "sensor": 15.996,
+        "load": 76.759
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "shipping",
+      "scenario_family": "transfer_large_engine",
+      "system_type": "engine",
+      "novelty": 0.438,
+      "support_count": 6,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 6.02,
+      "asset_id": "port_engine_A",
+      "observation": {
+        "x": 10.61,
+        "sensor": 16.196,
+        "load": 77.921
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "shipping",
+      "scenario_family": "transfer_large_engine",
+      "system_type": "engine",
+      "novelty": 0.45,
+      "support_count": 7,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 7.02,
+      "asset_id": "port_engine_A",
+      "observation": {
+        "x": 10.871,
+        "sensor": 16.436,
+        "load": 79.066
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "shipping",
+      "scenario_family": "transfer_large_engine",
+      "system_type": "engine",
+      "novelty": 0.462,
+      "support_count": 8,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 8.02,
+      "asset_id": "port_engine_A",
+      "observation": {
+        "x": 11.147,
+        "sensor": 16.744,
+        "load": 80.193
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "shipping",
+      "scenario_family": "transfer_large_engine",
+      "system_type": "engine",
+      "novelty": 0.474,
+      "support_count": 9,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 9.02,
+      "asset_id": "port_engine_A",
+      "observation": {
+        "x": 11.442,
+        "sensor": 17.141,
+        "load": 81.3
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "shipping",
+      "scenario_family": "transfer_large_engine",
+      "system_type": "engine",
+      "novelty": 0.486,
+      "support_count": 10,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 10.02,
+      "asset_id": "port_engine_A",
+      "observation": {
+        "x": 11.759,
+        "sensor": 17.637,
+        "load": 82.387
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "shipping",
+      "scenario_family": "transfer_large_engine",
+      "system_type": "engine",
+      "novelty": 0.498,
+      "support_count": 11,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 11.02,
+      "asset_id": "port_engine_A",
+      "observation": {
+        "x": 12.1,
+        "sensor": 18.236,
+        "load": 83.455
+      },
+      "actual_intervention": "adjust_flow_rate",
+      "outcome_label": "helpful",
+      "domain": "shipping",
+      "scenario_family": "transfer_large_engine",
+      "system_type": "engine",
+      "novelty": 0.51,
+      "support_count": 12,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 12.02,
+      "asset_id": "port_engine_A",
+      "observation": {
+        "x": 12.466,
+        "sensor": 18.93,
+        "load": 84.504
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "shipping",
+      "scenario_family": "transfer_large_engine",
+      "system_type": "engine",
+      "novelty": 0.522,
+      "support_count": 13,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 13.02,
+      "asset_id": "port_engine_A",
+      "observation": {
+        "x": 12.856,
+        "sensor": 19.705,
+        "load": 85.538
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "shipping",
+      "scenario_family": "transfer_large_engine",
+      "system_type": "engine",
+      "novelty": 0.534,
+      "support_count": 14,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 14.02,
+      "asset_id": "port_engine_A",
+      "observation": {
+        "x": 13.268,
+        "sensor": 20.538,
+        "load": 86.558
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "shipping",
+      "scenario_family": "transfer_large_engine",
+      "system_type": "engine",
+      "novelty": 0.546,
+      "support_count": 14,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 15.02,
+      "asset_id": "port_engine_A",
+      "observation": {
+        "x": 13.697,
+        "sensor": 21.401,
+        "load": 87.567
+      },
+      "actual_intervention": "adjust_flow_rate",
+      "outcome_label": "helpful",
+      "domain": "shipping",
+      "scenario_family": "transfer_large_engine",
+      "system_type": "engine",
+      "novelty": 0.558,
+      "support_count": 14,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 16.02,
+      "asset_id": "port_engine_A",
+      "observation": {
+        "x": 14.138,
+        "sensor": 22.263,
+        "load": 88.571
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "shipping",
+      "scenario_family": "transfer_large_engine",
+      "system_type": "engine",
+      "novelty": 0.57,
+      "support_count": 14,
+      "drift_warning": true
+    },
+    {
+      "timestamp": 17.02,
+      "asset_id": "port_engine_A",
+      "observation": {
+        "x": 14.587,
+        "sensor": 23.099,
+        "load": 89.571
+      },
+      "actual_intervention": "remove_top_driver_contribution",
+      "outcome_label": "harmful",
+      "domain": "shipping",
+      "scenario_family": "transfer_large_engine",
+      "system_type": "engine",
+      "novelty": 0.582,
+      "support_count": 14,
+      "drift_warning": true
+    },
+    {
+      "timestamp": 18.02,
+      "asset_id": "port_engine_A",
+      "observation": {
+        "x": 15.036,
+        "sensor": 23.882,
+        "load": 90.572
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "shipping",
+      "scenario_family": "transfer_large_engine",
+      "system_type": "engine",
+      "novelty": 0.594,
+      "support_count": 14,
+      "drift_warning": true
+    },
+    {
+      "timestamp": 19.02,
+      "asset_id": "port_engine_A",
+      "observation": {
+        "x": 15.48,
+        "sensor": 24.593,
+        "load": 91.579
+      },
+      "actual_intervention": "adjust_flow_rate",
+      "outcome_label": "helpful",
+      "domain": "shipping",
+      "scenario_family": "transfer_large_engine",
+      "system_type": "engine",
+      "novelty": 0.606,
+      "support_count": 14,
+      "drift_warning": true
+    },
+    {
+      "timestamp": 20.02,
+      "asset_id": "port_engine_A",
+      "observation": {
+        "x": 15.913,
+        "sensor": 25.222,
+        "load": 92.594
+      },
+      "actual_intervention": "remove_top_driver_contribution",
+      "outcome_label": "harmful",
+      "domain": "shipping",
+      "scenario_family": "transfer_large_engine",
+      "system_type": "engine",
+      "novelty": 0.618,
+      "support_count": 14,
+      "drift_warning": true
+    },
+    {
+      "timestamp": 1.03,
+      "asset_id": "port_engine_B",
+      "observation": {
+        "x": 10.457,
+        "sensor": 16.775,
+        "load": 78.0
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "shipping",
+      "scenario_family": "transfer_large_engine",
+      "system_type": "engine",
+      "novelty": 0.41,
+      "support_count": 2,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 2.03,
+      "asset_id": "port_engine_B",
+      "observation": {
+        "x": 10.71,
+        "sensor": 17.072,
+        "load": 79.199
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "shipping",
+      "scenario_family": "transfer_large_engine",
+      "system_type": "engine",
+      "novelty": 0.422,
+      "support_count": 3,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 3.03,
+      "asset_id": "port_engine_B",
+      "observation": {
+        "x": 10.971,
+        "sensor": 17.329,
+        "load": 80.395
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "shipping",
+      "scenario_family": "transfer_large_engine",
+      "system_type": "engine",
+      "novelty": 0.434,
+      "support_count": 4,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 4.03,
+      "asset_id": "port_engine_B",
+      "observation": {
+        "x": 11.247,
+        "sensor": 17.574,
+        "load": 81.582
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "shipping",
+      "scenario_family": "transfer_large_engine",
+      "system_type": "engine",
+      "novelty": 0.446,
+      "support_count": 5,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 5.03,
+      "asset_id": "port_engine_B",
+      "observation": {
+        "x": 11.542,
+        "sensor": 17.833,
+        "load": 82.759
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "shipping",
+      "scenario_family": "transfer_large_engine",
+      "system_type": "engine",
+      "novelty": 0.458,
+      "support_count": 6,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 6.03,
+      "asset_id": "port_engine_B",
+      "observation": {
+        "x": 11.859,
+        "sensor": 18.132,
+        "load": 83.921
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "shipping",
+      "scenario_family": "transfer_large_engine",
+      "system_type": "engine",
+      "novelty": 0.47,
+      "support_count": 7,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 7.03,
+      "asset_id": "port_engine_B",
+      "observation": {
+        "x": 12.2,
+        "sensor": 18.496,
+        "load": 85.066
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "shipping",
+      "scenario_family": "transfer_large_engine",
+      "system_type": "engine",
+      "novelty": 0.482,
+      "support_count": 8,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 8.03,
+      "asset_id": "port_engine_B",
+      "observation": {
+        "x": 12.566,
+        "sensor": 18.944,
+        "load": 86.193
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "shipping",
+      "scenario_family": "transfer_large_engine",
+      "system_type": "engine",
+      "novelty": 0.494,
+      "support_count": 9,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 9.03,
+      "asset_id": "port_engine_B",
+      "observation": {
+        "x": 12.956,
+        "sensor": 19.488,
+        "load": 87.3
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "shipping",
+      "scenario_family": "transfer_large_engine",
+      "system_type": "engine",
+      "novelty": 0.506,
+      "support_count": 10,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 10.03,
+      "asset_id": "port_engine_B",
+      "observation": {
+        "x": 13.368,
+        "sensor": 20.131,
+        "load": 88.387
+      },
+      "actual_intervention": "adjust_flow_rate",
+      "outcome_label": "helpful",
+      "domain": "shipping",
+      "scenario_family": "transfer_large_engine",
+      "system_type": "engine",
+      "novelty": 0.518,
+      "support_count": 11,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 11.03,
+      "asset_id": "port_engine_B",
+      "observation": {
+        "x": 13.797,
+        "sensor": 20.866,
+        "load": 89.455
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "shipping",
+      "scenario_family": "transfer_large_engine",
+      "system_type": "engine",
+      "novelty": 0.53,
+      "support_count": 12,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 12.03,
+      "asset_id": "port_engine_B",
+      "observation": {
+        "x": 14.238,
+        "sensor": 21.677,
+        "load": 90.504
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "shipping",
+      "scenario_family": "transfer_large_engine",
+      "system_type": "engine",
+      "novelty": 0.542,
+      "support_count": 13,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 13.03,
+      "asset_id": "port_engine_B",
+      "observation": {
+        "x": 14.687,
+        "sensor": 22.543,
+        "load": 91.538
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "shipping",
+      "scenario_family": "transfer_large_engine",
+      "system_type": "engine",
+      "novelty": 0.554,
+      "support_count": 14,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 14.03,
+      "asset_id": "port_engine_B",
+      "observation": {
+        "x": 15.136,
+        "sensor": 23.433,
+        "load": 92.558
+      },
+      "actual_intervention": "adjust_flow_rate",
+      "outcome_label": "helpful",
+      "domain": "shipping",
+      "scenario_family": "transfer_large_engine",
+      "system_type": "engine",
+      "novelty": 0.566,
+      "support_count": 14,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 15.03,
+      "asset_id": "port_engine_B",
+      "observation": {
+        "x": 15.58,
+        "sensor": 24.319,
+        "load": 93.567
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "shipping",
+      "scenario_family": "transfer_large_engine",
+      "system_type": "engine",
+      "novelty": 0.578,
+      "support_count": 14,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 16.03,
+      "asset_id": "port_engine_B",
+      "observation": {
+        "x": 16.013,
+        "sensor": 25.169,
+        "load": 94.571
+      },
+      "actual_intervention": "remove_top_driver_contribution",
+      "outcome_label": "harmful",
+      "domain": "shipping",
+      "scenario_family": "transfer_large_engine",
+      "system_type": "engine",
+      "novelty": 0.59,
+      "support_count": 14,
+      "drift_warning": true
+    },
+    {
+      "timestamp": 17.03,
+      "asset_id": "port_engine_B",
+      "observation": {
+        "x": 16.429,
+        "sensor": 25.954,
+        "load": 95.571
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "shipping",
+      "scenario_family": "transfer_large_engine",
+      "system_type": "engine",
+      "novelty": 0.602,
+      "support_count": 14,
+      "drift_warning": true
+    },
+    {
+      "timestamp": 18.03,
+      "asset_id": "port_engine_B",
+      "observation": {
+        "x": 16.825,
+        "sensor": 26.655,
+        "load": 96.572
+      },
+      "actual_intervention": "adjust_flow_rate",
+      "outcome_label": "helpful",
+      "domain": "shipping",
+      "scenario_family": "transfer_large_engine",
+      "system_type": "engine",
+      "novelty": 0.614,
+      "support_count": 14,
+      "drift_warning": true
+    },
+    {
+      "timestamp": 19.03,
+      "asset_id": "port_engine_B",
+      "observation": {
+        "x": 17.198,
+        "sensor": 27.256,
+        "load": 97.579
+      },
+      "actual_intervention": "remove_top_driver_contribution",
+      "outcome_label": "harmful",
+      "domain": "shipping",
+      "scenario_family": "transfer_large_engine",
+      "system_type": "engine",
+      "novelty": 0.626,
+      "support_count": 14,
+      "drift_warning": true
+    },
+    {
+      "timestamp": 20.03,
+      "asset_id": "port_engine_B",
+      "observation": {
+        "x": 17.546,
+        "sensor": 27.753,
+        "load": 98.594
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "shipping",
+      "scenario_family": "transfer_large_engine",
+      "system_type": "engine",
+      "novelty": 0.638,
+      "support_count": 14,
+      "drift_warning": true
+    }
+  ]
+}
