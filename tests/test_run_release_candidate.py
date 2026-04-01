@@ -194,7 +194,32 @@ def test_run_release_candidate_partial_corpus_set_has_consistent_report(tmp_path
 
     assert [row["corpus_id"] for row in payload["corpus_results"]] == ["baseline_clean_ops"]
     assert payload["failing_corpora"] == [row["corpus_id"] for row in payload["corpus_results"] if not row["release_passed"]]
-    assert set(payload["blocking_corpus_classes"]) == {
+    expected_blockers = {
         row["corpus_type"] for row in payload["corpus_results"] if not row["release_passed"]
-    }
+    } | {"noisy_realistic", "transfer_cross_domain"}
+    assert set(payload["blocking_corpus_classes"]) == expected_blockers
     assert payload["missing_required_corpus_classes"] == ["noisy_realistic", "transfer_cross_domain"]
+
+
+def test_real_corpora_noisy_accuracy_improves_and_baseline_remains_passing() -> None:
+    repo_root = Path(__file__).resolve().parents[1]
+    cmd = [
+        sys.executable,
+        "tools/run_release_candidate.py",
+        "--corpus-set",
+        "baseline_clean_ops,noisy_realistic_ops",
+        "--output",
+        str(repo_root / "reports" / "validation" / "tmp_out.json"),
+        "--multi-corpus-output",
+        str(repo_root / "reports" / "validation" / "tmp_multi.json"),
+        "--history-root",
+        str(repo_root / "reports" / "validation" / "tmp_history"),
+    ]
+    subprocess.run(cmd, check=True, cwd=repo_root, capture_output=True, text=True)
+    payload = json.loads((repo_root / "reports" / "validation" / "tmp_multi.json").read_text(encoding="utf-8"))
+    by_id = {row["corpus_id"]: row for row in payload["corpus_results"]}
+    assert by_id["baseline_clean_ops"]["release_passed"] is True
+
+    noisy_core = repo_root / "reports" / "validation" / "release_candidate_runs" / "noisy_realistic_ops" / "core_validation_report.json"
+    noisy_summary = json.loads(noisy_core.read_text(encoding="utf-8"))["summary"]
+    assert noisy_summary["decision_accuracy"] >= 0.75

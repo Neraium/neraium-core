@@ -42,6 +42,27 @@ def test_missing_required_classes_are_blocking_and_reported() -> None:
     assert agg["failing_corpora"] == []
 
 
+def test_required_executed_but_ineligible_is_not_marked_missing() -> None:
+    results = [
+        _passing_row(corpus_id="baseline_clean_ops", corpus_type="baseline_clean"),
+        {
+            "corpus_id": "noisy_realistic_ops",
+            "corpus_type": "noisy_realistic",
+            "eligible_for_release_decision": False,
+            "release_passed": False,
+            "gate_breakdown": [{"gate": "minimum_decision_accuracy", "passed": False}],
+            "failure_mode_tags": ["trajectory_misclassification"],
+            "corpus_summary": {"total_records": 4},
+        },
+    ]
+
+    agg = aggregate_multi_corpus_release(results, min_credible_records=50)
+    assert agg["release_passed"] is False
+    assert "noisy_realistic" in agg["blocking_corpus_classes"]
+    assert "noisy_realistic" not in agg["missing_required_corpus_classes"]
+    assert agg["failing_corpora"] == ["noisy_realistic_ops"]
+
+
 def test_status_matches_aggregate_release_passed() -> None:
     """Final status line must match aggregate release_passed (no split-brain)."""
     results = [_passing_row(corpus_id="baseline_clean_ops", corpus_type="baseline_clean")]
