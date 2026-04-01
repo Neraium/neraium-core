@@ -68,6 +68,7 @@ class InterventionRecommendationRanker:
             confidence_info = self.compute_final_confidence(
                 composite=composite,
                 support=support,
+                context_match=context_match,
                 harmful_strength=harmful_strength,
                 novelty=novelty,
                 reliability=float(context.get("calibration_reliability", 1.0)),
@@ -81,6 +82,7 @@ class InterventionRecommendationRanker:
                     "intervention_type": cand["intervention_type"],
                     "intervention_target": cand["intervention_target"],
                     "rank_score": round(confidence, 4),
+                    "composite_score": round(composite, 6),
                     "confidence": round(confidence, 4),
                     "confidence_regime": confidence_info["confidence_regime"],
                     "confidence_pre_calibration": round(confidence_info["confidence_pre_calibration"], 4),
@@ -196,6 +198,7 @@ class InterventionRecommendationRanker:
         *,
         composite: float,
         support: float,
+        context_match: float,
         harmful_strength: float,
         novelty: float,
         reliability: float,
@@ -212,8 +215,15 @@ class InterventionRecommendationRanker:
         regime = "uncertain" if uncertain else "normal"
 
         post_calibration = self.calibrate_confidence(raw_confidence=pre_calibration, regime=regime)
+        support_strength = _clip01(support / 4.0)
+        context_strength = _clip01(context_match)
+        evidence_strength = _clip01(0.6 * support_strength + 0.4 * context_strength)
+        if regime == "uncertain":
+            confidence = min(0.2, post_calibration + 0.05 * evidence_strength)
+        else:
+            confidence = min(0.95, post_calibration + 0.08 * evidence_strength)
         return {
-            "confidence": float(post_calibration),
+            "confidence": float(confidence),
             "confidence_regime": regime,
             "confidence_pre_calibration": float(pre_calibration),
             "confidence_post_calibration": float(post_calibration),
@@ -232,6 +242,7 @@ class InterventionRecommendationRanker:
         info = self.compute_final_confidence(
             composite=composite,
             support=support,
+            context_match=0.0,
             harmful_strength=harmful_strength,
             novelty=novelty,
             reliability=reliability,
