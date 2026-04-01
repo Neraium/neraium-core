@@ -52,3 +52,21 @@ def test_corpus_specific_thresholds_enforced() -> None:
     adversarial_gate = evaluate_corpus_release(_core_report(acc=0.70), corpus_type="adversarial")
     assert baseline_gate["release_passed"] is False
     assert adversarial_gate["release_passed"] is True
+
+
+def test_tiny_deprecated_corpora_excluded_from_default_release_decision() -> None:
+    results = [
+        {"corpus_id": "baseline_clean_ops", "corpus_type": "baseline_clean", "release_passed": True, "gate_breakdown": [], "failure_mode_tags": [], "corpus_summary": {"total_records": 120}},
+        {"corpus_id": "noisy_realistic_ops", "corpus_type": "noisy_realistic", "release_passed": True, "gate_breakdown": [], "failure_mode_tags": [], "corpus_summary": {"total_records": 120}},
+        {"corpus_id": "transfer_cross_domain_large_scale", "corpus_type": "transfer_cross_domain", "release_passed": True, "gate_breakdown": [], "failure_mode_tags": [], "corpus_summary": {"total_records": 120}},
+        {"corpus_id": "adv_misleading_stability", "corpus_type": "adversarial", "release_passed": True, "gate_breakdown": [], "failure_mode_tags": [], "corpus_summary": {"total_records": 120}},
+        {"corpus_id": "corpus_v1", "corpus_type": "baseline_clean", "release_passed": False, "gate_breakdown": [{"gate": "minimum_decision_accuracy", "passed": False}], "failure_mode_tags": ["trajectory_misclassification"], "corpus_summary": {"total_records": 4}},
+    ]
+
+    default_agg = aggregate_multi_corpus_release(results, min_credible_records=50)
+    assert default_agg["release_passed"] is True
+    assert "corpus_v1" in default_agg["excluded_non_credible_corpora"]
+
+    diagnostics_agg = aggregate_multi_corpus_release(results, min_credible_records=50, include_ineligible=True)
+    assert diagnostics_agg["release_passed"] is False
+    assert "baseline_clean" in diagnostics_agg["blocking_corpus_classes"]
