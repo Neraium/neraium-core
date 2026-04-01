@@ -55,10 +55,6 @@ class InterventionRecommendationRanker:
                 support=support,
                 harmful_strength=harmful_strength,
             )
-                novelty=novelty,
-                reliability=float(context.get("calibration_reliability", 1.0)),
-                drift_warning=bool(context.get("drift_warning", False)),
-            )
             confidence_info = self.compute_final_confidence(
                 composite=composite,
                 support=support,
