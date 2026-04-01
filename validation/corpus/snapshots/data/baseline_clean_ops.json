@@ -2,55 +2,1803 @@
   "events": [
     {
       "timestamp": 1,
-      "asset_id": "b1",
+      "asset_id": "ops_stable_pump_A",
       "observation": {
-        "x": 0.1,
-        "sensor": 0.2
-      },
-      "actual_intervention": "remove_top_driver_contribution",
-      "outcome_label": "helpful",
-      "domain": "water",
-      "scenario_family": "baseline",
-      "system_type": "pump"
-    },
-    {
-      "timestamp": 2,
-      "asset_id": "b2",
-      "observation": {
-        "x": 0.2,
-        "sensor": 0.3
+        "x": 0.178,
+        "sensor": 1.018,
+        "pressure": 47.9,
+        "vibration": 0.12
       },
       "actual_intervention": null,
       "outcome_label": "neutral",
       "domain": "water",
-      "scenario_family": "baseline",
-      "system_type": "pump"
+      "scenario_family": "stable_operations",
+      "system_type": "pump",
+      "novelty": 0.216,
+      "support_count": 1,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 1,
+      "asset_id": "ops_deteriorating_compressor_B",
+      "observation": {
+        "x": 0.242,
+        "sensor": 0.978,
+        "pressure": 50.6,
+        "vibration": 0.178
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "energy",
+      "scenario_family": "gradual_deterioration",
+      "system_type": "compressor",
+      "novelty": 0.188,
+      "support_count": 7,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 1,
+      "asset_id": "ops_recoverable_turbine_C",
+      "observation": {
+        "x": 0.194,
+        "sensor": 1.017,
+        "pressure": 47.68,
+        "vibration": 0.146
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "energy",
+      "scenario_family": "recoverable_perturbation",
+      "system_type": "turbine",
+      "novelty": 0.28,
+      "support_count": 2,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 1,
+      "asset_id": "ops_intermittent_chiller_D",
+      "observation": {
+        "x": 0.216,
+        "sensor": 0.989,
+        "pressure": 49.23,
+        "vibration": 0.137
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "water",
+      "scenario_family": "intermittent_instability",
+      "system_type": "chiller",
+      "novelty": 0.192,
+      "support_count": 5,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 2,
+      "asset_id": "ops_stable_pump_A",
+      "observation": {
+        "x": 0.18,
+        "sensor": 1.022,
+        "pressure": 47.95,
+        "vibration": 0.122
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "water",
+      "scenario_family": "stable_operations",
+      "system_type": "pump",
+      "novelty": 0.212,
+      "support_count": 2,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 2,
+      "asset_id": "ops_deteriorating_compressor_B",
+      "observation": {
+        "x": 0.264,
+        "sensor": 1.006,
+        "pressure": 51.2,
+        "vibration": 0.196
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "energy",
+      "scenario_family": "gradual_deterioration",
+      "system_type": "compressor",
+      "novelty": 0.216,
+      "support_count": 7,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 2,
+      "asset_id": "ops_recoverable_turbine_C",
+      "observation": {
+        "x": 0.198,
+        "sensor": 1.024,
+        "pressure": 47.86,
+        "vibration": 0.152
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "energy",
+      "scenario_family": "recoverable_perturbation",
+      "system_type": "turbine",
+      "novelty": 0.28,
+      "support_count": 2,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 2,
+      "asset_id": "ops_intermittent_chiller_D",
+      "observation": {
+        "x": 0.222,
+        "sensor": 0.998,
+        "pressure": 49.46,
+        "vibration": 0.144
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "water",
+      "scenario_family": "intermittent_instability",
+      "system_type": "chiller",
+      "novelty": 0.204,
+      "support_count": 6,
+      "drift_warning": false
     },
     {
       "timestamp": 3,
-      "asset_id": "b3",
+      "asset_id": "ops_stable_pump_A",
       "observation": {
-        "x": 0.25,
-        "sensor": 0.35
+        "x": 0.182,
+        "sensor": 1.026,
+        "pressure": 48.0,
+        "vibration": 0.118
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "water",
+      "scenario_family": "stable_operations",
+      "system_type": "pump",
+      "novelty": 0.208,
+      "support_count": 3,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 3,
+      "asset_id": "ops_deteriorating_compressor_B",
+      "observation": {
+        "x": 0.286,
+        "sensor": 1.034,
+        "pressure": 51.8,
+        "vibration": 0.214
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "energy",
+      "scenario_family": "gradual_deterioration",
+      "system_type": "compressor",
+      "novelty": 0.244,
+      "support_count": 7,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 3,
+      "asset_id": "ops_recoverable_turbine_C",
+      "observation": {
+        "x": 0.202,
+        "sensor": 1.031,
+        "pressure": 48.04,
+        "vibration": 0.158
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "energy",
+      "scenario_family": "recoverable_perturbation",
+      "system_type": "turbine",
+      "novelty": 0.28,
+      "support_count": 2,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 3,
+      "asset_id": "ops_intermittent_chiller_D",
+      "observation": {
+        "x": 0.228,
+        "sensor": 1.007,
+        "pressure": 49.69,
+        "vibration": 0.151
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "water",
+      "scenario_family": "intermittent_instability",
+      "system_type": "chiller",
+      "novelty": 0.216,
+      "support_count": 6,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 4,
+      "asset_id": "ops_stable_pump_A",
+      "observation": {
+        "x": 0.184,
+        "sensor": 1.014,
+        "pressure": 48.05,
+        "vibration": 0.12
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "water",
+      "scenario_family": "stable_operations",
+      "system_type": "pump",
+      "novelty": 0.204,
+      "support_count": 4,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 4,
+      "asset_id": "ops_deteriorating_compressor_B",
+      "observation": {
+        "x": 0.308,
+        "sensor": 1.062,
+        "pressure": 52.4,
+        "vibration": 0.232
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "energy",
+      "scenario_family": "gradual_deterioration",
+      "system_type": "compressor",
+      "novelty": 0.272,
+      "support_count": 7,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 4,
+      "asset_id": "ops_recoverable_turbine_C",
+      "observation": {
+        "x": 0.206,
+        "sensor": 1.038,
+        "pressure": 48.22,
+        "vibration": 0.164
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "energy",
+      "scenario_family": "recoverable_perturbation",
+      "system_type": "turbine",
+      "novelty": 0.28,
+      "support_count": 2,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 4,
+      "asset_id": "ops_intermittent_chiller_D",
+      "observation": {
+        "x": 0.324,
+        "sensor": 1.079,
+        "pressure": 50.28,
+        "vibration": 0.212
+      },
+      "actual_intervention": "increase_monitoring_frequency",
+      "outcome_label": "helpful",
+      "domain": "water",
+      "scenario_family": "intermittent_instability",
+      "system_type": "chiller",
+      "novelty": 0.428,
+      "support_count": 5,
+      "drift_warning": true
+    },
+    {
+      "timestamp": 5,
+      "asset_id": "ops_stable_pump_A",
+      "observation": {
+        "x": 0.176,
+        "sensor": 1.018,
+        "pressure": 48.1,
+        "vibration": 0.122
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "water",
+      "scenario_family": "stable_operations",
+      "system_type": "pump",
+      "novelty": 0.2,
+      "support_count": 5,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 5,
+      "asset_id": "ops_deteriorating_compressor_B",
+      "observation": {
+        "x": 0.33,
+        "sensor": 1.09,
+        "pressure": 53.0,
+        "vibration": 0.25
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "energy",
+      "scenario_family": "gradual_deterioration",
+      "system_type": "compressor",
+      "novelty": 0.3,
+      "support_count": 7,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 5,
+      "asset_id": "ops_recoverable_turbine_C",
+      "observation": {
+        "x": 0.21,
+        "sensor": 1.045,
+        "pressure": 48.4,
+        "vibration": 0.17
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "energy",
+      "scenario_family": "recoverable_perturbation",
+      "system_type": "turbine",
+      "novelty": 0.28,
+      "support_count": 3,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 5,
+      "asset_id": "ops_intermittent_chiller_D",
+      "observation": {
+        "x": 0.24,
+        "sensor": 1.025,
+        "pressure": 50.15,
+        "vibration": 0.165
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "water",
+      "scenario_family": "intermittent_instability",
+      "system_type": "chiller",
+      "novelty": 0.24,
+      "support_count": 7,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 6,
+      "asset_id": "ops_stable_pump_A",
+      "observation": {
+        "x": 0.178,
+        "sensor": 1.022,
+        "pressure": 47.85,
+        "vibration": 0.118
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "water",
+      "scenario_family": "stable_operations",
+      "system_type": "pump",
+      "novelty": 0.196,
+      "support_count": 6,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 6,
+      "asset_id": "ops_deteriorating_compressor_B",
+      "observation": {
+        "x": 0.352,
+        "sensor": 1.118,
+        "pressure": 53.6,
+        "vibration": 0.268
+      },
+      "actual_intervention": "increase_monitoring_frequency",
+      "outcome_label": "neutral",
+      "domain": "energy",
+      "scenario_family": "gradual_deterioration",
+      "system_type": "compressor",
+      "novelty": 0.328,
+      "support_count": 6,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 6,
+      "asset_id": "ops_recoverable_turbine_C",
+      "observation": {
+        "x": 0.214,
+        "sensor": 1.052,
+        "pressure": 48.58,
+        "vibration": 0.176
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "energy",
+      "scenario_family": "recoverable_perturbation",
+      "system_type": "turbine",
+      "novelty": 0.28,
+      "support_count": 4,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 6,
+      "asset_id": "ops_intermittent_chiller_D",
+      "observation": {
+        "x": 0.246,
+        "sensor": 1.034,
+        "pressure": 50.38,
+        "vibration": 0.172
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "water",
+      "scenario_family": "intermittent_instability",
+      "system_type": "chiller",
+      "novelty": 0.252,
+      "support_count": 8,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 7,
+      "asset_id": "ops_stable_pump_A",
+      "observation": {
+        "x": 0.18,
+        "sensor": 1.026,
+        "pressure": 47.9,
+        "vibration": 0.12
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "water",
+      "scenario_family": "stable_operations",
+      "system_type": "pump",
+      "novelty": 0.192,
+      "support_count": 7,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 7,
+      "asset_id": "ops_deteriorating_compressor_B",
+      "observation": {
+        "x": 0.374,
+        "sensor": 1.146,
+        "pressure": 54.2,
+        "vibration": 0.286
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "energy",
+      "scenario_family": "gradual_deterioration",
+      "system_type": "compressor",
+      "novelty": 0.356,
+      "support_count": 6,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 7,
+      "asset_id": "ops_recoverable_turbine_C",
+      "observation": {
+        "x": 0.218,
+        "sensor": 1.059,
+        "pressure": 48.76,
+        "vibration": 0.182
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "energy",
+      "scenario_family": "recoverable_perturbation",
+      "system_type": "turbine",
+      "novelty": 0.28,
+      "support_count": 5,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 7,
+      "asset_id": "ops_intermittent_chiller_D",
+      "observation": {
+        "x": 0.252,
+        "sensor": 1.043,
+        "pressure": 50.61,
+        "vibration": 0.179
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "water",
+      "scenario_family": "intermittent_instability",
+      "system_type": "chiller",
+      "novelty": 0.264,
+      "support_count": 8,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 8,
+      "asset_id": "ops_stable_pump_A",
+      "observation": {
+        "x": 0.182,
+        "sensor": 1.014,
+        "pressure": 47.95,
+        "vibration": 0.122
+      },
+      "actual_intervention": "monitor",
+      "outcome_label": "helpful",
+      "domain": "water",
+      "scenario_family": "stable_operations",
+      "system_type": "pump",
+      "novelty": 0.188,
+      "support_count": 8,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 8,
+      "asset_id": "ops_deteriorating_compressor_B",
+      "observation": {
+        "x": 0.396,
+        "sensor": 1.174,
+        "pressure": 54.8,
+        "vibration": 0.304
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "energy",
+      "scenario_family": "gradual_deterioration",
+      "system_type": "compressor",
+      "novelty": 0.384,
+      "support_count": 6,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 8,
+      "asset_id": "ops_recoverable_turbine_C",
+      "observation": {
+        "x": 0.222,
+        "sensor": 1.066,
+        "pressure": 48.94,
+        "vibration": 0.188
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "energy",
+      "scenario_family": "recoverable_perturbation",
+      "system_type": "turbine",
+      "novelty": 0.28,
+      "support_count": 6,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 8,
+      "asset_id": "ops_intermittent_chiller_D",
+      "observation": {
+        "x": 0.258,
+        "sensor": 1.052,
+        "pressure": 50.84,
+        "vibration": 0.186
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "water",
+      "scenario_family": "intermittent_instability",
+      "system_type": "chiller",
+      "novelty": 0.276,
+      "support_count": 9,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 9,
+      "asset_id": "ops_stable_pump_A",
+      "observation": {
+        "x": 0.184,
+        "sensor": 1.018,
+        "pressure": 48.0,
+        "vibration": 0.118
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "water",
+      "scenario_family": "stable_operations",
+      "system_type": "pump",
+      "novelty": 0.184,
+      "support_count": 9,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 9,
+      "asset_id": "ops_deteriorating_compressor_B",
+      "observation": {
+        "x": 0.418,
+        "sensor": 1.202,
+        "pressure": 55.4,
+        "vibration": 0.322
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "energy",
+      "scenario_family": "gradual_deterioration",
+      "system_type": "compressor",
+      "novelty": 0.412,
+      "support_count": 6,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 9,
+      "asset_id": "ops_recoverable_turbine_C",
+      "observation": {
+        "x": 0.226,
+        "sensor": 1.073,
+        "pressure": 49.12,
+        "vibration": 0.194
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "energy",
+      "scenario_family": "recoverable_perturbation",
+      "system_type": "turbine",
+      "novelty": 0.28,
+      "support_count": 7,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 9,
+      "asset_id": "ops_intermittent_chiller_D",
+      "observation": {
+        "x": 0.354,
+        "sensor": 1.124,
+        "pressure": 51.43,
+        "vibration": 0.247
+      },
+      "actual_intervention": "monitor",
+      "outcome_label": "neutral",
+      "domain": "water",
+      "scenario_family": "intermittent_instability",
+      "system_type": "chiller",
+      "novelty": 0.488,
+      "support_count": 7,
+      "drift_warning": true
+    },
+    {
+      "timestamp": 10,
+      "asset_id": "ops_stable_pump_A",
+      "observation": {
+        "x": 0.176,
+        "sensor": 1.022,
+        "pressure": 48.05,
+        "vibration": 0.12
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "water",
+      "scenario_family": "stable_operations",
+      "system_type": "pump",
+      "novelty": 0.18,
+      "support_count": 10,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 10,
+      "asset_id": "ops_deteriorating_compressor_B",
+      "observation": {
+        "x": 0.44,
+        "sensor": 1.23,
+        "pressure": 56.0,
+        "vibration": 0.34
+      },
+      "actual_intervention": "remove_top_driver_contribution",
+      "outcome_label": "helpful",
+      "domain": "energy",
+      "scenario_family": "gradual_deterioration",
+      "system_type": "compressor",
+      "novelty": 0.44,
+      "support_count": 6,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 10,
+      "asset_id": "ops_recoverable_turbine_C",
+      "observation": {
+        "x": 0.33,
+        "sensor": 1.16,
+        "pressure": 50.0,
+        "vibration": 0.25
       },
       "actual_intervention": "restore_relationship_cluster_to_baseline",
       "outcome_label": "helpful",
       "domain": "energy",
-      "scenario_family": "baseline",
-      "system_type": "compressor"
+      "scenario_family": "recoverable_perturbation",
+      "system_type": "turbine",
+      "novelty": 0.46,
+      "support_count": 8,
+      "drift_warning": true
     },
     {
-      "timestamp": 4,
-      "asset_id": "b4",
+      "timestamp": 10,
+      "asset_id": "ops_intermittent_chiller_D",
       "observation": {
-        "x": 0.3,
-        "sensor": 0.4
+        "x": 0.27,
+        "sensor": 1.07,
+        "pressure": 51.3,
+        "vibration": 0.2
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "water",
+      "scenario_family": "intermittent_instability",
+      "system_type": "chiller",
+      "novelty": 0.3,
+      "support_count": 10,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 11,
+      "asset_id": "ops_stable_pump_A",
+      "observation": {
+        "x": 0.178,
+        "sensor": 1.026,
+        "pressure": 48.1,
+        "vibration": 0.122
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "water",
+      "scenario_family": "stable_operations",
+      "system_type": "pump",
+      "novelty": 0.176,
+      "support_count": 11,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 11,
+      "asset_id": "ops_deteriorating_compressor_B",
+      "observation": {
+        "x": 0.462,
+        "sensor": 1.258,
+        "pressure": 56.6,
+        "vibration": 0.358
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "energy",
+      "scenario_family": "gradual_deterioration",
+      "system_type": "compressor",
+      "novelty": 0.468,
+      "support_count": 5,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 11,
+      "asset_id": "ops_recoverable_turbine_C",
+      "observation": {
+        "x": 0.354,
+        "sensor": 1.183,
+        "pressure": 50.32,
+        "vibration": 0.266
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "energy",
+      "scenario_family": "recoverable_perturbation",
+      "system_type": "turbine",
+      "novelty": 0.46,
+      "support_count": 9,
+      "drift_warning": true
+    },
+    {
+      "timestamp": 11,
+      "asset_id": "ops_intermittent_chiller_D",
+      "observation": {
+        "x": 0.276,
+        "sensor": 1.079,
+        "pressure": 51.53,
+        "vibration": 0.207
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "water",
+      "scenario_family": "intermittent_instability",
+      "system_type": "chiller",
+      "novelty": 0.312,
+      "support_count": 10,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 12,
+      "asset_id": "ops_stable_pump_A",
+      "observation": {
+        "x": 0.18,
+        "sensor": 1.014,
+        "pressure": 47.85,
+        "vibration": 0.118
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "water",
+      "scenario_family": "stable_operations",
+      "system_type": "pump",
+      "novelty": 0.172,
+      "support_count": 12,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 12,
+      "asset_id": "ops_deteriorating_compressor_B",
+      "observation": {
+        "x": 0.484,
+        "sensor": 1.286,
+        "pressure": 57.2,
+        "vibration": 0.376
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "energy",
+      "scenario_family": "gradual_deterioration",
+      "system_type": "compressor",
+      "novelty": 0.496,
+      "support_count": 5,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 12,
+      "asset_id": "ops_recoverable_turbine_C",
+      "observation": {
+        "x": 0.358,
+        "sensor": 1.19,
+        "pressure": 50.5,
+        "vibration": 0.272
+      },
+      "actual_intervention": "remove_top_driver_contribution",
+      "outcome_label": "neutral",
+      "domain": "energy",
+      "scenario_family": "recoverable_perturbation",
+      "system_type": "turbine",
+      "novelty": 0.46,
+      "support_count": 10,
+      "drift_warning": true
+    },
+    {
+      "timestamp": 12,
+      "asset_id": "ops_intermittent_chiller_D",
+      "observation": {
+        "x": 0.282,
+        "sensor": 1.088,
+        "pressure": 51.76,
+        "vibration": 0.214
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "water",
+      "scenario_family": "intermittent_instability",
+      "system_type": "chiller",
+      "novelty": 0.324,
+      "support_count": 11,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 13,
+      "asset_id": "ops_stable_pump_A",
+      "observation": {
+        "x": 0.182,
+        "sensor": 1.018,
+        "pressure": 47.9,
+        "vibration": 0.12
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "water",
+      "scenario_family": "stable_operations",
+      "system_type": "pump",
+      "novelty": 0.168,
+      "support_count": 13,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 13,
+      "asset_id": "ops_deteriorating_compressor_B",
+      "observation": {
+        "x": 0.506,
+        "sensor": 1.314,
+        "pressure": 57.8,
+        "vibration": 0.394
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "energy",
+      "scenario_family": "gradual_deterioration",
+      "system_type": "compressor",
+      "novelty": 0.524,
+      "support_count": 5,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 13,
+      "asset_id": "ops_recoverable_turbine_C",
+      "observation": {
+        "x": 0.342,
+        "sensor": 1.181,
+        "pressure": 50.54,
+        "vibration": 0.268
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "energy",
+      "scenario_family": "recoverable_perturbation",
+      "system_type": "turbine",
+      "novelty": 0.46,
+      "support_count": 11,
+      "drift_warning": true
+    },
+    {
+      "timestamp": 13,
+      "asset_id": "ops_intermittent_chiller_D",
+      "observation": {
+        "x": 0.288,
+        "sensor": 1.097,
+        "pressure": 51.99,
+        "vibration": 0.221
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "water",
+      "scenario_family": "intermittent_instability",
+      "system_type": "chiller",
+      "novelty": 0.336,
+      "support_count": 11,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 14,
+      "asset_id": "ops_stable_pump_A",
+      "observation": {
+        "x": 0.184,
+        "sensor": 1.022,
+        "pressure": 47.95,
+        "vibration": 0.122
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "water",
+      "scenario_family": "stable_operations",
+      "system_type": "pump",
+      "novelty": 0.164,
+      "support_count": 14,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 14,
+      "asset_id": "ops_deteriorating_compressor_B",
+      "observation": {
+        "x": 0.528,
+        "sensor": 1.342,
+        "pressure": 58.4,
+        "vibration": 0.412
+      },
+      "actual_intervention": "restore_relationship_cluster_to_baseline",
+      "outcome_label": "neutral",
+      "domain": "energy",
+      "scenario_family": "gradual_deterioration",
+      "system_type": "compressor",
+      "novelty": 0.552,
+      "support_count": 5,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 14,
+      "asset_id": "ops_recoverable_turbine_C",
+      "observation": {
+        "x": 0.246,
+        "sensor": 1.108,
+        "pressure": 50.02,
+        "vibration": 0.224
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "energy",
+      "scenario_family": "recoverable_perturbation",
+      "system_type": "turbine",
+      "novelty": 0.34,
+      "support_count": 12,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 14,
+      "asset_id": "ops_intermittent_chiller_D",
+      "observation": {
+        "x": 0.294,
+        "sensor": 1.106,
+        "pressure": 52.22,
+        "vibration": 0.228
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "water",
+      "scenario_family": "intermittent_instability",
+      "system_type": "chiller",
+      "novelty": 0.348,
+      "support_count": 12,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 15,
+      "asset_id": "ops_stable_pump_A",
+      "observation": {
+        "x": 0.176,
+        "sensor": 1.026,
+        "pressure": 48.0,
+        "vibration": 0.118
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "water",
+      "scenario_family": "stable_operations",
+      "system_type": "pump",
+      "novelty": 0.16,
+      "support_count": 15,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 15,
+      "asset_id": "ops_deteriorating_compressor_B",
+      "observation": {
+        "x": 0.55,
+        "sensor": 1.37,
+        "pressure": 59.0,
+        "vibration": 0.43
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "energy",
+      "scenario_family": "gradual_deterioration",
+      "system_type": "compressor",
+      "novelty": 0.58,
+      "support_count": 5,
+      "drift_warning": true
+    },
+    {
+      "timestamp": 15,
+      "asset_id": "ops_recoverable_turbine_C",
+      "observation": {
+        "x": 0.247,
+        "sensor": 1.11,
+        "pressure": 50.08,
+        "vibration": 0.225
+      },
+      "actual_intervention": "monitor",
+      "outcome_label": "recovery-associated",
+      "domain": "energy",
+      "scenario_family": "recoverable_perturbation",
+      "system_type": "turbine",
+      "novelty": 0.33,
+      "support_count": 13,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 15,
+      "asset_id": "ops_intermittent_chiller_D",
+      "observation": {
+        "x": 0.39,
+        "sensor": 1.178,
+        "pressure": 52.81,
+        "vibration": 0.289
+      },
+      "actual_intervention": "remove_top_driver_contribution",
+      "outcome_label": "helpful",
+      "domain": "water",
+      "scenario_family": "intermittent_instability",
+      "system_type": "chiller",
+      "novelty": 0.56,
+      "support_count": 10,
+      "drift_warning": true
+    },
+    {
+      "timestamp": 16,
+      "asset_id": "ops_stable_pump_A",
+      "observation": {
+        "x": 0.178,
+        "sensor": 1.014,
+        "pressure": 48.05,
+        "vibration": 0.12
+      },
+      "actual_intervention": "monitor",
+      "outcome_label": "helpful",
+      "domain": "water",
+      "scenario_family": "stable_operations",
+      "system_type": "pump",
+      "novelty": 0.156,
+      "support_count": 16,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 16,
+      "asset_id": "ops_deteriorating_compressor_B",
+      "observation": {
+        "x": 0.572,
+        "sensor": 1.398,
+        "pressure": 59.6,
+        "vibration": 0.448
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "energy",
+      "scenario_family": "gradual_deterioration",
+      "system_type": "compressor",
+      "novelty": 0.608,
+      "support_count": 4,
+      "drift_warning": true
+    },
+    {
+      "timestamp": 16,
+      "asset_id": "ops_recoverable_turbine_C",
+      "observation": {
+        "x": 0.248,
+        "sensor": 1.112,
+        "pressure": 50.14,
+        "vibration": 0.226
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "energy",
+      "scenario_family": "recoverable_perturbation",
+      "system_type": "turbine",
+      "novelty": 0.32,
+      "support_count": 14,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 16,
+      "asset_id": "ops_intermittent_chiller_D",
+      "observation": {
+        "x": 0.306,
+        "sensor": 1.124,
+        "pressure": 52.68,
+        "vibration": 0.242
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "water",
+      "scenario_family": "intermittent_instability",
+      "system_type": "chiller",
+      "novelty": 0.372,
+      "support_count": 13,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 17,
+      "asset_id": "ops_stable_pump_A",
+      "observation": {
+        "x": 0.18,
+        "sensor": 1.018,
+        "pressure": 48.1,
+        "vibration": 0.122
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "water",
+      "scenario_family": "stable_operations",
+      "system_type": "pump",
+      "novelty": 0.152,
+      "support_count": 17,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 17,
+      "asset_id": "ops_deteriorating_compressor_B",
+      "observation": {
+        "x": 0.594,
+        "sensor": 1.426,
+        "pressure": 60.2,
+        "vibration": 0.466
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "energy",
+      "scenario_family": "gradual_deterioration",
+      "system_type": "compressor",
+      "novelty": 0.636,
+      "support_count": 4,
+      "drift_warning": true
+    },
+    {
+      "timestamp": 17,
+      "asset_id": "ops_recoverable_turbine_C",
+      "observation": {
+        "x": 0.249,
+        "sensor": 1.114,
+        "pressure": 50.2,
+        "vibration": 0.227
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "energy",
+      "scenario_family": "recoverable_perturbation",
+      "system_type": "turbine",
+      "novelty": 0.31,
+      "support_count": 15,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 17,
+      "asset_id": "ops_intermittent_chiller_D",
+      "observation": {
+        "x": 0.312,
+        "sensor": 1.133,
+        "pressure": 52.91,
+        "vibration": 0.249
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "water",
+      "scenario_family": "intermittent_instability",
+      "system_type": "chiller",
+      "novelty": 0.384,
+      "support_count": 13,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 18,
+      "asset_id": "ops_stable_pump_A",
+      "observation": {
+        "x": 0.182,
+        "sensor": 1.022,
+        "pressure": 47.85,
+        "vibration": 0.118
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "water",
+      "scenario_family": "stable_operations",
+      "system_type": "pump",
+      "novelty": 0.148,
+      "support_count": 18,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 18,
+      "asset_id": "ops_deteriorating_compressor_B",
+      "observation": {
+        "x": 0.616,
+        "sensor": 1.454,
+        "pressure": 60.8,
+        "vibration": 0.484
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "energy",
+      "scenario_family": "gradual_deterioration",
+      "system_type": "compressor",
+      "novelty": 0.664,
+      "support_count": 4,
+      "drift_warning": true
+    },
+    {
+      "timestamp": 18,
+      "asset_id": "ops_recoverable_turbine_C",
+      "observation": {
+        "x": 0.25,
+        "sensor": 1.116,
+        "pressure": 50.26,
+        "vibration": 0.228
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "energy",
+      "scenario_family": "recoverable_perturbation",
+      "system_type": "turbine",
+      "novelty": 0.3,
+      "support_count": 16,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 18,
+      "asset_id": "ops_intermittent_chiller_D",
+      "observation": {
+        "x": 0.318,
+        "sensor": 1.142,
+        "pressure": 53.14,
+        "vibration": 0.256
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "water",
+      "scenario_family": "intermittent_instability",
+      "system_type": "chiller",
+      "novelty": 0.396,
+      "support_count": 14,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 19,
+      "asset_id": "ops_stable_pump_A",
+      "observation": {
+        "x": 0.184,
+        "sensor": 1.026,
+        "pressure": 47.9,
+        "vibration": 0.12
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "water",
+      "scenario_family": "stable_operations",
+      "system_type": "pump",
+      "novelty": 0.144,
+      "support_count": 19,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 19,
+      "asset_id": "ops_deteriorating_compressor_B",
+      "observation": {
+        "x": 0.638,
+        "sensor": 1.482,
+        "pressure": 61.4,
+        "vibration": 0.502
       },
       "actual_intervention": "increase_monitoring_frequency",
       "outcome_label": "harmful",
       "domain": "energy",
-      "scenario_family": "drift",
-      "system_type": "compressor"
+      "scenario_family": "gradual_deterioration",
+      "system_type": "compressor",
+      "novelty": 0.692,
+      "support_count": 4,
+      "drift_warning": true
+    },
+    {
+      "timestamp": 19,
+      "asset_id": "ops_recoverable_turbine_C",
+      "observation": {
+        "x": 0.251,
+        "sensor": 1.118,
+        "pressure": 50.32,
+        "vibration": 0.229
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "energy",
+      "scenario_family": "recoverable_perturbation",
+      "system_type": "turbine",
+      "novelty": 0.29,
+      "support_count": 17,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 19,
+      "asset_id": "ops_intermittent_chiller_D",
+      "observation": {
+        "x": 0.324,
+        "sensor": 1.151,
+        "pressure": 53.37,
+        "vibration": 0.263
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "water",
+      "scenario_family": "intermittent_instability",
+      "system_type": "chiller",
+      "novelty": 0.408,
+      "support_count": 14,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 20,
+      "asset_id": "ops_stable_pump_A",
+      "observation": {
+        "x": 0.176,
+        "sensor": 1.014,
+        "pressure": 47.95,
+        "vibration": 0.122
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "water",
+      "scenario_family": "stable_operations",
+      "system_type": "pump",
+      "novelty": 0.14,
+      "support_count": 20,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 20,
+      "asset_id": "ops_deteriorating_compressor_B",
+      "observation": {
+        "x": 0.66,
+        "sensor": 1.51,
+        "pressure": 62.0,
+        "vibration": 0.52
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "energy",
+      "scenario_family": "gradual_deterioration",
+      "system_type": "compressor",
+      "novelty": 0.72,
+      "support_count": 4,
+      "drift_warning": true
+    },
+    {
+      "timestamp": 20,
+      "asset_id": "ops_recoverable_turbine_C",
+      "observation": {
+        "x": 0.252,
+        "sensor": 1.12,
+        "pressure": 50.38,
+        "vibration": 0.23
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "energy",
+      "scenario_family": "recoverable_perturbation",
+      "system_type": "turbine",
+      "novelty": 0.28,
+      "support_count": 18,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 20,
+      "asset_id": "ops_intermittent_chiller_D",
+      "observation": {
+        "x": 0.42,
+        "sensor": 1.223,
+        "pressure": 53.96,
+        "vibration": 0.324
+      },
+      "actual_intervention": "monitor",
+      "outcome_label": "neutral",
+      "domain": "water",
+      "scenario_family": "intermittent_instability",
+      "system_type": "chiller",
+      "novelty": 0.62,
+      "support_count": 13,
+      "drift_warning": true
+    },
+    {
+      "timestamp": 21,
+      "asset_id": "ops_stable_pump_A",
+      "observation": {
+        "x": 0.178,
+        "sensor": 1.018,
+        "pressure": 48.0,
+        "vibration": 0.118
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "water",
+      "scenario_family": "stable_operations",
+      "system_type": "pump",
+      "novelty": 0.136,
+      "support_count": 20,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 21,
+      "asset_id": "ops_deteriorating_compressor_B",
+      "observation": {
+        "x": 0.682,
+        "sensor": 1.538,
+        "pressure": 62.6,
+        "vibration": 0.538
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "energy",
+      "scenario_family": "gradual_deterioration",
+      "system_type": "compressor",
+      "novelty": 0.748,
+      "support_count": 3,
+      "drift_warning": true
+    },
+    {
+      "timestamp": 21,
+      "asset_id": "ops_recoverable_turbine_C",
+      "observation": {
+        "x": 0.253,
+        "sensor": 1.122,
+        "pressure": 50.44,
+        "vibration": 0.231
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "energy",
+      "scenario_family": "recoverable_perturbation",
+      "system_type": "turbine",
+      "novelty": 0.27,
+      "support_count": 18,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 21,
+      "asset_id": "ops_intermittent_chiller_D",
+      "observation": {
+        "x": 0.336,
+        "sensor": 1.169,
+        "pressure": 53.83,
+        "vibration": 0.277
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "water",
+      "scenario_family": "intermittent_instability",
+      "system_type": "chiller",
+      "novelty": 0.432,
+      "support_count": 14,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 22,
+      "asset_id": "ops_stable_pump_A",
+      "observation": {
+        "x": 0.18,
+        "sensor": 1.022,
+        "pressure": 48.05,
+        "vibration": 0.12
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "water",
+      "scenario_family": "stable_operations",
+      "system_type": "pump",
+      "novelty": 0.132,
+      "support_count": 20,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 22,
+      "asset_id": "ops_deteriorating_compressor_B",
+      "observation": {
+        "x": 0.704,
+        "sensor": 1.566,
+        "pressure": 63.2,
+        "vibration": 0.556
+      },
+      "actual_intervention": null,
+      "outcome_label": "harmful",
+      "domain": "energy",
+      "scenario_family": "gradual_deterioration",
+      "system_type": "compressor",
+      "novelty": 0.776,
+      "support_count": 3,
+      "drift_warning": true
+    },
+    {
+      "timestamp": 22,
+      "asset_id": "ops_recoverable_turbine_C",
+      "observation": {
+        "x": 0.254,
+        "sensor": 1.124,
+        "pressure": 50.5,
+        "vibration": 0.232
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "energy",
+      "scenario_family": "recoverable_perturbation",
+      "system_type": "turbine",
+      "novelty": 0.26,
+      "support_count": 18,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 22,
+      "asset_id": "ops_intermittent_chiller_D",
+      "observation": {
+        "x": 0.342,
+        "sensor": 1.178,
+        "pressure": 54.06,
+        "vibration": 0.284
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "water",
+      "scenario_family": "intermittent_instability",
+      "system_type": "chiller",
+      "novelty": 0.444,
+      "support_count": 14,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 23,
+      "asset_id": "ops_stable_pump_A",
+      "observation": {
+        "x": 0.182,
+        "sensor": 1.026,
+        "pressure": 48.1,
+        "vibration": 0.122
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "water",
+      "scenario_family": "stable_operations",
+      "system_type": "pump",
+      "novelty": 0.128,
+      "support_count": 20,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 23,
+      "asset_id": "ops_deteriorating_compressor_B",
+      "observation": {
+        "x": 0.726,
+        "sensor": 1.594,
+        "pressure": 63.8,
+        "vibration": 0.574
+      },
+      "actual_intervention": "escalate_manual_inspection",
+      "outcome_label": "harmful",
+      "domain": "energy",
+      "scenario_family": "gradual_deterioration",
+      "system_type": "compressor",
+      "novelty": 0.804,
+      "support_count": 3,
+      "drift_warning": true
+    },
+    {
+      "timestamp": 23,
+      "asset_id": "ops_recoverable_turbine_C",
+      "observation": {
+        "x": 0.255,
+        "sensor": 1.126,
+        "pressure": 50.56,
+        "vibration": 0.233
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "energy",
+      "scenario_family": "recoverable_perturbation",
+      "system_type": "turbine",
+      "novelty": 0.25,
+      "support_count": 18,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 23,
+      "asset_id": "ops_intermittent_chiller_D",
+      "observation": {
+        "x": 0.348,
+        "sensor": 1.187,
+        "pressure": 54.29,
+        "vibration": 0.291
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "water",
+      "scenario_family": "intermittent_instability",
+      "system_type": "chiller",
+      "novelty": 0.456,
+      "support_count": 14,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 24,
+      "asset_id": "ops_stable_pump_A",
+      "observation": {
+        "x": 0.184,
+        "sensor": 1.014,
+        "pressure": 47.85,
+        "vibration": 0.118
+      },
+      "actual_intervention": "monitor",
+      "outcome_label": "helpful",
+      "domain": "water",
+      "scenario_family": "stable_operations",
+      "system_type": "pump",
+      "novelty": 0.124,
+      "support_count": 20,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 24,
+      "asset_id": "ops_deteriorating_compressor_B",
+      "observation": {
+        "x": 0.748,
+        "sensor": 1.622,
+        "pressure": 64.4,
+        "vibration": 0.592
+      },
+      "actual_intervention": null,
+      "outcome_label": "harmful",
+      "domain": "energy",
+      "scenario_family": "gradual_deterioration",
+      "system_type": "compressor",
+      "novelty": 0.832,
+      "support_count": 3,
+      "drift_warning": true
+    },
+    {
+      "timestamp": 24,
+      "asset_id": "ops_recoverable_turbine_C",
+      "observation": {
+        "x": 0.256,
+        "sensor": 1.128,
+        "pressure": 50.62,
+        "vibration": 0.234
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "energy",
+      "scenario_family": "recoverable_perturbation",
+      "system_type": "turbine",
+      "novelty": 0.24,
+      "support_count": 18,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 24,
+      "asset_id": "ops_intermittent_chiller_D",
+      "observation": {
+        "x": 0.444,
+        "sensor": 1.259,
+        "pressure": 54.88,
+        "vibration": 0.352
+      },
+      "actual_intervention": "increase_monitoring_frequency",
+      "outcome_label": "neutral",
+      "domain": "water",
+      "scenario_family": "intermittent_instability",
+      "system_type": "chiller",
+      "novelty": 0.668,
+      "support_count": 14,
+      "drift_warning": true
+    },
+    {
+      "timestamp": 25,
+      "asset_id": "ops_stable_pump_A",
+      "observation": {
+        "x": 0.176,
+        "sensor": 1.018,
+        "pressure": 47.9,
+        "vibration": 0.12
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "water",
+      "scenario_family": "stable_operations",
+      "system_type": "pump",
+      "novelty": 0.12,
+      "support_count": 20,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 25,
+      "asset_id": "ops_deteriorating_compressor_B",
+      "observation": {
+        "x": 0.77,
+        "sensor": 1.65,
+        "pressure": 65.0,
+        "vibration": 0.61
+      },
+      "actual_intervention": null,
+      "outcome_label": "harmful",
+      "domain": "energy",
+      "scenario_family": "gradual_deterioration",
+      "system_type": "compressor",
+      "novelty": 0.86,
+      "support_count": 3,
+      "drift_warning": true
+    },
+    {
+      "timestamp": 25,
+      "asset_id": "ops_recoverable_turbine_C",
+      "observation": {
+        "x": 0.257,
+        "sensor": 1.13,
+        "pressure": 50.68,
+        "vibration": 0.235
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "energy",
+      "scenario_family": "recoverable_perturbation",
+      "system_type": "turbine",
+      "novelty": 0.23,
+      "support_count": 18,
+      "drift_warning": false
+    },
+    {
+      "timestamp": 25,
+      "asset_id": "ops_intermittent_chiller_D",
+      "observation": {
+        "x": 0.36,
+        "sensor": 1.205,
+        "pressure": 54.75,
+        "vibration": 0.305
+      },
+      "actual_intervention": null,
+      "outcome_label": "neutral",
+      "domain": "water",
+      "scenario_family": "intermittent_instability",
+      "system_type": "chiller",
+      "novelty": 0.48,
+      "support_count": 14,
+      "drift_warning": false
     }
   ]
 }
