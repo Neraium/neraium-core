@@ -1,8 +1,15 @@
 from __future__ import annotations
 
 import argparse
+import csv
+from collections import defaultdict
+from datetime import datetime
+from pathlib import Path
 
-import pandas as pd
+try:
+    import pandas as pd
+except ModuleNotFoundError:  # pragma: no cover - fallback runtime path
+    pd = None
 
 
 def parse_args() -> argparse.Namespace:
@@ -25,8 +32,7 @@ def _target_exposure(signal: str) -> float:
     return 1.0
 
 
-def main() -> None:
-    args = parse_args()
+def _run_with_pandas(args: argparse.Namespace) -> None:
     df = pd.read_csv(args.input)
 
     results: list[dict[str, float | str]] = []
@@ -65,6 +71,89 @@ def main() -> None:
         )
 
     pd.DataFrame(results).to_csv(args.output, index=False)
+
+
+def _parse_ts(text: str) -> float:
+    value = str(text)
+    if value.endswith("Z"):
+        value = value[:-1] + "+00:00"
+    return datetime.fromisoformat(value).timestamp()
+
+
+def _run_without_pandas(args: argparse.Namespace) -> None:
+    with Path(args.input).open("r", encoding="utf-8", newline="") as fh:
+        rows = list(csv.DictReader(fh))
+
+    groups: dict[str, list[dict[str, str]]] = defaultdict(list)
+    for row in rows:
+        groups[str(row.get(args.ticker_column, ""))].append(row)
+
+    results: list[dict[str, float | str | int]] = []
+    for ticker, group in groups.items():
+        def _sort_key(item: dict[str, str]) -> float:
+            ts = item.get("timestamp")
+            if ts:
+                try:
+                    return _parse_ts(ts)
+                except ValueError:
+                    return 0.0
+            return 0.0
+
+        ordered = sorted(group, key=_sort_key)
+        cleaned: list[dict[str, float | str]] = []
+        for item in ordered:
+            try:
+                price = float(item.get(args.price_column, ""))
+            except (TypeError, ValueError):
+                continue
+            cleaned.append({"price": price, "signal": str(item.get("trading_signal", "HOLD"))})
+
+        if len(cleaned) < 2:
+            continue
+
+        strat_rets: list[float] = []
+        prev_exposure = 1.0
+        prev_price = cleaned[0]["price"]
+        equity = 1.0
+        running_peak = 1.0
+        max_drawdown = 0.0
+
+        for row in cleaned:
+            price = float(row["price"])
+            ret = 0.0 if prev_price == 0.0 else (price / prev_price) - 1.0
+            strat_ret = ret * prev_exposure
+            equity *= 1.0 + strat_ret
+            running_peak = max(running_peak, equity)
+            max_drawdown = min(max_drawdown, (equity / running_peak) - 1.0)
+            strat_rets.append(strat_ret)
+
+            prev_exposure = _target_exposure(str(row["signal"]))
+            prev_price = price
+
+        positive = sum(1 for value in strat_rets if value > 0)
+        results.append(
+            {
+                "ticker": ticker,
+                "bars": len(cleaned),
+                "total_return": equity - 1.0,
+                "win_rate": positive / len(strat_rets),
+                "max_drawdown": max_drawdown,
+            }
+        )
+
+    with Path(args.output).open("w", encoding="utf-8", newline="") as fh:
+        fieldnames = ["ticker", "bars", "total_return", "win_rate", "max_drawdown"]
+        writer = csv.DictWriter(fh, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(results)
+
+
+def main() -> None:
+    args = parse_args()
+    if pd is not None:
+        _run_with_pandas(args)
+    else:
+        _run_without_pandas(args)
 
 
 if __name__ == "__main__":
