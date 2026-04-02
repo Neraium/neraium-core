@@ -116,7 +116,34 @@ From `neraium_markets/`:
 python main.py
 ```
 
-Runs the full pipeline through Day 7, prints validation/reliability/alignment summaries, and (with `--save-output`) writes CSV/JSON under `output/`.
+Runs the full pipeline through Day 8, prints validation/reliability/alignment plus cross-asset/market-state summaries, and (with `--save-output`) writes CSV/JSON under `output/`.
+
+
+
+## Day 8: cross-asset and market-wide structural intelligence
+
+Day 8 extends the Day 1-7 per-stream pipeline with a deterministic **system-level** layer.
+
+What Day 8 adds:
+
+- **Asset clustering** (`neraium/clustering.py`): computes an asset similarity matrix from returns, regime/action sequence similarity, and structural-score similarity; then assigns deterministic cluster IDs.
+- **Regime propagation** (`neraium/propagation.py`): detects regime-change events and counts source->target follow-on transitions in a forward window.
+- **Influence scoring**: computes asset-level and sector-level influence from propagation intensity and lead speed.
+- **Market-wide state synthesis** (`neraium/market_state.py`): aggregates cluster state, confidence, and influence-weighted risk pressure into:
+  - `market_regime_label`
+  - `market_confidence_score`
+  - `market_instability_score`
+  - `market_coherence_score`
+- **Market action posture**: maps market regime + confidence to `risk_on`, `cautious_risk_on`, `neutral`, `reduce_risk`, `defensive`, or `wait`.
+- **Usefulness comparison**: compares asset-level vs market-level usefulness proxies.
+
+This remains:
+
+- **read-only structural intelligence**
+- **not execution**
+- **not a production trading system**
+- **not optimized for PnL**
+- no broker APIs, live trading, ML, dashboard, or optimizer.
 
 ## Regenerate sample data
 
@@ -316,3 +343,15 @@ The main run also prints: average regime run length, top transitions by count, c
 ### Day 6 non-goals (unchanged)
 
 - Not execution, not broker APIs, not PnL optimization, not a production trading system.
+
+
+## Day 8 outputs (`--save-output`)
+
+- `output/asset_similarity_matrix.csv`
+- `output/asset_clusters.csv`
+- `output/cluster_summary.csv`
+- `output/regime_propagation.csv`
+- `output/asset_influence_scores.csv`
+- `output/sector_influence_scores.csv`
+- `output/market_state.csv`
+- `output/market_vs_asset_comparison.csv`
