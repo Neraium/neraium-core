@@ -13,3 +13,13 @@ Thumbs.db
 __pycache__/
 *.pyc
 .pytest_cache/
+# local runtime / generated artifacts
+neraium.db
+reports/
+regime_library_*.json
+ult
+# local runtime / generated artifacts
+neraium.db
+reports/
+regime_library_*.json
+ult
