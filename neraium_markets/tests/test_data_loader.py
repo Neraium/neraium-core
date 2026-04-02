@@ -1,15 +1,41 @@
-from config import DATE_COLUMN
+"""Tests for CSV loading."""
+
+from __future__ import annotations
+
+import pandas as pd
+
 from neraium.data_loader import load_all_assets, load_asset_csv
 
 
-def test_load_asset_csv_has_timestamp_column():
+def test_load_spy_has_required_columns():
     df = load_asset_csv("spy")
-    assert DATE_COLUMN in df.columns
-    assert df[DATE_COLUMN].is_monotonic_increasing
+    cols = set(df.columns.str.lower())
+    assert "timestamp" in cols
+    assert "close" in cols
+    assert "open" in cols
+    assert "high" in cols
+    assert "low" in cols
+    assert "volume" in cols
 
 
-def test_load_all_assets_returns_dict():
+def test_load_spy_sorted_ascending():
+    df = load_asset_csv("spy")
+    assert df["timestamp"].is_monotonic_increasing
+
+
+def test_load_spy_at_least_30_rows():
+    df = load_asset_csv("spy")
+    assert len(df) >= 30
+
+
+def test_load_all_assets_count_matches_config():
+    import config
+
     data = load_all_assets()
-    assert isinstance(data, dict)
-    assert "spy" in data
-    assert len(data) >= 17
+    assert len(data) == len(config.ASSETS)
+    assert set(data.keys()) == {a.lower() for a in config.ASSETS}
+
+
+def test_timestamps_are_datetime():
+    df = load_asset_csv("qqq")
+    assert pd.api.types.is_datetime64_any_dtype(df["timestamp"])
