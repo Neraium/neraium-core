@@ -1,77 +1,71 @@
-# Neraium Markets (Day 1)
+# Neraium Markets (Day 3)
 
-Read-only market intelligence skeleton: load OHLCV CSVs, validate them, and align close prices on a common timestamp index for downstream use.
+Read-only market structure intelligence MVP.
 
-## Purpose
+## What Day 3 adds
 
-- Ingest one CSV per asset from `sample_data/`
-- Validate schema, nulls, duplicates, sort order, and numeric closes
-- Outer-join all assets on `timestamp` into a single merged frame (timestamp + one column per ticker symbol)
+Day 3 turns the Day 2 feature table into a **structural snapshot** that scores:
 
-## What is not included (by design)
+- **Correlation drift** (`corr_drift_score`): baseline-vs-recent correlation geometry change.
+- **Lead-lag drift** (`lag_drift_score`): baseline-vs-recent best lag relationship change.
+- **Sector entropy** (`sector_entropy`): normalized entropy of sector absolute-return shares.
+- **Sector concentration** (`sector_concentration_score`): Herfindahl-like concentration of sector absolute-return shares.
+- **Instability** (`instability_score`): deterministic weighted blend of drift, concentration, dispersion, inverse breadth, and risk-off proxy.
+- **Coherence** (`coherence_score`): directional agreement across stress components.
 
-- Order execution, broker APIs, or trading logic
-- Machine learning or derived alpha features
-- Dashboards or HTTP APIs
-- Feature engineering beyond loading, validation, and alignment
+All formulas are explicit and deterministic; no machine learning is used.
 
-## CSV schema
+## What this MVP still does not include
 
-Each file is named `{asset}.csv` (lowercase, e.g. `spy.csv`). Required columns:
+- Trading execution
+- Broker APIs
+- Regime labels/classification (planned for Day 4)
+- Dashboards or web APIs
+- Machine learning models
 
-| Column     | Description        |
-|-----------|--------------------|
-| timestamp | Date (parsed as datetime); unique per file; ascending |
-| open      | Numeric            |
-| high      | Numeric            |
-| low       | Numeric            |
-| close     | Numeric (used for alignment) |
-| volume    | Numeric            |
+## Pipeline flow
 
-## Install
-
-From this directory (`neraium_markets/`):
-
-```bash
-python -m venv .venv
-.venv\Scripts\activate
-pip install -r requirements.txt
-```
-
-On Linux or macOS, activate with `source .venv/bin/activate`.
+1. Load OHLCV CSVs from `sample_data/`
+2. Validate data quality and schema
+3. Align close prices on timestamp
+4. Build Day 2 feature table
+5. Build Day 3 structural snapshot
+6. Print shape summaries + structural preview
+7. Optionally write CSV outputs
 
 ## Run
 
+From `neraium_markets/`:
+
 ```bash
-cd neraium_markets
 python main.py
 ```
 
-Loads all configured assets, validates, merges closes, prints shape and the first 10 rows. Exits with code 1 if validation fails.
-
-## Regenerate sample data
-
-Synthetic daily OHLCV (35 rows per asset) can be regenerated with:
+Optionally save outputs:
 
 ```bash
-cd neraium_markets
-python tools/generate_sample_data.py
+python main.py --save-output
 ```
+
+## Outputs
+
+With `--save-output`, files are written to:
+
+- `output/features.csv`
+- `output/structural_snapshot.csv`
 
 ## Tests
 
 ```bash
-cd neraium_markets
 python -m pytest tests -q
 ```
 
+Day 3 structural tests are in `tests/test_structure.py`.
+
 ## Layout
 
-- `config.py` – asset list and column names (`PipelineConfig` via Pydantic)
-- `main.py` – CLI entry: load, validate, align, print
-- `neraium/data_loader.py` – CSV loading
-- `neraium/validation.py` – checks + sample Pydantic row validation
-- `neraium/alignment.py` – outer join on timestamp
-- `neraium/schemas.py` – `OHLCVRow` model
-- `sample_data/` – one CSV per asset
-- `tests/` – pytest suite
+- `config.py` – asset list + Day 3 structural parameters
+- `main.py` – Day 3 pipeline entrypoint
+- `neraium/features.py` – Day 2 feature engineering
+- `neraium/structure.py` – Day 3 structural drift/concentration/instability/coherence scoring
+- `tests/test_structure.py` – Day 3 structural tests
