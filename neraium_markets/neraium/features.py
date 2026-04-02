@@ -6,14 +6,23 @@ import pandas as pd
 from config import CORE_EQUITY_ASSETS, CROSS_ASSET_CONTEXT, DATE_COLUMN, SECTOR_ASSETS
 
 
+def _price_col(df: pd.DataFrame, asset: str) -> str | None:
+    """Resolve ticker in aligned data (lowercase config vs uppercase merge columns)."""
+    if asset in df.columns:
+        return asset
+    au = asset.strip().upper()
+    return au if au in df.columns else None
+
+
 def compute_returns(df: pd.DataFrame, assets: list[str], windows: list[int] = [1, 5]) -> pd.DataFrame:
     """Add simple percentage return features for each asset and window."""
     out = df.copy()
     for asset in assets:
-        if asset not in out.columns:
+        col = _price_col(out, asset)
+        if col is None:
             continue
         for window in windows:
-            out[f"{asset}_ret_{window}d"] = out[asset].pct_change(periods=window)
+            out[f"{asset}_ret_{window}d"] = out[col].pct_change(periods=window)
     return out
 
 
@@ -39,10 +48,11 @@ def compute_breadth_features(df: pd.DataFrame, sector_assets: list[str]) -> pd.D
 
     above_cols: list[pd.Series] = []
     for asset in sector_assets:
-        if asset not in out.columns:
+        col = _price_col(out, asset)
+        if col is None:
             continue
-        ma20 = out[asset].rolling(window=20).mean()
-        above_cols.append((out[asset] > ma20).astype(float))
+        ma20 = out[col].rolling(window=20).mean()
+        above_cols.append((out[col] > ma20).astype(float))
 
     if above_cols:
         stacked = pd.concat(above_cols, axis=1)
@@ -85,8 +95,10 @@ def compute_cross_asset_features(df: pd.DataFrame) -> pd.DataFrame:
 
     out = compute_returns(out, assets=CROSS_ASSET_CONTEXT, windows=[1, 5])
 
-    if {"us10y", "us2y"}.issubset(out.columns):
-        out["rates_2s10s"] = out["us10y"] - out["us2y"]
+    c2 = _price_col(out, "us2y")
+    c10 = _price_col(out, "us10y")
+    if c2 is not None and c10 is not None:
+        out["rates_2s10s"] = out[c10] - out[c2]
     else:
         out["rates_2s10s"] = np.nan
 
