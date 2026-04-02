@@ -1,13 +1,17 @@
-from datetime import datetime
+from __future__ import annotations
+
+from datetime import datetime, timezone
+
+from neraium_core.alignment import StructuralEngine
 from neraium_core.pipeline import TelemetryPipeline
 from neraium_core.telemetry import TelemetryPayload
 
 
-def main():
+def main() -> None:
     pipeline = TelemetryPipeline()
 
     payload = TelemetryPayload(
-        timestamp=datetime.now(UTC),
+        timestamp=datetime.now(timezone.utc),
         signals={
             "cpu_usage": 42.5,
             "memory_usage": 71.2,
