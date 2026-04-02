@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Neraium Markets Days 7–8: multi-timeframe alignment, reliability, and cross-asset market state."""
+"""Neraium Markets Days 7–9: alignment, market state, and trajectory / path-aware warnings."""
 
 from __future__ import annotations
 
@@ -54,14 +54,18 @@ from neraium.propagation import (  # noqa: E402
 from neraium.reporting import (  # noqa: E402
     build_day6_reliability_report,
     build_day7_alignment_report,
+    build_day9_report,
     build_validation_report,
     save_day6_outputs,
     save_day7_outputs,
     save_day8_outputs,
+    save_day9_outputs,
     save_validation_outputs,
 )
 from neraium.signals import generate_signals  # noqa: E402
+from neraium.scenarios import label_scenario_paths, summarize_scenario_paths  # noqa: E402
 from neraium.structural import build_structural_snapshot  # noqa: E402
+from neraium.trajectories import compute_market_state_runs, compute_market_state_trajectory  # noqa: E402
 from neraium.timeframe_alignment import (  # noqa: E402
     apply_timeframe_confidence_adjustment,
     build_timeframe_alignment_table,
@@ -75,16 +79,27 @@ from neraium.transitions import (  # noqa: E402
     summarize_transition_quality,
 )
 from neraium.validation import validate_all  # noqa: E402
+from neraium.warnings import (  # noqa: E402
+    adjust_market_action_for_path,
+    compare_path_aware_vs_static_market_usefulness,
+    compute_early_warning_flags,
+    compute_path_persistence_score,
+    compute_reversal_risk_score,
+    generate_market_warning_level,
+    generate_path_aware_market_explanation,
+    path_aware_usefulness_breakdowns,
+    refine_early_warnings_with_reversal,
+)
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Run Neraium Markets pipeline (Day 7 alignment + Day 8 market-state)"
+        description="Run Neraium Markets pipeline (Day 7–9 alignment, market state, trajectories)"
     )
     parser.add_argument(
         "--save-output",
         action="store_true",
-        help="Save Day 5/6/7/8 CSV/JSON artifacts under output/",
+        help="Save Day 5/6/7/8/9 CSV/JSON artifacts under output/",
     )
     return parser.parse_args()
 
@@ -212,6 +227,29 @@ def main() -> int:
     market_state = generate_market_action_posture(market_state)
     market_state = generate_market_explanation(market_state)
     market_state = attach_spy_forward_returns(market_state, evaluated_i)
+
+    market_state = compute_market_state_trajectory(market_state)
+    market_state = compute_market_state_runs(market_state)
+    market_state = label_scenario_paths(market_state)
+    market_state = compute_path_persistence_score(market_state)
+    market_state = compute_reversal_risk_score(market_state)
+    market_state = compute_early_warning_flags(market_state)
+    market_state = refine_early_warnings_with_reversal(market_state)
+    market_state = generate_market_warning_level(market_state)
+    market_state = adjust_market_action_for_path(market_state)
+    market_state = generate_path_aware_market_explanation(market_state)
+
+    scenario_path_summary = summarize_scenario_paths(market_state)
+    path_comparison = compare_path_aware_vs_static_market_usefulness(market_state)
+    by_scen, by_wl = path_aware_usefulness_breakdowns(market_state)
+    day9_report = build_day9_report(
+        market_state,
+        scenario_path_summary,
+        path_comparison,
+        by_scen,
+        by_wl,
+    )
+
     market_vs_asset = compare_market_vs_asset_usefulness(asset_panel, market_state)
 
     alignment_df = build_timeframe_alignment_table(
@@ -334,6 +372,17 @@ def main() -> int:
     print("\nMarket vs asset usefulness comparison:")
     print(market_vs_asset.round(4).to_string(index=False))
 
+    print("\n--- Day 9 trajectory & path intelligence ---")
+    if "trajectory_direction" in market_state.columns:
+        print("\nTrajectory direction counts:")
+        print(market_state["trajectory_direction"].value_counts().to_string())
+    if "market_warning_level" in market_state.columns:
+        print("\nMarket warning level:")
+        print(market_state["market_warning_level"].value_counts().to_string())
+    print("\nPath vs static usefulness (mean 1d/5d/10d):")
+    print(path_comparison.round(4).to_string(index=False))
+    print("\nPath-adjusted improved mean usefulness:", day9_report.get("path_adjusted_improved_mean_usefulness", False))
+
     if args.save_output:
         base_paths = save_validation_outputs(
             signals_df=intraday["signals"],
@@ -367,9 +416,16 @@ def main() -> int:
             market_vs_asset_df=market_vs_asset,
             output_dir=_ROOT / "output",
         )
+        day9_paths = save_day9_outputs(
+            market_state_day9_df=market_state,
+            scenario_summary_df=scenario_path_summary,
+            path_comparison_df=path_comparison,
+            summary=day9_report,
+            output_dir=_ROOT / "output",
+        )
 
         print("\nSaved outputs:")
-        for dct in (base_paths, day6_paths, day7_paths, day8_paths):
+        for dct in (base_paths, day6_paths, day7_paths, day8_paths, day9_paths):
             for key, path in dct.items():
                 print(f"  {key}: {path}")
 

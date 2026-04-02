@@ -1,4 +1,4 @@
-"""Day 5 validation, Day 6 reliability, Day 7 alignment, and Day 8 market-state reporting."""
+"""Day 5 validation, Day 6 reliability, Day 7 alignment, Day 8 market-state, Day 9 trajectory reporting."""
 
 from __future__ import annotations
 
@@ -305,4 +305,66 @@ def save_day7_outputs(
     with paths["day7_summary"].open("w", encoding="utf-8") as fh:
         json.dump(summary, fh, indent=2, sort_keys=True)
 
+    return paths
+
+
+def build_day9_report(
+    market_df: pd.DataFrame,
+    scenario_summary: pd.DataFrame,
+    path_comparison: pd.DataFrame,
+    usefulness_by_scenario: dict[str, dict[str, float]],
+    usefulness_by_warning: dict[str, dict[str, float]],
+) -> dict[str, Any]:
+    """Aggregate Day 9 trajectory / warning / path-usefulness diagnostics."""
+    traj_counts = (
+        market_df.get("trajectory_direction", pd.Series(dtype=str)).value_counts().to_dict()
+        if "trajectory_direction" in market_df.columns
+        else {}
+    )
+    warn_counts = (
+        market_df.get("market_warning_level", pd.Series(dtype=str)).value_counts().to_dict()
+        if "market_warning_level" in market_df.columns
+        else {}
+    )
+    improved = False
+    if len(path_comparison) >= 2 and "version" in path_comparison.columns:
+        static = path_comparison[path_comparison["version"] == "static_market_action"]
+        path = path_comparison[path_comparison["version"] == "path_adjusted_market_action"]
+        if not static.empty and not path.empty:
+            u_s = static[["avg_usefulness_1d", "avg_usefulness_5d", "avg_usefulness_10d"]].mean(axis=1).iloc[0]
+            u_p = path[["avg_usefulness_1d", "avg_usefulness_5d", "avg_usefulness_10d"]].mean(axis=1).iloc[0]
+            improved = bool(u_p > u_s + 1e-9)
+
+    return {
+        "trajectory_direction_counts": {str(k): int(v) for k, v in traj_counts.items()},
+        "market_warning_level_counts": {str(k): int(v) for k, v in warn_counts.items()},
+        "path_adjusted_improved_mean_usefulness": improved,
+        "scenario_path_summary_rows": int(len(scenario_summary)),
+        "usefulness_by_scenario_path_path_adjusted": usefulness_by_scenario,
+        "usefulness_by_warning_level_path_adjusted": usefulness_by_warning,
+        "path_vs_static_comparison": path_comparison.to_dict(orient="records"),
+    }
+
+
+def save_day9_outputs(
+    market_state_day9_df: pd.DataFrame,
+    scenario_summary_df: pd.DataFrame,
+    path_comparison_df: pd.DataFrame,
+    summary: dict[str, Any],
+    output_dir: str | Path = "output",
+) -> dict[str, Path]:
+    """Persist Day 9 trajectory / scenario / path-comparison artifacts."""
+    out_dir = Path(output_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    paths = {
+        "market_state_day9": out_dir / "market_state_day9.csv",
+        "scenario_path_summary": out_dir / "scenario_path_summary.csv",
+        "path_comparison_summary": out_dir / "path_comparison_summary.csv",
+        "day9_summary": out_dir / "day9_trajectory_summary.json",
+    }
+    market_state_day9_df.to_csv(paths["market_state_day9"], index=False)
+    scenario_summary_df.to_csv(paths["scenario_path_summary"], index=False)
+    path_comparison_df.to_csv(paths["path_comparison_summary"], index=False)
+    with paths["day9_summary"].open("w", encoding="utf-8") as fh:
+        json.dump(summary, fh, indent=2, sort_keys=True)
     return paths
