@@ -32,13 +32,18 @@ def main() -> None:
     results: list[dict[str, float | str]] = []
     for ticker, group in df.groupby(args.ticker_column):
         g = group.copy().reset_index(drop=True)
+        if "timestamp" in g.columns:
+            g["timestamp"] = pd.to_datetime(g["timestamp"], errors="coerce", utc=True)
+            g = g.sort_values("timestamp").reset_index(drop=True)
+
         g["price"] = pd.to_numeric(g[args.price_column], errors="coerce")
         g = g.dropna(subset=["price"])
         if len(g) < 2:
             continue
 
+        signal_series = g["trading_signal"] if "trading_signal" in g.columns else "HOLD"
         g["ret"] = g["price"].pct_change().fillna(0.0)
-        g["exposure"] = g["trading_signal"].map(_target_exposure).fillna(1.0)
+        g["exposure"] = signal_series.map(_target_exposure).fillna(1.0)
         g["strat_ret"] = g["ret"] * g["exposure"].shift(1).fillna(1.0)
 
         equity = (1.0 + g["strat_ret"]).cumprod()
