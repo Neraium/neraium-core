@@ -67,5 +67,8 @@ def test_fleet_summary_ranking():
     )
     fs = build_fleet_summary(df)
     assert fs["asset_count"] == 2
+    assert fs["schema_version"] == "2"
     assert fs["top_asset"]["unit"] == 2
     assert fs["ranked_assets"][0]["fleet_rank"] == 1
+    assert fs["ranked_assets"][0]["fleet_priority_rank"] == 1
+    assert fs["ranked_assets"][0]["fleet_priority_score"] >= fs["ranked_assets"][1]["fleet_priority_score"]

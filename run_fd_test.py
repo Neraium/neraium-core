@@ -29,6 +29,8 @@ from neraium_core.fd004_transition import (
     save_transition_artifacts,
     summarize_fd004_transitions,
 )
+from neraium_core.product import build_fleet_summary
+
 from run_engine import StructuralEngine
 
 
@@ -112,7 +114,14 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         default=None,
         metavar="PATH",
-        help="Optional path for fleet priority summary JSON (per-asset ranks from slim replay rows).",
+        help="Optional path for fleet intelligence JSON (per-asset ranks from slim replay rows).",
+    )
+    parser.add_argument(
+        "--fleet-summary-csv",
+        type=Path,
+        default=None,
+        metavar="PATH",
+        help="Optional path for fleet intelligence CSV. Default: same path as --fleet-summary-json with a .csv extension.",
     )
     return parser.parse_args()
 
@@ -176,13 +185,16 @@ def flatten_slim_result(unit_id: int, cycle: int, result: dict[str, Any]) -> dic
     """Product-facing columns for FD replay CSV (no research-only flattening)."""
     experimental = _safe_get(result, "experimental_analytics") or {}
     early_warning = _safe_get(result, "early_warning") or {}
+    constraint = _safe_get(experimental, "constraint_analysis") or {}
 
     return {
         "unit": unit_id,
+        "asset_id": _safe_get(result, "asset_id"),
         "cycle": cycle,
         "state": _safe_get(result, "state"),
         "structural_drift_score": _safe_get(result, "structural_drift_score"),
         "latest_instability": _safe_get(result, "latest_instability"),
+        "lead_time_hours": _safe_get(result, "lead_time_hours"),
         "transition_pressure": _safe_get(result, "transition_pressure"),
         "transition_state": _safe_get(result, "transition_state"),
         "transition_outputs_actionable": _safe_get(result, "transition_outputs_actionable"),
@@ -209,6 +221,8 @@ def flatten_slim_result(unit_id: int, cycle: int, result: dict[str, Any]) -> dic
         "inspection_priority": _safe_get(result, "decision_layer", "inspection_priority"),
         "trust_score": _safe_get(result, "trust_layer", "trust_score"),
         "safe_to_act": _safe_get(result, "trust_layer", "safe_to_act"),
+        "lock_in_score": _safe_get(constraint, "lock_in_score"),
+        "point_of_no_return_risk": _safe_get(constraint, "point_of_no_return_risk"),
         "operational_status": _safe_get(result, "operational_recommendation", "status"),
         "operational_recommendation_confidence": _safe_get(result, "operational_recommendation", "recommendation_confidence"),
     }
@@ -502,8 +516,16 @@ def main() -> None:
         fs_path = args.fleet_summary_json.expanduser().resolve()
         fs_path.parent.mkdir(parents=True, exist_ok=True)
         fleet_payload = build_fleet_summary(pd.DataFrame(all_slim))
-        fs_path.write_text(json.dumps(fleet_payload, indent=2), encoding="utf-8")
+        fs_path.write_text(json.dumps(fleet_payload, indent=2, default=str), encoding="utf-8")
         print(f"Fleet summary JSON: {fs_path}")
+        csv_path = (
+            args.fleet_summary_csv.expanduser().resolve()
+            if args.fleet_summary_csv is not None
+            else fs_path.with_suffix(".csv")
+        )
+        csv_path.parent.mkdir(parents=True, exist_ok=True)
+        pd.DataFrame(fleet_payload["ranked_assets"]).to_csv(csv_path, index=False)
+        print(f"Fleet summary CSV: {csv_path}")
 
     print("CMAPSS replay complete")
     print(f"Input path: {input_path}")
