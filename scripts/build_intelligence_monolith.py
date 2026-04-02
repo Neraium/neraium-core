@@ -1,4 +1,4 @@
-"""Build intelligence_layer_monolith.py (single copy-paste bundle)."""
+"""Build monolith exports under experiments/monoliths (single copy-paste bundles)."""
 from __future__ import annotations
 
 import re
@@ -23,7 +23,7 @@ Neraium SII intelligence layer - single file for copy/paste.
 Dependencies: numpy only. Regime library defaults to ./regime_library.json
 
 For correlation / drift / spectral / composite math only (no StructuralEngine),
-see core_math_engine_monolith.py (rebuild with this script).
+see experiments/monoliths/core_math_engine_monolith.py (rebuild with this script).
 
 Usage:
     engine = StructuralEngine(baseline_window=50, recent_window=12)
@@ -53,7 +53,7 @@ import numpy as np
     parts.append(header)
 
     blocks: list[tuple[str, Path]] = [
-        ("# --- regime_store ---\n", root / "regime_store.py"),
+        ("# --- regime_store ---\n", root / "neraium_core" / "regime_store.py"),
         ("# --- scoring ---\n", root / "neraium_core" / "scoring.py"),
         ("# --- geometry ---\n", root / "neraium_core" / "geometry.py"),
         ("# --- early_warning ---\n", root / "neraium_core" / "early_warning.py"),
@@ -86,7 +86,7 @@ import numpy as np
     parts.append("# --- StructuralEngine (alignment.py) ---\n")
     parts.append("".join(lines[start:]))
 
-    outp = root / "intelligence_layer_monolith.py"
+    outp = root / "experiments" / "monoliths" / "intelligence_layer_monolith.py"
     outp.write_text("".join(parts), encoding="utf-8")
     n = len(outp.read_text(encoding="utf-8").splitlines())
     print(f"Wrote {outp} ({n} lines)")
@@ -107,7 +107,7 @@ signatures, early-warning and instability forecasting helpers, observational
 causal attribution scores.
 
 Does NOT include: StructuralEngine, data-quality gate, decision_layer, or
-RegimeStore JSON persistence. Use intelligence_layer_monolith.py for the full
+RegimeStore JSON persistence. Use experiments/monoliths/intelligence_layer_monolith.py for the full
 runtime pipeline.
 """
 
@@ -147,7 +147,7 @@ import numpy as np
         chunks.append(strip_future(p.read_text(encoding="utf-8")))
         chunks.append("\n\n")
 
-    outp = root / "core_math_engine_monolith.py"
+    outp = root / "experiments" / "monoliths" / "core_math_engine_monolith.py"
     outp.write_text("".join(chunks), encoding="utf-8")
     n = len(outp.read_text(encoding="utf-8").splitlines())
     print(f"Wrote {outp} ({n} lines)")

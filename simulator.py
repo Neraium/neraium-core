@@ -1,19 +1,13 @@
-import requests
-import random
-import time
+#!/usr/bin/env python3
+"""Compatibility wrapper for the moved telemetry simulator script."""
 
-URL = "http://127.0.0.1:8000/telemetry"
+from __future__ import annotations
 
-while True:
-    payload = {
-        "cpu_usage": random.randint(10, 100),
-        "memory_usage": random.randint(20, 100)
-    }
+import runpy
+from pathlib import Path
 
-    try:
-        r = requests.post(URL, json=payload)
-        print("Sent:", payload, "Response:", r.json())
-    except Exception as e:
-        print("Error:", e)
+_ROOT = Path(__file__).resolve().parent
+_TARGET = _ROOT / "experiments" / "scripts" / "simulator.py"
 
-    time.sleep(1)
+if __name__ == "__main__":
+    runpy.run_path(str(_TARGET), run_name="__main__")
