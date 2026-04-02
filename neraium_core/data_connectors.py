@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import os
 from abc import ABC, abstractmethod
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, Iterable, List
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
@@ -122,6 +122,90 @@ class AlphaVantageRESTConnector(LiveMarketConnector):
         return bars
 
 
+class PolygonRESTConnector(LiveMarketConnector):
+    """Fetch latest minute bars from Polygon REST API."""
+
+    def __init__(
+        self,
+        *,
+        api_key: str | None = None,
+        timeout_seconds: int = 15,
+    ) -> None:
+        self.api_key = (api_key or os.getenv("POLYGON_API_KEY", "")).strip()
+        if not self.api_key:
+            raise LiveConnectorError(
+                "Missing API key. Set POLYGON_API_KEY or pass --api-key for provider=polygon."
+            )
+        self.timeout_seconds = timeout_seconds
+
+    def _fetch_symbol_payload(self, symbol: str) -> dict[str, Any]:
+        now = datetime.now(timezone.utc)
+        date_to = now.date().isoformat()
+        date_from = (now - timedelta(days=5)).date().isoformat()
+        params = {
+            "adjusted": "true",
+            "sort": "desc",
+            "limit": "1",
+            "apiKey": self.api_key,
+        }
+        url = (
+            "https://api.polygon.io/v2/aggs/ticker/"
+            f"{symbol}/range/1/minute/{date_from}/{date_to}?{urlencode(params)}"
+        )
+
+        try:
+            with urlopen(url, timeout=self.timeout_seconds) as response:
+                raw = response.read().decode("utf-8")
+        except (HTTPError, URLError) as exc:
+            raise LiveConnectorError(f"Network error while requesting {symbol}: {exc}") from exc
+
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError as exc:
+            raise LiveConnectorError(f"Invalid JSON response for {symbol}") from exc
+
+        status = str(data.get("status", "")).upper()
+        if status not in {"OK", "DELAYED"}:
+            err = data.get("error") or data.get("message") or "unknown provider error"
+            raise LiveConnectorError(f"Provider rejected symbol {symbol}: {err}")
+        return data
+
+    def _extract_latest_bar(self, symbol: str, payload: dict[str, Any]) -> dict[str, Any]:
+        results = payload.get("results")
+        if not isinstance(results, list) or not results:
+            raise LiveConnectorError(f"No bar data found for {symbol}")
+        latest = results[0]
+
+        try:
+            open_px = float(latest.get("o"))
+            high_px = float(latest.get("h"))
+            low_px = float(latest.get("l"))
+            close_px = float(latest.get("c"))
+            volume = float(latest.get("v"))
+            ts_ms = int(latest.get("t"))
+        except (TypeError, ValueError) as exc:
+            raise LiveConnectorError(f"Malformed OHLCV payload for {symbol}") from exc
+
+        ts = datetime.fromtimestamp(ts_ms / 1000.0, tz=timezone.utc)
+        return {
+            "timestamp": ts,
+            "ticker": symbol,
+            "open": open_px,
+            "high": high_px,
+            "low": low_px,
+            "close": close_px,
+            "volume": volume,
+            "value": close_px,
+        }
+
+    def fetch_latest_bars(self, tickers: list[str]) -> list[dict[str, Any]]:
+        bars: list[dict[str, Any]] = []
+        for symbol in tickers:
+            payload = self._fetch_symbol_payload(symbol)
+            bars.append(self._extract_latest_bar(symbol=symbol, payload=payload))
+        return bars
+
+
 class MockLiveConnector(LiveMarketConnector):
     """Local deterministic connector used for smoke tests and offline development."""
 
@@ -160,5 +244,6 @@ __all__ = [
     "LiveMarketConnector",
     "LiveConnectorError",
     "AlphaVantageRESTConnector",
+    "PolygonRESTConnector",
     "MockLiveConnector",
 ]
