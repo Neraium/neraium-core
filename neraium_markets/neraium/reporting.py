@@ -195,3 +195,79 @@ def save_day6_outputs(
         json.dump(summary, fh, indent=2, sort_keys=True)
 
     return paths
+
+
+def build_day7_alignment_report(alignment_df: pd.DataFrame) -> dict[str, Any]:
+    """Aggregate Day 7 multi-timeframe alignment diagnostics."""
+    df = alignment_df.copy()
+
+    regime_counts = df.get("regime_alignment_label", pd.Series(dtype=str)).value_counts().to_dict()
+    action_counts = df.get("action_alignment_label", pd.Series(dtype=str)).value_counts().to_dict()
+
+    suppression_count = int(df.get("alignment_filter_flag", pd.Series(dtype=float)).fillna(0).sum())
+
+    conflict_patterns: dict[str, int] = {}
+    if {"action_daily", "action_1h", "action_15m"}.issubset(df.columns):
+        conflict_mask = (
+            df["action_daily"].astype(str).isin({"avoid_risk", "reduce_exposure", "wait"})
+            & df["action_15m"].astype(str).isin({"lean_long", "lean_short"})
+        )
+        if conflict_mask.any():
+            c = (
+                df.loc[conflict_mask, ["action_daily", "action_1h", "action_15m"]]
+                .astype(str)
+                .value_counts()
+                .head(5)
+            )
+            conflict_patterns = {" | ".join(k): int(v) for k, v in c.items()}
+
+    high_value_patterns: dict[str, float] = {}
+    useful_col = "aligned_useful_5d" if "aligned_useful_5d" in df.columns else "action_useful_5d"
+    if useful_col in df.columns and "regime_alignment_label" in df.columns:
+        hv = (
+            df.groupby(["regime_alignment_label", "action_alignment_label"], observed=False)[useful_col]
+            .mean()
+            .sort_values(ascending=False)
+            .head(5)
+        )
+        high_value_patterns = {f"{a} | {b}": float(v) for (a, b), v in hv.items()}
+
+    comparison_rows = []
+    if "comparison_version" in df.columns:
+        comparison_rows = df.drop_duplicates("comparison_version")[
+            [c for c in df.columns if c.startswith("comparison_") or c == "comparison_version"]
+        ].to_dict(orient="records")
+
+    return {
+        "regime_alignment_counts": {str(k): int(v) for k, v in regime_counts.items()},
+        "action_alignment_counts": {str(k): int(v) for k, v in action_counts.items()},
+        "average_adjusted_confidence": float(df.get("adjusted_confidence_score", pd.Series([0.0])).mean()),
+        "filter_suppression_count": suppression_count,
+        "aligned_vs_unaligned_summary": comparison_rows,
+        "most_common_conflict_patterns": conflict_patterns,
+        "highest_value_alignment_patterns": high_value_patterns,
+    }
+
+
+def save_day7_outputs(
+    alignment_df: pd.DataFrame,
+    comparison_df: pd.DataFrame,
+    summary: dict[str, Any],
+    output_dir: str | Path = "output",
+) -> dict[str, Path]:
+    """Write Day 7 alignment outputs to CSV/JSON."""
+    out_dir = Path(output_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    paths = {
+        "timeframe_alignment": out_dir / "timeframe_alignment.csv",
+        "alignment_comparison": out_dir / "alignment_comparison.csv",
+        "day7_summary": out_dir / "day7_alignment_summary.json",
+    }
+
+    alignment_df.to_csv(paths["timeframe_alignment"], index=False)
+    comparison_df.to_csv(paths["alignment_comparison"], index=False)
+    with paths["day7_summary"].open("w", encoding="utf-8") as fh:
+        json.dump(summary, fh, indent=2, sort_keys=True)
+
+    return paths
