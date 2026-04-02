@@ -14,6 +14,7 @@ from neraium_core.data_connectors import (
     LiveConnectorError,
     LiveMarketConnector,
     MockLiveConnector,
+    PolygonRESTConnector,
 )
 from neraium_core.live_runner import process_live_frame
 from neraium_core.stock_market_adapter import build_stock_frame
@@ -53,10 +54,11 @@ class _FallbackStructuralEngine:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run Neraium against live/near-live stock bars (analytics only).")
     parser.add_argument("--tickers", required=True, help="Comma-separated tickers, e.g. AAPL,MSFT")
-    parser.add_argument("--provider", default=os.getenv("LIVE_DATA_PROVIDER", "alphavantage"), choices=["alphavantage", "mock"])
+    parser.add_argument("--provider", default=os.getenv("LIVE_DATA_PROVIDER", "polygon"), choices=["polygon", "alphavantage", "mock"])
     parser.add_argument("--poll-interval", type=float, default=float(os.getenv("LIVE_POLL_INTERVAL", "15")), help="Polling interval in seconds")
-    parser.add_argument("--provider-interval", default=os.getenv("ALPHAVANTAGE_INTERVAL", "1min"), help="Provider bar interval, e.g. 1min")
-    parser.add_argument("--api-key", default=os.getenv("ALPHAVANTAGE_API_KEY"), help="Provider API key (or set env var)")
+    parser.add_argument("--provider-interval", default=os.getenv("ALPHAVANTAGE_INTERVAL", "1min"), help="Alpha Vantage bar interval, e.g. 1min")
+    parser.add_argument("--api-key", default=None, help="Provider API key override (else env var is used)")
+    parser.add_argument("--fallback-to-mock", action="store_true", help="Use mock connector if live network/API calls fail")
     parser.add_argument("--output-log", default=None, help="Optional CSV file to append live analytics rows")
     parser.add_argument("--max-iterations", type=int, default=0, help="Optional max polling iterations for smoke tests; 0 = run forever")
     parser.add_argument("--baseline-window", type=int, default=40)
@@ -73,8 +75,13 @@ def _timestamp_to_epoch(ts: datetime) -> float:
 def _build_connector(args: argparse.Namespace) -> LiveMarketConnector:
     if args.provider == "mock":
         return MockLiveConnector()
+    if args.provider == "polygon":
+        return PolygonRESTConnector(api_key=args.api_key or os.getenv("POLYGON_API_KEY"))
     if args.provider == "alphavantage":
-        return AlphaVantageRESTConnector(api_key=args.api_key, interval=args.provider_interval)
+        return AlphaVantageRESTConnector(
+            api_key=args.api_key or os.getenv("ALPHAVANTAGE_API_KEY"),
+            interval=args.provider_interval,
+        )
     raise LiveConnectorError(f"Unsupported provider: {args.provider}")
 
 
@@ -138,6 +145,9 @@ def main() -> None:
             bars = connector.fetch_latest_bars(tickers)
         except LiveConnectorError as exc:
             print(f"[{cycle_started.isoformat()}] live fetch error: {exc}")
+            if args.fallback_to_mock and not isinstance(connector, MockLiveConnector):
+                print(f"[{cycle_started.isoformat()}] switching to mock connector fallback mode.")
+                connector = MockLiveConnector()
             if args.max_iterations and iteration >= args.max_iterations:
                 break
             time.sleep(args.poll_interval)
