@@ -75,16 +75,21 @@ def generate_signals(structural_df: pd.DataFrame) -> pd.DataFrame:
     df = generate_action_posture(df)
     df["explanation"] = df.apply(_build_explanation, axis=1)
 
-    out_cols = [
+    # Preserve Day 2/3 feature and structural columns for downstream validation layers.
+    # Ensure canonical signal fields are present and deduplicate if any overlap exists.
+    preferred_front = [
         DATE_COLUMN,
         "regime_label",
         "confidence_score",
+        "gate_action",
         "action_posture",
         "instability_score",
         "coherence_score",
         "explanation",
     ]
-    out = df[out_cols].sort_values(DATE_COLUMN, ascending=True).reset_index(drop=True)
+    keep_cols = preferred_front + [c for c in df.columns if c not in preferred_front]
+    out = df[keep_cols].sort_values(DATE_COLUMN, ascending=True).reset_index(drop=True)
+    out = out.loc[:, ~out.columns.duplicated()]
     return out
 
 

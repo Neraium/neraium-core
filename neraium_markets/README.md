@@ -1,6 +1,6 @@
 # Neraium Markets
 
-Read-only market intelligence pipeline: load OHLCV CSVs, validate, align closes, engineer features, build a structural snapshot, then produce **regime-aware signals** with confidence, an interpretive gate, and action posture (Day 4).
+Read-only market intelligence pipeline: load OHLCV CSVs, validate, align closes, engineer features, build a structural snapshot, produce **regime-aware signals**, then run a deterministic **Day 5 validation layer** (forward outcomes, usefulness scoring, confidence calibration, and baseline comparison).
 
 ## Pipeline overview
 
@@ -160,3 +160,73 @@ Day 3 structural utilities are covered in `tests/test_structure.py` (imports fro
 - `sample_data/` — one CSV per asset
 - `output/` — generated CSVs (created on run)
 - `tests/` — pytest suite
+
+
+## Day 5 validation (first backtesting layer)
+
+Day 5 adds *validation*, not trade execution. The goal is to test whether the Day 4 `regime_label -> action_posture` mapping is coherent, stable, and directionally useful versus naive alternatives.
+
+### What Day 5 now does
+
+1. **Forward outcome evaluation**
+   - Computes `fwd_ret_1d`, `fwd_ret_5d`, `fwd_ret_10d` from `spy`.
+2. **Action usefulness scoring (MVP heuristic)**
+   - Writes `action_useful_1d`, `action_useful_5d`, `action_useful_10d` in `{-1, 0, 1}`.
+   - `1` useful, `0` neutral, `-1` harmful.
+3. **Confidence calibration summary**
+   - Bins confidence into `[0.0-0.2, ..., 0.8-1.0]`.
+   - Reports counts and average usefulness by bin, plus a monotonicity diagnostic.
+4. **Baseline comparison**
+   - Trend-only baseline (`spy_ret_5d`).
+   - Volatility-only baseline (`spy_vol_10d`).
+   - Breadth-only baseline (`breadth_pct_above_20dma`).
+   - Compares avg usefulness, hit rate, non-neutral count, abstention rate.
+5. **Validation report summary**
+   - Aggregates regime/action counts, average confidence, usefulness by horizon/regime, calibration table, and baseline table.
+
+### Important non-goals (still not included)
+
+- **Not a trading backtester** (no fills/slippage/fees/position accounting).
+- **Not execution-aware** (no order simulation, no broker integration).
+- **Not a PnL engine yet** (usefulness is directional heuristic quality, not returns attribution).
+- No ML / optimizer / dashboards in this Day 5 slice.
+
+### Day 5 pipeline flow
+
+From `main.py`:
+
+1. load data
+2. validate
+3. align
+4. build features
+5. build structural snapshot
+6. classify regime
+7. compute confidence
+8. apply interpretive gate
+9. generate signals
+10. compute forward returns
+11. score action usefulness
+12. evaluate confidence calibration
+13. compare to baselines
+14. build validation report
+
+### Run Day 5 pipeline
+
+```bash
+python main.py
+```
+
+Optional output files:
+
+```bash
+python main.py --save-output
+```
+
+### Day 5 outputs
+
+When `--save-output` is set:
+
+- `output/signals_with_forward_returns.csv`
+- `output/confidence_calibration.csv`
+- `output/baseline_comparison.csv`
+- `output/validation_summary.json`
