@@ -7,7 +7,7 @@ def main():
     pipeline = TelemetryPipeline()
 
     payload = TelemetryPayload(
-        timestamp=datetime.utcnow(),
+        timestamp=datetime.now(UTC),
         signals={
             "cpu_usage": 42.5,
             "memory_usage": 71.2,
