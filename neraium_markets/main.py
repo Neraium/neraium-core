@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import argparse
 import sys
 from pathlib import Path
 
@@ -19,7 +20,21 @@ from neraium.structural import build_structural_snapshot  # noqa: E402
 from neraium.validation import validate_all  # noqa: E402
 
 
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(
+        description="Run Neraium Markets pipeline: features, structural snapshot, regime signals"
+    )
+    parser.add_argument(
+        "--save-output",
+        action="store_true",
+        help="Also save output/features.csv and output/structural_snapshot.csv",
+    )
+    return parser.parse_args()
+
+
 def main() -> int:
+    args = parse_args()
+
     data = load_all_assets()
     errors = validate_all(data)
     if errors:
@@ -47,6 +62,15 @@ def main() -> int:
     out_path = save_signals_csv(signals)
     print()
     print("Wrote:", out_path.resolve())
+
+    if args.save_output:
+        out_dir = _ROOT / "output"
+        out_dir.mkdir(parents=True, exist_ok=True)
+        features.to_csv(out_dir / "features.csv", index=False)
+        structural.to_csv(out_dir / "structural_snapshot.csv", index=False)
+        print("Also saved:", out_dir / "features.csv")
+        print("Also saved:", out_dir / "structural_snapshot.csv")
+
     return 0
 
 
