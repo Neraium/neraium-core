@@ -1,6 +1,6 @@
 # Neraium Markets
 
-Read-only market intelligence pipeline: load OHLCV CSVs, validate, align closes, engineer features, build a structural snapshot, produce **regime-aware signals**, run a deterministic **Day 5 validation layer** (forward outcomes, usefulness scoring, calibration, baselines), then **Day 6 reliability analysis** (regime persistence, transitions, signal stability, false-positive diagnostics, and filtered signals).
+Read-only market intelligence pipeline: load OHLCV CSVs, validate, align closes, engineer features, build a structural snapshot, produce **regime-aware signals**, run a deterministic **Day 5 validation layer** (forward outcomes, usefulness scoring, calibration, baselines), then **Day 6 reliability analysis** (regime persistence, transitions, signal stability, false-positive diagnostics, and filtered signals), and **Day 7 multi-timeframe confirmation** (daily/1h/15m alignment, agreement scores, confidence adjustment, and alignment-aware filtering).
 
 ## Pipeline overview
 
@@ -95,7 +95,7 @@ pip install -r requirements.txt
 
 On Linux or macOS: `source .venv/bin/activate`.
 
-## Pipeline flow (Days 1–6)
+## Pipeline flow (Days 1–7)
 
 1. Load OHLCV CSVs from `sample_data/`
 2. Validate data quality and schema
@@ -106,6 +106,7 @@ On Linux or macOS: `source .venv/bin/activate`.
 7. Compute forward returns and action usefulness (Day 5)
 8. Confidence calibration and baseline comparison (Day 5)
 9. **Day 6:** regime runs & persistence, transition matrix & transition-quality stats, signal stability, false-positive flags, filtered postures, filtered vs unfiltered comparison, reliability report
+10. **Day 7:** run daily/1h/15m pipelines, align timeframe states on 15m timestamps, compute regime/action agreement, adjust confidence, apply alignment filter, compare aligned vs unaligned usefulness
 
 ## Run
 
@@ -115,7 +116,7 @@ From `neraium_markets/`:
 python main.py
 ```
 
-Runs the full pipeline through Day 6, prints validation and reliability summaries, and (with `--save-output`) writes CSV/JSON under `output/`.
+Runs the full pipeline through Day 7, prints validation/reliability/alignment summaries, and (with `--save-output`) writes CSV/JSON under `output/`.
 
 ## Regenerate sample data
 
@@ -127,8 +128,11 @@ python tools/generate_sample_data.py
 
 ## Outputs
 
-- **Default:** `output/signals.csv`
-- **With `--save-output`:** also `output/features.csv` and `output/structural_snapshot.csv`
+- **Day 7 output files (`--save-output`):**
+  - `output/timeframe_alignment.csv`
+  - `output/alignment_comparison.csv`
+  - `output/day7_alignment_summary.json`
+- Existing Day 5/6 artifacts are still produced.
 
 ## Tests
 
@@ -257,6 +261,31 @@ Heuristic flags (documented in `neraium/filtering.py`) mark low persistence, con
 `compare_filtered_vs_unfiltered` reports average usefulness by horizon, active (non-`wait`/`watch`) counts, abstention rate (share of neutral usefulness), and average confidence on kept rows, for both versions.
 
 ### Day 6 pipeline steps (main)
+
+---
+
+## Day 7 multi-timeframe alignment (confirmation logic only)
+
+Day 7 adds **cross-timeframe confirmation**, not execution.
+
+- **Timeframes:** daily, 1h, 15m.
+- **Alignment rule:** each 15m row is matched to the most recent 1h and daily row at or before that timestamp.
+- **Agreement layers:**
+  - `regime_agreement_score` + `regime_alignment_label` (`strong_alignment`, `medium_alignment`, `weak_alignment`)
+  - `action_agreement_score` + `action_alignment_label`
+- **Adjusted confidence:** starts from 15m confidence, then applies transparent boosts/haircuts from regime/action agreement and higher-timeframe conflict.
+- **Alignment filter:** suppresses aggressive lower-timeframe posture when higher-timeframe posture is defensive, or when alignment is weak with low adjusted confidence.
+- **Comparison:** `unaligned` vs `alignment_filtered` summaries for usefulness, abstention, active-signal count, and average confidence.
+
+### Day 7 non-goals (explicit)
+
+- No broker APIs
+- No live trading execution
+- No ML
+- No portfolio optimization
+- No production trading infrastructure
+
+This is a deterministic trust-calibration/confirmation layer for offline analysis.
 
 14. compute regime runs  
 15. summarize persistence  
