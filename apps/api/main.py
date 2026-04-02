@@ -72,6 +72,12 @@ from .schemas.ingest import (
 )
 from .schemas.integrations import PullIntegrationStartRequest, PullIntegrationStatusEnvelope
 from .schemas.runs import ActivateRunRequest, CreateRunRequest, LockBaselineRequest, RunEnvelope, RunsEnvelope, UpdateRunRequest
+from .schemas.decision_contract import (
+    DecisionContractHistoryEnvelope,
+    DecisionContractRecommendationEnvelope,
+    DecisionContractResultsEnvelope,
+    DecisionContractStateEnvelope,
+)
 
 from .integration import (
     IntegrationMappingError,
@@ -128,9 +134,57 @@ from neraium_core.ingestion_normalization import (
     normalize_external_payload,
 )
 from neraium_core.pipeline import infer_csv_mapping_stage, issue_to_dict, parse_csv_rows, validate_csv_mapping_stage
+from neraium_core.output_contract import build_decision_contract_v2
 
 
 logger = logging.getLogger(__name__)
+
+
+DECISION_CONTRACT_V2_EXAMPLE = {
+    "contract_version": "decision-contract.v2",
+    "structural_state": {
+        "cycle": 42,
+        "timestamp": "2026-01-01T00:42:00+00:00",
+        "risk_level": "MEDIUM",
+        "trend": "RISING",
+        "instability_index": 0.812341,
+        "events": ["risk_escalated", "deterioration_detected"],
+    },
+    "confidence_quality": {
+        "overall_confidence": 0.67,
+        "confidence_band": "medium",
+        "low_confidence": False,
+        "confidence_reason": "Derived from recommendation/model confidence after bounds-checking.",
+        "unknowns": [],
+    },
+    "evidence_explanation": {
+        "summary": "Instability trend is rising with repeated pressure/temperature divergence.",
+        "top_drivers": [{"driver": "pressure", "score": 0.42}],
+        "evidence": [{"code": "risk_escalated", "detail": "Event flag observed: risk_escalated", "source": "derived_event"}],
+        "unknowns": [],
+    },
+    "operator_action": {
+        "recommendation_available": True,
+        "recommended_action": "inspect_cooling_loop",
+        "recommended_target": "cooling_loop_a",
+        "urgency": "high",
+        "priority": "p1",
+        "rationale": "Converging structural evidence indicates elevated deterioration risk.",
+        "operator_message": "Converging structural evidence indicates elevated deterioration risk.",
+        "operator_note": "Recommendations are advisory outputs intended to support, not replace, qualified operator judgment and site-specific procedures.",
+        "requires_human_review": True,
+    },
+    "policy": {
+        "canonical_schema_version": "2026-03-29",
+        "decision_policy_version": "decision-policy.v2.0",
+        "alert_policy": {"trigger_hit_threshold": 3},
+    },
+    "data_quality": {
+        "has_warnings": True,
+        "warnings": [{"code": "dq_summary_unavailable", "severity": "info", "message": "No explicit data_quality_summary available in canonical history; treat confidence conservatively."}],
+    },
+    "legacy_aliases": {"risk_assessment": {"risk_level": "MEDIUM"}},
+}
 
 
 def _alert_thresholds() -> tuple[float, float]:
@@ -174,6 +228,14 @@ def _compact_result_view(result: dict[str, Any] | None) -> dict[str, Any] | None
         trimmed.pop(key, None)
     return trimmed
 
+
+
+
+def _decision_contract_v2_payload(result: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not isinstance(result, dict):
+        return None
+    canonical = result.get("canonical_output") if isinstance(result.get("canonical_output"), dict) else result
+    return build_decision_contract_v2(canonical if isinstance(canonical, dict) else None)
 
 def _utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -767,6 +829,54 @@ def create_app(
             "timestamp": state.get("timestamp"),
         }
 
+    @app.get(
+        "/v2/state",
+        response_model=DecisionContractStateEnvelope,
+        summary="Get normalized decision contract state (v2)",
+        responses={200: {"content": {"application/json": {"example": {"state": DECISION_CONTRACT_V2_EXAMPLE}}}}},
+    )
+    def get_state_v2(
+        run_id: str | None = Query(default=None),
+        customer_id: str | None = Query(default=None),
+    ) -> dict[str, Any]:
+        resolved_customer = resolve_customer_id(customer_id)
+        resolved_run = resolve_run_id(service_instance, run_id, customer_id=resolved_customer)
+        state = service_instance.get_current_state(run_id=resolved_run, customer_id=resolved_customer)
+        return {"state": _decision_contract_v2_payload(state)}
+
+    @app.get(
+        "/v2/history",
+        response_model=DecisionContractHistoryEnvelope,
+        summary="Get normalized decision contract history (v2)",
+        responses={200: {"content": {"application/json": {"example": {"count": 1, "history": [DECISION_CONTRACT_V2_EXAMPLE]}}}}},
+    )
+    def get_history_v2(
+        limit: int = Query(default=100, ge=1, le=1000),
+        run_id: str | None = Query(default=None),
+        customer_id: str | None = Query(default=None),
+    ) -> dict[str, Any]:
+        resolved_customer = resolve_customer_id(customer_id)
+        resolved_run = resolve_run_id(service_instance, run_id, customer_id=resolved_customer)
+        history = service_instance.get_recent_history(limit=limit, run_id=resolved_run, customer_id=resolved_customer)
+        contracts = [item for item in (_decision_contract_v2_payload(row) for row in history) if isinstance(item, dict)]
+        return {"count": len(contracts), "history": contracts}
+
+    @app.get(
+        "/v2/recommendation",
+        response_model=DecisionContractRecommendationEnvelope,
+        summary="Get operator action from normalized decision contract (v2)",
+        responses={200: {"content": {"application/json": {"example": {"operator_action": DECISION_CONTRACT_V2_EXAMPLE["operator_action"]}}}}},
+    )
+    def get_recommendation_v2(
+        run_id: str | None = Query(default=None),
+        customer_id: str | None = Query(default=None),
+    ) -> dict[str, Any]:
+        resolved_customer = resolve_customer_id(customer_id)
+        resolved_run = resolve_run_id(service_instance, run_id, customer_id=resolved_customer)
+        state = service_instance.get_current_state(run_id=resolved_run, customer_id=resolved_customer)
+        contract = _decision_contract_v2_payload(state)
+        return {"operator_action": contract.get("operator_action") if isinstance(contract, dict) else None}
+
     @app.post("/assistant/summary", response_model=AssistantResponse)
     def assistant_summary(
         payload: AssistantRequest,
@@ -898,6 +1008,42 @@ def create_app(
             results = [_compact_result_view(r) for r in results]
         latest = results[0] if results else None
         return _results_envelope(results, latest=latest)
+
+    @app.get(
+        "/v2/results/latest",
+        response_model=DecisionContractResultsEnvelope,
+        summary="Get latest normalized decision contract result (v2)",
+        responses={200: {"content": {"application/json": {"example": {"count": 1, "latest": DECISION_CONTRACT_V2_EXAMPLE, "results": [DECISION_CONTRACT_V2_EXAMPLE]}}}}},
+    )
+    def get_latest_v2(
+        run_id: str | None = Query(default=None),
+        customer_id: str | None = Query(default=None),
+        site_id: str | None = Query(default=None),
+    ) -> dict[str, Any]:
+        resolved_customer = resolve_customer_id(customer_id)
+        resolved = resolve_run_id(service_instance, run_id, customer_id=resolved_customer)
+        latest = service_instance.get_latest_result(run_id=resolved, customer_id=resolved_customer, site_id=site_id)
+        latest_contract = _decision_contract_v2_payload(latest)
+        rows = [latest_contract] if isinstance(latest_contract, dict) else []
+        return {"count": len(rows), "latest": latest_contract, "results": rows}
+
+    @app.get(
+        "/v2/results/{result_id}",
+        response_model=DecisionContractStateEnvelope,
+        summary="Get normalized decision contract by result id (v2)",
+        responses={200: {"content": {"application/json": {"example": {"state": DECISION_CONTRACT_V2_EXAMPLE}}}}},
+    )
+    def get_result_by_id_v2(
+        result_id: int,
+        run_id: str | None = Query(default=None),
+        customer_id: str | None = Query(default=None),
+    ) -> dict[str, Any]:
+        resolved_customer = resolve_customer_id(customer_id)
+        resolved = resolve_run_id(service_instance, run_id, customer_id=resolved_customer)
+        result = service_instance.get_result_by_id(result_id, run_id=resolved, customer_id=resolved_customer)
+        if result is None:
+            raise HTTPException(status_code=404, detail=f"Unknown result_id: {result_id}")
+        return {"state": _decision_contract_v2_payload(result)}
 
     @app.get("/results/export", response_model=ExportEnvelope)
     def export_results(

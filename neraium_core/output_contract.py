@@ -641,6 +641,97 @@ def build_canonical_output(
     return canonical
 
 
+
+
+def build_decision_contract_v2(canonical: Mapping[str, Any] | None) -> dict[str, Any] | None:
+    """Build the normalized operator-facing decision contract (v2) from canonical output."""
+    if not isinstance(canonical, Mapping):
+        return None
+
+    risk = canonical.get("risk_assessment") if isinstance(canonical.get("risk_assessment"), Mapping) else {}
+    recommendation = canonical.get("operational_recommendation") if isinstance(canonical.get("operational_recommendation"), Mapping) else {}
+    rec_status = recommendation.get("status") if isinstance(recommendation.get("status"), Mapping) else {}
+    attribution = canonical.get("attribution") if isinstance(canonical.get("attribution"), Mapping) else {}
+    alert_status = canonical.get("alert_status") if isinstance(canonical.get("alert_status"), Mapping) else {}
+
+    confidence = _safe_float(canonical.get("confidence", recommendation.get("recommendation_confidence", 0.0)), 0.0)
+    confidence = max(0.0, min(confidence, 1.0))
+    if confidence < 0.4:
+        confidence_band = "low"
+    elif confidence < 0.75:
+        confidence_band = "medium"
+    else:
+        confidence_band = "high"
+
+    unknowns: list[str] = []
+    if str(risk.get("risk_level", "UNKNOWN")).upper() == "UNKNOWN":
+        unknowns.append("risk_level_unknown")
+    if not str(canonical.get("explanation_text") or "").strip():
+        unknowns.append("explanation_missing")
+
+    evidence: list[dict[str, str]] = []
+    for event in list(canonical.get("events") or [])[:6]:
+        evidence.append({"code": str(event), "detail": f"Event flag observed: {event}", "source": "derived_event"})
+
+    dq_warnings: list[dict[str, str]] = []
+    if not canonical.get("data_quality_summary"):
+        dq_warnings.append(
+            {
+                "code": "dq_summary_unavailable",
+                "severity": "info",
+                "message": "No explicit data_quality_summary available in canonical history; treat confidence conservatively.",
+            }
+        )
+
+    return {
+        "contract_version": "decision-contract.v2",
+        "structural_state": {
+            "cycle": canonical.get("cycle"),
+            "timestamp": canonical.get("timestamp"),
+            "risk_level": str(risk.get("risk_level", "UNKNOWN")).upper(),
+            "trend": str(risk.get("trend", "UNKNOWN")).upper(),
+            "instability_index": round(_safe_float(risk.get("latest_instability", 0.0), 0.0), 6),
+            "events": list(canonical.get("events") or []),
+        },
+        "confidence_quality": {
+            "overall_confidence": round(confidence, 6),
+            "confidence_band": confidence_band,
+            "low_confidence": confidence_band == "low",
+            "confidence_reason": "Derived from recommendation/model confidence after bounds-checking.",
+            "unknowns": unknowns,
+        },
+        "evidence_explanation": {
+            "summary": str(canonical.get("explanation_text") or "No explanation provided."),
+            "top_drivers": list(attribution.get("top_drivers") or []),
+            "evidence": evidence,
+            "unknowns": unknowns,
+        },
+        "operator_action": {
+            "recommendation_available": bool(rec_status.get("available", False)),
+            "recommended_action": recommendation.get("recommended_action"),
+            "recommended_target": recommendation.get("recommended_target"),
+            "urgency": recommendation.get("urgency"),
+            "priority": recommendation.get("priority"),
+            "rationale": str(recommendation.get("rationale") or "No rationale provided."),
+            "operator_message": str(recommendation.get("rationale") or "Review structural evidence before taking action."),
+            "operator_note": str(recommendation.get("operator_note") or OPERATOR_BOUNDARY_NOTE),
+            "requires_human_review": True,
+        },
+        "policy": {
+            "canonical_schema_version": str(canonical.get("schema_version") or CANONICAL_SCHEMA_VERSION),
+            "decision_policy_version": "decision-policy.v2.0",
+            "alert_policy": alert_status.get("policy") if isinstance(alert_status.get("policy"), Mapping) else None,
+        },
+        "data_quality": {
+            "has_warnings": bool(dq_warnings),
+            "warnings": dq_warnings,
+        },
+        "legacy_aliases": {
+            "risk_assessment": canonical.get("risk_assessment"),
+            "operational_recommendation": canonical.get("operational_recommendation"),
+        },
+    }
+
 def is_canonical_output(payload: Mapping[str, Any]) -> bool:
     keys = set(payload.keys())
     return REQUIRED_FIELDS.issubset(keys) and keys.issubset(REQUIRED_FIELDS | OPTIONAL_FIELDS)
@@ -654,4 +745,5 @@ __all__ = [
     "build_canonical_output",
     "derive_product_events",
     "is_canonical_output",
+    "build_decision_contract_v2",
 ]

@@ -95,3 +95,39 @@ def test_events_latest_endpoint_returns_latest_event_flags(tmp_path) -> None:
     assert isinstance(body["events"], list)
     assert "recommendation_available" in body["events"]
     assert body["cycle"] == 1
+
+
+def test_v2_state_and_recommendation_contract_endpoints(tmp_path) -> None:
+    client = _build_client(tmp_path)
+    client.post(_q("/ingest/frame"), json=_frame(0, 50.0))
+
+    state_response = client.get(_q("/v2/state"))
+    rec_response = client.get(_q("/v2/recommendation"))
+
+    assert state_response.status_code == 200
+    state = state_response.json()["state"]
+    assert state["contract_version"] == "decision-contract.v2"
+    assert "policy" in state
+    assert "data_quality" in state
+
+    assert rec_response.status_code == 200
+    assert isinstance(rec_response.json()["operator_action"], dict)
+
+
+def test_v2_history_and_results_latest_contract_endpoints(tmp_path) -> None:
+    client = _build_client(tmp_path)
+    client.post(_q("/ingest/frame"), json=_frame(0, 50.0))
+    client.post(_q("/ingest/frame"), json=_frame(1, 55.0))
+
+    history_response = client.get(_q("/v2/history?limit=2"))
+    latest_response = client.get(_q("/v2/results/latest"))
+
+    assert history_response.status_code == 200
+    history_body = history_response.json()
+    assert history_body["count"] == 2
+    assert history_body["history"][0]["contract_version"] == "decision-contract.v2"
+
+    assert latest_response.status_code == 200
+    latest_body = latest_response.json()
+    assert latest_body["count"] == 1
+    assert latest_body["latest"]["contract_version"] == "decision-contract.v2"
