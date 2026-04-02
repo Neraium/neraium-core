@@ -1,4 +1,4 @@
-"""Day 5 validation reporting and output persistence."""
+"""Day 5 validation reporting and Day 6 reliability reporting."""
 
 from __future__ import annotations
 
@@ -72,3 +72,126 @@ def save_validation_outputs(
         "baseline": baseline_path,
         "summary": summary_path,
     }
+
+
+def build_day6_reliability_report(
+    df: pd.DataFrame,
+    persistence_summary: pd.DataFrame,
+    transition_matrix: pd.DataFrame,
+    transition_quality: pd.DataFrame,
+    filtered_comparison: pd.DataFrame,
+) -> dict[str, Any]:
+    """
+    Aggregate Day 6 diagnostics: persistence, transitions, stability, false positives, filtering.
+    """
+    flag_cols = [
+        "low_persistence_flag",
+        "contradiction_flag",
+        "unstable_signal_flag",
+        "likely_false_positive_flag",
+    ]
+    false_positive_counts = {c: int(df[c].sum()) for c in flag_cols if c in df.columns}
+
+    stability_summary: dict[str, float] = {}
+    for c in ("regime_flip_flag", "action_flip_flag", "confidence_jump_flag"):
+        if c in df.columns:
+            stability_summary[f"mean_{c}"] = float(df[c].astype(float).mean())
+    if "stability_score" in df.columns:
+        stability_summary["mean_stability_score"] = float(df["stability_score"].astype(float).mean())
+
+    top_problematic = pd.DataFrame()
+    if not transition_quality.empty and "avg_usefulness_1d" in transition_quality.columns:
+        tq = transition_quality.copy()
+        if "transition_count" in tq.columns:
+            tq = tq[tq["transition_count"] >= 2]
+        if not tq.empty:
+            ucols = [c for c in tq.columns if c.startswith("avg_usefulness_")]
+            if ucols:
+                tq["_u"] = tq[ucols].mean(axis=1)
+                top_problematic = tq.nsmallest(min(10, len(tq)), "_u").drop(columns=["_u"], errors="ignore")
+
+    pattern_rows: list[dict[str, Any]] = []
+    if false_positive_counts:
+        pattern_rows.append(
+            {
+                "pattern": "likely_false_positive_total",
+                "count": false_positive_counts.get("likely_false_positive_flag", 0),
+            }
+        )
+        if "action_quick_reversal_flag" in df.columns:
+            pattern_rows.append(
+                {
+                    "pattern": "action_quick_reversal",
+                    "count": int(df["action_quick_reversal_flag"].sum()),
+                }
+            )
+        if "high_drift_poor_outcome_flag" in df.columns:
+            pattern_rows.append(
+                {
+                    "pattern": "high_drift_poor_outcome",
+                    "count": int(df["high_drift_poor_outcome_flag"].sum()),
+                }
+            )
+
+    avg_run = float(df["regime_run_length"].mean()) if "regime_run_length" in df.columns else float("nan")
+
+    unfiltered_avg = filtered_comparison[filtered_comparison["version"] == "unfiltered"]
+    filtered_avg = filtered_comparison[filtered_comparison["version"] == "filtered"]
+    u_mean = 0.0
+    f_mean = 0.0
+    if not unfiltered_avg.empty:
+        u_mean = float(
+            unfiltered_avg[["avg_usefulness_1d", "avg_usefulness_5d", "avg_usefulness_10d"]]
+            .mean(axis=1)
+            .iloc[0]
+        )
+    if not filtered_avg.empty:
+        f_mean = float(
+            filtered_avg[["avg_usefulness_1d", "avg_usefulness_5d", "avg_usefulness_10d"]]
+            .mean(axis=1)
+            .iloc[0]
+        )
+
+    filtering_improved = bool(f_mean > u_mean + 1e-9) if filtered_comparison.shape[0] >= 2 else False
+
+    return {
+        "average_regime_run_length": avg_run,
+        "regime_persistence_by_label": persistence_summary.to_dict(orient="records"),
+        "transition_matrix_rows": int(len(transition_matrix)),
+        "signal_stability_summary": stability_summary,
+        "false_positive_flag_counts": false_positive_counts,
+        "filtered_vs_unfiltered": filtered_comparison.to_dict(orient="records"),
+        "filtering_improved_mean_usefulness": filtering_improved,
+        "top_problematic_regime_transitions": top_problematic.to_dict(orient="records"),
+        "top_suppressible_false_positive_patterns": pattern_rows,
+    }
+
+
+def save_day6_outputs(
+    persistence_summary: pd.DataFrame,
+    transition_matrix: pd.DataFrame,
+    transition_quality: pd.DataFrame,
+    filtered_comparison: pd.DataFrame,
+    summary: dict[str, Any],
+    output_dir: str | Path = "output",
+) -> dict[str, Path]:
+    """Write Day 6 CSV/JSON artifacts."""
+    out_dir = Path(output_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+
+    paths = {
+        "regime_persistence": out_dir / "regime_persistence.csv",
+        "transition_matrix": out_dir / "transition_matrix.csv",
+        "transition_quality": out_dir / "transition_quality.csv",
+        "filtered_signal_comparison": out_dir / "filtered_signal_comparison.csv",
+        "day6_summary": out_dir / "day6_reliability_summary.json",
+    }
+
+    persistence_summary.to_csv(paths["regime_persistence"], index=False)
+    transition_matrix.to_csv(paths["transition_matrix"], index=False)
+    transition_quality.to_csv(paths["transition_quality"], index=False)
+    filtered_comparison.to_csv(paths["filtered_signal_comparison"], index=False)
+    with paths["day6_summary"].open("w", encoding="utf-8") as fh:
+        json.dump(summary, fh, indent=2, sort_keys=True)
+
+    return paths

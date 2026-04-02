@@ -1,6 +1,6 @@
 # Neraium Markets
 
-Read-only market intelligence pipeline: load OHLCV CSVs, validate, align closes, engineer features, build a structural snapshot, produce **regime-aware signals**, then run a deterministic **Day 5 validation layer** (forward outcomes, usefulness scoring, confidence calibration, and baseline comparison).
+Read-only market intelligence pipeline: load OHLCV CSVs, validate, align closes, engineer features, build a structural snapshot, produce **regime-aware signals**, run a deterministic **Day 5 validation layer** (forward outcomes, usefulness scoring, calibration, baselines), then **Day 6 reliability analysis** (regime persistence, transitions, signal stability, false-positive diagnostics, and filtered signals).
 
 ## Pipeline overview
 
@@ -95,17 +95,17 @@ pip install -r requirements.txt
 
 On Linux or macOS: `source .venv/bin/activate`.
 
-## Pipeline flow
+## Pipeline flow (Days 1–6)
 
 1. Load OHLCV CSVs from `sample_data/`
 2. Validate data quality and schema
 3. Align close prices on timestamp
 4. Build Day 2 feature table
 5. Build Day 3 structural snapshot (`neraium/structural.py`)
-6. Run regime → confidence → gate → posture (`neraium/regime.py`, `neraium/signals.py`)
-7. Print shape summaries, regime counts, last 10 signal rows
-8. Write `output/signals.csv`
-9. Optionally write `output/features.csv` and `output/structural_snapshot.csv` (`--save-output`)
+6. Classify regime, score confidence, apply interpretive gate, generate signals (`neraium/regime.py`, `neraium/signals.py`)
+7. Compute forward returns and action usefulness (Day 5)
+8. Confidence calibration and baseline comparison (Day 5)
+9. **Day 6:** regime runs & persistence, transition matrix & transition-quality stats, signal stability, false-positive flags, filtered postures, filtered vs unfiltered comparison, reliability report
 
 ## Run
 
@@ -115,13 +115,7 @@ From `neraium_markets/`:
 python main.py
 ```
 
-Loads data, validates, aligns, builds features and structural snapshot, runs regime → confidence → gate → posture, prints shapes, regime counts, last 10 signal rows, and writes **`output/signals.csv`**.
-
-Optional intermediate CSVs:
-
-```bash
-python main.py --save-output
-```
+Runs the full pipeline through Day 6, prints validation and reliability summaries, and (with `--save-output`) writes CSV/JSON under `output/`.
 
 ## Regenerate sample data
 
@@ -147,7 +141,7 @@ Day 3 structural utilities are covered in `tests/test_structure.py` (imports fro
 ## Layout
 
 - `config.py` — assets, paths, columns, `REQUIRED_COLUMNS`, groups, Day 3 structural parameters for `structure.py`
-- `main.py` — full pipeline through Day 4
+- `main.py` — full pipeline through Day 6
 - `neraium/data_loader.py` — CSV loading
 - `neraium/validation.py` — checks + sample Pydantic row validation
 - `neraium/alignment.py` — outer join on timestamp (uppercase symbols)
@@ -156,6 +150,9 @@ Day 3 structural utilities are covered in `tests/test_structure.py` (imports fro
 - `neraium/structure.py` — alternate Day 3 structural scoring (tests)
 - `neraium/regime.py` — regime, confidence, gate, posture
 - `neraium/signals.py` — `generate_signals`, CSV save
+- `neraium/transitions.py` — regime runs, persistence summary, transition matrix, transition usefulness
+- `neraium/diagnostics.py` — signal stability (flip/jump flags, `stability_score`)
+- `neraium/filtering.py` — false-positive pattern flags, `filtered_action_posture`, filtered vs unfiltered comparison
 - `neraium/schemas.py` — `OHLCVRow`
 - `sample_data/` — one CSV per asset
 - `output/` — generated CSVs (created on run)
@@ -230,3 +227,63 @@ When `--save-output` is set:
 - `output/confidence_calibration.csv`
 - `output/baseline_comparison.csv`
 - `output/validation_summary.json`
+
+---
+
+## Day 6 reliability (persistence, transitions, false positives)
+
+Day 6 is **offline reliability analysis**: it does not add execution, brokers, ML, portfolio optimization, or dashboards. The goal is to see which regimes last long enough to matter, which transitions line up with better or worse usefulness, where signals flip or jump, which rows look like false positives, and whether simple **post-signal filters** improve the usefulness proxy.
+
+### Regime persistence
+
+Consecutive rows with the same `regime_label` form a **run**. For each run we record length and position-in-run. Summaries per label include how many runs occurred, average/median/max length, and the share of **single-step** runs (length 1), which often indicates noise.
+
+### Transition analysis
+
+From `regime_label[t]` to `regime_label[t+1]` we build a **transition matrix** (counts and conditional probabilities `P(to | from)`). **Transition quality** joins each transition to average `action_useful_*` at time `t`, so you can see whether certain hand-offs (for example into `risk_off_transition`) align with higher or lower usefulness.
+
+### Signal stability
+
+`compute_signal_stability` adds flip/jump flags (regime change, posture change, large confidence step) and a **stability score** (rolling smoothness, higher is calmer). This highlights unstable periods even when the headline regime name is stable.
+
+### False-positive diagnostics and filtering
+
+Heuristic flags (documented in `neraium/filtering.py`) mark low persistence, confidence–coherence contradictions, unstable stability, quick action reversals, and a composite **likely false positive**. `apply_signal_filters` sets `filtered_action_posture` to `wait` when rules fire (suppression), and `signal_kept_flag` records whether the original posture was kept.
+
+**Filtered signals** are not a live trading directive; they are an abstention-heavy view of the same pipeline to reduce weak or contradictory rows.
+
+### Filtered vs unfiltered
+
+`compare_filtered_vs_unfiltered` reports average usefulness by horizon, active (non-`wait`/`watch`) counts, abstention rate (share of neutral usefulness), and average confidence on kept rows, for both versions.
+
+### Day 6 pipeline steps (main)
+
+14. compute regime runs  
+15. summarize persistence  
+16. build transition matrix  
+17. compute signal stability  
+18. identify false-positive patterns  
+19. apply filters  
+20. score filtered usefulness and compare  
+21. build Day 6 reliability report  
+
+### Run Day 6
+
+```bash
+python main.py
+python main.py --save-output
+```
+
+### Day 6 outputs (`--save-output`)
+
+- `output/regime_persistence.csv`
+- `output/transition_matrix.csv`
+- `output/transition_quality.csv`
+- `output/filtered_signal_comparison.csv`
+- `output/day6_reliability_summary.json`
+
+The main run also prints: average regime run length, top transitions by count, count of likely false positives, the filtered vs unfiltered table, and whether mean usefulness improved after filtering.
+
+### Day 6 non-goals (unchanged)
+
+- Not execution, not broker APIs, not PnL optimization, not a production trading system.

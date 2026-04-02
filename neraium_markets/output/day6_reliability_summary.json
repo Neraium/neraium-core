@@ -1,0 +1,127 @@
+{
+  "average_regime_run_length": 9.25,
+  "false_positive_flag_counts": {
+    "contradiction_flag": 0,
+    "likely_false_positive_flag": 6,
+    "low_persistence_flag": 9,
+    "unstable_signal_flag": 7
+  },
+  "filtered_vs_unfiltered": [
+    {
+      "abstention_rate": 0.325,
+      "active_signal_count": 5,
+      "avg_confidence_kept": 0.6032444351917017,
+      "avg_usefulness_10d": -0.5,
+      "avg_usefulness_1d": -0.2,
+      "avg_usefulness_5d": -0.35,
+      "version": "unfiltered"
+    },
+    {
+      "abstention_rate": 0.325,
+      "active_signal_count": 4,
+      "avg_confidence_kept": 0.6149493605061569,
+      "avg_usefulness_10d": -0.5,
+      "avg_usefulness_1d": -0.2,
+      "avg_usefulness_5d": -0.35,
+      "version": "filtered"
+    }
+  ],
+  "filtering_improved_mean_usefulness": false,
+  "regime_persistence_by_label": [
+    {
+      "avg_run_length": 1.0,
+      "count_runs": 1,
+      "max_run_length": 1,
+      "median_run_length": 1.0,
+      "pct_single_step_runs": 1.0,
+      "regime_label": "fragile_rally"
+    },
+    {
+      "avg_run_length": 1.0,
+      "count_runs": 1,
+      "max_run_length": 1,
+      "median_run_length": 1.0,
+      "pct_single_step_runs": 1.0,
+      "regime_label": "high_volatility"
+    },
+    {
+      "avg_run_length": 5.8,
+      "count_runs": 5,
+      "max_run_length": 18,
+      "median_run_length": 3.0,
+      "pct_single_step_runs": 0.0,
+      "regime_label": "mean_reversion"
+    },
+    {
+      "avg_run_length": 1.0,
+      "count_runs": 3,
+      "max_run_length": 1,
+      "median_run_length": 1.0,
+      "pct_single_step_runs": 1.0,
+      "regime_label": "risk_off_transition"
+    },
+    {
+      "avg_run_length": 1.25,
+      "count_runs": 4,
+      "max_run_length": 2,
+      "median_run_length": 1.0,
+      "pct_single_step_runs": 0.75,
+      "regime_label": "stable_trend"
+    },
+    {
+      "avg_run_length": 1.0,
+      "count_runs": 1,
+      "max_run_length": 1,
+      "median_run_length": 1.0,
+      "pct_single_step_runs": 1.0,
+      "regime_label": "unstable"
+    }
+  ],
+  "signal_stability_summary": {
+    "mean_action_flip_flag": 0.375,
+    "mean_confidence_jump_flag": 0.025,
+    "mean_regime_flip_flag": 0.375,
+    "mean_stability_score": 0.7250416666666667
+  },
+  "top_problematic_regime_transitions": [
+    {
+      "avg_usefulness_10d": -1.0,
+      "avg_usefulness_1d": -0.3333333333333333,
+      "avg_usefulness_5d": -0.3333333333333333,
+      "from_regime": "mean_reversion",
+      "to_regime": "stable_trend",
+      "transition_count": 3
+    },
+    {
+      "avg_usefulness_10d": -0.6666666666666666,
+      "avg_usefulness_1d": -0.375,
+      "avg_usefulness_5d": -0.5416666666666666,
+      "from_regime": "mean_reversion",
+      "to_regime": "mean_reversion",
+      "transition_count": 24
+    },
+    {
+      "avg_usefulness_10d": 0.3333333333333333,
+      "avg_usefulness_1d": 0.3333333333333333,
+      "avg_usefulness_5d": 0.3333333333333333,
+      "from_regime": "stable_trend",
+      "to_regime": "mean_reversion",
+      "transition_count": 3
+    }
+  ],
+  "top_suppressible_false_positive_patterns": [
+    {
+      "count": 6,
+      "pattern": "likely_false_positive_total"
+    },
+    {
+      "count": 4,
+      "pattern": "action_quick_reversal"
+    },
+    {
+      "count": 3,
+      "pattern": "high_drift_poor_outcome"
+    }
+  ],
+  "transition_matrix_rows": 12
+}

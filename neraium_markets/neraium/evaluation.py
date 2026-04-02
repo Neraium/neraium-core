@@ -101,16 +101,22 @@ def _score_single_action(action: str, forward_ret: float, vol_10d: float | None 
     return 0
 
 
-def score_action_usefulness(df: pd.DataFrame) -> pd.DataFrame:
+def score_action_usefulness(
+    df: pd.DataFrame,
+    action_col: str = "action_posture",
+    out_prefix: str = "action_useful",
+) -> pd.DataFrame:
     """
     Score action usefulness at each available horizon.
 
-    Requires ``action_posture`` and forward return columns named ``fwd_ret_{h}d``.
-    Creates ``action_useful_{h}d`` columns with values in ``{-1, 0, 1}``.
+    Requires the given ``action_col`` and forward return columns named ``fwd_ret_{h}d``.
+    Creates ``{out_prefix}_{h}d`` columns with values in ``{-1, 0, 1}``.
+
+    Default preserves Day 5 behavior: ``action_posture`` -> ``action_useful_{h}d``.
     """
     out = df.copy().sort_values(DATE_COLUMN, ascending=True).reset_index(drop=True)
-    if "action_posture" not in out.columns:
-        raise KeyError("Missing required column: action_posture")
+    if action_col not in out.columns:
+        raise KeyError(f"Missing required column: {action_col}")
 
     vol_col = "spy_vol_10d" if "spy_vol_10d" in out.columns else None
     vol_vals: Iterable[float | None]
@@ -119,9 +125,9 @@ def score_action_usefulness(df: pd.DataFrame) -> pd.DataFrame:
     fwd_cols = [c for c in out.columns if c.startswith("fwd_ret_") and c.endswith("d")]
     for col in fwd_cols:
         horizon = col.replace("fwd_ret_", "").replace("d", "")
-        out[f"action_useful_{horizon}d"] = [
+        out[f"{out_prefix}_{horizon}d"] = [
             _score_single_action(a, r, v)
-            for a, r, v in zip(out["action_posture"], out[col], vol_vals)
+            for a, r, v in zip(out[action_col], out[col], vol_vals)
         ]
 
     return out.loc[:, ~out.columns.duplicated()]

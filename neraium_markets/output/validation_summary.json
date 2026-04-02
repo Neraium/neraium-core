@@ -1,0 +1,196 @@
+{
+  "action_counts": {
+    "avoid_risk": 2,
+    "lean_long": 2,
+    "reduce_exposure": 1,
+    "wait": 23,
+    "watch": 12
+  },
+  "average_confidence": 0.3624932131333738,
+  "baseline_comparison": [
+    {
+      "abstention_rate": 0.325,
+      "avg_usefulness": 0.325,
+      "hit_rate": 0.5,
+      "horizon": 1,
+      "model": "baseline_breadth",
+      "non_neutral_count": 27
+    },
+    {
+      "abstention_rate": 0.025,
+      "avg_usefulness": 0.025,
+      "hit_rate": 0.5,
+      "horizon": 1,
+      "model": "baseline_trend",
+      "non_neutral_count": 39
+    },
+    {
+      "abstention_rate": 0.775,
+      "avg_usefulness": -0.025,
+      "hit_rate": 0.1,
+      "horizon": 1,
+      "model": "baseline_vol",
+      "non_neutral_count": 9
+    },
+    {
+      "abstention_rate": 0.65,
+      "avg_usefulness": -0.2,
+      "hit_rate": 0.075,
+      "horizon": 1,
+      "model": "neraium",
+      "non_neutral_count": 14
+    },
+    {
+      "abstention_rate": 0.35,
+      "avg_usefulness": 0.2,
+      "hit_rate": 0.425,
+      "horizon": 5,
+      "model": "baseline_breadth",
+      "non_neutral_count": 26
+    },
+    {
+      "abstention_rate": 0.15,
+      "avg_usefulness": 0.0,
+      "hit_rate": 0.425,
+      "horizon": 5,
+      "model": "baseline_trend",
+      "non_neutral_count": 34
+    },
+    {
+      "abstention_rate": 0.6,
+      "avg_usefulness": -0.25,
+      "hit_rate": 0.075,
+      "horizon": 5,
+      "model": "baseline_vol",
+      "non_neutral_count": 16
+    },
+    {
+      "abstention_rate": 0.55,
+      "avg_usefulness": -0.35,
+      "hit_rate": 0.05,
+      "horizon": 5,
+      "model": "neraium",
+      "non_neutral_count": 18
+    },
+    {
+      "abstention_rate": 0.3,
+      "avg_usefulness": 0.0,
+      "hit_rate": 0.35,
+      "horizon": 10,
+      "model": "baseline_breadth",
+      "non_neutral_count": 28
+    },
+    {
+      "abstention_rate": 0.25,
+      "avg_usefulness": -0.05,
+      "hit_rate": 0.35,
+      "horizon": 10,
+      "model": "baseline_trend",
+      "non_neutral_count": 30
+    },
+    {
+      "abstention_rate": 0.575,
+      "avg_usefulness": -0.425,
+      "hit_rate": 0.0,
+      "horizon": 10,
+      "model": "baseline_vol",
+      "non_neutral_count": 17
+    },
+    {
+      "abstention_rate": 0.45,
+      "avg_usefulness": -0.5,
+      "hit_rate": 0.025,
+      "horizon": 10,
+      "model": "neraium",
+      "non_neutral_count": 22
+    }
+  ],
+  "confidence_calibration": [
+    {
+      "avg_usefulness": -0.6458333333333333,
+      "confidence_bin": "0.0-0.2",
+      "count": 16,
+      "hit_rate": 0.0,
+      "monotonic_non_decreasing": true,
+      "non_neutral_rate": 0.875
+    },
+    {
+      "avg_usefulness": NaN,
+      "confidence_bin": "0.2-0.4",
+      "count": 0,
+      "hit_rate": NaN,
+      "monotonic_non_decreasing": true,
+      "non_neutral_rate": NaN
+    },
+    {
+      "avg_usefulness": -0.2727272727272727,
+      "confidence_bin": "0.4-0.6",
+      "count": 11,
+      "hit_rate": 0.09090909090909091,
+      "monotonic_non_decreasing": true,
+      "non_neutral_rate": 0.5454545454545454
+    },
+    {
+      "avg_usefulness": -0.05128205128205127,
+      "confidence_bin": "0.6-0.8",
+      "count": 13,
+      "hit_rate": 0.15384615384615385,
+      "monotonic_non_decreasing": true,
+      "non_neutral_rate": 0.5384615384615384
+    },
+    {
+      "avg_usefulness": NaN,
+      "confidence_bin": "0.8-1.0",
+      "count": 0,
+      "hit_rate": NaN,
+      "monotonic_non_decreasing": true,
+      "non_neutral_rate": NaN
+    }
+  ],
+  "regime_counts": {
+    "fragile_rally": 1,
+    "high_volatility": 1,
+    "mean_reversion": 29,
+    "risk_off_transition": 3,
+    "stable_trend": 5,
+    "unstable": 1
+  },
+  "total_signals": 40,
+  "usefulness_by_regime": {
+    "fragile_rally": {
+      "10d": 0.0,
+      "1d": 1.0,
+      "5d": 1.0
+    },
+    "high_volatility": {
+      "10d": 0.0,
+      "1d": 0.0,
+      "5d": 0.0
+    },
+    "mean_reversion": {
+      "10d": -0.6551724137931034,
+      "1d": -0.3793103448275862,
+      "5d": -0.4827586206896552
+    },
+    "risk_off_transition": {
+      "10d": -0.3333333333333333,
+      "1d": 0.0,
+      "5d": -0.3333333333333333
+    },
+    "stable_trend": {
+      "10d": 0.0,
+      "1d": 0.4,
+      "5d": 0.0
+    },
+    "unstable": {
+      "10d": 0.0,
+      "1d": 0.0,
+      "5d": 0.0
+    }
+  },
+  "usefulness_summary": {
+    "10d": -0.5,
+    "1d": -0.2,
+    "5d": -0.35
+  }
+}
