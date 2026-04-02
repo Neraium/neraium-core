@@ -1,200 +1,211 @@
-"""Day 8 cross-asset similarity, clustering, and cluster summarization."""
+"""Day 8: asset similarity, structural clusters, and cluster summaries."""
 
 from __future__ import annotations
-
-from collections import Counter
-from typing import Iterable
 
 import numpy as np
 import pandas as pd
 
 from config import DATE_COLUMN
+from neraium.regime import (
+    apply_interpretive_gate,
+    classify_regime,
+    compute_confidence_score,
+    generate_action_posture,
+)
 
 
-def _mode(values: Iterable[str], default: str = "unknown") -> str:
-    vals = [str(v) for v in values if pd.notna(v)]
-    if not vals:
-        return default
-    return Counter(vals).most_common(1)[0][0]
+def _safe_norm01(s: pd.Series) -> pd.Series:
+    lo = s.min()
+    hi = s.max()
+    if pd.isna(lo) or pd.isna(hi) or hi <= lo:
+        return pd.Series(0.5, index=s.index)
+    return (s - lo) / (hi - lo)
 
 
-def compute_asset_similarity_matrix(df: pd.DataFrame, assets: list[str]) -> pd.DataFrame:
-    """Compute deterministic structural similarity across assets.
-
-    Expected long-form columns (best effort):
-    - timestamp, asset
-    - ret_1d (or return_1d)
-    - regime_label
-    - action_posture
-    - structural_score (optional)
-
-    Similarity is the mean of available components in [0, 1]:
-    1) return-correlation mapped from [-1, 1] -> [0, 1]
-    2) regime sequence exact-match ratio
-    3) action sequence exact-match ratio
-    4) structural-score distance similarity (1 - normalized mean abs diff)
+def _per_asset_structural(base: pd.DataFrame, asset: str) -> pd.DataFrame:
     """
-    required = {DATE_COLUMN, "asset"}
-    missing = required - set(df.columns)
-    if missing:
-        raise KeyError(f"Missing required columns: {sorted(missing)}")
+    Build a per-asset view of the structural snapshot for regime rules.
 
-    data = df.copy()
-    data[DATE_COLUMN] = pd.to_datetime(data[DATE_COLUMN], utc=False)
-    data = data[data["asset"].isin(assets)].sort_values([DATE_COLUMN, "asset"], ascending=True)
+    Blends market-wide instability with asset-specific realized volatility and
+    uses the asset's 1d return for interpretive gate conflict checks (via ``spy_ret_1d`` slot).
+    """
+    out = base.copy()
+    ret_col = f"{asset}_ret_1d"
+    if ret_col not in out.columns:
+        ret_col = "spy_ret_1d"
+    out["spy_ret_1d"] = out[ret_col].astype(float)
 
-    ret_col = "ret_1d" if "ret_1d" in data.columns else "return_1d" if "return_1d" in data.columns else None
-    reg_col = "regime_label" if "regime_label" in data.columns else None
-    act_col = "action_posture" if "action_posture" in data.columns else None
-    score_col = "structural_score" if "structural_score" in data.columns else None
+    vol_col = f"{asset}_vol_20d"
+    if vol_col not in out.columns:
+        vol_col = "spy_vol_20d" if "spy_vol_20d" in out.columns else None
+    if vol_col is not None:
+        mix = _safe_norm01(out[vol_col].astype(float).fillna(0.0))
+        out["instability_score"] = 0.5 * out["instability_score"].astype(float) + 0.5 * mix.clip(0.0, 1.0)
+    return out
 
-    by_asset = {a: data[data["asset"] == a].set_index(DATE_COLUMN).sort_index() for a in assets}
 
-    out = pd.DataFrame(index=assets, columns=assets, dtype=float)
+def _fix_concat_columns(pieces: list[pd.DataFrame]) -> pd.DataFrame:
+    out = pd.concat(pieces, ignore_index=True)
+    return out.loc[:, ~out.columns.duplicated()]
+
+
+def build_asset_panel(structural_df: pd.DataFrame, assets: list[str]) -> pd.DataFrame:
+    """
+    Run regime → confidence → gate → posture per asset on the shared timeline.
+
+    Returns long-form rows: ``timestamp``, ``asset``, ``regime_label``, ``action_posture``,
+    ``confidence_score``, ``instability_score``, ``coherence_score``.
+    """
+    pieces: list[pd.DataFrame] = []
     for a in assets:
-        for b in assets:
-            if a == b:
-                out.loc[a, b] = 1.0
-                continue
-
-            comp: list[float] = []
-            left = by_asset.get(a, pd.DataFrame())
-            right = by_asset.get(b, pd.DataFrame())
-            if left.empty or right.empty:
-                out.loc[a, b] = 0.0
-                continue
-
-            if ret_col:
-                merged = left[[ret_col]].join(right[[ret_col]], how="inner", lsuffix="_a", rsuffix="_b")
-                if len(merged) >= 3:
-                    corr = merged[f"{ret_col}_a"].corr(merged[f"{ret_col}_b"])
-                    if pd.notna(corr):
-                        comp.append(float(np.clip((float(corr) + 1.0) / 2.0, 0.0, 1.0)))
-
-            if reg_col:
-                merged = left[[reg_col]].join(right[[reg_col]], how="inner", lsuffix="_a", rsuffix="_b")
-                if not merged.empty:
-                    reg_sim = (merged[f"{reg_col}_a"].astype(str) == merged[f"{reg_col}_b"].astype(str)).mean()
-                    comp.append(float(np.clip(reg_sim, 0.0, 1.0)))
-
-            if act_col:
-                merged = left[[act_col]].join(right[[act_col]], how="inner", lsuffix="_a", rsuffix="_b")
-                if not merged.empty:
-                    act_sim = (merged[f"{act_col}_a"].astype(str) == merged[f"{act_col}_b"].astype(str)).mean()
-                    comp.append(float(np.clip(act_sim, 0.0, 1.0)))
-
-            if score_col:
-                merged = left[[score_col]].join(right[[score_col]], how="inner", lsuffix="_a", rsuffix="_b")
-                if not merged.empty:
-                    diffs = (merged[f"{score_col}_a"].astype(float) - merged[f"{score_col}_b"].astype(float)).abs()
-                    denom = float(max(diffs.max(skipna=True), 1e-9))
-                    score_sim = 1.0 - float(np.nanmean(diffs / denom))
-                    comp.append(float(np.clip(score_sim, 0.0, 1.0)))
-
-            out.loc[a, b] = float(np.mean(comp)) if comp else 0.0
-
-    out = out.fillna(0.0)
-    out = (out + out.T) / 2.0
-    for i, a in enumerate(out.index):
-        out.iat[i, i] = 1.0
-    return out.loc[assets, assets]
+        sub = _per_asset_structural(structural_df, a)
+        sub = classify_regime(sub)
+        sub = compute_confidence_score(sub)
+        sub = apply_interpretive_gate(sub)
+        sub = generate_action_posture(sub)
+        sub["asset"] = a
+        pieces.append(
+            sub[
+                [
+                    DATE_COLUMN,
+                    "asset",
+                    "regime_label",
+                    "action_posture",
+                    "confidence_score",
+                    "instability_score",
+                    "coherence_score",
+                ]
+            ]
+        )
+    return _fix_concat_columns(pieces).sort_values([DATE_COLUMN, "asset"], ascending=True).reset_index(drop=True)
 
 
-def cluster_assets(similarity_df: pd.DataFrame) -> pd.DataFrame:
-    """Cluster assets via deterministic thresholded connectivity (graph components)."""
-    if similarity_df.empty:
-        return pd.DataFrame(columns=["asset", "cluster_id"])
+def compute_asset_similarity_matrix(
+    df: pd.DataFrame,
+    assets: list[str],
+    structural_df: pd.DataFrame,
+) -> pd.DataFrame:
+    """
+    Square similarity matrix in ``[0, 1]`` combining:
 
-    sim = similarity_df.copy()
-    if not sim.index.equals(sim.columns):
-        raise ValueError("similarity_df must be square with matching index/columns")
+    - rolling return correlation proxy (Pearson on ``{a}_ret_1d`` aligned series)
+    - regime agreement rate (same ``regime_label`` on common timestamps)
+    - inverse mean absolute confidence gap (smoothed to [0,1])
 
-    assets = list(sim.index.astype(str))
-    vals = sim.values.astype(float)
-    off_diag = vals[~np.eye(vals.shape[0], dtype=bool)]
-    threshold = float(np.clip(np.nanmedian(off_diag) if off_diag.size else 0.5, 0.35, 0.85))
+    ``df`` is the long asset panel from ``build_asset_panel``.
+    ``structural_df`` supplies per-asset returns for correlation.
+    """
+    n = len(assets)
+    mat = pd.DataFrame(np.eye(n), index=assets, columns=assets, dtype=float)
 
-    adjacency: dict[str, set[str]] = {a: set() for a in assets}
+    ret_cols = {a: f"{a}_ret_1d" for a in assets}
+    for a in assets:
+        if ret_cols[a] not in structural_df.columns:
+            ret_cols[a] = "spy_ret_1d"
+
     for i, a in enumerate(assets):
         for j, b in enumerate(assets):
-            if i == j:
+            if i >= j:
                 continue
-            if float(sim.iloc[i, j]) >= threshold:
-                adjacency[a].add(b)
-                adjacency[b].add(a)
+            ra = structural_df[ret_cols[a]].astype(float)
+            rb = structural_df[ret_cols[b]].astype(float)
+            mask = ra.notna() & rb.notna()
+            if mask.sum() >= 5:
+                corr = float(ra[mask].corr(rb[mask]))
+                corr_sim = (corr + 1.0) / 2.0
+            else:
+                corr_sim = 0.5
 
-    cluster_ids: dict[str, int] = {}
-    cur = 0
-    for asset in sorted(assets):
-        if asset in cluster_ids:
+            pa = df[df["asset"] == a].set_index(DATE_COLUMN)["regime_label"].astype(str)
+            pb = df[df["asset"] == b].set_index(DATE_COLUMN)["regime_label"].astype(str)
+            al, bl = pa.align(pb, join="inner")
+            regime_sim = float((al == bl).mean()) if len(al) else 0.0
+
+            ca = df[df["asset"] == a].set_index(DATE_COLUMN)["confidence_score"].astype(float)
+            cb = df[df["asset"] == b].set_index(DATE_COLUMN)["confidence_score"].astype(float)
+            cl, dl = ca.align(cb, join="inner")
+            if len(cl):
+                mad = float(np.mean(np.abs(cl - dl)))
+                conf_sim = float(max(0.0, 1.0 - mad))
+            else:
+                conf_sim = 0.5
+
+            s = 0.40 * corr_sim + 0.35 * regime_sim + 0.25 * conf_sim
+            s = float(np.clip(s, 0.0, 1.0))
+            mat.loc[a, b] = mat.loc[b, a] = s
+
+    return mat
+
+
+def cluster_assets(similarity_df: pd.DataFrame, threshold: float = 0.52) -> pd.DataFrame:
+    """
+    Deterministic threshold graph: connect pairs with similarity >= ``threshold``,
+    label connected components as ``cluster_id`` (0-based integer).
+    """
+    assets = list(similarity_df.index)
+    adj: dict[str, set[str]] = {a: set() for a in assets}
+    for i, a in enumerate(assets):
+        for b in assets[i + 1 :]:
+            if float(similarity_df.loc[a, b]) >= threshold:
+                adj[a].add(b)
+                adj[b].add(a)
+
+    visited: set[str] = set()
+    cluster_id = 0
+    rows: list[dict[str, object]] = []
+    for a in sorted(assets):
+        if a in visited:
             continue
-        cur += 1
-        stack = [asset]
+        stack = [a]
+        comp: list[str] = []
         while stack:
-            node = stack.pop()
-            if node in cluster_ids:
+            u = stack.pop()
+            if u in visited:
                 continue
-            cluster_ids[node] = cur
-            stack.extend(sorted(adjacency[node] - set(cluster_ids.keys())))
+            visited.add(u)
+            comp.append(u)
+            for v in sorted(adj[u]):
+                if v not in visited:
+                    stack.append(v)
+        for x in comp:
+            rows.append({"asset": x, "cluster_id": cluster_id})
+        cluster_id += 1
 
-    out = pd.DataFrame({"asset": sorted(assets)})
-    out["cluster_id"] = out["asset"].map(cluster_ids).astype(int)
-    return out.sort_values(["cluster_id", "asset"], ascending=True).reset_index(drop=True)
+    return pd.DataFrame(rows).sort_values(["cluster_id", "asset"]).reset_index(drop=True)
 
 
 def summarize_clusters(clustered_df: pd.DataFrame, signal_df: pd.DataFrame) -> pd.DataFrame:
-    """Summarize cluster composition and dominant state characteristics."""
-    req = {"asset", "cluster_id"}
-    missing = req - set(clustered_df.columns)
-    if missing:
-        raise KeyError(f"Missing required clustered_df columns: {sorted(missing)}")
+    """
+    Per ``cluster_id``: member list, dominant regime, average confidence,
+    average usefulness (if ``action_useful_*`` present), dominant action posture.
+    """
+    merged = signal_df.merge(clustered_df, on="asset", how="left")
+    merged["cluster_id"] = merged["cluster_id"].fillna(-1)
+    useful_cols = [c for c in merged.columns if c.startswith("action_useful_") and c.endswith("d")]
 
-    if signal_df.empty:
-        return pd.DataFrame(
-            columns=[
-                "cluster_id",
-                "member_assets",
-                "dominant_regime",
-                "average_confidence",
-                "average_usefulness",
-                "dominant_action_posture",
-                "asset_count",
-            ]
-        )
-
-    data = signal_df.copy()
-    if DATE_COLUMN in data.columns:
-        data = data.sort_values(DATE_COLUMN, ascending=True)
-
-    latest = data.groupby("asset", observed=False).tail(1)
-    latest = latest.merge(clustered_df[["asset", "cluster_id"]], on="asset", how="inner")
-
-    usefulness_col = (
-        "action_useful_5d" if "action_useful_5d" in latest.columns else "usefulness_score" if "usefulness_score" in latest.columns else None
-    )
-    conf_col = (
-        "adjusted_confidence_score"
-        if "adjusted_confidence_score" in latest.columns
-        else "confidence_score"
-        if "confidence_score" in latest.columns
-        else None
-    )
+    def _dominant(s: pd.Series) -> str:
+        s = s.dropna()
+        if s.empty:
+            return ""
+        m = s.mode()
+        return str(m.iloc[0]) if len(m) else ""
 
     rows: list[dict[str, object]] = []
-    for cid, grp in latest.groupby("cluster_id", observed=False):
+    for cid, g in merged.groupby("cluster_id", sort=True):
+        members = sorted(g["asset"].unique().tolist())
+        dom_reg = _dominant(g["regime_label"].astype(str))
+        dom_act = _dominant(g["action_posture"].astype(str))
+        avg_conf = float(g["confidence_score"].astype(float).mean())
+        u_avg = float(g[useful_cols].mean(axis=1).mean()) if useful_cols else float("nan")
         rows.append(
             {
-                "cluster_id": int(cid),
-                "member_assets": ",".join(sorted(grp["asset"].astype(str).tolist())),
-                "dominant_regime": _mode(grp.get("regime_label", pd.Series(dtype=str))),
-                "average_confidence": float(grp[conf_col].astype(float).mean()) if conf_col else float("nan"),
-                "average_usefulness": float(grp[usefulness_col].astype(float).mean()) if usefulness_col else float("nan"),
-                "dominant_action_posture": _mode(grp.get("action_posture", pd.Series(dtype=str))),
-                "asset_count": int(grp["asset"].nunique()),
+                "cluster_id": int(cid) if not pd.isna(cid) else -1,
+                "member_assets": ",".join(members),
+                "n_members": len(members),
+                "dominant_regime": dom_reg,
+                "avg_confidence": avg_conf,
+                "avg_usefulness": u_avg,
+                "dominant_action_posture": dom_act,
             }
         )
-
-    out = pd.DataFrame(rows)
-    if out.empty:
-        return out
-    return out.sort_values(["cluster_id"], ascending=True).reset_index(drop=True)
+    return pd.DataFrame(rows).sort_values("cluster_id").reset_index(drop=True)

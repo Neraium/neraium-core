@@ -1,9 +1,83 @@
-"""Day 8 market-wide state synthesis and usefulness comparison."""
+"""Day 8: market-wide state synthesis, market action, and usefulness comparison."""
 
 from __future__ import annotations
 
 import numpy as np
 import pandas as pd
+
+from config import DATE_COLUMN
+from neraium.evaluation import score_action_usefulness
+from neraium.transitions import compute_regime_runs, summarize_regime_persistence
+
+
+def attach_asset_forward_returns(
+    panel: pd.DataFrame,
+    merged_prices: pd.DataFrame,
+    assets: list[str],
+    horizons: tuple[int, ...] = (1, 5, 10),
+) -> pd.DataFrame:
+    """
+    Add ``fwd_ret_{h}d`` per row using each asset's price column in ``merged_prices``.
+    """
+    out_parts: list[pd.DataFrame] = []
+    merged_prices = merged_prices.sort_values(DATE_COLUMN, ascending=True).reset_index(drop=True)
+
+    for a in assets:
+        sub = panel[panel["asset"] == a].copy().sort_values(DATE_COLUMN, ascending=True)
+        sym = a.upper() if a.upper() in merged_prices.columns else a
+        if sym not in merged_prices.columns:
+            continue
+        m = sub.merge(merged_prices[[DATE_COLUMN, sym]], on=DATE_COLUMN, how="left")
+        m = m.sort_values(DATE_COLUMN, ascending=True).reset_index(drop=True)
+        px = m[sym].astype(float)
+        for h in horizons:
+            if h <= 0:
+                raise ValueError("horizons must be positive")
+            m[f"fwd_ret_{h}d"] = (px.shift(-h) / px) - 1.0
+        m = m.drop(columns=[sym], errors="ignore")
+        out_parts.append(m)
+
+    if not out_parts:
+        return panel.copy()
+    combined = pd.concat(out_parts, ignore_index=True)
+    return combined.sort_values([DATE_COLUMN, "asset"], ascending=True).reset_index(drop=True).loc[
+        :, ~combined.columns.duplicated()
+    ]
+
+
+def score_panel_action_usefulness(panel: pd.DataFrame) -> pd.DataFrame:
+    """Apply Day 5 usefulness scoring per asset group."""
+    parts: list[pd.DataFrame] = []
+    for a, g in panel.groupby("asset", sort=False):
+        g2 = g.sort_values(DATE_COLUMN, ascending=True)
+        g2 = score_action_usefulness(g2)
+        parts.append(g2)
+    out = pd.concat(parts, ignore_index=True)
+    return out.sort_values([DATE_COLUMN, "asset"], ascending=True).reset_index(drop=True).loc[
+        :, ~out.columns.duplicated()
+    ]
+
+
+def aggregate_panel_per_timestamp(panel: pd.DataFrame) -> pd.DataFrame:
+    """One row per timestamp with cross-sectional regime fractions and means."""
+    rows: list[dict[str, object]] = []
+    for ts, g in panel.groupby(DATE_COLUMN, sort=True):
+        rl = g["regime_label"].astype(str)
+        rows.append(
+            {
+                DATE_COLUMN: ts,
+                "regime_risk_off_frac": float((rl == "risk_off_transition").mean()),
+                "regime_high_vol_frac": float((rl == "high_volatility").mean()),
+                "regime_stable_frac": float((rl == "stable_trend").mean()),
+                "regime_unstable_frac": float((rl == "unstable").mean()),
+                "regime_fragile_frac": float((rl == "fragile_rally").mean()),
+                "avg_panel_confidence": float(g["confidence_score"].astype(float).mean()),
+                "avg_panel_instability": float(g["instability_score"].astype(float).mean()),
+                "avg_panel_coherence": float(g["coherence_score"].astype(float).mean()),
+                "n_assets": int(g["asset"].nunique()),
+            }
+        )
+    return pd.DataFrame(rows)
 
 
 def synthesize_market_state(
@@ -11,175 +85,231 @@ def synthesize_market_state(
     cluster_summary_df: pd.DataFrame,
     influence_df: pd.DataFrame,
 ) -> pd.DataFrame:
-    """Synthesize market-level regime/confidence/instability/coherence from local states.
-
-    Deterministic high-level logic:
-    - risk_off_pressure: share of influential assets in risk_off/high_volatility/unstable
-    - coherence: cluster dominance and confidence
-    - instability: risk_off pressure + cluster dispersion
-
-    Labels:
-    - market_risk_off: high risk_off pressure
-    - market_stable: high coherence, low instability
-    - market_fragmented: low coherence and high dispersion
-    - market_transition: elevated instability
-    - market_fragile: medium instability + sub-high coherence
-    - otherwise market_mixed
     """
-    if df.empty:
-        return pd.DataFrame(columns=["market_regime_label", "market_confidence_score", "market_instability_score", "market_coherence_score"])
+    ``df`` must be the structural timeline **left-merged** with
+    ``aggregate_panel_per_timestamp`` columns on ``timestamp``.
 
-    latest = df.groupby("asset", observed=False).tail(1).copy()
+    Assigns ``market_regime_label`` plus market-level confidence / instability / coherence.
 
-    inf = influence_df.copy()
-    if inf.empty or "asset" not in inf.columns:
-        inf = pd.DataFrame({"asset": latest["asset"].astype(str).unique(), "influence_score": 0.5})
+    Labels (deterministic priority):
+    - **market_risk_off** — elevated risk-off + unstable share or high average instability
+    - **market_stable** — broad stable_trend share + calm average instability + coherent panel
+    - **market_fragmented** — low stable share and low coherence
+    - **market_transition** — many fragile / unstable / vol names without full risk-off
+    - **market_fragile** — fragile_rally share elevated with moderate stress
+    - **market_mixed** — default
+    """
+    merged = df.copy().sort_values(DATE_COLUMN, ascending=True).reset_index(drop=True)
 
-    latest = latest.merge(inf[["asset", "influence_score"]], on="asset", how="left")
-    latest["influence_score"] = latest["influence_score"].fillna(float(inf.get("influence_score", pd.Series([0.5])).mean()))
+    # Optional: weight by top influencers in risk-off (simple proxy)
+    top_inf = 0.0
+    if not influence_df.empty and "asset" in influence_df.columns and "influence_score" in influence_df.columns:
+        top_inf = float(influence_df["influence_score"].head(3).mean()) if len(influence_df) else 0.0
 
-    riskish = latest["regime_label"].astype(str).isin({"risk_off_transition", "high_volatility", "unstable"}).astype(float)
-    weight = latest["influence_score"].astype(float).clip(lower=1e-6)
-    risk_off_pressure = float((riskish * weight).sum() / weight.sum()) if len(latest) else 0.0
+    rr = merged.get("regime_risk_off_frac", pd.Series(0.0, index=merged.index)).astype(float).fillna(0.0)
+    hv = merged.get("regime_high_vol_frac", pd.Series(0.0, index=merged.index)).astype(float).fillna(0.0)
+    st = merged.get("regime_stable_frac", pd.Series(0.0, index=merged.index)).astype(float).fillna(0.0)
+    ru = merged.get("regime_unstable_frac", pd.Series(0.0, index=merged.index)).astype(float).fillna(0.0)
+    rf = merged.get("regime_fragile_frac", pd.Series(0.0, index=merged.index)).astype(float).fillna(0.0)
+    ainst = merged.get("avg_panel_instability", merged["instability_score"]).astype(float).fillna(0.5)
+    acoh = merged.get("avg_panel_coherence", merged["coherence_score"]).astype(float).fillna(0.5)
+    aconf = merged.get("avg_panel_confidence", merged.get("confidence_score", pd.Series(0.5, index=merged.index))).astype(float).fillna(0.5)
 
-    cluster_dispersion = 0.0
+    labels = np.full(len(merged), "market_mixed", dtype=object)
+
+    m_risk = (rr >= 0.18) & ((ru + hv) >= 0.20 + 0.1 * top_inf)
+    m_stable = (st >= 0.22) & (ainst <= 0.48) & (acoh >= 0.48)
+    m_frag = (rf >= 0.15) & (ainst >= 0.42) & (rr < 0.15)
+    m_trans = (ru + rf + hv) >= 0.35
+    m_fragm = (st <= 0.12) & (acoh <= 0.46) & (rr < 0.12)
+
+    labels[m_risk] = "market_risk_off"
+    labels[m_stable & ~m_risk] = "market_stable"
+    m_fragile_lab = m_frag & ~m_risk & ~m_stable
+    labels[m_fragile_lab] = "market_fragile"
+    labels[m_fragm & ~m_risk & ~m_stable & ~m_fragile_lab] = "market_fragmented"
+    labels[m_trans & ~m_risk & ~m_stable & ~m_fragile_lab & ~m_fragm] = "market_transition"
+
+    merged["market_regime_label"] = labels
+    merged["market_confidence_score"] = aconf.clip(0.0, 1.0)
+    merged["market_instability_score"] = ainst.clip(0.0, 1.0)
+    merged["market_coherence_score"] = acoh.clip(0.0, 1.0)
+
+    # Dominant cluster regime hint (optional soft bias)
     if not cluster_summary_df.empty and "dominant_regime" in cluster_summary_df.columns:
-        cluster_dispersion = float(cluster_summary_df["dominant_regime"].astype(str).nunique() / max(len(cluster_summary_df), 1))
+        dom = cluster_summary_df["dominant_regime"].astype(str).mode()
+        hint = str(dom.iloc[0]) if len(dom) else ""
+        if hint in ("risk_off_transition", "high_volatility") and (merged["market_regime_label"] == "market_mixed").any():
+            merged.loc[merged["market_regime_label"] == "market_mixed", "market_regime_label"] = "market_transition"
 
-    base_conf = (
-        latest["adjusted_confidence_score"].astype(float).mean()
-        if "adjusted_confidence_score" in latest.columns
-        else latest.get("confidence_score", pd.Series([0.5])).astype(float).mean()
-    )
-    cluster_conf = (
-        cluster_summary_df["average_confidence"].astype(float).mean()
-        if not cluster_summary_df.empty and "average_confidence" in cluster_summary_df.columns
-        else base_conf
-    )
-
-    coherence = float(np.clip(0.6 * cluster_conf + 0.4 * (1.0 - cluster_dispersion), 0.0, 1.0))
-    instability = float(np.clip(0.65 * risk_off_pressure + 0.35 * cluster_dispersion, 0.0, 1.0))
-    confidence = float(np.clip(0.55 * base_conf + 0.45 * coherence, 0.0, 1.0))
-
-    if risk_off_pressure >= 0.55:
-        label = "market_risk_off"
-    elif coherence >= 0.70 and instability <= 0.35:
-        label = "market_stable"
-    elif coherence <= 0.45 and cluster_dispersion >= 0.55:
-        label = "market_fragmented"
-    elif instability >= 0.60:
-        label = "market_transition"
-    elif instability >= 0.45:
-        label = "market_fragile"
-    else:
-        label = "market_mixed"
-
-    return pd.DataFrame(
-        {
-            "market_regime_label": [label],
-            "market_confidence_score": [confidence],
-            "market_instability_score": [instability],
-            "market_coherence_score": [coherence],
-        }
-    )
+    return merged.loc[:, ~merged.columns.duplicated()]
 
 
 def generate_market_action_posture(market_state_df: pd.DataFrame) -> pd.DataFrame:
-    """Map market regime + confidence into market action posture."""
-    if market_state_df.empty:
-        return pd.DataFrame(columns=["market_action_posture"])
+    """
+    Map ``market_regime_label`` and market scores into ``market_action_posture``.
 
-    df = market_state_df.copy()
+    Values: ``risk_on``, ``cautious_risk_on``, ``neutral``, ``reduce_risk``, ``defensive``, ``wait``.
+    """
+    out = market_state_df.copy()
+    mr = out["market_regime_label"].astype(str).to_numpy()
+    conf = out["market_confidence_score"].astype(float).to_numpy()
+    inst = out["market_instability_score"].astype(float).to_numpy()
 
-    def _map(row: pd.Series) -> str:
-        label = str(row.get("market_regime_label", "market_mixed"))
-        conf = float(row.get("market_confidence_score", 0.0))
+    posture = np.full(len(out), "neutral", dtype=object)
+    high_c = conf >= 0.58
 
-        if label == "market_risk_off":
-            return "defensive"
-        if label == "market_stable" and conf >= 0.65:
-            return "risk_on"
-        if label == "market_fragile":
-            return "cautious_risk_on" if conf >= 0.55 else "reduce_risk"
-        if label in {"market_transition", "market_fragmented"}:
-            return "wait"
-        if label == "market_mixed":
-            return "neutral"
-        return "neutral"
+    m_st = mr == "market_stable"
+    posture[m_st & high_c] = "risk_on"
+    posture[m_st & ~high_c] = "cautious_risk_on"
+    m_fr = mr == "market_fragile"
+    posture[m_fr] = np.where(inst[m_fr] >= 0.55, "reduce_risk", "cautious_risk_on")
+    posture[mr == "market_risk_off"] = "defensive"
+    posture[mr == "market_transition"] = "wait"
+    posture[mr == "market_fragmented"] = "wait"
+    m_mx = mr == "market_mixed"
+    posture[m_mx] = np.where(inst[m_mx] >= 0.55, "reduce_risk", "neutral")
 
-    df["market_action_posture"] = df.apply(_map, axis=1)
-    return df
+    out["market_action_posture"] = posture.astype(str)
+    return out
 
 
 def generate_market_explanation(market_state_df: pd.DataFrame) -> pd.DataFrame:
-    """Generate a short deterministic market explanation string."""
-    if market_state_df.empty:
-        return pd.DataFrame(columns=["market_explanation"])
+    """Short deterministic narrative from market regime and scores."""
+    out = market_state_df.copy()
+    lines: list[str] = []
+    for _, row in out.iterrows():
+        lab = str(row.get("market_regime_label", ""))
+        conf = float(row.get("market_confidence_score", float("nan")))
+        inst = float(row.get("market_instability_score", float("nan")))
+        coh = float(row.get("market_coherence_score", float("nan")))
+        parts = [
+            f"Market state={lab}",
+            f"market_confidence={conf:.2f}",
+            f"market_instability={inst:.2f}",
+            f"market_coherence={coh:.2f}",
+        ]
+        if lab == "market_risk_off":
+            parts.append(
+                "Many tracked names show risk-off or stress; cross-asset coherence is weak; defensive posture."
+            )
+        elif lab == "market_stable":
+            parts.append("Clusters align with stable trend; coherence is supportive; risk-on bias when confidence is high.")
+        elif lab == "market_fragmented":
+            parts.append("Clusters disagree; structural coherence is low; prefer to wait for alignment.")
+        elif lab == "market_transition":
+            parts.append("Fragile and unstable regimes are common; transitions dominate; wait for clarity.")
+        elif lab == "market_fragile":
+            parts.append("Fragile rally signals are elevated; reduce risk or lean cautious.")
+        else:
+            parts.append("Mixed cross-section without a single dominant narrative; neutral stance.")
+        lines.append("; ".join(parts))
+    out["market_explanation"] = lines
+    return out
 
-    df = market_state_df.copy()
 
-    def _describe(row: pd.Series) -> str:
-        label = str(row.get("market_regime_label", "market_mixed"))
-        conf = float(row.get("market_confidence_score", 0.0))
-        inst = float(row.get("market_instability_score", 0.0))
-        coh = float(row.get("market_coherence_score", 0.0))
-        action = str(row.get("market_action_posture", "neutral"))
-
-        return (
-            f"Market state is {label} (confidence={conf:.2f}, instability={inst:.2f}, coherence={coh:.2f}); "
-            f"the synthesized market-wide posture is {action}."
-        )
-
-    df["market_explanation"] = df.apply(_describe, axis=1)
-    return df
+def attach_spy_forward_returns(market_state_df: pd.DataFrame, spy_forwards_df: pd.DataFrame) -> pd.DataFrame:
+    """Merge ``fwd_ret_*`` and ``spy_vol_10d`` (if present) from the SPY evaluation frame."""
+    cols = [DATE_COLUMN] + [c for c in spy_forwards_df.columns if c.startswith("fwd_ret_") and c.endswith("d")]
+    if "spy_vol_10d" in spy_forwards_df.columns:
+        cols.append("spy_vol_10d")
+    cols = [c for c in cols if c in spy_forwards_df.columns]
+    if len(cols) <= 1:
+        return market_state_df.copy()
+    sub = spy_forwards_df[cols].drop_duplicates(DATE_COLUMN)
+    return market_state_df.merge(sub, on=DATE_COLUMN, how="left")
 
 
 def compare_market_vs_asset_usefulness(
     asset_df: pd.DataFrame,
     market_state_df: pd.DataFrame,
 ) -> pd.DataFrame:
-    """Compare asset-level and market-level usefulness diagnostics."""
-    if asset_df.empty or market_state_df.empty:
-        return pd.DataFrame(columns=["level", "average_usefulness", "average_confidence", "abstention_rate", "regime_persistence", "false_positive_rate"])
-
-    a = asset_df.copy()
-    usefulness_col = "action_useful_5d" if "action_useful_5d" in a.columns else "usefulness_score"
-    conf_col = "adjusted_confidence_score" if "adjusted_confidence_score" in a.columns else "confidence_score"
-
-    if "action_posture" in a.columns:
-        abst = a["action_posture"].astype(str).isin({"wait", "watch"}).mean()
+    """
+    Two-row summary: ``asset_level`` vs ``market_level`` on usefulness, confidence,
+    abstention, persistence proxy, false-positive proxy.
+    """
+    useful_cols = [c for c in asset_df.columns if c.startswith("action_useful_") and c.endswith("d")]
+    if useful_cols:
+        asset_u = asset_df[useful_cols].mean(axis=1)
+        avg_use_a = float(asset_u.mean())
+        abstain_a = float((asset_u == 0).mean())
     else:
-        abst = np.nan
+        avg_use_a = float("nan")
+        abstain_a = float("nan")
 
-    if "regime_label" in a.columns:
-        ordered = a.sort_values(["asset", "timestamp"], ascending=True)
-        changed = ordered.groupby("asset", observed=False)["regime_label"].apply(lambda s: (s.astype(str) != s.astype(str).shift(1)).astype(int))
-        persistence = float(1.0 - changed.mean())
+    avg_conf_a = float(asset_df["confidence_score"].astype(float).mean()) if "confidence_score" in asset_df.columns else float("nan")
+
+    # Persistence: mean run length per asset then mean
+    prs = []
+    for a, g in asset_df.groupby("asset", sort=False):
+        runs = compute_regime_runs(g.assign(regime_label=g["regime_label"]))
+        summ = summarize_regime_persistence(runs)
+        if not summ.empty:
+            prs.append(float(summ["avg_run_length"].mean()))
+    persist_a = float(np.mean(prs)) if prs else float("nan")
+
+    fp_a = float("nan")
+    if "likely_false_positive_flag" in asset_df.columns:
+        fp_a = float(asset_df["likely_false_positive_flag"].astype(float).mean())
+
+    def _map_market_posture_to_action(p: str) -> str:
+        m = {
+            "risk_on": "lean_long",
+            "cautious_risk_on": "watch",
+            "neutral": "watch",
+            "reduce_risk": "reduce_exposure",
+            "defensive": "avoid_risk",
+            "wait": "wait",
+        }
+        return m.get(str(p), "watch")
+
+    mdf = market_state_df.copy()
+    mdf = mdf.sort_values(DATE_COLUMN, ascending=True)
+    if "market_action_posture" not in mdf.columns:
+        raise KeyError("market_state_df must include market_action_posture")
+    mdf = mdf.assign(action_posture=mdf["market_action_posture"].map(_map_market_posture_to_action))
+    mdf = score_action_usefulness(mdf)
+    mu_cols = [c for c in mdf.columns if c.startswith("action_useful_") and c.endswith("d")]
+    if mu_cols:
+        mu = mdf[mu_cols].mean(axis=1)
+        avg_use_m = float(mu.mean())
+        abstain_m = float((mu == 0).mean())
     else:
-        persistence = np.nan
+        avg_use_m = float("nan")
+        abstain_m = float("nan")
 
-    if "likely_false_positive_flag" in a.columns:
-        fp_rate = float(a["likely_false_positive_flag"].astype(float).mean())
-    else:
-        fp_rate = float(np.nan)
+    avg_conf_m = (
+        float(mdf["market_confidence_score"].astype(float).mean())
+        if "market_confidence_score" in mdf.columns
+        else float("nan")
+    )
 
-    asset_row = {
-        "level": "asset_level",
-        "average_usefulness": float(a[usefulness_col].astype(float).mean()) if usefulness_col in a.columns else np.nan,
-        "average_confidence": float(a[conf_col].astype(float).mean()) if conf_col in a.columns else np.nan,
-        "abstention_rate": float(abst),
-        "regime_persistence": persistence,
-        "false_positive_rate": fp_rate,
-    }
+    pr_m = float("nan")
+    if "market_regime_label" in mdf.columns:
+        tmp = compute_regime_runs(mdf.assign(regime_label=mdf["market_regime_label"]))
+        sm = summarize_regime_persistence(tmp)
+        if not sm.empty:
+            pr_m = float(sm["avg_run_length"].mean())
 
-    m = market_state_df.copy()
-    market_row = {
-        "level": "market_level",
-        "average_usefulness": float(m.get("market_usefulness_proxy", pd.Series([asset_row["average_usefulness"]])).astype(float).mean()),
-        "average_confidence": float(m.get("market_confidence_score", pd.Series([np.nan])).astype(float).mean()),
-        "abstention_rate": float(m.get("market_action_posture", pd.Series(["neutral"])).astype(str).isin({"wait", "neutral"}).mean()),
-        "regime_persistence": float(1.0),
-        "false_positive_rate": float(m.get("market_false_positive_proxy", pd.Series([np.nan])).astype(float).mean()),
-    }
+    fp_m = 0.0
 
-    return pd.DataFrame([asset_row, market_row]).sort_values("level", ascending=True).reset_index(drop=True)
+    return pd.DataFrame(
+        [
+            {
+                "level": "asset_level",
+                "avg_usefulness": avg_use_a,
+                "avg_confidence": avg_conf_a,
+                "abstention_rate": abstain_a,
+                "regime_persistence_proxy": persist_a,
+                "false_positive_rate_proxy": fp_a,
+            },
+            {
+                "level": "market_level",
+                "avg_usefulness": avg_use_m,
+                "avg_confidence": avg_conf_m,
+                "abstention_rate": abstain_m,
+                "regime_persistence_proxy": pr_m,
+                "false_positive_rate_proxy": fp_m,
+            },
+        ]
+    )
