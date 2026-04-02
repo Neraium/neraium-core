@@ -23,3 +23,18 @@ neraium.db
 reports/
 regime_library_*.json
 ult
+# Python cache
+__pycache__/
+*.pyc
+
+# local runtime / generated artifacts
+neraium.db
+reports/
+regime_library_*.json
+ult
+
+# packaging/build outputs
+*.egg-info/
+
+# local market outputs
+neraium_markets/output/
