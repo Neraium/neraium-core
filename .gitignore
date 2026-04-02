@@ -1,43 +1,10 @@
+# Local/generated artifacts
+neraium.db
+reports/
+regime_library_*.json
+ult
 __pycache__/
 *.pyc
-*.pyo
-*.pyd
-.venv/
-venv/
-dist/
-build/
 *.egg-info/
-.pytest_cache/
-.DS_Store
-Thumbs.db
-__pycache__/
-*.pyc
-.pytest_cache/
-# local runtime / generated artifacts
-neraium.db
-reports/
-regime_library_*.json
-ult
-# local runtime / generated artifacts
-neraium.db
-reports/
-regime_library_*.json
-ult
-# Python cache
-__pycache__/
-*.pyc
-
-# local runtime / generated artifacts
-neraium.db
-reports/
-regime_library_*.json
-ult
-
-# packaging/build outputs
-*.egg-info/
-
-# local market outputs
 neraium_markets/output/
-
-# app cache
 apps/__pycache__/
