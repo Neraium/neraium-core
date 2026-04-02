@@ -1,22 +1,45 @@
-# Neraium Markets — Day 1
+# Neraium Markets — Day 2
 
 `neraium_markets` is a **read-only structural intelligence engine skeleton** for financial market data.
 
-## What Day 1 does
+## What Day 2 does
 
 - Loads market CSVs from `sample_data/`
 - Normalizes and parses timestamps
 - Validates each asset dataset
 - Aligns all asset close series onto a common timestamp index (outer join)
-- Prints merged dataset shape and first 10 rows
-- Includes tests for loading, validation, and alignment
+- Builds a first deterministic feature engine for Day 2
+- Prints aligned and feature-table shapes
+- Prints sample feature columns
+- Saves engineered features to `output/features.csv`
+- Includes tests for loading, validation, alignment, and Day 2 feature outputs
 
-## What Day 1 does not do
+## Day 2 feature set
+
+- Returns:
+  - `*_ret_1d`, `*_ret_5d` for core equity, sector, and cross-asset symbols
+- Volatility:
+  - `spy_vol_10d`, `spy_vol_20d`
+  - `qqq_vol_10d`, `qqq_vol_20d`
+  - `iwm_vol_10d`, `iwm_vol_20d`
+- Breadth:
+  - `breadth_pct_above_20dma`
+- Sector participation:
+  - `sector_dispersion_1d`
+  - `sector_concentration_top2`
+- Cross-asset context:
+  - `vix_ret_1d`, `dxy_ret_1d`, `gold_ret_1d`, `oil_ret_1d`, `us2y_ret_1d`, `us10y_ret_1d`
+  - `rates_2s10s = us10y - us2y`
+  - `risk_off_proxy` (deterministic composite)
+
+## What this project still does not do
 
 - No trading execution
 - No broker API integration
 - No machine learning
+- No regime engine (yet)
 - No dashboard or UI
+- No API surface
 
 ## Project structure
 
@@ -33,10 +56,12 @@ neraium_markets/
     data_loader.py
     alignment.py
     validation.py
+    features.py
   tests/
     test_data_loader.py
     test_alignment.py
     test_validation.py
+    test_features.py
 ```
 
 ## Expected CSV schema
