@@ -6,6 +6,7 @@ from neraium_core.output_contract import (
     REQUIRED_FIELDS,
     derive_product_events,
     is_canonical_output,
+    build_decision_contract_v2,
 )
 from neraium_core.service import StructuralMonitoringService
 from neraium_core.store import ResultStore
@@ -98,3 +99,19 @@ def test_contract_stability_required_and_optional_keys(tmp_path) -> None:
     optional = {"aliases", "session", "history_id", "persisted_at", "customer_id", "run_id", "memory_recall", "operational_recommendation", "recommendation_available", "alert_status"}
     unknown = set(out.keys()) - required - optional
     assert not unknown
+
+
+def test_decision_contract_v2_is_auditable_and_explicit(tmp_path) -> None:
+    service = _service(tmp_path)
+    out = service.ingest_frame(_frame(0, 50.0), run_id="run-prod", customer_id="customer-a")
+
+    contract = build_decision_contract_v2(out)
+    assert contract is not None
+    assert contract["contract_version"] == "decision-contract.v2"
+    assert "structural_state" in contract
+    assert "confidence_quality" in contract
+    assert "evidence_explanation" in contract
+    assert "operator_action" in contract
+    assert "policy" in contract
+    assert "data_quality" in contract
+    assert isinstance(contract["confidence_quality"]["unknowns"], list)
