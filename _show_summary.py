@@ -1,14 +1,13 @@
-import json
-import pathlib
+#!/usr/bin/env python3
+"""Compatibility wrapper for the moved multinode summary helper."""
 
-p = pathlib.Path("upgraded_multinode_test_results.json")
-d = json.loads(p.read_text(encoding="utf-8"))
-print("Top-level keys:", sorted(d.keys()))
-for n in d.get("nodes", []):
-    c = d["runs"][n]["coherent_time"]
-    t = d["runs"][n]["disturbed_time"]
-    print(
-        f"{n}: coherent={c.get('final_interpreted_state')} disturbed={t.get('final_interpreted_state')} | "
-        f"coh_mean={c.get('mean_score')} dist_mean={t.get('mean_score')}"
-    )
-print("Saved:", p.resolve())
+from __future__ import annotations
+
+import runpy
+from pathlib import Path
+
+_ROOT = Path(__file__).resolve().parent
+_TARGET = _ROOT / "experiments" / "scripts" / "show_summary.py"
+
+if __name__ == "__main__":
+    runpy.run_path(str(_TARGET), run_name="__main__")

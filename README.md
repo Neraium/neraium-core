@@ -127,6 +127,18 @@ Operational systems / telemetry sources
 → Systemic Infrastructure Intelligence (read-only computation)  
 → Human operators and evidence outputs (API results, CSV, reports)  
 
+## Repository layout (product-oriented)
+
+- `apps/api/`: deployable API + web serving layer
+- `neraium_core/`: core engine, product intelligence, and runtime logic
+- `neraium_core/integrations/` + `neraium_core/adapters/`: integration boundaries
+- `experiments/`: research scripts, benchmark harnesses, monolith exports, notebook helpers
+- `docs/`: runbooks and product documentation
+- `tests/`: automated test suite
+
+Detailed structure audit:
+→ **[docs/REPO_STRUCTURE.md](docs/REPO_STRUCTURE.md)**
+
 ### System intelligence operating modes (March 31, 2026 refactor)
 
 The structural intelligence stack now has explicit operating boundaries:
