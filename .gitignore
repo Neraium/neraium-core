@@ -38,3 +38,6 @@ ult
 
 # local market outputs
 neraium_markets/output/
+
+# app cache
+apps/__pycache__/
