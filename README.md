@@ -364,3 +364,17 @@ field (not nested under `operator_guidance`).
 > Compatibility note: `neraium_core/casual.py` is deprecated and will be removed in a future release. Use `neraium_core/causal.py`.
 
 ---
+
+## Neraium Markets (MVP)
+
+A first working read-only structural intelligence engine for market regime transition detection now exists under `neraium_core/markets`.
+
+Quickstart:
+
+```bash
+python examples/markets/run_markets_pipeline.py
+uvicorn neraium_core.markets.app.api:app --reload
+pytest tests/markets -q
+```
+
+See full module docs in `neraium_core/markets/README.md` and architecture in `architecture.md`.
