@@ -1,6 +1,6 @@
 # Neraium Markets
 
-Read-only market intelligence pipeline: load OHLCV CSVs, validate, align closes, engineer features, build a structural snapshot, produce **regime-aware signals**, run a deterministic **Day 5 validation layer** (forward outcomes, usefulness scoring, calibration, baselines), then **Day 6 reliability analysis** (regime persistence, transitions, signal stability, false-positive diagnostics, and filtered signals).
+Read-only market intelligence pipeline: load OHLCV CSVs, validate, align closes, engineer features, build a structural snapshot, produce **regime-aware signals**, run a deterministic **Day 5 validation layer** (forward outcomes, usefulness scoring, calibration, baselines), **Day 6 reliability analysis** (persistence, transitions, stability, false positives, filtering), and **Day 8 cross-asset / market-wide state** (clustering, propagation, influence, synthesized market regime and posture).
 
 ## Pipeline overview
 
@@ -95,7 +95,7 @@ pip install -r requirements.txt
 
 On Linux or macOS: `source .venv/bin/activate`.
 
-## Pipeline flow (Days 1–6)
+## Pipeline flow (Days 1–8)
 
 1. Load OHLCV CSVs from `sample_data/`
 2. Validate data quality and schema
@@ -106,6 +106,7 @@ On Linux or macOS: `source .venv/bin/activate`.
 7. Compute forward returns and action usefulness (Day 5)
 8. Confidence calibration and baseline comparison (Day 5)
 9. **Day 6:** regime runs & persistence, transition matrix & transition-quality stats, signal stability, false-positive flags, filtered postures, filtered vs unfiltered comparison, reliability report
+10. **Day 8:** per-asset similarity & clustering, regime propagation & influence, market-wide state & posture, market vs asset usefulness comparison
 
 ## Run
 
@@ -115,7 +116,7 @@ From `neraium_markets/`:
 python main.py
 ```
 
-Runs the full pipeline through Day 6, prints validation and reliability summaries, and (with `--save-output`) writes CSV/JSON under `output/`.
+Runs the full pipeline through Day 8, prints validation, reliability, and market-structure summaries, and (with `--save-output`) writes CSV/JSON under `output/`.
 
 ## Regenerate sample data
 
@@ -153,6 +154,9 @@ Day 3 structural utilities are covered in `tests/test_structure.py` (imports fro
 - `neraium/transitions.py` — regime runs, persistence summary, transition matrix, transition usefulness
 - `neraium/diagnostics.py` — signal stability (flip/jump flags, `stability_score`)
 - `neraium/filtering.py` — false-positive pattern flags, `filtered_action_posture`, filtered vs unfiltered comparison
+- `neraium/clustering.py` — asset similarity matrix, threshold clusters, cluster summaries
+- `neraium/propagation.py` — regime propagation counts, asset and sector influence scores
+- `neraium/market_state.py` — panel aggregates, `synthesize_market_state`, market action & explanation, market vs asset usefulness
 - `neraium/schemas.py` — `OHLCVRow`
 - `sample_data/` — one CSV per asset
 - `output/` — generated CSVs (created on run)
@@ -287,3 +291,43 @@ The main run also prints: average regime run length, top transitions by count, c
 ### Day 6 non-goals (unchanged)
 
 - Not execution, not broker APIs, not PnL optimization, not a production trading system.
+
+---
+
+## Day 8 cross-asset and market-wide state
+
+Day 8 adds **system-level structural intelligence** on top of the single-stream SPY pipeline. It does **not** add execution, ML, portfolio optimization, or dashboards. It is **not** a production trading system and **not** optimized for PnL.
+
+### Asset clustering
+
+For each configured equity ETF (core + sectors), the pipeline **re-runs** the Day 4 regime stack on a per-asset blend of market structural scores and that asset’s volatility (so names can diverge). **Similarity** mixes return correlation, regime agreement rate, and confidence alignment. **Clusters** are connected components of the similarity graph above a fixed threshold (deterministic, no ML).
+
+### Regime propagation
+
+When an asset’s `regime_label` changes at date *t*, other assets are scanned in the next few rows for a regime change. Aggregated counts yield **propagation** pairs (source/target, regimes, counts, average delay). **Influence** scores favor sources that broadcast many follow-on changes with short delays; the same table is rolled up to **sectors** via `config.ASSET_TO_SECTOR`.
+
+### Market-wide state
+
+Per timestamp, cross-sectional **fractions** (risk-off, stable, etc.) and mean panel confidence/instability/coherence are merged onto the structural timeline. **Rules** (documented in `neraium/market_state.py`) assign `market_regime_label` (e.g. `market_stable`, `market_risk_off`, `market_fragmented`). **Market action posture** maps that label plus scores to `risk_on`, `cautious_risk_on`, `neutral`, `reduce_risk`, `defensive`, `wait`, with a short **market_explanation** string.
+
+### Market vs asset usefulness
+
+`compare_market_vs_asset_usefulness` contrasts **asset_level** (mean usefulness across the long panel) with **market_level** (usefulness of mapped market posture against SPY forward returns). This is a sanity check on whether the synthesized layer is informative.
+
+### Day 8 outputs (`--save-output`)
+
+- `output/asset_similarity_matrix.csv`
+- `output/asset_clusters.csv`
+- `output/cluster_summary.csv`
+- `output/regime_propagation.csv`
+- `output/asset_influence_scores.csv`
+- `output/sector_influence_scores.csv`
+- `output/market_state.csv`
+- `output/market_vs_asset_comparison.csv`
+
+### Run Day 8
+
+```bash
+python main.py
+python main.py --save-output
+```

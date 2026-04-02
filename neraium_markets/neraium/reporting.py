@@ -195,3 +195,38 @@ def save_day6_outputs(
         json.dump(summary, fh, indent=2, sort_keys=True)
 
     return paths
+
+
+def save_day8_outputs(
+    similarity_df: pd.DataFrame,
+    clusters_df: pd.DataFrame,
+    cluster_summary_df: pd.DataFrame,
+    propagation_df: pd.DataFrame,
+    asset_influence_df: pd.DataFrame,
+    sector_influence_df: pd.DataFrame,
+    market_state_df: pd.DataFrame,
+    market_vs_asset_df: pd.DataFrame,
+    output_dir: str | Path = "output",
+) -> dict[str, Path]:
+    """Persist Day 8 cross-asset / market-state CSV artifacts."""
+    out_dir = Path(output_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    paths = {
+        "asset_similarity_matrix": out_dir / "asset_similarity_matrix.csv",
+        "asset_clusters": out_dir / "asset_clusters.csv",
+        "cluster_summary": out_dir / "cluster_summary.csv",
+        "regime_propagation": out_dir / "regime_propagation.csv",
+        "asset_influence_scores": out_dir / "asset_influence_scores.csv",
+        "sector_influence_scores": out_dir / "sector_influence_scores.csv",
+        "market_state": out_dir / "market_state.csv",
+        "market_vs_asset_comparison": out_dir / "market_vs_asset_comparison.csv",
+    }
+    similarity_df.to_csv(paths["asset_similarity_matrix"], index=True)
+    clusters_df.to_csv(paths["asset_clusters"], index=False)
+    cluster_summary_df.to_csv(paths["cluster_summary"], index=False)
+    propagation_df.to_csv(paths["regime_propagation"], index=False)
+    asset_influence_df.to_csv(paths["asset_influence_scores"], index=False)
+    sector_influence_df.to_csv(paths["sector_influence_scores"], index=False)
+    market_state_df.to_csv(paths["market_state"], index=False)
+    market_vs_asset_df.to_csv(paths["market_vs_asset_comparison"], index=False)
+    return paths

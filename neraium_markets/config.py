@@ -34,6 +34,24 @@ CROSS_ASSET_CONTEXT = [
     "vix", "dxy", "gold", "oil", "us2y", "us10y"
 ]
 
+# Day 8: cross-asset clustering / propagation (equity ETFs only)
+DAY8_CLUSTER_ASSETS = CORE_EQUITY_ASSETS + SECTOR_ASSETS
+
+# Map config asset tickers to coarse sector buckets for influence aggregation
+ASSET_TO_SECTOR: dict[str, str] = {
+    "spy": "core_large",
+    "qqq": "core_tech",
+    "iwm": "core_small",
+    "xlf": "sector_financials",
+    "xlk": "sector_tech",
+    "xle": "sector_energy",
+    "xlv": "sector_health",
+    "xli": "sector_industrial",
+    "xly": "sector_consumer_disc",
+    "xlp": "sector_consumer_staples",
+    "xlu": "sector_utilities",
+}
+
 
 # Day 3 structural configuration
 STRUCTURE_ASSETS = [
