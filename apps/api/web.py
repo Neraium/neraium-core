@@ -87,11 +87,11 @@ def build_web_router() -> APIRouter:
 
     @router.get("/demo", include_in_schema=False)
     def web_demo_entry_redirect() -> RedirectResponse:
-        return RedirectResponse(url="/validation?replay=1", status_code=307)
+        return RedirectResponse(url="/dashboard?replay=1", status_code=307)
 
     @router.get("/demo/full", include_in_schema=False)
     def web_demo_full_entry_redirect() -> RedirectResponse:
-        return RedirectResponse(url="/validation?replay=1&autoplay=1", status_code=307)
+        return RedirectResponse(url="/dashboard?replay=1&autoplay=1", status_code=307)
 
     return router
 
