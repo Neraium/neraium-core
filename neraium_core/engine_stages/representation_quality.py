@@ -59,6 +59,7 @@ class RepresentationAndQualityResult:
     dq_summary: dict[str, object]
     valid_mask: np.ndarray
     valid_signal_count: int
+    use_degraded: bool
 
 
 def build_representation_and_quality(
@@ -124,4 +125,5 @@ def build_representation_and_quality(
         dq_summary=dq_summary,
         valid_mask=valid_mask,
         valid_signal_count=valid_signal_count,
+        use_degraded=use_degraded,
     )
