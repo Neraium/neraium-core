@@ -1,3 +1,8 @@
+# Local/generated artifacts
+neraium.db
+reports/
+regime_library_*.json
+ult
 __pycache__/
 *.pyc
 *.pyo
@@ -28,3 +33,5 @@ cloudflared/config.yml
 outputs/
 *.jsonl
 *.csv
+neraium_markets/output/
+apps/__pycache__/

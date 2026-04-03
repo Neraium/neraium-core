@@ -95,6 +95,15 @@ def test_json_adapter_supports_validation_inputs(tmp_path: Path) -> None:
     assert rows[0]["asset_id"] == "A"
 
 
+def test_json_adapter_supports_top_level_list_inputs(tmp_path: Path) -> None:
+    path = tmp_path / "events_list.json"
+    path.write_text(json.dumps(_dataset()), encoding="utf-8")
+
+    rows = load_dataset(path, "json")
+    assert len(rows) == 3
+    assert rows[0]["asset_id"] == "A"
+
+
 def test_outcome_attribution_surfaces_confidence_and_source() -> None:
     platform = StructuralSystemIntelligencePlatform(operating_mode="production")
     pipeline = RealWorldValidationPipeline(decision_fn=platform.update)
@@ -102,3 +111,174 @@ def test_outcome_attribution_surfaces_confidence_and_source() -> None:
     first = report["outcomes"][0]
     assert "attribution_confidence" in first
     assert "attribution_source" in first
+
+
+def test_novelty_fallback_forces_conservative_monitoring() -> None:
+    def decision_fn(_obs: dict) -> dict:
+        return {
+            "intervention_intelligence": {
+                "recommendation": {
+                    "best_intervention": {"name": "aggressive_action", "confidence": 0.91},
+                    "intervention_memory_contribution": {"status": "available", "best_confidence_delta": 0.03, "choice_changed_without_memory": False},
+                }
+            },
+            "reliability_intelligence": {
+                "intervention_recommendation": {
+                    "recommendation_calibrated_confidence": 0.42,
+                    "reliability_trace": {"warnings": ["weak_support"]},
+                }
+            },
+            "structural_law_intelligence": {"structural_law_governance": {"laws": []}},
+        }
+
+    pipeline = RealWorldValidationPipeline(decision_fn=decision_fn)
+    rows = [
+        {
+            "timestamp": 1,
+            "asset_id": "A",
+            "novelty": 0.9,
+            "support_count": 1,
+            "drift_warning": True,
+            "observation": {"x": 1.0},
+            "actual_intervention": "aggressive_action",
+            "outcome_label": "harmful",
+        }
+    ]
+    report = pipeline.run(rows)
+    step = report["replay"]["step_logs"][0]
+    assert step["recommended_intervention"] == "monitor"
+    assert step["fallback_triggered"] is True
+    assert step["advisory_mode"] == "conservative_monitoring"
+
+
+def test_high_pressure_low_confidence_keeps_non_monitor_recommendation() -> None:
+    def decision_fn(_obs: dict) -> dict:
+        return {
+            "transition_dynamics": {
+                "escalation_probability": 0.92,
+                "distance_to_critical_region": 0.05,
+            },
+            "intervention_intelligence": {
+                "recommendation": {
+                    "best_intervention": {"name": "remove_top_driver_contribution", "confidence": 0.3},
+                    "intervention_memory_contribution": {"status": "available", "best_confidence_delta": 0.02, "choice_changed_without_memory": False},
+                }
+            },
+            "structural_law_intelligence": {"structural_law_governance": {"laws": []}},
+        }
+
+    pipeline = RealWorldValidationPipeline(decision_fn=decision_fn)
+    rows = [
+        {
+            "timestamp": 1,
+            "asset_id": "A",
+            "novelty": 0.2,
+            "support_count": 3,
+            "drift_warning": False,
+            "observation": {"x": 1.0},
+            "actual_intervention": "remove_top_driver_contribution",
+            "outcome_label": "helpful",
+        }
+    ]
+    report = pipeline.run(rows)
+    step = report["replay"]["step_logs"][0]
+    assert step["recommended_intervention"] == "remove_top_driver_contribution"
+
+
+def test_corpus_summary_surfaces_representativeness_warnings() -> None:
+    def decision_fn(_obs: dict) -> dict:
+        return {"intervention_intelligence": {"recommendation": {"best_intervention": {"name": "monitor", "confidence": 0.3}}}}
+
+    pipeline = RealWorldValidationPipeline(decision_fn=decision_fn)
+    rows = [
+        {"timestamp": i, "asset_id": "dominant", "domain": "single", "observation": {"x": i}, "actual_intervention": None, "outcome_label": "neutral"}
+        for i in range(12)
+    ]
+    report = pipeline.run(rows)
+    warnings = set(report["core_validation_report"]["corpus_summary"]["representativeness"]["warnings"])
+    assert "dominant_asset_skew" in warnings
+    assert "weak_domain_diversity" in warnings
+
+
+def test_intervention_memory_contribution_not_mirrored_to_accuracy() -> None:
+    def decision_fn(_obs: dict) -> dict:
+        return {
+            "intervention_intelligence": {
+                "recommendation": {
+                    "best_intervention": {"name": "monitor", "confidence": 0.5},
+                    "intervention_memory_contribution": {
+                        "status": "available",
+                        "best_confidence_delta": 0.02,
+                        "choice_changed_without_memory": True,
+                    },
+                }
+            }
+        }
+
+    pipeline = RealWorldValidationPipeline(decision_fn=decision_fn)
+    rows = [
+        {"timestamp": i, "asset_id": f"A{i%2}", "domain": "d1", "observation": {"x": i}, "actual_intervention": None, "outcome_label": "neutral"}
+        for i in range(8)
+    ]
+    report = pipeline.run(rows)
+    contribution = report["core_validation_report"]["summary"]["intervention_memory_contribution"]
+    assert contribution["status"] == "available"
+    assert contribution["mean_best_confidence_delta"] != report["core_validation_report"]["summary"]["decision_accuracy"]
+
+
+def test_baseline_replay_does_not_default_to_competing_explanations_fallback() -> None:
+    platform = StructuralSystemIntelligencePlatform(operating_mode="production")
+    pipeline = RealWorldValidationPipeline(decision_fn=platform.update)
+    rows = [
+        {
+            "timestamp": i + 1,
+            "asset_id": "baseline-A",
+            "domain": "water",
+            "scenario_family": "baseline",
+            "system_type": "pump",
+            "observation": {"x": 0.08 + 0.01 * i, "sensor": 1.0 + 0.02 * i},
+            "actual_intervention": "remove_top_driver_contribution" if i < 4 else None,
+            "outcome_label": "helpful" if i < 4 else "neutral",
+        }
+        for i in range(6)
+    ]
+
+    report = pipeline.run(rows)
+    step_logs = report["replay"]["step_logs"]
+    fallback_rate = sum(1 for step in step_logs if step["fallback_triggered"]) / len(step_logs)
+    competing_default = any("competing_explanations" in (step.get("fallback_reasons") or []) for step in step_logs)
+    max_support = max(int(step.get("support_count", 0) or 0) for step in step_logs)
+
+    assert fallback_rate < 1.0
+    assert competing_default is False
+    assert max_support > 0
+
+
+def test_baseline_replay_novelty_and_confidence_are_discriminative() -> None:
+    platform = StructuralSystemIntelligencePlatform(operating_mode="production")
+    pipeline = RealWorldValidationPipeline(decision_fn=platform.update)
+    rows = [
+        {
+            "timestamp": i + 1,
+            "asset_id": "baseline-discriminative",
+            "domain": "water",
+            "scenario_family": "baseline",
+            "system_type": "pump",
+            "observation": {"x": 0.05 + 0.018 * i, "sensor": 0.95 + 0.03 * i},
+            "actual_intervention": "remove_top_driver_contribution" if i < 5 else None,
+            "outcome_label": "helpful" if i < 5 else "neutral",
+        }
+        for i in range(8)
+    ]
+
+    step_logs = pipeline.run(rows)["replay"]["step_logs"]
+    novelties = [round(float(step.get("novelty", 0.0) or 0.0), 6) for step in step_logs]
+    confidences = [round(float(step.get("confidence", 0.0) or 0.0), 6) for step in step_logs]
+    supports = [int(step.get("support_count", 0) or 0) for step in step_logs]
+
+    assert len(set(novelties)) > 1 or len(set(confidences)) > 1
+    assert len(set(confidences)) > 1
+    early_conf = sum(confidences[:3]) / 3.0
+    late_conf = sum(confidences[-3:]) / 3.0
+    assert max(supports[-3:]) > max(supports[:3])
+    assert late_conf > early_conf

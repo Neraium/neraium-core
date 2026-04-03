@@ -1,3 +1,5 @@
-# Compatibility shim for platforms that require a requirements.txt file.
-# Canonical dependency definitions live in pyproject.toml.
-.
+fastapi
+uvicorn[standard]
+pandas
+numpy
+websockets

@@ -14,6 +14,11 @@ from neraium_core.pipeline import build_frame
 
 _SUPPORTED_EXTENSIONS = {".json", ".csv", ".npy", ".npz", ".txt"}
 
+# First line looks like whitespace-separated numeric samples (IMS bearing chunks, etc.).
+_NUMERIC_SIGNAL_FIRST_LINE = re.compile(
+    r"^\s*[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?(?:[\s,;]+[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?)*\s*$"
+)
+
 _METADATA_HINTS = {
     "timestamp",
     "time",
@@ -279,8 +284,28 @@ def _load_directory_rows(path: Path) -> list[dict[str, Any]]:
     return rows
 
 
+def _collect_nested_signal_files(root: Path) -> list[Path]:
+    """Files under ``root`` (recursive): known extensions + extensionless IMS-style numeric blocks."""
+    found: set[Path] = set()
+    for ext in _SUPPORTED_EXTENSIONS:
+        for pattern in (f"*{ext}", f"*{ext.upper()}"):
+            found.update(root.rglob(pattern))
+    for candidate in root.rglob("*"):
+        if not candidate.is_file() or candidate.suffix:
+            continue
+        if candidate.name.startswith("."):
+            continue
+        try:
+            first_line = candidate.read_text(encoding="utf-8", errors="ignore").splitlines()[:1]
+        except OSError:
+            continue
+        if first_line and _NUMERIC_SIGNAL_FIRST_LINE.match(first_line[0].strip()):
+            found.add(candidate)
+    return sorted(found)
+
+
 def _load_directory_slices(path: Path) -> tuple[list[RawTelemetrySlice], list[str]]:
-    files = [p for p in sorted(path.iterdir()) if p.is_file() and p.suffix.lower() in _SUPPORTED_EXTENSIONS]
+    files = _collect_nested_signal_files(path)
     warnings: list[str] = []
     out: list[RawTelemetrySlice] = []
     cycle = 1
@@ -294,17 +319,25 @@ def _load_directory_slices(path: Path) -> tuple[list[RawTelemetrySlice], list[st
                 obj = json.loads(f.read_text())
                 payload = obj.get("values") if isinstance(obj, dict) and "values" in obj else obj
                 arr = np.asarray(payload, dtype=float)
-            else:
+            elif ext == ".csv":
                 arr = np.loadtxt(f, dtype=float, delimiter=",")
+            else:
+                # .txt and extensionless IMS files: whitespace-separated numeric rows
+                arr = np.loadtxt(f, dtype=float)
             arr = _safe_matrix(arr)
+            try:
+                rel = f.relative_to(path)
+                unit_key = str(rel.as_posix())
+            except ValueError:
+                unit_key = f.name
             out.append(
                 RawTelemetrySlice(
-                    unit=path.name,
+                    unit=unit_key,
                     cycle=cycle,
                     timestamp=None,
                     values=arr,
                     channel_names=[f"ch_{i}" for i in range(arr.shape[1])],
-                    operating_context={"source_file": f.name},
+                    operating_context={"source_file": f.name, "relative_path": unit_key},
                 )
             )
             cycle += 1
