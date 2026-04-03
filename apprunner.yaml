@@ -4,10 +4,11 @@ runtime: python311
 build:
   commands:
     build:
-      - pip3 install -r requirements.txt
+      - mkdir -p /app/python_packages
+      - pip3 install -r requirements.txt -t /app/python_packages
 
 run:
   runtime-version: 3.11
-  command: python3 -m uvicorn neraium_core.markets.app.api:app --host 0.0.0.0 --port 8000
+  command: sh -c "PYTHONPATH=/app/python_packages:/app python3 -m uvicorn neraium_core.markets.app.api:app --host 0.0.0.0 --port 8000"
   network:
     port: 8000
