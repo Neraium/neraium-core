@@ -86,6 +86,10 @@ def create_app(
         return {"status": "ok", "service": "neraium-markets"}
 
     @app.get("/")
+    def root() -> dict[str, str]:
+        return {"status": "ok", "service": "neraium-markets"}
+
+    @app.get("/operator", response_class=HTMLResponse)
     def operator_ui() -> HTMLResponse:
         html_path = Path(__file__).parent / "static" / "operator.html"
         html = (
