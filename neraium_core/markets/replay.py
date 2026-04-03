@@ -23,6 +23,7 @@ def run_signal_replay(
     timeframe: str = "15m",
     csv_output_path: Path | None = None,
     emission_controller: SignalEmissionController | None = None,
+    symbols: list[str] | None = None,
 ) -> list[dict]:
     loader = MarketDataLoader(data_dir=data_dir)
     prices = align_to_shared_clock(loader.load(timeframe))
@@ -33,13 +34,14 @@ def run_signal_replay(
     controller = emission_controller or SignalEmissionController(EmissionControlConfig())
     controller.config.warmup_bars = min(controller.config.warmup_bars, max(20, len(prices.index) // 2))
     emitted_rows: list[dict] = []
+    target_assets = [s.upper() for s in (symbols or CORE)]
 
     for frame_index in range(minimum_history, len(prices.index) + 1):
         frame_prices = prices.iloc[:frame_index]
         validation = validate_market_frame(frame_prices)
         state = build_state_vector(frame_prices)
         timestamp = frame_prices.index[-1]
-        for asset in CORE:
+        for asset in target_assets:
             try:
                 signal = generate_signal_for_asset(
                     asset=asset,
