@@ -1,0 +1,20 @@
+<!doctype html>
+<html>
+<head><meta charset="utf-8"/><title>Neraium Markets Operator</title></head>
+<body>
+<h1>Neraium Markets Operator Console</h1>
+<p>Market data only. No trade execution.</p>
+<section>
+  <h2>Historical fetch</h2>
+  <p>POST <code>/integrations/massive/historical/fetch</code> with symbols/timeframe/start_date/end_date.</p>
+</section>
+<section>
+  <h2>Replay</h2>
+  <p>POST <code>/run-replay</code> with <code>use_massive_cached_data=true</code> or <code>data_dir</code>.</p>
+</section>
+<section>
+  <h2>Live</h2>
+  <p>POST <code>/live/start</code> then monitor <code>/live/status</code> and <code>/live/signals/latest</code>.</p>
+</section>
+</body>
+</html>
