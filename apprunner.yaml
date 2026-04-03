@@ -9,6 +9,7 @@ build:
 
 run:
   runtime-version: 3.11
+  # Canonical runtime entrypoint for live service verification.
   command: python -m uvicorn neraium_core.markets.app.api:app --host 0.0.0.0 --port 8000
   network:
     port: 8000

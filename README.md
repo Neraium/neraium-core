@@ -81,3 +81,5 @@ Each emitted row contains:
 `LIVE_MARKET_RUN.md` is legacy/archive documentation for the older polling runner.
 
 For the active runtime, see `neraium_core/markets/README.md` and deploy with `neraium_core.markets.app.api:app`.
+
+App Runner operators: use the fresh-deploy verification checklist in `neraium_core/markets/README.md` to confirm `/health` and startup logs match the current commit.

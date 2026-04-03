@@ -55,6 +55,23 @@ def test_missing_config_returns_400(monkeypatch):
     assert res.status_code == 400
 
 
+def test_health_exposes_runtime_fingerprint(monkeypatch):
+    monkeypatch.setenv("NERAIUM_GIT_SHA", "abc123")
+    monkeypatch.setenv("NERAIUM_DEPLOYMENT_ID", "deploy-42")
+    app = create_app()
+    client = TestClient(app)
+
+    res = client.get("/health")
+
+    assert res.status_code == 200
+    payload = res.json()
+    assert payload["ok"] is True
+    assert payload["service"] == "markets"
+    assert payload["app_identity"] == "neraium_core.markets.app.api:app"
+    assert payload["version"] == "9.9.9-markets"
+    assert payload["git_sha"] == "abc123"
+    assert payload["deploy_id"] == "deploy-42"
+
 def test_live_status_endpoint():
     app = create_app()
     client = TestClient(app)
