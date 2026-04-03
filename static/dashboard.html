@@ -1,608 +1,92 @@
-<!DOCTYPE html>
-HEAD
-
+<!doctype html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Neraium Dashboard</title>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Neraium Markets Operator Console</title>
   <style>
-    body {
-      margin: 0;
-      padding: 16px;
-      background: #0f172a;
-      color: #e2e8f0;
-      font-family: Arial, sans-serif;
+    :root {
+      --bg:#090d14; --panel:#101826; --panel-2:#0c1320; --text:#e5e7eb; --muted:#9ca3af;
+      --line:#223146; --accent:#60a5fa; --good:#34d399; --warn:#f59e0b; --bad:#f87171;
+      --pill:#16263a;
     }
-
-```
-.container {
-  max-width: 1200px;
-  margin: 0 auto;
-}
-
-h1 {
-  margin: 0 0 8px 0;
-  font-size: 32px;
-}
-
-.subtitle {
-  color: #94a3b8;
-  margin-bottom: 20px;
-}
-
-.row {
-  display: grid;
-  grid-template-columns: repeat(12, 1fr);
-  gap: 16px;
-  margin-bottom: 16px;
-}
-
-.card {
-  grid-column: span 12;
-  background: #111827;
-  border: 1px solid #334155;
-  border-radius: 12px;
-  padding: 16px;
-}
-
-.span-4 { grid-column: span 4; }
-.span-6 { grid-column: span 6; }
-
-@media (max-width: 900px) {
-  .span-4, .span-6 {
-    grid-column: span 12;
-  }
-}
-
-.metric {
-  font-size: 36px;
-  font-weight: bold;
-  margin: 8px 0;
-}
-
-.ok { color: #22c55e; }
-.bad { color: #ef4444; }
-
-.chart-wrap {
-  background: white;
-  border-radius: 10px;
-  padding: 10px;
-}
-
-canvas {
-  width: 100% !important;
-  height: 260px !important;
-}
-
-pre {
-  background: #020617;
-  color: #dbeafe;
-  border-radius: 10px;
-  padding: 12px;
-  min-height: 180px;
-  overflow: auto;
-  white-space: pre-wrap;
-  word-break: break-word;
-  font-size: 12px;
-}
-
-ul {
-  max-height: 220px;
-  overflow: auto;
-  padding-left: 20px;
-}
-
-.status-indicator {
-  display: inline-block;
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  margin-right: 8px;
-  vertical-align: middle;
-}
-
-.status-ok {
-  background-color: #22c55e;
-}
-
-.status-bad {
-  background-color: #ef4444;
-}
-```
-
+    *{box-sizing:border-box} body{margin:0;background:var(--bg);color:var(--text);font:14px/1.4 Inter,system-ui,Arial,sans-serif}
+    .app{display:grid;grid-template-columns:250px 1fr;min-height:100vh}
+    .sidebar{border-right:1px solid var(--line);padding:16px;background:#0b111b;position:sticky;top:0;height:100vh}
+    .brand{font-size:18px;font-weight:700;margin-bottom:16px}.brand small{display:block;color:var(--muted);font-weight:500}
+    .nav button{display:block;width:100%;text-align:left;margin:2px 0;padding:10px 12px;border:1px solid transparent;border-radius:8px;background:transparent;color:var(--text);cursor:pointer}
+    .nav button.active{background:var(--panel);border-color:var(--line)}
+    .main{display:flex;flex-direction:column}
+    .header{display:grid;grid-template-columns:1fr auto auto auto auto;gap:10px;align-items:center;padding:12px 16px;border-bottom:1px solid var(--line);background:#0b111b;position:sticky;top:0;z-index:2}
+    .k{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}.v{font-weight:600}
+    .pill{display:inline-block;padding:2px 8px;border-radius:999px;background:var(--pill);border:1px solid var(--line);font-size:12px}
+    .page{display:none;padding:16px}.page.active{display:block}
+    .grid{display:grid;gap:12px}.g2{grid-template-columns:2fr 1fr}.g3{grid-template-columns:repeat(3,1fr)}
+    .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px}
+    h2{margin:0 0 8px;font-size:15px} h3{margin:0 0 8px;font-size:13px;color:var(--muted);text-transform:uppercase}
+    .status-strip{display:flex;gap:8px;flex-wrap:wrap}
+    table{width:100%;border-collapse:collapse} th,td{padding:8px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+    th{position:sticky;top:0;background:var(--panel-2);font-size:12px;color:var(--muted)}
+    tbody tr{cursor:pointer} tbody tr:hover{background:#162132}
+    .action-act{color:var(--good)} .action-wait{color:var(--warn)} .action-reduce{color:#fbbf24} .action-avoid{color:var(--bad)}
+    .bar{height:7px;background:#1b2738;border-radius:8px;overflow:hidden}.bar span{display:block;height:100%}
+    .controls{display:flex;gap:8px;flex-wrap:wrap}.controls button,.controls input,.controls select{background:#0b111b;color:var(--text);border:1px solid var(--line);border-radius:8px;padding:8px}
+    .mono{font-family:ui-monospace,SFMono-Regular,monospace}.muted{color:var(--muted)}
+    details{border:1px solid var(--line);border-radius:8px;padding:8px;background:var(--panel-2)}
+    .empty{padding:20px;border:1px dashed var(--line);color:var(--muted);border-radius:8px;text-align:center}
+    .banner{padding:10px;border-radius:8px;border:1px solid var(--line);margin-bottom:10px;background:#152235}
+    @media (max-width:1100px){.app{grid-template-columns:1fr}.sidebar{position:relative;height:auto}.g2,.g3{grid-template-columns:1fr}.header{grid-template-columns:1fr 1fr}}
   </style>
-<html>
-<head>
-
-<title>Neraium Structural Map</title>
-
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.158.0/build/three.min.js"></script>
-
-<style>
-
-body{
-background:#0f172a;
-color:white;
-font-family:Arial;
-padding:20px;
-}
-
-.panel{
-background:#1e293b;
-padding:20px;
-border-radius:8px;
-margin-bottom:20px;
-}
-
-canvas{
-background:#020617;
-border-radius:8px;
-}
-
-</style>
-
-d4e7856 (Working Neraium telemetry engine with dashboard)
 </head>
-
 <body>
-HEAD
-  <div class="container">
-    <h1>Neraium Dashboard</h1>
-    <div class="subtitle">Live telemetry and drift monitoring</div>
+<div class="app">
+  <aside class="sidebar">
+    <div class="brand">Neraium Markets<small>Operator Console</small></div>
+    <nav class="nav" id="nav"></nav>
+  </aside>
+  <main class="main">
+    <header class="header">
+      <div><div class="k">Session</div><div class="v" id="hdrSession">--</div></div>
+      <div><div class="k">Provider</div><div class="v" id="hdrProvider">--</div></div>
+      <div><div class="k">Last Event</div><div class="v mono" id="hdrLastEvent">--</div></div>
+      <div><div class="k">Last Signal</div><div class="v mono" id="hdrLastSignal">--</div></div>
+      <div><div class="k">User</div><div class="v">ops@neraium</div></div>
+    </header>
 
-```
-<div class="row">
-  <div class="card span-4">
-    <h2>Status</h2>
-    <div id="latest-status" class="metric">
-      <span class="status-indicator status-ok"></span><span id="status-text">Loading...</span>
-    </div>
-    <div id="latest-score">Score: --</div>
-  </div>
-
-  <div class="card span-4">
-    <h2>Total Events</h2>
-    <div id="total-events" class="metric">0</div>
-  </div>
-
-  <div class="card span-4">
-    <h2>Total Anomalies</h2>
-    <div id="total-anomalies" class="metric">0</div>
-  </div>
-</div>
-
-<div class="row">
-  <div class="card span-6">
-    <h2>CPU Usage</h2>
-    <div class="chart-wrap">
-      <canvas id="cpuChart"></canvas>
-    </div>
-  </div>
-
-  <div class="card span-6">
-    <h2>Memory Usage</h2>
-    <div class="chart-wrap">
-      <canvas id="memChart"></canvas>
-    </div>
-  </div>
-</div>
-
-<div class="row">
-  <div class="card span-6">
-    <h2>Score</h2>
-    <div class="chart-wrap">
-      <canvas id="scoreChart"></canvas>
-    </div>
-  </div>
-
-  <div class="card span-6">
-    <h2>Relationship</h2>
-    <div class="chart-wrap">
-      <canvas id="relationshipChart"></canvas>
-    </div>
-  </div>
-</div>
-
-<div class="row">
-  <div class="card span-6">
-    <h2>Latest Event</h2>
-    <pre id="latest-event">Loading...</pre>
-  </div>
-
-  <div class="card span-6">
-    <h2>Anomaly Events</h2>
-    <ul id="anomaly-list"></ul>
-  </div>
-</div>
-```
-
-<h1>Neraium Structural Intelligence</h1>
-
-<div class="panel">
-
-<h2>Live Metrics</h2>
-
-CPU: <span id="cpu">--</span>%<br>
-Memory: <span id="memory">--</span>%<br>
-Score: <span id="score">--</span><br>
-Status: <span id="status">--</span>
-
-</div>
-
-<div class="panel">
-
-<h2>Telemetry Chart</h2>
-
-<canvas id="chart"></canvas>
-
-</div>
-
-<div class="panel">
-d4e7856 (Working Neraium telemetry engine with dashboard)
-
-<h2>Structural Geometry Map</h2>
-
-HEAD
-  <script>
-    const cpuChart = new Chart(document.getElementById("cpuChart"), {
-      type: "line",
-      data: {
-        labels: [],
-        datasets: [{ 
-          label: "CPU", 
-          data: [], 
-          borderWidth: 2,
-          borderColor: "#3b82f6",
-          backgroundColor: "rgba(59, 130, 246, 0.1)",
-          tension: 0.4
-        }]
-      },
-      options: { 
-        responsive: true, 
-        animation: false,
-        plugins: { legend: { display: false } }
-      }
-    });
-
-    const memChart = new Chart(document.getElementById("memChart"), {
-      type: "line",
-      data: {
-        labels: [],
-        datasets: [{ 
-          label: "Memory", 
-          data: [], 
-          borderWidth: 2,
-          borderColor: "#8b5cf6",
-          backgroundColor: "rgba(139, 92, 246, 0.1)",
-          tension: 0.4
-        }]
-      },
-      options: { 
-        responsive: true, 
-        animation: false,
-        plugins: { legend: { display: false } }
-      }
-    });
-
-    const scoreChart = new Chart(document.getElementById("scoreChart"), {
-      type: "line",
-      data: {
-        labels: [],
-        datasets: [{ 
-          label: "Score", 
-          data: [], 
-          borderWidth: 2,
-          borderColor: "#ec4899",
-          backgroundColor: "rgba(236, 72, 153, 0.1)",
-          tension: 0.4
-        }]
-      },
-      options: { 
-        responsive: true, 
-        animation: false,
-        plugins: { legend: { display: false } }
-      }
-    });
-
-    const relationshipChart = new Chart(document.getElementById("relationshipChart"), {
-      type: "scatter",
-      data: {
-        datasets: [
-          { 
-            label: "Normal", 
-            data: [],
-            backgroundColor: "rgba(34, 197, 94, 0.6)",
-            borderColor: "#22c55e"
-          },
-          { 
-            label: "Anomaly", 
-            data: [],
-            backgroundColor: "rgba(239, 68, 68, 0.6)",
-            borderColor: "#ef4444"
-          }
-        ]
-      },
-      options: {
-        responsive: true,
-        animation: false,
-        scales: {
-          x: { min: 0, max: 100, title: { display: true, text: "CPU %" } },
-          y: { min: 0, max: 100, title: { display: true, text: "Memory %" } }
-        }
-      }
-    });
-
-    // Mock data store
-    let mockEvents = [];
-
-    function generateMockEvent() {
-      return {
-        timestamp: new Date().toISOString(),
-        status: Math.random() > 0.85 ? "anomaly" : "normal",
-        score: Math.round(Math.random() * 100),
-        signals: {
-          cpu_usage: Math.round((20 + Math.random() * 60) * 10) / 10,
-          memory_usage: Math.round((30 + Math.random() * 50) * 10) / 10
-        }
-      };
-    }
-
-    // Initialize mock data
-    for (let i = 0; i < 15; i++) {
-      mockEvents.push(generateMockEvent());
-    }
-
-    async function getJson(url) {
-      // Use mock data instead of fetching
-      if (url === "/events") {
-        return { events: mockEvents };
-      } else if (url === "/events/anomalies") {
-        return { events: mockEvents.filter(e => e.status === "anomaly") };
-      } else if (url === "/events/latest") {
-        if (!mockEvents.length) throw new Error("No events");
-        return mockEvents[mockEvents.length - 1];
-      }
-      throw new Error("Unknown endpoint: " + url);
-    }
-
-    function shortTime(ts) {
-      try {
-        return new Date(ts).toLocaleTimeString();
-      } catch {
-        return ts;
-      }
-    }
-
-    async function refreshDashboard() {
-      try {
-        // Add new mock event every refresh
-        if (mockEvents.length > 50) mockEvents.shift();
-        mockEvents.push(generateMockEvent());
-
-        const eventsData = await getJson("/events");
-        const anomalyData = await getJson("/events/anomalies");
-
-        let latestData;
-        try {
-          latestData = await getJson("/events/latest");
-        } catch {
-          latestData = { error: "no events" };
-        }
-
-        const events = eventsData.events || [];
-        const anomalies = anomalyData.events || [];
-
-        document.getElementById("total-events").textContent = events.length;
-        document.getElementById("total-anomalies").textContent = anomalies.length;
-
-        if (!latestData.error) {
-          const statusEl = document.getElementById("status-text");
-          statusEl.textContent = latestData.status || "unknown";
-          const indicator = document.querySelector(".status-indicator");
-          indicator.className = "status-indicator " + (latestData.status === "anomaly" ? "status-bad" : "status-ok");
-
-          document.getElementById("latest-score").textContent =
-            "Score: " + String(latestData.score ?? "--");
-
-          document.getElementById("latest-event").textContent =
-            JSON.stringify(latestData, null, 2);
-        } else {
-          document.getElementById("status-text").textContent = "No data";
-          document.querySelector(".status-indicator").className = "status-indicator";
-          document.getElementById("latest-score").textContent = "Score: --";
-          document.getElementById("latest-event").textContent = "No events yet";
-        }
-
-        const labels = events.map(e => shortTime(e.timestamp));
-        const cpu = events.map(e => e.signals?.cpu_usage ?? 0);
-        const mem = events.map(e => e.signals?.memory_usage ?? 0);
-        const score = events.map(e => e.score ?? 0);
-
-        cpuChart.data.labels = labels;
-        cpuChart.data.datasets[0].data = cpu;
-        cpuChart.update();
-
-        memChart.data.labels = labels;
-        memChart.data.datasets[0].data = mem;
-        memChart.update();
-
-        scoreChart.data.labels = labels;
-        scoreChart.data.datasets[0].data = score;
-        scoreChart.update();
-
-        relationshipChart.data.datasets[0].data = events
-          .filter(e => e.status !== "anomaly")
-          .map(e => ({
-            x: e.signals?.cpu_usage ?? 0,
-            y: e.signals?.memory_usage ?? 0
-          }));
-
-        relationshipChart.data.datasets[1].data = events
-          .filter(e => e.status === "anomaly")
-          .map(e => ({
-            x: e.signals?.cpu_usage ?? 0,
-            y: e.signals?.memory_usage ?? 0
-          }));
-
-        relationshipChart.update();
-
-        const list = document.getElementById("anomaly-list");
-        list.innerHTML = "";
-
-        if (!anomalies.length) {
-          const li = document.createElement("li");
-          li.textContent = "No anomalies yet";
-          list.appendChild(li);
-        } else {
-          anomalies.slice().reverse().slice(0, 10).forEach(e => {
-            const li = document.createElement("li");
-            li.textContent = shortTime(e.timestamp) + " score=" + e.score;
-            list.appendChild(li);
-          });
-        }
-      } catch (err) {
-        document.getElementById("latest-event").textContent =
-          "Dashboard error: " + err.message;
-        console.error(err);
-      }
-    }
-
-    refreshDashboard();
-    setInterval(refreshDashboard, 2000);
-  </script>
-
-
-<canvas id="map"></canvas>
-
+    <section id="page-command" class="page active"></section>
+    <section id="page-live" class="page"></section>
+    <section id="page-replay" class="page"></section>
+    <section id="page-signals" class="page"></section>
+    <section id="page-integrations" class="page"></section>
+    <section id="page-settings" class="page"></section>
+  </main>
 </div>
 
 <script>
-
-let cpuData=[]
-let memData=[]
-let labels=[]
-
-const chart = new Chart(
-document.getElementById("chart"),
-{
-type:"line",
-data:{
-labels:labels,
-datasets:[
-{
-label:"CPU",
-data:cpuData,
-borderColor:"#38bdf8"
-},
-{
-label:"Memory",
-data:memData,
-borderColor:"#f59e0b"
-}
-]
-},
-options:{animation:false}
-}
-)
-
-const scene = new THREE.Scene()
-
-const camera = new THREE.PerspectiveCamera(
-75,
-2,
-0.1,
-1000
-)
-
-const renderer = new THREE.WebGLRenderer({
-canvas:document.getElementById("map")
-})
-
-renderer.setSize(500,300)
-
-camera.position.z = 20
-
-const points=[]
-
-function addPoint(x,y,z,anomaly){
-
-const geometry = new THREE.SphereGeometry(0.2)
-
-const material = new THREE.MeshBasicMaterial({
-color: anomaly ? 0xff0000 : 0x22c55e
-})
-
-const sphere = new THREE.Mesh(geometry,material)
-
-sphere.position.set(x,y,z)
-
-scene.add(sphere)
-
-points.push(sphere)
-
-if(points.length>200){
-
-scene.remove(points.shift())
-
-}
-
-}
-
-async function update(){
-
-let r = await fetch("/events/latest")
-let data = await r.json()
-
-let cpu = data.signals.cpu_usage
-let mem = data.signals.memory_usage
-let score = data.score
-
-document.getElementById("cpu").innerText = cpu
-document.getElementById("memory").innerText = mem
-document.getElementById("score").innerText = score.toFixed(2)
-
-let status = data.status
-
-let statusEl=document.getElementById("status")
-
-statusEl.innerText=status
-statusEl.style.color =
-status==="anomaly" ? "#ef4444" : "#22c55e"
-
-labels.push(new Date().toLocaleTimeString())
-cpuData.push(cpu)
-memData.push(mem)
-
-if(labels.length>30){
-
-labels.shift()
-cpuData.shift()
-memData.shift()
-
-}
-
-chart.update()
-
-addPoint(
-cpu/5,
-mem/5,
-score,
-status==="anomaly"
-)
-
-renderer.render(scene,camera)
-
-}
-
-setInterval(update,2000)
-
-update()
-
+const PAGES=[['command','Command Center'],['live','Live Session'],['replay','Replay / Historical'],['signals','Signals / History'],['integrations','Integrations / Data'],['settings','Settings']];
+const nav=document.getElementById('nav');
+let appState={latest_signals:[],recent_logs:[]}, selectedSignal=null;
+PAGES.forEach(([id,label],i)=>{const b=document.createElement('button');b.textContent=label;b.className=i===0?'active':'';b.onclick=()=>showPage(id,b);nav.appendChild(b)});
+function showPage(id,btn){document.querySelectorAll('.nav button').forEach(x=>x.classList.remove('active'));btn.classList.add('active');document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));document.getElementById('page-'+id).classList.add('active');render();}
+function pill(text,type=''){return `<span class="pill ${type}">${text}</span>`}
+function pctBar(value,good=true){const v=Math.round((Number(value)||0)*100);return `<div class="bar"><span style="width:${v}%;background:${good?'#34d399':'#f87171'}"></span></div><div class="mono muted">${v}%</div>`}
+function actionClass(a){return 'action-'+String(a||'').toLowerCase()}
+function stateMessage(){const s=appState.session||{};if(s.connection_state==='disconnected')return 'Disconnected: no market data connection.';if(s.session_state==='warming_up')return 'Warming Up: building enough history before valid outputs.';if((appState.data_age_seconds||0)>45)return 'Connected but no incoming data in the last 45s.';if(!appState.latest_signals?.length)return 'Connected and receiving data but no valid signals yet.';const suppressed=appState.latest_signals.filter(x=>x.suppression_status!=='none').length; if(suppressed) return `Live but ${suppressed} outputs suppressed by cooldown/duplication governance.`;return 'Live and generating governed outputs.'}
+async function control(action){const symbols=(document.getElementById('symbolsInput')?.value||'').split(',').map(x=>x.trim()).filter(Boolean);const timeframe=document.getElementById('timeframeInput')?.value;await fetch('/api/session/control',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action,timeframe,symbols})});await refresh();}
+function signalTable(rows){if(!rows.length)return '<div class="empty">No signals available yet.</div>';return `<div style="max-height:420px;overflow:auto"><table><thead><tr><th>Time</th><th>Ticker</th><th>Permission</th><th>Best Action</th><th>Confidence</th><th>Fragility</th><th>Size Guidance</th><th>Reason</th></tr></thead><tbody>${rows.map(r=>`<tr data-id="${r.signal_id}"><td class="mono">${r.timestamp||'--'}</td><td>${r.ticker}</td><td>${pill(r.action_permission)}</td><td class="${actionClass(r.best_action)}"><b>${r.best_action}</b></td><td>${pctBar(r.confidence,true)}</td><td>${pctBar(r.fragility,false)}</td><td>${r.size_guidance}</td><td>${r.one_line_reason||''}</td></tr>`).join('')}</tbody></table></div>`}
+function renderCommand(){const s=appState.session||{};return `<div class="banner">${stateMessage()}</div><div class="grid g2"><div class="card"><h2>Latest Signals</h2>${signalTable(appState.latest_signals||[])}</div><div class="grid"><div class="card"><h2>Session Status</h2><div class="status-strip">${pill(s.connection_state||'Disconnected')}${pill((s.session_state||'Stopped').replace('_',' '))}${pill('Warmup '+Math.round((s.warmup_progress||0)*100)+'%')}${pill('TF '+(s.timeframe||'--'))}${pill((s.watched_symbols||[]).join(', '))}</div></div><div class="card"><h2>Quick Controls</h2><div class="controls"><button onclick="control('start')">Start Session</button><button onclick="control('stop')">Stop Session</button><input id="symbolsInput" placeholder="Symbols: SPY,QQQ" /><select id="timeframeInput"><option>1m</option><option>5m</option><option>15m</option><option>1h</option></select><button onclick="control('update')">Apply</button></div></div><div class="card"><h2>Current Session Summary</h2><div>Events: <b>${appState.event_count||0}</b></div><div>System State: <b>${(appState.system_state?.state||'unknown').toUpperCase()}</b></div><div>Confidence: <b>${Math.round((appState.system_state?.confidence||0)*100)}%</b></div></div><div class="card"><h2>Recent Changes / Warnings</h2><div class="mono muted">${(appState.recent_logs||[]).slice(-8).reverse().join('<br>')}</div></div></div></div>`}
+function renderLive(){const rows=(appState.latest_signals||[]).slice(0,20);const suppressed=rows.filter(r=>r.suppression_status!=='none').length;return `<div class="grid g2"><div class="card"><h2>Live Governed Outputs</h2>${signalTable(rows)}</div><div class="grid"><div class="card"><h2>Live Status</h2><div>${stateMessage()}</div><div class="muted">Suppressed/abstained: ${suppressed}</div></div><div class="card"><h2>Watched Symbols</h2>${(appState.session?.watched_symbols||[]).map(x=>pill(x)).join(' ')||'<div class="empty">No symbols configured</div>'}</div><div class="card"><h2>Buffer/Bar Health</h2><div>Data age: <b>${appState.data_age_seconds||0}s</b></div><div>Warmup progress: <b>${Math.round((appState.session?.warmup_progress||0)*100)}%</b></div></div><div class="card"><h2>Recent Events / Errors / Reconnect Notices</h2><div class="mono muted">${(appState.recent_logs||[]).slice(-12).reverse().join('<br>')}</div></div></div></div>`}
+function renderReplay(){const rows=(appState.latest_signals||[]).slice(0,40);return `<div class="grid g2"><div class="card"><h2>Replay Controls</h2><div class="controls"><select><option>Cached Dataset: session-memory</option></select><input placeholder="Symbols" value="${(appState.session?.watched_symbols||[]).join(',')}"/><select><option>${appState.session?.timeframe||'15m'}</option></select><input type="date"/><input type="date"/><button disabled>Run Replay</button><button onclick="exportCsv()">Export CSV</button></div><p class="muted">Replay workflow uses the same signal language as live. Current environment exposes cached session history only.</p><h3>Latest Replay Metadata</h3><div>Rows available: ${rows.length}</div><div>Last run state: idle</div></div><div class="card"><h2>Replay Results</h2>${signalTable(rows)}</div></div>`}
+function renderSignals(){const rows=appState.latest_signals||[];const filters=`<div class="controls"><input id="fltTicker" placeholder="Ticker"/><select id="fltPerm"><option value="">Any permission</option><option>ACT</option><option>WAIT</option></select><select id="fltAction"><option value="">Any action</option><option>ACT</option><option>WAIT</option><option>REDUCE</option><option>AVOID</option></select><button onclick="applyFilters()">Apply Filters</button><button onclick="exportCsv()">Export CSV</button></div>`;return `<div class="card"><h2>Signal History</h2>${filters}<div id="signalsTable">${signalTable(rows)}</div></div><div class="card" style="margin-top:12px"><h2>Signal Detail</h2>${renderSignalDetail(selectedSignal||rows[0])}</div>`}
+function renderSignalDetail(s){if(!s)return '<div class="empty">Select a signal row to inspect rationale and invalidation.</div>';return `<div class="grid g2"><div><h3>Summary</h3><div>${pill(s.timestamp||'--')} ${pill(s.ticker||'--')} ${pill(s.action_permission||'--')} <span class="${actionClass(s.best_action)}"><b>${s.best_action||'--'}</b></span></div><p>${s.one_line_reason||'--'}</p><h3>Invalidation</h3><ul>${(s.invalidation_conditions||[]).map(x=>`<li>${x}</li>`).join('')}</ul><h3>Market / Governance Diagnostics</h3><div>Market state: ${s.market_state||'--'}</div><div>Transition: ${s.transition_state||'--'}</div><div>Structural drift: ${s.structural_drift_score??'--'}</div><div>Latest instability: ${s.latest_instability??'--'}</div><div>Cooldown/suppression: ${s.cooldown_status||'none'} / ${s.suppression_status||'none'}</div><div>Allowed actions: ${(s.allowed_actions||[]).join(', ')||'--'}</div><div>Blocked actions: ${(s.blocked_actions||[]).join(', ')||'--'}</div></div><div><h3>Validity + Positioning</h3><div>Confidence ${pctBar(s.confidence,true)}</div><div>Fragility ${pctBar(s.fragility,false)}</div><div>Validity Score: <b>${Math.round((s.validity_score||0)*100)}%</b></div><div>Size Guidance: <b>${s.size_guidance||'--'}</b></div><details><summary>Advanced diagnostics</summary><pre class="mono" style="overflow:auto">${JSON.stringify(s.diagnostics||s,null,2)}</pre></details></div></div>`}
+function renderIntegrations(){return `<div class="grid g2"><div class="card"><h2>Data Health</h2><div>Provider: <b>${appState.session?.provider||'--'}</b></div><div>Connection: <b>${appState.session?.connection_state||'disconnected'}</b></div><div>Last ingestion age: <b>${appState.data_age_seconds||0}s</b></div><div>Connectivity checks: ${(appState.data_age_seconds||0)<45?'passing':'stale'}</div><div>Latest ingestion errors:</div><div class="mono muted">${(appState.recent_logs||[]).filter(x=>x.includes('warn')||x.includes('error')).slice(-8).join('<br>')||'none'}</div></div><div class="card"><h2>Signal Health</h2><div>Total signals: ${appState.latest_signals?.length||0}</div><div>Suppressed outputs: ${(appState.latest_signals||[]).filter(x=>x.suppression_status!=='none').length}</div><div>Abstaining because setup invalid: ${(appState.latest_signals||[]).filter(x=>x.action_permission==='WAIT').length}</div><h3>Capabilities</h3><div class="muted">Entitlements are environment-derived. Historical cached datasets are available from local event store only.</div></div></div>`}
+function renderSettings(){return `<div class="card"><h2>Settings</h2><div class="muted">Settings surface retained for app compatibility. Operator-configurable session controls live in Command Center.</div></div>`}
+function render(){document.getElementById('page-command').innerHTML=renderCommand();document.getElementById('page-live').innerHTML=renderLive();document.getElementById('page-replay').innerHTML=renderReplay();document.getElementById('page-signals').innerHTML=renderSignals();document.getElementById('page-integrations').innerHTML=renderIntegrations();document.getElementById('page-settings').innerHTML=renderSettings();document.querySelectorAll('tbody tr[data-id]').forEach(r=>r.onclick=()=>{selectedSignal=(appState.latest_signals||[]).find(x=>x.signal_id===r.dataset.id);document.querySelector('.nav button:nth-child(4)').click();});
+ document.getElementById('hdrSession').textContent=(appState.session?.session_state||'stopped').replace('_',' '); document.getElementById('hdrProvider').textContent=appState.session?.provider||'--'; document.getElementById('hdrLastEvent').textContent=appState.session?.last_event_time||'--'; document.getElementById('hdrLastSignal').textContent=appState.session?.last_signal_time||'--';}
+function applyFilters(){const t=(document.getElementById('fltTicker').value||'').toUpperCase();const p=document.getElementById('fltPerm').value;const a=document.getElementById('fltAction').value;const rows=(appState.latest_signals||[]).filter(r=>(!t||r.ticker.includes(t))&&(!p||r.action_permission===p)&&(!a||r.best_action===a));document.getElementById('signalsTable').innerHTML=signalTable(rows);document.querySelectorAll('#signalsTable tbody tr[data-id]').forEach(r=>r.onclick=()=>{selectedSignal=(appState.latest_signals||[]).find(x=>x.signal_id===r.dataset.id);document.querySelector('#page-signals .card:last-child').innerHTML='<h2>Signal Detail</h2>'+renderSignalDetail(selectedSignal);});}
+function exportCsv(){const rows=appState.latest_signals||[];const cols=['timestamp','ticker','action_permission','best_action','confidence','fragility','size_guidance','one_line_reason'];const csv=[cols.join(',')].concat(rows.map(r=>cols.map(c=>JSON.stringify(r[c]??'')).join(','))).join('\n');const blob=new Blob([csv],{type:'text/csv'});const a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='neraium_signals.csv';a.click();URL.revokeObjectURL(a.href)}
+async function refresh(){try{const r=await fetch('/api/dashboard');appState=await r.json();}catch(e){appState={latest_signals:[],recent_logs:['error: cannot reach backend'],session:{session_state:'error',connection_state:'disconnected'}};}render()}
+refresh();setInterval(refresh,5000);
 </script>
-
-d4e7856 (Working Neraium telemetry engine with dashboard)
 </body>
 </html>
