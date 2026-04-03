@@ -5,11 +5,12 @@ from __future__ import annotations
 import asyncio
 import os
 from dataclasses import asdict
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import pandas as pd
 
 from neraium_core.markets.data.validation import validate_market_frame
+from neraium_core.markets.defaults import DEFAULT_LIVE_TIMEFRAME
 from neraium_core.markets.evidence.evidence_log import EvidenceLog
 from neraium_core.markets.integrations.massive.config import load_massive_config
 from neraium_core.markets.integrations.massive.stream import MassiveStreamClient, stream_with_reconnect
@@ -29,9 +30,9 @@ class LiveSessionRunner:
     def __init__(self) -> None:
         self.state = LiveSessionState.DISCONNECTED
         self.symbols: list[str] = []
-        self.timeframe = "1m"
+        self.timeframe = DEFAULT_LIVE_TIMEFRAME
         self.buffer = LiveBuffer(retention=int(os.getenv("NERAIUM_LIVE_EVENT_RETENTION", "5000")))
-        self.bars = RollingBarBuilder(timeframe="1m", retention=int(os.getenv("NERAIUM_LIVE_BAR_RETENTION", "2000")))
+        self.bars = RollingBarBuilder(timeframe=DEFAULT_LIVE_TIMEFRAME, retention=int(os.getenv("NERAIUM_LIVE_BAR_RETENTION", "2000")))
         self.store = MarketsSQLiteStore()
         self.evidence = EvidenceLog(path="artifacts/neraium_markets/live_evidence.jsonl")
         self.controller = SignalEmissionController(EmissionControlConfig())
@@ -42,7 +43,10 @@ class LiveSessionRunner:
         self.suppressed_count = 0
         self.abstain_count = 0
         self.reconnect_count = 0
+        self.last_suppressed_at: datetime | None = None
+        self.last_suppressed_reason: str | None = None
         self.warmup_bars_required = int(os.getenv("NERAIUM_LIVE_WARMUP_BARS", "30"))
+        self.data_stale_after_seconds = int(os.getenv("NERAIUM_LIVE_DATA_STALE_SECONDS", "90"))
 
     async def start(self, symbols: list[str], timeframe: str) -> None:
         if self._task and not self._task.done():
@@ -63,6 +67,8 @@ class LiveSessionRunner:
         self.latest_signals = {}
         self.suppressed_count = 0
         self.abstain_count = 0
+        self.last_suppressed_at = None
+        self.last_suppressed_reason = None
         self.state = LiveSessionState.CONNECTING
         self.store.record_live_session({"state": self.state.value, "symbols": self.symbols, "timeframe": timeframe})
         self._task = asyncio.create_task(self._run())
@@ -91,13 +97,18 @@ class LiveSessionRunner:
 
     def _readiness_state(self) -> str:
         collected, required, _ = self._warmup_metrics()
+        last_event = self.buffer.latest_timestamp()
         if self.state in {LiveSessionState.DISCONNECTED, LiveSessionState.STOPPED}:
             return "disconnected"
+        if self.state == LiveSessionState.ERROR:
+            return "error"
         if self.state == LiveSessionState.CONNECTING:
             return "connecting"
         if self.state == LiveSessionState.RECONNECTING:
             return "reconnecting"
         if self.buffer.symbol_count() == 0:
+            return "connected_no_data"
+        if last_event and datetime.now(timezone.utc) - last_event > timedelta(seconds=self.data_stale_after_seconds):
             return "connected_no_data"
         if collected < required:
             return "receiving_data_warming_up"
@@ -109,8 +120,16 @@ class LiveSessionRunner:
         cfg = load_massive_config()
         client = MassiveStreamClient(cfg, timeframe_hint=self.timeframe)
         frame_index = 0
+
+        def _mark_reconnect(exc: Exception) -> None:
+            self.state = LiveSessionState.RECONNECTING
+            self.latest_error = f"Live feed reconnecting after provider error: {exc}"
+            self.store.record_error({"error": self.latest_error})
+
         try:
-            async for event in stream_with_reconnect(client, symbols=self.symbols):
+            async for event in stream_with_reconnect(client, symbols=self.symbols, on_reconnect=_mark_reconnect):
+                if self.state == LiveSessionState.RECONNECTING:
+                    self.reconnect_count += 1
                 if self.state in {LiveSessionState.CONNECTING, LiveSessionState.RECONNECTING}:
                     self.state = LiveSessionState.CONNECTED_WARMING_UP
                 self.buffer.add(event)
@@ -167,6 +186,8 @@ class LiveSessionRunner:
 
                     if not decision.emit:
                         self.suppressed_count += 1
+                        self.last_suppressed_at = datetime.now(timezone.utc)
+                        self.last_suppressed_reason = decision.suppression_status
                         self.store.record_suppressed_output(asset, signal_json)
                         continue
 
@@ -186,7 +207,10 @@ class LiveSessionRunner:
             raise
         except Exception as exc:  # noqa: BLE001
             self.state = LiveSessionState.ERROR
-            self.latest_error = str(exc)
+            if "MASSIVE_API_KEY" in str(exc):
+                self.latest_error = "Missing API key for Massive provider (MASSIVE_API_KEY)"
+            else:
+                self.latest_error = f"Provider unavailable or live startup failed: {exc}"
             self.store.record_error({"error": self.latest_error})
 
     def status(self) -> dict:
@@ -197,6 +221,7 @@ class LiveSessionRunner:
             "symbols": self.symbols,
             "timeframe": self.timeframe,
             "warmup_progress": warmup_progress,
+            "warmup_progress_pct": round(warmup_progress * 100.0, 2),
             "bars_collected": bars_collected,
             "bars_required": bars_required,
             "readiness_state": self._readiness_state(),
@@ -207,4 +232,6 @@ class LiveSessionRunner:
             "suppressed_count": self.suppressed_count,
             "abstain_count": self.abstain_count,
             "reconnect_count": self.reconnect_count,
+            "last_suppressed_at": self.last_suppressed_at.isoformat() if self.last_suppressed_at else None,
+            "last_suppressed_reason": self.last_suppressed_reason,
         }

@@ -104,6 +104,6 @@ def check_massive_health(config: MassiveConfig, *, timeout_seconds: float = 5.0)
         websocket_configured=bool(config.ws_base_url),
         websocket_dependency_available=websocket_dependency_available,
         websocket_reachable=None,
-        status="ok_with_no_data" if no_data else "ok",
+        status="ok_with_no_data" if no_data else "healthy",
         error="No data returned from REST probe" if no_data else None,
     )

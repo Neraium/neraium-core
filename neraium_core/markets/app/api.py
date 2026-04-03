@@ -19,6 +19,7 @@ from neraium_core.markets.data.cache_store import CacheStore
 from neraium_core.markets.data.historical_ingest import HistoricalIngestService
 from neraium_core.markets.data.market_data_loader import MarketDataLoader
 from neraium_core.markets.data.validation import validate_market_frame
+from neraium_core.markets.defaults import DEFAULT_LIVE_SYMBOLS, DEFAULT_LIVE_TIMEFRAME
 from neraium_core.markets.evidence.evidence_log import EvidenceLog
 from neraium_core.markets.integrations.massive.config import MassiveConfigError, load_massive_config
 from neraium_core.markets.integrations.massive.health import check_massive_health
@@ -29,7 +30,6 @@ from neraium_core.markets.signals.signal_generator import generate_signal_for_as
 from neraium_core.markets.state.state_vector import CORE, build_state_vector
 
 TIMEFRAMES = ["daily", "1h", "15m"]
-DEFAULT_LIVE_SYMBOLS = list(CORE)
 LOGGER = logging.getLogger(__name__)
 
 
@@ -42,7 +42,7 @@ class HistoricalFetchBody(BaseModel):
 
 class LiveStartBody(BaseModel):
     symbols: list[str] = Field(default_factory=lambda: DEFAULT_LIVE_SYMBOLS.copy())
-    timeframe: str = "5m"
+    timeframe: str = DEFAULT_LIVE_TIMEFRAME
 
 
 def run_signal_pipeline(data_dir: Path, evidence_log: EvidenceLog) -> list[dict]:
@@ -88,7 +88,12 @@ def create_app(
     @app.get("/")
     def operator_ui() -> HTMLResponse:
         html_path = Path(__file__).parent / "static" / "operator.html"
-        return HTMLResponse(html_path.read_text(encoding="utf-8"))
+        html = (
+            html_path.read_text(encoding="utf-8")
+            .replace("__DEFAULT_LIVE_SYMBOLS__", ",".join(DEFAULT_LIVE_SYMBOLS))
+            .replace("__DEFAULT_LIVE_TIMEFRAME__", DEFAULT_LIVE_TIMEFRAME)
+        )
+        return HTMLResponse(html)
 
     @app.post("/run-signals")
     def run_signals() -> dict[str, list[dict]]:
@@ -113,6 +118,7 @@ def create_app(
         cfg = load_massive_config()
         health = check_massive_health(cfg)
         live_status = live.status()
+        recent_error = sqlite.list_live_errors(limit=1)[0] if sqlite.list_live_errors(limit=1) else None
         payload = {
             **health.as_dict(),
             "provider": "massive",
@@ -120,7 +126,9 @@ def create_app(
             "recent_fetch_success": bool(sqlite.list_cached_datasets(limit=1)),
             "recent_live_event_at": live_status.get("last_event_at"),
             "recent_live_signal_at": live_status.get("last_signal_at"),
-            "recent_error": sqlite.list_live_errors(limit=1)[0] if sqlite.list_live_errors(limit=1) else None,
+            "recent_error": recent_error,
+            "session_state": live_status.get("session_state"),
+            "readiness_state": live_status.get("readiness_state"),
         }
         sqlite.record_provider_health("massive", payload)
         return payload
@@ -173,6 +181,7 @@ def create_app(
     @app.post("/live/start")
     async def live_start(body: LiveStartBody) -> dict:
         effective_symbols = [item.upper() for item in (body.symbols or DEFAULT_LIVE_SYMBOLS)]
+        effective_timeframe = body.timeframe or DEFAULT_LIVE_TIMEFRAME
         missing_required = [sym for sym in CORE if sym not in set(effective_symbols)]
         if missing_required:
             required_symbols = ", ".join(CORE)
@@ -187,10 +196,16 @@ def create_app(
             load_massive_config().validate(require_api_key=True)
         except MassiveConfigError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+        provider_health = check_massive_health(load_massive_config())
+        if provider_health.status in {"invalid_api_key", "rest_unreachable"}:
+            detail = provider_health.error or provider_health.status.replace("_", " ")
+            raise HTTPException(status_code=503, detail=f"Massive provider unavailable: {detail}")
         try:
-            await live.start(effective_symbols, body.timeframe)
+            await live.start(effective_symbols, effective_timeframe)
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except RuntimeError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
         return {"status": "started", **live.status()}
 
     @app.post("/live/stop")
@@ -268,6 +283,18 @@ def create_app(
         status = live.status()
         latest = sqlite.list_trader_outputs(limit=20)
         warnings = sqlite.list_live_errors(limit=20)
+        provider_cfg = load_massive_config()
+        provider_health = check_massive_health(provider_cfg)
+        checklist = [
+            {"key": "provider_configured", "ok": provider_health.config_present and provider_health.api_key_present},
+            {"key": "provider_reachable", "ok": provider_health.status not in {"invalid_api_key", "rest_unreachable", "missing_api_key"}},
+            {"key": "symbols_valid", "ok": bool(status["symbols"])},
+            {"key": "core_symbols_present", "ok": all(sym in set(status["symbols"]) for sym in CORE)},
+            {"key": "timeframe_selected", "ok": status["timeframe"] in {"1m", "5m", "15m"}},
+            {"key": "incoming_data_received", "ok": bool(status.get("last_event_at"))},
+            {"key": "warmup_complete", "ok": status["warmup_progress"] >= 1.0},
+            {"key": "signal_engine_active", "ok": bool(status.get("last_signal_at"))},
+        ]
         return {
             "live_status": status,
             "latest_signals": latest,
@@ -276,6 +303,8 @@ def create_app(
             "datasets": [asdict(item) for item in cache_store.list_datasets()[:10]],
             "core_symbols": CORE,
             "suppressed_recent": sqlite.list_suppressed_outputs(limit=20),
+            "launch_checklist": checklist,
+            "defaults": {"symbols": DEFAULT_LIVE_SYMBOLS, "timeframe": DEFAULT_LIVE_TIMEFRAME},
         }
 
     @app.get("/live/signals/{ticker}")
