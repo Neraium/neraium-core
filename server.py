@@ -4,6 +4,7 @@ from collections import deque
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
+from urllib.parse import parse_qs, urlparse
 
 from db_store import init_db, insert
 from neraium_core.pipeline import TelemetryPipeline
@@ -190,6 +191,16 @@ _prev_ewma = 0.0
 _prev_score = None
 _prev_vector = None
 _event_counter = 0
+session_runtime = {
+    "connection_state": "disconnected",
+    "session_state": "stopped",
+    "warmup_progress": 0.0,
+    "timeframe": "1m",
+    "watched_symbols": ["SPY", "QQQ", "AAPL", "NVDA"],
+    "provider": "demo-stream",
+    "last_event_time": None,
+    "last_signal_time": None,
+}
 
 
 def infer_water_event(top_sensors, score, velocity, topology):
@@ -415,9 +426,69 @@ class NeraiumHandler(BaseHTTPRequestHandler):
                 if nearest_failure is None or dtf < nearest_failure["days_to_failure"]:
                     nearest_failure = fw
 
+        signals = []
+        for idx, event in enumerate(reversed(list(memory.event_timeline)[-120:])):
+            score = float(event.get("score", 0.0))
+            velocity = float(event.get("drift_velocity", 0.0))
+            topology = float(event.get("topology_drift", 0.0))
+            permission = "ACT" if event.get("is_persistent") else "WAIT"
+            if score > 4.5:
+                best_action = "REDUCE"
+            elif velocity > 3.0:
+                best_action = "AVOID"
+            elif permission == "ACT":
+                best_action = "ACT"
+            else:
+                best_action = "WAIT"
+            confidence = round(clamp(1.0 - (score / 8.0), 0.08, 0.96), 2)
+            fragility = round(clamp(topology * 3.0 + abs(velocity) / 20.0, 0.05, 0.99), 2)
+            signal_id = "sig-" + str(event.get("timestamp", "")).replace(":", "").replace("-", "").replace(".", "")
+            rationale = event.get("root_cause", {}) or {}
+            signal = {
+                "signal_id": signal_id + "-" + str(idx),
+                "timestamp": event.get("timestamp"),
+                "ticker": session_runtime["watched_symbols"][idx % len(session_runtime["watched_symbols"])],
+                "action_permission": permission,
+                "best_action": best_action,
+                "confidence": confidence,
+                "fragility": fragility,
+                "validity_score": round(clamp((confidence * (1 - fragility)), 0.0, 1.0), 2),
+                "size_guidance": "light" if fragility > 0.65 else "normal" if confidence > 0.45 else "small",
+                "one_line_reason": rationale.get("explanation", "No structural rationale available"),
+                "reason": rationale.get("explanation", "No structural rationale available"),
+                "invalidation_conditions": [
+                    "Structural drift > 0.2",
+                    "Velocity spike exceeds 6.0",
+                    "Data feed missing for > 45s",
+                ],
+                "market_state": event.get("water_event_type", "unknown"),
+                "transition_state": "persistent" if event.get("is_persistent") else "transient",
+                "structural_drift_score": topology,
+                "latest_instability": velocity,
+                "suppression_status": "active" if permission == "WAIT" else "none",
+                "cooldown_status": "cooldown" if permission == "WAIT" and abs(velocity) < 1.0 else "none",
+                "blocked_actions": ["ACT"] if permission == "WAIT" else ["AVOID"],
+                "allowed_actions": ["WAIT"] if permission == "WAIT" else ["ACT", "REDUCE"],
+                "governance_rationale": event.get("root_cause", {}),
+                "diagnostics": event,
+            }
+            signals.append(signal)
+
+        if events:
+            session_runtime["connection_state"] = "connected"
+            session_runtime["session_state"] = "warming_up" if len(memory.event_timeline) < 10 else "live"
+            session_runtime["warmup_progress"] = round(clamp(len(memory.event_timeline) / 10.0, 0.0, 1.0), 2)
+            session_runtime["last_event_time"] = signals[0]["timestamp"] if signals else iso_now()
+            session_runtime["last_signal_time"] = signals[0]["timestamp"] if signals else None
+        else:
+            session_runtime["connection_state"] = "disconnected"
+            session_runtime["session_state"] = "stopped"
+            session_runtime["warmup_progress"] = 0.0
+
         return {
             "timestamp": iso_now(),
             "data_age_seconds": data_age_seconds,
+            "session": session_runtime,
             "system_state": {
                 "state": worst_state,
                 "confidence": round(worst_conf, 2),
@@ -434,15 +505,30 @@ class NeraiumHandler(BaseHTTPRequestHandler):
             "memory_report": memory.summary_report(),
             "recent_logs": list(recent_logs),
             "event_count": len(memory.event_timeline),
+            "latest_signals": signals[:60],
         }
 
     def do_GET(self):
-        path = self.path.split("?")[0].rstrip("/")
+        parsed = urlparse(self.path)
+        path = parsed.path.rstrip("/")
+        query = parse_qs(parsed.query)
 
-        if path in ("", "/"):
-            self.send_html("index.html")
+        if path in ("", "/", "/dashboard"):
+            self.send_html("dashboard.html")
         elif path == "/api/dashboard":
             self.send_json(200, self.build_dashboard_payload())
+        elif path == "/api/signals":
+            limit = int(query.get("limit", ["120"])[0])
+            payload = self.build_dashboard_payload()
+            self.send_json(200, {"signals": payload.get("latest_signals", [])[:limit], "count": len(payload.get("latest_signals", []))})
+        elif path.startswith("/api/signals/"):
+            signal_id = path.rsplit("/", 1)[-1]
+            payload = self.build_dashboard_payload()
+            for signal in payload.get("latest_signals", []):
+                if signal["signal_id"] == signal_id:
+                    self.send_json(200, signal)
+                    return
+            self.send_json(404, {"error": "Signal not found"})
         elif path == "/api/events":
             events = store.all() or []
             self.send_json(200, {"events": events, "count": len(events)})
@@ -464,7 +550,31 @@ class NeraiumHandler(BaseHTTPRequestHandler):
     def do_POST(self):
         path = self.path.split("?")[0].rstrip("/")
 
-        if path == "/api/ingest":
+        if path == "/api/session/control":
+            length = int(self.headers.get("Content-Length", 0))
+            if length == 0:
+                self.send_json(400, {"error": "Empty body"})
+                return
+            try:
+                raw = self.rfile.read(length)
+                body = json.loads(raw.decode("utf-8"))
+            except (json.JSONDecodeError, UnicodeDecodeError) as e:
+                self.send_json(400, {"error": "Invalid JSON: " + str(e)})
+                return
+            action = str(body.get("action", "")).strip().lower()
+            if action == "start":
+                session_runtime["connection_state"] = "connecting"
+                session_runtime["session_state"] = "warming_up"
+            elif action == "stop":
+                session_runtime["session_state"] = "stopped"
+            if "timeframe" in body:
+                session_runtime["timeframe"] = str(body.get("timeframe"))
+            if "symbols" in body and isinstance(body["symbols"], list):
+                cleaned = [str(s).strip().upper() for s in body["symbols"] if str(s).strip()]
+                if cleaned:
+                    session_runtime["watched_symbols"] = cleaned[:12]
+            self.send_json(200, {"status": "ok", "session": session_runtime})
+        elif path == "/api/ingest":
             length = int(self.headers.get("Content-Length", 0))
             if length == 0:
                 self.send_json(400, {"error": "Empty body"})
