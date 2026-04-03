@@ -42,10 +42,17 @@ def structural_engine_stage_groups() -> list[EngineStageBoundary]:
             "extraction_candidate": False,
         },
         {
+            "stage": "scoring_preparation_and_correlation_gating",
+            "inputs": ("z_baseline", "z_recent", "valid_mask", "valid_signal_count"),
+            "outputs": ("prepared_windows", "stage_features", "correlation_readiness"),
+            "risk": "low",
+            "extraction_candidate": True,
+        },
+        {
             "stage": "decision_projection_and_explanation",
             "inputs": ("scores", "causal_analysis", "history_state"),
             "outputs": ("decision", "risk_assessment", "explanation", "product_flags"),
-            "risk": "high",
-            "extraction_candidate": False,
+            "risk": "medium",
+            "extraction_candidate": True,
         },
     ]
