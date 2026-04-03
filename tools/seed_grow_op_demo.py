@@ -152,7 +152,6 @@ def main() -> None:
     params = {
         "customer_id": args.customer_id,
         "run_id": args.run_id,
-        **asset_meta,
     }
 
     print(f"\nNeraium Cannabis Grow Op Demo")
@@ -178,8 +177,9 @@ def main() -> None:
         timestamp = (base_time + timedelta(minutes=frame.minute_offset)).isoformat()
         payload = {
             "timestamp": timestamp,
-            "sensor_id": asset_meta["asset_id"],
-            **frame.sensor_values,
+            "site_id": asset_meta["site_id"],
+            "asset_id": asset_meta["asset_id"],
+            "sensor_values": frame.sensor_values,
         }
 
         result = request_json("POST", args.base_url, "/ingest", params, payload)
@@ -208,7 +208,7 @@ def main() -> None:
             print(
                 f"    [{i+1:>3}/{len(scenario_frames)}] "
                 f"T={temp:.1f}°F  RH={rh:.1f}%  VPD={vpd:.2f}kPa  "
-                f"CO₂={co2:.0f}ppm  instability={instability:.3f}"
+                f"CO2={co2:.0f}ppm  instability={instability:.3f}"
             )
 
     print()
