@@ -96,3 +96,32 @@ def test_demotion_occurs_when_evidence_weakens() -> None:
     )
     assert second["demotions"]
     assert second["laws"][0]["current_stage"] in {"repeated_pattern", "context_conditioned_pattern", "rejected_or_falsified"}
+
+
+def test_decision_grade_requires_real_world_and_intervention_sensitive_evidence() -> None:
+    governance = StructuralLawGovernance()
+    governance.ingest_real_world_validation(
+        law_id="law::x",
+        helpful_count=8,
+        harmful_count=1,
+        neutral_count=1,
+        intervention_sensitive_helpful_count=1,
+        intervention_sensitive_harmful_count=0,
+    )
+    out = governance.evaluate(
+        law_candidates=[_candidate(counterfactual_consistency=0.9, support=14, confidence=0.9, consistency=0.88)],
+        trajectory_info={"novelty_score": 0.05},
+        reliability={
+            "law_applicability": [
+                {
+                    "law_id": "law::x",
+                    "calibrated_applicability_confidence": 0.9,
+                    "reliability_trace": {"reliability_band": "high", "support_band": "strong", "novelty_penalty": 0.08, "transfer_penalty": 0.05},
+                }
+            ]
+        },
+        intervention_info={"scenario_rankings": [{"risk_delta": 0.6}]},
+    )
+    law = out["laws"][0]
+    assert law["current_stage"] != "decision_grade_heuristic"
+    assert "intervention_sensitive_evidence_insufficient" in law["promotion_blockers"]

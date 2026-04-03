@@ -55,25 +55,26 @@ class InterventionEffectivenessScorer:
         model_reduction = _clip01(float(model_proj.get("expected_escalation_reduction", 0.0)))
 
         support_factor = _clip01(support / 6.0)
-        novelty_penalty = _clip01(0.5 * novelty + (1.0 - avg_match) * 0.35)
+        novelty_penalty = _clip01(0.42 * novelty + (1.0 - avg_match) * 0.42)
         uncertainty = _clip01(1.0 - (0.55 * support_factor + 0.45 * avg_match))
+        memory_effect_weight = _clip01(0.25 + 0.55 * support_factor * avg_match)
+        helpful_signal = _clip01(0.55 * escalation_reduction + 0.25 * reversibility + 0.20 * distance)
+        harmful_signal_strength = _clip01(max(worsening, worsening - escalation_reduction + 0.04))
 
         expected_improvement = _clip01(
-            0.45 * escalation_reduction
-            + 0.25 * reversibility
-            + 0.20 * distance
-            + 0.10 * model_reduction
-            - 0.40 * worsening
+            memory_effect_weight * helpful_signal
+            + (1.0 - memory_effect_weight) * model_reduction
+            - 0.55 * harmful_signal_strength
         )
-        raw_effectiveness = _clip01(expected_improvement * (1.0 - 0.55 * novelty_penalty) * (1.0 - 0.45 * uncertainty))
+        raw_effectiveness = _clip01(expected_improvement * (1.0 - 0.48 * novelty_penalty) * (1.0 - 0.42 * uncertainty))
 
-        harmful_signal = worsening > max(0.03, escalation_reduction)
+        harmful_signal = harmful_signal_strength > max(0.04, helpful_signal * 0.8)
         sparse_support = support < 2
         safety_gate = 1.0
         if sparse_support:
-            safety_gate *= 0.75
+            safety_gate *= 0.80
         if harmful_signal:
-            safety_gate *= 0.55
+            safety_gate *= 0.45
         effectiveness = _clip01(raw_effectiveness * safety_gate)
 
         return {
@@ -89,7 +90,9 @@ class InterventionEffectivenessScorer:
             "novelty_penalty": round(novelty_penalty, 4),
             "context_match_quality": round(avg_match, 4),
             "worsening_signal": round(worsening, 4),
+            "harmful_signal_strength": round(harmful_signal_strength, 4),
             "support_quality": "strong" if support >= 4 else "moderate" if support >= 2 else "weak",
+            "memory_effect_weight": round(memory_effect_weight, 4),
             "assumption_boundary": "Empirical structural effectiveness estimate from historical/contextual similarity and model projections; not a proven causal effect.",
             "safety_flags": {
                 "sparse_support": sparse_support,
