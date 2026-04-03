@@ -11,6 +11,7 @@ from uuid import uuid4
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from neraium_core.markets.data.alignment import align_to_shared_clock
@@ -20,6 +21,7 @@ from neraium_core.markets.data.market_data_loader import MarketDataLoader
 from neraium_core.markets.data.validation import validate_market_frame
 from neraium_core.markets.evidence.evidence_log import EvidenceLog
 from neraium_core.markets.integrations.massive.config import MassiveConfigError, load_massive_config
+from neraium_core.markets.integrations.massive.health import check_massive_health
 from neraium_core.markets.live.live_runner import LiveSessionRunner
 from neraium_core.markets.persistence.sqlite_store import MarketsSQLiteStore
 from neraium_core.markets.replay import run_signal_replay
@@ -68,7 +70,7 @@ def create_app(
     data_dir: str | Path = "neraium_core/markets/sample_data",
     evidence_path: str | Path = "artifacts/neraium_markets/evidence.jsonl",
 ) -> FastAPI:
-    app = FastAPI(title="Neraium Markets API", version="0.2.0")
+    app = FastAPI(title="Neraium Markets API", version="0.3.0")
     evidence = EvidenceLog(path=evidence_path)
     cache_store = CacheStore()
     ingest = HistoricalIngestService(cache_store)
@@ -76,6 +78,8 @@ def create_app(
     live = LiveSessionRunner()
     configured_data_dir = Path(data_dir)
     app.state.data_dir = configured_data_dir
+    static_dir = Path(__file__).parent / "static"
+    app.mount("/static", StaticFiles(directory=static_dir), name="markets-static")
 
     @app.get("/health")
     def health() -> dict[str, str]:
@@ -107,13 +111,19 @@ def create_app(
     @app.get("/integrations/massive/status")
     def massive_status() -> dict:
         cfg = load_massive_config()
-        latest_check = datetime.now(timezone.utc).isoformat()
-        return {
-            "provider_configured": bool(cfg.rest_base_url and cfg.ws_base_url),
-            "api_key_present": bool(cfg.api_key),
-            "latest_connectivity_check": latest_check,
-            "live_capability": bool(cfg.api_key),
+        health = check_massive_health(cfg)
+        live_status = live.status()
+        payload = {
+            **health.as_dict(),
+            "provider": "massive",
+            "latest_connectivity_check": datetime.now(timezone.utc).isoformat(),
+            "recent_fetch_success": bool(sqlite.list_cached_datasets(limit=1)),
+            "recent_live_event_at": live_status.get("last_event_at"),
+            "recent_live_signal_at": live_status.get("last_signal_at"),
+            "recent_error": sqlite.list_live_errors(limit=1)[0] if sqlite.list_live_errors(limit=1) else None,
         }
+        sqlite.record_provider_health("massive", payload)
+        return payload
 
     @app.post("/run-replay")
     def run_replay(
@@ -197,19 +207,56 @@ def create_app(
         return {"signals": list(live.latest_signals.values())}
 
     @app.get("/signals/history")
-    def signal_history(limit: int = 300, ticker: str | None = None, session_type: str | None = None) -> dict[str, list[dict]]:
+    def signal_history(
+        limit: int = 300,
+        ticker: str | None = None,
+        session_type: str | None = None,
+        action_permission: str | None = None,
+        best_action: str | None = None,
+        start_at: str | None = None,
+        end_at: str | None = None,
+        include_suppressed: bool = False,
+    ) -> dict[str, list[dict] | dict]:
         ticker_upper = ticker.upper() if ticker else None
         rows: list[dict] = []
         include_live = session_type in (None, "live")
         include_replay = session_type in (None, "replay")
         if include_live:
-            for row in sqlite.list_trader_outputs(limit=limit, ticker=ticker_upper):
-                rows.append({**row, "session_type": "live"})
+            for row in sqlite.list_trader_outputs(
+                limit=limit,
+                ticker=ticker_upper,
+                action_permission=action_permission,
+                best_action=best_action,
+                start_at=start_at,
+                end_at=end_at,
+            ):
+                rows.append({**row, "session_type": "live", "emitted": True})
+            if include_suppressed:
+                for row in sqlite.list_suppressed_outputs(
+                    limit=limit,
+                    ticker=ticker_upper,
+                    action_permission=action_permission,
+                    best_action=best_action,
+                    start_at=start_at,
+                    end_at=end_at,
+                ):
+                    rows.append({**row, "session_type": "live", "emitted": False})
         if include_replay:
-            for row in sqlite.list_replay_outputs(limit=limit, ticker=ticker_upper):
-                rows.append({**row, "session_type": "replay"})
+            for row in sqlite.list_replay_outputs(
+                limit=limit,
+                ticker=ticker_upper,
+                action_permission=action_permission,
+                best_action=best_action,
+                start_at=start_at,
+                end_at=end_at,
+            ):
+                rows.append({**row, "session_type": "replay", "emitted": True})
         rows.sort(key=lambda item: item.get("timestamp") or item.get("created_at") or "", reverse=True)
-        return {"signals": rows[:limit]}
+        summary = {
+            "suppression_count": sum(1 for row in rows if row.get("emitted") is False),
+            "abstention_count": sum(1 for row in rows if row.get("action_permission") == "ABSTAIN"),
+        }
+        return {"signals": rows[:limit], "summary": summary}
 
     @app.get("/integrations/massive/datasets")
     def massive_datasets() -> dict[str, list[dict]]:
@@ -228,6 +275,7 @@ def create_app(
             "replay_runs": sqlite.list_replay_runs()[:10],
             "datasets": [asdict(item) for item in cache_store.list_datasets()[:10]],
             "core_symbols": CORE,
+            "suppressed_recent": sqlite.list_suppressed_outputs(limit=20),
         }
 
     @app.get("/live/signals/{ticker}")
