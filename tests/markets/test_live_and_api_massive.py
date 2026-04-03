@@ -111,6 +111,26 @@ def test_run_replay_respects_use_massive_cached_data(tmp_path: Path):
     assert res.json()["meta"]["data_dir"] == str(ds_path)
 
 
+def test_run_replay_missing_configured_data_dir_returns_clear_error():
+    app = create_app()
+    app.state.data_dir = None
+    client = TestClient(app)
+    res = client.post("/run-replay", params={"timeframe": "15m"})
+    assert res.status_code == 400
+    assert "No replay data_dir configured" in res.json()["detail"]
+
+
+def test_run_replay_invalid_data_dir_returns_clear_error(tmp_path: Path):
+    invalid_root = tmp_path / "invalid"
+    invalid_root.mkdir(parents=True)
+    app = create_app(data_dir=invalid_root)
+    client = TestClient(app)
+    res = client.post("/run-replay", params={"timeframe": "15m"})
+    assert res.status_code == 400
+    assert "Invalid replay data_dir" in res.json()["detail"]
+    assert "missing CSV data for timeframe '15m'" in res.json()["detail"]
+
+
 def test_live_start_rejects_missing_required_core_symbols():
     app = create_app()
     client = TestClient(app)
