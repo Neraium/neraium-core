@@ -15,11 +15,13 @@ class MarketDataLoader:
     def load(self, timeframe: str) -> pd.DataFrame:
         frame_dir = self.data_dir / timeframe
         if not frame_dir.exists():
-            raise FileNotFoundError(f"Missing timeframe folder: {frame_dir}")
+            frame_dir = self._resolve_fallback_dir(timeframe)
 
         pieces: list[pd.DataFrame] = []
         for csv_path in sorted(frame_dir.glob("*.csv")):
             asset = csv_path.stem.upper()
+            if asset == "OIL":
+                asset = "CRUDE"
             df = pd.read_csv(csv_path)
             if "timestamp" not in df.columns or "close" not in df.columns:
                 raise ValueError(f"{csv_path} must contain timestamp and close columns")
@@ -31,3 +33,14 @@ class MarketDataLoader:
             raise ValueError(f"No CSV files found in {frame_dir}")
 
         return pd.concat(pieces, axis=1).sort_index()
+
+    def _resolve_fallback_dir(self, timeframe: str) -> Path:
+        candidates = [
+            self.data_dir,
+            Path(__file__).resolve().parents[4] / "neraium_markets" / "sample_data",
+            Path.cwd() / "neraium_markets" / "sample_data",
+        ]
+        for candidate in candidates:
+            if candidate.exists() and list(candidate.glob("*.csv")):
+                return candidate
+        raise FileNotFoundError(f"Missing timeframe folder: {self.data_dir / timeframe} and no fallback sample data for {timeframe}")

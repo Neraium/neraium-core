@@ -10,6 +10,7 @@ from neraium_core.markets.data.alignment import align_to_shared_clock
 from neraium_core.markets.data.market_data_loader import MarketDataLoader
 from neraium_core.markets.data.validation import validate_market_frame
 from neraium_core.markets.evidence.evidence_log import EvidenceLog
+from neraium_core.markets.replay import run_signal_replay
 from neraium_core.markets.signals.signal_generator import generate_signal_for_asset, to_evidence
 from neraium_core.markets.state.state_vector import CORE, build_state_vector
 
@@ -56,6 +57,11 @@ def create_app(
     @app.get("/signals/latest")
     def latest_signals(limit: int = 20) -> list[dict]:
         return [sig.model_dump(mode="json") for sig in evidence.latest(limit)]
+
+    @app.post("/run-replay")
+    def run_replay(timeframe: str = "15m") -> dict[str, list[dict]]:
+        rows = run_signal_replay(Path(data_dir), evidence, timeframe=timeframe)
+        return {"replay": rows}
 
     @app.get("/signals/{asset}")
     def by_asset(asset: str, limit: int = 100) -> list[dict]:
