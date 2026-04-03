@@ -3,13 +3,13 @@ from __future__ import annotations
 import csv
 import io
 import logging
-import os
 from datetime import datetime, timezone
 from typing import Any, Callable, TextIO
 
 from neraium_core.alignment import StructuralEngine
 from neraium_core.adapters.raw_telemetry_adapter import ingest_raw_industrial_input
 from neraium_core.engine_registry import EngineRegistry
+from neraium_core.result_projector import CanonicalOutputProjector
 from neraium_core.ingestion_normalization import (
     normalize_external_batch_payload,
     normalize_external_payload,
@@ -32,10 +32,8 @@ from neraium_core.logging_utils import (
     summarize_payload_for_logs,
     summarize_result_for_logs,
 )
-from neraium_core.explanation_layer import build_memory_context_text
 from neraium_core.pilot_schema import build_pilot_output
 from neraium_core.pilot_config import PilotConfig, load_pilot_config
-from neraium_core.output_contract import build_canonical_output
 from neraium_core.memory_recall import (
     DEDUPLICATE_SIMILARITY_THRESHOLD,
     build_structural_memory_signature,
@@ -75,10 +73,10 @@ class StructuralMonitoringService:
         self._engine_registry = EngineRegistry(self.engine)
         # Compatibility alias for internal/external callers that still read this field.
         self._engines_by_asset = self._engine_registry.engines
-        self._localization_by_site: dict[str, dict[str, float]] = {}
         self._cycle_by_run: dict[tuple[str, str], int] = {}
         self._alert_control_by_run: dict[tuple[str, str], dict[str, Any]] = {}
         self.pilot_config: PilotConfig = pilot_config or load_pilot_config()
+        self._projector = CanonicalOutputProjector(self.pilot_config)
 
     def _next_cycle(self, *, run_id: str | None, customer_id: str) -> int:
         key = (customer_id, str(run_id or "__default__"))
@@ -172,30 +170,22 @@ class StructuralMonitoringService:
         cycle = self._next_cycle(run_id=run_id, customer_id=customer_id)
         memory_recall = self._build_memory_recall(result, cycle=cycle, run_id=run_id, customer_id=customer_id)
         alert_control = self._consume_alert_control(run_id=run_id, customer_id=customer_id)
-        result_with_alert_control = dict(result)
-        if alert_control:
-            result_with_alert_control["alert_control"] = alert_control
         alert_policy = self._resolve_alert_policy(
             run_id=run_id,
             customer_id=customer_id,
             site_id=str(result.get("site_id")) if result.get("site_id") is not None else None,
             asset_id=str(result.get("asset_id")) if result.get("asset_id") is not None else None,
         )
-        if alert_policy:
-            result_with_alert_control["alert_policy"] = alert_policy
-        canonical = build_canonical_output(
-            result_with_alert_control,
+        canonical = self._projector.project_canonical_output(
+            result,
             cycle=cycle,
             run_id=run_id,
             customer_id=customer_id,
             previous=previous,
             memory_recall=memory_recall,
+            alert_control=alert_control,
+            alert_policy=alert_policy,
         )
-        memory_context = build_memory_context_text(canonical.get("memory_recall"))
-        if memory_context:
-            base_explanation = str(canonical.get("explanation_text", "")).strip()
-            if memory_context not in base_explanation:
-                canonical["explanation_text"] = f"{base_explanation} {memory_context}".strip()
         persisted = self.store.save_service_history(canonical, run_id=run_id, customer_id=customer_id)
         canonical["history_id"] = persisted["history_id"]
         canonical["persisted_at"] = persisted["persisted_at"]
@@ -245,7 +235,7 @@ class StructuralMonitoringService:
         top_k: int = 5,
     ) -> dict[str, Any]:
         signature = build_structural_memory_signature(
-            build_canonical_output(
+            self._projector.project_canonical_output(
                 result,
                 cycle=cycle,
                 run_id=run_id,
@@ -401,158 +391,22 @@ class StructuralMonitoringService:
         return self._engine_registry.get_or_create(frame_with_customer, run_config=run_config)
 
     def _localization_score(self, result: dict[str, Any]) -> float:
-        site_id = str(result.get("site_id", "default-site"))
-        asset_id = str(result.get("asset_id", "default-asset"))
-        latest_instability = float(result.get("latest_instability", 0.0))
-        site_map = self._localization_by_site.setdefault(site_id, {})
-        site_map[asset_id] = max(0.0, latest_instability)
-        total = sum(site_map.values())
-        if total <= 1e-9:
-            return 0.0
-        share = latest_instability / total
-        concentration = max(site_map.values()) / (total + 1e-9)
-        return round(max(0.0, min(1.0, share * concentration * 2.0)), 4)
+        return self._projector.localization_score(result)
 
     def _interpret(self, result: dict[str, Any]) -> dict[str, str]:
-        drift = float(result.get("structural_drift_score", 0.0))
-        transition_pressure = float(result.get("transition_pressure", 0.0))
-        transition_state = str(result.get("transition_state", "NONE")).upper()
-        state = str(result.get("state", "STABLE")).upper()
-        transition_aware_enabled = str(os.environ.get("NERAIUM_TRANSITION_AWARE", "1")).strip().lower() not in {
-            "0",
-            "false",
-            "no",
-            "off",
-        }
-
-        transition_actionable = result.get("transition_outputs_actionable")
-        if transition_actionable is None:
-            transition_actionable = result.get("engine_transition_detectable")
-        if transition_actionable is None and isinstance(result.get("readiness"), dict):
-            rd0 = result["readiness"]
-            transition_actionable = rd0.get("transition_classification_ready")
-            if transition_actionable is None:
-                transition_actionable = rd0.get("transition_classifiable")
-        if transition_actionable is None:
-            transition_actionable = transition_state != "WARMUP"
-
-        if (
-            drift >= float(self.pilot_config.drift_high_threshold)
-            or state == "ALERT"
-            or (
-                transition_aware_enabled
-                and transition_actionable is not False
-                and transition_state != "WARMUP"
-                and (transition_state == "SUSTAINED_TRANSITION" or transition_pressure >= 1.15)
-            )
-        ):
-            return {
-                "risk_level": "HIGH",
-                "action_state": "ALERT",
-                "operator_message": (
-                    "High instability/transition pressure detected. "
-                    "System is structurally departing from prior stable behavior; immediate operator review advised."
-                ),
-            }
-
-        if (
-            drift >= float(self.pilot_config.drift_watch_threshold)
-            or state == "WATCH"
-            or (
-                transition_aware_enabled
-                and transition_actionable is not False
-                and transition_state != "WARMUP"
-                and (transition_state == "EMERGING_TRANSITION" or transition_pressure >= 0.85)
-            )
-        ):
-            return {
-                "risk_level": "MEDIUM",
-                "action_state": "WATCH",
-                "operator_message": (
-                    "Transition pressure is elevated. "
-                    "Monitor closely for continued structural departure from recent stable behavior."
-                ),
-            }
-
-        return {
-            "risk_level": "LOW",
-            "action_state": "STABLE",
-            "operator_message": "System appears stable based on current heuristic interpretation.",
-        }
+        return self._projector.interpret(result)
 
     def _operator_trend(self, result: dict[str, Any]) -> str:
-        analytics = result.get("experimental_analytics")
-        if not isinstance(analytics, dict):
-            return "UNKNOWN"
-
-        forecasting = analytics.get("forecasting")
-        if not isinstance(forecasting, dict):
-            return "UNKNOWN"
-
-        trend_score = float(forecasting.get("trend", 0.0))
-        if trend_score > 0.05:
-            return "RISING"
-        if trend_score < -0.05:
-            return "FALLING"
-        return "STABLE"
+        return self._projector.operator_trend(result)
 
     def _operator_confidence(self, result: dict[str, Any]) -> float:
-        # Prefer stabilized confidence_score from engine when present.
-        score = result.get("confidence_score")
-        if score is not None:
-            try:
-                return round(max(0.0, min(float(score), 1.0)), 4)
-            except (TypeError, ValueError):
-                pass
-        stability = float(result.get("relational_stability_score", 0.0))
-        return round(max(0.0, min(stability, 1.0)), 4)
+        return self._projector.operator_confidence(result)
 
     def _structural_analysis_metadata(self, result: dict[str, Any]) -> dict[str, Any]:
-        signals = result.get("sensor_relationships")
-        signal_count = len(signals) if isinstance(signals, list) else 0
-        if signal_count < 2:
-            return {
-                "structural_analysis_available": False,
-                "skipped_reason": "insufficient signal dimensionality",
-            }
-
-        analytics = result.get("experimental_analytics")
-        if not isinstance(analytics, dict):
-            return {
-                "structural_analysis_available": False,
-                "skipped_reason": "insufficient history",
-            }
-
-        if bool(analytics.get("relational_metrics_skipped")):
-            return {
-                "structural_analysis_available": False,
-                "skipped_reason": "insufficient signal dimensionality",
-            }
-
-        return {
-            "structural_analysis_available": True,
-            "skipped_reason": None,
-        }
+        return self._projector.structural_analysis_metadata(result)
 
     def _decorate_result(self, result: dict[str, Any]) -> dict[str, Any]:
-        enriched = dict(result)
-        interpretation = self._interpret(result)
-        structural = self._structural_analysis_metadata(result)
-        localization_score = self._localization_score(result)
-
-        enriched.update(interpretation)
-        enriched.update(structural)
-        enriched["trend"] = self._operator_trend(result)
-        enriched["confidence"] = self._operator_confidence(result)
-        enriched["localization_score"] = localization_score
-        enriched["interpretation"] = {
-            "heuristic": True,
-            **interpretation,
-            "trend": enriched["trend"],
-            "confidence": enriched["confidence"],
-            "localization_score": localization_score,
-        }
-        return enriched
+        return self._projector.project_for_output(result)
 
     @staticmethod
     def _with_result_metadata(
