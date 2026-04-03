@@ -1,85 +1,171 @@
+import csv
 from datetime import datetime, timezone
-import numpy as np
+from io import StringIO
+from typing import Any, Dict, List, Optional
 
-from neraium_core.features import MicroFeatureEngine
+
+DEFAULT_SITE_ID = "default-site"
+DEFAULT_ASSET_ID = "default-asset"
+REQUIRED_CSV_COLUMNS = {"timestamp", "site_id", "asset_id"}
 
 
-class TelemetryPipeline:
+def now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
 
-    def __init__(self):
 
-        self.features = MicroFeatureEngine()
+def normalize_timestamp(value: Any) -> str:
+    """
+    Normalize a timestamp into an ISO-8601 UTC string.
+    Accepts datetime objects or strings. Falls back to current UTC time
+    only when the input is None or empty.
+    """
+    if value is None or str(value).strip() == "":
+        return now_iso()
 
-        self.history = []
-        self.baseline_mean = None
-        self.baseline_cov = None
+    if isinstance(value, datetime):
+        dt = value
+    else:
+        text = str(value).strip()
+        if text.endswith("Z"):
+            text = text[:-1] + "+00:00"
+        try:
+            dt = datetime.fromisoformat(text)
+        except ValueError as exc:
+            raise ValueError(f"Invalid timestamp: {value!r}") from exc
 
-        self.training_samples = 50
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
 
-    def _update_baseline(self, vector):
+    return dt.astimezone(timezone.utc).isoformat()
 
-        self.history.append(vector)
 
-        if len(self.history) < self.training_samples:
-            return
+def normalize_identifier(value: Any, default: str) -> str:
+    if value is None:
+        return default
+    text = str(value).strip()
+    return text if text else default
 
-        data = np.array(self.history[-self.training_samples:])
 
-        self.baseline_mean = np.mean(data, axis=0)
-        self.baseline_cov = np.cov(data, rowvar=False)
+def normalize_sensor_name(value: Any) -> str:
+    text = str(value).strip()
+    if not text:
+        raise ValueError("Sensor name cannot be empty")
+    return text
 
-    def _mahalanobis(self, vector):
 
-        if self.baseline_mean is None:
-            return 0
+def coerce_float(value: Any) -> Optional[float]:
+    """
+    Convert input to float when possible.
+    Returns None for missing or invalid values.
+    """
+    if value is None:
+        return None
 
-        x = np.array(vector)
+    if isinstance(value, str):
+        value = value.strip()
+        if value == "":
+            return None
 
-        diff = x - self.baseline_mean
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def build_frame(
+    timestamp: Any,
+    site_id: Any,
+    asset_id: Any,
+    sensor_values: Dict[Any, Any],
+) -> Dict[str, Any]:
+    if not isinstance(sensor_values, dict):
+        raise ValueError("sensor_values must be an object")
+
+    frame: Dict[str, Any] = {
+        "timestamp": normalize_timestamp(timestamp),
+        "site_id": normalize_identifier(site_id, DEFAULT_SITE_ID),
+        "asset_id": normalize_identifier(asset_id, DEFAULT_ASSET_ID),
+        "sensor_values": {},
+        "sensor_quality": {},
+    }
+
+    for raw_key, raw_value in sensor_values.items():
+        sensor_name = normalize_sensor_name(raw_key)
+        numeric_value = coerce_float(raw_value)
+
+        frame["sensor_values"][sensor_name] = numeric_value
+        frame["sensor_quality"][sensor_name] = (
+            "ok" if numeric_value is not None else "missing"
+        )
+
+    return frame
+
+
+def normalize_rest_payload(payload: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Normalize an incoming REST payload into the internal frame format.
+    """
+    if not isinstance(payload, dict):
+        raise ValueError("Payload must be an object")
+
+    return build_frame(
+        timestamp=payload.get("timestamp"),
+        site_id=payload.get("site_id", DEFAULT_SITE_ID),
+        asset_id=payload.get("asset_id", DEFAULT_ASSET_ID),
+        sensor_values=payload.get("sensor_values", {}),
+    )
+
+
+def parse_csv_text(csv_text: str) -> List[Dict[str, Any]]:
+    """
+    Parse CSV text into a list of normalized internal frames.
+
+    Required columns:
+        timestamp, site_id, asset_id
+
+    All remaining columns are treated as sensor columns.
+    """
+    if not isinstance(csv_text, str):
+        raise ValueError("csv_text must be a string")
+
+    reader = csv.DictReader(StringIO(csv_text))
+
+    if reader.fieldnames is None:
+        return []
+
+    headers = {h.strip() for h in reader.fieldnames if h is not None}
+
+    if not REQUIRED_CSV_COLUMNS.issubset(headers):
+        missing = sorted(REQUIRED_CSV_COLUMNS - headers)
+        raise ValueError(
+            f"CSV must include timestamp, site_id, asset_id columns. Missing: {missing}"
+        )
+
+    sensor_columns = [
+        h for h in reader.fieldnames
+        if h is not None and h.strip() not in REQUIRED_CSV_COLUMNS
+    ]
+
+    frames: List[Dict[str, Any]] = []
+
+    for row_index, row in enumerate(reader, start=2):
+        if row is None:
+            continue
+
+        sensor_values: Dict[str, Any] = {}
+        for col in sensor_columns:
+            sensor_values[col.strip()] = row.get(col)
 
         try:
-            inv_cov = np.linalg.pinv(self.baseline_cov)
-        except:
-            return 0
+            frame = build_frame(
+                timestamp=row.get("timestamp"),
+                site_id=row.get("site_id"),
+                asset_id=row.get("asset_id"),
+                sensor_values=sensor_values,
+            )
+        except ValueError as exc:
+            raise ValueError(f"Invalid CSV row {row_index}: {exc}") from exc
 
-        score = np.sqrt(diff.T @ inv_cov @ diff)
+        frames.append(frame)
 
-        return float(score)
-
-    def process(self, payload):
-
-        cpu = payload.signals["cpu_usage"]
-        mem = payload.signals["memory_usage"]
-
-        f = self.features.compute(cpu, mem)
-
-        vector = [
-            f["cpu"],
-            f["memory"],
-            f["cpu_delta"],
-            f["mem_delta"],
-            f["cpu_std"],
-            f["mem_std"]
-        ]
-
-        self._update_baseline(vector)
-
-        score = self._mahalanobis(vector)
-
-        if score > 4:
-            status = "anomaly"
-        else:
-            status = "normal"
-
-        event = {
-            "timestamp": datetime.now(timezone.utc).isoformat(),
-            "signals": {
-                "cpu_usage": cpu,
-                "memory_usage": mem
-            },
-            "score": score,
-
-            "status": status
-        }
-
-        return event
+    return frames
