@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 from neraium_core.sports_betting_adapter import build_betting_frame
 from neraium_core.stock_market_adapter import build_stock_frame
 
@@ -20,10 +22,21 @@ def test_build_stock_frame_keeps_only_numeric_sensor_values() -> None:
         },
     )
 
-    assert set(frame.keys()) == {"timestamp", "site_id", "asset_id", "sensor_values"}
+    assert set(frame.keys()) == {"timestamp", "customer_id", "site_id", "asset_id", "sensor_values", "sensor_quality", "aligned", "anomaly"}
     assert frame["site_id"] == "market"
     assert frame["asset_id"] == "AAPL"
-    assert frame["timestamp"] == float(1712055000)
+    assert frame["timestamp"] == datetime.fromtimestamp(1712055000, tz=timezone.utc).isoformat()
+    assert frame["customer_id"] == "default-customer"
+    assert frame["sensor_quality"] == {
+        "open": "ok",
+        "high": "ok",
+        "low": "ok",
+        "close": "ok",
+        "volume": "ok",
+        "value": "ok",
+    }
+    assert frame["aligned"] == []
+    assert frame["anomaly"] is False
     assert frame["sensor_values"] == {
         "open": 123.4,
         "high": 125.0,

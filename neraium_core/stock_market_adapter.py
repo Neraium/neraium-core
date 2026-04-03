@@ -4,6 +4,8 @@ import math
 from numbers import Number
 from typing import Any
 
+from neraium_core.engine_ingress import DEFAULT_CUSTOMER_ID, EngineIngressFrame, normalize_timestamp
+
 PREFERRED_MARKET_FIELDS = ("open", "high", "low", "close", "volume", "value")
 
 
@@ -38,12 +40,15 @@ def build_stock_frame(timestamp: Any, ticker: Any, row_dict: dict[str, Any]) -> 
         if numeric is not None:
             sensors[str(key)] = numeric
 
-    return {
-        "timestamp": float(timestamp),
-        "site_id": "market",
-        "asset_id": str(ticker),
-        "sensor_values": sensors,
-    }
+    frame = EngineIngressFrame(
+        timestamp=normalize_timestamp(timestamp),
+        customer_id=DEFAULT_CUSTOMER_ID,
+        site_id="market",
+        asset_id=str(ticker),
+        sensor_values=sensors,
+        sensor_quality={name: "ok" for name in sensors},
+    )
+    return frame.to_dict()
 
 
 __all__ = ["build_stock_frame"]
