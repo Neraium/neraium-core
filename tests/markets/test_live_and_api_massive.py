@@ -6,7 +6,8 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from neraium_core.markets.app.api import DEFAULT_LIVE_SYMBOLS, create_app
+from neraium_core.markets.app.api import create_app
+from neraium_core.markets.defaults import DEFAULT_LIVE_SYMBOLS, DEFAULT_LIVE_TIMEFRAME
 from neraium_core.markets.integrations.massive.models import NormalizedMarketEvent
 from neraium_core.markets.live.bar_builder import RollingBarBuilder
 from neraium_core.markets.live.live_runner import LiveSessionRunner
@@ -63,6 +64,7 @@ def test_live_status_endpoint():
     assert "session_state" in payload
     assert "bars_collected" in payload
     assert "bars_required" in payload
+    assert "warmup_progress_pct" in payload
 
 
 def test_massive_status_exposes_health_shape(monkeypatch):
@@ -76,6 +78,8 @@ def test_massive_status_exposes_health_shape(monkeypatch):
     assert "api_key_valid" in payload
     assert "rest_reachable" in payload
     assert "recent_live_event_at" in payload
+    assert "recent_live_signal_at" in payload
+    assert "session_state" in payload
 
 
 def test_replay_over_cached_data(tmp_path: Path):
@@ -193,6 +197,7 @@ def test_live_start_default_body_uses_valid_defaults(monkeypatch):
     assert res.status_code == 200
     assert res.json()["status"] == "started"
     assert res.json()["symbols"] == DEFAULT_LIVE_SYMBOLS
+    assert res.json()["timeframe"] == DEFAULT_LIVE_TIMEFRAME
 
 
 def test_live_start_accepts_valid_required_symbols(monkeypatch):
@@ -209,6 +214,21 @@ def test_live_start_accepts_valid_required_symbols(monkeypatch):
     assert res.json()["symbols"] == ["SPY", "QQQ", "IWM", "AAPL"]
 
 
+def test_live_status_defaults_to_first_run_values():
+    app = create_app()
+    client = TestClient(app)
+    payload = client.get("/live/status").json()
+    assert payload["timeframe"] == DEFAULT_LIVE_TIMEFRAME
+
+
+def test_operator_summary_includes_launch_checklist():
+    app = create_app()
+    client = TestClient(app)
+    payload = client.get("/operator/summary").json()
+    assert "launch_checklist" in payload
+    assert any(item["key"] == "core_symbols_present" for item in payload["launch_checklist"])
+
+
 def test_history_filters_include_suppressed():
     app = create_app()
     client = TestClient(app)
@@ -223,6 +243,8 @@ def test_ui_route_serves_operator_console():
     res = client.get("/")
     assert res.status_code == 200
     assert "Command Center" in res.text
+    assert "SPY,QQQ,IWM,AAPL,NVDA" in res.text
+    assert "5m" in res.text
 
 
 def test_static_assets_served():

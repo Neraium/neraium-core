@@ -31,13 +31,26 @@ async function refreshAll() {
   document.getElementById('sessionPill').className = `pill ${stateClass(status.session_state)}`;
   document.getElementById('eventPill').textContent = `Last event: ${fmt(status.last_event_at)}`;
   document.getElementById('signalPill').textContent = `Last signal: ${fmt(status.last_signal_at)}`;
-  document.getElementById('statusStrip').innerHTML = `<div class="controls"><span class="pill ${stateClass(status.session_state)}">${status.session_state}</span><span class="pill">Readiness ${status.readiness_state}</span><span class="pill">Warmup ${pct(status.warmup_progress)} (${status.bars_collected}/${status.bars_required})</span><span class="pill">Timeframe ${status.timeframe}</span></div>`;
-  document.getElementById('sessionSummary').innerHTML = `<div>Buffered symbols: ${status.buffered_symbol_count}</div><div>Suppressed: ${status.suppressed_count} | Abstain: ${status.abstain_count}</div><div>Latest error: ${status.latest_error || 'none'}</div>`;
+  document.getElementById('statusStrip').innerHTML = `<div class="controls"><span class="pill ${stateClass(status.session_state)}">${status.session_state}</span><span class="pill">Provider ${provider.status || 'unknown'}</span><span class="pill">Readiness ${status.readiness_state}</span><span class="pill">Warmup ${status.warmup_progress_pct || 0}% (${status.bars_collected}/${status.bars_required})</span><span class="pill">Timeframe ${status.timeframe}</span><span class="pill">${(status.symbols || []).join(', ') || 'No symbols'}</span></div>`;
+  document.getElementById('sessionSummary').innerHTML = `<div>Buffered symbols: ${status.buffered_symbol_count}</div><div>Suppressed: ${status.suppressed_count} | Abstain: ${status.abstain_count}</div><div>Last suppression reason: ${status.last_suppressed_reason || 'none'}</div><div>Latest error: ${status.latest_error || 'none'}</div>`;
   document.getElementById('warnings').innerHTML = (summary.recent_warnings||[]).map(w=>`<div class="banner warn">${w.error || JSON.stringify(w)}</div>`).join('') || '<div class="muted">No recent warnings.</div>';
   drawTable('latestTable', (summary.latest_signals||[]));
   const liveLatest = await jget('/live/signals/latest').catch(()=>({signals:[]}));
   drawTable('liveSignals', liveLatest.signals || []);
-  document.getElementById('providerStatus').innerHTML = `<div>Status: ${provider.status}</div><div>Config present: ${provider.config_present}</div><div>API key: ${provider.api_key_present ? (provider.api_key_valid ? 'valid' : 'present/invalid') : 'missing'}</div><div>REST reachable: ${provider.rest_reachable}</div><div>WebSocket configured: ${provider.websocket_configured}</div><div>Recent live event: ${fmt(provider.recent_live_event_at)}</div><div>Error: ${provider.error || 'none'}</div>`;
+  if (!(summary.latest_signals || []).length) {
+    const reason = status.readiness_state === 'receiving_data_warming_up'
+      ? 'No signals yet: session is still warming up.'
+      : (status.readiness_state === 'connected_no_data'
+          ? 'No signals yet: provider connected but no incoming data.'
+          : (status.suppressed_count > 0
+              ? 'No signals yet: latest outputs are being suppressed by governance.'
+              : 'No signals yet: no valid setup emitted.'));
+    showBanner('commandMessages', reason, 'warn');
+  } else {
+    document.getElementById('commandMessages').innerHTML = '';
+  }
+  document.getElementById('providerStatus').innerHTML = `<div>Status: ${provider.status}</div><div>Config present: ${provider.config_present}</div><div>API key: ${provider.api_key_present ? (provider.api_key_valid ? 'valid' : 'present/invalid') : 'missing'}</div><div>REST reachable: ${provider.rest_reachable}</div><div>WebSocket configured: ${provider.websocket_configured}</div><div>Recent fetch success: ${String(provider.recent_fetch_success)}</div><div>Recent live event: ${fmt(provider.recent_live_event_at)}</div><div>Recent live signal: ${fmt(provider.recent_live_signal_at)}</div><div>Error: ${provider.error || 'none'}</div>`;
+  document.getElementById('launchChecklist').innerHTML = (summary.launch_checklist || []).map(item => `<div>${item.ok ? '✅' : '⚠️'} ${item.key.replaceAll('_', ' ')}</div>`).join('') || '<div class="muted">Checklist unavailable.</div>';
   const datasets = await jget('/integrations/massive/datasets').catch(()=>({datasets:[]}));
   const ds = datasets.datasets || [];
   const dsSelect = document.getElementById('datasetSelect');
@@ -55,7 +68,7 @@ async function loadHistory() {
 }
 
 document.querySelectorAll('.nav-btn').forEach(btn => btn.onclick = () => { document.querySelectorAll('.nav-btn').forEach(x=>x.classList.remove('active')); btn.classList.add('active'); document.querySelectorAll('.page').forEach(p=>p.classList.remove('active')); document.getElementById(`page-${btn.dataset.page}`).classList.add('active'); });
-document.getElementById('startBtn').onclick = async () => { const symbols = document.getElementById('symbolsInput').value.split(',').map(s=>s.trim()).filter(Boolean); const timeframe = document.getElementById('timeframeInput').value; try { await jget('/live/start', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({symbols, timeframe})}); showBanner('commandMessages', 'Live session started.', ''); } catch (e) { showBanner('commandMessages', e.message, 'err'); } refreshAll(); };
+document.getElementById('startBtn').onclick = async () => { const symbols = document.getElementById('symbolsInput').value.split(',').map(s=>s.trim()).filter(Boolean); const timeframe = document.getElementById('timeframeInput').value; try { await jget('/live/start', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({symbols: symbols.length ? symbols : undefined, timeframe: timeframe || undefined})}); showBanner('commandMessages', 'Live session started.', ''); } catch (e) { showBanner('commandMessages', e.message, 'err'); } refreshAll(); };
 document.getElementById('stopBtn').onclick = async () => { await jget('/live/stop', {method:'POST'}); refreshAll(); };
 document.getElementById('fetchBtn').onclick = async () => { try { const body = {symbols: document.getElementById('fetchSymbols').value.split(',').map(s=>s.trim()).filter(Boolean), timeframe: document.getElementById('fetchTimeframe').value, start_date: document.getElementById('fetchStart').value, end_date: document.getElementById('fetchEnd').value}; await jget('/integrations/massive/historical/fetch', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)}); showBanner('replayMessages', 'Historical data fetched and cached.', ''); } catch (e) { showBanner('replayMessages', e.message, 'err'); } refreshAll(); };
 document.getElementById('runReplayBtn').onclick = async () => { const params = new URLSearchParams({timeframe: document.getElementById('fetchTimeframe').value}); const selected = document.getElementById('datasetSelect').value; const manualDir = document.getElementById('replayDataDir').value.trim(); if (manualDir) params.set('data_dir', manualDir); else if (selected) params.set('data_dir', selected); try { const out = await jget(`/run-replay?${params}`, {method:'POST'}); currentReplayRunId = out.run_id; document.getElementById('replayMeta').innerHTML = `Run ${out.run_id} | ${out.meta.timeframe} | ${out.meta.signal_count} signals`; drawTable('replayTable', out.replay); } catch (e) { showBanner('replayMessages', e.message, 'err'); } };

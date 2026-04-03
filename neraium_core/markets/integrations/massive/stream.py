@@ -62,7 +62,13 @@ class MassiveStreamClient:
                     yield event_from_trade(row, timeframe_hint=self.timeframe_hint)
 
 
-async def stream_with_reconnect(client: MassiveStreamClient, *, symbols: list[str], reconnect_delay: float = 2.0) -> AsyncIterator[NormalizedMarketEvent]:
+async def stream_with_reconnect(
+    client: MassiveStreamClient,
+    *,
+    symbols: list[str],
+    reconnect_delay: float = 2.0,
+    on_reconnect=None,
+) -> AsyncIterator[NormalizedMarketEvent]:
     while True:
         try:
             await client.connect()
@@ -71,7 +77,9 @@ async def stream_with_reconnect(client: MassiveStreamClient, *, symbols: list[st
                 yield event
         except asyncio.CancelledError:
             raise
-        except Exception:  # noqa: BLE001
+        except Exception as exc:  # noqa: BLE001
+            if on_reconnect is not None:
+                on_reconnect(exc)
             await asyncio.sleep(reconnect_delay)
         finally:
             await client.close()
