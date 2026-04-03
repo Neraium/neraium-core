@@ -32,7 +32,7 @@ def structural_engine_stage_groups() -> list[EngineStageBoundary]:
             "inputs": ("history_matrix", "history_timestamps"),
             "outputs": ("baseline_window", "recent_window", "data_quality", "temporal_features"),
             "risk": "medium",
-            "extraction_candidate": False,
+            "extraction_candidate": True,
         },
         {
             "stage": "multivariate_scoring_and_regime_updates",

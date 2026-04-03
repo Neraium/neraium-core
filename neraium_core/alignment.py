@@ -24,12 +24,6 @@ from neraium_core.causal_graph import (
     causal_root_cause_chains,
 )
 from neraium_core.branching import derive_branching_analysis
-from neraium_core.data_quality import (
-    compute_data_quality,
-    data_quality_summary,
-    impute_missing_simple,
-    should_use_degraded_analytics,
-)
 from neraium_core.decision_layer import decision_output
 from neraium_core.explanation_layer import build_explanation_text
 from neraium_core.directional import directional_metrics, lagged_correlation_matrix
@@ -68,14 +62,8 @@ from neraium_core.structural_upgrade import (
 )
 from neraium_core.scoring import canonicalize_components, canonicalize_weights, composite_instability_score_normalized
 from neraium_core.spectral import dominant_mode_loading, spectral_gap, spectral_radius
-from neraium_core.context_invariant_representation import (
-    RepresentationWeights,
-    TemporalRepresentationConfig,
-    build_temporal_representation,
-)
-from neraium_core.temporal_features import derive_temporal_rate_features
+from neraium_core.context_invariant_representation import RepresentationWeights, TemporalRepresentationConfig
 from neraium_core.stat_geometry import StatisticalGeometryLayer
-from neraium_core.temporal_quality import derive_temporal_quality_signals
 from neraium_core.detection.readiness import compute_engine_readiness
 from neraium_core.staged_pipeline import (
     AttributionStage,
@@ -91,6 +79,8 @@ from neraium_core.subsystems import subsystem_spectral_measures
 from neraium_core.realtime.buffer import HistoryRingBuffer, TimestampDequeBuffer, VectorDequeBuffer
 from neraium_core.engine_stages import (
     IngressAndHistoryBuffersInput,
+    RepresentationAndQualityInput,
+    build_representation_and_quality,
     build_warmup_result_payload,
     prepare_ingress_and_history_buffers,
     structural_engine_stage_groups,
@@ -1314,48 +1304,32 @@ class StructuralEngine:
             else:
                 history_matrix = self._history_ring.chronological_matrix()
             history_ts = self._history_ring.chronological_timestamps()
-            rep = build_temporal_representation(history_matrix, self.representation_config, timestamps=history_ts)
-            transformed_history = rep.transformed
-            baseline_window = np.asarray(
-                transformed_history[: self.baseline_window][:: self.window_stride],
-                dtype=float,
+            representation_quality = build_representation_and_quality(
+                self,
+                RepresentationAndQualityInput(history_matrix=history_matrix, history_timestamps=history_ts),
             )
-            recent_window = np.asarray(
-                transformed_history[-self.recent_window :][:: self.window_stride],
-                dtype=float,
-            )
-            ts_baseline = self._get_baseline_timestamps(None)
-            ts_recent = self._get_recent_timestamps(None)
-            temporal_quality = derive_temporal_quality_signals(ts_recent)
+            rep = representation_quality.representation
+            baseline_window = representation_quality.baseline_window
+            recent_window = representation_quality.recent_window
+            z_baseline = representation_quality.z_baseline
+            z_recent = representation_quality.z_recent
+            baseline_mean = representation_quality.baseline_mean
+            baseline_std = representation_quality.baseline_std
+            recent_mean = representation_quality.recent_mean
+            recent_std = representation_quality.recent_std
+            ts_baseline = representation_quality.ts_baseline
+            ts_recent = representation_quality.ts_recent
+            temporal_quality = representation_quality.temporal_quality
+            temporal_features = representation_quality.temporal_features
+            data_quality_report = representation_quality.data_quality_report
+            dq_summary = representation_quality.dq_summary
+            valid_mask = representation_quality.valid_mask
+            valid_signal_count = representation_quality.valid_signal_count
 
-            data_quality_report = compute_data_quality(
-                baseline_window,
-                recent_window,
-                sensor_names=self.sensor_order,
-                timestamps_baseline=ts_baseline,
-                timestamps_recent=ts_recent,
-            )
             result["data_quality"] = data_quality_report.to_dict()
-            dq_summary = data_quality_summary(data_quality_report)
             result["data_quality_summary"] = dq_summary
             result["active_sensor_count"] = dq_summary["valid_signal_count"]
             result["missing_sensor_count"] = dq_summary["missing_sensor_count"]
-
-            use_degraded = (not data_quality_report.gate_passed) and should_use_degraded_analytics(
-                data_quality_report
-            )
-            # Optional imputation when gate failed but we still want meaningful degraded output.
-            if not data_quality_report.gate_passed and use_degraded:
-                baseline_window = impute_missing_simple(baseline_window, method="column_mean")
-                recent_window = impute_missing_simple(recent_window, method="column_mean")
-
-            z_baseline, baseline_mean, baseline_std = normalize_window(baseline_window)
-            z_recent, recent_mean, recent_std = normalize_window(recent_window)
-            temporal_features = derive_temporal_rate_features(recent_window=z_recent, timestamps=ts_recent)
-
-            valid_mask = (np.nan_to_num(recent_std) > 1e-12) | (np.nan_to_num(baseline_std) > 1e-12)
-            valid_signal_count = int(np.sum(valid_mask))
-            valid_signal_count = min(valid_signal_count, len(self.sensor_order))
 
             warning = early_warning_metrics(np.nan_to_num(recent_window, nan=0.0))
 
