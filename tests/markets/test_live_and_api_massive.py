@@ -6,7 +6,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
-from neraium_core.markets.app.api import create_app
+from neraium_core.markets.app.api import DEFAULT_LIVE_SYMBOLS, create_app
 from neraium_core.markets.integrations.massive.models import NormalizedMarketEvent
 from neraium_core.markets.live.bar_builder import RollingBarBuilder
 
@@ -116,8 +116,40 @@ def test_live_start_rejects_missing_required_core_symbols():
     client = TestClient(app)
     res = client.post("/live/start", json={"symbols": ["SPY", "QQQ"], "timeframe": "1m"})
     assert res.status_code == 400
-    assert "Missing required core symbols" in res.json()["detail"]
-    assert "IWM" in res.json()["detail"]
+    assert "Live session requires core symbols" in res.json()["detail"]
+    assert "Missing: IWM" in res.json()["detail"]
+
+
+def test_live_start_default_body_uses_valid_defaults(monkeypatch):
+    from neraium_core.markets.live.live_runner import LiveSessionRunner
+
+    async def _fake_run(self):
+        return None
+
+    monkeypatch.setattr(LiveSessionRunner, "_run", _fake_run)
+    monkeypatch.setenv("MASSIVE_API_KEY", "demo")
+    app = create_app()
+    client = TestClient(app)
+    res = client.post("/live/start", json={})
+    assert res.status_code == 200
+    assert res.json()["status"] == "started"
+    assert res.json()["symbols"] == DEFAULT_LIVE_SYMBOLS
+
+
+def test_live_start_omitted_symbols_uses_valid_defaults(monkeypatch):
+    from neraium_core.markets.live.live_runner import LiveSessionRunner
+
+    async def _fake_run(self):
+        return None
+
+    monkeypatch.setattr(LiveSessionRunner, "_run", _fake_run)
+    monkeypatch.setenv("MASSIVE_API_KEY", "demo")
+    app = create_app()
+    client = TestClient(app)
+    res = client.post("/live/start", json={"timeframe": "1m"})
+    assert res.status_code == 200
+    assert res.json()["status"] == "started"
+    assert res.json()["symbols"] == DEFAULT_LIVE_SYMBOLS
 
 
 def test_live_start_accepts_valid_required_symbols(monkeypatch):
@@ -130,9 +162,10 @@ def test_live_start_accepts_valid_required_symbols(monkeypatch):
     monkeypatch.setenv("MASSIVE_API_KEY", "demo")
     app = create_app()
     client = TestClient(app)
-    res = client.post("/live/start", json={"symbols": ["SPY", "QQQ", "IWM"], "timeframe": "1m"})
+    res = client.post("/live/start", json={"symbols": ["spy", "qqq", "iwm", "aapl"], "timeframe": "1m"})
     assert res.status_code == 200
     assert res.json()["status"] == "started"
+    assert res.json()["symbols"] == ["SPY", "QQQ", "IWM", "AAPL"]
 
 
 def test_ui_route_serves_operator_console():
