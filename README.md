@@ -1,8 +1,10 @@
 # neraium-core
 
-Universal structural analytics engine with a **non-executing intraday market signal workflow**.
+Universal structural analytics engine.
 
-## Day-trader usage (analytics only, no auto-trading)
+> Active runtime (deployment source-of-truth): `neraium_core.markets.app.api:app`
+
+## Legacy day-trader polling runner (archived)
 
 ### What this does
 - Polls live or mock intraday bars.
@@ -76,4 +78,6 @@ Each emitted row contains:
 - `cooldown_remaining_seconds` (repeat-signal metadata)
 - `emitted` (whether the row passed emission gates)
 
-See `LIVE_MARKET_RUN.md` for full operational notes.
+`LIVE_MARKET_RUN.md` is legacy/archive documentation for the older polling runner.
+
+For the active runtime, see `neraium_core/markets/README.md` and deploy with `neraium_core.markets.app.api:app`.

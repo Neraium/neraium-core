@@ -1,8 +1,24 @@
-# Live Stock Market Runner (Polling)
+# LEGACY: Live Stock Market Runner (Polling)
 
-> **Safety mode:** analytics/signals only. This runner does **not** place trades.
+> **Legacy status (April 3, 2026):** this document describes the **older stock-market polling stack** and is **not** the active deployment runtime.
 
-## Runtime path (source-of-truth flow)
+## Current runtime source of truth
+
+Use the Neraium Markets module/API runtime:
+
+- **Deployment entrypoint:** `neraium_core.markets.app.api:app`
+- **Live runtime modules:** `neraium_core.markets.live.*`
+- **Integrations:** `neraium_core.markets.integrations.*`
+- **Signals:** `neraium_core.markets.signals.*`
+- **Persistence:** `neraium_core.markets.persistence.*`
+
+For active runtime usage and operations, see `neraium_core/markets/README.md`.
+
+---
+
+The content below is retained for archive/reference only.
+
+## Legacy runtime path (archived flow)
 
 `connector -> stock_market_adapter -> live_runner -> trading_signals -> compact output/logging`
 
