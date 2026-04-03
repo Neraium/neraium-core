@@ -10,11 +10,10 @@ from pathlib import Path
 from typing import Any
 
 from neraium_core.data_connectors import (
-    AlphaVantageRESTConnector,
+    create_stock_connector,
     LiveConnectorError,
     LiveMarketConnector,
     MockLiveConnector,
-    PolygonRESTConnector,
 )
 from neraium_core.live_runner import process_live_frame
 from neraium_core.stock_market_adapter import build_stock_frame
@@ -55,11 +54,25 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run Neraium against live/near-live stock bars (analytics only).")
     parser.add_argument("--tickers", required=True, help="Comma-separated tickers, e.g. AAPL,MSFT")
     parser.add_argument("--provider", default=os.getenv("LIVE_DATA_PROVIDER", "polygon"), choices=["polygon", "alphavantage", "mock"])
-    parser.add_argument("--poll-interval", type=float, default=float(os.getenv("LIVE_POLL_INTERVAL", "15")), help="Polling interval in seconds")
+    parser.add_argument(
+        "--interval",
+        "--poll-interval",
+        dest="interval",
+        type=float,
+        default=float(os.getenv("LIVE_POLL_INTERVAL", "15")),
+        help="Polling interval in seconds",
+    )
     parser.add_argument("--provider-interval", default=os.getenv("ALPHAVANTAGE_INTERVAL", "1min"), help="Alpha Vantage bar interval, e.g. 1min")
     parser.add_argument("--api-key", default=None, help="Provider API key override (else env var is used)")
     parser.add_argument("--fallback-to-mock", action="store_true", help="Use mock connector if live network/API calls fail")
-    parser.add_argument("--output-log", default=None, help="Optional CSV file to append live analytics rows")
+    parser.add_argument("--mock", action="store_true", help="Shortcut for --provider mock")
+    parser.add_argument(
+        "--output",
+        "--output-log",
+        dest="output",
+        default=None,
+        help="Optional CSV file to append live analytics rows",
+    )
     parser.add_argument("--max-iterations", type=int, default=0, help="Optional max polling iterations for smoke tests; 0 = run forever")
     parser.add_argument("--baseline-window", type=int, default=40)
     parser.add_argument("--recent-window", type=int, default=12)
@@ -73,16 +86,13 @@ def _timestamp_to_epoch(ts: datetime) -> float:
 
 
 def _build_connector(args: argparse.Namespace) -> LiveMarketConnector:
-    if args.provider == "mock":
-        return MockLiveConnector()
-    if args.provider == "polygon":
-        return PolygonRESTConnector(api_key=args.api_key or os.getenv("POLYGON_API_KEY"))
-    if args.provider == "alphavantage":
-        return AlphaVantageRESTConnector(
-            api_key=args.api_key or os.getenv("ALPHAVANTAGE_API_KEY"),
-            interval=args.provider_interval,
-        )
-    raise LiveConnectorError(f"Unsupported provider: {args.provider}")
+    provider = "mock" if args.mock else args.provider
+    api_key = args.api_key
+    if provider == "polygon" and not api_key:
+        api_key = os.getenv("POLYGON_API_KEY")
+    elif provider == "alphavantage" and not api_key:
+        api_key = os.getenv("ALPHAVANTAGE_API_KEY")
+    return create_stock_connector(provider, api_key=api_key, interval=args.provider_interval)
 
 
 def _append_csv_row(path: str, row: dict[str, Any]) -> None:
@@ -120,11 +130,12 @@ def main() -> None:
     tickers = [part.strip().upper() for part in args.tickers.split(",") if part.strip()]
     if not tickers:
         raise SystemExit("No tickers provided. Example: --tickers AAPL,MSFT")
-    if args.poll_interval <= 0:
-        raise SystemExit("--poll-interval must be > 0")
+    if args.interval <= 0:
+        raise SystemExit("--interval must be > 0")
 
     print("[SAFETY MODE] Analytics/signals only. No brokerage execution is performed.")
-    print(f"Provider={args.provider} | Polling interval={args.poll_interval}s | Tickers={','.join(tickers)}")
+    selected_provider = "mock" if args.mock else args.provider
+    print(f"Provider={selected_provider} | Polling interval={args.interval}s | Tickers={','.join(tickers)}")
 
     try:
         connector = _build_connector(args)
@@ -150,7 +161,7 @@ def main() -> None:
                 connector = MockLiveConnector()
             if args.max_iterations and iteration >= args.max_iterations:
                 break
-            time.sleep(args.poll_interval)
+            time.sleep(args.interval)
             continue
 
         for bar in bars:
@@ -191,12 +202,12 @@ def main() -> None:
                 )
             )
 
-            if args.output_log:
-                _append_csv_row(args.output_log, row_out)
+            if args.output:
+                _append_csv_row(args.output, row_out)
 
         if args.max_iterations and iteration >= args.max_iterations:
             break
-        time.sleep(args.poll_interval)
+        time.sleep(args.interval)
 
 
 if __name__ == "__main__":
