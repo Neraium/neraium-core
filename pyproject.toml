@@ -5,10 +5,14 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "neraium-core"
 version = "0.1.0"
-description = "Non-executing structural analytics engine with intraday market signal support"
+description = "Read-only structural intelligence engine with Grow as the default cultivation runtime"
 readme = "README.md"
 requires-python = ">=3.10"
-dependencies = []
+dependencies = [
+  "fastapi>=0.115",
+  "pydantic>=2.7",
+  "uvicorn>=0.30",
+]
 
 [project.optional-dependencies]
 dev = [

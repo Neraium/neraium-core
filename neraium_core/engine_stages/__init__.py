@@ -35,6 +35,23 @@ from neraium_core.engine_stages.regime_mutation import (
     RegimeMutationResult,
     mutate_regime_state,
 )
+from neraium_core.engine_stages.action_governance import (
+    ActionGovernanceInput,
+    ActionGovernanceResult,
+    ActionValidityAssessment,
+    evaluate_action_governance,
+)
+from neraium_core.engine_stages.decision_validity import (
+    DecisionValidityInput,
+    DecisionValidityResult,
+    evaluate_decision_validity,
+)
+from neraium_core.engine_stages.fragility import FragilityInput, FragilityResult, evaluate_fragility
+from neraium_core.engine_stages.risk_guidance import (
+    RiskGuidanceInput,
+    RiskGuidanceResult,
+    evaluate_risk_guidance,
+)
 
 __all__ = [
     "EngineStageBoundary",
@@ -61,20 +78,6 @@ __all__ = [
     "project_decision_and_explanation",
     "prepare_ingress_and_history_buffers",
     "structural_engine_stage_groups",
-=======
-"""Typed governance stages layered on top of structural market analytics."""
-
-from .action_governance import (
-    ActionGovernanceInput,
-    ActionGovernanceResult,
-    ActionValidityAssessment,
-    evaluate_action_governance,
-)
-from .decision_validity import DecisionValidityInput, DecisionValidityResult, evaluate_decision_validity
-from .fragility import FragilityInput, FragilityResult, evaluate_fragility
-from .risk_guidance import RiskGuidanceInput, RiskGuidanceResult, evaluate_risk_guidance
-
-__all__ = [
     "ActionGovernanceInput",
     "ActionGovernanceResult",
     "ActionValidityAssessment",

@@ -1,608 +1,97 @@
 <!DOCTYPE html>
-HEAD
-
 <html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Neraium Dashboard</title>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
-  <style>
-    body {
-      margin: 0;
-      padding: 16px;
-      background: #0f172a;
-      color: #e2e8f0;
-      font-family: Arial, sans-serif;
-    }
-
-```
-.container {
-  max-width: 1200px;
-  margin: 0 auto;
-}
-
-h1 {
-  margin: 0 0 8px 0;
-  font-size: 32px;
-}
-
-.subtitle {
-  color: #94a3b8;
-  margin-bottom: 20px;
-}
-
-.row {
-  display: grid;
-  grid-template-columns: repeat(12, 1fr);
-  gap: 16px;
-  margin-bottom: 16px;
-}
-
-.card {
-  grid-column: span 12;
-  background: #111827;
-  border: 1px solid #334155;
-  border-radius: 12px;
-  padding: 16px;
-}
-
-.span-4 { grid-column: span 4; }
-.span-6 { grid-column: span 6; }
-
-@media (max-width: 900px) {
-  .span-4, .span-6 {
-    grid-column: span 12;
-  }
-}
-
-.metric {
-  font-size: 36px;
-  font-weight: bold;
-  margin: 8px 0;
-}
-
-.ok { color: #22c55e; }
-.bad { color: #ef4444; }
-
-.chart-wrap {
-  background: white;
-  border-radius: 10px;
-  padding: 10px;
-}
-
-canvas {
-  width: 100% !important;
-  height: 260px !important;
-}
-
-pre {
-  background: #020617;
-  color: #dbeafe;
-  border-radius: 10px;
-  padding: 12px;
-  min-height: 180px;
-  overflow: auto;
-  white-space: pre-wrap;
-  word-break: break-word;
-  font-size: 12px;
-}
-
-ul {
-  max-height: 220px;
-  overflow: auto;
-  padding-left: 20px;
-}
-
-.status-indicator {
-  display: inline-block;
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  margin-right: 8px;
-  vertical-align: middle;
-}
-
-.status-ok {
-  background-color: #22c55e;
-}
-
-.status-bad {
-  background-color: #ef4444;
-}
-```
-
-  </style>
-<html>
-<head>
-
-<title>Neraium Structural Map</title>
-
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/three@0.158.0/build/three.min.js"></script>
-
-<style>
-
-body{
-background:#0f172a;
-color:white;
-font-family:Arial;
-padding:20px;
-}
-
-.panel{
-background:#1e293b;
-padding:20px;
-border-radius:8px;
-margin-bottom:20px;
-}
-
-canvas{
-background:#020617;
-border-radius:8px;
-}
-
-</style>
-
-d4e7856 (Working Neraium telemetry engine with dashboard)
+  <title>Neraium Grow</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <link rel="stylesheet" href="/web/styles.css" />
 </head>
-
 <body>
-HEAD
-  <div class="container">
-    <h1>Neraium Dashboard</h1>
-    <div class="subtitle">Live telemetry and drift monitoring</div>
+  <div class="page-shell">
+    <header class="hero">
+      <div class="hero-copy">
+        <p class="eyebrow">Neraium Grow</p>
+        <h1>Neraium scales from single-plant risk to portfolio-wide operational intelligence.</h1>
+        <p class="subhead">Read-only intelligence for cultivation systems that shows where the grow is drifting, why, and where inefficiencies are spreading before yield is impacted.</p>
+        <div class="hero-points">
+          <span>Hidden drift before threshold breach</span>
+          <span>Measured and inferred plant views</span>
+          <span>Cross-system driver awareness</span>
+          <span>Read-only and vendor-neutral</span>
+        </div>
+      </div>
+      <div class="hero-setup" id="setupSummary"></div>
+    </header>
 
-```
-<div class="row">
-  <div class="card span-4">
-    <h2>Status</h2>
-    <div id="latest-status" class="metric">
-      <span class="status-indicator status-ok"></span><span id="status-text">Loading...</span>
-    </div>
-    <div id="latest-score">Score: --</div>
+    <section class="toolbar panel">
+      <div>
+        <label for="scopeSelector">Scope</label>
+        <select id="scopeSelector">
+          <option value="portfolio">Portfolio</option>
+          <option value="facility">Facility</option>
+          <option value="room" selected>Room</option>
+          <option value="zone">Zone</option>
+          <option value="plant">Plant</option>
+          <option value="subsystem">Subsystem</option>
+        </select>
+      </div>
+      <div>
+        <label for="entitySelector">Entity</label>
+        <select id="entitySelector"></select>
+      </div>
+      <div class="scope-hero" id="heroSentence"></div>
+    </section>
+
+    <section class="grid two-up">
+      <article class="panel">
+        <h2>Summary Header</h2>
+        <div id="summaryPanel"></div>
+      </article>
+      <article class="panel">
+        <h2>Decision Panel</h2>
+        <div id="decisionPanel"></div>
+      </article>
+    </section>
+
+    <section class="grid two-up">
+      <article class="panel">
+        <h2>Risk Ranking Panel</h2>
+        <div id="riskRanking"></div>
+      </article>
+      <article class="panel">
+        <h2>Inefficiency Ranking Panel</h2>
+        <div id="inefficiencyRanking"></div>
+      </article>
+    </section>
+
+    <section class="grid two-up">
+      <article class="panel">
+        <h2>Hero State Timeline</h2>
+        <canvas id="timelineChart"></canvas>
+      </article>
+      <article class="panel">
+        <h2>Comparison Panel</h2>
+        <div id="comparisonPanel"></div>
+      </article>
+    </section>
+
+    <section class="grid three-up">
+      <article class="panel">
+        <h2>Driver Panel</h2>
+        <div id="driverPanel"></div>
+      </article>
+      <article class="panel">
+        <h2>Recommended Actions</h2>
+        <div id="actionsPanel"></div>
+      </article>
+      <article class="panel">
+        <h2>Scope Detail</h2>
+        <div id="detailPanel"></div>
+      </article>
+    </section>
   </div>
 
-  <div class="card span-4">
-    <h2>Total Events</h2>
-    <div id="total-events" class="metric">0</div>
-  </div>
-
-  <div class="card span-4">
-    <h2>Total Anomalies</h2>
-    <div id="total-anomalies" class="metric">0</div>
-  </div>
-</div>
-
-<div class="row">
-  <div class="card span-6">
-    <h2>CPU Usage</h2>
-    <div class="chart-wrap">
-      <canvas id="cpuChart"></canvas>
-    </div>
-  </div>
-
-  <div class="card span-6">
-    <h2>Memory Usage</h2>
-    <div class="chart-wrap">
-      <canvas id="memChart"></canvas>
-    </div>
-  </div>
-</div>
-
-<div class="row">
-  <div class="card span-6">
-    <h2>Score</h2>
-    <div class="chart-wrap">
-      <canvas id="scoreChart"></canvas>
-    </div>
-  </div>
-
-  <div class="card span-6">
-    <h2>Relationship</h2>
-    <div class="chart-wrap">
-      <canvas id="relationshipChart"></canvas>
-    </div>
-  </div>
-</div>
-
-<div class="row">
-  <div class="card span-6">
-    <h2>Latest Event</h2>
-    <pre id="latest-event">Loading...</pre>
-  </div>
-
-  <div class="card span-6">
-    <h2>Anomaly Events</h2>
-    <ul id="anomaly-list"></ul>
-  </div>
-</div>
-```
-
-<h1>Neraium Structural Intelligence</h1>
-
-<div class="panel">
-
-<h2>Live Metrics</h2>
-
-CPU: <span id="cpu">--</span>%<br>
-Memory: <span id="memory">--</span>%<br>
-Score: <span id="score">--</span><br>
-Status: <span id="status">--</span>
-
-</div>
-
-<div class="panel">
-
-<h2>Telemetry Chart</h2>
-
-<canvas id="chart"></canvas>
-
-</div>
-
-<div class="panel">
-d4e7856 (Working Neraium telemetry engine with dashboard)
-
-<h2>Structural Geometry Map</h2>
-
-HEAD
-  <script>
-    const cpuChart = new Chart(document.getElementById("cpuChart"), {
-      type: "line",
-      data: {
-        labels: [],
-        datasets: [{ 
-          label: "CPU", 
-          data: [], 
-          borderWidth: 2,
-          borderColor: "#3b82f6",
-          backgroundColor: "rgba(59, 130, 246, 0.1)",
-          tension: 0.4
-        }]
-      },
-      options: { 
-        responsive: true, 
-        animation: false,
-        plugins: { legend: { display: false } }
-      }
-    });
-
-    const memChart = new Chart(document.getElementById("memChart"), {
-      type: "line",
-      data: {
-        labels: [],
-        datasets: [{ 
-          label: "Memory", 
-          data: [], 
-          borderWidth: 2,
-          borderColor: "#8b5cf6",
-          backgroundColor: "rgba(139, 92, 246, 0.1)",
-          tension: 0.4
-        }]
-      },
-      options: { 
-        responsive: true, 
-        animation: false,
-        plugins: { legend: { display: false } }
-      }
-    });
-
-    const scoreChart = new Chart(document.getElementById("scoreChart"), {
-      type: "line",
-      data: {
-        labels: [],
-        datasets: [{ 
-          label: "Score", 
-          data: [], 
-          borderWidth: 2,
-          borderColor: "#ec4899",
-          backgroundColor: "rgba(236, 72, 153, 0.1)",
-          tension: 0.4
-        }]
-      },
-      options: { 
-        responsive: true, 
-        animation: false,
-        plugins: { legend: { display: false } }
-      }
-    });
-
-    const relationshipChart = new Chart(document.getElementById("relationshipChart"), {
-      type: "scatter",
-      data: {
-        datasets: [
-          { 
-            label: "Normal", 
-            data: [],
-            backgroundColor: "rgba(34, 197, 94, 0.6)",
-            borderColor: "#22c55e"
-          },
-          { 
-            label: "Anomaly", 
-            data: [],
-            backgroundColor: "rgba(239, 68, 68, 0.6)",
-            borderColor: "#ef4444"
-          }
-        ]
-      },
-      options: {
-        responsive: true,
-        animation: false,
-        scales: {
-          x: { min: 0, max: 100, title: { display: true, text: "CPU %" } },
-          y: { min: 0, max: 100, title: { display: true, text: "Memory %" } }
-        }
-      }
-    });
-
-    // Mock data store
-    let mockEvents = [];
-
-    function generateMockEvent() {
-      return {
-        timestamp: new Date().toISOString(),
-        status: Math.random() > 0.85 ? "anomaly" : "normal",
-        score: Math.round(Math.random() * 100),
-        signals: {
-          cpu_usage: Math.round((20 + Math.random() * 60) * 10) / 10,
-          memory_usage: Math.round((30 + Math.random() * 50) * 10) / 10
-        }
-      };
-    }
-
-    // Initialize mock data
-    for (let i = 0; i < 15; i++) {
-      mockEvents.push(generateMockEvent());
-    }
-
-    async function getJson(url) {
-      // Use mock data instead of fetching
-      if (url === "/events") {
-        return { events: mockEvents };
-      } else if (url === "/events/anomalies") {
-        return { events: mockEvents.filter(e => e.status === "anomaly") };
-      } else if (url === "/events/latest") {
-        if (!mockEvents.length) throw new Error("No events");
-        return mockEvents[mockEvents.length - 1];
-      }
-      throw new Error("Unknown endpoint: " + url);
-    }
-
-    function shortTime(ts) {
-      try {
-        return new Date(ts).toLocaleTimeString();
-      } catch {
-        return ts;
-      }
-    }
-
-    async function refreshDashboard() {
-      try {
-        // Add new mock event every refresh
-        if (mockEvents.length > 50) mockEvents.shift();
-        mockEvents.push(generateMockEvent());
-
-        const eventsData = await getJson("/events");
-        const anomalyData = await getJson("/events/anomalies");
-
-        let latestData;
-        try {
-          latestData = await getJson("/events/latest");
-        } catch {
-          latestData = { error: "no events" };
-        }
-
-        const events = eventsData.events || [];
-        const anomalies = anomalyData.events || [];
-
-        document.getElementById("total-events").textContent = events.length;
-        document.getElementById("total-anomalies").textContent = anomalies.length;
-
-        if (!latestData.error) {
-          const statusEl = document.getElementById("status-text");
-          statusEl.textContent = latestData.status || "unknown";
-          const indicator = document.querySelector(".status-indicator");
-          indicator.className = "status-indicator " + (latestData.status === "anomaly" ? "status-bad" : "status-ok");
-
-          document.getElementById("latest-score").textContent =
-            "Score: " + String(latestData.score ?? "--");
-
-          document.getElementById("latest-event").textContent =
-            JSON.stringify(latestData, null, 2);
-        } else {
-          document.getElementById("status-text").textContent = "No data";
-          document.querySelector(".status-indicator").className = "status-indicator";
-          document.getElementById("latest-score").textContent = "Score: --";
-          document.getElementById("latest-event").textContent = "No events yet";
-        }
-
-        const labels = events.map(e => shortTime(e.timestamp));
-        const cpu = events.map(e => e.signals?.cpu_usage ?? 0);
-        const mem = events.map(e => e.signals?.memory_usage ?? 0);
-        const score = events.map(e => e.score ?? 0);
-
-        cpuChart.data.labels = labels;
-        cpuChart.data.datasets[0].data = cpu;
-        cpuChart.update();
-
-        memChart.data.labels = labels;
-        memChart.data.datasets[0].data = mem;
-        memChart.update();
-
-        scoreChart.data.labels = labels;
-        scoreChart.data.datasets[0].data = score;
-        scoreChart.update();
-
-        relationshipChart.data.datasets[0].data = events
-          .filter(e => e.status !== "anomaly")
-          .map(e => ({
-            x: e.signals?.cpu_usage ?? 0,
-            y: e.signals?.memory_usage ?? 0
-          }));
-
-        relationshipChart.data.datasets[1].data = events
-          .filter(e => e.status === "anomaly")
-          .map(e => ({
-            x: e.signals?.cpu_usage ?? 0,
-            y: e.signals?.memory_usage ?? 0
-          }));
-
-        relationshipChart.update();
-
-        const list = document.getElementById("anomaly-list");
-        list.innerHTML = "";
-
-        if (!anomalies.length) {
-          const li = document.createElement("li");
-          li.textContent = "No anomalies yet";
-          list.appendChild(li);
-        } else {
-          anomalies.slice().reverse().slice(0, 10).forEach(e => {
-            const li = document.createElement("li");
-            li.textContent = shortTime(e.timestamp) + " score=" + e.score;
-            list.appendChild(li);
-          });
-        }
-      } catch (err) {
-        document.getElementById("latest-event").textContent =
-          "Dashboard error: " + err.message;
-        console.error(err);
-      }
-    }
-
-    refreshDashboard();
-    setInterval(refreshDashboard, 2000);
-  </script>
-
-
-<canvas id="map"></canvas>
-
-</div>
-
-<script>
-
-let cpuData=[]
-let memData=[]
-let labels=[]
-
-const chart = new Chart(
-document.getElementById("chart"),
-{
-type:"line",
-data:{
-labels:labels,
-datasets:[
-{
-label:"CPU",
-data:cpuData,
-borderColor:"#38bdf8"
-},
-{
-label:"Memory",
-data:memData,
-borderColor:"#f59e0b"
-}
-]
-},
-options:{animation:false}
-}
-)
-
-const scene = new THREE.Scene()
-
-const camera = new THREE.PerspectiveCamera(
-75,
-2,
-0.1,
-1000
-)
-
-const renderer = new THREE.WebGLRenderer({
-canvas:document.getElementById("map")
-})
-
-renderer.setSize(500,300)
-
-camera.position.z = 20
-
-const points=[]
-
-function addPoint(x,y,z,anomaly){
-
-const geometry = new THREE.SphereGeometry(0.2)
-
-const material = new THREE.MeshBasicMaterial({
-color: anomaly ? 0xff0000 : 0x22c55e
-})
-
-const sphere = new THREE.Mesh(geometry,material)
-
-sphere.position.set(x,y,z)
-
-scene.add(sphere)
-
-points.push(sphere)
-
-if(points.length>200){
-
-scene.remove(points.shift())
-
-}
-
-}
-
-async function update(){
-
-let r = await fetch("/events/latest")
-let data = await r.json()
-
-let cpu = data.signals.cpu_usage
-let mem = data.signals.memory_usage
-let score = data.score
-
-document.getElementById("cpu").innerText = cpu
-document.getElementById("memory").innerText = mem
-document.getElementById("score").innerText = score.toFixed(2)
-
-let status = data.status
-
-let statusEl=document.getElementById("status")
-
-statusEl.innerText=status
-statusEl.style.color =
-status==="anomaly" ? "#ef4444" : "#22c55e"
-
-labels.push(new Date().toLocaleTimeString())
-cpuData.push(cpu)
-memData.push(mem)
-
-if(labels.length>30){
-
-labels.shift()
-cpuData.shift()
-memData.shift()
-
-}
-
-chart.update()
-
-addPoint(
-cpu/5,
-mem/5,
-score,
-status==="anomaly"
-)
-
-renderer.render(scene,camera)
-
-}
-
-setInterval(update,2000)
-
-update()
-
-</script>
-
-d4e7856 (Working Neraium telemetry engine with dashboard)
+  <script type="module" src="/web/app.js"></script>
 </body>
 </html>

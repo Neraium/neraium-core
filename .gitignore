@@ -1,5 +1,7 @@
 # Local/generated artifacts
 neraium.db
+artifacts/neraium-grow.db
+regime_library.json
 reports/
 regime_library_*.json
 ult

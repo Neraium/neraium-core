@@ -1,0 +1,16 @@
+export const dashboardTokens = [
+  "#loadingOverlay",
+  "#loadingMessage",
+  "createToast(",
+  "riskBadgeHtml(",
+  "phaseBadgeHtml(",
+  "#seedDemoBtn",
+  "#runsSearchInput",
+  "#runResultsSearchInput",
+  "#runRangeControls [data-range]",
+  "#uploadDropZone",
+  "#selectedFileName",
+  "#dashboardEmpty",
+  "#runDetailEmpty",
+  "#runResultsEmpty",
+];

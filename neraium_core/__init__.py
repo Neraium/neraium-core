@@ -24,6 +24,7 @@ __all__ = [
     "service",
     "store",
     "sii",
+    "grow",
     "build_stock_frame",
     "build_betting_frame",
     "map_structural_output_to_signal",

@@ -1,5 +1,5 @@
 run:
-	python run_engine.py
+	python run_demo.py
 
 test:
 	python -m pytest -vv
