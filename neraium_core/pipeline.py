@@ -6,14 +6,15 @@ from datetime import datetime, timezone
 from io import StringIO
 from typing import Any, Dict, List, Mapping, Optional
 
-import numpy as np
+from neraium_core.engine_ingress import (
+    DEFAULT_ASSET_ID,
+    DEFAULT_CUSTOMER_ID,
+    DEFAULT_SITE_ID,
+    EngineIngressFrame,
+    normalize_identifier,
+    normalize_timestamp,
+)
 
-from neraium_core.features import MicroFeatureEngine
-
-
-DEFAULT_SITE_ID = "default-site"
-DEFAULT_ASSET_ID = "default-asset"
-DEFAULT_CUSTOMER_ID = "default-customer"
 # Legacy: ingest no longer requires these literal header names — use semantic mapping in csv_mapping.py.
 REQUIRED_CSV_COLUMNS = {"timestamp", "site_id", "asset_id"}
 
@@ -66,56 +67,6 @@ def issue_to_dict(issue: CsvIngestionIssue) -> dict[str, Any]:
         "column": issue.column,
         "details": dict(issue.details),
     }
-
-
-def now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
-
-
-def normalize_timestamp(value: Any) -> str:
-    """
-    Normalize a timestamp into an ISO-8601 UTC string.
-    Accepts datetime objects or strings. Falls back to current UTC time
-    only when the input is None or empty.
-    """
-    if value is None or str(value).strip() == "":
-        return now_iso()
-
-    if isinstance(value, datetime):
-        dt = value
-    else:
-        text = str(value).strip()
-        if text.endswith("Z"):
-            text = text[:-1] + "+00:00"
-        dt = None
-        try:
-            dt = datetime.fromisoformat(text)
-        except ValueError:
-            dt = None
-        if dt is None:
-            # Unix epoch seconds or milliseconds (common in exports)
-            try:
-                num = float(text)
-                if 1e9 <= abs(num) <= 1e12:
-                    dt = datetime.fromtimestamp(num, tz=timezone.utc)
-                elif 1e12 < abs(num) <= 1e15:
-                    dt = datetime.fromtimestamp(num / 1000.0, tz=timezone.utc)
-            except (ValueError, OSError, OverflowError):
-                dt = None
-        if dt is None:
-            raise ValueError(f"Invalid timestamp: {value!r}")
-
-    if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
-
-    return dt.astimezone(timezone.utc).isoformat()
-
-
-def normalize_identifier(value: Any, default: str) -> str:
-    if value is None:
-        return default
-    text = str(value).strip()
-    return text if text else default
 
 
 def normalize_sensor_name(value: Any) -> str:
@@ -199,16 +150,13 @@ def build_frame(
 
     # Internal frame shape used by `StructuralEngine.process_frame`.
     # Keep this stable across pipelines/entrypoints so production ingestion works.
-    frame: Dict[str, Any] = {
-        "timestamp": normalize_timestamp(timestamp),
-        "customer_id": normalize_identifier(customer_id, DEFAULT_CUSTOMER_ID),
-        "site_id": normalize_identifier(site_id, DEFAULT_SITE_ID),
-        "asset_id": normalize_identifier(asset_id, DEFAULT_ASSET_ID),
-        "sensor_values": {},
-        "sensor_quality": {},
-        "aligned": [],
-        "anomaly": False,
-    }
+    typed_frame = EngineIngressFrame(
+        timestamp=normalize_timestamp(timestamp),
+        customer_id=normalize_identifier(customer_id, DEFAULT_CUSTOMER_ID),
+        site_id=normalize_identifier(site_id, DEFAULT_SITE_ID),
+        asset_id=normalize_identifier(asset_id, DEFAULT_ASSET_ID),
+    )
+    frame: Dict[str, Any] = typed_frame.to_dict()
 
     for raw_key, raw_value in sensor_values.items():
         sensor_name = normalize_sensor_name(raw_key)
@@ -518,13 +466,17 @@ class TelemetryPipeline:
     """Legacy telemetry pipeline retained for backward compatibility."""
 
     def __init__(self) -> None:
+        from neraium_core.features import MicroFeatureEngine
+
         self.features = MicroFeatureEngine()
         self.history: list[list[float]] = []
-        self.baseline_mean: np.ndarray | None = None
-        self.baseline_cov: np.ndarray | None = None
+        self.baseline_mean: Any = None
+        self.baseline_cov: Any = None
         self.training_samples = 50
 
     def _update_baseline(self, vector: list[float]) -> None:
+        import numpy as np
+
         self.history.append(vector)
         if len(self.history) < self.training_samples:
             return
@@ -533,6 +485,8 @@ class TelemetryPipeline:
         self.baseline_cov = np.cov(data, rowvar=False)
 
     def _mahalanobis(self, vector: list[float]) -> float:
+        import numpy as np
+
         if self.baseline_mean is None or self.baseline_cov is None:
             return 0.0
         x = np.array(vector, dtype=float)
