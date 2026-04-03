@@ -4,11 +4,11 @@ runtime: python311
 build:
   commands:
     build:
-      - pip install --upgrade pip
-      - pip install -r requirements.txt
+      - python -m pip install --upgrade pip
+      - python -m pip install -r requirements.txt
 
 run:
   runtime-version: 3.11
-  command: sh -c "uvicorn neraium_core.markets.app.markets_api:app --host 0.0.0.0 --port ${PORT:-8000}"
+  command: python -m uvicorn neraium_core.markets.app.markets_api:app --host 0.0.0.0 --port 8000
   network:
     port: 8000
