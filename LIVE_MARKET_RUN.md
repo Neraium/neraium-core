@@ -32,31 +32,38 @@ Optional defaults:
 
 ## Command examples
 
+### Git Bash (Polygon, default live provider)
+
+```bash
+export POLYGON_API_KEY="YOUR_POLYGON_KEY"
+python run_live_stock_market.py --tickers AAPL,MSFT --provider polygon --interval 15 --output logs/live_signals_polygon.csv
+```
+
 ### Windows PowerShell (Polygon, default live provider)
 
 ```powershell
 $env:POLYGON_API_KEY="YOUR_POLYGON_KEY"
-python run_live_stock_market.py --tickers AAPL,MSFT --provider polygon --poll-interval 15 --output-log logs/live_signals_polygon.csv
+python run_live_stock_market.py --tickers AAPL,MSFT --provider polygon --interval 15 --output logs/live_signals_polygon.csv
 ```
 
 ### Windows PowerShell (Alpha Vantage)
 
 ```powershell
 $env:ALPHAVANTAGE_API_KEY="YOUR_KEY"
-python run_live_stock_market.py --tickers AAPL,MSFT --provider alphavantage --poll-interval 20 --provider-interval 1min --output-log logs/live_signals.csv
+python run_live_stock_market.py --tickers AAPL,MSFT --provider alphavantage --interval 20 --provider-interval 1min --output logs/live_signals.csv
 ```
 
 ### Windows PowerShell (offline/mock smoke run)
 
 ```powershell
-python run_live_stock_market.py --tickers AAPL,MSFT --provider mock --poll-interval 1 --max-iterations 3 --output-log logs/live_signals_mock.csv
+python run_live_stock_market.py --tickers AAPL,MSFT --mock --interval 1 --max-iterations 3 --output logs/live_signals_mock.csv
 ```
 
 ### Windows PowerShell (auto-fallback to mock if network/API fails)
 
 ```powershell
 $env:POLYGON_API_KEY="YOUR_POLYGON_KEY"
-python run_live_stock_market.py --tickers AAPL,MSFT --provider polygon --fallback-to-mock --poll-interval 5 --max-iterations 3
+python run_live_stock_market.py --tickers AAPL,MSFT --provider polygon --fallback-to-mock --interval 5 --max-iterations 3
 ```
 
 ## Expected output format
@@ -67,7 +74,7 @@ Console line per ticker/bar:
 2026-04-02T12:34:56.123456+00:00 | AAPL | state=NORMAL | signal=BUY | drift=0.42 | instability=0.42 | health=91.6
 ```
 
-Optional CSV (`--output-log`) columns:
+Optional CSV (`--output`) columns:
 
 - `timestamp`
 - `ticker`

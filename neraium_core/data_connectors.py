@@ -246,4 +246,29 @@ __all__ = [
     "AlphaVantageRESTConnector",
     "PolygonRESTConnector",
     "MockLiveConnector",
+    "create_stock_connector",
 ]
+
+
+def create_stock_connector(
+    provider: str,
+    *,
+    api_key: str | None = None,
+    interval: str = "1min",
+    timeout_seconds: int = 15,
+) -> LiveMarketConnector:
+    """Build a stock-market connector from a simple provider name/env setup."""
+    normalized_provider = str(provider).strip().lower()
+    if normalized_provider == "mock":
+        return MockLiveConnector()
+    if normalized_provider == "polygon":
+        return PolygonRESTConnector(api_key=api_key, timeout_seconds=timeout_seconds)
+    if normalized_provider == "alphavantage":
+        return AlphaVantageRESTConnector(
+            api_key=api_key,
+            interval=interval,
+            timeout_seconds=timeout_seconds,
+        )
+    raise LiveConnectorError(
+        f"Unsupported provider {provider!r}. Supported values: polygon, alphavantage, mock."
+    )
