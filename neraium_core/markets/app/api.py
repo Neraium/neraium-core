@@ -70,7 +70,7 @@ def create_app(
     data_dir: str | Path = "neraium_core/markets/sample_data",
     evidence_path: str | Path = "artifacts/neraium_markets/evidence.jsonl",
 ) -> FastAPI:
-    app = FastAPI(title="NERAIUM MARKETS API LIVE", version="0.3.0")
+    app = FastAPI(title="NERAIUM MARKETS API LIVE", version="9.9.9-markets")
     evidence = EvidenceLog(path=evidence_path)
     cache_store = CacheStore()
     ingest = HistoricalIngestService(cache_store)
@@ -82,8 +82,8 @@ def create_app(
     app.mount("/static", StaticFiles(directory=static_dir), name="markets-static")
 
     @app.get("/health")
-    def health() -> dict[str, str]:
-        return {"ok": True}
+    def health() -> dict[str, object]:
+        return {"ok": True, "service": "markets"}
 
     @app.get("/")
     def root() -> dict[str, str]:
@@ -388,7 +388,7 @@ def create_app_safe() -> FastAPI:
         print("STARTUP FAILURE:", repr(exc))
         traceback.print_exc()
 
-        fallback = FastAPI(title="NERAIUM MARKETS API FALLBACK", version="0.3.0")
+        fallback = FastAPI(title="NERAIUM MARKETS API FALLBACK", version="9.9.9-markets")
 
         @fallback.get("/")
         def root() -> dict[str, object]:
@@ -396,7 +396,7 @@ def create_app_safe() -> FastAPI:
 
         @fallback.get("/health")
         def health() -> dict[str, object]:
-            return {"ok": False, "error": str(exc), "app": "markets-fallback"}
+            return {"ok": False, "service": "markets-fallback", "error": str(exc), "app": "markets-fallback"}
 
         return fallback
 
