@@ -121,6 +121,22 @@ def _vector_from_sensor_values(sensor_values: Dict[str, object], order: List[str
     return np.asarray(values, dtype=float)
 
 
+def _to_epoch_seconds(value: object) -> float:
+    if isinstance(value, datetime):
+        dt = value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
+        return float(dt.timestamp())
+    text = str(value).strip()
+    if text.endswith("Z"):
+        text = text[:-1] + "+00:00"
+    try:
+        return float(text)
+    except (TypeError, ValueError):
+        dt = datetime.fromisoformat(text)
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return float(dt.timestamp())
+
+
 def _env_enabled(var_name: str, *, default: str = "1") -> bool:
     """Feature toggle helper that treats 0/false/no/off as disabled."""
     v = os.environ.get(var_name, default)
@@ -570,7 +586,7 @@ class StructuralEngine:
         ts_vals: list[float] = []
         for f in frame_iter:
             try:
-                ts_vals.append(float(f.get("timestamp")))
+                ts_vals.append(_to_epoch_seconds(f.get("timestamp")))
             except (TypeError, ValueError):
                 continue
         return ts_vals if len(ts_vals) >= 2 else None
@@ -590,7 +606,7 @@ class StructuralEngine:
         ts_vals: list[float] = []
         for f in frame_iter:
             try:
-                ts_vals.append(float(f.get("timestamp")))
+                ts_vals.append(_to_epoch_seconds(f.get("timestamp")))
             except (TypeError, ValueError):
                 continue
         return ts_vals if len(ts_vals) >= 2 else None
@@ -608,7 +624,7 @@ class StructuralEngine:
             if v is None:
                 continue
             try:
-                tsv = float(f.get("timestamp"))
+                tsv = _to_epoch_seconds(f.get("timestamp"))
             except (TypeError, ValueError):
                 tsv = 0.0
             self._recent_vector_buffer.append(np.asarray(v, dtype=float))
@@ -622,7 +638,7 @@ class StructuralEngine:
                 ts_b: list[float] = []
                 for f in fl[: self.baseline_window]:
                     try:
-                        ts_b.append(float(f.get("timestamp")))
+                        ts_b.append(_to_epoch_seconds(f.get("timestamp")))
                     except (TypeError, ValueError):
                         ts_b.append(0.0)
                 self._baseline_ts_cached = ts_b
@@ -641,7 +657,7 @@ class StructuralEngine:
             ts_b: list[float] = []
             for f in fl[: self.baseline_window]:
                 try:
-                    ts_b.append(float(f.get("timestamp")))
+                    ts_b.append(_to_epoch_seconds(f.get("timestamp")))
                 except (TypeError, ValueError):
                     ts_b.append(0.0)
             self._baseline_ts_cached = ts_b
@@ -1252,11 +1268,11 @@ class StructuralEngine:
         self.frames.append(stored)
 
         try:
-            ts_val = float(frame["timestamp"])
+            ts_val = _to_epoch_seconds(frame["timestamp"])
         except (TypeError, ValueError):
             ts_val = 0.0
         try:
-            ts_ring = float(frame["timestamp"])
+            ts_ring = _to_epoch_seconds(frame["timestamp"])
         except (TypeError, ValueError):
             ts_ring = float(len(self.frames) - 1)
         if self._sensor_schema_dirty:
