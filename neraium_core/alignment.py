@@ -25,7 +25,6 @@ from neraium_core.causal_graph import (
 )
 from neraium_core.branching import derive_branching_analysis
 from neraium_core.decision_layer import decision_output
-from neraium_core.explanation_layer import build_explanation_text
 from neraium_core.directional import directional_metrics, lagged_correlation_matrix
 from neraium_core.early_warning import early_warning_metrics
 from neraium_core.entropy import interaction_entropy
@@ -40,8 +39,6 @@ from neraium_core.experimental_analytics.counterfactual_simulation import simula
 from neraium_core.forecast_models import forecast_next, time_to_threshold_ar1
 from neraium_core.forecasting import instability_trend, time_to_instability
 from neraium_core.geometry import (
-    correlation_matrix,
-    normalize_window,
     signal_structural_importance,
     structural_drift,
 )
@@ -66,9 +63,6 @@ from neraium_core.context_invariant_representation import RepresentationWeights,
 from neraium_core.stat_geometry import StatisticalGeometryLayer
 from neraium_core.detection.readiness import compute_engine_readiness
 from neraium_core.staged_pipeline import (
-    AttributionStage,
-    DecisionStage,
-    FeatureExtractionStage,
     NodeBaselineProfile,
     RelationalInstabilityStage,
     StructuralDriftStage,
@@ -78,11 +72,16 @@ from neraium_core.staged_pipeline import (
 from neraium_core.subsystems import subsystem_spectral_measures
 from neraium_core.realtime.buffer import HistoryRingBuffer, TimestampDequeBuffer, VectorDequeBuffer
 from neraium_core.engine_stages import (
+    DecisionProjectionInput,
     IngressAndHistoryBuffersInput,
     RepresentationAndQualityInput,
+    ScoringPreparationInput,
+    apply_transition_state_mapping,
     build_representation_and_quality,
     build_warmup_result_payload,
     prepare_ingress_and_history_buffers,
+    prepare_scoring_inputs,
+    project_decision_and_explanation,
     structural_engine_stage_groups,
 )
 
@@ -1374,28 +1373,41 @@ class StructuralEngine:
                 }
             )
 
-            if valid_signal_count >= 2:
-                z_base_valid = z_baseline[:, valid_mask]
-                z_recent_valid = z_recent[:, valid_mask]
-                stage_features = FeatureExtractionStage.extract(z_base_valid, z_recent_valid)
+            scoring_preparation = prepare_scoring_inputs(
+                self,
+                ScoringPreparationInput(
+                    z_baseline=z_baseline,
+                    z_recent=z_recent,
+                    valid_mask=valid_mask,
+                    valid_signal_count=valid_signal_count,
+                ),
+            )
+            analytics["correlation_readiness"] = {
+                "should_proceed_scoring": bool(scoring_preparation.should_proceed_scoring),
+                "correlation_ready": bool(scoring_preparation.correlation_ready),
+                "covariance_ready": bool(scoring_preparation.covariance_ready),
+                "minimum_sample_ready": bool(scoring_preparation.minimum_sample_ready),
+                "shape_compatible": bool(scoring_preparation.shape_compatible),
+            }
+
+            if scoring_preparation.should_proceed_scoring:
+                z_base_valid = np.asarray(scoring_preparation.z_baseline_valid, dtype=float)
+                z_recent_valid = np.asarray(scoring_preparation.z_recent_valid, dtype=float)
+                stage_features = (
+                    scoring_preparation.stage_features
+                    if isinstance(scoring_preparation.stage_features, dict)
+                    else {}
+                )
                 rich_signal = stage_features.get("rich_signal_features", {})
                 signal_degradation = self._derive_signal_degradation(
                     rich_signal if isinstance(rich_signal, dict) else {}
                 )
                 result["signal_degradation"] = signal_degradation
 
-                corr_baseline = correlation_matrix(z_base_valid)
-                corr_recent = correlation_matrix(z_recent_valid)
-
-                # Adaptive baseline: use rolling baseline when available to avoid static reference.
-                baseline_corr_used = corr_baseline
-                baseline_mode = "fixed"
-                if (
-                    self._rolling_baseline_corr is not None
-                    and self._rolling_baseline_corr.shape == corr_recent.shape
-                ):
-                    baseline_corr_used = self._rolling_baseline_corr
-                    baseline_mode = "rolling"
+                corr_baseline = np.asarray(scoring_preparation.corr_baseline, dtype=float)
+                corr_recent = np.asarray(scoring_preparation.corr_recent, dtype=float)
+                baseline_corr_used = np.asarray(scoring_preparation.baseline_corr_used, dtype=float)
+                baseline_mode = str(scoring_preparation.baseline_mode or "fixed")
 
                 self._stage_baseline_profile.corr_baseline = np.array(baseline_corr_used, dtype=float, copy=True)
                 stage_structural_raw, _ = StructuralDriftStage.score(stage_features, self._stage_baseline_profile)
@@ -2144,55 +2156,23 @@ class StructuralEngine:
                 debug_prints=self._frame_debug,
             )
             result.update(decision)
-            if self.transition_aware_enabled:
-                transition_pressure = float(result.get("transition_pressure", components.get("transition_pressure", 0.0)))
-                transition_state = str(result.get("transition_state", "NONE"))
-                state_rank = {"STABLE": 0, "WATCH": 1, "ALERT": 2}
-                current_state = str(result.get("state", "STABLE"))
-                target_state = current_state
-                if transition_state == "WARMUP":
-                    target_state = current_state
-                elif transition_state == "SUSTAINED_TRANSITION" and transition_pressure >= TRANSITION_SUSTAINED_THRESHOLD:
-                    target_state = "ALERT"
-                elif transition_state == "EMERGING_TRANSITION" and transition_pressure >= TRANSITION_EMERGING_THRESHOLD:
-                    target_state = "WATCH"
-                if state_rank.get(target_state, 0) > state_rank.get(current_state, 0):
-                    result["state"] = target_state
-                    result["drift_alert"] = target_state == "ALERT"
+            apply_transition_state_mapping(self, result)
 
             result["uncertainty"] = uncertainty
-            stage_interpreted = DecisionStage.interpreted_state(
-                structural=float(components.get("drift", 0.0)),
-                relational=float(components.get("relational_drift", 0.0)),
-                regime_distance=float(components.get("regime_drift", 0.0)),
-                temporal_distortion=float(components.get("temporal_distortion", 0.0)),
-                localization=1.0,
-                trend=float(forecast.get("trend", 0.0)),
+            project_decision_and_explanation(
+                DecisionProjectionInput(
+                    result=result,
+                    analytics=analytics,
+                    decision=decision,
+                    components=components,
+                    temporal_quality=temporal_quality,
+                    data_quality_timestamp_irregularity=float(data_quality_report.timestamp_irregularity),
+                    forecast_trend=float(forecast.get("trend", 0.0)),
+                    stabilized_confidence=stabilized_confidence,
+                    composite_score=float(composite),
+                )
             )
-            if (
-                str(result.get("interpreted_state", "NOMINAL_STRUCTURE")) == "NOMINAL_STRUCTURE"
-                and stage_interpreted != "NOMINAL_STRUCTURE"
-            ):
-                result["interpreted_state"] = stage_interpreted
-            elif str(result.get("interpreted_state", "NOMINAL_STRUCTURE")) == "NOMINAL_STRUCTURE":
-                # Single-node runtime fallback: preserve legacy structural/coupling detection
-                # semantics when multi-node localization context is unavailable.
-                rel = float(components.get("relational_drift", 0.0))
-                drf = float(components.get("drift", 0.0))
-                if rel > 0.9:
-                    result["interpreted_state"] = "COUPLING_INSTABILITY_OBSERVED"
-                elif drf > 1.1:
-                    result["interpreted_state"] = "STRUCTURAL_INSTABILITY_OBSERVED"
-            result["confidence_score"] = round(stabilized_confidence, 4)
-            result["latest_instability"] = round(float(composite), 4)
-            result["relational_instability_score"] = round(float(components.get("relational_drift", 0.0)), 4)
-            result["temporal_distortion_score"] = round(float(components.get("temporal_distortion", data_quality_report.timestamp_irregularity)), 4)
-            result["temporal_consistency_score"] = round(float(temporal_quality.get("temporal_consistency_score", 0.0)), 4)
-            result["ordering_stability_score"] = round(float(temporal_quality.get("ordering_stability_score", 0.0)), 4)
-            result["timestamp_gap_irregularity"] = round(float(temporal_quality.get("timestamp_gap_irregularity", 0.0)), 4)
-            result["alignment_confidence"] = round(float(temporal_quality.get("alignment_confidence", 0.0)), 4)
-            result["effective_sampling_density"] = round(float(temporal_quality.get("effective_sampling_density", 0.0)), 4)
-            result["localization_score"] = 0.0
+            result["component_confidence"] = component_confidence
             self._temporal_consistency_history.append(float(temporal_quality.get("temporal_consistency_score", 0.0)))
 
             self._state_history.append(decision.get("interpreted_state", "NOMINAL_STRUCTURE"))
@@ -2234,15 +2214,6 @@ class StructuralEngine:
             analytics["temporal_features"] = temporal_features
             analytics["forecasting"] = forecast
             analytics["components"] = components
-            explain_components = {
-                "structural_drift_score": float(result.get("structural_drift_score", 0.0)),
-                "relational_instability_score": float(result.get("relational_instability_score", 0.0)),
-                "regime_distance": float(result.get("regime_distance", 0.0) or 0.0),
-                "temporal_distortion_score": float(result.get("temporal_distortion_score", 0.0)),
-            }
-            msg, contrib = AttributionStage.explain(explain_components, str(result.get("state", "STABLE")))
-            result["explanation"] = msg
-            analytics["component_contributions"] = contrib
             trajectory_analysis = analytics.get("trajectory_analysis") if isinstance(analytics, dict) else None
             branching_analysis = analytics.get("branching_analysis") if isinstance(analytics, dict) else None
             constraint_analysis = analytics.get("constraint_analysis") if isinstance(analytics, dict) else None
@@ -2251,31 +2222,6 @@ class StructuralEngine:
             counterfactual_simulation = (
                 analytics.get("counterfactual_simulation") if isinstance(analytics, dict) else None
             )
-            result["dominant_driver"] = (
-                max(contrib.items(), key=lambda item: item[1])[0]
-                if contrib
-                else result.get("dominant_driver")
-            )
-
-            recommended_action = None
-            recs = result.get("response_recommendations")
-            if isinstance(recs, list) and recs:
-                first_rec = recs[0]
-                if isinstance(first_rec, dict):
-                    recommended_action = str(first_rec.get("action", "") or "").strip() or None
-
-            result["explanation_text"] = build_explanation_text(
-                current_decision=str(result.get("interpreted_state", "NOMINAL_STRUCTURE")),
-                attribution=result.get("attribution") if isinstance(result.get("attribution"), dict) else None,
-                risk=result.get("risk_level"),
-                confidence=result.get("confidence"),
-                recommended_action=recommended_action,
-            )
-            result["component_confidence"] = component_confidence
-            result["geometry"] = analytics.get("geometry", {}) if isinstance(analytics, dict) else {}
-            result["state_space_statistics"] = analytics.get("state_space_statistics", {}) if isinstance(analytics, dict) else {}
-            result["state_graph"] = analytics.get("state_graph", {}) if isinstance(analytics, dict) else {}
-            result["geometry_explanations"] = analytics.get("geometry_explanations", {}) if isinstance(analytics, dict) else {}
 
             for key, payload in self._analytics_unavailable_payload("missing inputs").items():
                 existing = analytics.get(key)
