@@ -5,11 +5,11 @@ import io
 import logging
 import os
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any, Callable, TextIO
 
 from neraium_core.alignment import StructuralEngine
 from neraium_core.adapters.raw_telemetry_adapter import ingest_raw_industrial_input
+from neraium_core.engine_registry import EngineRegistry
 from neraium_core.ingestion_normalization import (
     normalize_external_batch_payload,
     normalize_external_payload,
@@ -72,7 +72,9 @@ class StructuralMonitoringService:
         # so each asset gets its own baseline/model memory.
         self.engine = engine or StructuralEngine(baseline_window=24, recent_window=8, frame_debug=frame_debug)
         self.store = store or ResultStore()
-        self._engines_by_asset: dict[tuple[str, str, str], StructuralEngine] = {}
+        self._engine_registry = EngineRegistry(self.engine)
+        # Compatibility alias for internal/external callers that still read this field.
+        self._engines_by_asset = self._engine_registry.engines
         self._localization_by_site: dict[str, dict[str, float]] = {}
         self._cycle_by_run: dict[tuple[str, str], int] = {}
         self._alert_control_by_run: dict[tuple[str, str], dict[str, Any]] = {}
@@ -394,59 +396,9 @@ class StructuralMonitoringService:
         *,
         run_config: dict[str, Any] | None = None,
     ) -> StructuralEngine:
-        customer_id = self._resolve_customer_id(frame.get("customer_id"))
-        site_id = str(frame.get("site_id", "default-site"))
-        asset_id = str(frame.get("asset_id", "default-asset"))
-        key = (customer_id, site_id, asset_id)
-        existing = self._engines_by_asset.get(key)
-        if existing is not None:
-            return existing
-
-        template = self.engine
-        baseline_window = int(run_config.get("baseline_window", template.baseline_window)) if run_config else template.baseline_window
-        recent_window = int(run_config.get("recent_window", template.recent_window)) if run_config else template.recent_window
-        baseline_window = max(4, min(baseline_window, 500))
-        recent_window = max(2, min(recent_window, 120))
-
-        regime_path = "regime_library.json"
-        try:
-            base_path = Path(template.regime_store.path)
-            safe_customer = customer_id.replace("/", "_").replace("\\", "_").replace(":", "_")
-            safe_site = site_id.replace("/", "_").replace("\\", "_").replace(":", "_")
-            safe_asset = asset_id.replace("/", "_").replace("\\", "_").replace(":", "_")
-            regime_path = str(
-                base_path.with_name(f"{base_path.stem}_{safe_customer}_{safe_site}_{safe_asset}{base_path.suffix}")
-            )
-        except Exception:
-            regime_path = f"regime_library_{customer_id}_{site_id}_{asset_id}.json"
-
-        frame_debug = bool((run_config or {}).get("frame_debug", getattr(template, "_frame_debug", False)))
-        new_engine = StructuralEngine(
-            baseline_window=baseline_window,
-            recent_window=recent_window,
-            window_stride=template.window_stride,
-            regime_store_path=regime_path,
-            baseline_adaptation_alpha=template.baseline_adaptation_alpha,
-            representation_mode=(run_config or {}).get("representation_mode", template.representation_config.mode),
-            reference_strategy=(run_config or {}).get("reference_strategy", template.representation_config.reference_strategy),
-            context_diagnostics_enabled=bool((run_config or {}).get("context_diagnostics_enabled", template.representation_config.enable_diagnostics)),
-            feature_weights=(run_config or {}).get(
-                "feature_weights",
-                {
-                    "raw_weight": template.representation_config.weights.raw_weight,
-                    "residual_weight": template.representation_config.weights.residual_weight,
-                    "delta_weight": template.representation_config.weights.delta_weight,
-                    "slope_weight": template.representation_config.weights.slope_weight,
-                    "drift_weight": template.representation_config.weights.drift_weight,
-                    "second_diff_weight": template.representation_config.weights.second_diff_weight,
-                },
-            ),
-            frame_debug=frame_debug,
-        )
-        if run_config and run_config.get("baseline_locked") is True:
-            new_engine.lock_baseline(True)
-        self._engines_by_asset[key] = new_engine
-        return new_engine
+        frame_with_customer = dict(frame)
+        frame_with_customer["customer_id"] = self._resolve_customer_id(frame.get("customer_id"))
+        return self._engine_registry.get_or_create(frame_with_customer, run_config=run_config)
 
     def _localization_score(self, result: dict[str, Any]) -> float:
         site_id = str(result.get("site_id", "default-site"))
@@ -1652,7 +1604,8 @@ class StructuralMonitoringService:
             window_stride=self.engine.window_stride,
             baseline_adaptation_alpha=self.engine.baseline_adaptation_alpha,
         )
-        self._engines_by_asset = {}
+        self._engine_registry = EngineRegistry(self.engine)
+        self._engines_by_asset = self._engine_registry.engines
         self._localization_by_site = {}
         self.store.reset()
 
@@ -1682,7 +1635,7 @@ class StructuralMonitoringService:
     ) -> None:
         """Reset baseline and calibration for all engines used by this run."""
         for key in self._engine_keys_for_run(run_id, customer_id):
-            engine = self._engines_by_asset.get(key)
+            engine = self._engine_registry.get_existing(key)
             if engine is not None:
                 engine.reset_baseline()
                 log_structured(
@@ -1707,7 +1660,7 @@ class StructuralMonitoringService:
         config["baseline_locked"] = bool(locked)
         self.store.update_run(run_id, config=config, customer_id=resolved_customer)
         for key in self._engine_keys_for_run(run_id, customer_id):
-            engine = self._engines_by_asset.get(key)
+            engine = self._engine_registry.get_existing(key)
             if engine is not None:
                 engine.lock_baseline(locked)
 
@@ -1731,7 +1684,7 @@ class StructuralMonitoringService:
         keys = self._engine_keys_for_run(run_id, customer_id)
         # Use first engine's info if available
         for key in keys:
-            engine = self._engines_by_asset.get(key)
+            engine = self._engine_registry.get_existing(key)
             if engine is not None:
                 info = dict(engine.get_baseline_info())
                 info["baseline_locked"] = config.get("baseline_locked", info.get("baseline_locked", False))
