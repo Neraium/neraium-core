@@ -20,6 +20,21 @@ from neraium_core.engine_stages.decision_projection import (
     apply_transition_state_mapping,
     project_decision_and_explanation,
 )
+from neraium_core.engine_stages.analytics_packaging import (
+    AnalyticsPackagingInput,
+    AnalyticsPackagingResult,
+    package_analytics_output,
+)
+from neraium_core.engine_stages.score_computation import (
+    ScoreComputationInput,
+    ScoreComputationResult,
+    compute_scores,
+)
+from neraium_core.engine_stages.regime_mutation import (
+    RegimeMutationInput,
+    RegimeMutationResult,
+    mutate_regime_state,
+)
 
 __all__ = [
     "EngineStageBoundary",
@@ -33,6 +48,15 @@ __all__ = [
     "ScoringPreparationResult",
     "prepare_scoring_inputs",
     "DecisionProjectionInput",
+    "AnalyticsPackagingInput",
+    "AnalyticsPackagingResult",
+    "package_analytics_output",
+    "ScoreComputationInput",
+    "ScoreComputationResult",
+    "compute_scores",
+    "RegimeMutationInput",
+    "RegimeMutationResult",
+    "mutate_regime_state",
     "apply_transition_state_mapping",
     "project_decision_and_explanation",
     "prepare_ingress_and_history_buffers",
