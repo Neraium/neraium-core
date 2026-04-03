@@ -1,18 +1,61 @@
 # Neraium Markets
 
 ## Scope
-Neraium Markets is **market data ingestion + structural analytics + governance-driven decision support**.
+Neraium Markets is **market data ingestion + structural analytics + governance-driven decision support** for stock-market operators.
 
-It is explicitly **not** trade execution.
+It is explicitly **not** trade execution, order routing, portfolio management, or OMS.
 
-## What this build now supports
-- Massive historical U.S. equities fetch (REST aggregates).
-- Local CSV caching for reproducible replay runs.
-- Replay against cached data into existing structural + governance pipeline.
-- Massive live websocket ingestion adapter with normalized event/bar schema.
-- FastAPI endpoints for historical fetch, replay, and live monitoring.
-- Minimal operator UI at `/`.
-- Local SQLite persistence for fetch jobs, replay runs/results, live telemetry, and errors.
+## What the module now supports
+- Historical Massive fetch and local cache datasets.
+- Replay with emission governance discipline (cooldown, duplicate suppression, abstention handling).
+- Live streaming with the same governed output discipline used by replay.
+- Timeframe-correct live sessions (`1m`, `5m`, `15m`) with proper bar indexing.
+- Warmup/readiness telemetry: bars collected/required, percent ready, readiness state.
+- Operator-grade console at `/` with command center, live monitoring, replay controls, signal review, and integrations health.
+- SQLite persistence for live emissions, suppressed outputs, replay outputs, session metadata, errors, and provider health checks.
+
+## Live vs replay behavior
+- **Shared discipline:** both paths use the same `SignalEmissionController` semantics (warmup, cooldown, duplicate filtering, hysteresis stabilization).
+- **Replay:** deterministic pass over fixed historical windows.
+- **Live:** event-driven updates with the same governance rules applied per frame.
+
+## Warmup/readiness semantics
+`/live/status` exposes:
+- `bars_collected`
+- `bars_required`
+- `warmup_progress`
+- `readiness_state`
+
+Readiness states:
+- `disconnected`
+- `connecting`
+- `reconnecting`
+- `connected_no_data`
+- `receiving_data_warming_up`
+- `live_no_valid_signals`
+- `live_ready`
+
+## Provider health semantics (`/integrations/massive/status`)
+The endpoint now distinguishes:
+- config presence
+- api key presence
+- api key validity
+- REST reachability
+- websocket configured/dependency present
+- recent fetch success
+- recent live event and signal receipt
+- latest operator-visible error
+
+## History/review workflow
+`/signals/history` supports filters for:
+- `ticker`
+- `session_type` (`live`/`replay`)
+- `action_permission`
+- `best_action`
+- `start_at`, `end_at`
+- `include_suppressed`
+
+Returns rows + summary counters (`suppression_count`, `abstention_count`).
 
 ## Required environment variables
 - `MASSIVE_API_KEY`
@@ -22,55 +65,22 @@ It is explicitly **not** trade execution.
 - `NERAIUM_LIVE_DB_PATH` (default: `artifacts/neraium_markets/live.sqlite3`)
 - `NERAIUM_LIVE_EVENT_RETENTION` (default: `5000`)
 - `NERAIUM_LIVE_BAR_RETENTION` (default: `2000`)
-
-## Setup
-```bash
-pip install -e .
-```
-
-## Fetch historical Massive data
-```bash
-curl -X POST http://127.0.0.1:8000/integrations/massive/historical/fetch \
-  -H 'content-type: application/json' \
-  -d '{
-    "symbols": ["SPY", "QQQ", "AAPL", "NVDA", "MSFT"],
-    "timeframe": "15m",
-    "start_date": "2026-01-01",
-    "end_date": "2026-03-31"
-  }'
-```
-
-## Run replay from cached Massive data
-```bash
-python tools/run_massive_replay.py --symbols SPY,QQQ,AAPL,NVDA --timeframe 15m --start 2026-01-01 --end 2026-03-31
-```
-
-Or from API:
-```bash
-curl -X POST 'http://127.0.0.1:8000/run-replay?timeframe=15m&use_massive_cached_data=true'
-```
-
-## Start live streaming from Massive
-```bash
-curl -X POST http://127.0.0.1:8000/live/start \
-  -H 'content-type: application/json' \
-  -d '{"symbols": ["SPY", "QQQ", "AAPL", "NVDA"], "timeframe": "5m"}'
-```
-
-Check live status:
-```bash
-curl http://127.0.0.1:8000/live/status
-```
-
-### Warming up state
-`connected_warming_up` means streaming is connected but not enough synchronized bar history exists yet for reliable signal emission.
+- `NERAIUM_LIVE_WARMUP_BARS` (default: `30`)
 
 ## Run API
 ```bash
 uvicorn neraium_core.markets.app.api:app --reload
 ```
 
-## Run tests
+## Local run flow
+1. Start API.
+2. Open `http://127.0.0.1:8000/`.
+3. Use **Replay / Historical** to fetch and replay.
+4. Use **Live Session** to start live stream (`1m`/`5m`/`15m`).
+5. Use **Signals / History** for operator review filters.
+6. Use **Integrations / Data** for provider diagnostics.
+
+## Test commands
 ```bash
-pytest tests/markets/test_massive_integration.py tests/markets/test_live_and_api_massive.py -q
+pytest tests/markets/test_live_and_api_massive.py tests/markets/test_massive_integration.py -q
 ```
