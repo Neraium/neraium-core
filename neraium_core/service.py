@@ -3,13 +3,14 @@ from __future__ import annotations
 import csv
 import io
 import logging
-import os
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any, Callable, TextIO
 
 from neraium_core.alignment import StructuralEngine
 from neraium_core.adapters.raw_telemetry_adapter import ingest_raw_industrial_input
+from neraium_core.engine_registry import EngineRegistry
+from neraium_core.result_projector import CanonicalOutputProjector
+from neraium_core.memory_recall_service import MemoryRecallService
 from neraium_core.ingestion_normalization import (
     normalize_external_batch_payload,
     normalize_external_payload,
@@ -32,18 +33,8 @@ from neraium_core.logging_utils import (
     summarize_payload_for_logs,
     summarize_result_for_logs,
 )
-from neraium_core.explanation_layer import build_memory_context_text
 from neraium_core.pilot_schema import build_pilot_output
 from neraium_core.pilot_config import PilotConfig, load_pilot_config
-from neraium_core.output_contract import build_canonical_output
-from neraium_core.memory_recall import (
-    DEDUPLICATE_SIMILARITY_THRESHOLD,
-    build_structural_memory_signature,
-    classify_novelty,
-    determine_pattern_family,
-    short_memory_summary,
-    signature_similarity,
-)
 from neraium_core.store import DEFAULT_CUSTOMER_ID, ResultStore
 from neraium_core.assistant_layer import (
     AssistantMode,
@@ -72,11 +63,14 @@ class StructuralMonitoringService:
         # so each asset gets its own baseline/model memory.
         self.engine = engine or StructuralEngine(baseline_window=24, recent_window=8, frame_debug=frame_debug)
         self.store = store or ResultStore()
-        self._engines_by_asset: dict[tuple[str, str, str], StructuralEngine] = {}
-        self._localization_by_site: dict[str, dict[str, float]] = {}
+        self._engine_registry = EngineRegistry(self.engine)
+        # Compatibility alias for internal/external callers that still read this field.
+        self._engines_by_asset = self._engine_registry.engines
         self._cycle_by_run: dict[tuple[str, str], int] = {}
         self._alert_control_by_run: dict[tuple[str, str], dict[str, Any]] = {}
         self.pilot_config: PilotConfig = pilot_config or load_pilot_config()
+        self._projector = CanonicalOutputProjector(self.pilot_config)
+        self._memory_recall = MemoryRecallService(self.store, self._projector)
 
     def _next_cycle(self, *, run_id: str | None, customer_id: str) -> int:
         key = (customer_id, str(run_id or "__default__"))
@@ -166,34 +160,26 @@ class StructuralMonitoringService:
         run_id: str | None,
         customer_id: str,
     ) -> dict[str, Any]:
-        previous = self.store.get_latest_service_history(run_id=run_id, customer_id=customer_id)
+        previous = self._memory_recall.latest_history_context(run_id=run_id, customer_id=customer_id)
         cycle = self._next_cycle(run_id=run_id, customer_id=customer_id)
         memory_recall = self._build_memory_recall(result, cycle=cycle, run_id=run_id, customer_id=customer_id)
         alert_control = self._consume_alert_control(run_id=run_id, customer_id=customer_id)
-        result_with_alert_control = dict(result)
-        if alert_control:
-            result_with_alert_control["alert_control"] = alert_control
         alert_policy = self._resolve_alert_policy(
             run_id=run_id,
             customer_id=customer_id,
             site_id=str(result.get("site_id")) if result.get("site_id") is not None else None,
             asset_id=str(result.get("asset_id")) if result.get("asset_id") is not None else None,
         )
-        if alert_policy:
-            result_with_alert_control["alert_policy"] = alert_policy
-        canonical = build_canonical_output(
-            result_with_alert_control,
+        canonical = self._projector.project_canonical_output(
+            result,
             cycle=cycle,
             run_id=run_id,
             customer_id=customer_id,
             previous=previous,
             memory_recall=memory_recall,
+            alert_control=alert_control,
+            alert_policy=alert_policy,
         )
-        memory_context = build_memory_context_text(canonical.get("memory_recall"))
-        if memory_context:
-            base_explanation = str(canonical.get("explanation_text", "")).strip()
-            if memory_context not in base_explanation:
-                canonical["explanation_text"] = f"{base_explanation} {memory_context}".strip()
         persisted = self.store.save_service_history(canonical, run_id=run_id, customer_id=customer_id)
         canonical["history_id"] = persisted["history_id"]
         canonical["persisted_at"] = persisted["persisted_at"]
@@ -217,21 +203,13 @@ class StructuralMonitoringService:
         API routes and integration tests can retrieve memory recall rows without
         reaching directly into ``ResultStore``.
         """
-        return self.store.list_structural_memory(
+        return self._memory_recall.get_memory_matches(
             customer_id=self._resolve_customer_id(customer_id),
             run_id=run_id,
             site_id=site_id,
             asset_id=asset_id,
             limit=limit,
         )
-
-    @staticmethod
-    def _recall_scope(match: dict[str, Any], *, site_id: str | None, asset_id: str | None) -> str:
-        if asset_id is not None and str(match.get("asset_id")) == str(asset_id):
-            return "same_asset"
-        if site_id is not None and str(match.get("site_id")) == str(site_id):
-            return "same_site"
-        return "cross_asset"
 
     def _build_memory_recall(
         self,
@@ -242,88 +220,13 @@ class StructuralMonitoringService:
         customer_id: str,
         top_k: int = 5,
     ) -> dict[str, Any]:
-        signature = build_structural_memory_signature(
-            build_canonical_output(
-                result,
-                cycle=cycle,
-                run_id=run_id,
-                customer_id=customer_id,
-                previous=None,
-                memory_recall=None,
-            )
-        )
-        site_id = str(result.get("site_id")) if result.get("site_id") is not None else None
-        asset_id = str(result.get("asset_id")) if result.get("asset_id") is not None else None
-        history = self.store.list_structural_memory(
+        return self._memory_recall.build_memory_recall(
+            result,
+            cycle=cycle,
+            run_id=run_id,
             customer_id=customer_id,
-            limit=1000,
-            exclude_cycle=cycle,
+            top_k=top_k,
         )
-        scored: list[dict[str, Any]] = []
-        for item in history:
-            prior_sig = item.get("signature")
-            if not isinstance(prior_sig, dict):
-                continue
-            breakdown = signature_similarity(signature, prior_sig)
-            scored.append(
-                {
-                    **item,
-                    "similarity": breakdown.total,
-                    "drivers_overlap": breakdown.drivers_overlap,
-                    "scope": self._recall_scope(item, site_id=site_id, asset_id=asset_id),
-                }
-            )
-        scored.sort(
-            key=lambda x: (
-                {"same_asset": 0, "same_site": 1, "cross_asset": 2}.get(str(x.get("scope")), 3),
-                -float(x.get("similarity", 0.0)),
-                -int(x.get("memory_id", 0)),
-            )
-        )
-        nearest = scored[0] if scored else None
-        best_similarity = float(nearest.get("similarity", 0.0)) if nearest else 0.0
-        best_overlap = float(nearest.get("drivers_overlap", 0.0)) if nearest else 0.0
-        novelty = classify_novelty(
-            best_similarity=best_similarity,
-            best_overlap=best_overlap,
-            memory_count=len(scored),
-        )
-        top_matches = []
-        for item in scored[:top_k]:
-            top_matches.append(
-                {
-                    "memory_id": item.get("memory_id"),
-                    "similarity": float(item.get("similarity", 0.0)),
-                    "asset_id": item.get("asset_id"),
-                    "run_id": item.get("run_id"),
-                    "cycle": item.get("cycle"),
-                    "summary": item.get("summary"),
-                    "scope": item.get("scope"),
-                }
-            )
-        pattern_family = determine_pattern_family(signature, similarity=best_similarity if nearest else None)
-        nearest_match = {
-            "found": nearest is not None,
-            "similarity": best_similarity,
-            "memory_id": nearest.get("memory_id") if nearest else None,
-            "asset_id": nearest.get("asset_id") if nearest else None,
-            "run_id": nearest.get("run_id") if nearest else None,
-            "cycle": nearest.get("cycle") if nearest else None,
-            "summary": nearest.get("summary") if nearest else None,
-            "scope": nearest.get("scope") if nearest else None,
-        }
-        return {
-            "status": {
-                "enabled": True,
-                "memory_records_considered": len(scored),
-                "scope": "customer",
-            },
-            "signature": signature,
-            "novelty": novelty,
-            "nearest_match": nearest_match,
-            "top_matches": top_matches,
-            "pattern_family": pattern_family,
-        }
 
     def _persist_structural_memory(
         self,
@@ -332,41 +235,11 @@ class StructuralMonitoringService:
         *,
         customer_id: str,
     ) -> dict[str, Any] | None:
-        signature = memory_recall.get("signature")
-        if not isinstance(signature, dict):
-            return None
-        nearest = memory_recall.get("nearest_match") if isinstance(memory_recall.get("nearest_match"), dict) else {}
-        nearest_similarity = float(nearest.get("similarity", 0.0) or 0.0)
-        if nearest_similarity >= DEDUPLICATE_SIMILARITY_THRESHOLD and nearest.get("scope") == "same_asset":
-            return None
-        risk = canonical.get("risk_assessment") if isinstance(canonical.get("risk_assessment"), dict) else {}
-        decision = canonical.get("decision") if isinstance(canonical.get("decision"), dict) else {}
-        session = canonical.get("session") if isinstance(canonical.get("session"), dict) else {}
-        family = memory_recall.get("pattern_family") if isinstance(memory_recall.get("pattern_family"), dict) else {}
-        novelty = memory_recall.get("novelty") if isinstance(memory_recall.get("novelty"), dict) else {}
-        record = {
-            "customer_id": customer_id,
-            "run_id": session.get("run_id"),
-            "site_id": session.get("site_id"),
-            "asset_id": session.get("asset_id"),
-            "timestamp": canonical.get("timestamp"),
-            "cycle": canonical.get("cycle"),
-            "memory_key": f"{signature.get('risk_level', 'UNKNOWN')}|{signature.get('decision_state', 'UNKNOWN')}|{signature.get('regime_key', 'unknown')}",
-            "family_label": family.get("label"),
-            "novelty": novelty,
-            "signature": signature,
-            "summary": short_memory_summary(signature),
-            "decision": decision.get("action"),
-            "risk_level": risk.get("risk_level"),
-            "event_flags": canonical.get("events", []),
-            "source_history_id": memory_recall.get("source_history_id"),
-            "metadata": {
-                "nearest_similarity": nearest_similarity,
-                "nearest_memory_id": nearest.get("memory_id"),
-                "pattern_family_confidence": family.get("confidence"),
-            },
-        }
-        return self.store.save_structural_memory(record, customer_id=customer_id)
+        return self._memory_recall.persist_structural_memory(
+            canonical,
+            memory_recall,
+            customer_id=customer_id,
+        )
 
     @staticmethod
     def _resolve_customer_id(customer_id: str | None) -> str:
@@ -394,213 +267,27 @@ class StructuralMonitoringService:
         *,
         run_config: dict[str, Any] | None = None,
     ) -> StructuralEngine:
-        customer_id = self._resolve_customer_id(frame.get("customer_id"))
-        site_id = str(frame.get("site_id", "default-site"))
-        asset_id = str(frame.get("asset_id", "default-asset"))
-        key = (customer_id, site_id, asset_id)
-        existing = self._engines_by_asset.get(key)
-        if existing is not None:
-            return existing
-
-        template = self.engine
-        baseline_window = int(run_config.get("baseline_window", template.baseline_window)) if run_config else template.baseline_window
-        recent_window = int(run_config.get("recent_window", template.recent_window)) if run_config else template.recent_window
-        baseline_window = max(4, min(baseline_window, 500))
-        recent_window = max(2, min(recent_window, 120))
-
-        regime_path = "regime_library.json"
-        try:
-            base_path = Path(template.regime_store.path)
-            safe_customer = customer_id.replace("/", "_").replace("\\", "_").replace(":", "_")
-            safe_site = site_id.replace("/", "_").replace("\\", "_").replace(":", "_")
-            safe_asset = asset_id.replace("/", "_").replace("\\", "_").replace(":", "_")
-            regime_path = str(
-                base_path.with_name(f"{base_path.stem}_{safe_customer}_{safe_site}_{safe_asset}{base_path.suffix}")
-            )
-        except Exception:
-            regime_path = f"regime_library_{customer_id}_{site_id}_{asset_id}.json"
-
-        frame_debug = bool((run_config or {}).get("frame_debug", getattr(template, "_frame_debug", False)))
-        new_engine = StructuralEngine(
-            baseline_window=baseline_window,
-            recent_window=recent_window,
-            window_stride=template.window_stride,
-            regime_store_path=regime_path,
-            baseline_adaptation_alpha=template.baseline_adaptation_alpha,
-            representation_mode=(run_config or {}).get("representation_mode", template.representation_config.mode),
-            reference_strategy=(run_config or {}).get("reference_strategy", template.representation_config.reference_strategy),
-            context_diagnostics_enabled=bool((run_config or {}).get("context_diagnostics_enabled", template.representation_config.enable_diagnostics)),
-            feature_weights=(run_config or {}).get(
-                "feature_weights",
-                {
-                    "raw_weight": template.representation_config.weights.raw_weight,
-                    "residual_weight": template.representation_config.weights.residual_weight,
-                    "delta_weight": template.representation_config.weights.delta_weight,
-                    "slope_weight": template.representation_config.weights.slope_weight,
-                    "drift_weight": template.representation_config.weights.drift_weight,
-                    "second_diff_weight": template.representation_config.weights.second_diff_weight,
-                },
-            ),
-            frame_debug=frame_debug,
-        )
-        if run_config and run_config.get("baseline_locked") is True:
-            new_engine.lock_baseline(True)
-        self._engines_by_asset[key] = new_engine
-        return new_engine
+        frame_with_customer = dict(frame)
+        frame_with_customer["customer_id"] = self._resolve_customer_id(frame.get("customer_id"))
+        return self._engine_registry.get_or_create(frame_with_customer, run_config=run_config)
 
     def _localization_score(self, result: dict[str, Any]) -> float:
-        site_id = str(result.get("site_id", "default-site"))
-        asset_id = str(result.get("asset_id", "default-asset"))
-        latest_instability = float(result.get("latest_instability", 0.0))
-        site_map = self._localization_by_site.setdefault(site_id, {})
-        site_map[asset_id] = max(0.0, latest_instability)
-        total = sum(site_map.values())
-        if total <= 1e-9:
-            return 0.0
-        share = latest_instability / total
-        concentration = max(site_map.values()) / (total + 1e-9)
-        return round(max(0.0, min(1.0, share * concentration * 2.0)), 4)
+        return self._projector.localization_score(result)
 
     def _interpret(self, result: dict[str, Any]) -> dict[str, str]:
-        drift = float(result.get("structural_drift_score", 0.0))
-        transition_pressure = float(result.get("transition_pressure", 0.0))
-        transition_state = str(result.get("transition_state", "NONE")).upper()
-        state = str(result.get("state", "STABLE")).upper()
-        transition_aware_enabled = str(os.environ.get("NERAIUM_TRANSITION_AWARE", "1")).strip().lower() not in {
-            "0",
-            "false",
-            "no",
-            "off",
-        }
-
-        transition_actionable = result.get("transition_outputs_actionable")
-        if transition_actionable is None:
-            transition_actionable = result.get("engine_transition_detectable")
-        if transition_actionable is None and isinstance(result.get("readiness"), dict):
-            rd0 = result["readiness"]
-            transition_actionable = rd0.get("transition_classification_ready")
-            if transition_actionable is None:
-                transition_actionable = rd0.get("transition_classifiable")
-        if transition_actionable is None:
-            transition_actionable = transition_state != "WARMUP"
-
-        if (
-            drift >= float(self.pilot_config.drift_high_threshold)
-            or state == "ALERT"
-            or (
-                transition_aware_enabled
-                and transition_actionable is not False
-                and transition_state != "WARMUP"
-                and (transition_state == "SUSTAINED_TRANSITION" or transition_pressure >= 1.15)
-            )
-        ):
-            return {
-                "risk_level": "HIGH",
-                "action_state": "ALERT",
-                "operator_message": (
-                    "High instability/transition pressure detected. "
-                    "System is structurally departing from prior stable behavior; immediate operator review advised."
-                ),
-            }
-
-        if (
-            drift >= float(self.pilot_config.drift_watch_threshold)
-            or state == "WATCH"
-            or (
-                transition_aware_enabled
-                and transition_actionable is not False
-                and transition_state != "WARMUP"
-                and (transition_state == "EMERGING_TRANSITION" or transition_pressure >= 0.85)
-            )
-        ):
-            return {
-                "risk_level": "MEDIUM",
-                "action_state": "WATCH",
-                "operator_message": (
-                    "Transition pressure is elevated. "
-                    "Monitor closely for continued structural departure from recent stable behavior."
-                ),
-            }
-
-        return {
-            "risk_level": "LOW",
-            "action_state": "STABLE",
-            "operator_message": "System appears stable based on current heuristic interpretation.",
-        }
+        return self._projector.interpret(result)
 
     def _operator_trend(self, result: dict[str, Any]) -> str:
-        analytics = result.get("experimental_analytics")
-        if not isinstance(analytics, dict):
-            return "UNKNOWN"
-
-        forecasting = analytics.get("forecasting")
-        if not isinstance(forecasting, dict):
-            return "UNKNOWN"
-
-        trend_score = float(forecasting.get("trend", 0.0))
-        if trend_score > 0.05:
-            return "RISING"
-        if trend_score < -0.05:
-            return "FALLING"
-        return "STABLE"
+        return self._projector.operator_trend(result)
 
     def _operator_confidence(self, result: dict[str, Any]) -> float:
-        # Prefer stabilized confidence_score from engine when present.
-        score = result.get("confidence_score")
-        if score is not None:
-            try:
-                return round(max(0.0, min(float(score), 1.0)), 4)
-            except (TypeError, ValueError):
-                pass
-        stability = float(result.get("relational_stability_score", 0.0))
-        return round(max(0.0, min(stability, 1.0)), 4)
+        return self._projector.operator_confidence(result)
 
     def _structural_analysis_metadata(self, result: dict[str, Any]) -> dict[str, Any]:
-        signals = result.get("sensor_relationships")
-        signal_count = len(signals) if isinstance(signals, list) else 0
-        if signal_count < 2:
-            return {
-                "structural_analysis_available": False,
-                "skipped_reason": "insufficient signal dimensionality",
-            }
-
-        analytics = result.get("experimental_analytics")
-        if not isinstance(analytics, dict):
-            return {
-                "structural_analysis_available": False,
-                "skipped_reason": "insufficient history",
-            }
-
-        if bool(analytics.get("relational_metrics_skipped")):
-            return {
-                "structural_analysis_available": False,
-                "skipped_reason": "insufficient signal dimensionality",
-            }
-
-        return {
-            "structural_analysis_available": True,
-            "skipped_reason": None,
-        }
+        return self._projector.structural_analysis_metadata(result)
 
     def _decorate_result(self, result: dict[str, Any]) -> dict[str, Any]:
-        enriched = dict(result)
-        interpretation = self._interpret(result)
-        structural = self._structural_analysis_metadata(result)
-        localization_score = self._localization_score(result)
-
-        enriched.update(interpretation)
-        enriched.update(structural)
-        enriched["trend"] = self._operator_trend(result)
-        enriched["confidence"] = self._operator_confidence(result)
-        enriched["localization_score"] = localization_score
-        enriched["interpretation"] = {
-            "heuristic": True,
-            **interpretation,
-            "trend": enriched["trend"],
-            "confidence": enriched["confidence"],
-            "localization_score": localization_score,
-        }
-        return enriched
+        return self._projector.project_for_output(result)
 
     @staticmethod
     def _with_result_metadata(
@@ -1652,7 +1339,8 @@ class StructuralMonitoringService:
             window_stride=self.engine.window_stride,
             baseline_adaptation_alpha=self.engine.baseline_adaptation_alpha,
         )
-        self._engines_by_asset = {}
+        self._engine_registry = EngineRegistry(self.engine)
+        self._engines_by_asset = self._engine_registry.engines
         self._localization_by_site = {}
         self.store.reset()
 
@@ -1682,7 +1370,7 @@ class StructuralMonitoringService:
     ) -> None:
         """Reset baseline and calibration for all engines used by this run."""
         for key in self._engine_keys_for_run(run_id, customer_id):
-            engine = self._engines_by_asset.get(key)
+            engine = self._engine_registry.get_existing(key)
             if engine is not None:
                 engine.reset_baseline()
                 log_structured(
@@ -1707,7 +1395,7 @@ class StructuralMonitoringService:
         config["baseline_locked"] = bool(locked)
         self.store.update_run(run_id, config=config, customer_id=resolved_customer)
         for key in self._engine_keys_for_run(run_id, customer_id):
-            engine = self._engines_by_asset.get(key)
+            engine = self._engine_registry.get_existing(key)
             if engine is not None:
                 engine.lock_baseline(locked)
 
@@ -1731,7 +1419,7 @@ class StructuralMonitoringService:
         keys = self._engine_keys_for_run(run_id, customer_id)
         # Use first engine's info if available
         for key in keys:
-            engine = self._engines_by_asset.get(key)
+            engine = self._engine_registry.get_existing(key)
             if engine is not None:
                 info = dict(engine.get_baseline_info())
                 info["baseline_locked"] = config.get("baseline_locked", info.get("baseline_locked", False))

@@ -64,3 +64,17 @@ def test_ingest_directory_surfaces_skipped_file_warnings(tmp_path) -> None:
     result = ingest_raw_industrial_input(tmp_path)
     assert result.diagnostics.detected_input_type == "directory_signal_blocks"
     assert any("Skipped broken.npy" in warning for warning in result.diagnostics.warnings)
+
+
+def test_ingest_directory_finds_nested_whitespace_txt(tmp_path) -> None:
+    nested = tmp_path / "1st_test"
+    nested.mkdir()
+    (nested / "segment.txt").write_text("0.1 0.2 0.3\n0.11 0.21 0.31\n", encoding="utf-8")
+
+    result = ingest_raw_industrial_input(tmp_path)
+    assert result.diagnostics.detected_input_type == "directory_signal_blocks"
+    assert result.diagnostics.timestep_count >= 1
+    meta = result.frames[0].get("raw_window_metadata") or {}
+    oc = meta.get("operating_context") or {}
+    assert oc.get("relative_path") == "1st_test/segment.txt"
+    assert result.frames[0].get("asset_id") == "1st_test/segment.txt"

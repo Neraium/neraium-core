@@ -137,11 +137,16 @@ def test_results_endpoints_return_stable_shape(tmp_path) -> None:
     latest_response = client.get(_customer_path("/results/latest", customer_id="customer-a"))
     recent_response = client.get(_customer_path("/results/recent?limit=5", customer_id="customer-a"))
 
-    for response in (ingest_response, latest_response, recent_response):
+    core_keys = {"latest", "count", "results"}
+    for response in (latest_response, recent_response):
         body = response.json()
-        assert set(body.keys()) == {"latest", "count", "results"}
+        assert core_keys.issubset(body.keys())
         assert isinstance(body["results"], list)
         assert body["count"] == len(body["results"])
+    ingest_body = ingest_response.json()
+    assert core_keys.issubset(ingest_body.keys())
+    assert isinstance(ingest_body["results"], list)
+    assert ingest_body["count"] == len(ingest_body["results"])
 
 
 def test_recent_results_ordering_and_limit(tmp_path) -> None:

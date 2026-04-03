@@ -172,6 +172,40 @@ def test_platform_outputs_trajectory_family_and_forecast_sections() -> None:
     assert "estimated_steps_to_critical_region" in forecast
 
 
+
+
+def test_baseline_sequential_replay_exits_max_novelty_mode() -> None:
+    platform = StructuralSystemIntelligencePlatform()
+    records = [
+        {
+            "asset_id": "baseline-asset",
+            "scenario_family": "baseline",
+            "observation": _obs(
+                asset="baseline-asset",
+                drift=0.08 + 0.002 * i,
+                rel=0.07 + 0.002 * i,
+                regime_d=0.05 + 0.001 * i,
+                coherence=max(0.6, 0.96 - 0.002 * i),
+            ),
+        }
+        for i in range(8)
+    ]
+
+    novelties: list[float] = []
+    fallback_due_only_to_cold_start = True
+    for row in records:
+        out = platform.update(row["observation"])
+        trajectory = out["trajectory_archetypes"]
+        recommendation = out["intervention_intelligence"]["recommendation"]
+        novelties.append(float(trajectory.get("novelty_score", 1.0)))
+        reasons = set(recommendation.get("fallback_reasons") or [])
+        if not ({"high_novelty", "low_structural_similarity", "weak_support"} <= reasons):
+            fallback_due_only_to_cold_start = False
+
+    assert any(n < 1.0 for n in novelties)
+    assert novelties[-1] < 0.72
+    assert fallback_due_only_to_cold_start is False
+
 def test_structural_laws_require_support_and_effect_thresholds() -> None:
     extractor = StructuralLawExtractor(min_support=3, robust_support=8)
     trajectory = {"status": "ready", "current_trajectory_archetype": "trajectory_family_1", "current_trajectory_path_family": "escalating"}

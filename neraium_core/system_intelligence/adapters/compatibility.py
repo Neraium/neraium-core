@@ -21,10 +21,35 @@ def to_operator_compatibility(intel: dict[str, Any]) -> dict[str, Any]:
     best_cf_name = str((cf.get("best_intervention") or {}).get("name", "monitor"))
     best_ranked = ((intervention.get("recommendation") or {}).get("best_intervention") or {})
     rec_name = str(best_ranked.get("name", best_cf_name))
+    recommendation = dict(intervention.get("recommendation") or {})
     reliability = intel.get("reliability_intelligence") or {}
     calibrated_rec = ((reliability.get("intervention_recommendation") or {}).get("recommendation_calibrated_confidence"))
     rec_confidence = float(calibrated_rec if calibrated_rec is not None else best_ranked.get("confidence", 0.0))
     reliability_warnings = list((((reliability.get("intervention_recommendation") or {}).get("reliability_trace") or {}).get("warnings") or []))
+    trajectory = intel.get("trajectory_archetypes") or intel.get("trajectory_intelligence") or {}
+    novelty = float(trajectory.get("novelty_score", 0.0) or 0.0)
+    support_count = int(trajectory.get("support", trajectory.get("support_count", 0)) or 0)
+    if bool(recommendation.get("no_intervention_recommended", False)) and support_count <= 2:
+        rec_name = "no_action_recommended"
+    drift_warning = bool(((intel.get("reliability_intelligence") or {}).get("risk_advisory") or {}).get("drift_warning", False))
+    structural_uncertainty = dict((intervention.get("structural_uncertainty_mode") or {}))
+    override_applied = bool(recommendation.get("override_applied", False) or structural_uncertainty.get("override_applied", False))
+    forced_posture = str(
+        recommendation.get("recommended_posture")
+        or structural_uncertainty.get("recommended_posture")
+        or ("human_review_required" if bool(structural_uncertainty.get("active", False)) else "standard_advisory")
+    )
+    original_top_intervention = str(recommendation.get("original_top_intervention") or structural_uncertainty.get("original_top_intervention") or rec_name)
+    fallback_reasons: list[str] = []
+    if novelty >= 0.75:
+        fallback_reasons.append("high_novelty")
+    if support_count <= 2:
+        fallback_reasons.append("sparse_support")
+    if drift_warning:
+        fallback_reasons.append("drift_warning")
+    if reliability_warnings:
+        fallback_reasons.append("reliability_warning")
+    fallback_triggered = bool(fallback_reasons)
 
     law_note = str(law.get("law_layer_message") or "").strip()
     matched = list(law.get("matched_law_ids") or [])
@@ -43,6 +68,12 @@ def to_operator_compatibility(intel: dict[str, Any]) -> dict[str, Any]:
 
     if reliability_warnings:
         advisory_text = f"{advisory_text} Reliability notes: {reliability_warnings[0]}"
+    if fallback_triggered:
+        advisory_text = "Fallback active: insufficient trusted evidence for aggressive intervention; continue monitoring."
+    if bool(structural_uncertainty.get("active", False)):
+        advisory_text = "Structural uncertainty mode active: human review required; keep posture bounded and monitoring-first."
+    if override_applied:
+        advisory_text = "Structural uncertainty override applied: intervention forced to monitor; human review is required."
 
     return {
         "phase": str(transition.get("regime", "unknown")),
@@ -54,4 +85,11 @@ def to_operator_compatibility(intel: dict[str, Any]) -> dict[str, Any]:
             if rec_confidence < 0.68
             else "Intervention advisory reflects bounded evidence and remains operator-discretionary."
         ),
+        "fallback_triggered": fallback_triggered,
+        "fallback_reasons": sorted(set(fallback_reasons)),
+        "recommended_intervention": rec_name,
+        "forced_posture": forced_posture,
+        "intervention_overridden": override_applied,
+        "original_top_intervention": original_top_intervention,
+        "structural_uncertainty_mode": structural_uncertainty,
     }

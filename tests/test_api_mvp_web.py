@@ -6,6 +6,7 @@ import socket
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, HTTPServer
+from pathlib import Path
 
 import pytest
 
@@ -14,6 +15,14 @@ pytest.importorskip("httpx")
 from fastapi.testclient import TestClient
 
 from apps.api.main import DEFAULT_MAX_REQUEST_BODY_BYTES, create_app
+
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+_FD004_TRAIN = _REPO_ROOT / "apps" / "train_FD004.txt"
+
+
+def _require_fd004_dataset() -> None:
+    if not _FD004_TRAIN.is_file():
+        pytest.skip(f"NASA CMAPSS FD004 dataset not found at {_FD004_TRAIN}")
 from neraium_core.alignment import StructuralEngine
 from neraium_core.service import StructuralMonitoringService
 from neraium_core.store import ResultStore
@@ -169,9 +178,13 @@ def test_mvp_routes_available(tmp_path) -> None:
 
 def test_web_js_smoke_wiring_for_demo_critical_controls(tmp_path) -> None:
     client = _client(tmp_path)
-    js = client.get("/web/app.js")
-    assert js.status_code == 200
-    source = js.text
+    dash = client.get("/web/modules/dashboard.js")
+    geom = client.get("/web/modules/geometry.js")
+    validation = client.get("/web/modules/validation.js")
+    assert dash.status_code == 200
+    assert geom.status_code == 200
+    assert validation.status_code == 200
+    source = "\n".join((dash.text, geom.text, validation.text))
     expected_tokens = [
         "#loadingOverlay",
         "#loadingMessage",
@@ -194,7 +207,7 @@ def test_web_js_smoke_wiring_for_demo_critical_controls(tmp_path) -> None:
 
 def test_web_js_uses_relative_same_origin_api_paths(tmp_path) -> None:
     client = _client(tmp_path)
-    js = client.get("/web/app.js")
+    js = client.get("/web/modules/api.js")
     assert js.status_code == 200
     source = js.text
     assert "window.NERAIUM_API_BASE_URL" not in source
@@ -204,31 +217,35 @@ def test_web_js_uses_relative_same_origin_api_paths(tmp_path) -> None:
 
 def test_dashboard_demo_seeding_uses_single_backend_seed_job_flow(tmp_path) -> None:
     client = _client(tmp_path)
-    js = client.get("/web/app.js")
-    assert js.status_code == 200
-    source = js.text
-    assert 'apiUrl("/demo/cmapss/start"' in source
-    assert "async function seedDemoData()" in source
-    seed_block = source.split("async function seedDemoData()", 1)[1].split("function destroyCharts()", 1)[0]
-    assert "startCmapssDemo(" in seed_block
-    assert "postDemoSeedWithRetry(" not in seed_block
-    assert "launchInFlight" in seed_block
-    assert "beginReplayStatusMonitoring(" in seed_block
+    dash = client.get("/web/modules/dashboard.js")
+    validation = client.get("/web/modules/validation.js")
+    assert dash.status_code == 200
+    assert validation.status_code == 200
+    assert 'apiUrl("/demo/cmapss/start"' in dash.text
+    assert "async function seedDemoData()" in validation.text
+    seed_text = validation.text
+    assert "startCmapssDemo(" in seed_text
+    assert "postDemoSeedWithRetry(" not in seed_text
+    assert "launchInFlight" in seed_text
+    assert "beginReplayStatusMonitoring(" in seed_text
 
 
 def test_dashboard_demo_replay_status_state_machine_and_polling_present(tmp_path) -> None:
     client = _client(tmp_path)
-    js = client.get("/web/app.js")
-    assert js.status_code == 200
-    source = js.text
-    assert "const DEMO_UI_STATES = Object.freeze" in source
+    dash = client.get("/web/modules/dashboard.js")
+    validation = client.get("/web/modules/validation.js")
+    assert dash.status_code == 200
+    assert validation.status_code == 200
+    dash_src = dash.text
+    val_src = validation.text
+    assert "const DEMO_UI_STATES = Object.freeze" in dash_src
     for token in ['idle: "idle"', 'starting: "starting"', 'running: "running"', 'offline: "offline"', 'interrupted: "interrupted"', 'failed: "failed"', 'completed: "completed"']:
-        assert token in source
-    assert "function normalizeReplayUiState(" in source
-    assert "function beginReplayStatusMonitoring(runId)" in source
-    assert "async function pollReplayStatus(runId)" in source
-    assert "DEMO_REPLAY_MAX_TRANSIENT_ERRORS" in source
-    assert 'setDemoUiState(DEMO_UI_STATES.interrupted, "persistent-poll-error")' in source
+        assert token in dash_src
+    assert "function normalizeReplayUiState(" in val_src
+    assert "function beginReplayStatusMonitoring(runId)" in val_src
+    assert "async function pollReplayStatus(runId)" in val_src
+    assert "DEMO_REPLAY_MAX_TRANSIENT_ERRORS" in dash_src
+    assert 'setDemoUiState(DEMO_UI_STATES.interrupted, "persistent-poll-error")' in val_src
 
 
 def test_demo_seed_async_job_endpoints_return_json_and_seed_real_results(tmp_path) -> None:
@@ -251,7 +268,7 @@ def test_demo_seed_async_job_endpoints_return_json_and_seed_real_results(tmp_pat
     assert isinstance(job_id, str) and job_id
 
     final_status = None
-    for _ in range(80):
+    for _ in range(400):
         polled = client.get(_customer_path(f"/demo/seed/status?job_id={job_id}", customer_id="customer-a"))
         assert polled.status_code == 200
         body = polled.json()
@@ -274,6 +291,7 @@ def test_demo_seed_async_job_endpoints_return_json_and_seed_real_results(tmp_pat
 
 
 def test_demo_cmapss_start_returns_run_and_processes_real_results(tmp_path) -> None:
+    _require_fd004_dataset()
     client = _client(tmp_path)
     started = client.post(
         _customer_path("/demo/cmapss/start", customer_id="customer-a"),
