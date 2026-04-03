@@ -66,6 +66,8 @@ Returns rows + summary counters (`suppression_count`, `abstention_count`).
 - `NERAIUM_LIVE_EVENT_RETENTION` (default: `5000`)
 - `NERAIUM_LIVE_BAR_RETENTION` (default: `2000`)
 - `NERAIUM_LIVE_WARMUP_BARS` (default: `30`)
+- `NERAIUM_GIT_SHA` (optional: surfaced in `/health` and startup logs)
+- `NERAIUM_DEPLOYMENT_ID` (optional: surfaced in `/health` and startup logs)
 
 ## Run API
 ```bash
@@ -79,6 +81,20 @@ uvicorn neraium_core.markets.app.api:app --reload
 4. Use **Live Session** to start live stream (`1m`/`5m`/`15m`).
 5. Use **Signals / History** for operator review filters.
 6. Use **Integrations / Data** for provider diagnostics.
+
+
+## App Runner fresh-deploy verification
+1. Ensure App Runner source points to this repo branch/commit and uses `apprunner.yaml` from repo root.
+2. Set `NERAIUM_GIT_SHA` to the exact git commit SHA for the release and (optionally) set `NERAIUM_DEPLOYMENT_ID` to your CI build/deploy identifier.
+3. Redeploy and confirm startup logs contain `NERAIUM MARKETS API LIVE BOOT` and `app_identity=neraium_core.markets.app.api:app`.
+4. Query `/health` and verify:
+   - `ok` is `true`
+   - `service` is `"markets"`
+   - `app_identity` is `"neraium_core.markets.app.api:app"`
+   - `version` is `"9.9.9-markets"`
+   - `git_sha` matches the commit you deployed
+
+If those values do not match, the issue is outside this repo (App Runner artifact/source selection or deployment workflow), not runtime route wiring.
 
 ## Test commands
 ```bash

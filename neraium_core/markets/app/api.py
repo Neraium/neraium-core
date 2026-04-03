@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import csv
 import logging
+import os
 from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
@@ -31,6 +32,31 @@ from neraium_core.markets.state.state_vector import CORE, build_state_vector
 
 TIMEFRAMES = ["daily", "1h", "15m"]
 LOGGER = logging.getLogger(__name__)
+
+
+def _runtime_fingerprint() -> dict[str, str | None]:
+    return {
+        "app_identity": "neraium_core.markets.app.api:app",
+        "version": "9.9.9-markets",
+        "git_sha": os.getenv("NERAIUM_GIT_SHA") or os.getenv("GIT_SHA") or os.getenv("COMMIT_SHA"),
+        "deploy_id": os.getenv("NERAIUM_DEPLOYMENT_ID") or os.getenv("APP_RUNNER_DEPLOYMENT_ID"),
+        "service_id": os.getenv("APP_RUNNER_SERVICE_ID"),
+        "service_url": os.getenv("APP_RUNNER_SERVICE_URL"),
+    }
+
+
+def _log_runtime_banner(data_dir: Path) -> None:
+    fingerprint = _runtime_fingerprint()
+    LOGGER.info("=" * 72)
+    LOGGER.info("NERAIUM MARKETS API LIVE BOOT")
+    LOGGER.info("app_identity=%s", fingerprint["app_identity"])
+    LOGGER.info("version=%s", fingerprint["version"])
+    LOGGER.info("git_sha=%s", fingerprint["git_sha"] or "unset")
+    LOGGER.info("deploy_id=%s", fingerprint["deploy_id"] or "unset")
+    LOGGER.info("service_id=%s", fingerprint["service_id"] or "unset")
+    LOGGER.info("service_url=%s", fingerprint["service_url"] or "unset")
+    LOGGER.info("data_dir=%s", data_dir)
+    LOGGER.info("=" * 72)
 
 
 class HistoricalFetchBody(BaseModel):
@@ -81,9 +107,13 @@ def create_app(
     static_dir = Path(__file__).parent / "static"
     app.mount("/static", StaticFiles(directory=static_dir), name="markets-static")
 
+    @app.on_event("startup")
+    async def startup_banner() -> None:
+        _log_runtime_banner(configured_data_dir)
+
     @app.get("/health")
     def health() -> dict[str, object]:
-        return {"ok": True, "service": "markets"}
+        return {"ok": True, "service": "markets", **_runtime_fingerprint()}
 
     @app.get("/")
     def root() -> dict[str, str]:
@@ -378,27 +408,4 @@ def create_app(
     return app
 
 
-def create_app_safe() -> FastAPI:
-    try:
-        print("STARTING NERAIUM MARKETS API LIVE")
-        return create_app()
-    except Exception as exc:
-        import traceback
-
-        print("STARTUP FAILURE:", repr(exc))
-        traceback.print_exc()
-
-        fallback = FastAPI(title="NERAIUM MARKETS API FALLBACK", version="9.9.9-markets")
-
-        @fallback.get("/")
-        def root() -> dict[str, object]:
-            return {"status": "degraded", "app": "markets-fallback", "error": str(exc)}
-
-        @fallback.get("/health")
-        def health() -> dict[str, object]:
-            return {"ok": False, "service": "markets-fallback", "error": str(exc), "app": "markets-fallback"}
-
-        return fallback
-
-
-app = create_app_safe()
+app = create_app()
