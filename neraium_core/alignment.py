@@ -89,6 +89,7 @@ from neraium_core.staged_pipeline import (
 )
 from neraium_core.subsystems import subsystem_spectral_measures
 from neraium_core.realtime.buffer import HistoryRingBuffer, TimestampDequeBuffer, VectorDequeBuffer
+from neraium_core.engine_stages import build_warmup_result_payload, structural_engine_stage_groups
 
 
 # How slowly the rolling baseline adapts (only when nominal); avoid absorbing instability.
@@ -456,6 +457,11 @@ class StructuralEngine:
                 "reason": reason,
             },
         }
+
+    @staticmethod
+    def stage_groups() -> list[dict[str, object]]:
+        """Typed high-level stage boundaries used for decomposition planning."""
+        return [dict(item) for item in structural_engine_stage_groups()]
 
     def _debug_print_experimental_analytics_once(self, result: Dict) -> None:
         if not self._frame_debug:
@@ -1287,57 +1293,11 @@ class StructuralEngine:
                 self._recent_ts_buffer.append(ts_val)
                 self._refresh_baseline_matrix_cache()
 
-        result = {
-            "timestamp": frame["timestamp"],
-            "site_id": frame["site_id"],
-            "asset_id": frame["asset_id"],
-            "state": "STABLE",
-            "structural_drift_score": 0.0,
-            "relational_stability_score": 1.0,
-            "system_health": 100,
-            "drift_alert": False,
-            "sensor_relationships": self.sensor_order,
-            "regime_name": None,
-            "regime_distance": None,
-            "regime_drift": 0.0,
-            "latest_drift": 0.0,
-            "latest_instability": 0.0,
-            "relational_instability_score": 0.0,
-            "temporal_distortion_score": 0.0,
-            "localization_score": 0.0,
-            "attribution": {"top_drivers": [], "driver_scores": {}},
-            "causal_analysis": {
-                "hypotheses": [],
-                "top_hypothesis": None,
-                "counterfactual": {
-                    "counterfactual_checks": [],
-                    "robustness": 0.0,
-                    "interpretation": "Causal analysis unavailable during warmup.",
-                },
-                "validation_plan": [],
-                "recommended_sequence": [],
-                "best_next_action": None,
-                "status": {"available": False, "reason": "warmup"},
-            },
-            "dominant_driver": None,
-            "explanation": "Warmup: awaiting sufficient window history.",
-            "baseline_mode": None,
-            "data_quality_summary": {},
-            "active_sensor_count": 0,
-            "missing_sensor_count": 0,
-            "transition_pressure": 0.0,
-            "transition_state": "NONE",
-            "experimental_analytics": self._analytics_unavailable_payload("warmup"),
-            "robustness": {},
-            "sensitivity": {},
-            "explanations": {},
-            "multi_scale": {},
-            "drift_noise": {},
-            "geometry": {"available": False, "reason": "insufficient history"},
-            "state_space_statistics": {"available": False, "reason": "insufficient history"},
-            "state_graph": {"available": False, "reason": "insufficient history"},
-            "geometry_explanations": {"available": False, "reason": "insufficient history"},
-        }
+        result = build_warmup_result_payload(
+            frame,
+            sensor_order=self.sensor_order,
+            experimental_analytics_payload=self._analytics_unavailable_payload("warmup"),
+        )
         temporal_quality: dict[str, object] = {}
         temporal_features: dict[str, object] = {}
 
