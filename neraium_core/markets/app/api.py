@@ -26,6 +26,7 @@ from neraium_core.markets.signals.signal_generator import generate_signal_for_as
 from neraium_core.markets.state.state_vector import CORE, build_state_vector
 
 TIMEFRAMES = ["daily", "1h", "15m"]
+DEFAULT_LIVE_SYMBOLS = list(CORE)
 
 
 class HistoricalFetchBody(BaseModel):
@@ -36,7 +37,7 @@ class HistoricalFetchBody(BaseModel):
 
 
 class LiveStartBody(BaseModel):
-    symbols: list[str] = Field(default_factory=lambda: ["SPY", "QQQ", "AAPL", "NVDA"])
+    symbols: list[str] = Field(default_factory=lambda: DEFAULT_LIVE_SYMBOLS.copy())
     timeframe: str = "5m"
 
 
@@ -137,14 +138,15 @@ def create_app(
 
     @app.post("/live/start")
     async def live_start(body: LiveStartBody) -> dict:
-        missing_required = [sym for sym in CORE if sym not in {item.upper() for item in body.symbols}]
+        effective_symbols = [item.upper() for item in (body.symbols or DEFAULT_LIVE_SYMBOLS)]
+        missing_required = [sym for sym in CORE if sym not in set(effective_symbols)]
         if missing_required:
+            required_symbols = ", ".join(CORE)
             raise HTTPException(
                 status_code=400,
                 detail=(
-                    "Missing required core symbols for live state vector: "
-                    + ", ".join(missing_required)
-                    + ". Include all core symbols or run replay for partial universes."
+                    f"Live session requires core symbols: {required_symbols}. "
+                    + f"Missing: {', '.join(missing_required)}"
                 ),
             )
         try:
@@ -152,7 +154,7 @@ def create_app(
         except MassiveConfigError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         try:
-            await live.start(body.symbols, body.timeframe)
+            await live.start(effective_symbols, body.timeframe)
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         return {"status": "started", **live.status()}
