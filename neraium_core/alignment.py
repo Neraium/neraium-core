@@ -89,7 +89,12 @@ from neraium_core.staged_pipeline import (
 )
 from neraium_core.subsystems import subsystem_spectral_measures
 from neraium_core.realtime.buffer import HistoryRingBuffer, TimestampDequeBuffer, VectorDequeBuffer
-from neraium_core.engine_stages import build_warmup_result_payload, structural_engine_stage_groups
+from neraium_core.engine_stages import (
+    IngressAndHistoryBuffersInput,
+    build_warmup_result_payload,
+    prepare_ingress_and_history_buffers,
+    structural_engine_stage_groups,
+)
 
 
 # How slowly the rolling baseline adapts (only when nominal); avoid absorbing instability.
@@ -1263,35 +1268,15 @@ class StructuralEngine:
 
     def process_frame(self, frame: Dict) -> Dict:
         vector = self._vector_from_frame(frame)
-        sensor_values = frame.get("sensor_values") or {}
-
-        history_transition_len_before = len(self._transition_pressure_history)
-        history_shock_len_before = len(self._shock_activity_history)
-        history_drift_len_before = len(self._structural_drift_history)
-
-        stored = dict(frame)
-        stored["_vector"] = vector
-        self.frames.append(stored)
-
-        try:
-            ts_val = _to_epoch_seconds(frame["timestamp"])
-        except (TypeError, ValueError):
-            ts_val = 0.0
-        try:
-            ts_ring = _to_epoch_seconds(frame["timestamp"])
-        except (TypeError, ValueError):
-            ts_ring = float(len(self.frames) - 1)
-        if self._sensor_schema_dirty:
-            self._invalidate_window_caches()
-            self._history_ring.rebuild_from_frames(list(self.frames))
-            self._rebuild_incremental_buffers_after_schema_change()
-            self._sensor_schema_dirty = False
-        else:
-            self._history_ring.append(vector, ts_ring)
-            if _incremental_windows_enabled():
-                self._recent_vector_buffer.append(vector)
-                self._recent_ts_buffer.append(ts_val)
-                self._refresh_baseline_matrix_cache()
+        ingress_result = prepare_ingress_and_history_buffers(
+            self,
+            IngressAndHistoryBuffersInput(frame=frame, vector=vector),
+            to_epoch_seconds=_to_epoch_seconds,
+            incremental_windows_enabled=_incremental_windows_enabled(),
+        )
+        history_transition_len_before = ingress_result.history_transition_len_before
+        history_shock_len_before = ingress_result.history_shock_len_before
+        history_drift_len_before = ingress_result.history_drift_len_before
 
         result = build_warmup_result_payload(
             frame,
