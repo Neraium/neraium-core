@@ -131,10 +131,11 @@ class PolygonRESTConnector(LiveMarketConnector):
         api_key: str | None = None,
         timeout_seconds: int = 15,
     ) -> None:
-        self.api_key = (api_key or os.getenv("POLYGON_API_KEY", "")).strip()
+        resolved_api_key = api_key or os.getenv("MASSIVE_API_KEY", "") or os.getenv("POLYGON_API_KEY", "")
+        self.api_key = resolved_api_key.strip()
         if not self.api_key:
             raise LiveConnectorError(
-                "Missing API key. Set POLYGON_API_KEY or pass --api-key for provider=polygon."
+                "Missing API key. Set MASSIVE_API_KEY or POLYGON_API_KEY, or pass --api-key for provider=massive/polygon."
             )
         self.timeout_seconds = timeout_seconds
 
@@ -239,12 +240,17 @@ class MockLiveConnector(LiveMarketConnector):
         return bars
 
 
+class MassiveRESTConnector(PolygonRESTConnector):
+    """Brand alias for PolygonRESTConnector (Massive rebrand compatibility)."""
+
+
 __all__ = [
     "normalize_records",
     "LiveMarketConnector",
     "LiveConnectorError",
     "AlphaVantageRESTConnector",
     "PolygonRESTConnector",
+    "MassiveRESTConnector",
     "MockLiveConnector",
     "create_stock_connector",
 ]
@@ -261,6 +267,8 @@ def create_stock_connector(
     normalized_provider = str(provider).strip().lower()
     if normalized_provider == "mock":
         return MockLiveConnector()
+    if normalized_provider == "massive":
+        return MassiveRESTConnector(api_key=api_key, timeout_seconds=timeout_seconds)
     if normalized_provider == "polygon":
         return PolygonRESTConnector(api_key=api_key, timeout_seconds=timeout_seconds)
     if normalized_provider == "alphavantage":
@@ -270,5 +278,5 @@ def create_stock_connector(
             timeout_seconds=timeout_seconds,
         )
     raise LiveConnectorError(
-        f"Unsupported provider {provider!r}. Supported values: polygon, alphavantage, mock."
+        f"Unsupported provider {provider!r}. Supported values: massive, polygon, alphavantage, mock."
     )

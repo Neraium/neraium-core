@@ -4,15 +4,17 @@
 
 ## Supported provider
 
-- `polygon` (REST polling, default)
+- `massive` (REST polling, current brand alias for Polygon)
+- `polygon` (REST polling, retained for backwards compatibility)
 - `alphavantage` (REST polling)
 - `mock` (offline smoke testing)
 
 ## Required environment variables
 
-For Polygon (recommended/default):
+For Massive / Polygon (same backend, Massive is current brand):
 
-- `POLYGON_API_KEY` (required for `--provider polygon`)
+- `MASSIVE_API_KEY` (preferred)
+- `POLYGON_API_KEY` (backward-compatible alternative)
 
 For Alpha Vantage:
 
@@ -20,26 +22,33 @@ For Alpha Vantage:
 
 Optional defaults:
 
-- `LIVE_DATA_PROVIDER` (default: `polygon`)
+- `LIVE_DATA_PROVIDER` (default: `polygon`; `massive` is also supported)
 - `LIVE_POLL_INTERVAL` (default: `15` seconds)
 - `ALPHAVANTAGE_INTERVAL` (default: `1min`)
 
 ## Setup (exact steps)
 
 1. Open a terminal in the repo root.
-2. Set the Polygon API key.
+2. Set the Massive API key (or Polygon for compatibility).
 3. Run the live polling script with one or more comma-separated tickers.
 
 ## Command examples
 
-### Git Bash (Polygon, default live provider)
+### Git Bash (Massive provider, recommended)
 
 ```bash
-export POLYGON_API_KEY="YOUR_POLYGON_KEY"
-python run_live_stock_market.py --tickers AAPL,MSFT --provider polygon --interval 15 --output logs/live_signals_polygon.csv
+export MASSIVE_API_KEY="YOUR_MASSIVE_KEY"
+python run_live_stock_market.py --tickers AAPL,MSFT --provider massive --interval 15 --output logs/live_signals_massive.csv
 ```
 
-### Windows PowerShell (Polygon, default live provider)
+### Windows PowerShell (Massive provider, recommended)
+
+```powershell
+$env:MASSIVE_API_KEY="YOUR_MASSIVE_KEY"
+python run_live_stock_market.py --tickers AAPL,MSFT --provider massive --interval 15 --output logs/live_signals_massive.csv
+```
+
+### Windows PowerShell (Polygon name, backwards-compatible)
 
 ```powershell
 $env:POLYGON_API_KEY="YOUR_POLYGON_KEY"
@@ -62,8 +71,8 @@ python run_live_stock_market.py --tickers AAPL,MSFT --mock --interval 1 --max-it
 ### Windows PowerShell (auto-fallback to mock if network/API fails)
 
 ```powershell
-$env:POLYGON_API_KEY="YOUR_POLYGON_KEY"
-python run_live_stock_market.py --tickers AAPL,MSFT --provider polygon --fallback-to-mock --interval 5 --max-iterations 3
+$env:MASSIVE_API_KEY="YOUR_MASSIVE_KEY"
+python run_live_stock_market.py --tickers AAPL,MSFT --provider massive --fallback-to-mock --interval 5 --max-iterations 3
 ```
 
 ## Expected output format
@@ -88,3 +97,7 @@ Optional CSV (`--output`) columns:
 ## Execution scope reminder
 
 This flow is **analytics/signals only** and explicitly **not** brokerage trade execution.
+
+## Branding note
+
+Massive is the current brand name for this market data integration. Existing Polygon naming (`--provider polygon`, `POLYGON_API_KEY`) remains supported for compatibility.
