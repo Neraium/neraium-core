@@ -378,4 +378,27 @@ def create_app(
     return app
 
 
-app = create_app()
+def create_app_safe() -> FastAPI:
+    try:
+        print("STARTING NERAIUM MARKETS API LIVE")
+        return create_app()
+    except Exception as exc:
+        import traceback
+
+        print("STARTUP FAILURE:", repr(exc))
+        traceback.print_exc()
+
+        fallback = FastAPI(title="NERAIUM MARKETS API FALLBACK", version="0.3.0")
+
+        @fallback.get("/")
+        def root() -> dict[str, object]:
+            return {"status": "degraded", "app": "markets-fallback", "error": str(exc)}
+
+        @fallback.get("/health")
+        def health() -> dict[str, object]:
+            return {"ok": False, "error": str(exc), "app": "markets-fallback"}
+
+        return fallback
+
+
+app = create_app_safe()
