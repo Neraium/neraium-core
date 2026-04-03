@@ -1,103 +1,82 @@
 # Live Stock Market Runner (Polling)
 
-> **Safety mode:** this runner performs analytics/signals only and does **not** place trades.
+> **Safety mode:** analytics/signals only. This runner does **not** place trades.
 
-## Supported provider
+## Runtime path (source-of-truth flow)
 
-- `massive` (REST polling, current brand alias for Polygon)
-- `polygon` (REST polling, retained for backwards compatibility)
-- `alphavantage` (REST polling)
-- `mock` (offline smoke testing)
+`connector -> stock_market_adapter -> live_runner -> trading_signals -> compact output/logging`
 
-## Required environment variables
+- `neraium_core/data_connectors.py`: provider fetch and canonical bar mapping.
+- `neraium_core/stock_market_adapter.py`: ingress frame generation.
+- `neraium_core/live_runner.py`: frame handoff into engine.
+- `neraium_core/trading_signals.py`: signal derivation + intraday noise controls.
+- `neraium_core/intraday_output.py`: compact trader-facing output contract.
+- `run_live_stock_market.py`: orchestration, guardrails, logging, replay mode.
 
-For Massive / Polygon (same backend, Massive is current brand):
+## Guardrails included
 
-- `MASSIVE_API_KEY` (preferred)
-- `POLYGON_API_KEY` (backward-compatible alternative)
+- malformed/incomplete bars are dropped with explicit runtime messages
+- duplicate or out-of-order timestamps are suppressed per ticker
+- per-symbol connector failures are isolated (other symbols continue)
+- provider hiccup fallback (`--fallback-to-mock`) remains available
+- empty converted frames are rejected with visibility
 
-For Alpha Vantage:
+## Providers
 
-- `ALPHAVANTAGE_API_KEY` (required)
+- `massive` (Polygon-compatible endpoint)
+- `polygon`
+- `alphavantage`
+- `mock`
 
-Optional defaults:
+## Environment variables
 
-- `LIVE_DATA_PROVIDER` (default: `polygon`; `massive` is also supported)
-- `LIVE_POLL_INTERVAL` (default: `15` seconds)
-- `ALPHAVANTAGE_INTERVAL` (default: `1min`)
+- `MASSIVE_API_KEY` or `POLYGON_API_KEY`
+- `ALPHAVANTAGE_API_KEY`
+- optional defaults: `LIVE_DATA_PROVIDER`, `LIVE_POLL_INTERVAL`, `ALPHAVANTAGE_INTERVAL`
 
-## Setup (exact steps)
-
-1. Open a terminal in the repo root.
-2. Set the Massive API key (or Polygon for compatibility).
-3. Run the live polling script with one or more comma-separated tickers.
-
-## Command examples
-
-### Git Bash (Massive provider, recommended)
+## Live command
 
 ```bash
-export MASSIVE_API_KEY="YOUR_MASSIVE_KEY"
-python run_live_stock_market.py --tickers AAPL,MSFT --provider massive --interval 15 --output logs/live_signals_massive.csv
+python run_live_stock_market.py \
+  --tickers AAPL,MSFT \
+  --provider massive \
+  --interval 15 \
+  --min-confidence 0.50 \
+  --cooldown-seconds 60 \
+  --warmup-bars 8 \
+  --output logs/live_signals.csv
 ```
 
-### Windows PowerShell (Massive provider, recommended)
+## Replay command (paper-trading validation)
 
-```powershell
-$env:MASSIVE_API_KEY="YOUR_MASSIVE_KEY"
-python run_live_stock_market.py --tickers AAPL,MSFT --provider massive --interval 15 --output logs/live_signals_massive.csv
+```bash
+python run_live_stock_market.py \
+  --tickers AAPL,MSFT \
+  --replay-csv data/sample_market_data.csv \
+  --min-confidence 0.50 \
+  --cooldown-seconds 60 \
+  --output logs/replay_signals.csv
 ```
 
-### Windows PowerShell (Polygon name, backwards-compatible)
-
-```powershell
-$env:POLYGON_API_KEY="YOUR_POLYGON_KEY"
-python run_live_stock_market.py --tickers AAPL,MSFT --provider polygon --interval 15 --output logs/live_signals_polygon.csv
-```
-
-### Windows PowerShell (Alpha Vantage)
-
-```powershell
-$env:ALPHAVANTAGE_API_KEY="YOUR_KEY"
-python run_live_stock_market.py --tickers AAPL,MSFT --provider alphavantage --interval 20 --provider-interval 1min --output logs/live_signals.csv
-```
-
-### Windows PowerShell (offline/mock smoke run)
-
-```powershell
-python run_live_stock_market.py --tickers AAPL,MSFT --mock --interval 1 --max-iterations 3 --output logs/live_signals_mock.csv
-```
-
-### Windows PowerShell (auto-fallback to mock if network/API fails)
-
-```powershell
-$env:MASSIVE_API_KEY="YOUR_MASSIVE_KEY"
-python run_live_stock_market.py --tickers AAPL,MSFT --provider massive --fallback-to-mock --interval 5 --max-iterations 3
-```
-
-## Expected output format
-
-Console line per ticker/bar:
-
-```text
-2026-04-02T12:34:56.123456+00:00 | AAPL | state=NORMAL | signal=BUY | drift=0.42 | instability=0.42 | health=91.6
-```
-
-Optional CSV (`--output`) columns:
+## Compact output fields
 
 - `timestamp`
 - `ticker`
 - `state`
 - `trading_signal`
+- `confidence`
 - `structural_drift_score`
 - `latest_instability`
-- `system_health`
-- `evidence_confidence`
+- `reason`
+- `transition`
+- `cooldown_remaining_seconds`
+- `emitted`
 
-## Execution scope reminder
+## Noise-control knobs
 
-This flow is **analytics/signals only** and explicitly **not** brokerage trade execution.
+- `--min-confidence`
+- `--cooldown-seconds`
+- `--state-change-only`
+- `--warmup-bars`
 
-## Branding note
-
-Massive is the current brand name for this market data integration. Existing Polygon naming (`--provider polygon`, `POLYGON_API_KEY`) remains supported for compatibility.
+These controls are configurable and default-safe for non-executing intraday support.
