@@ -1,7 +1,13 @@
 import json
 from typing import Any
 
-from neraium_core.data_connectors import PolygonRESTConnector, normalize_records
+from neraium_core.data_connectors import (
+    LiveConnectorError,
+    MassiveRESTConnector,
+    PolygonRESTConnector,
+    create_stock_connector,
+    normalize_records,
+)
 
 
 def test_normalize_records_casts_values_to_float() -> None:
@@ -45,3 +51,27 @@ def test_polygon_connector_extracts_latest_bar(monkeypatch: Any) -> None:
     assert bars[0]["close"] == 100.7
     assert bars[0]["volume"] == 12345.0
     assert bars[0]["value"] == 100.7
+
+
+def test_create_stock_connector_accepts_massive_alias() -> None:
+    connector = create_stock_connector("massive", api_key="test-key")
+    assert isinstance(connector, MassiveRESTConnector)
+
+
+def test_polygon_connector_uses_massive_api_key_env(monkeypatch: Any) -> None:
+    monkeypatch.setenv("MASSIVE_API_KEY", "massive-env-key")
+    monkeypatch.delenv("POLYGON_API_KEY", raising=False)
+    connector = PolygonRESTConnector()
+    assert connector.api_key == "massive-env-key"
+
+
+def test_polygon_connector_requires_massive_or_polygon_api_key(monkeypatch: Any) -> None:
+    monkeypatch.delenv("MASSIVE_API_KEY", raising=False)
+    monkeypatch.delenv("POLYGON_API_KEY", raising=False)
+    try:
+        PolygonRESTConnector()
+    except LiveConnectorError as exc:
+        assert "MASSIVE_API_KEY" in str(exc)
+        assert "POLYGON_API_KEY" in str(exc)
+    else:
+        raise AssertionError("Expected LiveConnectorError when no API key env vars are set")
