@@ -1,136 +1,99 @@
-import sqlite3
+from __future__ import annotations
+
 import json
+import sqlite3
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
 
 
-class EventStore:
-    def __init__(self, db_path="neraium_events.db"):
-        self.conn = sqlite3.connect(db_path, check_same_thread=False)
-        self._create_table()
+def _utc_now() -> str:
+    return datetime.now(timezone.utc).isoformat()
 
-    def _create_table(self):
-        cursor = self.conn.cursor()
-        cursor.execute("""
-        CREATE TABLE IF NOT EXISTS events (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            timestamp TEXT,
-            status TEXT,
-            score REAL,
-            signals TEXT,
-            features TEXT,
-            aligned TEXT,
-            anomaly TEXT
-        )
-        """)
-        self.conn.commit()
 
-    def add(self, event: dict):
-        cursor = self.conn.cursor()
-        cursor.execute(
-            """
-            INSERT INTO events (timestamp, status, score, signals, features, aligned, anomaly)
-            VALUES (?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                event.get("timestamp"),
-                event.get("status"),
-                event.get("score"),
-                json.dumps(event.get("signals", {})),
-                json.dumps(event.get("features", {})),
-                json.dumps(event.get("aligned", [])),
-                json.dumps(event.get("anomaly", {})),
-            ),
-        )
-        self.conn.commit()
+class ResultStore:
+    def __init__(self, db_path: str = "neraium.db"):
+        self.db_path = db_path
+        Path(db_path).parent.mkdir(parents=True, exist_ok=True)
+        self._init_db()
 
-    def all(self):
-        cursor = self.conn.cursor()
-        cursor.execute("""
-        SELECT timestamp, status, score, signals, features, aligned, anomaly
-        FROM events
-        ORDER BY id ASC
-        """)
-        rows = cursor.fetchall()
+    def _conn(self) -> sqlite3.Connection:
+        conn = sqlite3.connect(self.db_path)
+        conn.row_factory = sqlite3.Row
+        return conn
 
-        events = []
-        for row in rows:
-            events.append({
-                "timestamp": row[0],
-                "status": row[1],
-                "score": row[2],
-                "signals": json.loads(row[3]),
-                "features": json.loads(row[4]),
-                "aligned": json.loads(row[5]),
-                "anomaly": json.loads(row[6]),
-            })
-        return events
+    def _init_db(self) -> None:
+        with self._conn() as conn:
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS events (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    timestamp TEXT NOT NULL,
+                    site_id TEXT,
+                    asset_id TEXT,
+                    payload_json TEXT NOT NULL,
+                    result_timestamp TEXT
+                )
+                """
+            )
+            conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS results (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    created_at TEXT NOT NULL,
+                    result_json TEXT NOT NULL
+                )
+                """
+            )
 
-    def latest(self):
-        cursor = self.conn.cursor()
-        cursor.execute("""
-        SELECT timestamp, status, score, signals, features, aligned, anomaly
-        FROM events
-        ORDER BY id DESC
-        LIMIT 1
-        """)
-        row = cursor.fetchone()
+    def reset(self) -> None:
+        with self._conn() as conn:
+            conn.execute("DELETE FROM events")
+            conn.execute("DELETE FROM results")
 
-        if not row:
+    def save_result(self, result: dict[str, Any]) -> None:
+        with self._conn() as conn:
+            conn.execute(
+                "INSERT INTO results (created_at, result_json) VALUES (?, ?)",
+                (_utc_now(), json.dumps(result)),
+            )
+
+    def get_latest_result(self) -> dict[str, Any] | None:
+        with self._conn() as conn:
+            row = conn.execute(
+                "SELECT result_json FROM results ORDER BY id DESC LIMIT 1"
+            ).fetchone()
+        if row is None:
             return None
+        return json.loads(row["result_json"])
 
-        return {
-            "timestamp": row[0],
-            "status": row[1],
-            "score": row[2],
-            "signals": json.loads(row[3]),
-            "features": json.loads(row[4]),
-            "aligned": json.loads(row[5]),
-            "anomaly": json.loads(row[6]),
-        }
+    def save_event(self, payload: dict[str, Any], result: dict[str, Any]) -> None:
+        with self._conn() as conn:
+            conn.execute(
+                """
+                INSERT INTO events (timestamp, site_id, asset_id, payload_json, result_timestamp)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (
+                    payload.get("timestamp", _utc_now()),
+                    payload.get("site_id"),
+                    payload.get("asset_id"),
+                    json.dumps(payload),
+                    result.get("timestamp"),
+                ),
+            )
 
-    def anomalies(self):
-        return [
-            event for event in self.all()
-            if event.get("status") == "anomaly"
-        ]
+    def list_recent_results(self, limit: int = 100) -> list[dict[str, Any]]:
+        safe_limit = max(1, min(int(limit), 1000))
+        with self._conn() as conn:
+            rows = conn.execute(
+                "SELECT created_at, result_json FROM results ORDER BY id DESC LIMIT ?",
+                (safe_limit,),
+            ).fetchall()
 
-    def structural_summary(self):
-        events = self.all()
-
-        if not events:
-            return {
-                "total_events": 0,
-                "total_structural_anomalies": 0,
-                "latest_status": "no data",
-                "latest_drift_score": 0,
-                "latest_vector": [],
-                "relationship_points": [],
-                "baseline_centroid": {"x": 0, "y": 0},
-                "drift_threshold": 30,
-            }
-
-        anomalies = [e for e in events if e["status"] == "anomaly"]
-        latest = events[-1]
-
-        relationship_points = []
-        for e in events[-50:]:
-            relationship_points.append({
-                "x": e["signals"].get("cpu_usage", 0),
-                "y": e["signals"].get("memory_usage", 0),
-                "status": e["status"],
-                "timestamp": e["timestamp"],
-                "score": e["score"],
-            })
-
-        cx = sum(p["x"] for p in relationship_points) / len(relationship_points)
-        cy = sum(p["y"] for p in relationship_points) / len(relationship_points)
-
-        return {
-            "total_events": len(events),
-            "total_structural_anomalies": len(anomalies),
-            "latest_status": latest["status"],
-            "latest_drift_score": latest["score"],
-            "latest_vector": latest["aligned"],
-            "relationship_points": relationship_points,
-            "baseline_centroid": {"x": cx, "y": cy},
-            "drift_threshold": 30,
-        }
+        out = []
+        for row in rows:
+            result = json.loads(row["result_json"])
+            result["persisted_at"] = row["created_at"]
+            out.append(result)
+        return out
