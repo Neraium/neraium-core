@@ -21,7 +21,11 @@ from neraium_core.engine_stages.decision_validity import (
     DecisionValidityResult,
     evaluate_decision_validity,
 )
-from neraium_core.engine_stages.fragility import FragilityInput, FragilityResult, evaluate_fragility
+from neraium_core.engine_stages.fragility import (
+    FragilityInput,
+    FragilityResult,
+    evaluate_fragility,
+)
 from neraium_core.engine_stages.ingress_history import (
     IngressAndHistoryBuffersInput,
     IngressAndHistoryBuffersResult,
@@ -52,7 +56,10 @@ from neraium_core.engine_stages.scoring_preparation import (
     ScoringPreparationResult,
     prepare_scoring_inputs,
 )
-from neraium_core.engine_stages.stage_boundaries import EngineStageBoundary, structural_engine_stage_groups
+from neraium_core.engine_stages.stage_boundaries import (
+    EngineStageBoundary,
+    structural_engine_stage_groups,
+)
 from neraium_core.engine_stages.warmup_defaults import build_warmup_result_payload
 
 __all__ = [
