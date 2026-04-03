@@ -8,6 +8,31 @@ import numpy as np
 ArrayLike = Any
 
 
+def _undirected_graph_is_connected(adj: np.ndarray) -> bool:
+    """Return True iff the undirected graph has a single connected component.
+
+    Replaces ``(A+I)^(n-1)`` (O(n^3 log n) matrix powers) with repeated
+    ``r @ A`` frontier expansion (BLAS, O(diameter·n^2), typically << n steps).
+    Matches the legacy Boolean ``np.all(R > 0)`` reachability on symmetric 0/1
+    adjacency from ``thresholded_adjacency`` (verified on random graphs).
+    """
+    n = int(adj.shape[0])
+    if n <= 1:
+        return True
+    if adj.ndim != 2 or adj.shape[0] != adj.shape[1]:
+        raise ValueError("adjacency must be square")
+    A = (np.asarray(adj, dtype=float) > 0.0).astype(np.float64)
+    r = np.zeros(n, dtype=np.float64)
+    r[0] = 1.0
+    for _ in range(n):
+        spread = (r @ A) > 0.0
+        nxt = np.maximum(r, spread.astype(np.float64))
+        if np.array_equal(nxt, r):
+            break
+        r = nxt
+    return bool(np.all(r > 0.0))
+
+
 def thresholded_adjacency(corr: ArrayLike, threshold: float = 0.6) -> np.ndarray:
     matrix = np.asarray(corr, dtype=float)
     if matrix.ndim != 2 or matrix.shape[0] != matrix.shape[1]:
@@ -33,8 +58,12 @@ def graph_metrics(adjacency: ArrayLike, corr: ArrayLike | None = None) -> dict[s
 
     connected = 0.0
     if n:
-        reachability = np.linalg.matrix_power(adj + np.eye(n), max(n - 1, 1))
-        connected = float(np.all(reachability > 0))
+        # Small graphs: BLAS matrix_power is extremely cheap; large n: avoid (A+I)^(n-1).
+        if n <= 24:
+            reachability = np.linalg.matrix_power(adj + np.eye(n), max(n - 1, 1))
+            connected = float(np.all(reachability > 0))
+        else:
+            connected = float(_undirected_graph_is_connected(adj))
 
     metrics = {
         "mean_degree": float(np.mean(degree) if n else 0.0),

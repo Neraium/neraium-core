@@ -21,9 +21,10 @@ def lagged_correlation_matrix(observations: ArrayLike, lag: int = 1) -> np.ndarr
     n_features = data.shape[1]
     result = np.zeros((n_features, n_features), dtype=float)
 
-    for i in range(n_features):
-        for j in range(n_features):
-            result[i, j] = np.corrcoef(current[:, i], future[:, j])[0, 1]
+    with np.errstate(invalid="ignore", divide="ignore"):
+        for i in range(n_features):
+            for j in range(n_features):
+                result[i, j] = np.corrcoef(current[:, i], future[:, j])[0, 1]
 
     return np.nan_to_num(result, nan=0.0, posinf=0.0, neginf=0.0)
 
@@ -42,5 +43,6 @@ def directional_metrics(matrix: ArrayLike) -> dict[str, float]:
         "causal_energy": energy,
         "causal_asymmetry": asymmetry,
         "causal_divergence": divergence,
+        "divergence": divergence,
         "proxy_only": 1.0,
     }
