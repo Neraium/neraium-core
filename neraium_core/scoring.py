@@ -1,76 +1,51 @@
-<<<<<<< HEAD
-import numpy as np
+from __future__ import annotations
+
+from typing import Mapping
+
+import math
 
 
 class ScoringEngine:
     """
-    Structural scoring engine based on geometric drift
-    between system state vectors.
+    Legacy structural scoring engine retained for backward compatibility.
     """
 
-    def __init__(self, history_window=20, drift_threshold=30):
-        self.history = []
-        self.history_window = history_window
-        self.drift_threshold = drift_threshold
+    def __init__(self, history_window: int = 20, drift_threshold: float = 30.0):
+        self.history: list[list[float]] = []
+        self.history_window = int(history_window)
+        self.drift_threshold = float(drift_threshold)
 
-    def score(self, aligned_vector, signals=None):
-        """
-        aligned_vector example:
-        [cpu_usage, memory_usage]
-        """
-
-        x = np.array(aligned_vector)
-
-        # store history
+    def score(self, aligned_vector: list[float], signals: Mapping[str, object] | None = None) -> dict[str, object]:
+        x = [float(v) for v in aligned_vector]
         self.history.append(x)
 
-        # warm-up period
         if len(self.history) < self.history_window:
             return {
-                "score": 0,
+                "score": 0.0,
                 "status": "normal",
-                "anomaly": {
-                    "anomaly": False,
-                    "reason": "insufficient data"
-                }
+                "anomaly": {"anomaly": False, "reason": "insufficient data"},
             }
 
-        # compute baseline geometry
-        baseline = np.mean(self.history[-self.history_window:], axis=0)
-
-        # geometric drift
-        drift = np.linalg.norm(x - baseline)
-
+        baseline = [sum(values) / len(values) for values in zip(*self.history[-self.history_window :])]
+        drift = math.dist(x, baseline)
         anomaly = drift > self.drift_threshold
 
-        anomaly_info = {
-            "anomaly": anomaly
-        }
-
+        anomaly_info: dict[str, object] = {"anomaly": anomaly}
         if anomaly:
             anomaly_info["drift"] = float(drift)
-
             if signals:
-                cpu = signals.get("cpu_usage", 0)
-                mem = signals.get("memory_usage", 0)
-
-                cpu_base = baseline[0]
-                mem_base = baseline[1]
-
+                cpu = _coerce_float(signals.get("cpu_usage", 0.0))
+                mem = _coerce_float(signals.get("memory_usage", 0.0))
+                cpu_base = baseline[0] if baseline else 0.0
+                mem_base = baseline[1] if len(baseline) > 1 else 0.0
                 anomaly_info["cpu_delta"] = float(cpu - cpu_base)
                 anomaly_info["mem_delta"] = float(mem - mem_base)
 
         return {
             "score": float(drift),
             "status": "anomaly" if anomaly else "normal",
-            "anomaly": anomaly_info
+            "anomaly": anomaly_info,
         }
-=======
-from __future__ import annotations
-
-from typing import Mapping
-
-import math
 
 
 LEGACY_KEYS: dict[str, str] = {
@@ -236,4 +211,3 @@ def composite_instability_score_normalized(
         return 0.0
 
     return float(weighted_sum / weight_sum)
->>>>>>> b5a6787d331053eaea92f461f7bbab489f4c495a
