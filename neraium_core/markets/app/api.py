@@ -70,7 +70,7 @@ def create_app(
     data_dir: str | Path = "neraium_core/markets/sample_data",
     evidence_path: str | Path = "artifacts/neraium_markets/evidence.jsonl",
 ) -> FastAPI:
-    app = FastAPI(title="Neraium Markets API", version="0.3.0")
+    app = FastAPI(title="NERAIUM MARKETS API LIVE", version="0.3.0")
     evidence = EvidenceLog(path=evidence_path)
     cache_store = CacheStore()
     ingest = HistoricalIngestService(cache_store)
@@ -83,11 +83,11 @@ def create_app(
 
     @app.get("/health")
     def health() -> dict[str, str]:
-        return {"status": "ok", "service": "neraium-markets"}
+        return {"ok": True}
 
     @app.get("/")
     def root() -> dict[str, str]:
-        return {"status": "ok", "service": "neraium-markets"}
+        return {"status": "ok", "app": "markets-live"}
 
     @app.get("/operator", response_class=HTMLResponse)
     def operator_ui() -> HTMLResponse:
