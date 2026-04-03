@@ -53,7 +53,11 @@ class _FallbackStructuralEngine:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run Neraium against live/near-live stock bars (analytics only).")
     parser.add_argument("--tickers", required=True, help="Comma-separated tickers, e.g. AAPL,MSFT")
-    parser.add_argument("--provider", default=os.getenv("LIVE_DATA_PROVIDER", "polygon"), choices=["polygon", "alphavantage", "mock"])
+    parser.add_argument(
+        "--provider",
+        default=os.getenv("LIVE_DATA_PROVIDER", "polygon"),
+        choices=["massive", "polygon", "alphavantage", "mock"],
+    )
     parser.add_argument(
         "--interval",
         "--poll-interval",
@@ -88,8 +92,8 @@ def _timestamp_to_epoch(ts: datetime) -> float:
 def _build_connector(args: argparse.Namespace) -> LiveMarketConnector:
     provider = "mock" if args.mock else args.provider
     api_key = args.api_key
-    if provider == "polygon" and not api_key:
-        api_key = os.getenv("POLYGON_API_KEY")
+    if provider in {"massive", "polygon"} and not api_key:
+        api_key = os.getenv("MASSIVE_API_KEY") or os.getenv("POLYGON_API_KEY")
     elif provider == "alphavantage" and not api_key:
         api_key = os.getenv("ALPHAVANTAGE_API_KEY")
     return create_stock_connector(provider, api_key=api_key, interval=args.provider_interval)
