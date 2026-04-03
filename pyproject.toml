@@ -1,20 +1,47 @@
 [build-system]
-requires = ["setuptools>=68", "wheel"]
+requires = ["setuptools", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "neraium-core"
 version = "0.1.0"
-description = "Non-executing structural analytics engine with intraday market signal support"
+description = "Read-only structural instability instrumentation engine and API"
 readme = "README.md"
 requires-python = ">=3.10"
-dependencies = []
+dependencies = [
+  "fastapi>=0.110",
+  "numpy>=1.24",
+  "pandas>=2.0",
+  "pydantic>=2",
+  "python-multipart>=0.0.9",
+  "starlette>=0.36",
+  "uvicorn>=0.29",
+]
 
 [project.optional-dependencies]
 dev = [
-  "pytest>=8.0",
-  "pandas>=2.0",
+  "httpx",
+  "pytest",
+  "ruff",
+]
+plots = [
+  "matplotlib",
 ]
 
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["neraium_core*"]
+exclude = ["apps*", "tests*", "scripts*", "sii*"]
+
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+pythonpath = ["."]
+python_files = ["test_*.py"]
+
+[tool.ruff]
+line-length = 100
+
+[tool.ruff.lint]
+ignore = ["E402", "E501", "E731", "E741", "F401", "F541", "F601", "F811", "F821", "F841"]
