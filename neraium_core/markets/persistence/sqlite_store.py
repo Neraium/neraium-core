@@ -136,3 +136,31 @@ class MarketsSQLiteStore:
 
     def record_error(self, payload: dict) -> None:
         self._insert_json("live_errors", payload)
+
+    def list_cached_datasets(self, limit: int = 100) -> list[dict]:
+        rows = self.conn.execute("SELECT id, created_at, payload FROM fetch_jobs ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
+        return [{"id": row["id"], "created_at": row["created_at"], **json.loads(row["payload"])} for row in rows]
+
+    def list_live_errors(self, limit: int = 50) -> list[dict]:
+        rows = self.conn.execute("SELECT created_at, payload FROM live_errors ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
+        return [{"created_at": row["created_at"], **json.loads(row["payload"])} for row in rows]
+
+    def list_trader_outputs(self, limit: int = 200, ticker: str | None = None) -> list[dict]:
+        if ticker:
+            rows = self.conn.execute(
+                "SELECT created_at, payload FROM trader_outputs WHERE ticker = ? ORDER BY id DESC LIMIT ?",
+                (ticker.upper(), limit),
+            ).fetchall()
+        else:
+            rows = self.conn.execute("SELECT created_at, payload FROM trader_outputs ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
+        return [{"created_at": row["created_at"], **json.loads(row["payload"])} for row in rows]
+
+    def list_replay_outputs(self, limit: int = 200, ticker: str | None = None) -> list[dict]:
+        if ticker:
+            rows = self.conn.execute(
+                "SELECT run_id, timestamp, payload FROM replay_outputs WHERE ticker = ? ORDER BY id DESC LIMIT ?",
+                (ticker.upper(), limit),
+            ).fetchall()
+        else:
+            rows = self.conn.execute("SELECT run_id, timestamp, payload FROM replay_outputs ORDER BY id DESC LIMIT ?", (limit,)).fetchall()
+        return [{"run_id": row["run_id"], "timestamp": row["timestamp"], **json.loads(row["payload"])} for row in rows]
