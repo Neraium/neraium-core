@@ -24,7 +24,6 @@ from neraium_core.causal_graph import (
     causal_root_cause_chains,
 )
 from neraium_core.branching import derive_branching_analysis
-<<<<<<< HEAD
 from neraium_core.data_quality import (
     compute_data_quality,
     data_quality_summary,
@@ -33,9 +32,6 @@ from neraium_core.data_quality import (
 )
 from neraium_core.decision_layer import decision_output
 from neraium_core.explanation_layer import build_explanation_text
-=======
-from neraium_core.decision_layer import decision_output
->>>>>>> origin/main
 from neraium_core.directional import directional_metrics, lagged_correlation_matrix
 from neraium_core.early_warning import early_warning_metrics
 from neraium_core.entropy import interaction_entropy
@@ -50,11 +46,8 @@ from neraium_core.experimental_analytics.counterfactual_simulation import simula
 from neraium_core.forecast_models import forecast_next, time_to_threshold_ar1
 from neraium_core.forecasting import instability_trend, time_to_instability
 from neraium_core.geometry import (
-<<<<<<< HEAD
     correlation_matrix,
     normalize_window,
-=======
->>>>>>> origin/main
     signal_structural_importance,
     structural_drift,
 )
@@ -75,7 +68,6 @@ from neraium_core.structural_upgrade import (
 )
 from neraium_core.scoring import canonicalize_components, canonicalize_weights, composite_instability_score_normalized
 from neraium_core.spectral import dominant_mode_loading, spectral_gap, spectral_radius
-<<<<<<< HEAD
 from neraium_core.context_invariant_representation import (
     RepresentationWeights,
     TemporalRepresentationConfig,
@@ -89,12 +81,6 @@ from neraium_core.staged_pipeline import (
     AttributionStage,
     DecisionStage,
     FeatureExtractionStage,
-=======
-from neraium_core.context_invariant_representation import RepresentationWeights, TemporalRepresentationConfig
-from neraium_core.stat_geometry import StatisticalGeometryLayer
-from neraium_core.detection.readiness import compute_engine_readiness
-from neraium_core.staged_pipeline import (
->>>>>>> origin/main
     NodeBaselineProfile,
     RelationalInstabilityStage,
     StructuralDriftStage,
@@ -103,28 +89,6 @@ from neraium_core.staged_pipeline import (
 )
 from neraium_core.subsystems import subsystem_spectral_measures
 from neraium_core.realtime.buffer import HistoryRingBuffer, TimestampDequeBuffer, VectorDequeBuffer
-<<<<<<< HEAD
-=======
-from neraium_core.engine_stages import (
-    AnalyticsPackagingInput,
-    DecisionProjectionInput,
-    IngressAndHistoryBuffersInput,
-    RegimeMutationInput,
-    RepresentationAndQualityInput,
-    ScoreComputationInput,
-    ScoringPreparationInput,
-    apply_transition_state_mapping,
-    build_representation_and_quality,
-    build_warmup_result_payload,
-    compute_scores,
-    mutate_regime_state,
-    package_analytics_output,
-    prepare_ingress_and_history_buffers,
-    prepare_scoring_inputs,
-    project_decision_and_explanation,
-    structural_engine_stage_groups,
-)
->>>>>>> origin/main
 
 
 # How slowly the rolling baseline adapts (only when nominal); avoid absorbing instability.
@@ -157,25 +121,6 @@ def _vector_from_sensor_values(sensor_values: Dict[str, object], order: List[str
     return np.asarray(values, dtype=float)
 
 
-<<<<<<< HEAD
-=======
-def _to_epoch_seconds(value: object) -> float:
-    if isinstance(value, datetime):
-        dt = value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
-        return float(dt.timestamp())
-    text = str(value).strip()
-    if text.endswith("Z"):
-        text = text[:-1] + "+00:00"
-    try:
-        return float(text)
-    except (TypeError, ValueError):
-        dt = datetime.fromisoformat(text)
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
-        return float(dt.timestamp())
-
-
->>>>>>> origin/main
 def _env_enabled(var_name: str, *, default: str = "1") -> bool:
     """Feature toggle helper that treats 0/false/no/off as disabled."""
     v = os.environ.get(var_name, default)
@@ -236,10 +181,6 @@ class StructuralEngine:
         self.frames = deque(maxlen=500)
         self.sensor_order: List[str] = []
         self.latest_result: Optional[Dict] = None
-<<<<<<< HEAD
-=======
-        self._prior_action_signal: Optional[Dict[str, object]] = None
->>>>>>> origin/main
         self.score_history: deque[float] = deque(maxlen=120)
         self.baseline_adaptation_alpha = baseline_adaptation_alpha
         base_weights = RepresentationWeights()
@@ -499,14 +440,6 @@ class StructuralEngine:
             },
         }
 
-<<<<<<< HEAD
-=======
-    @staticmethod
-    def stage_groups() -> list[dict[str, object]]:
-        """Typed high-level stage boundaries used for decomposition planning."""
-        return [dict(item) for item in structural_engine_stage_groups()]
-
->>>>>>> origin/main
     def _debug_print_experimental_analytics_once(self, result: Dict) -> None:
         if not self._frame_debug:
             return
@@ -636,11 +569,7 @@ class StructuralEngine:
         ts_vals: list[float] = []
         for f in frame_iter:
             try:
-<<<<<<< HEAD
                 ts_vals.append(float(f.get("timestamp")))
-=======
-                ts_vals.append(_to_epoch_seconds(f.get("timestamp")))
->>>>>>> origin/main
             except (TypeError, ValueError):
                 continue
         return ts_vals if len(ts_vals) >= 2 else None
@@ -660,11 +589,7 @@ class StructuralEngine:
         ts_vals: list[float] = []
         for f in frame_iter:
             try:
-<<<<<<< HEAD
                 ts_vals.append(float(f.get("timestamp")))
-=======
-                ts_vals.append(_to_epoch_seconds(f.get("timestamp")))
->>>>>>> origin/main
             except (TypeError, ValueError):
                 continue
         return ts_vals if len(ts_vals) >= 2 else None
@@ -682,11 +607,7 @@ class StructuralEngine:
             if v is None:
                 continue
             try:
-<<<<<<< HEAD
                 tsv = float(f.get("timestamp"))
-=======
-                tsv = _to_epoch_seconds(f.get("timestamp"))
->>>>>>> origin/main
             except (TypeError, ValueError):
                 tsv = 0.0
             self._recent_vector_buffer.append(np.asarray(v, dtype=float))
@@ -700,11 +621,7 @@ class StructuralEngine:
                 ts_b: list[float] = []
                 for f in fl[: self.baseline_window]:
                     try:
-<<<<<<< HEAD
                         ts_b.append(float(f.get("timestamp")))
-=======
-                        ts_b.append(_to_epoch_seconds(f.get("timestamp")))
->>>>>>> origin/main
                     except (TypeError, ValueError):
                         ts_b.append(0.0)
                 self._baseline_ts_cached = ts_b
@@ -723,11 +640,7 @@ class StructuralEngine:
             ts_b: list[float] = []
             for f in fl[: self.baseline_window]:
                 try:
-<<<<<<< HEAD
                     ts_b.append(float(f.get("timestamp")))
-=======
-                    ts_b.append(_to_epoch_seconds(f.get("timestamp")))
->>>>>>> origin/main
                 except (TypeError, ValueError):
                     ts_b.append(0.0)
             self._baseline_ts_cached = ts_b
@@ -1327,7 +1240,6 @@ class StructuralEngine:
 
     def process_frame(self, frame: Dict) -> Dict:
         vector = self._vector_from_frame(frame)
-<<<<<<< HEAD
         sensor_values = frame.get("sensor_values") or {}
 
         history_transition_len_before = len(self._transition_pressure_history)
@@ -1409,23 +1321,6 @@ class StructuralEngine:
             "state_graph": {"available": False, "reason": "insufficient history"},
             "geometry_explanations": {"available": False, "reason": "insufficient history"},
         }
-=======
-        ingress_result = prepare_ingress_and_history_buffers(
-            self,
-            IngressAndHistoryBuffersInput(frame=frame, vector=vector),
-            to_epoch_seconds=_to_epoch_seconds,
-            incremental_windows_enabled=_incremental_windows_enabled(),
-        )
-        history_transition_len_before = ingress_result.history_transition_len_before
-        history_shock_len_before = ingress_result.history_shock_len_before
-        history_drift_len_before = ingress_result.history_drift_len_before
-
-        result = build_warmup_result_payload(
-            frame,
-            sensor_order=self.sensor_order,
-            experimental_analytics_payload=self._analytics_unavailable_payload("warmup"),
-        )
->>>>>>> origin/main
         temporal_quality: dict[str, object] = {}
         temporal_features: dict[str, object] = {}
 
@@ -1457,7 +1352,6 @@ class StructuralEngine:
             else:
                 history_matrix = self._history_ring.chronological_matrix()
             history_ts = self._history_ring.chronological_timestamps()
-<<<<<<< HEAD
             rep = build_temporal_representation(history_matrix, self.representation_config, timestamps=history_ts)
             transformed_history = rep.transformed
             baseline_window = np.asarray(
@@ -1481,37 +1375,10 @@ class StructuralEngine:
             )
             result["data_quality"] = data_quality_report.to_dict()
             dq_summary = data_quality_summary(data_quality_report)
-=======
-            representation_quality = build_representation_and_quality(
-                self,
-                RepresentationAndQualityInput(history_matrix=history_matrix, history_timestamps=history_ts),
-            )
-            rep = representation_quality.representation
-            baseline_window = representation_quality.baseline_window
-            recent_window = representation_quality.recent_window
-            z_baseline = representation_quality.z_baseline
-            z_recent = representation_quality.z_recent
-            baseline_mean = representation_quality.baseline_mean
-            baseline_std = representation_quality.baseline_std
-            recent_mean = representation_quality.recent_mean
-            recent_std = representation_quality.recent_std
-            ts_baseline = representation_quality.ts_baseline
-            ts_recent = representation_quality.ts_recent
-            temporal_quality = representation_quality.temporal_quality
-            temporal_features = representation_quality.temporal_features
-            data_quality_report = representation_quality.data_quality_report
-            dq_summary = representation_quality.dq_summary
-            valid_mask = representation_quality.valid_mask
-            valid_signal_count = representation_quality.valid_signal_count
-            use_degraded = bool(representation_quality.use_degraded)
-
-            result["data_quality"] = data_quality_report.to_dict()
->>>>>>> origin/main
             result["data_quality_summary"] = dq_summary
             result["active_sensor_count"] = dq_summary["valid_signal_count"]
             result["missing_sensor_count"] = dq_summary["missing_sensor_count"]
 
-<<<<<<< HEAD
             use_degraded = (not data_quality_report.gate_passed) and should_use_degraded_analytics(
                 data_quality_report
             )
@@ -1528,8 +1395,6 @@ class StructuralEngine:
             valid_signal_count = int(np.sum(valid_mask))
             valid_signal_count = min(valid_signal_count, len(self.sensor_order))
 
-=======
->>>>>>> origin/main
             warning = early_warning_metrics(np.nan_to_num(recent_window, nan=0.0))
 
             signature = build_regime_signature(recent_mean, recent_std)
@@ -1573,45 +1438,16 @@ class StructuralEngine:
                 }
             )
 
-<<<<<<< HEAD
             if valid_signal_count >= 2:
                 z_base_valid = z_baseline[:, valid_mask]
                 z_recent_valid = z_recent[:, valid_mask]
                 stage_features = FeatureExtractionStage.extract(z_base_valid, z_recent_valid)
-=======
-            scoring_preparation = prepare_scoring_inputs(
-                self,
-                ScoringPreparationInput(
-                    z_baseline=z_baseline,
-                    z_recent=z_recent,
-                    valid_mask=valid_mask,
-                    valid_signal_count=valid_signal_count,
-                ),
-            )
-            analytics["correlation_readiness"] = {
-                "should_proceed_scoring": bool(scoring_preparation.should_proceed_scoring),
-                "correlation_ready": bool(scoring_preparation.correlation_ready),
-                "covariance_ready": bool(scoring_preparation.covariance_ready),
-                "minimum_sample_ready": bool(scoring_preparation.minimum_sample_ready),
-                "shape_compatible": bool(scoring_preparation.shape_compatible),
-            }
-
-            if scoring_preparation.should_proceed_scoring:
-                z_base_valid = np.asarray(scoring_preparation.z_baseline_valid, dtype=float)
-                z_recent_valid = np.asarray(scoring_preparation.z_recent_valid, dtype=float)
-                stage_features = (
-                    scoring_preparation.stage_features
-                    if isinstance(scoring_preparation.stage_features, dict)
-                    else {}
-                )
->>>>>>> origin/main
                 rich_signal = stage_features.get("rich_signal_features", {})
                 signal_degradation = self._derive_signal_degradation(
                     rich_signal if isinstance(rich_signal, dict) else {}
                 )
                 result["signal_degradation"] = signal_degradation
 
-<<<<<<< HEAD
                 corr_baseline = correlation_matrix(z_base_valid)
                 corr_recent = correlation_matrix(z_recent_valid)
 
@@ -1624,12 +1460,6 @@ class StructuralEngine:
                 ):
                     baseline_corr_used = self._rolling_baseline_corr
                     baseline_mode = "rolling"
-=======
-                corr_baseline = np.asarray(scoring_preparation.corr_baseline, dtype=float)
-                corr_recent = np.asarray(scoring_preparation.corr_recent, dtype=float)
-                baseline_corr_used = np.asarray(scoring_preparation.baseline_corr_used, dtype=float)
-                baseline_mode = str(scoring_preparation.baseline_mode or "fixed")
->>>>>>> origin/main
 
                 self._stage_baseline_profile.corr_baseline = np.array(baseline_corr_used, dtype=float, copy=True)
                 stage_structural_raw, _ = StructuralDriftStage.score(stage_features, self._stage_baseline_profile)
@@ -1654,7 +1484,6 @@ class StructuralEngine:
                 relational_raw = max(relational_raw, stage_relational_raw, 0.5 * stage_structural_raw)
                 stability_score = 1.0 / (1.0 + drift_score)
 
-<<<<<<< HEAD
                 regime_drift = 0.0
                 if regime_name is not None:
                     persist_regime_state = False
@@ -1691,24 +1520,6 @@ class StructuralEngine:
 
                     if persist_regime_state:
                         self._persist_regime_state()
-=======
-                regime_mutation_initial = mutate_regime_state(
-                    self,
-                    RegimeMutationInput(
-                        regime_name=regime_name,
-                        signature=np.asarray(signature, dtype=float),
-                        corr_recent=np.asarray(corr_recent, dtype=float),
-                        baseline_window=self.baseline_window,
-                        valid_signal_count=valid_signal_count,
-                        transition_state="NONE",
-                        transition_pressure=0.0,
-                        decision_interpreted_state=None,
-                        apply_regime_library_mutation=True,
-                        apply_rolling_baseline_mutation=False,
-                    ),
-                )
-                regime_drift = float(regime_mutation_initial.regime_drift)
->>>>>>> origin/main
 
                 signal_importance = signal_structural_importance(corr_recent)
                 adjacency = thresholded_adjacency(corr_recent, threshold=0.6)
@@ -1829,7 +1640,6 @@ class StructuralEngine:
                         "early_separation_flag": bool(rep.diagnostics.get("early_separation_flag", False)),
                     }
                 )
-<<<<<<< HEAD
                 regime_memory_state = {
                     "regime_name": regime_name,
                     "library_size": len(self.regime_signatures),
@@ -1840,9 +1650,6 @@ class StructuralEngine:
                     ),
                 }
                 result["regime_memory_state"] = regime_memory_state
-=======
-                result["regime_memory_state"] = dict(regime_mutation_initial.regime_memory_state)
->>>>>>> origin/main
 
                 dominant_mode = np.asarray(spectral.get("dominant_eigenvector", []), dtype=float)
                 transition_metrics = {
@@ -2280,7 +2087,6 @@ class StructuralEngine:
 
             regime_factor = min(1.0, float(regime_count) / 5.0) if regime_count > 0 else 0.0
 
-<<<<<<< HEAD
             component_confidence: dict[str, float] = {k: 0.0 for k in components.keys()}
 
             # Tier-1
@@ -2312,24 +2118,6 @@ class StructuralEngine:
 
             composite = composite_instability_score_normalized(components, weights=weights_for_composite)
             composite = float(composite)
-=======
-            scoring_result = compute_scores(
-                ScoreComputationInput(
-                    base_components=components,
-                    raw_components={},
-                    evidence_confidence=evidence_conf,
-                    correlation_ready=correlation_ready,
-                    regime_factor=regime_factor,
-                    transition_aware_enabled=self.transition_aware_enabled,
-                )
-            )
-            components = scoring_result.components
-            component_confidence = scoring_result.component_confidence
-            weights_for_composite = scoring_result.weights_for_composite
-            components_for_decision = scoring_result.components_for_decision
-            composite = float(scoring_result.composite_score)
-            analytics["component_confidence"] = component_confidence
->>>>>>> origin/main
             self.score_history.append(composite)
 
             # Calibrate decision thresholds from early nominal composite history.
@@ -2420,7 +2208,6 @@ class StructuralEngine:
                 debug_prints=self._frame_debug,
             )
             result.update(decision)
-<<<<<<< HEAD
             if self.transition_aware_enabled:
                 transition_pressure = float(result.get("transition_pressure", components.get("transition_pressure", 0.0)))
                 transition_state = str(result.get("transition_state", "NONE"))
@@ -2470,30 +2257,10 @@ class StructuralEngine:
             result["alignment_confidence"] = round(float(temporal_quality.get("alignment_confidence", 0.0)), 4)
             result["effective_sampling_density"] = round(float(temporal_quality.get("effective_sampling_density", 0.0)), 4)
             result["localization_score"] = 0.0
-=======
-            apply_transition_state_mapping(self, result)
-
-            result["uncertainty"] = uncertainty
-            project_decision_and_explanation(
-                DecisionProjectionInput(
-                    result=result,
-                    analytics=analytics,
-                    decision=decision,
-                    components=components,
-                    temporal_quality=temporal_quality,
-                    data_quality_timestamp_irregularity=float(data_quality_report.timestamp_irregularity),
-                    forecast_trend=float(forecast.get("trend", 0.0)),
-                    stabilized_confidence=stabilized_confidence,
-                    composite_score=float(composite),
-                )
-            )
-            result["component_confidence"] = component_confidence
->>>>>>> origin/main
             self._temporal_consistency_history.append(float(temporal_quality.get("temporal_consistency_score", 0.0)))
 
             self._state_history.append(decision.get("interpreted_state", "NOMINAL_STRUCTURE"))
 
-<<<<<<< HEAD
             # Rolling baseline: update only when nominal, composite low, and not locked.
             _ts_baseline = str(result.get("transition_state", "NONE"))
             transition_blocks_baseline = (
@@ -2525,30 +2292,12 @@ class StructuralEngine:
                     self._stable_manifold_corr = (
                         manifold_alpha * self._stable_manifold_corr + (1.0 - manifold_alpha) * corr_recent
                     )
-=======
-            mutate_regime_state(
-                self,
-                RegimeMutationInput(
-                    regime_name=regime_name,
-                    signature=np.asarray(signature, dtype=float),
-                    corr_recent=np.asarray(corr_recent, dtype=float),
-                    baseline_window=self.baseline_window,
-                    valid_signal_count=valid_signal_count,
-                    transition_state=str(result.get("transition_state", "NONE")),
-                    transition_pressure=float(result.get("transition_pressure", 0.0)),
-                    decision_interpreted_state=str(decision.get("interpreted_state")),
-                    apply_regime_library_mutation=False,
-                    apply_rolling_baseline_mutation=True,
-                ),
-            )
->>>>>>> origin/main
 
             analytics["composite_instability"] = round(float(composite), 4)
             analytics["temporal_quality"] = temporal_quality
             analytics["temporal_features"] = temporal_features
             analytics["forecasting"] = forecast
             analytics["components"] = components
-<<<<<<< HEAD
             explain_components = {
                 "structural_drift_score": float(result.get("structural_drift_score", 0.0)),
                 "relational_instability_score": float(result.get("relational_instability_score", 0.0)),
@@ -2613,16 +2362,6 @@ class StructuralEngine:
                 "counterfactual_simulation": counterfactual_simulation,
                 **analytics,
             }
-=======
-            analytics_packaged = package_analytics_output(
-                AnalyticsPackagingInput(
-                    analytics=analytics,
-                    unavailable_payload=self._analytics_unavailable_payload("missing inputs"),
-                )
-            )
-            analytics = analytics_packaged.analytics
-            result["experimental_analytics"] = analytics_packaged.experimental_analytics
->>>>>>> origin/main
             debug_raw_features = os.environ.get("NERAIUM_DEBUG_RAW_FEATURES", "0").strip().lower() not in {
                 "0",
                 "false",
@@ -3086,14 +2825,6 @@ class StructuralEngine:
         if len(self._structural_drift_history) == history_drift_len_before:
             self._structural_drift_history.append(float(result.get("structural_drift_score", 0.0) or 0.0))
 
-<<<<<<< HEAD
-=======
-        from neraium_core.decision_interface import attach_action_signal_to_result
-
-        sig = attach_action_signal_to_result(result, self._prior_action_signal)
-        self._prior_action_signal = sig
-
->>>>>>> origin/main
         self.latest_result = result
 
         return result
