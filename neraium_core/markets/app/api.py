@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import csv
+from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
@@ -70,6 +71,7 @@ def create_app(
     ingest = HistoricalIngestService(cache_store)
     sqlite = MarketsSQLiteStore()
     live = LiveSessionRunner()
+    configured_data_dir = Path(data_dir)
 
     @app.get("/health")
     def health() -> dict[str, str]:
@@ -82,7 +84,7 @@ def create_app(
 
     @app.post("/run-signals")
     def run_signals() -> dict[str, list[dict]]:
-        signals = run_signal_pipeline(Path(data_dir), evidence)
+        signals = run_signal_pipeline(configured_data_dir, evidence)
         return {"signals": signals}
 
     @app.get("/signals/latest")
@@ -116,7 +118,7 @@ def create_app(
         use_massive_cached_data: bool = False,
         symbols: str | None = None,
     ) -> dict[str, object]:
-        replay_data_dir = Path(data_dir) if data_dir else Path("neraium_core/markets/sample_data")
+        replay_data_dir = Path(data_dir) if data_dir else configured_data_dir
         if use_massive_cached_data:
             datasets = cache_store.list_datasets()
             if not datasets:
@@ -135,11 +137,24 @@ def create_app(
 
     @app.post("/live/start")
     async def live_start(body: LiveStartBody) -> dict:
+        missing_required = [sym for sym in CORE if sym not in {item.upper() for item in body.symbols}]
+        if missing_required:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "Missing required core symbols for live state vector: "
+                    + ", ".join(missing_required)
+                    + ". Include all core symbols or run replay for partial universes."
+                ),
+            )
         try:
             load_massive_config().validate(require_api_key=True)
         except MassiveConfigError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
-        await live.start(body.symbols, body.timeframe)
+        try:
+            await live.start(body.symbols, body.timeframe)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
         return {"status": "started", **live.status()}
 
     @app.post("/live/stop")
@@ -154,6 +169,40 @@ def create_app(
     @app.get("/live/signals/latest")
     def live_latest_signals() -> dict:
         return {"signals": list(live.latest_signals.values())}
+
+    @app.get("/signals/history")
+    def signal_history(limit: int = 300, ticker: str | None = None, session_type: str | None = None) -> dict[str, list[dict]]:
+        ticker_upper = ticker.upper() if ticker else None
+        rows: list[dict] = []
+        include_live = session_type in (None, "live")
+        include_replay = session_type in (None, "replay")
+        if include_live:
+            for row in sqlite.list_trader_outputs(limit=limit, ticker=ticker_upper):
+                rows.append({**row, "session_type": "live"})
+        if include_replay:
+            for row in sqlite.list_replay_outputs(limit=limit, ticker=ticker_upper):
+                rows.append({**row, "session_type": "replay"})
+        rows.sort(key=lambda item: item.get("timestamp") or item.get("created_at") or "", reverse=True)
+        return {"signals": rows[:limit]}
+
+    @app.get("/integrations/massive/datasets")
+    def massive_datasets() -> dict[str, list[dict]]:
+        datasets = [asdict(item) for item in cache_store.list_datasets()]
+        return {"datasets": datasets}
+
+    @app.get("/operator/summary")
+    def operator_summary() -> dict:
+        status = live.status()
+        latest = sqlite.list_trader_outputs(limit=20)
+        warnings = sqlite.list_live_errors(limit=20)
+        return {
+            "live_status": status,
+            "latest_signals": latest,
+            "recent_warnings": warnings,
+            "replay_runs": sqlite.list_replay_runs()[:10],
+            "datasets": [asdict(item) for item in cache_store.list_datasets()[:10]],
+            "core_symbols": CORE,
+        }
 
     @app.get("/live/signals/{ticker}")
     def live_signal_for_ticker(ticker: str) -> dict:

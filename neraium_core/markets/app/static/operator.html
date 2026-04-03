@@ -1,20 +1,264 @@
 <!doctype html>
-<html>
-<head><meta charset="utf-8"/><title>Neraium Markets Operator</title></head>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Neraium Markets Operator Console</title>
+  <style>
+    :root {
+      --bg: #0f1318;
+      --panel: #171d24;
+      --panel-2: #1e2630;
+      --muted: #90a0b4;
+      --text: #dfe7f3;
+      --accent: #5ea0ff;
+      --ok: #2ab673;
+      --warn: #f2af45;
+      --err: #ef5d5d;
+      --line: #2c3744;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-family: Inter, system-ui, sans-serif; background: var(--bg); color: var(--text); }
+    .app { display: grid; grid-template-columns: 240px 1fr; min-height: 100vh; }
+    nav { border-right: 1px solid var(--line); padding: 20px 12px; }
+    nav h1 { margin: 0 0 16px; font-size: 16px; letter-spacing: .04em; text-transform: uppercase; }
+    .nav-btn { width: 100%; text-align: left; background: transparent; color: var(--muted); border: 0; padding: 10px 12px; border-radius: 8px; cursor: pointer; }
+    .nav-btn.active, .nav-btn:hover { background: var(--panel); color: var(--text); }
+    main { display: flex; flex-direction: column; }
+    header { border-bottom: 1px solid var(--line); padding: 14px 20px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .title { font-size: 18px; font-weight: 700; margin-right: auto; }
+    .pill { border: 1px solid var(--line); background: var(--panel); border-radius: 999px; padding: 4px 10px; font-size: 12px; }
+    .state-disconnected,.state-stopped { color: var(--muted); }
+    .state-connecting,.state-warming_up,.state-reconnecting { color: var(--warn); }
+    .state-live { color: var(--ok); }
+    .state-error { color: var(--err); }
+    .content { padding: 20px; }
+    .page { display: none; }
+    .page.active { display: block; }
+    .grid { display: grid; gap: 14px; }
+    .grid-2 { grid-template-columns: repeat(2, minmax(0,1fr)); }
+    .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px; }
+    h2 { margin: 0 0 10px; font-size: 14px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+    table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); }
+    th { color: var(--muted); position: sticky; top: 0; background: var(--panel); }
+    tr:hover { background: var(--panel-2); }
+    .controls { display: flex; gap: 8px; flex-wrap: wrap; }
+    input, select, button { background: var(--panel-2); border: 1px solid var(--line); color: var(--text); border-radius: 8px; padding: 8px 10px; }
+    button { cursor: pointer; }
+    .banner { padding: 10px 12px; border-radius: 8px; margin-bottom: 12px; border: 1px solid var(--line); background: #15202f; }
+    .warn { border-color: #755524; background: #2a2011; color: #ffd9a6; }
+    .err { border-color: #712d2d; background: #2b1618; color: #ffc7c7; }
+    .muted { color: var(--muted); }
+    .detail { position: fixed; inset: 8% 8%; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px; display: none; overflow: auto; }
+    .detail.open { display: block; }
+    .label { font-size: 12px; color: var(--muted); }
+    .val { font-size: 14px; margin-bottom: 8px; }
+  </style>
+</head>
 <body>
-<h1>Neraium Markets Operator Console</h1>
-<p>Market data only. No trade execution.</p>
-<section>
-  <h2>Historical fetch</h2>
-  <p>POST <code>/integrations/massive/historical/fetch</code> with symbols/timeframe/start_date/end_date.</p>
-</section>
-<section>
-  <h2>Replay</h2>
-  <p>POST <code>/run-replay</code> with <code>use_massive_cached_data=true</code> or <code>data_dir</code>.</p>
-</section>
-<section>
-  <h2>Live</h2>
-  <p>POST <code>/live/start</code> then monitor <code>/live/status</code> and <code>/live/signals/latest</code>.</p>
-</section>
+<div class="app">
+  <nav>
+    <h1>Neraium Markets</h1>
+    <button class="nav-btn active" data-page="command">Command Center</button>
+    <button class="nav-btn" data-page="live">Live Session</button>
+    <button class="nav-btn" data-page="replay">Replay / Historical</button>
+    <button class="nav-btn" data-page="signals">Signals / History</button>
+    <button class="nav-btn" data-page="integrations">Integrations / Data</button>
+    <p class="muted" style="padding:12px">Market data only. No trade execution.</p>
+  </nav>
+  <main>
+    <header>
+      <div class="title">Operator Console</div>
+      <span id="providerPill" class="pill">Provider: unknown</span>
+      <span id="sessionPill" class="pill">State: disconnected</span>
+      <span id="eventPill" class="pill">Last event: -</span>
+      <span id="signalPill" class="pill">Last signal: -</span>
+    </header>
+    <div class="content">
+      <section id="page-command" class="page active">
+        <div id="commandMessages"></div>
+        <div class="grid grid-2">
+          <div class="panel"><h2>Session status</h2><div id="statusStrip"></div></div>
+          <div class="panel"><h2>Quick controls</h2><div class="controls">
+            <button id="startBtn">Start session</button><button id="stopBtn">Stop session</button>
+            <input id="symbolsInput" value="SPY,QQQ,IWM"/><select id="timeframeInput"><option>1m</option><option>5m</option><option>15m</option><option>1h</option></select>
+          </div></div>
+        </div>
+        <div class="panel" style="margin-top:14px"><h2>Latest Signals</h2><div style="max-height:360px;overflow:auto"><table id="latestTable"></table></div></div>
+        <div class="grid grid-2" style="margin-top:14px">
+          <div class="panel"><h2>Current session summary</h2><div id="sessionSummary"></div></div>
+          <div class="panel"><h2>Recent warnings</h2><div id="warnings"></div></div>
+        </div>
+      </section>
+
+      <section id="page-live" class="page">
+        <div class="panel"><h2>Live status</h2><div id="liveStatus"></div></div>
+        <div class="panel" style="margin-top:14px"><h2>Latest governed outputs</h2><div style="max-height:420px;overflow:auto"><table id="liveSignals"></table></div></div>
+      </section>
+
+      <section id="page-replay" class="page">
+        <div id="replayMessages"></div>
+        <div class="panel"><h2>Historical fetch</h2><div class="controls">
+          <input id="fetchSymbols" value="SPY,QQQ,IWM"/><select id="fetchTimeframe"><option>15m</option><option>1h</option><option>daily</option></select>
+          <input id="fetchStart" type="date"/><input id="fetchEnd" type="date"/><button id="fetchBtn">Fetch Massive data</button>
+        </div></div>
+        <div class="panel" style="margin-top:14px"><h2>Replay run</h2><div class="controls">
+          <select id="datasetSelect"></select><input id="replayDataDir" placeholder="optional data_dir"/><button id="runReplayBtn">Run replay</button>
+        </div><div id="replayMeta" style="margin-top:8px"></div></div>
+        <div class="panel" style="margin-top:14px"><h2>Replay results</h2><div style="max-height:360px;overflow:auto"><table id="replayTable"></table></div><button id="exportReplayBtn" style="margin-top:10px">Export replay CSV</button></div>
+      </section>
+
+      <section id="page-signals" class="page">
+        <div class="panel"><h2>Filters</h2><div class="controls">
+          <input id="histTicker" placeholder="Ticker"/><select id="histSession"><option value="">All sessions</option><option value="live">Live</option><option value="replay">Replay</option></select><button id="loadHistoryBtn">Load history</button>
+        </div></div>
+        <div class="panel" style="margin-top:14px"><h2>Signal history</h2><div style="max-height:480px;overflow:auto"><table id="historyTable"></table></div></div>
+      </section>
+
+      <section id="page-integrations" class="page">
+        <div class="grid grid-2">
+          <div class="panel"><h2>Massive provider health</h2><div id="providerStatus"></div></div>
+          <div class="panel"><h2>Connectivity and ingestion issues</h2><div id="integrationWarnings"></div></div>
+        </div>
+        <div class="panel" style="margin-top:14px"><h2>Cached datasets</h2><div id="datasets"></div></div>
+      </section>
+    </div>
+  </main>
+</div>
+
+<div id="detail" class="detail"></div>
+
+<script>
+const stateClass = (v='') => `state-${String(v).toLowerCase().replace('connected_', '').replace(/[^a-z_]/g,'')}`;
+const fmt = (v) => v ? new Date(v).toLocaleString() : '-';
+const pct = (v) => (v==null||isNaN(v)) ? '-' : `${Math.round(v*100)}%`;
+const signalCols = ['timestamp','ticker','action_permission','best_action','confidence','fragility','size_guidance','one_line_reason'];
+let currentReplayRunId = null;
+
+function showBanner(targetId, msg, cls='warn') {
+  document.getElementById(targetId).innerHTML = `<div class="banner ${cls}">${msg}</div>`;
+}
+
+function drawTable(elId, rows) {
+  const el = document.getElementById(elId);
+  if (!rows || !rows.length) { el.innerHTML = '<tr><td class="muted">No rows available.</td></tr>'; return; }
+  const cols = [...new Set(signalCols.concat(Object.keys(rows[0])))].slice(0, 12);
+  el.innerHTML = `<thead><tr>${cols.map(c=>`<th>${c}</th>`).join('')}</tr></thead><tbody>` + rows.map(r =>
+      `<tr data-row='${JSON.stringify(r).replace(/'/g, '&apos;')}'>${cols.map(c=>`<td>${typeof r[c]==='number'? (c.includes('confidence')||c.includes('fragility')||c.includes('score') ? pct(r[c]) : r[c].toFixed?.(3) ?? r[c]) : (r[c] ?? '')}</td>`).join('')}</tr>`
+    ).join('') + '</tbody>';
+  el.querySelectorAll('tbody tr').forEach(tr => tr.onclick = () => openDetail(JSON.parse(tr.dataset.row.replaceAll('&apos;', "'"))));
+}
+
+function openDetail(row) {
+  const detail = document.getElementById('detail');
+  const invalidations = (row.invalidation_conditions || []).map(x=>`<li>${x}</li>`).join('') || '<li>None listed</li>';
+  detail.innerHTML = `<div class="controls" style="justify-content:space-between"><h2>Signal Detail</h2><button onclick="document.getElementById('detail').classList.remove('open')">Close</button></div>
+    <div class="grid grid-2">
+      <div><div class="label">Timestamp</div><div class="val">${row.timestamp || '-'}</div><div class="label">Ticker</div><div class="val">${row.ticker || '-'}</div><div class="label">Permission / Action</div><div class="val">${row.action_permission || '-'} / ${row.best_action || '-'}</div><div class="label">Reason</div><div class="val">${row.one_line_reason || '-'}</div></div>
+      <div><div class="label">Confidence</div><div class="val">${pct(row.confidence)}</div><div class="label">Fragility</div><div class="val">${pct(row.fragility)}</div><div class="label">Validity score</div><div class="val">${pct(row.validity_score)}</div><div class="label">Size guidance</div><div class="val">${row.size_guidance || '-'}</div></div>
+    </div>
+    <div class="panel"><h2>Rationale & diagnostics</h2><div class="val">Market state: ${row.market_state || '-'} | Transition: ${row.transition_state || '-'}</div><div class="val">Structural drift: ${pct(row.structural_drift_score)} | Instability: ${pct(row.latest_instability)}</div><div class="val">Cooldown/suppression: ${row.cooldown_status || 'not suppressed'}</div></div>
+    <div class="panel"><h2>Invalidation conditions</h2><ul>${invalidations}</ul></div>
+    <details class="panel"><summary>Advanced / debug</summary><pre>${JSON.stringify(row, null, 2)}</pre></details>`;
+  detail.classList.add('open');
+}
+
+async function jget(url, opts={}) {
+  const res = await fetch(url, opts);
+  const data = await res.json().catch(()=>({detail:'Invalid response'}));
+  if (!res.ok) throw new Error(data.detail || `Request failed (${res.status})`);
+  return data;
+}
+
+async function refreshAll() {
+  const [summary, status, provider] = await Promise.all([
+    jget('/operator/summary'),
+    jget('/live/status'),
+    jget('/integrations/massive/status').catch(e=>({provider_configured:false, api_key_present:false, latest_connectivity_check:null, error:e.message}))
+  ]);
+  document.getElementById('providerPill').textContent = `Provider: ${provider.api_key_present ? 'configured' : 'missing API key'}`;
+  document.getElementById('sessionPill').textContent = `State: ${status.session_state}`;
+  document.getElementById('sessionPill').className = `pill ${stateClass(status.session_state)}`;
+  document.getElementById('eventPill').textContent = `Last event: ${fmt(status.last_event_at)}`;
+  document.getElementById('signalPill').textContent = `Last signal: ${fmt(status.last_signal_at)}`;
+  document.getElementById('statusStrip').innerHTML = `<div class="controls"><span class="pill ${stateClass(status.session_state)}">${status.session_state}</span><span class="pill">Warmup ${pct(status.warmup_progress)}</span><span class="pill">Timeframe ${status.timeframe}</span><span class="pill">Symbols ${(status.symbols||[]).join(', ')||'none'}</span></div>`;
+  document.getElementById('sessionSummary').innerHTML = `<div>Buffered symbols: ${status.buffered_symbol_count}</div><div>Latest error: ${status.latest_error || 'none'}</div>`;
+  document.getElementById('warnings').innerHTML = (summary.recent_warnings||[]).map(w=>`<div class="banner warn">${w.error || JSON.stringify(w)}</div>`).join('') || '<div class="muted">No recent warnings.</div>';
+  drawTable('latestTable', (summary.latest_signals||[]));
+  document.getElementById('liveStatus').innerHTML = `<div class="controls"><span class="pill ${stateClass(status.session_state)}">${status.session_state}</span><span class="pill">${(status.symbols||[]).join(', ')||'no symbols'}</span></div>${status.session_state==='error'?'<div class="banner err">Error state. Review warnings and reconnect.</div>':''}`;
+  const liveLatest = await jget('/live/signals/latest').catch(()=>({signals:[]}));
+  drawTable('liveSignals', liveLatest.signals || []);
+  document.getElementById('providerStatus').innerHTML = `<div>Configured: ${provider.provider_configured}</div><div>API key present: ${provider.api_key_present}</div><div>Latest check: ${fmt(provider.latest_connectivity_check)}</div><div>Live capability: ${provider.live_capability}</div>`;
+  document.getElementById('integrationWarnings').innerHTML = (summary.recent_warnings||[]).slice(0,5).map(w=>`<div class="banner warn">${w.error || JSON.stringify(w)}</div>`).join('') || '<div class="muted">No ingestion errors logged.</div>';
+
+  const datasets = await jget('/integrations/massive/datasets').catch(()=>({datasets:[]}));
+  const ds = datasets.datasets || [];
+  const dsSelect = document.getElementById('datasetSelect');
+  dsSelect.innerHTML = `<option value="">Latest configured data_dir</option>` + ds.map(x=>`<option value="${x.dataset_path}">${x.dataset_id} | ${x.timeframe} | ${x.symbols.join(',')}</option>`).join('');
+  document.getElementById('datasets').innerHTML = ds.length ? `<table><thead><tr><th>Dataset</th><th>Symbols</th><th>Timeframe</th><th>Range</th><th>Path</th></tr></thead><tbody>${ds.map(d=>`<tr><td>${d.dataset_id}</td><td>${d.symbols.join(', ')}</td><td>${d.timeframe}</td><td>${d.start_date} → ${d.end_date}</td><td>${d.dataset_path}</td></tr>`).join('')}</tbody></table>` : '<div class="banner warn">No cached datasets found.</div>';
+}
+
+async function loadHistory() {
+  const ticker = document.getElementById('histTicker').value.trim();
+  const sessionType = document.getElementById('histSession').value;
+  const q = new URLSearchParams({limit:'300'});
+  if (ticker) q.set('ticker', ticker);
+  if (sessionType) q.set('session_type', sessionType);
+  const data = await jget(`/signals/history?${q}`);
+  drawTable('historyTable', data.signals || []);
+}
+
+document.querySelectorAll('.nav-btn').forEach(btn => btn.onclick = () => {
+  document.querySelectorAll('.nav-btn').forEach(x=>x.classList.remove('active'));
+  btn.classList.add('active');
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.getElementById(`page-${btn.dataset.page}`).classList.add('active');
+});
+
+document.getElementById('startBtn').onclick = async () => {
+  const symbols = document.getElementById('symbolsInput').value.split(',').map(s=>s.trim()).filter(Boolean);
+  const timeframe = document.getElementById('timeframeInput').value;
+  try {
+    await jget('/live/start', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({symbols, timeframe})});
+    showBanner('commandMessages', 'Live session started.', '');
+  } catch (e) { showBanner('commandMessages', e.message.includes('core symbols') ? 'Missing required core symbols. Add SPY, QQQ, and IWM before starting live.' : e.message, 'err'); }
+  refreshAll();
+};
+document.getElementById('stopBtn').onclick = async () => { await jget('/live/stop', {method:'POST'}); refreshAll(); };
+
+document.getElementById('fetchBtn').onclick = async () => {
+  try {
+    const body = {symbols: document.getElementById('fetchSymbols').value.split(',').map(s=>s.trim()).filter(Boolean), timeframe: document.getElementById('fetchTimeframe').value, start_date: document.getElementById('fetchStart').value, end_date: document.getElementById('fetchEnd').value};
+    await jget('/integrations/massive/historical/fetch', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)});
+    showBanner('replayMessages', 'Historical data fetched and cached.', '');
+  } catch (e) { showBanner('replayMessages', e.message, 'err'); }
+  refreshAll();
+};
+
+document.getElementById('runReplayBtn').onclick = async () => {
+  const params = new URLSearchParams({timeframe: document.getElementById('fetchTimeframe').value});
+  const selected = document.getElementById('datasetSelect').value;
+  const manualDir = document.getElementById('replayDataDir').value.trim();
+  if (manualDir) params.set('data_dir', manualDir);
+  else if (selected) params.set('data_dir', selected);
+  try {
+    const out = await jget(`/run-replay?${params}`, {method:'POST'});
+    currentReplayRunId = out.run_id;
+    document.getElementById('replayMeta').innerHTML = `Run ${out.run_id} | ${out.meta.timeframe} | ${out.meta.signal_count} signals | Source ${out.meta.data_dir}`;
+    if (!out.replay.length) showBanner('replayMessages', 'Connected and receiving historical data but no valid signals emitted.', 'warn');
+    drawTable('replayTable', out.replay);
+  } catch (e) { showBanner('replayMessages', e.message, 'err'); }
+};
+document.getElementById('exportReplayBtn').onclick = () => {
+  if (!currentReplayRunId) { showBanner('replayMessages', 'Run replay first to export CSV.', 'warn'); return; }
+  window.location.href = `/replay/runs/${currentReplayRunId}/export`;
+};
+document.getElementById('loadHistoryBtn').onclick = loadHistory;
+
+setInterval(refreshAll, 15000);
+refreshAll();
+loadHistory();
+</script>
 </body>
 </html>

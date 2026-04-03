@@ -15,7 +15,7 @@ from neraium_core.markets.integrations.massive.config import load_massive_config
 from neraium_core.markets.integrations.massive.stream import MassiveStreamClient, stream_with_reconnect
 from neraium_core.markets.persistence.sqlite_store import MarketsSQLiteStore
 from neraium_core.markets.signals.signal_generator import generate_signal_for_asset
-from neraium_core.markets.state.state_vector import build_state_vector
+from neraium_core.markets.state.state_vector import CORE, build_state_vector
 
 from .bar_builder import RollingBarBuilder
 from .live_buffer import LiveBuffer
@@ -40,6 +40,12 @@ class LiveSessionRunner:
         if self._task and not self._task.done():
             return
         self.symbols = [s.upper() for s in symbols]
+        missing_required = [sym for sym in CORE if sym not in set(self.symbols)]
+        if missing_required:
+            raise ValueError(
+                "Live session requires core symbols for state vector construction. "
+                f"Missing required symbols: {', '.join(missing_required)}"
+            )
         self.timeframe = timeframe
         self.bars = RollingBarBuilder(timeframe=timeframe)
         self.state = LiveSessionState.CONNECTING
