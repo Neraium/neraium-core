@@ -68,8 +68,7 @@ python tools/seed_grow_op_demo.py --base-url https://your-deployment.up.railway.
 ```
 
 ### 5. View results
-- Dashboard: http://localhost:8000/dashboard
-- Run detail: http://localhost:8000/run/run-grow-op-demo-v1
+- Dashboard: http://localhost:8000/app?customer_id=grow-op-demo
 - Output bundle: `outputs/grow_op_demo_result.json`
 
 ---

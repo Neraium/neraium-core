@@ -113,13 +113,27 @@ SENSOR_LABELS = {
 }
 
 
+def ensure_run(base_url: str, customer_id: str) -> str:
+    """Return the active run_id for the customer, creating one if none exists."""
+    active = request_json("GET", base_url, "/runs/active", {"customer_id": customer_id})
+    if active.get("run") and active["run"].get("run_id"):
+        return str(active["run"]["run_id"])
+    created = request_json(
+        "POST",
+        base_url,
+        "/runs",
+        {"customer_id": customer_id},
+        {"name": "Cannabis Grow Op Demo", "config": {"source": "seed-script"}, "activate": True},
+    )
+    return str(created["run"]["run_id"])
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Seed the Neraium cannabis grow operation demo."
     )
     parser.add_argument("--base-url", default="http://127.0.0.1:8000")
     parser.add_argument("--customer-id", default="grow-op-demo")
-    parser.add_argument("--run-id", default="run-grow-op-demo-v1")
     parser.add_argument(
         "--phase",
         default=None,
@@ -149,17 +163,19 @@ def main() -> None:
     if not scenario_frames:
         raise ValueError(f"No frames loaded — check --phase filter or scenario path.")
 
-    params = {
-        "customer_id": args.customer_id,
-        "run_id": args.run_id,
-    }
-
     print(f"\nNeraium Cannabis Grow Op Demo")
     print(f"{'='*50}")
     print(f"  Endpoint : {args.base_url}")
+    run_id = ensure_run(args.base_url, args.customer_id)
+
+    params = {
+        "customer_id": args.customer_id,
+        "run_id": run_id,
+    }
+
     print(f"  Site     : {asset_meta['site_id']}")
     print(f"  Zone     : {asset_meta['asset_id']}")
-    print(f"  Run      : {args.run_id}")
+    print(f"  Run      : {run_id}")
     print(f"  Frames   : {len(scenario_frames)}")
     print(f"  Phase    : {args.phase or 'all'}")
     print()
@@ -222,21 +238,21 @@ def main() -> None:
         args.base_url,
         "/assistant/explain",
         {},
-        {"customer_id": args.customer_id, "run_id": args.run_id, "mode": "why_recommended", "history_limit": 20},
+        {"customer_id": args.customer_id, "run_id": run_id, "mode": "why_recommended", "history_limit": 20},
     )
     client_report = request_json(
         "POST",
         args.base_url,
         "/assistant/report",
         {},
-        {"customer_id": args.customer_id, "run_id": args.run_id, "mode": "client_report", "history_limit": 20},
+        {"customer_id": args.customer_id, "run_id": run_id, "mode": "client_report", "history_limit": 20},
     )
     technician_summary = request_json(
         "POST",
         args.base_url,
         "/assistant/report",
         {},
-        {"customer_id": args.customer_id, "run_id": args.run_id, "mode": "technician_summary", "history_limit": 20},
+        {"customer_id": args.customer_id, "run_id": run_id, "mode": "technician_summary", "history_limit": 20},
     )
 
     memory = current.get("memory_recall") or {}
