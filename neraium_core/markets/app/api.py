@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import csv
+import logging
 from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
 from uuid import uuid4
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel, Field
 
@@ -27,6 +28,7 @@ from neraium_core.markets.state.state_vector import CORE, build_state_vector
 
 TIMEFRAMES = ["daily", "1h", "15m"]
 DEFAULT_LIVE_SYMBOLS = list(CORE)
+LOGGER = logging.getLogger(__name__)
 
 
 class HistoricalFetchBody(BaseModel):
@@ -73,6 +75,7 @@ def create_app(
     sqlite = MarketsSQLiteStore()
     live = LiveSessionRunner()
     configured_data_dir = Path(data_dir)
+    app.state.data_dir = configured_data_dir
 
     @app.get("/health")
     def health() -> dict[str, str]:
@@ -85,7 +88,7 @@ def create_app(
 
     @app.post("/run-signals")
     def run_signals() -> dict[str, list[dict]]:
-        signals = run_signal_pipeline(configured_data_dir, evidence)
+        signals = run_signal_pipeline(app.state.data_dir, evidence)
         return {"signals": signals}
 
     @app.get("/signals/latest")
@@ -114,17 +117,38 @@ def create_app(
 
     @app.post("/run-replay")
     def run_replay(
+        request: Request,
         timeframe: str = "15m",
         data_dir: str | None = None,
         use_massive_cached_data: bool = False,
         symbols: str | None = None,
     ) -> dict[str, object]:
-        replay_data_dir = Path(data_dir) if data_dir else configured_data_dir
+        replay_data_dir = Path(data_dir) if data_dir else getattr(request.app.state, "data_dir", None)
         if use_massive_cached_data:
             datasets = cache_store.list_datasets()
             if not datasets:
                 raise HTTPException(status_code=400, detail="No cached Massive datasets found")
             replay_data_dir = Path(datasets[-1].dataset_path)
+
+        if replay_data_dir is None:
+            raise HTTPException(
+                status_code=400,
+                detail="No replay data_dir configured. Provide data_dir or configure create_app(data_dir=...).",
+            )
+
+        replay_frame_dir = replay_data_dir / timeframe
+        if not replay_frame_dir.exists() or not any(replay_frame_dir.glob("*.csv")):
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid replay data_dir '{replay_data_dir}': missing CSV data for timeframe '{timeframe}'.",
+            )
+
+        LOGGER.debug(
+            "run_replay using data_dir=%s timeframe=%s use_massive_cached_data=%s",
+            replay_data_dir,
+            timeframe,
+            use_massive_cached_data,
+        )
 
         use_symbols = [s.strip().upper() for s in symbols.split(",")] if symbols else None
         run_id = f"replay_{uuid4().hex[:12]}"
