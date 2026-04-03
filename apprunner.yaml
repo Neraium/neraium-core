@@ -9,6 +9,6 @@ build:
 
 run:
   runtime-version: 3.11
-  command: command: sh -c "uvicorn neraium_core.markets.app.markets_api:app --host 0.0.0.0 --port ${PORT:-8000}"
+  command: sh -c "uvicorn neraium_core.markets.app.markets_api:app --host 0.0.0.0 --port ${PORT:-8000}"
   network:
     port: 8000
