@@ -218,7 +218,7 @@ def build_demo_router(*, deps: DemoRouterDependencies) -> APIRouter:
         except Exception as exc:
             raise HTTPException(status_code=500, detail=f"Failed to load grow op scenario: {exc}") from exc
         run = deps.service_instance.create_run(
-            name=f"Cannabis Grow Op Demo {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}",
+            name=f"Grow Op Demo — 7-phase arc {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}",
             config={"source": "grow-op-demo", "site_id": site_id, "asset_id": asset_id},
             activate=True,
             customer_id=resolved_customer,
