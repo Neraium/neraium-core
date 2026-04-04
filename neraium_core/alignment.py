@@ -89,7 +89,7 @@ from neraium_core.staged_pipeline import (
 )
 from neraium_core.subsystems import subsystem_spectral_measures
 from neraium_core.realtime.buffer import HistoryRingBuffer, TimestampDequeBuffer, VectorDequeBuffer
-from neraium_core.math.probabilistic_engine import BayesianStateFilter, MonteCarloSampler
+from neraium_core.math.probabilistic_engine import MonteCarloSampler, StructuralUncertaintyTracker
 from neraium_core.math.verification_engine import run_all_checks
 
 
@@ -309,8 +309,8 @@ class StructuralEngine:
         self._history_ring = HistoryRingBuffer(500)
 
         # --- Math engine integrations ---
-        # Bayesian state filter: tracks P(STABLE/WATCH/ALERT/CRITICAL | observations).
-        self._bayes_filter = BayesianStateFilter()
+        # Structural uncertainty tracker: tracks posterior over structural events.
+        self._structural_uncertainty = StructuralUncertaintyTracker()
         # Monte Carlo sampler: bootstraps 90 % confidence interval on composite score.
         self._mc_sampler = MonteCarloSampler()
         # Rolling component history for MC bootstrapping (last 50 frames).
@@ -358,7 +358,7 @@ class StructuralEngine:
         self._spectral_shift_history.clear()
         self._coherence_loss_history.clear()
         self._raw_debug_frames_logged = 0
-        self._bayes_filter.reset()
+        self._structural_uncertainty.reset()
         self._component_history.clear()
 
     def lock_baseline(self, locked: bool = True) -> None:
@@ -387,7 +387,7 @@ class StructuralEngine:
         self.sensor_order = []
         self.latest_result = None
         self.score_history.clear()
-        self._bayes_filter.reset()
+        self._structural_uncertainty.reset()
         self._component_history.clear()
         self._state_history.clear()
         self._transition_pressure_history.clear()
@@ -2172,15 +2172,32 @@ class StructuralEngine:
             composite = float(composite)
             self.score_history.append(composite)
 
-            # --- Math engine: Bayesian state probabilities ---
-            # Update P(state | observations) and attach to result every frame.
+            # --- Math engine: structural uncertainty posteriors ---
+            # Attach uncertainty over structural events (not score labels).
             self._component_history.append(
                 {k: float(v) for k, v in components.items() if isinstance(v, (int, float))}
             )
             try:
-                _bayes_est = self._bayes_filter.update(composite)
-                result["state_probabilities"] = _bayes_est.probabilities
-                result["state_distribution_entropy"] = round(_bayes_est.entropy, 4)
+                _struct_est = self._structural_uncertainty.update(
+                    {
+                        "relational_drift": float(components.get("relational_drift", 0.0) or 0.0),
+                        "spectral": float(components.get("spectral", 0.0) or 0.0),
+                        "operator_drift": float(components.get("regime_drift", 0.0) or 0.0),
+                        "regime_drift": float(components.get("regime_drift", 0.0) or 0.0),
+                        "transition_pressure": float(components.get("transition_pressure", 0.0) or 0.0),
+                        "coherence_margin": float(component_confidence.get("relational_drift", 0.0) or 0.0),
+                    }
+                )
+                result["structural_uncertainty"] = {
+                    "posterior": {
+                        k: round(float(v), 4) for k, v in _struct_est.posterior_means.items()
+                    },
+                    "ci_90": {
+                        k: [round(float(ci[0]), 4), round(float(ci[1]), 4)]
+                        for k, ci in _struct_est.credible_intervals_90.items()
+                    },
+                    "sample_count": int(_struct_est.sample_count),
+                }
             except Exception:
                 pass
 

@@ -26,6 +26,7 @@ from neraium_core.math.optimization_engine import CalibrationOptimizer, WeightOp
 from neraium_core.math.probabilistic_engine import (
     BayesianStateFilter,
     MonteCarloSampler,
+    StructuralUncertaintyTracker,
     UncertaintyPropagator,
 )
 from neraium_core.math.numerics import SparseCorrelationComputer, AutoDiff, gpu_available
@@ -45,6 +46,7 @@ __all__ = [
     # Probabilistic
     "BayesianStateFilter",
     "MonteCarloSampler",
+    "StructuralUncertaintyTracker",
     "UncertaintyPropagator",
     # Numerics
     "SparseCorrelationComputer",
