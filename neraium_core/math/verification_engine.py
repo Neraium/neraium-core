@@ -58,7 +58,9 @@ except ImportError:  # pragma: no cover
     _Z3_AVAILABLE = False
     _z3 = None  # type: ignore[assignment]
 
-from neraium_core.scoring import DEFAULT_WEIGHTS, COMPONENT_NAMES
+from neraium_core.scoring import DEFAULT_WEIGHTS
+
+COMPONENT_NAMES: list[str] = list(DEFAULT_WEIGHTS.keys())
 
 
 # ---------------------------------------------------------------------------
