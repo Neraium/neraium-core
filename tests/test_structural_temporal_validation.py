@@ -205,3 +205,42 @@ def test_structural_risk_decision_policy_requires_eligible_crossings() -> None:
     assert policy["risk_flag"] is False
     assert policy["risk_level"] == "normal"
     assert policy["contributing_signals"] == []
+
+
+def test_run_structural_pipeline_returns_single_inspectable_output() -> None:
+    from neraium_core.sii.orchestration import run_structural_pipeline
+
+    payloads = [
+        {
+            "timestamp": "2026-01-01T00:00:00Z",
+            "site_id": "site-a",
+            "asset_id": "asset-a",
+            "sensor_values": {"temperature": 10.0, "pressure": 100.0},
+        },
+        {
+            "timestamp": "2026-01-01T00:01:00Z",
+            "site_id": "site-a",
+            "asset_id": "asset-a",
+            "sensor_values": {"temperature": 10.2, "pressure": 99.7},
+        },
+        {
+            "timestamp": "2026-01-01T00:02:00Z",
+            "site_id": "site-a",
+            "asset_id": "asset-a",
+            "sensor_values": {"temperature": 10.4, "pressure": 99.5},
+        },
+    ]
+
+    output = run_structural_pipeline(payloads)
+
+    assert set(output.keys()) >= {
+        "structural_state",
+        "validation_results",
+        "signal_ranking",
+        "decision_output",
+    }
+    assert isinstance(output["structural_state"], dict)
+    assert isinstance(output["validation_results"], dict)
+    assert isinstance(output["signal_ranking"], dict)
+    assert isinstance(output["decision_output"], dict)
+    assert output["validation_results"]["sample_count"] == len(payloads)
