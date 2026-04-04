@@ -1,6 +1,10 @@
 from __future__ import annotations
 
-from neraium_core.sii.reporting import compute_structural_signal_ranking, compute_structural_temporal_validation
+from neraium_core.sii.reporting import (
+    compute_structural_signal_ranking,
+    compute_structural_temporal_validation,
+    evaluate_structural_risk_decision_policy,
+)
 
 
 def test_structural_temporal_validation_detects_leading_spikes_before_transitions() -> None:
@@ -143,3 +147,61 @@ def test_structural_signal_ranking_orders_by_predictive_metrics() -> None:
 def test_structural_signal_ranking_handles_empty_inputs() -> None:
     ranking = compute_structural_signal_ranking({"transition_count": 0, "signals": {}})
     assert ranking == {"transition_count": 0, "ranking": []}
+
+
+def test_structural_risk_decision_policy_uses_ranked_leading_signals() -> None:
+    ranking = {
+        "transition_count": 3,
+        "ranking": [
+            {
+                "signal": "operator_deformation_energy",
+                "rank": 1,
+                "predictive_metrics": {"lead_recall": 0.66, "lead_precision": 0.5, "transition_coverage": 1.0},
+                "behavior_metrics": {"mean_abs_change": 0.4, "spike_threshold": 0.5},
+                "temporal_alignment": {"dominant_role": "leading"},
+            },
+            {
+                "signal": "residual_energy",
+                "rank": 2,
+                "predictive_metrics": {"lead_recall": 0.1, "lead_precision": 0.3, "transition_coverage": 0.2},
+                "behavior_metrics": {"mean_abs_change": 0.1, "spike_threshold": 0.2},
+                "temporal_alignment": {"dominant_role": "lagging"},
+            },
+        ],
+    }
+
+    policy = evaluate_structural_risk_decision_policy(
+        signal_ranking=ranking,
+        raw_structural_magnitudes={"operator_deformation_energy": 1.1, "residual_energy": 1.2},
+    )
+
+    assert policy["risk_flag"] is True
+    assert policy["risk_level"] == "elevated"
+    assert policy["decision_posture"] == "elevated_structural_risk_watch"
+    assert [s["signal"] for s in policy["contributing_signals"]] == ["operator_deformation_energy"]
+    lagging_eval = next(item for item in policy["signal_evaluation"] if item["signal"] == "residual_energy")
+    assert lagging_eval["eligible_for_early_risk"] is False
+
+
+def test_structural_risk_decision_policy_requires_eligible_crossings() -> None:
+    ranking = {
+        "transition_count": 2,
+        "ranking": [
+            {
+                "signal": "operator_deformation_energy",
+                "rank": 1,
+                "predictive_metrics": {"lead_recall": 0.7, "lead_precision": 0.7, "transition_coverage": 1.0},
+                "behavior_metrics": {"mean_abs_change": 0.5, "spike_threshold": 0.6},
+                "temporal_alignment": {"dominant_role": "leading"},
+            }
+        ],
+    }
+
+    policy = evaluate_structural_risk_decision_policy(
+        signal_ranking=ranking,
+        raw_structural_magnitudes={"operator_deformation_energy": 0.7},
+    )
+
+    assert policy["risk_flag"] is False
+    assert policy["risk_level"] == "normal"
+    assert policy["contributing_signals"] == []

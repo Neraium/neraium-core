@@ -272,3 +272,91 @@ def compute_structural_signal_ranking(
         "transition_count": transition_count,
         "ranking": ranking,
     }
+
+
+def evaluate_structural_risk_decision_policy(
+    *,
+    signal_ranking: dict[str, Any],
+    raw_structural_magnitudes: dict[str, Any],
+    min_lead_recall: float = 0.3,
+    min_lead_precision: float = 0.3,
+    max_eligible_rank: int = 2,
+) -> dict[str, Any]:
+    ranking = signal_ranking.get("ranking")
+    if not isinstance(ranking, list) or not ranking:
+        return {
+            "risk_flag": False,
+            "risk_level": "normal",
+            "decision_posture": "monitor_structural_baseline",
+            "contributing_signals": [],
+            "signal_evaluation": [],
+            "supporting_raw_magnitudes": {},
+        }
+
+    eligible_limit = max(1, int(max_eligible_rank))
+    evaluation: list[dict[str, Any]] = []
+    contributing: list[dict[str, Any]] = []
+    for item in ranking:
+        if not isinstance(item, dict):
+            continue
+        signal = str(item.get("signal") or "")
+        if not signal:
+            continue
+        rank = int(item.get("rank") or 0)
+        predictive = item.get("predictive_metrics") if isinstance(item.get("predictive_metrics"), dict) else {}
+        behavior = item.get("behavior_metrics") if isinstance(item.get("behavior_metrics"), dict) else {}
+        temporal = item.get("temporal_alignment") if isinstance(item.get("temporal_alignment"), dict) else {}
+
+        role = str(temporal.get("dominant_role") or "weak")
+        lead_recall = float(predictive.get("lead_recall") or 0.0)
+        lead_precision = float(predictive.get("lead_precision") or 0.0)
+        spike_threshold = abs(float(behavior.get("spike_threshold") or 0.0))
+        baseline_mean = float(behavior.get("mean_abs_change") or 0.0)
+
+        signal_raw = float(raw_structural_magnitudes.get(signal) or 0.0)
+        threshold_distance = abs(signal_raw - baseline_mean)
+        threshold_crossed = threshold_distance >= spike_threshold and spike_threshold > 0.0
+
+        eligible = False
+        if role == "leading" and rank <= eligible_limit and lead_recall >= min_lead_recall:
+            eligible = True
+        elif role == "concurrent" and rank == 1 and lead_recall >= min_lead_recall and lead_precision >= min_lead_precision:
+            eligible = True
+
+        signal_entry = {
+            "signal": signal,
+            "rank": rank,
+            "temporal_role": role,
+            "eligible_for_early_risk": eligible,
+            "threshold_comparison": {
+                "threshold": round(spike_threshold, 6),
+                "baseline_reference": round(baseline_mean, 6),
+                "current_raw_magnitude": round(signal_raw, 6),
+                "distance_to_threshold": round(threshold_distance, 6),
+                "threshold_crossed": threshold_crossed,
+            },
+        }
+        evaluation.append(signal_entry)
+        if eligible and threshold_crossed:
+            contributing.append(signal_entry)
+
+    elevated = len(contributing) > 0
+    risk_level = "normal"
+    decision_posture = "monitor_structural_baseline"
+    if elevated and len(contributing) >= 2:
+        risk_level = "high"
+        decision_posture = "elevated_structural_risk_confirmed"
+    elif elevated:
+        risk_level = "elevated"
+        decision_posture = "elevated_structural_risk_watch"
+
+    return {
+        "risk_flag": elevated,
+        "risk_level": risk_level,
+        "decision_posture": decision_posture,
+        "contributing_signals": contributing,
+        "signal_evaluation": evaluation,
+        "supporting_raw_magnitudes": {
+            field: round(float(raw_structural_magnitudes.get(field) or 0.0), 6) for field in STRUCTURAL_SIGNAL_FIELDS
+        },
+    }

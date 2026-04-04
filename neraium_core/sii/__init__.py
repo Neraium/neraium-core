@@ -27,6 +27,7 @@ from neraium_core.sii.logging import configure_structured_logging
 from neraium_core.sii.reporting import (
     compute_structural_signal_ranking,
     compute_structural_temporal_validation,
+    evaluate_structural_risk_decision_policy,
     write_csv_report,
     write_json_report,
 )
@@ -74,4 +75,5 @@ __all__ = [
     "write_json_report",
     "compute_structural_temporal_validation",
     "compute_structural_signal_ranking",
+    "evaluate_structural_risk_decision_policy",
 ]
