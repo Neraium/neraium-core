@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from neraium_core.sii.orchestration import run_structural_pipeline
+from neraium_core.sii.reporting import format_structural_report_text, generate_structural_report
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -17,6 +18,8 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument("--input", required=True, help="Input dataset path (.json primary, .csv optional).")
     parser.add_argument("--output", help="Optional output file path for structured JSON.")
+    parser.add_argument("--report", action="store_true", help="Print human-readable structural report to stdout.")
+    parser.add_argument("--report-file", help="Optional output file path for human-readable text report.")
     return parser
 
 
@@ -99,6 +102,18 @@ def main(argv: list[str] | None = None) -> int:
         return 2
 
     serialized = json.dumps(output, indent=2, sort_keys=True)
+    if args.report or args.report_file:
+        report = generate_structural_report(output)
+        report_text = format_structural_report_text(report)
+        if args.report:
+            print(report_text)
+            print("")
+
+        if args.report_file:
+            report_path = Path(args.report_file)
+            report_path.parent.mkdir(parents=True, exist_ok=True)
+            report_path.write_text(report_text + "\n", encoding="utf-8")
+
     print(serialized)
 
     if args.output:
