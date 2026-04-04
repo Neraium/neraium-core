@@ -13,6 +13,8 @@ from .._core_imports import get_core_runtime_status
 from ..schemas.ingest import DemoCmapssStartRequest, DemoSeedRequest
 from .dependencies import DemoRouterDependencies
 
+logger = logging.getLogger(__name__)
+
 _GROW_OP_SCENARIO_PATH = Path(__file__).resolve().parent.parent.parent.parent / "examples" / "demo" / "cannabis_grow_op_scenario.json"
 
 
@@ -22,7 +24,7 @@ def _load_grow_op_frames(customer_id: str) -> tuple[str, str, list[dict[str, Any
     asset = raw.get("asset") or {}
     site_id = str(asset.get("site_id") or "grow-op-facility-01")
     asset_id = str(asset.get("asset_id") or "canopy-zone-A")
-    base_time = datetime.now(timezone.utc) - timedelta(minutes=1950)  # ~32 hrs back
+    base_time = datetime.now(timezone.utc) - timedelta(minutes=1950)
     rows: list[dict[str, Any]] = []
     for phase in raw.get("phases") or []:
         for frame in phase.get("frames") or []:
@@ -38,8 +40,6 @@ def _load_grow_op_frames(customer_id: str) -> tuple[str, str, list[dict[str, Any
                 "sensor_values": {k: float(v) for k, v in sensor_values.items()},
             })
     return site_id, asset_id, rows
-
-logger = logging.getLogger(__name__)
 CMAPSS_DEFAULT_MAX_FRAMES = 240
 CMAPSS_MIN_FRAMES = 30
 CMAPSS_MAX_FRAMES = 500
@@ -213,8 +213,6 @@ def build_demo_router(*, deps: DemoRouterDependencies) -> APIRouter:
         customer_id: str | None = Query(default=None),
     ) -> dict[str, Any]:
         resolved_customer = deps.resolve_customer_id(customer_id)
-        if not _GROW_OP_SCENARIO_PATH.exists():
-            raise HTTPException(status_code=500, detail="Grow op scenario file not found on server.")
         try:
             site_id, asset_id, rows = _load_grow_op_frames(resolved_customer)
         except Exception as exc:
@@ -238,6 +236,7 @@ def build_demo_router(*, deps: DemoRouterDependencies) -> APIRouter:
     def demo_grow_op_status(
         run_id: str = Query(..., min_length=1),
         customer_id: str | None = Query(default=None),
+        _: None = Depends(deps.require_api_key),
     ) -> dict[str, Any]:
         resolved_customer = deps.resolve_customer_id(customer_id)
         run = deps.service_instance.get_run(run_id, customer_id=resolved_customer)
