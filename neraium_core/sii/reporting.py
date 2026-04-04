@@ -2,10 +2,19 @@ from __future__ import annotations
 
 import csv
 import json
+from math import sqrt
 from pathlib import Path
 from typing import Any
 
 from .errors import SIIIOError
+
+STRUCTURAL_SIGNAL_FIELDS: tuple[str, ...] = (
+    "operator_deformation_energy",
+    "residual_energy",
+    "regime_distance",
+    "coherence_margin_raw",
+    "structural_drift_magnitude",
+)
 
 
 def results_to_json(results: list[dict[str, Any]]) -> str:
@@ -85,3 +94,102 @@ def write_csv_report(path: str | Path, results: list[dict[str, Any]]) -> None:
         p.write_text(results_to_csv_text(results), encoding="utf-8")
     except Exception as exc:
         raise SIIIOError(f"Failed to write CSV report: {p}") from exc
+
+
+def compute_structural_temporal_validation(
+    results: list[dict[str, Any]],
+    *,
+    lead_window: int = 3,
+) -> dict[str, Any]:
+    if not results:
+        return {
+            "sample_count": 0,
+            "transition_count": 0,
+            "transitions": [],
+            "signals": {},
+        }
+
+    lead_window = max(1, int(lead_window))
+
+    rows: list[dict[str, Any]] = []
+    for idx, item in enumerate(results):
+        structural = item.get("structural_state") if isinstance(item.get("structural_state"), dict) else {}
+        row = {"step": idx, "state": str(item.get("state") or ""), "interpreted_state": str(item.get("interpreted_state") or "")}
+        for field in STRUCTURAL_SIGNAL_FIELDS:
+            source = item.get(field, structural.get(field, 0.0))
+            try:
+                row[field] = float(source)
+            except (TypeError, ValueError):
+                row[field] = 0.0
+        rows.append(row)
+
+    transitions: list[dict[str, Any]] = []
+    for idx in range(1, len(rows)):
+        prev = rows[idx - 1]
+        current = rows[idx]
+        if prev["state"] != current["state"] or prev["interpreted_state"] != current["interpreted_state"]:
+            transitions.append(
+                {
+                    "step": idx,
+                    "from_state": prev["state"],
+                    "to_state": current["state"],
+                    "from_interpreted_state": prev["interpreted_state"],
+                    "to_interpreted_state": current["interpreted_state"],
+                }
+            )
+
+    transition_steps = {t["step"] for t in transitions}
+    diagnostics: dict[str, Any] = {}
+    for field in STRUCTURAL_SIGNAL_FIELDS:
+        diffs: list[float] = [abs(rows[idx][field] - rows[idx - 1][field]) for idx in range(1, len(rows))]
+        if not diffs:
+            diagnostics[field] = {
+                "mean": round(rows[0][field], 6),
+                "peak": round(rows[0][field], 6),
+                "mean_abs_change": 0.0,
+                "spike_threshold": 0.0,
+                "spike_steps": [],
+                "leading_transition_hits": 0,
+                "concurrent_transition_hits": 0,
+                "lagging_transition_hits": 0,
+                "lead_precision": 0.0,
+                "lead_recall": 0.0,
+            }
+            continue
+
+        mean_diff = sum(diffs) / len(diffs)
+        variance = sum((d - mean_diff) ** 2 for d in diffs) / len(diffs)
+        spike_threshold = mean_diff + 1.0 * sqrt(max(0.0, variance))
+        spike_steps = [idx for idx in range(1, len(rows)) if abs(rows[idx][field] - rows[idx - 1][field]) >= spike_threshold]
+        spike_set = set(spike_steps)
+
+        leading_hits = 0
+        concurrent_hits = 0
+        lagging_hits = 0
+        for step in transition_steps:
+            has_lead = any((step - k) in spike_set for k in range(1, lead_window + 1))
+            has_concurrent = step in spike_set
+            has_lag = any((step + k) in spike_set for k in range(1, lead_window + 1))
+            leading_hits += int(has_lead)
+            concurrent_hits += int(has_concurrent)
+            lagging_hits += int(has_lag)
+
+        diagnostics[field] = {
+            "mean": round(sum(r[field] for r in rows) / len(rows), 6),
+            "peak": round(max(r[field] for r in rows), 6),
+            "mean_abs_change": round(mean_diff, 6),
+            "spike_threshold": round(spike_threshold, 6),
+            "spike_steps": spike_steps,
+            "leading_transition_hits": leading_hits,
+            "concurrent_transition_hits": concurrent_hits,
+            "lagging_transition_hits": lagging_hits,
+            "lead_precision": round(leading_hits / max(1, len(spike_steps)), 6),
+            "lead_recall": round(leading_hits / max(1, len(transition_steps)), 6),
+        }
+
+    return {
+        "sample_count": len(rows),
+        "transition_count": len(transitions),
+        "transitions": transitions,
+        "signals": diagnostics,
+    }
