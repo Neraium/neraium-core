@@ -4,8 +4,10 @@ import argparse
 import json
 from pathlib import Path
 
-from neraium_core.sii import SIIApplication, SIIConfig, configure_structured_logging
+from neraium_core.sii import SIIApplication, SIIConfig, configure_structured_logging, run_structural_pipeline
+from neraium_core.sii.calibration import derive_calibration_from_validation, load_config, save_config
 from neraium_core.sii.errors import SIIConfigurationError, SIIError
+from neraium_core.sii.ingestion import load_frames_from_csv, load_frames_from_json
 
 
 def _parse_args() -> argparse.Namespace:
@@ -33,6 +35,8 @@ def _parse_args() -> argparse.Namespace:
         help="Number of live polling fetches to execute",
     )
     p.add_argument("--allow-context-provider", action="store_true", default=False)
+    p.add_argument("--config", help="Optional structural calibration config JSON path")
+    p.add_argument("--save-config", help="Optional output path to persist derived structural calibration JSON")
     p.add_argument("--log-level", default="INFO")
     return p.parse_args()
 
@@ -70,6 +74,17 @@ def main() -> int:
                 raise SIIConfigurationError("--input is required unless --live is set")
             input_path = Path(args.input)
             outputs = app.run_input_file(input_path)
+            calibration = load_config(args.config) if args.config else None
+            if input_path.suffix.lower() == ".json":
+                payloads = load_frames_from_json(str(input_path))
+            elif input_path.suffix.lower() == ".csv":
+                payloads = load_frames_from_csv(str(input_path))
+            else:
+                payloads = []
+            structural_output = run_structural_pipeline(payloads, config=calibration)
+            if args.save_config:
+                derived = derive_calibration_from_validation(structural_output.get("validation_results") or {})
+                save_config(derived, args.save_config)
         app.write_output_file(output_path, outputs)
         app.engine.close()
         print(

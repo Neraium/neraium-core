@@ -74,6 +74,12 @@ class SIIConfig:
     live_ingestion_parameter_codes: str = ""
     live_ingestion_extra_query_json: str = "{}"
     regime_store_path: str = "sii_regimes.json"
+    lead_window: int = 3
+    min_lead_recall: float = 0.3
+    min_lead_precision: float = 0.3
+    top_k_rank_window: int = 2
+    spike_threshold_multiplier: float = 1.0
+    decision_thresholds_json: str = "{\"default\": 1.0}"
     log_level: str = "INFO"
 
     def __post_init__(self) -> None:
@@ -143,6 +149,17 @@ class SIIConfig:
         _ = self.live_ingestion_extra_query_params
         if not str(self.regime_store_path).strip():
             raise SIIConfigurationError("regime_store_path cannot be empty")
+        if self.lead_window < 1:
+            raise SIIConfigurationError("lead_window must be >= 1")
+        if not (0.0 <= self.min_lead_recall <= 1.0):
+            raise SIIConfigurationError("min_lead_recall must be in [0, 1]")
+        if not (0.0 <= self.min_lead_precision <= 1.0):
+            raise SIIConfigurationError("min_lead_precision must be in [0, 1]")
+        if self.top_k_rank_window < 1:
+            raise SIIConfigurationError("top_k_rank_window must be >= 1")
+        if self.spike_threshold_multiplier <= 0.0:
+            raise SIIConfigurationError("spike_threshold_multiplier must be > 0")
+        _ = self.decision_thresholds
         if not str(self.log_level).strip():
             raise SIIConfigurationError("log_level cannot be empty")
 
@@ -170,6 +187,25 @@ class SIIConfig:
                 "live_ingestion_extra_query_json must decode to a JSON object"
             )
         return {str(k): str(v) for k, v in parsed.items()}
+
+    @property
+    def decision_thresholds(self) -> dict[str, float]:
+        raw = str(self.decision_thresholds_json or "{\"default\": 1.0}").strip() or "{\"default\": 1.0}"
+        try:
+            parsed = json.loads(raw)
+        except Exception as exc:
+            raise SIIConfigurationError("decision_thresholds_json must be valid JSON object text") from exc
+        if not isinstance(parsed, dict):
+            raise SIIConfigurationError("decision_thresholds_json must decode to a JSON object")
+        out: dict[str, float] = {}
+        for key, value in parsed.items():
+            try:
+                out[str(key)] = float(value)
+            except (TypeError, ValueError):
+                raise SIIConfigurationError(f"decision_thresholds_json contains non-numeric value for key: {key!r}")
+        if "default" not in out:
+            out["default"] = 1.0
+        return out
 
     @staticmethod
     def from_env() -> "SIIConfig":
@@ -209,10 +245,15 @@ class SIIConfig:
             live_ingestion_parameter_codes=os.getenv("SII_LIVE_INGESTION_PARAMETER_CODES", ""),
             live_ingestion_extra_query_json=os.getenv("SII_LIVE_INGESTION_EXTRA_QUERY_JSON", "{}"),
             regime_store_path=os.getenv("SII_REGIME_STORE_PATH", "sii_regimes.json"),
+            lead_window=_env_int("SII_LEAD_WINDOW", 3),
+            min_lead_recall=_env_float("SII_MIN_LEAD_RECALL", 0.3),
+            min_lead_precision=_env_float("SII_MIN_LEAD_PRECISION", 0.3),
+            top_k_rank_window=_env_int("SII_TOP_K_RANK_WINDOW", 2),
+            spike_threshold_multiplier=_env_float("SII_SPIKE_THRESHOLD_MULTIPLIER", 1.0),
+            decision_thresholds_json=os.getenv("SII_DECISION_THRESHOLDS_JSON", "{\"default\": 1.0}"),
             log_level=os.getenv("SII_LOG_LEVEL", "INFO").upper(),
         )
 
 
 def load_sii_config() -> SIIConfig:
     return SIIConfig.from_env()
-

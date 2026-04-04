@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Mapping
 
+from .calibration import SIICalibrationConfig
 from .config import SIIConfig
 from .engine import SIIEngine
 from .ingestion import canonical_records_from_payloads
@@ -55,9 +56,28 @@ def run_structural_pipeline(data: list[dict[str, Any]], config: Mapping[str, Any
 
     validation_results = compute_structural_temporal_validation(
         frame_results,
-        lead_window=int(getattr(sii_config, "structural_temporal_lead_window", 3)),
+        lead_window=int(
+            getattr(
+                sii_config,
+                "lead_window",
+                getattr(sii_config, "structural_temporal_lead_window", 3),
+            )
+        ),
     )
-    signal_ranking = compute_structural_signal_ranking(validation_results)
+    calibration_source: Mapping[str, Any] | None = None
+    if isinstance(config, Mapping):
+        calibration_source = config
+    elif isinstance(config, SIIConfig):
+        calibration_source = {
+            "lead_window": getattr(config, "lead_window", 3),
+            "min_lead_recall": getattr(config, "min_lead_recall", 0.3),
+            "min_lead_precision": getattr(config, "min_lead_precision", 0.3),
+            "top_k_rank_window": getattr(config, "top_k_rank_window", 2),
+            "spike_threshold_multiplier": getattr(config, "spike_threshold_multiplier", 1.0),
+            "decision_thresholds": getattr(config, "decision_thresholds", {"default": 1.0}),
+        }
+    calibration = SIICalibrationConfig.from_obj(calibration_source)
+    signal_ranking = compute_structural_signal_ranking(validation_results, config=calibration)
 
     latest = frame_results[-1] if frame_results else {}
     decision_output = evaluate_structural_risk_decision_policy(
@@ -66,6 +86,7 @@ def run_structural_pipeline(data: list[dict[str, Any]], config: Mapping[str, Any
         min_lead_recall=float(getattr(sii_config, "structural_policy_min_lead_recall", 0.3)),
         min_lead_precision=float(getattr(sii_config, "structural_policy_min_lead_precision", 0.3)),
         max_eligible_rank=int(getattr(sii_config, "structural_policy_max_eligible_rank", 2)),
+        config=calibration,
     )
 
     return {
