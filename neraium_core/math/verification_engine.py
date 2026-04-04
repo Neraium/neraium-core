@@ -331,45 +331,86 @@ class DecisionRuleVerifier:
             return self._verify_z3(rules)
         return self._verify_enumeration(rules)
 
-    def _verify_z3(self, rules: list[dict[str, Any]]) -> VerificationResult:
-        """SMT-based contradiction detection via Z3."""
-        solver = _z3.Solver()
-        violations = []
+    def _build_z3_precondition(self, if_cond: dict[str, Any], state_int: Any, state_idx: dict[str, int]) -> Any:
+        """Encode an ``if`` condition dict as a Z3 expression."""
+        precondition = _z3.BoolVal(True)
+        if "state" in if_cond:
+            s = str(if_cond["state"])
+            if s in state_idx:
+                precondition = state_int == state_idx[s]
+            elif s.startswith(">="):
+                sname = s[2:].strip()
+                precondition = state_int >= state_idx.get(sname, 0)
+            elif s.startswith(">"):
+                sname = s[1:].strip()
+                precondition = state_int > state_idx.get(sname, 0)
+        return precondition
 
-        # Encode state as an integer variable
+    def _verify_z3(self, rules: list[dict[str, Any]]) -> VerificationResult:
+        """
+        SMT-based contradiction detection via Z3.
+
+        Two checks per rule pair (i, j) where i < j:
+        1. Unsatisfiable precondition — the rule can never fire.
+        2. Contradictory conclusions — both rules can fire simultaneously
+           (their preconditions are jointly satisfiable) yet assert different
+           values for the same conclusion key.
+        """
+        violations = []
         state_int = _z3.Int("state")
         state_idx = {s: i for i, s in enumerate(self._states)}
 
-        solver.add(state_int >= 0, state_int < len(self._states))
-
+        # --- Pass 1: unsatisfiable preconditions ---
         for rule in rules:
             name = rule.get("name", "unnamed")
-            if_cond = rule.get("if", {})
-            then_cond = rule.get("then", {})
+            pre = self._build_z3_precondition(rule.get("if", {}), state_int, state_idx)
+            s = _z3.Solver()
+            s.add(state_int >= 0, state_int < len(self._states))
+            s.add(pre)
+            if s.check() == _z3.unsat:
+                violations.append(f"Rule '{name}': precondition is unsatisfiable (can never fire)")
 
-            precondition = _z3.BoolVal(True)
-            if "state" in if_cond:
-                s = if_cond["state"]
-                if s in state_idx:
-                    precondition = state_int == state_idx[s]
-                elif s.startswith(">="):
-                    sname = s[2:].strip()
-                    precondition = state_int >= state_idx.get(sname, 0)
+        # --- Pass 2: pairwise contradiction check ---
+        # For every pair of rules, ask Z3 whether both preconditions can hold
+        # simultaneously.  If yes, check that their `then` clauses agree on
+        # every shared conclusion key.
+        for i in range(len(rules)):
+            for j in range(i + 1, len(rules)):
+                rule_i = rules[i]
+                rule_j = rules[j]
+                pre_i = self._build_z3_precondition(rule_i.get("if", {}), state_int, state_idx)
+                pre_j = self._build_z3_precondition(rule_j.get("if", {}), state_int, state_idx)
 
-            # Check if rule conclusion is satisfiable under precondition
-            sub_solver = _z3.Solver()
-            sub_solver.add(precondition)
-            if sub_solver.check() == _z3.unsat:
-                violations.append(f"Rule '{name}': precondition is unsatisfiable")
+                # Can both rules fire at once?
+                s = _z3.Solver()
+                s.add(state_int >= 0, state_int < len(self._states))
+                s.add(pre_i, pre_j)
+                if s.check() == _z3.unsat:
+                    # Preconditions are mutually exclusive — no contradiction possible.
+                    continue
+
+                # Both can fire: check for conflicting then-clause values.
+                then_i = rule_i.get("then", {})
+                then_j = rule_j.get("then", {})
+                name_i = rule_i.get("name", f"rule[{i}]")
+                name_j = rule_j.get("name", f"rule[{j}]")
+                for key in set(then_i) & set(then_j):
+                    if then_i[key] != then_j[key]:
+                        violations.append(
+                            f"Contradiction between '{name_i}' and '{name_j}': "
+                            f"both can fire simultaneously but assert '{key}' = "
+                            f"{then_i[key]!r} and {then_j[key]!r} respectively."
+                        )
 
         passed = len(violations) == 0
+        n_rules = len(rules)
         return VerificationResult(
             passed=passed,
             check_name="DecisionRuleVerifier",
             details=(
-                f"All {len(rules)} rules are satisfiable."
+                f"All {n_rules} rules are satisfiable and mutually consistent."
                 if passed
-                else f"{len(violations)} rule(s) have unsatisfiable preconditions."
+                else f"{len(violations)} issue(s) detected across {n_rules} rules."
             ),
             violations=violations,
             method="Z3 SMT solver",
