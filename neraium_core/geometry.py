@@ -57,7 +57,7 @@ def correlation_matrix(observations: ArrayLike) -> np.ndarray:
         # with BLAS matmul — same asymptotic but lower constant for wide matrices.
         with np.errstate(invalid="ignore", divide="ignore"):
             mean = np.nanmean(data, axis=0)
-            std = np.nanstd(data, axis=0)
+            std = np.nanstd(data, axis=0, ddof=1)  # sample std so (z.T @ z)/(n-1) = Pearson r
         mean = np.nan_to_num(mean, nan=0.0)
         std = np.where(std < 1e-12, 1.0, std)
         z = (data - mean) / std
