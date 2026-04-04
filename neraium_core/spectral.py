@@ -23,13 +23,16 @@ ArrayLike = Any
 
 def _top_k_eigh(matrix: np.ndarray, k: int) -> tuple[np.ndarray, np.ndarray]:
     """
-    Return the top-k eigenvalues and eigenvectors (descending order).
+    Return the top-k eigenvalues and eigenvectors (descending algebraic order).
 
     Uses ARPACK (scipy.sparse.linalg.eigsh) when the matrix is large and
     scipy is available; falls back to full numpy.linalg.eigh otherwise.
     ARPACK is significantly faster when k << n (e.g. k=1 or k=2 vs n=100+).
+
+    k is capped at n so callers can pass k=2 safely for any matrix size.
     """
     n = matrix.shape[0]
+    k = min(k, n)  # can't request more eigenpairs than the matrix dimension
     if _SCIPY_SPARSE_AVAILABLE and n > _ARPACK_MIN_N and k < n - 1:
         try:
             sparse_m = _sp_sparse.csr_matrix(matrix)
@@ -61,7 +64,11 @@ def spectral_radius(matrix: ArrayLike) -> float:
     if values.ndim != 2 or values.shape[0] != values.shape[1] or values.size == 0:
         return 0.0
     safe = np.nan_to_num(values, nan=0.0, posinf=0.0, neginf=0.0)
-    evals, _ = _top_k_eigh(safe, k=1)
+    # Spectral radius = max |eigenvalue| across the full spectrum.
+    # ARPACK's "LM" finds algebraically largest, not largest-magnitude, so it can
+    # miss a large-magnitude negative eigenvalue (e.g. diag(-2, 1) → reports 1, not 2).
+    # eigvalsh computes all eigenvalues without eigenvectors and is fast enough here.
+    evals = np.linalg.eigvalsh(safe)
     return float(np.max(np.abs(evals))) if evals.size else 0.0
 
 
@@ -73,7 +80,8 @@ def spectral_gap(matrix: ArrayLike) -> float:
     if n < 2:
         return 0.0
     safe = np.nan_to_num(values, nan=0.0, posinf=0.0, neginf=0.0)
-    evals, _ = _top_k_eigh(safe, k=min(2, n - 1))
+    # Request k=2; _top_k_eigh caps at n so this is safe for 2×2 matrices too.
+    evals, _ = _top_k_eigh(safe, k=2)
     if evals.size < 2:
         return 0.0
     return float(evals[0] - evals[1])
