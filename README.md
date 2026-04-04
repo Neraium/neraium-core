@@ -116,6 +116,18 @@ Operational systems / telemetry sources
 → Systemic Infrastructure Intelligence (read-only computation)  
 → Human operators and evidence outputs (API results, CSV, reports)  
 
+### Canonical structural flow (center-first)
+
+The runtime now treats one structural object as canonical and derives interface layers after:
+
+1. **Lawful structural model** (`structural_state.lawful_model`)  
+2. **Local operator drift propagation** (`operator_drift`, `residual_structure`)  
+3. **Residual + regime transition pressure** (`regime_transition_pressure`, `coherence_margin`)  
+4. **Coherence tension and transition posture**  
+5. **Derived signals / risk / operator guidance** (`derived_signals`, `risk_assessment`, `operator_guidance`)  
+
+This ordering is intentional: scores and alert labels are secondary views over structural state, not the center.
+
 ### System intelligence operating modes (March 31, 2026 refactor)
 
 The structural intelligence stack now has explicit operating boundaries:
