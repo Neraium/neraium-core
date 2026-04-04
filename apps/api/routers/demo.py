@@ -24,7 +24,12 @@ def _load_grow_op_frames(customer_id: str) -> tuple[str, str, list[dict[str, Any
     asset = raw.get("asset") or {}
     site_id = str(asset.get("site_id") or "grow-op-facility-01")
     asset_id = str(asset.get("asset_id") or "canopy-zone-A")
-    base_time = datetime.now(timezone.utc) - timedelta(minutes=1950)
+    # Anchor base_time so the last frame lands ~5 minutes ago
+    max_offset = max(
+        (int(frame.get("minute_offset", 0)) for phase in raw.get("phases") or [] for frame in phase.get("frames") or []),
+        default=6735,
+    )
+    base_time = datetime.now(timezone.utc) - timedelta(minutes=max_offset + 5)
     rows: list[dict[str, Any]] = []
     for phase in raw.get("phases") or []:
         for frame in phase.get("frames") or []:
@@ -218,7 +223,7 @@ def build_demo_router(*, deps: DemoRouterDependencies) -> APIRouter:
         except Exception as exc:
             raise HTTPException(status_code=500, detail=f"Failed to load grow op scenario: {exc}") from exc
         run = deps.service_instance.create_run(
-            name=f"Cannabis Grow Op Demo {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}",
+            name=f"Grow Op Demo — 7-phase arc {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}",
             config={"source": "grow-op-demo", "site_id": site_id, "asset_id": asset_id},
             activate=True,
             customer_id=resolved_customer,
