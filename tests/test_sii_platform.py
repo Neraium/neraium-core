@@ -44,6 +44,12 @@ def test_sii_nominal_structure_and_allowed_outputs(tmp_path: Path) -> None:
     assert "graph_deformation_score" in out
     assert "coherence_score" in out
     assert "dominant_drivers" in out
+    structural_state = out.get("structural_state")
+    assert isinstance(structural_state, dict)
+    assert structural_state.get("status") in {"warming_up", "ready"}
+    if structural_state.get("status") == "ready":
+        assert "indicators" in structural_state
+        assert "composite_instability" in structural_state
 
 
 def test_sii_report_export_json(tmp_path: Path) -> None:
