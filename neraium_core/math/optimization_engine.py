@@ -47,7 +47,9 @@ except ImportError:  # pragma: no cover
     _PULP_AVAILABLE = False
     _pulp = None  # type: ignore[assignment]
 
-from neraium_core.scoring import DEFAULT_WEIGHTS, COMPONENT_NAMES
+from neraium_core.scoring import DEFAULT_WEIGHTS
+
+COMPONENT_NAMES: list[str] = list(DEFAULT_WEIGHTS.keys())
 
 
 def _require_scipy() -> None:
