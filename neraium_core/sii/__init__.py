@@ -24,6 +24,7 @@ from neraium_core.sii.live_ingestion import (
     build_live_provider,
 )
 from neraium_core.sii.logging import configure_structured_logging
+from neraium_core.sii.orchestration import run_structural_pipeline
 from neraium_core.sii.reporting import (
     compute_structural_signal_ranking,
     compute_structural_temporal_validation,
@@ -76,4 +77,5 @@ __all__ = [
     "compute_structural_temporal_validation",
     "compute_structural_signal_ranking",
     "evaluate_structural_risk_decision_policy",
+    "run_structural_pipeline",
 ]
