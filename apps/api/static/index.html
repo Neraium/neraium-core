@@ -3,12 +3,12 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <meta name="theme-color" content="#05080f" />
+  <meta name="theme-color" content="#f5f7fb" />
   <title>Neraium</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link rel="preconnect" href="https://cdn.jsdelivr.net" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600;700&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="/web/styles.css?v=__NERAIUM_ASSET_VERSION__" />
   <!-- Three.js from CDN (same version as scripts/download_three_vendor.py) — avoids /web/vendor static issues. -->
   <script type="importmap">
@@ -78,6 +78,18 @@
       <main class="content">
         <!-- DASHBOARD -->
         <section id="page-dashboard" class="page page-dashboard">
+
+          <section id="demoBanner" class="demo-start-banner" aria-label="Demo quick-start">
+            <div class="demo-start-banner-inner">
+              <div class="demo-start-banner-text">
+                <p class="demo-start-banner-eyebrow">Interactive demo</p>
+                <p class="demo-start-banner-title">Cannabis grow op · 450-frame scenario</p>
+                <p class="demo-start-banner-sub">Baseline → HVAC degradation → heat stress → operator intervention → recovery. Full 5-day arc across 8 sensors.</p>
+              </div>
+              <button id="demoBannerBtn" type="button" class="demo-start-banner-btn">Start demo</button>
+            </div>
+          </section>
+
           <section class="panel dashboard-hero operator-hero" aria-label="Operator status">
             <div class="dashboard-hero-grid operator-hero-grid">
               <div class="dashboard-hero-primary">
