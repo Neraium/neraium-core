@@ -1622,9 +1622,8 @@ function wireWorkspaceShellEvents() {
       try {
         growOpBtn.disabled = true;
         growOpBtn.textContent = "Loading demo...";
-        setLoading(true, "Seeding grow op demo — 122 frames...");
+        setLoading(true, "Seeding grow op demo...");
         const out = await startGrowOpDemo();
-        await loadRuns();
         const cid = customerIdValue(state.tenant.customerId);
         window.location.href = `/app/runs/${encodeURIComponent(out.run_id)}?customer_id=${encodeURIComponent(cid)}`;
       } catch (err) {
