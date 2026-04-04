@@ -96,6 +96,12 @@ def request_json(
                 print(f"    [retry {attempt + 1}/{retries}] HTTP {exc.code}, waiting {wait}s…")
                 time.sleep(wait)
                 continue
+            try:
+                err_body = exc.read().decode("utf-8", errors="replace")
+                print(f"    [HTTP {exc.code}] {url}")
+                print(f"    {err_body[:500]}")
+            except Exception:
+                pass
             raise
 
 
@@ -212,8 +218,9 @@ def main() -> None:
 
         result = request_json("POST", args.base_url, "/ingest", params, payload)
 
-        risk = result.get("risk_assessment") or {}
-        recommendation = result.get("operational_recommendation") or {}
+        latest = result.get("latest") or result
+        risk = latest.get("risk_assessment") or {}
+        recommendation = latest.get("operational_recommendation") or {}
         instability = risk.get("composite_instability", 0.0)
         alert = recommendation.get("recommended_action", "")
 
