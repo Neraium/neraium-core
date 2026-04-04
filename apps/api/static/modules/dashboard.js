@@ -1641,6 +1641,25 @@ function wireGrowOpDemoBtn(btn, originalLabel) {
 function wireWorkspaceShellEvents() {
   wireGrowOpDemoBtn(qs("#loadGrowOpDemoBtn"), "Load grow op demo");
   wireGrowOpDemoBtn(qs("#demoBannerBtn"), "Start demo");
+  const growOpBtn = qs("#loadGrowOpDemoBtn");
+  if (growOpBtn && growOpBtn.dataset.wired !== "1") {
+    growOpBtn.dataset.wired = "1";
+    growOpBtn.addEventListener("click", async () => {
+      try {
+        growOpBtn.disabled = true;
+        growOpBtn.textContent = "Loading demo...";
+        setLoading(true, "Seeding grow op demo...");
+        const out = await startGrowOpDemo();
+        const cid = customerIdValue(state.tenant.customerId);
+        window.location.href = `/app/runs/${encodeURIComponent(out.run_id)}?customer_id=${encodeURIComponent(cid)}`;
+      } catch (err) {
+        setStatus(String(err.message || err), true, true);
+        growOpBtn.disabled = false;
+        growOpBtn.textContent = "Load grow op demo";
+        setLoading(false);
+      }
+    });
+  }
   const refreshBtn = qs("#refreshBtn");
   if (refreshBtn && refreshBtn.dataset.wired !== "1") {
     refreshBtn.dataset.wired = "1";
