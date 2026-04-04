@@ -5,6 +5,10 @@ import warnings
 
 import numpy as np
 
+# Switch to vectorised z-score + BLAS matmul for large sensor sets.
+# np.corrcoef builds an intermediate (n_frames, n_sensors) copy internally;
+# the explicit path below avoids that overhead and makes sparse thresholding easy.
+_FAST_CORR_MIN_SENSORS = 20
 
 ArrayLike = Any
 
@@ -45,9 +49,25 @@ def normalize_window(observations: ArrayLike) -> tuple[np.ndarray, np.ndarray, n
 def correlation_matrix(observations: ArrayLike) -> np.ndarray:
     """Compute correlation geometry R_t from row-wise observations."""
     data = _as_2d_array(observations)
-    # Constant or near-constant columns make corrcoef divide by zero; suppress FP noise only.
-    with np.errstate(invalid="ignore", divide="ignore"):
-        corr = np.corrcoef(data, rowvar=False)
+    n_frames, n_sensors = data.shape
+
+    if n_sensors >= _FAST_CORR_MIN_SENSORS:
+        # Vectorised path: z-score columns then (X^T X) / (n-1).
+        # Avoids np.corrcoef's internal copy and scales as O(n_frames * n_sensors²)
+        # with BLAS matmul — same asymptotic but lower constant for wide matrices.
+        with np.errstate(invalid="ignore", divide="ignore"):
+            mean = np.nanmean(data, axis=0)
+            std = np.nanstd(data, axis=0)
+        mean = np.nan_to_num(mean, nan=0.0)
+        std = np.where(std < 1e-12, 1.0, std)
+        z = (data - mean) / std
+        z = np.nan_to_num(z, nan=0.0, posinf=0.0, neginf=0.0)
+        corr = (z.T @ z) / max(n_frames - 1, 1)
+    else:
+        # Small matrix: np.corrcoef is fine and avoids the extra allocation.
+        with np.errstate(invalid="ignore", divide="ignore"):
+            corr = np.corrcoef(data, rowvar=False)
+
     corr = np.nan_to_num(corr, nan=0.0, posinf=0.0, neginf=0.0)
     np.fill_diagonal(corr, 1.0)
     return corr

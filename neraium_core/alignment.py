@@ -89,6 +89,8 @@ from neraium_core.staged_pipeline import (
 )
 from neraium_core.subsystems import subsystem_spectral_measures
 from neraium_core.realtime.buffer import HistoryRingBuffer, TimestampDequeBuffer, VectorDequeBuffer
+from neraium_core.math.probabilistic_engine import BayesianStateFilter, MonteCarloSampler
+from neraium_core.math.verification_engine import run_all_checks
 
 
 # How slowly the rolling baseline adapts (only when nominal); avoid absorbing instability.
@@ -306,6 +308,26 @@ class StructuralEngine:
         self._sensor_schema_dirty: bool = False
         self._history_ring = HistoryRingBuffer(500)
 
+        # --- Math engine integrations ---
+        # Bayesian state filter: tracks P(STABLE/WATCH/ALERT/CRITICAL | observations).
+        self._bayes_filter = BayesianStateFilter()
+        # Monte Carlo sampler: bootstraps 90 % confidence interval on composite score.
+        self._mc_sampler = MonteCarloSampler()
+        # Rolling component history for MC bootstrapping (last 50 frames).
+        self._component_history: deque[dict[str, float]] = deque(maxlen=50)
+
+        # Startup: verify scoring invariants once (log warning, never raise).
+        try:
+            _vreport = run_all_checks()
+            if not _vreport.all_passed:
+                import logging as _vlog
+                _vlog.getLogger(__name__).warning(
+                    "Engine math verification detected issues at startup: %s",
+                    _vreport.summary(),
+                )
+        except Exception:
+            pass
+
     def reset_baseline(self) -> None:
         """Clear rolling baseline and calibration state so baseline is recomputed from window."""
         self._rolling_baseline_corr = None
@@ -336,6 +358,8 @@ class StructuralEngine:
         self._spectral_shift_history.clear()
         self._coherence_loss_history.clear()
         self._raw_debug_frames_logged = 0
+        self._bayes_filter.reset()
+        self._component_history.clear()
 
     def lock_baseline(self, locked: bool = True) -> None:
         """Lock or unlock baseline. When locked, rolling baseline stops adapting."""
@@ -363,6 +387,8 @@ class StructuralEngine:
         self.sensor_order = []
         self.latest_result = None
         self.score_history.clear()
+        self._bayes_filter.reset()
+        self._component_history.clear()
         self._state_history.clear()
         self._transition_pressure_history.clear()
         self._regime_history.clear()
@@ -2142,6 +2168,39 @@ class StructuralEngine:
             composite = composite_instability_score_normalized(components, weights=weights_for_composite)
             composite = float(composite)
             self.score_history.append(composite)
+
+            # --- Math engine: Bayesian state probabilities ---
+            # Update P(state | observations) and attach to result every frame.
+            self._component_history.append(
+                {k: float(v) for k, v in components.items() if isinstance(v, (int, float))}
+            )
+            try:
+                _bayes_est = self._bayes_filter.update(composite)
+                result["state_probabilities"] = _bayes_est.probabilities
+                result["state_distribution_entropy"] = round(_bayes_est.entropy, 4)
+            except Exception:
+                pass
+
+            # --- Math engine: Monte Carlo confidence bounds ---
+            # Bootstrap 90 % / 50 % CI on composite score from recent component history.
+            if len(self._component_history) >= 10:
+                try:
+                    _mc = self._mc_sampler.bootstrap(
+                        list(self._component_history),
+                        n_samples=300,
+                        seed=42,
+                    )
+                    result["score_confidence"] = {
+                        "ci_90": [round(_mc.p5, 4), round(_mc.p95, 4)],
+                        "ci_50": [round(_mc.p25, 4), round(_mc.p75, 4)],
+                        "mean": round(_mc.mean, 4),
+                        "std": round(_mc.std, 4),
+                        "probability_watch": round(_mc.probability_watch, 4),
+                        "probability_alert": round(_mc.probability_alert, 4),
+                        "probability_critical": round(_mc.probability_critical, 4),
+                    }
+                except Exception:
+                    pass
 
             # Calibrate decision thresholds from early nominal composite history.
             if self._composite_watch_alert_thresholds is None:
