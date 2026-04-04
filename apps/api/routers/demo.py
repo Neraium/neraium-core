@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import json
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
@@ -10,6 +12,32 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from .._core_imports import get_core_runtime_status
 from ..schemas.ingest import DemoCmapssStartRequest, DemoSeedRequest
 from .dependencies import DemoRouterDependencies
+
+_GROW_OP_SCENARIO_PATH = Path(__file__).resolve().parent.parent.parent.parent / "examples" / "demo" / "cannabis_grow_op_scenario.json"
+
+
+def _load_grow_op_frames(customer_id: str) -> tuple[str, str, list[dict[str, Any]]]:
+    """Load and flatten grow op scenario frames into ingestable payloads."""
+    raw = json.loads(_GROW_OP_SCENARIO_PATH.read_text(encoding="utf-8"))
+    asset = raw.get("asset") or {}
+    site_id = str(asset.get("site_id") or "grow-op-facility-01")
+    asset_id = str(asset.get("asset_id") or "canopy-zone-A")
+    base_time = datetime.now(timezone.utc) - timedelta(minutes=1950)  # ~32 hrs back
+    rows: list[dict[str, Any]] = []
+    for phase in raw.get("phases") or []:
+        for frame in phase.get("frames") or []:
+            sensor_values = frame.get("sensor_values")
+            if not isinstance(sensor_values, dict):
+                continue
+            ts = (base_time + timedelta(minutes=int(frame.get("minute_offset", 0)))).isoformat()
+            rows.append({
+                "timestamp": ts,
+                "site_id": site_id,
+                "asset_id": asset_id,
+                "customer_id": customer_id,
+                "sensor_values": {k: float(v) for k, v in sensor_values.items()},
+            })
+    return site_id, asset_id, rows
 
 logger = logging.getLogger(__name__)
 CMAPSS_DEFAULT_MAX_FRAMES = 240
@@ -177,6 +205,51 @@ def build_demo_router(*, deps: DemoRouterDependencies) -> APIRouter:
                 "non_actuating": True,
                 "human_in_the_loop": True,
             },
+        }
+
+    @router.post("/demo/grow-op/start")
+    def demo_grow_op_start(
+        _: None = Depends(deps.require_api_key),
+        customer_id: str | None = Query(default=None),
+    ) -> dict[str, Any]:
+        resolved_customer = deps.resolve_customer_id(customer_id)
+        if not _GROW_OP_SCENARIO_PATH.exists():
+            raise HTTPException(status_code=500, detail="Grow op scenario file not found on server.")
+        try:
+            site_id, asset_id, rows = _load_grow_op_frames(resolved_customer)
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=f"Failed to load grow op scenario: {exc}") from exc
+        run = deps.service_instance.create_run(
+            name=f"Cannabis Grow Op Demo {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}",
+            config={"source": "grow-op-demo", "site_id": site_id, "asset_id": asset_id},
+            activate=True,
+            customer_id=resolved_customer,
+        )
+        run_id = str(run.get("run_id") or "")
+        if not run_id:
+            raise HTTPException(status_code=500, detail="Failed to create demo run.")
+        try:
+            results = deps.service_instance.ingest_batch(rows, run_id=run_id, customer_id=resolved_customer)
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=f"Failed to seed grow op scenario: {exc}") from exc
+        return {"status": "ok", "run_id": run_id, "processed": len(results), "demo": "grow-op"}
+
+    @router.get("/demo/grow-op/status")
+    def demo_grow_op_status(
+        run_id: str = Query(..., min_length=1),
+        customer_id: str | None = Query(default=None),
+    ) -> dict[str, Any]:
+        resolved_customer = deps.resolve_customer_id(customer_id)
+        run = deps.service_instance.get_run(run_id, customer_id=resolved_customer)
+        if run is None:
+            raise HTTPException(status_code=404, detail=f"Unknown run_id: {run_id}")
+        recent = deps.service_instance.list_recent_results(limit=5, run_id=run_id, customer_id=resolved_customer)
+        state = deps.service_instance.get_current_state(run_id=run_id, customer_id=resolved_customer)
+        return {
+            "run_id": run_id,
+            "status": "ready" if recent else "empty",
+            "frames_processed": len(recent),
+            "risk_level": str((state or {}).get("risk_level") or "UNKNOWN").upper(),
         }
 
     @router.get("/demo/cmapss/status")
