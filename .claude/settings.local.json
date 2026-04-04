@@ -34,7 +34,11 @@
       "Bash(gh secret:*)",
       "Bash(gh variable:*)",
       "Bash(/c/Users/Owner/AppData/Local/Python/bin/python.exe tools/seed_grow_op_demo.py --base-url https://app.neraium.com)",
-      "Bash(/c/Users/Owner/AppData/Local/Python/bin/python.exe tools/seed_grow_op_demo.py --base-url https://app.neraium.com --run-id run_be4cab123426)"
+      "Bash(/c/Users/Owner/AppData/Local/Python/bin/python.exe tools/seed_grow_op_demo.py --base-url https://app.neraium.com --run-id run_be4cab123426)",
+      "Bash(git fetch:*)",
+      "Bash(git rebase:*)",
+      "Bash(git stash:*)",
+      "Bash(git add:*)"
     ]
   }
 }
