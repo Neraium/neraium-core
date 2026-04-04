@@ -372,3 +372,205 @@ def evaluate_structural_risk_decision_policy(
             field: round(float(raw_structural_magnitudes.get(field) or 0.0), 6) for field in STRUCTURAL_SIGNAL_FIELDS
         },
     }
+
+
+def generate_structural_report(
+    pipeline_output: dict[str, Any],
+    *,
+    top_n: int = 5,
+) -> dict[str, Any]:
+    """Create an operator-facing structured summary from pipeline output."""
+    decision = pipeline_output.get("decision_output") if isinstance(pipeline_output, dict) else {}
+    ranking_blob = pipeline_output.get("signal_ranking") if isinstance(pipeline_output, dict) else {}
+    validation = pipeline_output.get("validation_results") if isinstance(pipeline_output, dict) else {}
+
+    decision = decision if isinstance(decision, dict) else {}
+    ranking = ranking_blob.get("ranking") if isinstance(ranking_blob, dict) else []
+    ranking = ranking if isinstance(ranking, list) else []
+    signal_evaluation = decision.get("signal_evaluation") if isinstance(decision.get("signal_evaluation"), list) else []
+    signal_eval_by_name = {
+        str(item.get("signal")): item for item in signal_evaluation if isinstance(item, dict) and item.get("signal")
+    }
+
+    safe_top_n = max(1, int(top_n))
+    top_signals: list[dict[str, Any]] = []
+    for item in ranking[:safe_top_n]:
+        if not isinstance(item, dict):
+            continue
+        name = str(item.get("signal") or "unknown_signal")
+        rank = int(item.get("rank") or 0)
+        predictive = item.get("predictive_metrics") if isinstance(item.get("predictive_metrics"), dict) else {}
+        temporal = item.get("temporal_alignment") if isinstance(item.get("temporal_alignment"), dict) else {}
+        role = str(temporal.get("dominant_role") or "weak")
+        lead_recall = float(predictive.get("lead_recall") or 0.0)
+        lead_precision = float(predictive.get("lead_precision") or 0.0)
+
+        threshold_info = signal_eval_by_name.get(name, {}).get("threshold_comparison")
+        threshold_info = threshold_info if isinstance(threshold_info, dict) else {}
+        crossed = bool(threshold_info.get("threshold_crossed", False))
+
+        role_text = {
+            "leading": "a leading indicator",
+            "concurrent": "a concurrent indicator",
+            "lagging": "a lagging indicator",
+        }.get(role, "a weak indicator")
+        crossing_text = "exceeded" if crossed else "did not exceed"
+        interpretation = (
+            f"{name} is {role_text} with recall {lead_recall:.2f} and precision {lead_precision:.2f}; "
+            f"it {crossing_text} its calibrated threshold."
+        )
+
+        top_signals.append(
+            {
+                "signal": name,
+                "rank": rank,
+                "role": role,
+                "lead_recall": round(lead_recall, 6),
+                "lead_precision": round(lead_precision, 6),
+                "crossed_threshold": crossed,
+                "interpretation": interpretation,
+            }
+        )
+
+    contributing = decision.get("contributing_signals") if isinstance(decision.get("contributing_signals"), list) else []
+    contributing_names = [str(item.get("signal")) for item in contributing if isinstance(item, dict) and item.get("signal")]
+
+    threshold_events: list[dict[str, Any]] = []
+    for item in signal_evaluation:
+        if not isinstance(item, dict):
+            continue
+        t = item.get("threshold_comparison") if isinstance(item.get("threshold_comparison"), dict) else {}
+        if not bool(t.get("threshold_crossed", False)):
+            continue
+        raw_value = float(t.get("current_raw_magnitude") or 0.0)
+        baseline = float(t.get("baseline_reference") or 0.0)
+        threshold = float(t.get("threshold") or 0.0) * float(t.get("decision_multiplier") or 1.0)
+        threshold_events.append(
+            {
+                "signal": str(item.get("signal") or "unknown_signal"),
+                "raw_value": round(raw_value, 6),
+                "baseline_reference": round(baseline, 6),
+                "threshold": round(threshold, 6),
+                "delta": round(raw_value - baseline, 6),
+            }
+        )
+
+    transition_count = int(validation.get("transition_count") or 0) if isinstance(validation, dict) else 0
+    leading_hits_signals = []
+    lagging_only_signals = []
+    signals_blob = validation.get("signals") if isinstance(validation.get("signals"), dict) else {}
+    for name, metrics in signals_blob.items():
+        m = metrics if isinstance(metrics, dict) else {}
+        leading_hits = int(m.get("leading_transition_hits") or 0)
+        concurrent_hits = int(m.get("concurrent_transition_hits") or 0)
+        lagging_hits = int(m.get("lagging_transition_hits") or 0)
+        if leading_hits > 0:
+            leading_hits_signals.append(str(name))
+        if lagging_hits > 0 and leading_hits == 0 and concurrent_hits == 0:
+            lagging_only_signals.append(str(name))
+
+    risk_flag = bool(decision.get("risk_flag", False))
+    risk_level = str(decision.get("risk_level") or "normal")
+    posture = str(decision.get("decision_posture") or "monitor_structural_baseline")
+
+    notes: list[str] = []
+    if not threshold_events and not leading_hits_signals:
+        notes.append("No leading signals exceeded threshold -> system remains in monitoring state.")
+    if threshold_events and len(leading_hits_signals) >= 2:
+        notes.append("Multiple leading signals aligned before transition -> high confidence structural shift.")
+    if risk_flag and posture == "elevated_structural_risk_confirmed":
+        notes.append("Risk posture is confirmed by multiple eligible threshold crossings.")
+    elif risk_flag:
+        notes.append("Risk watch triggered by at least one eligible leading signal crossing threshold.")
+    else:
+        notes.append("No eligible threshold crossings detected for early structural risk escalation.")
+
+    return {
+        "summary": {
+            "risk_flag": risk_flag,
+            "risk_level": risk_level,
+            "decision_posture": posture,
+            "top_contributing_signals": contributing_names,
+        },
+        "top_signals": top_signals,
+        "threshold_events": threshold_events,
+        "system_behavior": {
+            "total_transitions": transition_count,
+            "signals_with_leading_hits": sorted(leading_hits_signals),
+            "signals_with_only_lagging_behavior": sorted(lagging_only_signals),
+        },
+        "notes": notes,
+    }
+
+
+def format_structural_report_text(report: dict[str, Any]) -> str:
+    """Render a deterministic human-readable textual report."""
+    summary = report.get("summary") if isinstance(report.get("summary"), dict) else {}
+    top_signals = report.get("top_signals") if isinstance(report.get("top_signals"), list) else []
+    threshold_events = report.get("threshold_events") if isinstance(report.get("threshold_events"), list) else []
+    system_behavior = report.get("system_behavior") if isinstance(report.get("system_behavior"), dict) else {}
+    notes = report.get("notes") if isinstance(report.get("notes"), list) else []
+
+    lines = [
+        "==== Structural Risk Summary ====",
+        f"Risk Flag: {'YES' if bool(summary.get('risk_flag', False)) else 'NO'}",
+        f"Risk Level: {str(summary.get('risk_level') or 'normal').upper()}",
+        f"Posture: {summary.get('decision_posture') or 'monitor_structural_baseline'}",
+    ]
+    contributing = summary.get("top_contributing_signals")
+    if isinstance(contributing, list) and contributing:
+        lines.append(f"Top Contributing Signals: {', '.join(str(s) for s in contributing)}")
+    else:
+        lines.append("Top Contributing Signals: none")
+
+    lines.append("")
+    lines.append("Top Signals:")
+    if top_signals:
+        for item in top_signals:
+            if not isinstance(item, dict):
+                continue
+            lines.append(f"  {int(item.get('rank') or 0)}. {item.get('signal', 'unknown_signal')} ({item.get('role', 'weak')})")
+            lines.append(f"     - recall: {float(item.get('lead_recall') or 0.0):.2f}")
+            lines.append(f"     - precision: {float(item.get('lead_precision') or 0.0):.2f}")
+            lines.append(f"     - crossed threshold: {'yes' if bool(item.get('crossed_threshold')) else 'no'}")
+            lines.append(f"     - interpretation: {item.get('interpretation', '')}")
+    else:
+        lines.append("  (no ranked signals)")
+
+    lines.append("")
+    lines.append("Threshold Events:")
+    if threshold_events:
+        for event in threshold_events:
+            if not isinstance(event, dict):
+                continue
+            lines.append(
+                "  - "
+                f"{event.get('signal', 'unknown_signal')}: "
+                f"raw={float(event.get('raw_value') or 0.0):.4f}, "
+                f"baseline={float(event.get('baseline_reference') or 0.0):.4f}, "
+                f"threshold={float(event.get('threshold') or 0.0):.4f}, "
+                f"delta={float(event.get('delta') or 0.0):+.4f}"
+            )
+    else:
+        lines.append("  - none")
+
+    lines.append("")
+    lines.append("System Behavior:")
+    lines.append(f"  - total transitions: {int(system_behavior.get('total_transitions') or 0)}")
+    leading = system_behavior.get("signals_with_leading_hits")
+    lagging_only = system_behavior.get("signals_with_only_lagging_behavior")
+    lines.append(f"  - signals with leading hits: {', '.join(leading) if isinstance(leading, list) and leading else 'none'}")
+    lines.append(
+        "  - signals with only lagging behavior: "
+        f"{', '.join(lagging_only) if isinstance(lagging_only, list) and lagging_only else 'none'}"
+    )
+
+    lines.append("")
+    lines.append("Notes:")
+    if notes:
+        for note in notes:
+            lines.append(f"  - {note}")
+    else:
+        lines.append("  - none")
+
+    return "\n".join(lines)
