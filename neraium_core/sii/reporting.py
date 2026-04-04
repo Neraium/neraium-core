@@ -193,3 +193,82 @@ def compute_structural_temporal_validation(
         "transitions": transitions,
         "signals": diagnostics,
     }
+
+
+def compute_structural_signal_ranking(
+    temporal_validation: dict[str, Any],
+) -> dict[str, Any]:
+    signals = temporal_validation.get("signals")
+    if not isinstance(signals, dict) or not signals:
+        return {
+            "transition_count": int(temporal_validation.get("transition_count") or 0),
+            "ranking": [],
+        }
+
+    transition_count = int(temporal_validation.get("transition_count") or 0)
+    ranking: list[dict[str, Any]] = []
+    for signal_name, metrics in signals.items():
+        signal_metrics = metrics if isinstance(metrics, dict) else {}
+        lead_recall = float(signal_metrics.get("lead_recall") or 0.0)
+        lead_precision = float(signal_metrics.get("lead_precision") or 0.0)
+        leading_hits = int(signal_metrics.get("leading_transition_hits") or 0)
+        concurrent_hits = int(signal_metrics.get("concurrent_transition_hits") or 0)
+        lagging_hits = int(signal_metrics.get("lagging_transition_hits") or 0)
+        spike_steps = signal_metrics.get("spike_steps")
+        spike_count = len(spike_steps) if isinstance(spike_steps, list) else 0
+
+        alignment_hits = leading_hits + concurrent_hits + lagging_hits
+        transition_coverage = (
+            round(alignment_hits / max(1, transition_count), 6) if transition_count > 0 else 0.0
+        )
+        spike_to_transition_ratio = (
+            round(spike_count / max(1, transition_count), 6) if transition_count > 0 else 0.0
+        )
+
+        temporal_role = "weak"
+        if leading_hits > max(concurrent_hits, lagging_hits) and lead_recall > 0.0:
+            temporal_role = "leading"
+        elif concurrent_hits > max(leading_hits, lagging_hits):
+            temporal_role = "concurrent"
+        elif lagging_hits > max(leading_hits, concurrent_hits):
+            temporal_role = "lagging"
+
+        ranking.append(
+            {
+                "signal": signal_name,
+                "predictive_metrics": {
+                    "lead_recall": round(lead_recall, 6),
+                    "lead_precision": round(lead_precision, 6),
+                    "transition_coverage": transition_coverage,
+                },
+                "behavior_metrics": {
+                    "spike_count": spike_count,
+                    "spike_to_transition_ratio": spike_to_transition_ratio,
+                    "mean_abs_change": float(signal_metrics.get("mean_abs_change") or 0.0),
+                    "spike_threshold": float(signal_metrics.get("spike_threshold") or 0.0),
+                },
+                "temporal_alignment": {
+                    "leading_transition_hits": leading_hits,
+                    "concurrent_transition_hits": concurrent_hits,
+                    "lagging_transition_hits": lagging_hits,
+                    "dominant_role": temporal_role,
+                },
+            }
+        )
+
+    ranking.sort(
+        key=lambda item: (
+            item["predictive_metrics"]["lead_recall"],
+            item["predictive_metrics"]["lead_precision"],
+            item["predictive_metrics"]["transition_coverage"],
+            -item["behavior_metrics"]["spike_to_transition_ratio"],
+        ),
+        reverse=True,
+    )
+    for index, item in enumerate(ranking, start=1):
+        item["rank"] = index
+
+    return {
+        "transition_count": transition_count,
+        "ranking": ranking,
+    }
