@@ -1614,26 +1614,33 @@ async function startGrowOpDemo() {
   return out;
 }
 
+function wireGrowOpDemoBtn(btn, originalLabel) {
+  if (!btn || btn.dataset.wired === "1") return;
+  btn.dataset.wired = "1";
+  btn.addEventListener("click", async () => {
+    try {
+      btn.disabled = true;
+      btn.textContent = "Loading…";
+      const banner = qs("#demoBanner");
+      if (banner) banner.classList.add("demo-running");
+      setLoading(true, "Seeding 450-frame grow op demo…");
+      const out = await startGrowOpDemo();
+      const cid = customerIdValue(state.tenant.customerId);
+      window.location.href = `/app/runs/${encodeURIComponent(out.run_id)}?customer_id=${encodeURIComponent(cid)}`;
+    } catch (err) {
+      setStatus(String(err.message || err), true, true);
+      btn.disabled = false;
+      btn.textContent = originalLabel;
+      const banner = qs("#demoBanner");
+      if (banner) banner.classList.remove("demo-running");
+      setLoading(false);
+    }
+  });
+}
+
 function wireWorkspaceShellEvents() {
-  const growOpBtn = qs("#loadGrowOpDemoBtn");
-  if (growOpBtn && growOpBtn.dataset.wired !== "1") {
-    growOpBtn.dataset.wired = "1";
-    growOpBtn.addEventListener("click", async () => {
-      try {
-        growOpBtn.disabled = true;
-        growOpBtn.textContent = "Loading demo...";
-        setLoading(true, "Seeding grow op demo...");
-        const out = await startGrowOpDemo();
-        const cid = customerIdValue(state.tenant.customerId);
-        window.location.href = `/app/runs/${encodeURIComponent(out.run_id)}?customer_id=${encodeURIComponent(cid)}`;
-      } catch (err) {
-        setStatus(String(err.message || err), true, true);
-        growOpBtn.disabled = false;
-        growOpBtn.textContent = "Load grow op demo";
-        setLoading(false);
-      }
-    });
-  }
+  wireGrowOpDemoBtn(qs("#loadGrowOpDemoBtn"), "Load grow op demo");
+  wireGrowOpDemoBtn(qs("#demoBannerBtn"), "Start demo");
   const refreshBtn = qs("#refreshBtn");
   if (refreshBtn && refreshBtn.dataset.wired !== "1") {
     refreshBtn.dataset.wired = "1";
