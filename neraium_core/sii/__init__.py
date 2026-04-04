@@ -1,6 +1,12 @@
 from __future__ import annotations
 
 from neraium_core.sii.app import SIIApplication
+from neraium_core.sii.calibration import (
+    SIICalibrationConfig,
+    derive_calibration_from_validation,
+    load_config,
+    save_config,
+)
 from neraium_core.sii.config import SIIConfig, load_sii_config
 from neraium_core.sii.engine import SIIEngine, SystemicInfrastructureIntelligenceEngine
 from neraium_core.sii.harness import SIIBenchmarkHarness
@@ -78,4 +84,8 @@ __all__ = [
     "compute_structural_signal_ranking",
     "evaluate_structural_risk_decision_policy",
     "run_structural_pipeline",
+    "SIICalibrationConfig",
+    "derive_calibration_from_validation",
+    "save_config",
+    "load_config",
 ]

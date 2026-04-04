@@ -5,6 +5,7 @@ from neraium_core.sii.reporting import (
     compute_structural_temporal_validation,
     evaluate_structural_risk_decision_policy,
 )
+from neraium_core.sii.calibration import derive_calibration_from_validation, load_config, save_config
 
 
 def test_structural_temporal_validation_detects_leading_spikes_before_transitions() -> None:
@@ -244,3 +245,54 @@ def test_run_structural_pipeline_returns_single_inspectable_output() -> None:
     assert isinstance(output["signal_ranking"], dict)
     assert isinstance(output["decision_output"], dict)
     assert output["validation_results"]["sample_count"] == len(payloads)
+
+
+def test_structural_policy_applies_config_threshold_overrides() -> None:
+    ranking = {
+        "transition_count": 1,
+        "ranking": [
+            {
+                "signal": "operator_deformation_energy",
+                "rank": 1,
+                "predictive_metrics": {"lead_recall": 0.8, "lead_precision": 0.8, "transition_coverage": 1.0},
+                "behavior_metrics": {"mean_abs_change": 0.4, "spike_threshold": 0.5},
+                "temporal_alignment": {"dominant_role": "leading"},
+            }
+        ],
+    }
+    policy = evaluate_structural_risk_decision_policy(
+        signal_ranking=ranking,
+        raw_structural_magnitudes={"operator_deformation_energy": 0.95},
+        config={
+            "min_lead_recall": 0.2,
+            "min_lead_precision": 0.2,
+            "top_k_rank_window": 2,
+            "decision_thresholds": {"default": 1.2, "operator_deformation_energy": 1.2},
+        },
+    )
+    assert policy["risk_flag"] is False
+    assert policy["signal_evaluation"][0]["threshold_comparison"]["decision_multiplier"] == 1.2
+
+
+def test_calibration_round_trip_and_derivation(tmp_path) -> None:
+    validation = {
+        "sample_count": 20,
+        "transition_count": 4,
+        "signals": {
+            "operator_deformation_energy": {
+                "lead_recall": 0.5,
+                "lead_precision": 0.5,
+                "mean_abs_change": 0.2,
+                "spike_threshold": 0.4,
+                "spike_steps": [2, 7, 9, 11],
+            }
+        },
+    }
+    derived = derive_calibration_from_validation(validation)
+    target = tmp_path / "calibration.json"
+    save_config(derived, target)
+    loaded = load_config(target)
+
+    assert loaded["lead_window"] >= 1
+    assert loaded["top_k_rank_window"] >= 1
+    assert "default" in loaded["decision_thresholds"]
