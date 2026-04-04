@@ -17,10 +17,12 @@ from __future__ import annotations
 
 import argparse
 import json
+import time
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
+from urllib.error import HTTPError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
 
@@ -72,6 +74,7 @@ def request_json(
     path: str,
     params: dict[str, str],
     payload: dict[str, Any] | None = None,
+    retries: int = 4,
 ) -> dict[str, Any]:
     query = urlencode(params)
     url = f"{base_url.rstrip('/')}{path}"
@@ -82,9 +85,24 @@ def request_json(
     if payload is not None:
         body = json.dumps(payload).encode("utf-8")
         headers["Content-Type"] = "application/json"
-    req = Request(url, data=body, method=method, headers=headers)
-    with urlopen(req, timeout=20) as res:
-        return json.loads(res.read().decode("utf-8"))
+    for attempt in range(retries + 1):
+        req = Request(url, data=body, method=method, headers=headers)
+        try:
+            with urlopen(req, timeout=30) as res:
+                return json.loads(res.read().decode("utf-8"))
+        except HTTPError as exc:
+            if exc.code in (502, 503, 504) and attempt < retries:
+                wait = 2 ** attempt
+                print(f"    [retry {attempt + 1}/{retries}] HTTP {exc.code}, waiting {wait}s…")
+                time.sleep(wait)
+                continue
+            try:
+                err_body = exc.read().decode("utf-8", errors="replace")
+                print(f"    [HTTP {exc.code}] {url}")
+                print(f"    {err_body[:500]}")
+            except Exception:
+                pass
+            raise
 
 
 def clip_text(text: str, limit: int = 220) -> str:
@@ -200,8 +218,9 @@ def main() -> None:
 
         result = request_json("POST", args.base_url, "/ingest", params, payload)
 
-        risk = result.get("risk_assessment") or {}
-        recommendation = result.get("operational_recommendation") or {}
+        latest = result.get("latest") or result
+        risk = latest.get("risk_assessment") or {}
+        recommendation = latest.get("operational_recommendation") or {}
         instability = risk.get("composite_instability", 0.0)
         alert = recommendation.get("recommended_action", "")
 

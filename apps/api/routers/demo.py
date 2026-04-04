@@ -15,7 +15,7 @@ from .dependencies import DemoRouterDependencies
 
 logger = logging.getLogger(__name__)
 
-_GROW_OP_SCENARIO_PATH = Path(__file__).resolve().parent.parent.parent.parent / "examples" / "demo" / "cannabis_grow_op_scenario.json"
+_GROW_OP_SCENARIO_PATH = Path(__file__).resolve().parent.parent / "demo_data" / "cannabis_grow_op_scenario.json"
 
 
 def _load_grow_op_frames(customer_id: str) -> tuple[str, str, list[dict[str, Any]]]:
