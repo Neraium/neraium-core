@@ -1042,10 +1042,11 @@ class SystemicInfrastructureIntelligenceEngine:
                     "status": "ready",
                     **canonical_structural_state.as_dict(),
                     "lawful_model": lawful_state.as_dict(),
-                    "residual_structure": round(float(lawful_state.residual_structure), 6),
-                    "coherence_margin": round(float(lawful_state.coherence_margin), 6),
-                    "operator_drift": round(float(lawful_state.operator_drift), 6),
-                    "regime_transition_pressure": round(float(lawful_state.regime_transition_pressure), 6),
+                    "operator_deformation_energy": round(float(lawful_state.operator_deformation_energy), 6),
+                    "residual_energy": round(float(lawful_state.residual_energy), 6),
+                    "regime_distance": round(float(lawful_state.regime_distance), 6),
+                    "coherence_margin_raw": round(float(lawful_state.coherence_margin_raw), 6),
+                    "structural_drift_magnitude": round(float(lawful_state.structural_drift_magnitude), 6),
                 },
                 "derived_signals": {
                     "status": "ready",
@@ -1062,9 +1063,9 @@ class SystemicInfrastructureIntelligenceEngine:
                         k: round(float(v), 6) for k, v in canonical_structural_state.raw_components.items()
                     },
                     "composite_instability": round(float(derived_signals["composite_instability"]), 6),
-                    "coherence_margin": round(float(lawful_state.coherence_margin), 6),
-                    "operator_drift": round(float(lawful_state.operator_drift), 6),
-                    "regime_transition_pressure": round(float(lawful_state.regime_transition_pressure), 6),
+                    "coherence_margin_raw": round(float(lawful_state.coherence_margin_raw), 6),
+                    "operator_deformation_energy": round(float(lawful_state.operator_deformation_energy), 6),
+                    "regime_distance": round(float(lawful_state.regime_distance), 6),
                     "geometry": {
                         "mean_shift_norm": round(float(geom.mean_shift_norm), 6),
                         "covariance_shift_norm": round(float(geom.covariance_shift_norm), 6),
