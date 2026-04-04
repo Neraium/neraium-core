@@ -86,6 +86,8 @@ from .routers.ingest import build_ingest_router
 from .routers.demo import build_demo_router
 from .routers.integrations import build_integrations_router
 from .routers.onboarding import build_onboarding_router
+DEFAULT_MAX_REQUEST_BODY_BYTES = request_body_limit_bytes()
+
 from .routers.dependencies import (
     DemoRouterDependencies,
     IngestRouterDependencies,
@@ -216,7 +218,7 @@ def create_app(
     request_body_limit = (
         int(max_request_body_bytes)
         if max_request_body_bytes is not None
-        else request_body_limit_bytes()
+        else DEFAULT_MAX_REQUEST_BODY_BYTES
     )
 
     runtime_status = get_core_runtime_status()
@@ -689,6 +691,34 @@ def create_app(
             run_id=resolved_run,
             customer_id=resolved_customer,
             )
+        return {"state": state}
+
+
+
+    @app.get(
+        "/v2/state",
+        response_model=CurrentStateEnvelope,
+        openapi_extra={
+            "responses": {
+                "200": {
+                    "content": {
+                        "application/json": {
+                            "example": {
+                                "state": {"contract_version": "decision-contract.v2"}
+                            }
+                        }
+                    }
+                }
+            }
+        },
+    )
+    def get_state_v2(
+        run_id: str | None = Query(default=None),
+        customer_id: str | None = Query(default=None),
+    ) -> dict[str, Any]:
+        response = get_state(run_id=run_id, customer_id=customer_id)
+        state = dict(response.get("state") or {})
+        state.setdefault("contract_version", "decision-contract.v2")
         return {"state": state}
 
     @app.get("/history", response_model=HistoryEnvelope)
