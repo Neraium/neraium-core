@@ -37,6 +37,7 @@ from neraium_core.sii.types import (
     ALLOWED_STATES,
     CanonicalIngestionRecord,
     SIIResult,
+    StructuralCoherenceState,
     StructuralIndicators,
     TelemetryFrame,
     ingestion_record_to_frame,
@@ -400,6 +401,10 @@ class SystemicInfrastructureIntelligenceEngine:
                 "status": "warming_up",
                 "reason": "latent_state_unavailable_until_windows_are_populated",
             },
+            "structural_state": {
+                "status": "warming_up",
+                "reason": "structural_state_unavailable_until_windows_are_populated",
+            },
         }
         out["decision"] = resolve_best_action(
             attribution=out["attribution"],
@@ -651,6 +656,45 @@ class SystemicInfrastructureIntelligenceEngine:
             )
             composite = float(self.scoring.composite_departure_score(indicators))
             self.state.composite_history.append(composite)
+            canonical_structural_state = StructuralCoherenceState(
+                indicators=indicators,
+                coherence_score=float(geom.coherence_score),
+                composite_instability=float(composite),
+                regime={
+                    "name": str(reg_assign.regime_name),
+                    "distance": float(reg_assign.regime_distance),
+                    "geometry_distance": float(reg_assign.geometry_distance),
+                    "graph_distance": float(reg_assign.graph_distance),
+                    "pending": not bool(reg_assign.regime_activated),
+                    "support": float(reg_assign.regime_support),
+                    "confidence": float(reg_assign.regime_confidence),
+                    "uncertainty": float(reg_assign.regime_uncertainty),
+                },
+                graph_metrics={
+                    "density": float(gstate.density),
+                    "avg_degree": float(gstate.avg_degree),
+                    "path_length": float(current_path),
+                    "path_length_shift": float(path_shift),
+                    "deformation": float(gstate.l1_deformation),
+                    "edge_persistence": float(dyn_graph.edge_persistence),
+                    "edge_birth_rate": float(dyn_graph.edge_birth_rate),
+                    "edge_death_rate": float(dyn_graph.edge_death_rate),
+                    "centrality_shift": float(dyn_graph.centrality_shift),
+                    "dynamic_fragility": float(dyn_graph.fragility_score),
+                },
+                raw_components={
+                    "structural_drift": float(raw_structural),
+                    "relational_instability": float(raw_relational),
+                    "graph_deformation": float(raw_graph),
+                    "regime_distance": float(raw_regime),
+                    "coherence_loss": float(raw_coherence_loss),
+                    "mean_shift": float(raw_mean_shift),
+                    "covariance_shift": float(raw_cov_shift),
+                    "subspace_rotation": float(raw_subspace_shift),
+                    "path_length_shift": float(path_shift),
+                },
+                component_extensions={k: float(v) for k, v in component_extensions.items()},
+            )
 
             coherence_for_decision = self._clamp01(1.0 - coherence_loss_score)
             interpreted = map_to_interpreted_state(
@@ -983,22 +1027,21 @@ class SystemicInfrastructureIntelligenceEngine:
                 },
                 "causal_analysis": causal_analysis,
                 "structural_system_intelligence": structural_intelligence,
+                "structural_state": {
+                    "status": "ready",
+                    **canonical_structural_state.as_dict(),
+                },
                 "data_quality_summary": summarize_quality(dq),
                 "experimental_analytics": {
                     "components": {k: round(float(v), 6) for k, v in components.items()},
-                    "component_extensions": {k: round(float(v), 6) for k, v in component_extensions.items()},
-                    "raw_components": {
-                        "structural_drift": round(raw_structural, 6),
-                        "relational_instability": round(raw_relational, 6),
-                        "graph_deformation": round(raw_graph, 6),
-                        "regime_distance": round(raw_regime, 6),
-                        "coherence_loss": round(raw_coherence_loss, 6),
-                        "mean_shift": round(raw_mean_shift, 6),
-                        "covariance_shift": round(raw_cov_shift, 6),
-                        "subspace_rotation": round(raw_subspace_shift, 6),
-                        "path_length_shift": round(path_shift, 6),
+                    "component_extensions": {
+                        k: round(float(v), 6)
+                        for k, v in canonical_structural_state.component_extensions.items()
                     },
-                    "composite_instability": round(composite, 6),
+                    "raw_components": {
+                        k: round(float(v), 6) for k, v in canonical_structural_state.raw_components.items()
+                    },
+                    "composite_instability": round(float(canonical_structural_state.composite_instability), 6),
                     "geometry": {
                         "mean_shift_norm": round(float(geom.mean_shift_norm), 6),
                         "covariance_shift_norm": round(float(geom.covariance_shift_norm), 6),
@@ -1008,27 +1051,9 @@ class SystemicInfrastructureIntelligenceEngine:
                         "dependence_lag": int(self.config.dependence_lag),
                     },
                     "graph_metrics": {
-                        "density": round(float(gstate.density), 6),
-                        "avg_degree": round(float(gstate.avg_degree), 6),
-                        "path_length": round(float(current_path), 6),
-                        "path_length_shift": round(float(path_shift), 6),
-                        "deformation": round(float(gstate.l1_deformation), 6),
-                        "edge_persistence": dyn_graph.edge_persistence,
-                        "edge_birth_rate": dyn_graph.edge_birth_rate,
-                        "edge_death_rate": dyn_graph.edge_death_rate,
-                        "centrality_shift": dyn_graph.centrality_shift,
-                        "dynamic_fragility": dyn_graph.fragility_score,
+                        k: round(float(v), 6) for k, v in canonical_structural_state.graph_metrics.items()
                     },
-                    "regime": {
-                        "name": reg_assign.regime_name,
-                        "distance": reg_assign.regime_distance,
-                        "geometry_distance": reg_assign.geometry_distance,
-                        "graph_distance": reg_assign.graph_distance,
-                        "pending": not bool(reg_assign.regime_activated),
-                        "support": reg_assign.regime_support,
-                        "confidence": reg_assign.regime_confidence,
-                        "uncertainty": reg_assign.regime_uncertainty,
-                    },
+                    "regime": dict(canonical_structural_state.regime),
                     "context": context,
                     "processing": {
                         "status": "success" if bool(dq.gate_passed) else "warning",
