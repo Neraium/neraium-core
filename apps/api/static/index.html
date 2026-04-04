@@ -395,9 +395,9 @@
             <div class="panel-header">
               <h3>Structural geometry</h3>
               <div id="geometryFlowLegend" class="geometry-flow-legend" aria-label="Flow visualization legend">
-                <span class="geometry-flow-legend__item"><i class="geometry-flow-legend__swatch geometry-flow-legend__swatch--cyan"></i>Blue/cyan: stable / contained</span>
-                <span class="geometry-flow-legend__item"><i class="geometry-flow-legend__swatch geometry-flow-legend__swatch--amber"></i>Yellow/orange: pressure</span>
-                <span class="geometry-flow-legend__item"><i class="geometry-flow-legend__swatch geometry-flow-legend__swatch--red"></i>Red: escape / breach</span>
+                <span class="geometry-flow-legend__item"><i class="geometry-flow-legend__swatch geometry-flow-legend__swatch--cyan"></i>Blue/cyan: stable / baseline</span>
+                <span class="geometry-flow-legend__item"><i class="geometry-flow-legend__swatch geometry-flow-legend__swatch--amber"></i>Yellow/orange: drift / stress</span>
+                <span class="geometry-flow-legend__item"><i class="geometry-flow-legend__swatch geometry-flow-legend__swatch--red"></i>Red: structural collapse / alert</span>
                 <span class="geometry-flow-legend__item"><i class="geometry-flow-legend__swatch geometry-flow-legend__swatch--arrow"></i>Arrow: net drift</span>
               </div>
             </div>
@@ -429,13 +429,13 @@
               </div>
               <aside id="geometryDetails" class="geometry-details geometry-details--flow">
                 <div class="geometry-flow-hero">
-                  <span id="geometryIntegrityLabel" class="geometry-flow-label">Integrity Score</span>
+                  <span id="geometryIntegrityLabel" class="geometry-flow-label">Zone Health</span>
                   <span id="geometryCoherence" class="geometry-flow-value" title="">—</span>
                   <span id="geometryFlowStatusText" class="geometry-flow-status">—</span>
                 </div>
                 <div class="geometry-flow-metrics" id="geometryFlowMetrics">
                   <div class="geometry-flow-metric">
-                    <span class="metric-k">Containment</span>
+                    <span class="metric-k">Stability</span>
                     <div class="geometry-flow-metric__row">
                       <span id="geometryFlowContainment" class="geometry-flow-metric__value">—</span>
                       <span id="geometryFlowContainmentHint" class="geometry-flow-metric__hint">—</span>
@@ -476,14 +476,14 @@
                   <span class="metric-k">Outside Manifold</span>
                   <span class="geometry-flow-manifold-line__v"><span id="geometryOutsideManifold">—</span></span>
                   <span class="geometry-flow-manifold-line__sep" aria-hidden="true">·</span>
-                  <span class="metric-k">Boundary Pressure</span>
+                  <span class="metric-k">Boundary Tension</span>
                   <span id="geometryBoundaryPressure" class="geometry-flow-manifold-line__v" title="">—</span>
                   <span class="geometry-flow-manifold-line__sep" aria-hidden="true">·</span>
                   <span class="metric-k">Link Agreement</span>
                   <span id="geometryFlowLinkAgreeInline" class="geometry-flow-manifold-line__v">—</span>
                 </p>
                 <div class="geometry-run-metrics" id="geometryRunMetrics">
-                  <div class="geometry-metric-row"><span class="metric-k">Flow state</span><span id="geometryStructuralAssessment" class="metric-v" title="">—</span></div>
+                  <div class="geometry-metric-row"><span class="metric-k">Zone state</span><span id="geometryStructuralAssessment" class="metric-v" title="">—</span></div>
                   <div class="geometry-metric-row"><span class="metric-k">Engine phase</span><span id="geometryEnginePhase" class="metric-v" title="">—</span></div>
                   <div class="geometry-metric-row"><span class="metric-k">Risk</span><span id="geometryRisk" class="metric-v">-</span></div>
                   <div class="geometry-metric-row geometry-metric-row--engine-raw hidden">
