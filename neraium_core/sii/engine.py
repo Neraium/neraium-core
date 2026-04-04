@@ -30,7 +30,7 @@ from neraium_core.sii.regime_model import RegimeModel, RegimeObservation
 from neraium_core.sii.risk import assess_forward_risk
 from neraium_core.system_intelligence import StructuralSystemIntelligencePlatform
 from neraium_core.decision_resolver import resolve_best_action
-from neraium_core.sii.scoring import StructuralScoringModel
+from neraium_core.sii.structural_model import build_lawful_structural_state, derived_signal_view
 from neraium_core.sii.types import (
     ALLOWED_CONFIDENCE,
     ALLOWED_INTERPRETED_STATES,
@@ -90,7 +90,6 @@ class SystemicInfrastructureIntelligenceEngine:
     ) -> None:
         self.config = config or SIIConfig.from_env()
         self.context_provider = context_provider or NoOpContextProvider()
-        self.scoring = StructuralScoringModel()
         self.regimes = RegimeModel(config=self.config)
         self.logger = logging.getLogger("neraium.sii.engine")
         self.state = _State(
@@ -405,6 +404,10 @@ class SystemicInfrastructureIntelligenceEngine:
                 "status": "warming_up",
                 "reason": "structural_state_unavailable_until_windows_are_populated",
             },
+            "derived_signals": {
+                "status": "warming_up",
+                "reason": "derived_signals_unavailable_until_structural_state_is_ready",
+            },
         }
         out["decision"] = resolve_best_action(
             attribution=out["attribution"],
@@ -654,12 +657,16 @@ class SystemicInfrastructureIntelligenceEngine:
                 subspace_rotation_score=float(component_extensions["subspace_rotation_score"]),
                 path_length_shift_score=float(component_extensions["path_length_shift_score"]),
             )
-            composite = float(self.scoring.composite_departure_score(indicators))
-            self.state.composite_history.append(composite)
+            provisional_composite = self._clamp01(
+                0.35 * structural_score
+                + 0.25 * regime_score
+                + 0.20 * relational_score
+                + 0.20 * coherence_loss_score
+            )
             canonical_structural_state = StructuralCoherenceState(
                 indicators=indicators,
                 coherence_score=float(geom.coherence_score),
-                composite_instability=float(composite),
+                composite_instability=float(provisional_composite),
                 regime={
                     "name": str(reg_assign.regime_name),
                     "distance": float(reg_assign.regime_distance),
@@ -695,6 +702,10 @@ class SystemicInfrastructureIntelligenceEngine:
                 },
                 component_extensions={k: float(v) for k, v in component_extensions.items()},
             )
+            lawful_state = build_lawful_structural_state(canonical_structural_state)
+            derived_signals = derived_signal_view(lawful_state)
+            composite = float(derived_signals["composite_instability"])
+            self.state.composite_history.append(composite)
 
             coherence_for_decision = self._clamp01(1.0 - coherence_loss_score)
             interpreted = map_to_interpreted_state(
@@ -1030,6 +1041,15 @@ class SystemicInfrastructureIntelligenceEngine:
                 "structural_state": {
                     "status": "ready",
                     **canonical_structural_state.as_dict(),
+                    "lawful_model": lawful_state.as_dict(),
+                    "residual_structure": round(float(lawful_state.residual_structure), 6),
+                    "coherence_margin": round(float(lawful_state.coherence_margin), 6),
+                    "operator_drift": round(float(lawful_state.operator_drift), 6),
+                    "regime_transition_pressure": round(float(lawful_state.regime_transition_pressure), 6),
+                },
+                "derived_signals": {
+                    "status": "ready",
+                    **{k: round(float(v), 6) for k, v in derived_signals.items()},
                 },
                 "data_quality_summary": summarize_quality(dq),
                 "experimental_analytics": {
@@ -1041,7 +1061,10 @@ class SystemicInfrastructureIntelligenceEngine:
                     "raw_components": {
                         k: round(float(v), 6) for k, v in canonical_structural_state.raw_components.items()
                     },
-                    "composite_instability": round(float(canonical_structural_state.composite_instability), 6),
+                    "composite_instability": round(float(derived_signals["composite_instability"]), 6),
+                    "coherence_margin": round(float(lawful_state.coherence_margin), 6),
+                    "operator_drift": round(float(lawful_state.operator_drift), 6),
+                    "regime_transition_pressure": round(float(lawful_state.regime_transition_pressure), 6),
                     "geometry": {
                         "mean_shift_norm": round(float(geom.mean_shift_norm), 6),
                         "covariance_shift_norm": round(float(geom.covariance_shift_norm), 6),
