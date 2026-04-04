@@ -177,6 +177,41 @@ class StructuralIndicators:
 
 
 @dataclass(frozen=True)
+class StructuralCoherenceState:
+    """
+    Canonical structural object for operator-level reasoning.
+
+    Scores, labels, and alerts are derived views over this state.
+    """
+
+    indicators: StructuralIndicators
+    coherence_score: float
+    composite_instability: float
+    regime: dict[str, float | str | bool]
+    graph_metrics: dict[str, float]
+    raw_components: dict[str, float]
+    component_extensions: dict[str, float]
+
+    def as_dict(self) -> dict[str, Any]:
+        return {
+            "indicators": {
+                "structural_drift_score": float(self.indicators.structural_drift_score),
+                "relational_instability_score": float(self.indicators.relational_instability_score),
+                "regime_distance": float(self.indicators.regime_distance),
+                "coherence_loss_score": float(self.indicators.coherence_loss_score),
+                "graph_deformation_score": float(self.indicators.graph_deformation_score),
+                "coupling_instability_score": float(self.indicators.coupling_instability_score),
+            },
+            "coherence_score": float(self.coherence_score),
+            "composite_instability": float(self.composite_instability),
+            "regime": dict(self.regime),
+            "graph_metrics": {k: float(v) for k, v in self.graph_metrics.items()},
+            "raw_components": {k: float(v) for k, v in self.raw_components.items()},
+            "component_extensions": {k: float(v) for k, v in self.component_extensions.items()},
+        }
+
+
+@dataclass(frozen=True)
 class DecisionResult:
     interpreted_state: InterpretedState
     state: DecisionState
@@ -232,6 +267,7 @@ class SIIResult(TypedDict):
     data_quality_summary: dict[str, Any]
     experimental_analytics: dict[str, Any]
     structural_system_intelligence: dict[str, Any]
+    structural_state: dict[str, Any]
 
 
 def ingestion_record_to_frame(record: CanonicalIngestionRecord) -> SIIFrame:
