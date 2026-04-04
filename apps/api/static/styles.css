@@ -4267,6 +4267,10 @@ body.demo-mode-active #phaseTimeline .timeline-item {
   --nr-text:          #0f172a;
   --nr-text-2:        #475569;
   --nr-text-3:        #94a3b8;
+  --nr-accent:        #1765c1;
+  --nr-accent-hover:  #1558a8;
+  --nr-accent-light:  #eff6ff;
+  --nr-accent-border: #bfdbfe;
   --nr-accent:        #16a34a;
   --nr-accent-hover:  #15803d;
   --nr-accent-light:  #f0fdf4;
@@ -4331,7 +4335,7 @@ body {
   border-radius: 9px;
   font-size: 15px;
   font-weight: 800;
-  background: linear-gradient(140deg, #16a34a 0%, #22c55e 60%, #15803d 100%);
+  background: linear-gradient(140deg, #1765c1 0%, #2f8ae1 60%, #1045a0 100%);
   box-shadow: 0 2px 8px rgba(23, 101, 193, 0.4), 0 1px 2px rgba(23, 101, 193, 0.2);
 }
 
@@ -4384,7 +4388,7 @@ body {
 .nav a.active {
   background: var(--nr-accent-light);
   border-color: var(--nr-accent-border);
-  color: #166534;
+  color: #1e40af;
   font-weight: 650;
   box-shadow: var(--nr-shadow-xs);
 }
@@ -4724,7 +4728,7 @@ select:focus,
 button:focus-visible,
 a:focus-visible {
   outline: none;
-  border-color: #86efac;
+  border-color: #93c5fd;
   box-shadow: 0 0 0 3px rgba(59,130,246,0.15), var(--nr-shadow-xs);
 }
 
@@ -4946,7 +4950,7 @@ a:hover {
 
 .upload-dropzone:hover,
 .upload-dropzone:focus-within {
-  border-color: #86efac;
+  border-color: #93c5fd;
   background: #f0f7ff;
 }
 
@@ -4972,7 +4976,7 @@ a:hover {
 }
 
 .upload-progress-bar {
-  background: linear-gradient(90deg, #16a34a, #4ade80);
+  background: linear-gradient(90deg, #1765c1, #60a5fa);
   transition: width 180ms ease;
 }
 
@@ -5055,7 +5059,7 @@ a:hover {
 .risk-stage.active {
   border-color: var(--nr-accent-border);
   background: var(--nr-accent-light);
-  color: #166534;
+  color: #1e40af;
   font-weight: 700;
 }
 
@@ -5221,7 +5225,7 @@ details > summary:hover {
 .csv-sensor-chip:hover {
   border-color: var(--nr-accent-border);
   background: var(--nr-accent-light);
-  color: #166534;
+  color: #1e40af;
 }
 
 /* --- Onboarding ------------------------------------------------- */
@@ -5245,7 +5249,7 @@ details > summary:hover {
 }
 
 .onboarding-choice-btn.active {
-  border-color: #4ade80;
+  border-color: #3b82f6;
   background: var(--nr-accent-light);
   box-shadow: var(--nr-shadow-sm);
 }
@@ -5292,7 +5296,7 @@ details > summary:hover {
 }
 
 .demo-progress-fill {
-  background: linear-gradient(90deg, #16a34a, #4ade80);
+  background: linear-gradient(90deg, #1765c1, #60a5fa);
 }
 
 /* --- Dashboard demo hero strip ---------------------------------- */
@@ -5404,8 +5408,8 @@ details > summary:hover {
 /* --- Demo start banner ------------------------------------------ */
 .demo-start-banner {
   border-radius: var(--nr-radius-xl);
-  border: 1px solid #bbf7d0;
-  background: linear-gradient(135deg, #f0fdf4 0%, #e8f2ff 60%, #f0fdf4 100%);
+  border: 1px solid #bfdbfe;
+  background: linear-gradient(135deg, #eff6ff 0%, #e8f2ff 60%, #f0fdf4 100%);
   box-shadow: var(--nr-shadow-sm);
   padding: 18px 22px;
   overflow: hidden;
@@ -5440,7 +5444,7 @@ details > summary:hover {
   font-weight: 700;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: #16a34a;
+  color: #1765c1;
 }
 
 .demo-start-banner-title {
@@ -5465,8 +5469,8 @@ details > summary:hover {
   font-size: 14.5px;
   font-weight: 700;
   border-radius: var(--nr-radius-lg);
-  background: linear-gradient(135deg, #16a34a 0%, #22c55e 100%);
-  border: 1px solid #15803d;
+  background: linear-gradient(135deg, #1765c1 0%, #2f8ae1 100%);
+  border: 1px solid #1558a8;
   color: #fff;
   box-shadow: 0 4px 14px rgba(23,101,193,0.32), inset 0 1px 0 rgba(255,255,255,0.15);
   transition: all 140ms ease;
