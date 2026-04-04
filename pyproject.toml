@@ -21,3 +21,53 @@ dependencies = [
 [project.optional-dependencies]
 dev = ["httpx", "pytest", "ruff"]
 plots = ["matplotlib"]
+
+# Core math extensions (symbolic + numeric + optimization + probabilistic)
+math = [
+  "sympy>=1.12",
+  "scipy>=1.12",
+]
+
+# Formal verification via Z3 SMT solver
+math-verify = [
+  "sympy>=1.12",
+  "scipy>=1.12",
+  "z3-solver>=4.12",
+]
+
+# GPU-accelerated numerics via CuPy (CUDA 12.x)
+math-gpu = [
+  "sympy>=1.12",
+  "scipy>=1.12",
+  "cupy-cuda12x>=12.0",
+]
+
+# JAX-backed automatic differentiation (CPU backend)
+math-autodiff = [
+  "sympy>=1.12",
+  "scipy>=1.12",
+  "jax[cpu]>=0.4",
+]
+
+# MIP solver support via PuLP
+math-mip = [
+  "sympy>=1.12",
+  "scipy>=1.12",
+  "pulp>=2.7",
+]
+
+# Math-aware Claude agent workflows
+math-agents = [
+  "sympy>=1.12",
+  "scipy>=1.12",
+  "anthropic>=0.30",
+]
+
+# Everything
+math-all = [
+  "sympy>=1.12",
+  "scipy>=1.12",
+  "z3-solver>=4.12",
+  "pulp>=2.7",
+  "anthropic>=0.30",
+]
