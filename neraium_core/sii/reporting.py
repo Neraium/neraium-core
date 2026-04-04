@@ -6,6 +6,7 @@ from math import sqrt
 from pathlib import Path
 from typing import Any
 
+from .calibration import SIICalibrationConfig
 from .errors import SIIIOError
 
 STRUCTURAL_SIGNAL_FIELDS: tuple[str, ...] = (
@@ -197,7 +198,9 @@ def compute_structural_temporal_validation(
 
 def compute_structural_signal_ranking(
     temporal_validation: dict[str, Any],
+    config: dict[str, Any] | SIICalibrationConfig | None = None,
 ) -> dict[str, Any]:
+    calibration = SIICalibrationConfig.from_obj(config)
     signals = temporal_validation.get("signals")
     if not isinstance(signals, dict) or not signals:
         return {
@@ -245,7 +248,8 @@ def compute_structural_signal_ranking(
                     "spike_count": spike_count,
                     "spike_to_transition_ratio": spike_to_transition_ratio,
                     "mean_abs_change": float(signal_metrics.get("mean_abs_change") or 0.0),
-                    "spike_threshold": float(signal_metrics.get("spike_threshold") or 0.0),
+                    "spike_threshold": float(signal_metrics.get("spike_threshold") or 0.0)
+                    * float(calibration.spike_threshold_multiplier),
                 },
                 "temporal_alignment": {
                     "leading_transition_hits": leading_hits,
@@ -281,7 +285,13 @@ def evaluate_structural_risk_decision_policy(
     min_lead_recall: float = 0.3,
     min_lead_precision: float = 0.3,
     max_eligible_rank: int = 2,
+    config: dict[str, Any] | SIICalibrationConfig | None = None,
 ) -> dict[str, Any]:
+    calibration = SIICalibrationConfig.from_obj(config)
+    decision_thresholds = dict(calibration.decision_thresholds or {})
+    min_lead_recall = float(calibration.min_lead_recall if config is not None else min_lead_recall)
+    min_lead_precision = float(calibration.min_lead_precision if config is not None else min_lead_precision)
+    max_eligible_rank = int(calibration.top_k_rank_window if config is not None else max_eligible_rank)
     ranking = signal_ranking.get("ranking")
     if not isinstance(ranking, list) or not ranking:
         return {
@@ -315,7 +325,8 @@ def evaluate_structural_risk_decision_policy(
 
         signal_raw = float(raw_structural_magnitudes.get(signal) or 0.0)
         threshold_distance = abs(signal_raw - baseline_mean)
-        threshold_crossed = threshold_distance >= spike_threshold and spike_threshold > 0.0
+        decision_multiplier = float(decision_thresholds.get(signal, decision_thresholds.get("default", 1.0)))
+        threshold_crossed = threshold_distance >= (spike_threshold * decision_multiplier) and spike_threshold > 0.0
 
         eligible = False
         if role == "leading" and rank <= eligible_limit and lead_recall >= min_lead_recall:
@@ -330,6 +341,7 @@ def evaluate_structural_risk_decision_policy(
             "eligible_for_early_risk": eligible,
             "threshold_comparison": {
                 "threshold": round(spike_threshold, 6),
+                "decision_multiplier": round(decision_multiplier, 6),
                 "baseline_reference": round(baseline_mean, 6),
                 "current_raw_magnitude": round(signal_raw, 6),
                 "distance_to_threshold": round(threshold_distance, 6),
