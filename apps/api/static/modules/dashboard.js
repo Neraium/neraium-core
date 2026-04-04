@@ -1607,7 +1607,34 @@ function renderRunDetailHeaderContext(run, latest) {
   });
 }
 
+async function startGrowOpDemo() {
+  const cid = customerIdValue(state.tenant.customerId);
+  const out = await fetchJson(apiUrl("/demo/grow-op/start", { customer_id: cid }), { method: "POST" });
+  if (!out.run_id) throw new Error("No run_id returned from grow op demo start.");
+  return out;
+}
+
 function wireWorkspaceShellEvents() {
+  const growOpBtn = qs("#loadGrowOpDemoBtn");
+  if (growOpBtn && growOpBtn.dataset.wired !== "1") {
+    growOpBtn.dataset.wired = "1";
+    growOpBtn.addEventListener("click", async () => {
+      try {
+        growOpBtn.disabled = true;
+        growOpBtn.textContent = "Loading demo...";
+        setLoading(true, "Seeding grow op demo — 122 frames...");
+        const out = await startGrowOpDemo();
+        await loadRuns();
+        const cid = customerIdValue(state.tenant.customerId);
+        window.location.href = `/app/runs/${encodeURIComponent(out.run_id)}?customer_id=${encodeURIComponent(cid)}`;
+      } catch (err) {
+        setStatus(String(err.message || err), true, true);
+        growOpBtn.disabled = false;
+        growOpBtn.textContent = "Load grow op demo";
+        setLoading(false);
+      }
+    });
+  }
   const refreshBtn = qs("#refreshBtn");
   if (refreshBtn && refreshBtn.dataset.wired !== "1") {
     refreshBtn.dataset.wired = "1";
