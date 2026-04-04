@@ -933,7 +933,7 @@ async function prepareDemoRuns(options = {}) {
     const cust = customerIdValue(state.tenant.customerId);
     setDemoProgress({
       visible: true,
-      phase: "Preparing historical validation replay",
+      phase: "Preparing greenhouse demo replay",
       current: 0,
       total: scenarios.length,
       text: "Seeding telemetry and building structural state…",
@@ -1050,7 +1050,7 @@ function renderDashboardDemoHero() {
 function onDemoPlaybackComplete() {
   if (state.demo.playbackCompleteNotified) return;
   state.demo.playbackCompleteNotified = true;
-  createToast("Ready to test your data? Opening upload with the drop zone highlighted.", "success");
+  createToast("Greenhouse demo ready. Opening upload with the drop zone highlighted.", "success");
   try {
     const cid = encodeURIComponent(customerIdValue(state.tenant.customerId));
     window.location.href = `/upload?customer_id=${cid}&replay=1&highlight=upload`;
@@ -1465,9 +1465,9 @@ function setDemoProgress({ visible = false, phase = "Initializing run", current 
 function normalizeLoadingMessage(message) {
   const msg = String(message || "Loading...");
   const lower = msg.toLowerCase();
-  if (lower.includes("seed")) return "Processing NASA CMAPSS dataset...";
-  if (lower.includes("demo")) return "Preparing historical validation replay...";
-  if (lower.includes("cmapss")) return "Processing NASA CMAPSS dataset...";
+  if (lower.includes("seed")) return "Processing greenhouse demo dataset...";
+  if (lower.includes("demo")) return "Preparing greenhouse demo replay...";
+  if (lower.includes("cmapss")) return "Processing greenhouse demo dataset...";
   if (lower.includes("structural visualization") || lower.includes("geometry")) return "Rendering SII Structural View...";
   if (lower.includes("refresh")) return "Refreshing Systemic Infrastructure Intelligence state...";
   if (lower.includes("initial")) return "Initializing Systemic Infrastructure Intelligence workspace...";
