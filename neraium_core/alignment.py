@@ -1452,6 +1452,8 @@ class StructuralEngine:
 
             regime_name = assigned_regime["name"] if assigned_regime else None
             regime_distance = float(assigned_regime["distance"]) if assigned_regime else None
+            coherence_margin = float(assigned_regime.get("coherence_margin", 0.0)) if assigned_regime else 0.0
+            regime_novelty = max(0.0, -coherence_margin)
 
             analytics: dict[str, object] = {
                 **self._analytics_unavailable_payload("pending_multivariate_processing"),
@@ -1474,6 +1476,7 @@ class StructuralEngine:
                     "nearest": assigned_regime,
                     "assigned_name": regime_name,
                     "library_size": len(self.regime_signatures),
+                    "coherence_margin": round(float(coherence_margin), 6),
                 },
             }
             if self.representation_config.enable_diagnostics:
@@ -1482,7 +1485,7 @@ class StructuralEngine:
             components = canonicalize_components(
                 {
                     "drift": 0.0,
-                    "regime_drift": 0.0,
+                    "regime_drift": regime_novelty,
                     "early_warning": warning["variance"] + max(0.0, warning["lag1_autocorrelation"]),
                 }
             )
