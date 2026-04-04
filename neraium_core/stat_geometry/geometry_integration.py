@@ -123,6 +123,11 @@ class StatisticalGeometryLayer:
         frame = projector.project_window(matrix)
 
         path = self.entity_paths[str(entity_id)]
+        # If the state vector dimension changed (e.g. valid_mask changed due to sensor
+        # flatlines), the existing path is incompatible — reset to avoid shape mismatch
+        # errors in trajectory differencing operations.
+        if path and path[-1].shape != frame.state_vector.shape:
+            path.clear()
         path.append(frame.state_vector)
         if len(path) > self.max_history:
             del path[:-self.max_history]
