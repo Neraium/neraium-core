@@ -24,7 +24,11 @@ def _load_grow_op_frames(customer_id: str) -> tuple[str, str, list[dict[str, Any
     asset = raw.get("asset") or {}
     site_id = str(asset.get("site_id") or "grow-op-facility-01")
     asset_id = str(asset.get("asset_id") or "canopy-zone-A")
-    base_time = datetime.now(timezone.utc) - timedelta(minutes=1950)
+    max_offset = max(
+        (int(frame.get("minute_offset", 0)) for phase in raw.get("phases") or [] for frame in phase.get("frames") or []),
+        default=6735,
+    )
+    base_time = datetime.now(timezone.utc) - timedelta(minutes=max_offset + 5)
     rows: list[dict[str, Any]] = []
     for phase in raw.get("phases") or []:
         for frame in phase.get("frames") or []:
