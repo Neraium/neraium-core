@@ -59,6 +59,10 @@ def build_web_router() -> APIRouter:
     def web_historical_validation() -> RedirectResponse:
         return RedirectResponse(url="/validation", status_code=307)
 
+    @router.get("/app", include_in_schema=False)
+    def web_app() -> HTMLResponse:
+        return _render_index()
+
     @router.get("/app/runs", include_in_schema=False)
     def web_runs() -> HTMLResponse:
         return _render_index()
