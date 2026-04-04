@@ -24,7 +24,12 @@ from neraium_core.sii.live_ingestion import (
     build_live_provider,
 )
 from neraium_core.sii.logging import configure_structured_logging
-from neraium_core.sii.reporting import compute_structural_temporal_validation, write_csv_report, write_json_report
+from neraium_core.sii.reporting import (
+    compute_structural_signal_ranking,
+    compute_structural_temporal_validation,
+    write_csv_report,
+    write_json_report,
+)
 from neraium_core.sii.types import (
     CanonicalAnalysisTable,
     CanonicalAnalysisWindow,
@@ -68,4 +73,5 @@ __all__ = [
     "write_csv_report",
     "write_json_report",
     "compute_structural_temporal_validation",
+    "compute_structural_signal_ranking",
 ]
