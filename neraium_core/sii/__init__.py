@@ -35,6 +35,8 @@ from neraium_core.sii.reporting import (
     compute_structural_signal_ranking,
     compute_structural_temporal_validation,
     evaluate_structural_risk_decision_policy,
+    format_structural_report_text,
+    generate_structural_report,
     write_csv_report,
     write_json_report,
 )
@@ -83,6 +85,8 @@ __all__ = [
     "compute_structural_temporal_validation",
     "compute_structural_signal_ranking",
     "evaluate_structural_risk_decision_policy",
+    "generate_structural_report",
+    "format_structural_report_text",
     "run_structural_pipeline",
     "SIICalibrationConfig",
     "derive_calibration_from_validation",
