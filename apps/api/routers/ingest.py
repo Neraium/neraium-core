@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Query, Request, UploadFile, status
+from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request, status
 from starlette.responses import JSONResponse
 
 from ..schemas.common import CanonicalOutputResponse, ResultsEnvelope
@@ -142,10 +142,6 @@ def build_ingest_router(
     async def ingest_csv_preview(
         request: Request,
         payload: Any | None = Body(default=None),
-        file: UploadFile | None = File(default=None),
-        csv_sample: str | None = Form(default=None),
-        csv_text: str | None = Form(default=None),
-        json_payload: Any | None = Body(default=None),
         _: None = Depends(deps.require_api_key),
         customer_id: str | None = Query(default=None),
     ) -> dict[str, Any]:
@@ -161,13 +157,24 @@ def build_ingest_router(
                 "content_type": request.headers.get("content-type", ""),
             },
         )
-        if file is not None:
-            preview_bytes = await file.read(524_288)
-            body_sample = preview_bytes.decode("utf-8", errors="replace")
-            ingest_path = "csv_preview_multipart_file"
-        elif csv_sample is not None or csv_text is not None:
-            body_sample = str(csv_sample if csv_sample is not None else csv_text)
-            ingest_path = "csv_preview_form"
+        content_type = (request.headers.get("content-type") or "").lower()
+        if "multipart/form-data" in content_type:
+            try:
+                form = await request.form()
+            except Exception:
+                form = None
+            if form is not None:
+                uploaded = form.get("file")
+                if uploaded is not None and hasattr(uploaded, "read"):
+                    preview_bytes = await uploaded.read(524_288)
+                    body_sample = preview_bytes.decode("utf-8", errors="replace")
+                    ingest_path = "csv_preview_multipart_file"
+                else:
+                    csv_sample = form.get("csv_sample")
+                    csv_text = form.get("csv_text")
+                    if csv_sample is not None or csv_text is not None:
+                        body_sample = str(csv_sample if csv_sample is not None else csv_text)
+                        ingest_path = "csv_preview_form"
         elif isinstance(payload, dict):
             raw_csv_sample = payload.get("csv_sample")
             raw_csv_text = payload.get("csv_text")
@@ -197,7 +204,7 @@ def build_ingest_router(
                 "request_id": correlation_id,
                 "ingest_path": ingest_path,
                 "customer_id": resolved_customer,
-                "filename": str(getattr(file, "filename", "") or ""),
+                "filename": "",
                 "stage": "preview_received",
             },
         )
@@ -284,9 +291,15 @@ def build_ingest_router(
         )
 
     @router.post("/ingest/csv/upload", response_model=IngestJobEnvelope)
-    async def ingest_csv_upload(request: Request, file: UploadFile = File(...), _: None = Depends(deps.require_api_key), run_id: str | None = Query(default=None), customer_id: str | None = Query(default=None), mapping: str | None = Form(default=None)) -> dict[str, Any]:
+    async def ingest_csv_upload(
+        request: Request,
+        _: None = Depends(deps.require_api_key),
+        run_id: str | None = Query(default=None),
+        customer_id: str | None = Query(default=None),
+        mapping: str | None = Query(default=None),
+    ) -> dict[str, Any]:
         correlation_id = str(getattr(request.state, "correlation_id", "") or f"ing_up_{uuid4().hex[:12]}")
-        filename = str(file.filename or "upload.csv")
+        filename = request.headers.get("x-filename", "upload.csv")
         if not filename.lower().endswith(".csv"):
             raise HTTPException(
                 status_code=400,
@@ -349,7 +362,9 @@ def build_ingest_router(
             deps.ingest_jobs[job_id] = initial_job
         deps.persist_operational_state(f"ingest_job:{job_id}", initial_job, customer_id=resolved_customer, run_id=resolved_run)
         try:
-            bytes_received = await deps.stream_upload_to_tempfile(file, Path(temp_path), job_id)
+            upload_bytes = await request.body()
+            Path(temp_path).write_bytes(upload_bytes)
+            bytes_received = len(upload_bytes)
         except Exception as exc:
             Path(temp_path).unlink(missing_ok=True)
             deps.update_ingest_job(job_id, status="failed", message=f"Upload failed: {exc}")

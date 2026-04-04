@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import TYPE_CHECKING
 
-from neraium_core.markets.data.cache_store import CacheStore
+if TYPE_CHECKING:
+    from neraium_core.markets.data.cache_store import CacheStore
 
 from .client import MassiveRestClient
 from .models import NormalizedBar, from_massive_agg
@@ -39,7 +41,7 @@ class MassiveHistoricalService:
         timeframe: str,
         start_date: str,
         end_date: str,
-        cache_store: CacheStore,
+        cache_store: "CacheStore",
         dataset_id: str,
     ) -> dict:
         fetched: dict[str, int] = {}

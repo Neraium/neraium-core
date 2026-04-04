@@ -109,6 +109,29 @@ MIN_CONSECUTIVE_WATCH = 2
 MIN_CONSECUTIVE_ALERT = 2
 
 
+def _to_epoch_seconds(value: object) -> float:
+    if isinstance(value, datetime):
+        dt = value if value.tzinfo is not None else value.replace(tzinfo=timezone.utc)
+        return float(dt.timestamp())
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        raw = value.strip()
+        try:
+            return float(raw)
+        except ValueError:
+            if raw.endswith("Z"):
+                raw = raw[:-1] + "+00:00"
+            try:
+                dt = datetime.fromisoformat(raw)
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                return float(dt.timestamp())
+            except ValueError:
+                return 0.0
+    return 0.0
+
+
 def _vector_from_sensor_values(sensor_values: Dict[str, object], order: List[str]) -> np.ndarray:
     """Build a fixed-order vector; missing keys become NaN (new sensors mid-stream)."""
     values: list[float] = []
