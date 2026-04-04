@@ -116,6 +116,30 @@ class BayesianStateEstimate:
         }
 
 
+@dataclass
+class StructuralUncertaintyEstimate:
+    """
+    Probabilistic uncertainty over structural deformation signatures.
+
+    Each field is a Beta-posterior estimate over a structural event:
+    - structure_deformation: relational/spectral geometry departed baseline
+    - operator_drift: persistent operator-level drift is present
+    - coherence_margin_degradation: coherence margin has materially degraded
+    - regime_transition: transition pressure indicates regime change
+    """
+
+    posterior_means: dict[str, float]
+    credible_intervals_90: dict[str, list[float]]
+    sample_count: int
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "posterior_means": self.posterior_means,
+            "credible_intervals_90": self.credible_intervals_90,
+            "sample_count": self.sample_count,
+        }
+
+
 # ---------------------------------------------------------------------------
 # Bayesian state filter
 # ---------------------------------------------------------------------------
@@ -242,6 +266,77 @@ class BayesianStateFilter:
     @property
     def current_probabilities(self) -> dict[str, float]:
         return {s: float(self._probs[i]) for i, s in enumerate(_STATES)}
+
+
+class StructuralUncertaintyTracker:
+    """
+    Beta-Bernoulli tracker over structural events (not score labels).
+
+    Update input should be structural metrics from the inference layer.
+    """
+
+    _EVENT_KEYS = (
+        "structure_deformation",
+        "operator_drift",
+        "coherence_margin_degradation",
+        "regime_transition",
+    )
+
+    def __init__(self) -> None:
+        self._alpha: dict[str, float] = {k: 1.0 for k in self._EVENT_KEYS}
+        self._beta: dict[str, float] = {k: 1.0 for k in self._EVENT_KEYS}
+        self._n: int = 0
+
+    @staticmethod
+    def _event_observations(metrics: dict[str, float]) -> dict[str, float]:
+        rd = float(metrics.get("relational_drift", 0.0))
+        spectral = float(metrics.get("spectral", 0.0))
+        op_drift = float(metrics.get("operator_drift", metrics.get("regime_drift", 0.0)))
+        coherence_margin = float(metrics.get("coherence_margin", 0.0))
+        transition_pressure = float(metrics.get("transition_pressure", 0.0))
+        regime_drift = float(metrics.get("regime_drift", 0.0))
+
+        # Bernoulli observations in [0,1] (fractional evidence supported).
+        return {
+            "structure_deformation": float(np.clip(max(rd / 1.05, spectral / 0.92), 0.0, 1.0)),
+            "operator_drift": float(np.clip(op_drift / 0.85, 0.0, 1.0)),
+            "coherence_margin_degradation": float(np.clip((1.0 - coherence_margin) / 0.55, 0.0, 1.0)),
+            "regime_transition": float(np.clip(max(transition_pressure / 0.95, regime_drift / 0.88), 0.0, 1.0)),
+        }
+
+    def update(self, metrics: dict[str, float]) -> StructuralUncertaintyEstimate:
+        obs = self._event_observations(metrics)
+        self._n += 1
+        for key in self._EVENT_KEYS:
+            x = float(obs.get(key, 0.0))
+            self._alpha[key] += x
+            self._beta[key] += (1.0 - x)
+
+        posterior_means: dict[str, float] = {}
+        ci_90: dict[str, list[float]] = {}
+        for key in self._EVENT_KEYS:
+            a = float(self._alpha[key])
+            b = float(self._beta[key])
+            posterior_means[key] = a / (a + b)
+            if _SCIPY_AVAILABLE:
+                lo, hi = _stats.beta.ppf([0.05, 0.95], a, b)
+                ci_90[key] = [float(lo), float(hi)]
+            else:  # fallback: Gaussian approximation around Beta mean
+                var = (a * b) / (((a + b) ** 2) * (a + b + 1.0))
+                sigma = math.sqrt(max(0.0, var))
+                mu = posterior_means[key]
+                ci_90[key] = [float(max(0.0, mu - 1.645 * sigma)), float(min(1.0, mu + 1.645 * sigma))]
+
+        return StructuralUncertaintyEstimate(
+            posterior_means=posterior_means,
+            credible_intervals_90=ci_90,
+            sample_count=self._n,
+        )
+
+    def reset(self) -> None:
+        self._alpha = {k: 1.0 for k in self._EVENT_KEYS}
+        self._beta = {k: 1.0 for k in self._EVENT_KEYS}
+        self._n = 0
 
 
 # ---------------------------------------------------------------------------
