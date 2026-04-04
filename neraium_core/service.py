@@ -529,6 +529,11 @@ class StructuralMonitoringService:
             request_customer_id=customer_id,
             payload_customer_id=normalized_payloads[0].get("customer_id") if normalized_payloads else None,
         )
+        run_config = None
+        if run_id:
+            run_obj = self.store.get_run(run_id, customer_id=resolved_customer)
+            if run_obj and isinstance(run_obj.get("config"), dict):
+                run_config = run_obj["config"]
         for payload in normalized_payloads:
             item_timer = Timer()
             try:
@@ -544,11 +549,6 @@ class StructuralMonitoringService:
                 frame["customer_id"] = frame_customer
                 if frame_customer != resolved_customer:
                     raise ValueError("All batch items must share the same customer_id")
-                run_config = None
-                if run_id:
-                    run_obj = self.store.get_run(run_id, customer_id=resolved_customer)
-                    if run_obj and isinstance(run_obj.get("config"), dict):
-                        run_config = run_obj["config"]
                 engine = self._engine_for_frame(frame, run_config=run_config)
                 result = self._decorate_result(engine.process_frame(frame))
                 result["customer_id"] = resolved_customer
