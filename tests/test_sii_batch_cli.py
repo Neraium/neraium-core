@@ -50,8 +50,12 @@ def test_hardened_cli_exit_code_all_invalid_records(tmp_path: Path, monkeypatch,
     assert code == 1
     assert summary["frames_succeeded"] == 0
     assert summary["frames_failed"] == 3
+    assert summary["results_emitted"] == 0
     assert summary["all_failed"] is True
     assert summary["ingest_errors"]
+    assert summary["errors_truncated"] is False
+    assert summary["total_error_count"] == 3
+    assert summary["returned_error_count"] == 3
 
 
 def test_compatibility_entrypoint_delegates_configuration_errors(tmp_path: Path, monkeypatch, capsys) -> None:
@@ -63,4 +67,4 @@ def test_compatibility_entrypoint_delegates_configuration_errors(tmp_path: Path,
     payload = json.loads(capsys.readouterr().out)
 
     assert code == 2
-    assert "error" in payload
+    assert set(payload.keys()) == {"error"}
