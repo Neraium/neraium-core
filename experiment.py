@@ -9,6 +9,7 @@ DATA_PATH = Path(__file__).resolve().parent / "train_FD004.txt"
 SIGNAL_COLUMNS = ["s_2", "s_3", "s_4", "s_7"]
 WINDOW = 20
 DEGRADATION_FRACTION = 0.8
+NUM_UNITS = 249
 
 EMA_ALPHA = 0.2
 CUMULATIVE_N = 30
@@ -46,7 +47,7 @@ def run_multi_unit_experiment() -> pd.DataFrame:
     print("Loaded shape:", df.shape)
     print("Units:", df["unit"].nunique())
 
-    units = sorted(df["unit"].unique())[:25]
+    units = sorted(df["unit"].unique())[:NUM_UNITS]
     results = []
 
     print(f"Evaluating first {len(units)} units:", units)
