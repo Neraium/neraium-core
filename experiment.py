@@ -14,9 +14,9 @@ NUM_UNITS = 249
 EMA_ALPHA = 0.2
 CUMULATIVE_N = 30
 
-THRESHOLD_STD = 2.0
-PERSISTENCE = 1
-RUN_GRID_SEARCH = True
+THRESHOLD_STD = 1.5
+PERSISTENCE = 3
+RUN_GRID_SEARCH = False
 
 
 def load_fd004(path: Path) -> pd.DataFrame:
@@ -42,13 +42,14 @@ def fit_var1(X: np.ndarray) -> np.ndarray:
     return A
 
 
-def run_multi_unit_experiment() -> pd.DataFrame:
+def run_multi_unit_experiment() -> tuple[pd.DataFrame, dict]:
     df = load_fd004(DATA_PATH)
     print("Loaded shape:", df.shape)
     print("Units:", df["unit"].nunique())
 
     units = sorted(df["unit"].unique())[:NUM_UNITS]
     results = []
+    unit_data = {}
 
     print(f"Evaluating first {len(units)} units:", units)
     print("Signals:", SIGNAL_COLUMNS)
@@ -166,7 +167,13 @@ def run_multi_unit_experiment() -> pd.DataFrame:
             }
         )
 
-    return pd.DataFrame(results)
+        unit_data[int(unit)] = {
+            "signals": signals,
+            "drift_ema": drift_ema,
+            "ema_threshold": ema_threshold,
+        }
+
+    return pd.DataFrame(results), unit_data
 
 
 def print_and_plot_results(results_df: pd.DataFrame) -> None:
@@ -208,7 +215,7 @@ def run_experiment_with_params(threshold_std: float, persistence: int) -> dict:
     PERSISTENCE = persistence
 
     try:
-        results_df = run_multi_unit_experiment()
+        results_df, _ = run_multi_unit_experiment()
     finally:
         THRESHOLD_STD = prev_threshold
         PERSISTENCE = prev_persistence
@@ -252,9 +259,114 @@ def score_row(row: pd.Series) -> float:
     )
 
 
+def plot_unit_result(unit_id: int, data: dict, result: pd.Series) -> plt.Figure:
+    signals = data["signals"]
+    drift_ema = data["drift_ema"]
+
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(12, 7), sharex=True)
+
+    # Top panel: normalized signals
+    for col in SIGNAL_COLUMNS:
+        ax1.plot(signals[col].values, label=col, alpha=0.8)
+    ax1.set_ylabel("Normalized Value")
+    ax1.set_title(f"Unit {unit_id} — Signals and Anomaly Score")
+    ax1.legend(loc="upper left", fontsize=8)
+
+    # Bottom panel: anomaly score (drift EMA)
+    ax2.plot(drift_ema, color="darkorange", label="Anomaly Score (drift EMA)")
+    ax2.set_ylabel("Drift EMA")
+    ax2.set_xlabel("Timestep")
+    ax2.legend(loc="upper left", fontsize=8)
+
+    # Vertical lines on both panels
+    degradation_start = result["degradation_start"]
+    ema_warning = result["ema_warning"]
+
+    for ax in (ax1, ax2):
+        ax.axvline(degradation_start, color="red", linestyle="--", linewidth=1.5,
+                   label=f"Degradation start (t={degradation_start})")
+        if ema_warning is not None and not pd.isna(ema_warning):
+            ema_warning = int(ema_warning)
+            ax.axvline(ema_warning, color="green", linestyle="--", linewidth=1.5,
+                       label=f"EMA warning (t={ema_warning})")
+
+    # Rebuild legends to include vlines
+    for ax in (ax1, ax2):
+        handles, labels = ax.get_legend_handles_labels()
+        ax.legend(handles, labels, loc="upper left", fontsize=8)
+
+    lead = result["lead_vs_degradation"]
+    lead_str = f"{int(lead)} steps" if lead is not None and not pd.isna(lead) else "N/A"
+    fp_flag = ""
+    if ema_warning is not None and not pd.isna(result["ema_warning"]):
+        if int(result["ema_warning"]) >= degradation_start:
+            fp_flag = " [FALSE POSITIVE]"
+    fig.suptitle(
+        f"Unit {unit_id} — Lead: {lead_str}{fp_flag}",
+        fontsize=11, fontweight="bold"
+    )
+
+    plt.tight_layout()
+    return fig
+
+
 def main():
-    results_df = run_multi_unit_experiment()
-    print_and_plot_results(results_df)
+    results_df, unit_data = run_multi_unit_experiment()
+
+    # Save results
+    results_df.to_csv("fd004_final_results.csv", index=False)
+    print("Saved results to fd004_final_results.csv")
+
+    # Aggregate summary
+    fp_count = int((results_df["ema_warning"] >= results_df["degradation_start"]).sum())
+    coverage = results_df["ema_warning"].notna().mean()
+    mean_lead = results_df["lead_vs_degradation"].dropna().mean()
+
+    print("\n=== AGGREGATE SUMMARY ===")
+    print(f"False positives:  {fp_count} / {len(results_df)}")
+    print(f"Coverage:         {coverage:.3f}")
+    print(f"Mean lead:        {mean_lead:.2f} steps")
+
+    # Prepare plots folder
+    plots_dir = Path("./plots")
+    plots_dir.mkdir(exist_ok=True)
+
+    # Select units to plot
+    detected = results_df[
+        results_df["ema_warning"].notna() &
+        (results_df["ema_warning"] < results_df["degradation_start"])
+    ].copy()
+
+    false_positives = results_df[
+        results_df["ema_warning"].notna() &
+        (results_df["ema_warning"] >= results_df["degradation_start"])
+    ].copy()
+
+    best_units = (
+        detected.nlargest(3, "lead_vs_degradation")["unit"].tolist()
+        if not detected.empty else []
+    )
+    worst_units = (
+        detected.nsmallest(3, "lead_vs_degradation")["unit"].tolist()
+        if not detected.empty else []
+    )
+    fp_units = false_positives["unit"].tolist()[:2]
+
+    units_to_plot = list(dict.fromkeys(best_units + worst_units + fp_units))
+
+    print(f"\nPlotting units: best={best_units}, worst={worst_units}, FP={fp_units}")
+
+    for uid in units_to_plot:
+        if uid not in unit_data:
+            continue
+        row = results_df[results_df["unit"] == uid].iloc[0]
+        fig = plot_unit_result(uid, unit_data[uid], row)
+        out_path = plots_dir / f"unit_{uid}.png"
+        fig.savefig(out_path, dpi=120, bbox_inches="tight")
+        plt.close(fig)
+        print(f"  Saved {out_path}")
+
+    print(f"\nDone. {len(units_to_plot)} plots saved to {plots_dir}/")
 
 
 def run_grid_search_workflow() -> None:
