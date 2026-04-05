@@ -72,16 +72,17 @@ def main() -> int:
             outputs = app.run_input_file(input_path)
         app.write_output_file(output_path, outputs)
         app.engine.close()
-        print(
-            json.dumps(
-                {
-                    "frames_processed": len(outputs),
-                    "results_emitted": len(outputs),
-                    "output_path": str(output_path),
-                }
-            )
-        )
-        return 0
+        failed = len(app.last_ingest_errors)
+        summary: dict[str, object] = {
+            "frames_succeeded": len(outputs),
+            "frames_failed": failed,
+            "results_emitted": len(outputs),
+            "output_path": str(output_path),
+        }
+        if failed:
+            summary["ingest_errors"] = app.last_ingest_errors[:10]
+        print(json.dumps(summary))
+        return 0 if failed == 0 else 1
     except (SIIError, SIIConfigurationError) as exc:
         logger.error("sii_cli_failed", extra={"error": str(exc)})
         print(json.dumps({"error": str(exc)}))

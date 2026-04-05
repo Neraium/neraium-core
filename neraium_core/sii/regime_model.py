@@ -307,7 +307,7 @@ class RegimeModel:
                 regime_uncertainty=0.0,
             )
 
-        nearest, dist, geom_dist, graph_dist = self._nearest(geometry_signature, graph_signature)
+        nearest, dist, geom_dist, graph_dist, _op_dist = self._nearest(geometry_signature, graph_signature)
         threshold = float(self.config.regime_distance_threshold)
         dist_map: dict[str, float] = {}
         for reg in self._regimes:
@@ -319,7 +319,7 @@ class RegimeModel:
                     continue
                 geom_proto = np.asarray(p.get("geometry_signature", []), dtype=float)
                 graph_proto = np.asarray(p.get("graph_signature", []), dtype=float)
-                cand, _, _ = self._weighted_distance(geom_a=geometry_signature, geom_b=geom_proto, graph_a=graph_signature, graph_b=graph_proto)
+                cand, _, _, _ = self._weighted_distance(geom_a=geometry_signature, geom_b=geom_proto, graph_a=graph_signature, graph_b=graph_proto)
                 if cand < best:
                     best = cand
             if np.isfinite(best):
@@ -370,7 +370,7 @@ class RegimeModel:
 
         pending_geom = np.asarray(self._pending["geometry_signature"], dtype=float)
         pending_graph = np.asarray(self._pending["graph_signature"], dtype=float)
-        pending_dist, pending_geom_dist, pending_graph_dist = self._weighted_distance(
+        pending_dist, pending_geom_dist, pending_graph_dist, _ = self._weighted_distance(
             geom_a=geometry_signature,
             geom_b=pending_geom,
             graph_a=graph_signature,

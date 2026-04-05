@@ -300,8 +300,20 @@ def canonical_records_from_payloads(
     *,
     source_type: str = "payload",
     source_name: str = "payload_batch",
-) -> list[CanonicalIngestionRecord]:
+) -> tuple[list[CanonicalIngestionRecord], list[dict[str, Any]]]:
+    """
+    Convert payloads to canonical records, isolating per-record failures.
+
+    Invalid records are skipped — not raised — so a single bad payload cannot
+    collapse a batch that contains good data.  The caller is responsible for
+    checking the returned error list; failures do not disappear silently.
+
+    Returns:
+        (records, errors) where errors is a list of dicts:
+            {"index": int, "error": str, "error_type": str}
+    """
     out: list[CanonicalIngestionRecord] = []
+    errors: list[dict[str, Any]] = []
     for idx, payload in enumerate(payloads):
         try:
             out.append(
@@ -312,8 +324,8 @@ def canonical_records_from_payloads(
                 )
             )
         except SIIValidationError as exc:
-            raise SIIValidationError(f"Invalid payload at index {idx}: {exc}") from exc
-    return out
+            errors.append({"index": idx, "error": str(exc), "error_type": type(exc).__name__})
+    return out, errors
 
 
 def frames_from_records(records: list[CanonicalIngestionRecord]) -> list[TelemetryFrame]:
@@ -535,7 +547,19 @@ def frames_from_csv(csv_text: str) -> list[TelemetryFrame]:
     return out
 
 
-def load_frames_from_json(path: str) -> list[dict[str, Any]]:
+def load_frames_from_json(path: str) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """
+    Load and validate JSON telemetry input, isolating per-item failures.
+
+    File-level errors (not found, unreadable, not valid JSON, wrong root type)
+    are still raised — those are structural, not per-record.  Per-item errors
+    are collected and returned alongside the valid records so valid items are
+    not discarded because of a bad neighbour.
+
+    Returns:
+        (payloads, errors) where errors is a list of dicts:
+            {"index": int, "error": str, "error_type": str}
+    """
     p = Path(path)
     if not p.exists():
         raise SIIValidationError(f"Input file not found: {path}")
@@ -550,16 +574,21 @@ def load_frames_from_json(path: str) -> list[dict[str, Any]]:
     if not isinstance(raw, list):
         raise SIIValidationError("JSON input must be an object or an array of objects")
     out: list[dict[str, Any]] = []
+    errors: list[dict[str, Any]] = []
     for idx, item in enumerate(raw):
         if not isinstance(item, dict):
-            raise SIIValidationError("Each JSON item must be an object")
-        record = ingestion_record_from_payload(
-            item,
-            source_type="json",
-            source_name=str(p.name),
-        )
-        out.append(ingestion_record_to_payload(record))
-    return out
+            errors.append({"index": idx, "error": "JSON item must be an object", "error_type": "SIIValidationError"})
+            continue
+        try:
+            record = ingestion_record_from_payload(
+                item,
+                source_type="json",
+                source_name=str(p.name),
+            )
+            out.append(ingestion_record_to_payload(record))
+        except SIIValidationError as exc:
+            errors.append({"index": idx, "error": str(exc), "error_type": type(exc).__name__})
+    return out, errors
 
 
 def load_frames_from_csv(path: str) -> list[dict[str, Any]]:

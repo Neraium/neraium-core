@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import logging
 from pathlib import Path
 from typing import Any
@@ -24,6 +24,10 @@ class SIIApplication:
     config: SIIConfig
     engine: SIIEngine
     logger: logging.Logger
+    # Errors from the most recent run_input_file or run_payloads call.
+    # Each entry: {"index": int, "error": str, "error_type": str}
+    # Populated even when results are returned — check this to know what was dropped.
+    last_ingest_errors: list[dict[str, Any]] = field(default_factory=list)
 
     @staticmethod
     def _parse_csv_values(raw: str) -> tuple[str, ...]:
@@ -76,14 +80,26 @@ class SIIApplication:
 
         The engine state is intentionally stateful across payloads to support
         regime memory and temporal windows.
+
+        Invalid payloads are skipped and recorded in self.last_ingest_errors.
+        The caller must check last_ingest_errors to know what was dropped.
         """
-        records = canonical_records_from_payloads(
+        records, errors = canonical_records_from_payloads(
             payloads,
             source_type="payload",
             source_name="sii_application_run_payloads",
         )
+        self.last_ingest_errors.extend(errors)
+        if errors:
+            self.logger.warning(
+                "sii_batch_ingest_errors",
+                extra={"dropped": len(errors), "errors": errors[:5]},
+            )
         outputs = self.run_records(records)
-        self.logger.info("sii_batch_processed", extra={"frames": len(outputs)})
+        self.logger.info(
+            "sii_batch_processed",
+            extra={"frames": len(outputs), "dropped": len(errors)},
+        )
         return outputs
 
     def run_records(self, records: list[CanonicalIngestionRecord]) -> list[SIIResult]:
@@ -92,8 +108,15 @@ class SIIApplication:
     def run_input_file(self, input_path: str | Path) -> list[SIIResult]:
         path = Path(input_path)
         suffix = path.suffix.lower()
+        self.last_ingest_errors = []  # reset for this call
         if suffix == ".json":
-            payloads = load_frames_from_json(str(path))
+            payloads, load_errors = load_frames_from_json(str(path))
+            if load_errors:
+                self.last_ingest_errors.extend(load_errors)
+                self.logger.warning(
+                    "sii_load_errors",
+                    extra={"dropped": len(load_errors), "errors": load_errors[:5]},
+                )
         elif suffix == ".csv":
             payloads = load_frames_from_csv(str(path))
         else:
