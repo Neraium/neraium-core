@@ -230,8 +230,15 @@ class StructuralDriftDetector:
         # EMA-smoothed anomaly score (preserves EMA logic from original code)
         ema_drift = _apply_ema(raw_drift, self.config.ema_alpha)
 
-        # Absolute threshold derived from frozen reference distribution
-        abs_threshold = ref.drift_mean + threshold_std * ref.drift_std
+        # Threshold must be calibrated in the same score space used for warning
+        # detection (EMA drift), computed from healthy EMA only.
+        healthy_ema = ema_drift[: ref.n_samples]
+        abs_threshold = _compute_ema_threshold(
+            healthy_ema=healthy_ema,
+            threshold_mode=self.config.threshold_mode,
+            threshold_std=threshold_std,
+            threshold_percentile=self.config.threshold_percentile,
+        )
 
         # Warning with corrected persistence semantics + optional quality gates
         warning_index = find_warning_index(
@@ -487,3 +494,60 @@ def _apply_ema(series: np.ndarray, alpha: float) -> np.ndarray:
     for i in range(1, len(series)):
         ema[i] = alpha * series[i] + (1.0 - alpha) * ema[i - 1]
     return ema
+
+
+def _compute_ema_threshold(
+    healthy_ema: np.ndarray,
+    threshold_mode: str,
+    threshold_std: float,
+    threshold_percentile: float,
+) -> float:
+    """
+    Compute warning threshold from healthy EMA reference distribution only.
+
+    This preserves walk-forward safety (healthy segment only) and ensures score
+    and threshold are calibrated on the same distribution.
+    """
+    if healthy_ema.size == 0:
+        return 1e-6
+
+    mode = str(threshold_mode).strip().lower()
+
+    if mode == "mean_std":
+        mean = float(np.mean(healthy_ema))
+        std = float(np.std(healthy_ema))
+        return mean + threshold_std * max(std, 1e-6)
+
+    filtered = _filter_informative_healthy_ema(healthy_ema)
+    base = filtered if filtered.size > 0 else healthy_ema
+
+    if mode == "percentile":
+        pct = float(np.clip(threshold_percentile, 0.0, 100.0))
+        return float(np.percentile(base, pct))
+
+    if mode == "robust_mad":
+        median = float(np.median(base))
+        mad = float(np.median(np.abs(base - median)))
+        return median + threshold_std * max(mad, 1e-6)
+
+    raise ValueError(
+        f"Unsupported threshold_mode '{threshold_mode}'. "
+        "Expected one of: mean_std, percentile, robust_mad."
+    )
+
+
+def _filter_informative_healthy_ema(healthy_ema: np.ndarray) -> np.ndarray:
+    """
+    Remove non-informative early EMA values for percentile/MAD thresholding.
+
+    At startup, EMA can include repeated near-zero values caused by short
+    partial windows and cold-start behavior. We remove non-finite and near-zero
+    entries so robust/percentile calibrations focus on informative healthy
+    dynamics.
+    """
+    finite = healthy_ema[np.isfinite(healthy_ema)]
+    if finite.size == 0:
+        return finite
+    eps = 1e-12
+    informative = finite[np.abs(finite) > eps]
+    return informative
