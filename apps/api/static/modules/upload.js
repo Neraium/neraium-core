@@ -1,3 +1,43 @@
+let _lastIngestResult = null;
+
+function _setExportButtonVisible(visible) {
+  const btn = qs("#exportErrorsBtn");
+  if (!btn) return;
+  if (visible) btn.classList.remove("hidden");
+  else btn.classList.add("hidden");
+}
+
+function exportIngestErrors() {
+  const result = _lastIngestResult;
+  if (!result) return;
+  const payload = {
+    exported_at: new Date().toISOString(),
+    job_id: result.job_id || result.jobId || null,
+    status: result.status || null,
+    rows_processed: Number(result.rows_processed || 0),
+    rows_succeeded: Number(result.rows_succeeded || 0),
+    rows_failed: Number(result.rows_failed || 0),
+    message: result.message || null,
+    error_samples: Array.isArray(result.error_samples) ? result.error_samples : [],
+  };
+  const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `ingest-errors-${Date.now()}.json`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function wireExportErrorsButton() {
+  const btn = qs("#exportErrorsBtn");
+  if (!btn || btn.dataset.wired === "1") return;
+  btn.dataset.wired = "1";
+  btn.addEventListener("click", exportIngestErrors);
+}
+
 function updateUploadRunInfo() {
   const info = qs("#uploadRunInfo");
   if (!info) return;
@@ -114,8 +154,9 @@ function setUploadProgressUI({
     rowsMeta.textContent = `${uploadText} · ${processed} processed · ${succeeded} succeeded · ${failed} failed`;
   }
 
+  const hasErrors = Array.isArray(errorSamples) && errorSamples.length > 0;
   if (errors) {
-    if (Array.isArray(errorSamples) && errorSamples.length > 0) {
+    if (hasErrors) {
       errors.innerHTML = errorSamples
         .slice(0, 4)
         .map((e) => `<li>Row ${escapeHtml(e.row)}: ${escapeHtml(e.message)}</li>`)
@@ -126,6 +167,7 @@ function setUploadProgressUI({
       errors.classList.add("hidden");
     }
   }
+  _setExportButtonVisible(hasErrors);
 }
 
 function resetUploadPanelIfIdle() {
@@ -137,6 +179,8 @@ function resetUploadFlowState() {
   clearUploadJobPolling();
   state.uploadJob.id = null;
   state.uploadJob.active = false;
+  _lastIngestResult = null;
+  _setExportButtonVisible(false);
 }
 
 async function uploadCsvFileWithProgress(file, runId, columnMapping = null) {
@@ -221,6 +265,7 @@ async function waitForIngestJob(jobId) {
         if (status === "completed" || status === "partial_success" || status === "failed") {
           clearUploadJobPolling();
           state.uploadJob.active = false;
+          _lastIngestResult = job;
           resolve(job);
           return;
         }
@@ -484,6 +529,7 @@ function wireUploadInteractions() {
   const fileInput = qs("#csvFileInput");
   const zone = qs("#uploadDropZone");
   wireCsvMappingPanel();
+  wireExportErrorsButton();
   if (fileInput) {
     fileInput.addEventListener("change", () => {
       const f = fileInput.files && fileInput.files[0] ? fileInput.files[0] : null;
