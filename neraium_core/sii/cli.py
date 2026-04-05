@@ -42,6 +42,9 @@ def _build_parser() -> argparse.ArgumentParser:
 @dataclass
 class ExecutionState:
     processed_files: set[str] = field(default_factory=set)
+    discovered_files: int = 0
+    failed_files: int = 0
+    skipped_files: int = 0
     last_run_timestamp: str | None = None
     total_runs: int = 0
     risk_flag_count: int = 0
@@ -90,7 +93,11 @@ class ExecutionState:
             self.triggered_signal_lead_recall_total / self.triggered_signal_count if self.triggered_signal_count > 0 else 0.0
         )
         return {
+            "total_discovered_files": self.discovered_files,
             "total_runs": self.total_runs,
+            "successful_runs": self.total_runs,
+            "failed_files": self.failed_files,
+            "skipped_files": self.skipped_files,
             "risk_flag_true_count": self.risk_flag_count,
             "high_risk_count": self.high_risk_count,
             "most_frequent_contributing_signals": self.signal_counts.most_common(),
@@ -178,11 +185,47 @@ def _build_run_result(path: Path, output: dict[str, Any]) -> dict[str, Any]:
         "processed_at": datetime.now(timezone.utc).isoformat(),
         "source_file": path.name,
         "source_path": str(path),
+        "status": "success",
         "result": output,
     }
 
 
+def _build_failed_result(path: Path, error: Exception) -> dict[str, Any]:
+    return {
+        "processed_at": datetime.now(timezone.utc).isoformat(),
+        "source_file": path.name,
+        "source_path": str(path),
+        "status": "failed",
+        "error": {
+            "type": error.__class__.__name__,
+            "message": str(error),
+        },
+    }
+
+
+def _build_skipped_result(path: Path, reason: str) -> dict[str, Any]:
+    return {
+        "processed_at": datetime.now(timezone.utc).isoformat(),
+        "source_file": path.name,
+        "source_path": str(path),
+        "status": "skipped",
+        "skip_reason": reason,
+    }
+
+
 def _print_per_file_report(run_result: dict[str, Any]) -> None:
+    status = str(run_result.get("status") or "unknown")
+    if status != "success":
+        error = run_result.get("error") if isinstance(run_result.get("error"), dict) else {}
+        skip_reason = run_result.get("skip_reason")
+        print(
+            (
+                f"[REPORT] file={run_result.get('source_file')} "
+                f"status={status} "
+                f"detail={error.get('message') or skip_reason}"
+            )
+        )
+        return
     result = run_result.get("result") if isinstance(run_result.get("result"), dict) else {}
     decision = result.get("decision_output") if isinstance(result.get("decision_output"), dict) else {}
     print(
@@ -196,7 +239,10 @@ def _print_per_file_report(run_result: dict[str, Any]) -> None:
 
 def _print_aggregate_report(aggregate_summary: dict[str, Any]) -> None:
     print("==== Aggregate Structural Summary ====")
+    print(f"Discovered Files: {aggregate_summary['total_discovered_files']}")
     print(f"Total Runs: {aggregate_summary['total_runs']}")
+    print(f"Failed Files: {aggregate_summary['failed_files']}")
+    print(f"Skipped Files: {aggregate_summary['skipped_files']}")
     print(f"Risk Events: {aggregate_summary['risk_flag_true_count']}")
     print(f"High Risk: {aggregate_summary['high_risk_count']}")
     print(f"Most Frequent Signal: {aggregate_summary['most_frequent_signal'] or 'n/a'}")
@@ -215,9 +261,49 @@ def _process_file(
     run_result = _build_run_result(path, output)
     state.processed_files.add(str(path.resolve()))
     state.update(output)
+    return run_result
+
+
+def _is_file_size_stable(path: Path) -> bool:
+    first = path.stat().st_size
+    time.sleep(0.05)
+    second = path.stat().st_size
+    return first == second
+
+
+def _process_file_safe(
+    path: Path,
+    state: ExecutionState,
+    *,
+    quiet: bool,
+    report: bool,
+    emit_wrapped_result: bool = True,
+) -> dict[str, Any]:
+    state.discovered_files += 1
+    resolved = str(path.resolve())
+    if resolved in state.processed_files:
+        state.skipped_files += 1
+        run_result = _build_skipped_result(path, "already_processed")
+    elif not _is_file_size_stable(path):
+        state.skipped_files += 1
+        run_result = _build_skipped_result(path, "partial_write_unstable_size")
+    else:
+        try:
+            run_result = _process_file(
+                path,
+                state,
+                quiet=quiet,
+                report=report,
+                emit_wrapped_result=emit_wrapped_result,
+            )
+        except Exception as exc:
+            state.failed_files += 1
+            run_result = _build_failed_result(path, exc)
 
     if not quiet:
-        stdout_payload: dict[str, Any] = run_result if emit_wrapped_result else output
+        stdout_payload: dict[str, Any] = run_result
+        if run_result.get("status") == "success" and not emit_wrapped_result:
+            stdout_payload = run_result.get("result") if isinstance(run_result.get("result"), dict) else run_result
         print(json.dumps(stdout_payload, indent=2, sort_keys=True))
     if report:
         _print_per_file_report(run_result)
@@ -249,57 +335,60 @@ def main(argv: list[str] | None = None) -> int:
 
     state = ExecutionState()
     run_results: list[dict[str, Any]] = []
-    try:
-        if args.watch:
-            watch_dir = Path(args.watch)
-            if not watch_dir.exists() or not watch_dir.is_dir():
-                print(f"Watch directory not found: {watch_dir}", file=sys.stderr)
-                return 2
-            iteration = 0
-            while True:
+    if args.watch:
+        watch_dir = Path(args.watch)
+        if not watch_dir.exists() or not watch_dir.is_dir():
+            print(f"Watch directory not found: {watch_dir}", file=sys.stderr)
+            return 2
+        iteration = 0
+        while True:
+            try:
                 files = _iter_input_files(watch_dir)
-                for path in files:
-                    resolved = str(path.resolve())
-                    if resolved in state.processed_files:
-                        continue
-                    run_results.append(_process_file(path, state, quiet=args.quiet, report=args.report))
+            except Exception as exc:
+                print(f"Watch iteration error: {exc}", file=sys.stderr)
+                files = []
 
-                if run_results and not args.quiet:
-                    print(json.dumps({"aggregate_summary": state.aggregate_summary()}, indent=2, sort_keys=True))
+            for path in files:
+                run_results.append(_process_file_safe(path, state, quiet=args.quiet, report=args.report))
 
-                iteration += 1
-                if args.watch_iterations > 0 and iteration >= args.watch_iterations:
-                    break
-                time.sleep(max(0.1, float(args.poll_interval)))
-        elif args.input_dir:
-            input_dir = Path(args.input_dir)
-            if not input_dir.exists() or not input_dir.is_dir():
-                print(f"Input directory not found: {input_dir}", file=sys.stderr)
-                return 2
-            for path in _iter_input_files(input_dir):
-                run_results.append(_process_file(path, state, quiet=args.quiet, report=args.report))
-        else:
-            input_path = Path(args.input)
-            if not input_path.exists() or not input_path.is_file():
-                print(f"Input file not found: {input_path}", file=sys.stderr)
-                return 2
-            run_results.append(
-                _process_file(
-                    input_path,
-                    state,
-                    quiet=args.quiet,
-                    report=args.report,
-                    emit_wrapped_result=False,
-                )
+            if run_results and not args.quiet:
+                print(json.dumps({"aggregate_summary": state.aggregate_summary()}, indent=2, sort_keys=True))
+
+            iteration += 1
+            if args.watch_iterations > 0 and iteration >= args.watch_iterations:
+                break
+            time.sleep(max(0.1, float(args.poll_interval)))
+    elif args.input_dir:
+        input_dir = Path(args.input_dir)
+        if not input_dir.exists() or not input_dir.is_dir():
+            print(f"Input directory not found: {input_dir}", file=sys.stderr)
+            return 2
+        for path in _iter_input_files(input_dir):
+            run_results.append(_process_file_safe(path, state, quiet=args.quiet, report=args.report))
+    else:
+        input_path = Path(args.input)
+        if not input_path.exists() or not input_path.is_file():
+            print(f"Input file not found: {input_path}", file=sys.stderr)
+            return 2
+        run_results.append(
+            _process_file_safe(
+                input_path,
+                state,
+                quiet=args.quiet,
+                report=args.report,
+                emit_wrapped_result=False,
             )
-    except Exception as exc:
-        print(f"Error: {exc}", file=sys.stderr)
-        return 2
+        )
 
     aggregate_summary = state.aggregate_summary()
     aggregate_payload = {"runs": run_results, "aggregate_summary": aggregate_summary}
-    latest_result = run_results[-1]["result"] if run_results else {}
-    report_text = format_structural_report_text(generate_structural_report(latest_result)) if run_results else ""
+    latest_result: dict[str, Any] = {}
+    for item in reversed(run_results):
+        candidate = item.get("result") if isinstance(item.get("result"), dict) else None
+        if candidate is not None:
+            latest_result = candidate
+            break
+    report_text = format_structural_report_text(generate_structural_report(latest_result)) if latest_result else ""
 
     if args.output:
         _write_json(args.output, latest_result)
