@@ -134,12 +134,23 @@ class DetectorConfig:
 
     threshold_mode: str = "mean_std"
     """
-    Threshold derivation mode.  ``mean_std`` keeps the validated rule:
+    Threshold derivation mode in EMA score space.
 
-        threshold = reference_drift_mean + threshold_std * reference_drift_std
+    Supported values:
+    - ``mean_std``:
+        threshold = healthy_ema_mean + threshold_std * healthy_ema_std
+    - ``percentile``:
+        threshold = percentile(healthy_ema_filtered, threshold_percentile)
+    - ``robust_mad``:
+        threshold = median(healthy_ema_filtered) + threshold_std * MAD
 
-    The field exists primarily for explicit reproducibility in preset
-    comparison outputs and can be expanded in future studies if needed.
+    ``healthy_ema`` is derived only from the early reference segment, preserving
+    walk-forward safety and avoiding score/threshold distribution mismatch.
+    """
+
+    threshold_percentile: float = 95.0
+    """
+    Percentile used when ``threshold_mode == "percentile"``.
     """
 
     require_upward_ema_trend: bool = True
