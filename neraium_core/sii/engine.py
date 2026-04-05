@@ -20,6 +20,7 @@ from neraium_core.sii.graph_layer import graph_state
 from neraium_core.sii.ingestion import (
     canonical_records_from_payloads,
     frames_from_csv,
+    ingestion_record_from_payload,
 )
 from neraium_core.sii.operator import build_operator_decision_support
 from neraium_core.sii.preprocessing import data_quality, impute_column_mean, summarize_quality
@@ -1044,11 +1045,13 @@ class SystemicInfrastructureIntelligenceEngine:
             ) from exc
 
     def process_payload(self, payload: dict[str, Any]) -> SIIResult:
-        record = canonical_records_from_payloads(
-            [payload],
+        # Single-payload path: fail fast is correct here — the caller gave us one
+        # specific payload and if it's invalid that's an error, not a skip.
+        record = ingestion_record_from_payload(
+            payload,
             source_type="payload",
             source_name="engine_process_payload",
-        )[0]
+        )
         return self.process_record(record)
 
     def process_record(self, record: CanonicalIngestionRecord) -> SIIResult:
