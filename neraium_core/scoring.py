@@ -1,3 +1,37 @@
+"""
+scoring.py — Compatibility shim for legacy weighted-average alert scoring.
+
+STATUS: INTERFACE CONVENIENCE LAYER.  Not the internal model.
+
+This module is preserved for backward compatibility with existing callers that
+consume a scalar composite score from named structural components.  It is
+NOT the system's internal representation of structural health.
+
+The internal model is the structural operator 𝒮_t = (A_t, Σ_t).
+See: neraium_core.operator.structural_score for the operator-derived alert path.
+
+Data flow (correct):
+    Observation window X(t)
+        → fit_structural_operator(X)              [neraium_core.operator]
+        → structural_metrics(current, baseline)   [neraium_core.operator.structural_score]
+        → alert_score_from_operator(...)          [neraium_core.operator.structural_score]
+        → display / alerting
+
+Data flow (legacy, this module):
+    {component: value, ...} dict
+        → composite_instability_score_normalized(components, weights)
+        → scalar composite score
+        → display / alerting
+
+The legacy path is valid for callers that lack a fitted StructuralOperator
+(e.g. during warmup, or for components computed by legacy pipeline stages).
+It should not be extended or treated as architecturally primary.
+
+The DEFAULT_WEIGHTS below are calibration constants chosen empirically.
+They are not derived from the operator model.  If you find yourself reasoning
+about these weights as if they encode a theory of failure, stop and use
+alert_score_from_operator() instead.
+"""
 from __future__ import annotations
 
 from typing import Mapping

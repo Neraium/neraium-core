@@ -112,3 +112,40 @@ def relational_structure(corr: ArrayLike) -> dict[str, np.ndarray | float]:
         "centrality": centrality,
         "relational_energy": relational_energy,
     }
+
+
+def lagged_covariance(observations: ArrayLike, lag: int = 1) -> np.ndarray:
+    """
+    Compute the lagged sample cross-covariance matrix Γ(lag).
+
+    For z-normalized inputs (unit marginal variance), Γ(1) is the lagged
+    correlation matrix C_t used in Yule-Walker estimation of the VAR(1)
+    propagation operator A_t = Γ(1) · Γ(0)^{-1}.
+
+    This is the **second moment matrix** required alongside the contemporaneous
+    covariance Γ(0) ≈ correlation_matrix() to assemble the structural operator.
+    It is the canonical source of directed coupling information in the system.
+
+    Args:
+        observations: (T, N) array of observations (row = time step).
+        lag:          Temporal lag l.  Γ(l)[i, j] = cov(X_i(t), X_j(t+l)).
+
+    Returns:
+        Γ(lag) ∈ ℝ^{N×N} — NOT symmetric.  Γ(l)[i, j] ≠ Γ(l)[j, i] in general.
+        Asymmetry encodes directionality: Γ(l)[i, j] > Γ(l)[j, i] means signal i
+        leads signal j more than j leads i.
+    """
+    data = _as_2d_array(observations)
+    T, N = data.shape
+    if lag <= 0:
+        raise ValueError("lag must be positive")
+    if T <= lag:
+        raise ValueError(f"Need more than {lag} observations; got T={T}")
+
+    safe = np.nan_to_num(data, nan=0.0, posinf=0.0, neginf=0.0)
+    mu = safe.mean(axis=0)
+    Xc = safe - mu
+
+    # Γ(l) = (1/(T-l)) X[0:T-l]ᵀ · X[l:T]
+    gamma_l = (Xc[:-lag].T @ Xc[lag:]) / max(T - lag, 1)
+    return np.nan_to_num(gamma_l, nan=0.0, posinf=0.0, neginf=0.0)

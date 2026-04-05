@@ -4,7 +4,6 @@ from .config import SIIConfig
 from neraium_core.sii.types import (
     CONFIDENCE_LEVELS,
     INTERPRETED_STATES,
-    STATES,
     ConfidenceLevel,
     InterpretedState,
     DecisionState,
@@ -36,41 +35,6 @@ def map_to_interpreted_state(
         state = "NOMINAL_STRUCTURE"
     return safe_interpreted(state)
 
-
-def map_decision_state(
-    *,
-    composite_score: float,
-    interpreted_state: InterpretedState,
-    trend: float,
-    stability: float,
-) -> DecisionState:
-    """
-    Read-only analytical mapping from structural evidence to STABLE/WATCH/ALERT.
-    """
-    score = float(composite_score)
-    if interpreted_state in {"STRUCTURAL_INSTABILITY_OBSERVED", "COUPLING_INSTABILITY_OBSERVED"}:
-        score += 0.10
-    elif interpreted_state == "REGIME_SHIFT_OBSERVED":
-        score += 0.04
-    if trend > 0.02:
-        score += 0.05
-    if trend < -0.02:
-        score -= 0.03
-    if stability < 0.55:
-        score += 0.05
-    elif stability > 0.80:
-        score -= 0.02
-
-    if score >= 0.74:
-        state: DecisionState = "ALERT"
-    elif score >= 0.50:
-        state = "WATCH"
-    else:
-        state = "STABLE"
-
-    if state not in STATES:
-        return "STABLE"
-    return state
 
 
 def map_decision_state_with_config(
