@@ -63,40 +63,60 @@ def main() -> int:
     app = SIIApplication.from_config(config)
     try:
         output_path = Path(args.output)
+        ingest_errors: list[dict[str, object]] = []
         if bool(args.live):
             outputs, live_diagnostics = app.run_live_ingestion_poll(max_polls=int(args.live_polls))
             logger.info(
                 "sii_live_cli_diagnostics",
                 extra={"poll_count": len(live_diagnostics), "diagnostics": live_diagnostics},
             )
+            frames_succeeded = len(outputs)
+            frames_failed = 0
         else:
             if not args.input:
                 raise SIIConfigurationError("--input is required unless --live is set")
             input_path = Path(args.input)
-            outputs = app.run_input_file(input_path)
             calibration = load_config(args.config) if args.config else None
             if input_path.suffix.lower() == ".json":
-                payloads = load_frames_from_json(str(input_path))
+                payloads, ingest_errors = load_frames_from_json(str(input_path), return_ingest_errors=True)
             elif input_path.suffix.lower() == ".csv":
-                payloads = load_frames_from_csv(str(input_path))
+                payloads, ingest_errors = load_frames_from_csv(str(input_path), return_ingest_errors=True)
             else:
                 payloads = []
+                ingest_errors = []
+            outputs = app.run_payloads(payloads)
+            frames_succeeded = len(payloads)
+            frames_failed = len(ingest_errors)
             structural_output = run_structural_pipeline(payloads, config=calibration)
             if args.save_config:
                 derived = derive_calibration_from_validation(structural_output.get("validation_results") or {})
                 save_config(derived, args.save_config)
         app.write_output_file(output_path, outputs)
         app.engine.close()
+        input_empty = (frames_succeeded + frames_failed) == 0
+        all_failed = frames_failed > 0 and frames_succeeded == 0
+        partial_success = frames_succeeded > 0 and frames_failed > 0
+        if len(ingest_errors) > 20:
+            ingest_errors = [*ingest_errors[:20], {"code": "truncated", "message": "additional errors omitted"}]
+        exit_code = 0
+        if frames_failed > 0 or all_failed or partial_success:
+            exit_code = 1
         print(
             json.dumps(
                 {
-                    "frames_processed": len(outputs),
+                    "frames_processed": frames_succeeded + frames_failed,
+                    "frames_succeeded": frames_succeeded,
+                    "frames_failed": frames_failed,
                     "results_emitted": len(outputs),
+                    "input_empty": input_empty,
+                    "all_failed": all_failed,
+                    "partial_success": partial_success,
+                    "ingest_errors": ingest_errors,
                     "output_path": str(output_path),
                 }
             )
         )
-        return 0
+        return exit_code
     except (SIIError, SIIConfigurationError) as exc:
         logger.error("sii_cli_failed", extra={"error": str(exc)})
         print(json.dumps({"error": str(exc)}))
