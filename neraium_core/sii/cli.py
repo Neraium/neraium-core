@@ -35,7 +35,6 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--report", action="store_true", help="Print per-file report and aggregate structural report.")
     parser.add_argument("--aggregate-output", help="Optional output file path for aggregate run JSON.")
     parser.add_argument("--output", help="Optional output file path for structured JSON.")
-    parser.add_argument("--report", action="store_true", help="Print human-readable structural report to stdout.")
     parser.add_argument("--report-file", help="Optional output file path for human-readable text report.")
     return parser
 
@@ -203,7 +202,14 @@ def _print_aggregate_report(aggregate_summary: dict[str, Any]) -> None:
     print(f"Most Frequent Signal: {aggregate_summary['most_frequent_signal'] or 'n/a'}")
 
 
-def _process_file(path: Path, state: ExecutionState, *, quiet: bool, report: bool) -> dict[str, Any]:
+def _process_file(
+    path: Path,
+    state: ExecutionState,
+    *,
+    quiet: bool,
+    report: bool,
+    emit_wrapped_result: bool = True,
+) -> dict[str, Any]:
     records = _load_records(path)
     output = run_structural_pipeline(records)
     run_result = _build_run_result(path, output)
@@ -211,7 +217,8 @@ def _process_file(path: Path, state: ExecutionState, *, quiet: bool, report: boo
     state.update(output)
 
     if not quiet:
-        print(json.dumps(run_result, indent=2, sort_keys=True))
+        stdout_payload: dict[str, Any] = run_result if emit_wrapped_result else output
+        print(json.dumps(stdout_payload, indent=2, sort_keys=True))
     if report:
         _print_per_file_report(run_result)
     return run_result
@@ -221,6 +228,12 @@ def _write_json(path: str, payload: dict[str, Any]) -> None:
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def _write_text(path: str, content: str) -> None:
+    target = Path(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(content, encoding="utf-8")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -270,22 +283,36 @@ def main(argv: list[str] | None = None) -> int:
             if not input_path.exists() or not input_path.is_file():
                 print(f"Input file not found: {input_path}", file=sys.stderr)
                 return 2
-            run_results.append(_process_file(input_path, state, quiet=args.quiet, report=args.report))
+            run_results.append(
+                _process_file(
+                    input_path,
+                    state,
+                    quiet=args.quiet,
+                    report=args.report,
+                    emit_wrapped_result=False,
+                )
+            )
     except Exception as exc:
         print(f"Error: {exc}", file=sys.stderr)
         return 2
 
     aggregate_summary = state.aggregate_summary()
     aggregate_payload = {"runs": run_results, "aggregate_summary": aggregate_summary}
+    latest_result = run_results[-1]["result"] if run_results else {}
+    report_text = format_structural_report_text(generate_structural_report(latest_result)) if run_results else ""
 
     if args.output:
-        _write_json(args.output, run_results[-1]["result"] if run_results else {})
+        _write_json(args.output, latest_result)
     if args.aggregate_output:
         _write_json(args.aggregate_output, aggregate_payload)
+    if args.report_file:
+        _write_text(args.report_file, report_text)
 
     if args.batch or args.watch or args.quiet:
         print(json.dumps({"aggregate_summary": aggregate_summary}, indent=2, sort_keys=True))
     if args.report:
+        if report_text:
+            print(report_text)
         _print_aggregate_report(aggregate_summary)
 
     return 0
