@@ -6,7 +6,6 @@ from numpy.linalg import lstsq, eigvals
 
 DATA_PATH = Path(__file__).resolve().parent / "train_FD004.txt"
 
-UNIT_ID = 1
 SIGNAL_COLUMNS = ["s_2", "s_3", "s_4", "s_7"]
 WINDOW = 20
 DEGRADATION_FRACTION = 0.8
@@ -43,139 +42,146 @@ def main():
     print("Loaded shape:", df.shape)
     print("Units:", df["unit"].nunique())
 
-    data = df[df["unit"] == UNIT_ID].copy()
-    if data.empty:
-        raise ValueError(f"No rows found for unit {UNIT_ID}")
+    units = sorted(df["unit"].unique())[:25]
+    results = []
 
-    signals = data[SIGNAL_COLUMNS].reset_index(drop=True)
-
-    # Normalize for numerical stability
-    signals = (signals - signals.mean()) / (signals.std() + 1e-6)
-
-    print(f"Using unit {UNIT_ID} with {len(signals)} timesteps")
+    print(f"Evaluating first {len(units)} units:", units)
     print("Signals:", SIGNAL_COLUMNS)
 
-    baseline_scores = []
-    operator_drift_scores = []
-    spectral_radius_scores = []
-
-    for i in range(len(signals)):
-        if i < WINDOW + 1:
-            baseline_scores.append(0.0)
-            operator_drift_scores.append(0.0)
-            spectral_radius_scores.append(0.0)
+    for unit in units:
+        data = df[df["unit"] == unit].copy()
+        if data.empty:
             continue
 
-        # Baseline z-score
-        window_data = signals.iloc[i - WINDOW:i]
-        mean = window_data.mean()
-        std = window_data.std() + 1e-6
-        z = ((signals.iloc[i] - mean) / std).abs().mean()
-        baseline_scores.append(float(z))
+        signals = data[SIGNAL_COLUMNS].reset_index(drop=True)
 
-        # Operator-based metrics
-        X_prev = signals.iloc[i - WINDOW - 1:i - 1].values
-        X_curr = signals.iloc[i - WINDOW:i].values
+        # Normalize for numerical stability
+        signals = (signals - signals.mean()) / (signals.std() + 1e-6)
 
-        try:
-            A_prev = fit_var1(X_prev)
-            A_curr = fit_var1(X_curr)
+        baseline_scores = []
+        operator_drift_scores = []
+        spectral_radius_scores = []
 
-            drift = np.linalg.norm(A_curr - A_prev)
-            spectral_radius = np.max(np.abs(eigvals(A_curr)))
+        for i in range(len(signals)):
+            if i < WINDOW + 1:
+                baseline_scores.append(0.0)
+                operator_drift_scores.append(0.0)
+                spectral_radius_scores.append(0.0)
+                continue
 
-        except Exception:
-            drift = 0.0
-            spectral_radius = 0.0
+            # Baseline z-score
+            window_data = signals.iloc[i - WINDOW:i]
+            mean = window_data.mean()
+            std = window_data.std() + 1e-6
+            z = ((signals.iloc[i] - mean) / std).abs().mean()
+            baseline_scores.append(float(z))
 
-        operator_drift_scores.append(float(drift))
-        spectral_radius_scores.append(float(spectral_radius))
+            # Operator-based metrics
+            X_prev = signals.iloc[i - WINDOW - 1:i - 1].values
+            X_curr = signals.iloc[i - WINDOW:i].values
 
-    # --- Smoothed drift signals ---
-    T = len(operator_drift_scores)
-    drift_arr = np.array(operator_drift_scores)
+            try:
+                A_prev = fit_var1(X_prev)
+                A_curr = fit_var1(X_curr)
 
-    # Exponential moving average of drift (alpha=0.2)
-    drift_ema = np.zeros(T)
-    drift_ema[0] = drift_arr[0]
-    for t in range(1, T):
-        drift_ema[t] = EMA_ALPHA * drift_arr[t] + (1 - EMA_ALPHA) * drift_ema[t - 1]
+                drift = np.linalg.norm(A_curr - A_prev)
+                spectral_radius = np.max(np.abs(eigvals(A_curr)))
 
-    # Cumulative drift over last N=30 steps
-    cumulative_drift = np.zeros(T)
-    for t in range(T):
-        start = max(0, t - CUMULATIVE_N + 1)
-        cumulative_drift[t] = drift_arr[start:t + 1].sum()
+            except Exception:
+                drift = 0.0
+                spectral_radius = 0.0
 
-    # Rolling linear slope of drift over window N=30 (drift_trend)
-    drift_trend = np.zeros(T)
-    for t in range(T):
-        start = max(0, t - CUMULATIVE_N + 1)
-        segment = drift_arr[start:t + 1]
-        if len(segment) >= 2:
-            x = np.arange(len(segment))
-            slope, _ = np.polyfit(x, segment, 1)
-            drift_trend[t] = slope
+            operator_drift_scores.append(float(drift))
+            spectral_radius_scores.append(float(spectral_radius))
 
-    degradation_start = int(len(signals) * DEGRADATION_FRACTION)
+        # --- Smoothed drift signals ---
+        T = len(operator_drift_scores)
+        drift_arr = np.array(operator_drift_scores)
 
-    print("\n=== SUMMARY ===")
-    print("Degradation zone starts at timestep:", degradation_start)
-    print("Max baseline score:", max(baseline_scores))
-    print("Max operator drift:", max(operator_drift_scores))
-    print("Max spectral radius:", max(spectral_radius_scores))
-    print("Max drift EMA:", drift_ema.max())
-    print("Max cumulative drift:", cumulative_drift.max())
-    print("Max drift trend (slope):", drift_trend.max())
+        # Exponential moving average of drift (alpha=0.2)
+        drift_ema = np.zeros(T)
+        drift_ema[0] = drift_arr[0]
+        for t in range(1, T):
+            drift_ema[t] = EMA_ALPHA * drift_arr[t] + (1 - EMA_ALPHA) * drift_ema[t - 1]
 
-    # crude early-warning comparison
-    baseline_peak_idx = int(np.argmax(baseline_scores))
-    drift_peak_idx = int(np.argmax(operator_drift_scores))
-    spectral_peak_idx = int(np.argmax(spectral_radius_scores))
+        # Cumulative drift over last N=30 steps
+        cumulative_drift = np.zeros(T)
+        for t in range(T):
+            start = max(0, t - CUMULATIVE_N + 1)
+            cumulative_drift[t] = drift_arr[start:t + 1].sum()
 
-    print("\n=== PEAK TIMESTEPS ===")
-    print("Baseline peak:", baseline_peak_idx)
-    print("Operator drift peak:", drift_peak_idx)
-    print("Spectral radius peak:", spectral_peak_idx)
+        # Rolling linear slope of drift over window N=30 (drift_trend)
+        drift_trend = np.zeros(T)
+        for t in range(T):
+            start = max(0, t - CUMULATIVE_N + 1)
+            segment = drift_arr[start:t + 1]
+            if len(segment) >= 2:
+                x = np.arange(len(segment))
+                slope, _ = np.polyfit(x, segment, 1)
+                drift_trend[t] = slope
 
-    # --- Early warning: drift_ema threshold based on early baseline region ---
-    early_end = max(1, int(T * 0.20))
-    early_ema = drift_ema[:early_end]
-    ema_threshold = early_ema.mean() + 2 * early_ema.std()
+        degradation_start = int(len(signals) * DEGRADATION_FRACTION)
 
-    ema_warning_idx = None
-    for t in range(T):
-        if drift_ema[t] > ema_threshold:
-            ema_warning_idx = t
-            break
+        baseline_peak_idx = int(np.argmax(baseline_scores))
+        drift_peak_idx = int(np.argmax(operator_drift_scores))
 
-    print("\n=== EARLY WARNING (drift_ema > mean + 2*std of first 20%) ===")
-    print(f"EMA threshold: {ema_threshold:.4f}")
-    if ema_warning_idx is not None:
-        print(f"drift_ema first exceeds threshold at timestep: {ema_warning_idx}")
-        print(f"Baseline peak at timestep:                     {baseline_peak_idx}")
-        lead = baseline_peak_idx - ema_warning_idx
-        print(f"Lead over baseline peak: {lead} timesteps ({'earlier' if lead > 0 else 'later or simultaneous'})")
-    else:
-        print("drift_ema never exceeded threshold")
-        print(f"Baseline peak at timestep: {baseline_peak_idx}")
+        # --- Early warning: drift_ema threshold based on early baseline region ---
+        early_end = max(1, int(T * 0.20))
+        early_ema = drift_ema[:early_end]
+        ema_threshold = early_ema.mean() + 2 * early_ema.std()
 
-    # --- Plot ---
-    plt.figure(figsize=(14, 8))
-    plt.plot(baseline_scores, label="Baseline (mean abs z-score)", alpha=0.7)
-    plt.plot(operator_drift_scores, label="Raw drift ||A_t - A_{t-1}||", alpha=0.6)
-    plt.plot(drift_ema, label=f"Drift EMA (α={EMA_ALPHA})", linewidth=2)
-    plt.plot(cumulative_drift / (cumulative_drift.max() + 1e-9),
-             label=f"Cumulative drift (N={CUMULATIVE_N}, normalized)", linestyle="--")
-    plt.plot(drift_trend / (np.abs(drift_trend).max() + 1e-9),
-             label=f"Drift trend/slope (N={CUMULATIVE_N}, normalized)", linestyle=":")
-    plt.axvline(degradation_start, linestyle="--", color="red", label="Degradation start (proxy)")
-    if ema_warning_idx is not None:
-        plt.axvline(ema_warning_idx, linestyle="--", color="orange", label=f"EMA warning (t={ema_warning_idx})")
-    plt.title(f"FD004 Unit {UNIT_ID}: sustained structural drift detection")
-    plt.xlabel("Timestep")
-    plt.ylabel("Score")
-    plt.legend()
+        ema_warning_idx = None
+        for t in range(T):
+            if drift_ema[t] > ema_threshold:
+                ema_warning_idx = t
+                break
+
+        lead_vs_degradation = (
+            degradation_start - ema_warning_idx if ema_warning_idx is not None else None
+        )
+        lead_vs_baseline = (
+            baseline_peak_idx - ema_warning_idx if ema_warning_idx is not None else None
+        )
+
+        results.append(
+            {
+                "unit": int(unit),
+                "timesteps": len(signals),
+                "degradation_start": degradation_start,
+                "baseline_peak": baseline_peak_idx,
+                "drift_peak": drift_peak_idx,
+                "ema_warning": ema_warning_idx,
+                "lead_vs_degradation": lead_vs_degradation,
+                "lead_vs_baseline": lead_vs_baseline,
+            }
+        )
+
+    results_df = pd.DataFrame(results)
+
+    print("\n=== PER-UNIT RESULTS ===")
+    print(results_df.to_string(index=False))
+
+    valid_deg = results_df["lead_vs_degradation"].dropna()
+    valid_base = results_df["lead_vs_baseline"].dropna()
+
+    print("\n=== AGGREGATE SUMMARY ===")
+    print("mean lead_vs_degradation:", valid_deg.mean() if not valid_deg.empty else None)
+    print("median lead_vs_degradation:", valid_deg.median() if not valid_deg.empty else None)
+    print("mean lead_vs_baseline:", valid_base.mean() if not valid_base.empty else None)
+    print(
+        "units where ema_warning < degradation_start:",
+        int((results_df["lead_vs_degradation"] > 0).sum()),
+    )
+    print(
+        "units where ema_warning < baseline_peak:",
+        int((results_df["lead_vs_baseline"] > 0).sum()),
+    )
+
+    plt.figure(figsize=(10, 6))
+    plt.hist(valid_deg.values, bins=20, edgecolor="black", alpha=0.8)
+    plt.title("EMA Warning Lead vs Degradation")
+    plt.xlabel("lead_vs_degradation")
+    plt.ylabel("Count")
     plt.tight_layout()
     plt.show()
 
