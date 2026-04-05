@@ -411,14 +411,26 @@ def find_warning_index(
 
         # Sustained slope gate to suppress short-lived EMA spikes and weak
         # noisy excursions while preserving true rising degradation signatures.
-        if i >= slope_window:
-            recent_slope = value - float(scores[i - slope_window])
+        if min_slope <= 0.0:
+            # Explicit bypass: non-positive min_slope disables sustained slope gating.
+            strong_trend = True
         else:
-            recent_slope = 0.0
-        strong_trend = recent_slope > min_slope
+            if i >= slope_window:
+                recent_slope = value - float(scores[i - slope_window])
+            else:
+                recent_slope = 0.0
+            strong_trend = recent_slope > min_slope
 
-        if value >= threshold and upward_ok and strong_trend:
-            consecutive += 1
+        if value >= threshold:
+            if consecutive == 0:
+                # Gate the START of anomaly buildup by trend quality checks.
+                if upward_ok and strong_trend:
+                    consecutive = 1
+            else:
+                # Once above threshold and active, allow plateaus/slight wobble
+                # without destroying persistence.
+                consecutive += 1
+
             if consecutive >= persistence:
                 # Return the confirmation index — NOT backdated to run start
                 return i
