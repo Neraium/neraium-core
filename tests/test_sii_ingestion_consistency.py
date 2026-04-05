@@ -152,10 +152,30 @@ def test_cli_summary_distinguishes_empty_partial_failed_full(tmp_path: Path, mon
     monkeypatch.setattr(sii_cli, "run_structural_pipeline", lambda _payloads, config=None: {"validation_results": {}})
 
     cases = [
-        ("empty.json", "[]", {"input_empty": True, "all_failed": False, "partial_success": False, "frames_succeeded": 0, "frames_failed": 0}, 0),
-        ("all_failed.json", json.dumps([1, 2]), {"input_empty": False, "all_failed": True, "partial_success": False, "frames_succeeded": 0, "frames_failed": 2}, 1),
-        ("partial.json", json.dumps([_valid_payload(), 1]), {"input_empty": False, "all_failed": False, "partial_success": True, "frames_succeeded": 1, "frames_failed": 1}, 1),
-        ("full.json", json.dumps([_valid_payload(), _valid_payload("2026-01-01T00:01:00Z")]), {"input_empty": False, "all_failed": False, "partial_success": False, "frames_succeeded": 2, "frames_failed": 0}, 0),
+        (
+            "empty.json",
+            "[]",
+            {"input_empty": True, "all_failed": False, "partial_success": False, "frames_succeeded": 0, "frames_failed": 0},
+            0,
+        ),
+        (
+            "all_failed.json",
+            json.dumps([1, 2]),
+            {"input_empty": False, "all_failed": True, "partial_success": False, "frames_succeeded": 0, "frames_failed": 2},
+            1,
+        ),
+        (
+            "partial.json",
+            json.dumps([_valid_payload(), 1]),
+            {"input_empty": False, "all_failed": False, "partial_success": True, "frames_succeeded": 1, "frames_failed": 1},
+            1,
+        ),
+        (
+            "full.json",
+            json.dumps([_valid_payload(), _valid_payload("2026-01-01T00:01:00Z")]),
+            {"input_empty": False, "all_failed": False, "partial_success": False, "frames_succeeded": 2, "frames_failed": 0},
+            0,
+        ),
     ]
 
     for filename, payload, expected, expected_exit_code in cases:
@@ -168,6 +188,9 @@ def test_cli_summary_distinguishes_empty_partial_failed_full(tmp_path: Path, mon
         for key, value in expected.items():
             assert summary[key] == value
         assert summary["results_emitted"] == summary["frames_succeeded"]
+        assert summary["errors_truncated"] is False
+        assert summary["total_error_count"] == summary["frames_failed"]
+        assert summary["returned_error_count"] == summary["frames_failed"]
         assert set(summary.keys()) >= {
             "frames_succeeded",
             "frames_failed",
@@ -176,4 +199,7 @@ def test_cli_summary_distinguishes_empty_partial_failed_full(tmp_path: Path, mon
             "all_failed",
             "partial_success",
             "ingest_errors",
+            "errors_truncated",
+            "total_error_count",
+            "returned_error_count",
         }
