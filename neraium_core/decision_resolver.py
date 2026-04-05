@@ -161,11 +161,7 @@ def _compute_decision_confidence_with_components(
     risk = risk_assessment or {}
     attr = attribution or {}
 
-    top_hypotheses = causal.get("top_hypotheses") if isinstance(causal.get("top_hypotheses"), list) else []
-    top_h = top_hypotheses[0] if top_hypotheses and isinstance(top_hypotheses[0], dict) else {}
-    hypothesis_conf = _clamp01(_safe_float(top_h.get("confidence"), 0.0))
-    robustness = _clamp01(_safe_float(top_h.get("robustness"), 0.0))
-    counterfactual = _clamp01(_safe_float(top_h.get("counterfactual_strength"), 0.0))
+    inspection_confidence = _clamp01(_safe_float(causal.get("inspection_confidence"), 0.0))
 
     trend = str(risk.get("risk_trend_smoothed") or risk.get("projected_near_term_trend", "uncertain")).lower()
     risk_score = _clamp01(_safe_float(risk.get("risk_score"), 0.0))
@@ -195,13 +191,13 @@ def _compute_decision_confidence_with_components(
     converging_evidence = _clamp01(converging_count / 4.0)
     overlap_score = _clamp01(_safe_float(causal.get("attribution_causal_overlap_score"), 0.0))
     multi_signal_agreement = _clamp01(0.65 * converging_evidence + 0.35 * overlap_score)
-    causal_robustness = _clamp01(0.45 * hypothesis_conf + 0.35 * robustness + 0.20 * counterfactual)
+    inspection_robustness = inspection_confidence  # direct from structural convergence, no fake components
     trend_reinforcement = _clamp01(0.60 * trend_strength + 0.40 * projected_score)
 
     confidence_raw = _clamp01(
         0.24 * risk_strength
         + 0.32 * cumulative_risk_pressure
-        + 0.20 * causal_robustness
+        + 0.20 * inspection_robustness
         + 0.08 * localization
         + 0.11 * multi_signal_agreement
         + 0.05 * trend_reinforcement
@@ -210,7 +206,7 @@ def _compute_decision_confidence_with_components(
     components = {
         "risk_strength": round(risk_strength, 4),
         "cumulative_risk_pressure": round(cumulative_risk_pressure, 4),
-        "causal_robustness": round(causal_robustness, 4),
+        "inspection_robustness": round(inspection_robustness, 4),
         "attribution_localization": round(localization, 4),
         "multi_signal_agreement": round(multi_signal_agreement, 4),
         "trend_reinforcement": round(trend_reinforcement, 4),
@@ -320,10 +316,6 @@ def resolve_best_action(
     selected_from_best_next = False
 
     best_next = causal.get("best_next_action")
-    top_h = {}
-    top_hypotheses = causal.get("top_hypotheses") if isinstance(causal.get("top_hypotheses"), list) else []
-    if top_hypotheses and isinstance(top_hypotheses[0], dict):
-        top_h = top_hypotheses[0]
 
     best_conf = _safe_float((best_next or {}).get("confidence") if isinstance(best_next, dict) else None, 0.0)
     selected_score = 0.0
@@ -349,7 +341,7 @@ def resolve_best_action(
             action = _normalized_action_label(action)
             if action:
                 source["from_causal_analysis"] = True
-                selected_score = _clamp01(_safe_float(top_h.get("confidence"), 0.0) * 0.85)
+                selected_score = _clamp01(_safe_float(causal.get("inspection_confidence"), 0.0) * 0.85)
                 evidence.append({"signal": "causal_analysis.recommended_sequence[0]", "value": action})
 
     if action is None:
@@ -361,7 +353,7 @@ def resolve_best_action(
             target = None if first_target in {"", "none", "unknown"} else first_target
             priority = 1
             source["from_operator_guidance"] = bool(action)
-            selected_score = _clamp01(0.50 + 0.35 * _safe_float(top_h.get("confidence"), 0.0))
+            selected_score = _clamp01(0.50 + 0.35 * _safe_float(causal.get("inspection_confidence"), 0.0))
             if action:
                 evidence.append({"signal": "operator_guidance.recommended_actions[0]", "value": action})
 
@@ -397,14 +389,6 @@ def resolve_best_action(
             confidence=0.05,
         )
 
-    if top_h:
-        evidence.append(
-            {
-                "signal": "causal_analysis.top_hypotheses[0]",
-                "value": top_h.get("hypothesis", "unknown"),
-                "confidence": round(_clamp01(_safe_float(top_h.get("confidence"), 0.0)), 4),
-            }
-        )
     if isinstance(risk, dict) and risk:
         evidence.append(
             {

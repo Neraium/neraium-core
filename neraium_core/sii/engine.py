@@ -25,7 +25,6 @@ from neraium_core.sii.operator import build_operator_decision_support
 from neraium_core.sii.preprocessing import data_quality, impute_column_mean, summarize_quality
 from neraium_core.sii.regime_memory import summarize_regime_memory
 from neraium_core.sii.dynamic_graph import compute_dynamic_graph_metrics
-from neraium_core.sii.hypothesis_scoring import score_structural_hypothesis
 from neraium_core.sii.regime_model import RegimeModel, RegimeObservation
 from neraium_core.sii.risk import assess_forward_risk
 from neraium_core.system_intelligence import StructuralSystemIntelligencePlatform
@@ -796,46 +795,21 @@ class SystemicInfrastructureIntelligenceEngine:
                 for item in top_sensors
                 if isinstance(item, dict) and str(item.get("sensor", "")).strip()
             ]
-            primary_causal_drivers = attribution_sensor_names[:3] or (driver_names[:3] if driver_names else ["dominant subsystem"])
-            attribution_set = set(attribution_sensor_names[:5])
-            causal_set = set(primary_causal_drivers)
-            overlap_score = self._clamp01(len(attribution_set & causal_set) / max(1, len(causal_set)))
-            hypo = score_structural_hypothesis(
-                leading_sensor=primary_causal_drivers[0] if primary_causal_drivers else "dominant subsystem",
-                localization=float(structural_score),
-                persistence=float(min(1.0, np.mean(np.asarray(list(self.state.composite_history)[-6:], dtype=float) > 0.55))) if self.state.composite_history else 0.0,
-                subsystem_coherence=float(max(0.0, min(1.0, geom.coherence_score))),
-                robustness=float(max(0.0, min(1.0, 1.0 - abs(structural_score - relational_score)))),
-                multi_signal_agreement=float(overlap_score),
-            )
-            top_hypothesis = {
-                "hypothesis": hypo.hypothesis,
-                "confidence": hypo.confidence,
-                "evidence_strength": hypo.evidence_strength,
-                "robustness": hypo.robustness,
-                "counterfactual_strength": round(float(max(0.0, min(1.0, 0.5 * coupling_score + 0.5 * graph_score))), 4),
-                "primary_drivers": primary_causal_drivers,
-                "score_breakdown": dict(hypo.score_breakdown),
-            }
-            validation_plan = [
-                {
-                    "rank": 1,
-                    "step": str(operator_guidance.recommended_actions[0]) if operator_guidance.recommended_actions else "Inspect leading subsystem",
-                    "expected_voi": round(float(max(0.05, min(1.0, 0.55 + 0.35 * structural_score))), 4),
-                },
-                {
-                    "rank": 2,
-                    "step": "Validate top sensor calibration and strongest relationship pair.",
-                    "expected_voi": round(float(max(0.05, min(1.0, 0.35 + 0.35 * relational_score))), 4),
-                },
-            ]
+            primary_drivers = attribution_sensor_names[:3] or (driver_names[:3] if driver_names else ["dominant subsystem"])
+            # inspection_confidence: how strongly do the structural signals converge on a
+            # localized target?  Built directly from composite + attribution, no fake hypothesis.
+            inspection_confidence = round(self._clamp01(
+                0.50 * float(composite)
+                + 0.30 * float(structural_score)
+                + 0.20 * float(risk_assessment_data.projected_score)
+            ), 4)
             causal_analysis = {
                 "status": "ready",
                 "best_next_action": {
                     "action": str(operator_guidance.recommended_actions[0]) if operator_guidance.recommended_actions else "Inspect subsystem",
                     "target": str(operator_guidance.first_inspection_target or "none"),
                     "priority": 1,
-                    "confidence": round(float(max(0.0, min(1.0, 0.5 * top_hypothesis["confidence"] + 0.5 * risk_assessment_data.projected_score))), 4),
+                    "confidence": inspection_confidence,
                 },
                 "recommended_sequence": [
                     {
@@ -845,11 +819,9 @@ class SystemicInfrastructureIntelligenceEngine:
                     }
                     for idx, a in enumerate(operator_guidance.recommended_actions[:3])
                 ],
-                "top_hypotheses": [top_hypothesis],
-                "primary_drivers": primary_causal_drivers,
-                "attribution_causal_overlap_score": round(float(overlap_score), 4),
-                "validation_plan": validation_plan,
-                "summary": "Deterministic causal prioritization built from structural drift, coupling, and near-term risk trend.",
+                "primary_drivers": primary_drivers,
+                "inspection_confidence": inspection_confidence,
+                "top_hypotheses": [],  # no hypothesis generation — see operator_guidance for inspection targets
             }
             intelligence_observation = {
                 "asset_id": frame.asset_id,
