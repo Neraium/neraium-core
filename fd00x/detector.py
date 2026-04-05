@@ -233,8 +233,14 @@ class StructuralDriftDetector:
         # Absolute threshold derived from frozen reference distribution
         abs_threshold = ref.drift_mean + threshold_std * ref.drift_std
 
-        # Warning with corrected persistence semantics
-        warning_index = find_warning_index(ema_drift, abs_threshold, persistence)
+        # Warning with corrected persistence semantics + optional quality gates
+        warning_index = find_warning_index(
+            ema_drift,
+            abs_threshold,
+            persistence,
+            require_upward_trend=self.config.require_upward_ema_trend,
+            min_slope=self.config.min_ema_slope,
+        )
 
         return UnitScores(
             raw_drift=raw_drift,
@@ -332,6 +338,8 @@ def find_warning_index(
     scores: np.ndarray,
     threshold: float,
     persistence: int,
+    require_upward_trend: bool = False,
+    min_slope: float = 0.0,
 ) -> Optional[int]:
     """
     Find the warning CONFIRMATION index using the corrected persistence rule.
@@ -350,6 +358,9 @@ def find_warning_index(
     scores      : 1-D array of anomaly scores (e.g., EMA drift).
     threshold   : Exceedance threshold (absolute value).
     persistence : Number of consecutive exceedances required (>= 1).
+    require_upward_trend : If True, only rising EMA steps count.
+    min_slope   : Minimum EMA slope required for a step to count:
+                  ``scores[i] - scores[i-1] >= min_slope``.
 
     Returns
     -------
@@ -390,7 +401,12 @@ def find_warning_index(
 
     consecutive = 0
     for i, s in enumerate(scores):
-        if float(s) >= threshold:
+        value = float(s)
+        slope = value - float(scores[i - 1]) if i > 0 else 0.0
+        upward_ok = (not require_upward_trend) or (i > 0 and slope > 0.0)
+        slope_ok = (min_slope <= 0.0) or (i > 0 and slope >= min_slope)
+
+        if value >= threshold and upward_ok and slope_ok:
             consecutive += 1
             if consecutive >= persistence:
                 # Return the confirmation index — NOT backdated to run start

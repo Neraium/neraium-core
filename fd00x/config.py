@@ -132,6 +132,34 @@ class DetectorConfig:
         the exceedance run.  See ``fd00x.detector.find_warning_index``.
     """
 
+    threshold_mode: str = "mean_std"
+    """
+    Threshold derivation mode.  ``mean_std`` keeps the validated rule:
+
+        threshold = reference_drift_mean + threshold_std * reference_drift_std
+
+    The field exists primarily for explicit reproducibility in preset
+    comparison outputs and can be expanded in future studies if needed.
+    """
+
+    require_upward_ema_trend: bool = False
+    """
+    If True, an exceedance only counts toward persistence when EMA is rising
+    versus the previous step.  Disabled by default to preserve legacy
+    confirmation behavior for baseline reproducibility.
+    """
+
+    min_ema_slope: float = 0.0
+    """
+    Additional trustworthiness gate on EMA slope strength:
+
+        ema[t] - ema[t-1] >= min_ema_slope
+
+    This suppresses noise-triggered warnings caused by weak or short-lived
+    threshold excursions while keeping early warning for true rising
+    degradation signatures.  Set to 0.0 to disable slope-strength gating.
+    """
+
     # ── Degradation proxy ─────────────────────────────────────────────────────
     degradation_proxy_fraction: float = 0.30
     """
@@ -268,6 +296,36 @@ PRESETS: Dict[str, DetectorConfig] = {
         ema_alpha=0.35,
         score_fpr_penalty=200.0,
         score_coverage_weight=50.0,
+    ),
+    # Validated benchmark preset kept intact for direct before/after checks.
+    "validated_baseline": DetectorConfig(
+        threshold_std=1.5,
+        persistence=3,
+        threshold_mode="mean_std",
+        require_upward_ema_trend=False,
+        min_ema_slope=0.0,
+    ),
+    # Detector-quality refinement presets (same architecture; stricter gating).
+    "refined_balanced": DetectorConfig(
+        threshold_std=1.5,
+        persistence=3,
+        threshold_mode="mean_std",
+        require_upward_ema_trend=True,
+        min_ema_slope=0.003,
+    ),
+    "refined_strict": DetectorConfig(
+        threshold_std=1.5,
+        persistence=4,
+        threshold_mode="mean_std",
+        require_upward_ema_trend=True,
+        min_ema_slope=0.005,
+    ),
+    "refined_experimental": DetectorConfig(
+        threshold_std=1.6,
+        persistence=3,
+        threshold_mode="mean_std",
+        require_upward_ema_trend=True,
+        min_ema_slope=0.007,
     ),
 }
 
