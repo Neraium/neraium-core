@@ -212,7 +212,7 @@ def run_experiment_with_params(threshold_std: float, persistence: int) -> dict:
         THRESHOLD_STD = prev_threshold
         PERSISTENCE = prev_persistence
 
-    false_positive_rate = (results_df["ema_warning"] < results_df["degradation_start"]).mean()
+    false_positive_rate = (results_df["ema_warning"] >= results_df["degradation_start"]).mean()
     coverage = results_df["ema_warning"].notna().mean()
     mean_lead = results_df["lead_vs_degradation"].dropna().mean()
 
