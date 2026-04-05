@@ -96,8 +96,11 @@ def main() -> int:
         input_empty = (frames_succeeded + frames_failed) == 0
         all_failed = frames_failed > 0 and frames_succeeded == 0
         partial_success = frames_succeeded > 0 and frames_failed > 0
+        total_error_count = len(ingest_errors)
         if len(ingest_errors) > 20:
             ingest_errors = [*ingest_errors[:20], {"code": "truncated", "message": "additional errors omitted"}]
+        returned_error_count = len(ingest_errors)
+        errors_truncated = total_error_count != returned_error_count
         exit_code = 0
         if frames_failed > 0 or all_failed or partial_success:
             exit_code = 1
@@ -112,6 +115,9 @@ def main() -> int:
                     "all_failed": all_failed,
                     "partial_success": partial_success,
                     "ingest_errors": ingest_errors,
+                    "errors_truncated": errors_truncated,
+                    "total_error_count": total_error_count,
+                    "returned_error_count": returned_error_count,
                     "output_path": str(output_path),
                 }
             )
