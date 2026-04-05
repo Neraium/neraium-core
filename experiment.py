@@ -13,6 +13,10 @@ DEGRADATION_FRACTION = 0.8
 EMA_ALPHA = 0.2
 CUMULATIVE_N = 30
 
+THRESHOLD_STD = 2.0
+PERSISTENCE = 1
+RUN_GRID_SEARCH = True
+
 
 def load_fd004(path: Path) -> pd.DataFrame:
     if not path.exists():
@@ -37,7 +41,7 @@ def fit_var1(X: np.ndarray) -> np.ndarray:
     return A
 
 
-def main():
+def run_multi_unit_experiment() -> pd.DataFrame:
     df = load_fd004(DATA_PATH)
     print("Loaded shape:", df.shape)
     print("Units:", df["unit"].nunique())
@@ -128,13 +132,18 @@ def main():
         # --- Early warning: drift_ema threshold based on early baseline region ---
         early_end = max(1, int(T * 0.20))
         early_ema = drift_ema[:early_end]
-        ema_threshold = early_ema.mean() + 2 * early_ema.std()
+        ema_threshold = early_ema.mean() + THRESHOLD_STD * early_ema.std()
 
         ema_warning_idx = None
+        consecutive = 0
         for t in range(T):
             if drift_ema[t] > ema_threshold:
-                ema_warning_idx = t
-                break
+                consecutive += 1
+                if consecutive >= PERSISTENCE:
+                    ema_warning_idx = t - PERSISTENCE + 1
+                    break
+            else:
+                consecutive = 0
 
         lead_vs_degradation = (
             degradation_start - ema_warning_idx if ema_warning_idx is not None else None
@@ -156,8 +165,10 @@ def main():
             }
         )
 
-    results_df = pd.DataFrame(results)
+    return pd.DataFrame(results)
 
+
+def print_and_plot_results(results_df: pd.DataFrame) -> None:
     print("\n=== PER-UNIT RESULTS ===")
     print(results_df.to_string(index=False))
 
@@ -186,5 +197,81 @@ def main():
     plt.show()
 
 
+def run_experiment_with_params(threshold_std: float, persistence: int) -> dict:
+    global THRESHOLD_STD, PERSISTENCE
+
+    prev_threshold = THRESHOLD_STD
+    prev_persistence = PERSISTENCE
+
+    THRESHOLD_STD = threshold_std
+    PERSISTENCE = persistence
+
+    try:
+        results_df = run_multi_unit_experiment()
+    finally:
+        THRESHOLD_STD = prev_threshold
+        PERSISTENCE = prev_persistence
+
+    false_positive_rate = (results_df["ema_warning"] < results_df["degradation_start"]).mean()
+    coverage = results_df["ema_warning"].notna().mean()
+    mean_lead = results_df["lead_vs_degradation"].dropna().mean()
+
+    return {
+        "threshold": threshold_std,
+        "persistence": persistence,
+        "false_positive_rate": false_positive_rate,
+        "coverage": coverage,
+        "mean_lead": mean_lead,
+    }
+
+
+def grid_search() -> pd.DataFrame:
+    thresholds = [1.5, 2.0, 2.5, 3.0]
+    persistences = [3, 5, 8]
+    records = []
+
+    for threshold in thresholds:
+        for persistence in persistences:
+            row = run_experiment_with_params(threshold, persistence)
+            records.append(row)
+            print(
+                f"threshold={threshold}, persistence={persistence} "
+                f"-> FP={row['false_positive_rate']:.2f}, "
+                f"coverage={row['coverage']:.2f}, lead={row['mean_lead']:.1f}"
+            )
+
+    return pd.DataFrame(records)
+
+
+def score_row(row: pd.Series) -> float:
+    return (
+        row["mean_lead"] * 1.0
+        + row["coverage"] * 50
+        - row["false_positive_rate"] * 200
+    )
+
+
+def main():
+    results_df = run_multi_unit_experiment()
+    print_and_plot_results(results_df)
+
+
+def run_grid_search_workflow():
+    results_df = grid_search()
+    results_df["score"] = results_df.apply(score_row, axis=1)
+    ranked = results_df.sort_values("score", ascending=False).reset_index(drop=True)
+
+    print("\n=== BEST CONFIG ===")
+    print(ranked.iloc[0].to_string())
+
+    print("\n=== RANKED CONFIGS ===")
+    print(ranked.to_string(index=False))
+
+    ranked.to_csv("fd004_grid_search_results.csv", index=False)
+
+
 if __name__ == "__main__":
-    main()
+    if RUN_GRID_SEARCH:
+        run_grid_search_workflow()
+    else:
+        main()
