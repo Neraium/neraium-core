@@ -316,6 +316,36 @@ def canonical_records_from_payloads(
     return out
 
 
+def _fallback_ingest_code(*, source_type: str) -> str:
+    if source_type == "csv":
+        return "invalid_csv_row"
+    if source_type == "json":
+        return "invalid_json_item"
+    return "invalid_payload"
+
+
+def _classify_ingest_error_code(
+    *,
+    message: str,
+    source_type: str,
+    payload: Any | None = None,
+) -> str:
+    msg = message.lower()
+
+    if "payload must be an object" in msg:
+        return "non_object_payload"
+    if "variables (or sensor_values) must be an object" in msg:
+        if isinstance(payload, dict) and payload.get("variables") is None and payload.get("sensor_values") is None:
+            return "missing_required_field"
+        return _fallback_ingest_code(source_type=source_type)
+    if "metadata must be an object" in msg:
+        return "invalid_metadata_json"
+    if "invalid numeric value" in msg or "unsupported value type" in msg:
+        return "invalid_numeric_value"
+
+    return _fallback_ingest_code(source_type=source_type)
+
+
 def canonical_records_from_payloads_isolated(
     payloads: list[Any],
     *,
@@ -338,7 +368,11 @@ def canonical_records_from_payloads_isolated(
         except SIIValidationError as exc:
             error: dict[str, Any] = {
                 "index": idx,
-                "code": "invalid_payload",
+                "code": _classify_ingest_error_code(
+                    message=str(exc),
+                    source_type=source_type,
+                    payload=payload,
+                ),
                 "message": str(exc),
             }
             if isinstance(payload, dict):
@@ -564,6 +598,16 @@ def _records_from_csv_text_isolated(
                 raise SIIValidationError(f"{column_name} must be a JSON object")
             return parsed
 
+        def _code_for_csv_row_error(message: str) -> str:
+            msg = message.lower()
+            if "quality_metadata" in msg:
+                return "invalid_quality_metadata_json"
+            if "source_metadata" in msg:
+                return "invalid_source_metadata_json"
+            if "metadata" in msg:
+                return "invalid_metadata_json"
+            return "invalid_csv_row"
+
         try:
             variables = {col: row.get(header_lookup[col]) for col in sensor_columns}
             payload = {
@@ -596,7 +640,7 @@ def _records_from_csv_text_isolated(
             pre_ingest_errors.append(
                 {
                     "index": max(0, row_index - 2),
-                    "code": "invalid_payload",
+                    "code": _code_for_csv_row_error(str(exc)),
                     "message": f"Invalid CSV row {row_index}: {exc}",
                     "source_record_id": str(row_index),
                 }
