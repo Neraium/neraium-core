@@ -257,15 +257,12 @@ def main():
     print_and_plot_results(results_df)
 
 
-def run_grid_search_workflow():
+def run_grid_search_workflow() -> None:
     results_df = grid_search()
     results_df["score"] = results_df.apply(score_row, axis=1)
     ranked = results_df.sort_values("score", ascending=False).reset_index(drop=True)
 
     print("\n=== BEST CONFIG ===")
-    print(ranked.iloc[0].to_string())
-
-    print("\n=== RANKED CONFIGS ===")
     print(ranked.to_string(index=False))
 
     ranked.to_csv("fd004_grid_search_results.csv", index=False)
