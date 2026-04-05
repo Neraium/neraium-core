@@ -73,8 +73,11 @@ def normalize_series(x: np.ndarray) -> np.ndarray:
 
 def first_persistent_warning(signal: np.ndarray, threshold: float, persistence: int) -> int | None:
     run = 0
-    for i, value in enumerate(signal):
-        if value > threshold:
+    for i in range(1, len(signal)):
+        above = signal[i] > threshold
+        trending = signal[i] > signal[i - 1]
+
+        if above and trending:
             run += 1
             if run >= persistence:
                 return i
