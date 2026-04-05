@@ -1,10 +1,6 @@
 name: CI Smoke
 
 on:
-  pull_request:
-    branches: [main, master]
-  push:
-    branches: [main, master]
   push:
     branches: [main, master]
   pull_request:
@@ -23,7 +19,6 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-          cache: "pip"
           cache: pip
 
       - name: Install dependencies
@@ -36,10 +31,5 @@ jobs:
           ruff check neraium_core apps tests/test_package_import.py tests/test_api_product_basics.py
 
       - name: Pytest smoke suite
-      - name: Lint smoke targets
-        run: |
-          ruff check neraium_core apps tests/test_package_import.py tests/test_api_product_basics.py
-
-      - name: Test smoke targets
         run: |
           pytest -q tests/test_package_import.py tests/test_api_product_basics.py
