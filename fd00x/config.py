@@ -2,8 +2,8 @@
 Configuration for the FD00x structural early-warning evaluation framework.
 
 All tunable parameters live here. Use named presets for common trust/sensitivity
-trade-offs. The 'balanced' preset is the recommended default — it prioritises
-trustworthiness over aggressiveness.
+trade-offs. The 'default_trusted' preset is the recommended default — it
+prioritises trustworthiness over aggressiveness.
 
 Walk-forward safety contract
 -----------------------------
@@ -142,22 +142,27 @@ class DetectorConfig:
     comparison outputs and can be expanded in future studies if needed.
     """
 
-    require_upward_ema_trend: bool = False
+    require_upward_ema_trend: bool = True
     """
     If True, an exceedance only counts toward persistence when EMA is rising
-    versus the previous step.  Disabled by default to preserve legacy
-    confirmation behavior for baseline reproducibility.
+    versus the previous step.
     """
 
-    min_ema_slope: float = 0.0
+    slope_window: int = 3
     """
-    Additional trustworthiness gate on EMA slope strength:
+    Window length used for sustained momentum gating in warning confirmation.
 
-        ema[t] - ema[t-1] >= min_ema_slope
+    Recent EMA slope is estimated from this trailing segment.  The gate is
+    designed to suppress short-lived spikes and weak noisy excursions while
+    preserving warnings for genuine rising degradation signatures.
+    """
 
-    This suppresses noise-triggered warnings caused by weak or short-lived
-    threshold excursions while keeping early warning for true rising
-    degradation signatures.  Set to 0.0 to disable slope-strength gating.
+    min_slope: float = 0.02
+    """
+    Minimum sustained EMA slope required for a step to count toward
+    persistence confirmation.
+
+    Set to 0.0 to disable sustained slope gating.
     """
 
     # ── Degradation proxy ─────────────────────────────────────────────────────
@@ -272,63 +277,43 @@ class DetectorConfig:
 # ─────────────────────────────────────────────────────────────────────────────
 #
 # Choose a preset that matches your trust requirements.
-# 'conservative' is recommended for production alerting; 'aggressive' is
-# useful for exploratory analysis or when FP cost is low.
+# default_trusted is the runtime default and emphasises trustworthiness.
 
 PRESETS: Dict[str, DetectorConfig] = {
-    "conservative": DetectorConfig(
-        threshold_std=3.0,
-        persistence=7,
-        ema_alpha=0.15,
-        score_fpr_penalty=600.0,
-        score_coverage_weight=30.0,
-    ),
-    "balanced": DetectorConfig(
-        threshold_std=2.5,
-        persistence=5,
-        ema_alpha=0.25,
+    "default_trusted": DetectorConfig(
+        threshold_std=1.5,
+        persistence=3,
+        threshold_mode="mean_std",
+        require_upward_ema_trend=True,
+        slope_window=3,
+        min_slope=0.02,
         score_fpr_penalty=400.0,
         score_coverage_weight=40.0,
     ),
-    "aggressive": DetectorConfig(
-        threshold_std=1.5,
-        persistence=3,
-        ema_alpha=0.35,
-        score_fpr_penalty=200.0,
-        score_coverage_weight=50.0,
-    ),
-    # Validated benchmark preset kept intact for direct before/after checks.
-    "validated_baseline": DetectorConfig(
-        threshold_std=1.5,
-        persistence=3,
-        threshold_mode="mean_std",
-        require_upward_ema_trend=False,
-        min_ema_slope=0.0,
-    ),
-    # Detector-quality refinement presets (same architecture; stricter gating).
-    "refined_balanced": DetectorConfig(
-        threshold_std=1.5,
-        persistence=3,
-        threshold_mode="mean_std",
-        require_upward_ema_trend=True,
-        min_ema_slope=0.003,
-    ),
-    "refined_strict": DetectorConfig(
-        threshold_std=1.5,
+    "balanced": DetectorConfig(
+        threshold_std=1.6,
         persistence=4,
         threshold_mode="mean_std",
         require_upward_ema_trend=True,
-        min_ema_slope=0.005,
+        slope_window=3,
+        min_slope=0.025,
+        ema_alpha=0.22,
+        score_fpr_penalty=400.0,
+        score_coverage_weight=40.0,
     ),
-    "refined_experimental": DetectorConfig(
-        threshold_std=1.6,
-        persistence=3,
+    "strict": DetectorConfig(
+        threshold_std=1.75,
+        persistence=5,
         threshold_mode="mean_std",
         require_upward_ema_trend=True,
-        min_ema_slope=0.007,
+        slope_window=4,
+        min_slope=0.03,
+        ema_alpha=0.20,
+        score_fpr_penalty=450.0,
+        score_coverage_weight=35.0,
     ),
 }
 
-DEFAULT_PRESET: str = "balanced"
+DEFAULT_PRESET: str = "default_trusted"
 
 ALL_DATASETS: Tuple[str, ...] = ("FD001", "FD002", "FD003", "FD004")
