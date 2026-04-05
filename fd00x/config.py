@@ -291,8 +291,12 @@ class DetectorConfig:
 # default_trusted is the runtime default and emphasises trustworthiness.
 
 PRESETS: Dict[str, DetectorConfig] = {
+    # Threshold values recalibrated for EMA-space thresholding.
+    # Raw-drift-space values (1.5–1.75) are too low for EMA space because
+    # EMA variance is ~(alpha/(2-alpha)) × raw variance, so the same
+    # absolute threshold is reached far more often.
     "default_trusted": DetectorConfig(
-        threshold_std=1.5,
+        threshold_std=2.5,
         persistence=3,
         threshold_mode="mean_std",
         require_upward_ema_trend=True,
@@ -302,8 +306,8 @@ PRESETS: Dict[str, DetectorConfig] = {
         score_coverage_weight=40.0,
     ),
     "balanced": DetectorConfig(
-        threshold_std=1.6,
-        persistence=4,
+        threshold_std=1.75,
+        persistence=7,
         threshold_mode="mean_std",
         require_upward_ema_trend=True,
         slope_window=3,
@@ -313,7 +317,7 @@ PRESETS: Dict[str, DetectorConfig] = {
         score_coverage_weight=40.0,
     ),
     "strict": DetectorConfig(
-        threshold_std=1.75,
+        threshold_std=2.5,
         persistence=5,
         threshold_mode="mean_std",
         require_upward_ema_trend=True,

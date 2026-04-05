@@ -232,6 +232,9 @@ class StructuralDriftDetector:
 
         # Threshold must be calibrated in the same score space used for warning
         # detection (EMA drift), computed from healthy EMA only.
+        # Use the full healthy window: early cycles have high EMA due to
+        # noisy small-window covariance estimation; including them raises the
+        # threshold and reduces false positives in the healthy region.
         healthy_ema = ema_drift[: ref.n_samples]
         abs_threshold = _compute_ema_threshold(
             healthy_ema=healthy_ema,
@@ -519,7 +522,13 @@ def _compute_ema_threshold(
         return mean + threshold_std * max(std, 1e-6)
 
     filtered = _filter_informative_healthy_ema(healthy_ema)
-    base = filtered if filtered.size > 0 else healthy_ema
+    # Use filtered values when available; fall back to finite-only subset to
+    # avoid propagating NaN/Inf into percentile/median computations.
+    if filtered.size > 0:
+        base = filtered
+    else:
+        finite = healthy_ema[np.isfinite(healthy_ema)]
+        base = finite if finite.size > 0 else healthy_ema
 
     if mode == "percentile":
         pct = float(np.clip(threshold_percentile, 0.0, 100.0))
