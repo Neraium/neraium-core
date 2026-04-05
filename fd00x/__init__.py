@@ -6,7 +6,7 @@ evaluation framework for structural drift / relationship-change detection.
 
 Module layout
 -------------
-config      Tunable parameters, named presets (conservative / balanced / aggressive)
+config      Tunable parameters, named presets (default_trusted / balanced / strict)
 detector    Core structural drift detector, corrected persistence warning logic
 evaluation  Dataset loading, metrics, baselines, tuning, scoring
 plotting    Diagnostic plots (lazy matplotlib import)
@@ -18,7 +18,7 @@ From the repository root::
 
     python -m fd00x.experiment --mode evaluate --dataset FD004
     python -m fd00x.experiment --mode all --dataset FD001 FD002 FD003 FD004
-    python -m fd00x.experiment --preset conservative --dataset FD004
+    python -m fd00x.experiment --preset default_trusted --dataset FD004
     python -m fd00x.experiment --mode tune --dataset FD004
 
 Key public API::

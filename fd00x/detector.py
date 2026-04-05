@@ -239,7 +239,8 @@ class StructuralDriftDetector:
             abs_threshold,
             persistence,
             require_upward_trend=self.config.require_upward_ema_trend,
-            min_slope=self.config.min_ema_slope,
+            slope_window=self.config.slope_window,
+            min_slope=self.config.min_slope,
         )
 
         return UnitScores(
@@ -339,6 +340,7 @@ def find_warning_index(
     threshold: float,
     persistence: int,
     require_upward_trend: bool = False,
+    slope_window: int = 3,
     min_slope: float = 0.0,
 ) -> Optional[int]:
     """
@@ -359,8 +361,8 @@ def find_warning_index(
     threshold   : Exceedance threshold (absolute value).
     persistence : Number of consecutive exceedances required (>= 1).
     require_upward_trend : If True, only rising EMA steps count.
-    min_slope   : Minimum EMA slope required for a step to count:
-                  ``scores[i] - scores[i-1] >= min_slope``.
+    slope_window : Trailing window used to measure sustained EMA momentum.
+    min_slope    : Minimum sustained slope required for a step to count.
 
     Returns
     -------
@@ -398,15 +400,24 @@ def find_warning_index(
     """
     if persistence < 1:
         raise ValueError(f"persistence must be >= 1, got {persistence}")
+    if slope_window < 1:
+        raise ValueError(f"slope_window must be >= 1, got {slope_window}")
 
     consecutive = 0
     for i, s in enumerate(scores):
         value = float(s)
-        slope = value - float(scores[i - 1]) if i > 0 else 0.0
-        upward_ok = (not require_upward_trend) or (i > 0 and slope > 0.0)
-        slope_ok = (min_slope <= 0.0) or (i > 0 and slope >= min_slope)
+        instant_slope = value - float(scores[i - 1]) if i > 0 else 0.0
+        upward_ok = (not require_upward_trend) or (i > 0 and instant_slope > 0.0)
 
-        if value >= threshold and upward_ok and slope_ok:
+        # Sustained slope gate to suppress short-lived EMA spikes and weak
+        # noisy excursions while preserving true rising degradation signatures.
+        if i >= slope_window:
+            recent_slope = value - float(scores[i - slope_window])
+        else:
+            recent_slope = 0.0
+        strong_trend = recent_slope > min_slope
+
+        if value >= threshold and upward_ok and strong_trend:
             consecutive += 1
             if consecutive >= persistence:
                 # Return the confirmation index — NOT backdated to run start
