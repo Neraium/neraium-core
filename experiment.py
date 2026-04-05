@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 from numpy.linalg import lstsq, eigvals
 
 
-DATA_PATH = Path(r"C:\Users\Owner\Desktop\CMAPSSData\train_FD004.txt")
+DATA_PATH = Path(__file__).resolve().parent / "train_FD004.txt"
 
 SIGNAL_COLUMNS = ["s_2", "s_3", "s_4", "s_7"]
 
