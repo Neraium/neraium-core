@@ -9,7 +9,7 @@ Run from the repository root::
     python -m fd00x.experiment --mode tune     --dataset FD004
     python -m fd00x.experiment --mode compare_baselines --dataset FD004
     python -m fd00x.experiment --mode all      --dataset FD001 FD002 FD003 FD004
-    python -m fd00x.experiment --preset conservative --dataset FD004
+    python -m fd00x.experiment --preset default_trusted --dataset FD004
     python -m fd00x.experiment --config outputs/my_run/config.json
 
 Runtime modes
@@ -209,14 +209,9 @@ def run_preset_comparison_mode(
     run_dir: str,
 ) -> List[PresetComparisonRow]:
     """
-    Compare the validated baseline against targeted detector-gate refinements.
+    Compare the detector trust presets used for runtime model selection.
     """
-    preset_names = [
-        "validated_baseline",
-        "refined_strict",
-        "refined_balanced",
-        "refined_experimental",
-    ]
+    preset_names = ["default_trusted", "balanced", "strict"]
     comparison_presets = {name: PRESETS[name] for name in preset_names}
 
     rows = compare_detector_presets(config, unit_data, sensor_cols, comparison_presets)
@@ -236,11 +231,7 @@ def run_preset_comparison_mode(
 
     best_by_score = rows[0]
     safest_by_fpr = min(rows, key=lambda r: r.false_positive_rate)
-    balanced_candidates = [r for r in rows if r.preset_name != safest_by_fpr.preset_name]
-    best_balanced = max(
-        balanced_candidates,
-        key=lambda r: (r.score, -r.false_positive_rate),
-    ) if balanced_candidates else safest_by_fpr
+    highest_lead = max(rows, key=lambda r: r.mean_lead)
 
     print("\n  ── Detector preset highlights ───────────────────────────")
     print(
@@ -251,13 +242,11 @@ def run_preset_comparison_mode(
         f"  Safest by FPR   : {safest_by_fpr.preset_name}"
         f" (fpr={safest_by_fpr.false_positive_rate:.3f})"
     )
-    if best_balanced.preset_name != best_by_score.preset_name:
-        print(
-            f"  Balanced tradeoff: {best_balanced.preset_name}"
-            f" (score={best_balanced.score:.2f}, fpr={best_balanced.false_positive_rate:.3f})"
-        )
-    else:
-        print("  Balanced tradeoff: same as best-by-score")
+    print(
+        f"  Highest lead    : {highest_lead.preset_name}"
+        f" (mean_lead={highest_lead.mean_lead:.1f})"
+    )
+    print(f"  Default preset  : {DEFAULT_PRESET}")
     print("  ─────────────────────────────────────────────────────────")
 
     return rows

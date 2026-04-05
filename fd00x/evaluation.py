@@ -374,7 +374,8 @@ class PresetComparisonRow:
     persistence: int
     threshold_mode: str
     require_upward_ema_trend: bool
-    min_ema_slope: float
+    slope_window: int
+    min_slope: float
     false_positive_rate: float
     coverage: float
     mean_lead: float
@@ -461,7 +462,8 @@ def compare_detector_presets(
             persistence=cfg.persistence,
             threshold_mode=cfg.threshold_mode,
             require_upward_ema_trend=cfg.require_upward_ema_trend,
-            min_ema_slope=cfg.min_ema_slope,
+            slope_window=cfg.slope_window,
+            min_slope=cfg.min_slope,
             false_positive_rate=metrics.false_positive_rate,
             coverage=metrics.coverage,
             mean_lead=metrics.mean_lead,
