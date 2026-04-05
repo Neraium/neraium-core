@@ -67,7 +67,7 @@ def first_persistent_warning(signal: np.ndarray, threshold: float, persistence: 
         if value > threshold:
             run += 1
             if run >= persistence:
-                return i - persistence + 1
+                return i
         else:
             run = 0
     return None
