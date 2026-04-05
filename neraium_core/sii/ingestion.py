@@ -316,6 +316,73 @@ def canonical_records_from_payloads(
     return out
 
 
+def _fallback_ingest_code(*, source_type: str) -> str:
+    if source_type == "csv":
+        return "invalid_csv_row"
+    if source_type == "json":
+        return "invalid_json_item"
+    return "invalid_payload"
+
+
+def _classify_ingest_error_code(
+    *,
+    message: str,
+    source_type: str,
+    payload: Any | None = None,
+) -> str:
+    msg = message.lower()
+
+    if "payload must be an object" in msg:
+        return "non_object_payload"
+    if "variables (or sensor_values) must be an object" in msg:
+        if isinstance(payload, dict) and payload.get("variables") is None and payload.get("sensor_values") is None:
+            return "missing_required_field"
+        return _fallback_ingest_code(source_type=source_type)
+    if "metadata must be an object" in msg:
+        return "invalid_metadata_json"
+    if "invalid numeric value" in msg or "unsupported value type" in msg:
+        return "invalid_numeric_value"
+
+    return _fallback_ingest_code(source_type=source_type)
+
+
+def canonical_records_from_payloads_isolated(
+    payloads: list[Any],
+    *,
+    source_type: str = "payload",
+    source_name: str = "payload_batch",
+) -> tuple[list[CanonicalIngestionRecord], list[dict[str, Any]]]:
+    records: list[CanonicalIngestionRecord] = []
+    ingest_errors: list[dict[str, Any]] = []
+    for idx, payload in enumerate(payloads):
+        try:
+            if not isinstance(payload, dict):
+                raise SIIValidationError("Payload must be an object")
+            records.append(
+                ingestion_record_from_payload(
+                    payload,
+                    source_type=source_type,
+                    source_name=source_name,
+                )
+            )
+        except SIIValidationError as exc:
+            error: dict[str, Any] = {
+                "index": idx,
+                "code": _classify_ingest_error_code(
+                    message=str(exc),
+                    source_type=source_type,
+                    payload=payload,
+                ),
+                "message": str(exc),
+            }
+            if isinstance(payload, dict):
+                source_meta = payload.get("source_metadata")
+                if isinstance(source_meta, dict) and source_meta.get("source_record_id") is not None:
+                    error["source_record_id"] = str(source_meta.get("source_record_id"))
+            ingest_errors.append(error)
+    return records, ingest_errors
+
+
 def frames_from_records(records: list[CanonicalIngestionRecord]) -> list[TelemetryFrame]:
     return [ingestion_record_to_frame(r) for r in records]
 
@@ -488,13 +555,17 @@ def build_canonical_analysis_window(
     )
 
 
-def frames_from_csv(csv_text: str) -> list[TelemetryFrame]:
+def _records_from_csv_text_isolated(
+    csv_text: str,
+    *,
+    source_name: str,
+) -> tuple[list[CanonicalIngestionRecord], list[dict[str, Any]]]:
     if not isinstance(csv_text, str):
         raise SIIValidationError("csv_text must be a string")
 
     reader = csv.DictReader(StringIO(csv_text))
     if reader.fieldnames is None:
-        return []
+        return [], []
 
     headers = {h.strip() for h in reader.fieldnames if h is not None}
     if not REQUIRED_CSV_COLUMNS.issubset(headers):
@@ -511,31 +582,93 @@ def frames_from_csv(csv_text: str) -> list[TelemetryFrame]:
 
     sensor_columns = [h for h in header_lookup.keys() if h not in _RECOGNIZED_COLUMNS]
 
-    out: list[TelemetryFrame] = []
+    row_payloads: list[dict[str, Any]] = []
+    pre_ingest_errors: list[dict[str, Any]] = []
     for row_index, row in enumerate(reader, start=2):
-        variables = {col: row.get(header_lookup[col]) for col in sensor_columns}
-        payload = {
-            "timestamp": row.get(header_lookup.get("timestamp", "timestamp")),
-            "site_id": row.get(header_lookup.get("site_id", "site_id")),
-            "system_id": row.get(header_lookup.get("system_id", "system_id")),
-            "asset_id": row.get(header_lookup.get("asset_id", "asset_id")),
-            "node_id": row.get(header_lookup.get("node_id", "node_id")),
-            "variables": variables,
-            "source_metadata": {
-                "source_type": "csv",
-                "source_name": "csv_file",
-                "source_record_id": str(row_index),
-            },
-        }
+        def _parse_json_object_column(column_name: str) -> dict[str, Any] | None:
+            raw_value = row.get(header_lookup.get(column_name, column_name))
+            text = str(raw_value or "").strip()
+            if not text:
+                return None
+            try:
+                parsed = json.loads(text)
+            except Exception as exc:
+                raise SIIValidationError(f"{column_name} must be valid JSON object") from exc
+            if not isinstance(parsed, dict):
+                raise SIIValidationError(f"{column_name} must be a JSON object")
+            return parsed
+
+        def _code_for_csv_row_error(message: str) -> str:
+            msg = message.lower()
+            if "quality_metadata" in msg:
+                return "invalid_quality_metadata_json"
+            if "source_metadata" in msg:
+                return "invalid_source_metadata_json"
+            if "metadata" in msg:
+                return "invalid_metadata_json"
+            return "invalid_csv_row"
+
         try:
-            out.append(frame_from_payload(payload))
+            variables = {col: row.get(header_lookup[col]) for col in sensor_columns}
+            payload = {
+                "timestamp": row.get(header_lookup.get("timestamp", "timestamp")),
+                "site_id": row.get(header_lookup.get("site_id", "site_id")),
+                "system_id": row.get(header_lookup.get("system_id", "system_id")),
+                "asset_id": row.get(header_lookup.get("asset_id", "asset_id")),
+                "node_id": row.get(header_lookup.get("node_id", "node_id")),
+                "variables": variables,
+                "source_metadata": {
+                    "source_type": "csv",
+                    "source_name": "csv_file",
+                    "source_record_id": str(row_index),
+                },
+            }
+            quality_metadata = _parse_json_object_column("quality_metadata")
+            if quality_metadata is not None:
+                payload["quality_metadata"] = quality_metadata
+            source_metadata = _parse_json_object_column("source_metadata")
+            if source_metadata is not None:
+                payload["source_metadata"] = source_metadata
+                payload["source_metadata"]["source_record_id"] = payload["source_metadata"].get(
+                    "source_record_id", str(row_index)
+                )
+            metadata = _parse_json_object_column("metadata")
+            if metadata is not None:
+                payload["metadata"] = metadata
+            row_payloads.append(payload)
         except SIIValidationError as exc:
-            raise SIIValidationError(f"Invalid CSV row {row_index}: {exc}") from exc
+            pre_ingest_errors.append(
+                {
+                    "index": max(0, row_index - 2),
+                    "code": _code_for_csv_row_error(str(exc)),
+                    "message": f"Invalid CSV row {row_index}: {exc}",
+                    "source_record_id": str(row_index),
+                }
+            )
 
-    return out
+    records, ingest_errors = canonical_records_from_payloads_isolated(
+        row_payloads,
+        source_type="csv",
+        source_name=source_name,
+    )
+    if ingest_errors:
+        for error in ingest_errors:
+            if error.get("source_record_id") is None:
+                continue
+            error["message"] = f"Invalid CSV row {error['source_record_id']}: {error['message']}"
+    return records, [*pre_ingest_errors, *ingest_errors]
 
 
-def load_frames_from_json(path: str) -> list[dict[str, Any]]:
+def frames_from_csv(csv_text: str) -> list[TelemetryFrame]:
+    records, _ = _records_from_csv_text_isolated(csv_text, source_name="csv_file")
+    return frames_from_records(records)
+
+
+def load_frames_from_json(
+    path: str,
+    *,
+    return_ingest_errors: bool = False,
+) -> list[dict[str, Any]] | tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     p = Path(path)
     if not p.exists():
         raise SIIValidationError(f"Input file not found: {path}")
@@ -549,20 +682,22 @@ def load_frames_from_json(path: str) -> list[dict[str, Any]]:
         raw = [raw]
     if not isinstance(raw, list):
         raise SIIValidationError("JSON input must be an object or an array of objects")
-    out: list[dict[str, Any]] = []
-    for idx, item in enumerate(raw):
-        if not isinstance(item, dict):
-            raise SIIValidationError("Each JSON item must be an object")
-        record = ingestion_record_from_payload(
-            item,
-            source_type="json",
-            source_name=str(p.name),
-        )
-        out.append(ingestion_record_to_payload(record))
+    records, ingest_errors = canonical_records_from_payloads_isolated(
+        list(raw),
+        source_type="json",
+        source_name=str(p.name),
+    )
+    out = [ingestion_record_to_payload(record) for record in records]
+    if return_ingest_errors:
+        return out, ingest_errors
     return out
 
 
-def load_frames_from_csv(path: str) -> list[dict[str, Any]]:
+def load_frames_from_csv(
+    path: str,
+    *,
+    return_ingest_errors: bool = False,
+) -> list[dict[str, Any]] | tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     p = Path(path)
     if not p.exists():
         raise SIIValidationError(f"Input file not found: {path}")
@@ -572,7 +707,8 @@ def load_frames_from_csv(path: str) -> list[dict[str, Any]]:
         text = p.read_text(encoding="utf-8")
     except Exception as exc:
         raise SIIValidationError(f"Failed to read CSV input: {path}") from exc
-    parsed = frames_from_csv(text)
+    records, ingest_errors = _records_from_csv_text_isolated(text, source_name=str(p.name))
+    parsed = frames_from_records(records)
     out: list[dict[str, Any]] = []
     for f in parsed:
         sensor_values = dict(f.sensor_values)
@@ -607,4 +743,6 @@ def load_frames_from_csv(path: str) -> list[dict[str, Any]]:
                 "metadata": dict(f.metadata),
             }
         )
+    if return_ingest_errors:
+        return out, ingest_errors
     return out
