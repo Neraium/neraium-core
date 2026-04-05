@@ -365,6 +365,22 @@ class TuningRow:
     score: float
 
 
+@dataclass
+class PresetComparisonRow:
+    """Summary row for fixed detector preset comparison."""
+
+    preset_name: str
+    threshold_std: float
+    persistence: int
+    threshold_mode: str
+    require_upward_ema_trend: bool
+    min_ema_slope: float
+    false_positive_rate: float
+    coverage: float
+    mean_lead: float
+    score: float
+
+
 def run_tuning(
     base_config: DetectorConfig,
     unit_data: Dict[int, np.ndarray],
@@ -411,6 +427,49 @@ def run_tuning(
 
     rows.sort(key=lambda r: r.score, reverse=True)
     return rows, rows[0] if rows else None
+
+
+def compare_detector_presets(
+    base_config: DetectorConfig,
+    unit_data: Dict[int, np.ndarray],
+    sensor_cols: List[int],
+    presets: Dict[str, DetectorConfig],
+) -> List[PresetComparisonRow]:
+    """
+    Compare a curated set of detector presets on identical data.
+
+    This is intentionally a focused quality pass over detector gates and
+    persistence/threshold sensitivity — no architecture changes.
+    """
+    rows: List[PresetComparisonRow] = []
+
+    for preset_name, preset_cfg in presets.items():
+        cfg = preset_cfg.with_overrides(
+            dataset=base_config.dataset,
+            train_path=base_config.train_path,
+            output_root=base_config.output_root,
+            run_name=base_config.run_name,
+            score_lead_weight=base_config.score_lead_weight,
+            score_coverage_weight=base_config.score_coverage_weight,
+            score_fpr_penalty=base_config.score_fpr_penalty,
+        )
+        results = evaluate_detector(cfg, unit_data, sensor_cols)
+        metrics = compute_aggregate_metrics(results, cfg)
+        rows.append(PresetComparisonRow(
+            preset_name=preset_name,
+            threshold_std=cfg.threshold_std,
+            persistence=cfg.persistence,
+            threshold_mode=cfg.threshold_mode,
+            require_upward_ema_trend=cfg.require_upward_ema_trend,
+            min_ema_slope=cfg.min_ema_slope,
+            false_positive_rate=metrics.false_positive_rate,
+            coverage=metrics.coverage,
+            mean_lead=metrics.mean_lead,
+            score=metrics.score,
+        ))
+
+    rows.sort(key=lambda r: r.score, reverse=True)
+    return rows
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -692,6 +751,18 @@ def save_unit_results(results: List[UnitResult], path: str) -> None:
 
 def save_tuning_results(rows: List[TuningRow], path: str) -> None:
     """Write tuning grid results to a CSV file."""
+    if not rows:
+        return
+    fieldnames = list(asdict(rows[0]).keys())
+    with open(path, "w", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        for r in rows:
+            writer.writerow(asdict(r))
+
+
+def save_preset_comparison(rows: List[PresetComparisonRow], path: str) -> None:
+    """Write detector preset comparison rows to CSV."""
     if not rows:
         return
     fieldnames = list(asdict(rows[0]).keys())

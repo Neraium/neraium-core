@@ -53,7 +53,9 @@ from typing import Dict, List, Optional, Tuple
 from .config import ALL_DATASETS, DEFAULT_PRESET, PRESETS, DetectorConfig
 from .evaluation import (
     AggregateMetrics,
+    PresetComparisonRow,
     UnitResult,
+    compare_detector_presets,
     compare_baselines,
     compute_aggregate_metrics,
     evaluate_all_datasets,
@@ -62,6 +64,7 @@ from .evaluation import (
     run_tuning,
     save_comparison_table,
     save_cross_dataset_summary,
+    save_preset_comparison,
     save_summary_json,
     save_tuning_results,
     save_unit_results,
@@ -199,6 +202,67 @@ def run_compare_baselines_mode(
         )
 
 
+def run_preset_comparison_mode(
+    config: DetectorConfig,
+    unit_data: Dict[int, object],
+    sensor_cols: List[int],
+    run_dir: str,
+) -> List[PresetComparisonRow]:
+    """
+    Compare the validated baseline against targeted detector-gate refinements.
+    """
+    preset_names = [
+        "validated_baseline",
+        "refined_strict",
+        "refined_balanced",
+        "refined_experimental",
+    ]
+    comparison_presets = {name: PRESETS[name] for name in preset_names}
+
+    rows = compare_detector_presets(config, unit_data, sensor_cols, comparison_presets)
+    outpath = os.path.join(run_dir, "preset_comparison.csv")
+    save_preset_comparison(rows, outpath)
+    print(f"\n[preset_comparison] Detector preset table saved → {outpath}")
+
+    print(
+        f"\n  {'Preset':<22} {'FPR':>8} {'Coverage':>10} {'Lead':>8} {'Score':>9}"
+    )
+    print(f"  {'-'*22} {'-'*8} {'-'*10} {'-'*8} {'-'*9}")
+    for r in rows:
+        print(
+            f"  {r.preset_name:<22} {r.false_positive_rate:>8.3f}"
+            f" {r.coverage:>10.3f} {r.mean_lead:>8.1f} {r.score:>9.2f}"
+        )
+
+    best_by_score = rows[0]
+    safest_by_fpr = min(rows, key=lambda r: r.false_positive_rate)
+    balanced_candidates = [r for r in rows if r.preset_name != safest_by_fpr.preset_name]
+    best_balanced = max(
+        balanced_candidates,
+        key=lambda r: (r.score, -r.false_positive_rate),
+    ) if balanced_candidates else safest_by_fpr
+
+    print("\n  ── Detector preset highlights ───────────────────────────")
+    print(
+        f"  Best by score   : {best_by_score.preset_name}"
+        f" (score={best_by_score.score:.2f})"
+    )
+    print(
+        f"  Safest by FPR   : {safest_by_fpr.preset_name}"
+        f" (fpr={safest_by_fpr.false_positive_rate:.3f})"
+    )
+    if best_balanced.preset_name != best_by_score.preset_name:
+        print(
+            f"  Balanced tradeoff: {best_balanced.preset_name}"
+            f" (score={best_balanced.score:.2f}, fpr={best_balanced.false_positive_rate:.3f})"
+        )
+    else:
+        print("  Balanced tradeoff: same as best-by-score")
+    print("  ─────────────────────────────────────────────────────────")
+
+    return rows
+
+
 def run_plot_mode(
     config: DetectorConfig,
     unit_data: Dict[int, object],
@@ -328,7 +392,7 @@ def main(argv: Optional[List[str]] = None) -> int:
         "--preset",
         choices=list(PRESETS.keys()),
         default=None,
-        help="Named parameter preset: conservative | balanced | aggressive",
+        help="Named parameter preset key from fd00x.config.PRESETS",
     )
     parser.add_argument(
         "--config",
@@ -455,6 +519,7 @@ def _run_single_dataset_pipeline(
 
     if mode in ("evaluate", "all"):
         results, _ = run_evaluate(config, unit_data, sensor_cols, run_dir)
+        run_preset_comparison_mode(config, unit_data, sensor_cols, run_dir)
 
     if mode in ("tune", "all"):
         run_tune_mode(config, unit_data, sensor_cols, run_dir)
