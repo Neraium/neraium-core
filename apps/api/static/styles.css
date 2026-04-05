@@ -3497,6 +3497,24 @@ input[type="file"] {
   gap: 4px;
 }
 
+.export-errors-btn {
+  margin-top: 8px;
+  padding: 4px 10px;
+  font-size: 11px;
+  background: transparent;
+  border: 1px solid #5a7aaa;
+  border-radius: 6px;
+  color: #a8c4e8;
+  cursor: pointer;
+  align-self: flex-start;
+}
+
+.export-errors-btn:hover {
+  background: rgba(255, 255, 255, 0.07);
+  border-color: #7aa2d4;
+  color: #c8dff5;
+}
+
 .mono {
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 }

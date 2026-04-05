@@ -3,8 +3,8 @@
   "configurations": [
     {
       "name": "neraium-api",
-      "runtimeExecutable": "uvicorn",
-      "runtimeArgs": ["apps.api.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"],
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "uvicorn", "apps.api.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"],
       "port": 8000
     },
     {
