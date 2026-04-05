@@ -24,7 +24,7 @@ def test_canonical_records_isolated_is_publicly_exported() -> None:
     records, errors = canonical_records_from_payloads_isolated([_valid_payload(), 1])
     assert len(records) == 1
     assert len(errors) == 1
-    assert errors[0]["code"] == "invalid_payload"
+    assert errors[0]["code"] == "non_object_payload"
 
 
 def test_csv_isolation_one_bad_row_preserves_valid_rows(tmp_path: Path) -> None:
@@ -60,7 +60,7 @@ def test_csv_isolation_multiple_bad_rows_collects_errors(tmp_path: Path) -> None
     payloads, ingest_errors = load_frames_from_csv(str(csv_path), return_ingest_errors=True)
     assert len(payloads) == 1
     assert len(ingest_errors) == 2
-    assert all(error["code"] == "invalid_payload" for error in ingest_errors)
+    assert {error["code"] for error in ingest_errors} == {"invalid_metadata_json", "invalid_quality_metadata_json"}
 
 
 def test_csv_structural_failure_still_raises(tmp_path: Path) -> None:
@@ -90,7 +90,36 @@ def test_cross_path_json_csv_consistency_partial_success(tmp_path: Path) -> None
     assert len(json_errors) == len(csv_errors) == 1
     assert set(json_errors[0].keys()) >= {"index", "code", "message"}
     assert set(csv_errors[0].keys()) >= {"index", "code", "message"}
-    assert json_errors[0]["code"] == csv_errors[0]["code"] == "invalid_payload"
+    assert json_errors[0]["code"] == "non_object_payload"
+    assert csv_errors[0]["code"] == "invalid_metadata_json"
+
+
+def test_json_isolation_uses_typed_codes_for_required_and_metadata_failures(tmp_path: Path) -> None:
+    json_path = tmp_path / "typed_failures.json"
+    json_path.write_text(
+        json.dumps(
+            [
+                {
+                    "timestamp": "2026-01-01T00:00:00Z",
+                    "site_id": "site-a",
+                    "asset_id": "asset-a",
+                },
+                {
+                    "timestamp": "2026-01-01T00:01:00Z",
+                    "site_id": "site-a",
+                    "asset_id": "asset-a",
+                    "sensor_values": {"temperature": 1.0},
+                    "metadata": [],
+                },
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    payloads, ingest_errors = load_frames_from_json(str(json_path), return_ingest_errors=True)
+    assert payloads == []
+    assert [error["code"] for error in ingest_errors] == ["missing_required_field", "invalid_metadata_json"]
+
 
 
 class _DummyLogger:
