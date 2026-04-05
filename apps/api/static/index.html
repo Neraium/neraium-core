@@ -334,6 +334,19 @@
               If upload fails, fix the highlighted column mapping and retry.
             </p>
           </section>
+          <section class="panel ingestion-review-panel" aria-label="SII CLI ingestion summary">
+            <div class="panel-header ingestion-review-header">
+              <div>
+                <p class="upload-kicker">SII ingestion review</p>
+                <h3>CLI ingestion summary</h3>
+              </div>
+              <button id="loadMockSiiResponseBtn" type="button" class="secondary">Load mock response</button>
+            </div>
+            <p class="subtitle">
+              Contract-aware view for SII JSON summary output. Safe for JSON and CSV ingest parity checks.
+            </p>
+            <div id="siiIngestionUiRoot"></div>
+          </section>
         </section>
 
         <!-- RUN DETAIL -->
