@@ -18,8 +18,27 @@ EMA_ALPHA = 0.2
 CUMULATIVE_N = 30
 
 HEALTHY_FRACTION = 0.2
-THRESHOLD_STD = 1.5
-PERSISTENCE = 3
+DETECTOR_PRESETS = {
+    # Prioritises low false positives (default runtime behavior).
+    "conservative": {
+        "threshold_std": 2.5,
+        "persistence": 5,
+        "threshold_mode": "robust_mad",
+    },
+    # Compromise profile.
+    "balanced": {
+        "threshold_std": 2.0,
+        "persistence": 4,
+        "threshold_mode": "robust_mad",
+    },
+    # Prioritises early lead time at the cost of more false positives.
+    "aggressive": {
+        "threshold_std": 1.5,
+        "persistence": 3,
+        "threshold_mode": "mean_std",
+    },
+}
+DEFAULT_PRESET = "conservative"
 RUN_GRID_SEARCH = False
 ENABLE_PLOTS = True
 NUM_UNITS = 249
@@ -62,6 +81,37 @@ def first_persistent_warning(signal: np.ndarray, threshold: float, persistence: 
         else:
             run = 0
     return None
+
+
+def compute_healthy_threshold(
+    healthy_reference_ema: np.ndarray,
+    threshold_std: float,
+    mode: str,
+) -> float:
+    """
+    Compute a leak-free warning threshold from healthy-reference EMA values only.
+
+    Modes
+    -----
+    mean_std:
+        threshold = mean(healthy_ema) + k * std(healthy_ema)
+    robust_mad:
+        threshold = median(healthy_ema) + k * 1.4826 * MAD(healthy_ema)
+        where MAD = median(|x - median(x)|)
+    """
+    healthy_reference_ema = np.asarray(healthy_reference_ema, dtype=float)
+    if healthy_reference_ema.size == 0:
+        return float("inf")
+
+    if mode == "robust_mad":
+        center = float(np.median(healthy_reference_ema))
+        mad = float(np.median(np.abs(healthy_reference_ema - center)))
+        robust_sigma = max(1.4826 * mad, 1e-8)
+        return center + threshold_std * robust_sigma
+
+    mean = float(np.mean(healthy_reference_ema))
+    std = float(np.std(healthy_reference_ema))
+    return mean + threshold_std * max(std, 1e-8)
 
 
 def compute_unit_timeseries(signals: pd.DataFrame) -> dict:
@@ -124,7 +174,12 @@ def compute_unit_timeseries(signals: pd.DataFrame) -> dict:
     }
 
 
-def analyze_unit(signals: pd.DataFrame) -> tuple[dict, dict]:
+def analyze_unit(
+    signals: pd.DataFrame,
+    threshold_std: float,
+    persistence: int,
+    threshold_mode: str,
+) -> tuple[dict, dict]:
     unit_id = int(signals["unit"].iloc[0])
     metrics = compute_unit_timeseries(signals)
 
@@ -143,6 +198,7 @@ def analyze_unit(signals: pd.DataFrame) -> tuple[dict, dict]:
             "false_positive": False,
             "warning_before_degradation": False,
             "warning_before_baseline_peak": False,
+            "max_ema_before_degradation": np.nan,
         }
         metrics["ema_threshold"] = np.nan
         return result, metrics
@@ -155,8 +211,8 @@ def analyze_unit(signals: pd.DataFrame) -> tuple[dict, dict]:
 
     healthy_end = max(1, int(HEALTHY_FRACTION * t_total))
     healthy_reference = metrics["drift_ema"][:healthy_end]
-    threshold = float(healthy_reference.mean() + THRESHOLD_STD * healthy_reference.std())
-    ema_warning = first_persistent_warning(metrics["drift_ema"], threshold, PERSISTENCE)
+    threshold = compute_healthy_threshold(healthy_reference, threshold_std, threshold_mode)
+    ema_warning = first_persistent_warning(metrics["drift_ema"], threshold, persistence)
 
     if ema_warning is None:
         lead_vs_degradation = np.nan
@@ -164,12 +220,14 @@ def analyze_unit(signals: pd.DataFrame) -> tuple[dict, dict]:
         false_positive = False
         warning_before_degradation = False
         warning_before_baseline_peak = False
+        max_ema_before_deg = float(np.max(metrics["drift_ema"][:degradation_start])) if degradation_start > 0 else np.nan
     else:
         lead_vs_degradation = float(degradation_start - ema_warning)
         lead_vs_baseline = float(baseline_peak_idx - ema_warning)
         false_positive = bool(ema_warning < healthy_end)
         warning_before_degradation = bool(ema_warning < degradation_start)
         warning_before_baseline_peak = bool(ema_warning < baseline_peak_idx)
+        max_ema_before_deg = float(np.max(metrics["drift_ema"][:degradation_start])) if degradation_start > 0 else np.nan
 
     result = {
         "unit": unit_id,
@@ -184,12 +242,17 @@ def analyze_unit(signals: pd.DataFrame) -> tuple[dict, dict]:
         "false_positive": false_positive,
         "warning_before_degradation": warning_before_degradation,
         "warning_before_baseline_peak": warning_before_baseline_peak,
+        "max_ema_before_degradation": max_ema_before_deg,
     }
     metrics["ema_threshold"] = threshold
     return result, metrics
 
 
-def run_multi_unit_experiment() -> tuple[pd.DataFrame, dict[int, dict]]:
+def run_multi_unit_experiment(
+    threshold_std: float,
+    persistence: int,
+    threshold_mode: str,
+) -> tuple[pd.DataFrame, dict[int, dict]]:
     df = load_fd004(DATA_PATH)
 
     units = sorted(df["unit"].unique())[:NUM_UNITS]
@@ -198,14 +261,14 @@ def run_multi_unit_experiment() -> tuple[pd.DataFrame, dict[int, dict]]:
 
     for unit in units:
         unit_df = df[df["unit"] == unit].copy()
-        result, data = analyze_unit(unit_df)
+        result, data = analyze_unit(unit_df, threshold_std, persistence, threshold_mode)
         results.append(result)
         unit_data[int(unit)] = data
 
     return pd.DataFrame(results), unit_data
 
 
-def print_summary(results_df: pd.DataFrame) -> None:
+def print_summary(results_df: pd.DataFrame, preset_name: str) -> None:
     valid_deg = results_df["lead_vs_degradation"].dropna()
     valid_base = results_df["lead_vs_baseline"].dropna()
 
@@ -214,7 +277,7 @@ def print_summary(results_df: pd.DataFrame) -> None:
     warnings_before_degradation = int(results_df["warning_before_degradation"].sum())
     warnings_before_baseline_peak = int(results_df["warning_before_baseline_peak"].sum())
 
-    print("\n=== AGGREGATE SUMMARY ===")
+    print(f"\n=== AGGREGATE SUMMARY ({preset_name}) ===")
     print("units analyzed:", len(results_df))
     print("units with ema_warning:", units_with_warning)
     print("units where ema_warning < degradation_start:", warnings_before_degradation)
@@ -235,20 +298,16 @@ def print_summary(results_df: pd.DataFrame) -> None:
         print("max lead_vs_baseline:", valid_base.max())
 
 
-def run_experiment_with_params(threshold_std: float, persistence: int) -> dict:
-    global THRESHOLD_STD, PERSISTENCE
-
-    old_threshold = THRESHOLD_STD
-    old_persistence = PERSISTENCE
-
-    THRESHOLD_STD = threshold_std
-    PERSISTENCE = persistence
-
-    try:
-        results_df, _ = run_multi_unit_experiment()
-    finally:
-        THRESHOLD_STD = old_threshold
-        PERSISTENCE = old_persistence
+def run_experiment_with_params(
+    threshold_std: float,
+    persistence: int,
+    threshold_mode: str = "mean_std",
+) -> dict:
+    results_df, _ = run_multi_unit_experiment(
+        threshold_std=threshold_std,
+        persistence=persistence,
+        threshold_mode=threshold_mode,
+    )
 
     false_positive_rate = float(results_df["false_positive"].mean())
     coverage = float(results_df["ema_warning"].notna().mean())
@@ -287,9 +346,57 @@ def grid_search() -> pd.DataFrame:
 def score_row(row: pd.Series) -> float:
     return (
         row["mean_lead"] * 1.0
-        + row["coverage"] * 50
-        - row["false_positive_rate"] * 200
+        + row["coverage"] * 40
+        - row["false_positive_rate"] * 400
     )
+
+
+def evaluate_presets() -> pd.DataFrame:
+    rows = []
+    for preset_name, preset_cfg in DETECTOR_PRESETS.items():
+        results_df, _ = run_multi_unit_experiment(
+            threshold_std=float(preset_cfg["threshold_std"]),
+            persistence=int(preset_cfg["persistence"]),
+            threshold_mode=str(preset_cfg["threshold_mode"]),
+        )
+        false_positive_rate = float(results_df["false_positive"].mean())
+        coverage = float(results_df["ema_warning"].notna().mean())
+        valid_deg = results_df["lead_vs_degradation"].dropna()
+        mean_lead = float(valid_deg.mean()) if not valid_deg.empty else np.nan
+        rows.append({
+            "preset": preset_name,
+            "threshold_std": float(preset_cfg["threshold_std"]),
+            "persistence": int(preset_cfg["persistence"]),
+            "threshold_mode": str(preset_cfg["threshold_mode"]),
+            "false_positive_rate": false_positive_rate,
+            "coverage": coverage,
+            "mean_lead": mean_lead,
+        })
+
+    df = pd.DataFrame(rows)
+    df["score"] = df.apply(score_row, axis=1)
+    return df.sort_values("score", ascending=False).reset_index(drop=True)
+
+
+def print_preset_comparison_summary(preset_df: pd.DataFrame) -> None:
+    if preset_df.empty:
+        return
+    safest = preset_df.sort_values(["false_positive_rate", "coverage"], ascending=[True, False]).iloc[0]
+    most_aggressive = preset_df.sort_values(["mean_lead", "false_positive_rate"], ascending=[False, False]).iloc[0]
+
+    print("\n=== DETECTOR CALIBRATION SUMMARY ===")
+    print(preset_df[[
+        "preset",
+        "threshold_std",
+        "persistence",
+        "threshold_mode",
+        "false_positive_rate",
+        "coverage",
+        "mean_lead",
+        "score",
+    ]].to_string(index=False))
+    print(f"\nSafest preset (lowest FPR): {safest['preset']}")
+    print(f"Most aggressive preset (max lead tendency): {most_aggressive['preset']}")
 
 
 def plot_unit_result(unit_id: int, data: dict, result: pd.Series) -> plt.Figure:
@@ -353,12 +460,32 @@ def run_grid_search_workflow() -> None:
 
 
 def main() -> None:
-    results_df, unit_data = run_multi_unit_experiment()
+    default_cfg = DETECTOR_PRESETS[DEFAULT_PRESET]
+    print(
+        "Running default preset:",
+        DEFAULT_PRESET,
+        "| threshold_std=",
+        default_cfg["threshold_std"],
+        "| persistence=",
+        default_cfg["persistence"],
+        "| threshold_mode=",
+        default_cfg["threshold_mode"],
+    )
+    results_df, unit_data = run_multi_unit_experiment(
+        threshold_std=float(default_cfg["threshold_std"]),
+        persistence=int(default_cfg["persistence"]),
+        threshold_mode=str(default_cfg["threshold_mode"]),
+    )
 
     results_df.to_csv("fd004_final_results.csv", index=False)
     print("Saved results to fd004_final_results.csv")
 
-    print_summary(results_df)
+    print_summary(results_df, preset_name=DEFAULT_PRESET)
+
+    preset_df = evaluate_presets()
+    preset_df.to_csv("fd004_preset_comparison.csv", index=False)
+    print("Saved preset comparison to fd004_preset_comparison.csv")
+    print_preset_comparison_summary(preset_df)
 
     plots_dir = Path("./plots")
     plots_dir.mkdir(exist_ok=True)
