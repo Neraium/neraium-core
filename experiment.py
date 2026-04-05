@@ -140,7 +140,7 @@ def run_multi_unit_experiment() -> pd.DataFrame:
             if drift_ema[t] > ema_threshold:
                 consecutive += 1
                 if consecutive >= PERSISTENCE:
-                    ema_warning_idx = t - PERSISTENCE + 1
+                    ema_warning_idx = t
                     break
             else:
                 consecutive = 0
