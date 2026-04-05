@@ -72,18 +72,74 @@ def normalize_series(x: np.ndarray) -> np.ndarray:
 
 
 def first_persistent_warning(signal: np.ndarray, threshold: float, persistence: int) -> int | None:
-    run = 0
-    for i in range(1, len(signal)):
-        above = signal[i] > threshold
-        trending = signal[i] > signal[i - 1]
+    return first_persistent_warning_with_gates(
+        signal,
+        threshold,
+        persistence,
+        require_upward_trend=True,
+        slope_window=3,
+        min_slope=0.0,
+    )
 
-        if above and trending:
-            run += 1
+
+def first_persistent_warning_with_gates(
+    signal: np.ndarray,
+    threshold: float,
+    persistence: int,
+    require_upward_trend: bool = True,
+    slope_window: int = 3,
+    min_slope: float = 0.0,
+) -> int | None:
+    run = 0
+    for i in range(len(signal)):
+        value = float(signal[i])
+        above = value > threshold
+        instant_slope = value - float(signal[i - 1]) if i > 0 else 0.0
+        trending = (not require_upward_trend) or (i > 0 and instant_slope > 0.0)
+
+        if min_slope <= 0.0:
+            strong_trend = True
+        else:
+            if i >= slope_window:
+                recent_slope = value - float(signal[i - slope_window])
+            else:
+                recent_slope = 0.0
+            strong_trend = recent_slope > min_slope
+
+        if above:
+            if run == 0:
+                if trending and strong_trend:
+                    run = 1
+            else:
+                # Preserve persistence while the anomaly score stays above threshold,
+                # even through local plateaus/wobbles.
+                run += 1
             if run >= persistence:
                 return i
         else:
             run = 0
     return None
+
+
+def _informative_healthy_ema(healthy_reference_ema: np.ndarray) -> np.ndarray:
+    """
+    Remove non-informative warmup prefix values before robust thresholding.
+
+    The VAR/warmup path can yield a leading run of zeros in drift EMA.  Those
+    values are implementation artifacts (not healthy-behaviour variability) and
+    can collapse robust median/MAD toward zero on shorter units.
+    """
+    values = np.asarray(healthy_reference_ema, dtype=float)
+    values = values[np.isfinite(values)]
+    if values.size == 0:
+        return values
+
+    magnitude = float(np.max(np.abs(values)))
+    eps = max(1e-10, magnitude * 1e-6)
+    informative_idx = np.flatnonzero(np.abs(values) > eps)
+    if informative_idx.size == 0:
+        return values
+    return values[informative_idx[0]:]
 
 
 def compute_healthy_threshold(
@@ -107,8 +163,11 @@ def compute_healthy_threshold(
         return float("inf")
 
     if mode == "robust_mad":
-        center = float(np.median(healthy_reference_ema))
-        mad = float(np.median(np.abs(healthy_reference_ema - center)))
+        informative = _informative_healthy_ema(healthy_reference_ema)
+        if informative.size == 0:
+            return float("inf")
+        center = float(np.median(informative))
+        mad = float(np.median(np.abs(informative - center)))
         robust_sigma = max(1.4826 * mad, 1e-8)
         return center + threshold_std * robust_sigma
 
