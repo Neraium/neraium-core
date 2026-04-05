@@ -11,11 +11,47 @@ from neraium_core.sii.config import SIIConfig
 from neraium_core.sii.errors import SIIIOError
 
 
+def operator_regime_signature(A: np.ndarray) -> np.ndarray:
+    """
+    Compute a compact operator signature for regime identification.
+
+    Uses the singular value profile of A: the ordered singular values
+        sigma_1 >= sigma_2 >= ... >= sigma_N
+
+    Properties:
+        - Compact: N scalars vs N^2 for the full matrix
+        - Captures dominant propagation structure (sigma_1 = largest amplification)
+        - sigma_1 bounds the spectral radius: rho(A) <= sigma_1
+        - Invariant to the labeling of signals up to singular vector rotation
+        - Robust to estimation noise (singular values are more stable than eigenvalues)
+
+    The distance between two operator signatures is the L2 distance between
+    their singular value profiles — a change in the spectral geometry of A.
+    """
+    if A.size == 0:
+        return np.array([], dtype=float)
+    sv = np.linalg.svd(np.nan_to_num(A, nan=0.0), compute_uv=False)
+    return sv.astype(float)
+
+
 @dataclass(frozen=True)
 class RegimeObservation:
+    """
+    Observation submitted to the regime model.
+
+    The operator_signature field is the primary structural identity of the
+    regime: the singular value profile of A_t, encoding the propagation law
+    active at time t.  The geometry and graph signatures are secondary,
+    capturing statistical and topological aspects respectively.
+
+    When operator_signature is provided, regime distance is computed in
+    operator space (dominant), with geometry and graph as supporting signals.
+    When it is absent (None), the model falls back to geometry+graph only.
+    """
     geometry_signature: np.ndarray
     graph_signature: np.ndarray
     feature_names: list[str]
+    operator_signature: np.ndarray | None = None  # singular value profile of A_t
 
 
 @dataclass(frozen=True)
@@ -26,6 +62,7 @@ class RegimeResult:
     regime_activated: bool
     geometry_distance: float = 0.0
     graph_distance: float = 0.0
+    operator_distance: float = 0.0    # distance in operator singular-value space
     regime_confidence: float = 0.0
     regime_uncertainty: float = 1.0
 
@@ -59,24 +96,53 @@ class RegimeModel:
         geom_b: np.ndarray,
         graph_a: np.ndarray,
         graph_b: np.ndarray,
-    ) -> tuple[float, float, float]:
+        op_a: np.ndarray | None = None,
+        op_b: np.ndarray | None = None,
+    ) -> tuple[float, float, float, float]:
+        """
+        Compute weighted regime distance.
+
+        When operator signatures are available, the propagation law (A singular
+        values) dominates regime identity.  Geometry and graph are secondary.
+
+        Weights reflect the conceptual hierarchy:
+            operator:  0.55  — propagation law is the primary regime identity
+            geometry:  0.30  — statistical geometry secondary
+            graph:     0.15  — topological structure tertiary
+
+        Without operator signatures, falls back to geometry (0.72) + graph (0.28).
+        """
         gdist = self._distance(geom_a, geom_b)
         grdist = self._distance(graph_a, graph_b)
         if not np.isfinite(gdist) or not np.isfinite(grdist):
-            return float("inf"), float("inf"), float("inf")
-        # Geometry dominates regime identity; graph gives structural topology support.
+            return float("inf"), float("inf"), float("inf"), float("inf")
+
+        if (
+            op_a is not None
+            and op_b is not None
+            and op_a.size > 0
+            and op_b.size == op_a.size
+        ):
+            opdist = self._distance(op_a, op_b)
+            if np.isfinite(opdist):
+                total = float(0.55 * opdist + 0.30 * gdist + 0.15 * grdist)
+                return total, float(gdist), float(grdist), float(opdist)
+
+        # Fallback: no operator signature available
         total = float(0.72 * gdist + 0.28 * grdist)
-        return total, float(gdist), float(grdist)
+        return total, float(gdist), float(grdist), 0.0
 
     def _nearest(
         self,
         geometry_signature: np.ndarray,
         graph_signature: np.ndarray,
-    ) -> tuple[dict[str, Any] | None, float, float, float]:
+        operator_signature: np.ndarray | None = None,
+    ) -> tuple[dict[str, Any] | None, float, float, float, float]:
         best_reg: dict[str, Any] | None = None
         best_dist = float("inf")
         best_geom = 0.0
         best_graph = 0.0
+        best_op = 0.0
         for reg in self._regimes:
             prototypes = reg.get("prototypes", [])
             for p in prototypes:
@@ -84,51 +150,64 @@ class RegimeModel:
                     continue
                 geom_proto = np.asarray(p.get("geometry_signature", []), dtype=float)
                 graph_proto = np.asarray(p.get("graph_signature", []), dtype=float)
-                dist, gdist, grdist = self._weighted_distance(
+                op_proto_raw = p.get("operator_signature")
+                op_proto = np.asarray(op_proto_raw, dtype=float) if op_proto_raw is not None else None
+                dist, gdist, grdist, opdist = self._weighted_distance(
                     geom_a=geometry_signature,
                     geom_b=geom_proto,
                     graph_a=graph_signature,
                     graph_b=graph_proto,
+                    op_a=operator_signature,
+                    op_b=op_proto,
                 )
                 if dist < best_dist:
                     best_dist = dist
                     best_geom = gdist
                     best_graph = grdist
+                    best_op = opdist
                     best_reg = reg
         if best_reg is None:
-            return None, 0.0, 0.0, 0.0
-        return best_reg, float(best_dist), float(best_geom), float(best_graph)
+            return None, 0.0, 0.0, 0.0, 0.0
+        return best_reg, float(best_dist), float(best_geom), float(best_graph), float(best_op)
 
     def nearest_matches(
         self,
         *,
         geometry_signature: np.ndarray,
         graph_signature: np.ndarray,
+        operator_signature: np.ndarray | None = None,
         top_k: int = 3,
     ) -> list[dict[str, float | str]]:
         matches: list[dict[str, float | str]] = []
         geom = np.asarray(geometry_signature, dtype=float)
         graph = np.asarray(graph_signature, dtype=float)
+        op = operator_signature
         for reg in self._regimes:
             prototypes = reg.get("prototypes", [])
             best_dist = float("inf")
             best_geom = float("inf")
             best_graph = float("inf")
+            best_op = 0.0
             for p in prototypes:
                 if not isinstance(p, dict):
                     continue
                 geom_proto = np.asarray(p.get("geometry_signature", []), dtype=float)
                 graph_proto = np.asarray(p.get("graph_signature", []), dtype=float)
-                dist, gdist, grdist = self._weighted_distance(
+                op_proto_raw = p.get("operator_signature")
+                op_proto = np.asarray(op_proto_raw, dtype=float) if op_proto_raw is not None else None
+                dist, gdist, grdist, opdist = self._weighted_distance(
                     geom_a=geom,
                     geom_b=geom_proto,
                     graph_a=graph,
                     graph_b=graph_proto,
+                    op_a=op,
+                    op_b=op_proto,
                 )
                 if dist < best_dist:
                     best_dist = float(dist)
                     best_geom = float(gdist)
                     best_graph = float(grdist)
+                    best_op = float(opdist)
             if np.isfinite(best_dist):
                 similarity = float(np.exp(-best_dist))
                 matches.append(
@@ -138,6 +217,7 @@ class RegimeModel:
                         "similarity": round(similarity, 6),
                         "geometry_distance": round(best_geom, 6),
                         "graph_distance": round(best_graph, 6),
+                        "operator_distance": round(best_op, 6),
                         "hits": float(reg.get("hits", 0.0)),
                     }
                 )
