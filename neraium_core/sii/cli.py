@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from neraium_core.sii.orchestration import run_structural_pipeline
+from neraium_core.sii.reporting import format_structural_report_text, generate_structural_report
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -34,6 +35,8 @@ def _build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--report", action="store_true", help="Print per-file report and aggregate structural report.")
     parser.add_argument("--aggregate-output", help="Optional output file path for aggregate run JSON.")
     parser.add_argument("--output", help="Optional output file path for structured JSON.")
+    parser.add_argument("--report", action="store_true", help="Print human-readable structural report to stdout.")
+    parser.add_argument("--report-file", help="Optional output file path for human-readable text report.")
     return parser
 
 

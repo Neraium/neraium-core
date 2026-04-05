@@ -4,6 +4,8 @@ from neraium_core.sii.reporting import (
     compute_structural_signal_ranking,
     compute_structural_temporal_validation,
     evaluate_structural_risk_decision_policy,
+    format_structural_report_text,
+    generate_structural_report,
 )
 from neraium_core.sii.calibration import derive_calibration_from_validation, load_config, save_config
 
@@ -296,3 +298,99 @@ def test_calibration_round_trip_and_derivation(tmp_path) -> None:
     assert loaded["lead_window"] >= 1
     assert loaded["top_k_rank_window"] >= 1
     assert "default" in loaded["decision_thresholds"]
+
+
+def test_generate_structural_report_creates_operator_sections() -> None:
+    pipeline_output = {
+        "validation_results": {
+            "transition_count": 2,
+            "signals": {
+                "operator_deformation_energy": {
+                    "leading_transition_hits": 2,
+                    "concurrent_transition_hits": 0,
+                    "lagging_transition_hits": 0,
+                },
+                "residual_energy": {
+                    "leading_transition_hits": 0,
+                    "concurrent_transition_hits": 0,
+                    "lagging_transition_hits": 1,
+                },
+            },
+        },
+        "signal_ranking": {
+            "ranking": [
+                {
+                    "signal": "operator_deformation_energy",
+                    "rank": 1,
+                    "predictive_metrics": {"lead_recall": 0.67, "lead_precision": 0.55},
+                    "temporal_alignment": {"dominant_role": "leading"},
+                },
+                {
+                    "signal": "residual_energy",
+                    "rank": 2,
+                    "predictive_metrics": {"lead_recall": 0.2, "lead_precision": 0.4},
+                    "temporal_alignment": {"dominant_role": "lagging"},
+                },
+            ]
+        },
+        "decision_output": {
+            "risk_flag": True,
+            "risk_level": "high",
+            "decision_posture": "elevated_structural_risk_confirmed",
+            "contributing_signals": [{"signal": "operator_deformation_energy"}],
+            "signal_evaluation": [
+                {
+                    "signal": "operator_deformation_energy",
+                    "threshold_comparison": {
+                        "threshold": 0.5,
+                        "decision_multiplier": 1.0,
+                        "baseline_reference": 0.3,
+                        "current_raw_magnitude": 1.2,
+                        "threshold_crossed": True,
+                    },
+                }
+            ],
+        },
+    }
+
+    report = generate_structural_report(pipeline_output, top_n=2)
+    assert set(report.keys()) == {"summary", "top_signals", "threshold_events", "system_behavior", "notes"}
+    assert report["summary"]["risk_level"] == "high"
+    assert report["summary"]["top_contributing_signals"] == ["operator_deformation_energy"]
+    assert report["top_signals"][0]["crossed_threshold"] is True
+    assert report["threshold_events"][0]["signal"] == "operator_deformation_energy"
+    assert report["system_behavior"]["signals_with_only_lagging_behavior"] == ["residual_energy"]
+
+
+def test_format_structural_report_text_is_human_readable() -> None:
+    text = format_structural_report_text(
+        {
+            "summary": {
+                "risk_flag": True,
+                "risk_level": "elevated",
+                "decision_posture": "elevated_structural_risk_watch",
+                "top_contributing_signals": ["operator_deformation_energy"],
+            },
+            "top_signals": [
+                {
+                    "signal": "operator_deformation_energy",
+                    "rank": 1,
+                    "role": "leading",
+                    "lead_recall": 0.67,
+                    "lead_precision": 0.5,
+                    "crossed_threshold": True,
+                    "interpretation": "operator_deformation_energy is a leading indicator.",
+                }
+            ],
+            "threshold_events": [],
+            "system_behavior": {
+                "total_transitions": 2,
+                "signals_with_leading_hits": ["operator_deformation_energy"],
+                "signals_with_only_lagging_behavior": [],
+            },
+            "notes": ["Risk watch triggered by at least one eligible leading signal crossing threshold."],
+        }
+    )
+    assert "==== Structural Risk Summary ====" in text
+    assert "Top Signals:" in text
+    assert "crossed threshold: yes" in text
