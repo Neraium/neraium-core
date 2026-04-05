@@ -18,27 +18,28 @@ EMA_ALPHA = 0.2
 CUMULATIVE_N = 30
 
 HEALTHY_FRACTION = 0.2
+MIN_FILTERED_HEALTHY_SAMPLES = 10
 DETECTOR_PRESETS = {
     # Prioritises low false positives (default runtime behavior).
     "conservative": {
         "threshold_std": 2.5,
         "persistence": 5,
         "threshold_mode": "robust_mad",
-        "threshold_percentile": 97.5,
+        "threshold_percentile": 99.5,
     },
     # Compromise profile.
     "balanced": {
         "threshold_std": 2.0,
         "persistence": 4,
         "threshold_mode": "robust_mad",
-        "threshold_percentile": 97.5,
+        "threshold_percentile": 99.5,
     },
     # Prioritises early lead time at the cost of more false positives.
     "aggressive": {
         "threshold_std": 1.5,
         "persistence": 3,
         "threshold_mode": "mean_std",
-        "threshold_percentile": 97.5,
+        "threshold_percentile": 99.5,
     },
 }
 DEFAULT_PRESET = "conservative"
@@ -139,33 +140,45 @@ def _informative_healthy_ema(healthy_reference_ema: np.ndarray) -> np.ndarray:
 
     magnitude = float(np.max(np.abs(values)))
     eps = max(1e-10, magnitude * 1e-6)
-    informative_idx = np.flatnonzero(np.abs(values) > eps)
-    if informative_idx.size == 0:
+    strictly_positive = values[values > eps]
+    if strictly_positive.size == 0:
         return values
-    return values[informative_idx[0]:]
+    low_cutoff = float(np.percentile(strictly_positive, 20.0))
+    filtered = strictly_positive[strictly_positive > low_cutoff]
+    if filtered.size == 0:
+        return strictly_positive
+    return filtered
 
 
 def compute_healthy_threshold(
     healthy_reference_ema: np.ndarray,
     threshold_std: float,
     mode: str,
-    threshold_percentile: float = 97.5,
-) -> float:
+    threshold_percentile: float = 99.5,
+) -> tuple[float, int, int]:
     """
     Compute a leak-free warning threshold from healthy-reference EMA values only.
 
     Thresholding
     ------------
     threshold = percentile(informative_healthy_ema, p)
-    where p is configured by ``threshold_percentile`` (default 97.5).
+    where p is configured by ``threshold_percentile`` (default 99.5).
     """
     healthy_reference_ema = np.asarray(healthy_reference_ema, dtype=float)
     if healthy_reference_ema.size == 0:
-        return float("inf")
+        return float("inf"), 0, 0
+    original_size = int(np.isfinite(healthy_reference_ema).sum())
     informative = _informative_healthy_ema(healthy_reference_ema)
-    if informative.size == 0:
-        return float("inf")
-    return float(np.percentile(informative, threshold_percentile))
+    filtered_size = int(informative.size)
+    min_required = min(MIN_FILTERED_HEALTHY_SAMPLES, max(1, original_size))
+    if filtered_size < min_required:
+        fallback = healthy_reference_ema[np.isfinite(healthy_reference_ema)]
+        if fallback.size == 0:
+            return float("inf"), original_size, filtered_size
+        threshold = float(np.percentile(fallback, threshold_percentile))
+        return threshold, original_size, filtered_size
+    threshold = float(np.percentile(informative, threshold_percentile))
+    return threshold, original_size, filtered_size
 
 
 def compute_unit_timeseries(signals: pd.DataFrame) -> dict:
@@ -233,7 +246,7 @@ def analyze_unit(
     threshold_std: float,
     persistence: int,
     threshold_mode: str,
-    threshold_percentile: float = 97.5,
+    threshold_percentile: float = 99.5,
 ) -> tuple[dict, dict]:
     unit_id = int(signals["unit"].iloc[0])
     metrics = compute_unit_timeseries(signals)
@@ -254,6 +267,8 @@ def analyze_unit(
             "warning_before_degradation": False,
             "warning_before_baseline_peak": False,
             "max_ema_before_degradation": np.nan,
+            "healthy_reference_n": 0,
+            "healthy_reference_filtered_n": 0,
         }
         metrics["ema_threshold"] = np.nan
         return result, metrics
@@ -266,7 +281,7 @@ def analyze_unit(
 
     healthy_end = max(1, int(HEALTHY_FRACTION * t_total))
     healthy_reference = metrics["drift_ema"][:healthy_end]
-    threshold = compute_healthy_threshold(
+    threshold, healthy_reference_n, healthy_reference_filtered_n = compute_healthy_threshold(
         healthy_reference,
         threshold_std,
         threshold_mode,
@@ -303,6 +318,8 @@ def analyze_unit(
         "warning_before_degradation": warning_before_degradation,
         "warning_before_baseline_peak": warning_before_baseline_peak,
         "max_ema_before_degradation": max_ema_before_deg,
+        "healthy_reference_n": healthy_reference_n,
+        "healthy_reference_filtered_n": healthy_reference_filtered_n,
     }
     metrics["ema_threshold"] = threshold
     return result, metrics
@@ -312,7 +329,7 @@ def run_multi_unit_experiment(
     threshold_std: float,
     persistence: int,
     threshold_mode: str,
-    threshold_percentile: float = 97.5,
+    threshold_percentile: float = 99.5,
 ) -> tuple[pd.DataFrame, dict[int, dict]]:
     df = load_fd004(DATA_PATH)
 
@@ -369,7 +386,7 @@ def run_experiment_with_params(
     threshold_std: float,
     persistence: int,
     threshold_mode: str = "mean_std",
-    threshold_percentile: float = 97.5,
+    threshold_percentile: float = 99.5,
 ) -> dict:
     results_df, _ = run_multi_unit_experiment(
         threshold_std=threshold_std,
@@ -428,7 +445,7 @@ def evaluate_presets() -> pd.DataFrame:
             threshold_std=float(preset_cfg["threshold_std"]),
             persistence=int(preset_cfg["persistence"]),
             threshold_mode=str(preset_cfg["threshold_mode"]),
-            threshold_percentile=float(preset_cfg.get("threshold_percentile", 97.5)),
+            threshold_percentile=float(preset_cfg.get("threshold_percentile", 99.5)),
         )
         false_positive_rate = float(results_df["false_positive"].mean())
         coverage = float(results_df["ema_warning"].notna().mean())
@@ -439,7 +456,7 @@ def evaluate_presets() -> pd.DataFrame:
             "threshold_std": float(preset_cfg["threshold_std"]),
             "persistence": int(preset_cfg["persistence"]),
             "threshold_mode": str(preset_cfg["threshold_mode"]),
-            "threshold_percentile": float(preset_cfg.get("threshold_percentile", 97.5)),
+            "threshold_percentile": float(preset_cfg.get("threshold_percentile", 99.5)),
             "false_positive_rate": false_positive_rate,
             "coverage": coverage,
             "mean_lead": mean_lead,
@@ -544,13 +561,13 @@ def main() -> None:
         "| threshold_mode=",
         default_cfg["threshold_mode"],
         "| threshold_percentile=",
-        default_cfg.get("threshold_percentile", 97.5),
+        default_cfg.get("threshold_percentile", 99.5),
     )
     results_df, unit_data = run_multi_unit_experiment(
         threshold_std=float(default_cfg["threshold_std"]),
         persistence=int(default_cfg["persistence"]),
         threshold_mode=str(default_cfg["threshold_mode"]),
-        threshold_percentile=float(default_cfg.get("threshold_percentile", 97.5)),
+        threshold_percentile=float(default_cfg.get("threshold_percentile", 99.5)),
     )
 
     results_df.to_csv("fd004_final_results.csv", index=False)
