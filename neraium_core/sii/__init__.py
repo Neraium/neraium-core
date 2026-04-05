@@ -13,6 +13,7 @@ from neraium_core.sii.harness import SIIBenchmarkHarness
 from neraium_core.sii.ingestion import (
     build_canonical_analysis_window,
     canonical_records_from_payloads,
+    canonical_records_from_payloads_isolated,
     frame_from_payload,
     frames_from_records,
     ingestion_record_from_payload,
@@ -58,6 +59,7 @@ __all__ = [
     "ingestion_record_from_payload",
     "ingestion_record_to_payload",
     "canonical_records_from_payloads",
+    "canonical_records_from_payloads_isolated",
     "frames_from_records",
     "build_canonical_analysis_window",
     "SIIApplication",
