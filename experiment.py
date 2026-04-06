@@ -13,6 +13,7 @@ WINDOW = 20
 DEGRADATION_FRACTION = 0.8
 EMA_ALPHA = 0.2
 CUMULATIVE_N = 30
+NUM_UNITS = 100
 
 # false-positive / stability controls
 HEALTHY_FRACTION = 0.2
