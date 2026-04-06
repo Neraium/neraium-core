@@ -30,6 +30,17 @@ class LayerWeights:
     l5: float = 0.17
 
 
+@dataclass
+class ScoreProgressionConfig:
+    """Controls score progression spread and drift sensitivity."""
+
+    baseline_fraction: float = 0.20
+    drift_weight: float = 0.30
+    variance_weight: float = 0.22
+    alpha: float = 3.0
+    raw_offset: float = 1.10
+
+
 class SII:
     """Atomic five-layer SII engine."""
 
@@ -40,19 +51,28 @@ class SII:
         *,
         thresholds: Mapping[str, float] | None = None,
         layer_weights: LayerWeights | None = None,
+        progression: ScoreProgressionConfig | None = None,
     ) -> None:
         self.sensors: List[str] = list(sensors)
         if len(self.sensors) == 0:
             raise ValueError("SII requires at least one sensor.")
 
-        self.baseline = np.asarray(baseline_data, dtype=float)
-        if self.baseline.ndim != 2 or self.baseline.shape[1] != len(self.sensors):
+        baseline_arr = np.asarray(baseline_data, dtype=float)
+        if baseline_arr.ndim != 2 or baseline_arr.shape[1] != len(self.sensors):
             raise ValueError(
-                f"baseline_data must have shape (n, {len(self.sensors)}), got {self.baseline.shape}."
+                f"baseline_data must have shape (n, {len(self.sensors)}), got {baseline_arr.shape}."
             )
+
+        self.progression = progression or ScoreProgressionConfig()
+        baseline_fraction = float(np.clip(self.progression.baseline_fraction, 0.15, 0.25))
+        baseline_len = int(np.ceil(max(1, baseline_arr.shape[0]) * baseline_fraction))
+        baseline_len = max(5, min(baseline_len, baseline_arr.shape[0]))
+        self.baseline = baseline_arr[:baseline_len].copy()
 
         self.mean = self.baseline.mean(axis=0)
         self.std = np.clip(self.baseline.std(axis=0), 1e-8, None)
+        self.var = self.std**2
+        self.baseline_variance = float(max(np.mean(self.var), 1e-8))
         self.corr = np.corrcoef(self.baseline, rowvar=False)
         self.cov = np.cov(self.baseline, rowvar=False)
         self.weights = layer_weights or LayerWeights()
@@ -84,6 +104,10 @@ class SII:
         x = np.abs(np.tanh(z)) + np.abs(np.sin(z))
         return float(np.mean(x))
 
+    def _variance_score(self, x: np.ndarray) -> float:
+        sample_variance = float(np.var(x - self.mean))
+        return float(np.log1p(sample_variance / self.baseline_variance))
+
     def _normalize_layers(self, layer_scores: Dict[str, float]) -> Dict[str, float]:
         return {
             "l1": float(_sigmoid(layer_scores["l1"] - 0.8)),
@@ -104,7 +128,13 @@ class SII:
             return "caution"
         return "critical"
 
-    def assess(self, readings: Mapping[str, float]) -> Dict[str, object]:
+    def assess(
+        self,
+        readings: Mapping[str, float],
+        *,
+        current_cycle_index: int | None = None,
+        total_cycles: int | None = None,
+    ) -> Dict[str, object]:
         """
         Assess one sensor snapshot.
 
@@ -129,20 +159,54 @@ class SII:
             + self.weights.l4 * layers["l4"]
             + self.weights.l5 * layers["l5"]
         )
+        variance_score = self._variance_score(x)
+        if current_cycle_index is not None and total_cycles is not None and total_cycles > 1:
+            drift = float(np.clip(current_cycle_index / float(total_cycles - 1), 0.0, 1.0))
+        else:
+            drift = float(
+                np.clip(
+                    np.mean(np.abs((x - self.mean) / np.clip(np.abs(self.mean), 1e-6, None))),
+                    0.0,
+                    1.0,
+                )
+            )
+        raw_score = (
+            float(atomic_score)
+            + self.progression.variance_weight * variance_score
+            + self.progression.drift_weight * drift
+            - self.progression.raw_offset
+        )
+        final_score = float(_sigmoid(self.progression.alpha * raw_score))
 
         importance = np.abs(z)
         rank_idx = np.argsort(importance)[::-1]
         critical = [self.sensors[i] for i in rank_idx[: min(5, len(rank_idx))]]
 
         return {
-            "score": float(np.clip(atomic_score, 0.0, 1.0)),
-            "state": self._to_state(float(atomic_score)),
+            "score": float(np.clip(final_score, 0.0, 1.0)),
+            "state": self._to_state(float(final_score)),
             "layer_scores": layers,
             "raw_layer_scores": raw_layers,
+            "atomic_score": float(atomic_score),
+            "variance_score": float(variance_score),
+            "drift": float(drift),
+            "raw_score": float(raw_score),
             "sensor_importance": {self.sensors[i]: float(importance[i]) for i in range(len(self.sensors))},
             "critical_sensors": critical,
             "z_scores": {self.sensors[i]: float(z[i]) for i in range(len(self.sensors))},
         }
 
+    def assess_sequence(self, timeline: Sequence[Mapping[str, float]]) -> List[Dict[str, object]]:
+        outputs: List[Dict[str, object]] = []
+        total = len(timeline)
+        for idx, readings in enumerate(timeline):
+            outputs.append(self.assess(readings, current_cycle_index=idx, total_cycles=total))
+        if outputs:
+            early = outputs[max(0, int(0.15 * (total - 1)))]["score"]
+            mid = outputs[max(0, int(0.50 * (total - 1)))]["score"]
+            late = outputs[max(0, int(0.85 * (total - 1)))]["score"]
+            print("progression:", early, mid, late)
+        return outputs
 
-__all__ = ["LayerWeights", "SII"]
+
+__all__ = ["LayerWeights", "ScoreProgressionConfig", "SII"]
