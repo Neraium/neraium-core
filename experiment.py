@@ -30,18 +30,32 @@ DETECTOR_PRESETS = {
         "ema_alpha": 0.15, # smoother EMA to reduce noise sensitivity
     },
     # Compromise profile.
-    "balanced": {
-        "threshold_std": 2.0,
-        "persistence": 4,
-        "threshold_mode": "robust_mad",
-        "threshold_percentile": 99.5,
+    "balanced_v3": {
+    "threshold_mode": "robust_mad",
+
+    # ↓ allow earlier detection
+    "threshold_percentile": 97.5,
+
+    # ↓ slightly more sensitive
+    "threshold_std": 2.0,
+
+    # ↑ stabilize alerts (critical)
+    "persistence": 8,
+
+    # ↑ avoid early noise contamination
+    "min_filtered_healthy_samples": 20,
+
+    # ↑ smoother signal
+    "ema_alpha": 0.12,
     },
     # Prioritises early lead time at the cost of more false positives.
     "aggressive": {
-        "threshold_std": 1.5,
+        "threshold_std": 1.8,
         "persistence": 3,
-        "threshold_mode": "mean_std",
-        "threshold_percentile": 99.5,
+        "threshold_mode": "robust_mad",
+        "threshold_percentile": 95.0,
+        "min_filtered_healthy_samples": 5,
+        "ema_alpha": 0.3,
     },
 }
 DEFAULT_PRESET = "conservative"
