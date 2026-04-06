@@ -13,6 +13,32 @@ from .._core_imports import get_core_runtime_status
 from ..schemas.ingest import DemoCmapssStartRequest, DemoSeedRequest
 from .dependencies import DemoRouterDependencies
 
+_GROW_OP_SCENARIO_PATH = Path(__file__).resolve().parent.parent.parent.parent / "examples" / "demo" / "cannabis_grow_op_scenario.json"
+
+
+def _load_grow_op_frames(customer_id: str) -> tuple[str, str, list[dict[str, Any]]]:
+    """Load and flatten grow op scenario frames into ingestable payloads."""
+    raw = json.loads(_GROW_OP_SCENARIO_PATH.read_text(encoding="utf-8"))
+    asset = raw.get("asset") or {}
+    site_id = str(asset.get("site_id") or "grow-op-facility-01")
+    asset_id = str(asset.get("asset_id") or "canopy-zone-A")
+    base_time = datetime.now(timezone.utc) - timedelta(minutes=1950)  # ~32 hrs back
+    rows: list[dict[str, Any]] = []
+    for phase in raw.get("phases") or []:
+        for frame in phase.get("frames") or []:
+            sensor_values = frame.get("sensor_values")
+            if not isinstance(sensor_values, dict):
+                continue
+            ts = (base_time + timedelta(minutes=int(frame.get("minute_offset", 0)))).isoformat()
+            rows.append({
+                "timestamp": ts,
+                "site_id": site_id,
+                "asset_id": asset_id,
+                "customer_id": customer_id,
+                "sensor_values": {k: float(v) for k, v in sensor_values.items()},
+            })
+    return site_id, asset_id, rows
+
 logger = logging.getLogger(__name__)
 
 _GROW_OP_SCENARIO_PATH = Path(__file__).resolve().parent.parent / "demo_data" / "cannabis_grow_op_scenario.json"
