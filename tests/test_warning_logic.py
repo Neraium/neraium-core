@@ -42,7 +42,7 @@ Test coverage
 import numpy as np
 import pytest
 
-from fd00x.detector import find_warning_index
+from fd00x.detector import compute_warning_state, find_warning_index
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -274,3 +274,36 @@ def test_accepts_python_list_via_numpy():
 def test_float32_array():
     scores = np.array([0.0, 0.9, 0.9, 0.9], dtype=np.float32)
     assert find_warning_index(scores, threshold=0.5, persistence=3) == 3
+
+
+def test_hysteresis_prevents_rapid_warning_oscillation():
+    scores = np.array([0.1, 0.9, 0.9, 0.9, 0.45, 0.55, 0.45, 0.2], dtype=float)
+    state = compute_warning_state(
+        scores,
+        threshold=0.6,
+        persistence=3,
+        exit_threshold_ratio=0.8,  # exit < 0.48
+        exit_persistence=2,
+        min_anomaly_duration=3,
+    )
+    # Enter at index 3 and stay in warning through index 6; clear at 7 after two lows.
+    assert np.where(state)[0].tolist() == [3, 4, 5, 6]
+
+
+def test_min_anomaly_duration_can_be_stricter_than_persistence():
+    scores = np.array([0.0, 0.7, 0.7, 0.7, 0.2], dtype=float)
+    # persistence=2 is satisfied by index 2, but duration=4 delays confirmation to index 3.
+    idx = find_warning_index(
+        scores,
+        threshold=0.6,
+        persistence=2,
+        min_anomaly_duration=3,
+    )
+    assert idx == 3
+
+
+def test_dynamic_threshold_array_is_supported():
+    scores = np.array([0.1, 0.2, 0.3, 0.4, 0.8, 0.9], dtype=float)
+    thresholds = np.array([0.5, 0.5, 0.5, 0.5, 0.75, 0.85], dtype=float)
+    idx = find_warning_index(scores, threshold=thresholds, persistence=2)
+    assert idx == 5
