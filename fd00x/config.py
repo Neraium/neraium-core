@@ -334,6 +334,18 @@ class DetectorConfig:
     yellow_red: float = 0.80
     """Atomic fused score threshold for YELLOW→RED transitions."""
 
+    qit_healthy: float = 0.28
+    """QIT healthy ceiling used for semantic label alignment with SII presets."""
+
+    qit_elevated: float = 0.38
+    """QIT AMBER enter threshold (aligned to SII `elevated`)."""
+
+    qit_caution: float = 0.52
+    """QIT YELLOW enter threshold (aligned to SII `caution`)."""
+
+    qit_critical: float = 0.72
+    """QIT RED enter threshold (aligned to SII `critical`)."""
+
     detector_weights: Dict[str, float] = field(
         default_factory=lambda: {
             "micro_dynamics": 0.25,
