@@ -26,6 +26,53 @@ MIN_FILTERED_HEALTHY_SAMPLES = 10
 import numpy as np
 
 
+def _cfg_get(config, key, default):
+    if isinstance(config, dict):
+        return config.get(key, default)
+    if hasattr(config, key):
+        value = getattr(config, key)
+        return default if value is None else value
+    return default
+
+
+def build_relational_features(data) -> pd.DataFrame:
+    if isinstance(data, pd.DataFrame):
+        df = data.copy()
+    else:
+        arr = np.asarray(data, dtype=float)
+        if arr.ndim == 1:
+            arr = arr.reshape(-1, 1)
+        df = pd.DataFrame(arr)
+
+    if df.columns is None or any(c is None for c in df.columns):
+        df.columns = [f"sensor_{i}" for i in range(df.shape[1])]
+    else:
+        names = []
+        for i, c in enumerate(df.columns):
+            name = str(c)
+            names.append(name if name.strip() else f"sensor_{i}")
+        if len(set(names)) != len(names):
+            names = [f"sensor_{i}" for i in range(df.shape[1])]
+        df.columns = names
+
+    ema = df.ewm(alpha=0.25, adjust=False).mean()
+    residual = df - ema
+    diff = df.diff()
+    rolling_std = df.rolling(window=10, min_periods=1).std()
+
+    first_sensor = df.iloc[:, 0]
+    divergence = df.subtract(first_sensor, axis=0)
+
+    ema.columns = [f"{c}__ema" for c in df.columns]
+    residual.columns = [f"{c}__residual" for c in df.columns]
+    diff.columns = [f"{c}__diff" for c in df.columns]
+    rolling_std.columns = [f"{c}__std10" for c in df.columns]
+    divergence.columns = [f"{c}__divergence" for c in df.columns]
+
+    out = pd.concat([df, ema, residual, diff, rolling_std, divergence], axis=1)
+    return out.fillna(0.0)
+
+
 def detect_anomaly(series, config):
     """
     Hybrid detector:
@@ -37,13 +84,13 @@ def detect_anomaly(series, config):
     values = np.array(series)
     n = len(values)
 
-    window = config.get("window", 20)
-    persistence_required = config.get("persistence", 5)
+    window = _cfg_get(config, "window", 20)
+    persistence_required = _cfg_get(config, "persistence", 5)
 
-    threshold_std = config.get("threshold_std", 2.5)
-    slope_threshold = config.get("slope_threshold", 0.4)
+    threshold_std = _cfg_get(config, "threshold_std", 2.5)
+    slope_threshold = _cfg_get(config, "slope_threshold", 0.4)
 
-    early_trigger_std = config.get("early_trigger_std", 1.5)
+    early_trigger_std = _cfg_get(config, "early_trigger_std", 1.5)
 
     triggered = False
     warning_idx = None
@@ -150,6 +197,7 @@ def first_persistent_warning(
 
 
 def analyze_unit(signals: pd.DataFrame) -> dict:
+    signals = pd.DataFrame(build_relational_features(signals).values, index=signals.index)
     baseline_scores = []
     operator_drift_scores = []
     spectral_radius_scores = []
