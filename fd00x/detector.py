@@ -187,7 +187,7 @@ class StructuralDriftDetector:
         )
 
     def _to_qit_config(self) -> QITConfig:
-        amber_enter = max(0.0, min(1.0, float(self.config.qit_elevated)))
+        amber_enter = max(0.0, min(1.0, float(self.config.qit_healthy)))
         yellow_enter = max(0.0, min(1.0, float(self.config.qit_caution)))
         red_enter = max(0.0, min(1.0, float(self.config.qit_critical)))
         return QITConfig(
