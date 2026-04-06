@@ -23,10 +23,12 @@ Algorithm summary
    ``recent_window`` cycles to compute:
    - Covariance shift  = normalised Frobenius distance(recent_cov, ref_cov)
    - Correlation drift = mean |Δ| of upper-triangle entries
-   - Combined raw drift = cov_weight × cov_shift + corr_weight × corr_drift
+   - Mahalanobis drift  = distance(recent_mean, ref_mean | ref_cov_reg^-1)
+   - Combined raw drift = weighted sum of all three components
 
 3. **EMA smoothing**
-   Apply exponential moving average to convert raw drift into an anomaly score:
+   Mahalanobis drift is EMA-smoothed before fusion; then an additional EMA is
+   applied to the fused raw drift to create the warning score:
        ema[t] = alpha × raw[t]  +  (1 − alpha) × ema[t−1]
    This smoothing was preserved from the original fd004 evaluation code.
 
@@ -64,6 +66,8 @@ class ReferenceStats:
     std: np.ndarray     # (n_sensors,)  — reference channel stds (normalisation)
     cov: np.ndarray     # (n_sensors, n_sensors) — reference covariance (normed space)
     corr: np.ndarray    # (n_sensors, n_sensors) — reference correlation
+    normed_mean: np.ndarray  # (n_sensors,) — reference mean in normalized space
+    cov_inv_reg: np.ndarray  # (n_sensors, n_sensors) — pinv(Sigma_ref_reg)
     drift_mean: float   # mean raw drift within the reference window
     drift_std: float    # std  raw drift within the reference window
     n_samples: int      # number of cycles used to build this reference
@@ -157,13 +161,20 @@ class StructuralDriftDetector:
 
         cov = _safe_cov(normed)
         corr = _safe_corr(normed)
+        normed_mean = normed.mean(axis=0)
+        cov_inv_reg = _compute_regularized_cov_inverse(
+            cov,
+            regularization=self.config.mahal_regularization,
+        )
 
         # Empirical drift within the reference window — used to set threshold
-        ref_drifts: list[float] = []
-        w = self.config.recent_window
-        for i in range(w, n):
-            window = normed[i - w : i]
-            ref_drifts.append(self._raw_drift_score(window, cov, corr))
+        ref_drifts = self._compute_raw_drift_series(
+            normed=normed,
+            ref_cov=cov,
+            ref_corr=corr,
+            ref_normed_mean=normed_mean,
+            ref_cov_inv_reg=cov_inv_reg,
+        )[self.config.recent_window :]
 
         if len(ref_drifts) >= 2:
             drift_mean = float(np.mean(ref_drifts))
@@ -177,6 +188,8 @@ class StructuralDriftDetector:
             std=std,
             cov=cov,
             corr=corr,
+            normed_mean=normed_mean,
+            cov_inv_reg=cov_inv_reg,
             drift_mean=drift_mean,
             drift_std=max(drift_std, 1e-6),
             n_samples=n,
@@ -214,18 +227,18 @@ class StructuralDriftDetector:
             else self.config.persistence
         )
 
-        n, d = data.shape
-        w = self.config.recent_window
+        n, _ = data.shape
 
         # Normalise using REFERENCE statistics — never using the test segment
         normed = (data - ref.mean) / ref.std
 
-        raw_drift = np.zeros(n)
-        for i in range(n):
-            # Use partial window at the start rather than zero-padding
-            start = max(0, i - w)
-            window = normed[start : i + 1]
-            raw_drift[i] = self._raw_drift_score(window, ref.cov, ref.corr)
+        raw_drift = self._compute_raw_drift_series(
+            normed=normed,
+            ref_cov=ref.cov,
+            ref_corr=ref.corr,
+            ref_normed_mean=ref.normed_mean,
+            ref_cov_inv_reg=ref.cov_inv_reg,
+        )
 
         # EMA-smoothed anomaly score (preserves EMA logic from original code)
         ema_drift = _apply_ema(raw_drift, self.config.ema_alpha)
@@ -296,6 +309,9 @@ class StructuralDriftDetector:
         window: np.ndarray,
         ref_cov: np.ndarray,
         ref_corr: np.ndarray,
+        ref_normed_mean: np.ndarray,
+        ref_cov_inv_reg: np.ndarray,
+        mahal_ema_prev: float,
     ) -> float:
         """
         Compute raw structural drift between a recent window and the reference.
@@ -313,9 +329,12 @@ class StructuralDriftDetector:
            changes in directional coupling between sensors while being robust
            to variance scaling.
 
-        Together these two components provide complementary views of structural
-        relationship change, consistent with the geometry-layer approach in the
-        existing sii/geometry_layer.py.
+        3. **Mahalanobis drift** — distance between recent-window mean and the
+           frozen healthy normalized-mean under the regularized inverse
+           reference covariance geometry.
+
+        Mahalanobis is smoothed with EMA before fusion to suppress noisy
+        pointwise spikes.
         """
         n, d = window.shape
         if n < 2:
@@ -334,7 +353,66 @@ class StructuralDriftDetector:
         else:
             corr_drift = 0.0
 
-        return self.config.cov_weight * cov_shift + self.config.corr_weight * corr_drift
+        mu_recent = window.mean(axis=0)
+        delta = mu_recent - ref_normed_mean
+        mahal_sq = float(delta @ ref_cov_inv_reg @ delta.T)
+        mahal_sq = max(mahal_sq, 0.0)
+        mahal_raw = float(np.sqrt(mahal_sq))
+
+        mahal_alpha = (
+            self.config.mahal_ema_alpha
+            if self.config.mahal_ema_alpha is not None
+            else self.config.ema_alpha
+        )
+        mahal_smooth = (
+            mahal_alpha * mahal_raw + (1.0 - mahal_alpha) * mahal_ema_prev
+        )
+
+        return (
+            self.config.cov_weight * cov_shift
+            + self.config.corr_weight * corr_drift
+            + self.config.mahal_weight * mahal_smooth
+        )
+
+    def _compute_raw_drift_series(
+        self,
+        normed: np.ndarray,
+        ref_cov: np.ndarray,
+        ref_corr: np.ndarray,
+        ref_normed_mean: np.ndarray,
+        ref_cov_inv_reg: np.ndarray,
+    ) -> np.ndarray:
+        """Compute full raw-drift series with sequential Mahalanobis smoothing."""
+        n = len(normed)
+        w = self.config.recent_window
+        raw_drift = np.zeros(n)
+        mahal_ema = 0.0
+        for i in range(n):
+            start = max(0, i - w)
+            window = normed[start : i + 1]
+            raw = self._raw_drift_score(
+                window=window,
+                ref_cov=ref_cov,
+                ref_corr=ref_corr,
+                ref_normed_mean=ref_normed_mean,
+                ref_cov_inv_reg=ref_cov_inv_reg,
+                mahal_ema_prev=mahal_ema,
+            )
+            raw_drift[i] = raw
+
+            if len(window) >= 2:
+                mu_recent = window.mean(axis=0)
+                delta = mu_recent - ref_normed_mean
+                mahal_sq = float(delta @ ref_cov_inv_reg @ delta.T)
+                mahal_sq = max(mahal_sq, 0.0)
+                mahal_raw = float(np.sqrt(mahal_sq))
+                mahal_alpha = (
+                    self.config.mahal_ema_alpha
+                    if self.config.mahal_ema_alpha is not None
+                    else self.config.ema_alpha
+                )
+                mahal_ema = mahal_alpha * mahal_raw + (1.0 - mahal_alpha) * mahal_ema
+        return raw_drift
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -478,6 +556,21 @@ def _safe_corr(data: np.ndarray) -> np.ndarray:
     if nan_mask.any():
         corr = np.where(nan_mask, np.eye(d), corr)
     return corr
+
+
+def _compute_regularized_cov_inverse(
+    cov: np.ndarray,
+    regularization: float,
+) -> np.ndarray:
+    """
+    Compute a numerically stable inverse for regularized covariance.
+
+    Uses pseudo-inverse to stay robust for near-singular covariance structure.
+    """
+    d = cov.shape[0]
+    reg = max(float(regularization), 0.0)
+    cov_reg = cov + reg * np.eye(d)
+    return np.linalg.pinv(cov_reg)
 
 
 def _apply_ema(series: np.ndarray, alpha: float) -> np.ndarray:

@@ -85,22 +85,46 @@ class DetectorConfig:
     """
 
     # ── Structural drift weights ──────────────────────────────────────────────
-    cov_weight: float = 0.55
+    cov_weight: float = 0.40
     """
     Weight for the covariance-shift component of the structural drift score.
     Covariance shift = normalised Frobenius distance between recent and
     reference covariance matrices.
     """
 
-    corr_weight: float = 0.45
+    corr_weight: float = 0.25
     """
     Weight for the correlation-drift component.
     Correlation drift = mean absolute difference of upper-triangle entries
     between recent and reference correlation matrices.
-
-    Together ``cov_weight + corr_weight`` should equal 1.0 for
-    interpretability, but the code does not enforce this.
     """
+
+    mahal_weight: float = 0.35
+    """
+    Weight for the Mahalanobis-drift component.
+    Mahalanobis drift is computed from the distance between the recent-window
+    mean vector and the frozen healthy reference mean/covariance in normalized
+    sensor space.
+    """
+
+    mahal_regularization: float = 1e-4
+    """
+    Diagonal regularization added to reference covariance before inversion:
+
+        Sigma_ref_reg = Sigma_ref + mahal_regularization * I
+
+    This keeps Mahalanobis computation numerically stable for near-singular
+    covariance structure.
+    """
+
+    mahal_ema_alpha: Optional[float] = None
+    """
+    Optional EMA smoothing factor for Mahalanobis drift BEFORE combination.
+    If None, reuse ``ema_alpha``.
+    """
+
+    # Together ``cov_weight + corr_weight + mahal_weight`` should equal 1.0
+    # for interpretability, but the code does not enforce this.
 
     # ── EMA smoothing ─────────────────────────────────────────────────────────
     ema_alpha: float = 0.25
