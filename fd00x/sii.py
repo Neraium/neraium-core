@@ -163,9 +163,11 @@ class SII:
         if current_cycle_index is not None and total_cycles is not None and total_cycles > 1:
             drift = float(np.clip(current_cycle_index / float(total_cycles - 1), 0.0, 1.0))
         else:
+            # Normalize fallback drift by baseline spread to avoid instability
+            # when healthy means are near zero after centering/normalization.
             drift = float(
                 np.clip(
-                    np.mean(np.abs((x - self.mean) / np.clip(np.abs(self.mean), 1e-6, None))),
+                    np.mean(np.abs((x - self.mean) / np.clip(self.std, 1e-6, None))),
                     0.0,
                     1.0,
                 )
