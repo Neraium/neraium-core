@@ -124,11 +124,10 @@ class AtomicBaselineLearner:
     def _event_stats(self, data: np.ndarray, mean: np.ndarray, std: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         n_t, n_s = data.shape
         std = np.where(std < 1e-6, 1.0, std)
-        thresholds = mean + self.event_level_std * std
         rates = np.zeros(n_s, dtype=float)
         cv = np.ones(n_s, dtype=float)
         for s in range(n_s):
-            over = data[:, s] > thresholds[s]
+            over = np.abs(data[:, s] - mean[s]) > (self.event_level_std * std[s])
             crossings = np.where(np.diff(over.astype(int)) != 0)[0]
             rates[s] = len(crossings) / max(n_t, 1)
             if len(crossings) > 2:
