@@ -49,6 +49,11 @@ class UnitScores:
     reference_stats: ReferenceStats
     component_scores: Dict[str, np.ndarray]
     alert_history: List[dict]
+    warning_state: np.ndarray
+    warning_enter_threshold: np.ndarray
+    warning_exit_threshold: np.ndarray
+    component_activation_rates: Dict[str, float]
+    dominant_alert_component: str
 
 
 class StructuralDriftDetector:
@@ -106,30 +111,60 @@ class StructuralDriftDetector:
                 component.setdefault(k, []).append(float(v))
 
         raw = np.asarray(raw_scores, dtype=float)
-        ema = _apply_ema(raw, self.config.ema_alpha)
+        ema = _apply_ema(
+            raw,
+            self.config.ema_alpha,
+            adaptive=self.config.adaptive_ema,
+            adaptive_window=self.config.adaptive_ema_window,
+            min_alpha=self.config.adaptive_ema_min_alpha,
+            max_alpha=self.config.adaptive_ema_max_alpha,
+            volatility_gain=self.config.adaptive_ema_volatility_gain,
+        )
 
         healthy_ema = ema[: min(ref.n_samples, ema.shape[0])]
         threshold_std = override_threshold_std if override_threshold_std is not None else self.config.threshold_std
         persistence = override_persistence if override_persistence is not None else self.config.persistence
-        threshold = _compute_ema_threshold(
+        static_threshold = _compute_ema_threshold(
             healthy_ema=healthy_ema,
             threshold_mode=self.config.threshold_mode,
             threshold_std=threshold_std,
             threshold_percentile=self.config.threshold_percentile,
         )
-        warning_index = find_warning_index(
+        enter_threshold = _compute_dynamic_thresholds(
+            ema=ema,
+            static_threshold=static_threshold,
+            threshold_mode=self.config.threshold_mode,
+            threshold_std=threshold_std,
+            threshold_percentile=self.config.threshold_percentile,
+            rolling_window=self.config.dynamic_threshold_window,
+            min_history=self.config.dynamic_threshold_min_history,
+        )
+        warning_state = compute_warning_state(
             ema,
-            threshold,
+            enter_threshold,
             persistence,
             require_upward_trend=self.config.require_upward_ema_trend,
             slope_window=self.config.slope_window,
             min_slope=self.config.min_slope,
+            exit_threshold_ratio=self.config.warning_exit_threshold_ratio,
+            exit_persistence=self.config.exit_persistence,
+            min_anomaly_duration=max(self.config.min_anomaly_duration, persistence),
+        )
+        warning_index = _first_true_index(warning_state)
+        component_activation_rates = {
+            k: float(np.mean(np.asarray(v, dtype=float) >= self.config.fusion_activation_floor))
+            for k, v in component.items()
+        }
+        dominant_alert_component = (
+            max(component_activation_rates, key=component_activation_rates.get)
+            if component_activation_rates
+            else "none"
         )
 
         return UnitScores(
             raw_drift=raw,
             ema_drift=ema,
-            threshold=threshold,
+            threshold=float(static_threshold),
             warning_index=warning_index,
             n_cycles=data.shape[0],
             reference_stats=ref,
@@ -143,6 +178,11 @@ class StructuralDriftDetector:
                 }
                 for a in monitor.alert_machine.history
             ],
+            warning_state=warning_state.astype(bool),
+            warning_enter_threshold=enter_threshold.astype(float),
+            warning_exit_threshold=(enter_threshold * float(self.config.warning_exit_threshold_ratio)).astype(float),
+            component_activation_rates=component_activation_rates,
+            dominant_alert_component=dominant_alert_component,
         )
 
     def process_unit(
@@ -186,6 +226,8 @@ class StructuralDriftDetector:
             "fusion_activation_floor": self.config.fusion_activation_floor,
             "fusion_min_active": self.config.fusion_min_active,
             "fusion_downweight_factor": self.config.fusion_downweight_factor,
+            "component_weight_multipliers": self.config.component_weight_multipliers,
+            "component_soft_caps": self.config.component_soft_caps,
             "conformal_enabled": self.config.conformal_enabled,
             "conformal_alpha": self.config.conformal_alpha,
             "conformal_window": self.config.conformal_window,
@@ -229,44 +271,140 @@ class StructuralDriftDetector:
 
 def find_warning_index(
     scores: np.ndarray,
-    threshold: float,
+    threshold: float | np.ndarray,
     persistence: int,
     require_upward_trend: bool = False,
     slope_window: int = 3,
     min_slope: float = 0.0,
+    exit_threshold_ratio: float = 0.85,
+    exit_persistence: int = 2,
+    min_anomaly_duration: int = 1,
 ) -> Optional[int]:
+    state = compute_warning_state(
+        scores=scores,
+        threshold=threshold,
+        persistence=persistence,
+        require_upward_trend=require_upward_trend,
+        slope_window=slope_window,
+        min_slope=min_slope,
+        exit_threshold_ratio=exit_threshold_ratio,
+        exit_persistence=exit_persistence,
+        min_anomaly_duration=min_anomaly_duration,
+    )
+    return _first_true_index(state)
+
+
+def compute_warning_state(
+    scores: np.ndarray,
+    threshold: float | np.ndarray,
+    persistence: int,
+    require_upward_trend: bool = False,
+    slope_window: int = 3,
+    min_slope: float = 0.0,
+    exit_threshold_ratio: float = 0.85,
+    exit_persistence: int = 2,
+    min_anomaly_duration: int = 1,
+) -> np.ndarray:
     if persistence < 1:
         raise ValueError(f"persistence must be >= 1, got {persistence}")
+    if exit_persistence < 1:
+        raise ValueError(f"exit_persistence must be >= 1, got {exit_persistence}")
+    if min_anomaly_duration < 1:
+        raise ValueError(f"min_anomaly_duration must be >= 1, got {min_anomaly_duration}")
+
+    arr = np.asarray(scores, dtype=float)
+    if arr.size == 0:
+        return np.zeros(0, dtype=bool)
+    if np.isscalar(threshold):
+        enter_thr = np.full(arr.shape[0], float(threshold), dtype=float)
+    else:
+        enter_thr = np.asarray(threshold, dtype=float)
+        if enter_thr.shape[0] != arr.shape[0]:
+            raise ValueError("threshold array must match scores length")
+
+    state = np.zeros(arr.shape[0], dtype=bool)
+    in_warning = False
     consecutive = 0
+    below_exit = 0
+    run_start: Optional[int] = None
+    warning_start: Optional[int] = None
+
     for i, s in enumerate(scores):
         val = float(s)
-        instant_slope = val - float(scores[i - 1]) if i > 0 else 0.0
+        thr = float(enter_thr[i])
+        exit_thr = thr * float(exit_threshold_ratio)
+        instant_slope = val - float(arr[i - 1]) if i > 0 else 0.0
         upward_ok = (not require_upward_trend) or (i > 0 and instant_slope > 0.0)
         if min_slope <= 0.0:
             strong_trend = True
         else:
-            strong_trend = i >= slope_window and (val - float(scores[i - slope_window])) > min_slope
+            strong_trend = i >= slope_window and (val - float(arr[i - slope_window])) > min_slope
 
-        if val >= threshold:
-            if consecutive == 0:
-                if upward_ok and strong_trend:
-                    consecutive = 1
+        if not in_warning:
+            if val >= thr:
+                if consecutive == 0:
+                    if upward_ok and strong_trend:
+                        consecutive = 1
+                        run_start = i
+                else:
+                    consecutive += 1
+                if consecutive >= persistence and run_start is not None:
+                    if (i - run_start + 1) >= min_anomaly_duration:
+                        in_warning = True
+                        warning_start = i
+                        below_exit = 0
+                        state[i] = True
             else:
-                consecutive += 1
-            if consecutive >= persistence:
-                return i
+                consecutive = 0
+                run_start = None
         else:
-            consecutive = 0
-    return None
+            state[i] = True
+            warning_duration = 0 if warning_start is None else i - warning_start + 1
+            if val < exit_thr and warning_duration >= min_anomaly_duration:
+                below_exit += 1
+                if below_exit >= exit_persistence:
+                    in_warning = False
+                    below_exit = 0
+                    consecutive = 0
+                    run_start = None
+                    state[i] = False
+            else:
+                below_exit = 0
+    return state
 
 
-def _apply_ema(series: np.ndarray, alpha: float) -> np.ndarray:
+def _apply_ema(
+    series: np.ndarray,
+    alpha: float,
+    *,
+    adaptive: bool = False,
+    adaptive_window: int = 15,
+    min_alpha: float = 0.08,
+    max_alpha: float = 0.30,
+    volatility_gain: float = 1.0,
+) -> np.ndarray:
     if len(series) == 0:
         return series
     ema = np.empty_like(series)
     ema[0] = series[0]
+    if not adaptive:
+        use_alpha = float(alpha)
+        for i in range(1, len(series)):
+            ema[i] = use_alpha * series[i] + (1.0 - use_alpha) * ema[i - 1]
+        return ema
+
+    base_alpha = float(alpha)
+    local_vol_hist: list[float] = []
     for i in range(1, len(series)):
-        ema[i] = alpha * series[i] + (1.0 - alpha) * ema[i - 1]
+        lo = max(0, i - max(2, int(adaptive_window)))
+        recent = series[lo : i + 1]
+        local_vol = float(np.std(recent)) if recent.size > 1 else 0.0
+        local_vol_hist.append(local_vol)
+        baseline_vol = float(np.median(local_vol_hist)) if local_vol_hist else local_vol
+        vol_ratio = local_vol / max(baseline_vol, 1e-6)
+        damp = 1.0 + float(volatility_gain) * max(0.0, vol_ratio - 1.0)
+        alpha_t = float(np.clip(base_alpha / damp, min_alpha, max_alpha))
+        ema[i] = alpha_t * series[i] + (1.0 - alpha_t) * ema[i - 1]
     return ema
 
 
@@ -288,3 +426,37 @@ def _compute_ema_threshold(
         mad = float(np.median(np.abs(healthy_ema - m)))
         return m + threshold_std * max(mad, 1e-6)
     raise ValueError(f"Unsupported threshold_mode '{threshold_mode}'")
+
+
+def _compute_dynamic_thresholds(
+    ema: np.ndarray,
+    static_threshold: float,
+    threshold_mode: str,
+    threshold_std: float,
+    threshold_percentile: float,
+    rolling_window: int,
+    min_history: int,
+) -> np.ndarray:
+    arr = np.asarray(ema, dtype=float)
+    thr = np.full(arr.shape[0], float(static_threshold), dtype=float)
+    if rolling_window <= 0:
+        return thr
+    for i in range(arr.shape[0]):
+        if i < int(min_history):
+            continue
+        lo = max(0, i - int(rolling_window))
+        hist = arr[lo:i]
+        if hist.size < max(3, int(min_history)):
+            continue
+        thr[i] = _compute_ema_threshold(
+            healthy_ema=hist,
+            threshold_mode=threshold_mode,
+            threshold_std=threshold_std,
+            threshold_percentile=threshold_percentile,
+        )
+    return thr
+
+
+def _first_true_index(mask: np.ndarray) -> Optional[int]:
+    idx = np.where(np.asarray(mask, dtype=bool))[0]
+    return int(idx[0]) if idx.size > 0 else None

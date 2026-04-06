@@ -30,11 +30,17 @@ class AtomicFusionEngine:
         activation_floor: float = 0.15,
         min_active: int = 2,
         downweight_factor: float = 0.3,
+        component_weight_multipliers: Mapping[str, float] | None = None,
+        component_soft_caps: Mapping[str, float] | None = None,
     ) -> None:
         self.weights = {k: float(v) for k, v in weights.items()}
         self.activation_floor = float(activation_floor)
         self.min_active = int(min_active)
         self.downweight_factor = float(downweight_factor)
+        self.component_weight_multipliers = {
+            k: float(v) for k, v in (component_weight_multipliers or {}).items()
+        }
+        self.component_soft_caps = {k: float(v) for k, v in (component_soft_caps or {}).items()}
 
     def fuse(self, component_scores: Mapping[str, float | None]) -> FusionResult:
         # Clip each finite component score to [0, 1] before fusion
@@ -46,7 +52,15 @@ class AtomicFusionEngine:
         if not available:
             return FusionResult(0.0, {}, "none", {}, active_count=0)
 
-        raw_weights = {k: self.weights.get(k, 0.0) for k in available}
+        # Optional component clipping for chronically spiky detectors.
+        for name, cap in self.component_soft_caps.items():
+            if name in available:
+                available[name] = float(np.clip(available[name], 0.0, max(0.0, cap)))
+
+        raw_weights = {
+            k: self.weights.get(k, 0.0) * self.component_weight_multipliers.get(k, 1.0)
+            for k in available
+        }
         z = sum(max(v, 0.0) for v in raw_weights.values())
         if z <= 0:
             norm = {k: 1.0 / len(available) for k in available}
