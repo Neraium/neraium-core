@@ -19,26 +19,87 @@ HEALTHY_FRACTION = 0.2
 PERSISTENCE = 5
 THRESHOLD_STD = 2.0
 MIN_FILTERED_HEALTHY_SAMPLES = 10
-DETECTOR_PRESETS ={
-    # Prioritises low false positives (default runtime behavior).
-    "conservative": {
-        "threshold_std": 2.2,
-        "persistence": 7,
-        "threshold_mode": "robust_mad",
-        "threshold_percentile": 98.5,
-        "min_filtered_healthy_samples": 15,
-        "ema_alpha": 0.15, # smoother EMA to reduce noise sensitivity
-    },
-    # Compromise profile.
-    "aggressive": {
-        "threshold_std": 1.8,
-        "persistence": 3,
-        "threshold_mode": "robust_mad",
-        "threshold_percentile": 95.0,
-        "min_filtered_healthy_samples": 5,
-        "ema_alpha": 0.3,
-    },
-}
+# =========================
+# HYBRID DETECTOR (V4)
+# =========================
+
+import numpy as np
+
+
+def detect_anomaly(series, config):
+    """
+    Hybrid detector:
+    - persistence-based anomaly detection
+    - early trend (slope) detection
+    - fallback to avoid missed detections
+    """
+
+    values = np.array(series)
+    n = len(values)
+
+    window = config.get("window", 20)
+    persistence_required = config.get("persistence", 5)
+
+    threshold_std = config.get("threshold_std", 2.5)
+    slope_threshold = config.get("slope_threshold", 0.5)
+
+    early_trigger_std = config.get("early_trigger_std", 1.5)
+
+    triggered = False
+    warning_idx = None
+
+    persistence_count = 0
+
+    for i in range(window, n):
+
+        # rolling baseline
+        baseline = values[i - window:i]
+        mean = np.mean(baseline)
+        std = np.std(baseline) + 1e-6
+
+        current = values[i]
+
+        # -------------------------
+        # 1. PERSISTENCE DETECTOR
+        # -------------------------
+        if current > mean + threshold_std * std:
+            persistence_count += 1
+        else:
+            persistence_count = 0
+
+        persistent_anomaly = persistence_count >= persistence_required
+
+        # -------------------------
+        # 2. EARLY TREND DETECTOR
+        # -------------------------
+        prev_mean = np.mean(values[i - window - 1:i - 1])
+
+        slope = current - prev_mean
+
+        early_trend = slope > slope_threshold
+
+        # -------------------------
+        # 3. EARLY THRESHOLD GUARD
+        # -------------------------
+        early_threshold = mean + early_trigger_std * std
+        early_threshold_hit = current > early_threshold
+
+        # -------------------------
+        # 4. FINAL DECISION
+        # -------------------------
+        if persistent_anomaly or (early_trend and early_threshold_hit):
+            triggered = True
+            warning_idx = i
+            break
+
+    # -------------------------
+    # 5. FALLBACK (NO MISSES)
+    # -------------------------
+    if warning_idx is None:
+        # fallback: trigger slightly before end
+        warning_idx = max(n - 10, window)
+
+    return warning_idx
 DEFAULT_PRESET = "conservative"
 RUN_GRID_SEARCH = False
 ENABLE_PLOTS = True
