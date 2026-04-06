@@ -55,3 +55,4 @@ Thumbs.db
 # Local infra / environment specifics
 # ------------------------------------------------------------
 cloudflared/config.yml
+.claude/
