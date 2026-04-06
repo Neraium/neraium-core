@@ -45,7 +45,7 @@ DETECTOR_PRESETS = {
 DEFAULT_PRESET = "conservative"
 RUN_GRID_SEARCH = False
 ENABLE_PLOTS = True
-NUM_UNITS = 249
+NUM_UNITS = 10
 
 
 def load_fd004(path: Path) -> pd.DataFrame:
