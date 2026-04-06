@@ -8,6 +8,9 @@ Module layout
 -------------
 config      Tunable parameters, named presets (default_trusted / balanced / strict)
 detector    Core structural drift detector, corrected persistence warning logic
+settings    SII-ML preset settings (conservative / balanced / aggressive)
+sii         Core SII with five-layer atomic scoring
+sii_ml      ML-enhanced SII (attention + graph learning + neural booster)
 evaluation  Dataset loading, metrics, baselines, tuning, scoring
 plotting    Diagnostic plots (lazy matplotlib import)
 experiment  CLI entry point and workflow runner
@@ -37,6 +40,9 @@ Key public API::
 from .config import ALL_DATASETS, DEFAULT_PRESET, PRESETS, DetectorConfig
 from .detector import StructuralDriftDetector, find_warning_index
 from .qit_detector import QITConfig, QITDetector, create_qit_detector
+from .settings import get_optimal_config
+from .sii import LayerWeights, SII
+from .sii_ml import SIIML, create_siiml
 
 __all__ = [
     "DetectorConfig",
@@ -48,4 +54,9 @@ __all__ = [
     "QITConfig",
     "QITDetector",
     "create_qit_detector",
+    "LayerWeights",
+    "SII",
+    "SIIML",
+    "create_siiml",
+    "get_optimal_config",
 ]
