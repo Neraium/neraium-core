@@ -125,7 +125,7 @@ class SII:
         if score < self.thresholds["caution"]:
             return "caution"
         if score < self.thresholds["critical"]:
-            return "caution"
+            return "warning"
         return "critical"
 
     def assess(
