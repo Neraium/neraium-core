@@ -32,6 +32,13 @@ _PRESETS: Dict[str, Dict[str, Any]] = {
             "neural_boost": 0.20,
             "online_lr": 0.0004,
         },
+        "progression": {
+            "baseline_fraction": 0.20,
+            "drift_weight": 0.24,
+            "variance_weight": 0.20,
+            "alpha": 2.8,
+            "raw_offset": 1.10,
+        },
         "execution": {
             "l2_gate": 0.24,
             "l3_gate": 0.38,
@@ -59,6 +66,13 @@ _PRESETS: Dict[str, Dict[str, Any]] = {
             "neural_boost": 0.25,
             "online_lr": 0.0005,
         },
+        "progression": {
+            "baseline_fraction": 0.20,
+            "drift_weight": 0.30,
+            "variance_weight": 0.22,
+            "alpha": 3.0,
+            "raw_offset": 1.10,
+        },
         "execution": {
             "l2_gate": 0.22,
             "l3_gate": 0.35,
@@ -85,6 +99,13 @@ _PRESETS: Dict[str, Dict[str, Any]] = {
             "graph_hidden": 32,
             "neural_boost": 0.30,
             "online_lr": 0.0007,
+        },
+        "progression": {
+            "baseline_fraction": 0.18,
+            "drift_weight": 0.36,
+            "variance_weight": 0.24,
+            "alpha": 3.6,
+            "raw_offset": 1.08,
         },
         "execution": {
             "l2_gate": 0.20,
