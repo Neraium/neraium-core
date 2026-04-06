@@ -1,3 +1,4 @@
+from tqdm import tqdm
 """
 FD00x structural early-warning evaluation framework — experiment runner.
 
