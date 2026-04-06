@@ -13,7 +13,7 @@ from typing import Dict, Iterable, Mapping, Sequence
 import numpy as np
 
 from .settings import get_optimal_config
-from .sii import SII
+from .sii import SII, ScoreProgressionConfig
 
 
 def _softmax(x: np.ndarray, axis: int = -1) -> np.ndarray:
@@ -126,7 +126,15 @@ class SIIML(SII):
                     merged[key] = value
 
         thresholds = merged.get("thresholds", {})
-        super().__init__(sensors, baseline_data, thresholds=thresholds)
+        progression_cfg = merged.get("progression", {})
+        progression = ScoreProgressionConfig(
+            baseline_fraction=float(progression_cfg.get("baseline_fraction", 0.20)),
+            drift_weight=float(progression_cfg.get("drift_weight", 0.30)),
+            variance_weight=float(progression_cfg.get("variance_weight", 0.22)),
+            alpha=float(progression_cfg.get("alpha", 3.0)),
+            raw_offset=float(progression_cfg.get("raw_offset", 1.10)),
+        )
+        super().__init__(sensors, baseline_data, thresholds=thresholds, progression=progression)
         ml_cfg = merged["ml"]
         self.ml_config = MLConfig(
             attention_heads=int(ml_cfg["attention_heads"]),
@@ -146,8 +154,18 @@ class SIIML(SII):
         )
         self.booster = NeuralBooster()
 
-    def assess(self, readings: Mapping[str, float]) -> Dict[str, object]:
-        base = super().assess(readings)
+    def assess(
+        self,
+        readings: Mapping[str, float],
+        *,
+        current_cycle_index: int | None = None,
+        total_cycles: int | None = None,
+    ) -> Dict[str, object]:
+        base = super().assess(
+            readings,
+            current_cycle_index=current_cycle_index,
+            total_cycles=total_cycles,
+        )
         z = np.asarray([base["z_scores"][sensor] for sensor in self.sensors], dtype=float)
 
         context, attention_importance = self.attention.forward(z)
@@ -173,7 +191,7 @@ class SIIML(SII):
 
         base.update(
             {
-                "atomic_score": float(base["score"]),
+                "atomic_score": float(base.get("atomic_score", base["score"])),
                 "neural_score": float(neural_score),
                 "score": float(np.clip(final_score, 0.0, 1.0)),
                 "state": self._to_state(float(final_score)),
