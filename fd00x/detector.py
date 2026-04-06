@@ -12,6 +12,7 @@ import numpy as np
 
 from .atomic_calibrated import AtomicMonitorCalibrated
 from .atomic_monitor import AtomicMonitor
+from .atomic_baseline import AtomicBaseline
 from .config import DetectorConfig
 
 
@@ -25,9 +26,13 @@ class ReferenceStats:
     sde_mu: np.ndarray
     sde_sigma: np.ndarray
     dependence: np.ndarray
+    directional_proxy: np.ndarray
+    latent_centroids: np.ndarray
     latent_occupancy: np.ndarray
     mode_eigenvalues: np.ndarray
+    mode_basis: np.ndarray
     event_rate: np.ndarray
+    event_interval_cv: np.ndarray
     n_samples: int
 
 
@@ -63,9 +68,13 @@ class StructuralDriftDetector:
             sde_mu=b.sde_mu,
             sde_sigma=b.sde_sigma,
             dependence=b.dependence,
+            directional_proxy=b.directional_proxy,
+            latent_centroids=b.latent_centroids,
             latent_occupancy=b.latent_occupancy,
             mode_eigenvalues=b.mode_eigenvalues,
+            mode_basis=b.mode_basis,
             event_rate=b.event_rate,
+            event_interval_cv=b.event_interval_cv,
             n_samples=healthy_data.shape[0],
         )
 
@@ -77,12 +86,10 @@ class StructuralDriftDetector:
         override_persistence: Optional[int] = None,
     ) -> UnitScores:
         sensors = [f"s{i}" for i in range(data.shape[1])]
-        cfg = self._atomic_config()
         monitor = self._build_monitor(sensors)
-        healthy = data[: ref.n_samples]
-        monitor.learn_baseline(healthy)
-        if isinstance(monitor, AtomicMonitorCalibrated) and self.config.calibration_enabled:
-            monitor.calibrate(healthy_data=healthy, validation_data=None)
+        monitor.baseline = self._baseline_from_reference(ref)
+        monitor.online_mu = ref.sde_mu.copy()
+        monitor.online_sigma = np.maximum(ref.sde_sigma.copy(), 1e-6)
 
         raw_scores: List[float] = []
         component: Dict[str, List[float]] = {}
@@ -96,7 +103,7 @@ class StructuralDriftDetector:
         raw = np.asarray(raw_scores, dtype=float)
         ema = _apply_ema(raw, self.config.ema_alpha)
 
-        healthy_ema = ema[: ref.n_samples]
+        healthy_ema = ema[: min(ref.n_samples, ema.shape[0])]
         threshold_std = override_threshold_std if override_threshold_std is not None else self.config.threshold_std
         persistence = override_persistence if override_persistence is not None else self.config.persistence
         threshold = _compute_ema_threshold(
@@ -114,14 +121,13 @@ class StructuralDriftDetector:
             min_slope=self.config.min_slope,
         )
 
-        ref_out = self.fit_reference(healthy)
         return UnitScores(
             raw_drift=raw,
             ema_drift=ema,
             threshold=threshold,
             warning_index=warning_index,
             n_cycles=data.shape[0],
-            reference_stats=ref_out,
+            reference_stats=ref,
             component_scores={k: np.asarray(v, dtype=float) for k, v in component.items()},
             alert_history=[
                 {
@@ -193,6 +199,23 @@ class StructuralDriftDetector:
         if self.config.calibration_enabled:
             return AtomicMonitorCalibrated(sensors=sensors, config=cfg)
         return AtomicMonitor(sensors=sensors, config=cfg)
+
+    def _baseline_from_reference(self, ref: ReferenceStats) -> AtomicBaseline:
+        return AtomicBaseline(
+            mean=ref.mean.copy(),
+            cov=ref.cov.copy(),
+            precision=ref.precision.copy(),
+            sde_mu=ref.sde_mu.copy(),
+            sde_sigma=ref.sde_sigma.copy(),
+            dependence=ref.dependence.copy(),
+            directional_proxy=ref.directional_proxy.copy(),
+            latent_centroids=ref.latent_centroids.copy(),
+            latent_occupancy=ref.latent_occupancy.copy(),
+            mode_eigenvalues=ref.mode_eigenvalues.copy(),
+            mode_basis=ref.mode_basis.copy(),
+            event_rate=ref.event_rate.copy(),
+            event_interval_cv=ref.event_interval_cv.copy(),
+        )
 
 
 def find_warning_index(
