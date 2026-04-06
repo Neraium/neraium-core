@@ -10,6 +10,7 @@ from typing import Dict, List, Optional
 
 import numpy as np
 
+from .atomic_alerting import AlertTransition
 from .atomic_monitor import AtomicMonitor, AtomicUpdate
 
 
@@ -83,6 +84,7 @@ class AtomicMonitorCalibrated(AtomicMonitor):
         self.learn_baseline(train)
         self._reset_runtime_state()
         cal_scores = self._collect_calibration_scores(cal)
+        self._reset_runtime_state()
         self.calibration["null_distributions"] = self._fit_null_distributions(cal_scores)
         if bool(self.config.get("conformal_enabled", True)):
             self.calibration["conformal_cutoffs"] = self._compute_conformal_cutoffs(cal_scores)
@@ -115,7 +117,7 @@ class AtomicMonitorCalibrated(AtomicMonitor):
         context_valid = self._apply_contextual_gating(context)
         consensus_valid = self._apply_consensus_check(scores)
         bh_valid = self._apply_bh_correction(scores)
-        surge_valid = self._apply_surge_protection(raw.alert_level)
+        surge_valid = self._apply_surge_protection(prev_level, raw.alert_level)
         cooldown_open = int(self.fp_control.get("alert_cooldown_counter", 0)) == 0
 
         should_alert = all([conformal_valid, context_valid, consensus_valid, bh_valid, surge_valid, cooldown_open])
@@ -128,7 +130,15 @@ class AtomicMonitorCalibrated(AtomicMonitor):
             self._restore_alert_state(prev_level, prev_hist_len)
             if prev_level != final_level:
                 t = float(self.counter if timestamp is None else timestamp)
-                self.alert_machine.update(score=raw.score, dominant_detector=raw.dominant_detector, timestamp=t)
+                self.alert_machine.level = final_level
+                self.alert_machine.history.append(
+                    AlertTransition(
+                        timestamp=t,
+                        level=final_level,
+                        score=float(raw.score),
+                        dominant_detector=raw.dominant_detector,
+                    )
+                )
             self._log_suppression(raw.alert_level, {
                 "conformal": not conformal_valid,
                 "context": not context_valid,
@@ -321,8 +331,8 @@ class AtomicMonitorCalibrated(AtomicMonitor):
         top2 = set(sorted(scores, key=scores.get, reverse=True)[:2])
         return len(sig & top2) > 0
 
-    def _apply_surge_protection(self, proposed_level: str) -> bool:
-        if self.alert_machine.level == "YELLOW":
+    def _apply_surge_protection(self, prior_level: str, proposed_level: str) -> bool:
+        if prior_level == "YELLOW":
             self.fp_control["consecutive_yellow"] = int(self.fp_control.get("consecutive_yellow", 0)) + 1
         else:
             self.fp_control["consecutive_yellow"] = 0
