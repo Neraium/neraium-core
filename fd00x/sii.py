@@ -21,6 +21,28 @@ def _to_vector(readings: Mapping[str, float], sensors: Sequence[str]) -> np.ndar
     return np.asarray([float(readings.get(sensor, 0.0)) for sensor in sensors], dtype=float)
 
 
+def _safe_corr_matrix(data: np.ndarray, eps: float = 1e-12) -> np.ndarray:
+    """Finite-safe correlation matrix that tolerates constant columns."""
+    arr = np.asarray(data, dtype=float)
+    if arr.ndim != 2:
+        raise ValueError("data must be a 2D array")
+    if arr.shape[0] < 2:
+        return np.eye(arr.shape[1], dtype=float)
+
+    centered = arr - np.mean(arr, axis=0, keepdims=True)
+    std = np.std(centered, axis=0, ddof=1)
+    valid = std > eps
+    denom = np.where(valid, std, 1.0)
+    z = centered / denom
+    corr = (z.T @ z) / max(1, arr.shape[0] - 1)
+    corr = np.asarray(corr, dtype=float)
+    corr = np.nan_to_num(corr, nan=0.0, posinf=0.0, neginf=0.0)
+    corr[~valid, :] = 0.0
+    corr[:, ~valid] = 0.0
+    np.fill_diagonal(corr, 1.0)
+    return corr
+
+
 @dataclass
 class LayerWeights:
     l1: float = 0.26
@@ -73,7 +95,7 @@ class SII:
         self.std = np.clip(self.baseline.std(axis=0), 1e-8, None)
         self.var = self.std**2
         self.baseline_variance = float(max(np.mean(self.var), 1e-8))
-        self.corr = np.corrcoef(self.baseline, rowvar=False)
+        self.corr = _safe_corr_matrix(self.baseline)
         self.cov = np.cov(self.baseline, rowvar=False)
         self.weights = layer_weights or LayerWeights()
         self.thresholds: Dict[str, float] = {
@@ -118,6 +140,8 @@ class SII:
         }
 
     def _to_state(self, score: float) -> str:
+        if not np.isfinite(score):
+            return "insufficient_data"
         if score < self.thresholds["healthy"]:
             return "healthy"
         if score < self.thresholds["elevated"]:
@@ -125,7 +149,7 @@ class SII:
         if score < self.thresholds["caution"]:
             return "caution"
         if score < self.thresholds["critical"]:
-            return "warning"
+            return "caution"
         return "critical"
 
     def assess(
@@ -142,6 +166,10 @@ class SII:
         """
 
         x = _to_vector(readings, self.sensors)
+        quality_flag: str | None = None
+        if not np.all(np.isfinite(x)):
+            x = np.where(np.isfinite(x), x, self.mean)
+            quality_flag = "non_finite_input"
         z = (x - self.mean) / self.std
 
         raw_layers = {
@@ -179,6 +207,9 @@ class SII:
             - self.progression.raw_offset
         )
         final_score = float(_sigmoid(self.progression.alpha * raw_score))
+        if not np.isfinite(final_score):
+            final_score = 0.0
+            quality_flag = quality_flag or "invalid_score"
 
         importance = np.abs(z)
         rank_idx = np.argsort(importance)[::-1]
@@ -187,6 +218,7 @@ class SII:
         return {
             "score": float(np.clip(final_score, 0.0, 1.0)),
             "state": self._to_state(float(final_score)),
+            "quality_flag": quality_flag,
             "layer_scores": layers,
             "raw_layer_scores": raw_layers,
             "atomic_score": float(atomic_score),
