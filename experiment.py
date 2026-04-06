@@ -19,7 +19,7 @@ HEALTHY_FRACTION = 0.2
 PERSISTENCE = 5
 THRESHOLD_STD = 2.0
 MIN_FILTERED_HEALTHY_SAMPLES = 10
-DETECTOR_PRESETS = {
+DETECTOR_PRESETS ={
     # Prioritises low false positives (default runtime behavior).
     "conservative": {
         "threshold_std": 2.2,
