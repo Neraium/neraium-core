@@ -73,6 +73,60 @@ def build_relational_features(data) -> pd.DataFrame:
     return out.fillna(0.0)
 
 
+def compute_smoothed_mahalanobis(series_matrix, config) -> np.ndarray:
+    matrix = np.asarray(series_matrix, dtype=float)
+    if matrix.ndim == 1:
+        matrix = matrix.reshape(-1, 1)
+    if matrix.ndim != 2:
+        raise ValueError("series_matrix must be 2D (time x features)")
+
+    n_steps, n_features = matrix.shape
+    if n_steps == 0:
+        return np.array([], dtype=float)
+
+    window = int(_cfg_get(config, "mahal_window", 30))
+    window = max(1, min(window, n_steps))
+    regularization = float(_cfg_get(config, "mahal_regularization", 1e-6))
+    regularization = max(0.0, regularization)
+    ema_alpha = float(_cfg_get(config, "ema_alpha", 0.2))
+
+    md = np.zeros(n_steps, dtype=float)
+    eye = np.eye(n_features, dtype=float)
+
+    for t in range(n_steps):
+        start = max(0, t - window + 1)
+        window_slice = matrix[start : t + 1]
+        mu_t = window_slice.mean(axis=0)
+        centered = matrix[t] - mu_t
+
+        if window < n_features or window_slice.shape[0] < n_features:
+            var = np.var(window_slice, axis=0)
+            sigma_t = np.diag(var)
+        else:
+            sigma_t = np.cov(window_slice, rowvar=False)
+            if np.ndim(sigma_t) == 0:
+                sigma_t = np.array([[float(sigma_t)]], dtype=float)
+
+        sigma_t = sigma_t + regularization * eye
+
+        try:
+            inv_sigma = np.linalg.inv(sigma_t)
+        except np.linalg.LinAlgError:
+            inv_sigma = np.linalg.pinv(sigma_t)
+
+        quad_form = float(centered.T @ inv_sigma @ centered)
+        md[t] = np.sqrt(max(quad_form, 0.0))
+
+    md = np.nan_to_num(md, nan=0.0, posinf=0.0, neginf=0.0)
+
+    smoothed = np.zeros_like(md)
+    smoothed[0] = md[0]
+    for i in range(1, n_steps):
+        smoothed[i] = ema_alpha * md[i] + (1.0 - ema_alpha) * smoothed[i - 1]
+
+    return np.nan_to_num(smoothed, nan=0.0, posinf=0.0, neginf=0.0)
+
+
 def detect_anomaly(series, config):
     """
     Hybrid detector:
@@ -197,7 +251,12 @@ def first_persistent_warning(
 
 
 def analyze_unit(signals: pd.DataFrame) -> dict:
-    signals = pd.DataFrame(build_relational_features(signals).values, index=signals.index)
+    signals_df = pd.DataFrame(signals).apply(pd.to_numeric, errors="coerce").fillna(0.0)
+    md_signal = compute_smoothed_mahalanobis(signals_df.values, config={"ema_alpha": EMA_ALPHA})
+    signals = pd.DataFrame(
+        np.column_stack([signals_df.values, md_signal]),
+        index=signals_df.index,
+    )
     baseline_scores = []
     operator_drift_scores = []
     spectral_radius_scores = []
