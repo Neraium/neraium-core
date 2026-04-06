@@ -101,7 +101,7 @@ class SII:
         if score < self.thresholds["caution"]:
             return "caution"
         if score < self.thresholds["critical"]:
-            return "warning"
+            return "caution"
         return "critical"
 
     def assess(self, readings: Mapping[str, float]) -> Dict[str, object]:
