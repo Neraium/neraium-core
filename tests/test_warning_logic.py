@@ -307,3 +307,23 @@ def test_dynamic_threshold_array_is_supported():
     thresholds = np.array([0.5, 0.5, 0.5, 0.5, 0.75, 0.85], dtype=float)
     idx = find_warning_index(scores, threshold=thresholds, persistence=2)
     assert idx == 5
+
+
+def test_zero_dim_threshold_array_is_treated_as_scalar():
+    scores = np.array([0.1, 0.8, 0.8], dtype=float)
+    idx = find_warning_index(scores, threshold=np.array(0.5), persistence=2)
+    assert idx == 2
+
+
+def test_clear_is_not_gated_by_min_anomaly_duration():
+    scores = np.array([0.0, 0.9, 0.9, 0.9, 0.9, 0.9, 0.2, 0.1], dtype=float)
+    state = compute_warning_state(
+        scores=scores,
+        threshold=0.8,
+        persistence=2,
+        exit_threshold_ratio=0.8,  # exit < 0.64
+        exit_persistence=2,
+        min_anomaly_duration=5,
+    )
+    # Enter at index 5, then clear at index 7 after two below-exit values.
+    assert np.where(state)[0].tolist() == [5, 6]
