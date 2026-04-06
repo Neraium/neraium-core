@@ -315,10 +315,11 @@ def compute_warning_state(
     arr = np.asarray(scores, dtype=float)
     if arr.size == 0:
         return np.zeros(0, dtype=bool)
-    if np.isscalar(threshold):
-        enter_thr = np.full(arr.shape[0], float(threshold), dtype=float)
+    thr_arr = np.asarray(threshold, dtype=float)
+    if thr_arr.ndim == 0:
+        enter_thr = np.full(arr.shape[0], float(thr_arr), dtype=float)
     else:
-        enter_thr = np.asarray(threshold, dtype=float)
+        enter_thr = thr_arr
         if enter_thr.shape[0] != arr.shape[0]:
             raise ValueError("threshold array must match scores length")
 
@@ -327,7 +328,6 @@ def compute_warning_state(
     consecutive = 0
     below_exit = 0
     run_start: Optional[int] = None
-    warning_start: Optional[int] = None
 
     for i, s in enumerate(scores):
         val = float(s)
@@ -351,7 +351,6 @@ def compute_warning_state(
                 if consecutive >= persistence and run_start is not None:
                     if (i - run_start + 1) >= min_anomaly_duration:
                         in_warning = True
-                        warning_start = i
                         below_exit = 0
                         state[i] = True
             else:
@@ -359,8 +358,7 @@ def compute_warning_state(
                 run_start = None
         else:
             state[i] = True
-            warning_duration = 0 if warning_start is None else i - warning_start + 1
-            if val < exit_thr and warning_duration >= min_anomaly_duration:
+            if val < exit_thr:
                 below_exit += 1
                 if below_exit >= exit_persistence:
                     in_warning = False
