@@ -17,6 +17,34 @@ NUM_UNITS = 100
 HEALTHY_FRACTION = 0.2
 PERSISTENCE = 5
 THRESHOLD_STD = 2.0
+MIN_FILTERED_HEALTHY_SAMPLES = 10
+DETECTOR_PRESETS = {
+    # Prioritises low false positives (default runtime behavior).
+    "conservative": {
+        "threshold_std": 2.5,
+        "persistence": 5,
+        "threshold_mode": "robust_mad",
+        "threshold_percentile": 99.5,
+    },
+    # Compromise profile.
+    "balanced": {
+        "threshold_std": 2.0,
+        "persistence": 4,
+        "threshold_mode": "robust_mad",
+        "threshold_percentile": 99.5,
+    },
+    # Prioritises early lead time at the cost of more false positives.
+    "aggressive": {
+        "threshold_std": 1.5,
+        "persistence": 3,
+        "threshold_mode": "mean_std",
+        "threshold_percentile": 99.5,
+    },
+}
+DEFAULT_PRESET = "conservative"
+RUN_GRID_SEARCH = False
+ENABLE_PLOTS = True
+NUM_UNITS = 100
 
 
 def load_fd004(path: Path) -> pd.DataFrame:
