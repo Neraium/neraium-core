@@ -80,17 +80,17 @@ class AtomicBaselineLearner:
     def _directional_proxy(self, data: np.ndarray) -> np.ndarray:
         x = data[:-1]
         y = data[1:]
-        n = x.shape[1]
-        proxy = np.zeros((n, n), dtype=float)
-        for i in range(n):
-            for j in range(n):
-                if i == j:
-                    continue
-                a = x[:, i]
-                b = y[:, j]
-                c = np.corrcoef(a, b)[0, 1] if a.std() > 1e-12 and b.std() > 1e-12 else 0.0
-                proxy[i, j] = float(np.nan_to_num(c))
-        return proxy
+        n_obs = max(x.shape[0], 1)
+        x_centered = x - x.mean(axis=0, keepdims=True)
+        y_centered = y - y.mean(axis=0, keepdims=True)
+        sx = x_centered.std(axis=0, ddof=1) if n_obs > 1 else x_centered.std(axis=0)
+        sy = y_centered.std(axis=0, ddof=1) if n_obs > 1 else y_centered.std(axis=0)
+        denom = sx[:, None] * sy[None, :]
+        cov = (x_centered.T @ y_centered) / max(n_obs - 1, 1)
+        proxy = np.divide(cov, np.where(denom < 1e-12, 1.0, denom))
+        proxy[denom < 1e-12] = 0.0
+        np.fill_diagonal(proxy, 0.0)
+        return np.nan_to_num(proxy)
 
     def _fit_latent_states(self, data: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
         idx = np.linspace(0, data.shape[0] - 1, self.latent_states, dtype=int)
