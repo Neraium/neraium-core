@@ -36,6 +36,7 @@ Key public API::
 
 from .config import ALL_DATASETS, DEFAULT_PRESET, PRESETS, DetectorConfig
 from .detector import StructuralDriftDetector, find_warning_index
+from .qit_detector import QITConfig, QITDetector, create_qit_detector
 
 __all__ = [
     "DetectorConfig",
@@ -44,4 +45,7 @@ __all__ = [
     "ALL_DATASETS",
     "StructuralDriftDetector",
     "find_warning_index",
+    "QITConfig",
+    "QITDetector",
+    "create_qit_detector",
 ]
