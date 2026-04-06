@@ -41,7 +41,7 @@ def detect_anomaly(series, config):
     persistence_required = config.get("persistence", 5)
 
     threshold_std = config.get("threshold_std", 2.5)
-    slope_threshold = config.get("slope_threshold", 0.5)
+    slope_threshold = config.get("slope_threshold", 0.4)
 
     early_trigger_std = config.get("early_trigger_std", 1.5)
 
