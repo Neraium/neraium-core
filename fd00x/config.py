@@ -264,6 +264,57 @@ class DetectorConfig:
     Used as the subdirectory name under output_root.
     """
 
+    # ── Atomic layer detector controls (v2) ─────────────────────────────────
+    window_size: int = 120
+    """Atomic monitor rolling buffer size for online micro-detectors."""
+
+    forgetting_factor: float = 0.98
+    """Exponential forgetting used by online SDE-style updates."""
+
+    sde_dt: float = 1.0
+    """Delta-t used by micro-dynamics drift/diffusion tracking."""
+
+    te_k: int = 3
+    """Placeholder setting reserved for TE estimator replacement."""
+
+    latent_state_count: int = 4
+    """Number of latent regimes used by the v1 occupancy approximation."""
+
+    dmd_rank: int = 4
+    """Rank for DMD-like dynamic mode approximation."""
+
+    compute_interval_structure: int = 1
+    """Decimation interval for micro-structure updates."""
+
+    compute_interval_state: int = 5
+    """Decimation interval for micro-state updates."""
+
+    compute_interval_topology: int = 10
+    """Decimation interval for micro-topology updates."""
+
+    compute_interval_events: int = 1
+    """Decimation interval for micro-time event updates."""
+
+    green_yellow: float = 0.45
+    """Atomic fused score threshold for GREEN→YELLOW transitions."""
+
+    yellow_red: float = 0.65
+    """Atomic fused score threshold for YELLOW→RED transitions."""
+
+    detector_weights: Dict[str, float] = field(
+        default_factory=lambda: {
+            "micro_dynamics": 0.25,
+            "micro_structure": 0.20,
+            "micro_time": 0.15,
+            "micro_state": 0.20,
+            "micro_topology": 0.20,
+        }
+    )
+    """Per-layer fusion weights for the atomic anomaly fusion engine."""
+
+    event_level_std: float = 1.0
+    """Level crossing z-threshold used by micro-time event extraction."""
+
     # ─────────────────────────────────────────────────────────────────────────
     # Serialisation helpers
     # ─────────────────────────────────────────────────────────────────────────
