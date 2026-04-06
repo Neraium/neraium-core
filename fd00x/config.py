@@ -322,6 +322,11 @@ class DetectorConfig:
 
     compute_interval_events: int = 1
     """Decimation interval for micro-time event updates."""
+    runtime_optimized: bool = False
+    """Enable conservative runtime-focused decimation for faster iteration."""
+
+    runtime_interval_scale: int = 1
+    """Multiplier applied to compute intervals when ``runtime_optimized`` is True."""
 
     green_yellow: float = 0.60
     """Atomic fused score threshold for GREEN→YELLOW transitions."""
@@ -480,6 +485,18 @@ PRESETS: Dict[str, DetectorConfig] = {
         ema_alpha=0.20,
         score_fpr_penalty=450.0,
         score_coverage_weight=35.0,
+    ),
+    "runtime_optimized": DetectorConfig(
+        threshold_std=1.6,
+        threshold_mode="percentile",
+        threshold_percentile=98.0,
+        persistence=4,
+        runtime_optimized=True,
+        runtime_interval_scale=2,
+        compute_interval_structure=2,
+        compute_interval_state=8,
+        compute_interval_topology=20,
+        compute_interval_events=2,
     ),
 }
 

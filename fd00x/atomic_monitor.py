@@ -84,7 +84,9 @@ class AtomicMonitor:
         )
 
         self.baseline: Optional[AtomicBaseline] = None
-        self.buffer = np.empty((0, len(self.sensors)), dtype=float)
+        self.buffer = np.empty((self.window_size, len(self.sensors)), dtype=float)
+        self.buffer_count = 0
+        self.buffer_pos = 0
         self.counter = 0
         self.timings: List[float] = []
         self.component_history: List[Dict[str, float]] = []
@@ -95,6 +97,10 @@ class AtomicMonitor:
         self.prev_x: Optional[np.ndarray] = None
         self.latest_structure_shift = np.zeros((len(self.sensors), len(self.sensors)), dtype=float)
         self.latest_sensor_shift = np.zeros(len(self.sensors), dtype=float)
+        self._latest_time_score = 0.0
+        self._latest_time_sensor = np.zeros(len(self.sensors), dtype=float)
+        self._baseline_std = np.ones(len(self.sensors), dtype=float)
+        self._event_level = float(self.config.get("event_level_std", 1.0))
 
         # Per-component baseline score statistics (populated during learn_baseline replay)
         self._component_score_stats: Dict[str, Dict[str, float]] = {}
@@ -113,6 +119,11 @@ class AtomicMonitor:
         self.baseline = learner.fit(np.asarray(baseline_data, dtype=float))
         self.online_mu = self.baseline.sde_mu.copy()
         self.online_sigma = np.maximum(self.baseline.sde_sigma.copy(), 1e-6)
+        self._baseline_std = np.where(
+            np.sqrt(np.diag(self.baseline.cov)) < 1e-6,
+            1.0,
+            np.sqrt(np.diag(self.baseline.cov)),
+        )
 
         # Learn per-component score distributions via replay through baseline data
         self._component_score_stats = self._fit_component_baselines(
@@ -128,13 +139,13 @@ class AtomicMonitor:
 
         t0 = float(self.counter)
         self.counter += 1
-        self.buffer = np.vstack([self.buffer, x_t])
-        if self.buffer.shape[0] > self.window_size:
-            self.buffer = self.buffer[-self.window_size :]
+        self._append_buffer(x_t)
 
         # --- Compute raw component scores ---
         micro_dynamics_raw, sensor_dyn = self._micro_dynamics(x_t)
-        micro_time_raw, sensor_time = self._micro_time()
+        if self.counter % int(self.compute_intervals.get("events", 1)) == 0:
+            self._latest_time_score, self._latest_time_sensor = self._micro_time()
+        micro_time_raw, sensor_time = self._latest_time_score, self._latest_time_sensor
 
         micro_structure_raw = None
         edge_shift = np.zeros_like(self.latest_structure_shift)
@@ -224,6 +235,8 @@ class AtomicMonitor:
         """
         # --- Save current runtime state ---
         saved_buffer = self.buffer.copy()
+        saved_buffer_count = self.buffer_count
+        saved_buffer_pos = self.buffer_pos
         saved_counter = self.counter
         saved_prev_x = self.prev_x.copy() if self.prev_x is not None else None
         saved_online_mu = self.online_mu.copy()
@@ -235,10 +248,14 @@ class AtomicMonitor:
         saved_alert_history = list(self.alert_machine.history)
         saved_sensor_shift = self.latest_sensor_shift.copy()
         saved_structure_shift = self.latest_structure_shift.copy()
+        saved_latest_time_score = self._latest_time_score
+        saved_latest_time_sensor = self._latest_time_sensor.copy()
         saved_smoothed = self._smoothed_score
 
         # --- Reset for replay ---
-        self.buffer = np.empty((0, len(self.sensors)), dtype=float)
+        self.buffer = np.empty((self.window_size, len(self.sensors)), dtype=float)
+        self.buffer_count = 0
+        self.buffer_pos = 0
         self.counter = 0
         self.prev_x = None
         self.online_mu = self.baseline.sde_mu.copy()
@@ -252,6 +269,8 @@ class AtomicMonitor:
         self.latest_structure_shift = np.zeros(
             (len(self.sensors), len(self.sensors)), dtype=float
         )
+        self._latest_time_score = 0.0
+        self._latest_time_sensor = np.zeros(len(self.sensors), dtype=float)
         self._smoothed_score = 0.0
 
         # --- Replay and collect raw component scores ---
@@ -259,12 +278,12 @@ class AtomicMonitor:
         for x_t in baseline_data:
             x_t = np.asarray(x_t, dtype=float)
             self.counter += 1
-            self.buffer = np.vstack([self.buffer, x_t])
-            if self.buffer.shape[0] > self.window_size:
-                self.buffer = self.buffer[-self.window_size :]
+            self._append_buffer(x_t)
 
             dyn, sensor_dyn = self._micro_dynamics(x_t)
-            time_s, sensor_time = self._micro_time()
+            if self.counter % int(self.compute_intervals.get("events", 1)) == 0:
+                self._latest_time_score, self._latest_time_sensor = self._micro_time()
+            time_s, sensor_time = self._latest_time_score, self._latest_time_sensor
 
             struct_s = None
             edge_shift = np.zeros_like(self.latest_structure_shift)
@@ -293,6 +312,8 @@ class AtomicMonitor:
 
         # --- Restore state ---
         self.buffer = saved_buffer
+        self.buffer_count = saved_buffer_count
+        self.buffer_pos = saved_buffer_pos
         self.counter = saved_counter
         self.prev_x = saved_prev_x
         self.online_mu = saved_online_mu
@@ -304,6 +325,8 @@ class AtomicMonitor:
         self.alert_machine.history = saved_alert_history
         self.latest_sensor_shift = saved_sensor_shift
         self.latest_structure_shift = saved_structure_shift
+        self._latest_time_score = saved_latest_time_score
+        self._latest_time_sensor = saved_latest_time_sensor
         self._smoothed_score = saved_smoothed
 
         # --- Compute robust distribution stats ---
@@ -365,6 +388,22 @@ class AtomicMonitor:
             out[k] = normalized
         return out
 
+    def _append_buffer(self, x_t: np.ndarray) -> None:
+        if self.buffer.shape[0] != self.window_size:
+            self.buffer = np.empty((self.window_size, len(self.sensors)), dtype=float)
+            self.buffer_count = 0
+            self.buffer_pos = 0
+        self.buffer[self.buffer_pos, :] = x_t
+        self.buffer_pos = (self.buffer_pos + 1) % self.window_size
+        self.buffer_count = min(self.buffer_count + 1, self.window_size)
+
+    def _window(self) -> np.ndarray:
+        if self.buffer_count <= 0:
+            return np.empty((0, len(self.sensors)), dtype=float)
+        if self.buffer_count < self.window_size:
+            return self.buffer[: self.buffer_count]
+        return np.vstack((self.buffer[self.buffer_pos :], self.buffer[: self.buffer_pos]))
+
     # ─────────────────────────────────────────────────────────────────────────
     # Component detectors
     # ─────────────────────────────────────────────────────────────────────────
@@ -390,14 +429,14 @@ class AtomicMonitor:
         # Require enough samples to represent operating-condition variability.
         # FD004 cycles through multiple conditions; a very small window produces
         # misleadingly high correlation drift during warm-up.
+        window = self._window()
         min_samples = max(8, self.window_size // 4)
-        if self.buffer.shape[0] < min_samples:
+        if window.shape[0] < min_samples:
             return 0.0, np.zeros_like(self.latest_structure_shift)
 
         # Compute correlation matrix manually to avoid NaN from zero-variance columns.
         # np.corrcoef internally divides by std and will produce NaN for constant columns;
         # by computing manually we can intercept and zero-out those columns.
-        window = self.buffer
         n, d = window.shape
         # ddof=1 std to match Pearson correlation denominator
         std = window.std(axis=0, ddof=1) if n > 1 else window.std(axis=0)
@@ -415,7 +454,7 @@ class AtomicMonitor:
 
         dep_shift = np.abs(corr - self.baseline.dependence)
 
-        directional = self._directional_proxy(self.buffer)
+        directional = self._directional_proxy(window)
         dir_shift = np.abs(directional - self.baseline.directional_proxy)
 
         edge_shift = 0.6 * dep_shift + 0.4 * dir_shift
@@ -427,22 +466,22 @@ class AtomicMonitor:
             return np.zeros((data.shape[1], data.shape[1]), dtype=float)
         x = data[:-1]
         y = data[1:]
-        n = data.shape[1]
-        out = np.zeros((n, n), dtype=float)
-        for i in range(n):
-            for j in range(n):
-                if i == j:
-                    continue
-                a = x[:, i]
-                b = y[:, j]
-                if a.std() < 1e-9 or b.std() < 1e-9:
-                    out[i, j] = 0.0
-                else:
-                    out[i, j] = float(np.nan_to_num(np.corrcoef(a, b)[0, 1]))
-        return out
+        n_obs = max(x.shape[0], 1)
+        x_centered = x - x.mean(axis=0, keepdims=True)
+        y_centered = y - y.mean(axis=0, keepdims=True)
+        sx = x_centered.std(axis=0, ddof=1) if n_obs > 1 else x_centered.std(axis=0)
+        sy = y_centered.std(axis=0, ddof=1) if n_obs > 1 else y_centered.std(axis=0)
+        denom = sx[:, None] * sy[None, :]
+        cov = (x_centered.T @ y_centered) / max(n_obs - 1, 1)
+        out = np.divide(cov, np.where(denom < 1e-9, 1.0, denom))
+        out[denom < 1e-9] = 0.0
+        np.fill_diagonal(out, 0.0)
+        return np.nan_to_num(out, nan=0.0, posinf=0.0, neginf=0.0)
 
     def _micro_state(self) -> float:
-        x = self.buffer[-1]
+        if self.buffer_count <= 0:
+            return 0.0
+        x = self.buffer[(self.buffer_pos - 1) % self.window_size]
         centers = self.baseline.latent_centroids
         d2 = ((centers - x[None, :]) ** 2).sum(axis=1)
         probs = np.exp(-d2 / max(np.median(d2) + 1e-6, 1e-6))
@@ -451,10 +490,11 @@ class AtomicMonitor:
         return float(np.clip(shift.mean() * 2.0, 0.0, 1.0))
 
     def _micro_topology(self) -> float:
-        if self.buffer.shape[0] < 10:
+        window = self._window()
+        if window.shape[0] < 10:
             return 0.0
-        x = self.buffer[:-1].T
-        y = self.buffer[1:].T
+        x = window[:-1].T
+        y = window[1:].T
         u, s, vt = np.linalg.svd(x, full_matrices=False)
         r = min(self.dmd_rank, len(s))
         u_r = u[:, :r]
@@ -466,9 +506,9 @@ class AtomicMonitor:
         return float(np.clip(np.mean(np.abs(drift)) * 2.0, 0.0, 1.0))
 
     def _micro_time(self) -> tuple[float, np.ndarray]:
-        if self.buffer.shape[0] < 4:
+        x = self._window()
+        if x.shape[0] < 4:
             return 0.0, np.zeros(len(self.sensors), dtype=float)
-        x = self.buffer
         mean = self.baseline.mean
         std = np.sqrt(np.diag(self.baseline.cov))
         std = np.where(std < 1e-6, 1.0, std)

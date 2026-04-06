@@ -101,16 +101,19 @@ class StructuralDriftDetector:
         if ref.component_score_stats:
             monitor._component_score_stats = dict(ref.component_score_stats)
 
-        raw_scores: List[float] = []
-        component: Dict[str, List[float]] = {}
+        n_steps = data.shape[0]
+        raw = np.zeros(n_steps, dtype=float)
+        component_names = list(self.config.detector_weights.keys())
+        component_arrays: Dict[str, np.ndarray] = {
+            name: np.full(n_steps, np.nan, dtype=float) for name in component_names
+        }
 
-        for t in range(data.shape[0]):
+        for t in range(n_steps):
             upd = monitor.update(data[t], timestamp=float(t), context={}) if isinstance(monitor, AtomicMonitorCalibrated) else monitor.update(data[t], timestamp=float(t))
-            raw_scores.append(float(upd.score))
+            raw[t] = float(upd.score)
             for k, v in upd.components.items():
-                component.setdefault(k, []).append(float(v))
-
-        raw = np.asarray(raw_scores, dtype=float)
+                if k in component_arrays:
+                    component_arrays[k][t] = float(v)
         ema = _apply_ema(
             raw,
             self.config.ema_alpha,
@@ -152,8 +155,8 @@ class StructuralDriftDetector:
         )
         warning_index = _first_true_index(warning_state)
         component_activation_rates = {
-            k: float(np.mean(np.asarray(v, dtype=float) >= self.config.fusion_activation_floor))
-            for k, v in component.items()
+            k: float(np.mean(np.nan_to_num(v, nan=0.0) >= self.config.fusion_activation_floor))
+            for k, v in component_arrays.items()
         }
         dominant_alert_component = (
             max(component_activation_rates, key=component_activation_rates.get)
@@ -168,7 +171,7 @@ class StructuralDriftDetector:
             warning_index=warning_index,
             n_cycles=data.shape[0],
             reference_stats=ref,
-            component_scores={k: np.asarray(v, dtype=float) for k, v in component.items()},
+            component_scores={k: np.nan_to_num(v, nan=0.0) for k, v in component_arrays.items()},
             alert_history=[
                 {
                     "timestamp": a.timestamp,
@@ -203,6 +206,11 @@ class StructuralDriftDetector:
         )
 
     def _atomic_config(self) -> dict:
+        interval_scale = (
+            max(1, int(self.config.runtime_interval_scale))
+            if self.config.runtime_optimized
+            else 1
+        )
         return {
             "window_size": self.config.window_size,
             "forgetting_factor": self.config.forgetting_factor,
@@ -211,10 +219,10 @@ class StructuralDriftDetector:
             "latent_state_count": self.config.latent_state_count,
             "dmd_rank": self.config.dmd_rank,
             "compute_intervals": {
-                "structure": self.config.compute_interval_structure,
-                "state": self.config.compute_interval_state,
-                "topology": self.config.compute_interval_topology,
-                "events": self.config.compute_interval_events,
+                "structure": max(1, int(self.config.compute_interval_structure) * interval_scale),
+                "state": max(1, int(self.config.compute_interval_state) * interval_scale),
+                "topology": max(1, int(self.config.compute_interval_topology) * interval_scale),
+                "events": max(1, int(self.config.compute_interval_events) * interval_scale),
             },
             "alert_thresholds": {
                 "green_yellow": self.config.green_yellow,
