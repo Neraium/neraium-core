@@ -187,17 +187,20 @@ class StructuralDriftDetector:
         )
 
     def _to_qit_config(self) -> QITConfig:
+        amber_enter = max(0.0, min(1.0, float(self.config.qit_elevated)))
+        yellow_enter = max(0.0, min(1.0, float(self.config.qit_caution)))
+        red_enter = max(0.0, min(1.0, float(self.config.qit_critical)))
         return QITConfig(
             quantum_trigger=0.25,
             info_trigger=0.40,
             topological_interval=max(1, int(self.config.compute_interval_topology)),
             algorithmic_interval=max(1, int(self.config.compute_interval_events) * 10),
-            amber_enter=max(0.0, min(1.0, self.config.green_yellow)),
-            yellow_enter=max(0.0, min(1.0, self.config.yellow_red)),
-            red_enter=max(0.0, min(1.0, self.config.yellow_red + 0.15)),
-            amber_exit=max(0.0, min(1.0, self.config.green_yellow * 0.8)),
-            yellow_exit=max(0.0, min(1.0, self.config.yellow_red * 0.8)),
-            red_exit=max(0.0, min(1.0, (self.config.yellow_red + 0.15) * 0.8)),
+            amber_enter=amber_enter,
+            yellow_enter=yellow_enter,
+            red_enter=red_enter,
+            amber_exit=max(0.0, min(1.0, amber_enter * 0.8)),
+            yellow_exit=max(0.0, min(1.0, yellow_enter * 0.8)),
+            red_exit=max(0.0, min(1.0, red_enter * 0.8)),
             enter_persistence=max(1, int(self.config.persistence)),
             exit_persistence=max(1, int(self.config.exit_persistence)),
         )
