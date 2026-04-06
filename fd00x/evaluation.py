@@ -184,6 +184,8 @@ class UnitResult:
     # Diagnostic fields
     max_ema_before_degradation: float
     baseline_peak: float                  # peak EMA in the healthy region
+    dominant_component: str = "none"
+    alert_transitions: int = 0
 
     # Method tag (for comparison tables)
     method: str = "structural_drift"
@@ -227,6 +229,12 @@ def _compute_unit_result(
         covered=covered,
         max_ema_before_degradation=max_ema_before_deg,
         baseline_peak=baseline_peak,
+        dominant_component=(
+            max(scores.component_scores, key=lambda k: float(np.mean(scores.component_scores[k])))
+            if getattr(scores, "component_scores", None)
+            else "none"
+        ),
+        alert_transitions=len(getattr(scores, "alert_history", []) or []),
         method=method,
     )
 
