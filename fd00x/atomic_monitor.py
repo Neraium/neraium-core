@@ -79,6 +79,8 @@ class AtomicMonitor:
             activation_floor=float(self.config.get("fusion_activation_floor", 0.15)),
             min_active=int(self.config.get("fusion_min_active", 2)),
             downweight_factor=float(self.config.get("fusion_downweight_factor", 0.3)),
+            component_weight_multipliers=dict(self.config.get("component_weight_multipliers", {})),
+            component_soft_caps=dict(self.config.get("component_soft_caps", {})),
         )
 
         self.baseline: Optional[AtomicBaseline] = None

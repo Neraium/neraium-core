@@ -137,6 +137,20 @@ class DetectorConfig:
     Lower alpha → smoother, slower to react.
     Higher alpha → noisier, faster to react.
     """
+    adaptive_ema: bool = True
+    """Enable volatility-adaptive EMA smoothing."""
+
+    adaptive_ema_window: int = 15
+    """Window length for local volatility estimation in adaptive EMA."""
+
+    adaptive_ema_min_alpha: float = 0.08
+    """Minimum EMA alpha under high-noise conditions."""
+
+    adaptive_ema_max_alpha: float = 0.30
+    """Maximum EMA alpha under low-noise conditions."""
+
+    adaptive_ema_volatility_gain: float = 1.0
+    """Strength of alpha reduction as local volatility rises."""
 
     # ── Warning trigger (corrected persistence rule) ──────────────────────────
     threshold_std: float = 2.5
@@ -176,6 +190,20 @@ class DetectorConfig:
     """
     Percentile used when ``threshold_mode == "percentile"``.
     """
+    dynamic_threshold_window: int = 30
+    """Rolling baseline window for per-unit dynamic thresholds (0 disables)."""
+
+    dynamic_threshold_min_history: int = 20
+    """Minimum EMA history before dynamic thresholds are active."""
+
+    warning_exit_threshold_ratio: float = 0.85
+    """Hysteresis exit ratio relative to entry threshold."""
+
+    exit_persistence: int = 2
+    """Consecutive below-exit-threshold points required to clear warning."""
+
+    min_anomaly_duration: int = 5
+    """Minimum sustained anomaly duration required to trigger warning."""
 
     require_upward_ema_trend: bool = True
     """
@@ -330,6 +358,19 @@ class DetectorConfig:
     fusion_downweight_factor: float = 0.3
     """Multiplier applied to the fused score when fewer than
     ``fusion_min_active`` components are active."""
+    component_weight_multipliers: Dict[str, float] = field(
+        default_factory=lambda: {
+            "micro_time": 0.7,
+        }
+    )
+    """Optional per-component fusion weight multipliers."""
+
+    component_soft_caps: Dict[str, float] = field(
+        default_factory=lambda: {
+            "micro_time": 0.80,
+        }
+    )
+    """Optional per-component soft caps applied before fusion."""
 
     calibration_enabled: bool = True
     """Enable calibrated FP-suppression monitor wrapper (conformal/consensus/BH)."""
