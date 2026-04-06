@@ -1,7 +1,8 @@
-"""Atomic layer detector wrapper for FD00x experiments.
+"""QIT-backed detector wrapper for FD00x evaluation pipelines.
 
-This replaces the previous structural-only detector stack with an Atomic Layer
-monitor while preserving the existing evaluation pipeline API.
+This module intentionally replaces previous atomic/structural internals with a
+single hierarchical QIT detection path while preserving the existing public API
+(`StructuralDriftDetector`, `fit_reference`, `score_unit`, `process_unit`).
 """
 from __future__ import annotations
 
@@ -10,10 +11,8 @@ from typing import Any, Dict, List, Optional
 
 import numpy as np
 
-from .atomic_calibrated import AtomicMonitorCalibrated
-from .atomic_monitor import AtomicMonitor
-from .atomic_baseline import AtomicBaseline
 from .config import DetectorConfig
+from .qit_detector import QITConfig, create_qit_detector
 
 
 @dataclass
@@ -35,11 +34,12 @@ class ReferenceStats:
     event_interval_cv: np.ndarray
     n_samples: int
     component_score_stats: Dict[str, Any] = field(default_factory=dict)
+    baseline_data: np.ndarray = field(default_factory=lambda: np.zeros((0, 0), dtype=float))
 
 
 @dataclass
 class UnitScores:
-    """Per-unit atomic anomaly timeline and detection outputs."""
+    """Per-unit anomaly timeline and detection outputs."""
 
     raw_drift: np.ndarray
     ema_drift: np.ndarray
@@ -57,32 +57,40 @@ class UnitScores:
 
 
 class StructuralDriftDetector:
-    """Compatibility wrapper exposing the old detector API with atomic internals."""
+    """Compatibility wrapper exposing prior API with QIT internals."""
 
     def __init__(self, config: DetectorConfig) -> None:
         self.config = config
 
     def fit_reference(self, healthy_data: np.ndarray) -> ReferenceStats:
-        sensors = [f"s{i}" for i in range(healthy_data.shape[1])]
-        monitor = self._build_monitor(sensors)
-        monitor.learn_baseline(healthy_data)
-        b = monitor.baseline
+        healthy = np.asarray(healthy_data, dtype=float)
+        if healthy.ndim != 2:
+            raise ValueError("healthy_data must be 2D")
+        mean = healthy.mean(axis=0)
+        cov = np.cov(healthy, rowvar=False) + np.eye(healthy.shape[1]) * 1e-6
+        precision = np.linalg.pinv(cov)
+        std = np.maximum(healthy.std(axis=0), 1e-6)
+
+        corr = np.corrcoef(healthy, rowvar=False)
+        corr = np.nan_to_num(corr, nan=0.0)
+
         return ReferenceStats(
-            mean=b.mean,
-            cov=b.cov,
-            precision=b.precision,
-            sde_mu=b.sde_mu,
-            sde_sigma=b.sde_sigma,
-            dependence=b.dependence,
-            directional_proxy=b.directional_proxy,
-            latent_centroids=b.latent_centroids,
-            latent_occupancy=b.latent_occupancy,
-            mode_eigenvalues=b.mode_eigenvalues,
-            mode_basis=b.mode_basis,
-            event_rate=b.event_rate,
-            event_interval_cv=b.event_interval_cv,
-            n_samples=healthy_data.shape[0],
-            component_score_stats=dict(monitor._component_score_stats),
+            mean=mean,
+            cov=cov,
+            precision=precision,
+            sde_mu=mean.copy(),
+            sde_sigma=std,
+            dependence=corr,
+            directional_proxy=np.zeros_like(mean),
+            latent_centroids=np.zeros((1, healthy.shape[1]), dtype=float),
+            latent_occupancy=np.ones(1, dtype=float),
+            mode_eigenvalues=np.linalg.eigvalsh(cov),
+            mode_basis=np.eye(healthy.shape[1], dtype=float),
+            event_rate=np.zeros(healthy.shape[1], dtype=float),
+            event_interval_cv=np.zeros(healthy.shape[1], dtype=float),
+            n_samples=healthy.shape[0],
+            component_score_stats={},
+            baseline_data=healthy.copy(),
         )
 
     def score_unit(
@@ -92,60 +100,44 @@ class StructuralDriftDetector:
         override_threshold_std: Optional[float] = None,
         override_persistence: Optional[int] = None,
     ) -> UnitScores:
-        sensors = [f"s{i}" for i in range(data.shape[1])]
-        monitor = self._build_monitor(sensors)
-        monitor.baseline = self._baseline_from_reference(ref)
-        monitor.online_mu = ref.sde_mu.copy()
-        monitor.online_sigma = np.maximum(ref.sde_sigma.copy(), 1e-6)
-        # Restore per-component normalization stats from the reference
-        if ref.component_score_stats:
-            monitor._component_score_stats = dict(ref.component_score_stats)
+        arr = np.asarray(data, dtype=float)
+        sensors = [f"s{i}" for i in range(arr.shape[1])]
 
-        n_steps = data.shape[0]
-        raw = np.zeros(n_steps, dtype=float)
-        component_names = list(self.config.detector_weights.keys())
+        qit_cfg = self._to_qit_config()
+        detector = create_qit_detector(sensors=sensors, baseline_data=ref.baseline_data, config=qit_cfg)
+
+        component_names = ["quantum", "information", "free_energy", "topological", "algorithmic"]
+        raw = np.zeros(arr.shape[0], dtype=float)
         component_arrays: Dict[str, np.ndarray] = {
-            name: np.full(n_steps, np.nan, dtype=float) for name in component_names
+            name: np.zeros(arr.shape[0], dtype=float) for name in component_names
         }
+        alert_history: List[dict] = []
 
-        for t in range(n_steps):
-            upd = monitor.update(data[t], timestamp=float(t), context={}) if isinstance(monitor, AtomicMonitorCalibrated) else monitor.update(data[t], timestamp=float(t))
-            raw[t] = float(upd.score)
-            for k, v in upd.components.items():
-                if k in component_arrays:
-                    component_arrays[k][t] = float(v)
-        ema = _apply_ema(
-            raw,
-            self.config.ema_alpha,
-            adaptive=self.config.adaptive_ema,
-            adaptive_window=self.config.adaptive_ema_window,
-            min_alpha=self.config.adaptive_ema_min_alpha,
-            max_alpha=self.config.adaptive_ema_max_alpha,
-            volatility_gain=self.config.adaptive_ema_volatility_gain,
-        )
+        for t, x in enumerate(arr):
+            out = detector.detect(x)
+            raw[t] = float(out["fused"]["total"])
+            for k in component_names:
+                component_arrays[k][t] = float(out["scores"][k])
+            if out["diagnostics"]["state_changed"]:
+                alert_history.append(
+                    {
+                        "timestamp": float(t),
+                        "level": str(out["fused"]["state"]),
+                        "score": float(out["fused"]["total"]),
+                        "dominant_detector": max(out["scores"], key=out["scores"].get),
+                    }
+                )
 
-        healthy_ema = ema[: min(ref.n_samples, ema.shape[0])]
+        ema = _apply_ema(raw, self.config.ema_alpha)
+
         threshold_std = override_threshold_std if override_threshold_std is not None else self.config.threshold_std
+        threshold = float(np.mean(ema[: max(1, min(ref.n_samples, ema.size))]) + threshold_std * max(np.std(ema[: max(1, min(ref.n_samples, ema.size))]), 1e-6))
+
         persistence = override_persistence if override_persistence is not None else self.config.persistence
-        static_threshold = _compute_ema_threshold(
-            healthy_ema=healthy_ema,
-            threshold_mode=self.config.threshold_mode,
-            threshold_std=threshold_std,
-            threshold_percentile=self.config.threshold_percentile,
-        )
-        enter_threshold = _compute_dynamic_thresholds(
-            ema=ema,
-            static_threshold=static_threshold,
-            threshold_mode=self.config.threshold_mode,
-            threshold_std=threshold_std,
-            threshold_percentile=self.config.threshold_percentile,
-            rolling_window=self.config.dynamic_threshold_window,
-            min_history=self.config.dynamic_threshold_min_history,
-        )
         warning_state = compute_warning_state(
-            ema,
-            enter_threshold,
-            persistence,
+            scores=ema,
+            threshold=np.full(ema.shape[0], threshold, dtype=float),
+            persistence=persistence,
             require_upward_trend=self.config.require_upward_ema_trend,
             slope_window=self.config.slope_window,
             min_slope=self.config.min_slope,
@@ -154,36 +146,25 @@ class StructuralDriftDetector:
             min_anomaly_duration=max(self.config.min_anomaly_duration, persistence),
         )
         warning_index = _first_true_index(warning_state)
+
         component_activation_rates = {
-            k: float(np.mean(np.nan_to_num(v, nan=0.0) >= self.config.fusion_activation_floor))
+            k: float(np.mean(v >= self.config.fusion_activation_floor))
             for k, v in component_arrays.items()
         }
-        dominant_alert_component = (
-            max(component_activation_rates, key=component_activation_rates.get)
-            if component_activation_rates
-            else "none"
-        )
+        dominant_alert_component = max(component_activation_rates, key=component_activation_rates.get)
 
         return UnitScores(
             raw_drift=raw,
             ema_drift=ema,
-            threshold=float(static_threshold),
+            threshold=threshold,
             warning_index=warning_index,
-            n_cycles=data.shape[0],
+            n_cycles=arr.shape[0],
             reference_stats=ref,
-            component_scores={k: np.nan_to_num(v, nan=0.0) for k, v in component_arrays.items()},
-            alert_history=[
-                {
-                    "timestamp": a.timestamp,
-                    "level": a.level,
-                    "score": a.score,
-                    "dominant_detector": a.dominant_detector,
-                }
-                for a in monitor.alert_machine.history
-            ],
+            component_scores=component_arrays,
+            alert_history=alert_history,
             warning_state=warning_state.astype(bool),
-            warning_enter_threshold=enter_threshold.astype(float),
-            warning_exit_threshold=(enter_threshold * float(self.config.warning_exit_threshold_ratio)).astype(float),
+            warning_enter_threshold=np.full(arr.shape[0], threshold, dtype=float),
+            warning_exit_threshold=np.full(arr.shape[0], threshold * float(self.config.warning_exit_threshold_ratio), dtype=float),
             component_activation_rates=component_activation_rates,
             dominant_alert_component=dominant_alert_component,
         )
@@ -197,83 +178,28 @@ class StructuralDriftDetector:
         n = len(data)
         healthy_end = max(self.config.min_reference_samples, int(n * self.config.healthy_fraction))
         healthy_end = min(healthy_end, n - 1)
-        ref = self.fit_reference(data[:healthy_end])
+        ref = self.fit_reference(np.asarray(data, dtype=float)[:healthy_end])
         return self.score_unit(
-            data,
+            np.asarray(data, dtype=float),
             ref,
             override_threshold_std=override_threshold_std,
             override_persistence=override_persistence,
         )
 
-    def _atomic_config(self) -> dict:
-        interval_scale = (
-            max(1, int(self.config.runtime_interval_scale))
-            if self.config.runtime_optimized
-            else 1
-        )
-        return {
-            "window_size": self.config.window_size,
-            "forgetting_factor": self.config.forgetting_factor,
-            "sde_dt": self.config.sde_dt,
-            "te_k": self.config.te_k,
-            "latent_state_count": self.config.latent_state_count,
-            "dmd_rank": self.config.dmd_rank,
-            "compute_intervals": {
-                "structure": max(1, int(self.config.compute_interval_structure) * interval_scale),
-                "state": max(1, int(self.config.compute_interval_state) * interval_scale),
-                "topology": max(1, int(self.config.compute_interval_topology) * interval_scale),
-                "events": max(1, int(self.config.compute_interval_events) * interval_scale),
-            },
-            "alert_thresholds": {
-                "green_yellow": self.config.green_yellow,
-                "yellow_red": self.config.yellow_red,
-            },
-            "detector_weights": self.config.detector_weights,
-            "event_level_std": self.config.event_level_std,
-            "score_ema_alpha": self.config.score_ema_alpha,
-            "fusion_activation_floor": self.config.fusion_activation_floor,
-            "fusion_min_active": self.config.fusion_min_active,
-            "fusion_downweight_factor": self.config.fusion_downweight_factor,
-            "component_weight_multipliers": self.config.component_weight_multipliers,
-            "component_soft_caps": self.config.component_soft_caps,
-            "conformal_enabled": self.config.conformal_enabled,
-            "conformal_alpha": self.config.conformal_alpha,
-            "conformal_window": self.config.conformal_window,
-            "operational_modes": self.config.operational_modes,
-            "maintenance_windows": self.config.maintenance_windows,
-            "diurnal_patterns": self.config.diurnal_patterns,
-            "consensus_required": self.config.consensus_required,
-            "consensus_window": self.config.consensus_window,
-            "threshold_adaptation": self.config.threshold_adaptation,
-            "target_fp_rate": self.config.target_fp_rate,
-            "fp_history_window": self.config.fp_history_window,
-            "bh_enabled": self.config.bh_enabled,
-            "bh_fdr_target": self.config.bh_fdr_target,
-            "min_alert_duration": self.config.min_alert_duration,
-            "cooldown_period": self.config.cooldown_period,
-        }
-
-    def _build_monitor(self, sensors: List[str]) -> AtomicMonitor:
-        cfg = self._atomic_config()
-        if self.config.calibration_enabled:
-            return AtomicMonitorCalibrated(sensors=sensors, config=cfg)
-        return AtomicMonitor(sensors=sensors, config=cfg)
-
-    def _baseline_from_reference(self, ref: ReferenceStats) -> AtomicBaseline:
-        return AtomicBaseline(
-            mean=ref.mean.copy(),
-            cov=ref.cov.copy(),
-            precision=ref.precision.copy(),
-            sde_mu=ref.sde_mu.copy(),
-            sde_sigma=ref.sde_sigma.copy(),
-            dependence=ref.dependence.copy(),
-            directional_proxy=ref.directional_proxy.copy(),
-            latent_centroids=ref.latent_centroids.copy(),
-            latent_occupancy=ref.latent_occupancy.copy(),
-            mode_eigenvalues=ref.mode_eigenvalues.copy(),
-            mode_basis=ref.mode_basis.copy(),
-            event_rate=ref.event_rate.copy(),
-            event_interval_cv=ref.event_interval_cv.copy(),
+    def _to_qit_config(self) -> QITConfig:
+        return QITConfig(
+            quantum_trigger=0.25,
+            info_trigger=0.40,
+            topological_interval=max(1, int(self.config.compute_interval_topology)),
+            algorithmic_interval=max(1, int(self.config.compute_interval_events) * 10),
+            amber_enter=max(0.0, min(1.0, self.config.green_yellow)),
+            yellow_enter=max(0.0, min(1.0, self.config.yellow_red)),
+            red_enter=max(0.0, min(1.0, self.config.yellow_red + 0.15)),
+            amber_exit=max(0.0, min(1.0, self.config.green_yellow * 0.8)),
+            yellow_exit=max(0.0, min(1.0, self.config.yellow_red * 0.8)),
+            red_exit=max(0.0, min(1.0, (self.config.yellow_red + 0.15) * 0.8)),
+            enter_persistence=max(1, int(self.config.persistence)),
+            exit_persistence=max(1, int(self.config.exit_persistence)),
         )
 
 
@@ -379,88 +305,15 @@ def compute_warning_state(
     return state
 
 
-def _apply_ema(
-    series: np.ndarray,
-    alpha: float,
-    *,
-    adaptive: bool = False,
-    adaptive_window: int = 15,
-    min_alpha: float = 0.08,
-    max_alpha: float = 0.30,
-    volatility_gain: float = 1.0,
-) -> np.ndarray:
+def _apply_ema(series: np.ndarray, alpha: float) -> np.ndarray:
     if len(series) == 0:
         return series
     ema = np.empty_like(series)
     ema[0] = series[0]
-    if not adaptive:
-        use_alpha = float(alpha)
-        for i in range(1, len(series)):
-            ema[i] = use_alpha * series[i] + (1.0 - use_alpha) * ema[i - 1]
-        return ema
-
-    base_alpha = float(alpha)
-    local_vol_hist: list[float] = []
+    use_alpha = float(alpha)
     for i in range(1, len(series)):
-        lo = max(0, i - max(2, int(adaptive_window)))
-        recent = series[lo : i + 1]
-        local_vol = float(np.std(recent)) if recent.size > 1 else 0.0
-        local_vol_hist.append(local_vol)
-        baseline_vol = float(np.median(local_vol_hist)) if local_vol_hist else local_vol
-        vol_ratio = local_vol / max(baseline_vol, 1e-6)
-        damp = 1.0 + float(volatility_gain) * max(0.0, vol_ratio - 1.0)
-        alpha_t = float(np.clip(base_alpha / damp, min_alpha, max_alpha))
-        ema[i] = alpha_t * series[i] + (1.0 - alpha_t) * ema[i - 1]
+        ema[i] = use_alpha * series[i] + (1.0 - use_alpha) * ema[i - 1]
     return ema
-
-
-def _compute_ema_threshold(
-    healthy_ema: np.ndarray,
-    threshold_mode: str,
-    threshold_std: float,
-    threshold_percentile: float,
-) -> float:
-    if healthy_ema.size == 0:
-        return 1e-6
-    mode = str(threshold_mode).strip().lower()
-    if mode == "mean_std":
-        return float(np.mean(healthy_ema) + threshold_std * max(np.std(healthy_ema), 1e-6))
-    if mode == "percentile":
-        return float(np.percentile(healthy_ema, float(np.clip(threshold_percentile, 0.0, 100.0))))
-    if mode == "robust_mad":
-        m = float(np.median(healthy_ema))
-        mad = float(np.median(np.abs(healthy_ema - m)))
-        return m + threshold_std * max(mad, 1e-6)
-    raise ValueError(f"Unsupported threshold_mode '{threshold_mode}'")
-
-
-def _compute_dynamic_thresholds(
-    ema: np.ndarray,
-    static_threshold: float,
-    threshold_mode: str,
-    threshold_std: float,
-    threshold_percentile: float,
-    rolling_window: int,
-    min_history: int,
-) -> np.ndarray:
-    arr = np.asarray(ema, dtype=float)
-    thr = np.full(arr.shape[0], float(static_threshold), dtype=float)
-    if rolling_window <= 0:
-        return thr
-    for i in range(arr.shape[0]):
-        if i < int(min_history):
-            continue
-        lo = max(0, i - int(rolling_window))
-        hist = arr[lo:i]
-        if hist.size < max(3, int(min_history)):
-            continue
-        thr[i] = _compute_ema_threshold(
-            healthy_ema=hist,
-            threshold_mode=threshold_mode,
-            threshold_std=threshold_std,
-            threshold_percentile=threshold_percentile,
-        )
-    return thr
 
 
 def _first_true_index(mask: np.ndarray) -> Optional[int]:
