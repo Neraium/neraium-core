@@ -51,7 +51,14 @@ def _compute_aggregate(
     path_name: str,
 ) -> PathMetrics:
     if not warning_by_unit:
-        return PathMetrics(path_name=path_name, units_evaluated=0, coverage=0.0, false_positive_rate=0.0, mean_lead=0.0, score=0.0)
+        return PathMetrics(
+            path_name=path_name,
+            units_evaluated=0,
+            coverage=0.0,
+            false_positive_rate=0.0,
+            mean_lead=0.0,
+            score=-9999.0,
+        )
 
     covered = 0
     false_positives = 0
@@ -120,7 +127,7 @@ def _format_table(rows: list[PathMetrics]) -> str:
 
 def run_fd004_path_comparison(
     *,
-    train_path: str,
+    train_path: str | None = None,
     output_dir: str,
     subset_units: int = 20,
     max_cycles_per_unit: int | None = None,
@@ -232,7 +239,14 @@ def main() -> None:
             "Benchmark FD004 subset using both the isolated SII-ML checkpoint path and the full Neraium platform path."
         )
     )
-    parser.add_argument("--train-path", default="train_FD004.txt", help="Path to train_FD004.txt")
+    parser.add_argument(
+        "--train-path",
+        default=None,
+        help=(
+            "Optional path to train_FD004.txt. "
+            "If omitted, dataset discovery searches train_FD004.txt in cwd and data/."
+        ),
+    )
     parser.add_argument("--output-dir", default="reports/fd004_path_comparison", help="Directory for CSV/JSON outputs")
     parser.add_argument("--subset-units", type=int, default=20, help="Number of FD004 units to evaluate")
     parser.add_argument(

@@ -22,6 +22,10 @@ def _softmax(x: np.ndarray, axis: int = -1) -> np.ndarray:
     return ex / np.clip(ex.sum(axis=axis, keepdims=True), 1e-12, None)
 
 
+def _sanitize_scalar(value: float) -> float:
+    return float(np.nan_to_num(value, nan=0.0, posinf=0.0, neginf=0.0))
+
+
 @dataclass
 class MLConfig:
     attention_heads: int = 4
@@ -133,6 +137,11 @@ class SIIML(SII):
             variance_weight=float(progression_cfg.get("variance_weight", 0.22)),
             alpha=float(progression_cfg.get("alpha", 3.0)),
             raw_offset=float(progression_cfg.get("raw_offset", 1.10)),
+            trend_weight=float(progression_cfg.get("trend_weight", 0.25)),
+            trend_window=int(progression_cfg.get("trend_window", 5)),
+            progression_decay_floor=float(progression_cfg.get("progression_decay_floor", 0.985)),
+            score_ema_alpha=float(progression_cfg.get("score_ema_alpha", 0.25)),
+            state_hysteresis=float(progression_cfg.get("state_hysteresis", 0.03)),
         )
         super().__init__(sensors, baseline_data, thresholds=thresholds, progression=progression)
         ml_cfg = merged["ml"]
@@ -168,8 +177,21 @@ class SIIML(SII):
         )
         z = np.asarray([base["z_scores"][sensor] for sensor in self.sensors], dtype=float)
 
-        context, attention_importance = self.attention.forward(z)
-        graph_embed, graph_centrality = self.graph.forward(context)
+        try:
+            context, attention_importance = self.attention.forward(z)
+            context = np.nan_to_num(context, nan=0.0, posinf=0.0, neginf=0.0)
+            attention_importance = np.nan_to_num(attention_importance, nan=0.0, posinf=0.0, neginf=0.0)
+        except Exception:
+            context = np.zeros((len(self.sensors), self.ml_config.attention_heads * self.ml_config.attention_head_dim), dtype=float)
+            attention_importance = np.zeros(len(self.sensors), dtype=float)
+
+        try:
+            graph_embed, graph_centrality = self.graph.forward(context)
+            graph_embed = np.nan_to_num(graph_embed, nan=0.0, posinf=0.0, neginf=0.0)
+            graph_centrality = np.nan_to_num(graph_centrality, nan=0.0, posinf=0.0, neginf=0.0)
+        except Exception:
+            graph_embed = np.zeros((len(self.sensors), self.ml_config.graph_hidden), dtype=float)
+            graph_centrality = np.zeros(len(self.sensors), dtype=float)
         _ = graph_embed  # kept for possible downstream diagnostics
 
         layer_vector = np.asarray(
@@ -182,18 +204,24 @@ class SIIML(SII):
             ],
             dtype=float,
         )
-        neural_score = self.booster.forward(layer_vector)
-        final_score = (1.0 - self.ml_config.neural_boost) * float(base["score"]) + self.ml_config.neural_boost * neural_score
+        try:
+            neural_score = _sanitize_scalar(self.booster.forward(layer_vector))
+        except Exception:
+            neural_score = 0.0
+        final_score = _sanitize_scalar(
+            (1.0 - self.ml_config.neural_boost) * _sanitize_scalar(base["score"])
+            + self.ml_config.neural_boost * neural_score
+        )
 
-        fused_importance = 0.5 * np.abs(z) + 0.3 * attention_importance + 0.2 * graph_centrality
+        fused_importance = np.nan_to_num(0.5 * np.abs(z) + 0.3 * attention_importance + 0.2 * graph_centrality, nan=0.0, posinf=0.0, neginf=0.0)
         rank_idx = np.argsort(fused_importance)[::-1]
         critical = [self.sensors[i] for i in rank_idx[: min(5, len(rank_idx))]]
 
         base.update(
             {
                 "atomic_score": float(base.get("atomic_score", base["score"])),
-                "neural_score": float(neural_score),
-                "score": float(np.clip(final_score, 0.0, 1.0)),
+                "neural_score": _sanitize_scalar(neural_score),
+                "score": _sanitize_scalar(np.clip(final_score, 0.0, 1.0)),
                 "state": self._to_state(float(final_score)),
                 "critical_sensors": critical,
                 "sensor_importance": {self.sensors[i]: float(fused_importance[i]) for i in range(len(self.sensors))},
