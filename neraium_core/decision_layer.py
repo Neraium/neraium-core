@@ -3,6 +3,8 @@ from __future__ import annotations
 import os
 from typing import Any
 
+import numpy as np
+
 
 def _risk_level(score: float) -> str:
     if score >= 2.5:
@@ -526,6 +528,11 @@ def evaluate_signal(timeseries: list[dict[str, Any]], config: dict[str, Any]) ->
         }
 
     peak_instability = float(config.get("peak_instability", 1.5))
+    md_weight = float(config.get("md_weight", 0.5))
+    drift_threshold = float(config.get("drift_threshold", 2.0))
+    md_clip = float(config.get("md_clip", 5.0))
+    md_ema_alpha = float(config.get("md_ema_alpha", 0.2))
+    base_activation_threshold = float(config.get("base_activation_threshold", 0.2))
 
     phases = [str(row.get("phase", "") or "").lower().strip() for row in timeseries]
     all_stable = bool(phases) and all(p == "stable" for p in phases)
@@ -536,17 +543,63 @@ def evaluate_signal(timeseries: list[dict[str, Any]], config: dict[str, Any]) ->
             values.append(float(row.get("composite_instability", 0.0)))
         except (TypeError, ValueError):
             values.append(0.0)
+    base_values = np.asarray(values, dtype=float)
+    base_values = np.nan_to_num(base_values, nan=0.0, posinf=0.0, neginf=0.0)
 
-    latest_instability = float(values[-1])
-    max_instability = max(values) if values else 0.0
+    md_signal_raw = config.get("md_signal")
+    if isinstance(md_signal_raw, (list, tuple, np.ndarray)) and len(md_signal_raw) == len(values):
+        md_values = np.asarray(md_signal_raw, dtype=float)
+    else:
+        md_values = np.asarray(
+            [
+                row.get("md", row.get("md_signal", row.get("mahalanobis_distance", row.get("mahalanobis_score", 0.0))))
+                for row in timeseries
+            ],
+            dtype=float,
+        )
+        if md_values.size != base_values.size:
+            md_values = np.zeros_like(base_values)
+    md_values = np.nan_to_num(md_values, nan=0.0, posinf=0.0, neginf=0.0)
+
+    if md_values.size and float(np.std(md_values)) > 0.0:
+        md_norm = (md_values - float(np.mean(md_values))) / (float(np.std(md_values)) + 1e-6)
+        md_norm = np.clip(md_norm, -md_clip, md_clip)
+        md_norm = np.nan_to_num(md_norm, nan=0.0, posinf=md_clip, neginf=-md_clip)
+    else:
+        md_norm = np.zeros_like(base_values)
+
+    if md_norm.size != base_values.size:
+        md_smooth = np.zeros_like(base_values)
+    elif md_norm.size == 0:
+        md_smooth = md_norm
+    else:
+        alpha = float(np.clip(md_ema_alpha, 0.0, 1.0))
+        md_smooth = np.zeros_like(md_norm)
+        md_smooth[0] = md_norm[0]
+        for i in range(1, len(md_norm)):
+            md_smooth[i] = alpha * md_norm[i] + (1.0 - alpha) * md_smooth[i - 1]
+    md_smooth = np.nan_to_num(md_smooth, nan=0.0, posinf=md_clip, neginf=-md_clip)
+
+    md_gate = (base_values > base_activation_threshold).astype(float)
+    combined_values = base_values + float(md_weight) * md_smooth * md_gate
+    combined_values = np.nan_to_num(combined_values, nan=0.0, posinf=0.0, neginf=0.0)
+
+    latest_instability = float(combined_values[-1])
+    max_instability = float(np.max(combined_values)) if combined_values.size else 0.0
+    early_drift_warning = bool(
+        md_smooth.size
+        and base_values.size
+        and float(md_smooth[-1]) > drift_threshold
+        and float(base_values[-1]) > base_activation_threshold
+    )
 
     # Consistency rule: require a small run of elevated instability at the end
     # of the series, rather than a single noisy spike.
-    required_cycles = min(3, len(values))
+    required_cycles = min(3, len(combined_values))
     high_cut = peak_instability * 0.85
 
     consecutive_high = 0
-    for v in reversed(values):
+    for v in reversed(combined_values.tolist()):
         if v >= high_cut:
             consecutive_high += 1
         else:
@@ -564,13 +617,26 @@ def evaluate_signal(timeseries: list[dict[str, Any]], config: dict[str, Any]) ->
             "reason": [],
         }
 
-    if max_instability < peak_instability:
+    if max_instability < peak_instability and not early_drift_warning:
         return {
             "signal_emitted": False,
             "signal_strength": "low",
             "confidence": "low",
             "operator_message": "No material structural instability detected.",
             "reason": [],
+        }
+
+    if early_drift_warning and not consistency_ok:
+        return {
+            "signal_emitted": True,
+            "signal_strength": "medium",
+            "confidence": "medium",
+            "operator_message": (
+                "Early drift warning: multivariate structure shows elevated deviation "
+                "before sustained instability confirmation."
+            ),
+            "reason": ["Early warning triggered by smoothed and gated Mahalanobis drift signal."],
+            "early_drift_warning": True,
         }
 
     if consistency_ok:
@@ -590,6 +656,7 @@ def evaluate_signal(timeseries: list[dict[str, Any]], config: dict[str, Any]) ->
                 "human review for confirmation is appropriate."
             ),
             "reason": [],
+            "early_drift_warning": early_drift_warning,
         }
 
     # Suppress signal when the configured peak was hit but the evidence was not consistent.
@@ -603,4 +670,5 @@ def evaluate_signal(timeseries: list[dict[str, Any]], config: dict[str, Any]) ->
         "operator_message": (
             "Observed instability did not satisfy consistency requirements for emission."
         ),
+        "early_drift_warning": early_drift_warning,
     }

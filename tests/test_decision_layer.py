@@ -73,3 +73,51 @@ def test_evaluate_signal_message_avoids_prohibited_terms():
 
     for prohibited in ["intervene", "shut down", "must", "required", "failure imminent", "take action"]:
         assert prohibited not in message
+
+
+def test_evaluate_signal_md_weight_amplifies_detection():
+    timeseries = [
+        _row(1, 0.80, 0.20, "drift", "MEDIUM"),
+        _row(2, 0.82, 0.24, "drift", "MEDIUM"),
+        _row(3, 0.84, 0.27, "unstable", "HIGH"),
+        _row(4, 0.86, 0.30, "unstable", "HIGH"),
+        _row(5, 0.87, 0.32, "unstable", "HIGH"),
+        _row(6, 0.88, 0.34, "unstable", "HIGH"),
+    ]
+    md_signal = [0.5, 0.6, 0.8, 1.0, 1.1, 1.3]
+    result = evaluate_signal(
+        timeseries,
+        {
+            "peak_instability": 0.90,
+            "md_signal": md_signal,
+            "md_weight": 1.0,
+            "md_ema_alpha": 1.0,
+        },
+    )
+
+    assert result["signal_emitted"] is True
+    assert result["signal_strength"] in {"medium", "high"}
+
+
+def test_evaluate_signal_early_drift_trigger_from_md():
+    timeseries = [
+        _row(1, 0.21, 0.10, "drift", "LOW"),
+        _row(2, 0.21, 0.10, "drift", "LOW"),
+        _row(3, 0.22, 0.10, "drift", "LOW"),
+        _row(4, 0.23, 0.10, "drift", "LOW"),
+    ]
+    md_signal = [0.0, 0.0, 0.0, 10.0]
+    result = evaluate_signal(
+        timeseries,
+        {
+            "peak_instability": 0.9,
+            "md_signal": md_signal,
+            "md_weight": 0.5,
+            "drift_threshold": 1.0,
+            "md_ema_alpha": 1.0,
+        },
+    )
+
+    assert result["signal_emitted"] is True
+    assert result.get("early_drift_warning") is True
+    assert "Early drift warning" in result["operator_message"]
