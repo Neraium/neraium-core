@@ -78,6 +78,14 @@ This repository is now streamlined for AWS deployments (App Runner / ECS / EKS):
 
 ---
 
+## Repository organization (April 6, 2026 refresh)
+
+- Canonical repo map and placement conventions: **[docs/REPOSITORY_ORGANIZATION.md](docs/REPOSITORY_ORGANIZATION.md)**
+- Operational script index and grouping: **[tools/README.md](tools/README.md)**
+- Common local workflows via make targets (`install-dev`, `lint`, `test`, `smoke`): **`Makefile`**
+
+---
+
 ## Current product scope
 
 Neraium today is a **system stability instrumentation layer** for detecting structural degradation and instability.  
