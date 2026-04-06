@@ -188,12 +188,16 @@ class AtomicMonitorCalibrated(AtomicMonitor):
 
     def _reset_runtime_state(self) -> None:
         self.buffer = np.empty((0, len(self.sensors)), dtype=float)
+        self.buffer_count = 0
+        self.buffer_pos = 0
         self.counter = 0
         self.prev_x = None
         self.component_history.clear()
         self.score_history.clear()
         self.alert_machine.level = "GREEN"
         self.alert_machine.history.clear()
+        self._latest_time_score = 0.0
+        self._latest_time_sensor = np.zeros(len(self.sensors), dtype=float)
 
     def _restore_alert_state(self, level: str, history_len: int) -> None:
         self.alert_machine.level = level
