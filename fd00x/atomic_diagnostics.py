@@ -27,9 +27,27 @@ def top_edges(matrix: np.ndarray, k: int = 3) -> List[Tuple[int, int, float]]:
     return edges[:k]
 
 
-def diagnostic_snapshot(total_score: float, components: Dict[str, float], dominant: str) -> Dict[str, object]:
+def diagnostic_snapshot(
+    total_score: float,
+    components: Dict[str, float],
+    dominant: str,
+    smoothed_score: float = 0.0,
+    raw_component_scores: Dict[str, float] = None,
+    normalized_component_scores: Dict[str, float] = None,
+    active_detector_count: int = 0,
+) -> Dict[str, object]:
+    """Return a comprehensive diagnostic snapshot for one timestep.
+
+    Includes raw component scores, normalized component scores, the smoothed
+    fused score, and the number of active detectors — the key fields needed
+    to diagnose false positive behaviour.
+    """
     return {
         "total_score": float(total_score),
+        "smoothed_score": float(smoothed_score),
+        "active_detector_count": int(active_detector_count),
         "components": {k: float(v) for k, v in components.items()},
+        "raw_component_scores": {k: float(v) for k, v in (raw_component_scores or {}).items()},
+        "normalized_component_scores": {k: float(v) for k, v in (normalized_component_scores or {}).items()},
         "dominant_detector": dominant,
     }
