@@ -14,6 +14,11 @@ class DetectorConfig:
     ema_alpha: float = 0.20
     ridge: float = 1e-4
     instability_boundary: float = 4.5
+    target_fpr: float = 0.08
+    adaptive_history_window: int = 240
+    weak_signal_ratio: float = 0.82
+    strong_persistence: int = 2
+    weak_persistence: int = 3
     min_velocity: float = 1e-6
     warning_cap_hours: int = 240
 
@@ -32,6 +37,10 @@ class DetectionResult:
     lead_time_lower_hours: Optional[float]
     lead_time_upper_hours: Optional[float]
     lead_time_confidence: float
+    adaptive_threshold: float
+    strong_signal: bool
+    weak_signal: bool
+    early_warning_mode: bool
     state: str
     structural_driver: str
 
@@ -44,6 +53,11 @@ class HybridSIIDetector:
         )
         self._smoothed: Dict[Tuple[str, str], float] = {}
         self._velocity: Dict[Tuple[str, str], float] = {}
+        self._drift_history: Dict[Tuple[str, str], Deque[float]] = defaultdict(
+            lambda: deque(maxlen=max(32, self.config.adaptive_history_window))
+        )
+        self._strong_streak: Dict[Tuple[str, str], int] = defaultdict(int)
+        self._weak_streak: Dict[Tuple[str, str], int] = defaultdict(int)
 
     def _clean_vector(
         self,
@@ -91,7 +105,7 @@ class HybridSIIDetector:
         return v, a
 
     def _relational_stability(self, history: List[np.ndarray]) -> float:
-        if len(history) < max(3, self.config.live_window):
+        if len(history) <= max(3, self.config.live_window):
             return 1.0
 
         recent = np.vstack(history[-self.config.live_window:])
@@ -131,12 +145,52 @@ class HybridSIIDetector:
         upper = min(float(self.config.warning_cap_hours), hours * 1.25)
         return hours, lower, upper
 
-    def _state_from_scores(self, smoothed: float, stability: float) -> str:
-        if smoothed >= 3.5 or stability < 0.35:
-            return "ALERT"
-        if smoothed >= 2.0 or stability < 0.60:
-            return "WATCH"
-        return "STABLE"
+    def _adaptive_boundary(self, key: Tuple[str, str], smoothed: float) -> float:
+        scores = self._drift_history[key]
+        scores.append(float(smoothed))
+
+        if len(scores) < 16:
+            return float(self.config.instability_boundary)
+
+        quantile_level = float(max(0.50, min(0.995, 1.0 - self.config.target_fpr)))
+        data = np.array(scores, dtype=float)
+        threshold = float(np.quantile(data, quantile_level))
+        # Keep threshold from collapsing too low, but allow adaptation under drift.
+        floor = float(self.config.instability_boundary) * 0.55
+        ceil = float(self.config.instability_boundary) * 1.65
+        return max(floor, min(ceil, threshold))
+
+    def _state_from_scores(
+        self,
+        key: Tuple[str, str],
+        smoothed: float,
+        stability: float,
+        adaptive_threshold: float,
+    ) -> Tuple[str, bool, bool, bool]:
+        strong_signal = bool(smoothed >= adaptive_threshold or stability < 0.35)
+        weak_threshold = adaptive_threshold * float(self.config.weak_signal_ratio)
+        weak_signal = bool(smoothed >= weak_threshold or stability < 0.55)
+
+        if strong_signal:
+            self._strong_streak[key] += 1
+        else:
+            self._strong_streak[key] = 0
+
+        if weak_signal:
+            self._weak_streak[key] += 1
+        else:
+            self._weak_streak[key] = 0
+
+        strong_persisted = self._strong_streak[key] >= int(self.config.strong_persistence)
+        weak_persisted = self._weak_streak[key] >= int(self.config.weak_persistence)
+
+        if strong_persisted:
+            return "ALERT", strong_signal, weak_signal, False
+        if weak_persisted:
+            return "WATCH", strong_signal, weak_signal, False
+        if weak_signal:
+            return "EARLY_WARNING", strong_signal, weak_signal, True
+        return "STABLE", strong_signal, weak_signal, False
 
     def _driver_name(
         self,
@@ -177,6 +231,10 @@ class HybridSIIDetector:
                 lead_time_lower_hours=None,
                 lead_time_upper_hours=None,
                 lead_time_confidence=0.0,
+                adaptive_threshold=round(float(self.config.instability_boundary), 4),
+                strong_signal=False,
+                weak_signal=False,
+                early_warning_mode=False,
                 state="STABLE",
                 structural_driver="warmup",
             )
@@ -192,6 +250,7 @@ class HybridSIIDetector:
         self._velocity[key] = velocity
 
         stability = self._relational_stability(list(history))
+        adaptive_threshold = self._adaptive_boundary(key, smoothed)
         lead, lower, upper = self._lead_time(smoothed, velocity)
 
         confidence = max(
@@ -204,7 +263,12 @@ class HybridSIIDetector:
             ),
         )
 
-        state = self._state_from_scores(smoothed, stability)
+        state, strong_signal, weak_signal, early_warning_mode = self._state_from_scores(
+            key=key,
+            smoothed=smoothed,
+            stability=stability,
+            adaptive_threshold=adaptive_threshold,
+        )
         driver = self._driver_name(x, mu, sensor_names)
 
         return DetectionResult(
@@ -220,6 +284,10 @@ class HybridSIIDetector:
             lead_time_lower_hours=None if lower is None else round(lower, 2),
             lead_time_upper_hours=None if upper is None else round(upper, 2),
             lead_time_confidence=round(confidence, 4),
+            adaptive_threshold=round(adaptive_threshold, 4),
+            strong_signal=strong_signal,
+            weak_signal=weak_signal,
+            early_warning_mode=early_warning_mode,
             state=state,
             structural_driver=driver,
         )
