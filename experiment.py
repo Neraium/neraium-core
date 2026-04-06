@@ -30,24 +30,40 @@ DETECTOR_PRESETS = {
         "ema_alpha": 0.15, # smoother EMA to reduce noise sensitivity
     },
     # Compromise profile.
-    "balanced_v3": {
-    "threshold_mode": "robust_mad",
+    cd ~/neraium-core
 
-    # ↓ allow earlier detection
-    "threshold_percentile": 97.5,
+# ALWAYS reload repo
+git checkout main
+git fetch origin
+git pull origin main
 
-    # ↓ slightly more sensitive
-    "threshold_std": 2.0,
+# clear python cache so new config is used
+find . -type d -name "__pycache__" -exec rm -r {} +
 
-    # ↑ stabilize alerts (critical)
-    "persistence": 8,
+# run test
+python - <<'PY'
+from fd00x.experiment import load_cmapss_dataset, select_informative_sensors, evaluate_detector
+from fd00x.config import PRESETS
+from fd00x.evaluation import compute_aggregate_metrics
 
-    # ↑ avoid early noise contamination
-    "min_filtered_healthy_samples": 20,
+# use your new preset
+config = PRESETS["balanced_v3"]
 
-    # ↑ smoother signal
-    "ema_alpha": 0.12,
-    },
+unit_data = load_cmapss_dataset("FD004")
+sensor_cols = select_informative_sensors(unit_data, config)
+
+subset = dict(list(unit_data.items())[:150])
+
+results = evaluate_detector(config, subset, sensor_cols)
+metrics = compute_aggregate_metrics(results, config)
+
+print("\n=== BALANCED V3 TEST (150 units) ===")
+print("Units evaluated :", len(results))
+print("Coverage        :", metrics.coverage)
+print("FPR             :", metrics.false_positive_rate)
+print("Mean lead       :", metrics.mean_lead)
+print("Score           :", metrics.score)
+PY
     # Prioritises early lead time at the cost of more false positives.
     "aggressive": {
         "threshold_std": 1.8,
