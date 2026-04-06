@@ -46,16 +46,35 @@ if TYPE_CHECKING:
 ArrayLike = Any
 
 
+def _safe_corr(x: np.ndarray, y: np.ndarray, *, min_len: int = 3, eps: float = 1e-12) -> tuple[float, str | None]:
+    """Finite-safe Pearson correlation for short/degenerate windows."""
+    xv = np.asarray(x, dtype=float)
+    yv = np.asarray(y, dtype=float)
+
+    mask = np.isfinite(xv) & np.isfinite(yv)
+    xv = xv[mask]
+    yv = yv[mask]
+    if xv.size < min_len or yv.size < min_len:
+        return 0.0, "insufficient_data"
+    if float(np.std(xv)) <= eps or float(np.std(yv)) <= eps:
+        return 0.0, "constant_window"
+
+    corr = float(np.corrcoef(xv, yv)[0, 1])
+    if not np.isfinite(corr):
+        return 0.0, "invalid_corr"
+    return corr, None
+
+
 def _lag1_acf_per_signal(data: np.ndarray) -> np.ndarray:
     """Per-signal lag-1 autocorrelation. Returns array of length N."""
     T, N = data.shape
     result = np.zeros(N, dtype=float)
     if T < 2:
         return result
-    with np.errstate(invalid="ignore", divide="ignore"):
-        for idx in range(N):
-            result[idx] = np.corrcoef(data[:-1, idx], data[1:, idx])[0, 1]
-    return np.nan_to_num(result, nan=0.0, posinf=0.0, neginf=0.0)
+    for idx in range(N):
+        corr, _reason = _safe_corr(data[:-1, idx], data[1:, idx])
+        result[idx] = corr
+    return np.clip(np.nan_to_num(result, nan=0.0, posinf=0.0, neginf=0.0), -1.0, 1.0)
 
 
 def csd_on_residuals(residuals: ArrayLike) -> dict[str, float]:
