@@ -5,8 +5,8 @@ monitor while preserving the existing evaluation pipeline API.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Dict, List, Optional
+from dataclasses import dataclass, field
+from typing import Any, Dict, List, Optional
 
 import numpy as np
 
@@ -34,6 +34,7 @@ class ReferenceStats:
     event_rate: np.ndarray
     event_interval_cv: np.ndarray
     n_samples: int
+    component_score_stats: Dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -76,6 +77,7 @@ class StructuralDriftDetector:
             event_rate=b.event_rate,
             event_interval_cv=b.event_interval_cv,
             n_samples=healthy_data.shape[0],
+            component_score_stats=dict(monitor._component_score_stats),
         )
 
     def score_unit(
@@ -90,6 +92,9 @@ class StructuralDriftDetector:
         monitor.baseline = self._baseline_from_reference(ref)
         monitor.online_mu = ref.sde_mu.copy()
         monitor.online_sigma = np.maximum(ref.sde_sigma.copy(), 1e-6)
+        # Restore per-component normalization stats from the reference
+        if ref.component_score_stats:
+            monitor._component_score_stats = dict(ref.component_score_stats)
 
         raw_scores: List[float] = []
         component: Dict[str, List[float]] = {}
@@ -177,6 +182,10 @@ class StructuralDriftDetector:
             },
             "detector_weights": self.config.detector_weights,
             "event_level_std": self.config.event_level_std,
+            "score_ema_alpha": self.config.score_ema_alpha,
+            "fusion_activation_floor": self.config.fusion_activation_floor,
+            "fusion_min_active": self.config.fusion_min_active,
+            "fusion_downweight_factor": self.config.fusion_downweight_factor,
             "conformal_enabled": self.config.conformal_enabled,
             "conformal_alpha": self.config.conformal_alpha,
             "conformal_window": self.config.conformal_window,

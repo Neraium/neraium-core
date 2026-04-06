@@ -295,10 +295,10 @@ class DetectorConfig:
     compute_interval_events: int = 1
     """Decimation interval for micro-time event updates."""
 
-    green_yellow: float = 0.45
+    green_yellow: float = 0.60
     """Atomic fused score threshold for GREEN→YELLOW transitions."""
 
-    yellow_red: float = 0.65
+    yellow_red: float = 0.80
     """Atomic fused score threshold for YELLOW→RED transitions."""
 
     detector_weights: Dict[str, float] = field(
@@ -314,6 +314,22 @@ class DetectorConfig:
 
     event_level_std: float = 1.0
     """Level crossing z-threshold used by micro-time event extraction."""
+
+    # ── Atomic score stabilization ───────────────────────────────────────────
+    score_ema_alpha: float = 0.3
+    """EMA smoothing alpha applied to the fused atomic score before alert-state
+    transitions.  Lower = smoother / more conservative.  Range: (0, 1]."""
+
+    fusion_activation_floor: float = 0.15
+    """Minimum normalized component score to count as 'active' for gating."""
+
+    fusion_min_active: int = 2
+    """Minimum number of active components required before producing a high
+    fused score.  If fewer are active, the fused score is downweighted."""
+
+    fusion_downweight_factor: float = 0.3
+    """Multiplier applied to the fused score when fewer than
+    ``fusion_min_active`` components are active."""
 
     calibration_enabled: bool = True
     """Enable calibrated FP-suppression monitor wrapper (conformal/consensus/BH)."""
@@ -385,10 +401,15 @@ class DetectorConfig:
 # default_trusted is the runtime default and emphasises trustworthiness.
 
 PRESETS: Dict[str, DetectorConfig] = {
+    # default_trusted: conservative preset calibrated for the normalised atomic layer.
+    # Uses 99th-percentile thresholding so the threshold is set at the empirical
+    # maximum of the healthy-period EMA — healthy warm-up spikes can never persist
+    # above this threshold for the required 5 consecutive steps.
     "default_trusted": DetectorConfig(
         threshold_std=1.5,
-        persistence=3,
-        threshold_mode="mean_std",
+        threshold_mode="percentile",
+        threshold_percentile=99.0,
+        persistence=5,
         require_upward_ema_trend=True,
         slope_window=3,
         min_slope=0.02,
@@ -397,8 +418,9 @@ PRESETS: Dict[str, DetectorConfig] = {
     ),
     "balanced": DetectorConfig(
         threshold_std=1.6,
+        threshold_mode="percentile",
+        threshold_percentile=97.0,
         persistence=4,
-        threshold_mode="mean_std",
         require_upward_ema_trend=True,
         slope_window=3,
         min_slope=0.025,
@@ -408,8 +430,9 @@ PRESETS: Dict[str, DetectorConfig] = {
     ),
     "strict": DetectorConfig(
         threshold_std=1.75,
-        persistence=5,
-        threshold_mode="mean_std",
+        threshold_mode="percentile",
+        threshold_percentile=99.5,
+        persistence=7,
         require_upward_ema_trend=True,
         slope_window=4,
         min_slope=0.03,
