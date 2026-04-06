@@ -56,3 +56,4 @@ Thumbs.db
 # ------------------------------------------------------------
 cloudflared/config.yml
 .claude/
+.claude/
