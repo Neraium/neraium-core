@@ -1,17 +1,18 @@
 from pathlib import Path
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
 from numpy.linalg import lstsq, eigvals
 
-DATA_PATH = Path(r"C:\Users\Owner\Desktop\CMAPSSData\train_FD004.txt")
+DATA_PATH = Path(__file__).resolve().parent / "train_FD004.txt"
 
 SIGNAL_COLUMNS = ["s_2", "s_3", "s_4", "s_7"]
 WINDOW = 20
 DEGRADATION_FRACTION = 0.8
 EMA_ALPHA = 0.2
 CUMULATIVE_N = 30
-NUM_UNITS = 100
 
 # false-positive / stability controls
 HEALTHY_FRACTION = 0.2
@@ -86,13 +87,11 @@ def first_persistent_warning(
 
     for i in range(len(drift_ema) - persistence + 1):
         if np.all(drift_ema[i:i + persistence] > threshold):
-            return i
+            return i + persistence - 1
     return None
 
 
 def analyze_unit(signals: pd.DataFrame) -> dict:
-    signals = (signals - signals.mean()) / (signals.std() + 1e-6)
-
     baseline_scores = []
     operator_drift_scores = []
     spectral_radius_scores = []
@@ -270,7 +269,8 @@ def main():
         plt.xlabel("lead_vs_degradation")
         plt.ylabel("Count")
         plt.tight_layout()
-        plt.show()
+        plt.savefig("fd004_lead_vs_degradation_hist.png", dpi=120, bbox_inches="tight")
+        plt.close()
 
     if first_unit_plot_payload is not None:
         unit_id, result = first_unit_plot_payload
@@ -305,7 +305,8 @@ def main():
         plt.ylabel("Score")
         plt.legend()
         plt.tight_layout()
-        plt.show()
+        plt.savefig(f"fd004_unit_{unit_id}_timeseries.png", dpi=120, bbox_inches="tight")
+        plt.close()
 
 
 if __name__ == "__main__":
