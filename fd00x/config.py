@@ -315,6 +315,25 @@ class DetectorConfig:
     event_level_std: float = 1.0
     """Level crossing z-threshold used by micro-time event extraction."""
 
+    calibration_enabled: bool = True
+    """Enable calibrated FP-suppression monitor wrapper (conformal/consensus/BH)."""
+
+    conformal_enabled: bool = True
+    conformal_alpha: float = 0.05
+    conformal_window: int = 1000
+    operational_modes: Optional[int] = None
+    maintenance_windows: bool = False
+    diurnal_patterns: bool = True
+    consensus_required: int = 2
+    consensus_window: int = 10
+    threshold_adaptation: bool = True
+    target_fp_rate: float = 0.01
+    fp_history_window: int = 1000
+    bh_enabled: bool = True
+    bh_fdr_target: float = 0.05
+    min_alert_duration: int = 5
+    cooldown_period: int = 50
+
     # ─────────────────────────────────────────────────────────────────────────
     # Serialisation helpers
     # ─────────────────────────────────────────────────────────────────────────

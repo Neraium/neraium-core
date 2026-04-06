@@ -10,6 +10,7 @@ from typing import Dict, List, Optional
 
 import numpy as np
 
+from .atomic_calibrated import AtomicMonitorCalibrated
 from .atomic_monitor import AtomicMonitor
 from .config import DetectorConfig
 
@@ -52,7 +53,7 @@ class StructuralDriftDetector:
 
     def fit_reference(self, healthy_data: np.ndarray) -> ReferenceStats:
         sensors = [f"s{i}" for i in range(healthy_data.shape[1])]
-        monitor = AtomicMonitor(sensors=sensors, config=self._atomic_config())
+        monitor = self._build_monitor(sensors)
         monitor.learn_baseline(healthy_data)
         b = monitor.baseline
         return ReferenceStats(
@@ -77,15 +78,17 @@ class StructuralDriftDetector:
     ) -> UnitScores:
         sensors = [f"s{i}" for i in range(data.shape[1])]
         cfg = self._atomic_config()
-        monitor = AtomicMonitor(sensors=sensors, config=cfg)
+        monitor = self._build_monitor(sensors)
         healthy = data[: ref.n_samples]
         monitor.learn_baseline(healthy)
+        if isinstance(monitor, AtomicMonitorCalibrated) and self.config.calibration_enabled:
+            monitor.calibrate(healthy_data=healthy, validation_data=None)
 
         raw_scores: List[float] = []
         component: Dict[str, List[float]] = {}
 
         for t in range(data.shape[0]):
-            upd = monitor.update(data[t], timestamp=float(t))
+            upd = monitor.update(data[t], timestamp=float(t), context={}) if isinstance(monitor, AtomicMonitorCalibrated) else monitor.update(data[t], timestamp=float(t))
             raw_scores.append(float(upd.score))
             for k, v in upd.components.items():
                 component.setdefault(k, []).append(float(v))
@@ -168,7 +171,28 @@ class StructuralDriftDetector:
             },
             "detector_weights": self.config.detector_weights,
             "event_level_std": self.config.event_level_std,
+            "conformal_enabled": self.config.conformal_enabled,
+            "conformal_alpha": self.config.conformal_alpha,
+            "conformal_window": self.config.conformal_window,
+            "operational_modes": self.config.operational_modes,
+            "maintenance_windows": self.config.maintenance_windows,
+            "diurnal_patterns": self.config.diurnal_patterns,
+            "consensus_required": self.config.consensus_required,
+            "consensus_window": self.config.consensus_window,
+            "threshold_adaptation": self.config.threshold_adaptation,
+            "target_fp_rate": self.config.target_fp_rate,
+            "fp_history_window": self.config.fp_history_window,
+            "bh_enabled": self.config.bh_enabled,
+            "bh_fdr_target": self.config.bh_fdr_target,
+            "min_alert_duration": self.config.min_alert_duration,
+            "cooldown_period": self.config.cooldown_period,
         }
+
+    def _build_monitor(self, sensors: List[str]) -> AtomicMonitor:
+        cfg = self._atomic_config()
+        if self.config.calibration_enabled:
+            return AtomicMonitorCalibrated(sensors=sensors, config=cfg)
+        return AtomicMonitor(sensors=sensors, config=cfg)
 
 
 def find_warning_index(
