@@ -22,10 +22,12 @@ MIN_FILTERED_HEALTHY_SAMPLES = 10
 DETECTOR_PRESETS = {
     # Prioritises low false positives (default runtime behavior).
     "conservative": {
-        "threshold_std": 2.5,
-        "persistence": 5,
+        "threshold_std": 2.2,
+        "persistence": 7,
         "threshold_mode": "robust_mad",
-        "threshold_percentile": 99.5,
+        "threshold_percentile": 98.5,
+        "min_filtered_healthy_samples": 15,
+        "ema_alpha": 0.15, # smoother EMA to reduce noise sensitivity
     },
     # Compromise profile.
     "balanced": {
