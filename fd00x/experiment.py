@@ -100,14 +100,14 @@ def run_evaluate(
     run_dir: str,
 ) -> Tuple[List[UnitResult], AggregateMetrics]:
     """
-    Run the structural detector on all units and save results.
+    Run the atomic layer detector on all units and save results.
 
     Walk-forward safety:
         Reference statistics are derived only from the first
         ``healthy_fraction × n_cycles`` of each unit (frozen before scoring).
         See StructuralDriftDetector.process_unit for implementation details.
     """
-    print(f"\n[evaluate] Running structural drift detector …")
+    print(f"\n[evaluate] Running atomic layer detector …")
     results = evaluate_detector(config, unit_data, sensor_cols)
     metrics = compute_aggregate_metrics(results, config)
 
@@ -115,7 +115,7 @@ def run_evaluate(
     save_unit_results(results, os.path.join(run_dir, "results.csv"))
     save_summary_json(metrics, os.path.join(run_dir, "summary.json"))
 
-    _print_metrics("Structural detector", metrics)
+    _print_metrics("Atomic detector", metrics)
     return results, metrics
 
 
