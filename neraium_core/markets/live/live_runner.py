@@ -85,9 +85,16 @@ class LiveSessionRunner:
 
     def _bars_collected(self) -> int:
         closes = self.bars.latest_closes(self.symbols, required_bars=1)
-        if closes is None:
+        if not closes:
             return 0
-        return min(len(v) for v in closes.values())
+        counts: list[int] = []
+        for values in closes.values():
+            if values is None:
+                return 0
+            counts.append(len(values))
+        if not counts or any(count == 0 for count in counts):
+            return 0
+        return min(counts)
 
     def _warmup_metrics(self) -> tuple[int, int, float]:
         collected = self._bars_collected()
