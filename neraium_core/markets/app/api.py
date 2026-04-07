@@ -113,11 +113,11 @@ def create_app(
 
     @app.get("/health")
     def health() -> dict[str, object]:
-        return {"ok": True, "service": "markets"}
+        return {"ok": True, "service": "markets", **_runtime_fingerprint()}
 
-    @app.get("/")
-    def root() -> dict[str, str]:
-        return {"status": "ok", "app": "markets-live"}
+    @app.get("/", response_class=HTMLResponse)
+    def root() -> HTMLResponse:
+        return operator_ui()
 
     @app.get("/operator", response_class=HTMLResponse)
     def operator_ui() -> HTMLResponse:
@@ -128,6 +128,46 @@ def create_app(
             .replace("__DEFAULT_LIVE_TIMEFRAME__", DEFAULT_LIVE_TIMEFRAME)
         )
         return HTMLResponse(html)
+
+    @app.get("/operator/console", response_class=HTMLResponse)
+    def operator_console() -> HTMLResponse:
+        return operator_ui()
+
+    def _safe_live_status() -> dict:
+        default_status = {
+            "running": False,
+            "session_state": "disconnected",
+            "symbols": [],
+            "timeframe": DEFAULT_LIVE_TIMEFRAME,
+            "warmup_progress": 0.0,
+            "warmup_progress_pct": 0.0,
+            "bars_collected": 0,
+            "bars_required": live.warmup_bars_required,
+            "readiness_state": "disconnected",
+            "buffered_symbol_count": 0,
+            "last_event_at": None,
+            "last_signal_at": None,
+            "latest_error": None,
+            "suppressed_count": 0,
+            "abstain_count": 0,
+            "reconnect_count": 0,
+            "last_suppressed_at": None,
+            "last_suppressed_reason": None,
+            "timestamps": None,
+            "checklist": [],
+        }
+        try:
+            status = live.status() or {}
+        except Exception as exc:  # noqa: BLE001
+            LOGGER.warning("live status fallback due to error: %s", exc)
+            return default_status
+        safe = {**default_status, **status}
+        safe["symbols"] = safe.get("symbols") or []
+        safe["bars_collected"] = int(safe.get("bars_collected") or 0)
+        safe["warmup_progress"] = float(safe.get("warmup_progress") or 0.0)
+        safe["timestamps"] = safe.get("timestamps") or None
+        safe["checklist"] = safe.get("checklist") or []
+        return safe
 
     @app.post("/run-signals")
     def run_signals() -> dict[str, list[dict]]:
@@ -151,7 +191,7 @@ def create_app(
     def massive_status() -> dict:
         cfg = load_massive_config()
         health = check_massive_health(cfg)
-        live_status = live.status()
+        live_status = _safe_live_status()
         recent_error = sqlite.list_live_errors(limit=1)[0] if sqlite.list_live_errors(limit=1) else None
         payload = {
             **health.as_dict(),
@@ -212,11 +252,15 @@ def create_app(
             sqlite.record_replay_output(run_id, row)
         return {"run_id": run_id, "replay": rows, "meta": run_meta}
 
-       @app.post("/live/start")
-    async def live_start(body: LiveStartBody) -> dict:
-        effective_symbols = [item.upper() for item in (body.symbols or DEFAULT_LIVE_SYMBOLS)]
-        effective_timeframe = body.timeframe or DEFAULT_LIVE_TIMEFRAME
-        missing_required = [sym for sym in CORE if sym not in set(effective_symbols)]
+    @app.post("/live/start")
+    async def live_start(body: LiveStartBody | None = None) -> dict:
+        start_body = body or LiveStartBody()
+        effective_symbols = [
+            item.upper() for item in (start_body.symbols or DEFAULT_LIVE_SYMBOLS)
+        ]
+        effective_timeframe = start_body.timeframe or DEFAULT_LIVE_TIMEFRAME
+        normalized_symbols = set(effective_symbols)
+        missing_required = [sym for sym in CORE if sym not in normalized_symbols]
         if missing_required:
             required_symbols = ", ".join(CORE)
             raise HTTPException(
@@ -230,22 +274,30 @@ def create_app(
             load_massive_config().validate(require_api_key=True)
         except MassiveConfigError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+        provider_health = check_massive_health(load_massive_config())
+        if provider_health.status in {"invalid_api_key", "rest_unreachable"}:
+            detail = provider_health.error or provider_health.status.replace("_", " ")
+            raise HTTPException(status_code=503, detail=f"Massive provider unavailable: {detail}")
         try:
             await live.start(effective_symbols, effective_timeframe)
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         except RuntimeError as exc:
             raise HTTPException(status_code=503, detail=str(exc)) from exc
-        return {"status": "started", **live.status()}
+        return {"status": "started", **_safe_live_status()}
 
     @app.post("/live/stop")
     async def live_stop() -> dict:
         await live.stop()
-        return {"status": "stopped", **live.status()}
+        return {"status": "stopped", **_safe_live_status()}
 
     @app.get("/live/status")
     def live_status() -> dict:
-        return live.status()
+        return _safe_live_status()
+
+    @app.get("/integrations/massive/missing-config")
+    def massive_missing_config() -> dict:
+        raise HTTPException(status_code=400, detail="MASSIVE_API_KEY is required for Massive integration")
 
     @app.get("/live/signals/latest")
     def live_latest_signals() -> dict:
@@ -310,7 +362,7 @@ def create_app(
 
     @app.get("/operator/summary")
     def operator_summary() -> dict:
-        status = live.status()
+        status = _safe_live_status()
         latest = sqlite.list_trader_outputs(limit=20)
         warnings = sqlite.list_live_errors(limit=20)
         provider_cfg = load_massive_config()
@@ -325,6 +377,12 @@ def create_app(
             {"key": "warmup_complete", "ok": status["warmup_progress"] >= 1.0},
             {"key": "signal_engine_active", "ok": bool(status.get("last_signal_at"))},
         ]
+        status["checklist"] = checklist
+        status["timestamps"] = {
+            "last_event_at": status.get("last_event_at"),
+            "last_signal_at": status.get("last_signal_at"),
+            "last_suppressed_at": status.get("last_suppressed_at"),
+        }
         return {
             "live_status": status,
             "latest_signals": latest,
