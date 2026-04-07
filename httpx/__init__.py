@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json as _json
+import uuid
 from dataclasses import dataclass
 from types import SimpleNamespace
 from typing import Any
@@ -113,9 +114,62 @@ class Client:
         payload = content
         if json is not None:
             payload = _json.dumps(json).encode("utf-8")
-            headers = {**(headers or {}), "content-type": "application/json"}
+            hdrs = dict(headers or {})
+            hdrs.setdefault("content-type", "application/json")
+            hdrs.setdefault("content-length", str(len(payload)))
+            headers = hdrs
+        elif files is not None:
+            boundary = f"----neraium-{uuid.uuid4().hex}"
+            parts: list[bytes] = []
+            if isinstance(data, dict):
+                for key, value in data.items():
+                    parts.append(
+                        (
+                            f"--{boundary}\r\n"
+                            f"Content-Disposition: form-data; name=\"{key}\"\r\n\r\n"
+                            f"{value}\r\n"
+                        ).encode("utf-8")
+                    )
+            file_items = files.items() if isinstance(files, dict) else files
+            for key, spec in file_items:
+                filename = "upload.bin"
+                file_bytes = b""
+                content_type = "application/octet-stream"
+                if isinstance(spec, tuple):
+                    if len(spec) >= 1:
+                        filename = str(spec[0])
+                    if len(spec) >= 2:
+                        raw = spec[1]
+                        file_bytes = raw if isinstance(raw, bytes) else str(raw).encode("utf-8")
+                    if len(spec) >= 3 and spec[2]:
+                        content_type = str(spec[2])
+                else:
+                    file_bytes = spec if isinstance(spec, bytes) else str(spec).encode("utf-8")
+                parts.append(
+                    (
+                        f"--{boundary}\r\n"
+                        f"Content-Disposition: form-data; name=\"{key}\"; filename=\"{filename}\"\r\n"
+                        f"Content-Type: {content_type}\r\n\r\n"
+                    ).encode("utf-8")
+                    + file_bytes
+                    + b"\r\n"
+                )
+            parts.append(f"--{boundary}--\r\n".encode("utf-8"))
+            payload = b"".join(parts)
+            hdrs = dict(headers or {})
+            hdrs.setdefault("content-type", f"multipart/form-data; boundary={boundary}")
+            hdrs.setdefault("content-length", str(len(payload)))
+            headers = hdrs
         elif data is not None:
             payload = urlencode(data, doseq=True).encode("utf-8")
+            hdrs = dict(headers or {})
+            hdrs.setdefault("content-type", "application/x-www-form-urlencoded")
+            hdrs.setdefault("content-length", str(len(payload)))
+            headers = hdrs
+        elif isinstance(payload, (bytes, bytearray)):
+            hdrs = dict(headers or {})
+            hdrs.setdefault("content-length", str(len(payload)))
+            headers = hdrs
         req = Request(method, full_url, headers={**self.headers, **(headers or {})}, content=payload)
         assert self.transport is not None
         return self.transport.handle_request(req)

@@ -66,6 +66,22 @@ def register_exception_handlers(app: FastAPI, *, logger: logging.Logger) -> None
             message = str(exc.detail)
             type_name = "http_error"
             actionable = actionable_validation_detail(message)
+            if (
+                stage == "normalize"
+                and "error parsing the body" in message.lower()
+                and str(request.url.path).startswith("/ingest/csv")
+            ):
+                raw_len = request.headers.get("content-length")
+                limit = int(getattr(request.app.state, "request_body_limit", 0) or 0)
+                try:
+                    content_len = int(raw_len) if raw_len is not None else 0
+                except ValueError:
+                    content_len = 0
+                if limit > 0 and content_len > limit:
+                    return JSONResponse(
+                        status_code=413,
+                        content={"detail": f"Request body too large (max {limit / (1024 * 1024):.1f}MB)."},
+                    )
         logger.warning(
             "api_http_exception",
             extra={
