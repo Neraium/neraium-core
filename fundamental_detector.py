@@ -299,7 +299,11 @@ class FundamentalChangeDetector:
 
     def _cov_to_corr(self, cov: np.ndarray) -> np.ndarray:
         std = np.sqrt(np.diag(cov))
-        return cov / np.outer(std, std + 1e-10)
+        denom = np.outer(std, std)
+        corr = np.zeros_like(cov)
+        np.divide(cov, denom, out=corr, where=denom > 1e-12)
+        np.fill_diagonal(corr, 1.0)
+        return np.nan_to_num(corr, nan=0.0, posinf=0.0, neginf=0.0)
 
     def _update_cusum(self, scores: Dict):
         self.cusum_subspace = max(
@@ -329,6 +333,16 @@ class FundamentalChangeDetector:
         return "STABLE"
 
     def reset(self):
+        self.buffer.fill(0.0)
+        self.buffer_idx = 0
+        self.count = 0
+
+        self.mean = np.zeros(self.n)
+        self.M2 = np.zeros((self.n, self.n))
+        self.cov = np.eye(self.n)
+
+        self.baseline_mean = None
+        self.baseline_cov = None
         self.baseline_subspace = None
         self.alerts.reset()
         self.cusum_subspace = 0.0
@@ -357,7 +371,13 @@ class CMAPSSDetector(FundamentalChangeDetector):
         self.op_fitted = False
 
         if fd_number > 1:
-            from sklearn.cluster import KMeans
+            try:
+                from sklearn.cluster import KMeans
+            except ModuleNotFoundError as exc:
+                raise ModuleNotFoundError(
+                    "scikit-learn is required for FD00x datasets with fd_number > 1 "
+                    "(FD002/FD003/FD004). Install it with `pip install scikit-learn`."
+                ) from exc
 
             self.op_clusterer = KMeans(n_clusters=6, random_state=42, n_init=10)
 
