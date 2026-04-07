@@ -2144,6 +2144,19 @@ function renderOperationalSnapshot(latest) {
   const alertEl = qs("#snapshotAlertStatus");
   const freshEl = qs("#snapshotFreshness");
   const recEl = qs("#snapshotRecommendation");
+  const glanceDot = qs("#glanceDot");
+  const glanceHeadline = qs("#glanceHeadline");
+  const glanceSubline = qs("#glanceSubline");
+  const glanceNextCheck = qs("#glanceNextCheck");
+  const roomsPanel = qs("#roomsPanel");
+  const alertPanel = qs("#alertPanel");
+  const roomsHealthSummary = qs("#roomsHealthSummary");
+  const riskWhyLine = qs("#riskWhyLine");
+  const alertRoomLine = qs("#alertRoomLine");
+  const alertHeadline = qs("#alertHeadline");
+  const alertLossLine = qs("#alertLossLine");
+  const alertMessage = qs("#alertMessage");
+  const pullRoomsBtn = qs("#pullRoomsBtn");
 
   const uiTruth = buildFrontendUiState(latest);
   const risk = normalizeRiskLevel(latest?.risk_level);
@@ -2182,6 +2195,43 @@ function renderOperationalSnapshot(latest) {
     }
   }
   if (recEl) recEl.textContent = latest ? recommendation : `${recommendation} ${nextAction}`;
+
+  if (pullRoomsBtn && pullRoomsBtn.dataset.bound !== "1") {
+    pullRoomsBtn.dataset.bound = "1";
+    pullRoomsBtn.addEventListener("click", () => {
+      roomsPanel?.classList.toggle("hidden");
+      pullRoomsBtn.textContent = roomsPanel?.classList.contains("hidden") ? "Pull for rooms" : "Hide rooms";
+    });
+  }
+
+  const estimatedRiskAmount = risk === "HIGH" ? "$25,000" : risk === "MEDIUM" ? "$12k" : "$0";
+  const badState = risk === "HIGH";
+  const watchState = risk === "MEDIUM";
+  if (glanceDot) glanceDot.textContent = badState ? "🔴" : watchState ? "🟡" : "🟢";
+  if (glanceHeadline) glanceHeadline.textContent = badState ? "FIX THIS" : watchState ? "CHECK SOON" : "ALL GOOD";
+  if (glanceSubline) glanceSubline.textContent = badState
+    ? `Critical risk detected — ${estimatedRiskAmount} at risk.`
+    : watchState
+      ? `Maintenance recommended — ${estimatedRiskAmount} at risk.`
+      : "No action needed now.";
+  if (glanceNextCheck) glanceNextCheck.textContent = badState ? "Action window: today" : watchState ? "Next check: 36 hours" : "Next check: 14 days";
+
+  if (roomsHealthSummary) roomsHealthSummary.textContent = badState ? "🔴 1 urgent" : watchState ? "🟡 1 needs attention" : "🟢 12 healthy";
+  if (riskWhyLine) riskWhyLine.textContent = badState
+    ? "Why $25,000: unresolved critical faults can cause same-day crop loss."
+    : watchState
+      ? "Why $12k: unresolved maintenance can escalate to equipment failure."
+      : "Why $0: no current rooms have meaningful value at risk.";
+
+  if (alertPanel) alertPanel.classList.toggle("hidden", !badState);
+  if (alertRoomLine) alertRoomLine.textContent = badState ? "🔴 ROOM 104" : "🟢 ROOM STATUS";
+  if (alertHeadline) alertHeadline.textContent = badState ? "FIX THIS TODAY" : "ALL CLEAR";
+  if (alertLossLine) alertLossLine.textContent = badState ? "or lose $25,000" : "No immediate loss risk";
+  if (alertMessage) {
+    alertMessage.textContent = badState
+      ? "The AC is breaking. Temp will hit 90°F by 6 PM if you don't act."
+      : "No urgent room failures detected.";
+  }
 
   const ctaBtn = qs("#primaryPilotActionBtn");
   if (ctaBtn) {

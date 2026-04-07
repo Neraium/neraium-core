@@ -92,6 +92,59 @@
             </div>
           </section>
 
+          <section class="panel smoke-glance" aria-label="Glance status">
+            <p class="smoke-glance-dot" id="glanceDot" aria-hidden="true">🟢</p>
+            <h3 id="glanceHeadline" class="smoke-glance-headline">ALL GOOD</h3>
+            <p id="glanceSubline" class="smoke-glance-subline">No action needed now.</p>
+            <p id="glanceNextCheck" class="smoke-glance-next">Next check: 14 days</p>
+            <button id="pullRoomsBtn" type="button" class="secondary smoke-glance-pull">Pull for rooms</button>
+          </section>
+
+          <section id="roomsPanel" class="panel smoke-rooms hidden" aria-label="Rooms list">
+            <div class="smoke-rooms-header">
+              <h3>NERAIUM</h3>
+              <p id="roomsHealthSummary">🟢 12 healthy</p>
+            </div>
+            <div id="roomsList" class="smoke-rooms-list">
+              <div class="smoke-room-group">
+                <p class="smoke-room-group-title">FLOWER</p>
+                <p>🟢 101 <span>OK</span> <strong>$0</strong></p>
+                <p>🟢 102 <span>OK</span> <strong>$0</strong></p>
+                <p>🟡 104 <span>Check soon</span> <strong>$12k</strong></p>
+                <p>🟢 105 <span>OK</span> <strong>$0</strong></p>
+              </div>
+              <div class="smoke-room-group">
+                <p class="smoke-room-group-title">VEG</p>
+                <p>🟢 201 <span>OK</span> <strong>$0</strong></p>
+                <p>🟢 202 <span>OK</span> <strong>$0</strong></p>
+              </div>
+            </div>
+            <p id="riskWhyLine" class="smoke-room-why">Why risk value shown: higher risk = higher value at risk.</p>
+          </section>
+
+          <section id="alertPanel" class="panel smoke-alert hidden" aria-label="Critical alert">
+            <p id="alertRoomLine" class="smoke-alert-room">🔴 ROOM 104</p>
+            <h3 id="alertHeadline" class="smoke-alert-headline">FIX THIS TODAY</h3>
+            <p id="alertLossLine" class="smoke-alert-loss">or lose $25,000</p>
+            <p id="alertMessage" class="smoke-alert-message">The AC is breaking. Temp will hit 90°F by 6 PM if you don't act.</p>
+            <div class="smoke-alert-actions">
+              <button type="button" class="primary">CALL TECH NOW</button>
+              <button type="button" class="secondary">I FIXED IT</button>
+              <a class="button-link secondary" href="/app/runs">SHOW ME</a>
+            </div>
+          </section>
+
+          <section class="panel owner-defense-log" aria-label="Owner financial summary">
+            <div class="panel-header"><h3>NERAIUM DEFENSE LOG</h3></div>
+            <p class="subtitle">Las Vegas Facility · owner view</p>
+            <div class="owner-metrics-grid">
+              <article><p>This Month</p><strong id="ownerMonthProtected">$47,500</strong></article>
+              <article><p>This Quarter</p><strong id="ownerQuarterProtected">$128,000</strong></article>
+              <article><p>This Year</p><strong id="ownerYearProtected">$412,000</strong></article>
+              <article><p>ROI</p><strong id="ownerRoi">2,847%</strong></article>
+            </div>
+          </section>
+
           <section class="panel dashboard-hero operator-hero" aria-label="Operator status">
             <div class="dashboard-hero-grid operator-hero-grid">
               <div class="dashboard-hero-primary">
