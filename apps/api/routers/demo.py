@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import threading
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -256,19 +257,81 @@ def build_demo_router(*, deps: DemoRouterDependencies) -> APIRouter:
         run_id = str(run.get("run_id") or "")
         if not run_id:
             raise HTTPException(status_code=500, detail="Failed to create demo run.")
-        try:
-            results = deps.service_instance.ingest_batch(rows, run_id=run_id, customer_id=resolved_customer)
-        except Exception as exc:
-            raise HTTPException(status_code=500, detail=f"Failed to seed grow op scenario: {exc}") from exc
-        return {"status": "ok", "run_id": run_id, "processed": len(results), "demo": "grow-op"}
+        job_id = str(uuid4())
+        now = deps.utc_now_iso()
+        with deps.demo_jobs_lock:
+            deps.demo_jobs[job_id] = {
+                "job_id": job_id,
+                "status": "pending",
+                "run_id": run_id,
+                "customer_id": resolved_customer,
+                "progress": 0,
+                "processed": 0,
+                "total_frames": len(rows),
+                "message": "Preparing grow-op demo stream...",
+                "error": None,
+                "created_at": now,
+                "updated_at": now,
+            }
+
+        def _run_grow_op_seed_job() -> None:
+            with deps.demo_jobs_lock:
+                job = deps.demo_jobs.get(job_id)
+                if job is not None:
+                    job.update(status="running", message="Streaming grow-op demo telemetry...")
+                    job["updated_at"] = deps.utc_now_iso()
+            try:
+                results = deps.service_instance.ingest_batch(rows, run_id=run_id, customer_id=resolved_customer)
+                with deps.demo_jobs_lock:
+                    job = deps.demo_jobs.get(job_id)
+                    if job is not None:
+                        job.update(
+                            status="complete",
+                            progress=100,
+                            processed=len(results),
+                            message="Grow-op demo stream complete.",
+                            error=None,
+                        )
+                        job["updated_at"] = deps.utc_now_iso()
+            except Exception as exc:
+                with deps.demo_jobs_lock:
+                    job = deps.demo_jobs.get(job_id)
+                    if job is not None:
+                        job.update(
+                            status="error",
+                            message="Grow-op demo stream failed.",
+                            error=str(exc),
+                        )
+                        job["updated_at"] = deps.utc_now_iso()
+
+        threading.Thread(target=_run_grow_op_seed_job, daemon=True).start()
+
+        return {
+            "status": "started",
+            "job_id": job_id,
+            "run_id": run_id,
+            "processed": 0,
+            "demo": "grow-op",
+            "message": "Grow-op demo seeding started.",
+        }
 
     @router.get("/demo/grow-op/status")
     def demo_grow_op_status(
         run_id: str = Query(..., min_length=1),
+        job_id: str | None = Query(default=None),
         customer_id: str | None = Query(default=None),
         _: None = Depends(deps.require_api_key),
     ) -> dict[str, Any]:
         resolved_customer = deps.resolve_customer_id(customer_id)
+        if job_id:
+            with deps.demo_jobs_lock:
+                job = deps.demo_jobs.get(job_id)
+            if job and str(job.get("customer_id") or "") == resolved_customer and str(job.get("run_id") or "") == run_id:
+                return {
+                    "run_id": run_id,
+                    "job": deps.public_demo_job(job),
+                    "status": "ready" if str(job.get("status")) == "complete" else str(job.get("status") or "unknown"),
+                }
         run = deps.service_instance.get_run(run_id, customer_id=resolved_customer)
         if run is None:
             raise HTTPException(status_code=404, detail=f"Unknown run_id: {run_id}")
