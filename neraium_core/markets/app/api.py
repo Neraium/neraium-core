@@ -275,7 +275,7 @@ def create_app(
         except MassiveConfigError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         provider_health = check_massive_health(load_massive_config())
-        if provider_health.status in {"invalid_api_key", "rest_unreachable"}:
+        if provider_health.status == "invalid_api_key":
             detail = provider_health.error or provider_health.status.replace("_", " ")
             raise HTTPException(status_code=503, detail=f"Massive provider unavailable: {detail}")
         try:
