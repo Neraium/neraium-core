@@ -87,9 +87,73 @@ IAM role needs at minimum:
 5. **Static web asset issues**
    - Symptom: `/dashboard` (or `/operator` redirect) 404 or missing JS/CSS.
    - Fix: confirm `apps/api/static/*` exists in the deployed branch and source directory is root.
+
+## Fast checklist when "the website still shows the old version"
+
+Use this order to isolate where the stale version is coming from:
+
+1. **Confirm the live service is your latest commit**
+   - In App Runner, open your service **Deployments** tab and verify the latest
+     deployment references the same Git commit you just pushed.
+   - If it does not, run **Deploy** (or call `StartDeployment`) to force a pull.
+
+2. **Verify branch and source directory**
+   - Ensure App Runner is watching the branch you actually updated.
+   - Ensure source directory is `/` so `apprunner.yaml` and static assets are used.
+
+3. **Check you are opening the correct domain**
+   - Confirm you are using the current App Runner default URL or your active custom
+     domain, not an old environment URL.
+   - If both `www` and apex are configured, verify which one your DNS points to.
+
+4. **Bypass browser cache / service worker**
+   - Hard refresh (`Ctrl+Shift+R` on Windows/Linux, `Cmd+Shift+R` on macOS).
+   - Open an incognito/private window.
+   - In browser devtools → Application, unregister any old service worker and clear
+     site data for the domain if stale assets persist.
+
+5. **Validate static asset freshness directly**
+   - Open a JS asset URL directly (for example `/web/modules/boot.js`) and confirm
+     the response contains your latest changes.
+   - If this file is old, the issue is deployment/source branch; if this file is new
+     but UI is old, the issue is browser cache or service worker.
+
+## If App Runner keeps saying "rollback succeeded"
+
+That message means the **new deployment failed health/startup checks**, so App Runner
+restored the previous healthy version. Your latest code is not live yet.
+
+Use this quick recovery sequence:
+
+1. **Open failed deployment logs first**
+   - App Runner service → **Deployments** → open the failed deployment → inspect
+     application/startup logs.
+   - Look for import errors, missing env vars, bad startup command, or 5xx on boot.
+
+2. **Verify runtime command and port**
+   - Ensure the command is still:
+     `uvicorn apps.api.main:app --host 0.0.0.0 --port 8000 --proxy-headers`
+   - App Runner expects the app to bind successfully and respond healthy.
+
+3. **Confirm required environment variables are present**
+   - Missing env vars can cause startup exceptions and immediate rollback.
+   - Recheck any recent variable renames in App Runner service configuration.
+
+4. **Test locally with production-like startup**
+   - From repository root:
+     `pip3 install .`
+     `uvicorn apps.api.main:app --host 0.0.0.0 --port 8000 --proxy-headers`
+   - Confirm `GET /health` returns `200` before redeploying.
+
+5. **Trigger a fresh deployment after fixing root cause**
+   - Redeploy from App Runner console or run `StartDeployment`.
+   - Then re-check the deployment commit SHA and `/health`.
+
+If rollback repeats with no clear app error, validate that your service instance role
+and network settings still allow required startup dependencies (for example secrets,
+datastores, or private endpoints).
 ## Railway decommissioning note
 
 This repository is intentionally configured for AWS deployment workflows only.
 If a historical Railway service exists, treat it as decommissioned and keep Railway
 GitHub integration disabled to prevent accidental redeploys.
-
