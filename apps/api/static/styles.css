@@ -5764,7 +5764,7 @@ details > summary:hover {
 
 body.demo-mode-active .quick-link-stack,
 body.demo-mode-active #refreshBtn,
-body.demo-mode-active .telemetry-status-strip .chip:not(.chip-live):not(.chip-button):not(.streaming),
+body.demo-mode-active .telemetry-status-strip .chip:not(#connectionBadge):not(.chip-button):not(.streaming),
 body.demo-mode-active .dashboard-hero-aside {
   display: none !important;
 }
