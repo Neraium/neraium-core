@@ -731,6 +731,7 @@ async function toggleDemoMode(enabled) {
   state.demo.enabled = !!enabled;
   setConnectionStatus(getOperationalBadgeDisplay(buildFrontendUiState()));
   persistDemoMode();
+  applyDemoUiShell();
   if (!state.demo.enabled) {
     stopDemoPlayback();
     state.demo.cursor = state.runRecent.length || 0;
@@ -744,6 +745,29 @@ async function toggleDemoMode(enabled) {
   if (state.demo.enabled) {
     maybeAutoStartDemoPlayback();
   }
+}
+
+function syncDemoModeToggleButton(btn) {
+  if (!btn) return;
+  const enabled = !!state.demo.enabled;
+  btn.setAttribute("aria-pressed", enabled ? "true" : "false");
+  btn.textContent = enabled ? "Demo mode: on" : "Demo mode: off";
+}
+
+function wireDemoModeToggle(btn) {
+  if (!btn || btn.dataset.wired === "1") return;
+  btn.dataset.wired = "1";
+  syncDemoModeToggleButton(btn);
+  btn.addEventListener("click", async () => {
+    const nextEnabled = !state.demo.enabled;
+    await toggleDemoMode(nextEnabled);
+    syncDemoModeToggleButton(btn);
+    if (nextEnabled) {
+      setStatus("Demo mode enabled. Focused presentation layout is active.", false, true);
+    } else {
+      setStatus("Demo mode disabled. Full workspace layout restored.", false, true);
+    }
+  });
 }
 
 function buildDemoScenarioItems({ profile, siteId, assetId, minutes = 120 }) {
@@ -1644,6 +1668,7 @@ function wireGrowOpDemoBtn(btn, originalLabel) {
 function wireWorkspaceShellEvents() {
   wireGrowOpDemoBtn(qs("#loadGrowOpDemoBtn"), "Load grow op demo");
   wireGrowOpDemoBtn(qs("#demoBannerBtn"), "Start demo");
+  wireDemoModeToggle(qs("#demoModeToggle"));
   const growOpBtn = qs("#loadGrowOpDemoBtn");
   if (growOpBtn && growOpBtn.dataset.wired !== "1") {
     growOpBtn.dataset.wired = "1";
