@@ -1667,7 +1667,13 @@ function wireGrowOpDemoBtn(btn, originalLabel) {
 
 function wireWorkspaceShellEvents() {
   wireGrowOpDemoBtn(qs("#loadGrowOpDemoBtn"), "Load grow op demo");
-  wireGrowOpDemoBtn(qs("#demoBannerBtn"), "Start demo");
+  const guidedDemoBtn = qs("#demoBannerBtn");
+  if (guidedDemoBtn && guidedDemoBtn.dataset.wired !== "1") {
+    guidedDemoBtn.dataset.wired = "1";
+    guidedDemoBtn.addEventListener("click", () => {
+      launchGuidedDemo({ mode: "all" });
+    });
+  }
   wireDemoModeToggle(qs("#demoModeToggle"));
   const growOpBtn = qs("#loadGrowOpDemoBtn");
   if (growOpBtn && growOpBtn.dataset.wired !== "1") {
