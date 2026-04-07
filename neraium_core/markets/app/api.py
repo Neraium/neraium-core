@@ -113,11 +113,11 @@ def create_app(
 
     @app.get("/health")
     def health() -> dict[str, object]:
-        return {"ok": True, "service": "markets"}
+        return {"ok": True, "service": "markets", **_runtime_fingerprint()}
 
-    @app.get("/")
-    def root() -> dict[str, str]:
-        return {"status": "ok", "app": "markets-live"}
+    @app.get("/", response_class=HTMLResponse)
+    def root() -> HTMLResponse:
+        return operator_ui()
 
     @app.get("/operator", response_class=HTMLResponse)
     def operator_ui() -> HTMLResponse:
@@ -213,9 +213,10 @@ def create_app(
         return {"run_id": run_id, "replay": rows, "meta": run_meta}
 
     @app.post("/live/start")
-    async def live_start(body: LiveStartBody) -> dict:
-        effective_symbols = [item.upper() for item in (body.symbols or DEFAULT_LIVE_SYMBOLS)]
-        effective_timeframe = body.timeframe or DEFAULT_LIVE_TIMEFRAME
+    async def live_start(body: LiveStartBody | None = None) -> dict:
+        start_body = body or LiveStartBody()
+        effective_symbols = [item.upper() for item in (start_body.symbols or DEFAULT_LIVE_SYMBOLS)]
+        effective_timeframe = start_body.timeframe or DEFAULT_LIVE_TIMEFRAME
         missing_required = [sym for sym in CORE if sym not in set(effective_symbols)]
         if missing_required:
             required_symbols = ", ".join(CORE)
@@ -231,7 +232,7 @@ def create_app(
         except MassiveConfigError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         provider_health = check_massive_health(load_massive_config())
-        if provider_health.status in {"invalid_api_key", "rest_unreachable"}:
+        if provider_health.status == "invalid_api_key":
             detail = provider_health.error or provider_health.status.replace("_", " ")
             raise HTTPException(status_code=503, detail=f"Massive provider unavailable: {detail}")
         try:
