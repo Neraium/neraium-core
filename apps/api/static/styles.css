@@ -201,6 +201,132 @@ body.nav-mobile-open {
   transform: translateX(1px);
 }
 
+.smoke-glance {
+  display: grid;
+  justify-items: center;
+  text-align: center;
+  gap: 10px;
+  padding: 30px 18px;
+}
+
+.smoke-glance-dot {
+  margin: 0;
+  font-size: 58px;
+  line-height: 1;
+}
+
+.smoke-glance-headline {
+  margin: 0;
+  font-size: clamp(1.5rem, 5vw, 2.2rem);
+  letter-spacing: 0.04em;
+}
+
+.smoke-glance-subline,
+.smoke-glance-next {
+  margin: 0;
+  color: #bdd0e3;
+}
+
+.smoke-glance-pull {
+  margin-top: 6px;
+}
+
+.smoke-rooms-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.smoke-rooms-header h3,
+.smoke-rooms-header p {
+  margin: 0;
+}
+
+.smoke-rooms-list {
+  display: grid;
+  gap: 14px;
+  margin-top: 12px;
+}
+
+.smoke-room-group {
+  display: grid;
+  gap: 8px;
+}
+
+.smoke-room-group-title {
+  margin: 0;
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  color: #9eb2c8;
+}
+
+.smoke-room-group p {
+  margin: 0;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 8px;
+}
+
+.smoke-room-group strong {
+  color: #f2f7ff;
+}
+
+.smoke-room-why {
+  margin: 12px 0 0;
+  color: #96acc4;
+  font-size: 0.9rem;
+}
+
+.smoke-alert {
+  border-color: rgba(228, 87, 87, 0.6);
+  background: linear-gradient(180deg, rgba(83, 21, 26, 0.95), rgba(49, 13, 19, 0.95));
+}
+
+.smoke-alert-room,
+.smoke-alert-loss,
+.smoke-alert-message {
+  margin: 0;
+}
+
+.smoke-alert-headline {
+  margin: 6px 0;
+  font-size: clamp(1.4rem, 4vw, 1.9rem);
+}
+
+.smoke-alert-actions {
+  margin-top: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.owner-defense-log .owner-metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+}
+
+.owner-defense-log .owner-metrics-grid article {
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: rgba(12, 25, 40, 0.9);
+}
+
+.owner-defense-log .owner-metrics-grid p {
+  margin: 0;
+  font-size: 0.75rem;
+  color: #9ab0c8;
+  text-transform: uppercase;
+}
+
+.owner-defense-log .owner-metrics-grid strong {
+  display: block;
+  margin-top: 2px;
+  font-size: 1.15rem;
+}
+
 .active-run-box {
   margin-top: 20px;
   padding: 14px;
