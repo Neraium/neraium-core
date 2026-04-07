@@ -230,6 +230,15 @@ def test_dashboard_demo_seeding_uses_single_backend_seed_job_flow(tmp_path) -> N
     assert "beginReplayStatusMonitoring(" in seed_text
 
 
+def test_dashboard_demo_banner_button_launches_guided_demo_flow(tmp_path) -> None:
+    client = _client(tmp_path)
+    dash = client.get("/web/modules/dashboard.js")
+    assert dash.status_code == 200
+    assert 'const guidedDemoBtn = qs("#demoBannerBtn");' in dash.text
+    assert 'guidedDemoBtn.addEventListener("click", () => {' in dash.text
+    assert 'launchGuidedDemo({ mode: "all" });' in dash.text
+
+
 def test_dashboard_demo_replay_status_state_machine_and_polling_present(tmp_path) -> None:
     client = _client(tmp_path)
     dash = client.get("/web/modules/dashboard.js")
