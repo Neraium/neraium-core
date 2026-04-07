@@ -4,14 +4,13 @@ runtime: python311
 build:
   commands:
     build:
-      - echo "No build-time dependency install required; runtime install happens in pre-run."
+      # Install app + dependencies at build time so runtime startup does not require pip/network.
+      - pip3 install .
 
 run:
   runtime-version: 3.11
-  pre-run:
-    # Install from the repository root using canonical pyproject metadata.
-    - pip3 install .
-  command: uvicorn apps.api.main:app --host 0.0.0.0 --port 8000 --proxy-headers
+  # Use module invocation so startup does not depend on uvicorn script PATH resolution.
+  command: python3 -m uvicorn apps.api.main:app --host 0.0.0.0 --port 8000 --proxy-headers
   network:
     port: 8000
     env: PORT
