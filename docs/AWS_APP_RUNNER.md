@@ -117,41 +117,6 @@ Use this order to isolate where the stale version is coming from:
      the response contains your latest changes.
    - If this file is old, the issue is deployment/source branch; if this file is new
      but UI is old, the issue is browser cache or service worker.
-
-## If App Runner keeps saying "rollback succeeded"
-
-That message means the **new deployment failed health/startup checks**, so App Runner
-restored the previous healthy version. Your latest code is not live yet.
-
-Use this quick recovery sequence:
-
-1. **Open failed deployment logs first**
-   - App Runner service → **Deployments** → open the failed deployment → inspect
-     application/startup logs.
-   - Look for import errors, missing env vars, bad startup command, or 5xx on boot.
-
-2. **Verify runtime command and port**
-   - Ensure the command is still:
-     `uvicorn apps.api.main:app --host 0.0.0.0 --port 8000 --proxy-headers`
-   - App Runner expects the app to bind successfully and respond healthy.
-
-3. **Confirm required environment variables are present**
-   - Missing env vars can cause startup exceptions and immediate rollback.
-   - Recheck any recent variable renames in App Runner service configuration.
-
-4. **Test locally with production-like startup**
-   - From repository root:
-     `pip3 install .`
-     `uvicorn apps.api.main:app --host 0.0.0.0 --port 8000 --proxy-headers`
-   - Confirm `GET /health` returns `200` before redeploying.
-
-5. **Trigger a fresh deployment after fixing root cause**
-   - Redeploy from App Runner console or run `StartDeployment`.
-   - Then re-check the deployment commit SHA and `/health`.
-
-If rollback repeats with no clear app error, validate that your service instance role
-and network settings still allow required startup dependencies (for example secrets,
-datastores, or private endpoints).
 ## Railway decommissioning note
 
 This repository is intentionally configured for AWS deployment workflows only.
