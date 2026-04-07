@@ -36,6 +36,16 @@ def _iter_files(root: Path):
 
 
 def _metadata() -> str:
+    requires_dist = [
+        "fastapi>=0.110",
+        "numpy>=1.24",
+        "pandas>=2.0",
+        "pydantic>=2",
+        "python-multipart>=0.0.9",
+        "starlette>=0.36",
+        "uvicorn>=0.29",
+    ]
+    requires_dist_lines = [f"Requires-Dist: {dep}" for dep in requires_dist]
     return "\n".join(
         [
             "Metadata-Version: 2.1",
@@ -43,6 +53,7 @@ def _metadata() -> str:
             f"Version: {VERSION}",
             "Summary: Read-only structural instability instrumentation engine and API",
             "Requires-Python: >=3.10",
+            *requires_dist_lines,
             "",
         ]
     )
