@@ -190,34 +190,6 @@ If you just want exact steps to follow, do this in order:
 7. **If browser still looks old**
    - Hard refresh (`Ctrl/Cmd + Shift + R`), then open an incognito window.
    - Clear site data / unregister service worker for your domain.
-
-## If you resolved a merge conflict incorrectly
-
-If you picked the wrong side during conflict resolution (for example `apprunner.yaml`),
-restore the known-good deployment files and redeploy.
-
-```bash
-# 1) Inspect current versions
-git status
-git diff -- apprunner.yaml docs/AWS_APP_RUNNER.md
-
-# 2) Restore from the latest good commit (replace with your known-good SHA)
-# Find candidate SHAs that last changed these files:
-git log --oneline -- apprunner.yaml docs/AWS_APP_RUNNER.md
-
-# Optional: inspect a candidate before restoring
-git show <GOOD_SHA> -- apprunner.yaml docs/AWS_APP_RUNNER.md
-
-# Restore from the chosen good SHA
-git checkout <GOOD_SHA> -- apprunner.yaml docs/AWS_APP_RUNNER.md
-
-# 3) Commit and push
-git add apprunner.yaml docs/AWS_APP_RUNNER.md
-git commit -m "fix: restore App Runner deployment config after bad conflict resolution"
-git push
-```
-
-Then trigger App Runner deployment and verify `/health`.
 ## Railway decommissioning note
 
 This repository is intentionally configured for AWS deployment workflows only.
