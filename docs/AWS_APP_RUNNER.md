@@ -5,7 +5,7 @@ This guide deploys Neraium from GitHub to AWS App Runner using the repository co
 ## Readiness audit summary
 
 - **Source directory assumption:** deploy from repository root (`/`) because `apprunner.yaml` and `pyproject.toml` are at root.
-- **Dependency installation path:** single runtime-phase install via `pip3 install .` (reads canonical dependencies from `pyproject.toml`).
+- **Dependency installation path:** build-phase install via `pip3 install .` (reads canonical dependencies from `pyproject.toml`) so runtime startup does not depend on network/package index access.
 - **FastAPI entrypoint:** `apps.api.main:app`.
 - **Static assets:** served from `apps/api/static` through router + `/web` static mount.
 - **Health endpoint:** `GET /health` returns JSON `200`.
@@ -78,7 +78,7 @@ IAM role needs at minimum:
 
 3. **Dependency install omitted for Python 3.11 flow**
    - Symptom: startup fails with import errors.
-   - Fix: keep the explicit `pip3 install .` pre-run command in `apprunner.yaml`.
+   - Fix: keep the explicit `pip3 install .` build command in `apprunner.yaml`.
 
 4. **Wrong app command**
    - Symptom: service starts but immediately exits or returns 502.
