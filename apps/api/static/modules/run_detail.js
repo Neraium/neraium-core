@@ -416,6 +416,42 @@ async function loadRunDetailBackgroundHistory(runId) {
   }
 }
 
+function startGrowOpDemoMonitor(runId) {
+  const params = new URLSearchParams(window.location.search);
+  const jobId = String(params.get("demo_job_id") || "").trim();
+  if (!runId || !jobId) return;
+  let attempt = 0;
+  const maxAttempts = 45;
+  const poll = async () => {
+    attempt += 1;
+    try {
+      const statusEnv = await fetchJson(apiUrl("/demo/grow-op/status", tenantScopeParams({ run_id: runId, job_id: jobId })));
+      const job = statusEnv?.job || {};
+      const stateLabel = String(job?.status || statusEnv?.status || "running").toLowerCase();
+      if (stateLabel === "error") {
+        const msg = String(job?.error || "Grow-op demo seeding failed.");
+        setStatus(msg, true, true);
+        return;
+      }
+      const recentEnv = await fetchRecentResults({ run_id: runId, limit: RUN_DETAIL_INITIAL_LIMIT });
+      state.runRecent = Array.isArray(recentEnv?.results) ? recentEnv.results : [];
+      renderRunDetailFromState({ deferHeavy: true });
+      if (state.runRecent.length > 0 || stateLabel === "complete" || stateLabel === "ready") {
+        setStatus("Guided demo loaded.", false, true);
+        return;
+      }
+      if (attempt < maxAttempts) {
+        window.setTimeout(poll, 850);
+      }
+    } catch (_err) {
+      if (attempt < maxAttempts) {
+        window.setTimeout(poll, 1000);
+      }
+    }
+  };
+  window.setTimeout(poll, 600);
+}
+
 async function loadRunDetail(runId) {
   const runReq = fetchJson(apiUrl(`/runs/${encodeURIComponent(runId)}`, tenantScopeParams()));
   const recentReq = fetchRecentResults({ run_id: runId, limit: RUN_DETAIL_INITIAL_LIMIT });
@@ -436,6 +472,7 @@ async function loadRunDetail(runId) {
   state.ui.runDetailHydratedSections = { overview: true, trends: false, geometry: false, results: false };
   renderRunDetailFromState();
   state.ui.runDetailBackgroundHistoryLoaded = false;
+  startGrowOpDemoMonitor(runId);
 
   const exportJson = qs("#runDetailExportJsonBtn");
   const exportCsv = qs("#runDetailExportCsvBtn");
