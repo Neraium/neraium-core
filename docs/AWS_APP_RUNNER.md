@@ -5,7 +5,7 @@ This guide deploys Neraium from GitHub to AWS App Runner using the repository co
 ## Readiness audit summary
 
 - **Source directory assumption:** deploy from repository root (`/`) because `apprunner.yaml` and `pyproject.toml` are at root.
-- **Dependency installation path:** build-phase install via `pip3 install .` (reads canonical dependencies from `pyproject.toml`) so runtime startup does not depend on network/package index access.
+- **Dependency installation path:** runtime `pre-run` install via `pip3 install .` (reads canonical dependencies from `pyproject.toml`) to ensure packages are available in App Runner Python 3.11 runtime.
 - **FastAPI entrypoint:** `apps.api.main:app`.
 - **Static assets:** served from `apps/api/static` through router + `/web` static mount.
 - **Health endpoint:** `GET /health` returns JSON `200`.
@@ -76,9 +76,9 @@ IAM role needs at minimum:
    - Symptom: App Runner uses console defaults instead of repo-defined commands.
    - Fix: file must be exactly `apprunner.yaml` (not `.yml`).
 
-3. **Dependency install omitted for Python 3.11 flow**
+3. **Dependency install omitted for Python 3.11 pre-run flow**
    - Symptom: startup fails with import errors.
-   - Fix: keep the explicit `pip3 install .` build command in `apprunner.yaml`.
+   - Fix: keep the explicit `pip3 install .` command in `run.pre-run` of `apprunner.yaml`.
 
 4. **Wrong app command**
    - Symptom: service starts but immediately exits or returns 502.
@@ -190,6 +190,34 @@ If you just want exact steps to follow, do this in order:
 7. **If browser still looks old**
    - Hard refresh (`Ctrl/Cmd + Shift + R`), then open an incognito window.
    - Clear site data / unregister service worker for your domain.
+
+## If you resolved a merge conflict incorrectly
+
+If you picked the wrong side during conflict resolution (for example `apprunner.yaml`),
+restore the known-good deployment files and redeploy.
+
+```bash
+# 1) Inspect current versions
+git status
+git diff -- apprunner.yaml docs/AWS_APP_RUNNER.md
+
+# 2) Restore from the latest good commit (replace with your known-good SHA)
+# Find candidate SHAs that last changed these files:
+git log --oneline -- apprunner.yaml docs/AWS_APP_RUNNER.md
+
+# Optional: inspect a candidate before restoring
+git show <GOOD_SHA> -- apprunner.yaml docs/AWS_APP_RUNNER.md
+
+# Restore from the chosen good SHA
+git checkout <GOOD_SHA> -- apprunner.yaml docs/AWS_APP_RUNNER.md
+
+# 3) Commit and push
+git add apprunner.yaml docs/AWS_APP_RUNNER.md
+git commit -m "fix: restore App Runner deployment config after bad conflict resolution"
+git push
+```
+
+Then trigger App Runner deployment and verify `/health`.
 ## Railway decommissioning note
 
 This repository is intentionally configured for AWS deployment workflows only.
