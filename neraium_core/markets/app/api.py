@@ -212,7 +212,7 @@ def create_app(
             sqlite.record_replay_output(run_id, row)
         return {"run_id": run_id, "replay": rows, "meta": run_meta}
 
-    @app.post("/live/start")
+       @app.post("/live/start")
     async def live_start(body: LiveStartBody) -> dict:
         effective_symbols = [item.upper() for item in (body.symbols or DEFAULT_LIVE_SYMBOLS)]
         effective_timeframe = body.timeframe or DEFAULT_LIVE_TIMEFRAME
@@ -230,10 +230,6 @@ def create_app(
             load_massive_config().validate(require_api_key=True)
         except MassiveConfigError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
-        provider_health = check_massive_health(load_massive_config())
-        if provider_health.status in {"invalid_api_key", "rest_unreachable"}:
-            detail = provider_health.error or provider_health.status.replace("_", " ")
-            raise HTTPException(status_code=503, detail=f"Massive provider unavailable: {detail}")
         try:
             await live.start(effective_symbols, effective_timeframe)
         except ValueError as exc:
