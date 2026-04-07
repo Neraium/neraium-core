@@ -1667,13 +1667,7 @@ function wireGrowOpDemoBtn(btn, originalLabel) {
 
 function wireWorkspaceShellEvents() {
   wireGrowOpDemoBtn(qs("#loadGrowOpDemoBtn"), "Load grow op demo");
-  const guidedDemoBtn = qs("#demoBannerBtn");
-  if (guidedDemoBtn && guidedDemoBtn.dataset.wired !== "1") {
-    guidedDemoBtn.dataset.wired = "1";
-    guidedDemoBtn.addEventListener("click", () => {
-      launchGuidedDemo({ mode: "all" });
-    });
-  }
+  wireGrowOpDemoBtn(qs("#demoBannerBtn"), "Launch guided demo");
   wireDemoModeToggle(qs("#demoModeToggle"));
   const growOpBtn = qs("#loadGrowOpDemoBtn");
   if (growOpBtn && growOpBtn.dataset.wired !== "1") {
