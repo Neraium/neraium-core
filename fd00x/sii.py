@@ -167,7 +167,7 @@ class SII:
 
     def _to_state(self, score: float) -> str:
         if not np.isfinite(score):
-            return "healthy"
+            return "insufficient_data"
         if score < self.thresholds["healthy"]:
             return "healthy"
         if score < self.thresholds["elevated"]:
