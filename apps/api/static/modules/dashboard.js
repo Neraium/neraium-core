@@ -1667,7 +1667,7 @@ function wireGrowOpDemoBtn(btn, originalLabel) {
 
 function wireWorkspaceShellEvents() {
   wireGrowOpDemoBtn(qs("#loadGrowOpDemoBtn"), "Load grow op demo");
-  wireGrowOpDemoBtn(qs("#demoBannerBtn"), "Start demo");
+  wireGrowOpDemoBtn(qs("#demoBannerBtn"), "Launch guided demo");
   wireDemoModeToggle(qs("#demoModeToggle"));
   const growOpBtn = qs("#loadGrowOpDemoBtn");
   if (growOpBtn && growOpBtn.dataset.wired !== "1") {

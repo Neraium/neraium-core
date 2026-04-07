@@ -230,6 +230,13 @@ def test_dashboard_demo_seeding_uses_single_backend_seed_job_flow(tmp_path) -> N
     assert "beginReplayStatusMonitoring(" in seed_text
 
 
+def test_dashboard_demo_banner_button_uses_grow_op_seed_handler(tmp_path) -> None:
+    client = _client(tmp_path)
+    dash = client.get("/web/modules/dashboard.js")
+    assert dash.status_code == 200
+    assert 'wireGrowOpDemoBtn(qs("#demoBannerBtn"), "Launch guided demo");' in dash.text
+
+
 def test_dashboard_demo_replay_status_state_machine_and_polling_present(tmp_path) -> None:
     client = _client(tmp_path)
     dash = client.get("/web/modules/dashboard.js")
