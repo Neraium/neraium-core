@@ -2225,8 +2225,8 @@ function renderOperationalSnapshot(latest) {
 
   if (alertPanel) alertPanel.classList.toggle("hidden", !badState);
   if (alertRoomLine) alertRoomLine.textContent = badState ? "🔴 ROOM 104" : "🟢 ROOM STATUS";
-  if (alertHeadline) alertHeadline.textContent = badState ? "FIX THIS TODAY" : "ALL CLEAR";
-  if (alertLossLine) alertLossLine.textContent = badState ? "or lose $25,000" : "No immediate loss risk";
+  if (alertHeadline) alertHeadline.textContent = badState ? "Immediate action recommended" : "All clear";
+  if (alertLossLine) alertLossLine.textContent = badState ? "Estimated exposure: $25,000" : "No immediate exposure risk";
   if (alertMessage) {
     alertMessage.textContent = badState
       ? "The AC is breaking. Temp will hit 90°F by 6 PM if you don't act."
