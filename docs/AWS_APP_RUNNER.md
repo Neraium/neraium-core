@@ -82,7 +82,8 @@ IAM role needs at minimum:
 
 4. **Wrong app command**
    - Symptom: service starts but immediately exits or returns 502.
-   - Fix: use `uvicorn apps.api.main:app --host 0.0.0.0 --port 8000 --proxy-headers`.
+   - Fix: use `python3 -m uvicorn apps.api.main:app --host 0.0.0.0 --port 8000 --proxy-headers`.
+   - If logs show `exec: "uvicorn": executable file not found in $PATH`, this module form avoids PATH issues.
 
 5. **Static web asset issues**
    - Symptom: `/dashboard` (or `/operator` redirect) 404 or missing JS/CSS.
@@ -117,6 +118,78 @@ Use this order to isolate where the stale version is coming from:
      the response contains your latest changes.
    - If this file is old, the issue is deployment/source branch; if this file is new
      but UI is old, the issue is browser cache or service worker.
+
+## If App Runner keeps saying "rollback succeeded"
+
+That message means the **new deployment failed health/startup checks**, so App Runner
+restored the previous healthy version. Your latest code is not live yet.
+
+Use this quick recovery sequence:
+
+1. **Open failed deployment logs first**
+   - App Runner service → **Deployments** → open the failed deployment → inspect
+     application/startup logs.
+   - Look for import errors, missing env vars, bad startup command, or 5xx on boot.
+
+2. **Verify runtime command and port**
+   - Ensure the command is still:
+     `python3 -m uvicorn apps.api.main:app --host 0.0.0.0 --port 8000 --proxy-headers`
+   - App Runner expects the app to bind successfully and respond healthy.
+
+3. **Confirm required environment variables are present**
+   - Missing env vars can cause startup exceptions and immediate rollback.
+   - Recheck any recent variable renames in App Runner service configuration.
+
+4. **Test locally with production-like startup**
+   - From repository root:
+     `pip3 install .`
+     `python3 -m uvicorn apps.api.main:app --host 0.0.0.0 --port 8000 --proxy-headers`
+   - Confirm `GET /health` returns `200` before redeploying.
+
+5. **Trigger a fresh deployment after fixing root cause**
+   - Redeploy from App Runner console or run `StartDeployment`.
+   - Then re-check the deployment commit SHA and `/health`.
+
+If rollback repeats with no clear app error, validate that your service instance role
+and network settings still allow required startup dependencies (for example secrets,
+datastores, or private endpoints).
+
+## 10-minute step-by-step recovery playbook
+
+If you just want exact steps to follow, do this in order:
+
+1. **Get the failing reason in AWS**
+   - App Runner → your service → **Deployments** → open latest failed deploy.
+   - Copy the first startup error line from application logs.
+
+2. **Fix configuration drift**
+   - Confirm service is watching the correct branch.
+   - Confirm source directory is `/`.
+   - Confirm runtime command is:
+     `python3 -m uvicorn apps.api.main:app --host 0.0.0.0 --port 8000 --proxy-headers`
+
+3. **Re-check environment variables**
+   - Compare App Runner env vars with what your latest code expects.
+   - Re-add any missing keys and save.
+
+4. **Verify app health locally**
+   - Run:
+     `pip3 install .`
+     `python3 -m uvicorn apps.api.main:app --host 0.0.0.0 --port 8000 --proxy-headers`
+   - Open `http://127.0.0.1:8000/health` and confirm `200`.
+
+5. **Force a fresh deploy**
+   - In App Runner click **Deploy**, or run:
+     `aws apprunner start-deployment --service-arn <YOUR_SERVICE_ARN> --region <AWS_REGION>`
+
+6. **Confirm new version is actually live**
+   - In Deployments, confirm latest deployment is **Operation succeeded**.
+   - Open `https://<your-domain>/health`.
+   - Open `https://<your-domain>/web/modules/boot.js` and verify your latest change appears.
+
+7. **If browser still looks old**
+   - Hard refresh (`Ctrl/Cmd + Shift + R`), then open an incognito window.
+   - Clear site data / unregister service worker for your domain.
 ## Railway decommissioning note
 
 This repository is intentionally configured for AWS deployment workflows only.
