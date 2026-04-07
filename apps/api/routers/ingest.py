@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-from fastapi import APIRouter, Body, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, Body, Depends, File, HTTPException, Query, Request, UploadFile, status
 from starlette.responses import JSONResponse
 
 from ..schemas.common import CanonicalOutputResponse, ResultsEnvelope
@@ -294,41 +294,22 @@ def build_ingest_router(
     @router.post("/ingest/csv/upload", response_model=IngestJobEnvelope)
     async def ingest_csv_upload(
         request: Request,
+        file: UploadFile = File(...),
         _: None = Depends(deps.require_api_key),
         run_id: str | None = Query(default=None),
         customer_id: str | None = Query(default=None),
         mapping: str | None = Query(default=None),
     ) -> dict[str, Any]:
         correlation_id = str(getattr(request.state, "correlation_id", "") or f"ing_up_{uuid4().hex[:12]}")
-        content_type = str(request.headers.get("content-type") or "")
-        boundary = ""
-        if "boundary=" in content_type:
-            boundary = content_type.split("boundary=", 1)[1].strip().strip('"')
-        raw_body = await request.body()
-        if not boundary:
-            return JSONResponse(status_code=400, content={"detail": "Missing uploaded CSV file."})
-
-        file_bytes = b""
-        filename = str(request.headers.get("x-filename") or "upload.csv")
+        filename = file.filename or "upload.csv"
         mapping_value = mapping
-        marker = f"--{boundary}".encode("utf-8")
-        for part in raw_body.split(marker):
-            if b"\r\n\r\n" not in part:
-                continue
-            head, payload = part.split(b"\r\n\r\n", 1)
-            payload = payload.rstrip(b"\r\n")
-            if b'name="file"' in head:
-                file_bytes = payload
-                if b"filename=" in head:
-                    try:
-                        file_name_raw = head.split(b"filename=", 1)[1].split(b"\r\n", 1)[0].strip()
-                        filename = file_name_raw.strip(b'"').decode("utf-8", errors="ignore") or filename
-                    except Exception:
-                        pass
-            elif b'name="mapping"' in head and mapping_value is None:
-                mapping_value = payload.decode("utf-8", errors="ignore")
 
-        if not file_bytes:
+        try:
+            upload_bytes = await file.read()
+        finally:
+            await file.close()
+
+        if not upload_bytes:
             return JSONResponse(status_code=400, content={"detail": "Missing uploaded CSV file."})
         if not filename.lower().endswith(".csv"):
             return JSONResponse(status_code=400, content={"detail": "Upload must be a .csv file."})
@@ -384,8 +365,8 @@ def build_ingest_router(
             deps.ingest_jobs[job_id] = initial_job
         deps.persist_operational_state(f"ingest_job:{job_id}", initial_job, customer_id=resolved_customer, run_id=resolved_run)
         try:
-            Path(temp_path).write_bytes(file_bytes)
-            bytes_received = len(file_bytes)
+            Path(temp_path).write_bytes(upload_bytes)
+            bytes_received = len(upload_bytes)
         except Exception as exc:
             Path(temp_path).unlink(missing_ok=True)
             deps.update_ingest_job(job_id, status="failed", message=f"Upload failed: {exc}")
