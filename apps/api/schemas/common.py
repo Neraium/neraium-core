@@ -44,6 +44,8 @@ class ResultsEnvelope(BaseModel):
     run_id: str | None = None
     processed: int | None = None
     latest: dict[str, Any] | None = None
+    alert_status: dict[str, Any] | None = None
+    memory_recall: dict[str, Any] | None = None
     count: int
     results: list[dict[str, Any]]
 
@@ -91,6 +93,8 @@ class CanonicalOutputResponse(BaseModel):
     persisted_at: str | None = None
     customer_id: str | None = None
     run_id: str | None = None
+    alert_status: dict[str, Any] | None = None
+    memory_recall: dict[str, Any] | None = None
 
 
 class CurrentStateEnvelope(BaseModel):

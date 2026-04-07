@@ -291,6 +291,11 @@ def _alert_candidate(
     recommendation_status = recommendation.get("status") if isinstance(recommendation.get("status"), Mapping) else {}
     recommendation_available = bool(recommendation_status.get("available", False))
     transition_pressure = _safe_float(raw_result.get("transition_pressure"), 0.0)
+    action_state = str(raw_result.get("action_state", "")).upper()
+    raw_risk_level = str(raw_result.get("risk_level", "UNKNOWN")).upper()
+
+    if action_state == "ALERT" or raw_risk_level == "HIGH":
+        return True, "risk_signal_alert_state"
 
     if level == "HIGH":
         return True, "risk_level_HIGH"

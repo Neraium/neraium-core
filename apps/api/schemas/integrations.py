@@ -1,21 +1,21 @@
 from __future__ import annotations
 
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
 
 class PullIntegrationStartRequest(BaseModel):
     endpoint_url: str | None = Field(default=None, min_length=1, max_length=2000)
-    polling_interval_seconds: float | None = Field(default=None, ge=0.2, le=3600.0)
+    polling_interval_seconds: Any | None = None
     auth_type: Literal["none", "basic", "bearer"] | None = None
     username: str | None = None
     password: str | None = None
     token: str | None = None
     run_id: str | None = None
-    retry_max_attempts: int | None = Field(default=None, ge=1, le=10)
-    retry_backoff_seconds: float | None = Field(default=None, ge=0.05, le=60.0)
-    request_timeout_seconds: float | None = Field(default=None, ge=1.0, le=120.0)
+    retry_max_attempts: Any | None = None
+    retry_backoff_seconds: Any | None = None
+    request_timeout_seconds: Any | None = None
 
 
 class PullIntegrationStatusEnvelope(BaseModel):
