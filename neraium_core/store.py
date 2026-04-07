@@ -856,6 +856,7 @@ class ResultStore:
         resolved_customer = _normalize_customer_id(customer_id)
         now = _utc_now()
         run_id = f"run_{uuid4().hex[:12]}"
+        initial_status = "active" if activate else "open"
         config_json = json.dumps(config or {})
         with self._conn() as conn:
             if activate:
@@ -867,7 +868,7 @@ class ResultStore:
                 )
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                (run_id, resolved_customer, text, now, now, "open", 1 if activate else 0, config_json),
+                (run_id, resolved_customer, text, now, now, initial_status, 1 if activate else 0, config_json),
             )
         return self.get_run(run_id, customer_id=resolved_customer) or {
             "run_id": run_id,
@@ -875,7 +876,7 @@ class ResultStore:
             "name": text,
             "created_at": now,
             "updated_at": now,
-            "status": "open",
+            "status": initial_status,
             "is_active": activate,
             "config": config or {},
         }

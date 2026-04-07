@@ -163,7 +163,13 @@ def is_api_key_valid(configured_key: str | None, provided_key: str | None) -> bo
 
 
 def _results_envelope(results: list[dict[str, Any]], latest: dict[str, Any] | None) -> dict[str, Any]:
-    return {"latest": latest, "count": len(results), "results": results}
+    envelope = {"latest": latest, "count": len(results), "results": results}
+    canonical = latest.get("canonical_output") if isinstance(latest, dict) and isinstance(latest.get("canonical_output"), dict) else {}
+    if isinstance(canonical.get("alert_status"), dict):
+        envelope["alert_status"] = canonical.get("alert_status")
+    if isinstance(canonical.get("memory_recall"), dict):
+        envelope["memory_recall"] = canonical.get("memory_recall")
+    return envelope
 
 
 def _compact_result_view(result: dict[str, Any] | None) -> dict[str, Any] | None:
@@ -225,6 +231,7 @@ def create_app(
     validate_runtime_or_raise(runtime_status)
 
     app = FastAPI(title="Neraium SII API", version="0.1.0")
+    app.state.request_body_limit = request_body_limit
     register_exception_handlers(app, logger=logger)
     app.add_middleware(RequestCorrelationIdMiddleware)
     app.add_middleware(MaxRequestBodySizeMiddleware, max_body_size=request_body_limit)
@@ -352,9 +359,15 @@ def create_app(
         latest_result: dict[str, Any] | None,
         previous_result: dict[str, Any] | None,
     ) -> list[dict[str, Any]]:
+        current_for_alerts = latest_result
+        if isinstance(latest_result, dict) and isinstance(latest_result.get("canonical_output"), dict):
+            current_for_alerts = latest_result["canonical_output"]
+        previous_for_alerts = previous_result
+        if isinstance(previous_result, dict) and isinstance(previous_result.get("canonical_output"), dict):
+            previous_for_alerts = previous_result["canonical_output"]
         items = evaluate_alerts(
-            current=latest_result,
-            previous=previous_result,
+            current=current_for_alerts,
+            previous=previous_for_alerts,
             instability_threshold=alert_instability_threshold,
             rapid_drift_delta=alert_rapid_drift_delta,
             now_iso=_utc_now_iso(),
@@ -363,7 +376,8 @@ def create_app(
             for item in items:
                 context = item.get("context")
                 if isinstance(context, dict):
-                    context.setdefault("run_id", run_id)
+                    if not context.get("run_id"):
+                        context["run_id"] = run_id
         return _record_alerts_for_customer(customer_id, items)
 
     def _normalize_content_length(request: Request) -> int | None:

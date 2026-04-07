@@ -20,6 +20,10 @@ class MaxRequestBodySizeMiddleware:
             return
 
         headers = {k.lower(): v for k, v in scope.get("headers", [])}
+        content_type = (headers.get(b"content-type") or b"").decode("latin1", errors="ignore").lower()
+        if "multipart/form-data" in content_type:
+            await self.app(scope, receive, send)
+            return
         raw_content_length = headers.get(b"content-length")
         if raw_content_length:
             try:

@@ -270,6 +270,7 @@ def build_ingest_router(
             },
         )
         if mapping is None or stage.requires_confirmation:
+            preview_state = "preview_blocked"
             logger.warning(
                 "ingest_csv_preview_mapping_blocked",
                 extra={
@@ -299,23 +300,44 @@ def build_ingest_router(
         mapping: str | None = Query(default=None),
     ) -> dict[str, Any]:
         correlation_id = str(getattr(request.state, "correlation_id", "") or f"ing_up_{uuid4().hex[:12]}")
-        filename = request.headers.get("x-filename", "upload.csv")
+        content_type = str(request.headers.get("content-type") or "")
+        boundary = ""
+        if "boundary=" in content_type:
+            boundary = content_type.split("boundary=", 1)[1].strip().strip('"')
+        raw_body = await request.body()
+        if not boundary:
+            return JSONResponse(status_code=400, content={"detail": "Missing uploaded CSV file."})
+
+        file_bytes = b""
+        filename = str(request.headers.get("x-filename") or "upload.csv")
+        mapping_value = mapping
+        marker = f"--{boundary}".encode("utf-8")
+        for part in raw_body.split(marker):
+            if b"\r\n\r\n" not in part:
+                continue
+            head, payload = part.split(b"\r\n\r\n", 1)
+            payload = payload.rstrip(b"\r\n")
+            if b'name="file"' in head:
+                file_bytes = payload
+                if b"filename=" in head:
+                    try:
+                        file_name_raw = head.split(b"filename=", 1)[1].split(b"\r\n", 1)[0].strip()
+                        filename = file_name_raw.strip(b'"').decode("utf-8", errors="ignore") or filename
+                    except Exception:
+                        pass
+            elif b'name="mapping"' in head and mapping_value is None:
+                mapping_value = payload.decode("utf-8", errors="ignore")
+
+        if not file_bytes:
+            return JSONResponse(status_code=400, content={"detail": "Missing uploaded CSV file."})
         if not filename.lower().endswith(".csv"):
-            raise HTTPException(
-                status_code=400,
-                detail={
-                    "type": "csv_upload_invalid_file_type",
-                    "message": "Upload must be a .csv file.",
-                    "actionable_detail": "Rename or export the telemetry file as .csv and retry.",
-                    "correlation_id": correlation_id,
-                },
-            )
+            return JSONResponse(status_code=400, content={"detail": "Upload must be a .csv file."})
         resolved_customer = deps.resolve_customer_id(customer_id)
         resolved_run = deps.resolve_run_id_with_default(deps.service_instance, run_id, customer_id=resolved_customer)
         column_mapping = None
-        if mapping:
+        if mapping_value:
             try:
-                parsed = json.loads(mapping)
+                parsed = json.loads(mapping_value)
                 column_mapping = CsvColumnMappingPayload.model_validate(parsed).model_dump()
             except Exception as exc:
                 raise HTTPException(
@@ -341,7 +363,7 @@ def build_ingest_router(
             "status": "uploading",
             "run_id": resolved_run,
             "customer_id": resolved_customer,
-            "filename": filename,
+            "upload_filename": filename,
             "created_at": created_at,
             "updated_at": created_at,
             "rows_processed": 0,
@@ -362,9 +384,8 @@ def build_ingest_router(
             deps.ingest_jobs[job_id] = initial_job
         deps.persist_operational_state(f"ingest_job:{job_id}", initial_job, customer_id=resolved_customer, run_id=resolved_run)
         try:
-            upload_bytes = await request.body()
-            Path(temp_path).write_bytes(upload_bytes)
-            bytes_received = len(upload_bytes)
+            Path(temp_path).write_bytes(file_bytes)
+            bytes_received = len(file_bytes)
         except Exception as exc:
             Path(temp_path).unlink(missing_ok=True)
             deps.update_ingest_job(job_id, status="failed", message=f"Upload failed: {exc}")
@@ -390,7 +411,7 @@ def build_ingest_router(
                 "job_id": job_id,
                 "run_id": resolved_run,
                 "customer_id": resolved_customer,
-                "filename": filename,
+                "upload_filename": filename,
                 "ingest_path": "csv_upload",
                 "stage": "ingest_started",
             },
