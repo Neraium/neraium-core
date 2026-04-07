@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-from fastapi import APIRouter, Body, Depends, File, HTTPException, Query, Request, UploadFile, status
+from fastapi import APIRouter, Body, Depends, File, Form, HTTPException, Query, Request, UploadFile, status
 from starlette.responses import JSONResponse
 
 from ..schemas.common import CanonicalOutputResponse, ResultsEnvelope
@@ -298,7 +298,7 @@ def build_ingest_router(
         _: None = Depends(deps.require_api_key),
         run_id: str | None = Query(default=None),
         customer_id: str | None = Query(default=None),
-        mapping: str | None = Query(default=None),
+        mapping: str | None = Form(None),
     ) -> dict[str, Any]:
         correlation_id = str(getattr(request.state, "correlation_id", "") or f"ing_up_{uuid4().hex[:12]}")
         filename = file.filename or "upload.csv"
@@ -352,7 +352,7 @@ def build_ingest_router(
             "rows_failed": 0,
             "partial_success": False,
             "upload_bytes_received": 0,
-            "upload_bytes_total": content_length,
+            "upload_bytes_total": content_length if content_length else None,
             "error_samples": [],
             "message": "Upload started.",
             "latest_result": None,
@@ -383,7 +383,9 @@ def build_ingest_router(
                     "correlation_id": correlation_id,
                 },
             ) from exc
-        deps.update_ingest_job(job_id, status="queued", upload_bytes_received=bytes_received, upload_bytes_total=content_length if content_length is not None else bytes_received, message=f"Upload complete ({bytes_received} bytes). Queueing ingest job.")
+        initial_job["upload_bytes_received"] = bytes_received
+        initial_job["upload_bytes_total"] = bytes_received
+        deps.update_ingest_job(job_id, status="queued", upload_bytes_received=bytes_received, upload_bytes_total=bytes_received, message=f"Upload complete ({bytes_received} bytes). Queueing ingest job.")
         logger.info(
             "ingest_csv_upload_queued",
             extra={
