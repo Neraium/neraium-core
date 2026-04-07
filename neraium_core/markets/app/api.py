@@ -255,9 +255,12 @@ def create_app(
     @app.post("/live/start")
     async def live_start(body: LiveStartBody | None = None) -> dict:
         start_body = body or LiveStartBody()
-        effective_symbols = [item.upper() for item in (start_body.symbols or DEFAULT_LIVE_SYMBOLS)]
+        effective_symbols = [
+            item.upper() for item in (start_body.symbols or DEFAULT_LIVE_SYMBOLS)
+        ]
         effective_timeframe = start_body.timeframe or DEFAULT_LIVE_TIMEFRAME
-        missing_required = [sym for sym in CORE if sym not in set(effective_symbols)]
+        normalized_symbols = set(effective_symbols)
+        missing_required = [sym for sym in CORE if sym not in normalized_symbols]
         if missing_required:
             required_symbols = ", ".join(CORE)
             raise HTTPException(
