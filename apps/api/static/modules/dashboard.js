@@ -1653,7 +1653,11 @@ function wireGrowOpDemoBtn(btn, originalLabel) {
       setLoading(true, "Seeding 450-frame grow op demo…");
       const out = await startGrowOpDemo();
       const cid = customerIdValue(state.tenant.customerId);
-      window.location.href = `/app/runs/${encodeURIComponent(out.run_id)}?customer_id=${encodeURIComponent(cid)}`;
+      const jobId = String(out?.job_id || "");
+      const params = new URLSearchParams({ customer_id: cid });
+      if (jobId) params.set("demo_job_id", jobId);
+      params.set("autoplay", "1");
+      window.location.href = `/app/runs/${encodeURIComponent(out.run_id)}?${params.toString()}`;
     } catch (err) {
       setStatus(String(err.message || err), true, true);
       btn.disabled = false;
@@ -1669,25 +1673,6 @@ function wireWorkspaceShellEvents() {
   wireGrowOpDemoBtn(qs("#loadGrowOpDemoBtn"), "Load grow op demo");
   wireGrowOpDemoBtn(qs("#demoBannerBtn"), "Launch guided demo");
   wireDemoModeToggle(qs("#demoModeToggle"));
-  const growOpBtn = qs("#loadGrowOpDemoBtn");
-  if (growOpBtn && growOpBtn.dataset.wired !== "1") {
-    growOpBtn.dataset.wired = "1";
-    growOpBtn.addEventListener("click", async () => {
-      try {
-        growOpBtn.disabled = true;
-        growOpBtn.textContent = "Loading demo...";
-        setLoading(true, "Seeding grow op demo...");
-        const out = await startGrowOpDemo();
-        const cid = customerIdValue(state.tenant.customerId);
-        window.location.href = `/app/runs/${encodeURIComponent(out.run_id)}?customer_id=${encodeURIComponent(cid)}`;
-      } catch (err) {
-        setStatus(String(err.message || err), true, true);
-        growOpBtn.disabled = false;
-        growOpBtn.textContent = "Load grow op demo";
-        setLoading(false);
-      }
-    });
-  }
   const refreshBtn = qs("#refreshBtn");
   if (refreshBtn && refreshBtn.dataset.wired !== "1") {
     refreshBtn.dataset.wired = "1";
