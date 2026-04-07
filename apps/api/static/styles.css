@@ -11,7 +11,7 @@
   --panel-2: #0d1a2b;
   --border: #22344a;
   --border-strong: #2d425a;
-  --muted: #96acc4;
+  --muted: #b7c9dc;
   --text: #d7e5f5;
   --text-strong: #f2f7ff;
   --accent: #32d583;
@@ -170,8 +170,8 @@ body.nav-mobile-open {
 
 .nav-section-title {
   margin: 0 8px 4px;
-  color: #8ea8c3;
-  font-size: 11px;
+  color: #b8cde3;
+  font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -316,8 +316,8 @@ body.nav-mobile-open {
 
 .owner-defense-log .owner-metrics-grid p {
   margin: 0;
-  font-size: 0.75rem;
-  color: #9ab0c8;
+  font-size: 0.8rem;
+  color: #b8cde2;
   text-transform: uppercase;
 }
 
@@ -372,8 +372,8 @@ body.nav-mobile-open {
 }
 
 .small-label {
-  color: #95a9c8;
-  font-size: 11px;
+  color: #b7cbe0;
+  font-size: 12px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.07em;
@@ -474,7 +474,14 @@ body.nav-mobile-open {
 .insight-tile-label,
 .dashboard-last-updated,
 .dashboard-trend-line {
-  color: #9bb2c8;
+  color: #bdd0e3;
+}
+
+.small-label,
+.nav-section-title,
+.owner-defense-log .owner-metrics-grid p,
+.smoke-room-group-title {
+  letter-spacing: 0.06em;
 }
 
 button,
