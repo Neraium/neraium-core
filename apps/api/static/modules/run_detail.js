@@ -483,6 +483,9 @@ function startGrowOpDemoMonitor(runId, runConfig = {}) {
   stopGrowOpDemoMonitor();
   const monitorToken = state.ui.runDetailGrowOpMonitorToken;
   let attempt = 0;
+  let seenResultsOnce = false;
+  let stableCompletePolls = 0;
+  let lastResultCount = -1;
   const maxAttempts = 180;
   const slowPollMs = 5000;
   setRunDetailEmptyMessage("Guided demo is loading telemetry now.", "No separate script is required. Keep this tab open.");
@@ -526,18 +529,31 @@ function startGrowOpDemoMonitor(runId, runConfig = {}) {
       const recentEnv = await fetchRecentResults({ run_id: runId, limit: RUN_DETAIL_INITIAL_LIMIT });
       if (!isCurrentMonitor()) return;
       state.runRecent = Array.isArray(recentEnv?.results) ? recentEnv.results : [];
+      const resultCount = state.runRecent.length;
+      const grew = resultCount > lastResultCount;
+      lastResultCount = resultCount;
       renderRunDetailFromState({ deferHeavy: true });
       if (!state.ui.runDetailBackgroundHistoryLoaded) {
         loadRunDetailBackgroundHistory(runId).catch(() => {});
       }
-      if (state.runRecent.length > 0) {
-        setStatus("Guided demo loaded.", false, true);
-        clearDemoJobIdParam();
-        setRunDetailDemoProgress({ visible: false });
-        state.ui.runDetailGrowOpMonitorTimer = null;
-        return;
+      if (resultCount > 0 && !seenResultsOnce) {
+        seenResultsOnce = true;
+        setStatus("Guided demo loaded. Streaming remaining telemetry…", false, true);
       }
-      if (stateLabel === "complete" || stateLabel === "ready") {
+
+      const isComplete = stateLabel === "complete" || stateLabel === "ready";
+      if (isComplete && resultCount > 0) {
+        stableCompletePolls = grew ? 0 : stableCompletePolls + 1;
+        const reachedProcessedCount = processed > 0 && resultCount >= Math.min(processed, RUN_DETAIL_INITIAL_LIMIT);
+        if (reachedProcessedCount || stableCompletePolls >= 2) {
+          clearDemoJobIdParam();
+          setRunDetailDemoProgress({ visible: false });
+          state.ui.runDetailGrowOpMonitorTimer = null;
+          return;
+        }
+      }
+
+      if (isComplete) {
         setRunDetailEmptyMessage(
           "Guided demo is finalizing telemetry.",
           "No separate script is required. Keep this tab open while final frames are indexed."
