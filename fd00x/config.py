@@ -205,6 +205,27 @@ class DetectorConfig:
     min_anomaly_duration: int = 5
     """Minimum sustained anomaly duration required to trigger warning."""
 
+    enable_ensemble_voting: bool = False
+    """Enable ensemble voting across multi-scale temporal views."""
+
+    ensemble_min_votes: int = 3
+    """Minimum number of detector votes required per cycle when ensemble voting is enabled."""
+
+    micro_window: int = 10
+    """Short-horizon window used for micro temporal smoothing."""
+
+    meso_window: int = 50
+    """Mid-horizon window used for meso temporal smoothing."""
+
+    macro_window: int = 150
+    """Long-horizon window used for macro temporal smoothing."""
+
+    acceleration_window: int = 10
+    """Window size used to estimate first derivative for acceleration gating."""
+
+    acceleration_threshold: float = 0.02
+    """Minimum acceleration required to activate the rate-of-change vote."""
+
     require_upward_ema_trend: bool = True
     """
     If True, an exceedance only counts toward persistence when EMA is rising
