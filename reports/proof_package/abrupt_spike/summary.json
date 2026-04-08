@@ -3,7 +3,7 @@
   "title": "Abrupt disturbance / spike",
   "description": "Short-lived transient perturbation should not permanently escalate systemic risk.",
   "expected_behavior": "Signal may blip but should recover; no sustained escalation.",
-  "neraium_warning_cycle": 50,
+  "neraium_warning_cycle": 44,
   "threshold_first_trigger_cycle": null,
   "lead_cycles_neraium_vs_threshold": null,
   "progression_interpretable": true,
@@ -12,7 +12,7 @@
   "quality_statuses_seen": [
     "DATA_QUALITY_LIMITED"
   ],
-  "max_composite_instability": 0.32759,
+  "max_composite_instability": 0.710904,
   "max_structural_drift": 0.0427,
   "notes": "Robustness against one-off noise."
 }

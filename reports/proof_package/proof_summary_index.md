@@ -5,10 +5,10 @@ This package compares Neraium instability signaling against a transparent thresh
 | Scenario | Neraium warning | Threshold trigger | Lead cycles | Interpretable |
 |---|---:|---:|---:|---|
 | stable_baseline | None | None | None | yes |
-| gradual_drift | 33 | 80 | 47 | yes |
-| abrupt_spike | 50 | None | None | yes |
-| progressive_critical | 26 | 60 | 34 | yes |
-| messy_data | 26 | None | None | yes |
+| gradual_drift | 31 | 80 | 49 | yes |
+| abrupt_spike | 44 | None | None | yes |
+| progressive_critical | 25 | 60 | 35 | yes |
+| messy_data | 26 | None | None | no |
 
 ## Founder-facing takeaway
 Neraium surfaces instability through structural drift/composite progression before hard per-sensor limits in the drift and progressive critical scenarios, while remaining disciplined in stable and noisy scenarios.
