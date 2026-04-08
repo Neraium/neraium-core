@@ -466,21 +466,40 @@ function clearDemoJobIdParam() {
   }
 }
 
+function stopGrowOpDemoMonitor() {
+  const timer = state.ui.runDetailGrowOpMonitorTimer;
+  if (timer) {
+    window.clearTimeout(timer);
+  }
+  state.ui.runDetailGrowOpMonitorTimer = null;
+  state.ui.runDetailGrowOpMonitorToken = (state.ui.runDetailGrowOpMonitorToken || 0) + 1;
+}
+
 function startGrowOpDemoMonitor(runId, runConfig = {}) {
   const params = new URLSearchParams(window.location.search);
   const jobId = String(params.get("demo_job_id") || "").trim();
   const isGrowOpRun = String(runConfig?.source || "").toLowerCase() === "grow-op-demo";
   if (!runId || (!jobId && !isGrowOpRun)) return;
+  stopGrowOpDemoMonitor();
+  const monitorToken = state.ui.runDetailGrowOpMonitorToken;
   let attempt = 0;
   const maxAttempts = 180;
+  const slowPollMs = 5000;
   setRunDetailEmptyMessage("Guided demo is loading telemetry now.", "No separate script is required. Keep this tab open.");
   setRunDetailDemoProgress({ visible: true, phase: "Connecting", current: 0, total: 0, text: "Requesting demo stream status…" });
+  const isCurrentMonitor = () => state.ui.runDetailGrowOpMonitorToken === monitorToken;
+  const schedulePoll = (ms) => {
+    if (!isCurrentMonitor()) return;
+    state.ui.runDetailGrowOpMonitorTimer = window.setTimeout(poll, ms);
+  };
   const poll = async () => {
+    if (!isCurrentMonitor()) return;
     attempt += 1;
     try {
       const statusEnv = await fetchJson(
         apiUrl("/demo/grow-op/status", tenantScopeParams({ run_id: runId, ...(jobId ? { job_id: jobId } : {}) }))
       );
+      if (!isCurrentMonitor()) return;
       const job = statusEnv?.job || {};
       const stateLabel = String(job?.status || statusEnv?.status || "running").toLowerCase();
       if (stateLabel === "error") {
@@ -488,6 +507,7 @@ function startGrowOpDemoMonitor(runId, runConfig = {}) {
         setStatus(msg, true, true);
         setRunDetailEmptyMessage("Guided demo failed to load telemetry.", "Open status for details, then retry launch guided demo.");
         setRunDetailDemoProgress({ visible: true, phase: "Failed", current: 0, total: 0, text: msg });
+        state.ui.runDetailGrowOpMonitorTimer = null;
         return;
       }
       const processed = Math.max(0, Number(job?.processed || 0));
@@ -504,7 +524,8 @@ function startGrowOpDemoMonitor(runId, runConfig = {}) {
         text: `Telemetry ingest ${Math.max(0, Math.min(100, Math.round(progressPct)))}%`,
       });
       const recentEnv = await fetchRecentResults({ run_id: runId, limit: RUN_DETAIL_INITIAL_LIMIT });
-      state.runRecent = mergeRunRecentResults(recentEnv?.results);
+      if (!isCurrentMonitor()) return;
+      state.runRecent = Array.isArray(recentEnv?.results) ? recentEnv.results : [];
       renderRunDetailFromState({ deferHeavy: true });
       if (!state.ui.runDetailBackgroundHistoryLoaded) {
         loadRunDetailBackgroundHistory(runId).catch(() => {});
@@ -513,6 +534,7 @@ function startGrowOpDemoMonitor(runId, runConfig = {}) {
         setStatus("Guided demo loaded.", false, true);
         clearDemoJobIdParam();
         setRunDetailDemoProgress({ visible: false });
+        state.ui.runDetailGrowOpMonitorTimer = null;
         return;
       }
       if (stateLabel === "complete" || stateLabel === "ready") {
@@ -522,21 +544,23 @@ function startGrowOpDemoMonitor(runId, runConfig = {}) {
         );
       }
       if (attempt < maxAttempts) {
-        window.setTimeout(poll, 850);
+        schedulePoll(850);
       } else {
-        setStatus("Guided demo is still processing. No separate script is needed—this page will update when telemetry arrives.", false, false);
+        setStatus("Guided demo is still processing. No separate script is needed—this page will continue checking while telemetry is indexed.", false, false);
         setRunDetailDemoProgress({ visible: true, phase: "Still processing", current: inferredCurrent, total: inferredTotal, text: "Still indexing telemetry frames…" });
+        schedulePoll(slowPollMs);
       }
     } catch (_err) {
       if (attempt < maxAttempts) {
-        window.setTimeout(poll, 1000);
+        schedulePoll(1000);
       } else {
-        setStatus("Guided demo status checks timed out. No separate script is required; try Refresh once and keep this tab open.", true, true);
+        setStatus("Guided demo status checks are delayed. No separate script is required; this page will keep retrying in the background.", false, false);
         setRunDetailDemoProgress({ visible: true, phase: "Status timeout", current: 0, total: 0, text: "Could not read progress from server." });
+        schedulePoll(slowPollMs);
       }
     }
   };
-  window.setTimeout(poll, 600);
+  schedulePoll(600);
 }
 
 async function loadRunDetail(runId) {
@@ -559,6 +583,7 @@ async function loadRunDetail(runId) {
   state.ui.runDetailHydratedSections = { overview: true, trends: false, geometry: false, results: false };
   renderRunDetailFromState();
   state.ui.runDetailBackgroundHistoryLoaded = false;
+  stopGrowOpDemoMonitor();
   startGrowOpDemoMonitor(runId, run.config || {});
 
   const exportJson = qs("#runDetailExportJsonBtn");
