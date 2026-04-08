@@ -424,6 +424,20 @@ function setRunDetailEmptyMessage(primary, secondary) {
   if (lines[1]) lines[1].textContent = secondary;
 }
 
+function setRunDetailDemoProgress({ visible = false, phase = "Preparing demo telemetry", current = 0, total = 0, text = "" } = {}) {
+  const panel = qs("#runDetailDemoProgress");
+  const phaseEl = qs("#runDetailDemoProgressPhase");
+  const countEl = qs("#runDetailDemoProgressCount");
+  const fillEl = qs("#runDetailDemoProgressFill");
+  const textEl = qs("#runDetailDemoProgressText");
+  if (panel) panel.classList.toggle("hidden", !visible);
+  if (phaseEl) phaseEl.textContent = phase;
+  if (countEl) countEl.textContent = `${current}/${total}`;
+  const pct = total > 0 ? Math.max(0, Math.min(100, (current / total) * 100)) : 0;
+  if (fillEl) fillEl.style.width = `${pct}%`;
+  if (textEl) textEl.textContent = text || `${phase}… (${current}/${total})`;
+}
+
 function clearDemoJobIdParam() {
   try {
     const next = new URL(window.location.href);
@@ -443,6 +457,7 @@ function startGrowOpDemoMonitor(runId, runConfig = {}) {
   let attempt = 0;
   const maxAttempts = 180;
   setRunDetailEmptyMessage("Guided demo is loading telemetry now.", "No separate script is required. Keep this tab open.");
+  setRunDetailDemoProgress({ visible: true, phase: "Connecting", current: 0, total: 0, text: "Requesting demo stream status…" });
   const poll = async () => {
     attempt += 1;
     try {
@@ -455,14 +470,29 @@ function startGrowOpDemoMonitor(runId, runConfig = {}) {
         const msg = String(job?.error || "Grow-op demo seeding failed.");
         setStatus(msg, true, true);
         setRunDetailEmptyMessage("Guided demo failed to load telemetry.", "Open status for details, then retry launch guided demo.");
+        setRunDetailDemoProgress({ visible: true, phase: "Failed", current: 0, total: 0, text: msg });
         return;
       }
+      const processed = Math.max(0, Number(job?.processed || 0));
+      const totalFrames = Math.max(processed, Number(job?.total_frames || 0));
+      const progressPct = Number(job?.progress || 0);
+      const inferredCurrent = totalFrames > 0 ? processed : Math.round(Math.max(0, Math.min(100, progressPct)));
+      const inferredTotal = totalFrames > 0 ? totalFrames : 100;
+      const phase = stateLabel === "complete" || stateLabel === "ready" ? "Finalizing" : "Streaming telemetry";
+      setRunDetailDemoProgress({
+        visible: true,
+        phase,
+        current: inferredCurrent,
+        total: inferredTotal,
+        text: `Telemetry ingest ${Math.max(0, Math.min(100, Math.round(progressPct)))}%`,
+      });
       const recentEnv = await fetchRecentResults({ run_id: runId, limit: RUN_DETAIL_INITIAL_LIMIT });
       state.runRecent = Array.isArray(recentEnv?.results) ? recentEnv.results : [];
       renderRunDetailFromState({ deferHeavy: true });
       if (state.runRecent.length > 0) {
         setStatus("Guided demo loaded.", false, true);
         clearDemoJobIdParam();
+        setRunDetailDemoProgress({ visible: false });
         return;
       }
       if (stateLabel === "complete" || stateLabel === "ready") {
@@ -475,12 +505,14 @@ function startGrowOpDemoMonitor(runId, runConfig = {}) {
         window.setTimeout(poll, 850);
       } else {
         setStatus("Guided demo is still processing. No separate script is needed—this page will update when telemetry arrives.", false, false);
+        setRunDetailDemoProgress({ visible: true, phase: "Still processing", current: inferredCurrent, total: inferredTotal, text: "Still indexing telemetry frames…" });
       }
     } catch (_err) {
       if (attempt < maxAttempts) {
         window.setTimeout(poll, 1000);
       } else {
         setStatus("Guided demo status checks timed out. No separate script is required; try Refresh once and keep this tab open.", true, true);
+        setRunDetailDemoProgress({ visible: true, phase: "Status timeout", current: 0, total: 0, text: "Could not read progress from server." });
       }
     }
   };

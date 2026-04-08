@@ -32,6 +32,8 @@ async function loadCurrentPage(route) {
 async function init() {
   startLiveClock();
   readTenantFromStorage();
+  readDemoModeFromStorage();
+  applyDemoQueryParams();
   const routeScope = routeScopeFromQuery();
   if (routeScope.customer_id) {
     state.tenant.customerId = customerIdValue(routeScope.customer_id);
