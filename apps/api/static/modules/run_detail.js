@@ -543,14 +543,13 @@ function startGrowOpDemoMonitor(runId, runConfig = {}) {
           "No separate script is required. Keep this tab open while final frames are indexed."
         );
       }
-      if (attempt < maxAttempts) {
-        schedulePoll(850);
-      } else {
+      if (attempt >= maxAttempts) {
         setStatus("Guided demo is still processing. No separate script is needed—this page will continue checking while telemetry is indexed.", false, false);
         setRunDetailDemoProgress({ visible: true, phase: "Still processing", current: inferredCurrent, total: inferredTotal, text: "Still indexing telemetry frames…" });
-        schedulePoll(slowPollMs);
       }
+      schedulePoll(attempt < maxAttempts ? 850 : slowPollMs);
     } catch (_err) {
+      if (!isCurrentMonitor()) return;
       if (attempt < maxAttempts) {
         schedulePoll(1000);
       } else {
