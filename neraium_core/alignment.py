@@ -264,6 +264,7 @@ class StructuralEngine:
             "episode_history": [],
         }
         self.transition_aware_enabled: bool = _env_enabled("NERAIUM_TRANSITION_AWARE", default="1")
+        self.fast_mode: bool = os.getenv("NERAIUM_FAST_MODE", "0") == "1"
         # Extra frames after windows first fill before EMERGING/SUSTAINED labels are trusted.
         _stab = os.environ.get("NERAIUM_TRANSITION_STABILIZATION_MARGIN") or os.environ.get(
             "NERAIUM_TRANSITION_WARMUP_MARGIN", "8"
@@ -1828,93 +1829,101 @@ class StructuralEngine:
                 self._subsystem_instability_history.append(float(subsystem.get("max_instability", 0.0)))
                 self._regime_novelty_history.append(float(transition_metrics.get("regime_novelty", 0.0)))
                 self._shock_activity_history.append(float(transition_metrics.get("shock_triggered", 0.0)))
-                directional_evolution = derive_directional_evolution_features(
-                    recent_window=z_recent_valid,
-                    feature_names=valid_sensor_names,
-                    timestamps=ts_recent,
-                )
-                trajectory_shape = derive_trajectory_shape_features(
-                    recent_window=z_recent_valid,
-                    timestamps=ts_recent,
-                )
-                path_prototypes = derive_path_prototypes(
-                    directional_evolution=directional_evolution,
-                    trajectory_shape=trajectory_shape,
-                    geometry=geometry_metrics,
-                    state_graph=state_graph,
-                    top_k=3,
-                )
-                trajectory_analysis = classify_trajectory_path(
-                    drift_history=list(self._drift_score_history),
-                    transition_pressure_history=list(self._transition_pressure_history),
-                    subsystem_instability_history=list(self._subsystem_instability_history),
-                    regime_novelty_history=list(self._regime_novelty_history),
-                    shock_activity_history=list(self._shock_activity_history),
-                    reversibility_classification=str(reversibility.get("classification", "")),
-                    reversibility_score=float(reversibility_scores.get("locked_in_index", 0.0)),
-                    directional_evolution=directional_evolution,
-                    trajectory_shape=trajectory_shape,
-                    path_prototypes=path_prototypes,
-                    temporal_quality=temporal_quality,
-                    temporal_features=temporal_features,
-                    geometry=geometry_metrics,
-                    state_space_statistics=state_space_statistics,
-                    state_graph=state_graph,
-                )
-                hierarchy_analysis = analyze_hierarchy_cascade(
-                    sensor_names=valid_sensor_names,
-                    subsystem=subsystem,
-                    graph=graph,
-                    causal_propagation=causal_prop,
-                    counterfactual_guidance=counterfactual_guidance,
-                    transition=transition_metrics,
-                )
-                constraint_analysis = analyze_constraint_lock_in(
-                    transition_pressure_history=list(self._transition_pressure_history),
-                    shock_activity_history=list(self._shock_activity_history),
-                    structural_drift_score=float(drift_score),
-                    regime_novelty=float(transition_metrics.get("regime_novelty", 0.0)),
-                    regime_distance=float(regime_distance) if regime_distance is not None else None,
-                    subsystem_instability=float(subsystem.get("max_instability", 0.0)),
-                    reversibility_classification=str(reversibility.get("classification", "")),
-                    reversibility_score=float(reversibility_scores.get("locked_in_index", 0.0)),
-                    trajectory_analysis=trajectory_analysis,
-                    temporal_quality=temporal_quality,
-                    temporal_features=temporal_features,
-                    state_space_statistics=state_space_statistics if isinstance(state_space_statistics, dict) else None,
-                    state_graph=state_graph if isinstance(state_graph, dict) else None,
-                )
-                branching_analysis = derive_branching_analysis(
-                    trajectory_analysis,
-                    temporal_quality=temporal_quality,
-                    temporal_features=temporal_features,
-                    geometry=geometry_metrics if isinstance(geometry_metrics, dict) else None,
-                    state_graph=state_graph if isinstance(state_graph, dict) else None,
-                )
-                horizon_analysis = estimate_risk_horizon(
-                    transition_pressure_history=list(self._transition_pressure_history),
-                    shock_activity_history=list(self._shock_activity_history),
-                    structural_drift_history=list(self._drift_score_history),
-                    trajectory_analysis=trajectory_analysis,
-                    branching_analysis=branching_analysis,
-                    constraint_analysis=constraint_analysis,
-                    temporal_quality=temporal_quality,
-                    temporal_features=temporal_features,
-                    geometry=geometry_metrics if isinstance(geometry_metrics, dict) else None,
-                    state_space_statistics=state_space_statistics if isinstance(state_space_statistics, dict) else None,
-                )
-                counterfactual_simulation = simulate_counterfactual_futures(
-                    transition_pressure_history=list(self._transition_pressure_history),
-                    shock_activity_history=list(self._shock_activity_history),
-                    structural_drift_history=list(self._drift_score_history),
-                    trajectory_analysis=trajectory_analysis,
-                    branching_analysis=branching_analysis,
-                    constraint_analysis=constraint_analysis,
-                    hierarchy_analysis=hierarchy_analysis,
-                    horizon_analysis=horizon_analysis,
-                    temporal_quality=temporal_quality,
-                    temporal_features=temporal_features,
-                )
+                if not self.fast_mode:
+                    directional_evolution = derive_directional_evolution_features(
+                        recent_window=z_recent_valid,
+                        feature_names=valid_sensor_names,
+                        timestamps=ts_recent,
+                    )
+                    trajectory_shape = derive_trajectory_shape_features(
+                        recent_window=z_recent_valid,
+                        timestamps=ts_recent,
+                    )
+                    path_prototypes = derive_path_prototypes(
+                        directional_evolution=directional_evolution,
+                        trajectory_shape=trajectory_shape,
+                        geometry=geometry_metrics,
+                        state_graph=state_graph,
+                        top_k=3,
+                    )
+                    trajectory_analysis = classify_trajectory_path(
+                        drift_history=list(self._drift_score_history),
+                        transition_pressure_history=list(self._transition_pressure_history),
+                        subsystem_instability_history=list(self._subsystem_instability_history),
+                        regime_novelty_history=list(self._regime_novelty_history),
+                        shock_activity_history=list(self._shock_activity_history),
+                        reversibility_classification=str(reversibility.get("classification", "")),
+                        reversibility_score=float(reversibility_scores.get("locked_in_index", 0.0)),
+                        directional_evolution=directional_evolution,
+                        trajectory_shape=trajectory_shape,
+                        path_prototypes=path_prototypes,
+                        temporal_quality=temporal_quality,
+                        temporal_features=temporal_features,
+                        geometry=geometry_metrics,
+                        state_space_statistics=state_space_statistics,
+                        state_graph=state_graph,
+                    )
+                    hierarchy_analysis = analyze_hierarchy_cascade(
+                        sensor_names=valid_sensor_names,
+                        subsystem=subsystem,
+                        graph=graph,
+                        causal_propagation=causal_prop,
+                        counterfactual_guidance=counterfactual_guidance,
+                        transition=transition_metrics,
+                    )
+                    constraint_analysis = analyze_constraint_lock_in(
+                        transition_pressure_history=list(self._transition_pressure_history),
+                        shock_activity_history=list(self._shock_activity_history),
+                        structural_drift_score=float(drift_score),
+                        regime_novelty=float(transition_metrics.get("regime_novelty", 0.0)),
+                        regime_distance=float(regime_distance) if regime_distance is not None else None,
+                        subsystem_instability=float(subsystem.get("max_instability", 0.0)),
+                        reversibility_classification=str(reversibility.get("classification", "")),
+                        reversibility_score=float(reversibility_scores.get("locked_in_index", 0.0)),
+                        trajectory_analysis=trajectory_analysis,
+                        temporal_quality=temporal_quality,
+                        temporal_features=temporal_features,
+                        state_space_statistics=state_space_statistics if isinstance(state_space_statistics, dict) else None,
+                        state_graph=state_graph if isinstance(state_graph, dict) else None,
+                    )
+                    branching_analysis = derive_branching_analysis(
+                        trajectory_analysis,
+                        temporal_quality=temporal_quality,
+                        temporal_features=temporal_features,
+                        geometry=geometry_metrics if isinstance(geometry_metrics, dict) else None,
+                        state_graph=state_graph if isinstance(state_graph, dict) else None,
+                    )
+                    horizon_analysis = estimate_risk_horizon(
+                        transition_pressure_history=list(self._transition_pressure_history),
+                        shock_activity_history=list(self._shock_activity_history),
+                        structural_drift_history=list(self._drift_score_history),
+                        trajectory_analysis=trajectory_analysis,
+                        branching_analysis=branching_analysis,
+                        constraint_analysis=constraint_analysis,
+                        temporal_quality=temporal_quality,
+                        temporal_features=temporal_features,
+                        geometry=geometry_metrics if isinstance(geometry_metrics, dict) else None,
+                        state_space_statistics=state_space_statistics if isinstance(state_space_statistics, dict) else None,
+                    )
+                    counterfactual_simulation = simulate_counterfactual_futures(
+                        transition_pressure_history=list(self._transition_pressure_history),
+                        shock_activity_history=list(self._shock_activity_history),
+                        structural_drift_history=list(self._drift_score_history),
+                        trajectory_analysis=trajectory_analysis,
+                        branching_analysis=branching_analysis,
+                        constraint_analysis=constraint_analysis,
+                        hierarchy_analysis=hierarchy_analysis,
+                        horizon_analysis=horizon_analysis,
+                        temporal_quality=temporal_quality,
+                        temporal_features=temporal_features,
+                    )
+                else:
+                    trajectory_analysis = {"available": False, "reason": "fast_mode"}
+                    branching_analysis = {"available": False, "reason": "fast_mode"}
+                    hierarchy_analysis = {"available": False, "reason": "fast_mode"}
+                    constraint_analysis = {"available": False, "reason": "fast_mode"}
+                    horizon_analysis = {"available": False, "reason": "fast_mode"}
+                    counterfactual_simulation = {"available": False, "reason": "fast_mode"}
 
                 analytics.update(
                     {
@@ -2232,63 +2241,72 @@ class StructuralEngine:
                         watch_thr, alert_thr = alert_thr, watch_thr
                     self._composite_watch_alert_thresholds = (watch_thr, alert_thr)
 
-            persistence = self._persistence_features()
+            if self.fast_mode:
+                forecast = {
+                    "method": "disabled_fast_mode",
+                    "trend": 0.0,
+                    "time_to_instability": None,
+                    "ar1_next": None,
+                    "ar1_time_to_instability": None,
+                    "persistence": {},
+                }
+            else:
+                persistence = self._persistence_features()
+                forecast = {
+                    "method": "regression+ar1",
+                    "trend": float(instability_trend(self.score_history)),
+                    "time_to_instability": time_to_instability(self.score_history),
+                    "ar1_next": forecast_next(self.score_history),
+                    "ar1_time_to_instability": time_to_threshold_ar1(self.score_history),
+                    "persistence": persistence,
+                }
 
-            forecast = {
-                "method": "regression+ar1",
-                "trend": float(instability_trend(self.score_history)),
-                "time_to_instability": time_to_instability(self.score_history),
-                "ar1_next": forecast_next(self.score_history),
-                "ar1_time_to_instability": time_to_threshold_ar1(self.score_history),
-                "persistence": persistence,
-            }
-
-            # Temporal foresight upgrade: observational scenario projections.
-            # These are "what-if" time-to-threshold estimates derived from the same
-            # AR(1) forecast, with selected component magnitudes scaled.
-            if _env_enabled("NERAIUM_TEMPORAL_SCENARIOS", default="1"):
-                try:
-                    scenario_defs = [
-                        {
-                            "scenario": "structural_drift_up_12pct",
-                            "scale": {"relational_drift": 1.12, "regime_drift": 1.08, "early_warning": 1.05},
-                        },
-                        {
-                            "scenario": "coupling_breakdown_up_10pct",
-                            "scale": {"directional_divergence": 1.10, "spectral": 1.10},
-                        },
-                        {"scenario": "interaction_entropy_up_10pct", "scale": {"entropy": 1.10}},
-                    ]
-
-                    threshold = 1.5
-                    score_series = list(self.score_history)
-                    projections: list[dict[str, object]] = []
-                    for sc in scenario_defs:
-                        scen_components = dict(components)
-                        for k, factor in sc["scale"].items():
-                            if k in scen_components:
-                                scen_components[k] = float(scen_components[k]) * float(factor)
-
-                        scen_score = float(
-                            composite_instability_score_normalized(
-                                scen_components, weights=weights_for_composite
-                            )
-                        )
-                        scen_series = list(score_series)
-                        if scen_series:
-                            scen_series[-1] = scen_score
-                        tti = time_to_threshold_ar1(scen_series, threshold=threshold, max_steps=200)
-                        projections.append(
+                # Temporal foresight upgrade: observational scenario projections.
+                # These are "what-if" time-to-threshold estimates derived from the same
+                # AR(1) forecast, with selected component magnitudes scaled.
+                if _env_enabled("NERAIUM_TEMPORAL_SCENARIOS", default="1"):
+                    try:
+                        scenario_defs = [
                             {
-                                "scenario": sc["scenario"],
-                                "projected_composite_score": scen_score,
-                                "projected_time_to_instability_steps": tti,
-                            }
-                        )
+                                "scenario": "structural_drift_up_12pct",
+                                "scale": {"relational_drift": 1.12, "regime_drift": 1.08, "early_warning": 1.05},
+                            },
+                            {
+                                "scenario": "coupling_breakdown_up_10pct",
+                                "scale": {"directional_divergence": 1.10, "spectral": 1.10},
+                            },
+                            {"scenario": "interaction_entropy_up_10pct", "scale": {"entropy": 1.10}},
+                        ]
 
-                    forecast["scenario_projections"] = projections
-                except Exception:
-                    pass
+                        threshold = 1.5
+                        score_series = list(self.score_history)
+                        projections: list[dict[str, object]] = []
+                        for sc in scenario_defs:
+                            scen_components = dict(components)
+                            for k, factor in sc["scale"].items():
+                                if k in scen_components:
+                                    scen_components[k] = float(scen_components[k]) * float(factor)
+
+                            scen_score = float(
+                                composite_instability_score_normalized(
+                                    scen_components, weights=weights_for_composite
+                                )
+                            )
+                            scen_series = list(score_series)
+                            if scen_series:
+                                scen_series[-1] = scen_score
+                            tti = time_to_threshold_ar1(scen_series, threshold=threshold, max_steps=200)
+                            projections.append(
+                                {
+                                    "scenario": sc["scenario"],
+                                    "projected_composite_score": scen_score,
+                                    "projected_time_to_instability_steps": tti,
+                                }
+                            )
+
+                        forecast["scenario_projections"] = projections
+                    except Exception:
+                        pass
 
             decision = decision_output(
                 composite_score=float(composite),
@@ -2698,6 +2716,47 @@ class StructuralEngine:
                         f" composite_thr={comp_thr}"
                     )
                     self._first_alert_logged = True
+
+        if self.fast_mode:
+            transition_pressure_value = float(result.get("transition_pressure", 0.0) or 0.0)
+            if len(self._transition_pressure_history) == history_transition_len_before:
+                self._transition_pressure_history.append(transition_pressure_value)
+            if len(self._shock_activity_history) == history_shock_len_before:
+                self._shock_activity_history.append(0.0)
+            if len(self._structural_drift_history) == history_drift_len_before:
+                self._structural_drift_history.append(float(result.get("structural_drift_score", 0.0) or 0.0))
+
+            geo_r = result.get("geometry") if isinstance(result.get("geometry"), dict) else {}
+            ss_r = result.get("state_space_statistics") if isinstance(result.get("state_space_statistics"), dict) else {}
+            sg_r = result.get("state_graph") if isinstance(result.get("state_graph"), dict) else {}
+            rd_final = compute_engine_readiness(
+                frame_count=len(self.frames),
+                baseline_window=self.baseline_window,
+                recent_window=self.recent_window,
+                transition_pressure_history_len=len(self._transition_pressure_history),
+                warmup_margin_frames=self.transition_stabilization_margin_frames,
+                min_transition_history=self.transition_classification_min_history,
+                geometry_available=geo_r.get("available") is not False if geo_r else None,
+                geometry_reason=str(geo_r.get("reason", "")) if geo_r else None,
+                state_space_available=ss_r.get("available") is not False if ss_r else None,
+                state_space_reason=str(ss_r.get("reason", "")) if ss_r else None,
+                state_graph_available=sg_r.get("available") is not False if sg_r else None,
+                state_graph_reason=str(sg_r.get("reason", "")) if sg_r else None,
+            )
+            result["readiness"] = rd_final.as_dict()
+            result["engine_ready"] = rd_final.ready
+            result["confidence_score"] = round(float(result.get("confidence_score", 0.0) or 0.0), 4)
+            slim = {
+                "state": result.get("state", "STABLE"),
+                "transition_state": result.get("transition_state", "NONE"),
+                "structural_drift_score": float(result.get("structural_drift_score", 0.0) or 0.0),
+                "transition_pressure": float(result.get("transition_pressure", 0.0) or 0.0),
+                "latest_instability": float(result.get("latest_instability", 0.0) or 0.0),
+                "engine_ready": bool(result.get("engine_ready", False)),
+                "confidence_score": float(result.get("confidence_score", 0.0) or 0.0),
+            }
+            self.latest_result = slim
+            return slim
 
         drift_noise = classify_drift_noise(list(self._drift_score_history))
         result["drift_noise"] = drift_noise
