@@ -12,7 +12,7 @@
   "quality_statuses_seen": [
     "DATA_QUALITY_LIMITED"
   ],
-  "max_composite_instability": 0.175312,
+  "max_composite_instability": 0.705182,
   "max_structural_drift": 0.0418,
   "notes": "Low false-positive demonstration."
 }
