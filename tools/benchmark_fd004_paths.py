@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import os
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -234,6 +235,10 @@ def run_fd004_path_comparison(
 
 
 def main() -> None:
+    os.environ["NERAIUM_FAST_MODE"] = "1"
+    os.environ["NERAIUM_INCREMENTAL"] = "1"
+    os.environ["NERAIUM_TRANSITION_AWARE"] = "1"
+
     parser = argparse.ArgumentParser(
         description=(
             "Benchmark FD004 subset using both the isolated SII-ML checkpoint path and the full Neraium platform path."
