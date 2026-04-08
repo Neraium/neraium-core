@@ -346,6 +346,7 @@ function syncStructuralFlowTimeline(points, latestResultId = null) {
 
 function renderRunDetailFromState(opts = {}) {
   const activeSection = String(state.runDetailView.section || "overview");
+  const audience = String(state.runDetailView.audience || "operator");
   const trendsHydrated = Boolean(state.ui.runDetailHydratedSections.trends);
   const resultsHydrated = Boolean(state.ui.runDetailHydratedSections.results);
   const geometryHydrated = Boolean(state.ui.runDetailHydratedSections.geometry);
@@ -355,6 +356,13 @@ function renderRunDetailFromState(opts = {}) {
   qsa("#runDetailSectionTabs [data-run-section]").forEach((btn) => {
     btn.classList.toggle("active", btn.getAttribute("data-run-section") === activeSection);
   });
+  qsa("#runAudienceToggle [data-run-audience]").forEach((btn) => {
+    btn.classList.toggle("active", btn.getAttribute("data-run-audience") === audience);
+  });
+  qs("#runOperatorSummary")?.classList.toggle("hidden", audience !== "operator");
+  qs("#runEngineerPanel")?.classList.toggle("hidden", audience !== "engineer");
+  qs("#runDetailExportJsonBtn")?.classList.toggle("hidden", audience !== "engineer");
+  qs("#runDetailExportCsvBtn")?.classList.toggle("hidden", audience !== "engineer");
   qs("#runTrendsDeferredHint")?.classList.toggle("hidden", trendsHydrated);
   qs("#runResultsDeferredHint")?.classList.toggle("hidden", resultsHydrated);
   qs("#runGeometryDeferredHint")?.classList.toggle("hidden", geometryHydrated);
@@ -606,6 +614,7 @@ async function loadRunDetail(runId) {
   renderTenantControls();
   setRangeButtonState(state.runDetailView.range);
   state.runDetailView.section = "overview";
+  state.runDetailView.audience = "operator";
   state.runDetailView.runId = runId;
   state.ui.runDetailHydratedSections = { overview: true, trends: false, geometry: false, results: false };
   renderRunDetailFromState();
@@ -674,6 +683,12 @@ function wireRunDetailEvents() {
       } catch (err) {
         setStatus(String(err.message || err), true, true);
       }
+    });
+  });
+  qsa("#runAudienceToggle [data-run-audience]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      state.runDetailView.audience = String(btn.getAttribute("data-run-audience") || "operator");
+      renderRunDetailFromState();
     });
   });
 }

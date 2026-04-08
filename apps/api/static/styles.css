@@ -6014,6 +6014,138 @@ body[data-active-page="run-detail"] #analysis-executive .panel-actions {
   gap: 8px;
 }
 
+.owner-trend,
+.owner-incidents {
+  display: block;
+  margin-top: 0.2rem;
+  font-size: 0.82rem;
+  color: #9fb4cf;
+}
+
+.owner-trend { color: #9ef7cd; }
+
+.prediction-timeline {
+  display: grid;
+  gap: 0.55rem;
+  margin-top: 0.8rem;
+}
+
+.week-forecast {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.week-forecast-grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 0.4rem;
+}
+
+.week-day {
+  border: 1px solid #355374;
+  border-radius: 8px;
+  padding: 0.45rem 0.3rem;
+  text-align: center;
+  background: rgba(11, 30, 52, 0.7);
+}
+
+.week-day strong {
+  display: block;
+  font-size: 0.72rem;
+  color: #d8e7fa;
+}
+
+.week-day i {
+  display: block;
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  margin: 0.35rem auto;
+  background: #4ade80;
+}
+
+.week-day span {
+  display: block;
+  font-size: 0.72rem;
+  color: #a7bfdc;
+}
+
+.prediction-track {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.45rem;
+}
+
+.prediction-step {
+  text-align: center;
+  padding: 0.55rem 0.4rem;
+  border: 1px solid #355374;
+  border-radius: 8px;
+  background: rgba(11, 30, 52, 0.7);
+}
+
+.prediction-step i {
+  display: block;
+  width: 12px;
+  height: 12px;
+  margin: 0.3rem auto 0;
+  border-radius: 999px;
+  background: #7dd3fc;
+}
+
+.week-day i.is-watch,
+.prediction-step.is-watch i { background: #fbbf24; }
+.week-day i.is-high,
+.prediction-step.is-high i { background: #f87171; }
+.week-day i.is-low,
+.prediction-step.is-low i { background: #4ade80; }
+
+.run-operator-summary {
+  border: 1px solid #355374;
+  border-radius: 12px;
+  padding: 1rem;
+  background: rgba(8, 27, 48, 0.82);
+}
+
+.run-operator-room {
+  font-weight: 700;
+  letter-spacing: 0.03em;
+}
+
+.run-operator-risk {
+  margin-top: 0.5rem;
+  font-weight: 700;
+  color: #fca5a5;
+}
+
+@media (max-width: 768px) {
+  .content,
+  .page-dashboard {
+    padding: 16px;
+  }
+
+  .smoke-glance-dot {
+    font-size: 72px;
+    line-height: 1;
+  }
+
+  .week-forecast-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .smoke-glance-pull,
+  .smoke-alert-actions button,
+  .smoke-alert-actions .button-link {
+    width: 100%;
+    min-height: 64px;
+    font-size: 20px;
+  }
+
+  .owner-defense-log .owner-metrics-grid strong {
+    font-size: 32px;
+  }
+}
+
 body[data-active-page="run-detail"] #analysis-executive .panel-actions button {
   min-width: 132px;
   padding: 10px 14px;
