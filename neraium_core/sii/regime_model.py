@@ -307,7 +307,11 @@ class RegimeModel:
                 regime_uncertainty=0.0,
             )
 
-        nearest, dist, geom_dist, graph_dist = self._nearest(geometry_signature, graph_signature)
+        nearest, dist, geom_dist, graph_dist, op_dist = self._nearest(
+            geometry_signature,
+            graph_signature,
+            obs.operator_signature,
+        )
         threshold = float(self.config.regime_distance_threshold)
         dist_map: dict[str, float] = {}
         for reg in self._regimes:
@@ -319,7 +323,14 @@ class RegimeModel:
                     continue
                 geom_proto = np.asarray(p.get("geometry_signature", []), dtype=float)
                 graph_proto = np.asarray(p.get("graph_signature", []), dtype=float)
-                cand, _, _ = self._weighted_distance(geom_a=geometry_signature, geom_b=geom_proto, graph_a=graph_signature, graph_b=graph_proto)
+                cand, _, _, _ = self._weighted_distance(
+                    geom_a=geometry_signature,
+                    geom_b=geom_proto,
+                    graph_a=graph_signature,
+                    graph_b=graph_proto,
+                    op_a=obs.operator_signature,
+                    op_b=np.asarray(p.get("operator_signature"), dtype=float) if p.get("operator_signature") is not None else None,
+                )
                 if cand < best:
                     best = cand
             if np.isfinite(best):
@@ -339,6 +350,7 @@ class RegimeModel:
                 regime_activated=False,
                 geometry_distance=float(geom_dist),
                 graph_distance=float(graph_dist),
+                operator_distance=float(op_dist),
                 regime_confidence=float(conf),
                 regime_uncertainty=float(unc),
             )
@@ -366,15 +378,18 @@ class RegimeModel:
                 regime_activated=False,
                 geometry_distance=float(geom_dist),
                 graph_distance=float(graph_dist),
+                operator_distance=float(op_dist),
             )
 
         pending_geom = np.asarray(self._pending["geometry_signature"], dtype=float)
         pending_graph = np.asarray(self._pending["graph_signature"], dtype=float)
-        pending_dist, pending_geom_dist, pending_graph_dist = self._weighted_distance(
+        pending_dist, pending_geom_dist, pending_graph_dist, pending_op_dist = self._weighted_distance(
             geom_a=geometry_signature,
             geom_b=pending_geom,
             graph_a=graph_signature,
             graph_b=pending_graph,
+            op_a=obs.operator_signature,
+            op_b=np.asarray(self._pending.get("operator_signature"), dtype=float) if self._pending.get("operator_signature") is not None else None,
         )
         if pending_dist <= threshold:
             self._pending["hits"] = int(self._pending.get("hits", 1)) + 1
@@ -404,6 +419,7 @@ class RegimeModel:
                     regime_activated=True,
                     geometry_distance=float(pending_geom_dist),
                     graph_distance=float(pending_graph_dist),
+                    operator_distance=float(pending_op_dist),
                     regime_confidence=0.55,
                     regime_uncertainty=0.45,
                 )
@@ -414,6 +430,7 @@ class RegimeModel:
                 regime_activated=False,
                 geometry_distance=float(pending_geom_dist),
                 graph_distance=float(pending_graph_dist),
+                operator_distance=float(pending_op_dist),
                 regime_confidence=0.35,
                 regime_uncertainty=0.65,
             )
@@ -440,6 +457,7 @@ class RegimeModel:
             regime_activated=False,
             geometry_distance=float(geom_dist),
             graph_distance=float(graph_dist),
+            operator_distance=float(op_dist),
             regime_confidence=0.2,
             regime_uncertainty=0.9,
         )

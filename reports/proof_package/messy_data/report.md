@@ -6,7 +6,7 @@
 - Neraium first warning cycle: `26`
 - Threshold first trigger cycle: `None`
 - Lead cycles (threshold - Neraium): `None`
-- Progression interpretable: `True`
+- Progression interpretable: `False`
 - Quality statuses observed: `DATA_QUALITY_LIMITED, FRAME_DROPPED, TEMPORAL_IRREGULARITY`
 
 ## Compact proof statement
