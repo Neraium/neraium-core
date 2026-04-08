@@ -1579,6 +1579,7 @@ function setPage(page) {
   const pageEl = qs(`#page-${page}`);
   if (pageEl) pageEl.classList.remove("hidden");
   const [title, subtitle] = titles[page] || ["Neraium", ""];
+  document.body?.setAttribute("data-active-page", page);
   const titleEl = qs("#pageTitle");
   const subtitleEl = qs("#pageSubtitle");
   if (titleEl) titleEl.textContent = title;
