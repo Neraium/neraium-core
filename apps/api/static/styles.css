@@ -6208,3 +6208,114 @@ body[data-active-page="run-detail"] .analysis-run-header-item strong {
     justify-content: flex-start;
   }
 }
+
+/* Premium pass: higher contrast hierarchy, cleaner surfaces, tighter visual system. */
+:root {
+  --bg: #050814;
+  --bg-elev: #0b1225;
+  --panel: #111b35;
+  --panel-soft: #152347;
+  --border: #304773;
+  --border-strong: #3a5790;
+  --text: #f3f7ff;
+  --muted: #b2c2e2;
+  --accent: #7f8cff;
+  --accent-2: #49c9ff;
+  --shadow: 0 18px 42px rgba(2, 8, 24, 0.5);
+  --shadow-soft: 0 8px 24px rgba(2, 10, 27, 0.36);
+}
+
+body {
+  letter-spacing: 0.01em;
+  background:
+    radial-gradient(circle at 10% -14%, rgba(123, 144, 255, 0.25), transparent 34%),
+    radial-gradient(circle at 90% 0%, rgba(73, 201, 255, 0.16), transparent 29%),
+    linear-gradient(180deg, #050814 0%, #0a1430 55%, #091126 100%);
+}
+
+.sidebar {
+  border-right: 1px solid rgba(126, 152, 210, 0.28);
+  background: linear-gradient(180deg, rgba(10, 18, 39, 0.97), rgba(6, 12, 30, 0.96));
+}
+
+.brand {
+  border-color: rgba(140, 160, 212, 0.45);
+  background: linear-gradient(180deg, rgba(35, 52, 97, 0.82) 0%, rgba(23, 34, 69, 0.86) 100%);
+}
+
+.nav a {
+  color: #dce5ff;
+}
+
+.nav a.active {
+  border-color: rgba(127, 140, 255, 0.8);
+  background: linear-gradient(180deg, rgba(54, 74, 140, 0.93), rgba(42, 58, 116, 0.94));
+  box-shadow: 0 8px 18px rgba(14, 23, 56, 0.34), inset 0 1px 0 rgba(220, 228, 255, 0.24);
+}
+
+.topbar {
+  border-bottom: 1px solid rgba(133, 154, 208, 0.22);
+  background: linear-gradient(180deg, rgba(11, 20, 44, 0.92), rgba(8, 15, 34, 0.9));
+  backdrop-filter: blur(8px);
+}
+
+.panel,
+.insight-tile,
+.snapshot-item,
+.status,
+.empty-state {
+  border-color: rgba(132, 156, 216, 0.32);
+  background: linear-gradient(180deg, rgba(16, 27, 54, 0.95), rgba(11, 20, 42, 0.95));
+  box-shadow: var(--shadow-soft);
+}
+
+.panel h3,
+.panel-header h3 {
+  letter-spacing: -0.015em;
+}
+
+.subtitle,
+.metric-k,
+.upload-hint,
+.brutal-hint {
+  color: #aebfdf;
+}
+
+button,
+.button-link {
+  border-radius: 10px;
+  border-color: rgba(132, 154, 216, 0.45);
+  font-weight: 600;
+}
+
+button:not(.secondary),
+.button-link.primary {
+  background: linear-gradient(135deg, #7487ff, #4aaef8);
+  border-color: rgba(160, 184, 255, 0.85);
+  color: #f7fbff;
+  box-shadow: 0 10px 22px rgba(43, 91, 201, 0.34);
+}
+
+button.secondary,
+.button-link.secondary {
+  color: #dce8ff;
+  background: rgba(24, 38, 73, 0.84);
+  border-color: rgba(125, 149, 205, 0.44);
+}
+
+.chip {
+  border-color: rgba(130, 154, 210, 0.38);
+  background: rgba(12, 24, 50, 0.86);
+  color: #d7e4ff;
+}
+
+.chip strong {
+  color: #f4f8ff;
+}
+
+.operator-section,
+.dashboard-hero,
+.demo-start-banner,
+.run-operator-summary {
+  border-radius: 14px;
+}
