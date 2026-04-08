@@ -274,21 +274,69 @@ def build_demo_router(*, deps: DemoRouterDependencies) -> APIRouter:
                 "updated_at": now,
             }
 
-        def _run_grow_op_seed_job() -> None:
+        warm_start_frames = min(36, len(rows))
+        preloaded = 0
+        if warm_start_frames > 0:
+            try:
+                seed_rows = rows[:warm_start_frames]
+                seed_results = deps.service_instance.ingest_batch(seed_rows, run_id=run_id, customer_id=resolved_customer)
+                preloaded = len(seed_results)
+            except Exception as exc:
+                with deps.demo_jobs_lock:
+                    job = deps.demo_jobs.get(job_id)
+                    if job is not None:
+                        job.update(
+                            status="error",
+                            progress=0,
+                            processed=0,
+                            message="Grow-op demo warm start failed.",
+                            error=str(exc),
+                        )
+                        job["updated_at"] = deps.utc_now_iso()
+                raise HTTPException(status_code=500, detail="Grow-op demo warm start failed.") from exc
             with deps.demo_jobs_lock:
                 job = deps.demo_jobs.get(job_id)
                 if job is not None:
-                    job.update(status="running", message="Streaming grow-op demo telemetry...")
+                    pct = int(round((preloaded / max(1, len(rows))) * 100))
+                    job.update(
+                        status="running" if preloaded < len(rows) else "complete",
+                        progress=max(0, min(100, pct)),
+                        processed=preloaded,
+                        message="Grow-op demo telemetry warm start complete." if preloaded else "Streaming grow-op demo telemetry...",
+                        error=None,
+                    )
                     job["updated_at"] = deps.utc_now_iso()
-            try:
-                results = deps.service_instance.ingest_batch(rows, run_id=run_id, customer_id=resolved_customer)
+
+        def _run_grow_op_seed_job() -> None:
+            tail_rows = rows[preloaded:]
+            if not tail_rows:
                 with deps.demo_jobs_lock:
                     job = deps.demo_jobs.get(job_id)
                     if job is not None:
                         job.update(
                             status="complete",
                             progress=100,
-                            processed=len(results),
+                            processed=preloaded,
+                            message="Grow-op demo stream complete.",
+                            error=None,
+                        )
+                        job["updated_at"] = deps.utc_now_iso()
+                return
+            with deps.demo_jobs_lock:
+                job = deps.demo_jobs.get(job_id)
+                if job is not None:
+                    job.update(status="running", message="Streaming grow-op demo telemetry...")
+                    job["updated_at"] = deps.utc_now_iso()
+            try:
+                results = deps.service_instance.ingest_batch(tail_rows, run_id=run_id, customer_id=resolved_customer)
+                with deps.demo_jobs_lock:
+                    job = deps.demo_jobs.get(job_id)
+                    if job is not None:
+                        processed_total = preloaded + len(results)
+                        job.update(
+                            status="complete",
+                            progress=100,
+                            processed=processed_total,
                             message="Grow-op demo stream complete.",
                             error=None,
                         )
@@ -310,7 +358,7 @@ def build_demo_router(*, deps: DemoRouterDependencies) -> APIRouter:
             "status": "started",
             "job_id": job_id,
             "run_id": run_id,
-            "processed": 0,
+            "processed": preloaded,
             "demo": "grow-op",
             "message": "Grow-op demo seeding started.",
         }
