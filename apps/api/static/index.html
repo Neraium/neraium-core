@@ -427,6 +427,14 @@
             <div id="runDetailEmpty" class="empty-state hidden">
               <p>No telemetry has been processed for this run yet.</p>
               <p class="subtitle">Upload telemetry to start analysis.</p>
+              <div id="runDetailDemoProgress" class="demo-progress-panel hidden" aria-live="polite">
+                <div class="demo-progress-head">
+                  <span id="runDetailDemoProgressPhase">Preparing demo telemetry</span>
+                  <span id="runDetailDemoProgressCount">0/0</span>
+                </div>
+                <div class="demo-progress-track"><div id="runDetailDemoProgressFill" class="demo-progress-fill"></div></div>
+                <p id="runDetailDemoProgressText" class="subtitle">Waiting for telemetry stream.</p>
+              </div>
             </div>
           </section>
 
