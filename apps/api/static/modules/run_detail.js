@@ -551,6 +551,7 @@ function startGrowOpDemoMonitor(runId, runConfig = {}) {
         schedulePoll(slowPollMs);
       }
     } catch (_err) {
+      if (!isCurrentMonitor()) return;
       if (attempt < maxAttempts) {
         schedulePoll(1000);
       } else {
