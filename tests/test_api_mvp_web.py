@@ -237,6 +237,21 @@ def test_dashboard_demo_banner_button_uses_grow_op_seed_handler(tmp_path) -> Non
     assert 'wireGrowOpDemoBtn(qs("#demoBannerBtn"), "Launch guided demo");' in dash.text
 
 
+def test_grow_op_demo_start_warm_loads_initial_results(tmp_path) -> None:
+    client = _client(tmp_path)
+    started = client.post(_customer_path("/demo/grow-op/start", customer_id="customer-a"))
+    assert started.status_code == 200
+    payload = started.json()
+    run_id = str(payload.get("run_id") or "")
+    assert run_id
+    assert int(payload.get("processed") or 0) > 0
+    recent = client.get(_customer_path("/results/recent", customer_id="customer-a"), params={"run_id": run_id, "limit": 5})
+    assert recent.status_code == 200
+    env = recent.json()
+    assert isinstance(env.get("results"), list)
+    assert len(env.get("results") or []) > 0
+
+
 def test_dashboard_demo_replay_status_state_machine_and_polling_present(tmp_path) -> None:
     client = _client(tmp_path)
     dash = client.get("/web/modules/dashboard.js")
