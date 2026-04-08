@@ -6142,11 +6142,23 @@ body[data-active-page="run-detail"] #analysis-executive .panel-actions {
   border-radius: 12px;
   padding: 1rem;
   background: rgba(8, 27, 48, 0.82);
+  color: #dbeafe;
 }
 
 .run-operator-room {
   font-weight: 700;
   letter-spacing: 0.03em;
+  color: #93c5fd;
+}
+
+.run-operator-summary h4 {
+  margin-top: 0.55rem;
+  margin-bottom: 0.45rem;
+  color: #f8fafc;
+}
+
+.run-operator-summary p {
+  color: #dbeafe;
 }
 
 .run-operator-risk {
