@@ -6279,6 +6279,7 @@ body {
 .nav a.active {
   border-color: rgba(127, 140, 255, 0.8);
   background: linear-gradient(180deg, rgba(54, 74, 140, 0.93), rgba(42, 58, 116, 0.94));
+  color: #eef3ff;
   box-shadow: 0 8px 18px rgba(14, 23, 56, 0.34), inset 0 1px 0 rgba(220, 228, 255, 0.24);
 }
 
