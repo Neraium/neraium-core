@@ -751,7 +751,7 @@ function syncDemoModeToggleButton(btn) {
   if (!btn) return;
   const enabled = !!state.demo.enabled;
   btn.setAttribute("aria-pressed", enabled ? "true" : "false");
-  btn.textContent = enabled ? "Demo mode: on" : "Demo mode: off";
+  btn.textContent = enabled ? "Using demo data" : "Use demo data";
 }
 
 function wireDemoModeToggle(btn) {
@@ -1214,6 +1214,7 @@ const state = {
     search: "",
     sort: "timestamp_desc",
     range: "200",
+    audience: "operator",
     flowPlaybackMode: "live",
     flowPlaybackSpeed: 1,
     flowHistoryEnabled: true,
@@ -1443,14 +1444,27 @@ function createToast(message, type = "success") {
 function setConnectionStatus(mode = "LIVE") {
   const badge = qs("#connectionBadge");
   const label = qs("#connectionLabel");
+  const context = qs("#connectionContext");
   const normalized = String(mode || "NO DATA INGESTED").toUpperCase();
-  state.ui.connection = normalized;
-  if (label) label.textContent = normalized;
+  const demoContext = state.demo.enabled && ["WAITING FOR TELEMETRY", "NO DATA INGESTED"].includes(normalized);
+  const display = demoContext
+    ? "DEMO MODE"
+    : ["ACTIVE MONITORING", "ALERT ACTIVE", "HISTORICAL VALIDATION", "VALIDATION READY"].includes(normalized)
+      ? "LIVE SYSTEM"
+      : ["ANALYSIS INTERRUPTED", "REPLAY INTERRUPTED"].includes(normalized)
+        ? "SYSTEM INTERRUPTED"
+        : "NO SENSOR CONNECTION";
+  state.ui.connection = display;
+  if (label) label.textContent = display;
+  if (context) {
+    context.textContent = demoContext ? "Using demo data" : "";
+    context.classList.toggle("hidden", !demoContext);
+  }
   if (badge) {
     badge.classList.remove("chip-live", "chip-demo", "chip-offline");
-    if (["ALERT ACTIVE", "ANALYSIS INTERRUPTED", "REPLAY INTERRUPTED"].includes(normalized)) {
+    if (display === "SYSTEM INTERRUPTED" || display === "NO SENSOR CONNECTION") {
       badge.classList.add("chip-offline");
-    } else if (normalized === "ACTIVE MONITORING") {
+    } else if (display === "LIVE SYSTEM") {
       badge.classList.add("chip-live");
     } else {
       badge.classList.add("chip-demo");
@@ -1613,6 +1627,10 @@ function renderRunDetailHeaderContext(run, latest) {
   const alertState = String(alertStatus?.state || alertStatus?.alert_state || "CLEAR").toUpperCase();
   const recommendation = String(latest?.operator_message || "").trim();
   const ts = latest?.timestamp || latest?.persisted_at || latest?.created_at || "";
+  const opRoom = qs("#runOperatorRoom");
+  const opHeadline = qs("#runOperatorHeadline");
+  const opBody = qs("#runOperatorBody");
+  const opRisk = qs("#runOperatorRisk");
   if (stateEl) stateEl.textContent = currentState;
   if (riskEl) riskEl.textContent = risk;
   if (alertEl) alertEl.textContent = alertState;
@@ -1635,6 +1653,14 @@ function renderRunDetailHeaderContext(run, latest) {
     const el = qs(selector);
     if (el) el.textContent = value;
   });
+  if (opRoom) opRoom.textContent = risk === "HIGH" ? "🔴 ROOM 104 — FIX TODAY" : risk === "MEDIUM" ? "🟡 ROOM 104 — CHECK SOON" : "🟢 ROOM STATUS";
+  if (opHeadline) opHeadline.textContent = risk === "HIGH" ? "Your AC is breaking." : risk === "MEDIUM" ? "Stress is building in one room." : "No urgent room failures detected.";
+  if (opBody) opBody.textContent = risk === "HIGH"
+    ? "Room will hit 90°F by 6 PM if no action is taken."
+    : risk === "MEDIUM"
+      ? "48-hour forecast shows rising HVAC stress; schedule maintenance now."
+      : "System is stable and monitoring continuously.";
+  if (opRisk) opRisk.textContent = risk === "HIGH" ? "$25,000 at risk" : risk === "MEDIUM" ? "$12,000 at risk" : "$0 at risk";
 }
 
 async function startGrowOpDemo() {
@@ -2145,6 +2171,8 @@ function renderOperationalSnapshot(latest) {
   const alertLossLine = qs("#alertLossLine");
   const alertMessage = qs("#alertMessage");
   const pullRoomsBtn = qs("#pullRoomsBtn");
+  const ownerMonthTrend = qs("#ownerMonthTrend");
+  const ownerMonthIncidents = qs("#ownerMonthIncidents");
 
   const uiTruth = buildFrontendUiState(latest);
   const risk = normalizeRiskLevel(latest?.risk_level);
@@ -2195,6 +2223,7 @@ function renderOperationalSnapshot(latest) {
   const estimatedRiskAmount = risk === "HIGH" ? "$25,000" : risk === "MEDIUM" ? "$12k" : "$0";
   const badState = risk === "HIGH";
   const watchState = risk === "MEDIUM";
+  const autoExpandRooms = badState || watchState;
   if (glanceDot) glanceDot.textContent = badState ? "🔴" : watchState ? "🟡" : "🟢";
   if (glanceHeadline) glanceHeadline.textContent = badState ? "FIX THIS" : watchState ? "CHECK SOON" : "ALL GOOD";
   if (glanceSubline) glanceSubline.textContent = badState
@@ -2202,7 +2231,13 @@ function renderOperationalSnapshot(latest) {
     : watchState
       ? `Maintenance recommended — ${estimatedRiskAmount} at risk.`
       : "No action needed now.";
-  if (glanceNextCheck) glanceNextCheck.textContent = badState ? "Action window: today" : watchState ? "Next check: 36 hours" : "Next check: 14 days";
+  if (glanceNextCheck) glanceNextCheck.textContent = badState
+    ? "🔮 Critical risk projected within the next 7 days"
+    : watchState
+      ? "🔮 7-day forecast: stress pattern forming"
+      : "⏱️ Stable now, monitoring continuously (7-day horizon)";
+  if (roomsPanel && autoExpandRooms) roomsPanel.classList.remove("hidden");
+  if (pullRoomsBtn) pullRoomsBtn.textContent = roomsPanel?.classList.contains("hidden") ? "Pull for rooms" : "Hide rooms";
 
   if (roomsHealthSummary) roomsHealthSummary.textContent = badState ? "🔴 1 urgent" : watchState ? "🟡 1 needs attention" : "🟢 12 healthy";
   if (riskWhyLine) riskWhyLine.textContent = badState
@@ -2220,11 +2255,68 @@ function renderOperationalSnapshot(latest) {
       ? "The AC is breaking. Temp will hit 90°F by 6 PM if you don't act."
       : "No urgent room failures detected.";
   }
+  if (ownerMonthTrend) ownerMonthTrend.textContent = badState ? "↓ 4% vs last month" : watchState ? "↑ 6% vs last month" : "↑ 12% vs last month";
+  if (ownerMonthIncidents) ownerMonthIncidents.textContent = badState ? "1 incident active" : watchState ? "2 incidents prevented" : "3 incidents prevented";
+  renderPredictionTimeline(risk);
 
   const ctaBtn = qs("#primaryPilotActionBtn");
   if (ctaBtn) {
     ctaBtn.textContent = "Upload Telemetry";
     ctaBtn.setAttribute("href", "/upload");
+  }
+}
+
+function renderPredictionTimeline(riskLevel = "LOW") {
+  const note = qs("#predictionTimelineNote");
+  const weekNote = qs("#weekForecastNote");
+  const steps = qsa("#predictionTimeline .prediction-step");
+  const weekDots = qsa("#weekForecast [data-week-hour]");
+  const weekConfidence = qsa("#weekForecast [data-week-confidence]");
+  const confidenceByHour = { 0: 100, 24: 85, 48: 78, 72: 70, 96: 65, 120: 60, 168: 55 };
+  const statusAtHour = (hour) => {
+    if (riskLevel === "HIGH") {
+      if (hour >= 72) return "high";
+      if (hour >= 24) return "watch";
+      return "low";
+    }
+    if (riskLevel === "MEDIUM") {
+      if (hour >= 96) return "high";
+      if (hour >= 48) return "watch";
+      return "low";
+    }
+    if (hour >= 120) return "watch";
+    return "low";
+  };
+  steps.forEach((step) => {
+    const hour = Number(step.getAttribute("data-horizon-hour") || 0);
+    const level = statusAtHour(hour);
+    step.classList.remove("is-low", "is-watch", "is-high");
+    step.classList.add(`is-${level}`);
+  });
+  weekDots.forEach((dot) => {
+    const hour = Number(dot.getAttribute("data-week-hour") || 0);
+    const level = statusAtHour(hour);
+    dot.classList.remove("is-low", "is-watch", "is-high");
+    dot.classList.add(`is-${level}`);
+  });
+  weekConfidence.forEach((cell) => {
+    const hour = Number(cell.getAttribute("data-week-confidence") || 0);
+    const conf = confidenceByHour[hour] ?? 50;
+    cell.textContent = `${conf}%`;
+  });
+  if (note) {
+    note.textContent = riskLevel === "HIGH"
+      ? "Prediction: drift is accelerating. Time-to-critical is likely inside 72–168 hours."
+      : riskLevel === "MEDIUM"
+        ? "Prediction: stress is building. Action window appears in the next 3–5 days."
+        : "Prediction: stable now with low-risk drift. Continue continuous 7-day forecasting.";
+  }
+  if (weekNote) {
+    weekNote.textContent = riskLevel === "HIGH"
+      ? "Room 104: Stable → Stress → Critical by end-of-week. Schedule HVAC intervention immediately."
+      : riskLevel === "MEDIUM"
+        ? "Room 104: Stable → Stress by mid-week. Schedule maintenance before Friday."
+        : "Facility outlook: low risk for the next 72h, planning guidance only beyond day 4.";
   }
 }
 

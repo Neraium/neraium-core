@@ -189,6 +189,9 @@ class FundamentalChangeDetector:
 
         self.op_regime = 0
         self.regime_baselines = {}
+        self.subspace_history = deque(maxlen=240)
+        self.kl_history = deque(maxlen=240)
+        self.causal_history = deque(maxlen=240)
 
     def update(self, x: np.ndarray, op_regime: int = 0) -> Dict:
         if op_regime != self.op_regime:
@@ -215,6 +218,9 @@ class FundamentalChangeDetector:
 
         scores = self._compute_divergences()
         self._update_cusum(scores)
+        self.subspace_history.append(float(scores["subspace"]))
+        self.kl_history.append(float(scores["kl"]))
+        self.causal_history.append(float(scores["causal"]))
 
         fundamental_score = (
             0.5 * self.cusum_subspace + 0.3 * self.cusum_kl + 0.2 * self.cusum_causal
@@ -242,6 +248,7 @@ class FundamentalChangeDetector:
                 "effective_rank": int(np.sum(_eigenvalues(self.cov) > 0.01)),
                 "mean_entropy": float(entropy(np.abs(self.mean) + 1e-10)),
             },
+            "prediction_horizon": self.predict_future(hours_ahead=168),
         }
 
     def _set_baseline(self):
@@ -348,11 +355,95 @@ class FundamentalChangeDetector:
         self.cusum_subspace = 0.0
         self.cusum_kl = 0.0
         self.cusum_causal = 0.0
+        self.subspace_history.clear()
+        self.kl_history.clear()
+        self.causal_history.clear()
 
     def force_alert(self, message: str = "Manual alert triggered"):
         self.alerts.state = "RED"
         self.alerts.evidence = 10.0
         return {"status": "RED", "message": message}
+
+    def predict_future(self, hours_ahead: int = 168) -> Dict:
+        """Predict detector stress trajectory for up to 7 days (168h)."""
+        if len(self.subspace_history) < 8:
+            return {"error": "Insufficient history for prediction", "predictions": {}}
+
+        horizon = max(24, min(int(hours_ahead), 168))
+        hours = [6, 24, 48, 72, 96, 120, 144, 168]
+        hours = [h for h in hours if h <= horizon]
+        current = float(self.subspace_history[-1])
+        velocity, acceleration = self._fit_trajectory(np.array(self.subspace_history, dtype=float))
+
+        predictions: Dict[int, Dict[str, float | str]] = {}
+        for h in hours:
+            t = h / 24.0
+            projected = current + velocity * t + 0.5 * acceleration * (t ** 2)
+            projected = float(max(0.0, projected))
+            if projected < 0.10:
+                status = "GREEN"
+            elif projected < 0.30:
+                status = "YELLOW"
+            elif projected < 0.60:
+                status = "AMBER"
+            else:
+                status = "RED"
+            predictions[h] = {
+                "status": status,
+                "subspace_angle": round(projected, 6),
+                "confidence": round(max(0.0, min(1.0, 1.0 - (h / 300.0))), 4),
+            }
+
+        action_window_hours = None
+        for h in sorted(predictions):
+            if predictions[h]["status"] == "RED":
+                action_window_hours = max(0, h - 24)
+                break
+
+        return {
+            "predictions": predictions,
+            "current_velocity": float(velocity),
+            "current_acceleration": float(acceleration),
+            "action_window_hours": action_window_hours,
+            "time_to_critical": float(
+                self._solve_time_to_critical(current, velocity, acceleration, threshold=0.6)
+            ),
+        }
+
+    def _fit_trajectory(self, values: np.ndarray) -> Tuple[float, float]:
+        """Fit y = v*t + 0.5*a*t² over recent subspace drift signal."""
+        vals = np.asarray(values, dtype=float)
+        if vals.size < 2:
+            return 0.0, 0.0
+        times = np.arange(vals.size, dtype=float)
+        velocity = float(np.polyfit(times, vals, 1)[0]) if vals.size >= 2 else 0.0
+        if vals.size > 3:
+            second = np.gradient(np.gradient(vals))
+            acceleration = float(np.mean(second))
+        else:
+            acceleration = 0.0
+        return velocity, acceleration
+
+    def _solve_time_to_critical(
+        self, current: float, velocity: float, acceleration: float, threshold: float
+    ) -> float:
+        """Estimate hours until threshold crossing from quadratic trajectory."""
+        if acceleration == 0.0:
+            if velocity <= 0.0:
+                return float("inf")
+            return max(0.0, (threshold - current) / velocity * 24.0)
+        a = 0.5 * acceleration
+        b = velocity
+        c = current - threshold
+        disc = b * b - 4.0 * a * c
+        if disc < 0.0:
+            return float("inf")
+        sqrt_disc = float(np.sqrt(disc))
+        roots = [(-b + sqrt_disc) / (2.0 * a), (-b - sqrt_disc) / (2.0 * a)]
+        positive = [r for r in roots if r >= 0.0]
+        if not positive:
+            return float("inf")
+        return float(min(positive) * 24.0)
 
 
 class CMAPSSDetector(FundamentalChangeDetector):
