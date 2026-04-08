@@ -134,17 +134,40 @@ class StructuralDriftDetector:
         threshold = float(np.mean(ema[: max(1, min(ref.n_samples, ema.size))]) + threshold_std * max(np.std(ema[: max(1, min(ref.n_samples, ema.size))]), 1e-6))
 
         persistence = override_persistence if override_persistence is not None else self.config.persistence
-        warning_state = compute_warning_state(
-            scores=ema,
-            threshold=np.full(ema.shape[0], threshold, dtype=float),
-            persistence=persistence,
-            require_upward_trend=self.config.require_upward_ema_trend,
-            slope_window=self.config.slope_window,
-            min_slope=self.config.min_slope,
-            exit_threshold_ratio=self.config.warning_exit_threshold_ratio,
-            exit_persistence=self.config.exit_persistence,
-            min_anomaly_duration=max(self.config.min_anomaly_duration, persistence),
-        )
+        if self.config.enable_ensemble_voting:
+            vote_series, vote_threshold = _build_ensemble_vote_series(
+                ema=ema,
+                threshold=threshold,
+                micro_window=self.config.micro_window,
+                meso_window=self.config.meso_window,
+                macro_window=self.config.macro_window,
+                acceleration_window=self.config.acceleration_window,
+                acceleration_threshold=self.config.acceleration_threshold,
+                min_votes=self.config.ensemble_min_votes,
+            )
+            warning_state = compute_warning_state(
+                scores=vote_series,
+                threshold=np.full(ema.shape[0], vote_threshold, dtype=float),
+                persistence=persistence,
+                require_upward_trend=False,
+                slope_window=1,
+                min_slope=0.0,
+                exit_threshold_ratio=1.0,
+                exit_persistence=self.config.exit_persistence,
+                min_anomaly_duration=max(self.config.min_anomaly_duration, persistence),
+            )
+        else:
+            warning_state = compute_warning_state(
+                scores=ema,
+                threshold=np.full(ema.shape[0], threshold, dtype=float),
+                persistence=persistence,
+                require_upward_trend=self.config.require_upward_ema_trend,
+                slope_window=self.config.slope_window,
+                min_slope=self.config.min_slope,
+                exit_threshold_ratio=self.config.warning_exit_threshold_ratio,
+                exit_persistence=self.config.exit_persistence,
+                min_anomaly_duration=max(self.config.min_anomaly_duration, persistence),
+            )
         warning_index = _first_true_index(warning_state)
 
         component_activation_rates = {
@@ -322,3 +345,50 @@ def _apply_ema(series: np.ndarray, alpha: float) -> np.ndarray:
 def _first_true_index(mask: np.ndarray) -> Optional[int]:
     idx = np.where(np.asarray(mask, dtype=bool))[0]
     return int(idx[0]) if idx.size > 0 else None
+
+
+def _causal_rolling_mean(series: np.ndarray, window: int) -> np.ndarray:
+    arr = np.asarray(series, dtype=float)
+    if arr.size == 0:
+        return np.zeros(0, dtype=float)
+    w = max(1, int(window))
+    csum = np.cumsum(arr)
+    out = np.empty_like(arr)
+    for i in range(arr.size):
+        start = max(0, i - w + 1)
+        total = csum[i] - (csum[start - 1] if start > 0 else 0.0)
+        out[i] = total / float(i - start + 1)
+    return out
+
+
+def _build_ensemble_vote_series(
+    ema: np.ndarray,
+    threshold: float,
+    micro_window: int,
+    meso_window: int,
+    macro_window: int,
+    acceleration_window: int,
+    acceleration_threshold: float,
+    min_votes: int,
+) -> tuple[np.ndarray, float]:
+    micro = _causal_rolling_mean(ema, micro_window)
+    meso = _causal_rolling_mean(ema, meso_window)
+    macro = _causal_rolling_mean(ema, macro_window)
+
+    aw = max(1, int(acceleration_window))
+    drift_rate = np.zeros_like(ema)
+    if ema.size > aw:
+        drift_rate[aw:] = (ema[aw:] - ema[:-aw]) / float(aw)
+    acceleration = np.diff(drift_rate, prepend=drift_rate[0] if drift_rate.size else 0.0)
+
+    votes = np.vstack(
+        [
+            micro >= threshold,
+            meso >= threshold,
+            macro >= threshold,
+            acceleration >= float(acceleration_threshold),
+        ]
+    )
+    vote_ratio = votes.mean(axis=0).astype(float)
+    vote_threshold = min(max(1, int(min_votes)), votes.shape[0]) / float(votes.shape[0])
+    return vote_ratio, vote_threshold
