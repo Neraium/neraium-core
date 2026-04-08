@@ -67,10 +67,11 @@
         </div>
         <div class="telemetry-status-strip" aria-label="System telemetry status">
           <span id="connectionBadge" class="chip chip-live"><span class="live-dot" aria-hidden="true"></span><span id="connectionLabel">LIVE</span></span>
+          <span id="connectionContext" class="chip hidden">Using demo data</span>
           <span class="chip">Run <strong id="topbarActiveRunId">--</strong></span>
           <span class="chip">UTC <strong id="liveTimestamp">--:--:--</strong></span>
           <span id="streamingBadge" class="chip streaming hidden">Streaming</span>
-          <button id="demoModeToggle" type="button" class="chip chip-button" aria-pressed="false">Demo mode: off</button>
+          <button id="demoModeToggle" type="button" class="chip chip-button" aria-pressed="false">Use demo data</button>
         </div>
       </header>
 
@@ -96,7 +97,7 @@
             <p class="smoke-glance-dot" id="glanceDot" aria-hidden="true">🟢</p>
             <h3 id="glanceHeadline" class="smoke-glance-headline">ALL GOOD</h3>
             <p id="glanceSubline" class="smoke-glance-subline">No action needed now.</p>
-            <p id="glanceNextCheck" class="smoke-glance-next">Next check: 14 days</p>
+            <p id="glanceNextCheck" class="smoke-glance-next">🔮 Predicting 48 hours ahead</p>
             <button id="pullRoomsBtn" type="button" class="secondary smoke-glance-pull">Pull for rooms</button>
           </section>
 
@@ -138,10 +139,37 @@
             <div class="panel-header"><h3>NERAIUM DEFENSE LOG</h3></div>
             <p class="subtitle">Las Vegas Facility · owner view</p>
             <div class="owner-metrics-grid">
-              <article><p>This Month</p><strong id="ownerMonthProtected">$47,500</strong></article>
+              <article><p>This Month</p><strong id="ownerMonthProtected">$47,500</strong><span id="ownerMonthTrend" class="owner-trend">↑ 12% vs last month</span><span id="ownerMonthIncidents" class="owner-incidents">3 incidents prevented</span></article>
               <article><p>This Quarter</p><strong id="ownerQuarterProtected">$128,000</strong></article>
               <article><p>This Year</p><strong id="ownerYearProtected">$412,000</strong></article>
               <article><p>ROI</p><strong id="ownerRoi">2,847%</strong></article>
+            </div>
+          </section>
+
+          <section class="panel operator-section" aria-label="Prediction horizon">
+            <div class="panel-header"><h3>Facility forecast · next 7 days</h3></div>
+            <p class="subtitle">Prediction updates every 15 minutes. Confidence decreases with horizon distance.</p>
+            <div id="weekForecast" class="week-forecast">
+              <div class="week-forecast-grid">
+                <div class="week-day"><strong>TODAY</strong><i data-week-hour="0"></i><span data-week-confidence="0">100%</span></div>
+                <div class="week-day"><strong>+24h</strong><i data-week-hour="24"></i><span data-week-confidence="24">85%</span></div>
+                <div class="week-day"><strong>+48h</strong><i data-week-hour="48"></i><span data-week-confidence="48">78%</span></div>
+                <div class="week-day"><strong>+72h</strong><i data-week-hour="72"></i><span data-week-confidence="72">70%</span></div>
+                <div class="week-day"><strong>+96h</strong><i data-week-hour="96"></i><span data-week-confidence="96">65%</span></div>
+                <div class="week-day"><strong>+120h</strong><i data-week-hour="120"></i><span data-week-confidence="120">60%</span></div>
+                <div class="week-day"><strong>+168h</strong><i data-week-hour="168"></i><span data-week-confidence="168">55%</span></div>
+              </div>
+              <p id="weekForecastNote" class="subtitle">Room 104: Stable → Stress → Critical. Plan maintenance before the action window closes.</p>
+            </div>
+            <div id="predictionTimeline" class="prediction-timeline">
+              <p class="prediction-track-label">THE TIME MACHINE · NOW → 168h (7 days)</p>
+              <div class="prediction-track">
+                <div class="prediction-step" data-horizon-hour="6"><span>6h</span><i></i></div>
+                <div class="prediction-step" data-horizon-hour="24"><span>24h</span><i></i></div>
+                <div class="prediction-step" data-horizon-hour="72"><span>72h</span><i></i></div>
+                <div class="prediction-step" data-horizon-hour="168"><span>168h</span><i></i></div>
+              </div>
+              <p id="predictionTimelineNote" class="subtitle">Stable for now — monitoring continuously.</p>
             </div>
           </section>
 
@@ -409,13 +437,27 @@
           <section id="analysis-executive" class="panel analysis-workspace-section" data-analysis-panel="executive">
             <div class="panel-header">
               <h3 id="runDetailTitle">Investigate run</h3>
+              <div id="runAudienceToggle" class="range-controls">
+                <button type="button" data-run-audience="operator" class="active">👤 Operator</button>
+                <button type="button" data-run-audience="engineer">🔧 Engineer</button>
+              </div>
               <div class="row panel-actions">
                 <button id="runDetailExportJsonBtn" type="button">Export JSON</button>
                 <button id="runDetailExportCsvBtn" type="button" class="secondary">Export CSV</button>
               </div>
             </div>
             <p id="runDetailMeta" class="subtitle"></p>
-            <section class="analysis-run-header" aria-label="Run operator bar">
+            <section id="runOperatorSummary" class="run-operator-summary" aria-label="Run operator summary">
+              <p id="runOperatorRoom" class="run-operator-room">🟢 ROOM STATUS</p>
+              <h4 id="runOperatorHeadline">No urgent room failures detected.</h4>
+              <p id="runOperatorBody">System is stable and monitoring continuously.</p>
+              <p id="runOperatorRisk" class="run-operator-risk">$0 at risk</p>
+              <div class="smoke-alert-actions">
+                <button type="button" class="primary">Call HVAC Tech</button>
+                <button type="button" class="secondary">I Fixed It</button>
+              </div>
+            </section>
+            <section id="runEngineerPanel" class="analysis-run-header hidden" aria-label="Run engineer bar">
               <div class="analysis-run-header-grid">
                 <article class="analysis-run-header-item"><p class="recommendation-label">State</p><strong id="runStickyState">-</strong></article>
                 <article class="analysis-run-header-item"><p class="recommendation-label">Risk</p><strong id="runStickyRisk">UNKNOWN</strong></article>
