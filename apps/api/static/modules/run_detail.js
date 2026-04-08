@@ -410,10 +410,27 @@ async function loadRunDetailBackgroundHistory(runId) {
       state.runRecent = fullResults;
       renderRunDetailFromState({ deferHeavy: true });
     }
-    state.ui.runDetailBackgroundHistoryLoaded = true;
+    const totalAvailable = Number(fullEnv?.count || 0);
+    const hasMore = Number.isFinite(totalAvailable) && totalAvailable > fullResults.length;
+    state.ui.runDetailBackgroundHistoryLoaded = !hasMore;
   } finally {
     state.ui.runDetailBackgroundHistoryPending = false;
   }
+}
+
+function mergeRunRecentResults(incomingResults) {
+  const incoming = Array.isArray(incomingResults) ? incomingResults : [];
+  const existing = Array.isArray(state.runRecent) ? state.runRecent : [];
+  const seen = new Set();
+  const merged = [];
+  [...incoming, ...existing].forEach((result) => {
+    if (!result || typeof result !== "object") return;
+    const key = String(result.result_id || result.persisted_at || result.timestamp || "");
+    if (!key || seen.has(key)) return;
+    seen.add(key);
+    merged.push(result);
+  });
+  return merged;
 }
 
 function setRunDetailEmptyMessage(primary, secondary) {
@@ -487,8 +504,11 @@ function startGrowOpDemoMonitor(runId, runConfig = {}) {
         text: `Telemetry ingest ${Math.max(0, Math.min(100, Math.round(progressPct)))}%`,
       });
       const recentEnv = await fetchRecentResults({ run_id: runId, limit: RUN_DETAIL_INITIAL_LIMIT });
-      state.runRecent = Array.isArray(recentEnv?.results) ? recentEnv.results : [];
+      state.runRecent = mergeRunRecentResults(recentEnv?.results);
       renderRunDetailFromState({ deferHeavy: true });
+      if (!state.ui.runDetailBackgroundHistoryLoaded) {
+        loadRunDetailBackgroundHistory(runId).catch(() => {});
+      }
       if (state.runRecent.length > 0) {
         setStatus("Guided demo loaded.", false, true);
         clearDemoJobIdParam();
