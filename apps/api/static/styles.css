@@ -5969,3 +5969,34 @@ body.demo-mode-active .demo-start-banner {
   border-color: rgba(61, 194, 255, 0.48);
   box-shadow: 0 14px 32px rgba(8, 25, 44, 0.34);
 }
+
+/* Run detail: compact the header to reduce visual crowding over charts/workspace. */
+body[data-active-page="run-detail"] .command-topbar {
+  padding: 8px 20px 10px;
+}
+
+body[data-active-page="run-detail"] .topbar-main {
+  gap: 6px;
+}
+
+body[data-active-page="run-detail"] .telemetry-title .subtitle {
+  margin-top: 2px;
+}
+
+body[data-active-page="run-detail"] .telemetry-status-strip {
+  margin-top: 4px;
+  gap: 6px;
+}
+
+@media (min-width: 960px) {
+  body[data-active-page="run-detail"] .topbar-main {
+    flex-direction: row;
+    align-items: flex-end;
+    justify-content: space-between;
+    gap: 14px;
+  }
+
+  body[data-active-page="run-detail"] .telemetry-title .subtitle {
+    max-width: 56ch;
+  }
+}
