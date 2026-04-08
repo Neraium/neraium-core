@@ -215,6 +215,15 @@ def test_web_js_uses_relative_same_origin_api_paths(tmp_path) -> None:
     assert "return query ? `${normalizedPath}?${query}` : normalizedPath;" in source
 
 
+def test_web_app_fetch_recent_results_uses_results_recent_endpoint(tmp_path) -> None:
+    client = _client(tmp_path)
+    js = client.get("/web/app.js")
+    assert js.status_code == 200
+    source = js.text
+    assert 'apiUrl("/results/recent", recentParams)' in source
+    assert 'apiUrl("/runs", recentParams)' not in source
+
+
 def test_dashboard_demo_seeding_uses_single_backend_seed_job_flow(tmp_path) -> None:
     client = _client(tmp_path)
     dash = client.get("/web/modules/dashboard.js")
