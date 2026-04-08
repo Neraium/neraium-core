@@ -1340,6 +1340,8 @@ const state = {
     runDetailDeferredPaint: null,
     runDetailBackgroundHistoryPending: false,
     runDetailBackgroundHistoryLoaded: false,
+    runDetailGrowOpMonitorTimer: null,
+    runDetailGrowOpMonitorToken: 0,
     loadRunsPromise: null,
     loadDashboardPromise: null,
     recentResultsCache: new Map(),
