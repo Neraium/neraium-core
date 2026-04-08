@@ -460,10 +460,16 @@ function startGrowOpDemoMonitor(runId, runConfig = {}) {
       const recentEnv = await fetchRecentResults({ run_id: runId, limit: RUN_DETAIL_INITIAL_LIMIT });
       state.runRecent = Array.isArray(recentEnv?.results) ? recentEnv.results : [];
       renderRunDetailFromState({ deferHeavy: true });
-      if (state.runRecent.length > 0 || stateLabel === "complete" || stateLabel === "ready") {
+      if (state.runRecent.length > 0) {
         setStatus("Guided demo loaded.", false, true);
         clearDemoJobIdParam();
         return;
+      }
+      if (stateLabel === "complete" || stateLabel === "ready") {
+        setRunDetailEmptyMessage(
+          "Guided demo is finalizing telemetry.",
+          "No separate script is required. Keep this tab open while final frames are indexed."
+        );
       }
       if (attempt < maxAttempts) {
         window.setTimeout(poll, 850);
