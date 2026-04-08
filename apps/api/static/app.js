@@ -13,7 +13,7 @@ async function fetchRecentResults(params) {
   if (state?.ui?.recentResultsInflight?.has(cacheKey)) {
     return state.ui.recentResultsInflight.get(cacheKey);
   }
-  const request = fetchJson(apiUrl("/runs", recentParams)).then((env) => {
+  const request = fetchJson(apiUrl("/results/recent", recentParams)).then((env) => {
     const normalized =
       env && Array.isArray(env.results)
         ? env
