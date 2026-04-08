@@ -6000,3 +6000,59 @@ body[data-active-page="run-detail"] .telemetry-status-strip {
     max-width: 56ch;
   }
 }
+
+/* Run detail polish: tighten hierarchy and align summary card with action buttons. */
+body[data-active-page="run-detail"] #analysis-executive .panel-header {
+  align-items: flex-start;
+  gap: 14px;
+}
+
+body[data-active-page="run-detail"] #analysis-executive .panel-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+body[data-active-page="run-detail"] #analysis-executive .panel-actions button {
+  min-width: 132px;
+  padding: 10px 14px;
+}
+
+body[data-active-page="run-detail"] #runDetailMeta {
+  margin-top: -2px;
+  margin-bottom: 10px;
+}
+
+body[data-active-page="run-detail"] .analysis-run-header {
+  margin-top: 6px;
+  padding: 10px;
+  background: #f7faff;
+}
+
+body[data-active-page="run-detail"] .analysis-run-header-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px;
+}
+
+body[data-active-page="run-detail"] .analysis-run-header-item {
+  min-height: 94px;
+  padding: 10px 11px;
+}
+
+body[data-active-page="run-detail"] .analysis-run-header-item strong {
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 960px) {
+  body[data-active-page="run-detail"] #analysis-executive .panel-header {
+    flex-direction: column;
+  }
+
+  body[data-active-page="run-detail"] #analysis-executive .panel-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
+}
