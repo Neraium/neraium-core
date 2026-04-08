@@ -246,6 +246,17 @@ def test_dashboard_demo_banner_button_uses_grow_op_seed_handler(tmp_path) -> Non
     assert 'wireGrowOpDemoBtn(qs("#demoBannerBtn"), "Launch guided demo");' in dash.text
 
 
+def test_run_detail_grow_op_monitor_waits_for_stable_completion_signals(tmp_path) -> None:
+    client = _client(tmp_path)
+    detail = client.get("/web/modules/run_detail.js")
+    assert detail.status_code == 200
+    source = detail.text
+    assert "let lastResultSignature = \"\";" in source
+    assert "stableCompletePolls = advanced || grew || processedAdvanced ? 0 : stableCompletePolls + 1;" in source
+    assert "if (stableCompletePolls >= 3) {" in source
+    assert "loadRunDetailBackgroundHistory(runId, { force: true }).catch(() => {});" in source
+
+
 def test_grow_op_demo_start_warm_loads_initial_results(tmp_path) -> None:
     client = _client(tmp_path)
     started = client.post(_customer_path("/demo/grow-op/start", customer_id="customer-a"))

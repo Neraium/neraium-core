@@ -400,19 +400,21 @@ function renderRunDetailFromState(opts = {}) {
 }
 
 
-async function loadRunDetailBackgroundHistory(runId) {
-  if (state.ui.runDetailBackgroundHistoryLoaded || state.ui.runDetailBackgroundHistoryPending) return;
+async function loadRunDetailBackgroundHistory(runId, opts = {}) {
+  const force = Boolean(opts?.force);
+  if (state.ui.runDetailBackgroundHistoryPending) return;
+  if (!force && state.ui.runDetailBackgroundHistoryLoaded) return;
   state.ui.runDetailBackgroundHistoryPending = true;
   try {
     const fullEnv = await fetchRecentResults({ run_id: runId, limit: RUN_DETAIL_BACKGROUND_LIMIT });
     const fullResults = Array.isArray(fullEnv?.results) ? fullEnv.results : [];
-    if (fullResults.length > state.runRecent.length) {
-      state.runRecent = fullResults;
+    if (fullResults.length > 0) {
+      state.runRecent = mergeRunRecentResults(fullResults);
       renderRunDetailFromState({ deferHeavy: true });
     }
-    const totalAvailable = Number(fullEnv?.count || 0);
-    const hasMore = Number.isFinite(totalAvailable) && totalAvailable > fullResults.length;
-    state.ui.runDetailBackgroundHistoryLoaded = !hasMore;
+    if (!force) {
+      state.ui.runDetailBackgroundHistoryLoaded = fullResults.length < RUN_DETAIL_BACKGROUND_LIMIT;
+    }
   } finally {
     state.ui.runDetailBackgroundHistoryPending = false;
   }
@@ -486,6 +488,8 @@ function startGrowOpDemoMonitor(runId, runConfig = {}) {
   let seenResultsOnce = false;
   let stableCompletePolls = 0;
   let lastResultCount = -1;
+  let lastResultSignature = "";
+  let lastProcessedCount = 0;
   const maxAttempts = 180;
   const slowPollMs = 5000;
   setRunDetailEmptyMessage("Guided demo is loading telemetry now.", "No separate script is required. Keep this tab open.");
@@ -528,14 +532,23 @@ function startGrowOpDemoMonitor(runId, runConfig = {}) {
       });
       const recentEnv = await fetchRecentResults({ run_id: runId, limit: RUN_DETAIL_INITIAL_LIMIT });
       if (!isCurrentMonitor()) return;
-      state.runRecent = Array.isArray(recentEnv?.results) ? recentEnv.results : [];
+      const recentResults = Array.isArray(recentEnv?.results) ? recentEnv.results : [];
+      state.runRecent = mergeRunRecentResults(recentResults);
       const resultCount = state.runRecent.length;
       const grew = resultCount > lastResultCount;
+      const latest = state.runRecent[0] || null;
+      const latestSignature = latest
+        ? `${String(latest.result_id || "")}:${String(latest.persisted_at || latest.timestamp || "")}`
+        : "";
+      const advanced = Boolean(latestSignature) && latestSignature !== lastResultSignature;
+      if (advanced) {
+        lastResultSignature = latestSignature;
+      }
+      const processedAdvanced = processed > lastProcessedCount;
+      lastProcessedCount = processed;
       lastResultCount = resultCount;
       renderRunDetailFromState({ deferHeavy: true });
-      if (!state.ui.runDetailBackgroundHistoryLoaded) {
-        loadRunDetailBackgroundHistory(runId).catch(() => {});
-      }
+      loadRunDetailBackgroundHistory(runId, { force: true }).catch(() => {});
       if (resultCount > 0 && !seenResultsOnce) {
         seenResultsOnce = true;
         setStatus("Guided demo loaded. Streaming remaining telemetry…", false, true);
@@ -543,9 +556,8 @@ function startGrowOpDemoMonitor(runId, runConfig = {}) {
 
       const isComplete = stateLabel === "complete" || stateLabel === "ready";
       if (isComplete && resultCount > 0) {
-        stableCompletePolls = grew ? 0 : stableCompletePolls + 1;
-        const reachedProcessedCount = processed > 0 && resultCount >= Math.min(processed, RUN_DETAIL_INITIAL_LIMIT);
-        if (reachedProcessedCount || stableCompletePolls >= 2) {
+        stableCompletePolls = advanced || grew || processedAdvanced ? 0 : stableCompletePolls + 1;
+        if (stableCompletePolls >= 3) {
           clearDemoJobIdParam();
           setRunDetailDemoProgress({ visible: false });
           state.ui.runDetailGrowOpMonitorTimer = null;
