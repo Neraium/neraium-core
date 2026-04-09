@@ -7,8 +7,10 @@ import math
 import os
 import tempfile
 import threading
+import time
 import urllib.error
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Literal
@@ -140,6 +142,9 @@ from neraium_core.pipeline import infer_csv_mapping_stage, issue_to_dict, parse_
 
 
 logger = logging.getLogger(__name__)
+
+_RECENT_RESULTS_TIMEOUT_S = 0.45
+_RECENT_RESULTS_EXECUTOR = ThreadPoolExecutor(max_workers=4, thread_name_prefix="recent-results")
 
 
 def _alert_thresholds() -> tuple[float, float]:
@@ -1185,17 +1190,42 @@ def create_app(
         site_id: str | None = Query(default=None),
         compact: bool = Query(default=False),
     ) -> dict[str, Any]:
+        started_at = time.perf_counter()
+        requested_run = str(run_id).strip() if run_id is not None else ""
+        logger.info("ENTER /results/recent run_id=%s", requested_run or None)
+
         resolved_customer = resolve_customer_id_for_run(service_instance, customer_id, run_id)
-        resolved = resolve_run_id(service_instance, run_id, customer_id=resolved_customer)
-        results = service_instance.list_recent_results(
-            limit=limit,
+        resolved = requested_run or resolve_run_id(service_instance, None, customer_id=resolved_customer)
+
+        results: list[dict[str, Any]] = []
+        future = _RECENT_RESULTS_EXECUTOR.submit(
+            service_instance.list_recent_results,
+            limit,
             run_id=resolved,
             customer_id=resolved_customer,
             site_id=site_id,
         )
+        try:
+            fetched = future.result(timeout=_RECENT_RESULTS_TIMEOUT_S)
+            results = fetched if isinstance(fetched, list) else []
+        except FutureTimeoutError:
+            future.cancel()
+            logger.warning(
+                "recent results retrieval timed out in %.1fms run_id=%s",
+                _RECENT_RESULTS_TIMEOUT_S * 1000.0,
+                resolved,
+            )
+            results = []
+        except Exception:
+            logger.exception("recent results retrieval failed run_id=%s", resolved)
+            results = []
+
         if compact:
             results = [_compact_result_view(r) for r in results]
         latest = results[0] if results else None
+
+        duration_ms = int((time.perf_counter() - started_at) * 1000)
+        logger.info("EXIT /results/recent duration_ms=%s", duration_ms)
         return _results_envelope(results, latest=latest)
 
     @app.get("/results/export", response_model=ExportEnvelope)
