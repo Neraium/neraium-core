@@ -103,6 +103,7 @@ from .routers.dependencies import (
 from .services.alerts import alert_thresholds as service_alert_thresholds, evaluate_alerts, dispatch_alert_stubs
 from .services.request_context import (
     resolve_customer_id,
+    resolve_customer_id_for_run,
     resolve_run_id,
     require_run_id,
     request_run_id_or_active,
@@ -1165,7 +1166,7 @@ def create_app(
         site_id: str | None = Query(default=None),
         compact: bool = Query(default=False),
     ) -> dict[str, Any]:
-        resolved_customer = resolve_customer_id(customer_id)
+        resolved_customer = resolve_customer_id_for_run(service_instance, customer_id, run_id)
         resolved = resolve_run_id(service_instance, run_id, customer_id=resolved_customer)
         latest = service_instance.get_latest_result(
             run_id=resolved,
@@ -1184,7 +1185,7 @@ def create_app(
         site_id: str | None = Query(default=None),
         compact: bool = Query(default=False),
     ) -> dict[str, Any]:
-        resolved_customer = resolve_customer_id(customer_id)
+        resolved_customer = resolve_customer_id_for_run(service_instance, customer_id, run_id)
         resolved = resolve_run_id(service_instance, run_id, customer_id=resolved_customer)
         results = service_instance.list_recent_results(
             limit=limit,
@@ -1205,7 +1206,7 @@ def create_app(
         customer_id: str | None = Query(default=None),
         site_id: str | None = Query(default=None),
     ) -> dict[str, Any]:
-        resolved_customer = resolve_customer_id(customer_id)
+        resolved_customer = resolve_customer_id_for_run(service_instance, customer_id, run_id)
         resolved = resolve_run_id(service_instance, run_id, customer_id=resolved_customer)
         results = service_instance.list_recent_results(
             limit=limit,

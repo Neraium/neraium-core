@@ -10,6 +10,21 @@ def resolve_customer_id(customer_id: str | None) -> str:
     return text or "default-customer"
 
 
+def resolve_customer_id_for_run(service: Any, customer_id: str | None, run_id: str | None) -> str:
+    resolved_customer = resolve_customer_id(customer_id)
+    if customer_id is not None and str(customer_id).strip():
+        return resolved_customer
+    run_text = str(run_id or "").strip()
+    if not run_text:
+        return resolved_customer
+    lookup = getattr(service, "get_run_customer_id", None)
+    if callable(lookup):
+        owner_customer = lookup(run_text)
+        if owner_customer is not None and str(owner_customer).strip():
+            return str(owner_customer).strip()
+    return resolved_customer
+
+
 def resolve_run_id(service: Any, run_id: str | None, *, customer_id: str | None) -> str | None:
     if run_id is not None and str(run_id).strip():
         return str(run_id).strip()
