@@ -63,7 +63,12 @@ function buildFrontendUiState(latest = null, overrides = {}) {
 }
 function phaseFromResult(r) {
   if (!r) return "-";
-  return r.phase || r.state || r.interpreted_state || "-";
+  const rawPhase = String(r.phase || r.state || r.interpreted_state || "-").trim();
+  const risk = normalizeRiskLevel(r.risk_level);
+  if (risk === "HIGH") return "DESTABILIZING";
+  if (risk === "MEDIUM") return "TRANSITION";
+  if (risk === "LOW") return "STABLE";
+  return rawPhase || "-";
 }
 
 function trendFromResult(r) {

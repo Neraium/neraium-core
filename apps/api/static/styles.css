@@ -6408,6 +6408,17 @@ button.secondary,
   padding: 14px;
 }
 
+.dashboard-operator-identity {
+  margin: 0 0 10px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(132, 156, 216, 0.42);
+  background: linear-gradient(180deg, rgba(21, 35, 67, 0.96), rgba(12, 23, 45, 0.98));
+  font-size: clamp(1.02rem, 1.65vw, 1.26rem);
+  font-weight: 700;
+  color: #eaf2ff;
+}
+
 .dashboard-kpi-strip {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
