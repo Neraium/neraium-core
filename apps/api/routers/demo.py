@@ -288,11 +288,7 @@ def build_demo_router(*, deps: DemoRouterDependencies) -> APIRouter:
             },
         }
 
-    @router.post("/demo/grow-op/start")
-    def demo_grow_op_start(
-        _: None = Depends(deps.require_api_key),
-        customer_id: str | None = Query(default=None),
-    ) -> dict[str, Any]:
+    def _start_grow_op_demo(customer_id: str | None = None) -> dict[str, Any]:
         resolved_customer = deps.resolve_customer_id(customer_id)
         try:
             site_id, asset_id, rows = _load_grow_op_frames(resolved_customer)
@@ -403,6 +399,7 @@ def build_demo_router(*, deps: DemoRouterDependencies) -> APIRouter:
                         job["updated_at"] = deps.utc_now_iso()
 
         threading.Thread(target=_run_grow_op_seed_job, daemon=True).start()
+        recent_results = deps.service_instance.list_recent_results(limit=5, run_id=run_id, customer_id=resolved_customer)
 
         return {
             "status": "started",
@@ -411,7 +408,29 @@ def build_demo_router(*, deps: DemoRouterDependencies) -> APIRouter:
             "processed": preloaded,
             "demo": "grow-op",
             "message": "Grow-op demo seeding started.",
+            "recent_results": recent_results,
         }
+
+    @router.post("/demo/grow-op/start")
+    def demo_grow_op_start(
+        _: None = Depends(deps.require_api_key),
+        customer_id: str | None = Query(default=None),
+    ) -> dict[str, Any]:
+        return _start_grow_op_demo(customer_id=customer_id)
+
+    @router.post("/demo/start")
+    def demo_start(
+        _: None = Depends(deps.require_api_key),
+        customer_id: str | None = Query(default=None),
+    ) -> dict[str, Any]:
+        return _start_grow_op_demo(customer_id=customer_id)
+
+    @router.post("/run/demo")
+    def run_demo_start(
+        _: None = Depends(deps.require_api_key),
+        customer_id: str | None = Query(default=None),
+    ) -> dict[str, Any]:
+        return _start_grow_op_demo(customer_id=customer_id)
 
     @router.get("/demo/grow-op/status")
     def demo_grow_op_status(

@@ -244,6 +244,19 @@ def test_dashboard_demo_banner_button_uses_grow_op_seed_handler(tmp_path) -> Non
     dash = client.get("/web/modules/dashboard.js")
     assert dash.status_code == 200
     assert 'wireGrowOpDemoBtn(qs("#demoBannerBtn"), "Launch guided demo");' in dash.text
+    assert 'apiUrl("/demo/start"' in dash.text
+    assert "/api/demo/start" not in dash.text
+    assert "/api/run/demo" not in dash.text
+
+
+def test_dashboard_no_data_fallback_prompts_demo_start(tmp_path) -> None:
+    client = _client(tmp_path)
+    html = client.get("/app")
+    dash = client.get("/web/modules/dashboard.js")
+    assert html.status_code == 200
+    assert dash.status_code == 200
+    assert "No data yet — start demo" in html.text
+    assert "No data yet — start demo" in dash.text
 
 
 def test_run_detail_grow_op_monitor_waits_for_stable_completion_signals(tmp_path) -> None:
@@ -270,6 +283,15 @@ def test_grow_op_demo_start_warm_loads_initial_results(tmp_path) -> None:
     env = recent.json()
     assert isinstance(env.get("results"), list)
     assert len(env.get("results") or []) > 0
+
+
+def test_demo_start_aliases_route_to_real_seed_flow(tmp_path) -> None:
+    _ = _client(tmp_path)
+    source = Path("apps/api/routers/demo.py").read_text(encoding="utf-8")
+    assert '@router.post("/demo/start")' in source
+    assert '@router.post("/run/demo")' in source
+    assert "return _start_grow_op_demo(customer_id=customer_id)" in source
+    assert '"recent_results": recent_results' in source
 
 
 def test_dashboard_demo_replay_status_state_machine_and_polling_present(tmp_path) -> None:
