@@ -259,6 +259,15 @@ def test_dashboard_no_data_fallback_prompts_demo_start(tmp_path) -> None:
     assert "No data yet — start demo" in dash.text
 
 
+def test_dashboard_metrics_top_summary_lookup_is_defined_and_guarded(tmp_path) -> None:
+    client = _client(tmp_path)
+    dash = client.get("/web/modules/dashboard.js")
+    assert dash.status_code == 200
+    source = dash.text
+    assert 'const topSummaryEl = document.getElementById("operatorTopSummary") || document.querySelector("[data-top-summary]");' in source
+    assert "if (topSummaryEl) topSummaryEl.textContent = buildTopSummarySentence(latest);" in source
+
+
 def test_run_detail_grow_op_monitor_waits_for_stable_completion_signals(tmp_path) -> None:
     client = _client(tmp_path)
     detail = client.get("/web/modules/run_detail.js")
