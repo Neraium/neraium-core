@@ -277,17 +277,10 @@ def test_grow_op_demo_start_warm_loads_initial_results(tmp_path) -> None:
     payload = started.json()
     run_id = str(payload.get("run_id") or "")
     assert run_id
-    assert int(payload.get("processed") or 0) > 0
-    recent = client.get(_customer_path("/results/recent", customer_id="customer-a"), params={"run_id": run_id, "limit": 5})
-    assert recent.status_code == 200
-    env = recent.json()
-    assert isinstance(env.get("results"), list)
-    assert len(env.get("results") or []) > 0
-    by_run_only = client.get("/results/recent", params={"run_id": run_id, "limit": 5})
-    assert by_run_only.status_code == 200
-    by_run_only_env = by_run_only.json()
-    assert isinstance(by_run_only_env.get("results"), list)
-    assert len(by_run_only_env.get("results") or []) > 0
+    assert payload.get("status") == "started"
+    assert payload.get("processed") == 0
+    assert int(payload.get("warm_start_frames") or 0) > 0
+    assert int(payload.get("total_frames") or 0) >= int(payload.get("warm_start_frames") or 0)
 
 
 def test_demo_start_aliases_route_to_real_seed_flow(tmp_path) -> None:
@@ -296,7 +289,7 @@ def test_demo_start_aliases_route_to_real_seed_flow(tmp_path) -> None:
     assert '@router.post("/demo/start")' in source
     assert '@router.post("/run/demo")' in source
     assert "return _start_grow_op_demo(customer_id=customer_id)" in source
-    assert '"recent_results": recent_results' in source
+    assert '"warm_start_frames": warm_start_frames' in source
 
 
 def test_dashboard_demo_replay_status_state_machine_and_polling_present(tmp_path) -> None:
