@@ -389,6 +389,11 @@ function wireAssistantChat() {
   });
 }
 
+function dashboardSparklineRenderSeries() {
+  const replayChron = dashboardChronologicalForRender(dashboardChronologicalResults());
+  return filterDashboardChronological(replayChron);
+}
+
 function bindDashboardSparklineInteractions() {
   const canvas = qs("#dashboardSparkline");
   if (!canvas || canvas.dataset.sparkBound === "1") return;
@@ -442,7 +447,7 @@ function bindDashboardSparklineInteractions() {
   function clearHover() {
     state.dashboardSparkline.hoveredIndex = null;
     if (tooltip) tooltip.classList.add("hidden");
-    renderDashboardSparkline(dashboardChronologicalResults());
+    renderDashboardSparkline(dashboardSparklineRenderSeries());
   }
 
   function updateFromClient(clientX, clientY) {
@@ -457,7 +462,7 @@ function bindDashboardSparklineInteractions() {
       return;
     }
     state.dashboardSparkline.hoveredIndex = best;
-    renderDashboardSparkline(dashboardChronologicalResults());
+    renderDashboardSparkline(dashboardSparklineRenderSeries());
     showTip(best, clientX, clientY);
   }
 
@@ -534,14 +539,17 @@ function wireRiskProgressionControls(onChange) {
   const stages = qsa("#dashboardRiskProgression [data-risk-filter]");
   if (!stages.length) return;
   stages.forEach((btn) => {
-    if (btn.dataset.riskFilterWired === "1") return;
-    btn.dataset.riskFilterWired = "1";
-    btn.addEventListener("click", () => {
+    if (typeof btn.__dashboardRiskFilterHandler === "function") {
+      btn.removeEventListener("click", btn.__dashboardRiskFilterHandler);
+    }
+    const clickHandler = () => {
       const nextFilter = String(btn.dataset.riskFilter || "ALL").toUpperCase();
       const currentFilter = String(state.dashboardRiskFilter || "ALL").toUpperCase();
       state.dashboardRiskFilter = currentFilter === nextFilter ? "ALL" : nextFilter;
       if (typeof onChange === "function") onChange();
-    });
+    };
+    btn.__dashboardRiskFilterHandler = clickHandler;
+    btn.addEventListener("click", clickHandler);
   });
 }
 
@@ -1958,7 +1966,7 @@ function wireWorkspaceShellEvents() {
       if (resizeTimer) window.clearTimeout(resizeTimer);
       resizeTimer = window.setTimeout(() => {
         if (getRoute().page === "dashboard") {
-          renderDashboardSparkline(dashboardChronologicalResults());
+          renderDashboardSparkline(dashboardSparklineRenderSeries());
         }
       }, 150);
     });
