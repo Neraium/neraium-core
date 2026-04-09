@@ -21,7 +21,7 @@ from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Query, 
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
 from pydantic import BaseModel
-from starlette.responses import PlainTextResponse, Response, StreamingResponse
+from starlette.responses import JSONResponse, PlainTextResponse, Response, StreamingResponse
 from starlette.types import Message
 
 from .bootstrap.config import (
@@ -1230,7 +1230,10 @@ def create_app(
             results = []
 
         if compact:
-            results = [_compact_result_view(r) for r in results]
+            compact_results = [_compact_result_view(r) for r in results]
+            duration_ms = int((time.perf_counter() - started_at) * 1000)
+            logger.info("EXIT /results/recent compact=true duration_ms=%s", duration_ms)
+            return JSONResponse(content={"count": len(compact_results), "results": compact_results})
         latest = results[0] if results else None
 
         duration_ms = int((time.perf_counter() - started_at) * 1000)
