@@ -769,7 +769,11 @@ class StructuralEngine:
         (stuck at e.g. four nodes). Merging keys and rebuilding buffered vectors fixes that.
         """
         sensor_values = frame.get("sensor_values") or {}
-        incoming = sorted(sensor_values.keys())
+        incoming = sorted(
+            name
+            for name, value in sensor_values.items()
+            if self._is_real_numeric_value(value)
+        )
         if not self.sensor_order:
             self.sensor_order = list(incoming)
         else:
@@ -782,42 +786,46 @@ class StructuralEngine:
                 self._sensor_schema_dirty = True
         return _vector_from_sensor_values(sensor_values, self.sensor_order)
 
+    @staticmethod
+    def _is_real_numeric_value(value: object) -> bool:
+        """True for finite non-bool numeric values observed in real telemetry frames."""
+        if isinstance(value, bool):
+            return False
+        try:
+            fv = float(value)
+        except (TypeError, ValueError):
+            return False
+        return bool(np.isfinite(fv))
+
+    @staticmethod
+    def _is_valid_window_matrix(m: np.ndarray | None, *, min_rows: int = 2) -> bool:
+        """Shared cache/window readiness gate: non-empty rows and non-zero feature width."""
+        if m is None:
+            return False
+        if not isinstance(m, np.ndarray):
+            return False
+        if m.ndim != 2:
+            return False
+        rows, cols = int(m.shape[0]), int(m.shape[1])
+        return rows >= int(min_rows) and cols >= 1
+
+    @classmethod
+    def _windows_ready(cls, baseline: np.ndarray | None, recent: np.ndarray | None) -> bool:
+        if not cls._is_valid_window_matrix(baseline) or not cls._is_valid_window_matrix(recent):
+            return False
+        return bool(baseline is not None and recent is not None and baseline.shape[1] == recent.shape[1])
+
     def _extract_windows_from_chronological(self, m: np.ndarray) -> tuple[Optional[np.ndarray], Optional[np.ndarray]]:
         """Baseline / recent slices from a chronological (oldest→newest) matrix."""
+        if m.ndim != 2:
+            return None, None
         if m.shape[0] < self.baseline_window or m.shape[0] < self.recent_window:
             return None, None
         bl = m[: self.baseline_window][:: self.window_stride]
         rc = m[-self.recent_window :][:: self.window_stride]
-        if bl.shape[0] < 2 or rc.shape[0] < 2:
+        if not self._windows_ready(bl, rc):
             return None, None
         return bl, rc
-
-    def _get_recent_window(self, frames_list: list[dict] | None = None) -> Optional[np.ndarray]:
-        """Use ``frames_list`` when available to avoid repeated ``list(deque)`` copies per step."""
-        fl = frames_list if frames_list is not None else list(self.frames)
-        if len(fl) < self.recent_window:
-            return None
-
-        m = self._history_ring.chronological_matrix()
-        if m.shape[0] < self.recent_window:
-            return None
-        vectors = m[-self.recent_window :][:: self.window_stride]
-        if vectors.shape[0] < 2:
-            return None
-        return vectors
-
-    def _get_baseline_window(self, frames_list: list[dict] | None = None) -> Optional[np.ndarray]:
-        fl = frames_list if frames_list is not None else list(self.frames)
-        if len(fl) < self.baseline_window:
-            return None
-
-        m = self._history_ring.chronological_matrix()
-        if m.shape[0] < self.baseline_window:
-            return None
-        vectors = m[: self.baseline_window][:: self.window_stride]
-        if vectors.shape[0] < 2:
-            return None
-        return vectors
 
     def _get_recent_timestamps(self, frames_list: list[dict] | None = None) -> Optional[list[float]]:
         """Timestamps for the trailing ``recent_window`` frames.
@@ -884,7 +892,7 @@ class StructuralEngine:
         if len(self.frames) >= self.baseline_window:
             m = self._history_ring.chronological_matrix()
             vecs = m[: self.baseline_window][:: self.window_stride]
-            if vecs.shape[0] >= 2:
+            if self._is_valid_window_matrix(vecs):
                 self._baseline_matrix_cache = np.asarray(vecs, dtype=np.float64, order="C")
                 fl = list(self.frames)
                 ts_b: list[float] = []
@@ -903,7 +911,7 @@ class StructuralEngine:
             return
         m = self._history_ring.chronological_matrix()
         vecs = m[: self.baseline_window][:: self.window_stride]
-        if vecs.shape[0] >= 2:
+        if self._is_valid_window_matrix(vecs):
             self._baseline_matrix_cache = np.asarray(vecs, dtype=np.float64, order="C")
             fl = list(self.frames)
             ts_b: list[float] = []
@@ -919,7 +927,7 @@ class StructuralEngine:
         if m is None:
             return None
         vectors = m[:: self.window_stride]
-        return vectors if vectors.shape[0] >= 2 else None
+        return vectors if self._is_valid_window_matrix(vectors) else None
 
     def _system_health(self, drift_score: float, stability_score: float) -> int:
         health = 100.0 - min(drift_score * 20.0, 85.0)
@@ -1574,26 +1582,20 @@ class StructuralEngine:
         temporal_features: dict[str, object] = {}
 
         # Skip deque→list snapshot during warmup (saves O(n) per frame until windows fill).
-        can_process_full_frame = True
+        can_process_full_frame = False
         baseline_window = None
         recent_window = None
         chronological_M: np.ndarray | None = None
-        if len(self.frames) < self.baseline_window or len(self.frames) < self.recent_window:
-            can_process_full_frame = False
-        else:
-            baseline_window = None
-            recent_window = None
-            if _incremental_windows_enabled() and self._baseline_matrix_cache is not None:
+        if len(self.frames) >= self.baseline_window and len(self.frames) >= self.recent_window:
+            if _incremental_windows_enabled() and self._is_valid_window_matrix(self._baseline_matrix_cache):
                 ir = self._materialize_strided_recent()
-                if ir is not None:
+                if self._windows_ready(self._baseline_matrix_cache, ir):
                     baseline_window = self._baseline_matrix_cache
                     recent_window = ir
-            if baseline_window is None or recent_window is None:
+            if not self._windows_ready(baseline_window, recent_window):
                 chronological_M = self._history_ring.chronological_matrix()
                 baseline_window, recent_window = self._extract_windows_from_chronological(chronological_M)
-            can_process_full_frame = bool(
-                baseline_window is not None and recent_window is not None
-            )
+            can_process_full_frame = self._windows_ready(baseline_window, recent_window)
 
         if can_process_full_frame:
             if chronological_M is not None:

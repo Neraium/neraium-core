@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import math
+
 from neraium_core.alignment import StructuralEngine
 
 
@@ -32,3 +34,23 @@ def test_sensor_order_merges_new_keys_across_frames() -> None:
     assert list(eng.sensor_order) == ["a", "b", "c", "d", "e", "f"]
     assert len(eng.frames) == 6
     assert eng.frames[-1]["_vector"].shape[0] == 6
+
+
+def test_sensor_order_registers_only_real_numeric_channels() -> None:
+    eng = StructuralEngine(baseline_window=6, recent_window=3, window_stride=1)
+    base = {"timestamp": "2025-01-01T00:00:00Z", "site_id": "s", "asset_id": "a"}
+
+    eng.process_frame(
+        {
+            **base,
+            "sensor_values": {
+                "a": 1.0,
+                "b": "2.0",
+                "bad_text": "n/a",
+                "bad_bool": True,
+                "bad_inf": math.inf,
+            },
+        }
+    )
+
+    assert list(eng.sensor_order) == ["a", "b"]
