@@ -937,6 +937,21 @@ class ResultStore:
             return None
         return self._decode_run_row(row)
 
+    def get_run_customer_id(self, run_id: str) -> str | None:
+        with self._conn() as conn:
+            row = conn.execute(
+                """
+                SELECT customer_id
+                FROM runs
+                WHERE run_id = ?
+                LIMIT 1
+                """,
+                (str(run_id),),
+            ).fetchone()
+        if row is None:
+            return None
+        return str(row["customer_id"])
+
     def get_active_run(self, *, customer_id: str | None = None) -> dict[str, Any] | None:
         resolved_customer = _normalize_customer_id(customer_id)
         with self._conn() as conn:

@@ -1333,6 +1333,9 @@ class StructuralMonitoringService:
     def get_run(self, run_id: str, *, customer_id: str | None = None) -> dict[str, Any] | None:
         return self.store.get_run(run_id, customer_id=customer_id)
 
+    def get_run_customer_id(self, run_id: str) -> str | None:
+        return self.store.get_run_customer_id(run_id)
+
     def get_active_run(self, *, customer_id: str | None = None) -> dict[str, Any] | None:
         return self.store.get_active_run(customer_id=customer_id)
 
