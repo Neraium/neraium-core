@@ -187,7 +187,7 @@ function buildSeriesRiskInsight(latest, chronological) {
     const eAvg = early.reduce((a, b) => a + b, 0) / early.length;
     const lAvg = late.reduce((a, b) => a + b, 0) / late.length;
     if (hi >= 15) {
-      parts.push(`Drift stayed above 1.5 on ${hi} consecutive snapshots — sustained stress drove the assessment.`);
+      parts.push(`Drift stayed above 1.5 on ${hi} consecutive snapshots, sustained stress drove the assessment.`);
     } else if (lAvg > eAvg + 0.12) {
       parts.push(`Structural drift trended upward (${eAvg.toFixed(2)} → ${lAvg.toFixed(2)}) across the visible window.`);
     }

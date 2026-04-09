@@ -645,9 +645,9 @@ function renderDashboardHero(latest, prev) {
         if (alertState === "ESCALATED") {
           alertSummaryEl.textContent = "Escalated alert".slice(0, 120);
         } else if (alertStatus.acknowledged) {
-          alertSummaryEl.textContent = "Active alert — acknowledged".slice(0, 120);
+          alertSummaryEl.textContent = "Active alert: acknowledged".slice(0, 120);
         } else {
-          alertSummaryEl.textContent = "Active alert — unacknowledged".slice(0, 120);
+          alertSummaryEl.textContent = "Active alert: unacknowledged".slice(0, 120);
         }
       } else if (alertState === "RESOLVED") {
         alertSummaryEl.textContent = "Resolved after sustained recovery".slice(0, 120);
@@ -1300,11 +1300,11 @@ function demoPlaybackNarrationText(cursor, total) {
   if (!total || total < 2) return "";
   const t = Math.max(1, Math.min(total, Number(cursor) || 1));
   const p = (t - 1) / Math.max(1, total - 1);
-  if (p < 0.2) return "Baseline — system is establishing healthy structural reference.";
-  if (p < 0.4) return "Early drift — subtle relationship shift appears before hard alarms.";
-  if (p < 0.65) return "Instability — drift and composite pressure are compounding.";
-  if (p < 0.85) return "Alert — high-risk state confirms sustained destabilization.";
-  return "Recovery/intervention — watch for risk easing and structural re-stabilization.";
+  if (p < 0.2) return "Baseline: the system is establishing a healthy structural reference.";
+  if (p < 0.4) return "Early drift: subtle relationship shifts appear before hard alarms.";
+  if (p < 0.65) return "Instability: drift and composite pressure are compounding.";
+  if (p < 0.85) return "Alert: high-risk state confirms sustained destabilization.";
+  return "Recovery or intervention: watch for risk easing and structural re-stabilization.";
 }
 
 const RUN_DETAIL_DEMO_HERO_KEY = "neraium_demo_run_detail_hero_dismissed";
@@ -1858,7 +1858,7 @@ function renderRunDetailHeaderContext(run, latest) {
     const el = qs(selector);
     if (el) el.textContent = value;
   });
-  if (opRoom) opRoom.textContent = risk === "HIGH" ? "🔴 ROOM 104 — FIX TODAY" : risk === "MEDIUM" ? "🟡 ROOM 104 — CHECK SOON" : "🟢 ROOM STATUS";
+  if (opRoom) opRoom.textContent = risk === "HIGH" ? "🔴 ROOM 104 - FIX TODAY" : risk === "MEDIUM" ? "🟡 ROOM 104 - CHECK SOON" : "🟢 ROOM STATUS";
   if (opHeadline) opHeadline.textContent = risk === "HIGH" ? "Your AC is breaking." : risk === "MEDIUM" ? "Stress is building in one room." : "No urgent room failures detected.";
   if (opBody) opBody.textContent = risk === "HIGH"
     ? "Room will hit 90°F by 6 PM if no action is taken."
@@ -2180,7 +2180,7 @@ function updateActiveRunHeader(run) {
   if (topbarRunId) topbarRunId.textContent = normalizedTopbarRunId || "--";
   if (pillEl) {
     if (!run) {
-      pillEl.textContent = "—";
+      pillEl.textContent = "N/A";
       pillEl.setAttribute("data-status", "none");
     } else if (run.is_active) {
       pillEl.textContent = "Live";
@@ -2330,14 +2330,14 @@ function normalizedAlertStatusText(latest) {
   if (!alertStatus) return "Alert status clear";
   if (alertState === "PENDING_ALERT") return `Pending alert (${pendingCount}/${threshold} confirmations)`;
   if (alertStatus.alert_active && alertState === "ESCALATED") return "Escalated alert";
-  if (alertStatus.alert_active && alertStatus.acknowledged) return "Active alert — acknowledged";
-  if (alertStatus.alert_active) return "Active alert — unacknowledged";
+  if (alertStatus.alert_active && alertStatus.acknowledged) return "Active alert: acknowledged";
+  if (alertStatus.alert_active) return "Active alert: unacknowledged";
   if (alertState === "RESOLVED") return "Resolved after sustained recovery";
   return "Alert status clear";
 }
 
 function noTelemetryOperationalMessage(uiTruth = null) {
-  return "No data yet — upload telemetry to begin monitoring.";
+  return "Upload telemetry to begin monitoring.";
 }
 
 function _normalizeSummaryTrend(value) {
@@ -2491,7 +2491,7 @@ function renderOperationalSnapshot(latest) {
   if (freshEl) freshEl.textContent = freshness.label;
 
   let recommendation = noTelemetryOperationalMessage(uiTruth);
-  let nextAction = "No data yet — upload telemetry.";
+  let nextAction = "Next action: upload telemetry.";
   if (latest) {
     if (risk === "HIGH") {
       recommendation = "Investigate sustained instability in the active run.";
@@ -2502,8 +2502,8 @@ function renderOperationalSnapshot(latest) {
       recommendation = "Acknowledge active alert and inspect relationship drift.";
       nextAction = "Review active alert state and monitor incoming telemetry.";
     } else {
-      recommendation = "Continue monitoring — no intervention recommended.";
-      nextAction = freshness.stale ? "Refresh active run or ingest fresh telemetry." : "System stable — continue monitoring.";
+      recommendation = "Continue monitoring, no intervention recommended.";
+      nextAction = freshness.stale ? "Refresh active run or ingest fresh telemetry." : "System stable: continue monitoring.";
     }
   }
   if (recEl) recEl.textContent = latest ? recommendation : `${recommendation} ${nextAction}`;
@@ -2701,13 +2701,13 @@ function renderDashboardMetrics(latest, prev) {
     if (recommendationConfidenceBadge) recommendationConfidenceBadge.textContent = `Confidence ${confidence}`;
     if (nextActionEl) {
       if (!latest) {
-        nextActionEl.textContent = "No data yet — upload telemetry.";
+        nextActionEl.textContent = "Next action: upload telemetry.";
       } else if (risk === "HIGH") {
         nextActionEl.textContent = "Active alert requires acknowledgement and targeted inspection.";
       } else if (risk === "MEDIUM") {
         nextActionEl.textContent = "Maintain elevated watch and verify incoming telemetry quality.";
       } else {
-        nextActionEl.textContent = "System stable — monitoring continues.";
+        nextActionEl.textContent = "System stable: monitoring continues.";
       }
     }
   }
