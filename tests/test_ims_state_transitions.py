@@ -1,5 +1,6 @@
 import tempfile
 
+import neraium_core.alignment as alignment_module
 from neraium_core.alignment import StructuralEngine
 
 
@@ -91,3 +92,49 @@ def test_process_frame_exposes_explicit_policy_outputs():
     assert "drift_smooth" in out
     assert "watch_threshold" in out
     assert "alert_threshold" in out
+
+
+def test_policy_fields_ignore_legacy_decision_payload(monkeypatch):
+    engine = _engine_for_state_machine()
+
+    def _fake_decision_output(*args, **kwargs):
+        return {
+            "policy_state": "ALERT",
+            "policy_watch": False,
+            "policy_alert": True,
+            "interpreted_state": "STRUCTURAL_INSTABILITY_OBSERVED",
+        }
+
+    monkeypatch.setattr(alignment_module, "decision_output", _fake_decision_output)
+
+    out = engine.process_frame(
+        {
+            "timestamp": 1.0,
+            "site_id": "ims",
+            "asset_id": "bearing",
+            "sensor_values": {"s1": 0.1, "s2": 0.2, "s3": 0.3},
+            "mahalanobis_score": 999.0,
+        }
+    )
+    assert out["policy_state"] == "STABLE"
+    assert out["policy_alert"] is False
+    assert out["auxiliary_diagnostics"]["mahalanobis_score"] == 999.0
+
+
+def test_process_frame_exposes_architecture_split_fields():
+    engine = _engine_for_state_machine()
+    out = engine.process_frame(
+        {
+            "timestamp": 2.0,
+            "site_id": "ims",
+            "asset_id": "bearing",
+            "sensor_values": {"s1": 0.3, "s2": 0.4, "s3": 0.5},
+            "mahalanobis_distance": 2.5,
+        }
+    )
+    assert "core_structural_outputs" in out
+    assert "policy_outputs" in out
+    assert "auxiliary_diagnostics" in out
+    assert "legacy_scoring" in out
+    assert out["policy_outputs"]["policy_state"] == out["policy_state"]
+    assert out["auxiliary_diagnostics"]["mahalanobis_score"] == 2.5
