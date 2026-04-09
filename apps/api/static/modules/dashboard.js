@@ -1205,6 +1205,85 @@ async function startCmapssDemo(customerId, options = {}) {
   });
 }
 
+async function prepareDemoRuns({ mode = "all" } = {}) {
+  if (state.demo.prepared && !state.demo.preparing) {
+    if (mode === "all") {
+      return state.runs[state.runs.length - 1] || state.activeRun || null;
+    }
+    return state.activeRun || state.runs[0] || null;
+  }
+  if (state.demo.preparing) {
+    return state.activeRun || null;
+  }
+  state.demo.preparing = true;
+  try {
+    setLoading(true, "Preparing replay runs…");
+    setStatus("Preparing reference replay run...", false);
+    setDemoProgress({
+      visible: true,
+      phase: "Preparing reference replay",
+      current: 0,
+      total: 3,
+      text: "Running NASA CMAPSS FD004 scenario...",
+    });
+    await toggleDemoMode(true);
+    const seeded = await startCmapssDemo(customerIdValue(state.tenant.customerId), {
+      max_frames: CMAPSS_REPLAY_DEFAULT_MAX_FRAMES,
+    });
+    const seededRunId = String(seeded?.run_id || "");
+    if (!seededRunId) {
+      throw new Error("Demo seed did not return a run ID.");
+    }
+    setDemoProgress({
+      visible: true,
+      phase: "Loading run catalog",
+      current: 1,
+      total: 3,
+      text: "Loading seeded replay run...",
+    });
+    await loadRuns();
+    let focusRun = state.runs.find((r) => String(r?.run_id || "") === seededRunId) || null;
+    if (!focusRun) {
+      focusRun = {
+        run_id: seededRunId,
+        name: "NASA CMAPSS FD004 Reference Replay",
+        config: { source: "demo-mode", scenario: "cmapss-fd004" },
+      };
+    }
+    if (focusRun?.run_id) {
+      await fetchJson(apiUrl(`/runs/${encodeURIComponent(focusRun.run_id)}/activate`, tenantScopeParams()), {
+        method: "POST",
+      });
+      state.demo.activeRunId = focusRun.run_id;
+      const hydrated = state.runs.find((r) => String(r?.run_id || "") === focusRun.run_id) || focusRun;
+      updateActiveRunHeader(hydrated);
+      focusRun = hydrated;
+    }
+    state.demo.prepared = true;
+    setDemoProgress({ visible: true, phase: "Ready", current: 3, total: 3, text: "Reference replay ready." });
+    setStatus("Reference replay ready.");
+    window.setTimeout(() => setDemoProgress({ visible: false }), 1200);
+    return focusRun;
+  } finally {
+    setLoading(false);
+    state.demo.preparing = false;
+    if (!state.demo.prepared) setDemoProgress({ visible: false });
+    renderTenantControls();
+  }
+}
+
+function shouldShowDashboardDemoHero() {
+  if (state.demo.preparing) return false;
+  const n = (state.dashboardRecent || []).length;
+  return n === 0;
+}
+
+function renderDashboardDemoHero() {
+  const el = qs("#dashboardDemoHero");
+  if (!el) return;
+  el.classList.toggle("hidden", !shouldShowDashboardDemoHero());
+}
+
 function onDemoPlaybackComplete() {
   if (state.demo.playbackCompleteNotified) return;
   state.demo.playbackCompleteNotified = true;
