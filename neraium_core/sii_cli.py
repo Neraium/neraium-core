@@ -4,6 +4,7 @@ import argparse
 import json
 from pathlib import Path
 
+from neraium_core.runtime_config import RuntimeConfig
 from neraium_core.sii import SIIApplication, SIIConfig, configure_structured_logging, run_structural_pipeline
 from neraium_core.sii.calibration import derive_calibration_from_validation, load_config, save_config
 from neraium_core.sii.errors import SIIConfigurationError, SIIError
@@ -19,8 +20,8 @@ def _parse_args() -> argparse.Namespace:
     )
     p.add_argument("--input", help="Input telemetry file (.json or .csv)")
     p.add_argument("--output", required=True, help="Output report file (.json or .csv)")
-    p.add_argument("--baseline-window", type=int, default=50)
-    p.add_argument("--recent-window", type=int, default=12)
+    p.add_argument("--baseline-window", type=int, default=None)
+    p.add_argument("--recent-window", type=int, default=None)
     p.add_argument("--max-history", type=int, default=500)
     p.add_argument("--relation-threshold", type=float, default=0.6)
     p.add_argument("--regime-distance-threshold", type=float, default=2.0)
@@ -42,9 +43,10 @@ def _parse_args() -> argparse.Namespace:
 
 
 def _config_from_args(args: argparse.Namespace) -> SIIConfig:
+    runtime_cfg = RuntimeConfig.from_env()
     return SIIConfig(
-        baseline_window=int(args.baseline_window),
-        recent_window=int(args.recent_window),
+        baseline_window=int(args.baseline_window if args.baseline_window is not None else runtime_cfg.baseline_window),
+        recent_window=int(args.recent_window if args.recent_window is not None else runtime_cfg.recent_window),
         max_history=int(args.max_history),
         relation_threshold=float(args.relation_threshold),
         regime_distance_threshold=float(args.regime_distance_threshold),
@@ -52,17 +54,34 @@ def _config_from_args(args: argparse.Namespace) -> SIIConfig:
         alert_threshold=float(args.alert_threshold),
         regime_store_path=str(args.regime_store_path),
         allow_context_provider=bool(args.allow_context_provider),
-        log_level=str(args.log_level).upper(),
+        log_level=str(args.log_level or runtime_cfg.log_level).upper(),
     )
 
 
 def main() -> int:
     args = _parse_args()
-    config = _config_from_args(args)
-    logger = configure_structured_logging(config.log_level)
-    app = SIIApplication.from_config(config)
     try:
+        runtime_cfg = RuntimeConfig.from_env()
+        if args.input is None and runtime_cfg.input_path:
+            args.input = runtime_cfg.input_path
+        config = _config_from_args(args)
+        logger = configure_structured_logging(config.log_level)
+        logger.info(
+            "sii_cli_startup",
+            extra={
+                "runtime_mode": runtime_cfg.runtime_mode,
+                "baseline_window": config.baseline_window,
+                "recent_window": config.recent_window,
+                "log_level": config.log_level,
+                "input_path": str(args.input or ""),
+                "output_path": str(args.output),
+            },
+        )
+        app = SIIApplication.from_config(config)
         output_path = Path(args.output)
+        output_parent = output_path.parent if str(output_path.parent) else Path(".")
+        if not output_parent.exists():
+            raise SIIConfigurationError(f"Output directory does not exist: {output_parent}")
         ingest_errors: list[dict[str, object]] = []
         if bool(args.live):
             outputs, live_diagnostics = app.run_live_ingestion_poll(max_polls=int(args.live_polls))
@@ -76,14 +95,19 @@ def main() -> int:
             if not args.input:
                 raise SIIConfigurationError("--input is required unless --live is set")
             input_path = Path(args.input)
+            if not input_path.exists():
+                raise SIIConfigurationError(f"Input path does not exist: {input_path}")
+            if not input_path.is_file():
+                raise SIIConfigurationError(f"Input path is not a file: {input_path}")
             calibration = load_config(args.config) if args.config else None
             if input_path.suffix.lower() == ".json":
                 payloads, ingest_errors = load_frames_from_json(str(input_path), return_ingest_errors=True)
             elif input_path.suffix.lower() == ".csv":
                 payloads, ingest_errors = load_frames_from_csv(str(input_path), return_ingest_errors=True)
             else:
-                payloads = []
-                ingest_errors = []
+                raise SIIConfigurationError(
+                    f"Unsupported input format: {input_path.suffix!r}. Use .json or .csv"
+                )
             outputs = app.run_payloads(payloads)
             frames_succeeded = len(payloads)
             frames_failed = len(ingest_errors)
@@ -123,7 +147,8 @@ def main() -> int:
             )
         )
         return exit_code
-    except (SIIError, SIIConfigurationError) as exc:
+    except (SIIError, SIIConfigurationError, ValueError) as exc:
+        logger = configure_structured_logging(str(getattr(args, "log_level", "INFO") or "INFO").upper())
         logger.error("sii_cli_failed", extra={"error": str(exc)})
         print(json.dumps({"error": str(exc)}))
         return 2

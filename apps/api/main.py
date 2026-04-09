@@ -33,7 +33,12 @@ from .bootstrap.config import (
 )
 from .bootstrap.errors import register_exception_handlers
 from .bootstrap.logging import configure_logging
-from .bootstrap.runtime import build_runtime_state_diagnostics, validate_runtime_or_raise
+from .bootstrap.runtime import (
+    build_runtime_state_diagnostics,
+    resolve_runtime_mode_from_env,
+    validate_runtime_or_raise,
+    validate_startup_assumptions_or_raise,
+)
 from .bootstrap.static import _mount_web_static
 from .middleware.correlation import RequestCorrelationIdMiddleware
 from .middleware.request_limits import MaxRequestBodySizeMiddleware
@@ -128,6 +133,7 @@ from neraium_core.ingestion_normalization import (
     normalize_external_batch_payload,
     normalize_external_payload,
 )
+from neraium_core.runtime_config import RuntimeConfig
 from neraium_core.pipeline import infer_csv_mapping_stage, issue_to_dict, parse_csv_rows, validate_csv_mapping_stage
 
 
@@ -218,6 +224,8 @@ def create_app(
     *,
     max_request_body_bytes: int | None = None,
 ) -> FastAPI:
+    runtime_cfg = RuntimeConfig.from_env()
+    runtime_mode = resolve_runtime_mode_from_env()
     api_key = os.getenv("NERAIUM_API_KEY")
     configured_db_path = os.getenv("NERAIUM_DB_PATH", "neraium.db")
     db_path, persistence_available = resolve_db_path(configured_db_path)
@@ -229,6 +237,19 @@ def create_app(
 
     runtime_status = get_core_runtime_status()
     validate_runtime_or_raise(runtime_status)
+
+    log_structured(
+        logger,
+        event="startup_config_loaded",
+        fields={
+            **runtime_cfg.to_diagnostics(),
+            "runtime_mode": runtime_mode,
+            "db_path": db_path,
+            "persistence_available": bool(persistence_available),
+            "request_body_limit": int(request_body_limit),
+        },
+        level=logging.INFO,
+    )
 
     app = FastAPI(title="Neraium SII API", version="0.1.0")
     app.state.request_body_limit = request_body_limit
@@ -261,7 +282,11 @@ def create_app(
             event="cors_disabled_same_origin_mode",
             fields={"reason": "no_allow_origins_or_origin_regex_configured"},
         )
-    service_instance = service or StructuralMonitoringService(store=ResultStore(db_path=db_path))
+    service_instance = service or StructuralMonitoringService(
+        store=ResultStore(db_path=db_path),
+        baseline_window=runtime_cfg.baseline_window,
+        recent_window=runtime_cfg.recent_window,
+    )
     integration_config_path = os.getenv("NERAIUM_INTEGRATION_CONFIG_PATH")
     integration_config = load_integration_config(integration_config_path)
     app.state.integration_config_override = integration_config
@@ -279,6 +304,8 @@ def create_app(
     )
     runtime_state_diagnostics["persisted_state_enabled"] = bool(persisted_state_enabled)
     runtime_state_diagnostics["persisted_state_store"] = "sqlite_operational_state" if persisted_state_enabled else "none"
+    runtime_state_diagnostics.update(runtime_cfg.to_diagnostics())
+    runtime_state_diagnostics["runtime_mode"] = runtime_mode
     alert_instability_threshold, alert_rapid_drift_delta = _alert_thresholds()
     alert_webhook_url = str(os.getenv("NERAIUM_ALERT_WEBHOOK_URL") or "").strip() or None
     alert_email_to = str(os.getenv("NERAIUM_ALERT_EMAIL_TO") or "").strip() or None
@@ -296,6 +323,24 @@ def create_app(
             fields={"temp_dir": runtime_state_diagnostics.get("temp_dir")},
             level=logging.ERROR,
         )
+
+    validate_startup_assumptions_or_raise(
+        runtime_mode=runtime_mode,
+        persistence_available=bool(persistence_available),
+        runtime_state_diagnostics=runtime_state_diagnostics,
+    )
+
+    log_structured(
+        logger,
+        event="startup_validation_passed",
+        fields={
+            "runtime_mode": runtime_mode,
+            "persisted_state_enabled": bool(persisted_state_enabled),
+            "db_path_writable": bool(runtime_state_diagnostics.get("db_path_writable")),
+            "temp_dir_writable": bool(runtime_state_diagnostics.get("temp_dir_writable")),
+        },
+        level=logging.INFO,
+    )
 
     operational_state = OperationalStateService(store_instance=store_instance, enabled=persisted_state_enabled, logger=logger)
 

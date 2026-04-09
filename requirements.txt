@@ -1,5 +1,7 @@
 fastapi
 uvicorn[standard]
+pydantic
+starlette
 pandas
 numpy
 websockets
