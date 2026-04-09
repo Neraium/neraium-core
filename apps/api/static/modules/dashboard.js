@@ -1224,11 +1224,16 @@ async function getDemoSeedJobStatus(jobId) {
 
 async function waitForDemoSeedJob(jobId, options = {}) {
   const intervalMs = Math.max(300, Number(options.intervalMs || 800));
-  const timeoutMs = Math.max(60000, Number(options.timeoutMs || 7 * 60 * 1000));
+  const timeoutMs = Math.max(5000, Number(options.timeoutMs || 7 * 60 * 1000));
   const maxSilentPollFailures = Math.max(0, Number(options.maxSilentPollFailures || 3));
   const started = Date.now();
   let lastStatus = null;
   let pollFailures = 0;
+  console.info("[guided-demo] /demo/seed/status polling start", {
+    jobId,
+    intervalMs,
+    timeoutMs,
+  });
   while (Date.now() - started < timeoutMs) {
     let status;
     try {
@@ -1245,12 +1250,17 @@ async function waitForDemoSeedJob(jobId, options = {}) {
     lastStatus = status;
     const stateLabel = String(status?.status || "").toLowerCase();
     if (options.onProgress) options.onProgress(status);
-    if (stateLabel === "complete") return status;
+    if (stateLabel === "complete") {
+      console.info("[guided-demo] /demo/seed/status polling stop", { jobId, reason: "complete" });
+      return status;
+    }
     if (stateLabel === "error") {
+      console.info("[guided-demo] /demo/seed/status polling stop", { jobId, reason: "error" });
       throw new Error(String(status?.error || status?.message || "Demo seed failed on server."));
     }
     await new Promise((resolve) => window.setTimeout(resolve, intervalMs));
   }
+  console.info("[guided-demo] /demo/seed/status polling stop", { jobId, reason: "timeout", timeoutMs });
   throw new Error(`Timed out waiting for demo seed job ${jobId}. Last status: ${JSON.stringify(lastStatus || {})}`);
 }
 
@@ -1462,6 +1472,7 @@ function wireRunDetailDemoHero() {
 }
 
 async function launchGuidedDemo({ mode = "all", source = "dashboard_cta" } = {}) {
+  let overlayClearReason = "unknown";
   try {
     state.demo = state.demo || {};
     state.demo.enabled = true;
@@ -1477,19 +1488,26 @@ async function launchGuidedDemo({ mode = "all", source = "dashboard_cta" } = {})
     };
     setLoading(true, "Loading validation scenario…");
     await toggleDemoMode(true);
-    await prepareDemoRuns({ mode });
-    await refreshCurrentPage();
-    const focusRun = state.activeRun;
-    state.demo.playbackCompleteNotified = false;
-    if (focusRun?.run_id) {
-      const cid = encodeURIComponent(customerIdValue(state.tenant.customerId));
-      window.location.href = `/app/runs/${encodeURIComponent(focusRun.run_id)}?customer_id=${cid}&replay=1&autoplay=1`;
-      return;
+    const out = await startGrowOpDemo();
+    console.info("[guided-demo] /demo/start response", out);
+    const runId = extractDemoRunId(out);
+    console.info("[guided-demo] extracted run_id", { runId });
+    if (!runId) {
+      overlayClearReason = "demo_start_missing_run_id";
+      throw new Error("No run_id returned from demo start.");
     }
-    setStatus("Reference replay runs ready — select a run.", false, true);
+    state.demo.activeRunId = runId;
+    state.demo.playbackCompleteNotified = false;
+    const cid = encodeURIComponent(customerIdValue(state.tenant.customerId));
+    overlayClearReason = "demo_start_success";
+    window.location.href = `/dashboard?customer_id=${cid}&run_id=${encodeURIComponent(runId)}&replay=1&autoplay=1`;
+    return;
   } catch (err) {
+    overlayClearReason = "guided_demo_error";
     setStatus(String(err.message || err), true, true);
+    throw err;
   } finally {
+    console.info("[guided-demo] loading overlay clear", { reason: overlayClearReason });
     setLoading(false);
   }
 }
@@ -2008,8 +2026,18 @@ function renderRunDetailHeaderContext(run, latest) {
 async function startGrowOpDemo() {
   const cid = customerIdValue(state.tenant.customerId);
   const out = await fetchJson(apiUrl("/demo/start", { customer_id: cid }), { method: "POST" });
-  if (!out.run_id) throw new Error("No run_id returned from grow op demo start.");
+  if (!extractDemoRunId(out)) throw new Error("No run_id returned from grow op demo start.");
   return out;
+}
+
+function extractDemoRunId(payload) {
+  const direct = String(payload?.run_id || "").trim();
+  if (direct) return direct;
+  const nestedRun = String(payload?.run?.run_id || "").trim();
+  if (nestedRun) return nestedRun;
+  const nestedResult = String(payload?.result?.run_id || "").trim();
+  if (nestedResult) return nestedResult;
+  return "";
 }
 
 function dashboardRunIdFromQuery() {
