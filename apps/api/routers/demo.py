@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import logging
 import threading
+import time
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -94,8 +95,7 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 # without changing ingest/replay control flow.
 #
 GROW_OP_WARM_START_FRAMES = 12
-GROW_OP_STREAM_BATCH_SIZE = 6
-GROW_OP_STREAM_BATCH_DELAY_SEC = 0.35
+GROW_OP_STREAM_FRAME_INTERVAL_SEC = 0.75
 
 
 def _canonical_demo_stage(*, frames_processed: int, risk_level: str, run_status: str) -> str:
@@ -427,52 +427,88 @@ def build_demo_router(*, deps: DemoRouterDependencies) -> APIRouter:
                 job["updated_at"] = deps.utc_now_iso()
 
         def _run_grow_op_seed_job() -> None:
+            processed_total = preloaded
+            frame_index = preloaded
+            frame_interval = max(0.05, float(GROW_OP_STREAM_FRAME_INTERVAL_SEC))
+
+            def _job_is_active() -> bool:
+                with deps.demo_jobs_lock:
+                    current_job = deps.demo_jobs.get(job_id)
+                    if current_job is None:
+                        return False
+                    return str(current_job.get("status") or "").lower() in {"pending", "running"}
+
+            def _generate_next_frame(source_frame: dict[str, Any], frame_number: int) -> dict[str, Any]:
+                # Keep scenario signals but re-time rows so replay appears live and continuous.
+                generated = dict(source_frame)
+                generated["timestamp"] = datetime.now(timezone.utc).isoformat()
+                generated["customer_id"] = resolved_customer
+                deps.log_structured(
+                    logger,
+                    event="demo_grow_op_worker_frame_generated",
+                    fields={
+                        "message": "frame generated",
+                        "run_id": run_id,
+                        "job_id": job_id,
+                        "frame_count": frame_number,
+                    },
+                )
+                return generated
+
             try:
-                tail_rows = rows[preloaded:]
-                if not tail_rows:
+                deps.log_structured(
+                    logger,
+                    event="demo_grow_op_worker_started",
+                    fields={
+                        "message": "worker started",
+                        "run_id": run_id,
+                        "job_id": job_id,
+                        "starting_frame_count": processed_total,
+                    },
+                )
+                if not rows:
                     with deps.demo_jobs_lock:
                         job = deps.demo_jobs.get(job_id)
                         if job is not None:
                             job.update(
-                                status="complete",
-                                progress=100,
-                                processed=preloaded,
-                                message="Grow-op demo stream complete.",
-                                error=None,
+                                status="error",
+                                progress=0,
+                                processed=processed_total,
+                                message="Grow-op demo stream failed.",
+                                error="No scenario frames available to stream.",
                             )
                             job["updated_at"] = deps.utc_now_iso()
                     return
-                processed_total = preloaded
-                batch_size = max(1, int(GROW_OP_STREAM_BATCH_SIZE))
-                for start in range(0, len(tail_rows), batch_size):
-                    chunk = tail_rows[start : start + batch_size]
-                    results = deps.service_instance.ingest_batch(chunk, run_id=run_id, customer_id=resolved_customer)
+
+                while _job_is_active():
+                    source_frame = rows[frame_index % len(rows)]
+                    generated_frame = _generate_next_frame(source_frame, processed_total + 1)
+                    results = deps.service_instance.ingest_batch([generated_frame], run_id=run_id, customer_id=resolved_customer)
                     processed_total += len(results)
-                    pct = int(round((processed_total / max(1, len(rows))) * 100))
+                    frame_index += 1
+                    deps.log_structured(
+                        logger,
+                        event="demo_grow_op_worker_frame_ingested",
+                        fields={
+                            "message": "frame ingested",
+                            "run_id": run_id,
+                            "job_id": job_id,
+                            "frame_count": processed_total,
+                        },
+                    )
                     with deps.demo_jobs_lock:
                         job = deps.demo_jobs.get(job_id)
                         if job is not None:
+                            pct = int(round(((processed_total % max(1, len(rows))) / max(1, len(rows))) * 100))
                             job.update(
                                 status="running",
-                                progress=max(0, min(100, pct)),
+                                progress=max(1, min(99, pct)),
                                 processed=processed_total,
                                 message="Streaming grow-op demo telemetry...",
                                 error=None,
                             )
                             job["updated_at"] = deps.utc_now_iso()
-                    if start + batch_size < len(tail_rows):
-                        threading.Event().wait(max(0.0, float(GROW_OP_STREAM_BATCH_DELAY_SEC)))
-                with deps.demo_jobs_lock:
-                    job = deps.demo_jobs.get(job_id)
-                    if job is not None:
-                        job.update(
-                            status="complete",
-                            progress=100,
-                            processed=processed_total,
-                            message="Grow-op demo stream complete.",
-                            error=None,
-                        )
-                        job["updated_at"] = deps.utc_now_iso()
+                    time.sleep(frame_interval)
             except Exception as exc:
                 with deps.demo_jobs_lock:
                     job = deps.demo_jobs.get(job_id)
@@ -483,8 +519,25 @@ def build_demo_router(*, deps: DemoRouterDependencies) -> APIRouter:
                             error=str(exc),
                         )
                         job["updated_at"] = deps.utc_now_iso()
+            finally:
+                deps.log_structured(
+                    logger,
+                    event="demo_grow_op_worker_stopped",
+                    fields={
+                        "message": "worker stopped",
+                        "run_id": run_id,
+                        "job_id": job_id,
+                        "frame_count": processed_total,
+                    },
+                )
 
-        threading.Thread(target=_run_grow_op_seed_job, daemon=True).start()
+        worker = threading.Thread(target=_run_grow_op_seed_job, daemon=True, name=f"demo-grow-op-{job_id}")
+        with deps.demo_jobs_lock:
+            job = deps.demo_jobs.get(job_id)
+            if job is not None:
+                job["_thread"] = worker
+                job["worker_thread_name"] = worker.name
+        worker.start()
         response_payload = {
             "status": "started",
             "job_id": job_id,

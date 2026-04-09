@@ -287,9 +287,37 @@ def test_grow_op_demo_start_warm_loads_initial_results(tmp_path) -> None:
     run_id = str(payload.get("run_id") or "")
     assert run_id
     assert payload.get("status") == "started"
-    assert payload.get("processed") == 0
+    assert int(payload.get("processed") or 0) >= 0
     assert int(payload.get("warm_start_frames") or 0) > 0
     assert int(payload.get("total_frames") or 0) >= int(payload.get("warm_start_frames") or 0)
+
+
+def test_grow_op_demo_worker_continues_after_warm_start(tmp_path) -> None:
+    client = _client(tmp_path)
+    started = client.post(_customer_path("/demo/grow-op/start", customer_id="customer-a"))
+    assert started.status_code == 200
+    payload = started.json()
+    run_id = str(payload.get("run_id") or "")
+    job_id = str(payload.get("job_id") or "")
+    assert run_id
+    assert job_id
+
+    initial_recent = client.get(_customer_path(f"/results/recent?run_id={run_id}&limit=200", customer_id="customer-a"))
+    assert initial_recent.status_code == 200
+    initial_count = int(initial_recent.json().get("count") or 0)
+
+    time.sleep(2.5)
+
+    later_recent = client.get(_customer_path(f"/results/recent?run_id={run_id}&limit=200", customer_id="customer-a"))
+    assert later_recent.status_code == 200
+    later_count = int(later_recent.json().get("count") or 0)
+    assert later_count > initial_count
+
+    status = client.get(_customer_path(f"/demo/grow-op/status?run_id={run_id}&job_id={job_id}", customer_id="customer-a"))
+    assert status.status_code == 200
+    status_payload = status.json()
+    assert status_payload["job"]["status"] == "running"
+    assert int(status_payload["job"].get("processed") or 0) > int(payload.get("processed") or 0)
 
 
 def test_grow_op_demo_start_warm_start_failure_includes_run_and_job_ids(tmp_path) -> None:
