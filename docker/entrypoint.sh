@@ -1,6 +1,9 @@
 #!/usr/bin/env sh
 set -eu
 
+# Production packaging default. Can be overridden explicitly by env.
+export NERAIUM_RUNTIME_MODE="${NERAIUM_RUNTIME_MODE:-production}"
+
 # Ensure writable parent exists for local persistence.
 db_path="${NERAIUM_DB_PATH:-/data/neraium.db}"
 db_dir="$(dirname "$db_path")"
@@ -20,4 +23,4 @@ python -c "import importlib; importlib.import_module(\"apps.api.main\")" >/dev/n
   exit 1
 }
 
-exec uvicorn apps.api.main:app --host 0.0.0.0 --port "${PORT:-8000}"
+exec python -m uvicorn apps.api.main:app --host 0.0.0.0 --port "${PORT:-8000}" --proxy-headers

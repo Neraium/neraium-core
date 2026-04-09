@@ -4,5 +4,6 @@ WORKDIR /app
 
 COPY . .
 RUN pip install --no-cache-dir .
+RUN chmod +x /app/docker/entrypoint.sh
 
-CMD ["python", "-m", "uvicorn", "apps.api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+ENTRYPOINT ["/app/docker/entrypoint.sh"]
