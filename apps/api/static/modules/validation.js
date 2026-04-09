@@ -256,6 +256,7 @@ function wireValidationEvents() {
       setLoading(false);
     }
   });
+  wireHistoricalReplayEvents();
 }
 
 async function handleValidationStartupBehavior({
@@ -294,8 +295,330 @@ async function loadValidationPage() {
   readDemoModeFromStorage();
   applyDemoUiShell();
   renderTenantControls();
+  await hydrateHistoricalReplayControls();
+  await renderHistoricalReplayFromRun(state.activeRun?.run_id || "");
   await handleValidationStartupBehavior({
     demoQuery: demoQs,
     refreshCurrentPage,
   });
+}
+
+function setHistoricalReplayStatus(message, isError = false) {
+  const el = qs("#historicalReplayStatus");
+  if (!el) return;
+  if (!message) {
+    el.classList.add("hidden");
+    el.textContent = "";
+    el.classList.remove("status-error");
+    return;
+  }
+  el.classList.remove("hidden");
+  el.textContent = String(message);
+  el.classList.toggle("status-error", Boolean(isError));
+}
+
+async function fetchHistoricalCsvOptions() {
+  const out = await fetchJson(apiUrl("/demo/historical/csv-options", tenantScopeParams()));
+  return Array.isArray(out?.sources) ? out.sources : [];
+}
+
+async function fetchHistoricalCsvSource(sourceKey) {
+  return fetchJson(apiUrl("/demo/historical/csv-source", tenantScopeParams({ source_key: sourceKey })));
+}
+
+function selectedValidationRunId() {
+  const sel = qs("#historicalReplayRunSelect");
+  return String(sel?.value || "").trim();
+}
+
+function selectedHistoricalSourceKey() {
+  const sel = qs("#historicalCsvSelect");
+  return String(sel?.value || "").trim();
+}
+
+async function hydrateHistoricalReplayControls() {
+  const runSel = qs("#historicalReplayRunSelect");
+  if (runSel) {
+    const runs = Array.isArray(state.runs) ? state.runs.slice() : [];
+    runSel.innerHTML = runs
+      .map((run) => {
+        const runId = String(run.run_id || "");
+        const selected = runId && runId === String(state.activeRun?.run_id || "") ? " selected" : "";
+        return `<option value="${escapeHtml(runId)}"${selected}>${escapeHtml(run.name || runId)} · ${escapeHtml(runId)}</option>`;
+      })
+      .join("");
+    if (!runSel.value && state.activeRun?.run_id) runSel.value = state.activeRun.run_id;
+  }
+  const sourceSel = qs("#historicalCsvSelect");
+  if (sourceSel) {
+    const sources = await fetchHistoricalCsvOptions().catch(() => []);
+    if (sources.length === 0) {
+      sourceSel.innerHTML = '<option value="">No bundled historical CSV sources found</option>';
+    } else {
+      sourceSel.innerHTML = sources
+        .map((item, idx) => `<option value="${escapeHtml(item.key || "")}"${idx === 0 ? " selected" : ""}>${escapeHtml(item.label || item.key || "")}</option>`)
+        .join("");
+    }
+  }
+}
+
+function updateHistoricalFileLabel(file) {
+  const label = qs("#historicalCsvFileLabel");
+  if (!label) return;
+  if (!file) {
+    label.textContent = "No file selected.";
+    return;
+  }
+  label.textContent = `${file.name} (${formatBytes(Number(file.size || 0))})`;
+}
+
+function buildHistoricalReplayRunName() {
+  const stamp = new Date().toISOString().slice(0, 19).replace("T", " ");
+  return `Historical Replay ${stamp} UTC`;
+}
+
+async function createHistoricalReplayRun() {
+  const out = await fetchJson(apiUrl("/runs", tenantScopeParams()), {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      name: buildHistoricalReplayRunName(),
+      config: { source: "historical-replay-proof" },
+      activate: true,
+    }),
+  });
+  return out?.run || null;
+}
+
+function buildReplayFileFromSource(out) {
+  const csvText = String(out?.csv_text || "");
+  const fallbackName = `${String(out?.key || "historical")}.csv`;
+  const filename = String(out?.path || fallbackName).split("/").slice(-1)[0] || fallbackName;
+  return new File([csvText], filename, { type: "text/csv" });
+}
+
+function toReplayPoint(result) {
+  const drift = structuralDriftFromResult(result);
+  const composite = compositeInstabilityFromResult(result);
+  const timestamp = String(result?.timestamp || result?.persisted_at || result?.created_at || "");
+  return {
+    timestamp,
+    drift: typeof drift === "number" && Number.isFinite(drift) ? drift : null,
+    composite: typeof composite === "number" && Number.isFinite(composite) ? composite : null,
+    phase: String(phaseFromResult(result) || "-"),
+    trend: String(trendFromResult(result) || "-"),
+    risk: normalizeRiskLevel(result?.risk_level),
+    state: String(result?.state || result?.interpreted_state || "-"),
+    message: String(result?.operator_message || result?.message || "").trim(),
+  };
+}
+
+function summarizeHistoricalReplay(results) {
+  const chronological = (Array.isArray(results) ? results.slice() : []).sort((a, b) => parseTime(a.timestamp || a.persisted_at || a.created_at) - parseTime(b.timestamp || b.persisted_at || b.created_at));
+  const points = chronological.map(toReplayPoint);
+  const divergenceIdx = points.findIndex((p) => (typeof p.drift === "number" && p.drift >= 0.65) || p.risk === "HIGH" || p.risk === "MEDIUM");
+  const divergencePoint = divergenceIdx >= 0 ? points[divergenceIdx] : null;
+  const first = points[0] || null;
+  const latest = points[points.length - 1] || null;
+  const transitions = [];
+  for (let i = 1; i < points.length; i += 1) {
+    const prev = points[i - 1];
+    const next = points[i];
+    const transition = transitionLabel(
+      { state: prev.state, interpreted_state: prev.state, risk_level: prev.risk, trend: prev.trend },
+      { state: next.state, interpreted_state: next.state, risk_level: next.risk, trend: next.trend },
+    );
+    const driftJump =
+      typeof next.drift === "number" && typeof prev.drift === "number" && Math.abs(next.drift - prev.drift) >= 0.25;
+    if (transition !== "No major transition" || driftJump) {
+      transitions.push({
+        timestamp: next.timestamp,
+        transition,
+        drift: next.drift,
+        severity: driftJump ? "watch" : transitionSeverity(
+          { state: prev.state, interpreted_state: prev.state, risk_level: prev.risk, trend: prev.trend },
+          { state: next.state, interpreted_state: next.state, risk_level: next.risk, trend: next.trend },
+        ),
+      });
+    }
+  }
+  return {
+    points,
+    divergencePoint,
+    transitions: transitions.slice(-8),
+    first,
+    latest,
+  };
+}
+
+function renderHistoricalReplayResults(runId, results) {
+  const root = qs("#historicalReplayResults");
+  if (!root) return;
+  const summary = summarizeHistoricalReplay(results);
+  if (!summary.points.length) {
+    root.classList.add("hidden");
+    return;
+  }
+  root.classList.remove("hidden");
+  const summaryGrid = qs("#historicalReplaySummary");
+  const context = qs("#historicalContext");
+  const driftList = qs("#historicalDriftTimeline");
+  const transList = qs("#historicalTransitions");
+  const explanationEl = qs("#historicalExplanation");
+  const operatorEl = qs("#historicalOperatorInterpretation");
+  const latest = summary.latest;
+  const divergenceTime = summary.divergencePoint?.timestamp || "No material divergence detected in replay window.";
+  const structuralShift = latest
+    ? `${latest.phase} phase · ${latest.trend} trend · risk ${latest.risk}`
+    : "No structural shift available.";
+  const operatorNotice = summary.transitions[summary.transitions.length - 1]
+    ? `Track transition "${summary.transitions[summary.transitions.length - 1].transition}" around ${summary.transitions[summary.transitions.length - 1].timestamp}.`
+    : "Monitor drift and risk progression for first watch-level shift.";
+
+  if (summaryGrid) {
+    summaryGrid.innerHTML = `
+      <article class="summary-item"><p>Material divergence began</p><strong>${escapeHtml(divergenceTime)}</strong></article>
+      <article class="summary-item"><p>Structural change</p><strong>${escapeHtml(structuralShift)}</strong></article>
+      <article class="summary-item"><p>Operator should notice</p><strong>${escapeHtml(operatorNotice)}</strong></article>
+    `;
+  }
+  if (context) {
+    context.innerHTML = `
+      <article class="summary-item"><p>Run</p><strong>${escapeHtml(runId)}</strong></article>
+      <article class="summary-item"><p>Asset</p><strong>${escapeHtml(String(latest?.state || "-"))}</strong></article>
+      <article class="summary-item"><p>Window</p><strong>${escapeHtml(String(summary.first?.timestamp || "-"))} → ${escapeHtml(String(summary.latest?.timestamp || "-"))}</strong></article>
+      <article class="summary-item"><p>Samples</p><strong>${escapeHtml(String(summary.points.length))}</strong></article>
+    `;
+  }
+  if (driftList) {
+    driftList.innerHTML = summary.points.slice(-24).map((point) => `<li><span>${escapeHtml(point.timestamp || "-")}</span><strong>Drift ${point.drift == null ? "-" : point.drift.toFixed(2)} · Composite ${point.composite == null ? "-" : point.composite.toFixed(2)} · Risk ${escapeHtml(point.risk)}</strong></li>`).join("");
+  }
+  if (transList) {
+    if (!summary.transitions.length) {
+      transList.innerHTML = "<li>No major transition recorded yet.</li>";
+    } else {
+      transList.innerHTML = summary.transitions.map((t) => `<li data-severity="${escapeHtml(t.severity)}"><span>${escapeHtml(t.timestamp || "-")}</span><strong>${escapeHtml(t.transition)}</strong></li>`).join("");
+    }
+  }
+  if (explanationEl) {
+    const message = latest?.message || "Replay complete. Structural changes are grounded in current run outputs.";
+    explanationEl.textContent = message;
+  }
+  if (operatorEl) {
+    operatorEl.textContent = `Latest interpretation: ${structuralShift}. ${operatorNotice}`;
+  }
+}
+
+async function renderHistoricalReplayFromRun(runId) {
+  const resolvedRun = String(runId || "").trim();
+  if (!resolvedRun) return;
+  const env = await fetchRecentResults({ run_id: resolvedRun, limit: 500 }).catch(() => ({ results: [] }));
+  const results = Array.isArray(env?.results) ? env.results : [];
+  renderHistoricalReplayResults(resolvedRun, results);
+}
+
+async function runHistoricalReplayFlow() {
+  const fileInput = qs("#historicalCsvFileInput");
+  const selectedFile = fileInput?.files?.[0] || null;
+  const selectedSource = selectedHistoricalSourceKey();
+  let file = selectedFile;
+  if (!file && selectedSource) {
+    const source = await fetchHistoricalCsvSource(selectedSource);
+    file = buildReplayFileFromSource(source);
+  }
+  if (!file) throw new Error("Choose a CSV upload or load a bundled historical CSV source.");
+  let runId = selectedValidationRunId();
+  if (!runId) {
+    const run = await createHistoricalReplayRun();
+    runId = String(run?.run_id || "");
+  }
+  if (!runId) throw new Error("Unable to resolve replay run.");
+  await runCsvPreviewForFile(file);
+  const mapping = state.uploadCsv.mapping || null;
+  const started = await uploadCsvFileWithProgress(file, runId, mapping);
+  const jobId = String(started?.job_id || "");
+  if (!jobId) throw new Error("Replay ingest did not return a job ID.");
+  const job = await waitForIngestJob(jobId);
+  await loadRuns();
+  await hydrateHistoricalReplayControls();
+  const runSel = qs("#historicalReplayRunSelect");
+  if (runSel) runSel.value = runId;
+  await renderHistoricalReplayFromRun(runId);
+  return { runId, job };
+}
+
+function wireHistoricalReplayEvents() {
+  const runCreateBtn = qs("#historicalReplayCreateRunBtn");
+  const startBtn = qs("#historicalReplayStartBtn");
+  const loadSourceBtn = qs("#loadHistoricalCsvBtn");
+  const fileInput = qs("#historicalCsvFileInput");
+  const runSel = qs("#historicalReplayRunSelect");
+
+  if (runCreateBtn && runCreateBtn.dataset.wired !== "1") {
+    runCreateBtn.dataset.wired = "1";
+    runCreateBtn.addEventListener("click", async () => {
+      try {
+        setLoading(true, "Creating replay run...");
+        const run = await createHistoricalReplayRun();
+        await loadRuns();
+        await hydrateHistoricalReplayControls();
+        if (runSel && run?.run_id) runSel.value = run.run_id;
+        setHistoricalReplayStatus(`Created replay run ${String(run?.run_id || "")}.`, false);
+      } catch (err) {
+        setHistoricalReplayStatus(String(err?.message || err), true);
+      } finally {
+        setLoading(false);
+      }
+    });
+  }
+  if (fileInput && fileInput.dataset.wired !== "1") {
+    fileInput.dataset.wired = "1";
+    fileInput.addEventListener("change", () => updateHistoricalFileLabel(fileInput.files?.[0] || null));
+  }
+  if (loadSourceBtn && loadSourceBtn.dataset.wired !== "1") {
+    loadSourceBtn.dataset.wired = "1";
+    loadSourceBtn.addEventListener("click", async () => {
+      try {
+        setLoading(true, "Loading bundled historical CSV...");
+        const sourceKey = selectedHistoricalSourceKey();
+        if (!sourceKey) throw new Error("Select a historical CSV source first.");
+        const out = await fetchHistoricalCsvSource(sourceKey);
+        const file = buildReplayFileFromSource(out);
+        if (fileInput) {
+          const dt = new DataTransfer();
+          dt.items.add(file);
+          fileInput.files = dt.files;
+        }
+        updateHistoricalFileLabel(file);
+        setHistoricalReplayStatus(`Loaded ${String(out?.label || sourceKey)}.`, false);
+      } catch (err) {
+        setHistoricalReplayStatus(String(err?.message || err), true);
+      } finally {
+        setLoading(false);
+      }
+    });
+  }
+  if (startBtn && startBtn.dataset.wired !== "1") {
+    startBtn.dataset.wired = "1";
+    startBtn.addEventListener("click", async () => {
+      try {
+        setLoading(true, "Running historical replay...");
+        setHistoricalReplayStatus("Starting historical replay ingest...", false);
+        const out = await runHistoricalReplayFlow();
+        const status = String(out?.job?.status || "");
+        const processed = Number(out?.job?.rows_processed || 0);
+        setHistoricalReplayStatus(`Replay ${status || "completed"} for ${out.runId} (${processed} rows processed).`, status === "failed");
+      } catch (err) {
+        setHistoricalReplayStatus(String(err?.message || err), true);
+      } finally {
+        setLoading(false);
+      }
+    });
+  }
+  if (runSel && runSel.dataset.wired !== "1") {
+    runSel.dataset.wired = "1";
+    runSel.addEventListener("change", async () => {
+      await renderHistoricalReplayFromRun(selectedValidationRunId());
+    });
+  }
 }
