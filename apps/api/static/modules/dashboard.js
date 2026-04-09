@@ -263,8 +263,8 @@ function renderEvidencePanel(latest) {
   const confEl = qs("#evidenceConfidenceValue");
   const drift = structuralDriftFromResult(latest);
   const comp = dashboardCompositeScore(latest);
-  if (driftEl) driftEl.textContent = typeof drift === "number" ? drift.toFixed(3) : "Pending next window";
-  if (compEl) compEl.textContent = typeof comp === "number" ? comp.toFixed(3) : "Pending next window";
+  if (driftEl) driftEl.textContent = typeof drift === "number" ? drift.toFixed(3) : "Warming up";
+  if (compEl) compEl.textContent = typeof comp === "number" ? comp.toFixed(3) : "Not enough history yet";
   if (confEl) confEl.textContent = dashboardConfidenceText(latest);
 }
 
@@ -804,12 +804,17 @@ function extractDemoKeyEvents(results) {
         : 0;
     const isSpike = normalizeRiskLevel(current.risk_level) === "HIGH" && normalizeRiskLevel(prev?.risk_level) !== "HIGH";
     const isDriftEvent = driftJump >= 0.14;
-    if (sev === "critical" || isSpike || isDriftEvent) {
+    const prevRisk = normalizeRiskLevel(prev?.risk_level);
+    const currRisk = normalizeRiskLevel(current.risk_level);
+    const recovered = prevRisk === "HIGH" && currRisk !== "HIGH";
+    if (sev === "critical" || isSpike || isDriftEvent || recovered) {
       events.push({
         index: i + 1,
         ts: String(current.timestamp || current.persisted_at || ""),
-        severity: sev === "normal" ? (isSpike ? "critical" : "watch") : sev,
-        text: isDriftEvent ? `${transition} · drift jump ${driftJump.toFixed(2)}` : transition,
+        severity: recovered ? "watch" : (sev === "normal" ? (isSpike ? "critical" : "watch") : sev),
+        text: recovered
+          ? `Recovery signal · ${transition}`
+          : (isDriftEvent ? `${transition} · drift jump ${driftJump.toFixed(2)}` : transition),
       });
     }
   }
@@ -1334,10 +1339,11 @@ function demoPlaybackNarrationText(cursor, total) {
   if (!total || total < 2) return "";
   const t = Math.max(1, Math.min(total, Number(cursor) || 1));
   const p = (t - 1) / Math.max(1, total - 1);
-  if (p < 0.22) return "Baseline window — drift is still largely contained.";
-  if (p < 0.45) return "Drift rising — instability compounds across snapshots.";
-  if (p < 0.78) return "Risk threshold approaching — watch transitions on the timeline.";
-  return "Late-stage escalation — compare operator messages with structural drift.";
+  if (p < 0.2) return "Baseline — system is establishing healthy structural reference.";
+  if (p < 0.4) return "Early drift — subtle relationship shift appears before hard alarms.";
+  if (p < 0.65) return "Instability — drift and composite pressure are compounding.";
+  if (p < 0.85) return "Alert — high-risk state confirms sustained destabilization.";
+  return "Recovery/intervention — watch for risk easing and structural re-stabilization.";
 }
 
 const RUN_DETAIL_DEMO_HERO_KEY = "neraium_demo_run_detail_hero_dismissed";
@@ -2444,7 +2450,7 @@ function dashboardTrendLabel(result) {
     if (health <= 70) return "WATCH";
     return "STABLE";
   }
-  return "Not enough history yet";
+  return "WARMING UP";
 }
 
 function dashboardCompositeScore(result) {
@@ -2466,14 +2472,14 @@ function dashboardCompositeScore(result) {
 
 function dashboardDriftLabel(result) {
   const drift = structuralDriftFromResult(result);
-  if (typeof drift !== "number" || !Number.isFinite(drift)) return "Pending next window";
+  if (typeof drift !== "number" || !Number.isFinite(drift)) return "WARMING UP";
   if (drift >= 0.65) return "DESTABILIZING";
   if (drift >= 0.3) return "WATCH";
   return "STABLE";
 }
 
 function dashboardConfidenceText(result) {
-  if (!result) return "Model warming up";
+  if (!result) return "Warming up";
   const rawConfidence = result.confidence;
   const numeric = typeof rawConfidence === "number"
     ? rawConfidence
@@ -2483,15 +2489,63 @@ function dashboardConfidenceText(result) {
     return `${pct}%`;
   }
   const text = String(rawConfidence || "").trim();
-  return text || "Model warming up";
+  return text || "Not enough history yet";
 }
 
 function dashboardLastUpdatedText(result) {
   const rawTs = result?.timestamp || result?.persisted_at || result?.created_at || "";
-  if (!rawTs) return "Pending next window";
+  if (!rawTs) return "Warming up";
   const dt = new Date(rawTs);
-  if (Number.isNaN(dt.getTime())) return "Pending next window";
+  if (Number.isNaN(dt.getTime())) return "Warming up";
   return dt.toLocaleString();
+}
+
+function buildTopSummarySentence(latest) {
+  if (!latest) {
+    return "System is warming up for this run; not enough history yet to score structural change.";
+  }
+  const risk = normalizeRiskLevel(latest?.risk_level).toLowerCase();
+  const site = String(latest?.site_id || "this site");
+  const asset = String(latest?.asset_id || "this asset");
+  const drift = structuralDriftFromResult(latest);
+  const composite = dashboardCompositeScore(latest);
+  const trend = String(dashboardTrendLabel(latest) || "WARMING UP").toLowerCase();
+  let cause = "limited telemetry history";
+  if (typeof drift === "number" && drift >= 0.65) cause = "sustained structural drift";
+  else if (typeof composite === "number" && composite >= 0.6) cause = "compounding instability";
+  else if (trend.includes("watch")) cause = "early relational drift";
+  else if (trend.includes("stable")) cause = "stable structural relationships";
+  return `System is ${trend} in ${asset} at ${site} (${risk} risk) due to ${cause}.`;
+}
+
+function operatorSafeResult(result) {
+  if (!result || typeof result !== "object") return result;
+  return {
+    result_id: result.result_id,
+    run_id: result.run_id,
+    timestamp: result.timestamp,
+    persisted_at: result.persisted_at,
+    created_at: result.created_at,
+    site_id: result.site_id,
+    asset_id: result.asset_id,
+    state: result.state,
+    interpreted_state: result.interpreted_state,
+    regime_name: result.regime_name,
+    phase: result.phase,
+    risk_level: result.risk_level,
+    trend: result.trend,
+    alert_status: result.alert_status,
+    alert: result.alert,
+    system_health: result.system_health,
+    structural_drift_score: result.structural_drift_score,
+    composite_instability: result.composite_instability,
+    latest_instability: result.latest_instability,
+    instability: result.instability,
+    confidence: result.confidence,
+    operator_message: result.operator_message,
+    structural_analysis_available: result.structural_analysis_available,
+    skipped_reason: result.skipped_reason,
+  };
 }
 
 function renderOperationalSnapshot(latest) {
@@ -2679,12 +2733,14 @@ function renderDashboardMetrics(latest, prev) {
   const recommendationOperatorNote = qs("#recommendationOperatorNote");
   const recommendationConfidenceBadge = qs("#recommendationConfidenceBadge");
   const nextActionEl = qs("#dashboardNextAction");
+  const topSummaryEl = qs("#operatorTopSummary");
 
   if (metricTrend) metricTrend.textContent = dashboardTrendLabel(latest);
   if (metricRisk) metricRisk.textContent = toPretty(latest?.risk_level);
   if (metricState) metricState.textContent = toPretty(latest?.state || latest?.interpreted_state);
   const uiTruth = buildFrontendUiState(latest);
   setConnectionStatus(getOperationalBadgeDisplay(uiTruth));
+  if (topSummaryEl) topSummaryEl.textContent = buildTopSummarySentence(latest);
   const operatorSummary = demoFriendlyOperatorMessage(latest, prev);
   if (metricOperator) metricOperator.textContent = operatorSummary;
   if (metricRiskBadge) metricRiskBadge.innerHTML = riskBadgeHtml(latest?.risk_level);
@@ -2713,7 +2769,7 @@ function renderDashboardMetrics(latest, prev) {
   const driftLabel = dashboardDriftLabel(latest);
   const driftEl = qs("#dashboardHealthScore");
   if (driftEl) {
-    driftEl.textContent = typeof driftScore === "number" ? driftScore.toFixed(3) : "Pending next window";
+    driftEl.textContent = typeof driftScore === "number" ? driftScore.toFixed(3) : "Warming up";
   }
   if (healthCaption) {
     if (typeof driftScore === "number") {
@@ -3033,7 +3089,7 @@ async function loadDashboard() {
     fetchRecentResults(recentParams),
     fetchJson(apiUrl("/alerts", tenantScopeParams({ run_id: runId, limit: 8 }))),
   ]);
-  state.dashboardRecent = Array.isArray(recentEnv?.results) ? recentEnv.results : [];
+  state.dashboardRecent = Array.isArray(recentEnv?.results) ? recentEnv.results.map((row) => operatorSafeResult(row)) : [];
   state.dashboardAlerts = Array.isArray(alertsEnv?.alerts) ? alertsEnv.alerts : [];
   state.dashboardCurrentAlertStatus = alertsEnv.current_status && typeof alertsEnv.current_status === "object"
     ? alertsEnv.current_status
