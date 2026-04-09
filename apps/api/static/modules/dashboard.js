@@ -1920,6 +1920,28 @@ async function startGrowOpDemo() {
   return out;
 }
 
+function dashboardRunIdFromQuery() {
+  try {
+    return String(new URLSearchParams(window.location.search).get("run_id") || "").trim();
+  } catch (_err) {
+    return "";
+  }
+}
+
+function applyDashboardRunFromQuery() {
+  if (getRoute().page !== "dashboard") return;
+  const requestedRunId = dashboardRunIdFromQuery();
+  if (!requestedRunId) return;
+  if (String(state.activeRun?.run_id || "") === requestedRunId) return;
+  const knownRun = state.runs.find((run) => String(run?.run_id || "") === requestedRunId) || null;
+  updateActiveRunHeader(knownRun || {
+    run_id: requestedRunId,
+    name: requestedRunId,
+    is_active: false,
+    status: "open",
+  });
+}
+
 function wireGrowOpDemoBtn(btn, originalLabel) {
   if (!btn || btn.dataset.wired === "1") return;
   btn.dataset.wired = "1";
@@ -1931,12 +1953,8 @@ function wireGrowOpDemoBtn(btn, originalLabel) {
       if (banner) banner.classList.add("demo-running");
       setLoading(true, "Seeding 450-frame grow op demo…");
       const out = await startGrowOpDemo();
-      const cid = customerIdValue(state.tenant.customerId);
-      const jobId = String(out?.job_id || "");
-      const params = new URLSearchParams({ customer_id: cid });
-      if (jobId) params.set("demo_job_id", jobId);
-      params.set("autoplay", "1");
-      window.location.href = `/app/runs/${encodeURIComponent(out.run_id)}?${params.toString()}`;
+      const runId = encodeURIComponent(String(out.run_id || "").trim());
+      window.location.href = `/dashboard?run_id=${runId}`;
     } catch (err) {
       setStatus(String(err.message || err), true, true);
       btn.disabled = false;
@@ -2934,6 +2952,7 @@ function wireRelationshipGraphInteractions() {
 async function loadDashboard() {
   if (state.ui.loadDashboardPromise) return state.ui.loadDashboardPromise;
   state.ui.loadDashboardPromise = (async () => {
+  applyDashboardRunFromQuery();
   const runId = state.activeRun?.run_id || "";
   const [recentEnv, alertsEnv] = await Promise.all([
     fetchRecentResults({ run_id: runId, limit: DASHBOARD_RECENT_LIMIT }),
