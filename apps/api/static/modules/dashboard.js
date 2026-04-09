@@ -1579,6 +1579,7 @@ const state = {
     dashboardPaint: null,
     dashboardLivePollTimer: null,
     dashboardLivePollInFlight: false,
+    dashboardLivePollGeneration: 0,
     runDetailObserver: null,
     runDetailHydratedSections: {},
     runDetailDeferredPaint: null,
@@ -2988,7 +2989,7 @@ function wireRelationshipGraphInteractions() {
   canvas.addEventListener("mouseleave", () => tooltip?.classList.add("hidden"));
 }
 
-function runDashboardPaint(chron) {
+function runDashboardPaint(chron, { allowReplayStart = true } = {}) {
   const chronological = Array.isArray(chron) ? chron : dashboardChronologicalResults();
   const paint = () => {
     const replayChron = dashboardChronologicalForRender(chronological);
@@ -3015,7 +3016,7 @@ function runDashboardPaint(chron) {
   if (state.ui.dashboardPaint) window.cancelAnimationFrame(state.ui.dashboardPaint);
   state.ui.dashboardPaint = window.requestAnimationFrame(() => {
     paint();
-    startDashboardReplay(chronological, paint);
+    if (allowReplayStart) startDashboardReplay(chronological, paint);
     state.ui.dashboardPaint = null;
   });
 }
@@ -3048,6 +3049,7 @@ function stopDashboardLivePolling() {
     state.ui.dashboardLivePollTimer = null;
   }
   state.ui.dashboardLivePollInFlight = false;
+  state.ui.dashboardLivePollGeneration += 1;
 }
 
 function startDashboardLivePolling() {
@@ -3056,31 +3058,38 @@ function startDashboardLivePolling() {
   if (route.page !== "dashboard") return;
   const runId = String(state.activeRun?.run_id || "");
   if (!runId) return;
+  const generation = state.ui.dashboardLivePollGeneration;
   console.info(`[dashboard] live polling started for run_id=${runId}`);
-  const tick = async () => {
-    if (state.ui.dashboardLivePollInFlight) {
+  const scheduleNextTick = () => {
+    if (generation !== state.ui.dashboardLivePollGeneration) return;
+    if (getRoute().page === "dashboard" && String(state.activeRun?.run_id || "")) {
       state.ui.dashboardLivePollTimer = window.setTimeout(tick, DASHBOARD_LIVE_POLL_MS);
+    } else {
+      stopDashboardLivePolling();
+    }
+  };
+  const tick = async () => {
+    if (generation !== state.ui.dashboardLivePollGeneration) return;
+    if (state.ui.dashboardLivePollInFlight) {
+      scheduleNextTick();
       return;
     }
     state.ui.dashboardLivePollInFlight = true;
     let repaintRan = false;
     try {
       const chron = await fetchDashboardData({ bypassCache: true, logTag: "poll" });
-      runDashboardPaint(chron);
+      runDashboardPaint(chron, { allowReplayStart: false });
       repaintRan = true;
     } catch (err) {
       console.warn("[dashboard] poll error:", err);
     } finally {
+      if (generation !== state.ui.dashboardLivePollGeneration) return;
       state.ui.dashboardLivePollInFlight = false;
       console.info(`[dashboard] poll: repaint ran=${repaintRan ? "yes" : "no"}`);
-      if (getRoute().page === "dashboard" && String(state.activeRun?.run_id || "")) {
-        state.ui.dashboardLivePollTimer = window.setTimeout(tick, DASHBOARD_LIVE_POLL_MS);
-      } else {
-        stopDashboardLivePolling();
-      }
+      scheduleNextTick();
     }
   };
-  state.ui.dashboardLivePollTimer = window.setTimeout(tick, DASHBOARD_LIVE_POLL_MS);
+  scheduleNextTick();
 }
 
 async function loadDashboard() {
