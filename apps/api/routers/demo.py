@@ -74,6 +74,21 @@ def _load_grow_op_frames(customer_id: str) -> tuple[str, str, list[dict[str, Any
 CMAPSS_DEFAULT_MAX_FRAMES = 240
 CMAPSS_MIN_FRAMES = 30
 CMAPSS_MAX_FRAMES = 500
+_HISTORICAL_CSV_SOURCES: tuple[dict[str, str], ...] = (
+    {
+        "key": "fixture_clean",
+        "label": "Fixture · Clean greenhouse telemetry",
+        "path": "fixtures/clean.csv",
+        "description": "Small valid CSV for historical replay proof flow.",
+    },
+    {
+        "key": "fd004_subset",
+        "label": "NASA FD004 subset · historical series",
+        "path": "fd004_outputs_subset/fd004_real_timeseries.csv",
+        "description": "Reference historical customer-style subset used in existing evaluations.",
+    },
+)
+_REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
 
 
 def _canonical_demo_stage(*, frames_processed: int, risk_level: str, run_status: str) -> str:
@@ -136,6 +151,41 @@ def _canonical_demo_message(*, stage: str, risk_level: str, trend: str) -> dict[
 
 def build_demo_router(*, deps: DemoRouterDependencies) -> APIRouter:
     router = APIRouter(tags=["demo"])
+
+    @router.get("/demo/historical/csv-options")
+    def historical_csv_options(_: None = Depends(deps.require_api_key)) -> dict[str, Any]:
+        return {
+            "sources": [
+                {
+                    "key": item["key"],
+                    "label": item["label"],
+                    "description": item["description"],
+                }
+                for item in _HISTORICAL_CSV_SOURCES
+            ]
+        }
+
+    @router.get("/demo/historical/csv-source")
+    def historical_csv_source(
+        source_key: str = Query(..., min_length=1),
+        _: None = Depends(deps.require_api_key),
+    ) -> dict[str, Any]:
+        source = next((item for item in _HISTORICAL_CSV_SOURCES if item["key"] == source_key), None)
+        if source is None:
+            raise HTTPException(status_code=404, detail=f"Unknown historical CSV source: {source_key}")
+        path = (_REPO_ROOT / source["path"]).resolve()
+        if _REPO_ROOT not in path.parents:
+            raise HTTPException(status_code=400, detail="Historical source path escapes repository scope.")
+        if not path.exists():
+            raise HTTPException(status_code=404, detail=f"Historical CSV file is missing: {source['path']}")
+        csv_text = path.read_text(encoding="utf-8")
+        return {
+            "key": source["key"],
+            "label": source["label"],
+            "description": source["description"],
+            "path": source["path"],
+            "csv_text": csv_text,
+        }
 
     @router.post("/demo/seed/start")
     def demo_seed_start(payload: DemoSeedRequest, _: None = Depends(deps.require_api_key), run_id: str | None = Query(default=None), customer_id: str | None = Query(default=None)) -> dict[str, Any]:
