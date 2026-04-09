@@ -105,3 +105,60 @@ def test_cli_entrypoints_share_partial_failure_contract(tmp_path, monkeypatch, c
         **hardened_summary,
         "output_path": str(output_b),
     }
+
+
+def test_hardened_cli_uses_runtime_input_path_fallback(tmp_path, monkeypatch, capsys) -> None:
+    input_path = tmp_path / "runtime_input.json"
+    output_path = tmp_path / "out.json"
+    input_path.write_text(
+        json.dumps(
+            [
+                {
+                    "timestamp": "2026-01-01T00:00:00Z",
+                    "site_id": "site-a",
+                    "asset_id": "asset-a",
+                    "sensor_values": {"temperature": 10.0},
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    _patch_hardened_dependencies(monkeypatch)
+    monkeypatch.setenv("NERAIUM_INPUT_PATH", str(input_path))
+    monkeypatch.setattr("sys.argv", ["sii_cli", "--output", str(output_path)])
+
+    code = hardened_cli.main()
+    summary = json.loads(capsys.readouterr().out)
+
+    assert code == 0
+    assert summary["frames_processed"] == 1
+    assert summary["frames_succeeded"] == 1
+    assert summary["output_path"] == str(output_path)
+
+
+def test_hardened_cli_rejects_missing_output_directory(tmp_path, monkeypatch, capsys) -> None:
+    input_path = tmp_path / "input.json"
+    output_path = tmp_path / "missing-dir" / "out.json"
+    input_path.write_text(
+        json.dumps(
+            [
+                {
+                    "timestamp": "2026-01-01T00:00:00Z",
+                    "site_id": "site-a",
+                    "asset_id": "asset-a",
+                    "sensor_values": {"temperature": 10.0},
+                }
+            ]
+        ),
+        encoding="utf-8",
+    )
+
+    _patch_hardened_dependencies(monkeypatch)
+    monkeypatch.setattr("sys.argv", ["sii_cli", "--input", str(input_path), "--output", str(output_path)])
+
+    code = hardened_cli.main()
+    payload = json.loads(capsys.readouterr().out)
+
+    assert code == 2
+    assert "Output directory does not exist" in str(payload.get("error"))

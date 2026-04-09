@@ -57,11 +57,19 @@ class StructuralMonitoringService:
         store: ResultStore | None = None,
         pilot_config: PilotConfig | None = None,
         *,
+        baseline_window: int | None = None,
+        recent_window: int | None = None,
         frame_debug: bool = False,
     ):
         # Template engine config; runtime engines are isolated per (site_id, asset_id)
         # so each asset gets its own baseline/model memory.
-        self.engine = engine or StructuralEngine(baseline_window=24, recent_window=8, frame_debug=frame_debug)
+        resolved_baseline_window = int(baseline_window) if baseline_window is not None else 24
+        resolved_recent_window = int(recent_window) if recent_window is not None else 8
+        self.engine = engine or StructuralEngine(
+            baseline_window=resolved_baseline_window,
+            recent_window=resolved_recent_window,
+            frame_debug=frame_debug,
+        )
         self.store = store or ResultStore()
         self._engine_registry = EngineRegistry(self.engine)
         # Compatibility alias for internal/external callers that still read this field.
@@ -271,6 +279,19 @@ class StructuralMonitoringService:
         frame_with_customer["customer_id"] = self._resolve_customer_id(frame.get("customer_id"))
         return self._engine_registry.get_or_create(frame_with_customer, run_config=run_config)
 
+    @staticmethod
+    def _validate_runtime_frame_contract(frame: dict[str, Any], *, context: str) -> None:
+        required = ("timestamp", "site_id", "asset_id", "sensor_values")
+        missing = [key for key in required if key not in frame]
+        if missing:
+            joined = ", ".join(missing)
+            raise ValueError(f"Invalid frame in {context}: missing required field(s): {joined}")
+        sensor_values = frame.get("sensor_values")
+        if not isinstance(sensor_values, dict):
+            raise ValueError(
+                f"Invalid frame in {context}: sensor_values must be an object/dict, got {type(sensor_values).__name__}"
+            )
+
     def _localization_score(self, result: dict[str, Any]) -> float:
         return self._projector.localization_score(result)
 
@@ -396,6 +417,7 @@ class StructuralMonitoringService:
                     customer_id=customer_id,
                     require_confirmed_mapping=False,
                 )
+                self._validate_runtime_frame_contract(frame, context="ingest_payload")
             except ValueError as exc:
                 if not pilot_hardening_enabled():
                     raise
@@ -426,6 +448,7 @@ class StructuralMonitoringService:
                         customer_id=customer_id,
                         require_confirmed_mapping=False,
                     )
+                self._validate_runtime_frame_contract(frame, context="ingest_payload")
             resolved_customer = self._effective_customer_id(
                 request_customer_id=customer_id,
                 payload_customer_id=frame.get("customer_id"),
@@ -542,6 +565,7 @@ class StructuralMonitoringService:
                     customer_id=customer_id,
                     require_confirmed_mapping=False,
                 )
+                self._validate_runtime_frame_contract(frame, context="ingest_batch")
                 frame_customer = self._effective_customer_id(
                     request_customer_id=customer_id,
                     payload_customer_id=frame.get("customer_id"),
@@ -669,6 +693,7 @@ class StructuralMonitoringService:
         for frame in frames:
             clean_frame = dict(frame)
             clean_frame["customer_id"] = resolved_customer
+            self._validate_runtime_frame_contract(clean_frame, context="ingest_normalized_frames")
             engine = self._engine_for_frame(clean_frame, run_config=run_config)
             result = self._decorate_result(engine.process_frame(clean_frame))
             result["customer_id"] = resolved_customer
