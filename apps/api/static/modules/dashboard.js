@@ -272,7 +272,7 @@ function renderEvidencePanel(latest) {
 
 function buildAssistantContextPayload(latest) {
   const runId = state.activeRun?.run_id || "";
-  const siteId = state.tenant.siteId || latest?.session?.site_id || latest?.site_id || "";
+  const siteId = state.tenant.siteId || latest?.site_id || "";
   const assetId = latest?.asset_id || "";
   return {
     customer_id: customerIdValue(state.tenant.customerId),
@@ -1628,7 +1628,7 @@ const GEOMETRY_FLOW_PERF_KEY = "neraium_structural_flow_perf";
 /** Origin marker + debug visuals for structural flow. `true` always shows the marker; when `false`, use URL `?geomDebug=1` instead. */
 const DEBUG_GEOMETRY = false;
 
-const DASHBOARD_RECENT_LIMIT = 60;
+const DASHBOARD_RECENT_LIMIT = 10;
 const RUN_DETAIL_INITIAL_LIMIT = 24;
 const RUN_DETAIL_BACKGROUND_LIMIT = 1000;
 let chartJsLoadPromise = null;
@@ -2954,8 +2954,10 @@ async function loadDashboard() {
   state.ui.loadDashboardPromise = (async () => {
   applyDashboardRunFromQuery();
   const runId = state.activeRun?.run_id || "";
+  const recentParams = { limit: DASHBOARD_RECENT_LIMIT, compact: true };
+  if (runId) recentParams.run_id = runId;
   const [recentEnv, alertsEnv] = await Promise.all([
-    fetchRecentResults({ run_id: runId, limit: DASHBOARD_RECENT_LIMIT }),
+    fetchRecentResults(recentParams),
     fetchJson(apiUrl("/alerts", tenantScopeParams({ run_id: runId, limit: 8 }))),
   ]);
   state.dashboardRecent = Array.isArray(recentEnv?.results) ? recentEnv.results : [];
