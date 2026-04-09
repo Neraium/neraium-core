@@ -115,8 +115,8 @@ function structuralDriftFromResult(r) {
 function compositeInstabilityFromResult(r) {
   if (!r) return null;
   if (typeof r.latest_instability === "number") return r.latest_instability;
-  if (typeof r.system_health === "number" && Number.isFinite(r.system_health)) {
-    return Math.max(0, Math.min(1, 1 - (r.system_health / 100)));
+  if (typeof r.composite_instability === "number" && Number.isFinite(r.composite_instability)) {
+    return r.composite_instability;
   }
   const analytics = r.experimental_analytics;
   if (analytics && typeof analytics.composite_instability === "number") {
