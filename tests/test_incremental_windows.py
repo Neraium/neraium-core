@@ -69,3 +69,24 @@ def test_schema_change_rebuilds_buffers(monkeypatch) -> None:
     r = eng.process_frame(f)
     assert r.get("sensor_relationships") == ["s1", "s2", "s3"]
     assert np.isfinite(float(r.get("latest_instability", 0.0)))
+
+
+def test_full_frame_gating_requires_non_zero_width_windows(monkeypatch) -> None:
+    monkeypatch.setenv("NERAIUM_INCREMENTAL", "1")
+    eng = StructuralEngine(baseline_window=6, recent_window=3)
+
+    for t in range(10):
+        out = eng.process_frame(
+            {
+                "timestamp": str(t),
+                "site_id": "t",
+                "asset_id": "u",
+                "sensor_values": {"bad": "n/a", "flag": True, "inf": float("inf")},
+            }
+        )
+        # No real numeric channels => sensor schema remains empty and windows are never ready.
+        assert out["state"] == "STABLE"
+        assert float(out.get("latest_instability", 0.0)) == 0.0
+        assert out.get("data_quality_summary", {}) == {}
+
+    assert eng.sensor_order == []
