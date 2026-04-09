@@ -206,6 +206,7 @@ def test_recent_results_compact_mode_returns_expected_small_shape(tmp_path) -> N
     compact_body = compact_response.json()
     assert full_body["count"] == 1
     assert compact_body["count"] == 1
+    assert set(compact_body.keys()) == {"count", "results"}
 
     compact_result = compact_body["results"][0]
     expected_fields = {
@@ -239,7 +240,7 @@ def test_recent_results_compact_mode_returns_expected_small_shape(tmp_path) -> N
 
     full_size = len(json.dumps(full_body, separators=(",", ":")))
     compact_size = len(json.dumps(compact_body, separators=(",", ":")))
-    assert compact_size < full_size * 0.5
+    assert compact_size < full_size * 0.1
 
 
 def test_onboarding_flow_bootstraps_run_and_test_frame(tmp_path) -> None:
