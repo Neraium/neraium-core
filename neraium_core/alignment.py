@@ -192,6 +192,14 @@ def _effective_frame_debug(explicit: bool) -> bool:
 
 
 class StructuralEngine:
+    """Geometric structural drift engine with policy driven by drift state-machine.
+
+    Architecture notes:
+      - Primary: geometric structural drift + transition state-machine logic.
+      - Auxiliary: diagnostics (including optional Mahalanobis-style signals).
+      - Legacy: scalar compatibility scoring (`neraium_core.scoring`) kept for
+        downstream consumers, not as primary policy authority.
+    """
     def __init__(
         self,
         baseline_window: int = 50,
@@ -332,7 +340,7 @@ class StructuralEngine:
         self._alert_latched: bool = False
         self._current_alert_state: str = "STABLE"
 
-        # Composite-score threshold calibration for decision-layer emission.
+        # Composite-score threshold calibration for legacy compatibility outputs.
         self._baseline_composite_score_samples: deque[float] = deque(maxlen=256)
         self._composite_watch_alert_thresholds: tuple[float, float] | None = None
 
@@ -3095,6 +3103,46 @@ class StructuralEngine:
         result["neraium"] = {
             "readiness": rd_final.as_dict(),
             "transition_outputs_actionable": rd_final.transition_classification_ready,
+        }
+
+        # Policy contract: policy_* fields are sourced only from the structural
+        # drift state-machine (`_update_drift_state_machine`) via current alert state.
+        # This blocks auxiliary diagnostics or legacy composite payloads from
+        # becoming authoritative policy outputs.
+        policy_state = str(self._current_alert_state or "STABLE")
+        result["policy_state"] = policy_state
+        result["policy_watch"] = policy_state == "WATCH"
+        result["policy_alert"] = policy_state == "ALERT"
+
+        # Explicit architecture split for downstream integrations.
+        result["core_structural_outputs"] = {
+            "structural_drift_score": float(result.get("structural_drift_score", 0.0) or 0.0),
+            "structural_drift_score_smoothed": float(result.get("structural_drift_score_smoothed", 0.0) or 0.0),
+            "transition_pressure": float(result.get("transition_pressure", 0.0) or 0.0),
+            "transition_state": str(result.get("transition_state", "NONE")),
+            "regime_name": result.get("regime_name"),
+            "regime_distance": result.get("regime_distance"),
+            "regime_drift": float(result.get("regime_drift", 0.0) or 0.0),
+        }
+        result["policy_outputs"] = {
+            "policy_state": policy_state,
+            "policy_watch": bool(result.get("policy_watch", False)),
+            "policy_alert": bool(result.get("policy_alert", False)),
+        }
+        aux_md = frame.get("mahalanobis_score", frame.get("mahalanobis_distance", frame.get("md_signal", frame.get("md"))))
+        result["auxiliary_diagnostics"] = {
+            "mahalanobis_score": (float(aux_md) if isinstance(aux_md, (int, float)) else None),
+            "drift_noise": result.get("drift_noise", {}),
+            "uncertainty": result.get("uncertainty", {}),
+            "geometry": result.get("geometry", {}),
+            "state_space_statistics": result.get("state_space_statistics", {}),
+            "state_graph": result.get("state_graph", {}),
+        }
+        result["legacy_scoring"] = {
+            "composite_instability_score": float(result.get("latest_instability", 0.0) or 0.0),
+            "component_confidence": result.get("component_confidence", {}),
+            "legacy_module": "neraium_core.scoring",
+            "primary_policy_source": "structural_drift_state_machine",
         }
         if len(self._shock_activity_history) == history_shock_len_before:
             self._shock_activity_history.append(0.0)
