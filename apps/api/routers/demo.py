@@ -417,12 +417,15 @@ def build_demo_router(*, deps: DemoRouterDependencies) -> APIRouter:
             job = deps.demo_jobs.get(job_id)
             if job is not None:
                 pct = int(round((preloaded / max(1, len(rows))) * 100))
+                remaining_frames = max(0, len(rows) - preloaded)
+                stream_frames_goal = remaining_frames if remaining_frames > 0 else len(rows)
                 job.update(
-                    status="running" if preloaded < len(rows) else "complete",
+                    status="running",
                     progress=max(0, min(100, pct)),
                     processed=preloaded,
                     message="Grow-op demo telemetry warm start complete." if preloaded else "Streaming grow-op demo telemetry...",
                     error=None,
+                    stream_frames_goal=stream_frames_goal,
                 )
                 job["updated_at"] = deps.utc_now_iso()
 
@@ -430,13 +433,16 @@ def build_demo_router(*, deps: DemoRouterDependencies) -> APIRouter:
             processed_total = preloaded
             frame_index = preloaded
             frame_interval = max(0.05, float(GROW_OP_STREAM_FRAME_INTERVAL_SEC))
+            remaining_frames = max(0, len(rows) - preloaded)
+            stream_frames_goal = remaining_frames if remaining_frames > 0 else len(rows)
+            target_total = processed_total + stream_frames_goal
 
             def _job_is_active() -> bool:
                 with deps.demo_jobs_lock:
                     current_job = deps.demo_jobs.get(job_id)
                     if current_job is None:
                         return False
-                    return str(current_job.get("status") or "").lower() in {"pending", "running"}
+                    return str(current_job.get("status") or "").lower() in {"pending", "running", "complete"}
 
             def _generate_next_frame(source_frame: dict[str, Any], frame_number: int) -> dict[str, Any]:
                 # Keep scenario signals but re-time rows so replay appears live and continuous.
@@ -480,7 +486,7 @@ def build_demo_router(*, deps: DemoRouterDependencies) -> APIRouter:
                             job["updated_at"] = deps.utc_now_iso()
                     return
 
-                while _job_is_active():
+                while processed_total < target_total and _job_is_active():
                     source_frame = rows[frame_index % len(rows)]
                     generated_frame = _generate_next_frame(source_frame, processed_total + 1)
                     results = deps.service_instance.ingest_batch([generated_frame], run_id=run_id, customer_id=resolved_customer)
@@ -499,7 +505,8 @@ def build_demo_router(*, deps: DemoRouterDependencies) -> APIRouter:
                     with deps.demo_jobs_lock:
                         job = deps.demo_jobs.get(job_id)
                         if job is not None:
-                            pct = int(round(((processed_total % max(1, len(rows))) / max(1, len(rows))) * 100))
+                            streamed = processed_total - preloaded
+                            pct = int(round((streamed / max(1, stream_frames_goal)) * 100))
                             job.update(
                                 status="running",
                                 progress=max(1, min(99, pct)),
@@ -509,6 +516,17 @@ def build_demo_router(*, deps: DemoRouterDependencies) -> APIRouter:
                             )
                             job["updated_at"] = deps.utc_now_iso()
                     time.sleep(frame_interval)
+                with deps.demo_jobs_lock:
+                    job = deps.demo_jobs.get(job_id)
+                    if job is not None and processed_total >= target_total:
+                        job.update(
+                            status="complete",
+                            progress=100,
+                            processed=processed_total,
+                            message="Grow-op demo telemetry stream complete.",
+                            error=None,
+                        )
+                        job["updated_at"] = deps.utc_now_iso()
             except Exception as exc:
                 with deps.demo_jobs_lock:
                     job = deps.demo_jobs.get(job_id)
