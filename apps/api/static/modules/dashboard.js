@@ -1915,7 +1915,7 @@ function renderRunDetailHeaderContext(run, latest) {
 
 async function startGrowOpDemo() {
   const cid = customerIdValue(state.tenant.customerId);
-  const out = await fetchJson(apiUrl("/demo/grow-op/start", { customer_id: cid }), { method: "POST" });
+  const out = await fetchJson(apiUrl("/demo/start", { customer_id: cid }), { method: "POST" });
   if (!out.run_id) throw new Error("No run_id returned from grow op demo start.");
   return out;
 }
@@ -2397,7 +2397,7 @@ function normalizedAlertStatusText(latest) {
 }
 
 function noTelemetryOperationalMessage(uiTruth = null) {
-  return "No telemetry ingested yet for this run/site context. Upload telemetry to begin monitoring.";
+  return "No data yet — start demo or upload telemetry to begin monitoring.";
 }
 
 function renderOperationalSnapshot(latest) {
@@ -2440,7 +2440,7 @@ function renderOperationalSnapshot(latest) {
   if (freshEl) freshEl.textContent = freshness.label;
 
   let recommendation = noTelemetryOperationalMessage(uiTruth);
-  let nextAction = "Upload telemetry to start active monitoring.";
+  let nextAction = "No data yet — start demo.";
   if (latest) {
     if (risk === "HIGH") {
       recommendation = "Investigate sustained instability in the active run.";
@@ -2692,7 +2692,7 @@ function renderDashboardMetrics(latest, prev) {
     if (recommendationConfidenceBadge) recommendationConfidenceBadge.textContent = `Confidence ${confidence}%`;
     if (nextActionEl) {
       if (!latest) {
-        nextActionEl.textContent = "Upload telemetry to start active monitoring.";
+        nextActionEl.textContent = "No data yet — start demo.";
       } else if (risk === "HIGH") {
         nextActionEl.textContent = "Active alert requires acknowledgement and targeted inspection.";
       } else if (risk === "MEDIUM") {
