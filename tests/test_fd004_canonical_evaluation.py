@@ -27,3 +27,12 @@ def test_canonical_report_marks_alignment_caveat():
     report = run_fd004_canonical_evaluation(num_units=2, num_steps=80, seed=5)
     caveat = report["metric_definitions"]["attribution_alignment_coupled_mean"]["caveat"].lower()
     assert "coupled" in caveat or "not an independence test" in caveat
+
+
+def test_fd004_canonical_policy_regression_floor():
+    report = run_fd004_canonical_evaluation(num_units=3, num_steps=80, seed=5)
+    aggregate = report["aggregate"]
+    # Regression guard: avoid pathological loss of detection coverage or unstable decisions.
+    assert aggregate["early_signal_rate"] >= 0.5
+    assert aggregate["decision_stability_mean"] >= 0.1
+    assert aggregate["action_flip_count_total"] <= 240
