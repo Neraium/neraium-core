@@ -746,6 +746,21 @@ function demoFriendlyOperatorMessage(result, prevResult) {
   return `${narrative.message} ${raw}`;
 }
 
+function dashboardOperatorIdentityText(latest, prev) {
+  if (!latest) return "System warming up. Upload telemetry or launch the guided demo.";
+  const risk = normalizeRiskLevel(latest.risk_level);
+  const drift = structuralDriftFromResult(latest);
+  const driftText = typeof drift === "number" ? drift.toFixed(2) : "pending";
+  const transition = transitionLabel(prev, latest);
+  if (risk === "HIGH") {
+    return `System is destabilizing due to sustained structural drift. (${transition}; drift ${driftText})`;
+  }
+  if (risk === "MEDIUM") {
+    return `System is transitioning with measurable structural drift. (${transition}; drift ${driftText})`;
+  }
+  return `System is stable with low structural drift. (${transition}; drift ${driftText})`;
+}
+
 function renderRunSignals(latest, prev) {
   const strip = qs("#runSignalSeparation");
   const stateEl = qs("#runSignalState");
@@ -786,6 +801,57 @@ function stopDemoPlayback() {
     state.demo.timer = null;
   }
   state.demo.isPlaying = false;
+}
+
+function stopDashboardReplay() {
+  if (state.dashboardReplay.timer) {
+    window.clearTimeout(state.dashboardReplay.timer);
+    state.dashboardReplay.timer = null;
+  }
+  state.dashboardReplay.active = false;
+}
+
+function dashboardChronologicalForRender(fullChronological) {
+  const chron = Array.isArray(fullChronological) ? fullChronological : [];
+  if (!state.dashboardReplay.active) return chron;
+  const max = Math.max(1, Number(state.dashboardReplay.cursor || 1));
+  return chron.slice(0, Math.min(chron.length, max));
+}
+
+function scheduleDashboardReplayTick(fullChronological, onFrame) {
+  if (!state.dashboardReplay.active) return;
+  if (state.dashboardReplay.timer) {
+    window.clearTimeout(state.dashboardReplay.timer);
+    state.dashboardReplay.timer = null;
+  }
+  state.dashboardReplay.timer = window.setTimeout(() => {
+    if (!state.dashboardReplay.active) return;
+    const total = Array.isArray(fullChronological) ? fullChronological.length : 0;
+    if (state.dashboardReplay.cursor >= total) {
+      stopDashboardReplay();
+      if (typeof onFrame === "function") onFrame();
+      return;
+    }
+    state.dashboardReplay.cursor += 1;
+    if (typeof onFrame === "function") onFrame();
+    scheduleDashboardReplayTick(fullChronological, onFrame);
+  }, DASHBOARD_REPLAY_INTERVAL_MS);
+}
+
+function startDashboardReplay(fullChronological, onFrame) {
+  const chron = Array.isArray(fullChronological) ? fullChronological : [];
+  const route = getRoute();
+  const canReplay = Boolean(state.demo.enabled) && route.page === "dashboard" && chron.length >= 6;
+  if (!canReplay) {
+    stopDashboardReplay();
+    state.dashboardReplay.cursor = chron.length;
+    return;
+  }
+  if (state.dashboardReplay.active && state.dashboardReplay.cursor < chron.length) return;
+  state.dashboardReplay.active = true;
+  state.dashboardReplay.cursor = 1;
+  if (typeof onFrame === "function") onFrame();
+  scheduleDashboardReplayTick(chron, onFrame);
 }
 
 function extractDemoKeyEvents(results) {
@@ -978,6 +1044,7 @@ async function toggleDemoMode(enabled) {
   applyDemoUiShell();
   if (!state.demo.enabled) {
     stopDemoPlayback();
+    stopDashboardReplay();
     state.demo.cursor = state.runRecent.length || 0;
   } else if (state.runRecent.length > 0) {
     state.demo.cursor = state.runRecent.length;
@@ -1561,6 +1628,11 @@ const state = {
   dashboardSparkline: {
     hoveredIndex: null,
   },
+  dashboardReplay: {
+    active: false,
+    timer: null,
+    cursor: 0,
+  },
   relationshipGraph: {
     mode: "current",
     frameIndex: 0,
@@ -1603,6 +1675,8 @@ const TENANT_STORAGE_KEY = "neraium_customer_id";
 const DEMO_MODE_STORAGE_KEY = "neraium_demo_mode";
 /** Demo timeline: advance one snapshot per interval (tunable; lower = faster review). */
 const DEMO_PLAYBACK_INTERVAL_MS = 1600;
+/** Dashboard demo replay speed for the top-level narrative animation. */
+const DASHBOARD_REPLAY_INTERVAL_MS = 500;
 /** How often to poll `/ingest/jobs/{id}` after CSV upload (lower = snappier status UI). */
 const INGEST_JOB_POLL_MS = 400;
 /** Replay launch/status polling cadence + resilience controls. */
@@ -1838,6 +1912,7 @@ function setPage(page) {
     "result-detail": ["Result detail", "Inspect one result and why it was scored this way."],
   };
   qsa(".page").forEach((p) => p.classList.add("hidden"));
+  if (page !== "dashboard") stopDashboardReplay();
   const pageEl = qs(`#page-${page}`);
   if (pageEl) pageEl.classList.remove("hidden");
   const [title, subtitle] = titles[page] || ["Neraium", ""];
@@ -2679,6 +2754,7 @@ function renderDashboardMetrics(latest, prev) {
   const recommendationOperatorNote = qs("#recommendationOperatorNote");
   const recommendationConfidenceBadge = qs("#recommendationConfidenceBadge");
   const nextActionEl = qs("#dashboardNextAction");
+  const operatorIdentity = qs("#dashboardOperatorIdentity");
 
   if (metricTrend) metricTrend.textContent = dashboardTrendLabel(latest);
   if (metricRisk) metricRisk.textContent = toPretty(latest?.risk_level);
@@ -2686,6 +2762,7 @@ function renderDashboardMetrics(latest, prev) {
   const uiTruth = buildFrontendUiState(latest);
   setConnectionStatus(getOperationalBadgeDisplay(uiTruth));
   const operatorSummary = demoFriendlyOperatorMessage(latest, prev);
+  if (operatorIdentity) operatorIdentity.textContent = dashboardOperatorIdentityText(latest, prev);
   if (metricOperator) metricOperator.textContent = operatorSummary;
   if (metricRiskBadge) metricRiskBadge.innerHTML = riskBadgeHtml(latest?.risk_level);
   if (metricPhaseBadge) metricPhaseBadge.innerHTML = phaseBadgeHtml(phaseFromResult(latest));
@@ -3041,15 +3118,16 @@ async function loadDashboard() {
   collectKnownSites(state.dashboardRecent);
   renderTenantControls();
   const chron = dashboardChronologicalResults();
-  const latest = chron.length ? chron[chron.length - 1] : null;
-  const prev = chron.length > 1 ? chron[chron.length - 2] : null;
   const paint = () => {
+    const renderChron = dashboardChronologicalForRender(chron);
+    const latest = renderChron.length ? renderChron[renderChron.length - 1] : null;
+    const prev = renderChron.length > 1 ? renderChron[renderChron.length - 2] : null;
     state.assistant.latest = latest;
-    state.assistant.chronological = chron;
+    state.assistant.chronological = renderChron;
     renderDashboardMetrics(latest, prev);
-    renderDashboardSparkline(chron);
-    renderDashboardHealthTrend(chron);
-    renderRecentTransitionsTimeline(chron);
+    renderDashboardSparkline(renderChron);
+    renderDashboardHealthTrend(renderChron);
+    renderRecentTransitionsTimeline(renderChron);
     renderEvidencePanel(latest);
     bindDashboardSparklineInteractions();
     wireAssistantChat();
@@ -3064,6 +3142,7 @@ async function loadDashboard() {
   if (state.ui.dashboardPaint) window.cancelAnimationFrame(state.ui.dashboardPaint);
   state.ui.dashboardPaint = window.requestAnimationFrame(() => {
     paint();
+    startDashboardReplay(chron, paint);
     state.ui.dashboardPaint = null;
   });
   })();
