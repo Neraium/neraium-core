@@ -1461,8 +1461,20 @@ function wireRunDetailDemoHero() {
   }
 }
 
-async function launchGuidedDemo({ mode = "all" } = {}) {
+async function launchGuidedDemo({ mode = "all", source = "dashboard_cta" } = {}) {
   try {
+    state.demo = state.demo || {};
+    state.demo.enabled = true;
+    state.demo.autoplay = true;
+    if (!state.demo.stageMeta || typeof state.demo.stageMeta !== "object") {
+      state.demo.stageMeta = {};
+    }
+    state.demo.stageMeta = {
+      ...state.demo.stageMeta,
+      source,
+      launchMode: mode,
+      launchedAt: new Date().toISOString(),
+    };
     setLoading(true, "Loading validation scenario…");
     await toggleDemoMode(true);
     await prepareDemoRuns({ mode });
@@ -1606,6 +1618,7 @@ const state = {
   },
   demo: {
     enabled: false,
+    autoplay: false,
     prepared: false,
     preparing: false,
     seedJobId: "",
@@ -2046,8 +2059,22 @@ function wireGrowOpDemoBtn(btn, originalLabel) {
 }
 
 function wireWorkspaceShellEvents() {
-  wireGrowOpDemoBtn(qs("#loadGrowOpDemoBtn"), "Load grow op demo");
-  wireGrowOpDemoBtn(qs("#demoBannerBtn"), "Launch guided demo");
+  const demoBannerBtn = qs("#demoBannerBtn");
+  if (demoBannerBtn && demoBannerBtn.dataset.wired !== "1") {
+    demoBannerBtn.dataset.wired = "1";
+    demoBannerBtn.addEventListener("click", async (e) => {
+      e.preventDefault();
+      await launchGuidedDemo({ source: "dashboard_banner" });
+    });
+  }
+  const loadGrowOpBtn = qs("#loadGrowOpDemoBtn");
+  if (loadGrowOpBtn && loadGrowOpBtn.dataset.wired !== "1") {
+    loadGrowOpBtn.dataset.wired = "1";
+    loadGrowOpBtn.addEventListener("click", async (e) => {
+      e.preventDefault();
+      await launchGuidedDemo({ source: "dashboard_button" });
+    });
+  }
   wireDemoModeToggle(qs("#demoModeToggle"));
   const refreshBtn = qs("#refreshBtn");
   if (refreshBtn && refreshBtn.dataset.wired !== "1") {
