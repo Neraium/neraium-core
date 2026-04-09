@@ -518,9 +518,7 @@ button,
 
 button.primary,
 .button-link.primary,
-.primary-pilot-btn.primary,
-#demoBannerBtn,
-#loadGrowOpDemoBtn {
+.primary-pilot-btn.primary {
   border-color: #7a69ff;
   background: linear-gradient(180deg, #7d6bff, #5f53df);
   color: #f8f7ff;
