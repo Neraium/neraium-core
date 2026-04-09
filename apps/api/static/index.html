@@ -116,10 +116,11 @@
                   <div class="panel-header"><h3>Progression and trajectory</h3></div>
                   <p class="subtitle">Track drift, instability, and inferred health in near real time.</p>
                   <div id="dashboardRiskProgression" class="risk-progression-strip">
-                    <span class="risk-stage">LOW</span>
-                    <span class="risk-stage">MEDIUM</span>
-                    <span class="risk-stage">HIGH</span>
+                    <button type="button" class="risk-stage" data-risk-filter="LOW" aria-pressed="false">LOW</button>
+                    <button type="button" class="risk-stage" data-risk-filter="MEDIUM" aria-pressed="false">MEDIUM</button>
+                    <button type="button" class="risk-stage" data-risk-filter="HIGH" aria-pressed="false">HIGH</button>
                   </div>
+                  <p id="dashboardRiskFilterStatus" class="subtitle risk-filter-status">Showing all risk levels.</p>
                   <div class="sparkline-wrap">
                     <canvas id="dashboardSparkline" aria-label="Drift and composite instability trend"></canvas>
                     <div id="dashboardSparklineTooltip" class="dashboard-sparkline-tooltip hidden"></div>
