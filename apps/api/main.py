@@ -932,9 +932,9 @@ def create_app(
                 )
 
         if not isinstance(latest, dict):
-            observed = ["No result is currently available for the selected asset/site context."]
-            inferred = ["Data is insufficient to explain behavior without a current snapshot."]
-            suggested = "Ingest or refresh telemetry for this context, then ask again."
+            observed = ["No current snapshot is available for the requested run/site/asset context."]
+            inferred = ["Interpretation confidence is low because telemetry context is incomplete."]
+            suggested = "Select or activate the correct run context, ingest telemetry, then re-run interpretation."
             return {
                 "observed": observed,
                 "inferred": inferred,
@@ -944,7 +944,7 @@ def create_app(
                 "grounding": {
                     "user_message": payload.message,
                     "context": (req_ctx.model_dump() if req_ctx is not None else {}),
-                    "prompt": "No current state available; cannot ground interpretation.",
+                    "prompt": "No current state available; interpretation cannot be grounded yet.",
                     "metrics": {},
                 },
             }
@@ -991,37 +991,37 @@ def create_app(
             uncertainty = max(0.0, min(1.0, (100.0 - system_health) / 100.0))
 
         observed = [
-            f"regime={regime_name}, risk_level={risk_level}, trend={trend}.",
-            f"structural_drift_score={drift if drift is not None else 'not available'}, system_health={system_health if system_health is not None else 'not available'}, confidence_score={confidence_score if confidence_score is not None else 'not available'}.",
-            f"explanation_text={explanation_text}",
+            f"Context: regime={regime_name}, risk={risk_level}, trend={trend}.",
+            f"Signals: drift={drift if drift is not None else 'not available'}, health={system_health if system_health is not None else 'not available'}, confidence={confidence_score if confidence_score is not None else 'not available'}.",
+            f"Current explanation: {explanation_text}",
             what_changed,
         ]
         inferred = [
             (
-                "Risk appears to be increasing in this window."
+                "Window interpretation: risk pressure is rising."
                 if str(trend).lower() in {"increasing", "up", "rising"}
-                else "Risk appears stable or mixed in this window."
+                else "Window interpretation: risk is stable or mixed."
             ),
-            f"uncertainty={round(float(uncertainty), 4)} (higher means less certainty).",
+            f"Uncertainty={round(float(uncertainty), 4)} (higher means lower certainty).",
         ]
         rec_text = str(rec.get("action") or rec.get("immediate_action") or rec.get("recommendation") or "").strip()
         normalized_risk = str(risk_level).upper()
         if normalized_risk == "HIGH":
-            suggested_next_step = rec_text or "Follow the latest operational recommendation immediately and verify high-drift sensors in the evidence panel."
+            suggested_next_step = rec_text or "Execute the active recommendation now; validate highest-drift signals and alert status."
         elif normalized_risk == "MEDIUM":
-            suggested_next_step = rec_text or "Follow the latest operational recommendation and maintain elevated monitoring cadence."
+            suggested_next_step = rec_text or "Apply the current recommendation and keep elevated monitoring cadence."
         else:
-            suggested_next_step = "Continue monitoring cadence and verify no new anomalies in recent events."
+            suggested_next_step = "Maintain baseline monitoring cadence and confirm no new anomalies."
 
         provided_metrics = payload.recent_metrics_snapshot if isinstance(payload.recent_metrics_snapshot, dict) else {}
         provided_keys = sorted(str(k) for k in provided_metrics.keys())
         if provided_keys:
             observed.append(
-                f"caller supplied recent_metrics_snapshot keys={', '.join(provided_keys[:12])}."
+                f"Caller metrics snapshot keys: {', '.join(provided_keys[:12])}."
             )
         if isinstance(provided_metrics.get("transition_count_recent"), (int, float)):
             inferred.append(
-                f"transition_count_recent={int(provided_metrics['transition_count_recent'])} was considered alongside stored run history."
+                f"transition_count_recent={int(provided_metrics['transition_count_recent'])} was included with stored run history."
             )
 
         return {
