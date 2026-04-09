@@ -2,15 +2,17 @@ const { qs, qsa, debounce, animateNumberText, friendlyErrorMessage, toPretty, fo
 const { apiUrl, fetchJson } = window.NeraiumApi;
 const { deriveFrontendState, getRunModeDisplay, getAnalysisStatusDisplay, getLastUpdateDisplay, getOperationalBadgeDisplay, getErrorDisplayContext } = window.NeraiumState;
 
-async function fetchRecentResults(params) {
+async function fetchRecentResults(params, options = {}) {
+  const opts = options && typeof options === "object" ? options : {};
+  const bypassCache = Boolean(opts.bypassCache);
   const recentParams = tenantScopeParams({ ...(params || {}) });
   const cacheKey = JSON.stringify(recentParams);
   const now = Date.now();
   const cached = state?.ui?.recentResultsCache?.get(cacheKey);
-  if (cached && now - cached.ts < 2000) {
+  if (!bypassCache && cached && now - cached.ts < 2000) {
     return cached.value;
   }
-  if (state?.ui?.recentResultsInflight?.has(cacheKey)) {
+  if (!bypassCache && state?.ui?.recentResultsInflight?.has(cacheKey)) {
     return state.ui.recentResultsInflight.get(cacheKey);
   }
   const request = fetchJson(apiUrl("/results/recent", recentParams)).then((env) => {
@@ -27,7 +29,7 @@ async function fetchRecentResults(params) {
   }).finally(() => {
     state?.ui?.recentResultsInflight?.delete(cacheKey);
   });
-  state?.ui?.recentResultsInflight?.set(cacheKey, request);
+  if (!bypassCache) state?.ui?.recentResultsInflight?.set(cacheKey, request);
   const env = await request;
   if (env && Array.isArray(env.results)) return env;
   if (env && Array.isArray(env.runs)) return { latest: null, count: env.runs.length, results: [] };
