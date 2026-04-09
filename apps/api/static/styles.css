@@ -6550,3 +6550,80 @@ button.secondary,
   border-color: #fde047;
   background: #fefce8;
 }
+
+/* Dashboard readability normalization: keep dark surfaces with legible operator text. */
+:root {
+  --dashboard-text-primary: #f2f6ff;
+  --dashboard-text-secondary: #cedcf6;
+  --dashboard-text-muted: #aebfe0;
+  --dashboard-text-alert: #ffd7b3;
+  --dashboard-text-risk: #ffb9c8;
+}
+
+.page-dashboard,
+.page-dashboard .panel,
+.page-dashboard .operator-section,
+.page-dashboard .assistant-panel,
+.page-dashboard .explanation-panel,
+.page-dashboard .snapshot-item,
+.page-dashboard .kpi-card {
+  color: var(--dashboard-text-primary);
+}
+
+.page-dashboard .subtitle,
+.page-dashboard .kpi-sub,
+.page-dashboard #dashboardLastUpdated,
+.page-dashboard .assistant-context-hint,
+.page-dashboard .timeline-item span,
+.page-dashboard .snapshot-item p,
+.page-dashboard #recommendationRationale,
+.page-dashboard #metricOperatorMessage,
+.page-dashboard #dashboardAlertSummary,
+.page-dashboard #assistantContextHint,
+.page-dashboard #assistantChatStatus,
+.page-dashboard #snapshotFreshness,
+.page-dashboard #relationshipGraphTimeLabel,
+.page-dashboard #relationshipGraphDetailBody {
+  color: var(--dashboard-text-secondary);
+}
+
+.page-dashboard .snapshot-recommendation,
+.page-dashboard #operatorTopSummary,
+.page-dashboard #recommendationPrimary,
+.page-dashboard #dashboardNextAction,
+.page-dashboard #snapshotRecommendation,
+.page-dashboard #assistantNextStep,
+.page-dashboard .timeline-item strong,
+.page-dashboard .insight-tile-label,
+.page-dashboard .insight-tile-sub,
+.page-dashboard .kpi-value,
+.page-dashboard #dashboardOperatorIdentity {
+  color: var(--dashboard-text-primary);
+}
+
+.page-dashboard .metric-k,
+.page-dashboard .dashboard-last-updated,
+.page-dashboard .kpi-label,
+.page-dashboard #recommendationOperatorNote,
+.page-dashboard #recommendationConfidenceBadge,
+.page-dashboard .sparkline-hint {
+  color: var(--dashboard-text-muted);
+}
+
+.page-dashboard .snapshot-item,
+.page-dashboard .assistant-response-grid > article,
+.page-dashboard .timeline-item {
+  background: linear-gradient(180deg, rgba(20, 32, 63, 0.95), rgba(12, 22, 44, 0.95));
+  border-color: rgba(129, 153, 211, 0.44);
+}
+
+.page-dashboard .status-warning,
+.page-dashboard .snapshot-recommendation[data-risk="HIGH"],
+.page-dashboard .timeline-item.critical {
+  color: var(--dashboard-text-risk);
+}
+
+.page-dashboard #dashboardAlertSummary,
+.page-dashboard #dashboardNextAction {
+  color: var(--dashboard-text-alert);
+}
