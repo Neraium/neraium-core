@@ -89,6 +89,13 @@ _HISTORICAL_CSV_SOURCES: tuple[dict[str, str], ...] = (
     },
 )
 _REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
+#
+# Grow-op pacing knobs: keep these centralized so demo cadence is easy to tune
+# without changing ingest/replay control flow.
+#
+GROW_OP_WARM_START_FRAMES = 12
+GROW_OP_STREAM_BATCH_SIZE = 6
+GROW_OP_STREAM_BATCH_DELAY_SEC = 0.35
 
 
 def _canonical_demo_stage(*, frames_processed: int, risk_level: str, run_status: str) -> str:
@@ -353,7 +360,7 @@ def build_demo_router(*, deps: DemoRouterDependencies) -> APIRouter:
                 "created_at": now,
                 "updated_at": now,
             }
-        warm_start_frames = min(36, len(rows))
+        warm_start_frames = min(GROW_OP_WARM_START_FRAMES, len(rows))
         deps.log_structured(
             logger,
             event="demo_grow_op_start_blocking_work_deferred",
@@ -435,11 +442,29 @@ def build_demo_router(*, deps: DemoRouterDependencies) -> APIRouter:
                             )
                             job["updated_at"] = deps.utc_now_iso()
                     return
-                results = deps.service_instance.ingest_batch(tail_rows, run_id=run_id, customer_id=resolved_customer)
+                processed_total = preloaded
+                batch_size = max(1, int(GROW_OP_STREAM_BATCH_SIZE))
+                for start in range(0, len(tail_rows), batch_size):
+                    chunk = tail_rows[start : start + batch_size]
+                    results = deps.service_instance.ingest_batch(chunk, run_id=run_id, customer_id=resolved_customer)
+                    processed_total += len(results)
+                    pct = int(round((processed_total / max(1, len(rows))) * 100))
+                    with deps.demo_jobs_lock:
+                        job = deps.demo_jobs.get(job_id)
+                        if job is not None:
+                            job.update(
+                                status="running",
+                                progress=max(0, min(100, pct)),
+                                processed=processed_total,
+                                message="Streaming grow-op demo telemetry...",
+                                error=None,
+                            )
+                            job["updated_at"] = deps.utc_now_iso()
+                    if start + batch_size < len(tail_rows):
+                        threading.Event().wait(max(0.0, float(GROW_OP_STREAM_BATCH_DELAY_SEC)))
                 with deps.demo_jobs_lock:
                     job = deps.demo_jobs.get(job_id)
                     if job is not None:
-                        processed_total = preloaded + len(results)
                         job.update(
                             status="complete",
                             progress=100,

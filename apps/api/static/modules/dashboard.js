@@ -1474,10 +1474,12 @@ const state = {
 
 const TENANT_STORAGE_KEY = "neraium_customer_id";
 const DEMO_MODE_STORAGE_KEY = "neraium_demo_mode";
+/** Grow-op replay pacing knob: higher values hold each story state longer for guided playback. */
+const DEMO_PACING_MULTIPLIER = 1.8;
 /** Demo timeline: advance one snapshot per interval (tunable; lower = faster review). */
-const DEMO_PLAYBACK_INTERVAL_MS = 1600;
+const DEMO_PLAYBACK_INTERVAL_MS = Math.round(1600 * DEMO_PACING_MULTIPLIER);
 /** Dashboard demo replay speed for the top-level narrative animation. */
-const DASHBOARD_REPLAY_INTERVAL_MS = 500;
+const DASHBOARD_REPLAY_INTERVAL_MS = Math.round(500 * DEMO_PACING_MULTIPLIER);
 /** How often to poll `/ingest/jobs/{id}` after CSV upload (lower = snappier status UI). */
 const INGEST_JOB_POLL_MS = 400;
 /** Replay launch/status polling cadence + resilience controls. */
