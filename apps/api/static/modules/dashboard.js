@@ -2043,38 +2043,21 @@ function wireGrowOpDemoBtn(btn, originalLabel) {
       btn.textContent = "Loading…";
       const banner = qs("#demoBanner");
       if (banner) banner.classList.add("demo-running");
-      setLoading(true, "Seeding 450-frame grow op demo…");
-      const out = await startGrowOpDemo();
-      const runId = encodeURIComponent(String(out.run_id || "").trim());
-      window.location.href = `/dashboard?run_id=${runId}`;
+      await launchGuidedDemo({ source: "dashboard_cta" });
     } catch (err) {
       setStatus(String(err.message || err), true, true);
+    } finally {
       btn.disabled = false;
       btn.textContent = originalLabel;
       const banner = qs("#demoBanner");
       if (banner) banner.classList.remove("demo-running");
-      setLoading(false);
     }
   });
 }
 
 function wireWorkspaceShellEvents() {
-  const demoBannerBtn = qs("#demoBannerBtn");
-  if (demoBannerBtn && demoBannerBtn.dataset.wired !== "1") {
-    demoBannerBtn.dataset.wired = "1";
-    demoBannerBtn.addEventListener("click", async (e) => {
-      e.preventDefault();
-      await launchGuidedDemo({ source: "dashboard_banner" });
-    });
-  }
-  const loadGrowOpBtn = qs("#loadGrowOpDemoBtn");
-  if (loadGrowOpBtn && loadGrowOpBtn.dataset.wired !== "1") {
-    loadGrowOpBtn.dataset.wired = "1";
-    loadGrowOpBtn.addEventListener("click", async (e) => {
-      e.preventDefault();
-      await launchGuidedDemo({ source: "dashboard_button" });
-    });
-  }
+  wireGrowOpDemoBtn(qs("#demoBannerBtn"), "Launch guided demo");
+  wireGrowOpDemoBtn(qs("#loadGrowOpDemoBtn"), "Launch guided demo");
   wireDemoModeToggle(qs("#demoModeToggle"));
   const refreshBtn = qs("#refreshBtn");
   if (refreshBtn && refreshBtn.dataset.wired !== "1") {
@@ -2658,21 +2641,6 @@ function renderOperationalSnapshot(latest) {
   const alertEl = qs("#snapshotAlertStatus");
   const freshEl = qs("#snapshotFreshness");
   const recEl = qs("#snapshotRecommendation");
-  const glanceDot = qs("#glanceDot");
-  const glanceHeadline = qs("#glanceHeadline");
-  const glanceSubline = qs("#glanceSubline");
-  const glanceNextCheck = qs("#glanceNextCheck");
-  const roomsPanel = qs("#roomsPanel");
-  const alertPanel = qs("#alertPanel");
-  const roomsHealthSummary = qs("#roomsHealthSummary");
-  const riskWhyLine = qs("#riskWhyLine");
-  const alertRoomLine = qs("#alertRoomLine");
-  const alertHeadline = qs("#alertHeadline");
-  const alertLossLine = qs("#alertLossLine");
-  const alertMessage = qs("#alertMessage");
-  const pullRoomsBtn = qs("#pullRoomsBtn");
-  const ownerMonthTrend = qs("#ownerMonthTrend");
-  const ownerMonthIncidents = qs("#ownerMonthIncidents");
 
   const uiTruth = buildFrontendUiState(latest);
   const risk = normalizeRiskLevel(latest?.risk_level);
@@ -2707,56 +2675,9 @@ function renderOperationalSnapshot(latest) {
   }
   if (recEl) recEl.textContent = latest ? recommendation : `${recommendation} ${nextAction}`;
 
-  if (pullRoomsBtn && pullRoomsBtn.dataset.bound !== "1") {
-    pullRoomsBtn.dataset.bound = "1";
-    pullRoomsBtn.addEventListener("click", () => {
-      roomsPanel?.classList.toggle("hidden");
-      pullRoomsBtn.textContent = roomsPanel?.classList.contains("hidden") ? "Pull for rooms" : "Hide rooms";
-    });
-  }
-
-  const estimatedRiskAmount = risk === "HIGH" ? "$25,000" : risk === "MEDIUM" ? "$12k" : "$0";
-  const badState = risk === "HIGH";
-  const watchState = risk === "MEDIUM";
-  const autoExpandRooms = badState || watchState;
-  if (glanceDot) glanceDot.textContent = badState ? "🔴" : watchState ? "🟡" : "🟢";
-  if (glanceHeadline) glanceHeadline.textContent = badState ? "FIX THIS" : watchState ? "CHECK SOON" : "ALL GOOD";
-  if (glanceSubline) glanceSubline.textContent = badState
-    ? `Critical risk detected — ${estimatedRiskAmount} at risk.`
-    : watchState
-      ? `Maintenance recommended — ${estimatedRiskAmount} at risk.`
-      : "No action needed now.";
-  if (glanceNextCheck) glanceNextCheck.textContent = badState
-    ? "🔮 Critical risk projected within the next 7 days"
-    : watchState
-      ? "🔮 7-day forecast: stress pattern forming"
-      : "⏱️ Stable now, monitoring continuously (7-day horizon)";
-  if (roomsPanel && autoExpandRooms) roomsPanel.classList.remove("hidden");
-  if (pullRoomsBtn) pullRoomsBtn.textContent = roomsPanel?.classList.contains("hidden") ? "Pull for rooms" : "Hide rooms";
-
-  if (roomsHealthSummary) roomsHealthSummary.textContent = badState ? "🔴 1 urgent" : watchState ? "🟡 1 needs attention" : "🟢 12 healthy";
-  if (riskWhyLine) riskWhyLine.textContent = badState
-    ? "Why $25,000: unresolved critical faults can cause same-day crop loss."
-    : watchState
-      ? "Why $12k: unresolved maintenance can escalate to equipment failure."
-      : "Why $0: no current rooms have meaningful value at risk.";
-
-  if (alertPanel) alertPanel.classList.toggle("hidden", !badState);
-  if (alertRoomLine) alertRoomLine.textContent = badState ? "🔴 ROOM 104" : "🟢 ROOM STATUS";
-  if (alertHeadline) alertHeadline.textContent = badState ? "Immediate action recommended" : "All clear";
-  if (alertLossLine) alertLossLine.textContent = badState ? "Estimated exposure: $25,000" : "No immediate exposure risk";
-  if (alertMessage) {
-    alertMessage.textContent = badState
-      ? "The AC is breaking. Temp will hit 90°F by 6 PM if you don't act."
-      : "No urgent room failures detected.";
-  }
-  if (ownerMonthTrend) ownerMonthTrend.textContent = badState ? "↓ 4% vs last month" : watchState ? "↑ 6% vs last month" : "↑ 12% vs last month";
-  if (ownerMonthIncidents) ownerMonthIncidents.textContent = badState ? "1 incident active" : watchState ? "2 incidents prevented" : "3 incidents prevented";
-  renderPredictionTimeline(risk);
-
   const ctaBtn = qs("#primaryPilotActionBtn");
   if (ctaBtn) {
-    ctaBtn.textContent = "Upload Telemetry";
+    ctaBtn.textContent = "Upload telemetry";
     ctaBtn.setAttribute("href", "/upload");
   }
 }
