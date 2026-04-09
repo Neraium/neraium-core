@@ -2590,6 +2590,7 @@ function renderDashboardMetrics(latest, prev) {
   const recommendationConfidenceBadge = qs("#recommendationConfidenceBadge");
   const nextActionEl = qs("#dashboardNextAction");
   const operatorIdentity = qs("#dashboardOperatorIdentity");
+  const topSummaryEl = document.getElementById("operatorTopSummary") || document.querySelector("[data-top-summary]");
 
   if (metricTrend) metricTrend.textContent = dashboardTrendLabel(latest);
   if (metricRisk) metricRisk.textContent = toPretty(latest?.risk_level);
