@@ -2430,7 +2430,8 @@ function dashboardTrendLabel(result) {
   if (direct) return direct;
   const risk = normalizeRiskLevel(result?.risk_level);
   const drift = structuralDriftFromResult(result);
-  const health = Number(result?.system_health);
+  const rawHealth = result?.system_health;
+  const health = typeof rawHealth === "number" && Number.isFinite(rawHealth) ? rawHealth : null;
   if (risk === "HIGH") return "DESTABILIZING";
   if (risk === "MEDIUM") return "WATCH";
   if (typeof drift === "number" && Number.isFinite(drift)) {
@@ -2438,7 +2439,7 @@ function dashboardTrendLabel(result) {
     if (drift >= 0.3) return "WATCH";
     return "STABLE";
   }
-  if (Number.isFinite(health)) {
+  if (typeof health === "number") {
     if (health <= 45) return "DESTABILIZING";
     if (health <= 70) return "WATCH";
     return "STABLE";
@@ -2473,12 +2474,15 @@ function dashboardDriftLabel(result) {
 
 function dashboardConfidenceText(result) {
   if (!result) return "Model warming up";
-  const numeric = Number(result.confidence);
+  const rawConfidence = result.confidence;
+  const numeric = typeof rawConfidence === "number"
+    ? rawConfidence
+    : (typeof rawConfidence === "string" && rawConfidence.trim() ? Number(rawConfidence) : NaN);
   if (Number.isFinite(numeric)) {
     const pct = Math.max(0, Math.min(100, Math.round(numeric * 100)));
     return `${pct}%`;
   }
-  const text = String(result.confidence || "").trim();
+  const text = String(rawConfidence || "").trim();
   return text || "Model warming up";
 }
 
