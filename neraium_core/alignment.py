@@ -106,14 +106,25 @@ TRANSITION_SUSTAINED_THRESHOLD = 1.15
 # Calibrate alert thresholds from early nominal scores to reduce false positives
 # and prevent early single-sample spikes from triggering alerts.
 MIN_BASELINE_SAMPLES_FOR_CALIBRATION = 28
-DEFAULT_DRIFT_SMOOTHING_WINDOW = 25
-DEFAULT_WATCH_QUANTILE = 0.65
-DEFAULT_ALERT_QUANTILE = 0.85
-DEFAULT_WATCH_PERSISTENCE = 5
-DEFAULT_ALERT_PERSISTENCE = 3
-DEFAULT_FAST_TRIGGER_MULTIPLIER = 1.25
-DEFAULT_ALERT_LATCH_ENABLED = True
-DEFAULT_UNLATCH_RATIO = 0.75
+# Locked FD004 policy defaults are centralized here for Phase-1 compatibility.
+LOCKED_FD004_POLICY_DEFAULTS = {
+    "drift_smoothing_window": 25,
+    "watch_quantile": 0.65,
+    "alert_quantile": 0.85,
+    "watch_persistence": 5,
+    "alert_persistence": 3,
+    "fast_trigger_multiplier": 1.25,
+    "alert_latch_enabled": True,
+    "unlatch_ratio": 0.75,
+}
+DEFAULT_DRIFT_SMOOTHING_WINDOW = LOCKED_FD004_POLICY_DEFAULTS["drift_smoothing_window"]
+DEFAULT_WATCH_QUANTILE = LOCKED_FD004_POLICY_DEFAULTS["watch_quantile"]
+DEFAULT_ALERT_QUANTILE = LOCKED_FD004_POLICY_DEFAULTS["alert_quantile"]
+DEFAULT_WATCH_PERSISTENCE = LOCKED_FD004_POLICY_DEFAULTS["watch_persistence"]
+DEFAULT_ALERT_PERSISTENCE = LOCKED_FD004_POLICY_DEFAULTS["alert_persistence"]
+DEFAULT_FAST_TRIGGER_MULTIPLIER = LOCKED_FD004_POLICY_DEFAULTS["fast_trigger_multiplier"]
+DEFAULT_ALERT_LATCH_ENABLED = LOCKED_FD004_POLICY_DEFAULTS["alert_latch_enabled"]
+DEFAULT_UNLATCH_RATIO = LOCKED_FD004_POLICY_DEFAULTS["unlatch_ratio"]
 
 
 def _to_epoch_seconds(value: object) -> float:
@@ -192,6 +203,22 @@ def _effective_frame_debug(explicit: bool) -> bool:
 
 
 class StructuralEngine:
+    """Geometric structural drift engine with policy driven by drift state-machine.
+
+    Architecture notes:
+      - Core structural layer (primary): geometric / temporal processing
+        over normalized baseline-vs-recent windows.
+      - Policy layer (primary for state outputs): drift smoothing + threshold
+        calibration + watch/alert persistence state-machine.
+      - Auxiliary / legacy compatibility layer: diagnostics (including optional
+        Mahalanobis-style signals) + composite-score compatibility payloads.
+      - Backward-compatible flat output fields are intentionally preserved.
+
+    Public API compatibility:
+      - ``process_frame(frame)`` remains the public entry point.
+      - ``policy_state`` and ``state`` are derived from structural drift policy.
+      - Legacy fields and aliases remain populated for existing consumers.
+    """
     def __init__(
         self,
         baseline_window: int = 50,
@@ -332,7 +359,7 @@ class StructuralEngine:
         self._alert_latched: bool = False
         self._current_alert_state: str = "STABLE"
 
-        # Composite-score threshold calibration for decision-layer emission.
+        # Composite-score threshold calibration for legacy compatibility outputs.
         self._baseline_composite_score_samples: deque[float] = deque(maxlen=256)
         self._composite_watch_alert_thresholds: tuple[float, float] | None = None
 
@@ -379,6 +406,124 @@ class StructuralEngine:
                 )
         except Exception:
             pass
+
+    def _default_result_payload(self, frame: Dict) -> Dict[str, object]:
+        """Warmup-safe output contract with backward-compatible fields.
+
+        Output assembly responsibility:
+          - Primary policy/state fields are always present.
+          - Legacy aliases remain available even before full analytics are ready.
+          - Nested diagnostic payload slots are pre-populated for stable schemas.
+        """
+        return {
+            "timestamp": frame["timestamp"],
+            "site_id": frame["site_id"],
+            "asset_id": frame["asset_id"],
+            "state": "STABLE",
+            "policy_state": "STABLE",
+            "policy_watch": False,
+            "policy_alert": False,
+            "structural_drift_score": 0.0,
+            "structural_drift_score_smoothed": 0.0,
+            "drift_smooth": 0.0,
+            "relational_stability_score": 1.0,
+            "system_health": 100,
+            "drift_alert": False,
+            "sensor_relationships": self.sensor_order,
+            "regime_name": None,
+            "regime_distance": None,
+            "regime_drift": 0.0,
+            "latest_drift": 0.0,
+            "latest_drift_smoothed": 0.0,
+            "watch_threshold": None,
+            "alert_threshold": None,
+            "latest_instability": 0.0,
+            "relational_instability_score": 0.0,
+            "temporal_distortion_score": 0.0,
+            "localization_score": 0.0,
+            "attribution": {"top_drivers": [], "driver_scores": {}},
+            "causal_analysis": {
+                "hypotheses": [],
+                "top_hypothesis": None,
+                "counterfactual": {
+                    "counterfactual_checks": [],
+                    "robustness": 0.0,
+                    "interpretation": "Causal analysis unavailable during warmup.",
+                },
+                "validation_plan": [],
+                "recommended_sequence": [],
+                "best_next_action": None,
+                "status": {"available": False, "reason": "warmup"},
+            },
+            "dominant_driver": None,
+            "explanation": "Warmup: awaiting sufficient window history.",
+            "baseline_mode": None,
+            "data_quality_summary": {},
+            "active_sensor_count": 0,
+            "missing_sensor_count": 0,
+            "transition_pressure": 0.0,
+            "transition_state": "NONE",
+            "experimental_analytics": self._analytics_unavailable_payload("warmup"),
+            "robustness": {},
+            "sensitivity": {},
+            "explanations": {},
+            "multi_scale": {},
+            "drift_noise": {},
+            "geometry": {"available": False, "reason": "insufficient history"},
+            "state_space_statistics": {"available": False, "reason": "insufficient history"},
+            "state_graph": {"available": False, "reason": "insufficient history"},
+            "geometry_explanations": {"available": False, "reason": "insufficient history"},
+        }
+
+    def _enforce_policy_contract(self, result: Dict[str, object]) -> None:
+        """Ensure policy_* fields are sourced from structural drift policy layer only."""
+        policy_state = str(self._current_alert_state or "STABLE")
+        result["policy_state"] = policy_state
+        result["policy_watch"] = policy_state == "WATCH"
+        result["policy_alert"] = policy_state == "ALERT"
+        # Backward-compat single-field consumers still read ``state``.
+        result["state"] = policy_state
+
+    @staticmethod
+    def _extract_auxiliary_mahalanobis(frame: Dict[str, object]) -> float | None:
+        """Compatibility read for md/mahalanobis aliases (auxiliary path only)."""
+        aux_md = frame.get(
+            "mahalanobis_score",
+            frame.get("mahalanobis_distance", frame.get("md_signal", frame.get("md"))),
+        )
+        return float(aux_md) if isinstance(aux_md, (int, float)) else None
+
+    def _attach_architecture_outputs(self, result: Dict[str, object], frame: Dict[str, object]) -> None:
+        """Package explicit architectural outputs without changing primary behavior."""
+        policy_state = str(result.get("policy_state", "STABLE"))
+        result["core_structural_outputs"] = {
+            "structural_drift_score": float(result.get("structural_drift_score", 0.0) or 0.0),
+            "structural_drift_score_smoothed": float(result.get("structural_drift_score_smoothed", 0.0) or 0.0),
+            "transition_pressure": float(result.get("transition_pressure", 0.0) or 0.0),
+            "transition_state": str(result.get("transition_state", "NONE")),
+            "regime_name": result.get("regime_name"),
+            "regime_distance": result.get("regime_distance"),
+            "regime_drift": float(result.get("regime_drift", 0.0) or 0.0),
+        }
+        result["policy_outputs"] = {
+            "policy_state": policy_state,
+            "policy_watch": bool(result.get("policy_watch", False)),
+            "policy_alert": bool(result.get("policy_alert", False)),
+        }
+        result["auxiliary_diagnostics"] = {
+            "mahalanobis_score": self._extract_auxiliary_mahalanobis(frame),
+            "drift_noise": result.get("drift_noise", {}),
+            "uncertainty": result.get("uncertainty", {}),
+            "geometry": result.get("geometry", {}),
+            "state_space_statistics": result.get("state_space_statistics", {}),
+            "state_graph": result.get("state_graph", {}),
+        }
+        result["legacy_scoring"] = {
+            "composite_instability_score": float(result.get("latest_instability", 0.0) or 0.0),
+            "component_confidence": result.get("component_confidence", {}),
+            "legacy_module": "neraium_core.scoring",
+            "primary_policy_source": "structural_drift_state_machine",
+        }
 
     def reset_baseline(self) -> None:
         """Clear rolling baseline and calibration state so baseline is recomputed from window."""
@@ -1424,65 +1569,7 @@ class StructuralEngine:
                 self._recent_ts_buffer.append(ts_val)
                 self._refresh_baseline_matrix_cache()
 
-        result = {
-            "timestamp": frame["timestamp"],
-            "site_id": frame["site_id"],
-            "asset_id": frame["asset_id"],
-            "state": "STABLE",
-            "policy_state": "STABLE",
-            "policy_watch": False,
-            "policy_alert": False,
-            "structural_drift_score": 0.0,
-            "structural_drift_score_smoothed": 0.0,
-            "drift_smooth": 0.0,
-            "relational_stability_score": 1.0,
-            "system_health": 100,
-            "drift_alert": False,
-            "sensor_relationships": self.sensor_order,
-            "regime_name": None,
-            "regime_distance": None,
-            "regime_drift": 0.0,
-            "latest_drift": 0.0,
-            "latest_drift_smoothed": 0.0,
-            "watch_threshold": None,
-            "alert_threshold": None,
-            "latest_instability": 0.0,
-            "relational_instability_score": 0.0,
-            "temporal_distortion_score": 0.0,
-            "localization_score": 0.0,
-            "attribution": {"top_drivers": [], "driver_scores": {}},
-            "causal_analysis": {
-                "hypotheses": [],
-                "top_hypothesis": None,
-                "counterfactual": {
-                    "counterfactual_checks": [],
-                    "robustness": 0.0,
-                    "interpretation": "Causal analysis unavailable during warmup.",
-                },
-                "validation_plan": [],
-                "recommended_sequence": [],
-                "best_next_action": None,
-                "status": {"available": False, "reason": "warmup"},
-            },
-            "dominant_driver": None,
-            "explanation": "Warmup: awaiting sufficient window history.",
-            "baseline_mode": None,
-            "data_quality_summary": {},
-            "active_sensor_count": 0,
-            "missing_sensor_count": 0,
-            "transition_pressure": 0.0,
-            "transition_state": "NONE",
-            "experimental_analytics": self._analytics_unavailable_payload("warmup"),
-            "robustness": {},
-            "sensitivity": {},
-            "explanations": {},
-            "multi_scale": {},
-            "drift_noise": {},
-            "geometry": {"available": False, "reason": "insufficient history"},
-            "state_space_statistics": {"available": False, "reason": "insufficient history"},
-            "state_graph": {"available": False, "reason": "insufficient history"},
-            "geometry_explanations": {"available": False, "reason": "insufficient history"},
-        }
+        result = self._default_result_payload(frame)
         temporal_quality: dict[str, object] = {}
         temporal_features: dict[str, object] = {}
 
@@ -3096,6 +3183,10 @@ class StructuralEngine:
             "readiness": rd_final.as_dict(),
             "transition_outputs_actionable": rd_final.transition_classification_ready,
         }
+
+        # Final policy enforcement and architecture-specific payload packaging.
+        self._enforce_policy_contract(result)
+        self._attach_architecture_outputs(result, frame)
         if len(self._shock_activity_history) == history_shock_len_before:
             self._shock_activity_history.append(0.0)
         if len(self._structural_drift_history) == history_drift_len_before:
