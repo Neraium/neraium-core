@@ -1569,6 +1569,8 @@ const state = {
     clockTimer: null,
     connection: "LIVE",
     dashboardPaint: null,
+    dashboardLivePollTimer: null,
+    dashboardLivePollInFlight: false,
     runDetailObserver: null,
     runDetailHydratedSections: {},
     runDetailDeferredPaint: null,
@@ -1596,6 +1598,8 @@ const DEMO_PACING_MULTIPLIER = 1.8;
 const DEMO_PLAYBACK_INTERVAL_MS = Math.round(1600 * DEMO_PACING_MULTIPLIER);
 /** Dashboard demo replay speed for the top-level narrative animation. */
 const DASHBOARD_REPLAY_INTERVAL_MS = Math.round(500 * DEMO_PACING_MULTIPLIER);
+/** Dashboard run-scoped live polling cadence (run pages stay visibly live during demos). */
+const DASHBOARD_LIVE_POLL_MS = 1200;
 /** How often to poll `/ingest/jobs/{id}` after CSV upload (lower = snappier status UI). */
 const INGEST_JOB_POLL_MS = 400;
 /** Replay launch/status polling cadence + resilience controls. */
@@ -1831,7 +1835,10 @@ function setPage(page) {
     "result-detail": ["Result detail", "Inspect one result and why it was scored this way."],
   };
   qsa(".page").forEach((p) => p.classList.add("hidden"));
-  if (page !== "dashboard") stopDashboardReplay();
+  if (page !== "dashboard") {
+    stopDashboardReplay();
+    stopDashboardLivePolling();
+  }
   const pageEl = qs(`#page-${page}`);
   if (pageEl) pageEl.classList.remove("hidden");
   const [title, subtitle] = titles[page] || ["Neraium", ""];
@@ -2973,27 +2980,10 @@ function wireRelationshipGraphInteractions() {
   canvas.addEventListener("mouseleave", () => tooltip?.classList.add("hidden"));
 }
 
-async function loadDashboard() {
-  if (state.ui.loadDashboardPromise) return state.ui.loadDashboardPromise;
-  state.ui.loadDashboardPromise = (async () => {
-  applyDashboardRunFromQuery();
-  const runId = state.activeRun?.run_id || "";
-  const recentParams = { limit: DASHBOARD_RECENT_LIMIT, compact: true };
-  if (runId) recentParams.run_id = runId;
-  const [recentEnv, alertsEnv] = await Promise.all([
-    fetchRecentResults(recentParams),
-    fetchJson(apiUrl("/alerts", tenantScopeParams({ run_id: runId, limit: 8 }))),
-  ]);
-  state.dashboardRecent = Array.isArray(recentEnv?.results) ? recentEnv.results.map((row) => operatorSafeResult(row)) : [];
-  state.dashboardAlerts = Array.isArray(alertsEnv?.alerts) ? alertsEnv.alerts : [];
-  state.dashboardCurrentAlertStatus = alertsEnv.current_status && typeof alertsEnv.current_status === "object"
-    ? alertsEnv.current_status
-    : null;
-  collectKnownSites(state.dashboardRecent);
-  renderTenantControls();
-  const chron = dashboardChronologicalResults();
+function runDashboardPaint(chron) {
+  const chronological = Array.isArray(chron) ? chron : dashboardChronologicalResults();
   const paint = () => {
-    const replayChron = dashboardChronologicalForRender(chron);
+    const replayChron = dashboardChronologicalForRender(chronological);
     const renderChron = filterDashboardChronological(replayChron);
     const latest = replayChron.length ? replayChron[replayChron.length - 1] : null;
     const prev = replayChron.length > 1 ? replayChron[replayChron.length - 2] : null;
@@ -3017,9 +3007,80 @@ async function loadDashboard() {
   if (state.ui.dashboardPaint) window.cancelAnimationFrame(state.ui.dashboardPaint);
   state.ui.dashboardPaint = window.requestAnimationFrame(() => {
     paint();
-    startDashboardReplay(chron, paint);
+    startDashboardReplay(chronological, paint);
     state.ui.dashboardPaint = null;
   });
+}
+
+async function fetchDashboardData({ bypassCache = false, logTag = "dashboard" } = {}) {
+  applyDashboardRunFromQuery();
+  const runId = state.activeRun?.run_id || "";
+  const recentParams = { limit: DASHBOARD_RECENT_LIMIT, compact: true };
+  if (runId) recentParams.run_id = runId;
+  console.info(`[dashboard] ${logTag}: active run_id=${runId || "(none)"}`);
+  console.info(`[dashboard] ${logTag}: polling request /results/recent`, recentParams);
+  const [recentEnv, alertsEnv] = await Promise.all([
+    fetchRecentResults(recentParams, { bypassCache }),
+    fetchJson(apiUrl("/alerts", tenantScopeParams({ run_id: runId, limit: 8 }))),
+  ]);
+  state.dashboardRecent = Array.isArray(recentEnv?.results) ? recentEnv.results.map((row) => operatorSafeResult(row)) : [];
+  state.dashboardAlerts = Array.isArray(alertsEnv?.alerts) ? alertsEnv.alerts : [];
+  state.dashboardCurrentAlertStatus = alertsEnv.current_status && typeof alertsEnv.current_status === "object"
+    ? alertsEnv.current_status
+    : null;
+  console.info(`[dashboard] ${logTag}: returned result count=${state.dashboardRecent.length}`);
+  collectKnownSites(state.dashboardRecent);
+  renderTenantControls();
+  return dashboardChronologicalResults();
+}
+
+function stopDashboardLivePolling() {
+  if (state.ui.dashboardLivePollTimer) {
+    window.clearTimeout(state.ui.dashboardLivePollTimer);
+    state.ui.dashboardLivePollTimer = null;
+  }
+  state.ui.dashboardLivePollInFlight = false;
+}
+
+function startDashboardLivePolling() {
+  stopDashboardLivePolling();
+  const route = getRoute();
+  if (route.page !== "dashboard") return;
+  const runId = String(state.activeRun?.run_id || "");
+  if (!runId) return;
+  console.info(`[dashboard] live polling started for run_id=${runId}`);
+  const tick = async () => {
+    if (state.ui.dashboardLivePollInFlight) {
+      state.ui.dashboardLivePollTimer = window.setTimeout(tick, DASHBOARD_LIVE_POLL_MS);
+      return;
+    }
+    state.ui.dashboardLivePollInFlight = true;
+    let repaintRan = false;
+    try {
+      const chron = await fetchDashboardData({ bypassCache: true, logTag: "poll" });
+      runDashboardPaint(chron);
+      repaintRan = true;
+    } catch (err) {
+      console.warn("[dashboard] poll error:", err);
+    } finally {
+      state.ui.dashboardLivePollInFlight = false;
+      console.info(`[dashboard] poll: repaint ran=${repaintRan ? "yes" : "no"}`);
+      if (getRoute().page === "dashboard" && String(state.activeRun?.run_id || "")) {
+        state.ui.dashboardLivePollTimer = window.setTimeout(tick, DASHBOARD_LIVE_POLL_MS);
+      } else {
+        stopDashboardLivePolling();
+      }
+    }
+  };
+  state.ui.dashboardLivePollTimer = window.setTimeout(tick, DASHBOARD_LIVE_POLL_MS);
+}
+
+async function loadDashboard() {
+  if (state.ui.loadDashboardPromise) return state.ui.loadDashboardPromise;
+  state.ui.loadDashboardPromise = (async () => {
+  const chron = await fetchDashboardData({ bypassCache: false, logTag: "initial" });
+  runDashboardPaint(chron);
+  startDashboardLivePolling();
   })();
   try {
     await state.ui.loadDashboardPromise;
