@@ -747,7 +747,7 @@ function demoFriendlyOperatorMessage(result, prevResult) {
 }
 
 function dashboardOperatorIdentityText(latest, prev) {
-  if (!latest) return "System warming up. Upload telemetry or launch the guided demo.";
+  if (!latest) return "System warming up. Upload telemetry to begin monitoring.";
   const risk = normalizeRiskLevel(latest.risk_level);
   const drift = structuralDriftFromResult(latest);
   const driftText = typeof drift === "number" ? drift.toFixed(2) : "pending";
@@ -1194,17 +1194,6 @@ async function ingestFramesForRun(runId, items, customerId, options = {}) {
   return { count: total, processed: total, run_id: runId };
 }
 
-async function startDemoSeedJob(runId, customerId, payload) {
-  return fetchJson(apiUrl("/demo/seed/start", tenantScopeParams({ run_id: runId })), {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      ...payload,
-      customer_id: customerId,
-    }),
-  });
-}
-
 async function startCmapssDemo(customerId, options = {}) {
   return fetchJson(apiUrl("/demo/cmapss/start", tenantScopeParams()), {
     method: "POST",
@@ -1214,190 +1203,6 @@ async function startCmapssDemo(customerId, options = {}) {
       max_frames: Number(options.max_frames || CMAPSS_REPLAY_DEFAULT_MAX_FRAMES),
     }),
   });
-}
-
-async function getDemoSeedJobStatus(jobId) {
-  return fetchJson(apiUrl("/demo/seed/status", tenantScopeParams({ job_id: jobId })), {
-    method: "GET",
-  });
-}
-
-async function waitForDemoSeedJob(jobId, options = {}) {
-  const intervalMs = Math.max(300, Number(options.intervalMs || 800));
-  const timeoutMs = Math.max(5000, Number(options.timeoutMs || 7 * 60 * 1000));
-  const maxSilentPollFailures = Math.max(0, Number(options.maxSilentPollFailures || 3));
-  const started = Date.now();
-  let lastStatus = null;
-  let pollFailures = 0;
-  console.info("[guided-demo] /demo/seed/status polling start", {
-    jobId,
-    intervalMs,
-    timeoutMs,
-  });
-  while (Date.now() - started < timeoutMs) {
-    let status;
-    try {
-      status = await getDemoSeedJobStatus(jobId);
-      pollFailures = 0;
-    } catch (err) {
-      pollFailures += 1;
-      if (pollFailures > maxSilentPollFailures) {
-        throw new Error("Demo failed — retry");
-      }
-      await new Promise((resolve) => window.setTimeout(resolve, intervalMs));
-      continue;
-    }
-    lastStatus = status;
-    const stateLabel = String(status?.status || "").toLowerCase();
-    if (options.onProgress) options.onProgress(status);
-    if (stateLabel === "complete") {
-      console.info("[guided-demo] /demo/seed/status polling stop", { jobId, reason: "complete" });
-      return status;
-    }
-    if (stateLabel === "error") {
-      console.info("[guided-demo] /demo/seed/status polling stop", { jobId, reason: "error" });
-      throw new Error(String(status?.error || status?.message || "Demo seed failed on server."));
-    }
-    await new Promise((resolve) => window.setTimeout(resolve, intervalMs));
-  }
-  console.info("[guided-demo] /demo/seed/status polling stop", { jobId, reason: "timeout", timeoutMs });
-  throw new Error(`Timed out waiting for demo seed job ${jobId}. Last status: ${JSON.stringify(lastStatus || {})}`);
-}
-
-function demoScenarioListForMode(mode) {
-  const suffix = new Date().toISOString().slice(11, 16).replace(":", "");
-  const all = [
-    { name: `Demo Stable ${suffix}`, profile: "stable", siteId: "north-yard", assetId: "compressor-A" },
-    { name: `Demo Watch ${suffix}`, profile: "watch", siteId: "north-yard", assetId: "compressor-B" },
-    { name: `Demo Escalation ${suffix}`, profile: "critical", siteId: "south-yard", assetId: "compressor-C" },
-  ];
-  if (!mode || mode === "all") return all;
-  const one = all.find((s) => s.profile === mode);
-  return one ? [one] : all;
-}
-
-async function prepareDemoRuns(options = {}) {
-  if (state.demo.preparing) return null;
-  const mode = options.mode || "all";
-  state.demo.preparing = true;
-  renderTenantControls();
-  try {
-    const scenarios = demoScenarioListForMode(mode);
-    const cust = customerIdValue(state.tenant.customerId);
-    setDemoProgress({
-      visible: true,
-      phase: "Preparing greenhouse demo replay",
-      current: 0,
-      total: scenarios.length,
-      text: "Seeding telemetry and building structural state…",
-    });
-    const created = await Promise.all(
-      scenarios.map(async (scenario, idx) => {
-        setDemoProgress({
-          visible: true,
-          phase: "Streaming telemetry",
-          current: idx,
-          total: scenarios.length,
-          text: `Seeding telemetry… (${idx}/${scenarios.length})`,
-        });
-        const runEnv = await fetchJson(apiUrl("/runs", tenantScopeParams()), {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            name: scenario.name,
-            config: { source: "demo-mode", scenario: scenario.profile },
-            activate: false,
-          }),
-        });
-        const run = runEnv.run;
-        setLoading(true, "Preparing replay runs…");
-        setStatus("Preparing reference replay run...", false);
-        const started = await startDemoSeedJob(
-          run.run_id,
-          cust,
-          {
-            profile: scenario.profile,
-            minutes: 120,
-            site_id: scenario.siteId,
-            asset_id: scenario.assetId,
-          },
-        );
-        const jobId = String(started?.job_id || "");
-        if (!jobId) {
-          throw new Error("Demo seed did not return a job ID.");
-        }
-        const out = await waitForDemoSeedJob(jobId, {
-          intervalMs: 900,
-          onProgress: (job) => {
-            const processed = Number(job?.processed || 0);
-            const totalFrames = Number(job?.total_frames || 120);
-            const percent = Number(job?.progress || 0);
-            setStatus("Seeding telemetry on server...", false);
-            setDemoProgress({
-              visible: true,
-              phase: "Streaming data",
-              current: Math.min(totalFrames, processed || Math.round((totalFrames * percent) / 100)),
-              total: totalFrames,
-              text: `Seeding telemetry on server... (${Math.max(0, Math.min(100, percent))}%)`,
-            });
-          },
-        });
-        setDemoProgress({
-          visible: true,
-          phase: "Rendering model",
-          current: idx + 1,
-          total: scenarios.length,
-          text: "Rendering SII Structural View...",
-        });
-        setStatus("Loading structural visualization...", false);
-        return run;
-      }),
-    );
-    const map = {};
-    created.forEach((run) => {
-      const prof = run?.config?.scenario;
-      if (prof === "stable" || prof === "watch" || prof === "critical") {
-        map[prof] = run;
-      }
-    });
-    state.demo.scenarioRunMap = { ...(state.demo.scenarioRunMap || {}), ...map };
-    let focusRun = null;
-    if (mode === "all") {
-      focusRun = created[created.length - 1] || null;
-    } else {
-      focusRun = created[0] || null;
-    }
-    if (!focusRun && created.length) {
-      focusRun = created[created.length - 1];
-    }
-    if (focusRun?.run_id) {
-      await fetchJson(apiUrl(`/runs/${encodeURIComponent(focusRun.run_id)}/activate`, tenantScopeParams()), {
-        method: "POST",
-      });
-      state.demo.activeRunId = focusRun.run_id;
-    }
-    state.demo.prepared = true;
-    setDemoProgress({ visible: true, phase: "Ready", current: scenarios.length, total: scenarios.length, text: "Reference replay ready." });
-    setStatus("Reference replay ready.");
-    window.setTimeout(() => setDemoProgress({ visible: false }), 1200);
-    return focusRun;
-  } finally {
-    state.demo.preparing = false;
-    if (!state.demo.prepared) setDemoProgress({ visible: false });
-    renderTenantControls();
-  }
-}
-
-function shouldShowDashboardDemoHero() {
-  if (state.demo.preparing) return false;
-  const n = (state.dashboardRecent || []).length;
-  return n === 0;
-}
-
-function renderDashboardDemoHero() {
-  const el = qs("#dashboardDemoHero");
-  if (!el) return;
-  el.classList.toggle("hidden", !shouldShowDashboardDemoHero());
 }
 
 function onDemoPlaybackComplete() {
@@ -1468,47 +1273,6 @@ function wireRunDetailDemoHero() {
   if (dismiss && dismiss.dataset.wired !== "1") {
     dismiss.dataset.wired = "1";
     dismiss.addEventListener("click", () => dismissRunDetailDemoHero());
-  }
-}
-
-async function launchGuidedDemo({ mode = "all", source = "dashboard_cta" } = {}) {
-  let overlayClearReason = "unknown";
-  try {
-    state.demo = state.demo || {};
-    state.demo.enabled = true;
-    state.demo.autoplay = true;
-    if (!state.demo.stageMeta || typeof state.demo.stageMeta !== "object") {
-      state.demo.stageMeta = {};
-    }
-    state.demo.stageMeta = {
-      ...state.demo.stageMeta,
-      source,
-      launchMode: mode,
-      launchedAt: new Date().toISOString(),
-    };
-    setLoading(true, "Loading validation scenario…");
-    await toggleDemoMode(true);
-    const out = await startGrowOpDemo();
-    console.info("[guided-demo] /demo/start response", out);
-    const runId = extractDemoRunId(out);
-    console.info("[guided-demo] extracted run_id", { runId });
-    if (!runId) {
-      overlayClearReason = "demo_start_missing_run_id";
-      throw new Error("No run_id returned from demo start.");
-    }
-    state.demo.activeRunId = runId;
-    state.demo.playbackCompleteNotified = false;
-    const cid = encodeURIComponent(customerIdValue(state.tenant.customerId));
-    overlayClearReason = "demo_start_success";
-    window.location.href = `/dashboard?customer_id=${cid}&run_id=${encodeURIComponent(runId)}&replay=1&autoplay=1`;
-    return;
-  } catch (err) {
-    overlayClearReason = "guided_demo_error";
-    setStatus(String(err.message || err), true, true);
-    throw err;
-  } finally {
-    console.info("[guided-demo] loading overlay clear", { reason: overlayClearReason });
-    setLoading(false);
   }
 }
 
@@ -2023,23 +1787,6 @@ function renderRunDetailHeaderContext(run, latest) {
   if (opRisk) opRisk.textContent = risk === "HIGH" ? "$25,000 at risk" : risk === "MEDIUM" ? "$12,000 at risk" : "$0 at risk";
 }
 
-async function startGrowOpDemo() {
-  const cid = customerIdValue(state.tenant.customerId);
-  const out = await fetchJson(apiUrl("/demo/start", { customer_id: cid }), { method: "POST" });
-  if (!extractDemoRunId(out)) throw new Error("No run_id returned from grow op demo start.");
-  return out;
-}
-
-function extractDemoRunId(payload) {
-  const direct = String(payload?.run_id || "").trim();
-  if (direct) return direct;
-  const nestedRun = String(payload?.run?.run_id || "").trim();
-  if (nestedRun) return nestedRun;
-  const nestedResult = String(payload?.result?.run_id || "").trim();
-  if (nestedResult) return nestedResult;
-  return "";
-}
-
 function dashboardRunIdFromQuery() {
   try {
     return String(new URLSearchParams(window.location.search).get("run_id") || "").trim();
@@ -2062,30 +1809,7 @@ function applyDashboardRunFromQuery() {
   });
 }
 
-function wireGrowOpDemoBtn(btn, originalLabel) {
-  if (!btn || btn.dataset.wired === "1") return;
-  btn.dataset.wired = "1";
-  btn.addEventListener("click", async () => {
-    try {
-      btn.disabled = true;
-      btn.textContent = "Loading…";
-      const banner = qs("#demoBanner");
-      if (banner) banner.classList.add("demo-running");
-      await launchGuidedDemo({ source: "dashboard_cta" });
-    } catch (err) {
-      setStatus(String(err.message || err), true, true);
-    } finally {
-      btn.disabled = false;
-      btn.textContent = originalLabel;
-      const banner = qs("#demoBanner");
-      if (banner) banner.classList.remove("demo-running");
-    }
-  });
-}
-
 function wireWorkspaceShellEvents() {
-  wireGrowOpDemoBtn(qs("#demoBannerBtn"), "Launch guided demo");
-  wireGrowOpDemoBtn(qs("#loadGrowOpDemoBtn"), "Launch guided demo");
   wireDemoModeToggle(qs("#demoModeToggle"));
   const refreshBtn = qs("#refreshBtn");
   if (refreshBtn && refreshBtn.dataset.wired !== "1") {
@@ -2532,7 +2256,7 @@ function normalizedAlertStatusText(latest) {
 }
 
 function noTelemetryOperationalMessage(uiTruth = null) {
-  return "No data yet — start demo or upload telemetry to begin monitoring.";
+  return "No data yet — upload telemetry to begin monitoring.";
 }
 
 function _normalizeSummaryTrend(value) {
@@ -2686,7 +2410,7 @@ function renderOperationalSnapshot(latest) {
   if (freshEl) freshEl.textContent = freshness.label;
 
   let recommendation = noTelemetryOperationalMessage(uiTruth);
-  let nextAction = "No data yet — start demo.";
+  let nextAction = "No data yet — upload telemetry.";
   if (latest) {
     if (risk === "HIGH") {
       recommendation = "Investigate sustained instability in the active run.";
@@ -2895,7 +2619,7 @@ function renderDashboardMetrics(latest, prev) {
     if (recommendationConfidenceBadge) recommendationConfidenceBadge.textContent = `Confidence ${confidence}`;
     if (nextActionEl) {
       if (!latest) {
-        nextActionEl.textContent = "No data yet — start demo.";
+        nextActionEl.textContent = "No data yet — upload telemetry.";
       } else if (risk === "HIGH") {
         nextActionEl.textContent = "Active alert requires acknowledgement and targeted inspection.";
       } else if (risk === "MEDIUM") {
@@ -3168,7 +2892,6 @@ async function loadDashboard() {
     }
     wireRelationshipGraphInteractions();
     renderRelationshipGraph();
-    renderDashboardDemoHero();
   };
   if (state.ui.dashboardPaint) window.cancelAnimationFrame(state.ui.dashboardPaint);
   state.ui.dashboardPaint = window.requestAnimationFrame(() => {
