@@ -96,12 +96,18 @@ def _canonical_demo_stage(*, frames_processed: int, risk_level: str, run_status:
     run = str(run_status or "").lower()
     if frames_processed <= 0 and run in {"starting", "pending", "queued", "initializing", "created", "open"}:
         return "warmup"
+    if frames_processed <= 40:
+        return "baseline"
+    if risk in {"LOW", "UNKNOWN"} and frames_processed >= 180:
+        return "recovery_or_intervention"
     if risk in {"LOW", "UNKNOWN"}:
         return "normal"
     if risk == "MEDIUM":
         return "early_structural_drift"
     if risk == "HIGH":
-        return "rising_instability_actionable"
+        return "alert"
+    if frames_processed >= 120:
+        return "instability"
     return "stabilizing"
 
 
@@ -124,6 +130,14 @@ def _canonical_demo_message(*, stage: str, risk_level: str, trend: str) -> dict[
             "confidence": 0.72,
             "system_not_claiming": "This does not claim zero risk; only no current structural escalation.",
         }
+    if stage == "baseline":
+        return {
+            "what_is_happening": "Baseline window is visible and relationships are still nominal.",
+            "why_we_believe_this": "Early replay snapshots remain close to baseline structural geometry.",
+            "operator_next_step": "Keep replay running so drift onset can be contrasted against baseline.",
+            "confidence": 0.74,
+            "system_not_claiming": "Baseline does not imply future stability.",
+        }
     if stage == "early_structural_drift":
         return {
             "what_is_happening": "Early structural drift is present before hard threshold alarms.",
@@ -132,13 +146,29 @@ def _canonical_demo_message(*, stage: str, risk_level: str, trend: str) -> dict[
             "confidence": 0.8,
             "system_not_claiming": "This is advisory and not an automated actuation decision.",
         }
-    if stage == "rising_instability_actionable":
+    if stage == "instability":
+        return {
+            "what_is_happening": "Instability is increasing as structural coupling weakens.",
+            "why_we_believe_this": f"Trend is {normalized_trend} with persistent movement away from baseline.",
+            "operator_next_step": "Prepare intervention playbook and validate top drift contributors.",
+            "confidence": 0.84,
+            "system_not_claiming": "This is not yet a confirmed alert state.",
+        }
+    if stage == "alert":
         return {
             "what_is_happening": "Instability is rising and operational risk is actionable.",
             "why_we_believe_this": f"Risk is {normalized_risk} with persistent structural deterioration signals.",
             "operator_next_step": "Execute site procedure for high-risk review and targeted inspection.",
             "confidence": 0.87,
             "system_not_claiming": "This is not a guaranteed failure-time prediction.",
+        }
+    if stage == "recovery_or_intervention":
+        return {
+            "what_is_happening": "Post-alert behavior indicates recovery or successful intervention.",
+            "why_we_believe_this": "Risk has eased after elevated conditions while structure trends toward baseline.",
+            "operator_next_step": "Validate persistence of recovery before declaring closure.",
+            "confidence": 0.79,
+            "system_not_claiming": "Recovery indication is not a guarantee of permanent resolution.",
         }
     return {
         "what_is_happening": "Structural conditions are changing; continue monitored review.",
@@ -277,10 +307,11 @@ def build_demo_router(*, deps: DemoRouterDependencies) -> APIRouter:
             "demo": "cmapss_fd004",
             "canonical_story": {
                 "sequence": [
-                    "normal",
+                    "baseline",
                     "early_structural_drift",
-                    "rising_instability_actionable",
-                    "critical_review",
+                    "instability",
+                    "alert",
+                    "recovery_or_intervention",
                 ],
                 "read_only": True,
                 "non_actuating": True,
