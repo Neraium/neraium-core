@@ -96,18 +96,16 @@ def _canonical_demo_stage(*, frames_processed: int, risk_level: str, run_status:
     run = str(run_status or "").lower()
     if frames_processed <= 0 and run in {"starting", "pending", "queued", "initializing", "created", "open"}:
         return "warmup"
-    if frames_processed <= 40:
-        return "baseline"
     if risk in {"LOW", "UNKNOWN"} and frames_processed >= 180:
         return "recovery_or_intervention"
+    if frames_processed >= 120:
+        return "instability"
     if risk in {"LOW", "UNKNOWN"}:
         return "normal"
     if risk == "MEDIUM":
         return "early_structural_drift"
     if risk == "HIGH":
         return "alert"
-    if frames_processed >= 120:
-        return "instability"
     return "stabilizing"
 
 
