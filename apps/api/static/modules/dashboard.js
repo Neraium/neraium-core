@@ -500,12 +500,48 @@ function bindDashboardSparklineInteractions() {
 
 function renderRiskProgression(latest) {
   const stages = qsa("#dashboardRiskProgression .risk-stage");
+  const filterStatus = qs("#dashboardRiskFilterStatus");
   if (!stages.length) return;
   const risk = normalizeRiskLevel(latest?.risk_level);
   const order = ["LOW", "MEDIUM", "HIGH"];
+  const activeFilter = String(state.dashboardRiskFilter || "ALL").toUpperCase();
   stages.forEach((el, idx) => {
     const active = order.indexOf(risk) >= idx && order.indexOf(risk) >= 0;
+    const stageRisk = String(el.dataset.riskFilter || "").toUpperCase();
     el.classList.toggle("active", active);
+    const selected = activeFilter !== "ALL" && stageRisk === activeFilter;
+    el.classList.toggle("selected", selected);
+    el.setAttribute("aria-pressed", selected ? "true" : "false");
+    el.title = selected
+      ? `Showing ${stageRisk} risk snapshots only. Click again to show all risk levels.`
+      : `Filter trajectory to ${stageRisk} risk snapshots.`;
+  });
+  if (filterStatus) {
+    filterStatus.textContent = activeFilter === "ALL"
+      ? "Showing all risk levels."
+      : `Filtered view, showing ${activeFilter} risk snapshots.`;
+  }
+}
+
+function filterDashboardChronological(fullChronological) {
+  const chron = Array.isArray(fullChronological) ? fullChronological : [];
+  const filter = String(state.dashboardRiskFilter || "ALL").toUpperCase();
+  if (!["LOW", "MEDIUM", "HIGH"].includes(filter)) return chron;
+  return chron.filter((row) => normalizeRiskLevel(row?.risk_level) === filter);
+}
+
+function wireRiskProgressionControls(onChange) {
+  const stages = qsa("#dashboardRiskProgression [data-risk-filter]");
+  if (!stages.length) return;
+  stages.forEach((btn) => {
+    if (btn.dataset.riskFilterWired === "1") return;
+    btn.dataset.riskFilterWired = "1";
+    btn.addEventListener("click", () => {
+      const nextFilter = String(btn.dataset.riskFilter || "ALL").toUpperCase();
+      const currentFilter = String(state.dashboardRiskFilter || "ALL").toUpperCase();
+      state.dashboardRiskFilter = currentFilter === nextFilter ? "ALL" : nextFilter;
+      if (typeof onChange === "function") onChange();
+    });
   });
 }
 
@@ -1513,6 +1549,7 @@ const state = {
     timer: null,
     cursor: 0,
   },
+  dashboardRiskFilter: "ALL",
   relationshipGraph: {
     mode: "current",
     frameIndex: 0,
@@ -2956,16 +2993,18 @@ async function loadDashboard() {
   renderTenantControls();
   const chron = dashboardChronologicalResults();
   const paint = () => {
-    const renderChron = dashboardChronologicalForRender(chron);
-    const latest = renderChron.length ? renderChron[renderChron.length - 1] : null;
-    const prev = renderChron.length > 1 ? renderChron[renderChron.length - 2] : null;
+    const replayChron = dashboardChronologicalForRender(chron);
+    const renderChron = filterDashboardChronological(replayChron);
+    const latest = replayChron.length ? replayChron[replayChron.length - 1] : null;
+    const prev = replayChron.length > 1 ? replayChron[replayChron.length - 2] : null;
     state.assistant.latest = latest;
-    state.assistant.chronological = renderChron;
+    state.assistant.chronological = replayChron;
     renderDashboardMetrics(latest, prev);
     renderDashboardSparkline(renderChron);
     renderDashboardHealthTrend(renderChron);
     renderRecentTransitionsTimeline(renderChron);
     renderEvidencePanel(latest);
+    wireRiskProgressionControls(paint);
     bindDashboardSparklineInteractions();
     wireAssistantChat();
     state.relationshipGraph.frames = buildRelationshipGraphFrames(state.dashboardRecent);

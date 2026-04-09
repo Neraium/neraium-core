@@ -6554,10 +6554,12 @@ button.secondary,
 /* Dashboard readability normalization: keep dark surfaces with legible operator text. */
 :root {
   --dashboard-text-primary: #f2f6ff;
-  --dashboard-text-secondary: #cedcf6;
-  --dashboard-text-muted: #aebfe0;
+  --dashboard-text-secondary: #d8e5ff;
+  --dashboard-text-muted: #c1d0ed;
   --dashboard-text-alert: #ffd7b3;
   --dashboard-text-risk: #ffb9c8;
+  --dashboard-panel-surface: linear-gradient(180deg, rgba(20, 32, 63, 0.95), rgba(12, 22, 44, 0.95));
+  --dashboard-panel-border: rgba(129, 153, 211, 0.44);
 }
 
 .page-dashboard,
@@ -6576,6 +6578,7 @@ button.secondary,
 .page-dashboard .assistant-context-hint,
 .page-dashboard .timeline-item span,
 .page-dashboard .snapshot-item p,
+.page-dashboard .snapshot-item strong,
 .page-dashboard #recommendationRationale,
 .page-dashboard #metricOperatorMessage,
 .page-dashboard #dashboardAlertSummary,
@@ -6585,6 +6588,13 @@ button.secondary,
 .page-dashboard #relationshipGraphTimeLabel,
 .page-dashboard #relationshipGraphDetailBody {
   color: var(--dashboard-text-secondary);
+}
+
+.page-dashboard .panel-header h3,
+.page-dashboard .operator-section h3,
+.page-dashboard .assistant-panel h3,
+.page-dashboard .explanation-panel h3 {
+  color: var(--dashboard-text-primary);
 }
 
 .page-dashboard .snapshot-recommendation,
@@ -6613,8 +6623,50 @@ button.secondary,
 .page-dashboard .snapshot-item,
 .page-dashboard .assistant-response-grid > article,
 .page-dashboard .timeline-item {
-  background: linear-gradient(180deg, rgba(20, 32, 63, 0.95), rgba(12, 22, 44, 0.95));
-  border-color: rgba(129, 153, 211, 0.44);
+  background: var(--dashboard-panel-surface);
+  border-color: var(--dashboard-panel-border);
+}
+
+.page-dashboard .risk-stage {
+  border: 1px solid rgba(118, 143, 204, 0.55);
+  background: rgba(15, 28, 58, 0.92);
+  color: #d9e6ff;
+  cursor: pointer;
+  transition: border-color 120ms ease, background-color 120ms ease, color 120ms ease, transform 120ms ease;
+}
+
+.page-dashboard .risk-stage:hover,
+.page-dashboard .risk-stage:focus-visible {
+  border-color: #8cafef;
+  background: rgba(23, 40, 80, 0.98);
+  color: #f5f8ff;
+  transform: translateY(-1px);
+}
+
+.page-dashboard .risk-stage.active {
+  border-color: #8cafef;
+  color: #f2f6ff;
+  background: linear-gradient(180deg, rgba(39, 64, 118, 0.98), rgba(24, 44, 84, 0.98));
+}
+
+.page-dashboard .risk-stage.selected,
+.page-dashboard .risk-stage[aria-pressed="true"] {
+  border-color: #a7c4ff;
+  color: #ffffff;
+  background: linear-gradient(180deg, rgba(70, 106, 182, 0.98), rgba(44, 74, 132, 0.98));
+  box-shadow: 0 0 0 1px rgba(182, 205, 255, 0.33);
+}
+
+.page-dashboard .risk-filter-status {
+  margin-top: -2px;
+  margin-bottom: 10px;
+  color: var(--dashboard-text-muted);
+  font-size: 0.8rem;
+}
+
+.page-dashboard details > summary,
+.page-dashboard .metric-k {
+  color: var(--dashboard-text-secondary);
 }
 
 .page-dashboard .status-warning,
