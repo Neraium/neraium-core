@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import time
+
 import pytest
 
 pytest.importorskip("httpx")
@@ -225,3 +227,52 @@ def test_onboarding_verify_rejects_invalid_api_key(tmp_path, monkeypatch) -> Non
             json={"customer_id": "cust-x", "api_key": "wrong"},
         )
     assert response.status_code == 401
+
+
+def test_results_recent_returns_empty_fast_when_fetch_blocks(tmp_path, monkeypatch) -> None:
+    service = _build_service(tmp_path)
+    client = TestClient(create_app(service=service))
+
+    def _blocking_list_recent_results(*args, **kwargs):
+        time.sleep(1.0)
+        return [{"timestamp": "2026-01-01T00:00:00+00:00"}]
+
+    monkeypatch.setattr(service, "list_recent_results", _blocking_list_recent_results)
+
+    started = time.perf_counter()
+    response = client.get(_customer_path("/results/recent?limit=5", customer_id="customer-a"))
+    elapsed_ms = (time.perf_counter() - started) * 1000.0
+
+    assert response.status_code == 200
+    assert elapsed_ms < 900.0
+    body = response.json()
+    assert body["latest"] is None
+    assert body["count"] == 0
+    assert body["results"] == []
+
+
+def test_results_recent_with_run_id_does_not_resolve_active_run(tmp_path, monkeypatch) -> None:
+    service = _build_service(tmp_path)
+    client = TestClient(create_app(service=service))
+    run_id = "run-explicit"
+
+    def _fail_if_active_run_used(*args, **kwargs):
+        raise AssertionError("active run lookup should not happen when run_id is provided")
+
+    captured: dict[str, str | None] = {"run_id": None}
+
+    def _capture_list_recent_results(limit, *, run_id=None, customer_id=None, site_id=None):
+        captured["run_id"] = run_id
+        return []
+
+    monkeypatch.setattr(service, "get_active_run", _fail_if_active_run_used)
+    monkeypatch.setattr(service, "list_recent_results", _capture_list_recent_results)
+
+    response = client.get(_customer_path(f"/results/recent?run_id={run_id}&limit=5", customer_id="customer-a"))
+
+    assert response.status_code == 200
+    assert captured["run_id"] == run_id
+    body = response.json()
+    assert body["latest"] is None
+    assert body["count"] == 0
+    assert body["results"] == []
