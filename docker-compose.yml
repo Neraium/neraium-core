@@ -11,6 +11,7 @@ services:
     environment:
       HOST: 0.0.0.0
       PORT: 8000
+      NERAIUM_RUNTIME_MODE: ${NERAIUM_RUNTIME_MODE:-production}
       NERAIUM_LOG_LEVEL: ${NERAIUM_LOG_LEVEL:-INFO}
       NERAIUM_DB_PATH: /data/neraium.db
       NERAIUM_INTEGRATION_CONFIG_PATH: /config/integration.json

@@ -23,6 +23,8 @@ run:
       value: "1"
     - name: NERAIUM_LOG_LEVEL
       value: INFO
+    - name: NERAIUM_RUNTIME_MODE
+      value: production
     # Default request and parser caps used by apps/api/main.py
     - name: NERAIUM_MAX_REQUEST_BODY_BYTES
       value: "52428800"

@@ -21,7 +21,7 @@ REQUIRED_HEALTH_FIELDS = (
 )
 
 DASHBOARD_MARKERS = (
-    "Operational Snapshot",
+    "Operator command summary",
     "Neraium",
 )
 

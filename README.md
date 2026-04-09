@@ -48,6 +48,9 @@ Runbook:
 AWS App Runner deployment (source repository):
 → **[docs/AWS_APP_RUNNER.md](docs/AWS_APP_RUNNER.md)**
 
+Production deployment/readiness quick guide:
+→ **[docs/PRODUCTION_READINESS.md](docs/PRODUCTION_READINESS.md)**
+
 ---
 
 ## Deployment constraints
