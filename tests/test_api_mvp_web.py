@@ -283,6 +283,41 @@ def test_grow_op_demo_start_warm_loads_initial_results(tmp_path) -> None:
     assert int(payload.get("total_frames") or 0) >= int(payload.get("warm_start_frames") or 0)
 
 
+def test_grow_op_demo_start_warm_start_failure_includes_run_and_job_ids(tmp_path) -> None:
+    store = ResultStore(db_path=str(tmp_path / "test_mvp.db"))
+    engine = StructuralEngine(baseline_window=5, recent_window=3)
+    service = StructuralMonitoringService(engine=engine, store=store)
+    client = TestClient(create_app(service=service))
+    original_ingest_batch = service.ingest_batch
+
+    def _failing_ingest_batch(payload_rows, *, run_id, customer_id):  # noqa: ANN001
+        raise RuntimeError("simulated warm-start failure")
+
+    service.ingest_batch = _failing_ingest_batch
+    try:
+        started = client.post(_customer_path("/demo/grow-op/start", customer_id="customer-a"))
+    finally:
+        service.ingest_batch = original_ingest_batch
+
+    assert started.status_code == 500
+    payload = started.json()
+    assert payload.get("type") == "demo_grow_op_warm_start_failed"
+    issues = payload.get("issue_details") or []
+    issue_map = {str(item.get("code") or ""): item for item in issues if isinstance(item, dict)}
+    run_id = str((issue_map.get("run_already_created") or {}).get("run_id") or "")
+    job_id = str((issue_map.get("demo_job_created") or {}).get("job_id") or "")
+    assert run_id
+    assert job_id
+    assert str(payload.get("message") or "").startswith("Failed to start grow-op demo ingest:")
+    assert "already created and activated" in str(payload.get("actionable_detail") or "")
+
+    status = client.get(_customer_path(f"/demo/seed/status?job_id={job_id}", customer_id="customer-a"))
+    assert status.status_code == 200
+    status_payload = status.json()
+    assert status_payload["status"] == "error"
+    assert status_payload["run_id"] == run_id
+
+
 def test_demo_start_aliases_route_to_real_seed_flow(tmp_path) -> None:
     _ = _client(tmp_path)
     source = Path("apps/api/routers/demo.py").read_text(encoding="utf-8")
