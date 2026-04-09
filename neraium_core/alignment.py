@@ -106,9 +106,14 @@ TRANSITION_SUSTAINED_THRESHOLD = 1.15
 # Calibrate alert thresholds from early nominal scores to reduce false positives
 # and prevent early single-sample spikes from triggering alerts.
 MIN_BASELINE_SAMPLES_FOR_CALIBRATION = 28
-ALERT_PERSISTENCE_WINDOW = 3
-MIN_CONSECUTIVE_WATCH = 2
-MIN_CONSECUTIVE_ALERT = 2
+DEFAULT_DRIFT_SMOOTHING_WINDOW = 25
+DEFAULT_WATCH_QUANTILE = 0.65
+DEFAULT_ALERT_QUANTILE = 0.85
+DEFAULT_WATCH_PERSISTENCE = 5
+DEFAULT_ALERT_PERSISTENCE = 3
+DEFAULT_FAST_TRIGGER_MULTIPLIER = 1.25
+DEFAULT_ALERT_LATCH_ENABLED = True
+DEFAULT_UNLATCH_RATIO = 0.75
 
 
 def _to_epoch_seconds(value: object) -> float:
@@ -199,6 +204,16 @@ class StructuralEngine:
         context_diagnostics_enabled: bool = True,
         feature_weights: dict[str, float] | None = None,
         frame_debug: bool = False,
+        drift_smoothing_window: int = DEFAULT_DRIFT_SMOOTHING_WINDOW,
+        watch_quantile: float = DEFAULT_WATCH_QUANTILE,
+        alert_quantile: float = DEFAULT_ALERT_QUANTILE,
+        watch_persistence: int = DEFAULT_WATCH_PERSISTENCE,
+        alert_persistence: int = DEFAULT_ALERT_PERSISTENCE,
+        fast_trigger_multiplier: float = DEFAULT_FAST_TRIGGER_MULTIPLIER,
+        alert_latch_enabled: bool = DEFAULT_ALERT_LATCH_ENABLED,
+        unlatch_ratio: float = DEFAULT_UNLATCH_RATIO,
+        drift_threshold_quantiles: tuple[float, float] | None = None,
+        drift_persistence_length: int | None = None,
     ):
         self.baseline_window = baseline_window
         self.recent_window = recent_window
@@ -275,11 +290,47 @@ class StructuralEngine:
         )
         self.geometry_layer = StatisticalGeometryLayer(max_history=384, graph_window=24, stats_window=16)
         self._frame_debug: bool = _effective_frame_debug(frame_debug)
+        if drift_smoothing_window < 1:
+            raise ValueError("drift_smoothing_window must be >= 1")
+        if drift_threshold_quantiles is not None:
+            watch_quantile, alert_quantile = drift_threshold_quantiles
+        if drift_persistence_length is not None:
+            watch_persistence = int(drift_persistence_length)
+        if watch_persistence < 1:
+            raise ValueError("watch_persistence must be >= 1")
+        if alert_persistence < 1:
+            raise ValueError("alert_persistence must be >= 1")
+        if fast_trigger_multiplier <= 1.0:
+            raise ValueError("fast_trigger_multiplier must be > 1.0")
+        if not (0.0 < unlatch_ratio < 1.0):
+            raise ValueError("unlatch_ratio must be in (0, 1)")
+        watch_q, alert_q = float(watch_quantile), float(alert_quantile)
+        if not (0.0 < float(watch_q) < 1.0) or not (0.0 < float(alert_q) < 1.0):
+            raise ValueError("watch_quantile/alert_quantile must be in (0, 1)")
+        if float(watch_q) >= float(alert_q):
+            raise ValueError("watch_quantile must be < alert_quantile")
+        self.drift_smoothing_window = int(drift_smoothing_window)
+        self.watch_quantile = float(watch_q)
+        self.alert_quantile = float(alert_q)
+        self.drift_threshold_quantiles = (self.watch_quantile, self.alert_quantile)
+        self.watch_persistence = int(watch_persistence)
+        self.alert_persistence = int(alert_persistence)
+        self.drift_persistence_length = self.watch_persistence
+        self.fast_trigger_multiplier = float(fast_trigger_multiplier)
+        self.alert_latch_enabled = bool(alert_latch_enabled)
+        self.unlatch_ratio = float(unlatch_ratio)
 
         # Drift-score threshold calibration (watch/alert).
         self._drift_score_history: deque[float] = deque(maxlen=120)
+        self._drift_smooth_history: deque[float] = deque(maxlen=120)
         self._baseline_drift_score_samples: deque[float] = deque(maxlen=256)
         self._drift_watch_alert_thresholds: tuple[float, float] | None = None
+        self._drift_smoothing_buffer: deque[float] = deque(maxlen=self.drift_smoothing_window)
+        self._drift_smoothing_sum: float = 0.0
+        self._watch_counter: int = 0
+        self._alert_counter: int = 0
+        self._alert_latched: bool = False
+        self._current_alert_state: str = "STABLE"
 
         # Composite-score threshold calibration for decision-layer emission.
         self._baseline_composite_score_samples: deque[float] = deque(maxlen=256)
@@ -338,6 +389,13 @@ class StructuralEngine:
         self._composite_watch_alert_thresholds = None
         self._baseline_drift_score_samples.clear()
         self._baseline_composite_score_samples.clear()
+        self._drift_smooth_history.clear()
+        self._drift_smoothing_buffer.clear()
+        self._drift_smoothing_sum = 0.0
+        self._watch_counter = 0
+        self._alert_counter = 0
+        self._alert_latched = False
+        self._current_alert_state = "STABLE"
         self._last_corr_recent = None
         self._transition_pressure_ema = 0.0
         self._low_transition_activity_streak = 0
@@ -396,6 +454,7 @@ class StructuralEngine:
         self._adjacency_history.clear()
         self._dominant_mode_history.clear()
         self._drift_score_history.clear()
+        self._drift_smooth_history.clear()
         self._shock_activity_history.clear()
         self._structural_drift_history.clear()
         self._episode_history = []
@@ -422,8 +481,13 @@ class StructuralEngine:
             "state_history": list(self._state_history),
             "transition_pressure_history": list(self._transition_pressure_history),
             "drift_score_history": list(self._drift_score_history),
+            "drift_smooth_history": list(self._drift_smooth_history),
             "shock_activity_history": list(self._shock_activity_history),
             "structural_drift_history": list(self._structural_drift_history),
+            "watch_counter": int(self._watch_counter),
+            "alert_counter": int(self._alert_counter),
+            "alert_latched": bool(self._alert_latched),
+            "current_alert_state": self._current_alert_state,
             "rolling_baseline_corr": self._rolling_baseline_corr.tolist() if isinstance(self._rolling_baseline_corr, np.ndarray) else None,
             "stable_manifold_corr": self._stable_manifold_corr.tolist() if isinstance(self._stable_manifold_corr, np.ndarray) else None,
             "baseline_locked": bool(self.baseline_locked),
@@ -441,8 +505,18 @@ class StructuralEngine:
         self._state_history = deque(list(state.get("state_history", [])), maxlen=CLASSIFICATION_STABILITY_WINDOW)
         self._transition_pressure_history = deque(list(state.get("transition_pressure_history", [])), maxlen=TRANSITION_MEMORY_WINDOW)
         self._drift_score_history = deque(list(state.get("drift_score_history", [])), maxlen=120)
+        self._drift_smooth_history = deque(list(state.get("drift_smooth_history", [])), maxlen=120)
         self._shock_activity_history = deque(list(state.get("shock_activity_history", [])), maxlen=TRANSITION_MEMORY_WINDOW)
         self._structural_drift_history = deque(list(state.get("structural_drift_history", [])), maxlen=TRANSITION_MEMORY_WINDOW)
+        self._watch_counter = int(state.get("watch_counter", 0))
+        self._alert_counter = int(state.get("alert_counter", 0))
+        self._alert_latched = bool(state.get("alert_latched", False))
+        self._current_alert_state = str(state.get("current_alert_state", "STABLE"))
+        self._drift_smoothing_buffer.clear()
+        self._drift_smoothing_sum = 0.0
+        for value in list(self._drift_score_history)[-self.drift_smoothing_window :]:
+            self._drift_smoothing_buffer.append(float(value))
+            self._drift_smoothing_sum += float(value)
         rbc = state.get("rolling_baseline_corr")
         smc = state.get("stable_manifold_corr")
         self._rolling_baseline_corr = np.asarray(rbc, dtype=float) if isinstance(rbc, list) else None
@@ -707,37 +781,67 @@ class StructuralEngine:
         health += stability_score * 20.0
         return int(round(max(0.0, min(100.0, health))))
 
-    def _alert_state(self, drift_score: float) -> str:
+    def _update_drift_state_machine(self, drift_score: float) -> tuple[str, float]:
+        # O(1) rolling mean for drift smoothing to avoid frame-level overhead.
+        raw = float(drift_score)
+        if self._drift_smoothing_buffer.maxlen is None or len(self._drift_smoothing_buffer) < self._drift_smoothing_buffer.maxlen:
+            self._drift_smoothing_buffer.append(raw)
+            self._drift_smoothing_sum += raw
+        else:
+            dropped = float(self._drift_smoothing_buffer.popleft())
+            self._drift_smoothing_sum -= dropped
+            self._drift_smoothing_buffer.append(raw)
+            self._drift_smoothing_sum += raw
+
+        smooth = raw
+        if self._drift_smoothing_buffer:
+            smooth = float(self._drift_smoothing_sum / len(self._drift_smoothing_buffer))
+        self._drift_smooth_history.append(smooth)
+
         # Until we have nominal calibration samples, suppress early alerts
         # to avoid false positives driven by unstable correlation estimates.
         if self._drift_watch_alert_thresholds is None:
-            return "STABLE"
+            self._current_alert_state = "STABLE"
+            return self._current_alert_state, smooth
 
         watch_thr, alert_thr = self._drift_watch_alert_thresholds
+        if smooth > alert_thr:
+            self._alert_counter += 1
+        else:
+            self._alert_counter = max(0, self._alert_counter - 1)
 
-        # Persistence requirement: require consecutive drift-score elevations.
-        window = list(self._drift_score_history)[-ALERT_PERSISTENCE_WINDOW:]
-        consec_watch = 0
-        consec_alert = 0
-        for v in reversed(window):
-            # Use strict comparison to avoid borderline numerical equality
-            # (e.g. calibrated nominal drift floors).
-            if v > alert_thr:
-                consec_alert += 1
-                consec_watch += 1
-            elif v > watch_thr:
-                consec_watch += 1
-            else:
-                break
+        if smooth > watch_thr:
+            self._watch_counter += 1
+        else:
+            self._watch_counter = max(0, self._watch_counter - 1)
 
-        if consec_alert >= MIN_CONSECUTIVE_ALERT:
-            return "ALERT"
-        if consec_watch >= MIN_CONSECUTIVE_WATCH:
-            return "WATCH"
-        return "STABLE"
+        if self._alert_counter >= self.alert_persistence:
+            self._alert_latched = True
+        if smooth > (alert_thr * self.fast_trigger_multiplier):
+            self._alert_latched = True
+            self._alert_counter = max(self._alert_counter, self.alert_persistence)
+        if not self.alert_latch_enabled and smooth <= alert_thr:
+            self._alert_latched = False
+
+        if self._alert_latched and smooth < (watch_thr * self.unlatch_ratio):
+            self._alert_latched = False
+            self._alert_counter = 0
+
+        if self._alert_latched:
+            self._current_alert_state = "ALERT"
+        elif self._alert_counter >= self.alert_persistence:
+            self._current_alert_state = "ALERT"
+        elif self._watch_counter >= self.watch_persistence:
+            self._current_alert_state = "WATCH"
+        else:
+            self._current_alert_state = "STABLE"
+        return self._current_alert_state, smooth
+
+    def _alert_state(self, drift_score: float) -> str:
+        return self._current_alert_state
 
     def _drift_alert(self, drift_score: float) -> bool:
-        return self._alert_state(drift_score) == "ALERT"
+        return self._current_alert_state == "ALERT"
 
     @staticmethod
     def _clamp01(value: float) -> float:
@@ -1325,7 +1429,12 @@ class StructuralEngine:
             "site_id": frame["site_id"],
             "asset_id": frame["asset_id"],
             "state": "STABLE",
+            "policy_state": "STABLE",
+            "policy_watch": False,
+            "policy_alert": False,
             "structural_drift_score": 0.0,
+            "structural_drift_score_smoothed": 0.0,
+            "drift_smooth": 0.0,
             "relational_stability_score": 1.0,
             "system_health": 100,
             "drift_alert": False,
@@ -1334,6 +1443,9 @@ class StructuralEngine:
             "regime_distance": None,
             "regime_drift": 0.0,
             "latest_drift": 0.0,
+            "latest_drift_smoothed": 0.0,
+            "watch_threshold": None,
+            "alert_threshold": None,
             "latest_instability": 0.0,
             "relational_instability_score": 0.0,
             "temporal_distortion_score": 0.0,
@@ -1527,11 +1639,12 @@ class StructuralEngine:
                 if self._drift_watch_alert_thresholds is None:
                     self._baseline_drift_score_samples.append(drift_score)
                     if len(self._baseline_drift_score_samples) >= MIN_BASELINE_SAMPLES_FOR_CALIBRATION:
-                        watch_thr = float(np.percentile(list(self._baseline_drift_score_samples), 82.0))
-                        alert_thr = float(np.percentile(list(self._baseline_drift_score_samples), 93.5))
+                        watch_thr = float(np.quantile(list(self._baseline_drift_score_samples), self.watch_quantile))
+                        alert_thr = float(np.quantile(list(self._baseline_drift_score_samples), self.alert_quantile))
                         if alert_thr < watch_thr:
                             watch_thr, alert_thr = alert_thr, watch_thr
                         self._drift_watch_alert_thresholds = (watch_thr, alert_thr)
+                alert_state, smoothed_drift_score = self._update_drift_state_machine(drift_score)
                 rel_delta_legacy = flatten_upper_tri(corr_recent) - flatten_upper_tri(baseline_corr_used)
                 relational_raw = float(np.mean(np.abs(rel_delta_legacy))) if rel_delta_legacy.size else 0.0
                 relational_raw = max(relational_raw, stage_relational_raw, 0.5 * stage_structural_raw)
@@ -1679,20 +1792,36 @@ class StructuralEngine:
                 result.update(
                     {
                         "structural_drift_score": round(drift_score, 4),
+                        "structural_drift_score_smoothed": round(float(smoothed_drift_score), 4),
+                        "drift_smooth": round(float(smoothed_drift_score), 4),
                         "relational_stability_score": round(stability_score, 4),
                         "system_health": self._system_health(drift_score, stability_score),
-                        "state": self._alert_state(drift_score),
-                        "drift_alert": self._drift_alert(drift_score),
+                        # Backward-compat precedence: `state` intentionally reflects
+                        # policy state so existing consumers stay single-field.
+                        "state": alert_state,
+                        "drift_alert": alert_state == "ALERT",
+                        "policy_state": alert_state,
+                        "policy_watch": alert_state == "WATCH",
+                        "policy_alert": alert_state == "ALERT",
                         "regime_name": regime_name,
                         "regime_distance": round(regime_distance, 4) if regime_distance is not None else None,
                         "regime_drift": round(float(regime_drift), 4),
                         "latest_drift": round(float(drift_score), 4),
+                        "latest_drift_smoothed": round(float(smoothed_drift_score), 4),
                         "baseline_mode": baseline_mode,
                         "context_dominance_score": round(float(rep.diagnostics.get("context_dominance_score", 0.0)), 4),
                         "dynamic_signal_strength": round(float(rep.diagnostics.get("dynamic_signal_strength", 0.0)), 4),
                         "early_separation_flag": bool(rep.diagnostics.get("early_separation_flag", False)),
                     }
                 )
+                if self._drift_watch_alert_thresholds is not None:
+                    watch_thr, alert_thr = self._drift_watch_alert_thresholds
+                    result["drift_thresholds"] = {
+                        "watch": round(float(watch_thr), 6),
+                        "alert": round(float(alert_thr), 6),
+                    }
+                    result["watch_threshold"] = round(float(watch_thr), 6)
+                    result["alert_threshold"] = round(float(alert_thr), 6)
                 regime_memory_state = {
                     "regime_name": regime_name,
                     "library_size": len(self.regime_signatures),
@@ -2678,25 +2807,11 @@ class StructuralEngine:
                 graph = analytics.get("graph")
                 causal_graph = analytics.get("causal_graph")
 
-                drift_score_tail = list(self._drift_score_history)[-ALERT_PERSISTENCE_WINDOW:]
-                consec_watch = 0
-                consec_alert = 0
-                if isinstance(drift_thr, tuple) and len(drift_thr) == 2:
-                    watch_thr, alert_thr = drift_thr
-                    for v in reversed(drift_score_tail):
-                        if v > alert_thr:
-                            consec_alert += 1
-                            consec_watch += 1
-                        elif v > watch_thr:
-                            consec_watch += 1
-                        else:
-                            break
-
                 print(
                     "[NERAIUM_DEBUG_SII_VERBOSE]"
                     f" state={result.get('state')} drift_score={float(result.get('latest_drift', 0.0)):.6g}"
                     f" drift_thr={drift_thr}"
-                    f" drift_persist=(watch={consec_watch}, alert={consec_alert})"
+                    f" drift_persist=(watch={self._watch_counter}, alert={self._alert_counter}, latched={self._alert_latched})"
                     f" composite={float(result.get('latest_instability', 0.0)):.6g}"
                     f" comp_thr={comp_thr}"
                     f" signal_emitted={result.get('signal_emitted', None)}"
