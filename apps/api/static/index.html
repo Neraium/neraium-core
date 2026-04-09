@@ -755,13 +755,34 @@
         <section id="page-validation" class="page hidden">
           <section class="panel validation-hero" aria-label="Historical validation workspace">
             <div class="panel-header">
-              <h3>Validation replay</h3>
+              <h3>System replay (historical proof)</h3>
             </div>
-            <p class="subtitle">Secondary setup workflow for your greenhouse demo replay. Core operations stay in Monitor risk, Upload telemetry, and Investigate run.</p>
+            <p class="subtitle">Upload or select historical CSV data, replay it through the current analysis pipeline, and produce an operator-facing 24-hour proof summary.</p>
+            <div class="validation-replay-config">
+              <label>
+                Replay run
+                <select id="historicalReplayRunSelect"></select>
+              </label>
+              <button id="historicalReplayCreateRunBtn" type="button" class="secondary">Create replay run</button>
+            </div>
+            <div class="validation-replay-inputs">
+              <label>
+                Select historical CSV
+                <select id="historicalCsvSelect"></select>
+              </label>
+              <button id="loadHistoricalCsvBtn" type="button" class="secondary">Load selected CSV</button>
+            </div>
+            <div class="validation-replay-upload">
+              <label for="historicalCsvFileInput">Or upload CSV file</label>
+              <input id="historicalCsvFileInput" type="file" accept=".csv,text/csv" />
+              <p id="historicalCsvFileLabel" class="subtitle">No file selected.</p>
+            </div>
             <div class="control-stack" role="group" aria-label="Validation actions">
+              <button id="historicalReplayStartBtn" type="button">Run historical replay</button>
               <button id="seedDemoBtn" type="button" class="secondary demo-primary-btn">Start Greenhouse Demo Replay</button>
               <a class="button-link secondary" href="/app/runs">Open Investigate run</a>
             </div>
+            <div id="historicalReplayStatus" class="status hidden" aria-live="polite"></div>
             <div id="demoProgressPanel" class="demo-progress-panel hidden" aria-live="polite">
               <div class="demo-progress-head">
                 <span id="demoProgressPhase">Initializing validation run</span>
@@ -769,6 +790,29 @@
               </div>
               <div class="demo-progress-track"><div id="demoProgressFill" class="demo-progress-fill"></div></div>
               <p id="demoProgressText" class="subtitle">Waiting for validation ingest.</p>
+            </div>
+          </section>
+          <section id="historicalReplayResults" class="panel hidden" aria-label="System replay findings">
+            <div class="panel-header"><h3>Replay results</h3></div>
+            <div id="historicalReplaySummary" class="historical-summary-grid"></div>
+            <div class="historical-results-grid">
+              <article class="historical-results-card">
+                <h4>System / asset context</h4>
+                <div id="historicalContext" class="summary-grid"></div>
+              </article>
+              <article class="historical-results-card">
+                <h4>Drift timeline</h4>
+                <ul id="historicalDriftTimeline" class="historical-timeline-list"></ul>
+              </article>
+              <article class="historical-results-card">
+                <h4>Recent transitions & divergence points</h4>
+                <ul id="historicalTransitions" class="historical-timeline-list"></ul>
+              </article>
+              <article class="historical-results-card">
+                <h4>Explanation and operator interpretation</h4>
+                <p id="historicalExplanation" class="subtitle">Run a replay to generate interpretation.</p>
+                <p id="historicalOperatorInterpretation" class="snapshot-recommendation">No operator interpretation yet.</p>
+              </article>
             </div>
           </section>
         </section>

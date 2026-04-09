@@ -6482,3 +6482,62 @@ button.secondary,
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+
+/* --- Historical replay proof flow -------------------------------- */
+.validation-replay-config,
+.validation-replay-inputs {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) auto;
+  gap: 0.75rem;
+  align-items: end;
+  margin-top: 0.75rem;
+}
+.validation-replay-upload {
+  margin-top: 0.75rem;
+  padding: 0.75rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+.historical-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 0.75rem;
+  margin-bottom: 0.9rem;
+}
+.historical-results-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 0.85rem;
+}
+.historical-results-card {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+  padding: 0.8rem;
+}
+.historical-results-card h4 {
+  margin: 0 0 0.6rem;
+}
+.historical-timeline-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 0.4rem;
+}
+.historical-timeline-list li {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 0.5rem 0.6rem;
+  display: grid;
+  gap: 0.2rem;
+}
+.historical-timeline-list li[data-severity="critical"] {
+  border-color: #f97316;
+  background: #fff7ed;
+}
+.historical-timeline-list li[data-severity="watch"] {
+  border-color: #fde047;
+  background: #fefce8;
+}
