@@ -262,12 +262,10 @@ function renderEvidencePanel(latest) {
   const compEl = qs("#evidenceCompositeValue");
   const confEl = qs("#evidenceConfidenceValue");
   const drift = structuralDriftFromResult(latest);
-  const comp = compositeInstabilityFromResult(latest);
-  const confRaw = Number(latest?.confidence);
-  const conf = Number.isFinite(confRaw) ? confRaw : null;
-  if (driftEl) driftEl.textContent = typeof drift === "number" ? drift.toFixed(3) : "-";
-  if (compEl) compEl.textContent = typeof comp === "number" ? comp.toFixed(3) : "-";
-  if (confEl) confEl.textContent = typeof conf === "number" ? `${Math.max(0, Math.min(1, conf)).toFixed(3)}` : "-";
+  const comp = dashboardCompositeScore(latest);
+  if (driftEl) driftEl.textContent = typeof drift === "number" ? drift.toFixed(3) : "Pending next window";
+  if (compEl) compEl.textContent = typeof comp === "number" ? comp.toFixed(3) : "Pending next window";
+  if (confEl) confEl.textContent = dashboardConfidenceText(latest);
 }
 
 function buildAssistantContextPayload(latest) {
@@ -2418,6 +2416,80 @@ function noTelemetryOperationalMessage(uiTruth = null) {
   return "No data yet — start demo or upload telemetry to begin monitoring.";
 }
 
+function _normalizeSummaryTrend(value) {
+  const text = String(value || "").trim().toUpperCase();
+  if (!text || text === "-") return "";
+  if (text.includes("DESTABIL")) return "DESTABILIZING";
+  if (text.includes("WATCH") || text.includes("DRIFT") || text.includes("SHIFT")) return "WATCH";
+  if (text.includes("STABLE") || text.includes("NOMINAL") || text.includes("RECOVER")) return "STABLE";
+  return text;
+}
+
+function dashboardTrendLabel(result) {
+  const direct = _normalizeSummaryTrend(result?.trend);
+  if (direct) return direct;
+  const risk = normalizeRiskLevel(result?.risk_level);
+  const drift = structuralDriftFromResult(result);
+  const health = Number(result?.system_health);
+  if (risk === "HIGH") return "DESTABILIZING";
+  if (risk === "MEDIUM") return "WATCH";
+  if (typeof drift === "number" && Number.isFinite(drift)) {
+    if (drift >= 0.65) return "DESTABILIZING";
+    if (drift >= 0.3) return "WATCH";
+    return "STABLE";
+  }
+  if (Number.isFinite(health)) {
+    if (health <= 45) return "DESTABILIZING";
+    if (health <= 70) return "WATCH";
+    return "STABLE";
+  }
+  return "Not enough history yet";
+}
+
+function dashboardCompositeScore(result) {
+  if (!result) return null;
+  const numericCandidates = [
+    result.latest_instability,
+    result.composite_instability,
+    result.instability,
+    result.experimental_analytics?.composite_instability,
+  ];
+  for (const candidate of numericCandidates) {
+    if (typeof candidate === "number" && Number.isFinite(candidate)) return candidate;
+  }
+  if (typeof result.system_health === "number" && Number.isFinite(result.system_health)) {
+    return Math.max(0, Math.min(1, 1 - (result.system_health / 100)));
+  }
+  return null;
+}
+
+function dashboardDriftLabel(result) {
+  const drift = structuralDriftFromResult(result);
+  if (typeof drift !== "number" || !Number.isFinite(drift)) return "Pending next window";
+  if (drift >= 0.65) return "DESTABILIZING";
+  if (drift >= 0.3) return "WATCH";
+  return "STABLE";
+}
+
+function dashboardConfidenceText(result) {
+  if (!result) return "Model warming up";
+  const numeric = Number(result.confidence);
+  if (Number.isFinite(numeric)) {
+    const pct = Math.max(0, Math.min(100, Math.round(numeric * 100)));
+    return `${pct}%`;
+  }
+  const text = String(result.confidence || "").trim();
+  return text || "Model warming up";
+}
+
+function dashboardLastUpdatedText(result) {
+  const rawTs = result?.timestamp || result?.persisted_at || result?.created_at || "";
+  if (!rawTs) return "Pending next window";
+  const dt = new Date(rawTs);
+  if (Number.isNaN(dt.getTime())) return "Pending next window";
+  return dt.toLocaleString();
+}
+
 function renderOperationalSnapshot(latest) {
   const stateEl = qs("#snapshotState");
   const riskEl = qs("#snapshotRisk");
@@ -2444,16 +2516,16 @@ function renderOperationalSnapshot(latest) {
 
   const uiTruth = buildFrontendUiState(latest);
   const risk = normalizeRiskLevel(latest?.risk_level);
-  const trend = String(trendFromResult(latest) || "UNKNOWN").toUpperCase();
+  const trend = dashboardTrendLabel(latest);
   const stateText = String(latest?.state || latest?.interpreted_state || "Unknown");
   const freshness = formatFreshnessLabel(latest, uiTruth);
-  const confidenceText = freshness.label || "No telemetry timestamp yet.";
+  const confidenceText = dashboardConfidenceText(latest);
   const alertText = normalizedAlertStatusText(latest);
 
   if (stateEl) stateEl.textContent = stateText;
   if (riskEl) riskEl.textContent = risk;
   if (trendEl) trendEl.textContent = `Trend: ${trend}`;
-  if (confEl) confEl.textContent = latest ? `Source: ${confidenceText}` : confidenceText;
+  if (confEl) confEl.textContent = `Confidence: ${confidenceText}`;
   if (alertEl) alertEl.textContent = alertText;
   if (freshEl) freshEl.textContent = freshness.label;
 
@@ -2604,7 +2676,7 @@ function renderDashboardMetrics(latest, prev) {
   const recommendationConfidenceBadge = qs("#recommendationConfidenceBadge");
   const nextActionEl = qs("#dashboardNextAction");
 
-  if (metricTrend) metricTrend.textContent = toPretty(trendFromResult(latest));
+  if (metricTrend) metricTrend.textContent = dashboardTrendLabel(latest);
   if (metricRisk) metricRisk.textContent = toPretty(latest?.risk_level);
   if (metricState) metricState.textContent = toPretty(latest?.state || latest?.interpreted_state);
   const uiTruth = buildFrontendUiState(latest);
@@ -2634,15 +2706,16 @@ function renderDashboardMetrics(latest, prev) {
   renderOperationalSnapshot(latest);
   renderRiskProgression(latest);
   const driftScore = structuralDriftFromResult(latest);
+  const driftLabel = dashboardDriftLabel(latest);
   const driftEl = qs("#dashboardHealthScore");
   if (driftEl) {
-    driftEl.textContent = typeof driftScore === "number" ? driftScore.toFixed(3) : "--";
+    driftEl.textContent = typeof driftScore === "number" ? driftScore.toFixed(3) : "Pending next window";
   }
   if (healthCaption) {
     if (typeof driftScore === "number") {
-      healthCaption.textContent = driftScore >= 0.6 ? "Drift band: elevated" : driftScore >= 0.3 ? "Drift band: watch" : "Drift band: nominal";
+      healthCaption.textContent = `Drift band: ${driftLabel} · score ${driftScore.toFixed(3)}`;
     } else {
-      healthCaption.textContent = "No telemetry baseline yet";
+      healthCaption.textContent = "Not enough history yet";
     }
   }
   if (intelAnomaly) {
@@ -2660,7 +2733,7 @@ function renderDashboardMetrics(latest, prev) {
     const conf = latest ? (latest.structural_analysis_available ? 92 : 74) : 0;
     animateNumberText(intelConfidence, conf, { decimals: 0, suffix: "%" });
   }
-  if (metricStateConfidence) metricStateConfidence.textContent = formatFreshnessLabel(latest).label;
+  if (metricStateConfidence) metricStateConfidence.textContent = dashboardLastUpdatedText(latest);
   if (intelFeed) {
     const alerts = (state.dashboardAlerts || []).slice(0, 3);
     const recommendations = latest
@@ -2683,9 +2756,9 @@ function renderDashboardMetrics(latest, prev) {
   }
   if (recommendationPrimary || recommendationRationale || recommendationOperatorNote || recommendationConfidenceBadge) {
     const risk = normalizeRiskLevel(latest?.risk_level);
-    const trend = String(trendFromResult(latest) || "stable").toLowerCase();
+    const trend = dashboardTrendLabel(latest).toLowerCase();
     const operatorSummaryClean = String(operatorSummary || "No recommendation yet.");
-    const confidence = latest ? (latest.structural_analysis_available ? 92 : 74) : 0;
+    const confidence = dashboardConfidenceText(latest);
     const primaryText =
       !latest
         ? noTelemetryOperationalMessage(uiTruth)
@@ -2707,7 +2780,7 @@ function renderDashboardMetrics(latest, prev) {
     if (recommendationPrimary) recommendationPrimary.textContent = primaryText;
     if (recommendationRationale) recommendationRationale.textContent = rationaleText;
     if (recommendationOperatorNote) recommendationOperatorNote.textContent = operatorNoteText;
-    if (recommendationConfidenceBadge) recommendationConfidenceBadge.textContent = `Confidence ${confidence}%`;
+    if (recommendationConfidenceBadge) recommendationConfidenceBadge.textContent = `Confidence ${confidence}`;
     if (nextActionEl) {
       if (!latest) {
         nextActionEl.textContent = "No data yet — start demo.";
@@ -2722,11 +2795,7 @@ function renderDashboardMetrics(latest, prev) {
   }
   const lu = qs("#dashboardLastUpdated");
   if (lu) {
-    const rawTs = latest?.timestamp || latest?.persisted_at || latest?.created_at || "";
-    lu.textContent = getLastUpdateDisplay(uiTruth, rawTs);
-  }
-  if (qs("#recommendationConfidenceBadge")) {
-    qs("#recommendationConfidenceBadge").textContent = latest ? "Confidence informed by structural evidence." : "";
+    lu.textContent = dashboardLastUpdatedText(latest);
   }
 }
 
