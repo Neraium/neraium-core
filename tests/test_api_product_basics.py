@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import time
 
 import pytest
@@ -173,6 +174,72 @@ def test_recent_results_ordering_and_limit(tmp_path) -> None:
     assert body["count"] == 3
     timestamps = [item["timestamp"] for item in body["results"]]
     assert timestamps == sorted(timestamps, reverse=True)
+
+
+def test_recent_results_compact_mode_returns_expected_small_shape(tmp_path) -> None:
+    client = _build_client(tmp_path)
+
+    for i in range(7):
+        resp = client.post(
+            _customer_path("/ingest", customer_id="customer-a"),
+            json={
+                "timestamp": f"2026-01-01T00:00:{i:02d}+00:00",
+                "site_id": "site-1",
+                "asset_id": "asset-1",
+                "sensor_values": {
+                    "pressure": 50.0 + i,
+                    "flow": 20.0 + i * 0.5,
+                    "vibration": 3.0 + i * 0.2,
+                    "temperature": 65.0 + i * 0.8,
+                },
+            },
+        )
+        assert resp.status_code == 200
+
+    full_response = client.get(_customer_path("/results/recent?limit=1", customer_id="customer-a"))
+    compact_response = client.get(_customer_path("/results/recent?limit=1&compact=true", customer_id="customer-a"))
+
+    assert full_response.status_code == 200
+    assert compact_response.status_code == 200
+
+    full_body = full_response.json()
+    compact_body = compact_response.json()
+    assert full_body["count"] == 1
+    assert compact_body["count"] == 1
+
+    compact_result = compact_body["results"][0]
+    expected_fields = {
+        "timestamp",
+        "site_id",
+        "asset_id",
+        "state",
+        "regime_name",
+        "risk_level",
+        "system_health",
+        "structural_drift_score",
+        "alert",
+        "confidence",
+        "run_id",
+    }
+    assert set(compact_result.keys()) == expected_fields
+
+    excluded_heavy_fields = {
+        "sensor_values",
+        "sensor_relationships",
+        "top_hypotheses",
+        "causal_analysis",
+        "drivers",
+        "attribution",
+        "validation_plan",
+        "recommendation",
+        "explanation",
+    }
+    for field in excluded_heavy_fields:
+        assert field not in compact_result
+
+    full_size = len(json.dumps(full_body, separators=(",", ":")))
+    compact_size = len(json.dumps(compact_body, separators=(",", ":")))
+    assert compact_size < full_size * 0.5
 
 
 def test_onboarding_flow_bootstraps_run_and_test_frame(tmp_path) -> None:

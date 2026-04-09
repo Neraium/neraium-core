@@ -188,11 +188,20 @@ def _results_envelope(results: list[dict[str, Any]], latest: dict[str, Any] | No
 def _compact_result_view(result: dict[str, Any] | None) -> dict[str, Any] | None:
     if not isinstance(result, dict):
         return result
-    trimmed = dict(result)
-    # Geometry/sensor matrices are fetched from dedicated endpoints when needed.
-    for key in ("sensor_values", "sensor_relationships", "geometry"):
-        trimmed.pop(key, None)
-    return trimmed
+    compact: dict[str, Any] = {
+        "timestamp": result.get("timestamp"),
+        "site_id": result.get("site_id"),
+        "asset_id": result.get("asset_id"),
+        "state": result.get("state"),
+        "regime_name": result.get("regime_name"),
+        "risk_level": result.get("risk_level"),
+        "system_health": result.get("system_health"),
+        "structural_drift_score": result.get("structural_drift_score"),
+        "alert": result.get("alert"),
+        "confidence": result.get("confidence"),
+        "run_id": result.get("run_id"),
+    }
+    return compact
 
 
 def _utc_now_iso() -> str:
