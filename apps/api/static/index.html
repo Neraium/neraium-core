@@ -183,6 +183,11 @@
                     <div class="row wrap">
                       <button id="assistantChatSend" type="submit">Ask assistant</button>
                     </div>
+                    <div class="row wrap" id="assistantPromptChips" aria-label="Suggested prompts">
+                      <button type="button" class="secondary small" data-assistant-prompt="What changed in the last few snapshots?">What changed?</button>
+                      <button type="button" class="secondary small" data-assistant-prompt="What evidence supports the current risk level?">Why this risk?</button>
+                      <button type="button" class="secondary small" data-assistant-prompt="What should the operator do next based on current metrics?">What next?</button>
+                    </div>
                   </form>
                   <p id="assistantChatStatus" class="subtitle">Awaiting question.</p>
                   <div class="assistant-response-grid">

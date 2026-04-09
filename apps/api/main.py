@@ -932,9 +932,9 @@ def create_app(
                 )
 
         if not isinstance(latest, dict):
-            observed = ["Observed: No result is currently available for the selected asset/site context."]
-            inferred = ["Inferred: Data is insufficient to explain behavior without a current snapshot."]
-            suggested = "Suggested next step: ingest or refresh telemetry for this context, then ask again."
+            observed = ["No result is currently available for the selected asset/site context."]
+            inferred = ["Data is insufficient to explain behavior without a current snapshot."]
+            suggested = "Ingest or refresh telemetry for this context, then ask again."
             return {
                 "observed": observed,
                 "inferred": inferred,
@@ -951,6 +951,7 @@ def create_app(
 
         risk = latest.get("risk_assessment") if isinstance(latest.get("risk_assessment"), dict) else {}
         recommendation = latest.get("operational_recommendation") if isinstance(latest.get("operational_recommendation"), dict) else {}
+        rec = recommendation or {}
         session = latest.get("session") if isinstance(latest.get("session"), dict) else {}
         trend = str(risk.get("trend") or latest.get("trend") or "unknown")
         risk_level = str(risk.get("risk_level") or latest.get("risk_level") or "UNKNOWN")
@@ -990,34 +991,38 @@ def create_app(
             uncertainty = max(0.0, min(1.0, (100.0 - system_health) / 100.0))
 
         observed = [
-            f"Observed: regime={regime_name}, risk_level={risk_level}, trend={trend}.",
-            f"Observed: structural_drift_score={drift if drift is not None else 'not available'}, system_health={system_health if system_health is not None else 'not available'}, confidence_score={confidence_score if confidence_score is not None else 'not available'}.",
-            f"Observed: explanation_text={explanation_text}",
-            f"Observed: {what_changed}",
+            f"regime={regime_name}, risk_level={risk_level}, trend={trend}.",
+            f"structural_drift_score={drift if drift is not None else 'not available'}, system_health={system_health if system_health is not None else 'not available'}, confidence_score={confidence_score if confidence_score is not None else 'not available'}.",
+            f"explanation_text={explanation_text}",
+            what_changed,
         ]
         inferred = [
             (
-                "Inferred: Risk appears to be increasing in this window."
+                "Risk appears to be increasing in this window."
                 if str(trend).lower() in {"increasing", "up", "rising"}
-                else "Inferred: Risk appears stable or mixed in this window."
+                else "Risk appears stable or mixed in this window."
             ),
-            f"Inferred: uncertainty={round(float(uncertainty), 4)} (higher means less certainty).",
+            f"uncertainty={round(float(uncertainty), 4)} (higher means less certainty).",
         ]
-        suggested_next_step = (
-            "Suggested next step: follow the latest operational recommendation and verify high-drift sensors in the evidence panel."
-            if str(risk_level).upper() in {"MEDIUM", "HIGH"}
-            else "Suggested next step: continue monitoring cadence and verify no new anomalies in recent events."
-        )
+        rec_text = str(rec.get("action") or rec.get("immediate_action") or rec.get("recommendation") or "").strip()
+        normalized_risk = str(risk_level).upper()
+        if normalized_risk == "HIGH":
+            suggested_next_step = rec_text or "Follow the latest operational recommendation immediately and verify high-drift sensors in the evidence panel."
+        elif normalized_risk == "MEDIUM":
+            suggested_next_step = rec_text or "Follow the latest operational recommendation and maintain elevated monitoring cadence."
+        else:
+            suggested_next_step = "Continue monitoring cadence and verify no new anomalies in recent events."
 
-        prompt = "\n".join(
-            [
-                f"User message: {payload.message}",
-                f"Current state: regime={regime_name}, risk_level={risk_level}, trend={trend}, system_health={system_health}",
-                f"Recent trend summary: {what_changed}",
-                f"Explanation text: {explanation_text}",
-                f"Key metrics: structural_drift_score={drift}, confidence_score={confidence_score}, uncertainty={round(float(uncertainty), 4)}",
-            ]
-        )
+        provided_metrics = payload.recent_metrics_snapshot if isinstance(payload.recent_metrics_snapshot, dict) else {}
+        provided_keys = sorted(str(k) for k in provided_metrics.keys())
+        if provided_keys:
+            observed.append(
+                f"caller supplied recent_metrics_snapshot keys={', '.join(provided_keys[:12])}."
+            )
+        if isinstance(provided_metrics.get("transition_count_recent"), (int, float)):
+            inferred.append(
+                f"transition_count_recent={int(provided_metrics['transition_count_recent'])} was considered alongside stored run history."
+            )
 
         return {
             "observed": observed,
@@ -1033,7 +1038,7 @@ def create_app(
                     "site_id": requested_site or session.get("site_id"),
                     "asset_id": requested_asset or session.get("asset_id") or latest.get("asset_id"),
                 },
-                "prompt": prompt,
+                "prompt": "Grounded from current run state, recent history, and caller-provided metrics snapshot.",
                 "metrics": {
                     "structural_drift_score": drift,
                     "system_health": system_health,
