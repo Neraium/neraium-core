@@ -225,7 +225,7 @@ function renderRecentTransitionsTimeline(series) {
   if (!chron.length) {
     const li = document.createElement("li");
     li.className = "timeline-item";
-    li.textContent = "No transitions yet. Upload telemetry to populate timeline.";
+    li.textContent = "No transitions available yet. Ingest at least two telemetry snapshots to unlock transition tracking.";
     list.appendChild(li);
     return;
   }
@@ -312,15 +312,15 @@ function renderAssistantResponse(payload, statusText = "") {
     const observed = Array.isArray(payload?.observed) ? payload.observed : [];
     observedEl.innerHTML = observed.length
       ? observed.map((line) => `<li>${escapeHtml(String(line))}</li>`).join("")
-      : "<li>No observed output.</li>";
+      : "<li>No observed signals yet. Verify telemetry is flowing for this run context.</li>";
   }
   if (inferredEl) {
     const inferred = Array.isArray(payload?.inferred) ? payload.inferred : [];
     inferredEl.innerHTML = inferred.length
       ? inferred.map((line) => `<li>${escapeHtml(String(line))}</li>`).join("")
-      : "<li>No inferred output.</li>";
+      : "<li>No inference available yet from current telemetry.</li>";
   }
-  if (nextEl) nextEl.textContent = String(payload?.suggested_next_step || "No suggestion returned.");
+  if (nextEl) nextEl.textContent = String(payload?.suggested_next_step || "Hold monitoring cadence and retry after a fresh snapshot.");
   if (uncertaintyEl) {
     uncertaintyEl.textContent = Number.isFinite(Number(payload?.uncertainty))
       ? `Uncertainty: ${Number(payload.uncertainty).toFixed(4)}`
@@ -338,6 +338,13 @@ function wireAssistantChat() {
   const sendBtn = qs("#assistantChatSend");
   if (!form || !input || form.dataset.wiredAssistant === "1") return;
   form.dataset.wiredAssistant = "1";
+  const contextHint = qs("#assistantContextHint");
+  if (contextHint) {
+    const hasRun = Boolean(state.activeRun?.run_id);
+    contextHint.textContent = hasRun
+      ? `Context source: run ${state.activeRun.run_id}, selected site/asset, and latest telemetry.`
+      : "Context incomplete: no active run selected yet. Create or activate a run, then ingest telemetry.";
+  }
 
   qsa("[data-assistant-prompt]").forEach((btn) => {
     if (btn.dataset.wiredAssistantPrompt === "1") return;
@@ -353,7 +360,7 @@ function wireAssistantChat() {
     const message = String(input.value || "").trim();
     if (!message) return;
     const statusEl = qs("#assistantChatStatus");
-    if (statusEl) statusEl.textContent = "Querying grounded assistant...";
+    if (statusEl) statusEl.textContent = "Interpreting current run context...";
     if (sendBtn) sendBtn.disabled = true;
     try {
       const body = {
@@ -366,17 +373,17 @@ function wireAssistantChat() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body),
       });
-      renderAssistantResponse(response, "Assistant response grounded in latest run context.");
+      renderAssistantResponse(response, "Interpretation grounded in latest run/site/asset context.");
     } catch (err) {
       renderAssistantResponse(
         {
           observed: [],
           inferred: [String(err?.message || err || "Assistant request failed.")],
-          suggested_next_step: "Retry after telemetry refresh.",
+          suggested_next_step: "Refresh telemetry for this context, then run interpretation again.",
           uncertainty: 1.0,
           grounding: {},
         },
-        "Assistant request failed.",
+        "Interpreter request failed.",
       );
     } finally {
       if (sendBtn) sendBtn.disabled = false;
@@ -2390,7 +2397,7 @@ function normalizedAlertStatusText(latest) {
 }
 
 function noTelemetryOperationalMessage(uiTruth = null) {
-  return "No telemetry ingested yet. Upload telemetry to begin monitoring.";
+  return "No telemetry ingested yet for this run/site context. Upload telemetry to begin monitoring.";
 }
 
 function renderOperationalSnapshot(latest) {
@@ -2421,19 +2428,14 @@ function renderOperationalSnapshot(latest) {
   const risk = normalizeRiskLevel(latest?.risk_level);
   const trend = String(trendFromResult(latest) || "UNKNOWN").toUpperCase();
   const stateText = String(latest?.state || latest?.interpreted_state || "Unknown");
-  const confidenceValue = latest ? (latest.structural_analysis_available ? 92 : 74) : 0;
-  const confidenceText = !latest
-    ? "Low confidence — more telemetry needed"
-    : confidenceValue >= 85
-      ? `Confidence: ${confidenceValue}%`
-      : "Confidence: moderate";
-  const alertText = normalizedAlertStatusText(latest);
   const freshness = formatFreshnessLabel(latest, uiTruth);
+  const confidenceText = freshness.label || "No telemetry timestamp yet.";
+  const alertText = normalizedAlertStatusText(latest);
 
   if (stateEl) stateEl.textContent = stateText;
   if (riskEl) riskEl.textContent = risk;
-  if (trendEl) trendEl.textContent = trend;
-  if (confEl) confEl.textContent = confidenceText;
+  if (trendEl) trendEl.textContent = `Trend: ${trend}`;
+  if (confEl) confEl.textContent = latest ? `Source: ${confidenceText}` : confidenceText;
   if (alertEl) alertEl.textContent = alertText;
   if (freshEl) freshEl.textContent = freshness.label;
 
@@ -2613,12 +2615,17 @@ function renderDashboardMetrics(latest, prev) {
   renderDashboardHero(latest, prev);
   renderOperationalSnapshot(latest);
   renderRiskProgression(latest);
-  const score = healthScoreFromSignals(latest);
-  if (score !== null) {
-    animateNumberText(qs("#dashboardHealthScore"), score, { decimals: 0 });
-    if (healthCaption) healthCaption.textContent = `${normalizeRiskLevel(latest?.risk_level)} risk`;
-  } else if (healthCaption) {
-    healthCaption.textContent = "No active telemetry";
+  const driftScore = structuralDriftFromResult(latest);
+  const driftEl = qs("#dashboardHealthScore");
+  if (driftEl) {
+    driftEl.textContent = typeof driftScore === "number" ? driftScore.toFixed(3) : "--";
+  }
+  if (healthCaption) {
+    if (typeof driftScore === "number") {
+      healthCaption.textContent = driftScore >= 0.6 ? "Drift band: elevated" : driftScore >= 0.3 ? "Drift band: watch" : "Drift band: nominal";
+    } else {
+      healthCaption.textContent = "No telemetry baseline yet";
+    }
   }
   if (intelAnomaly) {
     const drift = structuralDriftFromResult(latest) ?? 0;
@@ -2634,10 +2641,8 @@ function renderDashboardMetrics(latest, prev) {
   if (intelConfidence) {
     const conf = latest ? (latest.structural_analysis_available ? 92 : 74) : 0;
     animateNumberText(intelConfidence, conf, { decimals: 0, suffix: "%" });
-    if (metricStateConfidence) metricStateConfidence.textContent = `${conf}%`;
-  } else if (metricStateConfidence) {
-    metricStateConfidence.textContent = "--%";
   }
+  if (metricStateConfidence) metricStateConfidence.textContent = formatFreshnessLabel(latest).label;
   if (intelFeed) {
     const alerts = (state.dashboardAlerts || []).slice(0, 3);
     const recommendations = latest

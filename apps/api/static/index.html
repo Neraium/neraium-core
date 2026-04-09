@@ -98,22 +98,22 @@
               <article class="kpi-card">
                 <p class="kpi-label">Current state</p>
                 <strong id="snapshotState" class="kpi-value">Unknown</strong>
-                <p id="snapshotAlertStatus" class="kpi-sub">Alert status clear</p>
+                <p id="snapshotAlertStatus" class="kpi-sub">Alert status: clear</p>
               </article>
               <article class="kpi-card">
                 <p class="kpi-label">Current risk</p>
                 <strong id="snapshotRisk" class="kpi-value">UNKNOWN</strong>
-                <p id="snapshotTrend" class="kpi-sub">UNKNOWN</p>
+                <p id="snapshotTrend" class="kpi-sub">Trend: unknown</p>
               </article>
               <article class="kpi-card">
-                <p class="kpi-label">System health</p>
-                <strong id="dashboardHealthScore" class="kpi-value">-</strong>
-                <p id="dashboardHealthCaption" class="kpi-sub">No active telemetry</p>
+                <p class="kpi-label">Current drift</p>
+                <strong id="dashboardHealthScore" class="kpi-value">--</strong>
+                <p id="dashboardHealthCaption" class="kpi-sub">No telemetry baseline yet</p>
               </article>
               <article class="kpi-card">
-                <p class="kpi-label">Confidence</p>
-                <strong id="metricStateConfidence" class="kpi-value">--%</strong>
-                <p id="snapshotConfidence" class="kpi-sub">Low confidence — more telemetry needed</p>
+                <p class="kpi-label">Last update</p>
+                <strong id="metricStateConfidence" class="kpi-value">--</strong>
+                <p id="snapshotConfidence" class="kpi-sub">Waiting for first telemetry snapshot</p>
               </article>
             </div>
             <svg class="hidden" viewBox="0 0 120 120" aria-hidden="true">
@@ -174,14 +174,15 @@
 
                 <section class="panel assistant-panel" aria-label="Contextual AI assistant">
                   <div class="panel-header"><h3>Neraium assistant</h3></div>
-                  <p class="subtitle">Grounded response format: observed, inferred, suggested next step.</p>
+                  <p class="subtitle">Interpreter mode: grounded output in this order — observed, inferred, suggested next step.</p>
                   <form id="assistantChatForm" class="stack">
                     <label>
-                      Ask about this run
-                      <textarea id="assistantChatInput" rows="3" maxlength="2000" placeholder="Example: What changed in the last 30 minutes and what should I do next?"></textarea>
+                      Ask about this live run
+                      <textarea id="assistantChatInput" rows="3" maxlength="2000" placeholder="Example: What changed in this run over the last 30 minutes?" aria-describedby="assistantContextHint"></textarea>
                     </label>
+                    <p id="assistantContextHint" class="subtitle assistant-context-hint">Context source: active run, selected site/asset, and the latest telemetry window.</p>
                     <div class="row wrap">
-                      <button id="assistantChatSend" type="submit">Ask assistant</button>
+                      <button id="assistantChatSend" type="submit">Interpret</button>
                     </div>
                     <div class="row wrap" id="assistantPromptChips" aria-label="Suggested prompts">
                       <button type="button" class="secondary small" data-assistant-prompt="What changed in the last few snapshots?">What changed?</button>
@@ -189,7 +190,7 @@
                       <button type="button" class="secondary small" data-assistant-prompt="What should the operator do next based on current metrics?">What next?</button>
                     </div>
                   </form>
-                  <p id="assistantChatStatus" class="subtitle">Awaiting question.</p>
+                  <p id="assistantChatStatus" class="subtitle">Awaiting operator question.</p>
                   <div class="assistant-response-grid">
                     <article>
                       <p class="insight-tile-label">Observed</p>
@@ -201,7 +202,7 @@
                     </article>
                     <article>
                       <p class="insight-tile-label">Suggested next step</p>
-                      <p id="assistantNextStep" class="insight-tile-sub">No response yet.</p>
+                      <p id="assistantNextStep" class="insight-tile-sub">No recommendation yet.</p>
                     </article>
                   </div>
                   <details>
