@@ -1994,6 +1994,59 @@ body {
   pointer-events: none;
 }
 
+.operator-state-timeline {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.timeline-item {
+  border: 1px solid #2a3f61;
+  border-left: 3px solid #4f79b5;
+  border-radius: 8px;
+  padding: 8px 10px;
+  background: rgba(9, 16, 30, 0.58);
+  color: #d9e5fb;
+}
+
+.timeline-item strong {
+  display: block;
+  font-size: 12px;
+}
+
+.timeline-item span {
+  font-size: 11px;
+  color: #a8bddf;
+}
+
+.timeline-item.watch {
+  border-left-color: #c99a43;
+}
+
+.timeline-item.critical {
+  border-left-color: #d56a6a;
+}
+
+.assistant-list {
+  margin: 0;
+  padding-left: 18px;
+  display: grid;
+  gap: 5px;
+}
+
+.assistant-grounding {
+  max-height: 230px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #0d1726;
+  color: #dbe8ff;
+  padding: 10px;
+  font-size: 12px;
+}
+
 .relationship-graph-wrap {
   position: relative;
   margin-top: 10px;

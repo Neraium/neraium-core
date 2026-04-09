@@ -145,6 +145,245 @@ function renderDashboardSparkline(series) {
   );
 }
 
+function renderDashboardHealthTrend(series) {
+  const canvas = qs("#dashboardHealthTrend");
+  if (!canvas || !canvas.getContext) return;
+  const ctx = canvas.getContext("2d");
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const cssW = canvas.clientWidth || canvas.parentElement?.clientWidth || 640;
+  const cssH = 110;
+  canvas.width = Math.floor(cssW * dpr);
+  canvas.height = Math.floor(cssH * dpr);
+  canvas.style.width = `${cssW}px`;
+  canvas.style.height = `${cssH}px`;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, cssW, cssH);
+
+  const items = Array.isArray(series) ? series : [];
+  const values = items
+    .map((row) => {
+      if (row && typeof row.system_health === "number" && Number.isFinite(row.system_health)) return row.system_health;
+      const fallback = healthScoreFromSignals(row);
+      return typeof fallback === "number" && Number.isFinite(fallback) ? fallback : null;
+    })
+    .filter((v) => typeof v === "number" && Number.isFinite(v));
+  const pad = { l: 8, r: 10, t: 16, b: 18 };
+  const innerW = cssW - pad.l - pad.r;
+  const innerH = cssH - pad.t - pad.b;
+
+  if (values.length < 2) {
+    ctx.fillStyle = "rgba(140, 164, 206, 0.55)";
+    ctx.font = "12px Inter, system-ui, sans-serif";
+    ctx.fillText("System health trend appears after more telemetry.", pad.l, pad.t + 18);
+    return;
+  }
+
+  const minY = Math.max(0, Math.min(...values) - 4);
+  const maxY = Math.min(100, Math.max(...values) + 4);
+  const span = Math.max(1, maxY - minY);
+  const step = innerW / Math.max(1, values.length - 1);
+  const xAt = (i) => pad.l + i * step;
+  const yAt = (v) => pad.t + innerH - ((v - minY) / span) * innerH;
+
+  ctx.strokeStyle = "rgba(72, 105, 150, 0.32)";
+  ctx.lineWidth = 1;
+  for (let g = 0; g <= 3; g += 1) {
+    const y = pad.t + (innerH * g) / 3;
+    ctx.beginPath();
+    ctx.moveTo(pad.l, y);
+    ctx.lineTo(pad.l + innerW, y);
+    ctx.stroke();
+  }
+
+  ctx.beginPath();
+  values.forEach((v, i) => {
+    const x = xAt(i);
+    const y = yAt(v);
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  });
+  ctx.strokeStyle = "rgba(117, 226, 187, 0.95)";
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  const last = values[values.length - 1];
+  ctx.beginPath();
+  ctx.arc(xAt(values.length - 1), yAt(last), 3.8, 0, Math.PI * 2);
+  ctx.fillStyle = "rgba(117, 226, 187, 0.95)";
+  ctx.fill();
+
+  ctx.fillStyle = "rgba(174, 226, 211, 0.92)";
+  ctx.font = "10px Inter, system-ui, sans-serif";
+  ctx.fillText("health", pad.l, 11);
+}
+
+function renderRecentTransitionsTimeline(series) {
+  const list = qs("#dashboardStateTimeline");
+  if (!list) return;
+  list.innerHTML = "";
+  const chron = Array.isArray(series) ? series : [];
+  if (!chron.length) {
+    const li = document.createElement("li");
+    li.className = "timeline-item";
+    li.textContent = "No transitions yet. Upload telemetry to populate timeline.";
+    list.appendChild(li);
+    return;
+  }
+  const latest = chron[chron.length - 1];
+  const recent = chron.slice(Math.max(0, chron.length - 8));
+  const items = [];
+  for (let i = 1; i < recent.length; i += 1) {
+    const prev = recent[i - 1];
+    const curr = recent[i];
+    const label = transitionLabel(prev, curr);
+    const sev = transitionSeverity(prev, curr);
+    const ts = curr.timestamp || curr.persisted_at || "unknown time";
+    if (label !== "No major transition" || sev !== "normal" || i === recent.length - 1) {
+      items.push({ label, sev, ts });
+    }
+  }
+  if (!items.length) {
+    items.push({
+      label: `Current state ${String(latest.state || latest.interpreted_state || "unknown")} (${normalizeRiskLevel(latest.risk_level)} risk)`,
+      sev: "normal",
+      ts: latest.timestamp || latest.persisted_at || "latest snapshot",
+    });
+  }
+  items.slice(-6).reverse().forEach((item) => {
+    const li = document.createElement("li");
+    li.className = `timeline-item ${item.sev === "critical" ? "critical" : item.sev === "watch" ? "watch" : ""}`.trim();
+    li.innerHTML = `<strong>${escapeHtml(item.label)}</strong><span>${escapeHtml(String(item.ts))}</span>`;
+    list.appendChild(li);
+  });
+}
+
+function renderEvidencePanel(latest) {
+  const driftEl = qs("#evidenceDriftValue");
+  const compEl = qs("#evidenceCompositeValue");
+  const confEl = qs("#evidenceConfidenceValue");
+  const drift = structuralDriftFromResult(latest);
+  const comp = compositeInstabilityFromResult(latest);
+  const confRaw = Number(latest?.confidence);
+  const conf = Number.isFinite(confRaw) ? confRaw : null;
+  if (driftEl) driftEl.textContent = typeof drift === "number" ? drift.toFixed(3) : "-";
+  if (compEl) compEl.textContent = typeof comp === "number" ? comp.toFixed(3) : "-";
+  if (confEl) confEl.textContent = typeof conf === "number" ? `${Math.max(0, Math.min(1, conf)).toFixed(3)}` : "-";
+}
+
+function buildAssistantContextPayload(latest) {
+  const runId = state.activeRun?.run_id || "";
+  const siteId = state.tenant.siteId || latest?.session?.site_id || latest?.site_id || "";
+  const assetId = latest?.asset_id || "";
+  return {
+    customer_id: customerIdValue(state.tenant.customerId),
+    run_id: runId,
+    site_id: siteId || null,
+    asset_id: assetId || null,
+  };
+}
+
+function buildAssistantMetricsSnapshot(chronological) {
+  const chron = Array.isArray(chronological) ? chronological : [];
+  const latest = chron.length ? chron[chron.length - 1] : null;
+  const tail = chron.slice(Math.max(0, chron.length - 10));
+  return {
+    current_state: latest ? String(latest.state || latest.interpreted_state || "unknown") : null,
+    current_risk_level: latest ? normalizeRiskLevel(latest.risk_level) : "UNKNOWN",
+    structural_drift_score: structuralDriftFromResult(latest),
+    composite_instability: compositeInstabilityFromResult(latest),
+    system_health:
+      latest && typeof latest.system_health === "number" && Number.isFinite(latest.system_health)
+        ? latest.system_health
+        : healthScoreFromSignals(latest),
+    transition_count_recent: Math.max(0, tail.length - 1),
+    recent_timestamps: tail.map((row) => row.timestamp || row.persisted_at || "").filter(Boolean),
+  };
+}
+
+function renderAssistantResponse(payload, statusText = "") {
+  const observedEl = qs("#assistantObservedList");
+  const inferredEl = qs("#assistantInferredList");
+  const nextEl = qs("#assistantNextStep");
+  const statusEl = qs("#assistantChatStatus");
+  const uncertaintyEl = qs("#assistantUncertainty");
+  const groundingEl = qs("#assistantGrounding");
+  if (statusEl && statusText) statusEl.textContent = statusText;
+  if (observedEl) {
+    const observed = Array.isArray(payload?.observed) ? payload.observed : [];
+    observedEl.innerHTML = observed.length
+      ? observed.map((line) => `<li>${escapeHtml(String(line))}</li>`).join("")
+      : "<li>No observed output.</li>";
+  }
+  if (inferredEl) {
+    const inferred = Array.isArray(payload?.inferred) ? payload.inferred : [];
+    inferredEl.innerHTML = inferred.length
+      ? inferred.map((line) => `<li>${escapeHtml(String(line))}</li>`).join("")
+      : "<li>No inferred output.</li>";
+  }
+  if (nextEl) nextEl.textContent = String(payload?.suggested_next_step || "No suggestion returned.");
+  if (uncertaintyEl) {
+    uncertaintyEl.textContent = Number.isFinite(Number(payload?.uncertainty))
+      ? `Uncertainty: ${Number(payload.uncertainty).toFixed(4)}`
+      : "Uncertainty: -";
+  }
+  if (groundingEl) {
+    const grounding = payload?.grounding && typeof payload.grounding === "object" ? payload.grounding : {};
+    groundingEl.textContent = JSON.stringify(grounding, null, 2);
+  }
+}
+
+function wireAssistantChat() {
+  const form = qs("#assistantChatForm");
+  const input = qs("#assistantChatInput");
+  const sendBtn = qs("#assistantChatSend");
+  if (!form || !input || form.dataset.wiredAssistant === "1") return;
+  form.dataset.wiredAssistant = "1";
+
+  qsa("[data-assistant-prompt]").forEach((btn) => {
+    if (btn.dataset.wiredAssistantPrompt === "1") return;
+    btn.dataset.wiredAssistantPrompt = "1";
+    btn.addEventListener("click", () => {
+      input.value = String(btn.getAttribute("data-assistant-prompt") || "");
+      input.focus();
+    });
+  });
+
+  form.addEventListener("submit", async (evt) => {
+    evt.preventDefault();
+    const message = String(input.value || "").trim();
+    if (!message) return;
+    const statusEl = qs("#assistantChatStatus");
+    if (statusEl) statusEl.textContent = "Querying grounded assistant...";
+    if (sendBtn) sendBtn.disabled = true;
+    try {
+      const body = {
+        message,
+        context: buildAssistantContextPayload(state.assistant.latest),
+        recent_metrics_snapshot: buildAssistantMetricsSnapshot(state.assistant.chronological),
+      };
+      const response = await fetchJson(apiUrl("/api/chat"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      renderAssistantResponse(response, "Assistant response grounded in latest run context.");
+    } catch (err) {
+      renderAssistantResponse(
+        {
+          observed: [],
+          inferred: [String(err?.message || err || "Assistant request failed.")],
+          suggested_next_step: "Retry after telemetry refresh.",
+          uncertainty: 1.0,
+          grounding: {},
+        },
+        "Assistant request failed.",
+      );
+    } finally {
+      if (sendBtn) sendBtn.disabled = false;
+    }
+  });
+}
+
 function bindDashboardSparklineInteractions() {
   const canvas = qs("#dashboardSparkline");
   if (!canvas || canvas.dataset.sparkBound === "1") return;
@@ -1349,6 +1588,10 @@ const state = {
     recentResultsInflight: new Map(),
   },
   runtimeDegraded: false,
+  assistant: {
+    latest: null,
+    chronological: [],
+  },
 };
 
 const TENANT_STORAGE_KEY = "neraium_customer_id";
@@ -2702,9 +2945,15 @@ async function loadDashboard() {
   const latest = chron.length ? chron[chron.length - 1] : null;
   const prev = chron.length > 1 ? chron[chron.length - 2] : null;
   const paint = () => {
+    state.assistant.latest = latest;
+    state.assistant.chronological = chron;
     renderDashboardMetrics(latest, prev);
     renderDashboardSparkline(chron);
+    renderDashboardHealthTrend(chron);
+    renderRecentTransitionsTimeline(chron);
+    renderEvidencePanel(latest);
     bindDashboardSparklineInteractions();
+    wireAssistantChat();
     state.relationshipGraph.frames = buildRelationshipGraphFrames(state.dashboardRecent);
     if (state.relationshipGraph.frameIndex >= state.relationshipGraph.frames.length) {
       state.relationshipGraph.frameIndex = Math.max(0, state.relationshipGraph.frames.length - 1);

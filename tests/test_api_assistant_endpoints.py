@@ -109,3 +109,51 @@ def test_assistant_report_export_downloads_text(tmp_path) -> None:
     assert response.status_code == 200
     assert "attachment; filename=" in response.headers.get("content-disposition", "")
     assert "Client Report" in response.text
+
+
+def test_api_chat_returns_grounded_sections(tmp_path) -> None:
+    client = _build_client(tmp_path)
+    _seed(client)
+
+    response = client.post(
+        "/api/chat",
+        json={
+            "message": "What changed and what should I do next?",
+            "context": {
+                "customer_id": "customer-a",
+                "run_id": "run-assistant",
+                "site_id": "plant-1",
+                "asset_id": "pump-9",
+            },
+            "recent_metrics_snapshot": {
+                "transition_count_recent": 2,
+                "structural_drift_score": 0.42,
+            },
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert isinstance(body.get("observed"), list)
+    assert isinstance(body.get("inferred"), list)
+    assert isinstance(body.get("suggested_next_step"), str)
+    assert body.get("suggested_next_step")
+    assert "prompt" in body.get("grounding", {})
+    assert "recent_metrics_snapshot" in body.get("grounding", {}).get("metrics", {})
+
+
+def test_api_chat_handles_missing_state(tmp_path) -> None:
+    client = _build_client(tmp_path)
+
+    response = client.post(
+        "/api/chat",
+        json={
+            "message": "Any status?",
+            "context": {"customer_id": "customer-a", "run_id": "missing-run"},
+        },
+    )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["uncertainty"] == 1.0
+    assert body["observed"][0].startswith("No result is currently available")
