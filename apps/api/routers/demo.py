@@ -366,31 +366,45 @@ def build_demo_router(*, deps: DemoRouterDependencies) -> APIRouter:
             },
         )
 
-        def _run_grow_op_seed_job() -> None:
-            preloaded = 0
-            with deps.demo_jobs_lock:
-                job = deps.demo_jobs.get(job_id)
-                if job is not None:
-                    job.update(status="running", message="Streaming grow-op demo telemetry...")
-                    job["updated_at"] = deps.utc_now_iso()
+        preloaded = 0
+        if warm_start_frames > 0:
             try:
-                if warm_start_frames > 0:
-                    seed_rows = rows[:warm_start_frames]
-                    seed_results = deps.service_instance.ingest_batch(seed_rows, run_id=run_id, customer_id=resolved_customer)
-                    preloaded = len(seed_results)
-                    with deps.demo_jobs_lock:
-                        job = deps.demo_jobs.get(job_id)
-                        if job is not None:
-                            pct = int(round((preloaded / max(1, len(rows))) * 100))
-                            job.update(
-                                status="running" if preloaded < len(rows) else "complete",
-                                progress=max(0, min(100, pct)),
-                                processed=preloaded,
-                                message="Grow-op demo telemetry warm start complete." if preloaded else "Streaming grow-op demo telemetry...",
-                                error=None,
-                            )
-                            job["updated_at"] = deps.utc_now_iso()
+                seed_rows = rows[:warm_start_frames]
+                seed_results = deps.service_instance.ingest_batch(seed_rows, run_id=run_id, customer_id=resolved_customer)
+                preloaded = len(seed_results)
+            except Exception as exc:
+                with deps.demo_jobs_lock:
+                    job = deps.demo_jobs.get(job_id)
+                    if job is not None:
+                        job.update(
+                            status="error",
+                            message="Grow-op demo warm start failed.",
+                            error=str(exc),
+                        )
+                        job["updated_at"] = deps.utc_now_iso()
+                detail = deps.summarize_exception_for_logs(exc)
+                deps.log_structured(
+                    logger,
+                    event="demo_grow_op_start_warm_start_failure",
+                    fields={"customer_id": resolved_customer, "run_id": run_id, "job_id": job_id, "error": detail},
+                    level=logging.ERROR,
+                )
+                raise HTTPException(status_code=500, detail=f"Failed to start grow-op demo ingest: {detail}") from exc
+        with deps.demo_jobs_lock:
+            job = deps.demo_jobs.get(job_id)
+            if job is not None:
+                pct = int(round((preloaded / max(1, len(rows))) * 100))
+                job.update(
+                    status="running" if preloaded < len(rows) else "complete",
+                    progress=max(0, min(100, pct)),
+                    processed=preloaded,
+                    message="Grow-op demo telemetry warm start complete." if preloaded else "Streaming grow-op demo telemetry...",
+                    error=None,
+                )
+                job["updated_at"] = deps.utc_now_iso()
 
+        def _run_grow_op_seed_job() -> None:
+            try:
                 tail_rows = rows[preloaded:]
                 if not tail_rows:
                     with deps.demo_jobs_lock:
@@ -434,7 +448,7 @@ def build_demo_router(*, deps: DemoRouterDependencies) -> APIRouter:
             "status": "started",
             "job_id": job_id,
             "run_id": run_id,
-            "processed": 0,
+            "processed": preloaded,
             "warm_start_frames": warm_start_frames,
             "total_frames": len(rows),
             "demo": "grow-op",
