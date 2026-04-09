@@ -44,6 +44,7 @@ from .middleware.correlation import RequestCorrelationIdMiddleware
 from .middleware.request_limits import MaxRequestBodySizeMiddleware
 from .schemas.alerts import AlertAcknowledgeRequest, AlertResolveRequest, AlertsEnvelope
 from .schemas.assistant import AssistantRequest, AssistantResponse, ReportRequest, ReportResponse
+from .schemas.chat import ChatRequest, ChatResponse
 from .schemas.common import (
     ActionResponse,
     CanonicalOutputResponse,
@@ -217,6 +218,49 @@ def _parse_int(value: Any, *, field_name: str) -> int:
         return int(value)
     except (TypeError, ValueError) as exc:
         raise HTTPException(status_code=400, detail=f"{field_name} must be an integer.") from exc
+
+
+def _chat_safe_float(value: Any) -> float | None:
+    try:
+        out = float(value)
+    except (TypeError, ValueError):
+        return None
+    if not math.isfinite(out):
+        return None
+    return float(out)
+
+
+def _chat_regime_name(latest: dict[str, Any]) -> str:
+    session = latest.get("session") if isinstance(latest.get("session"), dict) else {}
+    return str(
+        latest.get("regime_name")
+        or session.get("regime_name")
+        or latest.get("state")
+        or latest.get("interpreted_state")
+        or "unknown"
+    )
+
+
+def _chat_system_health(latest: dict[str, Any]) -> float | None:
+    risk = latest.get("risk_assessment") if isinstance(latest.get("risk_assessment"), dict) else {}
+    risk_level = str(risk.get("risk_level") or latest.get("risk_level") or "UNKNOWN").upper()
+    drift = _chat_safe_float(latest.get("structural_drift_score"))
+    instability = _chat_safe_float(risk.get("latest_instability"))
+    if instability is None:
+        exp = latest.get("experimental_analytics") if isinstance(latest.get("experimental_analytics"), dict) else {}
+        instability = _chat_safe_float(exp.get("composite_instability"))
+    base = 90.0
+    if risk_level == "HIGH":
+        base -= 42.0
+    elif risk_level == "MEDIUM":
+        base -= 24.0
+    elif risk_level not in {"LOW", "MEDIUM", "HIGH"}:
+        base -= 10.0
+    if drift is not None:
+        base -= min(28.0, max(0.0, drift) * 34.0)
+    if instability is not None:
+        base -= min(26.0, max(0.0, instability) * 32.0)
+    return max(0.0, min(100.0, round(base, 2)))
 
 
 def create_app(
@@ -853,6 +897,167 @@ def create_app(
             "events": list(events) if isinstance(events, list) else [],
             "cycle": state.get("cycle"),
             "timestamp": state.get("timestamp"),
+        }
+
+    @app.post("/api/chat", response_model=ChatResponse)
+    def api_chat(
+        payload: ChatRequest,
+        _: None = Depends(require_api_key),
+    ) -> dict[str, Any]:
+        req_ctx = payload.context if payload.context is not None else None
+        resolved_customer = resolve_customer_id(getattr(req_ctx, "customer_id", None))
+        requested_run = getattr(req_ctx, "run_id", None)
+        requested_site = str(getattr(req_ctx, "site_id", "") or "").strip() or None
+        requested_asset = str(getattr(req_ctx, "asset_id", "") or "").strip() or None
+        resolved_run = resolve_run_id(service_instance, requested_run, customer_id=resolved_customer)
+
+        latest = service_instance.get_latest_result(
+            run_id=resolved_run,
+            customer_id=resolved_customer,
+            site_id=requested_site,
+        )
+        history = service_instance.list_recent_results(
+            limit=30,
+            run_id=resolved_run,
+            customer_id=resolved_customer,
+            site_id=requested_site,
+        )
+
+        if isinstance(latest, dict) and requested_asset:
+            latest_asset = str(latest.get("asset_id") or "").strip()
+            if latest_asset and latest_asset != requested_asset:
+                latest = next(
+                    (row for row in history if isinstance(row, dict) and str(row.get("asset_id") or "").strip() == requested_asset),
+                    latest,
+                )
+
+        if not isinstance(latest, dict):
+            observed = ["Observed: No result is currently available for the selected asset/site context."]
+            inferred = ["Inferred: Data is insufficient to explain behavior without a current snapshot."]
+            suggested = "Suggested next step: ingest or refresh telemetry for this context, then ask again."
+            return {
+                "observed": observed,
+                "inferred": inferred,
+                "suggested_next_step": suggested,
+                "response_text": "\n".join([*observed, *inferred, suggested]),
+                "uncertainty": 1.0,
+                "grounding": {
+                    "user_message": payload.message,
+                    "context": (req_ctx.model_dump() if req_ctx is not None else {}),
+                    "prompt": "No current state available; cannot ground interpretation.",
+                    "metrics": {},
+                },
+            }
+
+        risk = latest.get("risk_assessment") if isinstance(latest.get("risk_assessment"), dict) else {}
+        recommendation = latest.get("operational_recommendation") if isinstance(latest.get("operational_recommendation"), dict) else {}
+        session = latest.get("session") if isinstance(latest.get("session"), dict) else {}
+        trend = str(risk.get("trend") or latest.get("trend") or "unknown")
+        risk_level = str(risk.get("risk_level") or latest.get("risk_level") or "UNKNOWN")
+        drift = _chat_safe_float(latest.get("structural_drift_score"))
+        instability = _chat_safe_float(risk.get("latest_instability"))
+        if instability is None:
+            exp = latest.get("experimental_analytics") if isinstance(latest.get("experimental_analytics"), dict) else {}
+            instability = _chat_safe_float(exp.get("composite_instability"))
+        system_health = _chat_system_health(latest)
+        regime_name = _chat_regime_name(latest)
+        explanation_text = str(latest.get("explanation_text") or "No explanation text available.")
+        sensor_relationships = latest.get("sensor_relationships")
+        confidence_score = _chat_safe_float(latest.get("confidence"))
+
+        history_rows = [row for row in history if isinstance(row, dict)]
+        history_oldest_to_latest = list(reversed(history_rows))
+        drift_values = [_chat_safe_float(row.get("structural_drift_score")) for row in history_oldest_to_latest]
+        drift_values = [v for v in drift_values if v is not None]
+        system_health_values = [_chat_system_health(row) for row in history_oldest_to_latest]
+        system_health_values = [v for v in system_health_values if v is not None]
+        what_changed = "Insufficient history to summarize recent change."
+        if len(drift_values) >= 2 or len(system_health_values) >= 2:
+            d_msg = "drift trend unavailable"
+            if len(drift_values) >= 2:
+                d_delta = drift_values[-1] - drift_values[0]
+                d_msg = f"drift {'increased' if d_delta > 0.01 else 'decreased' if d_delta < -0.01 else 'remained stable'} ({d_delta:+.3f})"
+            h_msg = "system health trend unavailable"
+            if len(system_health_values) >= 2:
+                h_delta = system_health_values[-1] - system_health_values[0]
+                h_msg = f"system health {'improved' if h_delta > 0.8 else 'declined' if h_delta < -0.8 else 'was stable'} ({h_delta:+.2f})"
+            what_changed = f"Recent window: {d_msg}; {h_msg}."
+
+        uncertainty = 1.0
+        if confidence_score is not None:
+            uncertainty = max(0.0, min(1.0, 1.0 - confidence_score))
+        elif system_health is not None:
+            uncertainty = max(0.0, min(1.0, (100.0 - system_health) / 100.0))
+
+        observed = [
+            f"Observed: regime={regime_name}, risk_level={risk_level}, trend={trend}.",
+            f"Observed: structural_drift_score={drift if drift is not None else 'not available'}, system_health={system_health if system_health is not None else 'not available'}, confidence_score={confidence_score if confidence_score is not None else 'not available'}.",
+            f"Observed: explanation_text={explanation_text}",
+            f"Observed: {what_changed}",
+        ]
+        inferred = [
+            (
+                "Inferred: Risk appears to be increasing in this window."
+                if str(trend).lower() in {"increasing", "up", "rising"}
+                else "Inferred: Risk appears stable or mixed in this window."
+            ),
+            f"Inferred: uncertainty={round(float(uncertainty), 4)} (higher means less certainty).",
+        ]
+        suggested_next_step = (
+            "Suggested next step: follow the latest operational recommendation and verify high-drift sensors in the evidence panel."
+            if str(risk_level).upper() in {"MEDIUM", "HIGH"}
+            else "Suggested next step: continue monitoring cadence and verify no new anomalies in recent events."
+        )
+
+        prompt = "\n".join(
+            [
+                f"User message: {payload.message}",
+                f"Current state: regime={regime_name}, risk_level={risk_level}, trend={trend}, system_health={system_health}",
+                f"Recent trend summary: {what_changed}",
+                f"Explanation text: {explanation_text}",
+                f"Key metrics: structural_drift_score={drift}, confidence_score={confidence_score}, uncertainty={round(float(uncertainty), 4)}",
+            ]
+        )
+
+        return {
+            "observed": observed,
+            "inferred": inferred,
+            "suggested_next_step": suggested_next_step,
+            "response_text": "\n".join([*observed, *inferred, suggested_next_step]),
+            "uncertainty": round(float(uncertainty), 4),
+            "grounding": {
+                "user_message": payload.message,
+                "context": {
+                    "customer_id": resolved_customer,
+                    "run_id": resolved_run,
+                    "site_id": requested_site or session.get("site_id"),
+                    "asset_id": requested_asset or session.get("asset_id") or latest.get("asset_id"),
+                },
+                "prompt": prompt,
+                "metrics": {
+                    "structural_drift_score": drift,
+                    "system_health": system_health,
+                    "regime_name": regime_name,
+                    "explanation_text": explanation_text,
+                    "sensor_relationships": sensor_relationships,
+                    "confidence_score": confidence_score,
+                    "recent_history_window": [
+                        {
+                            "timestamp": row.get("timestamp") or row.get("persisted_at"),
+                            "structural_drift_score": _chat_safe_float(row.get("structural_drift_score")),
+                            "system_health": _chat_system_health(row),
+                            "risk_level": (row.get("risk_assessment") or {}).get("risk_level") if isinstance(row.get("risk_assessment"), dict) else row.get("risk_level"),
+                        }
+                        for row in history_rows[:20]
+                    ],
+                    "recent_metrics_snapshot": payload.recent_metrics_snapshot or {},
+                },
+                "guardrails": {
+                    "no_hallucination": True,
+                    "no_invented_data": True,
+                    "explicit_uncertainty": True,
+                },
+            },
         }
 
     @app.post("/assistant/summary", response_model=AssistantResponse)
