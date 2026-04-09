@@ -389,7 +389,23 @@ def build_demo_router(*, deps: DemoRouterDependencies) -> APIRouter:
                     fields={"customer_id": resolved_customer, "run_id": run_id, "job_id": job_id, "error": detail},
                     level=logging.ERROR,
                 )
-                raise HTTPException(status_code=500, detail=f"Failed to start grow-op demo ingest: {detail}") from exc
+                raise HTTPException(
+                    status_code=500,
+                    detail={
+                        "message": f"Failed to start grow-op demo ingest: {detail}",
+                        "type": "demo_grow_op_warm_start_failed",
+                        "run_id": run_id,
+                        "job_id": job_id,
+                        "customer_id": resolved_customer,
+                        "actionable_detail": (
+                            "The run was already created and activated; use run_id/job_id to inspect status or clean up before retrying."
+                        ),
+                        "issue_details": [
+                            {"code": "run_already_created", "message": "Replay run is active despite warm-start failure.", "run_id": run_id},
+                            {"code": "demo_job_created", "message": "Seed job exists and is marked error.", "job_id": job_id},
+                        ],
+                    },
+                ) from exc
         with deps.demo_jobs_lock:
             job = deps.demo_jobs.get(job_id)
             if job is not None:
