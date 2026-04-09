@@ -93,7 +93,123 @@
             </div>
           </section>
 
-          <section class="panel smoke-glance" aria-label="Glance status">
+          <section class="panel dashboard-operator-shell" aria-label="Operator-first dashboard">
+            <div class="dashboard-kpi-strip">
+              <article class="kpi-card">
+                <p class="kpi-label">Current state</p>
+                <strong id="snapshotState" class="kpi-value">Unknown</strong>
+                <p id="snapshotAlertStatus" class="kpi-sub">Alert status clear</p>
+              </article>
+              <article class="kpi-card">
+                <p class="kpi-label">Current risk</p>
+                <strong id="snapshotRisk" class="kpi-value">UNKNOWN</strong>
+                <p id="snapshotTrend" class="kpi-sub">UNKNOWN</p>
+              </article>
+              <article class="kpi-card">
+                <p class="kpi-label">System health</p>
+                <strong id="dashboardHealthScore" class="kpi-value">-</strong>
+                <p id="dashboardHealthCaption" class="kpi-sub">No active telemetry</p>
+              </article>
+              <article class="kpi-card">
+                <p class="kpi-label">Confidence</p>
+                <strong id="metricStateConfidence" class="kpi-value">--%</strong>
+                <p id="snapshotConfidence" class="kpi-sub">Low confidence — more telemetry needed</p>
+              </article>
+            </div>
+            <svg class="hidden" viewBox="0 0 120 120" aria-hidden="true">
+              <circle id="dashboardHealthRingArc" cx="60" cy="60" r="48"></circle>
+            </svg>
+
+            <div class="dashboard-layout-grid">
+              <div class="dashboard-main-column">
+                <section class="panel operator-section" aria-label="Progression and trajectory">
+                  <div class="panel-header"><h3>Progression and trajectory</h3></div>
+                  <p class="subtitle">Track drift, instability, and inferred health in near real time.</p>
+                  <div id="dashboardRiskProgression" class="risk-progression-strip">
+                    <span class="risk-stage">LOW</span>
+                    <span class="risk-stage">MEDIUM</span>
+                    <span class="risk-stage">HIGH</span>
+                  </div>
+                  <div class="sparkline-wrap">
+                    <canvas id="dashboardSparkline" aria-label="Drift and composite instability trend"></canvas>
+                    <div id="dashboardSparklineTooltip" class="dashboard-sparkline-tooltip hidden"></div>
+                  </div>
+                  <div class="sparkline-wrap secondary-trend-wrap">
+                    <canvas id="dashboardHealthTrend" aria-label="System health trend"></canvas>
+                  </div>
+                </section>
+
+                <section class="panel operator-section" aria-label="State timeline">
+                  <div class="panel-header"><h3>State timeline</h3></div>
+                  <p id="snapshotFreshness" class="subtitle">No telemetry timestamp yet.</p>
+                  <ul id="dashboardStateTimeline" class="operator-state-timeline"></ul>
+                </section>
+
+                <section class="panel operator-section" aria-label="Supporting evidence">
+                  <div class="panel-header"><h3>Supporting metrics</h3></div>
+                  <div class="snapshot-grid" role="list">
+                    <article class="snapshot-item" role="listitem"><p>Trend</p><strong id="metricTrend">-</strong></article>
+                    <article class="snapshot-item" role="listitem"><p>Phase</p><strong id="metricPhaseBadge">-</strong></article>
+                    <article class="snapshot-item" role="listitem"><p>Risk</p><strong id="metricRiskBadge">-</strong></article>
+                    <article class="snapshot-item" role="listitem"><p>Drift</p><strong id="evidenceDriftValue">-</strong></article>
+                    <article class="snapshot-item" role="listitem"><p>Composite</p><strong id="evidenceCompositeValue">-</strong></article>
+                    <article class="snapshot-item" role="listitem"><p>Model confidence</p><strong id="evidenceConfidenceValue">-</strong></article>
+                  </div>
+                </section>
+              </div>
+
+              <aside class="dashboard-right-column">
+                <section class="panel explanation-panel" id="dashboardAlertTile" aria-label="Explanation panel">
+                  <div class="panel-header"><h3>Why the system says this</h3></div>
+                  <p id="recommendationRationale" class="subtitle">Explanation appears once telemetry is available.</p>
+                  <p id="recommendationPrimary" class="snapshot-recommendation">No recommendation available.</p>
+                  <p id="recommendationOperatorNote" class="subtitle"></p>
+                  <p id="dashboardAlertSummary" class="subtitle">No open alerts for this run.</p>
+                  <p id="snapshotRecommendation" class="snapshot-recommendation">No data yet. Upload telemetry to start monitoring.</p>
+                  <p id="metricOperatorMessage" class="subtitle">Awaiting telemetry.</p>
+                  <p id="dashboardNextAction" class="snapshot-recommendation">Upload telemetry to start active monitoring.</p>
+                  <p id="dashboardLastUpdated" class="dashboard-last-updated">No telemetry timestamp yet.</p>
+                  <p id="recommendationConfidenceBadge" class="subtitle"></p>
+                </section>
+
+                <section class="panel assistant-panel" aria-label="Contextual AI assistant">
+                  <div class="panel-header"><h3>Neraium assistant</h3></div>
+                  <p class="subtitle">Grounded response format: observed, inferred, suggested next step.</p>
+                  <form id="assistantChatForm" class="stack">
+                    <label>
+                      Ask about this run
+                      <textarea id="assistantChatInput" rows="3" maxlength="2000" placeholder="Example: What changed in the last 30 minutes and what should I do next?"></textarea>
+                    </label>
+                    <div class="row wrap">
+                      <button id="assistantChatSend" type="submit">Ask assistant</button>
+                    </div>
+                  </form>
+                  <p id="assistantChatStatus" class="subtitle">Awaiting question.</p>
+                  <div class="assistant-response-grid">
+                    <article>
+                      <p class="insight-tile-label">Observed</p>
+                      <ul id="assistantObservedList" class="assistant-list"></ul>
+                    </article>
+                    <article>
+                      <p class="insight-tile-label">Inferred</p>
+                      <ul id="assistantInferredList" class="assistant-list"></ul>
+                    </article>
+                    <article>
+                      <p class="insight-tile-label">Suggested next step</p>
+                      <p id="assistantNextStep" class="insight-tile-sub">No response yet.</p>
+                    </article>
+                  </div>
+                  <details>
+                    <summary>Grounding details</summary>
+                    <p id="assistantUncertainty" class="subtitle">Uncertainty: -</p>
+                    <pre id="assistantGrounding" class="assistant-grounding"></pre>
+                  </details>
+                </section>
+              </aside>
+            </div>
+          </section>
+
+          <section class="panel smoke-glance hidden" aria-label="Glance status">
             <p class="smoke-glance-dot" id="glanceDot" aria-hidden="true">🟢</p>
             <h3 id="glanceHeadline" class="smoke-glance-headline">ALL GOOD</h3>
             <p id="glanceSubline" class="smoke-glance-subline">No action needed now.</p>
@@ -135,7 +251,7 @@
             </div>
           </section>
 
-          <section class="panel owner-defense-log" aria-label="Owner financial summary">
+          <section class="panel owner-defense-log hidden" aria-label="Owner financial summary">
             <div class="panel-header"><h3>NERAIUM DEFENSE LOG</h3></div>
             <p class="subtitle">Las Vegas Facility · owner view</p>
             <div class="owner-metrics-grid">
@@ -146,7 +262,7 @@
             </div>
           </section>
 
-          <section class="panel operator-section" aria-label="Prediction horizon">
+          <section class="panel operator-section hidden" aria-label="Prediction horizon">
             <div class="panel-header"><h3>Facility forecast · next 7 days</h3></div>
             <p class="subtitle">Prediction updates every 15 minutes. Confidence decreases with horizon distance.</p>
             <div id="weekForecast" class="week-forecast">
@@ -170,82 +286,6 @@
                 <div class="prediction-step" data-horizon-hour="168"><span>168h</span><i></i></div>
               </div>
               <p id="predictionTimelineNote" class="subtitle">Stable for now — monitoring continuously.</p>
-            </div>
-          </section>
-
-          <section class="panel dashboard-hero operator-hero" aria-label="Operator status">
-            <div class="dashboard-hero-grid operator-hero-grid">
-              <div class="dashboard-hero-primary">
-                <p class="dashboard-hero-kicker">Operator command summary</p>
-                <div class="dashboard-hero-score-row">
-                  <div class="health-ring-wrap dashboard-hero-health-col">
-                    <svg class="health-ring" viewBox="0 0 120 120" aria-hidden="true">
-                      <circle class="health-ring-bg" cx="60" cy="60" r="48"></circle>
-                      <circle id="dashboardHealthRingArc" class="health-ring-arc" cx="60" cy="60" r="48"></circle>
-                    </svg>
-                    <div class="health-ring-label">
-                      <span id="dashboardHealthScore" class="health-ring-value">-</span>
-                      <span id="dashboardHealthCaption" class="health-ring-caption">No active telemetry</span>
-                    </div>
-                  </div>
-                  <div class="dashboard-hero-state-block">
-                    <div class="dashboard-risk-row">
-                      <p class="signal-label">Current risk</p>
-                      <p id="snapshotRisk" class="dashboard-risk-value signal-risk-inline">UNKNOWN</p>
-                    </div>
-                    <p id="snapshotTrend" class="dashboard-trend-line">UNKNOWN</p>
-                    <p id="snapshotRecommendation" class="dashboard-narrative-strip">No data yet. Upload telemetry to start monitoring.</p>
-                    <p id="metricOperatorMessage" class="dashboard-operator-line">Awaiting telemetry.</p>
-                  </div>
-                </div>
-              </div>
-              <aside class="dashboard-hero-aside">
-                <article class="insight-tile" id="dashboardAlertTile">
-                  <p class="insight-tile-label">Current system state</p>
-                  <p id="snapshotState" class="insight-tile-sub">Unknown</p>
-                  <p class="insight-tile-label">Latest operator message</p>
-                  <p id="dashboardAlertSummary" class="insight-tile-sub">No open alerts for this run.</p>
-                </article>
-                <article class="insight-tile">
-                  <p class="insight-tile-label">What to do next</p>
-                  <p id="dashboardNextAction" class="insight-tile-sub">Upload telemetry to start active monitoring.</p>
-                  <p id="dashboardLastUpdated" class="dashboard-last-updated">No telemetry timestamp yet.</p>
-                </article>
-              </aside>
-            </div>
-          </section>
-
-          <section class="panel operator-section" aria-label="Progression">
-            <div class="panel-header"><h3>Progression and trajectory</h3></div>
-            <p class="subtitle">Track how risk and instability are moving over time.</p>
-            <div id="dashboardRiskProgression" class="risk-progression-strip">
-              <span class="risk-stage">LOW</span>
-              <span class="risk-stage">MEDIUM</span>
-              <span class="risk-stage">HIGH</span>
-            </div>
-            <div class="sparkline-wrap">
-              <canvas id="dashboardSparkline" aria-label="Drift and composite instability trend"></canvas>
-              <div id="dashboardSparklineTooltip" class="dashboard-sparkline-tooltip hidden"></div>
-            </div>
-          </section>
-
-          <section class="panel operator-section" aria-label="Why this assessment">
-            <div class="panel-header"><h3>Why the system says this</h3></div>
-            <p id="recommendationRationale" class="subtitle">Explanation appears once telemetry is available.</p>
-            <details>
-              <summary>Operator guidance details</summary>
-              <p id="recommendationPrimary" class="snapshot-recommendation">No recommendation available.</p>
-              <p id="recommendationOperatorNote" class="subtitle"></p>
-            </details>
-          </section>
-
-          <section class="panel operator-section" aria-label="Metrics">
-            <div class="panel-header"><h3>Supporting metrics</h3></div>
-            <div class="snapshot-grid" role="list">
-              <article class="snapshot-item" role="listitem"><p>Trend</p><strong id="metricTrend">-</strong></article>
-              <article class="snapshot-item" role="listitem"><p>Phase</p><strong id="metricPhaseBadge">-</strong></article>
-              <article class="snapshot-item" role="listitem"><p>Risk</p><strong id="metricRiskBadge">-</strong></article>
-              <article class="snapshot-item" role="listitem"><p>Confidence</p><strong id="metricStateConfidence">--%</strong></article>
             </div>
           </section>
 
