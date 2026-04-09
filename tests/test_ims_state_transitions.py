@@ -117,6 +117,7 @@ def test_policy_fields_ignore_legacy_decision_payload(monkeypatch):
         }
     )
     assert out["policy_state"] == "STABLE"
+    assert out["state"] == out["policy_state"]
     assert out["policy_alert"] is False
     assert out["auxiliary_diagnostics"]["mahalanobis_score"] == 999.0
 
@@ -138,3 +139,37 @@ def test_process_frame_exposes_architecture_split_fields():
     assert "legacy_scoring" in out
     assert out["policy_outputs"]["policy_state"] == out["policy_state"]
     assert out["auxiliary_diagnostics"]["mahalanobis_score"] == 2.5
+
+
+def test_auxiliary_mahalanobis_aliases_do_not_override_policy_state():
+    engine = _engine_for_state_machine()
+
+    out = engine.process_frame(
+        {
+            "timestamp": 3.0,
+            "site_id": "ims",
+            "asset_id": "bearing",
+            "sensor_values": {"s1": 0.3, "s2": 0.4, "s3": 0.5},
+            # Feed extreme values through compatibility aliases.
+            "md_signal": 1_000_000.0,
+            "md": 2_000_000.0,
+        }
+    )
+
+    # Primary policy state remains structural-drift driven during warmup.
+    assert out["policy_state"] == "STABLE"
+    assert out["state"] == out["policy_state"]
+    # Auxiliary md/mahalanobis value may be exposed for compatibility only.
+    assert out["auxiliary_diagnostics"]["mahalanobis_score"] == 1_000_000.0
+
+
+def test_fd004_locked_policy_defaults_are_preserved():
+    engine = _engine_for_state_machine()
+    assert engine.drift_smoothing_window == 25
+    assert engine.watch_quantile == 0.65
+    assert engine.alert_quantile == 0.85
+    assert engine.watch_persistence == 5
+    assert engine.alert_persistence == 3
+    assert engine.fast_trigger_multiplier == 1.25
+    assert engine.alert_latch_enabled is True
+    assert engine.unlatch_ratio == 0.75
