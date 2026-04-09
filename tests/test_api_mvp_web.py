@@ -283,6 +283,11 @@ def test_grow_op_demo_start_warm_loads_initial_results(tmp_path) -> None:
     env = recent.json()
     assert isinstance(env.get("results"), list)
     assert len(env.get("results") or []) > 0
+    by_run_only = client.get("/results/recent", params={"run_id": run_id, "limit": 5})
+    assert by_run_only.status_code == 200
+    by_run_only_env = by_run_only.json()
+    assert isinstance(by_run_only_env.get("results"), list)
+    assert len(by_run_only_env.get("results") or []) > 0
 
 
 def test_demo_start_aliases_route_to_real_seed_flow(tmp_path) -> None:
