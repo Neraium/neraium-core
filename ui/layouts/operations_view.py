@@ -20,14 +20,15 @@ def build_operations_view(
     gate_decision: dict[str, Any] | None = None,
 ) -> dict[str, object]:
     context = dict(reasoning_context or {})
-    gate = gate_decision or {"decision": "SUPPRESS"}
+    gate = gate_decision or context.get("gate_decision") or {"decision": "SUPPRESS"}
 
-    context["gate_decision"] = {
-        "decision": gate.get("decision") or "SUPPRESS",
-        "reason": gate.get("refusal_reason") or gate.get("explanation") or gate.get("reason"),
-        "doctrine_version": gate.get("doctrine_version"),
-        "confidence_label": gate.get("confidence_label"),
-    }
+    if gate_decision is not None or "gate_decision" not in context:
+        context["gate_decision"] = {
+            "decision": gate.get("decision") or "SUPPRESS",
+            "reason": gate.get("refusal_reason") or gate.get("explanation") or gate.get("reason"),
+            "doctrine_version": gate.get("doctrine_version"),
+            "confidence_label": gate.get("confidence_label"),
+        }
 
     return {
         "mode": "operations",
