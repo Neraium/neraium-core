@@ -86,7 +86,7 @@ from .integration import (
     load_integration_config,
     resolve_customer_integration,
 )
-from .web import build_web_router
+# from .web import build_web_router
 from .routers.health import build_health_router
 from .routers.alerts import build_alerts_router
 from .routers.geometry import build_geometry_router
@@ -1326,7 +1326,7 @@ def create_app(
             site_id=site_id,
         )
 
-    app.include_router(build_web_router())
+# app.include_router(build_web_router())
     _mount_web_static(app)
 
     return app
