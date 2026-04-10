@@ -2,6 +2,12 @@ from __future__ import annotations
 
 from typing import Any, Mapping
 
+from neraium_core.doctrine import (
+    DEFAULT_DOCTRINE_V1,
+    count_confirming_signals,
+    evaluate_statement,
+)
+
 
 def _to_confidence_label(confidence: str | float | int | None) -> str:
     if isinstance(confidence, str):
