@@ -11,7 +11,7 @@ def build_operations_view(
     *,
     width_px: int = 1440,
     reasoning_context: dict[str, Any] | None = None,
-    operator_question: str = "What is happening right now?",
+    operator_question: str = "What is the current system state?",
 ) -> dict[str, object]:
     return build_navigation_surface(
         state,

@@ -1,27 +1,42 @@
 from __future__ import annotations
 
+"""Evidence-bound operational reasoner.
+
+This module must answer only from admitted system context and always separate
+observed facts, inference, insufficient evidence, and operational implication.
+"""
+
 from typing import Any
 
 
+SECTION_ORDER: tuple[str, ...] = (
+    "Observed Facts",
+    "Inference",
+    "Insufficient Evidence",
+    "Operational Implication",
+)
+
+
 def _empty_sections() -> dict[str, list[str]]:
-    return {
-        "Observed Facts": [],
-        "Inference": [],
-        "Insufficient Evidence": [],
-        "Operational Implication": [],
-    }
+    return {section: [] for section in SECTION_ORDER}
 
 
 def _cannot_answer_message() -> str:
     return "The system cannot answer this question from current admitted evidence."
 
 
-def generate_reasoned_response(question: str, context: dict[str, Any]) -> dict[str, Any]:
-    q = (question or "").strip().lower()
+def _ensure_strict_grounding(sections: dict[str, list[str]]) -> None:
+    if sections["Insufficient Evidence"] and not sections["Inference"]:
+        if _cannot_answer_message() not in sections["Insufficient Evidence"]:
+            sections["Insufficient Evidence"].append(_cannot_answer_message())
+
+
+def generate_reasoned_response(operator_question: str, reasoning_context: dict[str, Any]) -> dict[str, Any]:
+    q = (operator_question or "").strip().lower()
     sections = _empty_sections()
 
-    current = context.get("current_state") or {}
-    events = context.get("recent_admitted_events") or []
+    current = reasoning_context.get("current_state") or {}
+    events = reasoning_context.get("recent_admitted_events") or []
 
     sections["Observed Facts"].append(
         f"Current admitted state is regime={current.get('regime', 'unknown')}, drift={current.get('drift', 'unknown')}, stability={current.get('stability', 'unknown')}."
@@ -31,13 +46,13 @@ def generate_reasoned_response(question: str, context: dict[str, Any]) -> dict[s
 
     if "happening" in q or "right now" in q:
         supported = True
-        sections["Observed Facts"].append(context.get("drift_summary", "No admitted drift summary is available."))
-        sections["Observed Facts"].append(context.get("stability_summary", "No admitted stability summary is available."))
+        sections["Observed Facts"].append(reasoning_context.get("drift_summary", "No admitted drift summary is available."))
+        sections["Observed Facts"].append(reasoning_context.get("stability_summary", "No admitted stability summary is available."))
         sections["Operational Implication"].append("Monitor admitted structural change and keep queries anchored to current state evidence.")
 
     if "when" in q and ("shift" in q or "begin" in q or "started" in q):
         supported = True
-        transition_point = context.get("transition_point")
+        transition_point = reasoning_context.get("transition_point")
         if transition_point:
             sections["Observed Facts"].append(f"The earliest admitted shift in scope began near timestamp {transition_point}.")
             sections["Operational Implication"].append("Use this timestamp as the baseline for replay and shift tracking.")
@@ -70,7 +85,7 @@ def generate_reasoned_response(question: str, context: dict[str, Any]) -> dict[s
 
     if "signal" in q or "contributing" in q:
         supported = True
-        top_signals = context.get("top_contributing_signals")
+        top_signals = reasoning_context.get("top_contributing_signals")
         if top_signals:
             sections["Observed Facts"].append(f"Top contributing signals in admitted context: {top_signals}.")
             sections["Operational Implication"].append("Prioritize these signals in evidence review and replay inspection.")
@@ -91,8 +106,10 @@ def generate_reasoned_response(question: str, context: dict[str, Any]) -> dict[s
     if sections["Insufficient Evidence"] and not sections["Inference"] and len(sections["Observed Facts"]) <= 1:
         sections["Operational Implication"].append("Request additional admitted evidence or ask a supported operational state question.")
 
+    _ensure_strict_grounding(sections)
+
     answer = "\n\n".join(
-        [f"{name}:\n- " + "\n- ".join(items if items else ["None."]) for name, items in sections.items()]
+        [f"{name}:\n- " + "\n- ".join(sections[name] if sections[name] else ["None."]) for name in SECTION_ORDER]
     )
 
     return {

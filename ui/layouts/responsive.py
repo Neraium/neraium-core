@@ -28,7 +28,7 @@ def build_navigation_surface(
     mode: str,
     width_px: int,
     reasoning_context: dict[str, Any] | None = None,
-    operator_question: str = "What is happening right now?",
+    operator_question: str = "What is the current system state?",
 ) -> dict[str, object]:
     viewport = "mobile" if width_px < 760 else "desktop"
     resolved_mode = mode if mode in MODE_OVERLAYS else "pilot"
