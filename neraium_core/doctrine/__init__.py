@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import re
 from typing import Literal
 
 DOCTRINE_VERSION = "2026.04-conservative-observational"
@@ -29,6 +30,15 @@ _PRESCRIPTIVE_TOKENS = {
 }
 
 
+def _token_pattern(token: str) -> re.Pattern[str]:
+    words = [re.escape(part) for part in token.split()]
+    body = r"\s+".join(words)
+    return re.compile(rf"(?<!\w){body}(?!\w)")
+
+
+_PRESCRIPTIVE_PATTERNS = tuple(_token_pattern(token) for token in _PRESCRIPTIVE_TOKENS)
+
+
 def assess_assertion(candidate_assertion: str | None) -> DoctrineAssessment:
     """Assess whether candidate text stays within observational doctrine boundaries."""
     if candidate_assertion is None:
@@ -49,8 +59,8 @@ def assess_assertion(candidate_assertion: str | None) -> DoctrineAssessment:
         )
 
     lowered = text.lower()
-    for token in _PRESCRIPTIVE_TOKENS:
-        if token in lowered:
+    for pattern in _PRESCRIPTIVE_PATTERNS:
+        if pattern.search(lowered):
             return DoctrineAssessment(
                 allowed=False,
                 classification="prescriptive",

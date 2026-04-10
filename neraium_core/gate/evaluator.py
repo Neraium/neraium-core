@@ -84,7 +84,8 @@ def evaluate_corroboration(gate_input: GateInput, profile: GateProfile) -> Crite
 
 
 def evaluate_context_exclusions(gate_input: GateInput) -> CriterionResult:
-    flags = {k: bool(v) for k, v in gate_input.context_flags.items()}
+    context_flags = gate_input.context_flags if isinstance(gate_input.context_flags, dict) else {}
+    flags = {k: bool(v) for k, v in context_flags.items()}
     active = sorted([k for k, v in flags.items() if v])
     exclusionary = {
         "maintenance_mode",
