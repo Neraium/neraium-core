@@ -3,6 +3,9 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass
 from typing import Any
 
+from neraium_core.gate.engine import AletheiasGate
+from neraium_core.gate.schema import GateInput
+
 from .config import UIConfig
 from .utils import clamp, l2_norm, parse_iso8601, safe_float
 
@@ -86,6 +89,39 @@ def _projected_cone(anchor: TrajectoryPoint, velocity: tuple[float, float], step
             )
         )
     return projection
+
+
+def _optional_float(value: Any) -> float | None:
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError):
+        return None
+    if numeric != numeric:
+        return None
+    return numeric
+
+
+def evaluate_gate(latest_row: dict[str, Any] | None) -> dict[str, Any]:
+    row = latest_row or {}
+    gate = AletheiasGate()
+    gate_input = GateInput(
+        timestamp=str(row.get("timestamp") or parse_iso8601(None).isoformat()),
+        asset_id=str(row.get("asset_id") or row.get("unit_id") or row.get("system_id") or "neraium-system"),
+        site_id=str(row.get("site_id")) if row.get("site_id") is not None else None,
+        drift_score=_optional_float(row.get("structural_drift_score", row.get("drift"))),
+        stability_score=_optional_float(row.get("relational_stability_score", row.get("stability"))),
+        coherence_score=_optional_float(row.get("coherence_score")),
+        snr_score=_optional_float(row.get("snr_score")),
+        persistence_minutes=_optional_float(row.get("persistence_minutes")),
+        corroborating_signal_count=int(safe_float(row.get("corroborating_signal_count"), 0)) if row.get("corroborating_signal_count") is not None else None,
+        context_flags=row.get("context_flags") if isinstance(row.get("context_flags"), dict) else {},
+        candidate_assertion=str(row.get("candidate_assertion") or "Observed structural state under admitted telemetry."),
+    )
+
+    decision = gate.evaluate(gate_input)
+    payload = asdict(decision)
+    payload["timestamp"] = str(gate_input.timestamp)
+    return payload
 
 
 def build_system_state(records: list[dict[str, Any]] | None, *, config: UIConfig) -> SystemState:
