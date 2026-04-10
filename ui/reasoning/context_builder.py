@@ -98,7 +98,9 @@ def _trend_fact(metric: str, previous: float | None, current: float) -> str:
     if previous is None:
         return f"{metric} has no prior sample (current {current:.3f})"
 
-    delta = current - previous
+    displayed_previous = round(previous, 3)
+    displayed_current = round(current, 3)
+    delta = displayed_current - displayed_previous
     if delta > 0:
         verb = "increased"
     elif delta < 0:
@@ -107,7 +109,7 @@ def _trend_fact(metric: str, previous: float | None, current: float) -> str:
         verb = "was unchanged"
 
     if delta == 0:
-        return f"{metric} {verb} at {current:.3f}"
+        return f"{metric} {verb} at {displayed_current:.3f}"
     return f"{metric} {verb} from {previous:.3f} → {current:.3f}"
 
 
