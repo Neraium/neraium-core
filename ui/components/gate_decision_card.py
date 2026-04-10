@@ -6,12 +6,14 @@ from typing import Any
 def render_gate_decision_card(decision: dict[str, Any] | None) -> dict[str, Any]:
     gate = decision or {}
     return {
-        "component": "gate_decision",
-        "title": "Aletheia's Gate",
+        "component": "gate_decision_card",
+        "authority": "Aletheia's Gate",
         "decision": gate.get("decision"),
-        "confidence": gate.get("confidence_label"),
-        "reason": gate.get("refusal_reason") or gate.get("explanation"),
         "doctrine_version": gate.get("doctrine_version"),
-        "criteria": gate.get("criteria_results"),
+        "explanation": gate.get("explanation"),
+        "reason": gate.get("explanation"),
+        "refusal_reason": gate.get("refusal_reason"),
+        "confidence_label": gate.get("confidence_label"),
         "timestamp": gate.get("timestamp"),
+        "criteria_results": gate.get("criteria_results") or {},
     }

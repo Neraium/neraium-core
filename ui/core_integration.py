@@ -101,23 +101,39 @@ def _optional_float(value: Any) -> float | None:
     return numeric
 
 
-def evaluate_gate(latest_row: dict[str, Any] | None) -> dict[str, Any]:
+def build_gate_input_from_state(latest_row: dict[str, Any] | None, current_state: SystemState | None = None) -> GateInput:
     row = latest_row or {}
-    gate = AletheiasGate()
-    gate_input = GateInput(
-        timestamp=str(row.get("timestamp") or parse_iso8601(None).isoformat()),
+    state = current_state
+    fallback_ts = parse_iso8601(None).isoformat()
+
+    drift_from_state = state.drift_intensity if state is not None else None
+    stability_from_state = (1.0 - state.position.y) if state is not None else None
+
+    return GateInput(
+        timestamp=str(row.get("timestamp") or (state.position.t if state is not None else fallback_ts)),
         asset_id=str(row.get("asset_id") or row.get("unit_id") or row.get("system_id") or "neraium-system"),
         site_id=str(row.get("site_id")) if row.get("site_id") is not None else None,
-        drift_score=_optional_float(row.get("structural_drift_score", row.get("drift"))),
-        stability_score=_optional_float(row.get("relational_stability_score", row.get("stability"))),
+        drift_score=_optional_float(row.get("structural_drift_score", row.get("drift", drift_from_state))),
+        stability_score=_optional_float(row.get("relational_stability_score", row.get("stability", stability_from_state))),
         coherence_score=_optional_float(row.get("coherence_score")),
         snr_score=_optional_float(row.get("snr_score")),
         persistence_minutes=_optional_float(row.get("persistence_minutes")),
-        corroborating_signal_count=int(safe_float(row.get("corroborating_signal_count"), 0)) if row.get("corroborating_signal_count") is not None else None,
+        corroborating_signal_count=int(safe_float(row.get("corroborating_signal_count"), 0))
+        if row.get("corroborating_signal_count") is not None
+        else None,
         context_flags=row.get("context_flags") if isinstance(row.get("context_flags"), dict) else {},
         candidate_assertion=str(row.get("candidate_assertion") or "Observed structural state under admitted telemetry."),
+        raw_metrics={
+            "confidence": _optional_float(row.get("confidence_score", row.get("confidence"))),
+            "system_health": row.get("system_health"),
+            "regime": row.get("regime_name") or row.get("state"),
+        },
     )
 
+
+def evaluate_gate(latest_row: dict[str, Any] | None, current_state: SystemState | None = None) -> dict[str, Any]:
+    gate = AletheiasGate()
+    gate_input = build_gate_input_from_state(latest_row, current_state)
     decision = gate.evaluate(gate_input)
     payload = asdict(decision)
     payload["timestamp"] = str(gate_input.timestamp)
