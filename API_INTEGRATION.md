@@ -33,3 +33,11 @@ The replacement UI expects records with these keys (missing values are tolerated
 - There is no `apps/api/static` UI fallback.
 - The API runtime remains independent of the UI package.
 - UI launch is optional (`python -m ui.app`) and should be treated as a separate process from the API service.
+- UI demo hydration now loads greenhouse-first records via `ui.demo_data.load_greenhouse_demo_records`, preferring `greenhouse_demo/run_grow_demo_ultrafast.py` when present and falling back to canonical scenario JSON.
+- UI summary payload now includes `summary.replay_story` with concise progression signals (state transitions, drift/stability/confidence trends, and a headline) for investor/operator readability.
+
+## Demo replay source
+
+- Historical demo replay is greenhouse-first and uses the canonical scenario at `apps/api/demo_data/cannabis_grow_op_scenario.json`.
+- Preferred API start endpoint: `POST /demo/greenhouse/start` (`/demo/cmapss/start` remains as a compatibility alias).
+- Status/proof endpoints follow the same pattern: `/demo/greenhouse/status` and `/demo/greenhouse/proof-summary` with CMAPSS routes retained as aliases.

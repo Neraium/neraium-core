@@ -45,7 +45,7 @@ uvicorn apps.api.main:app --reload --port 8000
 
 3. In the page, set `customer_id` / `run_id`, then:
 
-- click **Run NASA CMAPSS FD004 Reference Replay** (historical validation path), or
+- click **Run Greenhouse Reference Replay** (historical validation path), or
 - ingest your own data first with API calls.
 
 ## End-to-end reference replay sequence
@@ -54,7 +54,7 @@ uvicorn apps.api.main:app --reload --port 8000
 
 1. Open `/dashboard`.
 2. Keep defaults (`customer-a`, `run-operator-demo`).
-3. Click **Run NASA CMAPSS FD004 Reference Replay**.
+3. Click **Run Greenhouse Reference Replay**.
 4. Observe:
    - current state + risk assessment
    - advisory recommendation block

@@ -29,7 +29,7 @@ def create_app_state(records):
     Accepts either:
     - a list of records
     - a single record dict
-    - empty / unknown input
+    - empty / unknown input (loads greenhouse demo defaults)
     """
     if isinstance(records, list) and len(records) > 0:
         latest = records[-1]
@@ -38,8 +38,8 @@ def create_app_state(records):
         latest = records
         rows = [records]
     else:
-        latest = {}
-        rows = []
+        rows = load_greenhouse_demo_records(limit=96)
+        latest = rows[-1] if rows else {}
 
     summary = {
         "timestamp": latest.get("timestamp"),
@@ -76,7 +76,7 @@ def create_app_state(records):
             "drift_summary": "No admitted drift evidence is available.",
             "stability_summary": "No admitted stability evidence is available.",
             "top_contributing_signals": None,
-            "chart_replay_summary": None,
+            "chart_replay_summary": replay_story,
         }
 
     return {
@@ -146,7 +146,7 @@ def create_gradio_app():
         gr.Markdown("# Neraium — Gate-Centered Operations Surface")
 
         gate = gr.JSON(label="Gate Decision")
-        system = gr.JSON(label="System State")
+        system = gr.JSON(label="System State + Replay Story")
         reasoning = gr.JSON(label="Evidence-Bound Reasoning")
         record = gr.JSON(label="Recent Record")
 
