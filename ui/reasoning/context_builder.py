@@ -85,6 +85,7 @@ def build_reasoning_context(
     state: SystemState,
     records: list[dict[str, Any]] | None = None,
     *,
+    gate_decision: dict[str, Any] | None = None,
     max_recent_events: int = 6,
 ) -> dict[str, Any]:
     admitted_events = [event for event in build_admitted_events(records) if event.event_admitted]
@@ -105,6 +106,7 @@ def build_reasoning_context(
     if state.velocity[1] < 0:
         stability_direction = "recovering"
 
+    gate = gate_decision or {}
     context = {
         "current_state": {
             "timestamp": state.position.t,
@@ -114,6 +116,12 @@ def build_reasoning_context(
             "drift": round(state.drift_intensity, 4),
             "stability": round(1.0 - state.position.y, 4),
             "velocity": {"dx": round(state.velocity[0], 6), "dy": round(state.velocity[1], 6)},
+        },
+        "gate_decision": {
+            "decision": gate.get("decision"),
+            "reason": gate.get("refusal_reason") or gate.get("explanation") or gate.get("reason"),
+            "doctrine_version": gate.get("doctrine_version"),
+            "confidence_label": gate.get("confidence_label"),
         },
         "recent_admitted_events": [asdict(event) for event in admitted_events[-max_recent_events:]],
         "transition_point": transition_point,

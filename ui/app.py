@@ -4,63 +4,26 @@ from typing import Any
 
 from ui.config import UIConfig
 from ui.core_integration import build_system_state, evaluate_gate
-from ui.demo_data import load_greenhouse_demo_records
+from ui.layouts.operations_view import build_operations_view
 from ui.reasoning import build_reasoning_context
 
 
-def _trend_label(delta: float, *, positive: str, negative: str, neutral: str = "stable") -> str:
-    if delta > 0.02:
-        return positive
-    if delta < -0.02:
-        return negative
-    return neutral
-
-
-def _summarize_replay_story(rows: list[dict[str, Any]]) -> dict[str, Any]:
-    if not rows:
-        return {
-            "state_transitions": 0,
-            "drift_trend": "stable",
-            "stability_trend": "stable",
-            "confidence_trend": "stable",
-            "health_trajectory": "flat",
-            "story_headline": "No greenhouse replay frames loaded.",
-        }
-
-    first = rows[0]
-    last = rows[-1]
-    drift_delta = float(last.get("structural_drift_score", 0.0)) - float(first.get("structural_drift_score", 0.0))
-    stability_delta = float(last.get("relational_stability_score", 1.0)) - float(first.get("relational_stability_score", 1.0))
-    confidence_delta = float(last.get("confidence_score", 0.0)) - float(first.get("confidence_score", 0.0))
-
-    states = [str(row.get("state") or "unknown") for row in rows]
-    transitions = sum(1 for idx in range(1, len(states)) if states[idx] != states[idx - 1])
-
-    health_map = {"nominal": 0, "watch": 1, "degraded": 2, "critical": 3}
-    first_health = health_map.get(str(first.get("system_health") or "nominal"), 0)
-    last_health = health_map.get(str(last.get("system_health") or "nominal"), 0)
-    health_delta = last_health - first_health
-
-    drift_trend = _trend_label(drift_delta, positive="rising", negative="easing")
-    stability_trend = _trend_label(stability_delta, positive="recovering", negative="weakening")
-    confidence_trend = _trend_label(confidence_delta, positive="increasing", negative="decreasing")
-    health_trajectory = _trend_label(health_delta, positive="worsening", negative="improving", neutral="flat")
-
-    headline = (
-        f"{transitions} state transitions observed; drift {drift_trend}, "
-        f"stability {stability_trend}, confidence {confidence_trend}."
-    )
+def _fallback_gate_decision() -> dict[str, Any]:
     return {
-        "state_transitions": transitions,
-        "drift_trend": drift_trend,
-        "stability_trend": stability_trend,
-        "confidence_trend": confidence_trend,
-        "health_trajectory": health_trajectory,
-        "story_headline": headline,
+        "decision": "SUPPRESS",
+        "doctrine_version": "unknown",
+        "criteria_results": {},
+        "refusal_reason": "No admitted telemetry row is available for evaluation.",
+        "explanation": "Suppressed: no current admitted telemetry is available.",
+        "observed_facts": ["No current record was provided to the UI integration layer."],
+        "uncertainty_notes": ["Gate evaluation used conservative fallback behavior."],
+        "candidate_assertion_allowed": False,
+        "confidence_label": "low",
+        "timestamp": None,
     }
 
 
-def create_app_state(records=None):
+def create_app_state(records):
     """
     Minimal integration-safe builder used by INTEGRATION_GUIDE.py.
     Accepts either:
@@ -78,20 +41,21 @@ def create_app_state(records=None):
         rows = load_greenhouse_demo_records(limit=96)
         latest = rows[-1] if rows else {}
 
-    gate_decision = evaluate_gate(latest)
-    replay_story = _summarize_replay_story(rows)
+    summary = {
+        "timestamp": latest.get("timestamp"),
+        "system_health": latest.get("system_health"),
+        "confidence": latest.get("confidence_score"),
+        "drift": latest.get("structural_drift_score"),
+        "stability": latest.get("relational_stability_score"),
+        "regime": latest.get("regime_name"),
+    }
 
-    reasoning_context: dict[str, Any]
     if rows:
         system_state = build_system_state(rows, config=UIConfig())
-        reasoning_context = build_reasoning_context(system_state, rows)
-        if isinstance(reasoning_context.get("chart_replay_summary"), dict):
-            reasoning_context["chart_replay_summary"].update(replay_story)
-            reasoning_context["chart_replay_summary"]["regime_span"] = {
-                "start": str(rows[0].get("regime_name") or rows[0].get("state") or "unknown"),
-                "end": str(rows[-1].get("regime_name") or rows[-1].get("state") or "unknown"),
-            }
+        gate_decision = evaluate_gate(latest, system_state)
+        reasoning_context: dict[str, Any] = build_reasoning_context(system_state, rows, gate_decision=gate_decision)
     else:
+        gate_decision = _fallback_gate_decision()
         reasoning_context = {
             "current_state": {
                 "timestamp": None,
@@ -101,6 +65,12 @@ def create_app_state(records=None):
                 "drift": None,
                 "stability": None,
             },
+            "gate_decision": {
+                "decision": gate_decision.get("decision"),
+                "reason": gate_decision.get("refusal_reason"),
+                "doctrine_version": gate_decision.get("doctrine_version"),
+                "confidence_label": gate_decision.get("confidence_label"),
+            },
             "recent_admitted_events": [],
             "transition_point": None,
             "drift_summary": "No admitted drift evidence is available.",
@@ -109,27 +79,10 @@ def create_app_state(records=None):
             "chart_replay_summary": replay_story,
         }
 
-    reasoning_context["gate_decision"] = {
-        "decision": gate_decision.get("decision"),
-        "reason": gate_decision.get("refusal_reason") or gate_decision.get("explanation"),
-        "doctrine_version": gate_decision.get("doctrine_version"),
-    }
-
     return {
-        "summary": {
-            "timestamp": latest.get("timestamp"),
-            "site_id": latest.get("site_id"),
-            "asset_id": latest.get("asset_id"),
-            "state": latest.get("state"),
-            "system_health": latest.get("system_health"),
-            "confidence": latest.get("confidence_score"),
-            "drift": latest.get("structural_drift_score"),
-            "stability": latest.get("relational_stability_score"),
-            "regime": latest.get("regime_name"),
-            "replay_story": replay_story,
-        },
-        "gate_decision": gate_decision,
+        "summary": summary,
         "reasoning_context": reasoning_context,
+        "gate_decision": gate_decision,
         "realtime": {
             "enabled": False,
         },
@@ -149,23 +102,55 @@ def create_gradio_app():
     except ImportError:
         raise RuntimeError("Gradio is not installed")
 
-    def load():
-        data = create_app_state([])
+    def load_operations_surface():
+        sample_rows = [
+            {
+                "timestamp": "2026-04-10T00:00:00Z",
+                "regime_name": "baseline",
+                "system_health": "nominal",
+                "confidence_score": 0.72,
+                "structural_drift_score": 0.34,
+                "relational_stability_score": 0.71,
+            },
+            {
+                "timestamp": "2026-04-10T00:05:00Z",
+                "regime_name": "transition",
+                "system_health": "watch",
+                "confidence_score": 0.68,
+                "structural_drift_score": 0.58,
+                "relational_stability_score": 0.43,
+                "coherence_score": 0.62,
+                "snr_score": 1.4,
+                "persistence_minutes": 10,
+                "corroborating_signal_count": 1,
+                "event_admitted": False,
+                "evidence_summary": "Drift elevated with limited corroboration in current window.",
+            },
+        ]
+
+        app_state = create_app_state(sample_rows)
+        system_state = build_system_state(sample_rows, config=UIConfig())
+        surface = build_operations_view(
+            system_state,
+            reasoning_context=app_state["reasoning_context"],
+            gate_decision=app_state["gate_decision"],
+        )
         return (
-            data["gate_decision"],
-            data["summary"],
-            data["reasoning_context"],
+            surface["zones"]["gate"],
+            app_state["summary"],
+            surface["zones"]["reasoning"],
+            surface["zones"]["record"],
         )
 
     with gr.Blocks() as app:
-        gr.Markdown("# Neraium — Greenhouse Structural Replay")
-        gr.Markdown("High-signal demo view: state transitions, drift/stability movement, health/confidence trends.")
+        gr.Markdown("# Neraium — Gate-Centered Operations Surface")
 
         gate = gr.JSON(label="Gate Decision")
         system = gr.JSON(label="System State + Replay Story")
         reasoning = gr.JSON(label="Evidence-Bound Reasoning")
+        record = gr.JSON(label="Recent Record")
 
-        btn = gr.Button("Load Greenhouse Demo")
-        btn.click(fn=load, outputs=[gate, system, reasoning])
+        btn = gr.Button("Load Operations Surface")
+        btn.click(fn=load_operations_surface, outputs=[gate, system, reasoning, record])
 
     return app

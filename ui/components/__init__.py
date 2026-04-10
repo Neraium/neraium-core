@@ -3,6 +3,7 @@
 from .alert_fsm_widget import render_alert_fsm_widget
 from .attribution_viz import render_attribution_viz
 from .causal_inspector import render_causal_inspector
+from .event_ledger import render_event_ledger
 from .gate_decision_card import render_gate_decision_card
 from .mode_selector import render_mode_selector
 from .operational_reasoning_panel import render_operational_reasoning_panel
@@ -16,6 +17,7 @@ __all__ = [
     "render_attribution_viz",
     "render_causal_inspector",
     "render_gate_decision_card",
+    "render_event_ledger",
     "render_alert_fsm_widget",
     "render_reaction_window_indicator",
     "render_mode_selector",
