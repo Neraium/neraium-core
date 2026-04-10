@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 import math
 import threading
@@ -216,57 +217,57 @@ class DemoJobsManager:
             },
         )
 
-    def load_cmapss_fd004_subset(self, max_frames: int) -> list[dict[str, Any]]:
+    def load_greenhouse_demo_subset(self, max_frames: int) -> list[dict[str, Any]]:
         limited = max(30, min(500, int(max_frames)))
-        with self.store.cmapss_fd004_cache_lock:
-            cached = self.store.cmapss_fd004_cache.get(limited)
+        with self.store.greenhouse_demo_cache_lock:
+            cached = self.store.greenhouse_demo_cache.get(limited)
             if cached is not None:
                 return list(cached)
 
-        dataset_path = Path(__file__).resolve().parents[2] / "train_FD004.txt"
-        if not dataset_path.is_file():
-            raise FileNotFoundError(f"CMAPSS FD004 dataset file missing at {dataset_path}")
+        scenario_path = Path(__file__).resolve().parents[1] / "demo_data" / "cannabis_grow_op_scenario.json"
+        if not scenario_path.is_file():
+            raise FileNotFoundError(f"Greenhouse scenario file missing at {scenario_path}")
 
-        rows: list[dict[str, Any]] = []
-        now = datetime.now(timezone.utc).replace(microsecond=0)
-        sensor_keys = [f"sensor_{i}" for i in range(1, 22)]
-        with dataset_path.open("r", encoding="utf-8") as handle:
-            for raw in handle:
-                line = raw.strip()
-                if not line:
+        payload = scenario_path.read_text(encoding="utf-8")
+        raw = json.loads(payload)
+        asset = raw.get("asset") or {}
+        site_id = str(asset.get("site_id") or "grow-op-facility-01")
+        asset_id = str(asset.get("asset_id") or "canopy-zone-A")
+
+        scenario_rows: list[dict[str, Any]] = []
+        for phase in raw.get("phases") or []:
+            for frame in phase.get("frames") or []:
+                sensor_values = frame.get("sensor_values")
+                if not isinstance(sensor_values, dict):
                     continue
-                parts = line.split()
-                if len(parts) < 26:
-                    continue
-                unit = int(float(parts[0]))
-                cycle = int(float(parts[1]))
-                op1 = float(parts[2])
-                op2 = float(parts[3])
-                op3 = float(parts[4])
-                sensors = [float(v) for v in parts[5:26]]
-                sensor_values = {
-                    "cycle": float(cycle),
-                    "op_setting_1": op1,
-                    "op_setting_2": op2,
-                    "op_setting_3": op3,
-                }
-                for idx, key in enumerate(sensor_keys):
-                    sensor_values[key] = sensors[idx]
-                timestamp = now.timestamp() - max(0, limited - len(rows)) * 60.0
-                rows.append(
+                offset = int(frame.get("minute_offset", 0))
+                scenario_rows.append(
                     {
-                        "timestamp": datetime.fromtimestamp(timestamp, tz=timezone.utc).isoformat(),
-                        "site_id": "nasa-cmapss-fd004",
-                        "asset_id": f"engine-{unit:03d}",
-                        "sensor_values": sensor_values,
+                        "minute_offset": offset,
+                        "sensor_values": {k: float(v) for k, v in sensor_values.items()},
                     }
                 )
-                if len(rows) >= limited:
-                    break
-        if not rows:
-            raise ValueError("CMAPSS FD004 subset is empty.")
-        with self.store.cmapss_fd004_cache_lock:
-            self.store.cmapss_fd004_cache[limited] = list(rows)
+
+        if not scenario_rows:
+            raise ValueError("Greenhouse scenario is empty.")
+
+        scenario_rows.sort(key=lambda row: int(row.get("minute_offset", 0)))
+        selected = scenario_rows[:limited]
+        now = datetime.now(timezone.utc).replace(microsecond=0)
+        rows: list[dict[str, Any]] = []
+        for idx, row in enumerate(selected):
+            timestamp = now.timestamp() - max(0, limited - idx) * 60.0
+            rows.append(
+                {
+                    "timestamp": datetime.fromtimestamp(timestamp, tz=timezone.utc).isoformat(),
+                    "site_id": site_id,
+                    "asset_id": asset_id,
+                    "sensor_values": dict(row["sensor_values"]),
+                }
+            )
+
+        with self.store.greenhouse_demo_cache_lock:
+            self.store.greenhouse_demo_cache[limited] = list(rows)
         return rows
 
     @staticmethod
