@@ -36,7 +36,7 @@ if __name__ == "__main__":
 
     state = build_system_state(demo_rows, config=UIConfig())
     reasoning_context = build_reasoning_context(state, demo_rows)
-    result = generate_reasoned_response("Why was this event flagged?", reasoning_context)
+    result = generate_reasoned_response(operator_question="Why was this event flagged?", reasoning_context=reasoning_context)
 
     print("Reasoning context keys:", sorted(reasoning_context.keys()))
     print("\nGrounded Answer:\n")
