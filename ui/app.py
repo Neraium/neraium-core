@@ -24,3 +24,19 @@ def create_app_state(records):
             "enabled": False,
         },
     }
+
+def create_gradio_app():
+    try:
+        import gradio as gr
+    except ImportError:
+        raise RuntimeError("Gradio is not installed")
+
+    def dummy():
+        return "Neraium UI running"
+
+    with gr.Blocks() as app:
+        gr.Markdown("# Neraium UI")
+        out = gr.Textbox(label="Status")
+        gr.Button("Test").click(fn=dummy, outputs=out)
+
+    return app
