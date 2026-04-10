@@ -37,10 +37,17 @@ def generate_reasoned_response(operator_question: str, reasoning_context: dict[s
 
     current = reasoning_context.get("current_state") or {}
     events = reasoning_context.get("recent_admitted_events") or []
+    gate_decision = reasoning_context.get("gate_decision") or {}
 
     sections["Observed Facts"].append(
         f"Current admitted state is regime={current.get('regime', 'unknown')}, drift={current.get('drift', 'unknown')}, stability={current.get('stability', 'unknown')}."
     )
+    sections["Observed Facts"].append(
+        "Gate authority is decision="
+        f"{gate_decision.get('decision', 'unknown')}, doctrine_version={gate_decision.get('doctrine_version', 'unknown')}."
+    )
+    if gate_decision.get("reason"):
+        sections["Observed Facts"].append(f"Gate reason: {gate_decision.get('reason')}.")
 
     supported = False
 
