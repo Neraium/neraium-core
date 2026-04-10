@@ -101,8 +101,50 @@ def _optional_float(value: Any) -> float | None:
     return numeric
 
 
-def build_gate_input_from_state(latest_row: dict[str, Any] | None, current_state: SystemState | None = None) -> GateInput:
+def classify_transition(previous: dict[str, Any] | None, current: dict[str, Any] | None) -> dict[str, float | str]:
+    prev = previous or {}
+    curr = current or {}
+    if not previous:
+        return {
+            "type": "STABLE",
+            "delta_drift": 0.0,
+            "delta_stability": 0.0,
+            "delta_coherence": 0.0,
+        }
+
+    prev_drift = safe_float(prev.get("structural_drift_score", prev.get("drift")), 0.0)
+    curr_drift = safe_float(curr.get("structural_drift_score", curr.get("drift")), 0.0)
+    prev_stability = safe_float(prev.get("relational_stability_score", prev.get("stability")), 1.0)
+    curr_stability = safe_float(curr.get("relational_stability_score", curr.get("stability")), 1.0)
+    prev_coherence = safe_float(prev.get("coherence_score"), 0.0)
+    curr_coherence = safe_float(curr.get("coherence_score"), 0.0)
+
+    delta_drift = round(curr_drift - prev_drift, 6)
+    delta_stability = round(curr_stability - prev_stability, 6)
+    delta_coherence = round(curr_coherence - prev_coherence, 6)
+    movement_magnitude = abs(delta_drift) + abs(delta_stability) + abs(delta_coherence)
+
+    transition_type = "STABLE"
+    if movement_magnitude > 0.35:
+        transition_type = "REORGANIZATION"
+    elif movement_magnitude > 0.08:
+        transition_type = "TRANSITION"
+
+    return {
+        "type": transition_type,
+        "delta_drift": delta_drift,
+        "delta_stability": delta_stability,
+        "delta_coherence": delta_coherence,
+    }
+
+
+def build_gate_input_from_state(
+    latest_row: dict[str, Any] | None,
+    previous_row: dict[str, Any] | None = None,
+    current_state: SystemState | None = None,
+) -> GateInput:
     row = latest_row or {}
+    previous = previous_row or {}
     state = current_state
     fallback_ts = parse_iso8601(None).isoformat()
 
@@ -128,15 +170,23 @@ def build_gate_input_from_state(latest_row: dict[str, Any] | None, current_state
             "system_health": row.get("system_health"),
             "regime": row.get("regime_name") or row.get("state"),
         },
+        current=row,
+        previous=previous,
+        system_state=state.to_dict() if state is not None else None,
     )
 
 
-def evaluate_gate(latest_row: dict[str, Any] | None, current_state: SystemState | None = None) -> dict[str, Any]:
+def evaluate_gate(
+    latest_row: dict[str, Any] | None,
+    previous_row: dict[str, Any] | None = None,
+    current_state: SystemState | None = None,
+) -> dict[str, Any]:
     gate = AletheiasGate()
-    gate_input = build_gate_input_from_state(latest_row, current_state)
+    gate_input = build_gate_input_from_state(latest_row, previous_row, current_state)
     decision = gate.evaluate(gate_input)
     payload = asdict(decision)
     payload["timestamp"] = str(gate_input.timestamp)
+    payload["transition"] = classify_transition(previous_row, latest_row)
     return payload
 
 

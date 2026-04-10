@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Literal
+from typing import Any, Literal
 
 CriterionStatus = Literal["PASS", "FAIL", "INSUFFICIENT"]
 GateDecisionLabel = Literal["ADMIT", "SUPPRESS", "ADMISSIBILITY_VOID"]
@@ -28,6 +28,9 @@ class GateInput:
     context_flags: dict[str, bool] = field(default_factory=dict)
     candidate_assertion: str | None = None
     raw_metrics: dict[str, float | int | str | bool | None] = field(default_factory=dict)
+    current: dict[str, Any] | None = None
+    previous: dict[str, Any] | None = None
+    system_state: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)
