@@ -24,7 +24,12 @@ def build_operations_view(
     gate = dict(raw_gate)
     gate["decision"] = gate.get("decision") or "SUPPRESS"
 
-    if gate_decision is not None or "gate_decision" not in context or not (context.get("gate_decision") or {}).get("decision"):
+    context_gate = context.get("gate_decision") if isinstance(context.get("gate_decision"), dict) else {}
+    if (
+        gate_decision is not None
+        or "gate_decision" not in context
+        or context_gate.get("decision") != gate["decision"]
+    ):
         context["gate_decision"] = {
             "decision": gate["decision"],
             "reason": gate.get("refusal_reason") or gate.get("explanation") or gate.get("reason"),
