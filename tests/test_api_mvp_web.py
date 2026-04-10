@@ -17,12 +17,6 @@ from fastapi.testclient import TestClient
 from apps.api.main import DEFAULT_MAX_REQUEST_BODY_BYTES, create_app
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
-_FD004_TRAIN = _REPO_ROOT / "apps" / "train_FD004.txt"
-
-
-def _require_fd004_dataset() -> None:
-    if not _FD004_TRAIN.is_file():
-        pytest.skip(f"NASA CMAPSS FD004 dataset not found at {_FD004_TRAIN}")
 from neraium_core.alignment import StructuralEngine
 from neraium_core.service import StructuralMonitoringService
 from neraium_core.store import ResultStore
@@ -230,7 +224,7 @@ def test_dashboard_demo_seeding_uses_single_backend_seed_job_flow(tmp_path) -> N
     validation = client.get("/web/modules/validation.js")
     assert dash.status_code == 200
     assert validation.status_code == 200
-    assert 'apiUrl("/demo/cmapss/start"' in dash.text
+    assert 'apiUrl("/demo/greenhouse/start"' in dash.text
     assert "async function seedDemoData()" in validation.text
     seed_text = validation.text
     assert "startCmapssDemo(" in seed_text
@@ -424,17 +418,16 @@ def test_demo_seed_async_job_endpoints_return_json_and_seed_real_results(tmp_pat
     assert history.json()["count"] >= 1
 
 
-def test_demo_cmapss_start_returns_run_and_processes_real_results(tmp_path) -> None:
-    _require_fd004_dataset()
+def test_demo_greenhouse_start_returns_run_and_processes_real_results(tmp_path) -> None:
     client = _client(tmp_path)
     started = client.post(
-        _customer_path("/demo/cmapss/start", customer_id="customer-a"),
+        _customer_path("/demo/greenhouse/start", customer_id="customer-a"),
         json={"max_frames": 60},
     )
     assert started.status_code == 200
     body = started.json()
     assert body["status"] == "ok"
-    assert body["demo"] == "cmapss_fd004"
+    assert body["demo"] == "greenhouse"
     assert body["canonical_story"]["read_only"] is True
     assert body["canonical_story"]["non_actuating"] is True
     run_id = str(body["run_id"])
@@ -445,20 +438,38 @@ def test_demo_cmapss_start_returns_run_and_processes_real_results(tmp_path) -> N
     assert run.status_code == 200
     run_body = run.json()["run"]
     assert run_body["is_active"] is True
-    assert run_body["config"]["dataset"] == "NASA CMAPSS FD004"
+    assert run_body["config"]["dataset"] == "Greenhouse demo scenario"
 
     history = client.get(_customer_path(f"/history?run_id={run_id}&limit=5", customer_id="customer-a"))
     assert history.status_code == 200
     assert history.json()["count"] >= 1
 
-    status = client.get(_customer_path(f"/demo/cmapss/status?run_id={run_id}", customer_id="customer-a"))
+    recent = client.get(_customer_path(f"/results/recent?run_id={run_id}&limit=1", customer_id="customer-a"))
+    assert recent.status_code == 200
+    records = recent.json().get("results") or []
+    assert records
+    latest = records[0]
+    required_fields = {
+        "timestamp",
+        "site_id",
+        "asset_id",
+        "state",
+        "regime_name",
+        "structural_drift_score",
+        "relational_stability_score",
+        "system_health",
+        "confidence_score",
+    }
+    assert required_fields.issubset(set(latest.keys()))
+
+    status = client.get(_customer_path(f"/demo/greenhouse/status?run_id={run_id}", customer_id="customer-a"))
     assert status.status_code == 200
     status_body = status.json()
     assert "canonical_story_stage" in status_body
     assert "message" in status_body
     assert "what_is_happening" in status_body["message"]
 
-    proof = client.get(_customer_path(f"/demo/cmapss/proof-summary?run_id={run_id}", customer_id="customer-a"))
+    proof = client.get(_customer_path(f"/demo/greenhouse/proof-summary?run_id={run_id}", customer_id="customer-a"))
     assert proof.status_code == 200
     proof_body = proof.json()
     assert proof_body["run_id"] == run_id

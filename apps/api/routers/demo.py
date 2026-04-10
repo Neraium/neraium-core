@@ -15,39 +15,33 @@ from .._core_imports import get_core_runtime_status
 from ..schemas.ingest import DemoCmapssStartRequest, DemoSeedRequest
 from .dependencies import DemoRouterDependencies
 
-_GROW_OP_SCENARIO_PATH = Path(__file__).resolve().parent.parent.parent.parent / "examples" / "demo" / "cannabis_grow_op_scenario.json"
-
-
-def _load_grow_op_frames(customer_id: str) -> tuple[str, str, list[dict[str, Any]]]:
-    """Load and flatten grow op scenario frames into ingestable payloads."""
-    raw = json.loads(_GROW_OP_SCENARIO_PATH.read_text(encoding="utf-8"))
-    asset = raw.get("asset") or {}
-    site_id = str(asset.get("site_id") or "grow-op-facility-01")
-    asset_id = str(asset.get("asset_id") or "canopy-zone-A")
-    base_time = datetime.now(timezone.utc) - timedelta(minutes=1950)  # ~32 hrs back
-    rows: list[dict[str, Any]] = []
-    for phase in raw.get("phases") or []:
-        for frame in phase.get("frames") or []:
-            sensor_values = frame.get("sensor_values")
-            if not isinstance(sensor_values, dict):
-                continue
-            ts = (base_time + timedelta(minutes=int(frame.get("minute_offset", 0)))).isoformat()
-            rows.append({
-                "timestamp": ts,
-                "site_id": site_id,
-                "asset_id": asset_id,
-                "customer_id": customer_id,
-                "sensor_values": {k: float(v) for k, v in sensor_values.items()},
-            })
-    return site_id, asset_id, rows
-
 logger = logging.getLogger(__name__)
 
 _GROW_OP_SCENARIO_PATH = Path(__file__).resolve().parent.parent / "demo_data" / "cannabis_grow_op_scenario.json"
+REPLAY_DEFAULT_MAX_FRAMES = 240
+REPLAY_MIN_FRAMES = 30
+REPLAY_MAX_FRAMES = 500
+_HISTORICAL_CSV_SOURCES: tuple[dict[str, str], ...] = (
+    {
+        "key": "fixture_clean",
+        "label": "Fixture · Clean greenhouse telemetry",
+        "path": "fixtures/clean.csv",
+        "description": "Small valid CSV for historical replay proof flow.",
+    },
+    {
+        "key": "greenhouse_scenario",
+        "label": "Greenhouse demo scenario · historical series",
+        "path": "apps/api/demo_data/cannabis_grow_op_scenario.json",
+        "description": "Canonical greenhouse demo scenario used by warm-start and replay flows.",
+    },
+)
+_REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
+
+GROW_OP_WARM_START_FRAMES = 12
+GROW_OP_STREAM_FRAME_INTERVAL_SEC = 0.75
 
 
 def _load_grow_op_frames(customer_id: str) -> tuple[str, str, list[dict[str, Any]]]:
-    """Load and flatten grow op scenario frames into ingestable payloads."""
     raw = json.loads(_GROW_OP_SCENARIO_PATH.read_text(encoding="utf-8"))
     asset = raw.get("asset") or {}
     site_id = str(asset.get("site_id") or "grow-op-facility-01")
@@ -64,38 +58,16 @@ def _load_grow_op_frames(customer_id: str) -> tuple[str, str, list[dict[str, Any
             if not isinstance(sensor_values, dict):
                 continue
             ts = (base_time + timedelta(minutes=int(frame.get("minute_offset", 0)))).isoformat()
-            rows.append({
-                "timestamp": ts,
-                "site_id": site_id,
-                "asset_id": asset_id,
-                "customer_id": customer_id,
-                "sensor_values": {k: float(v) for k, v in sensor_values.items()},
-            })
+            rows.append(
+                {
+                    "timestamp": ts,
+                    "site_id": site_id,
+                    "asset_id": asset_id,
+                    "customer_id": customer_id,
+                    "sensor_values": {k: float(v) for k, v in sensor_values.items()},
+                }
+            )
     return site_id, asset_id, rows
-CMAPSS_DEFAULT_MAX_FRAMES = 240
-CMAPSS_MIN_FRAMES = 30
-CMAPSS_MAX_FRAMES = 500
-_HISTORICAL_CSV_SOURCES: tuple[dict[str, str], ...] = (
-    {
-        "key": "fixture_clean",
-        "label": "Fixture · Clean greenhouse telemetry",
-        "path": "fixtures/clean.csv",
-        "description": "Small valid CSV for historical replay proof flow.",
-    },
-    {
-        "key": "fd004_subset",
-        "label": "NASA FD004 subset · historical series",
-        "path": "fd004_outputs_subset/fd004_real_timeseries.csv",
-        "description": "Reference historical customer-style subset used in existing evaluations.",
-    },
-)
-_REPO_ROOT = Path(__file__).resolve().parent.parent.parent.parent
-#
-# Grow-op pacing knobs: keep these centralized so demo cadence is easy to tune
-# without changing ingest/replay control flow.
-#
-GROW_OP_WARM_START_FRAMES = 12
-GROW_OP_STREAM_FRAME_INTERVAL_SEC = 0.75
 
 
 def _canonical_demo_stage(*, frames_processed: int, risk_level: str, run_status: str) -> str:
@@ -213,13 +185,12 @@ def build_demo_router(*, deps: DemoRouterDependencies) -> APIRouter:
             raise HTTPException(status_code=400, detail="Historical source path escapes repository scope.")
         if not path.exists():
             raise HTTPException(status_code=404, detail=f"Historical CSV file is missing: {source['path']}")
-        csv_text = path.read_text(encoding="utf-8")
         return {
             "key": source["key"],
             "label": source["label"],
             "description": source["description"],
             "path": source["path"],
-            "csv_text": csv_text,
+            "csv_text": path.read_text(encoding="utf-8"),
         }
 
     @router.post("/demo/seed/start")
@@ -241,8 +212,7 @@ def build_demo_router(*, deps: DemoRouterDependencies) -> APIRouter:
             return {"status": "error", "job_id": job_id, "progress": 0, "run_id": "", "processed": 0, "total_frames": 0, "message": "Demo seed job not found.", "error": "job_not_found"}
         return deps.public_demo_job(job)
 
-    @router.post("/demo/cmapss/start")
-    def demo_cmapss_start(payload: DemoCmapssStartRequest | None = None, _: None = Depends(deps.require_api_key), customer_id: str | None = Query(default=None)) -> dict[str, Any]:
+    def _start_greenhouse_historical_demo(payload: DemoCmapssStartRequest | None, customer_id: str | None) -> dict[str, Any]:
         request_payload = payload or DemoCmapssStartRequest()
         resolved_customer = deps.resolve_customer_id(customer_id or request_payload.customer_id)
         runtime_status = get_core_runtime_status()
@@ -250,18 +220,18 @@ def build_demo_router(*, deps: DemoRouterDependencies) -> APIRouter:
             raise HTTPException(
                 status_code=503,
                 detail={
-                    "message": "NASA CMAPSS replay requires full core runtime modules; fallback mode is active.",
+                    "message": "Historical replay requires full core runtime modules; fallback mode is active.",
                     "type": "core_runtime_unavailable",
                     "stage": "demo_replay_start",
                     "actionable_detail": "Deploy with full neraium_core runtime (disable fallback mode) and retry replay.",
                     "runtime_notes": [str(x) for x in runtime_status.get("notes", [])],
                 },
             )
-        requested_frames = int(request_payload.max_frames or CMAPSS_DEFAULT_MAX_FRAMES)
-        requested_frames = max(CMAPSS_MIN_FRAMES, min(CMAPSS_MAX_FRAMES, requested_frames))
+        requested_frames = int(request_payload.max_frames or REPLAY_DEFAULT_MAX_FRAMES)
+        requested_frames = max(REPLAY_MIN_FRAMES, min(REPLAY_MAX_FRAMES, requested_frames))
         deps.log_structured(
             logger,
-            event="demo_cmapss_start_requested",
+            event="demo_greenhouse_start_requested",
             fields={
                 "customer_id": resolved_customer,
                 "requested_frames": requested_frames,
@@ -269,11 +239,11 @@ def build_demo_router(*, deps: DemoRouterDependencies) -> APIRouter:
             },
         )
         run = deps.service_instance.create_run(
-            name=f"NASA CMAPSS FD004 Demo {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}",
+            name=f"Greenhouse Historical Demo {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}",
             config={
-                "source": "nasa-cmapss-fd004",
-                "dataset": "NASA CMAPSS FD004",
-                "demo": "cmapss_fd004",
+                "source": "greenhouse-demo-scenario",
+                "dataset": "Greenhouse demo scenario",
+                "demo": "greenhouse",
                 "historical_run_replay": True,
                 "requested_frames": requested_frames,
             },
@@ -284,17 +254,18 @@ def build_demo_router(*, deps: DemoRouterDependencies) -> APIRouter:
         if not run_id:
             raise HTTPException(status_code=500, detail="Failed to create demo run.")
         try:
-            rows = deps.load_cmapss_fd004_subset(requested_frames)
+            rows = deps.load_greenhouse_demo_subset(requested_frames)
             payload_rows = [{**row, "customer_id": resolved_customer} for row in rows]
             results = deps.service_instance.ingest_batch(payload_rows, run_id=run_id, customer_id=resolved_customer)
         except Exception as exc:
             detail = deps.summarize_exception_for_logs(exc)
-            deps.log_structured(logger, event="demo_cmapss_start_failure", fields={"run_id": run_id, "customer_id": resolved_customer, "error": detail}, level=logging.ERROR)
-            raise HTTPException(status_code=500, detail=f"Failed to run NASA CMAPSS FD004 demo: {detail}") from exc
+            deps.log_structured(logger, event="demo_greenhouse_start_failure", fields={"run_id": run_id, "customer_id": resolved_customer, "error": detail}, level=logging.ERROR)
+            raise HTTPException(status_code=500, detail=f"Failed to run greenhouse historical demo: {detail}") from exc
+
         processed = len(results)
         deps.log_structured(
             logger,
-            event="demo_cmapss_start_completed",
+            event="demo_greenhouse_start_completed",
             fields={
                 "run_id": run_id,
                 "customer_id": resolved_customer,
@@ -309,28 +280,25 @@ def build_demo_router(*, deps: DemoRouterDependencies) -> APIRouter:
             "processed": processed,
             "requested_frames": requested_frames,
             "launch_succeeded": processed > 0,
-            "demo": "cmapss_fd004",
+            "demo": "greenhouse",
             "canonical_story": {
-                "sequence": [
-                    "baseline",
-                    "early_structural_drift",
-                    "instability",
-                    "alert",
-                    "recovery_or_intervention",
-                ],
+                "sequence": ["baseline", "early_structural_drift", "instability", "alert", "recovery_or_intervention"],
                 "read_only": True,
                 "non_actuating": True,
                 "human_in_the_loop": True,
             },
         }
 
+    @router.post("/demo/greenhouse/start")
+    def demo_greenhouse_start(payload: DemoCmapssStartRequest | None = None, _: None = Depends(deps.require_api_key), customer_id: str | None = Query(default=None)) -> dict[str, Any]:
+        return _start_greenhouse_historical_demo(payload, customer_id)
+
+    @router.post("/demo/cmapss/start")
+    def demo_cmapss_start(payload: DemoCmapssStartRequest | None = None, _: None = Depends(deps.require_api_key), customer_id: str | None = Query(default=None)) -> dict[str, Any]:
+        return _start_greenhouse_historical_demo(payload, customer_id)
+
     def _start_grow_op_demo(customer_id: str | None = None) -> dict[str, Any]:
         resolved_customer = deps.resolve_customer_id(customer_id)
-        deps.log_structured(
-            logger,
-            event="demo_grow_op_start_route_entry",
-            fields={"customer_id": resolved_customer},
-        )
         try:
             site_id, asset_id, rows = _load_grow_op_frames(resolved_customer)
         except Exception as exc:
@@ -347,55 +315,21 @@ def build_demo_router(*, deps: DemoRouterDependencies) -> APIRouter:
         job_id = str(uuid4())
         now = deps.utc_now_iso()
         with deps.demo_jobs_lock:
-            deps.demo_jobs[job_id] = {
-                "job_id": job_id,
-                "status": "pending",
-                "run_id": run_id,
-                "customer_id": resolved_customer,
-                "progress": 0,
-                "processed": 0,
-                "total_frames": len(rows),
-                "message": "Preparing grow-op demo stream...",
-                "error": None,
-                "created_at": now,
-                "updated_at": now,
-            }
-        warm_start_frames = min(GROW_OP_WARM_START_FRAMES, len(rows))
-        deps.log_structured(
-            logger,
-            event="demo_grow_op_start_blocking_work_deferred",
-            fields={
-                "customer_id": resolved_customer,
-                "run_id": run_id,
-                "job_id": job_id,
-                "total_frames": len(rows),
-                "warm_start_frames": warm_start_frames,
-            },
-        )
+            deps.demo_jobs[job_id] = {"job_id": job_id, "status": "pending", "run_id": run_id, "customer_id": resolved_customer, "progress": 0, "processed": 0, "total_frames": len(rows), "message": "Preparing grow-op demo stream...", "error": None, "created_at": now, "updated_at": now}
 
+        warm_start_frames = min(GROW_OP_WARM_START_FRAMES, len(rows))
         preloaded = 0
         if warm_start_frames > 0:
             try:
-                seed_rows = rows[:warm_start_frames]
-                seed_results = deps.service_instance.ingest_batch(seed_rows, run_id=run_id, customer_id=resolved_customer)
+                seed_results = deps.service_instance.ingest_batch(rows[:warm_start_frames], run_id=run_id, customer_id=resolved_customer)
                 preloaded = len(seed_results)
             except Exception as exc:
                 with deps.demo_jobs_lock:
                     job = deps.demo_jobs.get(job_id)
                     if job is not None:
-                        job.update(
-                            status="error",
-                            message="Grow-op demo warm start failed.",
-                            error=str(exc),
-                        )
+                        job.update(status="error", message="Grow-op demo warm start failed.", error=str(exc))
                         job["updated_at"] = deps.utc_now_iso()
                 detail = deps.summarize_exception_for_logs(exc)
-                deps.log_structured(
-                    logger,
-                    event="demo_grow_op_start_warm_start_failure",
-                    fields={"customer_id": resolved_customer, "run_id": run_id, "job_id": job_id, "error": detail},
-                    level=logging.ERROR,
-                )
                 raise HTTPException(
                     status_code=500,
                     detail={
@@ -404,29 +338,21 @@ def build_demo_router(*, deps: DemoRouterDependencies) -> APIRouter:
                         "run_id": run_id,
                         "job_id": job_id,
                         "customer_id": resolved_customer,
-                        "actionable_detail": (
-                            "The run was already created and activated; use run_id/job_id to inspect status or clean up before retrying."
-                        ),
+                        "actionable_detail": "The run was already created and activated; use run_id/job_id to inspect status or clean up before retrying.",
                         "issue_details": [
                             {"code": "run_already_created", "message": "Replay run is active despite warm-start failure.", "run_id": run_id},
                             {"code": "demo_job_created", "message": "Seed job exists and is marked error.", "job_id": job_id},
                         ],
                     },
                 ) from exc
+
         with deps.demo_jobs_lock:
             job = deps.demo_jobs.get(job_id)
             if job is not None:
                 pct = int(round((preloaded / max(1, len(rows))) * 100))
                 remaining_frames = max(0, len(rows) - preloaded)
                 stream_frames_goal = remaining_frames if remaining_frames > 0 else len(rows)
-                job.update(
-                    status="running",
-                    progress=max(0, min(100, pct)),
-                    processed=preloaded,
-                    message="Grow-op demo telemetry warm start complete." if preloaded else "Streaming grow-op demo telemetry...",
-                    error=None,
-                    stream_frames_goal=stream_frames_goal,
-                )
+                job.update(status="running", progress=max(0, min(100, pct)), processed=preloaded, message="Grow-op demo telemetry warm start complete." if preloaded else "Streaming grow-op demo telemetry...", error=None, stream_frames_goal=stream_frames_goal)
                 job["updated_at"] = deps.utc_now_iso()
 
         def _run_grow_op_seed_job() -> None:
@@ -440,114 +366,44 @@ def build_demo_router(*, deps: DemoRouterDependencies) -> APIRouter:
             def _job_is_active() -> bool:
                 with deps.demo_jobs_lock:
                     current_job = deps.demo_jobs.get(job_id)
-                    if current_job is None:
-                        return False
-                    return str(current_job.get("status") or "").lower() in {"pending", "running", "complete"}
-
-            def _generate_next_frame(source_frame: dict[str, Any], frame_number: int) -> dict[str, Any]:
-                # Keep scenario signals but re-time rows so replay appears live and continuous.
-                generated = dict(source_frame)
-                generated["timestamp"] = datetime.now(timezone.utc).isoformat()
-                generated["customer_id"] = resolved_customer
-                deps.log_structured(
-                    logger,
-                    event="demo_grow_op_worker_frame_generated",
-                    fields={
-                        "message": "frame generated",
-                        "run_id": run_id,
-                        "job_id": job_id,
-                        "frame_count": frame_number,
-                    },
-                )
-                return generated
+                    return bool(current_job and str(current_job.get("status") or "").lower() in {"pending", "running", "complete"})
 
             try:
-                deps.log_structured(
-                    logger,
-                    event="demo_grow_op_worker_started",
-                    fields={
-                        "message": "worker started",
-                        "run_id": run_id,
-                        "job_id": job_id,
-                        "starting_frame_count": processed_total,
-                    },
-                )
                 if not rows:
                     with deps.demo_jobs_lock:
                         job = deps.demo_jobs.get(job_id)
                         if job is not None:
-                            job.update(
-                                status="error",
-                                progress=0,
-                                processed=processed_total,
-                                message="Grow-op demo stream failed.",
-                                error="No scenario frames available to stream.",
-                            )
+                            job.update(status="error", progress=0, processed=processed_total, message="Grow-op demo stream failed.", error="No scenario frames available to stream.")
                             job["updated_at"] = deps.utc_now_iso()
                     return
 
                 while processed_total < target_total and _job_is_active():
                     source_frame = rows[frame_index % len(rows)]
-                    generated_frame = _generate_next_frame(source_frame, processed_total + 1)
+                    generated_frame = dict(source_frame)
+                    generated_frame["timestamp"] = datetime.now(timezone.utc).isoformat()
+                    generated_frame["customer_id"] = resolved_customer
                     results = deps.service_instance.ingest_batch([generated_frame], run_id=run_id, customer_id=resolved_customer)
                     processed_total += len(results)
                     frame_index += 1
-                    deps.log_structured(
-                        logger,
-                        event="demo_grow_op_worker_frame_ingested",
-                        fields={
-                            "message": "frame ingested",
-                            "run_id": run_id,
-                            "job_id": job_id,
-                            "frame_count": processed_total,
-                        },
-                    )
                     with deps.demo_jobs_lock:
                         job = deps.demo_jobs.get(job_id)
                         if job is not None:
                             streamed = processed_total - preloaded
                             pct = int(round((streamed / max(1, stream_frames_goal)) * 100))
-                            job.update(
-                                status="running",
-                                progress=max(1, min(99, pct)),
-                                processed=processed_total,
-                                message="Streaming grow-op demo telemetry...",
-                                error=None,
-                            )
+                            job.update(status="running", progress=max(1, min(99, pct)), processed=processed_total, message="Streaming grow-op demo telemetry...", error=None)
                             job["updated_at"] = deps.utc_now_iso()
                     time.sleep(frame_interval)
                 with deps.demo_jobs_lock:
                     job = deps.demo_jobs.get(job_id)
                     if job is not None and processed_total >= target_total:
-                        job.update(
-                            status="complete",
-                            progress=100,
-                            processed=processed_total,
-                            message="Grow-op demo telemetry stream complete.",
-                            error=None,
-                        )
+                        job.update(status="complete", progress=100, processed=processed_total, message="Grow-op demo telemetry stream complete.", error=None)
                         job["updated_at"] = deps.utc_now_iso()
             except Exception as exc:
                 with deps.demo_jobs_lock:
                     job = deps.demo_jobs.get(job_id)
                     if job is not None:
-                        job.update(
-                            status="error",
-                            message="Grow-op demo stream failed.",
-                            error=str(exc),
-                        )
+                        job.update(status="error", message="Grow-op demo stream failed.", error=str(exc))
                         job["updated_at"] = deps.utc_now_iso()
-            finally:
-                deps.log_structured(
-                    logger,
-                    event="demo_grow_op_worker_stopped",
-                    fields={
-                        "message": "worker stopped",
-                        "run_id": run_id,
-                        "job_id": job_id,
-                        "frame_count": processed_total,
-                    },
-                )
 
         worker = threading.Thread(target=_run_grow_op_seed_job, daemon=True, name=f"demo-grow-op-{job_id}")
         with deps.demo_jobs_lock:
@@ -556,85 +412,44 @@ def build_demo_router(*, deps: DemoRouterDependencies) -> APIRouter:
                 job["_thread"] = worker
                 job["worker_thread_name"] = worker.name
         worker.start()
-        response_payload = {
-            "status": "started",
-            "job_id": job_id,
-            "run_id": run_id,
-            "processed": preloaded,
-            "warm_start_frames": warm_start_frames,
-            "total_frames": len(rows),
-            "demo": "grow-op",
-            "message": "Grow-op demo seeding started.",
-        }
-        deps.log_structured(
-            logger,
-            event="demo_grow_op_start_returning",
-            fields={
-                "customer_id": resolved_customer,
-                "run_id": run_id,
-                "job_id": job_id,
-                "status": response_payload["status"],
-                "processed": response_payload["processed"],
-            },
-        )
-        return response_payload
+        return {"status": "started", "job_id": job_id, "run_id": run_id, "processed": preloaded, "warm_start_frames": warm_start_frames, "total_frames": len(rows), "demo": "grow-op", "message": "Grow-op demo seeding started."}
 
     @router.post("/demo/grow-op/start")
-    def demo_grow_op_start(
-        _: None = Depends(deps.require_api_key),
-        customer_id: str | None = Query(default=None),
-    ) -> dict[str, Any]:
+    def demo_grow_op_start(_: None = Depends(deps.require_api_key), customer_id: str | None = Query(default=None)) -> dict[str, Any]:
         return _start_grow_op_demo(customer_id=customer_id)
 
     @router.post("/demo/start")
-    def demo_start(
-        _: None = Depends(deps.require_api_key),
-        customer_id: str | None = Query(default=None),
-    ) -> dict[str, Any]:
+    def demo_start(_: None = Depends(deps.require_api_key), customer_id: str | None = Query(default=None)) -> dict[str, Any]:
         return _start_grow_op_demo(customer_id=customer_id)
 
     @router.post("/run/demo")
-    def run_demo_start(
-        _: None = Depends(deps.require_api_key),
-        customer_id: str | None = Query(default=None),
-    ) -> dict[str, Any]:
+    def run_demo_start(_: None = Depends(deps.require_api_key), customer_id: str | None = Query(default=None)) -> dict[str, Any]:
         return _start_grow_op_demo(customer_id=customer_id)
 
     @router.get("/demo/grow-op/status")
-    def demo_grow_op_status(
-        run_id: str = Query(..., min_length=1),
-        job_id: str | None = Query(default=None),
-        customer_id: str | None = Query(default=None),
-        _: None = Depends(deps.require_api_key),
-    ) -> dict[str, Any]:
+    def demo_grow_op_status(run_id: str = Query(..., min_length=1), job_id: str | None = Query(default=None), customer_id: str | None = Query(default=None), _: None = Depends(deps.require_api_key)) -> dict[str, Any]:
         resolved_customer = deps.resolve_customer_id(customer_id)
         if job_id:
             with deps.demo_jobs_lock:
                 job = deps.demo_jobs.get(job_id)
             if job and str(job.get("customer_id") or "") == resolved_customer and str(job.get("run_id") or "") == run_id:
-                return {
-                    "run_id": run_id,
-                    "job": deps.public_demo_job(job),
-                    "status": "ready" if str(job.get("status")) == "complete" else str(job.get("status") or "unknown"),
-                }
+                return {"run_id": run_id, "job": deps.public_demo_job(job), "status": "ready" if str(job.get("status")) == "complete" else str(job.get("status") or "unknown")}
         run = deps.service_instance.get_run(run_id, customer_id=resolved_customer)
         if run is None:
             raise HTTPException(status_code=404, detail=f"Unknown run_id: {run_id}")
         recent = deps.service_instance.list_recent_results(limit=5, run_id=run_id, customer_id=resolved_customer)
         state = deps.service_instance.get_current_state(run_id=run_id, customer_id=resolved_customer)
-        return {
-            "run_id": run_id,
-            "status": "ready" if recent else "empty",
-            "frames_processed": len(recent),
-            "risk_level": str((state or {}).get("risk_level") or "UNKNOWN").upper(),
-        }
+        return {"run_id": run_id, "status": "ready" if recent else "empty", "frames_processed": len(recent), "risk_level": str((state or {}).get("risk_level") or "UNKNOWN").upper()}
+
+    @router.get("/demo/greenhouse/status")
+    def demo_greenhouse_status(run_id: str = Query(..., min_length=1), customer_id: str | None = Query(default=None), _: None = Depends(deps.require_api_key)) -> dict[str, Any]:
+        return _historical_replay_status(run_id=run_id, customer_id=customer_id)
 
     @router.get("/demo/cmapss/status")
-    def demo_cmapss_status(
-        run_id: str = Query(..., min_length=1),
-        customer_id: str | None = Query(default=None),
-        _: None = Depends(deps.require_api_key),
-    ) -> dict[str, Any]:
+    def demo_cmapss_status(run_id: str = Query(..., min_length=1), customer_id: str | None = Query(default=None), _: None = Depends(deps.require_api_key)) -> dict[str, Any]:
+        return _historical_replay_status(run_id=run_id, customer_id=customer_id)
+
+    def _historical_replay_status(*, run_id: str, customer_id: str | None) -> dict[str, Any]:
         resolved_customer = deps.resolve_customer_id(customer_id)
         runtime_status = get_core_runtime_status()
         if bool(runtime_status.get("using_fallback", False)):
@@ -644,7 +459,7 @@ def build_demo_router(*, deps: DemoRouterDependencies) -> APIRouter:
                     "message": "Analysis engine is unavailable while runtime fallback mode is active.",
                     "type": "core_runtime_unavailable",
                     "stage": "demo_replay_status",
-                    "actionable_detail": "Restore full neraium_core runtime modules, then rerun the NASA CMAPSS replay.",
+                    "actionable_detail": "Restore full neraium_core runtime modules, then rerun the greenhouse replay.",
                     "runtime_notes": [str(x) for x in runtime_status.get("notes", [])],
                 },
             )
@@ -652,105 +467,68 @@ def build_demo_router(*, deps: DemoRouterDependencies) -> APIRouter:
         run = deps.service_instance.get_run(run_id, customer_id=resolved_customer)
         if run is None:
             raise HTTPException(status_code=404, detail=f"Unknown run_id: {run_id}")
-        requested_frames = int((run.get("config") or {}).get("requested_frames") or CMAPSS_DEFAULT_MAX_FRAMES)
+        requested_frames = int((run.get("config") or {}).get("requested_frames") or REPLAY_DEFAULT_MAX_FRAMES)
         try:
-            recent_results = deps.service_instance.list_recent_results(
-                limit=5,
-                run_id=run_id,
-                customer_id=resolved_customer,
-            )
-        except Exception as exc:
-            detail = deps.summarize_exception_for_logs(exc)
-            deps.log_structured(
-                logger,
-                event="demo_cmapss_status_results_fetch_failed",
-                fields={"run_id": run_id, "customer_id": resolved_customer, "error": detail},
-                level=logging.ERROR,
-            )
+            recent_results = deps.service_instance.list_recent_results(limit=5, run_id=run_id, customer_id=resolved_customer)
+        except Exception:
             recent_results = []
         try:
-            history = deps.service_instance.get_recent_history(
-                limit=5,
-                run_id=run_id,
-                customer_id=resolved_customer,
-            )
+            history = deps.service_instance.get_recent_history(limit=5, run_id=run_id, customer_id=resolved_customer)
         except Exception:
             history = []
         try:
-            current_state = deps.service_instance.get_current_state(
-                run_id=run_id,
-                customer_id=resolved_customer,
-            )
+            current_state = deps.service_instance.get_current_state(run_id=run_id, customer_id=resolved_customer)
         except Exception:
             current_state = None
-        results_count = len(recent_results or [])
-        history_count = len(history or [])
-        has_state = isinstance(current_state, dict) and bool(current_state)
-        frames_processed = int(results_count)
+
+        frames_processed = int(len(recent_results or []))
         risk_level = str((current_state or {}).get("risk_level") or "")
         trend = str((current_state or {}).get("trend") or "")
         launch_succeeded = frames_processed > 0
+        run_status = str(run.get("status", "")).lower()
         if launch_succeeded:
             status = "ready"
             error_message = ""
-        elif str(run.get("status", "")).lower() in {"failed", "error", "aborted", "cancelled"}:
+        elif run_status in {"failed", "error", "aborted", "cancelled"}:
             status = "failed"
             error_message = "Run entered a failed state."
-        elif str(run.get("status", "")).lower() in {"completed", "complete", "done", "finished"}:
+        elif run_status in {"completed", "complete", "done", "finished"}:
             status = "empty"
             error_message = "Replay completed but no analysis results were produced."
-        elif str(run.get("status", "")).lower() in {"starting", "pending", "queued", "initializing", "created", "open"}:
+        elif run_status in {"starting", "pending", "queued", "initializing", "created", "open"}:
             status = "starting"
             error_message = ""
         else:
             status = "ingesting"
             error_message = ""
 
-        deps.log_structured(
-            logger,
-            event="demo_cmapss_status_checked",
-            fields={
-                "run_id": run_id,
-                "customer_id": resolved_customer,
-                "status": status,
-                "run_status": str(run.get("status", "")),
-                "frames_processed": frames_processed,
-                "requested_frames": requested_frames,
-                "has_state": has_state,
-                "history_count": history_count,
-                "results_count": results_count,
-            },
-        )
-
-        stage = _canonical_demo_stage(
-            frames_processed=frames_processed,
-            risk_level=risk_level,
-            run_status=str(run.get("status", "")),
-        )
-        canonical_message = _canonical_demo_message(stage=stage, risk_level=risk_level, trend=trend)
+        stage = _canonical_demo_stage(frames_processed=frames_processed, risk_level=risk_level, run_status=str(run.get("status", "")))
         return {
             "run_id": run_id,
             "launch_succeeded": launch_succeeded,
             "frames_requested": requested_frames,
             "frames_processed": frames_processed,
-            "has_results": results_count > 0,
-            "has_history": history_count > 0,
-            "has_state": has_state,
+            "has_results": len(recent_results or []) > 0,
+            "has_history": len(history or []) > 0,
+            "has_state": isinstance(current_state, dict) and bool(current_state),
             "status": status,
             "run_status": str(run.get("status", "")),
             "error_message": error_message,
             "canonical_story_stage": stage,
             "risk_level": (risk_level or "UNKNOWN").upper(),
             "trend": (trend or "UNKNOWN").upper(),
-            "message": canonical_message,
+            "message": _canonical_demo_message(stage=stage, risk_level=risk_level, trend=trend),
         }
 
+    @router.get("/demo/greenhouse/proof-summary")
+    def demo_greenhouse_proof_summary(run_id: str = Query(..., min_length=1), customer_id: str | None = Query(default=None), _: None = Depends(deps.require_api_key)) -> dict[str, Any]:
+        return _historical_proof_summary(run_id=run_id, customer_id=customer_id)
+
     @router.get("/demo/cmapss/proof-summary")
-    def demo_cmapss_proof_summary(
-        run_id: str = Query(..., min_length=1),
-        customer_id: str | None = Query(default=None),
-        _: None = Depends(deps.require_api_key),
-    ) -> dict[str, Any]:
+    def demo_cmapss_proof_summary(run_id: str = Query(..., min_length=1), customer_id: str | None = Query(default=None), _: None = Depends(deps.require_api_key)) -> dict[str, Any]:
+        return _historical_proof_summary(run_id=run_id, customer_id=customer_id)
+
+    def _historical_proof_summary(*, run_id: str, customer_id: str | None) -> dict[str, Any]:
         resolved_customer = deps.resolve_customer_id(customer_id)
         run = deps.service_instance.get_run(run_id, customer_id=resolved_customer)
         if run is None:
@@ -760,41 +538,17 @@ def build_demo_router(*, deps: DemoRouterDependencies) -> APIRouter:
             return {
                 "run_id": run_id,
                 "story": _canonical_demo_message(stage="warmup", risk_level="UNKNOWN", trend="UNKNOWN"),
-                "proof": {
-                    "first_medium_risk_index": None,
-                    "first_high_risk_index": None,
-                    "threshold_detection_index": None,
-                    "neraium_lead_vs_threshold_frames": None,
-                },
+                "proof": {"first_medium_risk_index": None, "first_high_risk_index": None, "threshold_detection_index": None, "neraium_lead_vs_threshold_frames": None},
             }
         first_medium = next((i for i, row in enumerate(recent_results) if str(row.get("risk_level", "")).upper() == "MEDIUM"), None)
         first_high = next((i for i, row in enumerate(recent_results) if str(row.get("risk_level", "")).upper() == "HIGH"), None)
-        threshold_idx = next(
-            (
-                i
-                for i, row in enumerate(recent_results)
-                if float((row.get("experimental_analytics") or {}).get("composite_instability") or 0.0) >= 0.85
-            ),
-            None,
-        )
-        lead = (
-            int(threshold_idx) - int(first_medium)
-            if first_medium is not None and threshold_idx is not None
-            else None
-        )
+        threshold_idx = next((i for i, row in enumerate(recent_results) if float((row.get("experimental_analytics") or {}).get("composite_instability") or 0.0) >= 0.85), None)
+        lead = int(threshold_idx) - int(first_medium) if first_medium is not None and threshold_idx is not None else None
         latest = recent_results[-1]
-        latest_stage = _canonical_demo_stage(
-            frames_processed=len(recent_results),
-            risk_level=str(latest.get("risk_level") or "UNKNOWN"),
-            run_status=str(run.get("status") or ""),
-        )
+        latest_stage = _canonical_demo_stage(frames_processed=len(recent_results), risk_level=str(latest.get("risk_level") or "UNKNOWN"), run_status=str(run.get("status") or ""))
         return {
             "run_id": run_id,
-            "story": _canonical_demo_message(
-                stage=latest_stage,
-                risk_level=str(latest.get("risk_level") or "UNKNOWN"),
-                trend=str(latest.get("trend") or "UNKNOWN"),
-            ),
+            "story": _canonical_demo_message(stage=latest_stage, risk_level=str(latest.get("risk_level") or "UNKNOWN"), trend=str(latest.get("trend") or "UNKNOWN")),
             "proof": {
                 "first_medium_risk_index": first_medium,
                 "first_high_risk_index": first_high,
