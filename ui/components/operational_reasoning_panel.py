@@ -9,13 +9,14 @@ def render_operational_reasoning_panel(operator_question: str, reasoning_context
     response = generate_reasoned_response(operator_question=operator_question, reasoning_context=reasoning_context)
     gate_decision = reasoning_context.get("gate_decision") or {}
     decision = gate_decision.get("decision") or "SUPPRESS"
+    observed_facts = reasoning_context.get("observed_facts") or (response.get("sections") or {}).get("Observed Facts") or []
 
     return {
         "component": "operational_reasoning_panel",
         "title": "Doctrine-Bound Reasoning Context",
         "question_label": "Observed System Question",
         "operator_question": operator_question,
-        "observed_facts": reasoning_context.get("observed_facts") or [],
+        "observed_facts": observed_facts,
         "inference": response,
         "gate_outcome": decision,
         "operational_implication": reasoning_context.get("operational_implication")
