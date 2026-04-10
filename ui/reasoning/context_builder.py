@@ -94,6 +94,23 @@ def build_admitted_events(
     return events
 
 
+def _trend_fact(metric: str, previous: float | None, current: float) -> str:
+    if previous is None:
+        return f"{metric} has no prior sample (current {current:.3f})"
+
+    delta = current - previous
+    if delta > 0:
+        verb = "increased"
+    elif delta < 0:
+        verb = "decreased"
+    else:
+        verb = "was unchanged"
+
+    if delta == 0:
+        return f"{metric} {verb} at {current:.3f}"
+    return f"{metric} {verb} from {previous:.3f} → {current:.3f}"
+
+
 def build_reasoning_context(
     state: SystemState,
     records: list[dict[str, Any]] | None = None,
@@ -121,11 +138,12 @@ def build_reasoning_context(
 
     gate = gate_decision or {}
     transition = gate.get("transition") if isinstance(gate.get("transition"), dict) else {}
-    previous_row = records[-2] if records and len(records) > 1 else {}
+    has_previous_row = bool(records and len(records) > 1)
+    previous_row = records[-2] if has_previous_row else {}
     current_row = records[-1] if records else {}
-    prev_drift = _as_float(previous_row.get("structural_drift_score", previous_row.get("drift")), 0.0)
+    prev_drift = _as_float(previous_row.get("structural_drift_score", previous_row.get("drift")), 0.0) if has_previous_row else None
     curr_drift = _as_float(current_row.get("structural_drift_score", current_row.get("drift")), 0.0)
-    prev_stability = _as_float(previous_row.get("relational_stability_score", previous_row.get("stability")), 1.0)
+    prev_stability = _as_float(previous_row.get("relational_stability_score", previous_row.get("stability")), 1.0) if has_previous_row else None
     curr_stability = _as_float(current_row.get("relational_stability_score", current_row.get("stability")), 1.0)
     context = {
         "current_state": {
@@ -154,8 +172,8 @@ def build_reasoning_context(
             "current_position": {"x": state.position.x, "y": state.position.y},
         },
         "temporal_facts": [
-            f"Drift increased from {prev_drift:.3f} → {curr_drift:.3f}",
-            f"Stability changed from {prev_stability:.3f} → {curr_stability:.3f}",
+            _trend_fact("Drift", prev_drift, curr_drift),
+            _trend_fact("Stability", prev_stability, curr_stability),
         ],
         "transition": transition,
     }
