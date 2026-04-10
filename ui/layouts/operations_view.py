@@ -14,7 +14,14 @@ def build_operations_view(
     operator_question: str = "What is happening right now?",
     gate_decision: dict[str, Any] | None = None,
 ) -> dict[str, object]:
-    context = reasoning_context or {}
+    context = dict(reasoning_context or {})
+    gate = gate_decision or {}
+    if gate and not context.get("gate_decision"):
+        context["gate_decision"] = {
+            "decision": gate.get("decision"),
+            "reason": gate.get("refusal_reason") or gate.get("explanation") or gate.get("reason"),
+            "doctrine_version": gate.get("doctrine_version"),
+        }
     return {
         "mode": "operations",
         "viewport": "mobile" if width_px < 760 else "desktop",
