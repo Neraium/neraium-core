@@ -57,24 +57,32 @@ def build_operations_view(
     return {
         "mode": "operations",
         "viewport": "mobile" if width_px < 760 else "desktop",
-        "hierarchy": "Gate Authority → Supporting Context → Doctrine-Bound Reasoning → Evidence Record",
+        "hierarchy": "Reality Status → Gate Authority → Secondary Context",
         "zones": {
             "gate": {
                 "layout": "full_width_authority_banner",
+                "visual_emphasis": "maximum",
+                "brightness": "100%",
                 "content": render_gate_decision_card(gate),
             },
             "system_state": {
                 "title": "System Context",
                 "role": "supporting_context",
+                "visual_emphasis": "secondary",
+                "brightness": "55%",
                 "content": render_structural_flow_viz(state, gate_decision=gate),
                 "timeline_strip": _timeline_strip(state, gate),
             },
             "reasoning": {
                 "role": "secondary_reasoning",
+                "visual_emphasis": "secondary",
+                "brightness": "55%",
                 "content": render_operational_reasoning_panel(operator_question, context),
             },
             "record": {
                 "role": "audit_evidence",
+                "visual_emphasis": "secondary",
+                "brightness": "55%",
                 "content": render_event_ledger(context.get("recent_admitted_events")),
             },
         },
