@@ -42,9 +42,14 @@ def _state_from_drift(drift: float) -> str:
 
 
 def _record_from_row(*, timestamp: str, site_id: str, asset_id: str, regime_name: str, sensor_values: dict[str, float]) -> dict[str, Any]:
-    temperature = float(sensor_values.get("temperature", 24.0))
-    humidity = float(sensor_values.get("humidity", 55.0))
-    vapor = float(sensor_values.get("vapor_pressure_deficit", 1.0))
+    temperature = 24.0
+    if "temperature" in sensor_values:
+        temperature = float(sensor_values["temperature"])
+    elif "temperature_f" in sensor_values:
+        temperature = (float(sensor_values["temperature_f"]) - 32.0) * (5.0 / 9.0)
+
+    humidity = float(sensor_values.get("humidity", sensor_values.get("humidity_rh", 55.0)))
+    vapor = float(sensor_values.get("vapor_pressure_deficit", sensor_values.get("vpd_kpa", 1.0)))
 
     temp_risk = _clamp((temperature - 24.0) / 16.0)
     humidity_risk = _clamp(abs(humidity - 55.0) / 35.0)
@@ -109,7 +114,10 @@ def _extract_rows_from_script_scope(scope: dict[str, Any], *, limit: int | None)
 def _load_rows_from_ultrafast_script(*, limit: int | None) -> list[dict[str, Any]]:
     if not ULTRAFAST_DEMO_SCRIPT.is_file():
         return []
-    scope = runpy.run_path(str(ULTRAFAST_DEMO_SCRIPT))
+    try:
+        scope = runpy.run_path(str(ULTRAFAST_DEMO_SCRIPT))
+    except Exception:
+        return []
     return _extract_rows_from_script_scope(scope, limit=limit)
 
 
