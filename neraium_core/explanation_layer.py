@@ -102,7 +102,9 @@ def build_explanation_text(
         )
         if action_eval.refused:
             sentences.append(
-                "Doctrine refusal: candidate language crosses into prescription; only system-state observations are emitted."
+                f"Doctrine refusal: candidate assertion was not emitted ({action_eval.refusal_reason})."
             )
+        else:
+            sentences.append(f"Recommended action: {action}.")
 
     return " ".join(sentences[:5])
