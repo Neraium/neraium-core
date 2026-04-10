@@ -77,6 +77,17 @@ def test_reasoning_context_temporal_facts_reflect_drift_direction() -> None:
     assert context["temporal_facts"][1] == "Stability decreased from 0.710 → 0.640"
 
 
+def test_reasoning_context_temporal_facts_treat_sub_display_precision_delta_as_unchanged() -> None:
+    rows = load_greenhouse_demo_records(limit=2)
+    rows[-2]["structural_drift_score"] = 0.4204
+    rows[-1]["structural_drift_score"] = 0.42049
+
+    state = build_system_state(rows, config=UIConfig())
+    context = build_reasoning_context(state, rows)
+
+    assert context["temporal_facts"][0] == "Drift was unchanged at 0.420"
+
+
 def test_create_app_state_defaults_to_suppress_when_empty() -> None:
     state = create_app_state([])
     assert set(state.keys()) == {"summary", "gate_decision", "reasoning_context", "realtime"}
