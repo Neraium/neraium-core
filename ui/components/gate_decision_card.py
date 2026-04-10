@@ -76,6 +76,44 @@ def _operator_takeaway(authority_level: str, transition_type: str, transition_in
     return "No persistent deviation from baseline has been confirmed."
 
 
+def _risk_direction(transition_type: str, transition: dict[str, Any], authority_level: str) -> str:
+    if authority_level == "VOID":
+        return "UNCERTAIN"
+
+    drift = _to_float(transition.get("delta_drift")) or 0.0
+    stability_delta = _to_float(transition.get("delta_stability")) or 0.0
+    normalized_transition = (transition_type or "STABLE").upper()
+
+    degrading_transition = normalized_transition in {"INSTABILITY", "DEGRADING", "DIVERGENCE"}
+    stable_transition = normalized_transition in {"STABLE", "RECOVERY"}
+
+    if degrading_transition or drift >= 0.12 or stability_delta <= -0.12:
+        return "DEGRADING"
+    if stable_transition and abs(drift) < 0.12 and abs(stability_delta) < 0.12:
+        return "STABLE"
+    return "UNCERTAIN"
+
+
+def _trajectory_statement(authority_level: str, risk_direction: str) -> str:
+    if authority_level == "VOID":
+        return "Signal coherence insufficient to determine system direction."
+    if authority_level == "SUPPRESSED" and risk_direction == "STABLE":
+        return "No sustained directional change detected."
+    if risk_direction == "DEGRADING":
+        return "System is progressing away from stable operating conditions."
+    if risk_direction == "STABLE":
+        return "System direction remains within stable operating conditions."
+    return "Directional trajectory remains uncertain under current evidence."
+
+
+def _if_sustained_statement(risk_direction: str, authority_level: str) -> str:
+    if authority_level == "VOID" or risk_direction == "UNCERTAIN":
+        return "If sustained, this condition indicates: Insufficient evidence to project system evolution."
+    if risk_direction == "DEGRADING":
+        return "If sustained, this condition indicates: Potential transition into a new operating regime."
+    return "If sustained, this condition indicates: No expected change in system behavior."
+
+
 def render_gate_decision_card(decision: dict[str, Any] | None) -> dict[str, Any]:
     gate = decision or {}
     authority_level = _authority_level(gate.get("decision"))
@@ -85,6 +123,7 @@ def render_gate_decision_card(decision: dict[str, Any] | None) -> dict[str, Any]
     transition = gate.get("transition") if isinstance(gate.get("transition"), dict) else {}
     transition_type = transition.get("type") or "STABLE"
     intensity = _transition_intensity(transition, gate.get("persistence_minutes"))
+    risk_direction = _risk_direction(transition_type, transition, authority_level)
     timestamp = gate.get("timestamp")
 
     return {
@@ -101,6 +140,9 @@ def render_gate_decision_card(decision: dict[str, Any] | None) -> dict[str, Any]
         "transition_intensity": intensity,
         "operator_takeaway_label": "Operator Takeaway",
         "operator_takeaway": _operator_takeaway(authority_level, transition_type, intensity),
+        "trajectory_statement": _trajectory_statement(authority_level, risk_direction),
+        "risk_direction": risk_direction,
+        "if_sustained_statement": _if_sustained_statement(risk_direction, authority_level),
         "doctrine_version": gate.get("doctrine_version") or "unknown",
         "timestamp": timestamp,
         "timestamp_label": "Change evaluated at",
