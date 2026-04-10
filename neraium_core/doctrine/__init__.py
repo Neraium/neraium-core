@@ -1,4 +1,5 @@
 from __future__ import annotations
+from .defaults import DEFAULT_DOCTRINE_V1
 
 from dataclasses import dataclass
 import re
@@ -87,4 +88,6 @@ def assess_assertion(candidate_assertion: str | None) -> DoctrineAssessment:
     )
 
 
-__all__ = ["DOCTRINE_VERSION", "DoctrineAssessment", "assess_assertion"]
+__all__ = ["evaluate_statement", "count_confirming_signals", "DEFAULT_DOCTRINE_V1", "DOCTRINE_VERSION", "DoctrineAssessment", "assess_assertion"]
+
+from .evaluator import count_confirming_signals, evaluate_statement
