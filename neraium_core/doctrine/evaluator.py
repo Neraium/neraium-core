@@ -66,6 +66,9 @@ def refusal_reason_for_statement(
     ):
         return "low_confidence"
 
+    if conf is not None and conf < doctrine.corroboration_thresholds.min_confidence:
+        return "low_confidence"
+
     corroboration = corroborating_signals if corroborating_signals is not None else 0
     if corroboration < doctrine.corroboration_thresholds.min_confirming_signals:
         return "insufficient_corroboration"

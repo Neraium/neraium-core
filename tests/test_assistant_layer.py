@@ -51,8 +51,8 @@ def test_grounding_sections_distinguish_observed_inferred_recommended() -> None:
     assert response["mode"] == "summary"
     assert "Observed:" in response["text"]
     assert "Inferred:" in response["text"]
-    assert "Recommended:" in response["text"]
-    assert response["grounding"]["recommended"]
+    assert "Doctrine:" in response["text"]
+    assert response["grounding"]["doctrine"]
 
 
 def test_supported_modes_render_without_missing_sections() -> None:
@@ -64,6 +64,23 @@ def test_supported_modes_render_without_missing_sections() -> None:
         assert isinstance(response["text"], str)
         assert response["text"]
         assert "context" in response
+
+
+def test_doctrine_refusal_line_uses_actual_refusal_reason() -> None:
+    state = _state()
+    state["operational_recommendation"] = {
+        "recommended_action": "structural instability present",
+        "recommendation_confidence": 0.3,
+        "rationale": "Confidence is currently low.",
+        "operator_note": "Advisory only.",
+        "status": {"available": True, "advisory": True},
+    }
+    context = build_assistant_context(current_state=state, recent_history=[state, _state(cycle=2)])
+
+    response = render_assistant_response(mode="summary", context=context)
+
+    assert "confidence was below doctrine threshold" in response["text"]
+    assert "prescriptive/action phrasing is not allowed" not in response["text"]
 
 
 def test_report_modes_include_required_sections() -> None:
