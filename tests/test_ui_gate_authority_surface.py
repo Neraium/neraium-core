@@ -44,7 +44,10 @@ def test_operations_view_places_gate_zone_first() -> None:
 
     assert list(view["zones"].keys()) == ["gate", "system_state", "reasoning", "record"]
     assert view["zones"]["gate"]["layout"] == "full_width_authority_banner"
+    assert view["zones"]["gate"]["visual_emphasis"] == "maximum"
+    assert view["zones"]["system_state"]["brightness"] == "55%"
     assert view["zones"]["gate"]["content"]["authority_level"] == "SUPPRESSED"
+    assert view["zones"]["gate"]["content"]["reality_status"] == "No confirmed change"
     assert view["zones"]["system_state"]["title"] == "System Context"
     assert view["zones"]["system_state"]["content"]["gate_coupling"]["decision"] == "SUPPRESS"
 
@@ -75,3 +78,36 @@ def test_operations_view_preserves_existing_reasoning_gate_context_when_gate_omi
     assert gate_reference["reason"] == "Existing gate context from caller."
     assert gate_reference["doctrine_version"] == "doctrine.v2"
     assert gate_reference["confidence"] == "high"
+
+
+def test_gate_banner_surfaces_reality_status_takeaway_intensity_and_timestamp() -> None:
+    rows = [
+        {
+            "timestamp": "2026-04-10T00:00:00+00:00",
+            "structural_drift_score": 0.45,
+            "relational_stability_score": 0.65,
+        }
+    ]
+    system_state = build_system_state(rows, config=UIConfig())
+    gate_decision = {
+        "decision": "ADMIT",
+        "doctrine_version": "doctrine.v1",
+        "timestamp": rows[-1]["timestamp"],
+        "confidence_label": "high",
+        "persistence_minutes": 75,
+        "transition": {
+            "delta_drift": 0.31,
+            "delta_stability": -0.28,
+            "type": "INSTABILITY",
+        },
+    }
+
+    view = build_operations_view(system_state, gate_decision=gate_decision)
+    gate_content = view["zones"]["gate"]["content"]
+
+    assert gate_content["reality_status"] == "Change is real"
+    assert gate_content["transition_type"] == "INSTABILITY"
+    assert gate_content["transition_intensity"] == "HIGH"
+    assert gate_content["operator_takeaway_label"] == "Operator Takeaway"
+    assert gate_content["operator_takeaway"] == "System has entered a high-intensity instability transition."
+    assert gate_content["timestamp_display"] == "Change evaluated at: 2026-04-10T00:00:00+00:00"

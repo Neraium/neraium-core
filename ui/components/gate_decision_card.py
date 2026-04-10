@@ -3,6 +3,15 @@ from __future__ import annotations
 from typing import Any
 
 
+def _reality_status(decision: str | None) -> str:
+    normalized = (decision or "SUPPRESS").upper()
+    if normalized == "ADMIT":
+        return "Change is real"
+    if normalized in {"ADMISSIBILITY_VOID", "VOID"}:
+        return "Signal not valid"
+    return "No confirmed change"
+
+
 def _authority_level(decision: str | None) -> str:
     normalized = (decision or "SUPPRESS").upper()
     if normalized == "ADMIT":
@@ -35,6 +44,38 @@ def _confidence_label(raw_confidence: str | None) -> str:
     return "LOW"
 
 
+def _to_float(value: Any) -> float | None:
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _transition_intensity(transition: dict[str, Any], persistence_minutes: Any) -> str:
+    drift = abs(_to_float(transition.get("delta_drift")) or 0.0)
+    stability_drop = max(0.0, -(_to_float(transition.get("delta_stability")) or 0.0))
+    persistence = max(0.0, _to_float(persistence_minutes) or 0.0)
+
+    if drift >= 0.30 or stability_drop >= 0.30 or persistence >= 60:
+        return "HIGH"
+    if drift >= 0.12 or stability_drop >= 0.12 or persistence >= 20:
+        return "MODERATE"
+    return "LOW"
+
+
+def _operator_takeaway(authority_level: str, transition_type: str, transition_intensity: str) -> str:
+    if authority_level == "ADMITTED":
+        return (
+            f"System has entered a {transition_intensity.lower()}-intensity "
+            f"{transition_type.lower()} transition."
+        )
+    if authority_level == "VOID":
+        return "Observed signal remains invalid for determining a persistent transition."
+    return "No persistent deviation from baseline has been confirmed."
+
+
 def render_gate_decision_card(decision: dict[str, Any] | None) -> dict[str, Any]:
     gate = decision or {}
     authority_level = _authority_level(gate.get("decision"))
@@ -42,16 +83,28 @@ def render_gate_decision_card(decision: dict[str, Any] | None) -> dict[str, Any]
     reason = gate.get("reason") or gate.get("explanation") or refusal_reason
 
     transition = gate.get("transition") if isinstance(gate.get("transition"), dict) else {}
+    transition_type = transition.get("type") or "STABLE"
+    intensity = _transition_intensity(transition, gate.get("persistence_minutes"))
+    timestamp = gate.get("timestamp")
 
     return {
         "component": "gate_authority_banner",
+        "visual_priority": "primary",
+        "layout_weight": "dominant",
+        "reality_status": _reality_status(gate.get("decision")),
         "authority_surface": "Aletheia's Gate",
         "authority_level": authority_level,
         "label": _decision_label(authority_level),
         "authority_statement": _authority_statement(authority_level),
         "confidence": _confidence_label(gate.get("confidence_label")),
+        "transition_type": transition_type,
+        "transition_intensity": intensity,
+        "operator_takeaway_label": "Operator Takeaway",
+        "operator_takeaway": _operator_takeaway(authority_level, transition_type, intensity),
         "doctrine_version": gate.get("doctrine_version") or "unknown",
-        "timestamp": gate.get("timestamp"),
+        "timestamp": timestamp,
+        "timestamp_label": "Change evaluated at",
+        "timestamp_display": f"Change evaluated at: {timestamp}" if timestamp else "Change evaluated at: unknown",
         "reason": reason,
         "refusal_reason": refusal_reason,
         "criteria_summary": gate.get("criteria_summary") or gate.get("observed_facts") or [],
@@ -61,7 +114,8 @@ def render_gate_decision_card(decision: dict[str, Any] | None) -> dict[str, Any]
             "stability": transition.get("delta_stability"),
             "coherence": transition.get("delta_coherence"),
             "persistence_minutes": gate.get("persistence_minutes"),
-            "transition_type": transition.get("type") or "STABLE",
+            "transition_type": transition_type,
+            "transition_intensity": intensity,
         },
         "no_signal_admitted": authority_level == "SUPPRESSED",
         "absence_statement": (
