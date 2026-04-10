@@ -14,6 +14,22 @@ def _as_float(value: Any, default: float) -> float:
         return default
 
 
+def _parse_event_admitted(value: Any) -> bool | None:
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, (int, float)):
+        return bool(value)
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"true", "1", "yes", "y", "on"}:
+            return True
+        if normalized in {"false", "0", "no", "n", "off", ""}:
+            return False
+    return None
+
+
 def _summarize_event(event: AdmittedEvent, *, drift_threshold: float, stability_threshold: float) -> str:
     reasons: list[str] = []
     if event.drift >= drift_threshold:
@@ -35,8 +51,8 @@ def build_admitted_events(
     for row in records or []:
         drift = _as_float(row.get("structural_drift_score", row.get("drift", 0.0)), 0.0)
         stability = _as_float(row.get("relational_stability_score", row.get("stability", 1.0)), 1.0)
-        admitted_from_row = row.get("event_admitted")
-        event_admitted = bool(admitted_from_row) if admitted_from_row is not None else bool(
+        admitted_from_row = _parse_event_admitted(row.get("event_admitted"))
+        event_admitted = admitted_from_row if admitted_from_row is not None else bool(
             drift >= drift_threshold and stability <= stability_threshold
         )
         event = AdmittedEvent(
