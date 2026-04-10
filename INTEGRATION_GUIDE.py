@@ -25,7 +25,7 @@ def describe_integration() -> dict[str, object]:
     )
     return {
         "summary": state["summary"],
-        "realtime_enabled": state["realtime"].enabled,
+        "realtime_enabled": state["realtime"]["enabled"],
         "views": ["pilot", "operations", "demo"],
     }
 
