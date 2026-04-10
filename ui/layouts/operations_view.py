@@ -11,6 +11,21 @@ from ui.components import (
 from ui.core_integration import SystemState
 
 
+def _timeline_strip(state: SystemState, gate: dict[str, Any]) -> dict[str, Any]:
+    recent = state.timeline[-5:]
+    stages = []
+    for event in recent:
+        stage = "baseline"
+        if abs(event.drift_delta) > 0.08:
+            stage = "transition"
+        stages.append({"t": event.t, "stage": stage})
+
+    decision = (gate.get("decision") or "SUPPRESS").upper()
+    admitted_stage = "admitted" if decision == "ADMIT" else ("suppressed" if decision == "SUPPRESS" else "void")
+    stages.append({"t": gate.get("timestamp") or state.position.t, "stage": admitted_stage})
+    return {"title": "Timeline Strip", "sequence": stages}
+
+
 def build_operations_view(
     state: SystemState,
     *,
@@ -35,6 +50,8 @@ def build_operations_view(
             "reason": gate.get("refusal_reason") or gate.get("explanation") or gate.get("reason"),
             "doctrine_version": gate.get("doctrine_version"),
             "confidence_label": gate.get("confidence_label"),
+            "transition": gate.get("transition"),
+            "persistence_minutes": gate.get("persistence_minutes"),
         }
 
     return {
@@ -50,6 +67,7 @@ def build_operations_view(
                 "title": "System Context",
                 "role": "supporting_context",
                 "content": render_structural_flow_viz(state, gate_decision=gate),
+                "timeline_strip": _timeline_strip(state, gate),
             },
             "reasoning": {
                 "role": "secondary_reasoning",

@@ -20,6 +20,12 @@ def _fallback_gate_decision() -> dict[str, Any]:
         "candidate_assertion_allowed": False,
         "confidence_label": "low",
         "timestamp": None,
+        "transition": {
+            "type": "STABLE",
+            "delta_drift": 0.0,
+            "delta_stability": 0.0,
+            "delta_coherence": 0.0,
+        },
     }
 
 
@@ -33,13 +39,16 @@ def create_app_state(records):
     """
     if isinstance(records, list) and len(records) > 0:
         latest = records[-1]
+        previous = records[-2] if len(records) > 1 else None
         rows = records
     elif isinstance(records, dict):
         latest = records
+        previous = None
         rows = [records]
     else:
         rows = []
         latest = {}
+        previous = None
 
     summary = {
         "timestamp": latest.get("timestamp"),
@@ -52,7 +61,7 @@ def create_app_state(records):
 
     if rows:
         system_state = build_system_state(rows, config=UIConfig())
-        gate_decision = evaluate_gate(latest, system_state)
+        gate_decision = evaluate_gate(latest, previous, system_state)
         reasoning_context: dict[str, Any] = build_reasoning_context(system_state, rows, gate_decision=gate_decision)
     else:
         gate_decision = _fallback_gate_decision()

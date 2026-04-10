@@ -41,6 +41,14 @@ def _summarize_event(event: AdmittedEvent, *, drift_threshold: float, stability_
     return "; ".join(reasons)
 
 
+def _state_summary(row: dict[str, Any] | None) -> str:
+    source = row or {}
+    drift = _as_float(source.get("structural_drift_score", source.get("drift")), 0.0)
+    stability = _as_float(source.get("relational_stability_score", source.get("stability")), 1.0)
+    regime = str(source.get("regime_name") or source.get("regime") or "unknown")
+    return f"regime={regime}, drift={drift:.3f}, stability={stability:.3f}"
+
+
 def build_admitted_events(
     records: list[dict[str, Any]] | None,
     *,
@@ -48,7 +56,9 @@ def build_admitted_events(
     stability_threshold: float = 0.45,
 ) -> list[AdmittedEvent]:
     events: list[AdmittedEvent] = []
-    for row in records or []:
+    rows = records or []
+    for idx, row in enumerate(rows):
+        previous = rows[idx - 1] if idx > 0 else None
         drift = _as_float(row.get("structural_drift_score", row.get("drift", 0.0)), 0.0)
         stability = _as_float(row.get("relational_stability_score", row.get("stability", 1.0)), 1.0)
         admitted_from_row = _parse_event_admitted(row.get("event_admitted"))
@@ -76,6 +86,9 @@ def build_admitted_events(
                     stability_threshold=stability_threshold,
                 )
             ),
+            previous_state_summary=_state_summary(previous),
+            current_state_summary=_state_summary(row),
+            transition_type=str(row.get("transition_type") or ("TRANSITION" if previous is not None else "STABLE")),
         )
         events.append(event)
     return events
@@ -107,6 +120,13 @@ def build_reasoning_context(
         stability_direction = "recovering"
 
     gate = gate_decision or {}
+    transition = gate.get("transition") if isinstance(gate.get("transition"), dict) else {}
+    previous_row = records[-2] if records and len(records) > 1 else {}
+    current_row = records[-1] if records else {}
+    prev_drift = _as_float(previous_row.get("structural_drift_score", previous_row.get("drift")), 0.0)
+    curr_drift = _as_float(current_row.get("structural_drift_score", current_row.get("drift")), 0.0)
+    prev_stability = _as_float(previous_row.get("relational_stability_score", previous_row.get("stability")), 1.0)
+    curr_stability = _as_float(current_row.get("relational_stability_score", current_row.get("stability")), 1.0)
     context = {
         "current_state": {
             "timestamp": state.position.t,
@@ -133,5 +153,10 @@ def build_reasoning_context(
             "projected_points": len(state.projected_cone),
             "current_position": {"x": state.position.x, "y": state.position.y},
         },
+        "temporal_facts": [
+            f"Drift increased from {prev_drift:.3f} → {curr_drift:.3f}",
+            f"Stability changed from {prev_stability:.3f} → {curr_stability:.3f}",
+        ],
+        "transition": transition,
     }
     return context
