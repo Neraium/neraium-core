@@ -43,5 +43,7 @@ def test_operations_view_places_gate_zone_first() -> None:
     )
 
     assert list(view["zones"].keys()) == ["gate", "system_state", "reasoning", "record"]
-    assert view["zones"]["gate"]["decision"] == "SUPPRESS"
-    assert view["zones"]["system_state"]["gate_coupling"]["decision"] == "SUPPRESS"
+    assert view["zones"]["gate"]["layout"] == "full_width_authority_banner"
+    assert view["zones"]["gate"]["content"]["authority_level"] == "SUPPRESSED"
+    assert view["zones"]["system_state"]["title"] == "System Context"
+    assert view["zones"]["system_state"]["content"]["gate_coupling"]["decision"] == "SUPPRESS"
