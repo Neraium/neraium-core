@@ -40,3 +40,15 @@ def create_gradio_app():
         gr.Button("Test").click(fn=dummy, outputs=out)
 
     return app
+
+def create_ui_model(data):
+    return {
+        "summary": data[-1] if data else {},
+        "realtime": {"enabled": False}
+    }
+
+def create_ui_model(data):
+    return {
+        "summary": data[-1] if data else {},
+        "realtime": {"enabled": False}
+    }
