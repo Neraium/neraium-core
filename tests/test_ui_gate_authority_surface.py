@@ -110,4 +110,72 @@ def test_gate_banner_surfaces_reality_status_takeaway_intensity_and_timestamp() 
     assert gate_content["transition_intensity"] == "HIGH"
     assert gate_content["operator_takeaway_label"] == "Operator Takeaway"
     assert gate_content["operator_takeaway"] == "System has entered a high-intensity instability transition."
+    assert gate_content["risk_direction"] == "DEGRADING"
+    assert gate_content["trajectory_statement"] == "System is progressing away from stable operating conditions."
+    assert (
+        gate_content["if_sustained_statement"]
+        == "If sustained, this condition indicates: Potential transition into a new operating regime."
+    )
     assert gate_content["timestamp_display"] == "Change evaluated at: 2026-04-10T00:00:00+00:00"
+
+
+def test_gate_banner_impact_layer_for_suppressed_signal_is_stable() -> None:
+    rows = [
+        {
+            "timestamp": "2026-04-10T00:00:00+00:00",
+            "structural_drift_score": 0.2,
+            "relational_stability_score": 0.8,
+        }
+    ]
+    system_state = build_system_state(rows, config=UIConfig())
+    gate_decision = {
+        "decision": "SUPPRESS",
+        "doctrine_version": "doctrine.v1",
+        "timestamp": rows[-1]["timestamp"],
+        "transition": {
+            "delta_drift": 0.02,
+            "delta_stability": 0.04,
+            "type": "STABLE",
+        },
+    }
+
+    view = build_operations_view(system_state, gate_decision=gate_decision)
+    gate_content = view["zones"]["gate"]["content"]
+
+    assert gate_content["risk_direction"] == "STABLE"
+    assert gate_content["trajectory_statement"] == "No sustained directional change detected."
+    assert (
+        gate_content["if_sustained_statement"]
+        == "If sustained, this condition indicates: No expected change in system behavior."
+    )
+
+
+def test_gate_banner_impact_layer_for_void_signal_is_uncertain() -> None:
+    rows = [
+        {
+            "timestamp": "2026-04-10T00:00:00+00:00",
+            "structural_drift_score": 0.2,
+            "relational_stability_score": 0.8,
+        }
+    ]
+    system_state = build_system_state(rows, config=UIConfig())
+    gate_decision = {
+        "decision": "VOID",
+        "doctrine_version": "doctrine.v1",
+        "timestamp": rows[-1]["timestamp"],
+        "transition": {
+            "delta_drift": 0.15,
+            "delta_stability": -0.2,
+            "type": "INSTABILITY",
+        },
+    }
+
+    view = build_operations_view(system_state, gate_decision=gate_decision)
+    gate_content = view["zones"]["gate"]["content"]
+
+    assert gate_content["risk_direction"] == "UNCERTAIN"
+    assert gate_content["trajectory_statement"] == "Signal coherence insufficient to determine system direction."
+    assert (
+        gate_content["if_sustained_statement"]
+        == "If sustained, this condition indicates: Insufficient evidence to project system evolution."
+    )
