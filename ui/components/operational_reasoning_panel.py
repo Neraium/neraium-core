@@ -10,12 +10,21 @@ def render_operational_reasoning_panel(operator_question: str, reasoning_context
     gate_decision = reasoning_context.get("gate_decision") or {}
     decision = gate_decision.get("decision") or "SUPPRESS"
 
+    temporal_facts = reasoning_context.get("temporal_facts") or reasoning_context.get("observed_facts") or []
+    transition = reasoning_context.get("transition") or {}
+    transition_type = transition.get("type") or "STABLE"
+
     return {
         "component": "operational_reasoning_panel",
         "title": "Doctrine-Bound Reasoning Context",
         "question_label": "Observed System Question",
         "operator_question": operator_question,
-        "observed_facts": reasoning_context.get("observed_facts") or [],
+        "observed_facts": temporal_facts,
+        "temporal_framing": {
+            "observed_facts": temporal_facts,
+            "inference": f"System moving away from baseline regime ({transition_type}).",
+            "gate_outcome": decision,
+        },
         "inference": response,
         "gate_outcome": decision,
         "operational_implication": reasoning_context.get("operational_implication")

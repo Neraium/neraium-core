@@ -9,7 +9,7 @@ if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
 from ui.config import UIConfig
-from ui.core_integration import build_system_state
+from ui.core_integration import build_system_state, classify_transition
 from ui.layouts.operations_view import build_operations_view
 
 
@@ -27,46 +27,104 @@ def _row(**overrides):
 
 
 def run_demo() -> None:
-    rows = [_row()]
-    state = build_system_state(rows, config=UIConfig())
-
     scenarios = [
         {
-            "name": "clear_admit",
+            "name": "step_1_stable",
+            "rows": [
+                _row(
+                    timestamp="2026-04-10T00:00:00Z",
+                    regime_name="baseline",
+                    structural_drift_score=0.20,
+                    relational_stability_score=0.82,
+                    coherence_score=0.83,
+                    persistence_minutes=2,
+                )
+            ],
+            "gate_decision": {
+                "decision": "SUPPRESS",
+                "doctrine_version": "doctrine.v1",
+                "timestamp": "2026-04-10T00:00:00Z",
+                "confidence_label": "medium",
+                "refusal_reason": "No meaningful structural movement from baseline.",
+                "criteria_summary": ["stable drift", "high stability"],
+                "persistence_minutes": 2,
+            },
+        },
+        {
+            "name": "step_2_drift_rising_suppress",
+            "rows": [
+                _row(
+                    timestamp="2026-04-10T00:00:00Z",
+                    regime_name="baseline",
+                    structural_drift_score=0.20,
+                    relational_stability_score=0.82,
+                    coherence_score=0.83,
+                    persistence_minutes=2,
+                ),
+                _row(
+                    timestamp="2026-04-10T00:04:00Z",
+                    regime_name="transition",
+                    structural_drift_score=0.48,
+                    relational_stability_score=0.61,
+                    coherence_score=0.68,
+                    persistence_minutes=6,
+                ),
+            ],
+            "gate_decision": {
+                "decision": "SUPPRESS",
+                "doctrine_version": "doctrine.v1",
+                "timestamp": "2026-04-10T00:04:00Z",
+                "confidence_label": "medium",
+                "refusal_reason": "Signal is moving, but persistence is below admission threshold.",
+                "criteria_summary": ["insufficient persistence", "single-source evidence"],
+                "persistence_minutes": 6,
+            },
+        },
+        {
+            "name": "step_3_persistence_achieved_admit",
+            "rows": [
+                _row(
+                    timestamp="2026-04-10T00:00:00Z",
+                    regime_name="baseline",
+                    structural_drift_score=0.20,
+                    relational_stability_score=0.82,
+                    coherence_score=0.83,
+                    persistence_minutes=2,
+                ),
+                _row(
+                    timestamp="2026-04-10T00:04:00Z",
+                    regime_name="transition",
+                    structural_drift_score=0.48,
+                    relational_stability_score=0.61,
+                    coherence_score=0.68,
+                    persistence_minutes=6,
+                ),
+                _row(
+                    timestamp="2026-04-10T00:10:00Z",
+                    regime_name="transition",
+                    structural_drift_score=0.73,
+                    relational_stability_score=0.36,
+                    coherence_score=0.74,
+                    persistence_minutes=18,
+                ),
+            ],
             "gate_decision": {
                 "decision": "ADMIT",
                 "doctrine_version": "doctrine.v1",
                 "timestamp": "2026-04-10T00:10:00Z",
                 "confidence_label": "high",
-                "reason": "Persistent corroborated structural reorganization meets doctrine admission criteria.",
+                "reason": "Persistence and coherence thresholds are now met.",
                 "criteria_summary": ["coherence confirmed", "persistence confirmed", "multiple corroborating signals"],
-            },
-        },
-        {
-            "name": "suppress",
-            "gate_decision": {
-                "decision": "SUPPRESS",
-                "doctrine_version": "doctrine.v1",
-                "timestamp": "2026-04-10T00:15:00Z",
-                "confidence_label": "medium",
-                "refusal_reason": "Signal is transient and lacks corroborating evidence.",
-                "criteria_summary": ["insufficient persistence", "single-source evidence"],
-            },
-        },
-        {
-            "name": "admissibility_void",
-            "gate_decision": {
-                "decision": "ADMISSIBILITY_VOID",
-                "doctrine_version": "doctrine.v1",
-                "timestamp": "2026-04-10T00:20:00Z",
-                "confidence_label": "low",
-                "refusal_reason": "Evidence stream is incoherent and cannot be admitted.",
-                "criteria_summary": ["coherence breakdown", "instrument instability"],
+                "persistence_minutes": 18,
             },
         },
     ]
 
     for scenario in scenarios:
+        state = build_system_state(scenario["rows"], config=UIConfig())
+        previous = scenario["rows"][-2] if len(scenario["rows"]) > 1 else None
+        transition = classify_transition(previous, scenario["rows"][-1])
+        scenario["gate_decision"]["transition"] = transition
         surface = build_operations_view(
             state,
             reasoning_context={"recent_admitted_events": []},
