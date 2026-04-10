@@ -2,6 +2,12 @@ from __future__ import annotations
 
 from typing import Any, Literal
 
+from neraium_core.doctrine import (
+    DEFAULT_DOCTRINE_V1,
+    count_confirming_signals,
+    evaluate_statement,
+)
+
 ASSISTANT_MODES = {
     "summary",
     "why_recommended",
@@ -194,29 +200,50 @@ def render_assistant_response(*, mode: AssistantMode, context: dict[str, Any]) -
         )
     ]
 
-    recommended = [
-        _grounded_text(
-            "Recommended:",
-            (
-                f"action={recommendation.get('recommended_action')} "
-                f"confidence={recommendation.get('recommendation_confidence')} "
-                f"rationale={recommendation.get('rationale')}"
-            ),
-            "no recommendation provided.",
+    candidate_action = str(recommendation.get("recommended_action") or "").strip()
+    doctrine_eval = evaluate_statement(
+        candidate_action,
+        confidence=recommendation.get("recommendation_confidence"),
+        corroborating_signals=count_confirming_signals(
+            [
+                bool(risk.get("risk_level")),
+                bool(context.get("events")),
+                bool(context.get("explanation")),
+            ]
         ),
-        _grounded_text("Recommended:", recommendation.get("operator_note"), "operator safety note unavailable."),
+        doctrine=DEFAULT_DOCTRINE_V1,
+    )
+
+    doctrine_lines = [
+        _grounded_text(
+            "Doctrine:",
+            f"status={'refused' if doctrine_eval.refused else 'allowed'} refusal_reason={doctrine_eval.refusal_reason}",
+            "doctrine evaluation unavailable.",
+        )
     ]
+    if doctrine_eval.refused:
+        doctrine_lines.append(
+            "Doctrine: Output constrained to observation-only language because prescriptive/action phrasing is not allowed."
+        )
+    else:
+        doctrine_lines.append(
+            _grounded_text(
+                "Observed assertion:",
+                candidate_action,
+                "no assertion candidate provided.",
+            )
+        )
 
     if mode == "summary":
-        text = "\n".join(["Current situation summary", *observed, *inferred, *recommended])
+        text = "\n".join(["Current situation summary", *observed, *inferred, *doctrine_lines])
     elif mode == "why_recommended":
         text = "\n".join(
             [
                 "Why this is being recommended",
                 observed[1],
                 _grounded_text("Observed:", context.get("explanation"), "explanation text unavailable."),
-                recommended[0],
-                "Inferred: Recommendation rationale is treated as advisory, not autonomous instruction.",
+                doctrine_lines[0],
+                "Inferred: Doctrine permits defensible state assertions only; it does not emit operator instructions.",
             ]
         )
     elif mode == "what_changed":
@@ -230,7 +257,7 @@ def render_assistant_response(*, mode: AssistantMode, context: dict[str, Any]) -
                     f"time_window={recent_changes.get('previous_timestamp')} -> {recent_changes.get('latest_timestamp')}",
                     "timeline window unavailable.",
                 ),
-                recommended[0],
+                doctrine_lines[0],
             ]
         )
     elif mode == "pattern_similarity":
@@ -240,7 +267,7 @@ def render_assistant_response(*, mode: AssistantMode, context: dict[str, Any]) -
                 inferred[0],
                 _grounded_text("Observed:", f"pattern_family={memory.get('pattern_family')}", "pattern family unavailable."),
                 _grounded_text("Observed:", f"top_matches={memory.get('top_matches')}", "top matches unavailable."),
-                "Recommended: Treat pattern similarity as supporting evidence only.",
+                "Doctrine: Treat pattern similarity as supporting evidence only.",
             ]
         )
     else:  # handoff
@@ -258,8 +285,8 @@ def render_assistant_response(*, mode: AssistantMode, context: dict[str, Any]) -
                 observed[1],
                 _grounded_text("Observed:", context.get("explanation"), "explanation unavailable."),
                 inferred[0],
-                recommended[0],
-                "Recommended: Continue with site SOP verification before acting.",
+                doctrine_lines[0],
+                "Doctrine: Handoff is state-only and avoids prescribed actions.",
             ]
         )
 
@@ -269,7 +296,7 @@ def render_assistant_response(*, mode: AssistantMode, context: dict[str, Any]) -
         "grounding": {
             "observed": observed,
             "inferred": inferred,
-            "recommended": recommended,
+            "doctrine": doctrine_lines,
         },
         "context": context,
     }
