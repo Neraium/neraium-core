@@ -1,0 +1,22 @@
+:root {
+  --bg: #090f1d;
+  --panel: #101a2e;
+  --text: #d7e4ff;
+  --accent: #4ca5ff;
+  --vector: #8cf5d8;
+  --divergence: #ff8a8a;
+}
+body {
+  background: radial-gradient(circle at 10% 10%, #0f1830 0%, var(--bg) 55%);
+  color: var(--text);
+  font-family: Inter, system-ui, sans-serif;
+}
+.gradio-container {
+  max-width: 1180px !important;
+}
+.neraium-surface {
+  background: linear-gradient(145deg, rgba(76, 165, 255, 0.08), rgba(140, 245, 216, 0.05));
+  border: 1px solid rgba(76, 165, 255, 0.33);
+  border-radius: 12px;
+  padding: 14px;
+}
