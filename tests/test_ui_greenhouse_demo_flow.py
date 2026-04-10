@@ -53,13 +53,9 @@ def test_greenhouse_overlay_summary_composition_path_stays_intact() -> None:
 
 
 
-def test_create_app_state_defaults_to_greenhouse_demo_when_empty() -> None:
+def test_create_app_state_defaults_to_suppress_when_empty() -> None:
     state = create_app_state([])
-    summary = state["summary"]
-    assert summary["timestamp"]
-    assert summary["site_id"]
-    assert summary["asset_id"]
-    replay_story = summary.get("replay_story") or {}
-    assert replay_story.get("story_headline")
-    chart = state["reasoning_context"].get("chart_replay_summary") or {}
-    assert chart.get("story_headline")
+    assert set(state.keys()) == {"summary", "gate_decision", "reasoning_context", "realtime"}
+    assert state["gate_decision"]["decision"] == "SUPPRESS"
+    assert state["reasoning_context"]["gate_decision"]["decision"] == "SUPPRESS"
+    assert state["summary"]["timestamp"] is None
