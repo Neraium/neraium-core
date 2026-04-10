@@ -24,8 +24,27 @@ services:
       NERAIUM_PULL_RETRY_MAX_ATTEMPTS: ${NERAIUM_PULL_RETRY_MAX_ATTEMPTS:-3}
       NERAIUM_PULL_RETRY_BACKOFF_SECONDS: ${NERAIUM_PULL_RETRY_BACKOFF_SECONDS:-1.0}
       NERAIUM_PULL_REQUEST_TIMEOUT_SECONDS: ${NERAIUM_PULL_REQUEST_TIMEOUT_SECONDS:-10.0}
+      NERAIUM_UI_API_BASE_URL: ${NERAIUM_UI_API_BASE_URL:-http://127.0.0.1:8000}
+      NERAIUM_UI_WS_ENDPOINT: ${NERAIUM_UI_WS_ENDPOINT:-/ws/telemetry}
     ports:
       - "8000:8000"
     volumes:
       - ./data:/data
       - ./config:/config:ro
+
+  neraium-ui:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: neraium-core:customer
+    container_name: neraium-core-ui
+    restart: unless-stopped
+    profiles: ["ui"]
+    environment:
+      NERAIUM_UI_API_BASE_URL: ${NERAIUM_UI_API_BASE_URL:-http://neraium:8000}
+      NERAIUM_UI_WS_ENDPOINT: ${NERAIUM_UI_WS_ENDPOINT:-/ws/telemetry}
+    command: ["python", "-m", "ui.app"]
+    ports:
+      - "7860:7860"
+    depends_on:
+      - neraium

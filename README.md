@@ -64,10 +64,10 @@ Neraium is intentionally constrained for current deployments:
 
 ## Primary product path (pilot-first)
 
-- **Primary UI**: `/dashboard` (also `/pilot` and `/operations`) for pilot operations monitoring.
+- **Primary API runtime**: `apps.api.main:app` for ingest, state, alerting, and integration operations.
+- **Replacement UI package**: `ui/` (run with `python -m ui.app`) for pilot, operations, and demo views.
 - **Operational workflow**: create/activate runs, ingest live/batch telemetry, review risk/recommendation/history.
-- **Secondary reference flow**: `/demo` and `/demo/full` redirects into the dashboard with **replay mode** enabled for historical validation (NASA CMAPSS FD004).
-- **Operator compatibility route**: `/operator` remains supported and redirects to the primary operational dashboard.
+- **Legacy static UI removed**: `apps/api/static` is intentionally not part of current runtime.
 
 ## AWS deployment baseline (March 28, 2026)
 
