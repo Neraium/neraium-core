@@ -2,6 +2,12 @@ from __future__ import annotations
 
 from typing import Any, Mapping
 
+from neraium_core.doctrine import (
+    DEFAULT_DOCTRINE_V1,
+    count_confirming_signals,
+    evaluate_statement,
+)
+
 
 def _to_confidence_label(confidence: str | float | int | None) -> str:
     if isinstance(confidence, str):
@@ -82,6 +88,21 @@ def build_explanation_text(
 
     action = str(recommended_action or "").strip()
     if action:
-        sentences.append(f"Recommended action: {action}.")
+        action_eval = evaluate_statement(
+            action,
+            confidence=confidence if isinstance(confidence, (int, float)) else None,
+            corroborating_signals=count_confirming_signals(
+                [
+                    bool(attribution),
+                    str(risk).strip().upper() not in {"", "UNKNOWN"},
+                    confidence_text in {"high", "medium"},
+                ]
+            ),
+            doctrine=DEFAULT_DOCTRINE_V1,
+        )
+        if action_eval.refused:
+            sentences.append(
+                "Doctrine refusal: candidate language crosses into prescription; only system-state observations are emitted."
+            )
 
     return " ".join(sentences[:5])
