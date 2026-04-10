@@ -90,13 +90,17 @@ def _risk_direction(transition_type: str, transition: dict[str, Any], authority_
 
     drift = _to_float(transition.get("delta_drift")) or 0.0
     stability_delta = _to_float(transition.get("delta_stability")) or 0.0
+    coherence_delta = _to_float(transition.get("delta_coherence")) or 0.0
     normalized_transition = (transition_type or "STABLE").upper()
 
     degrading_transition = normalized_transition in {"INSTABILITY", "DEGRADING", "DIVERGENCE"}
     stable_transition = normalized_transition in {"STABLE", "RECOVERY"}
+    no_directional_evidence = drift == 0.0 and stability_delta == 0.0 and coherence_delta == 0.0
 
     if degrading_transition or drift >= 0.12 or stability_delta <= -0.12:
         return "DEGRADING"
+    if authority_level == "ADMITTED" and no_directional_evidence:
+        return "UNCERTAIN"
     if stable_transition and abs(drift) < 0.12 and abs(stability_delta) < 0.12:
         return "STABLE"
     return "UNCERTAIN"
