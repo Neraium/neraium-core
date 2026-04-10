@@ -1,15 +1,17 @@
 def create_app_state(records):
     """
     Minimal integration-safe builder used by INTEGRATION_GUIDE.py.
-    Does not depend on Gradio.
+    Accepts either:
+    - a list of records
+    - a single record dict
+    - empty / unknown input
     """
-    if not records:
-        return {
-            "summary": {},
-            "realtime": {"enabled": False},
-        }
-
-    latest = records[-1]
+    if isinstance(records, list) and len(records) > 0:
+        latest = records[-1]
+    elif isinstance(records, dict):
+        latest = records
+    else:
+        latest = {}
 
     return {
         "summary": {
@@ -24,6 +26,14 @@ def create_app_state(records):
             "enabled": False,
         },
     }
+
+
+def create_ui_model(data):
+    return {
+        "summary": data[-1] if isinstance(data, list) and data else (data if isinstance(data, dict) else {}),
+        "realtime": {"enabled": False},
+    }
+
 
 def create_gradio_app():
     try:
@@ -40,15 +50,3 @@ def create_gradio_app():
         gr.Button("Test").click(fn=dummy, outputs=out)
 
     return app
-
-def create_ui_model(data):
-    return {
-        "summary": data[-1] if data else {},
-        "realtime": {"enabled": False}
-    }
-
-def create_ui_model(data):
-    return {
-        "summary": data[-1] if data else {},
-        "realtime": {"enabled": False}
-    }
