@@ -91,16 +91,25 @@ def build_explanation_text(
     if action:
         sentences.append(f"Recommended action: {action}.")
     gate = gate_decision if isinstance(gate_decision, Mapping) else {}
+    gate_sentence: str | None = None
     if gate:
         gate_label = str(gate.get("decision") or "UNKNOWN")
         gate_reason = str(gate.get("refusal_reason") or gate.get("explanation") or "").strip()
         if gate_label == "ADMIT":
-            sentences.append("Aletheia's Gate admitted this observation for surfacing.")
+            gate_sentence = "Aletheia's Gate admitted this observation for surfacing."
         elif gate_label == "SUPPRESS":
             reason = gate_reason or "criteria insufficient for surfacing."
-            sentences.append(f"Aletheia's Gate suppressed this observation: {reason}")
+            gate_sentence = f"Aletheia's Gate suppressed this observation: {reason}"
         elif gate_label == "ADMISSIBILITY_VOID":
             reason = gate_reason or "evidence is materially incoherent."
-            sentences.append(f"Aletheia's Gate marked admissibility void: {reason}")
+            gate_sentence = f"Aletheia's Gate marked admissibility void: {reason}"
 
+    if gate_sentence:
+        sentences.append(gate_sentence)
+
+    if len(sentences) <= 5:
+        return " ".join(sentences)
+
+    if gate_sentence:
+        return " ".join(sentences[:4] + [gate_sentence])
     return " ".join(sentences[:5])
