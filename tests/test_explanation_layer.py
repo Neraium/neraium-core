@@ -7,14 +7,27 @@ def test_build_explanation_text_includes_required_elements() -> None:
         attribution={"top_drivers": ["sensor_7", "sensor_2"]},
         risk="HIGH",
         confidence="medium",
-        recommended_action="Inspect sensor_7 pathway",
+        recommended_action="structural instability present",
     )
 
     assert "STRUCTURAL_INSTABILITY_OBSERVED" in text
     assert "sensor_7" in text
     assert "Confidence is medium" in text
-    assert "Recommended action: Inspect sensor_7 pathway." in text
+    assert "Recommended action: structural instability present." in text
     assert 2 <= len([s for s in text.split(".") if s.strip()]) <= 4
+
+
+def test_build_explanation_text_reports_doctrine_refusal_reason() -> None:
+    text = build_explanation_text(
+        current_decision="WATCH",
+        attribution={"top_drivers": ["sensor_7"]},
+        risk="MEDIUM",
+        confidence=0.7,
+        recommended_action="inspect sensor_7 pathway",
+    )
+
+    assert "Doctrine refusal:" in text
+    assert "insufficient_evidence" in text
 
 
 def test_build_explanation_text_without_recommendation() -> None:

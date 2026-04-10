@@ -166,6 +166,16 @@ def _format_matches(matches: Any, *, fallback: str = "no comparable prior patter
     return "; ".join(rendered)
 
 
+def _doctrine_refusal_detail(reason: str | None) -> str:
+    messages = {
+        "prescriptive_or_actuation_language": "candidate language crossed into prescriptive/action phrasing",
+        "insufficient_evidence": "evidence did not support a defensible doctrine assertion",
+        "insufficient_corroboration": "corroborating signals were below doctrine minimum",
+        "low_confidence": "confidence was below doctrine threshold",
+    }
+    return messages.get(reason or "", "candidate assertion did not pass doctrine checks")
+
+
 def render_assistant_response(*, mode: AssistantMode, context: dict[str, Any]) -> dict[str, Any]:
     if mode not in ASSISTANT_MODES:
         raise ValueError(f"Unsupported assistant mode: {mode}")
@@ -223,7 +233,7 @@ def render_assistant_response(*, mode: AssistantMode, context: dict[str, Any]) -
     ]
     if doctrine_eval.refused:
         doctrine_lines.append(
-            "Doctrine: Output constrained to observation-only language because prescriptive/action phrasing is not allowed."
+            f"Doctrine: Output constrained to observation-only language because {_doctrine_refusal_detail(doctrine_eval.refusal_reason)}."
         )
     else:
         doctrine_lines.append(
