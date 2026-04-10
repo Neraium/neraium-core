@@ -57,6 +57,7 @@ def build_explanation_text(
     confidence: str | float | int | None,
     recommended_action: str | None = None,
     memory_recall: Mapping[str, Any] | None = None,
+    gate_decision: Mapping[str, Any] | None = None,
 ) -> str:
     """Create a concise, signal-grounded explanation string for pipeline outputs."""
     decision = str(current_decision or "NOMINAL_STRUCTURE").strip() or "NOMINAL_STRUCTURE"
@@ -83,5 +84,17 @@ def build_explanation_text(
     action = str(recommended_action or "").strip()
     if action:
         sentences.append(f"Recommended action: {action}.")
+    gate = gate_decision if isinstance(gate_decision, Mapping) else {}
+    if gate:
+        gate_label = str(gate.get("decision") or "UNKNOWN")
+        gate_reason = str(gate.get("refusal_reason") or gate.get("explanation") or "").strip()
+        if gate_label == "ADMIT":
+            sentences.append("Aletheia's Gate admitted this observation for surfacing.")
+        elif gate_label == "SUPPRESS":
+            reason = gate_reason or "criteria insufficient for surfacing."
+            sentences.append(f"Aletheia's Gate suppressed this observation: {reason}")
+        elif gate_label == "ADMISSIBILITY_VOID":
+            reason = gate_reason or "evidence is materially incoherent."
+            sentences.append(f"Aletheia's Gate marked admissibility void: {reason}")
 
     return " ".join(sentences[:5])

@@ -7,4 +7,4 @@ try:
 except PackageNotFoundError:
     __version__ = "0+unknown"
 
-__all__ = ["alignment", "models", "pipeline", "service", "store", "sii", "__version__"]
+__all__ = ["alignment", "models", "pipeline", "service", "store", "sii", "doctrine", "gate", "__version__"]

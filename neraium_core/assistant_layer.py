@@ -91,6 +91,7 @@ def build_assistant_context(
             "top_matches": _as_list(memory.get("top_matches")),
             "pattern_family": _as_dict(memory.get("pattern_family")),
         },
+        "gate_decision": _as_dict(state.get("gate_decision")),
         "recent_changes": {
             "risk_level": {
                 "current": latest_risk.get("risk_level"),
@@ -171,6 +172,7 @@ def render_assistant_response(*, mode: AssistantMode, context: dict[str, Any]) -
     novelty = _as_dict(memory.get("novelty"))
     nearest = _as_dict(memory.get("nearest_match"))
     recent_changes = _as_dict(context.get("recent_changes"))
+    gate_decision = _as_dict(context.get("gate_decision"))
 
     observed: list[str] = [
         _grounded_text("Observed:", f"cycle={state.get('cycle')} timestamp={state.get('timestamp')}", "cycle/timestamp unavailable."),
@@ -206,6 +208,13 @@ def render_assistant_response(*, mode: AssistantMode, context: dict[str, Any]) -
         ),
         _grounded_text("Recommended:", recommendation.get("operator_note"), "operator safety note unavailable."),
     ]
+    if gate_decision:
+        gate_line = (
+            f"Gate decision={gate_decision.get('decision')} "
+            f"reason={gate_decision.get('refusal_reason')} "
+            f"confidence={gate_decision.get('confidence_label')}"
+        )
+        observed.append(_grounded_text("Observed:", gate_line, "gate decision unavailable."))
 
     if mode == "summary":
         text = "\n".join(["Current situation summary", *observed, *inferred, *recommended])
@@ -288,6 +297,7 @@ def render_assistant_report(*, mode: ReportMode, context: dict[str, Any]) -> dic
     pattern_family = _as_dict(memory.get("pattern_family"))
     recent_changes = _as_dict(context.get("recent_changes"))
     events = _as_list(context.get("events"))
+    gate_decision = _as_dict(context.get("gate_decision"))
 
     rec_action = recommendation.get("recommended_action") or "No recommendation provided"
     rec_rationale = recommendation.get("rationale") or "No rationale provided"
@@ -343,6 +353,13 @@ def render_assistant_report(*, mode: ReportMode, context: dict[str, Any]) -> dic
         "Confidence": confidence_text,
         "Operator Note": str(operator_note),
     }
+    if gate_decision:
+        shared_sections["Aletheia Gate"] = (
+            f"Decision: {_display_value(gate_decision.get('decision'))}. "
+            f"Refusal reason: {_display_value(gate_decision.get('refusal_reason'))}. "
+            f"Doctrine version: {_display_value(gate_decision.get('doctrine_version'))}. "
+            f"Candidate assertion allowed: {_display_value(gate_decision.get('candidate_assertion_allowed'))}."
+        )
 
     if mode == "client_report":
         sections = [
