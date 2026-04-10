@@ -65,6 +65,14 @@ def _transition_intensity(transition: dict[str, Any], persistence_minutes: Any) 
     return "LOW"
 
 
+def _normalize_transition_type(transition_type: Any) -> str:
+    if isinstance(transition_type, str):
+        normalized = transition_type.strip().upper()
+        if normalized:
+            return normalized
+    return "STABLE"
+
+
 def _operator_takeaway(authority_level: str, transition_type: str, transition_intensity: str) -> str:
     if authority_level == "ADMITTED":
         return (
@@ -121,7 +129,7 @@ def render_gate_decision_card(decision: dict[str, Any] | None) -> dict[str, Any]
     reason = gate.get("reason") or gate.get("explanation") or refusal_reason
 
     transition = gate.get("transition") if isinstance(gate.get("transition"), dict) else {}
-    transition_type = transition.get("type") or "STABLE"
+    transition_type = _normalize_transition_type(transition.get("type"))
     intensity = _transition_intensity(transition, gate.get("persistence_minutes"))
     risk_direction = _risk_direction(transition_type, transition, authority_level)
     timestamp = gate.get("timestamp")
