@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Any
+
 from ui.core_integration import SystemState
 from ui.utils import clamp, l2_norm
 
@@ -15,7 +17,7 @@ def _with_alpha(hex_color: str, alpha: float) -> str:
     return f"rgba({r}, {g}, {b}, {clamp(alpha, 0.0, 1.0):.3f})"
 
 
-def render_structural_flow_viz(state: SystemState) -> dict[str, object]:
+def render_structural_flow_viz(state: SystemState, gate_decision: dict[str, Any] | None = None) -> dict[str, object]:
     """Trajectory-first spatial navigation field, not a chart."""
     tail = [{"x": p.x, "y": p.y, "t": p.t} for p in state.trajectory_history]
     velocity_mag = l2_norm(state.velocity)
@@ -41,6 +43,11 @@ def render_structural_flow_viz(state: SystemState) -> dict[str, object]:
         regime_phase = "divergence"
     elif state.drift_intensity >= 0.4:
         regime_phase = "transition"
+
+    decision = (gate_decision or {}).get("decision")
+    admit_points = [point for point in tail if decision == "ADMIT"]
+    suppress_points = [point for point in tail if decision == "SUPPRESS"]
+    void_points = [point for point in tail if decision == "ADMISSIBILITY_VOID"]
 
     return {
         "surface": "system_navigation_field",
@@ -101,5 +108,23 @@ def render_structural_flow_viz(state: SystemState) -> dict[str, object]:
             "stable_tone": _with_alpha("#6FD6FF", 0.18),
             "transition_tone": _with_alpha("#8D7DFF", 0.16),
             "divergence_tone": _with_alpha("#FF9B7D", 0.2),
+        },
+        "gate_coupling": {
+            "decision": decision,
+            "admit_highlights": {
+                "points": admit_points,
+                "style": "highlight",
+                "color": _with_alpha("#62FFB3", 0.85),
+            },
+            "suppress_regions": {
+                "points": suppress_points,
+                "style": "fade",
+                "color": _with_alpha("#FF8B8B", 0.55),
+            },
+            "void_regions": {
+                "points": void_points,
+                "style": "uncertain",
+                "color": _with_alpha("#BBA1FF", 0.65),
+            },
         },
     }
