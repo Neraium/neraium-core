@@ -9,6 +9,7 @@ setup(
     python_requires=">=3.10",
     install_requires=[
         "fastapi>=0.110",
+        "gradio>=4.0",
         "numpy>=1.24",
         "pandas>=2.0",
         "pydantic>=2",
@@ -21,5 +22,5 @@ setup(
         "plots": ["matplotlib"],
     },
     include_package_data=True,
-    packages=find_packages(include=["neraium_core*"]),
+    packages=find_packages(include=["neraium_core*", "ui*"]),
 )
