@@ -47,3 +47,31 @@ def test_operations_view_places_gate_zone_first() -> None:
     assert view["zones"]["gate"]["content"]["authority_level"] == "SUPPRESSED"
     assert view["zones"]["system_state"]["title"] == "System Context"
     assert view["zones"]["system_state"]["content"]["gate_coupling"]["decision"] == "SUPPRESS"
+
+
+def test_operations_view_preserves_existing_reasoning_gate_context_when_gate_omitted() -> None:
+    rows = [
+        {
+            "timestamp": "2026-04-10T00:00:00+00:00",
+            "structural_drift_score": 0.45,
+            "relational_stability_score": 0.65,
+        }
+    ]
+    system_state = build_system_state(rows, config=UIConfig())
+    existing_gate = {
+        "decision": "ADMIT",
+        "reason": "Existing gate context from caller.",
+        "doctrine_version": "doctrine.v2",
+        "confidence_label": "high",
+    }
+
+    view = build_operations_view(
+        system_state,
+        reasoning_context={"gate_decision": existing_gate, "recent_admitted_events": []},
+    )
+
+    gate_reference = view["zones"]["reasoning"]["content"]["gate_reference"]
+    assert gate_reference["decision"] == "ADMIT"
+    assert gate_reference["reason"] == "Existing gate context from caller."
+    assert gate_reference["doctrine_version"] == "doctrine.v2"
+    assert gate_reference["confidence"] == "high"
