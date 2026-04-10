@@ -43,7 +43,7 @@ class DemoRouterDependencies:
     public_demo_job: Callable[[dict[str, Any]], dict[str, Any]]
     demo_jobs: MutableMapping[str, dict[str, Any]]
     demo_jobs_lock: Lock
-    load_cmapss_fd004_subset: Callable[[int], list[dict[str, Any]]]
+    load_greenhouse_demo_subset: Callable[[int], list[dict[str, Any]]]
     log_structured: Callable[..., None]
     summarize_exception_for_logs: Callable[[Exception], str]
     utc_now_iso: Callable[[], str]
