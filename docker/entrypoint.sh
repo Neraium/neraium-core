@@ -1,6 +1,11 @@
 #!/usr/bin/env sh
 set -eu
 
+# If a command is explicitly provided (e.g. `python -m ui.app`), run it directly.
+if [ "$#" -gt 0 ]; then
+  exec "$@"
+fi
+
 # Production packaging default. Can be overridden explicitly by env.
 export NERAIUM_RUNTIME_MODE="${NERAIUM_RUNTIME_MODE:-production}"
 
