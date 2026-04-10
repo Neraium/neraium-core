@@ -181,6 +181,39 @@ def test_gate_banner_impact_layer_for_void_signal_is_uncertain() -> None:
     )
 
 
+
+
+def test_gate_banner_treats_admitted_no_history_transition_as_uncertain() -> None:
+    rows = [
+        {
+            "timestamp": "2026-04-10T00:00:00+00:00",
+            "structural_drift_score": 0.8,
+            "relational_stability_score": 0.2,
+        }
+    ]
+    system_state = build_system_state(rows, config=UIConfig())
+    gate_decision = {
+        "decision": "ADMIT",
+        "doctrine_version": "doctrine.v1",
+        "timestamp": rows[-1]["timestamp"],
+        "transition": {
+            "delta_drift": 0.0,
+            "delta_stability": 0.0,
+            "delta_coherence": 0.0,
+            "type": "STABLE",
+        },
+    }
+
+    view = build_operations_view(system_state, gate_decision=gate_decision)
+    gate_content = view["zones"]["gate"]["content"]
+
+    assert gate_content["risk_direction"] == "UNCERTAIN"
+    assert gate_content["trajectory_statement"] == "Directional trajectory remains uncertain under current evidence."
+    assert (
+        gate_content["if_sustained_statement"]
+        == "If sustained, this condition indicates: Insufficient evidence to project system evolution."
+    )
+
 def test_gate_banner_normalizes_non_string_transition_type() -> None:
     rows = [
         {
