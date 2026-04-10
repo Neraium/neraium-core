@@ -29,7 +29,7 @@ def create_app_state(records):
     Accepts either:
     - a list of records
     - a single record dict
-    - empty / unknown input (loads greenhouse demo defaults)
+    - empty / unknown input (falls back to suppressed gate decision)
     """
     if isinstance(records, list) and len(records) > 0:
         latest = records[-1]
@@ -38,8 +38,8 @@ def create_app_state(records):
         latest = records
         rows = [records]
     else:
-        rows = load_greenhouse_demo_records(limit=96)
-        latest = rows[-1] if rows else {}
+        rows = []
+        latest = {}
 
     summary = {
         "timestamp": latest.get("timestamp"),
@@ -76,7 +76,7 @@ def create_app_state(records):
             "drift_summary": "No admitted drift evidence is available.",
             "stability_summary": "No admitted stability evidence is available.",
             "top_contributing_signals": None,
-            "chart_replay_summary": replay_story,
+            "chart_replay_summary": None,
         }
 
     return {
@@ -136,19 +136,19 @@ def create_gradio_app():
             gate_decision=app_state["gate_decision"],
         )
         return (
-            surface["zones"]["gate"],
-            app_state["summary"],
-            surface["zones"]["reasoning"],
-            surface["zones"]["record"],
+            surface["zones"]["gate"]["content"],
+            surface["zones"]["system_state"],
+            surface["zones"]["reasoning"]["content"],
+            surface["zones"]["record"]["content"],
         )
 
     with gr.Blocks() as app:
         gr.Markdown("# Neraium — Gate-Centered Operations Surface")
 
         gate = gr.JSON(label="Gate Decision")
-        system = gr.JSON(label="System State + Replay Story")
+        system = gr.JSON(label="System Context")
         reasoning = gr.JSON(label="Evidence-Bound Reasoning")
-        record = gr.JSON(label="Recent Record")
+        record = gr.JSON(label="Evidence Record")
 
         btn = gr.Button("Load Operations Surface")
         btn.click(fn=load_operations_surface, outputs=[gate, system, reasoning, record])
