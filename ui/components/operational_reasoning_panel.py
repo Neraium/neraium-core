@@ -9,6 +9,7 @@ def render_operational_reasoning_panel(operator_question: str, reasoning_context
     response = generate_reasoned_response(operator_question=operator_question, reasoning_context=reasoning_context)
     gate_decision = reasoning_context.get("gate_decision") or {}
     decision = gate_decision.get("decision") or "SUPPRESS"
+    observed_facts = reasoning_context.get("observed_facts") or (response.get("sections") or {}).get("Observed Facts") or []
 
     temporal_facts = reasoning_context.get("temporal_facts") or reasoning_context.get("observed_facts") or []
     transition = reasoning_context.get("transition") or {}
