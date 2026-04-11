@@ -947,7 +947,6 @@ def create_gradio_app():
 
         reasoning = gr.HTML(value=initial_reasoning)
         record = gr.HTML(value=initial_record)
-        timer = gr.Timer(value=1.0, active=True)
 
         frame_step.change(fn=load_operations_surface, inputs=[frame_step], outputs=[header, verdict, reasoning, record])
         play_btn.click(fn=autoplay, inputs=[frame_step, speed], outputs=[frame_step, header, verdict, reasoning, record])

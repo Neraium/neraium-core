@@ -1,4 +1,5 @@
 fastapi
+gradio>=4.0
 uvicorn[standard]
 pydantic
 starlette
