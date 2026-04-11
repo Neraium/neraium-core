@@ -711,7 +711,7 @@ def create_gradio_app():
         header_html, verdict_html, reasoning_html, record_html = load_operations_surface(1, apply_stability=False)
         return 1, header_html, verdict_html, reasoning_html, record_html
 
-    def switch_mode(mode: str) -> tuple[int, str, str, str, str]:
+    def switch_mode(mode: str) -> tuple[dict[str, Any], str, str, str, str]:
         """Switch between synthetic demo and real replay modes."""
         nonlocal demo_rows, total_steps
         pause_playback()
@@ -724,7 +724,7 @@ def create_gradio_app():
         total_steps = max(len(demo_rows), 1)
 
         header_html, verdict_html, reasoning_html, record_html = load_operations_surface(1, apply_stability=False)
-        return 1, header_html, verdict_html, reasoning_html, record_html
+        return gr.update(maximum=total_steps, value=1), header_html, verdict_html, reasoning_html, record_html
 
     def autoplay(start_frame: int, speed_multiplier: float):
         playback_state["playing"] = True
