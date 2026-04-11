@@ -51,6 +51,36 @@ AWS App Runner deployment (source repository):
 Production deployment/readiness quick guide:
 → **[docs/PRODUCTION_READINESS.md](docs/PRODUCTION_READINESS.md)**
 
+## Gate-centered greenhouse demo launchers
+
+Use these launchers when you want the hosted UI at `app.neraium.com` (or any managed runtime) to always boot directly into the built-in gate-centered greenhouse demo state.
+
+### Local development launcher
+
+```bash
+python start_ui.py
+```
+
+- Opens a browser window automatically.
+- Keeps local iteration simple while preserving the current demo behavior.
+
+### Hosted/production launcher
+
+```bash
+python start_ui_prod.py
+```
+
+- Runs without opening a browser.
+- Binds to `0.0.0.0` for container/service networking.
+- Uses `PORT` when provided by the host platform, otherwise defaults to port `7860`.
+- Auto-loads the built-in greenhouse demo state on first render so the UI is immediately usable.
+
+Example (explicit local prod-style boot):
+
+```bash
+PORT=8080 python start_ui_prod.py
+```
+
 ---
 
 ## Deployment constraints
