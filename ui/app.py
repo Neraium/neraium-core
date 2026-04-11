@@ -277,6 +277,107 @@ def _render_gate_decision_html(gate_card: dict[str, Any]) -> str:
 """.strip()
 
 
+def _render_system_context_html(system_zone: dict[str, Any]) -> str:
+    content = system_zone.get("content") if isinstance(system_zone, dict) else {}
+    timeline = system_zone.get("timeline_strip") if isinstance(system_zone, dict) else {}
+    if not isinstance(content, dict):
+        content = {}
+    if not isinstance(timeline, dict):
+        timeline = {}
+
+    current = content.get("current_position") if isinstance(content.get("current_position"), dict) else {}
+    trajectory = content.get("trajectory") if isinstance(content.get("trajectory"), dict) else {}
+    phase_layers = content.get("phase_layers") if isinstance(content.get("phase_layers"), dict) else {}
+    gate_coupling = content.get("gate_coupling") if isinstance(content.get("gate_coupling"), dict) else {}
+    sequence = timeline.get("sequence") if isinstance(timeline.get("sequence"), list) else []
+
+    def _count_points(value: Any) -> int:
+        return len(value) if isinstance(value, list) else 0
+
+    stable_count = _count_points(phase_layers.get("stable_baseline"))
+    transition_count = _count_points(phase_layers.get("transition"))
+    reorg_count = _count_points(phase_layers.get("reorganization"))
+    admitted_markers = _count_points(phase_layers.get("admitted_events"))
+    suppressed_markers = _count_points(phase_layers.get("suppressed_events"))
+    trajectory_points = _count_points(trajectory.get("path"))
+
+    timeline_markup = "".join(
+        (
+            "<li style='margin:2px 0;'>"
+            f"<strong>{escape(str(step.get('label') or step.get('stage') or 'UNKNOWN'))}</strong>"
+            f" · t={escape(str(step.get('t') or 'n/a'))}"
+            "</li>"
+        )
+        for step in sequence
+        if isinstance(step, dict)
+    )
+
+    return f"""
+<div style="border:1px solid #1f2937;border-radius:12px;padding:14px;background:#030712;color:#e5e7eb;">
+  <div style="font-size:13px;font-weight:800;letter-spacing:0.03em;text-transform:uppercase;">System Context</div>
+  <div style="margin-top:10px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;font-size:12px;">
+    <div><strong>Current position</strong><br>x={escape(str(current.get("x", "n/a")))} · y={escape(str(current.get("y", "n/a")))} · t={escape(str(current.get("t", "n/a")))}</div>
+    <div><strong>Trajectory</strong><br>{trajectory_points} path points · phase={escape(str(current.get("phase") or "unknown"))}</div>
+    <div><strong>Phase layers</strong><br>stable={stable_count} · transition={transition_count} · reorg={reorg_count}</div>
+    <div><strong>Gate markers</strong><br>admitted={admitted_markers} · suppressed={suppressed_markers} · decision={escape(str(gate_coupling.get("decision") or "unknown"))}</div>
+  </div>
+  <div style="margin-top:10px;border-top:1px solid #374151;padding-top:8px;font-size:12px;">
+    <strong>Timeline semantics</strong>
+    <ul style="margin:4px 0 0 16px;padding:0;">{timeline_markup or "<li>n/a</li>"}</ul>
+  </div>
+</div>
+""".strip()
+
+
+def _render_reasoning_html(reasoning_panel: dict[str, Any]) -> str:
+    panel = reasoning_panel if isinstance(reasoning_panel, dict) else {}
+    facts = panel.get("observed_facts")
+    if not isinstance(facts, list):
+        facts = []
+    inference = panel.get("inference") if isinstance(panel.get("inference"), dict) else {}
+    sections = inference.get("sections") if isinstance(inference.get("sections"), dict) else {}
+    grounded = sections.get("Inference / Grounded Answer") or inference.get("final_response")
+    gate_ref = panel.get("gate_reference") if isinstance(panel.get("gate_reference"), dict) else {}
+
+    facts_markup = "".join(f"<li>{escape(str(fact))}</li>" for fact in facts)
+    return f"""
+<div style="border:1px solid #d1d5db;border-radius:12px;padding:14px;background:#ffffff;color:#111827;">
+  <div style="font-size:13px;font-weight:800;letter-spacing:0.03em;text-transform:uppercase;">Evidence-Bound Reasoning</div>
+  <div style="margin-top:10px;font-size:12px;"><strong>Observed Facts</strong><ul style="margin:4px 0 0 16px;padding:0;">{facts_markup or "<li>No observed facts available.</li>"}</ul></div>
+  <div style="margin-top:8px;font-size:12px;"><strong>Inference / Grounded Answer</strong><br>{escape(str(grounded or "No grounded answer available."))}</div>
+  <div style="margin-top:8px;font-size:12px;"><strong>Operational Implication</strong><br>{escape(str(panel.get("operational_implication") or "No implication available."))}</div>
+  <div style="margin-top:8px;font-size:12px;"><strong>Gate Outcome / Gate Reference</strong><br>{escape(str(panel.get("gate_outcome") or gate_ref.get("decision") or "unknown"))} · Doctrine {escape(str(gate_ref.get("doctrine_version") or "unknown"))}</div>
+</div>
+""".strip()
+
+
+def _render_record_html(record_panel: dict[str, Any]) -> str:
+    panel = record_panel if isinstance(record_panel, dict) else {}
+    entries = panel.get("entries")
+    if not isinstance(entries, list):
+        entries = []
+
+    entry_markup = "".join(
+        (
+            "<div style='border:1px solid #e5e7eb;border-radius:8px;padding:10px;margin-top:8px;background:#f9fafb;'>"
+            f"<div style='font-size:12px;'><strong>{escape(str(entry.get('timestamp') or 'n/a'))}</strong> · {escape(str(entry.get('gate_decision') or 'unknown'))}</div>"
+            f"<div style='font-size:12px;margin-top:4px;'><strong>Summary:</strong> {escape(str(entry.get('summary') or 'n/a'))}</div>"
+            f"<div style='font-size:12px;margin-top:4px;'><strong>Previous:</strong> {escape(str(entry.get('previous_state_summary') or 'n/a'))}</div>"
+            f"<div style='font-size:12px;margin-top:4px;'><strong>Current:</strong> {escape(str(entry.get('current_state_summary') or 'n/a'))}</div>"
+            f"<div style='font-size:12px;margin-top:4px;'><strong>Transition:</strong> {escape(str(entry.get('transition_type') or 'n/a'))}</div>"
+            "</div>"
+        )
+        for entry in entries
+        if isinstance(entry, dict)
+    )
+    return f"""
+<div style="border:1px solid #d1d5db;border-radius:12px;padding:14px;background:#ffffff;color:#111827;">
+  <div style="font-size:13px;font-weight:800;letter-spacing:0.03em;text-transform:uppercase;">Evidence Record</div>
+  {entry_markup or "<div style='margin-top:8px;font-size:12px;'>No evidence entries available.</div>"}
+</div>
+""".strip()
+
+
 
 def create_gradio_app():
     try:
@@ -315,11 +416,14 @@ def create_gradio_app():
         )
         gate_content = surface["zones"]["gate"]["content"]
         gate_html = _render_gate_decision_html(gate_content if isinstance(gate_content, dict) else {})
+        system_html = _render_system_context_html(surface["zones"]["system_state"])
+        reasoning_html = _render_reasoning_html(surface["zones"]["reasoning"]["content"])
+        record_html = _render_record_html(surface["zones"]["record"]["content"])
         return (
             gate_html,
-            surface["zones"]["system_state"],
-            surface["zones"]["reasoning"]["content"],
-            surface["zones"]["record"]["content"],
+            system_html,
+            reasoning_html,
+            record_html,
         )
 
     initial_gate, initial_system, initial_reasoning, initial_record = load_operations_surface(
@@ -336,9 +440,9 @@ def create_gradio_app():
         )
 
         gate = gr.HTML(label="Gate Decision", value=initial_gate)
-        system = gr.JSON(label="System Context", value=initial_system)
-        reasoning = gr.JSON(label="Evidence-Bound Reasoning", value=initial_reasoning)
-        record = gr.JSON(label="Evidence Record", value=initial_record)
+        system = gr.HTML(label="System Context", value=initial_system)
+        reasoning = gr.HTML(label="Evidence-Bound Reasoning", value=initial_reasoning)
+        record = gr.HTML(label="Evidence Record", value=initial_record)
 
         demo_step.change(fn=load_operations_surface, inputs=[demo_step], outputs=[gate, system, reasoning, record])
 
