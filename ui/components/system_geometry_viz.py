@@ -18,7 +18,7 @@ from __future__ import annotations
 import math
 from typing import Any
 
-from ui.utils import clamp
+from ui.utils import clamp, safe_float
 
 
 def _generate_sensor_nodes(num_sensors: int = 8) -> list[dict[str, Any]]:
@@ -197,13 +197,15 @@ def render_system_geometry_viz(
     # Compute edges with strength based on stability
     edges = _compute_edge_strength(deformed_nodes, drift_intensity, stability)
 
+    rows = records or []
+
     # Generate prior stable states as subtle trails
     prior_trails = []
-    if records and len(records) > 1:
+    if len(rows) > 1:
         # Show trails from 2 and 4 steps back
         for steps_back in [2, 4]:
-            if len(records) > steps_back:
-                prior_drift = float(records[-steps_back - 1].get("structural_drift_score", 0.0))
+            if len(rows) > steps_back:
+                prior_drift = safe_float(rows[-steps_back - 1].get("structural_drift_score"), 0.0)
                 prior_stability = 1.0 - prior_drift
                 opacity = clamp(0.08 + (5 - steps_back) * 0.04, 0.04, 0.16)
                 prior_trails.append({
@@ -213,11 +215,32 @@ def render_system_geometry_viz(
                     "color": f"rgba(148, 163, 184, {opacity:.3f})",
                 })
 
+    # Preserve event-layer semantics expected by replay consumers.
+    event_points = []
+    if rows:
+        for idx, row in enumerate(rows):
+            if idx >= len(deformed_nodes):
+                break
+            node = deformed_nodes[idx]
+            event_points.append({
+                "index": idx,
+                "timestamp": row.get("timestamp"),
+                "event_admitted": row.get("event_admitted"),
+                "transition_type": str(row.get("transition_type", "STABLE")).upper(),
+                "x": node.get("x", 0.5),
+                "y": node.get("y", 0.5),
+            })
+    admitted_events = [point for point in event_points if bool(point.get("event_admitted"))]
+    suppressed_events = [point for point in event_points if point.get("event_admitted") is False]
+    stable_events = [point for point in event_points if point.get("transition_type") == "STABLE"]
+    transition_events = [point for point in event_points if point.get("transition_type") == "TRANSITION"]
+    reorganization_events = [point for point in event_points if point.get("transition_type") == "REORGANIZATION"]
+
     # Determine phase for visual encoding
     decision = (gate_decision or {}).get("decision", "SUPPRESS").upper() if gate_decision else "SUPPRESS"
     transition_type = "STABLE"
-    if records and len(records) > 0:
-        transition_type = str(records[-1].get("transition_type", "STABLE")).upper()
+    if len(rows) > 0:
+        transition_type = str(rows[-1].get("transition_type", "STABLE")).upper()
 
     phase_visual = {
         "STABLE": {
@@ -272,6 +295,13 @@ def render_system_geometry_viz(
             "deformation_magnitude": drift_intensity,
         },
         "phase_visual": phase_visual,
+        "phase_layers": {
+            "stable_baseline": stable_events,
+            "transition": transition_events,
+            "reorganization": reorganization_events,
+            "admitted_events": admitted_events,
+            "suppressed_events": suppressed_events,
+        },
         "gate_decision": decision,
         "admitted": decision == "ADMIT",
         "visual_hierarchy": {

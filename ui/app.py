@@ -301,13 +301,13 @@ def _render_system_geometry_html(system_zone: dict[str, Any]) -> str:
     PX, PY = 56, 46
     IW, IH = W - 2 * PX, H - 2 * PY
 
-    def scale_x(x: float) -> float:
+    def scale_x(x: float | None) -> float:
         """Normalize x from [0, 1] to canvas coordinates."""
-        return PX + float(x or 0.5) * IW
+        return PX + float(0.5 if x is None else x) * IW
 
-    def scale_y(y: float) -> float:
+    def scale_y(y: float | None) -> float:
         """Normalize y from [0, 1] to canvas coordinates (inverted)."""
-        return PY + IH - (float(y or 0.5) * IH)
+        return PY + IH - (float(0.5 if y is None else y) * IH)
 
     parts = []
 
@@ -320,7 +320,7 @@ def _render_system_geometry_html(system_zone: dict[str, Any]) -> str:
         f'</radialGradient>'
         f'<style>'
         f'.geom-node {{fill: {phase_visual.get("color_accent", "#60A5FA")}; opacity: 0.88;}}'
-        f'.geom-edge {{stroke: {phase_visual.get("color_accent", "#60A5FA")}; stroke-opacity: 0.42;}}'
+        f'.geom-edge {{stroke-opacity: 0.42;}}'
         f'.geom-label {{fill: #cbd5e1; font-size: 10px; font-weight: 600;}}'
         f'</style>'
         f'</defs>'
@@ -339,9 +339,10 @@ def _render_system_geometry_html(system_zone: dict[str, Any]) -> str:
             x2 = scale_x(float(edge.get("x2", 0.5)))
             y2 = scale_y(float(edge.get("y2", 0.5)))
             opacity = float(edge.get("opacity", 0.3))
+            edge_color = escape(str(edge.get("color", phase_visual.get("color_accent", "#60A5FA"))))
             parts.append(
                 f'<line x1="{x1:.1f}" y1="{y1:.1f}" x2="{x2:.1f}" y2="{y2:.1f}" '
-                f'class="geom-edge" stroke-width="1.2" opacity="{opacity:.3f}"/>'
+                f'class="geom-edge" stroke="{edge_color}" stroke-width="1.2" opacity="{opacity:.3f}"/>'
             )
 
     # Draw nodes (sensors)
