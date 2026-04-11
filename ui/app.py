@@ -13,57 +13,9 @@ from ui.reasoning import build_reasoning_context
 
 
 def load_builtin_demo_rows() -> list[dict[str, Any]]:
-    """Return greenhouse demo sequence; fallback to compact local rows when unavailable."""
+    """Return greenhouse replay sequence loaded from greenhouse_results_turbo.csv."""
     data_rows = load_greenhouse_demo_records(limit=180)
-    if data_rows:
-        return data_rows
-    return [
-        {
-            "timestamp": "2026-04-10T00:00:00Z",
-            "regime_name": "baseline",
-            "system_health": "nominal",
-            "confidence_score": 0.71,
-            "structural_drift_score": 0.22,
-            "relational_stability_score": 0.84,
-            "coherence_score": 0.87,
-            "snr_score": 1.65,
-            "persistence_minutes": 0,
-            "corroborating_signal_count": 0,
-            "event_admitted": False,
-            "transition_type": "STABLE",
-            "evidence_summary": "Stable baseline: drift low, stability and coherence high.",
-        },
-        {
-            "timestamp": "2026-04-10T00:05:00Z",
-            "regime_name": "transition_watch",
-            "system_health": "watch",
-            "confidence_score": 0.68,
-            "structural_drift_score": 0.58,
-            "relational_stability_score": 0.44,
-            "coherence_score": 0.56,
-            "snr_score": 1.62,
-            "persistence_minutes": 12,
-            "corroborating_signal_count": 1,
-            "event_admitted": False,
-            "transition_type": "TRANSITION",
-            "evidence_summary": "Rising drift with weak corroboration; transition signal is currently suppressed.",
-        },
-        {
-            "timestamp": "2026-04-10T00:12:00Z",
-            "regime_name": "reorganization_candidate",
-            "system_health": "degraded",
-            "confidence_score": 0.79,
-            "structural_drift_score": 0.77,
-            "relational_stability_score": 0.27,
-            "coherence_score": 0.74,
-            "snr_score": 2.1,
-            "persistence_minutes": 44,
-            "corroborating_signal_count": 3,
-            "event_admitted": True,
-            "transition_type": "REORGANIZATION",
-            "evidence_summary": "Persistence and corroboration now qualify a coherent reorganization; transition admitted.",
-        },
-    ]
+    return data_rows
 
 
 def _fallback_gate_decision() -> dict[str, Any]:
@@ -767,6 +719,7 @@ def create_gradio_app():
                 <span>Doctrine v2026.04</span>
                 <span>Confidence {escape(confidence)}</span>
                 <span>Gate {escape(gate_state)}</span>
+                <span>Phase {escape(str(latest.get("system_phase") or latest.get("regime_name") or "unknown"))}</span>
                 <span>Frame {int(frame_index)} / {int(total_steps)}</span>
               </div>
             </div>
@@ -817,7 +770,7 @@ def create_gradio_app():
 
     def autoplay(start_frame: int, speed_multiplier: float):
         playback_state["playing"] = True
-        step_delay = max(0.2, 1.25 / max(float(speed_multiplier or 1.0), 0.2))
+        step_delay = max(0.45, 1.8 / max(float(speed_multiplier or 1.0), 0.1))
         frame = max(1, int(start_frame))
         while frame <= total_steps and playback_state["playing"]:
             yield (frame, *load_operations_surface(frame))
@@ -840,7 +793,7 @@ def create_gradio_app():
                 gate = gr.HTML(value=initial_gate)
             with gr.Column(scale=4):
                 frame_step = gr.Slider(minimum=1, maximum=total_steps, step=1, value=default_step, label="Playback frame")
-                speed = gr.Slider(minimum=0.5, maximum=3.0, step=0.25, value=1.0, label="Playback speed")
+                speed = gr.Slider(minimum=0.1, maximum=1.5, step=0.1, value=0.6, label="Playback speed")
                 with gr.Row():
                     play_btn = gr.Button("Play")
                     pause_btn = gr.Button("Pause")

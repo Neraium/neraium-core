@@ -18,6 +18,12 @@ def render_operational_reasoning_panel(operator_question: str, reasoning_context
         temporal_facts = observed_facts
     transition = reasoning_context.get("transition") or {}
     transition_type = transition.get("type") or "STABLE"
+    normalized_transition = str(transition_type).upper()
+    inference_line = (
+        f"System moving away from baseline regime ({normalized_transition})."
+        if normalized_transition not in {"STABLE", "RECOVERY"}
+        else f"System remains within baseline-compatible regime ({normalized_transition})."
+    )
 
     return {
         "component": "operational_reasoning_panel",
@@ -27,7 +33,7 @@ def render_operational_reasoning_panel(operator_question: str, reasoning_context
         "observed_facts": temporal_facts,
         "temporal_framing": {
             "observed_facts": temporal_facts,
-            "inference": f"System moving away from baseline regime ({transition_type}).",
+            "inference": inference_line,
             "gate_outcome": decision,
         },
         "inference": response,
