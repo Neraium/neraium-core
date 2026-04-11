@@ -21,8 +21,8 @@ def render_operational_reasoning_panel(operator_question: str, reasoning_context
 
     return {
         "component": "operational_reasoning_panel",
-        "title": "Doctrine-Bound Reasoning Context",
-        "question_label": "Observed System Question",
+        "title": "Operational Reasoning",
+        "question_label": "Decision Query",
         "operator_question": operator_question,
         "observed_facts": temporal_facts,
         "temporal_framing": {
@@ -33,7 +33,7 @@ def render_operational_reasoning_panel(operator_question: str, reasoning_context
         "inference": response,
         "gate_outcome": decision,
         "operational_implication": reasoning_context.get("operational_implication")
-        or "Observational implication only; doctrine does not authorize prescriptive action.",
+        or "Observation only; no doctrine-authorized action.",
         "gate_reference": {
             "decision": decision,
             "reason": gate_decision.get("reason"),
