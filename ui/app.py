@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from html import escape
 from typing import Any
 
 from ui.config import UIConfig
@@ -182,6 +183,58 @@ def create_ui_model(data):
     }
 
 
+def _render_gate_decision_html(gate_card: dict[str, Any]) -> str:
+    authority_level = str(gate_card.get("authority_level") or "VOID").upper()
+    style = {
+        "SUPPRESSED": {
+            "bg": "#f3f4f6",
+            "fg": "#374151",
+            "border": "#9ca3af",
+            "subtle": "#6b7280",
+        },
+        "ADMITTED": {
+            "bg": "#111827",
+            "fg": "#f9fafb",
+            "border": "#60a5fa",
+            "subtle": "#d1d5db",
+        },
+        "VOID": {
+            "bg": "#eef2ff",
+            "fg": "#312e81",
+            "border": "#a5b4fc",
+            "subtle": "#4f46e5",
+        },
+    }.get(
+        authority_level,
+        {"bg": "#f8fafc", "fg": "#0f172a", "border": "#cbd5e1", "subtle": "#334155"},
+    )
+
+    label = escape(str(gate_card.get("label") or "UNSPECIFIED GATE DECISION"))
+    subheader = escape(authority_level)
+    trajectory = escape(str(gate_card.get("trajectory_statement") or "No trajectory statement available."))
+    risk_direction = escape(str(gate_card.get("risk_direction") or "UNCERTAIN"))
+    if_sustained = escape(
+        str(
+            gate_card.get("if_sustained_statement")
+            or "If sustained, this condition indicates: Insufficient evidence to project system evolution."
+        )
+    )
+    confidence = escape(str(gate_card.get("confidence") or "LOW"))
+
+    return f"""
+<div style="border:1px solid {style["border"]};border-left:8px solid {style["border"]};border-radius:12px;padding:16px;background:{style["bg"]};color:{style["fg"]};">
+  <div style="font-size:24px;font-weight:800;letter-spacing:0.02em;">{label}</div>
+  <div style="margin-top:4px;font-size:12px;font-weight:700;letter-spacing:0.08em;color:{style["subtle"]};">{subheader}</div>
+  <div style="margin-top:14px;display:grid;gap:10px;">
+    <div><div style="font-size:11px;text-transform:uppercase;opacity:0.8;">Trajectory</div><div style="font-size:15px;font-weight:600;">{trajectory}</div></div>
+    <div><div style="font-size:11px;text-transform:uppercase;opacity:0.8;">Risk Direction</div><div style="font-size:15px;font-weight:600;">{risk_direction}</div></div>
+    <div><div style="font-size:11px;text-transform:uppercase;opacity:0.8;">If Sustained</div><div style="font-size:15px;font-weight:600;">{if_sustained}</div></div>
+    <div><div style="font-size:11px;text-transform:uppercase;opacity:0.8;">Confidence</div><div style="font-size:15px;font-weight:600;">{confidence}</div></div>
+  </div>
+</div>
+""".strip()
+
+
 def create_gradio_app():
     try:
         import gradio as gr
@@ -217,8 +270,10 @@ def create_gradio_app():
             reasoning_context=reasoning_context,
             gate_decision=gate_decision,
         )
+        gate_content = surface["zones"]["gate"]["content"]
+        gate_html = _render_gate_decision_html(gate_content if isinstance(gate_content, dict) else {})
         return (
-            surface["zones"]["gate"]["content"],
+            gate_html,
             surface["zones"]["system_state"],
             surface["zones"]["reasoning"]["content"],
             surface["zones"]["record"]["content"],
@@ -237,7 +292,7 @@ def create_gradio_app():
             label="Demo Progression",
         )
 
-        gate = gr.JSON(label="Gate Decision", value=initial_gate)
+        gate = gr.HTML(label="Gate Decision", value=initial_gate)
         system = gr.JSON(label="System Context", value=initial_system)
         reasoning = gr.JSON(label="Evidence-Bound Reasoning", value=initial_reasoning)
         record = gr.JSON(label="Evidence Record", value=initial_record)
