@@ -17,7 +17,11 @@ def _with_alpha(hex_color: str, alpha: float) -> str:
     return f"rgba({r}, {g}, {b}, {clamp(alpha, 0.0, 1.0):.3f})"
 
 
-def render_structural_flow_viz(state: SystemState, gate_decision: dict[str, Any] | None = None) -> dict[str, object]:
+def render_structural_flow_viz(
+    state: SystemState,
+    gate_decision: dict[str, Any] | None = None,
+    records: list[dict[str, Any]] | None = None,
+) -> dict[str, object]:
     """Trajectory-first spatial navigation field, not a chart."""
     tail = [{"x": p.x, "y": p.y, "t": p.t} for p in state.trajectory_history]
     velocity_mag = l2_norm(state.velocity)
@@ -48,6 +52,20 @@ def render_structural_flow_viz(state: SystemState, gate_decision: dict[str, Any]
     admit_points = [point for point in tail if decision == "ADMIT"]
     suppress_points = [point for point in tail if decision == "SUPPRESS"]
     void_points = [point for point in tail if decision == "ADMISSIBILITY_VOID"]
+    rows = records or []
+    indexed_tail = list(enumerate(tail))
+
+    stable_points = [point for idx, point in indexed_tail if idx < len(rows) and str(rows[idx].get("transition_type", "STABLE")).upper() == "STABLE"]
+    transition_points = [
+        point for idx, point in indexed_tail if idx < len(rows) and str(rows[idx].get("transition_type", "")).upper() == "TRANSITION"
+    ]
+    reorganization_points = [
+        point for idx, point in indexed_tail if idx < len(rows) and str(rows[idx].get("transition_type", "")).upper() == "REORGANIZATION"
+    ]
+    admitted_event_points = [point for idx, point in indexed_tail if idx < len(rows) and bool(rows[idx].get("event_admitted"))]
+    suppressed_event_points = [
+        point for idx, point in indexed_tail if idx < len(rows) and rows[idx].get("event_admitted") is False
+    ]
 
     return {
         "surface": "system_navigation_field",
@@ -126,5 +144,12 @@ def render_structural_flow_viz(state: SystemState, gate_decision: dict[str, Any]
                 "style": "uncertain",
                 "color": _with_alpha("#BBA1FF", 0.65),
             },
+        },
+        "phase_layers": {
+            "stable_baseline": stable_points,
+            "transition": transition_points,
+            "reorganization": reorganization_points,
+            "admitted_events": admitted_event_points,
+            "suppressed_events": suppressed_event_points,
         },
     }
