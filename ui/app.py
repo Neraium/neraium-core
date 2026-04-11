@@ -201,22 +201,8 @@ def _render_gate_decision_html(gate_card: dict[str, Any]) -> str:
     risk_direction = escape(str(gate_card.get("risk_direction") or "UNCERTAIN"))
     transition_type = escape(str(gate_card.get("transition_type") or "STABLE"))
     confidence = escape(str(gate_card.get("confidence") or "LOW"))
-    operator_takeaway = escape(str(gate_card.get("operator_takeaway") or "No operator takeaway available."))
-    if_sustained = escape(
-        str(
-            gate_card.get("if_sustained_statement")
-            or "If sustained, this condition indicates: Insufficient evidence to project system evolution."
-        )
-    )
-    timestamp_display = escape(str(gate_card.get("timestamp_display") or "Change evaluated at: unknown"))
+    timestamp_display = escape(str(gate_card.get("timestamp_display") or "unknown"))
     doctrine_version = escape(str(gate_card.get("doctrine_version") or "unknown"))
-    reason = gate_card.get("reason") or gate_card.get("refusal_reason")
-    reason_html = ""
-    if reason:
-        reason_html = (
-            "<div class=\"ner-context-line\">"
-            f"Context: {escape(str(reason))}</div>"
-        )
 
     def _chip(label_text: str, value: str) -> str:
         return (
@@ -228,24 +214,16 @@ def _render_gate_decision_html(gate_card: dict[str, Any]) -> str:
 
     return f"""
 <div class="ner-panel ner-verdict-card" style="--verdict-accent:{style["accent"]};--verdict-badge:{style["badge"]};">
-  <div class="ner-eyebrow">System Decision Surface</div>
+  <div class="ner-eyebrow">Decision</div>
   <div class="ner-verdict-main">{label}</div>
   <div class="ner-verdict-subtitle">{authority_statement}</div>
-  <div class="ner-verdict-takeaway">{operator_takeaway}</div>
   <div class="ner-chip-row">
     {_chip("Confidence", confidence)}
     {_chip("Risk", risk_direction)}
     {_chip("Transition", transition_type)}
-    {_chip("Doctrine", doctrine_version)}
+    {_chip("Doctrine", doctrine_version.split(".")[0])}
   </div>
-  <div class="ner-verdict-projection">
-    {if_sustained}
-  </div>
-  <div class="ner-meta-row">
-    <span>{timestamp_display}</span>
-    <span class="ner-badge">{authority_badge}</span>
-  </div>
-  {reason_html}
+  <div class="ner-meta-row"><span class="ner-badge">{authority_badge}</span><span>{timestamp_display}</span></div>
 </div>
 """.strip()
 
@@ -596,35 +574,36 @@ def _render_reasoning_html(reasoning_panel: dict[str, Any]) -> str:
             f'</div>'
         )
 
-    # Observed Facts section
-    if facts:
-        facts_items = "".join(
-            f'<div style="display:flex;gap:8px;margin-bottom:5px;">'
-            f'<span style="color:#8DB9FF;margin-top:1px;flex-shrink:0;">·</span>'
-            f'<span style="font-size:14px;line-height:1.5;color:#E1EBFF;">{escape(str(f))}</span>'
-            f'</div>'
-            for f in facts
-        )
-        facts_body = f'<div class="ner-facts-list">{facts_items}</div>'
-    else:
-        facts_body = '<div style="font-size:14px;color:#AFC2E6;font-style:italic;">No observed facts available.</div>'
-    facts_section = _section("Observed Facts", facts_body, "#60A5FA")
+    observed = escape(str(facts[0])) if facts else "No observed signal."
+    assessment_source = grounded_text or insufficient_text or "No assessment available."
+    implication_source = escape(str(panel.get("operational_implication") or "No implication available."))
 
-    # Grounded Answer section
-    if grounded_text:
-        grounded_body = f'<div class="ner-reason-copy">{escape(grounded_text)}</div>'
-    elif insufficient_text:
-        grounded_body = (
-            f'<div style="font-size:14px;line-height:1.5;color:#B6C8E8;font-style:italic;">'
-            f'{escape(insufficient_text)}</div>'
-        )
-    else:
-        grounded_body = '<div style="font-size:14px;color:#AFC2E6;font-style:italic;">No grounded answer available.</div>'
-    grounded_section = _section("Grounded Answer", grounded_body, "#818CF8")
+    def _one_line(text: str) -> str:
+        value = text.strip()
+        if len(value) > 120:
+            value = f"{value[:117].rstrip()}..."
+        return value
 
-    # Operational Implication section
-    impl_body = f'<div class="ner-reason-copy">{op_impl}</div>'
-    impl_section = _section("Operational Implication", impl_body, "#34D399")
+    observed_line = _one_line(observed)
+    assessment_line = _one_line(escape(assessment_source))
+    implication_line = _one_line(implication_source)
+
+    core_lines = (
+        f'<div class="ner-core-lines">'
+        f'<div class="ner-core-line"><span>Observed</span><strong>{observed_line}</strong></div>'
+        f'<div class="ner-core-line"><span>Assessment</span><strong>{assessment_line}</strong></div>'
+        f'<div class="ner-core-line"><span>Implication</span><strong>{implication_line}</strong></div>'
+        f'</div>'
+    )
+
+    details_items = "".join(f"<li>{escape(str(f))}</li>" for f in facts[1:] if f)
+    details_html = (
+        f'<details class="ner-more-detail"><summary>More detail</summary>'
+        f'<div class="ner-reason-copy">{escape(grounded_text or insufficient_text or "")}</div>'
+        f'<div class="ner-reason-copy">{op_impl}</div>'
+        f'<ul>{details_items}</ul>'
+        f"</details>"
+    )
 
     # Gate Outcome section
     gate_body = (
@@ -636,12 +615,12 @@ def _render_reasoning_html(reasoning_panel: dict[str, Any]) -> str:
         f'<span class="ner-subtle">Confidence: {confidence_val}</span>'
         f'</div>'
     )
-    gate_section = _section("Gate Outcome", gate_body, "#FB923C")
+    gate_section = _section("Gate", gate_body, "#FB923C")
 
     return (
         f'<div class="ner-panel">'
-        f'<div class="ner-eyebrow">Operational Reasoning</div>'
-        f'{facts_section}{grounded_section}{impl_section}{gate_section}'
+        f'<div class="ner-eyebrow">Reasoning</div>'
+        f'{core_lines}{details_html}{gate_section}'
         f'</div>'
     )
 
@@ -699,40 +678,21 @@ def _render_record_html(record_panel: dict[str, Any]) -> str:
         st = decision_styles.get(raw_decision, default_style)
         ts = escape(str(entry.get("timestamp") or "n/a"))
         summary = escape(str(entry.get("summary") or "No summary."))
-        prev_state = escape(str(entry.get("previous_state_summary") or "n/a"))
-        curr_state = escape(str(entry.get("current_state_summary") or "n/a"))
         raw_transition = str(entry.get("transition_type") or "STABLE").upper()
         transition_color = transition_colors.get(raw_transition, "#4B5563")
 
         return (
             f'<div class="ner-record-card" style="--card-border:{st["border"]};--card-bg:{st["bg"]};">'
-            # Header row: compact operational fields
-            f'<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px;">'
-            f'<span style="font-size:11px;font-weight:700;color:{st["ts_color"]};font-variant-numeric:tabular-nums;">timestamp {ts}</span>'
+            f'<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">'
+            f'<span style="font-size:11px;font-weight:700;color:{st["ts_color"]};font-variant-numeric:tabular-nums;">{ts}</span>'
             f'<span style="font-size:10px;font-weight:800;padding:2px 8px;border-radius:999px;'
             f'background:{st["badge_bg"]};color:{st["badge_text"]};border:1px solid {st["badge_border"]};'
-            f'letter-spacing:0.07em;text-transform:uppercase;">decision {escape(raw_decision)}</span>'
+            f'letter-spacing:0.07em;">{escape(raw_decision)}</span>'
             f'<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:999px;'
             f'background:rgba(255,255,255,0.04);color:{transition_color};'
-            f'border:1px solid {transition_color}33;letter-spacing:0.05em;text-transform:uppercase;">'
-            f'transition {escape(raw_transition)}</span>'
+            f'border:1px solid {transition_color}33;letter-spacing:0.05em;">{escape(raw_transition)}</span>'
             f'</div>'
-            # Summary
-            f'<div style="font-size:14px;line-height:1.45;color:#E5EDFF;margin-bottom:10px;">summary {summary}</div>'
-            # State transition row
-            f'<div class="ner-state-shift">'
-            f'<div style="flex:1;min-width:0;">'
-            f'<div style="font-size:9px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;'
-            f'color:#A7BADD;margin-bottom:3px;">previous state</div>'
-            f'<div style="color:#D7E5FF;line-height:1.4;word-break:break-word;">{prev_state}</div>'
-            f'</div>'
-            f'<div style="color:#B9CAEA;font-size:14px;padding-top:14px;flex-shrink:0;">→</div>'
-            f'<div style="flex:1;min-width:0;">'
-            f'<div style="font-size:9px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;'
-            f'color:#A7BADD;margin-bottom:3px;">current state</div>'
-            f'<div style="color:#F0F5FF;line-height:1.4;word-break:break-word;">{curr_state}</div>'
-            f'</div>'
-            f'</div>'
+            f'<div style="font-size:13px;line-height:1.45;color:#E5EDFF;margin-top:7px;">{summary}</div>'
             f'</div>'
         )
 
@@ -746,7 +706,7 @@ def _render_record_html(record_panel: dict[str, Any]) -> str:
 
     return (
         f'<div class="ner-panel">'
-        f'<div class="ner-eyebrow">Evidence Record</div>'
+        f'<div class="ner-eyebrow">Evidence</div>'
         f'{cards_html}'
         f'</div>'
     )
