@@ -6,6 +6,7 @@ from typing import Any
 
 from ui.config import UIConfig
 from ui.core_integration import build_system_state, evaluate_gate
+from ui.demo_data import load_greenhouse_demo_bundle
 from ui.layouts.operations_view import build_operations_view
 from ui.reasoning import build_reasoning_context
 
@@ -719,16 +720,12 @@ def create_gradio_app():
     except ImportError:
         raise RuntimeError("Gradio is not installed")
 
-    demo_rows = load_builtin_demo_rows()
+    demo_rows, data_source = load_greenhouse_demo_bundle(limit=360, curated=True)
+    if not demo_rows:
+        demo_rows = load_builtin_demo_rows()
+        data_source = "ui.app.load_builtin_demo_rows"
 
-    demo_steps = {
-        "Step 1: Baseline": demo_rows[:1],
-        "Step 2: Transition / Suppress": demo_rows[:2],
-        "Step 3: Reorganization / Admit": demo_rows[:3],
-    }
-
-    def render_command_header(step_label: str) -> str:
-        active_rows = demo_steps.get(step_label) or demo_steps["Step 3: Reorganization / Admit"]
+    def render_command_header(active_rows: list[dict[str, Any]], index: int) -> str:
         latest = active_rows[-1] if active_rows else {}
         confidence = f"{float(latest.get('confidence_score') or 0.0):.2f}"
         gate_state = "ADMIT" if latest.get("event_admitted") else "SUPPRESS"
@@ -742,13 +739,15 @@ def create_gradio_app():
                 <span>Doctrine v2026.04</span>
                 <span>Confidence {escape(confidence)}</span>
                 <span>Gate {escape(gate_state)}</span>
-                <span>State LIVE DEMO</span>
+                <span>Frame {int(index) + 1}/{max(1, len(demo_rows))}</span>
+                <span>Source {escape(data_source)}</span>
               </div>
             </div>
             """
 
-    def load_operations_surface(step_label: str):
-        active_rows = demo_steps.get(step_label) or demo_steps["Step 3: Reorganization / Admit"]
+    def load_operations_surface(frame_index: int):
+        bounded_index = max(0, min(int(frame_index), len(demo_rows) - 1))
+        active_rows = demo_rows[: bounded_index + 1]
         app_state = create_app_state(active_rows)
         system_state = build_system_state(active_rows, config=UIConfig())
         latest = active_rows[-1] if active_rows else {}
@@ -773,7 +772,7 @@ def create_gradio_app():
         system_html = _render_system_context_html(surface["zones"]["system_state"])
         reasoning_html = _render_reasoning_html(surface["zones"]["reasoning"]["content"])
         record_html = _render_record_html(surface["zones"]["record"]["content"])
-        header_html = render_command_header(step_label)
+        header_html = render_command_header(active_rows, bounded_index)
         return (
             header_html,
             gate_html,
@@ -782,30 +781,66 @@ def create_gradio_app():
             record_html,
         )
 
-    default_step = "Step 3: Reorganization / Admit"
-    initial_header, initial_gate, initial_system, initial_reasoning, initial_record = load_operations_surface(default_step)
+    def _tick(index: int, playing: bool) -> int:
+        if not playing:
+            return int(index)
+        return 0 if int(index) >= len(demo_rows) - 1 else int(index) + 1
+
+    def _set_playing() -> bool:
+        return True
+
+    def _set_paused() -> bool:
+        return False
+
+    def _reset_state() -> tuple[int, bool]:
+        return 0, False
+
+    default_index = min(30, max(0, len(demo_rows) - 1))
+    initial_header, initial_gate, initial_system, initial_reasoning, initial_record = load_operations_surface(default_index)
 
     css_path = Path(__file__).parent / "themes" / "neraium_dark.css"
     css = css_path.read_text(encoding="utf-8") if css_path.exists() else ""
 
     with gr.Blocks(css=css, theme=gr.themes.Base(), elem_classes=["ner-app"]) as app:
+        playing_state = gr.State(False)
         header = gr.HTML(value=initial_header)
 
         with gr.Row(elem_classes=["ner-hero-row"]):
             with gr.Column(scale=8):
                 gate = gr.HTML(value=initial_gate)
             with gr.Column(scale=4):
-                demo_step = gr.Radio(
-                    choices=list(demo_steps.keys()),
-                    value=default_step,
-                    label="Mission Flow",
+                with gr.Row():
+                    play_button = gr.Button("Play", variant="primary")
+                    pause_button = gr.Button("Pause")
+                    reset_button = gr.Button("Reset")
+                playback_speed = gr.Radio(
+                    choices=[("0.25x", 4.0), ("0.5x", 2.0), ("1.0x", 1.0), ("2.0x", 0.5), ("4.0x", 0.25)],
+                    value=1.0,
+                    label="Playback Speed",
                     elem_classes=["ner-flow-radio"],
+                )
+                frame_slider = gr.Slider(
+                    minimum=0,
+                    maximum=max(0, len(demo_rows) - 1),
+                    step=1,
+                    value=default_index,
+                    label="Frame",
                 )
 
         system = gr.HTML(value=initial_system)
         reasoning = gr.HTML(value=initial_reasoning)
         record = gr.HTML(value=initial_record)
+        timer = gr.Timer(value=1.0, active=True)
 
-        demo_step.change(fn=load_operations_surface, inputs=[demo_step], outputs=[header, gate, system, reasoning, record])
+        timer.tick(fn=_tick, inputs=[frame_slider, playing_state], outputs=[frame_slider])
+        frame_slider.change(
+            fn=load_operations_surface,
+            inputs=[frame_slider],
+            outputs=[header, gate, system, reasoning, record],
+        )
+        playback_speed.change(fn=lambda v: gr.update(value=float(v)), inputs=[playback_speed], outputs=[timer])
+        play_button.click(fn=_set_playing, outputs=[playing_state])
+        pause_button.click(fn=_set_paused, outputs=[playing_state])
+        reset_button.click(fn=_reset_state, outputs=[frame_slider, playing_state])
 
     return app

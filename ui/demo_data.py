@@ -1,14 +1,18 @@
 from __future__ import annotations
 
+import csv
 import json
 import runpy
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
+from neraium_core.alignment import StructuralEngine
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 ULTRAFAST_DEMO_SCRIPT = REPO_ROOT / "greenhouse_demo" / "run_grow_demo_ultrafast.py"
 GREENHOUSE_SCENARIO_JSON = REPO_ROOT / "apps" / "api" / "demo_data" / "cannabis_grow_op_scenario.json"
+IGROW_DIR = REPO_ROOT / "WUR_AutonomousGreenhouseProject_EDA-main" / "iGrow"
 
 
 def _clamp(value: float, low: float = 0.0, high: float = 1.0) -> float:
@@ -122,6 +126,8 @@ def _load_rows_from_ultrafast_script(*, limit: int | None) -> list[dict[str, Any
 
 
 def _load_rows_from_greenhouse_scenario(*, limit: int | None) -> list[dict[str, Any]]:
+    if not GREENHOUSE_SCENARIO_JSON.exists():
+        return []
     payload = json.loads(GREENHOUSE_SCENARIO_JSON.read_text(encoding="utf-8"))
     asset = payload.get("asset") or {}
     site_id = str(asset.get("site_id") or "grow-op-facility-01")
@@ -159,9 +165,139 @@ def _load_rows_from_greenhouse_scenario(*, limit: int | None) -> list[dict[str, 
     return _normalize_records(rows, limit=limit)
 
 
-def load_greenhouse_demo_records(*, limit: int | None = 180) -> list[dict[str, Any]]:
-    """Load UI-ready greenhouse replay rows, preferring the ultrafast script source when available."""
+def _parse_timestamp(value: str, fallback_index: int) -> float:
+    raw = (value or "").strip()
+    if not raw:
+        return float(fallback_index)
+    try:
+        return float(raw)
+    except ValueError:
+        pass
+    normalized = raw.replace("Z", "+00:00")
+    for parser in (datetime.fromisoformat,):
+        try:
+            return parser(normalized).timestamp()
+        except ValueError:
+            continue
+    return float(fallback_index)
+
+
+def _is_numeric_string(value: str) -> bool:
+    try:
+        float(value)
+    except (TypeError, ValueError):
+        return False
+    return True
+
+
+def _discover_igrow_csv() -> Path | None:
+    if not IGROW_DIR.is_dir():
+        return None
+    candidates = sorted(IGROW_DIR.glob("*.csv"), key=lambda p: p.stat().st_size, reverse=True)
+    if not candidates:
+        return None
+    priority = ["Greenhouse_climate", "climate", "sensor", "timeseries"]
+    for key in priority:
+        for candidate in candidates:
+            if key.lower() in candidate.name.lower():
+                return candidate
+    return candidates[0]
+
+
+def _load_igrow_frames(*, limit: int | None) -> tuple[list[dict[str, Any]], Path | None]:
+    csv_path = _discover_igrow_csv()
+    if csv_path is None:
+        return [], None
+
+    frames: list[dict[str, Any]] = []
+    with csv_path.open("r", encoding="utf-8", newline="") as handle:
+        reader = csv.DictReader(handle)
+        if reader.fieldnames is None:
+            return [], csv_path
+
+        fieldnames = [str(name) for name in reader.fieldnames]
+        ts_col = next((c for c in fieldnames if "time" in c.lower() or "date" in c.lower()), fieldnames[0])
+
+        for idx, row in enumerate(reader):
+            sensor_values: dict[str, float] = {}
+            for col, raw in row.items():
+                if col is None or col == ts_col:
+                    continue
+                value = (raw or "").strip()
+                if not value or not _is_numeric_string(value):
+                    continue
+                sensor_values[col] = float(value)
+            if not sensor_values:
+                continue
+
+            timestamp = _parse_timestamp(str(row.get(ts_col) or ""), idx)
+            frames.append(
+                {
+                    "timestamp": timestamp,
+                    "site_id": "greenhouse",
+                    "asset_id": "igrow",
+                    "sensor_values": sensor_values,
+                }
+            )
+            if isinstance(limit, int) and limit > 0 and len(frames) >= limit:
+                break
+
+    return frames, csv_path
+
+
+def _curated_slice(records: list[dict[str, Any]], *, target: int = 240) -> list[dict[str, Any]]:
+    if len(records) <= target:
+        return records
+
+    quarter = max(10, target // 4)
+    stable = [r for r in records if float(r.get("structural_drift_score") or 0.0) < 0.25][:quarter]
+    transition = [r for r in records if 0.25 <= float(r.get("structural_drift_score") or 0.0) < 0.5][:quarter]
+    divergence = [r for r in records if 0.5 <= float(r.get("structural_drift_score") or 0.0) < 0.75][:quarter]
+    reorg = [r for r in records if float(r.get("structural_drift_score") or 0.0) >= 0.75][:quarter]
+
+    curated = stable + transition + divergence + reorg
+    if len(curated) < target:
+        remaining = [r for r in records if r not in curated]
+        curated.extend(remaining[: target - len(curated)])
+    return curated[:target]
+
+
+def _run_structural_replay(frames: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    if not frames:
+        return []
+
+    engine = StructuralEngine(baseline_window=20, recent_window=6)
+    records: list[dict[str, Any]] = []
+    for frame in frames:
+        result = engine.process_frame(frame)
+        if not isinstance(result, dict):
+            continue
+        result["timestamp"] = frame["timestamp"]
+        result["site_id"] = frame["site_id"]
+        result["asset_id"] = frame["asset_id"]
+        result["sensor_values"] = frame["sensor_values"]
+        records.append(result)
+    return records
+
+
+def load_greenhouse_demo_bundle(*, limit: int | None = 320, curated: bool = True) -> tuple[list[dict[str, Any]], str]:
+    igrow_frames, csv_path = _load_igrow_frames(limit=limit)
+    if igrow_frames:
+        records = _run_structural_replay(igrow_frames)
+        if curated:
+            records = _curated_slice(records)
+        if records:
+            source_label = str(csv_path.relative_to(REPO_ROOT)) if csv_path is not None else "iGrow/*.csv"
+            return records, source_label
+
     ultrafast = _load_rows_from_ultrafast_script(limit=limit)
     if ultrafast:
-        return ultrafast
-    return _load_rows_from_greenhouse_scenario(limit=limit)
+        return ultrafast, str(ULTRAFAST_DEMO_SCRIPT.relative_to(REPO_ROOT))
+
+    scenario = _load_rows_from_greenhouse_scenario(limit=limit)
+    return scenario, str(GREENHOUSE_SCENARIO_JSON.relative_to(REPO_ROOT))
+
+
+def load_greenhouse_demo_records(*, limit: int | None = 320, curated: bool = True) -> list[dict[str, Any]]:
+    rows, _ = load_greenhouse_demo_bundle(limit=limit, curated=curated)
+    return rows
