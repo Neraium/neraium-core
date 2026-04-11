@@ -82,8 +82,19 @@ def _transition_intensity(transition: dict[str, Any], persistence_minutes: Any) 
 
 
 def _normalize_transition_type(transition_type: Any) -> str:
+    """Normalize transition type to canonical forms.
+
+    Returns one of: STABLE, TRANSITION, REORGANIZATION
+    """
     if isinstance(transition_type, str):
         normalized = transition_type.strip().upper()
+        # Canonicalize variations
+        if normalized in {"STABLE", "BASELINE", "COHERENCE", "STABLE_BASELINE"}:
+            return "STABLE"
+        if normalized in {"TRANSITION", "DRIFT", "TRANSITION_ACTIVE", "DRIFT_WATCH"}:
+            return "TRANSITION"
+        if normalized in {"REORGANIZATION", "REORGANIZATION_UNDERWAY", "DIVERGENCE"}:
+            return "REORGANIZATION"
         if normalized:
             return normalized
     return "STABLE"
