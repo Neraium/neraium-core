@@ -293,7 +293,7 @@ class StructuralEngine:
         self._shock_activity_history: deque[float] = deque(maxlen=TRANSITION_MEMORY_WINDOW)
         self._structural_drift_history: deque[float] = deque(maxlen=TRANSITION_MEMORY_WINDOW)
         self._temporal_consistency_history: deque[float] = deque(maxlen=TRANSITION_MEMORY_WINDOW)
-        self._tetrahedral_position_history: deque[list[float]] = deque(maxlen=24)
+        self._tetrahedral_position_history: deque[list[float]] = deque(maxlen=64)
         self._signal_instability_history: deque[float] = deque(maxlen=24)
         self._shape_change_history: deque[float] = deque(maxlen=24)
         self._spectral_shift_history: deque[float] = deque(maxlen=24)
@@ -481,8 +481,36 @@ class StructuralEngine:
             "state_space_statistics": {"available": False, "reason": "insufficient history"},
             "state_graph": {"available": False, "reason": "insufficient history"},
             "geometry_explanations": {"available": False, "reason": "insufficient history"},
-            "tetrahedral_state": {},
+            "tetrahedral_state": self._safe_default_tetrahedral_payload(),
         }
+
+    def _safe_default_tetrahedral_payload(self) -> Dict[str, object]:
+        """Return a deterministic tetrahedral payload for warmup/unavailable paths."""
+        try:
+            return compute_tetrahedral_state(
+                structural_drift_score=0.0,
+                relational_instability_score=0.0,
+                transition_pressure=0.0,
+                temporal_consistency_score=1.0,
+                history_positions=list(self._tetrahedral_position_history),
+            )
+        except Exception:
+            return {
+                "weights": {
+                    "structural_drift_score": 0.25,
+                    "relational_instability_score": 0.25,
+                    "transition_pressure": 0.25,
+                    "temporal_inconsistency": 0.25,
+                },
+                "position": [0.0, 0.0, 0.0],
+                "nearest_vertex": "STRUCTURAL",
+                "nearest_face": "RELATIONAL_TRANSITION_TEMPORAL",
+                "edge_alignment": 0.0,
+                "speed": 0.0,
+                "curvature": 0.0,
+                "state_label": "BALANCED",
+                "movement_summary": "stationary",
+            }
 
     def _enforce_policy_contract(self, result: Dict[str, object]) -> None:
         """Ensure policy_* fields are sourced from structural drift policy layer only."""
@@ -664,7 +692,7 @@ class StructuralEngine:
         self._drift_smooth_history = deque(list(state.get("drift_smooth_history", [])), maxlen=120)
         self._shock_activity_history = deque(list(state.get("shock_activity_history", [])), maxlen=TRANSITION_MEMORY_WINDOW)
         self._structural_drift_history = deque(list(state.get("structural_drift_history", [])), maxlen=TRANSITION_MEMORY_WINDOW)
-        self._tetrahedral_position_history = deque(list(state.get("tetrahedral_position_history", [])), maxlen=24)
+        self._tetrahedral_position_history = deque(list(state.get("tetrahedral_position_history", [])), maxlen=64)
         self._watch_counter = int(state.get("watch_counter", 0))
         self._alert_counter = int(state.get("alert_counter", 0))
         self._alert_latched = bool(state.get("alert_latched", False))
@@ -2609,26 +2637,31 @@ class StructuralEngine:
             result["localization_score"] = 0.0
             self._temporal_consistency_history.append(float(temporal_quality.get("temporal_consistency_score", 0.0)))
 
-            reversibility_block = analytics.get("counterfactual_guidance", {}).get("reversibility", {}) if isinstance(analytics.get("counterfactual_guidance"), dict) else {}
-            reversibility_scores = reversibility_block.get("scores", {}) if isinstance(reversibility_block, dict) else {}
-            tetrahedral_payload = compute_tetrahedral_state(
-                structural_drift_score=float(result.get("structural_drift_score", 0.0) or 0.0),
-                relational_instability_score=float(result.get("relational_instability_score", 0.0) or 0.0),
-                transition_pressure=float(result.get("transition_pressure", 0.0) or 0.0),
-                temporal_consistency_score=float(result.get("temporal_consistency_score", 0.0) or 0.0),
-                history_positions=list(self._tetrahedral_position_history),
-                regime_drift=float(result.get("regime_drift", 0.0) or 0.0),
-                reversibility=(
-                    float(reversibility_scores.get("locked_in_index", 0.0))
-                    if isinstance(reversibility_scores, dict)
-                    else None
-                ),
-                geometry_curvature=(
-                    float((analytics.get("geometry") or {}).get("curvature"))
-                    if isinstance((analytics.get("geometry") or {}).get("curvature"), (int, float))
-                    else None
-                ),
-            )
+            tetrahedral_payload = self._safe_default_tetrahedral_payload()
+            if isinstance(analytics, dict):
+                reversibility_block = analytics.get("counterfactual_guidance", {}).get("reversibility", {}) if isinstance(analytics.get("counterfactual_guidance"), dict) else {}
+                reversibility_scores = reversibility_block.get("scores", {}) if isinstance(reversibility_block, dict) else {}
+                try:
+                    tetrahedral_payload = compute_tetrahedral_state(
+                        structural_drift_score=float(result.get("structural_drift_score", 0.0) or 0.0),
+                        relational_instability_score=float(result.get("relational_instability_score", 0.0) or 0.0),
+                        transition_pressure=float(result.get("transition_pressure", 0.0) or 0.0),
+                        temporal_consistency_score=float(result.get("temporal_consistency_score", 0.0) or 0.0),
+                        history_positions=list(self._tetrahedral_position_history),
+                        regime_drift=float(result.get("regime_drift", 0.0) or 0.0),
+                        reversibility=(
+                            float(reversibility_scores.get("locked_in_index", 0.0))
+                            if isinstance(reversibility_scores, dict)
+                            else None
+                        ),
+                        geometry_curvature=(
+                            float((analytics.get("geometry") or {}).get("curvature", 0.0))
+                            if isinstance(analytics.get("geometry"), dict)
+                            else None
+                        ),
+                    )
+                except Exception:
+                    tetrahedral_payload = self._safe_default_tetrahedral_payload()
             position = tetrahedral_payload.get("position")
             if isinstance(position, list) and len(position) == 3:
                 self._tetrahedral_position_history.append([float(v) for v in position])
@@ -2738,6 +2771,7 @@ class StructuralEngine:
                 "counterfactual_simulation": counterfactual_simulation,
                 **analytics,
             }
+            result["experimental_analytics"]["tetrahedral_state"] = tetrahedral_payload
             debug_raw_features = os.environ.get("NERAIUM_DEBUG_RAW_FEATURES", "0").strip().lower() not in {
                 "0",
                 "false",

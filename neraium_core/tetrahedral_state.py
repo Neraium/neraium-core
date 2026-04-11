@@ -26,6 +26,13 @@ _FACE_LABELS = {
     "temporal_inconsistency": "STRUCTURAL_RELATIONAL_TRANSITION",
 }
 
+_INTERPRETED_LABELS = {
+    "STRUCTURAL": "STRUCTURAL_STRESS_BUILDING",
+    "RELATIONAL": "COUPLING_BREAKDOWN",
+    "TRANSITION": "ACTIVE_TRANSITION",
+    "TEMPORAL": "TEMPORAL_DEGRADATION",
+}
+
 
 def _clamp01(value: float) -> float:
     return float(max(0.0, min(1.0, value)))
@@ -138,6 +145,7 @@ def compute_tetrahedral_state(
         "weights": {k: round(float(v), 6) for k, v in weights.items()},
         "position": [round(float(v), 6) for v in position],
         "nearest_vertex": _VERTEX_LABELS[nearest_vertex_key],
+        "interpreted_label": _INTERPRETED_LABELS[_VERTEX_LABELS[nearest_vertex_key]],
         "nearest_face": _FACE_LABELS[nearest_face_key],
         "edge_alignment": round(edge_alignment, 6),
         "speed": round(float(motion["speed"]), 6),
