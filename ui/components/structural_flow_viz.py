@@ -28,19 +28,28 @@ def _event_point_style(
         return {
             **point,
             "event_type": "admitted",
-            "color": _with_alpha("#68FFD8", 0.72 + recency_ratio * 0.24),
-            "glow": round(0.64 + recency_ratio * 0.34, 3),
-            "opacity": round(0.9 + recency_ratio * 0.1, 3),
-            "radius": round(4.0 + recency_ratio * 3.2, 3),
+            "color": _with_alpha("#73FFE1", 0.78 + recency_ratio * 0.22),
+            "rim_color": _with_alpha("#D3FFF5", 0.74 + recency_ratio * 0.2),
+            "glow": round(0.72 + recency_ratio * 0.34, 3),
+            "opacity": round(0.92 + recency_ratio * 0.08, 3),
+            "radius": round(4.6 + recency_ratio * 3.8, 3),
+            "pulse": round(0.18 + recency_ratio * 0.24, 3),
             "blend_mode": "screen",
         }
     return {
         **point,
         "event_type": "suppressed",
-        "color": _with_alpha("#9CA3AF", 0.15 + recency_ratio * 0.18),
-        "glow": round(0.08 + recency_ratio * 0.12, 3),
-        "opacity": round(0.16 + recency_ratio * 0.18, 3),
-        "radius": round(2.3 + recency_ratio * 1.4, 3),
+        "color": _with_alpha("#9F8D86", 0.1 + recency_ratio * 0.14),
+        "rim_color": _with_alpha("#B89C93", 0.14 + recency_ratio * 0.15),
+        "glow": round(0.04 + recency_ratio * 0.09, 3),
+        "opacity": round(0.12 + recency_ratio * 0.15, 3),
+        "radius": round(2.0 + recency_ratio * 1.25, 3),
+        "pulse": round(0.0 + recency_ratio * 0.03, 3),
+        "blur": round(0.12 + recency_ratio * 0.16, 3),
+        "diffusion_halo": _with_alpha("#D47A5F", 0.08 + recency_ratio * 0.08),
+        "edge_sharpness": round(0.24 + recency_ratio * 0.16, 3),
+        "saturation": round(0.42 + recency_ratio * 0.16, 3),
+        "admissibility": "denied_reality",
         "blend_mode": "multiply",
     }
 
@@ -58,10 +67,10 @@ def render_structural_flow_viz(
     fading_tail = [
         {
             **point,
-            "opacity": round(0.12 + (idx + 1) / trail_count * 0.82, 4),
-            "glow": round(0.12 + (idx + 1) / trail_count * 0.68, 4),
-            "radius": round(2.0 + (idx + 1) / trail_count * 4.5, 3),
-            "color": _with_alpha("#6E8DFF", 0.08 + (idx + 1) / trail_count * 0.48),
+            "opacity": round(0.09 + (idx + 1) / trail_count * 0.86, 4),
+            "glow": round(0.11 + (idx + 1) / trail_count * 0.72, 4),
+            "radius": round(1.9 + (idx + 1) / trail_count * 4.9, 3),
+            "color": _with_alpha("#738FFF", 0.07 + (idx + 1) / trail_count * 0.54),
         }
         for idx, point in enumerate(tail)
     ]
@@ -77,6 +86,8 @@ def render_structural_flow_viz(
         regime_phase = "transition"
 
     decision = (gate_decision or {}).get("decision")
+    decision_upper = str(decision or "").upper()
+    suppressed_scene = decision_upper == "SUPPRESS"
     admit_points = [point for point in tail if decision == "ADMIT"]
     suppress_points = [point for point in tail if decision == "SUPPRESS"]
     void_points = [point for point in tail if decision == "ADMISSIBILITY_VOID"]
@@ -115,10 +126,24 @@ def render_structural_flow_viz(
             "grid": "off",
             "chrome": "none",
             "background": {
-                "base": "#050812",
-                "radial_tint": ["#101532", "#080f25", "#05070E"],
-                "vignette": 0.42,
-                "noise": 0.03,
+                "base": "#040713",
+                "radial_tint": ["#11183A", "#0A1230", "#05070F"],
+                "vignette": 0.5,
+                "noise": 0.028,
+            },
+            "depth_layers": {
+                "near_field": {"tone": _with_alpha("#1A2556", 0.34), "contrast": 0.88},
+                "far_field": {"tone": _with_alpha("#080C1A", 0.72), "contrast": 0.64},
+            },
+            "gate_scene_tone": {
+                "mode": "suppressed_withheld" if suppressed_scene else "clear",
+                "global_desaturation": 0.08 if suppressed_scene else 0.0,
+                "warm_amber_overlay": {
+                    "color": _with_alpha("#B87443", 0.08 if suppressed_scene else 0.0),
+                    "blend": "soft_light",
+                },
+                "global_glow_scale": 0.9 if suppressed_scene else 1.0,
+                "readability_guard": "preserve_trajectory_and_current_position",
             },
         },
         "trajectory": {
@@ -126,10 +151,11 @@ def render_structural_flow_viz(
             "path": tail,
             "fading_tail": fading_tail,
             "gradient_trail": {
-                "from": _with_alpha("#67D5FF", 0.2),
-                "via": _with_alpha("#7B89FF", 0.36),
-                "to": _with_alpha("#A85DFF", 0.6),
+                "from": _with_alpha("#5CCAFF", 0.18),
+                "via": _with_alpha("#7F87FF", 0.34),
+                "to": _with_alpha("#B35EFF", 0.62),
             },
+            "path_contrast": {"stroke_alpha": 0.82, "trail_alpha": 0.58},
             "interpolation": {
                 "enabled": True,
                 "style": "catmull_rom",
@@ -142,8 +168,11 @@ def render_structural_flow_viz(
             "y": state.position.y,
             "t": state.position.t,
             "highlight": "focus_node",
-            "halo_radius": round(clamp(0.045 + velocity_mag * 0.12, 0.045, 0.17), 4),
-            "glow": round(clamp(0.58 + state.drift_intensity * 0.38, 0.58, 0.99), 3),
+            "halo_radius": round(clamp(0.052 + velocity_mag * 0.14, 0.052, 0.19), 4),
+            "glow": round(clamp(0.68 + state.drift_intensity * 0.32, 0.68, 1.0), 3),
+            "core_radius": round(clamp(0.012 + velocity_mag * 0.025, 0.012, 0.038), 4),
+            "priority_lighting": "over_event_layers",
+            "clarity_protection": "gate_scene_tone_exempt",
             "phase": regime_phase,
             "dominance": "primary_focus",
         },
@@ -153,7 +182,7 @@ def render_structural_flow_viz(
             "dx": state.velocity[0],
             "dy": state.velocity[1],
             "magnitude": round(velocity_mag, 6),
-            "arrow": {"style": "soft", "glow": 0.62, "head_size": "small"},
+            "arrow": {"style": "soft", "glow": 0.68, "head_size": "small", "opacity": 0.74},
         },
         "projected_forward_region": {
             "kind": "cone",
@@ -163,9 +192,10 @@ def render_structural_flow_viz(
         },
         "stability_region_hints": {
             "bands": state.stability_regions,
-            "stable_tone": _with_alpha("#6FD6FF", 0.18),
-            "transition_tone": _with_alpha("#8D7DFF", 0.16),
-            "divergence_tone": _with_alpha("#FF9B7D", 0.2),
+            "stable_tone": _with_alpha("#73B9FF", 0.12),
+            "transition_tone": _with_alpha("#9E88FF", 0.22),
+            "divergence_tone": _with_alpha("#FF9770", 0.26),
+            "field_distinction": "stable_low_energy_transition_active_reorganization_hot",
         },
         "gate_coupling": {
             "decision": decision,
@@ -187,21 +217,53 @@ def render_structural_flow_viz(
         },
         "phase_layers": {
             "stable_baseline": stable_points,
+            "stable_baseline_style": {
+                "color": _with_alpha("#6E7D9D", 0.2),
+                "glow": 0.08,
+                "radius": 1.8,
+                "energy": "calm",
+            },
             "transition": transition_points,
+            "transition_style": {
+                "color": _with_alpha("#8F87FF", 0.32),
+                "glow": 0.34,
+                "radius": 2.6,
+                "energy": "mobilizing",
+            },
             "reorganization": reorganization_points,
+            "reorganization_style": {
+                "color": _with_alpha("#FF9E78", 0.4),
+                "glow": 0.48,
+                "radius": 3.1,
+                "energy": "transformative",
+            },
             "admitted_events": admitted_styled_points,
             "suppressed_events": suppressed_styled_points,
             "event_visual_encoding": {
                 "continuity_anchor": "trajectory.path",
+                "path_vs_event_separation": {
+                    "trajectory_blend": "additive_soft",
+                    "event_blend": "screen_for_admit_multiply_for_suppress",
+                },
                 "admitted": {
-                    "color": "#68FFD8",
-                    "glow_range": [0.64, 0.98],
-                    "opacity_range": [0.9, 1.0],
+                    "color": "#73FFE1",
+                    "glow_range": [0.72, 1.06],
+                    "opacity_range": [0.92, 1.0],
+                    "radius_range": [4.6, 8.4],
+                    "semantic_weight": "consequential",
                 },
                 "suppressed": {
-                    "color": "#9CA3AF",
-                    "glow_range": [0.08, 0.2],
-                    "opacity_range": [0.16, 0.34],
+                    "color": "#9F8D86",
+                    "glow_range": [0.05, 0.15],
+                    "opacity_range": [0.14, 0.3],
+                    "radius_range": [2.0, 3.25],
+                    "semantic_weight": "deemphasized",
+                    "admissibility_state": "observed_not_admitted",
+                    "uncertainty_treatment": {
+                        "blur": "soft",
+                        "diffusion_halo": "faint_amber",
+                        "edge_sharpness": "low",
+                    },
                 },
             },
         },
