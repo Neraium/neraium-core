@@ -8,9 +8,9 @@ build:
 
 run:
   runtime-version: 3.11
-  # For App Runner Python 3.11, install dependencies in pre-run so packages are available at runtime.
+  # For App Runner Python 3.11, install app and UI runtime deps in pre-run so packages are available at runtime.
   pre-run:
-    - pip3 install .
+    - pip3 install . gradio
   # Hosted UI deployment entrypoint (binds 0.0.0.0 and respects PORT with fallback 7860).
   command: python start_site.py
   network:
