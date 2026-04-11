@@ -63,6 +63,8 @@ def render_structural_flow_viz(
         point for idx, point in indexed_tail if idx < len(rows) and str(rows[idx].get("transition_type", "")).upper() == "REORGANIZATION"
     ]
     admitted_event_points = [point for idx, point in indexed_tail if idx < len(rows) and bool(rows[idx].get("event_admitted"))]
+    if str(decision or "SUPPRESS").upper() == "SUPPRESS" and rows:
+        admitted_event_points = [point for point in admitted_event_points if point.get("t") != rows[-1].get("timestamp")]
     suppressed_event_points = [
         point for idx, point in indexed_tail if idx < len(rows) and rows[idx].get("event_admitted") is False
     ]

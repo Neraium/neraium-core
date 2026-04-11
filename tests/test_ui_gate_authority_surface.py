@@ -4,7 +4,8 @@ from ui.app import create_app_state
 from ui.config import UIConfig
 from ui.core_integration import build_system_state
 from ui.layouts.operations_view import build_operations_view
-
+from ui.reasoning.context_builder import build_reasoning_context
+from ui.reasoning.reasoner import generate_reasoned_response
 
 def test_create_app_state_includes_gate_decision_and_reasoning_gate_context() -> None:
     row = {
@@ -240,3 +241,100 @@ def test_gate_banner_normalizes_non_string_transition_type() -> None:
 
     assert gate_content["transition_type"] == "STABLE"
     assert gate_content["operator_takeaway"] == "System has entered a low-intensity stable transition."
+
+
+def test_suppress_gate_blocks_current_admit_record_and_event_point() -> None:
+    rows = [
+        {
+            "timestamp": "2026-04-10T00:00:00+00:00",
+            "structural_drift_score": 0.4,
+            "relational_stability_score": 0.6,
+            "event_admitted": True,
+        },
+        {
+            "timestamp": "2026-04-10T00:05:00+00:00",
+            "structural_drift_score": 0.82,
+            "relational_stability_score": 0.21,
+            "event_admitted": True,
+        },
+    ]
+    system_state = build_system_state(rows, config=UIConfig())
+    gate_decision = {
+        "decision": "SUPPRESS",
+        "doctrine_version": "doctrine.v1",
+        "timestamp": rows[-1]["timestamp"],
+        "transition": {"type": "INSTABILITY", "delta_drift": 0.33, "delta_stability": -0.3},
+    }
+    reasoning_context = build_reasoning_context(system_state, rows, gate_decision=gate_decision)
+
+    view = build_operations_view(
+        system_state,
+        records=rows,
+        reasoning_context=reasoning_context,
+        gate_decision=gate_decision,
+    )
+
+    record_entries = view["zones"]["record"]["content"]["entries"]
+    assert all(not (entry["timestamp"] == rows[-1]["timestamp"] and entry["gate_decision"] == "ADMIT") for entry in record_entries)
+
+    admitted_points = view["zones"]["system_state"]["content"]["phase_layers"]["admitted_events"]
+    assert all(point["t"] != rows[-1]["timestamp"] for point in admitted_points)
+
+
+def test_suppress_gate_avoids_admitted_structural_change_wording() -> None:
+    rows = [
+        {
+            "timestamp": "2026-04-10T00:00:00+00:00",
+            "structural_drift_score": 0.72,
+            "relational_stability_score": 0.28,
+        }
+    ]
+    system_state = build_system_state(rows, config=UIConfig())
+    gate_decision = {"decision": "SUPPRESS", "doctrine_version": "doctrine.v1"}
+    reasoning_context = build_reasoning_context(system_state, rows, gate_decision=gate_decision)
+
+    response = generate_reasoned_response("What is happening right now?", reasoning_context)
+
+    operational = response["sections"]["Operational Implication"]
+    assert all("admitted structural change" not in line.lower() for line in operational)
+    assert any("directional evidence" in line.lower() for line in operational)
+
+
+def test_admit_gate_aligns_record_event_and_reasoning() -> None:
+    rows = [
+        {
+            "timestamp": "2026-04-10T00:00:00+00:00",
+            "structural_drift_score": 0.35,
+            "relational_stability_score": 0.66,
+            "event_admitted": False,
+        },
+        {
+            "timestamp": "2026-04-10T00:05:00+00:00",
+            "structural_drift_score": 0.84,
+            "relational_stability_score": 0.2,
+            "event_admitted": True,
+        },
+    ]
+    system_state = build_system_state(rows, config=UIConfig())
+    gate_decision = {
+        "decision": "ADMIT",
+        "doctrine_version": "doctrine.v1",
+        "timestamp": rows[-1]["timestamp"],
+    }
+    reasoning_context = build_reasoning_context(system_state, rows, gate_decision=gate_decision)
+    view = build_operations_view(
+        system_state,
+        records=rows,
+        reasoning_context=reasoning_context,
+        gate_decision=gate_decision,
+    )
+
+    record_entries = view["zones"]["record"]["content"]["entries"]
+    assert any(entry["timestamp"] == rows[-1]["timestamp"] and entry["gate_decision"] == "ADMIT" for entry in record_entries)
+
+    admitted_points = view["zones"]["system_state"]["content"]["phase_layers"]["admitted_events"]
+    assert any(point["t"] == rows[-1]["timestamp"] for point in admitted_points)
+
+    response = generate_reasoned_response("What is happening right now?", reasoning_context)
+    operational = response["sections"]["Operational Implication"]
+    assert any("admitted structural change" in line.lower() for line in operational)
