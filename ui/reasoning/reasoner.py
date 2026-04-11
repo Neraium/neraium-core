@@ -55,7 +55,10 @@ def generate_reasoned_response(operator_question: str, reasoning_context: dict[s
         supported = True
         sections["Observed Facts"].append(reasoning_context.get("drift_summary", "No admitted drift summary is available."))
         sections["Observed Facts"].append(reasoning_context.get("stability_summary", "No admitted stability summary is available."))
-        sections["Operational Implication"].append("Monitor admitted structural change and keep queries anchored to current state evidence.")
+        if str(gate_decision.get("decision") or "SUPPRESS").upper() == "ADMIT":
+            sections["Operational Implication"].append("Monitor admitted structural change and keep queries anchored to current state evidence.")
+        else:
+            sections["Operational Implication"].append("Monitor directional evidence and keep queries anchored to current state observations.")
 
     if "when" in q and ("shift" in q or "begin" in q or "started" in q):
         supported = True
