@@ -149,6 +149,190 @@ input[type="range"] {
 }
 
 /* ============================================================================
+   REPLAY CONTROLS - UNIFIED DARK PANEL
+   ============================================================================ */
+
+.ner-mode-row {
+  margin: 0 0 16px 0 !important;
+  gap: 0 !important;
+  background: linear-gradient(180deg, rgba(15, 21, 53, 0.88), rgba(10, 14, 30, 0.92));
+  border: 1px solid var(--border-primary);
+  border-radius: 12px 12px 0 0;
+  padding: 16px 24px !important;
+  display: flex !important;
+  align-items: center !important;
+  box-shadow: var(--shadow-md);
+}
+
+.ner-mode-row label {
+  font-size: 10px !important;
+  font-weight: 800 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.12em !important;
+  color: var(--text-muted) !important;
+  margin: 0 16px 0 0 !important;
+  flex-shrink: 0;
+}
+
+/* Segmented control styling for mode selector */
+.ner-mode-row .wrap {
+  display: flex !important;
+  gap: 2px !important;
+  align-items: center !important;
+  background: rgba(255, 255, 255, 0.04) !important;
+  border-radius: 8px !important;
+  padding: 4px !important;
+  border: 1px solid var(--border-secondary) !important;
+}
+
+.ner-mode-row .wrap label {
+  margin: 0 !important;
+  font-size: 11px !important;
+  font-weight: 700 !important;
+  color: var(--text-secondary) !important;
+  padding: 8px 14px !important;
+  border-radius: 6px !important;
+  background: transparent !important;
+  border: none !important;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.ner-mode-row .wrap label:hover {
+  background: rgba(255, 255, 255, 0.06) !important;
+  color: var(--accent-blue) !important;
+}
+
+.ner-mode-row .wrap label:has(input:checked) {
+  background: rgba(59, 130, 246, 0.18) !important;
+  color: var(--accent-blue) !important;
+  border: none !important;
+  box-shadow: inset 0 0 12px rgba(59, 130, 246, 0.2);
+}
+
+/* ============================================================================
+   CONTROLS ROW - UNIFIED DARK PANEL
+   ============================================================================ */
+
+.ner-controls-row {
+  margin: 0 !important;
+  gap: 16px !important;
+  background: linear-gradient(180deg, rgba(15, 21, 53, 0.88), rgba(10, 14, 30, 0.92));
+  border: 1px solid var(--border-primary);
+  border-top: none;
+  border-radius: 0 0 12px 12px;
+  padding: 20px 24px !important;
+  display: flex !important;
+  align-items: center !important;
+  box-shadow: var(--shadow-md);
+  margin-bottom: 28px !important;
+}
+
+/* Slider styling - thick tracks, larger handles */
+.ner-controls-row .gr-slider {
+  flex: 1;
+  min-width: 120px;
+  margin: 0 !important;
+}
+
+.ner-controls-row .gr-slider label {
+  font-size: 10px !important;
+  font-weight: 800 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.1em !important;
+  color: var(--text-muted) !important;
+  margin-bottom: 8px !important;
+}
+
+.ner-controls-row input[type="range"] {
+  width: 100% !important;
+  height: 6px !important;
+  -webkit-appearance: none;
+  appearance: none;
+  background: linear-gradient(90deg,
+    rgba(59, 130, 246, 0.3) 0%,
+    rgba(59, 130, 246, 0.5) 50%,
+    rgba(59, 130, 246, 0.3) 100%);
+  border-radius: 3px;
+  outline: none;
+  border: 1px solid rgba(59, 130, 246, 0.4);
+  accent-color: var(--accent-blue);
+}
+
+/* Slider thumb styling */
+.ner-controls-row input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 18px !important;
+  height: 18px !important;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #3b82f6, #06b6d4);
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  cursor: pointer;
+  box-shadow: 0 0 16px rgba(59, 130, 246, 0.4), inset 0 0 8px rgba(255, 255, 255, 0.1);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.ner-controls-row input[type="range"]::-webkit-slider-thumb:hover {
+  width: 20px !important;
+  height: 20px !important;
+  box-shadow: 0 0 24px rgba(59, 130, 246, 0.6), inset 0 0 12px rgba(255, 255, 255, 0.15);
+}
+
+.ner-controls-row input[type="range"]::-moz-range-thumb {
+  width: 18px !important;
+  height: 18px !important;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #3b82f6, #06b6d4);
+  border: 2px solid rgba(255, 255, 255, 0.2);
+  cursor: pointer;
+  box-shadow: 0 0 16px rgba(59, 130, 246, 0.4), inset 0 0 8px rgba(255, 255, 255, 0.1);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.ner-controls-row input[type="range"]::-moz-range-thumb:hover {
+  width: 20px !important;
+  height: 20px !important;
+  box-shadow: 0 0 24px rgba(59, 130, 246, 0.6), inset 0 0 12px rgba(255, 255, 255, 0.15);
+}
+
+/* Play, Pause, Reset buttons */
+.ner-controls-row .gr-button,
+.ner-controls-row button {
+  background: rgba(255, 255, 255, 0.08) !important;
+  border: 1px solid var(--border-primary) !important;
+  color: var(--text-secondary) !important;
+  padding: 10px 18px !important;
+  font-size: 11px !important;
+  font-weight: 700 !important;
+  text-transform: uppercase !important;
+  letter-spacing: 0.08em !important;
+  border-radius: 8px !important;
+  cursor: pointer !important;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.ner-controls-row .gr-button:hover,
+.ner-controls-row button:hover {
+  background: rgba(59, 130, 246, 0.15) !important;
+  border-color: var(--accent-blue) !important;
+  color: var(--accent-blue) !important;
+  box-shadow: 0 0 16px rgba(59, 130, 246, 0.3), 0 2px 8px rgba(0, 0, 0, 0.3);
+  transform: translateY(-1px);
+}
+
+.ner-controls-row .gr-button:active,
+.ner-controls-row button:active {
+  transform: translateY(0);
+  box-shadow: 0 0 12px rgba(59, 130, 246, 0.2), inset 0 2px 6px rgba(0, 0, 0, 0.3);
+}
+
+/* ============================================================================
    MAIN PANELS
    ============================================================================ */
 
@@ -552,49 +736,6 @@ input[type="range"] {
 }
 
 /* ============================================================================
-   MODE SELECTOR
-   ============================================================================ */
-
-.ner-mode-row {
-  margin: 16px 0 20px;
-  gap: 12px !important;
-}
-
-.ner-mode-row label {
-  font-size: 12px !important;
-  color: var(--text-secondary) !important;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-}
-
-.ner-mode-row .wrap {
-  gap: 8px !important;
-}
-
-.ner-mode-row .wrap label {
-  font-size: 12px !important;
-  color: var(--text-secondary) !important;
-  border: 1px solid var(--border-primary) !important;
-  border-radius: 6px !important;
-  background: rgba(255, 255, 255, 0.03) !important;
-  padding: 10px 14px !important;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.ner-mode-row .wrap label:hover {
-  background: rgba(255, 255, 255, 0.06) !important;
-  border-color: var(--accent-blue) !important;
-}
-
-.ner-mode-row .wrap label:has(input:checked) {
-  border-color: var(--accent-blue) !important;
-  background: rgba(59, 130, 246, 0.1) !important;
-  color: var(--accent-blue) !important;
-}
-
-/* ============================================================================
    SLIDER & CONTROL STYLING
    ============================================================================ */
 
@@ -667,6 +808,15 @@ button:active,
   .ner-system-context-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  .ner-controls-row {
+    flex-direction: column;
+    align-items: stretch !important;
+  }
+
+  .ner-controls-row .gr-slider {
+    min-width: auto;
+  }
 }
 
 @media (max-width: 640px) {
@@ -678,5 +828,15 @@ button:active,
 
   .ner-system-context-grid {
     grid-template-columns: 1fr;
+  }
+
+  .ner-controls-row {
+    flex-direction: column;
+    align-items: stretch !important;
+  }
+
+  .ner-mode-row {
+    flex-direction: column;
+    align-items: flex-start !important;
   }
 }
