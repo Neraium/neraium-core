@@ -30,19 +30,20 @@ def _timeline_strip(state: SystemState, gate: dict[str, Any]) -> dict[str, Any]:
         )
 
     decision = (gate.get("decision") or "SUPPRESS").upper()
-    admitted_stage = "confirmed" if decision == "ADMIT" else ("observed" if decision == "SUPPRESS" else "void")
+    admitted_stage = "admitted" if decision == "ADMIT" else ("suppressed" if decision == "SUPPRESS" else "void")
+    admitted_label = "CONFIRMED" if admitted_stage == "admitted" else ("OBSERVED" if admitted_stage == "suppressed" else "VOID")
     stages.append(
         {
             "t": gate.get("timestamp") or state.position.t,
             "stage": admitted_stage,
-            "label": admitted_stage.upper(),
+            "label": admitted_label,
             "emphasis": "high",
             "visual_weight": 1.0,
             "tone": (
                 "authority_confirmed"
-                if admitted_stage == "confirmed"
+                if admitted_stage == "admitted"
                 else "authority_observed"
-                if admitted_stage == "observed"
+                if admitted_stage == "suppressed"
                 else "authority_void"
             ),
         }
