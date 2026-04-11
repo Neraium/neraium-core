@@ -243,6 +243,180 @@ def load_greenhouse_demo_bundle(*, limit: int | None = 320) -> tuple[list[dict[s
     return rows, str(source) if source else "greenhouse_results_turbo.csv"
 
 
-def load_greenhouse_demo_records(*, limit: int | None = 180) -> list[dict[str, Any]]:
+def _generate_synthetic_replay(*, timesteps: int = 120, base_time: datetime | None = None) -> list[dict[str, Any]]:
+    """Generate a synthetic replay dataset with clear progression.
+
+    Creates a deterministic sequence showing:
+    - Stable baseline (0-20 steps)
+    - Early drift (20-35 steps)
+    - Transition pressure (35-55 steps)
+    - Divergence/confirmed change (55-80 steps)
+    - Recovery/new coherence (80-120 steps)
+
+    All fields are populated for full UI contract.
+    """
+    if base_time is None:
+        base_time = datetime.now(timezone.utc) - timedelta(minutes=max(1, timesteps))
+
+    rows: list[dict[str, Any]] = []
+
+    for t in range(timesteps):
+        # Phase progression (deterministic, smooth)
+        progress = t / max(timesteps - 1, 1)
+
+        # Define phase boundaries
+        if t < 20:
+            # STABLE BASELINE
+            phase = "BASELINE"
+            transition_type = "STABLE"
+            drift = 0.08 + 0.02 * math.sin(t / 5.0)  # slight noise
+            stability = 0.92 - 0.01 * (t / 20.0)
+            coherence = 0.88 + 0.02 * math.cos(t / 7.0)
+            confidence = 0.75 + 0.05 * math.cos(t / 4.0)
+            event_admitted = False
+            risk_level = "nominal"
+
+        elif t < 35:
+            # EARLY DRIFT - system starting to change
+            phase = "DRIFT_WATCH"
+            transition_type = "TRANSITION"
+            drift_progress = (t - 20) / 15.0
+            drift = 0.12 + 0.25 * drift_progress + 0.03 * math.sin(t / 3.0)
+            stability = 0.91 - 0.08 * drift_progress
+            coherence = 0.87 - 0.05 * drift_progress
+            confidence = 0.70 - 0.08 * drift_progress + 0.03 * math.cos(t / 5.0)
+            event_admitted = False
+            risk_level = "watch"
+
+        elif t < 55:
+            # TRANSITION PRESSURE - sustained change
+            phase = "TRANSITION_ACTIVE"
+            transition_type = "TRANSITION"
+            drift_progress = (t - 35) / 20.0
+            drift = 0.38 + 0.22 * drift_progress + 0.04 * math.sin(t / 2.5)
+            stability = 0.83 - 0.25 * drift_progress
+            coherence = 0.82 - 0.15 * drift_progress
+            confidence = 0.62 - 0.08 * drift_progress
+            # Admission starts to be considered
+            event_admitted = drift >= 0.55
+            risk_level = "watch" if not event_admitted else "degraded"
+
+        elif t < 80:
+            # DIVERGENCE - confirmed change
+            phase = "REORGANIZATION_UNDERWAY"
+            transition_type = "REORGANIZATION"
+            drift_progress = (t - 55) / 25.0
+            drift = 0.60 + 0.28 * drift_progress
+            stability = 0.58 - 0.22 * drift_progress
+            coherence = 0.67 + 0.15 * drift_progress  # coherence improves as system settles
+            confidence = 0.54 + 0.15 * drift_progress  # confidence rises in reorganization
+            event_admitted = True
+            risk_level = "degraded"
+
+        else:
+            # RECOVERY/NEW COHERENCE - system reaches new equilibrium
+            phase = "NEW_BASELINE"
+            transition_type = "STABLE"
+            recovery_progress = (t - 80) / max(timesteps - 80, 1)
+            drift = 0.88 - 0.20 * recovery_progress  # drifts back toward middle
+            stability = 0.36 + 0.35 * recovery_progress  # stability recovers
+            coherence = 0.82 + 0.12 * recovery_progress
+            confidence = 0.69 + 0.18 * recovery_progress
+            event_admitted = True if t < 90 else False  # admission only during change
+            risk_level = "nominal" if t > 100 else "degraded"
+
+        # Clamp all values to [0, 1]
+        drift = _clamp(drift, 0.0, 1.0)
+        stability = _clamp(stability, 0.0, 1.0)
+        coherence = _clamp(coherence, 0.0, 1.0)
+        confidence = _clamp(confidence, 0.0, 1.0)
+        snr_score = 1.2 + 0.8 * math.sin(t / 8.0) + 0.3 * (t / timesteps)
+
+        # Dynamic signal strength = drift with smoothing
+        dynamic_signal_strength = drift
+
+        # Persistence minutes: increases during transition
+        if transition_type == "TRANSITION":
+            persistence_minutes = 5 + 40 * ((t - 20) / 35.0) if t >= 20 else 0
+        elif transition_type == "REORGANIZATION":
+            persistence_minutes = 45 + 10 * ((t - 55) / 25.0) if t >= 55 else 0
+        else:
+            persistence_minutes = 0
+
+        # Corroborating signals increase during transition
+        if transition_type in {"TRANSITION", "REORGANIZATION"}:
+            corroborating_signal_count = max(0, int((t - 20) / 5) if t >= 20 else 0)
+        else:
+            corroborating_signal_count = 0
+
+        # Build the row
+        timestamp = (base_time + timedelta(minutes=t)).isoformat()
+
+        row: dict[str, Any] = {
+            "timestamp": timestamp,
+            "site_id": "greenhouse-demo",
+            "asset_id": "zone-synthetic",
+            "system_phase": phase,
+            "interpreted_state": phase,
+            "state": phase,
+            "regime_name": phase,
+            "transition_type": transition_type,
+            "system_health": risk_level,
+            "risk_level": risk_level,
+            "confidence_score": round(confidence, 6),
+            "structural_drift_score": round(drift, 6),
+            "relational_stability_score": round(stability, 6),
+            "coherence_score": round(coherence, 6),
+            "dynamic_signal_strength": round(dynamic_signal_strength, 6),
+            "snr_score": round(snr_score, 6),
+            "persistence_minutes": round(persistence_minutes, 2),
+            "corroborating_signal_count": corroborating_signal_count,
+            "event_admitted": event_admitted,
+            "explanation_text": _synthetic_explanation(phase, drift, stability, event_admitted),
+            "evidence_summary": _synthetic_explanation(phase, drift, stability, event_admitted),
+            "sensor_values": {},
+        }
+        rows.append(row)
+
+    return rows
+
+
+def _synthetic_explanation(phase: str, drift: float, stability: float, admitted: bool) -> str:
+    """Generate contextual explanation text for synthetic replay."""
+    if phase == "BASELINE":
+        return "Stable baseline: drift low, stability and coherence high."
+    elif phase == "DRIFT_WATCH":
+        return f"Early drift detected (drift={drift:.2f}): system starting to diverge from baseline; under observation."
+    elif phase == "TRANSITION_ACTIVE":
+        return f"Active transition (drift={drift:.2f}, stability={stability:.2f}): sustained change detected; threshold approaching."
+    elif phase == "REORGANIZATION_UNDERWAY":
+        if admitted:
+            return f"Coherent reorganization confirmed (drift={drift:.2f}): transition has been admitted; system in flux."
+        else:
+            return f"System reorganizing (drift={drift:.2f}): change persisting; coherence forming."
+    elif phase == "NEW_BASELINE":
+        if admitted:
+            return "System recovering from reorganization; new baseline establishing."
+        else:
+            return "New stable baseline reached; system has settled into new configuration."
+    return "Synthetic replay telemetry: system state under examination."
+
+
+def load_greenhouse_demo_records(*, limit: int | None = 180, use_synthetic: bool = False) -> list[dict[str, Any]]:
+    """Load greenhouse demo records.
+
+    Args:
+        limit: Maximum number of records to return
+        use_synthetic: If True, use synthetic dataset; if False, use real replay
+
+    Returns:
+        List of demo records
+    """
+    if use_synthetic:
+        synthetic_rows = _generate_synthetic_replay(timesteps=120)
+        if isinstance(limit, int) and limit > 0:
+            return synthetic_rows[:limit]
+        return synthetic_rows
+
     rows, _ = load_greenhouse_demo_bundle(limit=limit)
     return rows

@@ -17,9 +17,17 @@ from ui.replay_timing import (
 )
 
 
-def load_builtin_demo_rows() -> list[dict[str, Any]]:
-    """Return greenhouse replay sequence loaded from greenhouse_results_turbo.csv."""
-    data_rows = load_greenhouse_demo_records(limit=180)
+def load_builtin_demo_rows(use_synthetic: bool = True) -> list[dict[str, Any]]:
+    """Return greenhouse replay sequence.
+
+    Args:
+        use_synthetic: If True, return synthetic demo (clear progression);
+                      if False, return real replay from greenhouse_results_turbo.csv
+
+    Returns:
+        List of replay records with full UI contract fields
+    """
+    data_rows = load_greenhouse_demo_records(limit=180, use_synthetic=use_synthetic)
     if data_rows:
         return data_rows
     return [
@@ -208,7 +216,25 @@ def _render_gate_decision_html(gate_card: dict[str, Any]) -> str:
     label = escape(str(gate_card.get("label") or authority_level))
     authority_statement = escape(str(gate_card.get("authority_statement") or ""))
     supporting_line = escape(str(gate_card.get("supporting_line") or ""))
-    confidence = escape(str(gate_card.get("confidence") or "LOW"))
+
+    # Use system state confidence score as single source of truth
+    raw_confidence_score = gate_card.get("system_confidence_score", gate_card.get("confidence_score"))
+    if raw_confidence_score is None:
+        # Fallback to gate's confidence label if score not available
+        confidence = escape(str(gate_card.get("confidence") or "LOW"))
+    else:
+        # Convert score to label
+        try:
+            conf_val = float(raw_confidence_score)
+            if conf_val >= 0.70:
+                confidence = "HIGH"
+            elif conf_val >= 0.50:
+                confidence = "MODERATE"
+            else:
+                confidence = "LOW"
+        except (TypeError, ValueError):
+            confidence = "LOW"
+
     transition_type = escape(str(gate_card.get("transition_type") or "STABLE"))
     risk_direction = escape(str(gate_card.get("risk_direction") or "UNCERTAIN"))
     ts_raw = str(gate_card.get("timestamp") or "")
@@ -270,7 +296,8 @@ def _render_system_context_html(system_zone: dict[str, Any]) -> str:
         return round(PX + _cl(_f(x), 0.0, 1.0) * IW, 2)
 
     def sy(y: Any) -> float:
-        return round(PY + _cl(_f(y), 0.0, 1.0) * IH, 2)
+        # Flip Y-axis: 0 at bottom, 1 at top
+        return round(PY + IH - _cl(_f(y), 0.0, 1.0) * IH, 2)
 
     trajectory = content.get("trajectory") if isinstance(content.get("trajectory"), dict) else {}
     gate_coupling = content.get("gate_coupling") if isinstance(content.get("gate_coupling"), dict) else {}
@@ -308,10 +335,12 @@ def _render_system_context_html(system_zone: dict[str, Any]) -> str:
         f'</defs>'
     )
 
+    # Y-axis ticks from bottom (0) to top (1) - note sy() inverts the coordinates
     y_ticks = [0.0, 0.25, 0.5, 0.75, 1.0]
     for y_tick in y_ticks:
         y_pos = sy(y_tick)
         parts.append(f'<line x1="{PX}" y1="{y_pos}" x2="{PX + IW}" y2="{y_pos}" stroke="rgba(148,163,184,0.16)" stroke-width="1"/>')
+        # Label the strength value correctly (0 at bottom, 1 at top)
         parts.append(
             f'<text x="{PX - 10}" y="{y_pos + 4}" text-anchor="end" fill="rgba(203,213,225,0.88)" font-size="10">{y_tick:.2f}</text>'
         )
@@ -585,9 +614,10 @@ def create_gradio_app():
     except ImportError:
         raise RuntimeError("Gradio is not installed")
 
-    demo_rows = load_builtin_demo_rows()
+    # Use synthetic demo by default for clear, readable progression
+    demo_rows = load_builtin_demo_rows(use_synthetic=True)
     total_steps = max(len(demo_rows), 1)
-    playback_state = {"playing": False}
+    playback_state = {"playing": False, "current_mode": "synthetic"}
 
     # Replay stabilization for verdict and reasoning
     verdict_stabilizer = VerdictStabilizer(hysteresis_threshold=0.08)
@@ -657,6 +687,8 @@ def create_gradio_app():
         )
         gate_content = surface["zones"]["gate"]["content"]
         gate_card = gate_content if isinstance(gate_content, dict) else {}
+        # Inject system state confidence as single source of truth
+        gate_card["system_confidence_score"] = system_state.confidence
         verdict_html = _render_verdict_surface_html(gate_card, surface["zones"]["system_state"])
         reasoning_html = _render_reasoning_html(surface["zones"]["reasoning"]["content"])
         record_html = _render_record_html(surface["zones"]["record"]["content"])
@@ -676,6 +708,21 @@ def create_gradio_app():
         # Reset stabilizers when resetting playback
         verdict_stabilizer.reset()
         reasoning_tracker.reset()
+        header_html, verdict_html, reasoning_html, record_html = load_operations_surface(1, apply_stability=False)
+        return 1, header_html, verdict_html, reasoning_html, record_html
+
+    def switch_mode(mode: str) -> tuple[int, str, str, str, str]:
+        """Switch between synthetic demo and real replay modes."""
+        nonlocal demo_rows, total_steps
+        pause_playback()
+        verdict_stabilizer.reset()
+        reasoning_tracker.reset()
+
+        use_synthetic = mode == "demo"
+        playback_state["current_mode"] = mode
+        demo_rows = load_builtin_demo_rows(use_synthetic=use_synthetic)
+        total_steps = max(len(demo_rows), 1)
+
         header_html, verdict_html, reasoning_html, record_html = load_operations_surface(1, apply_stability=False)
         return 1, header_html, verdict_html, reasoning_html, record_html
 
@@ -709,6 +756,15 @@ def create_gradio_app():
         header = gr.HTML(value=initial_header)
         verdict = gr.HTML(value=initial_verdict)
 
+        with gr.Row(elem_classes=["ner-mode-row"]):
+            mode_selector = gr.Radio(
+                choices=["demo", "real"],
+                value="demo",
+                label="Replay Mode",
+                scale=1,
+                info="Demo: synthetic progression (recommended) | Real: actual greenhouse data"
+            )
+
         with gr.Row(elem_classes=["ner-controls-row"]):
             frame_step = gr.Slider(minimum=1, maximum=total_steps, step=1, value=default_step, label="Frame", scale=4)
             speed = gr.Slider(minimum=0.1, maximum=1.5, step=0.1, value=0.6, label="Speed", scale=2)
@@ -724,5 +780,6 @@ def create_gradio_app():
         play_btn.click(fn=autoplay, inputs=[frame_step, speed], outputs=[frame_step, header, verdict, reasoning, record])
         pause_btn.click(fn=pause_playback)
         reset_btn.click(fn=reset_playback, outputs=[frame_step, header, verdict, reasoning, record])
+        mode_selector.change(fn=switch_mode, inputs=[mode_selector], outputs=[frame_step, header, verdict, reasoning, record])
 
     return app
