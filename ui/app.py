@@ -171,16 +171,16 @@ def _render_gate_decision_html(gate_card: dict[str, Any]) -> str:
 
     return f"""
 <div class="ner-panel ner-verdict-card" style="--verdict-accent:{style["accent"]};--verdict-badge:{style["badge"]};">
-  <div class="ner-eyebrow">Decision</div>
+  <div class="ner-eyebrow">Verdict</div>
   <div class="ner-verdict-main">{label}</div>
   <div class="ner-verdict-subtitle">{authority_statement}</div>
   <div class="ner-chip-row">
+    {_chip("Truth", "Confirmed" if authority_level == "ADMITTED" else "Unconfirmed")}
+    {_chip("Status", "Recorded" if authority_level == "ADMITTED" else "Observed")}
+    {_chip("Action", "Observation only")}
     {_chip("Confidence", confidence)}
-    {_chip("Risk", risk_direction)}
-    {_chip("Transition", transition_type)}
-    {_chip("Doctrine", doctrine_version)}
   </div>
-  <div class="ner-meta-row"><span class="ner-badge">{authority_badge}</span><span>{timestamp_display}</span></div>
+  <div class="ner-meta-row"><span class="ner-badge">{authority_badge}</span><span>{timestamp_display} · Engine {doctrine_version}</span></div>
 </div>
 """.strip()
 
@@ -203,8 +203,8 @@ def _render_system_context_html(system_zone: dict[str, Any]) -> str:
         return max(lo, min(hi, v))
 
     # Canvas layout
-    W, H = 900, 290
-    PX, PY = 52, 38
+    W, H = 900, 300
+    PX, PY = 56, 46
     IW = W - 2 * PX
     IH = H - 2 * PY
 
@@ -215,233 +215,93 @@ def _render_system_context_html(system_zone: dict[str, Any]) -> str:
         return round(PY + _cl(_f(y), 0.0, 1.0) * IH, 2)
 
     trajectory = content.get("trajectory") if isinstance(content.get("trajectory"), dict) else {}
-    current = content.get("current_position") if isinstance(content.get("current_position"), dict) else {}
-    vel = content.get("velocity_vector") if isinstance(content.get("velocity_vector"), dict) else {}
-    phase_layers = content.get("phase_layers") if isinstance(content.get("phase_layers"), dict) else {}
     gate_coupling = content.get("gate_coupling") if isinstance(content.get("gate_coupling"), dict) else {}
-    projected = content.get("projected_forward_region") if isinstance(content.get("projected_forward_region"), dict) else {}
-
-    path = trajectory.get("path") if isinstance(trajectory.get("path"), list) else []
-    fading_tail = trajectory.get("fading_tail") if isinstance(trajectory.get("fading_tail"), list) else []
+    replay_series = content.get("replay_series") if isinstance(content.get("replay_series"), list) else []
     decision = str(gate_coupling.get("decision") or "SUPPRESS").upper()
-    phase = str(current.get("phase") or "coherence")
-    path_len = max(1, len(path))
+    path = trajectory.get("path") if isinstance(trajectory.get("path"), list) else []
+    if replay_series:
+        points = replay_series
+    else:
+        points = [{"index": idx, "signal": _f(p.get("x"), 0.0), "phase": "unknown"} for idx, p in enumerate(path) if isinstance(p, dict)]
 
-    def _time_map(points: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        mapped: list[dict[str, Any]] = []
-        for idx, point in enumerate(points):
-            if not isinstance(point, dict):
-                continue
-            point_idx = idx
-            t_value = point.get("t")
-            if isinstance(t_value, (int, float)):
-                point_idx = int(max(0, min(path_len - 1, int(t_value))))
-            t_norm = point_idx / max(path_len - 1, 1)
-            drift = _cl(_f(point.get("x"), 0.0), 0.0, 1.0)
-            mapped.append({**point, "x": t_norm, "y": drift})
-        return mapped
-
-    path = _time_map(path)
-    fading_tail = _time_map(fading_tail)
-    for key in ("stable_baseline", "transition", "reorganization", "suppressed_events", "admitted_events"):
-        phase_layers[key] = _time_map(phase_layers.get(key) or [])
-    if isinstance(current, dict):
-        current_idx = max(0, path_len - 1)
-        current = {**current, "x": current_idx / max(path_len - 1, 1), "y": _cl(_f(current.get("x"), 0.0), 0.0, 1.0)}
-    if isinstance(vel.get("origin"), dict):
-        vel["origin"] = {**vel["origin"], "x": (path_len - 1) / max(path_len - 1, 1), "y": _cl(_f(vel["origin"].get("x"), 0.0), 0.0, 1.0)}
-    if isinstance(vel.get("tip"), dict):
-        vel["tip"] = {
-            **vel["tip"],
-            "x": _cl((path_len - 1) / max(path_len - 1, 1) + _f(vel.get("dx"), 0.0), 0.0, 1.0),
-            "y": _cl(_f(vel["tip"].get("x"), 0.0), 0.0, 1.0),
-        }
+    point_count = max(len(points), 1)
+    chart_points: list[dict[str, Any]] = []
+    for idx, point in enumerate(points):
+        if not isinstance(point, dict):
+            continue
+        signal = _cl(_f(point.get("signal"), point.get("y")), 0.0, 1.0)
+        chart_points.append(
+            {
+                "x": idx / max(point_count - 1, 1),
+                "y": signal,
+                "phase": str(point.get("phase") or "unknown").upper(),
+                "timestamp": str(point.get("timestamp") or ""),
+            }
+        )
+    current = chart_points[-1] if chart_points else {"x": 1.0, "y": 0.0, "phase": "UNKNOWN"}
 
     parts: list[str] = []
-
-    # SVG defs: filters, gradients, arrowhead
     parts.append(
         f'<defs>'
-        f'<linearGradient id="tg" x1="{PX}" y1="0" x2="{W - PX}" y2="0" gradientUnits="userSpaceOnUse">'
-        f'<stop offset="0%" stop-color="#5CCAFF" stop-opacity="0.18"/>'
-        f'<stop offset="50%" stop-color="#7F87FF" stop-opacity="0.52"/>'
-        f'<stop offset="100%" stop-color="#B35EFF" stop-opacity="0.82"/>'
+        f'<linearGradient id="tg" x1="{PX}" y1="{PY}" x2="{PX}" y2="{PY + IH}" gradientUnits="userSpaceOnUse">'
+        f'<stop offset="0%" stop-color="#38BDF8" stop-opacity="0.86"/>'
+        f'<stop offset="100%" stop-color="#1D4ED8" stop-opacity="0.72"/>'
         f'</linearGradient>'
-        f'<radialGradient id="ph" cx="50%" cy="50%" r="50%">'
-        f'<stop offset="0%" stop-color="#00EEFF" stop-opacity="0.42"/>'
-        f'<stop offset="55%" stop-color="#5CCAFF" stop-opacity="0.10"/>'
-        f'<stop offset="100%" stop-color="#5CCAFF" stop-opacity="0.0"/>'
-        f'</radialGradient>'
-        f'<filter id="fxl" x="-100%" y="-100%" width="300%" height="300%">'
-        f'<feGaussianBlur in="SourceGraphic" stdDeviation="7" result="b"/>'
-        f'<feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>'
-        f'</filter>'
-        f'<filter id="flg" x="-80%" y="-80%" width="260%" height="260%">'
-        f'<feGaussianBlur in="SourceGraphic" stdDeviation="4" result="b"/>'
-        f'<feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>'
-        f'</filter>'
-        f'<filter id="fmd" x="-60%" y="-60%" width="220%" height="220%">'
-        f'<feGaussianBlur in="SourceGraphic" stdDeviation="2.5" result="b"/>'
-        f'<feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>'
-        f'</filter>'
-        f'<filter id="fsm" x="-50%" y="-50%" width="200%" height="200%">'
-        f'<feGaussianBlur in="SourceGraphic" stdDeviation="1.5" result="b"/>'
-        f'<feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>'
-        f'</filter>'
-        f'<marker id="vh" viewBox="0 0 10 8" refX="9" refY="4" markerWidth="6" markerHeight="5" orient="auto">'
-        f'<path d="M0 0 L10 4 L0 8 Z" fill="#93C5FD" opacity="0.82"/>'
-        f'</marker>'
         f'</defs>'
     )
 
+    y_ticks = [0.0, 0.25, 0.5, 0.75, 1.0]
+    for y_tick in y_ticks:
+        y_pos = sy(y_tick)
+        parts.append(f'<line x1="{PX}" y1="{y_pos}" x2="{PX + IW}" y2="{y_pos}" stroke="rgba(148,163,184,0.16)" stroke-width="1"/>')
+        parts.append(
+            f'<text x="{PX - 10}" y="{y_pos + 4}" text-anchor="end" fill="rgba(203,213,225,0.88)" font-size="10">{y_tick:.2f}</text>'
+        )
+
+    phase_runs: list[tuple[int, int, str]] = []
+    if chart_points:
+        run_start = 0
+        run_phase = chart_points[0]["phase"]
+        for idx, point in enumerate(chart_points[1:], start=1):
+            if point["phase"] != run_phase:
+                phase_runs.append((run_start, idx - 1, run_phase))
+                run_start = idx
+                run_phase = point["phase"]
+        phase_runs.append((run_start, len(chart_points) - 1, run_phase))
+    phase_colors = {"STABLE": "rgba(30,64,175,0.14)", "TRANSITION": "rgba(91,33,182,0.12)", "REORGANIZATION": "rgba(194,65,12,0.12)"}
+    for start_idx, end_idx, phase_name in phase_runs:
+        x0 = sx(start_idx / max(point_count - 1, 1))
+        x1 = sx(end_idx / max(point_count - 1, 1))
+        if x1 > x0:
+            parts.append(
+                f'<rect x="{x0}" y="{PY}" width="{max(1.0, x1 - x0)}" height="{IH}" fill="{phase_colors.get(phase_name, "rgba(71,85,105,0.08)")}" />'
+            )
+
     parts.append(f'<line x1="{PX}" y1="{PY + IH}" x2="{PX + IW}" y2="{PY + IH}" stroke="rgba(147,197,253,0.45)" stroke-width="1"/>')
     parts.append(f'<line x1="{PX}" y1="{PY}" x2="{PX}" y2="{PY + IH}" stroke="rgba(147,197,253,0.45)" stroke-width="1"/>')
-    parts.append(f'<text x="{PX + IW - 2}" y="{PY + IH + 18}" text-anchor="end" fill="rgba(186,203,236,0.85)" font-size="10">time</text>')
-    parts.append(f'<text x="{PX - 6}" y="{PY + 8}" text-anchor="end" fill="rgba(186,203,236,0.85)" font-size="10">drift</text>')
+    parts.append(f'<text x="{PX + IW - 4}" y="{PY + IH + 20}" text-anchor="end" fill="rgba(203,213,225,0.9)" font-size="11">Replay progression</text>')
+    parts.append(f'<text x="{PX - 8}" y="{PY - 8}" text-anchor="end" fill="rgba(203,213,225,0.9)" font-size="11">Dynamic signal strength</text>')
 
-    # Projected forward cone (faint forward uncertainty region)
-    cone_samples = projected.get("samples") if isinstance(projected.get("samples"), list) else []
-    cone_op = _cl(_f(projected.get("opacity"), 0.18), 0.0, 0.5)
-    for p in cone_samples:
-        if isinstance(p, dict):
-            try:
-                parts.append(
-                    f'<circle cx="{sx(p.get("x", 0.5))}" cy="{sy(p.get("y", 0.5))}" '
-                    f'r="6" fill="rgba(147,197,253,0.13)" opacity="{cone_op:.2f}"/>'
-                )
-            except (TypeError, ValueError):
-                pass
-
-    # Fading trajectory dots
-    for pt in fading_tail:
-        if isinstance(pt, dict):
-            try:
-                r = _cl(_f(pt.get("radius"), 2.0), 1.0, 8.0)
-                op = _cl(_f(pt.get("opacity"), 0.3), 0.05, 1.0)
-                color = str(pt.get("color") or "rgba(115,143,255,0.35)")
-                parts.append(
-                    f'<circle cx="{sx(pt.get("x", 0.5))}" cy="{sy(pt.get("y", 0.5))}" '
-                    f'r="{r:.1f}" fill="{color}" opacity="{op:.3f}"/>'
-                )
-            except (TypeError, ValueError):
-                pass
-
-    # Trajectory polyline with gradient stroke
-    if len(path) >= 2:
+    if len(chart_points) >= 2:
         pts_str = " ".join(
             f"{sx(p.get('x', 0.5))},{sy(p.get('y', 0.5))}"
-            for p in path
+            for p in chart_points
             if isinstance(p, dict)
         )
         parts.append(
             f'<polyline points="{pts_str}" fill="none" stroke="url(#tg)" '
-            f'stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" '
-            f'opacity="0.72" filter="url(#fsm)"/>'
+            f'stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" '
+            f'opacity="0.94"/>'
         )
 
-    # Phase layer: stable baseline (calm blue-grey)
-    for p in (phase_layers.get("stable_baseline") or []):
-        if isinstance(p, dict):
-            try:
-                parts.append(
-                    f'<circle cx="{sx(p.get("x", 0.5))}" cy="{sy(p.get("y", 0.5))}" '
-                    f'r="3.2" fill="rgba(110,125,157,0.45)" opacity="0.65"/>'
-                )
-            except (TypeError, ValueError):
-                pass
-
-    # Phase layer: transition (mobilizing purple)
-    for p in (phase_layers.get("transition") or []):
-        if isinstance(p, dict):
-            try:
-                parts.append(
-                    f'<circle cx="{sx(p.get("x", 0.5))}" cy="{sy(p.get("y", 0.5))}" '
-                    f'r="4.8" fill="rgba(143,135,255,0.62)" filter="url(#fsm)"/>'
-                )
-            except (TypeError, ValueError):
-                pass
-
-    # Phase layer: reorganization (hot orange-red)
-    for p in (phase_layers.get("reorganization") or []):
-        if isinstance(p, dict):
-            try:
-                parts.append(
-                    f'<circle cx="{sx(p.get("x", 0.5))}" cy="{sy(p.get("y", 0.5))}" '
-                    f'r="6" fill="rgba(255,158,120,0.72)" filter="url(#fmd)"/>'
-                )
-            except (TypeError, ValueError):
-                pass
-
-    # Suppressed event markers (faded, denied-reality treatment)
-    for p in (phase_layers.get("suppressed_events") or []):
-        if isinstance(p, dict):
-            try:
-                r = _cl(_f(p.get("radius"), 2.5), 1.0, 5.0)
-                op = _cl(_f(p.get("opacity"), 0.18), 0.05, 0.35)
-                parts.append(
-                    f'<circle cx="{sx(p.get("x", 0.5))}" cy="{sy(p.get("y", 0.5))}" '
-                    f'r="{r:.1f}" fill="rgba(159,141,134,0.38)" opacity="{op:.2f}"/>'
-                )
-            except (TypeError, ValueError):
-                pass
-
-    # Admitted event markers (bright teal, glowing)
-    for p in (phase_layers.get("admitted_events") or []):
-        if isinstance(p, dict):
-            try:
-                cx_e = sx(p.get("x", 0.5))
-                cy_e = sy(p.get("y", 0.5))
-                r = _cl(_f(p.get("radius"), 6.0), 3.0, 12.0)
-                parts.append(
-                    f'<circle cx="{cx_e}" cy="{cy_e}" r="{r + 4:.1f}" '
-                    f'fill="none" stroke="rgba(115,255,225,0.28)" stroke-width="1.5" filter="url(#fmd)"/>'
-                )
-                parts.append(
-                    f'<circle cx="{cx_e}" cy="{cy_e}" r="{r:.1f}" '
-                    f'fill="rgba(115,255,225,0.92)" filter="url(#flg)"/>'
-                )
-            except (TypeError, ValueError):
-                pass
-
-    # Velocity vector arrow
-    vel_origin = vel.get("origin") if isinstance(vel.get("origin"), dict) else {}
-    vel_tip_pt = vel.get("tip") if isinstance(vel.get("tip"), dict) else {}
-    vel_mag = abs(_f(vel.get("dx"), 0.0)) + abs(_f(vel.get("dy"), 0.0))
-    if vel_origin and vel_tip_pt and vel_mag > 0.001:
-        try:
-            ox, oy = sx(vel_origin.get("x", 0.5)), sy(vel_origin.get("y", 0.5))
-            tx, ty = sx(vel_tip_pt.get("x", 0.5)), sy(vel_tip_pt.get("y", 0.5))
-            if abs(ox - tx) + abs(oy - ty) > 4:
-                parts.append(
-                    f'<line x1="{ox}" y1="{oy}" x2="{tx}" y2="{ty}" '
-                    f'stroke="#93C5FD" stroke-width="1.8" stroke-linecap="round" '
-                    f'opacity="0.74" marker-end="url(#vh)" filter="url(#fsm)"/>'
-                )
-        except (TypeError, ValueError):
-            pass
-
-    # Current position — dominant focus node, rendered last (on top)
-    if current:
-        try:
-            cx_p = sx(current.get("x", 0.5))
-            cy_p = sy(current.get("y", 0.5))
-            halo_r = _cl(_f(current.get("halo_radius"), 0.08) * IW * 0.55, 14.0, 58.0)
-            parts.append(f'<circle cx="{cx_p}" cy="{cy_p}" r="{halo_r:.1f}" fill="url(#ph)"/>')
-            parts.append(
-                f'<circle cx="{cx_p}" cy="{cy_p}" r="11" '
-                f'fill="none" stroke="rgba(0,238,255,0.38)" stroke-width="2" filter="url(#fmd)"/>'
-            )
-            parts.append(
-                f'<circle cx="{cx_p}" cy="{cy_p}" r="5.5" '
-                f'fill="#00EEFF" filter="url(#fxl)" opacity="0.96"/>'
-            )
-        except (TypeError, ValueError):
-            pass
+    cx_p = sx(current.get("x", 1.0))
+    cy_p = sy(current.get("y", 0.0))
+    parts.append(f'<circle cx="{cx_p}" cy="{cy_p}" r="6.5" fill="#E2E8F0" stroke="#0EA5E9" stroke-width="2"/>')
+    parts.append(f'<text x="{min(cx_p + 12, W - 12)}" y="{max(cy_p - 10, PY + 12)}" fill="#E2E8F0" font-size="11">Current replay point</text>')
 
     svg_body = "\n".join(parts)
     svg_html = f'<svg class="ner-system-canvas" viewBox="0 0 {W} {H}" width="100%">\n{svg_body}\n</svg>'
 
-    # Timeline strip
     sequence = timeline_data.get("sequence") if isinstance(timeline_data.get("sequence"), list) else []
     stage_palette = {
         "admitted": "#62FFB3",
@@ -472,34 +332,32 @@ def _render_system_context_html(system_zone: dict[str, Any]) -> str:
             )
         timeline_html = (
             f'<div class="ner-timeline-strip">'
-            f'<span class="ner-timeline-label">Timeline</span>'
+            f'<span class="ner-timeline-label">Phase replay</span>'
             f'{"".join(items)}</div>'
         )
 
-    # Header bar
     badge_colors = {"ADMIT": "#62FFB3", "SUPPRESS": "#FB923C", "VOID": "#A78BFA"}
     badge_color = badge_colors.get(decision, "#9CA3AF")
     header_html = (
         f'<div class="ner-panel-head">'
-        f'<span class="ner-eyebrow">System Context</span>'
+        f'<span class="ner-eyebrow">System Trajectory</span>'
+        f'<span class="ner-subtle" style="font-size:12px;">Replay of structural signal over time</span>'
         f'<div class="ner-panel-meta">'
-        f'<span class="ner-chip-mini">Phase {escape(phase.upper())}</span>'
-        f'<span class="ner-chip-mini" style="color:{badge_color};border-color:{badge_color}66;">{escape(decision)}</span>'
+        f'<span class="ner-chip-mini">Points {len(chart_points)}</span>'
+        f'<span class="ner-chip-mini" style="color:{badge_color};border-color:{badge_color}66;">{"Confirmed" if decision == "ADMIT" else "Observed"}</span>'
         f'</div></div>'
     )
 
-    position = content.get("current_position") if isinstance(content.get("current_position"), dict) else {}
-    velocity = content.get("velocity_vector") if isinstance(content.get("velocity_vector"), dict) else {}
-    x = _f(position.get("x"), 0.0)
-    y = _f(position.get("y"), 0.0)
-    phase_label = escape(str(position.get("phase") or phase).upper())
-    velocity_mag = _f(velocity.get("magnitude"), 0.0)
+    x = _f(current.get("x"), 0.0)
+    y = _f(current.get("y"), 0.0)
+    phase_label = escape(str(current.get("phase") or "UNKNOWN").upper())
+    start_signal = _f(chart_points[0].get("y"), 0.0) if chart_points else 0.0
     context_row = (
         '<div class="ner-system-context-grid">'
-        f'<div><span class="ner-context-label">Current Position</span><span class="ner-context-value">X {x:.2f} · Y {y:.2f}</span></div>'
-        f'<div><span class="ner-context-label">Trajectory</span><span class="ner-context-value">Vector {velocity_mag:.2f}</span></div>'
-        f'<div><span class="ner-context-label">Phase</span><span class="ner-context-value">{phase_label}</span></div>'
-        f'<div><span class="ner-context-label">Timeline</span><span class="ner-context-value">Recent transitions</span></div>'
+        f'<div><span class="ner-context-label">Current Signal</span><span class="ner-context-value">{y:.3f}</span></div>'
+        f'<div><span class="ner-context-label">Start → Now</span><span class="ner-context-value">{start_signal:.3f} → {y:.3f}</span></div>'
+        f'<div><span class="ner-context-label">Current Phase</span><span class="ner-context-value">{phase_label}</span></div>'
+        f'<div><span class="ner-context-label">Replay Index</span><span class="ner-context-value">{int(round(x * max(point_count - 1, 0)))} / {max(point_count - 1, 0)}</span></div>'
         '</div>'
     )
 
@@ -531,7 +389,6 @@ def _render_reasoning_html(reasoning_panel: dict[str, Any]) -> str:
 
     gate_ref = panel.get("gate_reference") if isinstance(panel.get("gate_reference"), dict) else {}
     gate_decision_val = str(panel.get("gate_outcome") or gate_ref.get("decision") or "SUPPRESS").upper()
-    doctrine_val = escape(str(gate_ref.get("doctrine_version") or "unknown"))
     confidence_val = escape(str(gate_ref.get("confidence") or "unknown"))
     op_impl = escape(str(panel.get("operational_implication") or "No implication available."))
 
@@ -582,17 +439,17 @@ def _render_reasoning_html(reasoning_panel: dict[str, Any]) -> str:
         f"</details>"
     )
 
-    # Gate Outcome section
+    status_label = "Confirmed" if gate_decision_val == "ADMIT" else ("Observed" if gate_decision_val == "SUPPRESS" else "Voided")
     gate_body = (
         f'<div class="ner-reason-gate-row">'
         f'<span style="font-size:11px;font-weight:800;padding:4px 10px;border-radius:999px;'
         f'background:{gb_bg};color:{gb_text};border:1px solid {gb_border}44;letter-spacing:0.06em;'
-        f'text-transform:uppercase;">{escape(gate_decision_val)}</span>'
-        f'<span class="ner-subtle">Doctrine {doctrine_val}</span>'
+        f'text-transform:uppercase;">{status_label}</span>'
+        f'<span class="ner-subtle">Status signal</span>'
         f'<span class="ner-subtle">Confidence: {confidence_val}</span>'
         f'</div>'
     )
-    gate_section = _section("Gate", gate_body, "#FB923C")
+    gate_section = _section("System Status", gate_body, "#FB923C")
 
     return (
         f'<div class="ner-panel">'
@@ -652,6 +509,7 @@ def _render_record_html(record_panel: dict[str, Any]) -> str:
 
     def _entry_card(entry: dict[str, Any]) -> str:
         raw_decision = str(entry.get("gate_decision") or "SUPPRESS").upper()
+        decision_text = {"ADMIT": "CONFIRMED", "SUPPRESS": "OBSERVED", "VOID": "VOIDED"}.get(raw_decision, "OBSERVED")
         st = decision_styles.get(raw_decision, default_style)
         ts = escape(str(entry.get("timestamp") or "n/a"))
         summary = escape(str(entry.get("summary") or "No summary."))
@@ -664,7 +522,7 @@ def _render_record_html(record_panel: dict[str, Any]) -> str:
             f'<span style="font-size:11px;font-weight:700;color:{st["ts_color"]};font-variant-numeric:tabular-nums;">{ts}</span>'
             f'<span style="font-size:10px;font-weight:800;padding:2px 8px;border-radius:999px;'
             f'background:{st["badge_bg"]};color:{st["badge_text"]};border:1px solid {st["badge_border"]};'
-            f'letter-spacing:0.07em;">{escape(raw_decision)}</span>'
+            f'letter-spacing:0.07em;">{decision_text}</span>'
             f'<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:999px;'
             f'background:rgba(255,255,255,0.04);color:{transition_color};'
             f'border:1px solid {transition_color}33;letter-spacing:0.05em;">{escape(raw_transition)}</span>'
@@ -708,7 +566,7 @@ def create_gradio_app():
         active_rows = _rows_until(frame_index)
         latest = active_rows[-1] if active_rows else {}
         confidence = f"{float(latest.get('confidence_score') or 0.0):.2f}"
-        gate_state = "ADMIT" if latest.get("event_admitted") else "SUPPRESS"
+        gate_state = "Confirmed" if latest.get("event_admitted") else "Observed"
         return f"""
             <div class="ner-command-header">
               <div class="ner-brand">
@@ -718,7 +576,7 @@ def create_gradio_app():
               <div class="ner-header-metrics">
                 <span>Doctrine v2026.04</span>
                 <span>Confidence {escape(confidence)}</span>
-                <span>Gate {escape(gate_state)}</span>
+                <span>Status {escape(gate_state)}</span>
                 <span>Phase {escape(str(latest.get("system_phase") or latest.get("regime_name") or "unknown"))}</span>
                 <span>Frame {int(frame_index)} / {int(total_steps)}</span>
               </div>

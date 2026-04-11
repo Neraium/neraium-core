@@ -59,7 +59,7 @@ def render_structural_flow_viz(
     gate_decision: dict[str, Any] | None = None,
     records: list[dict[str, Any]] | None = None,
 ) -> dict[str, object]:
-    """Trajectory-first spatial navigation field, not a chart."""
+    """Replay-driven system trajectory chart model."""
     tail = [{"x": p.x, "y": p.y, "t": p.t} for p in state.trajectory_history]
     velocity_mag = l2_norm(state.velocity)
     trail_count = max(len(tail), 1)
@@ -92,6 +92,21 @@ def render_structural_flow_viz(
     suppress_points = [point for point in tail if decision == "SUPPRESS"]
     void_points = [point for point in tail if decision == "ADMISSIBILITY_VOID"]
     rows = records or []
+    replay_series = []
+    for idx, row in enumerate(rows):
+        try:
+            signal_value = float(row.get("dynamic_signal_strength", row.get("structural_drift_score", 0.0)))
+        except (TypeError, ValueError):
+            signal_value = 0.0
+        replay_series.append(
+            {
+                "index": idx,
+                "timestamp": row.get("timestamp"),
+                "signal": clamp(signal_value, 0.0, 1.0),
+                "phase": str(row.get("system_phase") or row.get("transition_type") or row.get("regime_name") or "unknown"),
+                "event_admitted": bool(row.get("event_admitted")),
+            }
+        )
     indexed_tail = list(enumerate(tail))
 
     stable_points = [point for idx, point in indexed_tail if idx < len(rows) and str(rows[idx].get("transition_type", "STABLE")).upper() == "STABLE"]
@@ -163,6 +178,7 @@ def render_structural_flow_viz(
                 "smoothing": round(clamp(0.45 + velocity_mag, 0.45, 0.92), 3),
             },
         },
+        "replay_series": replay_series,
         "current_position": {
             "x": state.position.x,
             "y": state.position.y,

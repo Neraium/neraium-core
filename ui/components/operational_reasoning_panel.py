@@ -39,7 +39,7 @@ def render_operational_reasoning_panel(operator_question: str, reasoning_context
         "inference": response,
         "gate_outcome": decision,
         "operational_implication": reasoning_context.get("operational_implication")
-        or "Observation only; no doctrine-authorized action.",
+        or "Observation only. No action taken.",
         "gate_reference": {
             "decision": decision,
             "reason": gate_decision.get("reason"),
