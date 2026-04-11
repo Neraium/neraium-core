@@ -386,13 +386,14 @@ def _render_system_context_html(system_zone: dict[str, Any]) -> str:
 
     badge_colors = {"ADMIT": "#62FFB3", "SUPPRESS": "#FB923C", "VOID": "#A78BFA"}
     badge_color = badge_colors.get(decision, "#9CA3AF")
+    status_chip = "Confirmed" if decision == "ADMIT" else ("Observed" if decision == "SUPPRESS" else "Voided")
     header_html = (
         f'<div class="ner-panel-head">'
         f'<span class="ner-eyebrow">System Trajectory</span>'
         f'<span class="ner-subtle" style="font-size:12px;">Replay of structural signal over time</span>'
         f'<div class="ner-panel-meta">'
         f'<span class="ner-chip-mini">Points {len(chart_points)}</span>'
-        f'<span class="ner-chip-mini" style="color:{badge_color};border-color:{badge_color}66;">{"Confirmed" if decision == "ADMIT" else "Observed"}</span>'
+        f'<span class="ner-chip-mini" style="color:{badge_color};border-color:{badge_color}66;">{status_chip}</span>'
         f'</div></div>'
     )
 
