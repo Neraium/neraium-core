@@ -23,18 +23,18 @@ def _authority_level(decision: str | None) -> str:
 
 def _decision_label(authority_level: str) -> str:
     if authority_level == "ADMITTED":
-        return "ADMITTED AS REAL: COHERENT SYSTEM REORGANIZATION DETECTED"
+        return "ADMIT"
     if authority_level == "VOID":
-        return "ADMISSIBILITY VOID: EVIDENCE INSUFFICIENT OR INCOHERENT"
-    return "NO ACTIONABLE SIGNAL ADMITTED"
+        return "VOID"
+    return "SUPPRESS"
 
 
 def _authority_statement(authority_level: str) -> str:
     if authority_level == "ADMITTED":
-        return "System reorganization detected and admitted."
+        return "Coherent reorganization confirmed."
     if authority_level == "VOID":
-        return "Signal invalidated due to incoherent evidence."
-    return "No admissible structural change detected."
+        return "Observed signal failed coherence standards."
+    return "Observed instability not admitted as real."
 
 
 def _confidence_label(raw_confidence: str | None) -> str:
@@ -81,14 +81,11 @@ def _operator_takeaway(
 ) -> str:
     if authority_level == "ADMITTED":
         if risk_direction == "UNCERTAIN":
-            return "Admitted change detected, but directional trend remains uncertain."
-        return (
-            f"System has entered a {transition_intensity.lower()}-intensity "
-            f"{transition_type.lower()} transition."
-        )
+            return "Admitted transition; trajectory unresolved."
+        return f"{transition_intensity} intensity {transition_type} transition."
     if authority_level == "VOID":
-        return "Observed signal remains invalid for determining a persistent transition."
-    return "No persistent deviation from baseline has been confirmed."
+        return "Signal invalid for persistent transition."
+    return "No persistent baseline break confirmed."
 
 
 def _risk_direction(transition_type: str, transition: dict[str, Any], authority_level: str) -> str:
@@ -115,22 +112,22 @@ def _risk_direction(transition_type: str, transition: dict[str, Any], authority_
 
 def _trajectory_statement(authority_level: str, risk_direction: str) -> str:
     if authority_level == "VOID":
-        return "Signal coherence insufficient to determine system direction."
+        return "Trajectory unresolved under current coherence."
     if authority_level == "SUPPRESSED" and risk_direction == "STABLE":
-        return "No sustained directional change detected."
+        return "No sustained directional shift detected."
     if risk_direction == "DEGRADING":
-        return "System is progressing away from stable operating conditions."
+        return "System moving away from stable conditions."
     if risk_direction == "STABLE":
-        return "System direction remains within stable operating conditions."
-    return "Directional trajectory remains uncertain under current evidence."
+        return "System trajectory remains within stable conditions."
+    return "Directional trajectory remains uncertain."
 
 
 def _if_sustained_statement(risk_direction: str, authority_level: str) -> str:
     if authority_level == "VOID" or risk_direction == "UNCERTAIN":
-        return "If sustained, this condition indicates: Insufficient evidence to project system evolution."
+        return "If sustained: projection remains withheld."
     if risk_direction == "DEGRADING":
-        return "If sustained, this condition indicates: Potential transition into a new operating regime."
-    return "If sustained, this condition indicates: No expected change in system behavior."
+        return "If sustained: regime transition likely."
+    return "If sustained: no regime change expected."
 
 
 def render_gate_decision_card(decision: dict[str, Any] | None) -> dict[str, Any]:
