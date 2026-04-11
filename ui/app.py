@@ -15,7 +15,55 @@ from ui.reasoning import build_reasoning_context
 def load_builtin_demo_rows() -> list[dict[str, Any]]:
     """Return greenhouse replay sequence loaded from greenhouse_results_turbo.csv."""
     data_rows = load_greenhouse_demo_records(limit=180)
-    return data_rows
+    if data_rows:
+        return data_rows
+    return [
+        {
+            "timestamp": "2026-04-10T00:00:00Z",
+            "regime_name": "baseline",
+            "system_health": "nominal",
+            "confidence_score": 0.71,
+            "structural_drift_score": 0.22,
+            "relational_stability_score": 0.84,
+            "coherence_score": 0.87,
+            "snr_score": 1.65,
+            "persistence_minutes": 0,
+            "corroborating_signal_count": 0,
+            "event_admitted": False,
+            "transition_type": "STABLE",
+            "evidence_summary": "Stable baseline: drift low, stability and coherence high.",
+        },
+        {
+            "timestamp": "2026-04-10T00:05:00Z",
+            "regime_name": "transition_watch",
+            "system_health": "watch",
+            "confidence_score": 0.68,
+            "structural_drift_score": 0.58,
+            "relational_stability_score": 0.44,
+            "coherence_score": 0.56,
+            "snr_score": 1.62,
+            "persistence_minutes": 12,
+            "corroborating_signal_count": 1,
+            "event_admitted": False,
+            "transition_type": "TRANSITION",
+            "evidence_summary": "Rising drift with weak corroboration; transition signal is currently suppressed.",
+        },
+        {
+            "timestamp": "2026-04-10T00:12:00Z",
+            "regime_name": "reorganization_candidate",
+            "system_health": "degraded",
+            "confidence_score": 0.79,
+            "structural_drift_score": 0.77,
+            "relational_stability_score": 0.27,
+            "coherence_score": 0.74,
+            "snr_score": 2.1,
+            "persistence_minutes": 44,
+            "corroborating_signal_count": 3,
+            "event_admitted": True,
+            "transition_type": "REORGANIZATION",
+            "evidence_summary": "Persistence and corroboration now qualify a coherent reorganization; transition admitted.",
+        },
+    ]
 
 
 def _fallback_gate_decision() -> dict[str, Any]:
