@@ -240,7 +240,7 @@ def _render_gate_decision_html(gate_card: dict[str, Any]) -> str:
     reason_html = ""
     if reason:
         reason_html = (
-            "<div style=\"margin-top:8px;font-size:11px;line-height:1.35;opacity:0.58;\">"
+            "<div style=\"margin-top:8px;font-size:11px;line-height:1.4;color:rgba(248,250,252,0.88);\">"
             f"Context: {escape(str(reason))}</div>"
         )
 
@@ -264,11 +264,11 @@ def _render_gate_decision_html(gate_card: dict[str, Any]) -> str:
   <div style="margin-top:14px;font-size:16px;font-weight:650;line-height:1.4;">{authority_statement}</div>
   <div style="margin-top:10px;font-size:15px;font-weight:800;line-height:1.35;">{operator_takeaway}</div>
 
-  <div style="margin-top:12px;padding-top:10px;border-top:1px solid {style["border"]};font-size:12px;line-height:1.45;opacity:0.86;">
+  <div style="margin-top:12px;padding-top:10px;border-top:1px solid {style["border"]};font-size:12px;line-height:1.45;color:rgba(248,250,252,0.92);">
     {if_sustained}
   </div>
 
-  <div style="margin-top:10px;display:flex;justify-content:space-between;gap:10px;font-size:11px;opacity:0.62;">
+  <div style="margin-top:10px;display:flex;justify-content:space-between;gap:10px;font-size:11px;color:rgba(248,250,252,0.8);">
     <span>{timestamp_display}</span>
     <span>Doctrine {doctrine_version}</span>
   </div>
@@ -294,13 +294,64 @@ def _render_system_context_html(system_zone: dict[str, Any]) -> str:
     def _count_points(value: Any) -> int:
         return len(value) if isinstance(value, list) else 0
 
+    def _to_points(value: Any) -> list[dict[str, float]]:
+        points: list[dict[str, float]] = []
+        if isinstance(value, list):
+            for raw in value:
+                if not isinstance(raw, dict):
+                    continue
+                x = raw.get("x")
+                y = raw.get("y")
+                if isinstance(x, (float, int)) and isinstance(y, (float, int)):
+                    points.append({"x": float(x), "y": float(y)})
+        return points
+
+    def _fmt(value: Any) -> str:
+        if isinstance(value, (int, float)):
+            return f"{value:.3f}"
+        return "n/a"
+
     stable_count = _count_points(phase_layers.get("stable_baseline"))
     transition_count = _count_points(phase_layers.get("transition"))
     reorg_count = _count_points(phase_layers.get("reorganization"))
     admitted_markers = _count_points(phase_layers.get("admitted_events"))
     suppressed_markers = _count_points(phase_layers.get("suppressed_events"))
-    trajectory_points = _count_points(trajectory.get("path"))
+    trajectory_points_list = _to_points(trajectory.get("path"))
+    trajectory_points = len(trajectory_points_list)
 
+    def _to_svg_xy(point: dict[str, float], width: float = 880, height: float = 320, pad: float = 22.0) -> tuple[float, float]:
+        x = pad + point["x"] * (width - pad * 2)
+        y = pad + (1 - point["y"]) * (height - pad * 2)
+        return x, y
+
+    path_cmd = ""
+    if trajectory_points_list:
+        path_parts = []
+        for idx, point in enumerate(trajectory_points_list):
+            px, py = _to_svg_xy(point)
+            prefix = "M" if idx == 0 else "L"
+            path_parts.append(f"{prefix}{px:.2f},{py:.2f}")
+        path_cmd = " ".join(path_parts)
+
+    def _points_markup(points: list[dict[str, float]], color: str, radius: float, opacity: float) -> str:
+        circles = []
+        for point in points:
+            px, py = _to_svg_xy(point)
+            circles.append(
+                f"<circle cx='{px:.2f}' cy='{py:.2f}' r='{radius:.2f}' fill='{color}' fill-opacity='{opacity:.2f}' />"
+            )
+        return "".join(circles)
+
+    stable_points = _to_points(phase_layers.get("stable_baseline"))
+    transition_points = _to_points(phase_layers.get("transition"))
+    reorg_points = _to_points(phase_layers.get("reorganization"))
+    admitted_points = _to_points(phase_layers.get("admitted_events"))
+    suppressed_points = _to_points(phase_layers.get("suppressed_events"))
+    current_xy = (
+        _to_svg_xy({"x": float(current["x"]), "y": float(current["y"])})
+        if isinstance(current.get("x"), (float, int)) and isinstance(current.get("y"), (float, int))
+        else None
+    )
     timeline_markup = "".join(
         (
             "<li style='margin:2px 0;'>"
@@ -312,18 +363,64 @@ def _render_system_context_html(system_zone: dict[str, Any]) -> str:
         if isinstance(step, dict)
     )
 
+    primary_surface = (
+        f"""
+<div style="margin-top:12px;border:1px solid #253048;border-radius:12px;background:radial-gradient(120% 100% at 20% 0%, #172447 0%, #080d1a 55%, #05070f 100%);padding:12px;">
+  <svg viewBox="0 0 880 320" width="100%" height="260" role="img" aria-label="Structural trajectory context">
+    <defs>
+      <linearGradient id="traj" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="#64D2FF" stop-opacity="0.78" />
+        <stop offset="100%" stop-color="#B374FF" stop-opacity="0.96" />
+      </linearGradient>
+      <filter id="glow"><feGaussianBlur stdDeviation="3" result="c"/><feMerge><feMergeNode in="c"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+    </defs>
+    <rect x="0" y="0" width="880" height="320" fill="none" stroke="#28344f" stroke-opacity="0.7" rx="10" />
+    <path d="{path_cmd}" fill="none" stroke="url(#traj)" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" filter="url(#glow)" />
+    {_points_markup(stable_points, "#7A8AA8", 2.2, 0.46)}
+    {_points_markup(transition_points, "#9088FF", 2.8, 0.66)}
+    {_points_markup(reorg_points, "#FFAA80", 3.2, 0.76)}
+    {_points_markup(suppressed_points, "#9F8D86", 2.6, 0.34)}
+    {_points_markup(admitted_points, "#73FFE1", 4.1, 0.9)}
+    {f"<line x1='{current_xy[0]:.2f}' y1='{current_xy[1]:.2f}' x2='{current_xy[0] + 36:.2f}' y2='{current_xy[1] - 24:.2f}' stroke='#BFD1FF' stroke-opacity='0.72' stroke-width='1.6'/>" if current_xy else ""}
+    {f"<circle cx='{current_xy[0]:.2f}' cy='{current_xy[1]:.2f}' r='11' fill='#89A8FF' fill-opacity='0.15'/>" if current_xy else ""}
+    {f"<circle cx='{current_xy[0]:.2f}' cy='{current_xy[1]:.2f}' r='5.8' fill='#DDE7FF' fill-opacity='0.95'/>" if current_xy else ""}
+  </svg>
+</div>
+"""
+        if path_cmd
+        else """
+<div style="margin-top:12px;border:1px dashed #334155;border-radius:12px;padding:14px;background:#090f1d;color:#dbeafe;font-size:13px;">
+  Structural renderer unavailable; fallback summary is shown for this frame.
+</div>
+"""
+    )
+
+    timeline_pills = "".join(
+        (
+            "<span style='display:inline-block;padding:4px 8px;border-radius:999px;border:1px solid #334155;"
+            "background:#111827;color:#e5e7eb;font-size:11px;font-weight:700;margin:3px 4px 0 0;'>"
+            f"{escape(str(step.get('label') or step.get('stage') or 'UNKNOWN'))} · t={escape(str(step.get('t') or 'n/a'))}"
+            "</span>"
+        )
+        for step in sequence
+        if isinstance(step, dict)
+    )
+
     return f"""
-<div style="border:1px solid #1f2937;border-radius:12px;padding:14px;background:#030712;color:#e5e7eb;">
-  <div style="font-size:13px;font-weight:800;letter-spacing:0.03em;text-transform:uppercase;">System Context</div>
-  <div style="margin-top:10px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;font-size:12px;">
-    <div><strong>Current position</strong><br>x={escape(str(current.get("x", "n/a")))} · y={escape(str(current.get("y", "n/a")))} · t={escape(str(current.get("t", "n/a")))}</div>
-    <div><strong>Trajectory</strong><br>{trajectory_points} path points · phase={escape(str(current.get("phase") or "unknown"))}</div>
-    <div><strong>Phase layers</strong><br>stable={stable_count} · transition={transition_count} · reorg={reorg_count}</div>
-    <div><strong>Gate markers</strong><br>admitted={admitted_markers} · suppressed={suppressed_markers} · decision={escape(str(gate_coupling.get("decision") or "unknown"))}</div>
+<div style="border:1px solid #27354d;border-radius:14px;padding:16px;background:#060b16;color:#f8fafc;box-shadow:0 8px 30px rgba(15,23,42,0.35);">
+  <div style="font-size:13px;font-weight:900;letter-spacing:0.06em;text-transform:uppercase;color:#dbeafe;">System Context</div>
+  <div style="margin-top:6px;font-size:12px;color:#cbd5e1;">Structural/3D navigation field with trajectory continuity, phase layering, and gate coupling.</div>
+  {primary_surface}
+  <div style="margin-top:12px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;font-size:12px;line-height:1.45;">
+    <div style="background:#0b1220;border:1px solid #233149;border-radius:10px;padding:10px;"><strong style="color:#f8fafc;">Current position</strong><br>x={_fmt(current.get("x"))} · y={_fmt(current.get("y"))} · t={escape(str(current.get("t", "n/a")))} · phase={escape(str(current.get("phase") or "unknown"))}</div>
+    <div style="background:#0b1220;border:1px solid #233149;border-radius:10px;padding:10px;"><strong style="color:#f8fafc;">Trajectory</strong><br>{trajectory_points} path points with continuity dominance around current position.</div>
+    <div style="background:#0b1220;border:1px solid #233149;border-radius:10px;padding:10px;"><strong style="color:#f8fafc;">Phase layers</strong><br>stable={stable_count} · transition={transition_count} · reorganization={reorg_count}</div>
+    <div style="background:#0b1220;border:1px solid #233149;border-radius:10px;padding:10px;"><strong style="color:#f8fafc;">Gate coupling</strong><br>admitted={admitted_markers} · suppressed={suppressed_markers} · decision={escape(str(gate_coupling.get("decision") or "unknown"))}</div>
   </div>
-  <div style="margin-top:10px;border-top:1px solid #374151;padding-top:8px;font-size:12px;">
-    <strong>Timeline semantics</strong>
-    <ul style="margin:4px 0 0 16px;padding:0;">{timeline_markup or "<li>n/a</li>"}</ul>
+  <div style="margin-top:12px;padding-top:10px;border-top:1px solid #334155;">
+    <div style="font-size:12px;font-weight:800;color:#e2e8f0;">Timeline strip</div>
+    <div style="margin-top:4px;">{timeline_pills or "<span style='font-size:12px;color:#cbd5e1;'>n/a</span>"}</div>
+    <ul style="margin:8px 0 0 16px;padding:0;color:#cbd5e1;font-size:12px;">{timeline_markup or "<li>n/a</li>"}</ul>
   </div>
 </div>
 """.strip()
@@ -348,12 +445,26 @@ def _render_reasoning_html(reasoning_panel: dict[str, Any]) -> str:
 
     facts_markup = "".join(f"<li>{escape(str(fact))}</li>" for fact in facts)
     return f"""
-<div style="border:1px solid #d1d5db;border-radius:12px;padding:14px;background:#ffffff;color:#111827;">
-  <div style="font-size:13px;font-weight:800;letter-spacing:0.03em;text-transform:uppercase;">Evidence-Bound Reasoning</div>
-  <div style="margin-top:10px;font-size:12px;"><strong>Observed Facts</strong><ul style="margin:4px 0 0 16px;padding:0;">{facts_markup or "<li>No observed facts available.</li>"}</ul></div>
-  <div style="margin-top:8px;font-size:12px;"><strong>Inference / Grounded Answer</strong><br>{escape(str(grounded or "No grounded answer available."))}</div>
-  <div style="margin-top:8px;font-size:12px;"><strong>Operational Implication</strong><br>{escape(str(panel.get("operational_implication") or "No implication available."))}</div>
-  <div style="margin-top:8px;font-size:12px;"><strong>Gate Outcome / Gate Reference</strong><br>{escape(str(panel.get("gate_outcome") or gate_ref.get("decision") or "unknown"))} · Doctrine {escape(str(gate_ref.get("doctrine_version") or "unknown"))}</div>
+<div style="border:1px solid #2b3a52;border-radius:14px;padding:16px;background:#0a1120;color:#f8fafc;box-shadow:0 8px 26px rgba(2,6,23,0.45);">
+  <div style="font-size:13px;font-weight:900;letter-spacing:0.06em;text-transform:uppercase;color:#dbeafe;">Evidence-Bound Reasoning</div>
+  <div style="margin-top:12px;display:grid;gap:10px;">
+    <section style="border:1px solid #334155;border-radius:10px;padding:10px;background:#0d1629;">
+      <div style="font-size:12px;font-weight:800;color:#f1f5f9;">Observed Facts</div>
+      <ul style="margin:6px 0 0 18px;padding:0;color:#e2e8f0;font-size:13px;line-height:1.5;">{facts_markup or "<li>No observed facts available.</li>"}</ul>
+    </section>
+    <section style="border:1px solid #334155;border-radius:10px;padding:10px;background:#0d1629;">
+      <div style="font-size:12px;font-weight:800;color:#f1f5f9;">Grounded Answer</div>
+      <div style="margin-top:6px;font-size:13px;line-height:1.55;color:#e2e8f0;">{escape(str(grounded or "No grounded answer available."))}</div>
+    </section>
+    <section style="border:1px solid #334155;border-radius:10px;padding:10px;background:#0d1629;">
+      <div style="font-size:12px;font-weight:800;color:#f1f5f9;">Operational Implication</div>
+      <div style="margin-top:6px;font-size:13px;line-height:1.5;color:#e2e8f0;">{escape(str(panel.get("operational_implication") or "No implication available."))}</div>
+    </section>
+    <section style="border:1px solid #334155;border-radius:10px;padding:10px;background:#0d1629;">
+      <div style="font-size:12px;font-weight:800;color:#f1f5f9;">Gate Outcome / Gate Reference</div>
+      <div style="margin-top:6px;font-size:13px;color:#e2e8f0;">{escape(str(panel.get("gate_outcome") or gate_ref.get("decision") or "unknown"))} · Doctrine {escape(str(gate_ref.get("doctrine_version") or "unknown"))}</div>
+    </section>
+  </div>
 </div>
 """.strip()
 
@@ -366,21 +477,29 @@ def _render_record_html(record_panel: dict[str, Any]) -> str:
 
     entry_markup = "".join(
         (
-            "<div style='border:1px solid #e5e7eb;border-radius:8px;padding:10px;margin-top:8px;background:#f9fafb;'>"
-            f"<div style='font-size:12px;'><strong>{escape(str(entry.get('timestamp') or 'n/a'))}</strong> · {escape(str(entry.get('gate_decision') or 'unknown'))}</div>"
-            f"<div style='font-size:12px;margin-top:4px;'><strong>Summary:</strong> {escape(str(entry.get('summary') or 'n/a'))}</div>"
-            f"<div style='font-size:12px;margin-top:4px;'><strong>Previous:</strong> {escape(str(entry.get('previous_state_summary') or 'n/a'))}</div>"
-            f"<div style='font-size:12px;margin-top:4px;'><strong>Current:</strong> {escape(str(entry.get('current_state_summary') or 'n/a'))}</div>"
-            f"<div style='font-size:12px;margin-top:4px;'><strong>Transition:</strong> {escape(str(entry.get('transition_type') or 'n/a'))}</div>"
+            "<article style='border:1px solid #334155;border-radius:10px;padding:12px;margin-top:10px;background:#0c1628;'>"
+            "<div style='display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;'>"
+            f"<div style='font-size:12px;color:#dbeafe;'><strong style='color:#f8fafc;'>{escape(str(entry.get('timestamp') or 'n/a'))}</strong></div>"
+            f"<div style='font-size:11px;font-weight:800;border:1px solid #3b82f6;color:#dbeafe;border-radius:999px;padding:2px 8px;background:rgba(59,130,246,0.14);'>{escape(str(entry.get('gate_decision') or 'unknown'))}</div>"
             "</div>"
+            f"<div style='font-size:13px;margin-top:8px;color:#e2e8f0;line-height:1.45;'><strong style='color:#f8fafc;'>Summary:</strong> {escape(str(entry.get('summary') or 'n/a'))}</div>"
+            "<div style='margin-top:8px;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;'>"
+            f"<div style='font-size:12px;color:#cbd5e1;'><strong style='color:#f1f5f9;'>Previous state</strong><br>{escape(str(entry.get('previous_state_summary') or 'n/a'))}</div>"
+            f"<div style='font-size:12px;color:#cbd5e1;'><strong style='color:#f1f5f9;'>Current state</strong><br>{escape(str(entry.get('current_state_summary') or 'n/a'))}</div>"
+            f"<div style='font-size:12px;color:#cbd5e1;'><strong style='color:#f1f5f9;'>Transition type</strong><br>{escape(str(entry.get('transition_type') or 'n/a'))}</div>"
+            f"<div style='font-size:12px;color:#cbd5e1;'><strong style='color:#f1f5f9;'>Doctrine</strong><br>{escape(str(entry.get('doctrine_version') or 'unknown'))}</div>"
+            "</div>"
+            f"<div style='margin-top:8px;font-size:11px;color:#94a3b8;'>Record hash: {escape(str(entry.get('hash') or 'hash:pending'))}</div>"
+            "</article>"
         )
         for entry in entries
         if isinstance(entry, dict)
     )
     return f"""
-<div style="border:1px solid #d1d5db;border-radius:12px;padding:14px;background:#ffffff;color:#111827;">
-  <div style="font-size:13px;font-weight:800;letter-spacing:0.03em;text-transform:uppercase;">Evidence Record</div>
-  {entry_markup or "<div style='margin-top:8px;font-size:12px;'>No evidence entries available.</div>"}
+<div style="border:1px solid #2b3a52;border-radius:14px;padding:16px;background:#0a1120;color:#f8fafc;box-shadow:0 8px 26px rgba(2,6,23,0.45);">
+  <div style="font-size:13px;font-weight:900;letter-spacing:0.06em;text-transform:uppercase;color:#dbeafe;">Evidence Record</div>
+  <div style="margin-top:6px;font-size:12px;color:#cbd5e1;">Operational ledger of admitted/suppressed evidence transitions.</div>
+  {entry_markup or "<div style='margin-top:10px;font-size:12px;color:#e2e8f0;'>No evidence entries available.</div>"}
 </div>
 """.strip()
 
