@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from html import escape
+from pathlib import Path
 from typing import Any
 
 from ui.config import UIConfig
@@ -189,45 +190,10 @@ def create_ui_model(data):
 def _render_gate_decision_html(gate_card: dict[str, Any]) -> str:
     authority_level = str(gate_card.get("authority_level") or "VOID").upper()
     style = {
-        "SUPPRESSED": {
-            "bg": "#F8FAFC",
-            "fg": "#0F172A",
-            "border": "#94A3B8",
-            "subtle": "#475569",
-            "chip_bg": "#E2E8F0",
-            "muted": "#334155",
-            "faint": "#64748B",
-        },
-        "ADMITTED": {
-            "bg": "#0D1425",
-            "fg": "#F1F5F9",
-            "border": "#3B82F6",
-            "subtle": "#CBD5E1",
-            "chip_bg": "rgba(59,130,246,0.15)",
-            "muted": "#94A3B8",
-            "faint": "#64748B",
-        },
-        "VOID": {
-            "bg": "#EEF2FF",
-            "fg": "#1E1B4B",
-            "border": "#818CF8",
-            "subtle": "#4338CA",
-            "chip_bg": "#E0E7FF",
-            "muted": "#3730A3",
-            "faint": "#6366F1",
-        },
-    }.get(
-        authority_level,
-        {
-            "bg": "#F8FAFC",
-            "fg": "#0F172A",
-            "border": "#CBD5E1",
-            "subtle": "#334155",
-            "chip_bg": "#F1F5F9",
-            "muted": "#475569",
-            "faint": "#64748B",
-        },
-    )
+        "SUPPRESSED": {"accent": "#ffb66e", "badge": "#ff9a3d"},
+        "ADMITTED": {"accent": "#62eaff", "badge": "#2ecbff"},
+        "VOID": {"accent": "#8ea4ff", "badge": "#8ea4ff"},
+    }.get(authority_level, {"accent": "#8ea4ff", "badge": "#8ea4ff"})
 
     label = escape(str(gate_card.get("label") or "UNSPECIFIED GATE DECISION"))
     authority_badge = escape(str(gate_card.get("authority_badge") or authority_level))
@@ -248,37 +214,37 @@ def _render_gate_decision_html(gate_card: dict[str, Any]) -> str:
     reason_html = ""
     if reason:
         reason_html = (
-            f"<div style=\"margin-top:8px;font-size:12px;line-height:1.45;color:{style['faint']};\">"
+            "<div class=\"ner-context-line\">"
             f"Context: {escape(str(reason))}</div>"
         )
 
-    chip_style = (
-        "font-size:10px;font-weight:700;letter-spacing:0.07em;text-transform:uppercase;"
-        "padding:4px 10px;border-radius:999px;border:1px solid {border};"
-        "background:{chip_bg};color:{subtle};"
-    ).format(border=style["border"], chip_bg=style["chip_bg"], subtle=style["subtle"])
+    def _chip(label_text: str, value: str) -> str:
+        return (
+            f'<span class="ner-chip">'
+            f'<span class="ner-chip-label">{escape(label_text)}</span>'
+            f'<span class="ner-chip-value">{escape(value)}</span>'
+            f"</span>"
+        )
 
     return f"""
-<div style="border:1.5px solid {style["border"]};border-radius:14px;padding:20px 20px 16px;background:{style["bg"]};color:{style["fg"]};box-shadow:0 2px 8px rgba(15,23,42,0.10);">
-  <div style="font-size:30px;font-weight:900;line-height:1.08;letter-spacing:0.01em;text-transform:uppercase;">{label}</div>
-
-  <div style="margin-top:12px;display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
-    <span style="{chip_style}">{authority_badge}</span>
-    <span style="{chip_style}">Risk {risk_direction}</span>
-    <span style="{chip_style}">Transition {transition_type}</span>
-    <span style="{chip_style}">Confidence {confidence}</span>
+<div class="ner-panel ner-verdict-card" style="--verdict-accent:{style["accent"]};--verdict-badge:{style["badge"]};">
+  <div class="ner-eyebrow">Gate Verdict</div>
+  <div class="ner-verdict-main">{label}</div>
+  <div class="ner-verdict-subtitle">{authority_statement}</div>
+  <div class="ner-verdict-takeaway">{operator_takeaway}</div>
+  <div class="ner-chip-row">
+    {_chip("Authority", authority_badge)}
+    {_chip("Risk", risk_direction)}
+    {_chip("Transition", transition_type)}
+    {_chip("Confidence", confidence)}
+    {_chip("Doctrine", doctrine_version)}
   </div>
-
-  <div style="margin-top:14px;font-size:15px;font-weight:600;line-height:1.5;color:{style["fg"]};">{authority_statement}</div>
-  <div style="margin-top:8px;font-size:15px;font-weight:800;line-height:1.45;color:{style["fg"]};">{operator_takeaway}</div>
-
-  <div style="margin-top:14px;padding:10px 12px;border-radius:8px;background:{style["chip_bg"]};border:1px solid {style["border"]};font-size:13px;line-height:1.55;color:{style["muted"]};">
+  <div class="ner-verdict-projection">
     {if_sustained}
   </div>
-
-  <div style="margin-top:10px;display:flex;justify-content:space-between;gap:10px;font-size:11px;color:{style["muted"]};">
+  <div class="ner-meta-row">
     <span>{timestamp_display}</span>
-    <span>Doctrine {doctrine_version}</span>
+    <span class="ner-badge">{authority_badge}</span>
   </div>
   {reason_html}
 </div>
@@ -519,11 +485,7 @@ def _render_system_context_html(system_zone: dict[str, Any]) -> str:
             pass
 
     svg_body = "\n".join(parts)
-    svg_html = (
-        f'<svg viewBox="0 0 {W} {H}" width="100%" '
-        f'style="display:block;border-radius:10px;background:#040713;">'
-        f'\n{svg_body}\n</svg>'
-    )
+    svg_html = f'<svg class="ner-system-canvas" viewBox="0 0 {W} {H}" width="100%">\n{svg_body}\n</svg>'
 
     # Timeline strip
     sequence = timeline_data.get("sequence") if isinstance(timeline_data.get("sequence"), list) else []
@@ -555,10 +517,8 @@ def _render_system_context_html(system_zone: dict[str, Any]) -> str:
                 f'{escape(label)}</span></div>{connector}'
             )
         timeline_html = (
-            f'<div style="margin-top:8px;display:flex;align-items:center;gap:2px;padding:7px 12px;'
-            f'background:rgba(255,255,255,0.025);border-radius:8px;border:1px solid rgba(255,255,255,0.05);">'
-            f'<span style="font-size:9px;font-weight:800;letter-spacing:0.08em;color:#374151;'
-            f'text-transform:uppercase;margin-right:8px;white-space:nowrap;">Timeline</span>'
+            f'<div class="ner-timeline-strip">'
+            f'<span class="ner-timeline-label">Timeline</span>'
             f'{"".join(items)}</div>'
         )
 
@@ -566,21 +526,16 @@ def _render_system_context_html(system_zone: dict[str, Any]) -> str:
     badge_colors = {"ADMIT": "#62FFB3", "SUPPRESS": "#FB923C", "VOID": "#A78BFA"}
     badge_color = badge_colors.get(decision, "#9CA3AF")
     header_html = (
-        f'<div style="margin-bottom:7px;display:flex;justify-content:space-between;align-items:center;">'
-        f'<span style="font-size:11px;font-weight:800;letter-spacing:0.1em;text-transform:uppercase;color:#4B5563;">'
-        f'System Context</span>'
-        f'<div style="display:flex;gap:6px;align-items:center;">'
-        f'<span style="font-size:9px;font-weight:600;padding:2px 8px;border-radius:999px;'
-        f'background:rgba(255,255,255,0.04);color:#6B7280;letter-spacing:0.05em;text-transform:uppercase;">'
-        f'Phase: {escape(phase.upper())}</span>'
-        f'<span style="font-size:9px;font-weight:800;padding:2px 8px;border-radius:999px;'
-        f'background:{badge_color}1A;color:{badge_color};border:1px solid {badge_color}44;'
-        f'letter-spacing:0.06em;text-transform:uppercase;">{escape(decision)}</span>'
+        f'<div class="ner-panel-head">'
+        f'<span class="ner-eyebrow">System Context</span>'
+        f'<div class="ner-panel-meta">'
+        f'<span class="ner-chip-mini">Phase {escape(phase.upper())}</span>'
+        f'<span class="ner-chip-mini" style="color:{badge_color};border-color:{badge_color}66;">{escape(decision)}</span>'
         f'</div></div>'
     )
 
     return (
-        f'<div style="border:1px solid #1E293B;border-radius:14px;padding:14px;background:#030712;color:#E2E8F0;">'
+        f'<div class="ner-panel ner-system-panel">'
         f'{header_html}{svg_html}{timeline_html}</div>'
     )
 
@@ -620,9 +575,8 @@ def _render_reasoning_html(reasoning_panel: dict[str, Any]) -> str:
 
     def _section(title: str, body_html: str, accent: str = "#3B82F6") -> str:
         return (
-            f'<div style="margin-top:14px;">'
-            f'<div style="font-size:9.5px;font-weight:800;letter-spacing:0.1em;text-transform:uppercase;'
-            f'color:{accent};margin-bottom:6px;padding-bottom:4px;border-bottom:1px solid rgba(255,255,255,0.06);">'
+            f'<div class="ner-reason-section">'
+            f'<div class="ner-reason-title" style="color:{accent};">'
             f'{title}</div>'
             f'{body_html}'
             f'</div>'
@@ -637,14 +591,14 @@ def _render_reasoning_html(reasoning_panel: dict[str, Any]) -> str:
             f'</div>'
             for f in facts
         )
-        facts_body = f'<div style="padding:0 0 0 2px;">{facts_items}</div>'
+        facts_body = f'<div class="ner-facts-list">{facts_items}</div>'
     else:
         facts_body = '<div style="font-size:13px;color:#6B7280;font-style:italic;">No observed facts available.</div>'
     facts_section = _section("Observed Facts", facts_body, "#60A5FA")
 
     # Grounded Answer section
     if grounded_text:
-        grounded_body = f'<div style="font-size:13px;line-height:1.6;color:#D1D5DB;">{escape(grounded_text)}</div>'
+        grounded_body = f'<div class="ner-reason-copy">{escape(grounded_text)}</div>'
     elif insufficient_text:
         grounded_body = (
             f'<div style="font-size:13px;line-height:1.55;color:#9CA3AF;font-style:italic;">'
@@ -655,26 +609,24 @@ def _render_reasoning_html(reasoning_panel: dict[str, Any]) -> str:
     grounded_section = _section("Grounded Answer", grounded_body, "#818CF8")
 
     # Operational Implication section
-    impl_body = f'<div style="font-size:13px;line-height:1.6;color:#D1D5DB;">{op_impl}</div>'
+    impl_body = f'<div class="ner-reason-copy">{op_impl}</div>'
     impl_section = _section("Operational Implication", impl_body, "#34D399")
 
     # Gate Outcome section
     gate_body = (
-        f'<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">'
+        f'<div class="ner-reason-gate-row">'
         f'<span style="font-size:11px;font-weight:800;padding:4px 10px;border-radius:999px;'
         f'background:{gb_bg};color:{gb_text};border:1px solid {gb_border}44;letter-spacing:0.06em;'
         f'text-transform:uppercase;">{escape(gate_decision_val)}</span>'
-        f'<span style="font-size:12px;color:#6B7280;">Doctrine {doctrine_val}</span>'
-        f'<span style="font-size:12px;color:#6B7280;">Confidence: {confidence_val}</span>'
+        f'<span class="ner-subtle">Doctrine {doctrine_val}</span>'
+        f'<span class="ner-subtle">Confidence: {confidence_val}</span>'
         f'</div>'
     )
     gate_section = _section("Gate Outcome", gate_body, "#FB923C")
 
     return (
-        f'<div style="border:1px solid #1E293B;border-radius:14px;padding:16px 18px 18px;'
-        f'background:#0A1120;color:#F1F5F9;">'
-        f'<div style="font-size:11px;font-weight:800;letter-spacing:0.1em;text-transform:uppercase;color:#4B5563;">'
-        f'Evidence-Bound Reasoning</div>'
+        f'<div class="ner-panel">'
+        f'<div class="ner-eyebrow">Reasoning Chain</div>'
         f'{facts_section}{grounded_section}{impl_section}{gate_section}'
         f'</div>'
     )
@@ -739,8 +691,7 @@ def _render_record_html(record_panel: dict[str, Any]) -> str:
         transition_color = transition_colors.get(raw_transition, "#4B5563")
 
         return (
-            f'<div style="margin-top:10px;border:1px solid {st["border"]};border-radius:10px;'
-            f'padding:12px 14px;background:{st["bg"]};">'
+            f'<div class="ner-record-card" style="--card-border:{st["border"]};--card-bg:{st["bg"]};">'
             # Header row: timestamp + decision badge + transition type
             f'<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px;">'
             f'<span style="font-size:12px;font-weight:700;color:{st["ts_color"]};font-variant-numeric:tabular-nums;">'
@@ -756,8 +707,7 @@ def _render_record_html(record_panel: dict[str, Any]) -> str:
             # Summary
             f'<div style="font-size:13px;line-height:1.55;color:#D1D5DB;margin-bottom:10px;">{summary}</div>'
             # State transition row
-            f'<div style="display:flex;align-items:flex-start;gap:6px;padding:8px 10px;'
-            f'background:rgba(0,0,0,0.2);border-radius:7px;font-size:11px;">'
+            f'<div class="ner-state-shift">'
             f'<div style="flex:1;min-width:0;">'
             f'<div style="font-size:9px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;'
             f'color:#4B5563;margin-bottom:3px;">Previous</div>'
@@ -782,10 +732,8 @@ def _render_record_html(record_panel: dict[str, Any]) -> str:
         )
 
     return (
-        f'<div style="border:1px solid #1E293B;border-radius:14px;padding:16px 18px 18px;'
-        f'background:#0A1120;color:#F1F5F9;">'
-        f'<div style="font-size:11px;font-weight:800;letter-spacing:0.1em;text-transform:uppercase;color:#4B5563;">'
-        f'Evidence Record</div>'
+        f'<div class="ner-panel">'
+        f'<div class="ner-eyebrow">Evidence Record</div>'
         f'{cards_html}'
         f'</div>'
     )
@@ -839,23 +787,46 @@ def create_gradio_app():
             record_html,
         )
 
-    initial_gate, initial_system, initial_reasoning, initial_record = load_operations_surface(
-        "Step 3: Reorganization / Admit"
-    )
+    default_step = "Step 3: Reorganization / Admit"
+    initial_gate, initial_system, initial_reasoning, initial_record = load_operations_surface(default_step)
+    initial_confidence = f"{float(demo_rows[-1].get('confidence_score') or 0.0):.2f}"
+    initial_gate_state = "ADMIT" if demo_rows[-1].get("event_admitted") else "SUPPRESS"
 
-    with gr.Blocks() as app:
-        gr.Markdown("# Neraium — Gate-Centered Operations Surface")
+    css_path = Path(__file__).parent / "themes" / "neraium_dark.css"
+    css = css_path.read_text(encoding="utf-8") if css_path.exists() else ""
 
-        demo_step = gr.Radio(
-            choices=list(demo_steps.keys()),
-            value="Step 3: Reorganization / Admit",
-            label="Demo Progression",
+    with gr.Blocks(css=css, theme=gr.themes.Base(), elem_classes=["ner-app"]) as app:
+        gr.HTML(
+            f"""
+            <div class="ner-command-header">
+              <div class="ner-brand">
+                <span class="ner-wordmark">NERAIUM</span>
+                <span class="ner-env">GREENHOUSE / DEMO</span>
+              </div>
+              <div class="ner-header-metrics">
+                <span>Doctrine v2026.04</span>
+                <span>Confidence {escape(initial_confidence)}</span>
+                <span>Gate {escape(initial_gate_state)}</span>
+                <span>State LIVE DEMO</span>
+              </div>
+            </div>
+            """
         )
 
-        gate = gr.HTML(label="Gate Decision", value=initial_gate)
-        system = gr.HTML(label="System Context", value=initial_system)
-        reasoning = gr.HTML(label="Evidence-Bound Reasoning", value=initial_reasoning)
-        record = gr.HTML(label="Evidence Record", value=initial_record)
+        with gr.Row(elem_classes=["ner-hero-row"]):
+            with gr.Column(scale=8):
+                gate = gr.HTML(value=initial_gate)
+            with gr.Column(scale=4):
+                demo_step = gr.Radio(
+                    choices=list(demo_steps.keys()),
+                    value=default_step,
+                    label="Mission Flow",
+                    elem_classes=["ner-flow-radio"],
+                )
+
+        system = gr.HTML(value=initial_system)
+        reasoning = gr.HTML(value=initial_reasoning)
+        record = gr.HTML(value=initial_record)
 
         demo_step.change(fn=load_operations_surface, inputs=[demo_step], outputs=[gate, system, reasoning, record])
 
