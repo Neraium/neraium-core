@@ -828,6 +828,7 @@ def create_gradio_app():
     css = css_path.read_text(encoding="utf-8") if css_path.exists() else ""
 
     with gr.Blocks(css=css, theme=gr.themes.Base(), elem_classes=["ner-app"]) as app:
+        playing_state = gr.State(False)
         header = gr.HTML(value=initial_header)
 
         with gr.Row(elem_classes=["ner-hero-row"]):
@@ -844,6 +845,7 @@ def create_gradio_app():
         system = gr.HTML(value=initial_system)
         reasoning = gr.HTML(value=initial_reasoning)
         record = gr.HTML(value=initial_record)
+        timer = gr.Timer(value=1.0, active=True)
 
         frame_step.change(fn=load_operations_surface, inputs=[frame_step], outputs=[header, gate, system, reasoning, record])
         play_btn.click(fn=autoplay, inputs=[frame_step, speed], outputs=[frame_step, header, gate, system, reasoning, record])

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import csv
 import json
 import runpy
 import csv
@@ -7,6 +8,8 @@ from csv import DictReader
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterable
+
+from neraium_core.alignment import StructuralEngine
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 ULTRAFAST_DEMO_SCRIPT = REPO_ROOT / "greenhouse_demo" / "run_grow_demo_ultrafast.py"
@@ -208,6 +211,8 @@ def _load_rows_from_ultrafast_script(*, limit: int | None) -> list[dict[str, Any
 
 
 def _load_rows_from_greenhouse_scenario(*, limit: int | None) -> list[dict[str, Any]]:
+    if not GREENHOUSE_SCENARIO_JSON.exists():
+        return []
     payload = json.loads(GREENHOUSE_SCENARIO_JSON.read_text(encoding="utf-8"))
     asset = payload.get("asset") or {}
     site_id = str(asset.get("site_id") or "grow-op-facility-01")
@@ -252,5 +257,12 @@ def load_greenhouse_demo_records(*, limit: int | None = 180) -> list[dict[str, A
         return turbo
     ultrafast = _load_rows_from_ultrafast_script(limit=limit)
     if ultrafast:
-        return ultrafast
-    return _load_rows_from_greenhouse_scenario(limit=limit)
+        return ultrafast, str(ULTRAFAST_DEMO_SCRIPT.relative_to(REPO_ROOT))
+
+    scenario = _load_rows_from_greenhouse_scenario(limit=limit)
+    return scenario, str(GREENHOUSE_SCENARIO_JSON.relative_to(REPO_ROOT))
+
+
+def load_greenhouse_demo_records(*, limit: int | None = 320, curated: bool = True) -> list[dict[str, Any]]:
+    rows, _ = load_greenhouse_demo_bundle(limit=limit, curated=curated)
+    return rows
