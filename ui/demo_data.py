@@ -256,7 +256,8 @@ def _generate_synthetic_replay(*, timesteps: int = 120, base_time: datetime | No
     All fields are populated for full UI contract.
     """
     if base_time is None:
-        base_time = datetime.now(timezone.utc) - timedelta(minutes=max(1, timesteps))
+        # Use fixed base time for determinism: every run produces identical output
+        base_time = datetime(2026, 4, 10, 0, 0, 0, tzinfo=timezone.utc)
 
     rows: list[dict[str, Any]] = []
 
