@@ -2,17 +2,21 @@ from __future__ import annotations
 
 from html import escape
 from pathlib import Path
+import time
 from typing import Any
 
 from ui.config import UIConfig
 from ui.core_integration import build_system_state, evaluate_gate
-from ui.demo_data import load_greenhouse_demo_bundle
+from ui.demo_data import load_greenhouse_demo_records
 from ui.layouts.operations_view import build_operations_view
 from ui.reasoning import build_reasoning_context
 
 
 def load_builtin_demo_rows() -> list[dict[str, Any]]:
-    """Return a compact operations demo sequence for local UI startup."""
+    """Return greenhouse demo sequence; fallback to compact local rows when unavailable."""
+    data_rows = load_greenhouse_demo_records(limit=180)
+    if data_rows:
+        return data_rows
     return [
         {
             "timestamp": "2026-04-10T00:00:00Z",
@@ -269,6 +273,33 @@ def _render_system_context_html(system_zone: dict[str, Any]) -> str:
     fading_tail = trajectory.get("fading_tail") if isinstance(trajectory.get("fading_tail"), list) else []
     decision = str(gate_coupling.get("decision") or "SUPPRESS").upper()
     phase = str(current.get("phase") or "coherence")
+    path_len = max(1, len(path))
+
+    def _time_map(points: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        mapped: list[dict[str, Any]] = []
+        for idx, point in enumerate(points):
+            if not isinstance(point, dict):
+                continue
+            t_norm = idx / max(path_len - 1, 1)
+            drift = _cl(_f(point.get("x"), 0.0), 0.0, 1.0)
+            mapped.append({**point, "x": t_norm, "y": drift})
+        return mapped
+
+    path = _time_map(path)
+    fading_tail = _time_map(fading_tail)
+    for key in ("stable_baseline", "transition", "reorganization", "suppressed_events", "admitted_events"):
+        phase_layers[key] = _time_map(phase_layers.get(key) or [])
+    if isinstance(current, dict):
+        current_idx = max(0, path_len - 1)
+        current = {**current, "x": current_idx / max(path_len - 1, 1), "y": _cl(_f(current.get("x"), 0.0), 0.0, 1.0)}
+    if isinstance(vel.get("origin"), dict):
+        vel["origin"] = {**vel["origin"], "x": (path_len - 1) / max(path_len - 1, 1), "y": _cl(_f(vel["origin"].get("x"), 0.0), 0.0, 1.0)}
+    if isinstance(vel.get("tip"), dict):
+        vel["tip"] = {
+            **vel["tip"],
+            "x": _cl((path_len - 1) / max(path_len - 1, 1) + _f(vel.get("dx"), 0.0), 0.0, 1.0),
+            "y": _cl(_f(vel["tip"].get("x"), 0.0), 0.0, 1.0),
+        }
 
     parts: list[str] = []
 
@@ -307,21 +338,10 @@ def _render_system_context_html(system_zone: dict[str, Any]) -> str:
         f'</defs>'
     )
 
-    # Stability region background bands (vertical strips by drift/x)
-    band_defs = [
-        (0.0, 0.35, "rgba(96,211,211,0.055)", "rgba(96,211,211,0.32)", "STABLE"),
-        (0.35, 0.65, "rgba(130,120,255,0.065)", "rgba(130,120,255,0.32)", "TRANSITION"),
-        (0.65, 1.0, "rgba(255,140,100,0.075)", "rgba(255,140,100,0.32)", "DIVERGENCE"),
-    ]
-    for x0, x1, fill, label_color, label in band_defs:
-        bx = sx(x0)
-        bw = round(IW * (x1 - x0), 2)
-        mid_x = sx((x0 + x1) / 2.0)
-        parts.append(f'<rect x="{bx}" y="{PY}" width="{bw}" height="{IH}" fill="{fill}"/>')
-        parts.append(
-            f'<text x="{mid_x}" y="{PY + 15}" text-anchor="middle" '
-            f'font-size="9" font-weight="700" fill="{label_color}" letter-spacing="0.09em">{label}</text>'
-        )
+    parts.append(f'<line x1="{PX}" y1="{PY + IH}" x2="{PX + IW}" y2="{PY + IH}" stroke="rgba(147,197,253,0.45)" stroke-width="1"/>')
+    parts.append(f'<line x1="{PX}" y1="{PY}" x2="{PX}" y2="{PY + IH}" stroke="rgba(147,197,253,0.45)" stroke-width="1"/>')
+    parts.append(f'<text x="{PX + IW - 2}" y="{PY + IH + 18}" text-anchor="end" fill="rgba(186,203,236,0.85)" font-size="10">time</text>')
+    parts.append(f'<text x="{PX - 6}" y="{PY + 8}" text-anchor="end" fill="rgba(186,203,236,0.85)" font-size="10">drift</text>')
 
     # Projected forward cone (faint forward uncertainty region)
     cone_samples = projected.get("samples") if isinstance(projected.get("samples"), list) else []
@@ -720,12 +740,16 @@ def create_gradio_app():
     except ImportError:
         raise RuntimeError("Gradio is not installed")
 
-    demo_rows, data_source = load_greenhouse_demo_bundle(limit=360, curated=True)
-    if not demo_rows:
-        demo_rows = load_builtin_demo_rows()
-        data_source = "ui.app.load_builtin_demo_rows"
+    demo_rows = load_builtin_demo_rows()
+    total_steps = max(len(demo_rows), 1)
+    playback_state = {"playing": False}
 
-    def render_command_header(active_rows: list[dict[str, Any]], index: int) -> str:
+    def _rows_until(frame_index: int) -> list[dict[str, Any]]:
+        idx = max(1, min(total_steps, int(frame_index)))
+        return demo_rows[:idx]
+
+    def render_command_header(frame_index: int) -> str:
+        active_rows = _rows_until(frame_index)
         latest = active_rows[-1] if active_rows else {}
         confidence = f"{float(latest.get('confidence_score') or 0.0):.2f}"
         gate_state = "ADMIT" if latest.get("event_admitted") else "SUPPRESS"
@@ -739,15 +763,13 @@ def create_gradio_app():
                 <span>Doctrine v2026.04</span>
                 <span>Confidence {escape(confidence)}</span>
                 <span>Gate {escape(gate_state)}</span>
-                <span>Frame {int(index) + 1}/{max(1, len(demo_rows))}</span>
-                <span>Source {escape(data_source)}</span>
+                <span>Frame {int(frame_index)} / {int(total_steps)}</span>
               </div>
             </div>
             """
 
     def load_operations_surface(frame_index: int):
-        bounded_index = max(0, min(int(frame_index), len(demo_rows) - 1))
-        active_rows = demo_rows[: bounded_index + 1]
+        active_rows = _rows_until(frame_index)
         app_state = create_app_state(active_rows)
         system_state = build_system_state(active_rows, config=UIConfig())
         latest = active_rows[-1] if active_rows else {}
@@ -772,7 +794,7 @@ def create_gradio_app():
         system_html = _render_system_context_html(surface["zones"]["system_state"])
         reasoning_html = _render_reasoning_html(surface["zones"]["reasoning"]["content"])
         record_html = _render_record_html(surface["zones"]["record"]["content"])
-        header_html = render_command_header(active_rows, bounded_index)
+        header_html = render_command_header(frame_index)
         return (
             header_html,
             gate_html,
@@ -781,22 +803,26 @@ def create_gradio_app():
             record_html,
         )
 
-    def _tick(index: int, playing: bool) -> int:
-        if not playing:
-            return int(index)
-        return 0 if int(index) >= len(demo_rows) - 1 else int(index) + 1
+    def pause_playback() -> None:
+        playback_state["playing"] = False
 
-    def _set_playing() -> bool:
-        return True
+    def reset_playback() -> tuple[int, str, str, str, str, str]:
+        pause_playback()
+        header_html, gate_html, system_html, reasoning_html, record_html = load_operations_surface(1)
+        return 1, header_html, gate_html, system_html, reasoning_html, record_html
 
-    def _set_paused() -> bool:
-        return False
+    def autoplay(start_frame: int, speed_multiplier: float):
+        playback_state["playing"] = True
+        step_delay = max(0.2, 1.25 / max(float(speed_multiplier or 1.0), 0.2))
+        frame = max(1, int(start_frame))
+        while frame <= total_steps and playback_state["playing"]:
+            yield (frame, *load_operations_surface(frame))
+            frame += 1
+            time.sleep(step_delay)
+        playback_state["playing"] = False
 
-    def _reset_state() -> tuple[int, bool]:
-        return 0, False
-
-    default_index = min(30, max(0, len(demo_rows) - 1))
-    initial_header, initial_gate, initial_system, initial_reasoning, initial_record = load_operations_surface(default_index)
+    default_step = min(30, total_steps)
+    initial_header, initial_gate, initial_system, initial_reasoning, initial_record = load_operations_surface(default_step)
 
     css_path = Path(__file__).parent / "themes" / "neraium_dark.css"
     css = css_path.read_text(encoding="utf-8") if css_path.exists() else ""
@@ -809,38 +835,21 @@ def create_gradio_app():
             with gr.Column(scale=8):
                 gate = gr.HTML(value=initial_gate)
             with gr.Column(scale=4):
+                frame_step = gr.Slider(minimum=1, maximum=total_steps, step=1, value=default_step, label="Playback frame")
+                speed = gr.Slider(minimum=0.5, maximum=3.0, step=0.25, value=1.0, label="Playback speed")
                 with gr.Row():
-                    play_button = gr.Button("Play", variant="primary")
-                    pause_button = gr.Button("Pause")
-                    reset_button = gr.Button("Reset")
-                playback_speed = gr.Radio(
-                    choices=[("0.25x", 4.0), ("0.5x", 2.0), ("1.0x", 1.0), ("2.0x", 0.5), ("4.0x", 0.25)],
-                    value=1.0,
-                    label="Playback Speed",
-                    elem_classes=["ner-flow-radio"],
-                )
-                frame_slider = gr.Slider(
-                    minimum=0,
-                    maximum=max(0, len(demo_rows) - 1),
-                    step=1,
-                    value=default_index,
-                    label="Frame",
-                )
+                    play_btn = gr.Button("Play")
+                    pause_btn = gr.Button("Pause")
+                    reset_btn = gr.Button("Reset")
 
         system = gr.HTML(value=initial_system)
         reasoning = gr.HTML(value=initial_reasoning)
         record = gr.HTML(value=initial_record)
         timer = gr.Timer(value=1.0, active=True)
 
-        timer.tick(fn=_tick, inputs=[frame_slider, playing_state], outputs=[frame_slider])
-        frame_slider.change(
-            fn=load_operations_surface,
-            inputs=[frame_slider],
-            outputs=[header, gate, system, reasoning, record],
-        )
-        playback_speed.change(fn=lambda v: gr.update(value=float(v)), inputs=[playback_speed], outputs=[timer])
-        play_button.click(fn=_set_playing, outputs=[playing_state])
-        pause_button.click(fn=_set_paused, outputs=[playing_state])
-        reset_button.click(fn=_reset_state, outputs=[frame_slider, playing_state])
+        frame_step.change(fn=load_operations_surface, inputs=[frame_step], outputs=[header, gate, system, reasoning, record])
+        play_btn.click(fn=autoplay, inputs=[frame_step, speed], outputs=[frame_step, header, gate, system, reasoning, record])
+        pause_btn.click(fn=pause_playback)
+        reset_btn.click(fn=reset_playback, outputs=[frame_step, header, gate, system, reasoning, record])
 
     return app
