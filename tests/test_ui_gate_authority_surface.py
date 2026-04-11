@@ -338,3 +338,41 @@ def test_admit_gate_aligns_record_event_and_reasoning() -> None:
     response = generate_reasoned_response("What is happening right now?", reasoning_context)
     operational = response["sections"]["Operational Implication"]
     assert any("admitted structural change" in line.lower() for line in operational)
+
+
+def test_system_view_encodes_admitted_and_suppressed_event_visual_styles() -> None:
+    rows = [
+        {
+            "timestamp": "2026-04-10T00:00:00+00:00",
+            "structural_drift_score": 0.35,
+            "relational_stability_score": 0.66,
+            "event_admitted": False,
+        },
+        {
+            "timestamp": "2026-04-10T00:05:00+00:00",
+            "structural_drift_score": 0.84,
+            "relational_stability_score": 0.2,
+            "event_admitted": True,
+        },
+    ]
+    system_state = build_system_state(rows, config=UIConfig())
+    gate_decision = {"decision": "ADMIT", "doctrine_version": "doctrine.v1", "timestamp": rows[-1]["timestamp"]}
+    reasoning_context = build_reasoning_context(system_state, rows, gate_decision=gate_decision)
+    view = build_operations_view(
+        system_state,
+        records=rows,
+        reasoning_context=reasoning_context,
+        gate_decision=gate_decision,
+    )
+
+    phase_layers = view["zones"]["system_state"]["content"]["phase_layers"]
+    admitted_points = phase_layers["admitted_events"]
+    suppressed_points = phase_layers["suppressed_events"]
+    encoding = phase_layers["event_visual_encoding"]
+
+    assert encoding["continuity_anchor"] == "trajectory.path"
+    assert admitted_points and suppressed_points
+    assert admitted_points[0]["event_type"] == "admitted"
+    assert suppressed_points[0]["event_type"] == "suppressed"
+    assert admitted_points[0]["glow"] > suppressed_points[0]["glow"]
+    assert admitted_points[0]["opacity"] > suppressed_points[0]["opacity"]

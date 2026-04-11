@@ -17,6 +17,34 @@ def _with_alpha(hex_color: str, alpha: float) -> str:
     return f"rgba({r}, {g}, {b}, {clamp(alpha, 0.0, 1.0):.3f})"
 
 
+def _event_point_style(
+    point: dict[str, Any],
+    *,
+    event_type: str,
+    recency_ratio: float,
+) -> dict[str, Any]:
+    """Apply event-specific visual treatment while keeping path geometry unchanged."""
+    if event_type == "admitted":
+        return {
+            **point,
+            "event_type": "admitted",
+            "color": _with_alpha("#62FFB3", 0.55 + recency_ratio * 0.35),
+            "glow": round(0.48 + recency_ratio * 0.42, 3),
+            "opacity": round(0.74 + recency_ratio * 0.22, 3),
+            "radius": round(3.2 + recency_ratio * 3.1, 3),
+            "blend_mode": "screen",
+        }
+    return {
+        **point,
+        "event_type": "suppressed",
+        "color": _with_alpha("#FF6B8A", 0.3 + recency_ratio * 0.3),
+        "glow": round(0.16 + recency_ratio * 0.2, 3),
+        "opacity": round(0.28 + recency_ratio * 0.3, 3),
+        "radius": round(2.7 + recency_ratio * 2.1, 3),
+        "blend_mode": "multiply",
+    }
+
+
 def render_structural_flow_viz(
     state: SystemState,
     gate_decision: dict[str, Any] | None = None,
@@ -67,6 +95,14 @@ def render_structural_flow_viz(
         admitted_event_points = [point for point in admitted_event_points if point.get("t") != rows[-1].get("timestamp")]
     suppressed_event_points = [
         point for idx, point in indexed_tail if idx < len(rows) and rows[idx].get("event_admitted") is False
+    ]
+    admitted_styled_points = [
+        _event_point_style(point, event_type="admitted", recency_ratio=(idx + 1) / max(len(admitted_event_points), 1))
+        for idx, point in enumerate(admitted_event_points)
+    ]
+    suppressed_styled_points = [
+        _event_point_style(point, event_type="suppressed", recency_ratio=(idx + 1) / max(len(suppressed_event_points), 1))
+        for idx, point in enumerate(suppressed_event_points)
     ]
 
     return {
@@ -151,7 +187,20 @@ def render_structural_flow_viz(
             "stable_baseline": stable_points,
             "transition": transition_points,
             "reorganization": reorganization_points,
-            "admitted_events": admitted_event_points,
-            "suppressed_events": suppressed_event_points,
+            "admitted_events": admitted_styled_points,
+            "suppressed_events": suppressed_styled_points,
+            "event_visual_encoding": {
+                "continuity_anchor": "trajectory.path",
+                "admitted": {
+                    "color": "#62FFB3",
+                    "glow_range": [0.48, 0.9],
+                    "opacity_range": [0.74, 0.96],
+                },
+                "suppressed": {
+                    "color": "#FF6B8A",
+                    "glow_range": [0.16, 0.36],
+                    "opacity_range": [0.28, 0.58],
+                },
+            },
         },
     }
