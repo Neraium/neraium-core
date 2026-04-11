@@ -153,28 +153,14 @@ input[type="range"] {
    ============================================================================ */
 
 .ner-panel {
-  border: 1px solid var(--border-primary);
-  border-radius: 12px;
-  padding: 32px 28px;
-  background: linear-gradient(135deg, var(--bg-secondary) 0%, var(--bg-tertiary) 100%);
-  margin-top: 24px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 20px 24px;
+  background: linear-gradient(180deg, rgba(10, 17, 30, 0.92), rgba(6, 11, 20, 0.92));
+  margin-top: 20px;
   display: flex;
   flex-direction: column;
-  gap: 20px;
-  box-shadow: var(--shadow-lg);
-  backdrop-filter: blur(10px);
-  position: relative;
-  overflow: hidden;
-}
-
-.ner-panel::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent);
+  gap: 12px;
 }
 
 .ner-eyebrow {

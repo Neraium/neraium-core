@@ -664,7 +664,7 @@ def _render_reasoning_html(reasoning_panel: dict[str, Any]) -> str:
         f'</div>'
     )
 
-    details_items = "".join(f"<li>{escape(str(f))}</li>" for f in facts[1:] if f)
+    details_items = "".join(f"<li style='font-size:13px;line-height:1.6;color:#cbd5e1;'>{escape(str(f))}</li>" for f in facts[1:] if f)
     details_html = (
         f'<details class="ner-more-detail">'
         f'<summary>View Full Analysis</summary>'
@@ -754,7 +754,7 @@ def _render_record_html(record_panel: dict[str, Any]) -> str:
         cards_html = "".join(_entry_card(e) for e in entries if isinstance(e, dict))
     else:
         cards_html = (
-            '<div style="margin-top:12px;padding:12px 14px;font-size:13px;color:var(--text-tertiary);'
+o            '<div style="margin-top:12px;padding:12px 14px;font-size:13px;color:var(--text-tertiary);'
             'background:rgba(255,255,255,0.03);border-radius:4px;border-left:2px solid var(--text-muted);">'
             'No evidence entries recorded yet.</div>'
         )
