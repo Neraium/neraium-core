@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from ui.app import create_app_state
+from ui.app import create_app_state, load_builtin_demo_rows
 from ui.config import UIConfig
 from ui.core_integration import build_system_state
 from ui.layouts.operations_view import build_operations_view
@@ -376,3 +376,20 @@ def test_system_view_encodes_admitted_and_suppressed_event_visual_styles() -> No
     assert suppressed_points[0]["event_type"] == "suppressed"
     assert admitted_points[0]["glow"] > suppressed_points[0]["glow"]
     assert admitted_points[0]["opacity"] > suppressed_points[0]["opacity"]
+
+
+def test_builtin_demo_progression_surfaces_stable_suppressed_then_admitted_states() -> None:
+    demo_rows = load_builtin_demo_rows()
+
+    step_1 = create_app_state(demo_rows[:1])
+    step_2 = create_app_state(demo_rows[:2])
+    step_3 = create_app_state(demo_rows[:3])
+
+    assert step_1["gate_decision"]["decision"] == "ADMISSIBILITY_VOID"
+    assert step_1["gate_decision"]["transition"]["type"] == "STABLE"
+
+    assert demo_rows[1]["transition_type"] == "TRANSITION"
+    assert step_2["gate_decision"]["decision"] == "SUPPRESS"
+
+    assert step_3["gate_decision"]["decision"] == "ADMIT"
+    assert step_3["gate_decision"]["transition"]["type"] == "REORGANIZATION"

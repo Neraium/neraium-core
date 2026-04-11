@@ -18,12 +18,31 @@ def _timeline_strip(state: SystemState, gate: dict[str, Any]) -> dict[str, Any]:
         stage = "baseline"
         if abs(event.drift_delta) > 0.08:
             stage = "transition"
-        stages.append({"t": event.t, "stage": stage})
+        stages.append(
+            {
+                "t": event.t,
+                "stage": stage,
+                "label": stage.upper(),
+                "emphasis": "medium" if stage == "transition" else "low",
+            }
+        )
 
     decision = (gate.get("decision") or "SUPPRESS").upper()
     admitted_stage = "admitted" if decision == "ADMIT" else ("suppressed" if decision == "SUPPRESS" else "void")
-    stages.append({"t": gate.get("timestamp") or state.position.t, "stage": admitted_stage})
-    return {"title": "Timeline Strip", "sequence": stages}
+    stages.append(
+        {
+            "t": gate.get("timestamp") or state.position.t,
+            "stage": admitted_stage,
+            "label": admitted_stage.upper(),
+            "emphasis": "high",
+        }
+    )
+    return {
+        "title": "Timeline Strip",
+        "readability": "high_contrast_compact",
+        "legend": ["BASELINE", "TRANSITION", "ADMITTED", "SUPPRESSED", "VOID"],
+        "sequence": stages,
+    }
 
 
 def build_operations_view(
