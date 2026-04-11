@@ -504,6 +504,7 @@ class StructuralEngine:
                 },
                 "position": [0.0, 0.0, 0.0],
                 "nearest_vertex": "STRUCTURAL",
+                "interpreted_label": "STRUCTURAL_STRESS_BUILDING",
                 "nearest_face": "RELATIONAL_TRANSITION_TEMPORAL",
                 "edge_alignment": 0.0,
                 "speed": 0.0,
