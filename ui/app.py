@@ -240,7 +240,7 @@ def _render_gate_decision_html(gate_card: dict[str, Any]) -> str:
     reason_html = ""
     if reason:
         reason_html = (
-            "<div style=\"margin-top:8px;font-size:11px;line-height:1.4;color:rgba(248,250,252,0.88);\">"
+            f"<div style=\"margin-top:8px;font-size:11px;line-height:1.4;color:{style['subtle']};\">"
             f"Context: {escape(str(reason))}</div>"
         )
 
@@ -264,11 +264,11 @@ def _render_gate_decision_html(gate_card: dict[str, Any]) -> str:
   <div style="margin-top:14px;font-size:16px;font-weight:650;line-height:1.4;">{authority_statement}</div>
   <div style="margin-top:10px;font-size:15px;font-weight:800;line-height:1.35;">{operator_takeaway}</div>
 
-  <div style="margin-top:12px;padding-top:10px;border-top:1px solid {style["border"]};font-size:12px;line-height:1.45;color:rgba(248,250,252,0.92);">
+  <div style="margin-top:12px;padding-top:10px;border-top:1px solid {style["border"]};font-size:12px;line-height:1.45;color:{style["fg"]};">
     {if_sustained}
   </div>
 
-  <div style="margin-top:10px;display:flex;justify-content:space-between;gap:10px;font-size:11px;color:rgba(248,250,252,0.8);">
+  <div style="margin-top:10px;display:flex;justify-content:space-between;gap:10px;font-size:11px;color:{style["subtle"]};">
     <span>{timestamp_display}</span>
     <span>Doctrine {doctrine_version}</span>
   </div>
