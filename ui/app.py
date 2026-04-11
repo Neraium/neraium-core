@@ -10,6 +10,11 @@ from ui.core_integration import build_system_state, evaluate_gate
 from ui.demo_data import load_greenhouse_demo_records
 from ui.layouts.operations_view import build_operations_view
 from ui.reasoning import build_reasoning_context
+from ui.replay_timing import (
+    ReplayPaceController,
+    VerdictStabilizer,
+    ReasoningStateTracker,
+)
 
 
 def load_builtin_demo_rows() -> list[dict[str, Any]]:
@@ -584,6 +589,11 @@ def create_gradio_app():
     total_steps = max(len(demo_rows), 1)
     playback_state = {"playing": False}
 
+    # Replay stabilization for verdict and reasoning
+    verdict_stabilizer = VerdictStabilizer(hysteresis_threshold=0.08)
+    reasoning_tracker = ReasoningStateTracker(change_threshold=0.06)
+    pace_controller = ReplayPaceController()
+
     def _rows_until(frame_index: int) -> list[dict[str, Any]]:
         idx = max(1, min(total_steps, int(frame_index)))
         return demo_rows[:idx]
@@ -594,6 +604,13 @@ def create_gradio_app():
         confidence = f"{float(latest.get('confidence_score') or 0.0):.2f}"
         regime_raw = str(latest.get("system_phase") or latest.get("regime_name") or "unknown")
         regime_display = regime_raw.replace("_", " ").title()
+
+        # Add phase progress indicator
+        phase_label = "Baseline"
+        transition_type = str(latest.get("transition_type", "STABLE")).upper()
+        if transition_type in {"TRANSITION", "REORGANIZATION"}:
+            phase_label = transition_type.title()
+
         return f"""
             <div class="ner-command-header">
               <div class="ner-brand">
@@ -603,13 +620,13 @@ def create_gradio_app():
               <div class="ner-header-metrics">
                 <span>Doctrine v2026.04</span>
                 <span>Confidence {escape(confidence)}</span>
-                <span>Regime {escape(regime_display)}</span>
+                <span>Phase {escape(phase_label)}</span>
                 <span>Frame {int(frame_index)} / {int(total_steps)}</span>
               </div>
             </div>
             """
 
-    def load_operations_surface(frame_index: int):
+    def load_operations_surface(frame_index: int, apply_stability: bool = True):
         active_rows = _rows_until(frame_index)
         app_state = create_app_state(active_rows)
         system_state = build_system_state(active_rows, config=UIConfig())
@@ -619,6 +636,14 @@ def create_gradio_app():
         gate_decision = app_state.get("gate_decision") if isinstance(app_state.get("gate_decision"), dict) else {}
         if not gate_decision:
             gate_decision = evaluate_gate(latest, previous, system_state)
+
+        # Apply verdict stability during replay to prevent flipping
+        if apply_stability and isinstance(gate_decision, dict):
+            drift_intensity = system_state.drift_intensity if system_state else 0.0
+            gate_decision = verdict_stabilizer.apply_stability(
+                gate_decision,
+                signal_strength=drift_intensity,
+            )
 
         reasoning_context = app_state.get("reasoning_context") if isinstance(app_state.get("reasoning_context"), dict) else {}
         if not reasoning_context:
@@ -648,21 +673,33 @@ def create_gradio_app():
 
     def reset_playback() -> tuple[int, str, str, str, str]:
         pause_playback()
-        header_html, verdict_html, reasoning_html, record_html = load_operations_surface(1)
+        # Reset stabilizers when resetting playback
+        verdict_stabilizer.reset()
+        reasoning_tracker.reset()
+        header_html, verdict_html, reasoning_html, record_html = load_operations_surface(1, apply_stability=False)
         return 1, header_html, verdict_html, reasoning_html, record_html
 
     def autoplay(start_frame: int, speed_multiplier: float):
         playback_state["playing"] = True
-        step_delay = max(0.45, 1.8 / max(float(speed_multiplier or 1.0), 0.1))
+        pace_controller.speed_multiplier = float(speed_multiplier or 1.0)
         frame = max(1, int(start_frame))
+
         while frame <= total_steps and playback_state["playing"]:
-            yield (frame, *load_operations_surface(frame))
+            # Calculate adaptive delay based on phase
+            step_delay = pace_controller.get_step_delay(frame - 1, demo_rows)
+
+            yield (frame, *load_operations_surface(frame, apply_stability=True))
             frame += 1
+
+            # Sleep with calculated adaptive delay
             time.sleep(step_delay)
+
         playback_state["playing"] = False
 
     default_step = min(30, total_steps)
-    initial_header, initial_verdict, initial_reasoning, initial_record = load_operations_surface(default_step)
+    initial_header, initial_verdict, initial_reasoning, initial_record = load_operations_surface(
+        default_step, apply_stability=False
+    )
 
     css_path = Path(__file__).parent / "themes" / "neraium_dark.css"
     css = css_path.read_text(encoding="utf-8") if css_path.exists() else ""
