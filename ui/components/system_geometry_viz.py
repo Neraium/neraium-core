@@ -128,8 +128,8 @@ def _compute_smooth_velocity(current_drift: float, previous_drift: float, transi
         # Change direction based on drift acceleration
         angle = math.atan2(drift_delta, max(0.1, current_drift))
 
-    vx = base_magnitude * math.cos(angle) * _spring_damping(1.0 - current_drift)
-    vy = base_magnitude * math.sin(angle) * _spring_damping(1.0 - current_drift)
+    vx = _spring_damping(base_magnitude * math.cos(angle))
+    vy = _spring_damping(base_magnitude * math.sin(angle))
 
     return (vx, vy)
 
@@ -319,7 +319,10 @@ def render_system_geometry_viz(
 
     # Apply deformation based on drift and velocity with frame-aware smoothing
     # Frame progress enables smooth animation during continuous playback
-    frame_progress = 1.0  # Full deformation by default; used for animation interpolation
+    if total_frames > 1:
+        frame_progress = clamp((current_frame - 1) / (total_frames - 1), 0.0, 1.0)
+    else:
+        frame_progress = 1.0
     deformed_nodes = _apply_drift_deformation(nodes, drift_intensity, velocity, frame_progress)
 
     # Compute edges with strength based on stability
@@ -346,10 +349,13 @@ def render_system_geometry_viz(
     # Preserve event-layer semantics expected by replay consumers.
     event_points = []
     if rows:
-        for idx, row in enumerate(rows):
-            if idx >= len(deformed_nodes):
-                break
-            node = deformed_nodes[idx]
+        sensor_count = len(deformed_nodes)
+        start_idx = max(0, len(rows) - sensor_count)
+        visible_rows = rows[start_idx:]
+
+        for local_idx, row in enumerate(visible_rows):
+            idx = start_idx + local_idx
+            node = deformed_nodes[local_idx]
             event_points.append({
                 "index": idx,
                 "timestamp": row.get("timestamp"),
