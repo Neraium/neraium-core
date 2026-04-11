@@ -95,15 +95,6 @@ def main() -> None:
         baseline_window=50,
         recent_window=12,
     )
-    plot_engine = (
-        StructuralEngine(
-            baseline_window=50,
-            recent_window=12,
-        )
-        if args.plot_tetra
-        else None
-    )
-
     results = []
     tetra_trajectory: list[list[float]] = []
     global_t = 0.0
@@ -126,9 +117,8 @@ def main() -> None:
         out["cycle"] = int(row["cycle"])
         results.append(out)
 
-        if args.plot_tetra and int(row["unit"]) == args.unit and plot_engine is not None:
-            plot_out = plot_engine.process_frame(frame)
-            tetra_state = plot_out.get("tetrahedral_state") if isinstance(plot_out, dict) else None
+        if args.plot_tetra and int(row["unit"]) == args.unit:
+            tetra_state = out.get("tetrahedral_state") if isinstance(out, dict) else None
             position = tetra_state.get("position") if isinstance(tetra_state, dict) else None
             if isinstance(position, (list, tuple)) and len(position) == 3:
                 tetra_trajectory.append([float(position[0]), float(position[1]), float(position[2])])
