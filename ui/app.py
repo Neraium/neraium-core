@@ -336,7 +336,14 @@ def _render_reasoning_html(reasoning_panel: dict[str, Any]) -> str:
         facts = []
     inference = panel.get("inference") if isinstance(panel.get("inference"), dict) else {}
     sections = inference.get("sections") if isinstance(inference.get("sections"), dict) else {}
-    grounded = sections.get("Inference / Grounded Answer") or inference.get("final_response")
+    grounded = (
+        sections.get("Inference / Grounded Answer")
+        or sections.get("Inference")
+        or inference.get("final_response")
+        or inference.get("answer")
+    )
+    if isinstance(grounded, list):
+        grounded = " ".join(str(item) for item in grounded if item is not None).strip()
     gate_ref = panel.get("gate_reference") if isinstance(panel.get("gate_reference"), dict) else {}
 
     facts_markup = "".join(f"<li>{escape(str(fact))}</li>" for fact in facts)
