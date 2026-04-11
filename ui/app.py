@@ -259,18 +259,17 @@ def _render_gate_decision_html(gate_card: dict[str, Any]) -> str:
         )
 
     accent = style["accent"]
-    bg = style["bg"]
     return f"""
-<div class="ner-panel ner-verdict-card" style="--verdict-accent:{accent};background-color:{bg};border-color:{accent};">
-  <div class="ner-verdict-main" style="color:#FFFFFF;font-size:26px;font-weight:700;letter-spacing:0.5px;margin-bottom:12px;">{label}</div>
-  <div class="ner-verdict-subtitle" style="color:#FFFFFF;font-size:15px;font-weight:500;line-height:1.5;margin-bottom:8px;">{authority_statement}</div>
-  <div class="ner-verdict-supporting" style="color:#E0E7FF;font-size:14px;line-height:1.6;margin-bottom:16px;">{supporting_line}</div>
-  <div class="ner-chip-row" style="display:flex;gap:12px;margin-bottom:16px;">
+<div class="ner-panel ner-verdict-card" style="--verdict-accent:{accent};">
+  <div class="ner-verdict-main">{label}</div>
+  <div class="ner-verdict-subtitle">{authority_statement}</div>
+  <div class="ner-verdict-supporting">{supporting_line}</div>
+  <div class="ner-chip-row">
     {_chip("Confidence", confidence, accent)}
     {_chip("Phase", transition_type, accent)}
     {_chip("Risk", risk_direction, accent)}
   </div>
-  <div class="ner-meta-row" style="display:flex;justify-content:space-between;font-size:12px;color:#9CA3AF;">
+  <div class="ner-meta-row">
     <span>{ts_display}</span>
     <span>Engine {doctrine_version}</span>
   </div>
@@ -392,18 +391,30 @@ def _render_system_geometry_html(system_zone: dict[str, Any]) -> str:
     # Metrics row
     metrics_html = (
         f'<div class="ner-system-context-grid">'
-        f'<div><span class="ner-context-label">Structure</span><span class="ner-context-value">{stability:.2f}</span></div>'
-        f'<div><span class="ner-context-label">Deformation</span><span class="ner-context-value">{drift_intensity:.2f}</span></div>'
-        f'<div><span class="ner-context-label">Phase</span><span class="ner-context-value">{phase_visual.get("tone", "coherent").upper()}</span></div>'
-        f'<div><span class="ner-context-label">Nodes</span><span class="ner-context-value">{len(nodes)}</span></div>'
+        f'<div>'
+        f'<span class="ner-context-label">Structure Integrity</span>'
+        f'<span class="ner-context-value">{stability:.2%}</span>'
+        f'</div>'
+        f'<div>'
+        f'<span class="ner-context-label">System Deformation</span>'
+        f'<span class="ner-context-value">{drift_intensity:.2%}</span>'
+        f'</div>'
+        f'<div>'
+        f'<span class="ner-context-label">Operating Phase</span>'
+        f'<span class="ner-context-value">{phase_visual.get("tone", "coherent").upper()}</span>'
+        f'</div>'
+        f'<div>'
+        f'<span class="ner-context-label">Monitored Sensors</span>'
+        f'<span class="ner-context-value">{len(nodes)}</span>'
+        f'</div>'
         f'</div>'
     )
 
     header_html = (
         f'<div class="ner-panel-head">'
-        f'<div style="display:flex;flex-direction:column;gap:3px;">'
+        f'<div>'
         f'<span class="ner-eyebrow">System Geometry</span>'
-        f'<span style="font-size:11px;color:#7c8ba8;">Network structure shows stability; deformation indicates drift</span>'
+        f'<span>Real-time structural analysis • Network deformation reflects system stability</span>'
         f'</div>'
         f'</div>'
     )
@@ -637,34 +648,34 @@ def _render_reasoning_html(reasoning_panel: dict[str, Any]) -> str:
     implication_line = implication_source
 
     core_lines = (
-        f'<div class="ner-core-lines" style="display:flex;flex-direction:column;gap:14px;">'
-        f'<div class="ner-core-line" style="display:flex;flex-direction:column;gap:4px;">'
-        f'<span style="font-size:12px;font-weight:600;color:#8b92a1;text-transform:uppercase;letter-spacing:0.05em;">Observed</span>'
-        f'<strong style="font-size:14px;color:#E0E7FF;line-height:1.5;font-weight:500;">{observed_line}</strong>'
+        f'<div class="ner-core-lines">'
+        f'<div class="ner-core-line">'
+        f'<span>Observed Signal</span>'
+        f'<strong>{observed_line}</strong>'
         f'</div>'
-        f'<div class="ner-core-line" style="display:flex;flex-direction:column;gap:4px;">'
-        f'<span style="font-size:12px;font-weight:600;color:#8b92a1;text-transform:uppercase;letter-spacing:0.05em;">Assessment</span>'
-        f'<strong style="font-size:14px;color:#E0E7FF;line-height:1.5;font-weight:500;">{assessment_line}</strong>'
+        f'<div class="ner-core-line">'
+        f'<span>Assessment</span>'
+        f'<strong>{assessment_line}</strong>'
         f'</div>'
-        f'<div class="ner-core-line" style="display:flex;flex-direction:column;gap:4px;">'
-        f'<span style="font-size:12px;font-weight:600;color:#8b92a1;text-transform:uppercase;letter-spacing:0.05em;">Implication</span>'
-        f'<strong style="font-size:14px;color:#E0E7FF;line-height:1.5;font-weight:500;">{implication_line}</strong>'
+        f'<div class="ner-core-line">'
+        f'<span>Operational Implication</span>'
+        f'<strong>{implication_line}</strong>'
         f'</div>'
         f'</div>'
     )
 
     details_items = "".join(f"<li style='font-size:13px;line-height:1.6;color:#cbd5e1;'>{escape(str(f))}</li>" for f in facts[1:] if f)
     details_html = (
-        f'<details class="ner-more-detail" style="margin-top:12px;">'
-        f'<summary style="cursor:pointer;font-size:12px;color:#60A5FA;font-weight:600;">More detail</summary>'
-        f'<div class="ner-reason-copy" style="margin-top:8px;font-size:13px;color:#cbd5e1;line-height:1.6;overflow-y:auto;max-height:200px;">{escape(grounded_text or insufficient_text or "")}</div>'
-        f'<ul style="margin-top:8px;padding-left:16px;">{details_items}</ul>'
+        f'<details class="ner-more-detail">'
+        f'<summary>View Full Analysis</summary>'
+        f'<div class="ner-reason-copy">{escape(grounded_text or insufficient_text or "")}</div>'
+        f'<ul>{details_items}</ul>'
         f"</details>"
     )
 
     return (
-        f'<div class="ner-panel" style="padding:20px;display:flex;flex-direction:column;gap:12px;">'
-        f'<div class="ner-eyebrow" style="font-size:12px;font-weight:600;color:#8b92a1;text-transform:uppercase;letter-spacing:0.05em;">Reasoning</div>'
+        f'<div class="ner-panel">'
+        f'<div class="ner-eyebrow">Analytical Reasoning</div>'
         f'{core_lines}{details_html}'
         f'</div>'
     )
@@ -729,18 +740,13 @@ def _render_record_html(record_panel: dict[str, Any]) -> str:
         transition_color = transition_colors.get(raw_transition, "#4B5563")
 
         return (
-            f'<div class="ner-record-card" style="border:1px solid {st["border"]};background-color:{st["bg"]};'
-            f'padding:12px 14px;border-radius:6px;margin-bottom:10px;display:flex;flex-direction:column;gap:8px;">'
-            f'<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">'
-            f'<span style="font-size:12px;font-weight:700;color:{st["ts_color"]};font-variant-numeric:tabular-nums;">{ts}</span>'
-            f'<span style="font-size:11px;font-weight:800;padding:3px 10px;border-radius:999px;'
-            f'background:{st["badge_bg"]};color:{st["badge_text"]};border:1px solid {st["badge_border"]};'
-            f'letter-spacing:0.07em;text-transform:uppercase;">{decision_text}</span>'
-            f'<span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:999px;'
-            f'background:rgba(255,255,255,0.04);color:{transition_color};'
-            f'border:1px solid {transition_color}40;letter-spacing:0.05em;text-transform:uppercase;">{escape(raw_transition)}</span>'
+            f'<div class="ner-record-card">'
+            f'<div>'
+            f'<span style="font-variant-numeric:tabular-nums;">{ts}</span>'
+            f'<span style="background-color:{st["badge_bg"]};color:{st["badge_text"]};border:1px solid {st["badge_border"]};">{decision_text}</span>'
+            f'<span style="color:{transition_color};border:1px solid {transition_color}40;">{escape(raw_transition)}</span>'
             f'</div>'
-            f'<div style="font-size:13px;line-height:1.6;color:#E5EDFF;margin-top:2px;">{summary}</div>'
+            f'<div>{summary}</div>'
             f'</div>'
         )
 
@@ -748,15 +754,15 @@ def _render_record_html(record_panel: dict[str, Any]) -> str:
         cards_html = "".join(_entry_card(e) for e in entries if isinstance(e, dict))
     else:
         cards_html = (
-            '<div style="margin-top:12px;padding:12px 14px;font-size:13px;color:#6B7280;'
-            'background:rgba(107,114,128,0.06);border-radius:4px;border-left:2px solid #6B7280;">'
-            'No evidence entries recorded.</div>'
+o            '<div style="margin-top:12px;padding:12px 14px;font-size:13px;color:var(--text-tertiary);'
+            'background:rgba(255,255,255,0.03);border-radius:4px;border-left:2px solid var(--text-muted);">'
+            'No evidence entries recorded yet.</div>'
         )
 
     return (
-        f'<div class="ner-panel" style="padding:20px;display:flex;flex-direction:column;gap:8px;">'
-        f'<div class="ner-eyebrow" style="font-size:12px;font-weight:600;color:#8b92a1;text-transform:uppercase;letter-spacing:0.05em;">Evidence</div>'
-        f'<div style="display:flex;flex-direction:column;gap:0;">{cards_html}</div>'
+        f'<div class="ner-panel">'
+        f'<div class="ner-eyebrow">Evidence Record</div>'
+        f'<div>{cards_html}</div>'
         f'</div>'
     )
 
