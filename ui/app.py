@@ -190,33 +190,43 @@ def _render_gate_decision_html(gate_card: dict[str, Any]) -> str:
     authority_level = str(gate_card.get("authority_level") or "VOID").upper()
     style = {
         "SUPPRESSED": {
-            "bg": "#f3f4f6",
-            "fg": "#374151",
+            "bg": "#f5f6f7",
+            "fg": "#1f2937",
             "border": "#9ca3af",
             "subtle": "#6b7280",
+            "chip_bg": "#eef0f2",
         },
         "ADMITTED": {
             "bg": "#111827",
             "fg": "#f9fafb",
             "border": "#60a5fa",
-            "subtle": "#d1d5db",
+            "subtle": "#cbd5e1",
+            "chip_bg": "rgba(96,165,250,0.12)",
         },
         "VOID": {
             "bg": "#eef2ff",
-            "fg": "#312e81",
+            "fg": "#1e1b4b",
             "border": "#a5b4fc",
             "subtle": "#4f46e5",
+            "chip_bg": "#e3e8ff",
         },
     }.get(
         authority_level,
-        {"bg": "#f8fafc", "fg": "#0f172a", "border": "#cbd5e1", "subtle": "#334155"},
+        {
+            "bg": "#f8fafc",
+            "fg": "#0f172a",
+            "border": "#cbd5e1",
+            "subtle": "#334155",
+            "chip_bg": "#f1f5f9",
+        },
     )
 
     label = escape(str(gate_card.get("label") or "UNSPECIFIED GATE DECISION"))
-    subheader = escape(str(gate_card.get("authority_badge") or authority_level))
-    trajectory = escape(str(gate_card.get("trajectory_statement") or "No trajectory statement available."))
+    authority_badge = escape(str(gate_card.get("authority_badge") or authority_level))
+    authority_statement = escape(str(gate_card.get("authority_statement") or "No authority statement available."))
     risk_direction = escape(str(gate_card.get("risk_direction") or "UNCERTAIN"))
     transition_type = escape(str(gate_card.get("transition_type") or "STABLE"))
+    confidence = escape(str(gate_card.get("confidence") or "LOW"))
     operator_takeaway = escape(str(gate_card.get("operator_takeaway") or "No operator takeaway available."))
     if_sustained = escape(
         str(
@@ -224,30 +234,48 @@ def _render_gate_decision_html(gate_card: dict[str, Any]) -> str:
             or "If sustained, this condition indicates: Insufficient evidence to project system evolution."
         )
     )
-    confidence = escape(str(gate_card.get("confidence") or "LOW"))
     timestamp_display = escape(str(gate_card.get("timestamp_display") or "Change evaluated at: unknown"))
+    doctrine_version = escape(str(gate_card.get("doctrine_version") or "unknown"))
+    reason = gate_card.get("reason") or gate_card.get("refusal_reason")
+    reason_html = ""
+    if reason:
+        reason_html = (
+            "<div style=\"margin-top:8px;font-size:11px;line-height:1.35;opacity:0.58;\">"
+            f"Context: {escape(str(reason))}</div>"
+        )
+
+    chip_style = (
+        "font-size:10px;font-weight:780;letter-spacing:0.08em;text-transform:uppercase;"
+        "padding:4px 8px;border-radius:999px;border:1px solid {border};"
+        "background:{chip_bg};color:{subtle};"
+    ).format(border=style["border"], chip_bg=style["chip_bg"], subtle=style["subtle"])
 
     return f"""
-<div style="border:1px solid {style["border"]};border-left:8px solid {style["border"]};border-radius:12px;padding:16px;background:{style["bg"]};color:{style["fg"]};">
-  <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;">
-    <div style="font-size:28px;font-weight:900;line-height:1.12;letter-spacing:0.015em;max-width:80%;">{label}</div>
-    <div style="font-size:11px;font-weight:800;letter-spacing:0.08em;text-transform:uppercase;padding:6px 10px;border:1px solid {style["border"]};border-radius:999px;background:rgba(255,255,255,0.08);white-space:nowrap;">{subheader}</div>
+<div style="border:1px solid {style["border"]};border-radius:14px;padding:18px 18px 14px;background:{style["bg"]};color:{style["fg"]};box-shadow:0 1px 2px rgba(15,23,42,0.08);">
+  <div style="font-size:32px;font-weight:900;line-height:1.05;letter-spacing:0.01em;text-transform:uppercase;">{label}</div>
+
+  <div style="margin-top:10px;display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
+    <span style="{chip_style}">{authority_badge}</span>
+    <span style="{chip_style}">Risk {risk_direction}</span>
+    <span style="{chip_style}">Transition {transition_type}</span>
+    <span style="{chip_style}">Confidence {confidence}</span>
   </div>
-  <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;">
-    <div style="font-size:11px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;padding:4px 8px;border:1px solid {style["border"]};border-radius:999px;color:{style["subtle"]};">Risk: {risk_direction}</div>
-    <div style="font-size:11px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;padding:4px 8px;border:1px solid {style["border"]};border-radius:999px;color:{style["subtle"]};">Transition: {transition_type}</div>
+
+  <div style="margin-top:14px;font-size:16px;font-weight:650;line-height:1.4;">{authority_statement}</div>
+  <div style="margin-top:10px;font-size:15px;font-weight:800;line-height:1.35;">{operator_takeaway}</div>
+
+  <div style="margin-top:12px;padding-top:10px;border-top:1px solid {style["border"]};font-size:12px;line-height:1.45;opacity:0.86;">
+    {if_sustained}
   </div>
-  <div style="margin-top:12px;font-size:16px;font-weight:800;">{operator_takeaway}</div>
-  <div style="margin-top:12px;display:grid;gap:8px;">
-    <div><div style="font-size:11px;text-transform:uppercase;opacity:0.72;">Trajectory</div><div style="font-size:14px;font-weight:560;opacity:0.93;">{trajectory}</div></div>
-    <div><div style="font-size:11px;text-transform:uppercase;opacity:0.72;">If Sustained</div><div style="font-size:14px;font-weight:560;opacity:0.93;">{if_sustained}</div></div>
-  </div>
-  <div style="margin-top:10px;display:flex;justify-content:space-between;gap:10px;font-size:12px;opacity:0.76;">
-    <span>Confidence: <strong>{confidence}</strong></span>
+
+  <div style="margin-top:10px;display:flex;justify-content:space-between;gap:10px;font-size:11px;opacity:0.62;">
     <span>{timestamp_display}</span>
+    <span>Doctrine {doctrine_version}</span>
   </div>
+  {reason_html}
 </div>
 """.strip()
+
 
 
 def create_gradio_app():
