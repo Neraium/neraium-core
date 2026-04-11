@@ -754,7 +754,7 @@ def _render_record_html(record_panel: dict[str, Any]) -> str:
         cards_html = "".join(_entry_card(e) for e in entries if isinstance(e, dict))
     else:
         cards_html = (
-o            '<div style="margin-top:12px;padding:12px 14px;font-size:13px;color:var(--text-tertiary);'
+            '<div style="margin-top:12px;padding:12px 14px;font-size:13px;color:var(--text-tertiary);'
             'background:rgba(255,255,255,0.03);border-radius:4px;border-left:2px solid var(--text-muted);">'
             'No evidence entries recorded yet.</div>'
         )
@@ -851,6 +851,8 @@ def create_gradio_app():
             records=active_rows,
             reasoning_context=reasoning_context,
             gate_decision=gate_decision,
+            current_frame=frame_index,
+            total_frames=total_steps,
         )
         gate_content = surface["zones"]["gate"]["content"]
         gate_card = gate_content if isinstance(gate_content, dict) else {}
