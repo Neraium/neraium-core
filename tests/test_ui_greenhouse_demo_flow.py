@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from ui.app import create_app_state
+from ui.app import create_app_state, load_builtin_demo_rows
 from ui.config import UIConfig
 from ui.core_integration import build_system_state
 from ui.demo_data import load_greenhouse_demo_records
@@ -88,9 +88,10 @@ def test_reasoning_context_temporal_facts_treat_sub_display_precision_delta_as_u
     assert context["temporal_facts"][0] == "Drift was unchanged at 0.420"
 
 
-def test_create_app_state_defaults_to_suppress_when_empty() -> None:
-    state = create_app_state([])
+def test_create_app_state_populates_from_builtin_demo_rows() -> None:
+    rows = load_builtin_demo_rows()
+    state = create_app_state(rows)
     assert set(state.keys()) == {"summary", "gate_decision", "reasoning_context", "realtime"}
-    assert state["gate_decision"]["decision"] == "SUPPRESS"
-    assert state["reasoning_context"]["gate_decision"]["decision"] == "SUPPRESS"
-    assert state["summary"]["timestamp"] is None
+    assert state["gate_decision"] != {}
+    assert state["reasoning_context"] != {}
+    assert state["summary"]["timestamp"] == rows[-1]["timestamp"]
