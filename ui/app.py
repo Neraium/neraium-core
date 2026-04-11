@@ -6,6 +6,7 @@ import time
 from typing import Any
 
 from ui.config import UIConfig
+from ui.components.tetrahedral_viz import build_tetrahedral_plot_and_text
 from ui.core_integration import build_system_state, evaluate_gate
 from ui.demo_data import load_greenhouse_demo_records
 from ui.layouts.operations_view import build_operations_view
@@ -863,25 +864,28 @@ def create_gradio_app():
         reasoning_html = _render_reasoning_html(surface["zones"]["reasoning"]["content"])
         record_html = _render_record_html(surface["zones"]["record"]["content"])
         header_html = render_command_header(frame_index)
+        tetra_plot, tetra_text = build_tetrahedral_plot_and_text(latest, active_rows)
         return (
             header_html,
             verdict_html,
             reasoning_html,
             record_html,
+            tetra_plot,
+            tetra_text,
         )
 
     def pause_playback() -> None:
         playback_state["playing"] = False
 
-    def reset_playback() -> tuple[int, str, str, str, str]:
+    def reset_playback() -> tuple[int, str, str, str, str, Any, str]:
         pause_playback()
         # Reset stabilizers when resetting playback
         verdict_stabilizer.reset()
         reasoning_tracker.reset()
-        header_html, verdict_html, reasoning_html, record_html = load_operations_surface(1, apply_stability=False)
-        return 1, header_html, verdict_html, reasoning_html, record_html
+        header_html, verdict_html, reasoning_html, record_html, tetra_plot, tetra_text = load_operations_surface(1, apply_stability=False)
+        return 1, header_html, verdict_html, reasoning_html, record_html, tetra_plot, tetra_text
 
-    def switch_mode(mode: str) -> tuple[dict[str, Any], str, str, str, str]:
+    def switch_mode(mode: str) -> tuple[dict[str, Any], str, str, str, str, Any, str]:
         """Switch between synthetic demo and real replay modes."""
         nonlocal demo_rows, total_steps
         pause_playback()
@@ -893,8 +897,8 @@ def create_gradio_app():
         demo_rows = load_builtin_demo_rows(use_synthetic=use_synthetic)
         total_steps = max(len(demo_rows), 1)
 
-        header_html, verdict_html, reasoning_html, record_html = load_operations_surface(1, apply_stability=False)
-        return gr.update(maximum=total_steps, value=1), header_html, verdict_html, reasoning_html, record_html
+        header_html, verdict_html, reasoning_html, record_html, tetra_plot, tetra_text = load_operations_surface(1, apply_stability=False)
+        return gr.update(maximum=total_steps, value=1), header_html, verdict_html, reasoning_html, record_html, tetra_plot, tetra_text
 
     def autoplay(start_frame: int, speed_multiplier: float):
         playback_state["playing"] = True
@@ -917,7 +921,7 @@ def create_gradio_app():
         playback_state["playing"] = False
 
     default_step = min(30, total_steps)
-    initial_header, initial_verdict, initial_reasoning, initial_record = load_operations_surface(
+    initial_header, initial_verdict, initial_reasoning, initial_record, initial_tetra_plot, initial_tetra_text = load_operations_surface(
         default_step, apply_stability=False
     )
 
@@ -947,11 +951,26 @@ def create_gradio_app():
 
         reasoning = gr.HTML(value=initial_reasoning)
         record = gr.HTML(value=initial_record)
+        with gr.Row(elem_classes=["ner-tetra-row"]):
+            tetra_plot = gr.Plot(value=initial_tetra_plot, label="Tetrahedral State")
+            tetra_details = gr.Markdown(value=initial_tetra_text)
 
-        frame_step.change(fn=load_operations_surface, inputs=[frame_step], outputs=[header, verdict, reasoning, record])
-        play_btn.click(fn=autoplay, inputs=[frame_step, speed], outputs=[frame_step, header, verdict, reasoning, record])
+        frame_step.change(
+            fn=load_operations_surface,
+            inputs=[frame_step],
+            outputs=[header, verdict, reasoning, record, tetra_plot, tetra_details],
+        )
+        play_btn.click(
+            fn=autoplay,
+            inputs=[frame_step, speed],
+            outputs=[frame_step, header, verdict, reasoning, record, tetra_plot, tetra_details],
+        )
         pause_btn.click(fn=pause_playback)
-        reset_btn.click(fn=reset_playback, outputs=[frame_step, header, verdict, reasoning, record])
-        mode_selector.change(fn=switch_mode, inputs=[mode_selector], outputs=[frame_step, header, verdict, reasoning, record])
+        reset_btn.click(fn=reset_playback, outputs=[frame_step, header, verdict, reasoning, record, tetra_plot, tetra_details])
+        mode_selector.change(
+            fn=switch_mode,
+            inputs=[mode_selector],
+            outputs=[frame_step, header, verdict, reasoning, record, tetra_plot, tetra_details],
+        )
 
     return app
