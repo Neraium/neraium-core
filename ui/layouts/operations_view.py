@@ -24,6 +24,8 @@ def _timeline_strip(state: SystemState, gate: dict[str, Any]) -> dict[str, Any]:
                 "stage": stage,
                 "label": stage.upper(),
                 "emphasis": "medium" if stage == "transition" else "low",
+                "visual_weight": 0.62 if stage == "transition" else 0.28,
+                "tone": "active_transition" if stage == "transition" else "calm_baseline",
             }
         )
 
@@ -35,11 +37,21 @@ def _timeline_strip(state: SystemState, gate: dict[str, Any]) -> dict[str, Any]:
             "stage": admitted_stage,
             "label": admitted_stage.upper(),
             "emphasis": "high",
+            "visual_weight": 1.0,
+            "tone": (
+                "authority_admitted"
+                if admitted_stage == "admitted"
+                else "authority_suppressed"
+                if admitted_stage == "suppressed"
+                else "authority_void"
+            ),
         }
     )
     return {
         "title": "Timeline Strip",
         "readability": "high_contrast_compact",
+        "hierarchy": "history_then_gate_authority",
+        "current_authority_stage": admitted_stage.upper(),
         "legend": ["BASELINE", "TRANSITION", "ADMITTED", "SUPPRESSED", "VOID"],
         "sequence": stages,
     }
