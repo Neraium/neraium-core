@@ -23,10 +23,10 @@ def _authority_level(decision: str | None) -> str:
 
 def _decision_label(authority_level: str) -> str:
     if authority_level == "ADMITTED":
-        return "CONFIRMED"
+        return "COHERENT CHANGE DETECTED"
     if authority_level == "VOID":
-        return "VOIDED"
-    return "SUPPRESSED"
+        return "SIGNAL INVALID"
+    return "VARIATION SUPPRESSED"
 
 
 def _authority_statement(authority_level: str) -> str:
@@ -35,6 +35,22 @@ def _authority_statement(authority_level: str) -> str:
     if authority_level == "VOID":
         return "Observed signal failed coherence checks."
     return "Observed variation is below confirmation threshold."
+
+
+def _supporting_line(authority_level: str, transition_type: str, risk_direction: str) -> str:
+    """Short supporting line explaining what happened, readable in 1-2 seconds."""
+    if authority_level == "ADMITTED":
+        if risk_direction == "DEGRADING":
+            return "System moving away from stable baseline."
+        elif risk_direction == "UNCERTAIN":
+            return "System change detected; direction forming."
+        return "System shows coherent transition."
+    if authority_level == "VOID":
+        return "Signal quality insufficient for judgment."
+    # SUPPRESSED
+    if risk_direction == "STABLE":
+        return "System remains stable within normal range."
+    return "No sustained change confirmed."
 
 
 def _confidence_label(raw_confidence: str | None) -> str:
@@ -153,6 +169,7 @@ def render_gate_decision_card(decision: dict[str, Any] | None) -> dict[str, Any]
         "label": _decision_label(authority_level),
         "authority_badge": authority_level,
         "authority_statement": _authority_statement(authority_level),
+        "supporting_line": _supporting_line(authority_level, transition_type, risk_direction),
         "confidence": _confidence_label(gate.get("confidence_label")),
         "transition_type": transition_type,
         "transition_intensity": intensity,

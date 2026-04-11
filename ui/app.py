@@ -202,6 +202,7 @@ def _render_gate_decision_html(gate_card: dict[str, Any]) -> str:
 
     label = escape(str(gate_card.get("label") or authority_level))
     authority_statement = escape(str(gate_card.get("authority_statement") or ""))
+    supporting_line = escape(str(gate_card.get("supporting_line") or ""))
     confidence = escape(str(gate_card.get("confidence") or "LOW"))
     transition_type = escape(str(gate_card.get("transition_type") or "STABLE"))
     risk_direction = escape(str(gate_card.get("risk_direction") or "UNCERTAIN"))
@@ -223,6 +224,7 @@ def _render_gate_decision_html(gate_card: dict[str, Any]) -> str:
 <div class="ner-panel ner-verdict-card" style="--verdict-accent:{accent};--verdict-badge:{badge};">
   <div class="ner-verdict-main">{label}</div>
   <div class="ner-verdict-subtitle">{authority_statement}</div>
+  <div class="ner-verdict-supporting">{supporting_line}</div>
   <div class="ner-chip-row">
     {_chip("Confidence", confidence)}
     {_chip("Phase", transition_type)}
@@ -389,10 +391,11 @@ def _render_system_context_html(system_zone: dict[str, Any]) -> str:
 
     header_html = (
         f'<div class="ner-panel-head">'
-        f'<span class="ner-eyebrow">Structural trajectory</span>'
-        f'<div class="ner-panel-meta">'
-        f'<span class="ner-chip-mini">{len(chart_points)} states</span>'
-        f'</div></div>'
+        f'<div style="display:flex;flex-direction:column;gap:2px;">'
+        f'<span class="ner-eyebrow">Replay telemetry</span>'
+        f'<span style="font-size:11px;color:#7c8ba8;">System path across {len(chart_points)} states · shows trajectory evidence</span>'
+        f'</div>'
+        f'</div>'
     )
 
     x = _f(current.get("x"), 0.0)
@@ -401,10 +404,10 @@ def _render_system_context_html(system_zone: dict[str, Any]) -> str:
     start_signal = _f(chart_points[0].get("y"), 0.0) if chart_points else 0.0
     context_row = (
         '<div class="ner-system-context-grid">'
-        f'<div><span class="ner-context-label">Signal</span><span class="ner-context-value">{y:.3f}</span></div>'
-        f'<div><span class="ner-context-label">Range</span><span class="ner-context-value">{start_signal:.3f} → {y:.3f}</span></div>'
-        f'<div><span class="ner-context-label">Phase</span><span class="ner-context-value">{phase_label}</span></div>'
-        f'<div><span class="ner-context-label">Index</span><span class="ner-context-value">{int(round(x * max(point_count - 1, 0)))} / {max(point_count - 1, 0)}</span></div>'
+        f'<div><span class="ner-context-label">Strength</span><span class="ner-context-value">{y:.3f}</span></div>'
+        f'<div><span class="ner-context-label">Trajectory</span><span class="ner-context-value">{start_signal:.3f} → {y:.3f}</span></div>'
+        f'<div><span class="ner-context-label">Regime</span><span class="ner-context-value">{phase_label}</span></div>'
+        f'<div><span class="ner-context-label">Position</span><span class="ner-context-value">{int(round(x * max(point_count - 1, 0)))} / {max(point_count - 1, 0)}</span></div>'
         '</div>'
     )
 
