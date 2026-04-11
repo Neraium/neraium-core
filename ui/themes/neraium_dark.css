@@ -75,9 +75,12 @@ footer {
 .ner-panel {
   border: 1px solid var(--line);
   border-radius: 8px;
-  padding: 22px 24px;
+  padding: 20px 24px;
   background: linear-gradient(180deg, rgba(10, 17, 30, 0.92), rgba(6, 11, 20, 0.92));
   margin-top: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
 .ner-eyebrow {
@@ -94,29 +97,64 @@ footer {
 }
 
 .ner-verdict-main {
-  margin-top: 10px;
-  font-size: 72px;
-  line-height: 0.95;
-  letter-spacing: 0.02em;
-  font-weight: 900;
-  color: #f4fbff;
+  margin-top: 0;
+  font-size: 26px;
+  line-height: 1.2;
+  letter-spacing: 0.5px;
+  font-weight: 700;
+  color: #FFFFFF;
   word-break: break-word;
   overflow-wrap: break-word;
 }
 
-.ner-verdict-subtitle { margin-top: 14px; font-size: 19px; color: #e8f0ff; font-weight: 640; max-width: 55ch; line-height: 1.35; }
+.ner-verdict-subtitle {
+  margin-top: 8px;
+  font-size: 15px;
+  color: #FFFFFF;
+  font-weight: 500;
+  max-width: 90ch;
+  line-height: 1.5;
+}
 
-.ner-chip-row { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 18px; }
+.ner-verdict-supporting {
+  margin-top: 8px;
+  font-size: 14px;
+  color: #E0E7FF;
+  line-height: 1.6;
+}
+
+.ner-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 16px;
+}
+
 .ner-chip {
-  border: 1px solid rgba(146, 186, 247, 0.72);
-  background: rgba(28, 43, 72, 0.90);
-  padding: 7px 13px;
-  border-radius: 999px;
+  border: 1px solid var(--chip-accent);
+  background: rgba(28, 43, 72, 0.95);
+  padding: 8px 14px;
+  border-radius: 6px;
   display: inline-flex;
   gap: 8px;
+  align-items: center;
 }
-.ner-chip-label { font-size: 11px; color: #c5d9f8; letter-spacing: 0.04em; text-transform: none; font-weight: 600; }
-.ner-chip-value { font-size: 13px; color: #f0f7ff; letter-spacing: 0.02em; text-transform: none; font-weight: 800; }
+
+.ner-chip-label {
+  font-size: 11px;
+  color: #c5d9f8;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  font-weight: 700;
+}
+
+.ner-chip-value {
+  font-size: 12px;
+  color: #f0f7ff;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  font-weight: 800;
+}
 
 .ner-verdict-projection {
   margin-top: 10px;
@@ -157,17 +195,36 @@ footer {
 .ner-reason-copy { font-size: 14px; line-height: 1.55; color: #e2ecff; max-width: 90ch; }
 .ner-reason-gate-row { display: flex; flex-wrap: wrap; gap: 9px; align-items: center; }
 .ner-subtle { color: #c2d3ef; font-size: 13px; }
-.ner-core-lines { display: flex; flex-direction: column; gap: 10px; margin-top: 14px; }
-.ner-core-line {
-  display: grid;
-  grid-template-columns: 110px 1fr;
+.ner-core-lines {
+  display: flex;
+  flex-direction: column;
   gap: 14px;
-  align-items: start;
-  padding: 10px 0;
-  border-bottom: 1px solid rgba(126, 160, 210, 0.30);
+  margin-top: 0;
 }
-.ner-core-line span { font-size: 12px; letter-spacing: 0.04em; color: #bdd0ef; font-weight: 700; }
-.ner-core-line strong { font-size: 16px; line-height: 1.6; color: #f0f7ff; font-weight: 600; }
+
+.ner-core-line {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  align-items: start;
+  padding: 0;
+  border-bottom: none;
+}
+
+.ner-core-line span {
+  font-size: 12px;
+  letter-spacing: 0.05em;
+  color: #8b92a1;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.ner-core-line strong {
+  font-size: 14px;
+  line-height: 1.5;
+  color: #E0E7FF;
+  font-weight: 500;
+}
 .ner-more-detail { margin-top: 14px; padding: 10px 12px; border: 1px solid rgba(126, 160, 210, 0.34); border-radius: 6px; background: rgba(4, 10, 20, 0.6); }
 .ner-more-detail summary { cursor: pointer; font-size: 12px; color: #bfd2ef; margin-bottom: 8px; }
 .ner-more-detail ul { margin: 8px 0 0 18px; color: #d6e4fb; line-height: 1.5; }

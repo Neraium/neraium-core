@@ -206,12 +206,20 @@ def create_ui_model(data):
 
 
 def _render_gate_decision_html(gate_card: dict[str, Any]) -> str:
+    """Render the verdict/gate decision card with maximum visual authority.
+
+    Uses:
+    - Pure white text on darker backgrounds for contrast
+    - Larger fonts for readability
+    - Clear visual hierarchy
+    - System terminology for clarity
+    """
     authority_level = str(gate_card.get("authority_level") or "VOID").upper()
     style = {
-        "SUPPRESSED": {"accent": "#ffb66e", "badge": "#ff9a3d"},
-        "ADMITTED": {"accent": "#62eaff", "badge": "#2ecbff"},
-        "VOID": {"accent": "#8ea4ff", "badge": "#8ea4ff"},
-    }.get(authority_level, {"accent": "#8ea4ff", "badge": "#8ea4ff"})
+        "SUPPRESSED": {"accent": "#FB923C", "badge": "#FB923C", "bg": "rgba(251, 146, 60, 0.12)"},
+        "ADMITTED": {"accent": "#10B981", "badge": "#10B981", "bg": "rgba(16, 185, 129, 0.12)"},
+        "VOID": {"accent": "#A78BFA", "badge": "#A78BFA", "bg": "rgba(167, 139, 250, 0.12)"},
+    }.get(authority_level, {"accent": "#8ea4ff", "badge": "#8ea4ff", "bg": "rgba(142, 164, 255, 0.08)"})
 
     label = escape(str(gate_card.get("label") or authority_level))
     authority_statement = escape(str(gate_card.get("authority_statement") or ""))
@@ -241,32 +249,172 @@ def _render_gate_decision_html(gate_card: dict[str, Any]) -> str:
     ts_display = escape(ts_raw[:19].replace("T", " ")) if ts_raw else "—"
     doctrine_version = escape(str(gate_card.get("doctrine_version") or "—"))
 
-    def _chip(label_text: str, value: str) -> str:
+    def _chip(label_text: str, value: str, accent_color: str) -> str:
+        """Render a higher-contrast information chip."""
         return (
-            f'<span class="ner-chip">'
+            f'<span class="ner-chip" style="--chip-accent:{accent_color};">'
             f'<span class="ner-chip-label">{escape(label_text)}</span>'
             f'<span class="ner-chip-value">{escape(value)}</span>'
             f"</span>"
         )
 
     accent = style["accent"]
-    badge = style["badge"]
+    bg = style["bg"]
     return f"""
-<div class="ner-panel ner-verdict-card" style="--verdict-accent:{accent};--verdict-badge:{badge};">
-  <div class="ner-verdict-main">{label}</div>
-  <div class="ner-verdict-subtitle">{authority_statement}</div>
-  <div class="ner-verdict-supporting">{supporting_line}</div>
-  <div class="ner-chip-row">
-    {_chip("Confidence", confidence)}
-    {_chip("Phase", transition_type)}
-    {_chip("Risk", risk_direction)}
+<div class="ner-panel ner-verdict-card" style="--verdict-accent:{accent};background-color:{bg};border-color:{accent};">
+  <div class="ner-verdict-main" style="color:#FFFFFF;font-size:26px;font-weight:700;letter-spacing:0.5px;margin-bottom:12px;">{label}</div>
+  <div class="ner-verdict-subtitle" style="color:#FFFFFF;font-size:15px;font-weight:500;line-height:1.5;margin-bottom:8px;">{authority_statement}</div>
+  <div class="ner-verdict-supporting" style="color:#E0E7FF;font-size:14px;line-height:1.6;margin-bottom:16px;">{supporting_line}</div>
+  <div class="ner-chip-row" style="display:flex;gap:12px;margin-bottom:16px;">
+    {_chip("Confidence", confidence, accent)}
+    {_chip("Phase", transition_type, accent)}
+    {_chip("Risk", risk_direction, accent)}
   </div>
-  <div class="ner-meta-row">
-    <span style="font-size:11px;color:#4e6580;">{ts_display}</span>
-    <span style="font-size:11px;color:#4e6580;">Engine {doctrine_version}</span>
+  <div class="ner-meta-row" style="display:flex;justify-content:space-between;font-size:12px;color:#9CA3AF;">
+    <span>{ts_display}</span>
+    <span>Engine {doctrine_version}</span>
   </div>
 </div>
 """.strip()
+
+
+def _render_system_geometry_html(system_zone: dict[str, Any]) -> str:
+    """Render structural geometry visualization as SVG.
+
+    Shows nodes (sensors) and edges (relationships) with deformation indicating
+    system stability vs. drift. Replaces the old line chart.
+    """
+    content = system_zone.get("content") if isinstance(system_zone, dict) else {}
+    if not isinstance(content, dict):
+        content = {}
+
+    # Extract geometry data
+    nodes = content.get("nodes", []) if isinstance(content.get("nodes"), list) else []
+    edges = content.get("edges", []) if isinstance(content.get("edges"), list) else []
+    metrics = content.get("metrics", {}) if isinstance(content.get("metrics"), dict) else {}
+    phase_visual = content.get("phase_visual", {}) if isinstance(content.get("phase_visual"), dict) else {}
+
+    drift_intensity = float(metrics.get("drift_intensity", 0.0))
+    stability = float(metrics.get("stability", 1.0))
+
+    # Canvas dimensions
+    W, H = 900, 350
+    PX, PY = 56, 46
+    IW, IH = W - 2 * PX, H - 2 * PY
+
+    def scale_x(x: float) -> float:
+        """Normalize x from [0, 1] to canvas coordinates."""
+        return PX + float(x or 0.5) * IW
+
+    def scale_y(y: float) -> float:
+        """Normalize y from [0, 1] to canvas coordinates (inverted)."""
+        return PY + IH - (float(y or 0.5) * IH)
+
+    parts = []
+
+    # Background and gradient
+    parts.append(
+        f'<defs>'
+        f'<radialGradient id="geom_bg" cx="50%" cy="50%" r="70%">'
+        f'<stop offset="0%" stop-color="#11183A" stop-opacity="0.8"/>'
+        f'<stop offset="100%" stop-color="#05070F" stop-opacity="0.95"/>'
+        f'</radialGradient>'
+        f'<style>'
+        f'.geom-node {{fill: {phase_visual.get("color_accent", "#60A5FA")}; opacity: 0.88;}}'
+        f'.geom-edge {{stroke: {phase_visual.get("color_accent", "#60A5FA")}; stroke-opacity: 0.42;}}'
+        f'.geom-label {{fill: #cbd5e1; font-size: 10px; font-weight: 600;}}'
+        f'</style>'
+        f'</defs>'
+    )
+
+    # Draw background
+    parts.append(f'<rect x="{PX}" y="{PY}" width="{IW}" height="{IH}" fill="url(#geom_bg)" rx="4"/>')
+
+    # Draw edges (relationships)
+    if edges:
+        for edge in edges:
+            if not isinstance(edge, dict):
+                continue
+            x1 = scale_x(float(edge.get("x1", 0.5)))
+            y1 = scale_y(float(edge.get("y1", 0.5)))
+            x2 = scale_x(float(edge.get("x2", 0.5)))
+            y2 = scale_y(float(edge.get("y2", 0.5)))
+            opacity = float(edge.get("opacity", 0.3))
+            parts.append(
+                f'<line x1="{x1:.1f}" y1="{y1:.1f}" x2="{x2:.1f}" y2="{y2:.1f}" '
+                f'class="geom-edge" stroke-width="1.2" opacity="{opacity:.3f}"/>'
+            )
+
+    # Draw nodes (sensors)
+    if nodes:
+        for node in nodes:
+            if not isinstance(node, dict):
+                continue
+            x = scale_x(float(node.get("x", 0.5)))
+            y = scale_y(float(node.get("y", 0.5)))
+            label = escape(str(node.get("label", "?")))
+            radius = 5.5 + drift_intensity * 2.0  # Radius increases with drift
+
+            # Glow effect for node
+            glow_radius = radius + 3.0
+            parts.append(
+                f'<circle cx="{x:.1f}" cy="{y:.1f}" r="{glow_radius:.1f}" '
+                f'fill="{phase_visual.get("color_accent", "#60A5FA")}" '
+                f'opacity="{0.15 * (1.0 - drift_intensity):.3f}"/>'
+            )
+
+            # Node circle
+            parts.append(
+                f'<circle cx="{x:.1f}" cy="{y:.1f}" r="{radius:.1f}" '
+                f'class="geom-node" stroke="{phase_visual.get("color_accent", "#60A5FA")}" '
+                f'stroke-width="1.5" stroke-opacity="0.72"/>'
+            )
+
+            # Node label
+            parts.append(
+                f'<text x="{x:.1f}" y="{y + 3:.1f}" text-anchor="middle" '
+                f'class="geom-label">{label}</text>'
+            )
+
+    # Border
+    parts.append(f'<rect x="{PX}" y="{PY}" width="{IW}" height="{IH}" fill="none" '
+                 f'stroke="rgba(147,197,253,0.35)" stroke-width="1" rx="4"/>')
+
+    # Axes labels
+    parts.append(f'<text x="{PX - 8}" y="{PY - 8}" fill="rgba(203,213,225,0.8)" '
+                 f'font-size="11" text-anchor="end" font-weight="600">Structure</text>')
+    parts.append(f'<text x="{PX + IW + 8}" y="{PY + IH + 20}" fill="rgba(203,213,225,0.8)" '
+                 f'font-size="11" text-anchor="start" font-weight="600">Deformation ↑</text>')
+
+    svg_body = "\n".join(parts)
+    svg_html = f'<svg class="ner-system-canvas" viewBox="0 0 {W} {H}" width="100%">\n{svg_body}\n</svg>'
+
+    # Metrics row
+    metrics_html = (
+        f'<div class="ner-system-context-grid">'
+        f'<div><span class="ner-context-label">Structure</span><span class="ner-context-value">{stability:.2f}</span></div>'
+        f'<div><span class="ner-context-label">Deformation</span><span class="ner-context-value">{drift_intensity:.2f}</span></div>'
+        f'<div><span class="ner-context-label">Phase</span><span class="ner-context-value">{phase_visual.get("tone", "coherent").upper()}</span></div>'
+        f'<div><span class="ner-context-label">Nodes</span><span class="ner-context-value">{len(nodes)}</span></div>'
+        f'</div>'
+    )
+
+    header_html = (
+        f'<div class="ner-panel-head">'
+        f'<div style="display:flex;flex-direction:column;gap:3px;">'
+        f'<span class="ner-eyebrow">System Geometry</span>'
+        f'<span style="font-size:11px;color:#7c8ba8;">Network structure shows stability; deformation indicates drift</span>'
+        f'</div>'
+        f'</div>'
+    )
+
+    return (
+        f'<div class="ner-panel ner-system-panel">'
+        f'{header_html}'
+        f'{svg_html}'
+        f'{metrics_html}'
+        f'</div>'
+    )
 
 
 def _render_system_context_html(system_zone: dict[str, Any]) -> str:
@@ -452,6 +600,12 @@ def _render_system_context_html(system_zone: dict[str, Any]) -> str:
 
 
 def _render_reasoning_html(reasoning_panel: dict[str, Any]) -> str:
+    """Render reasoning panel with improved clarity and readability.
+
+    Displays 3 clear lines: Observed, Assessment, Implication.
+    Each is fully visible with no truncation or clipping.
+    Uses larger fonts and better spacing for better readability.
+    """
     panel = reasoning_panel if isinstance(reasoning_panel, dict) else {}
     facts = panel.get("observed_facts")
     if not isinstance(facts, list):
@@ -477,42 +631,47 @@ def _render_reasoning_html(reasoning_panel: dict[str, Any]) -> str:
     assessment_source = grounded_text or insufficient_text or "No assessment available."
     implication_source = escape(str(panel.get("operational_implication") or "No implication available."))
 
-    def _one_line(text: str) -> str:
-        value = text.strip()
-        if len(value) > 120:
-            value = f"{value[:117].rstrip()}..."
-        return value
-
-    observed_line = _one_line(observed)
-    assessment_line = _one_line(escape(assessment_source))
-    implication_line = _one_line(implication_source)
+    # Full lines, no truncation - ensure they're readable
+    observed_line = observed
+    assessment_line = escape(assessment_source)
+    implication_line = implication_source
 
     core_lines = (
-        f'<div class="ner-core-lines">'
-        f'<div class="ner-core-line"><span>Observed</span><strong>{observed_line}</strong></div>'
-        f'<div class="ner-core-line"><span>Assessment</span><strong>{assessment_line}</strong></div>'
-        f'<div class="ner-core-line"><span>Implication</span><strong>{implication_line}</strong></div>'
+        f'<div class="ner-core-lines" style="display:flex;flex-direction:column;gap:14px;">'
+        f'<div class="ner-core-line" style="display:flex;flex-direction:column;gap:4px;">'
+        f'<span style="font-size:12px;font-weight:600;color:#8b92a1;text-transform:uppercase;letter-spacing:0.05em;">Observed</span>'
+        f'<strong style="font-size:14px;color:#E0E7FF;line-height:1.5;font-weight:500;">{observed_line}</strong>'
+        f'</div>'
+        f'<div class="ner-core-line" style="display:flex;flex-direction:column;gap:4px;">'
+        f'<span style="font-size:12px;font-weight:600;color:#8b92a1;text-transform:uppercase;letter-spacing:0.05em;">Assessment</span>'
+        f'<strong style="font-size:14px;color:#E0E7FF;line-height:1.5;font-weight:500;">{assessment_line}</strong>'
+        f'</div>'
+        f'<div class="ner-core-line" style="display:flex;flex-direction:column;gap:4px;">'
+        f'<span style="font-size:12px;font-weight:600;color:#8b92a1;text-transform:uppercase;letter-spacing:0.05em;">Implication</span>'
+        f'<strong style="font-size:14px;color:#E0E7FF;line-height:1.5;font-weight:500;">{implication_line}</strong>'
+        f'</div>'
         f'</div>'
     )
 
-    details_items = "".join(f"<li>{escape(str(f))}</li>" for f in facts[1:] if f)
+    details_items = "".join(f"<li style='font-size:13px;line-height:1.6;color:#cbd5e1;'>{escape(str(f))}</li>" for f in facts[1:] if f)
     details_html = (
-        f'<details class="ner-more-detail"><summary>More detail</summary>'
-        f'<div class="ner-reason-copy">{escape(grounded_text or insufficient_text or "")}</div>'
-        f'<div class="ner-reason-copy">{op_impl}</div>'
-        f'<ul>{details_items}</ul>'
+        f'<details class="ner-more-detail" style="margin-top:12px;">'
+        f'<summary style="cursor:pointer;font-size:12px;color:#60A5FA;font-weight:600;">More detail</summary>'
+        f'<div class="ner-reason-copy" style="margin-top:8px;font-size:13px;color:#cbd5e1;line-height:1.6;overflow-y:auto;max-height:200px;">{escape(grounded_text or insufficient_text or "")}</div>'
+        f'<ul style="margin-top:8px;padding-left:16px;">{details_items}</ul>'
         f"</details>"
     )
 
     return (
-        f'<div class="ner-panel">'
-        f'<div class="ner-eyebrow">Reasoning</div>'
+        f'<div class="ner-panel" style="padding:20px;display:flex;flex-direction:column;gap:12px;">'
+        f'<div class="ner-eyebrow" style="font-size:12px;font-weight:600;color:#8b92a1;text-transform:uppercase;letter-spacing:0.05em;">Reasoning</div>'
         f'{core_lines}{details_html}'
         f'</div>'
     )
 
 
 def _render_record_html(record_panel: dict[str, Any]) -> str:
+    """Render evidence/record panel with improved spacing and scanability."""
     panel = record_panel if isinstance(record_panel, dict) else {}
     entries = panel.get("entries")
     if not isinstance(entries, list):
@@ -570,17 +729,18 @@ def _render_record_html(record_panel: dict[str, Any]) -> str:
         transition_color = transition_colors.get(raw_transition, "#4B5563")
 
         return (
-            f'<div class="ner-record-card" style="--card-border:{st["border"]};--card-bg:{st["bg"]};">'
-            f'<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">'
-            f'<span style="font-size:11px;font-weight:700;color:{st["ts_color"]};font-variant-numeric:tabular-nums;">{ts}</span>'
-            f'<span style="font-size:10px;font-weight:800;padding:2px 8px;border-radius:999px;'
+            f'<div class="ner-record-card" style="border:1px solid {st["border"]};background-color:{st["bg"]};'
+            f'padding:12px 14px;border-radius:6px;margin-bottom:10px;display:flex;flex-direction:column;gap:8px;">'
+            f'<div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">'
+            f'<span style="font-size:12px;font-weight:700;color:{st["ts_color"]};font-variant-numeric:tabular-nums;">{ts}</span>'
+            f'<span style="font-size:11px;font-weight:800;padding:3px 10px;border-radius:999px;'
             f'background:{st["badge_bg"]};color:{st["badge_text"]};border:1px solid {st["badge_border"]};'
-            f'letter-spacing:0.07em;">{decision_text}</span>'
-            f'<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:999px;'
+            f'letter-spacing:0.07em;text-transform:uppercase;">{decision_text}</span>'
+            f'<span style="font-size:11px;font-weight:700;padding:3px 10px;border-radius:999px;'
             f'background:rgba(255,255,255,0.04);color:{transition_color};'
-            f'border:1px solid {transition_color}33;letter-spacing:0.05em;">{escape(raw_transition)}</span>'
+            f'border:1px solid {transition_color}40;letter-spacing:0.05em;text-transform:uppercase;">{escape(raw_transition)}</span>'
             f'</div>'
-            f'<div style="font-size:13px;line-height:1.45;color:#E5EDFF;margin-top:7px;">{summary}</div>'
+            f'<div style="font-size:13px;line-height:1.6;color:#E5EDFF;margin-top:2px;">{summary}</div>'
             f'</div>'
         )
 
@@ -588,23 +748,24 @@ def _render_record_html(record_panel: dict[str, Any]) -> str:
         cards_html = "".join(_entry_card(e) for e in entries if isinstance(e, dict))
     else:
         cards_html = (
-            '<div style="margin-top:10px;font-size:13px;color:#4B5563;font-style:italic;">'
+            '<div style="margin-top:12px;padding:12px 14px;font-size:13px;color:#6B7280;'
+            'background:rgba(107,114,128,0.06);border-radius:4px;border-left:2px solid #6B7280;">'
             'No evidence entries recorded.</div>'
         )
 
     return (
-        f'<div class="ner-panel">'
-        f'<div class="ner-eyebrow">Evidence</div>'
-        f'{cards_html}'
+        f'<div class="ner-panel" style="padding:20px;display:flex;flex-direction:column;gap:8px;">'
+        f'<div class="ner-eyebrow" style="font-size:12px;font-weight:600;color:#8b92a1;text-transform:uppercase;letter-spacing:0.05em;">Evidence</div>'
+        f'<div style="display:flex;flex-direction:column;gap:0;">{cards_html}</div>'
         f'</div>'
     )
 
 
 
 def _render_verdict_surface_html(gate_card: dict[str, Any], system_zone: dict[str, Any]) -> str:
-    """Merge verdict card and trajectory into one visually connected surface."""
+    """Merge verdict card and system geometry into one visually connected surface."""
     gate_html = _render_gate_decision_html(gate_card)
-    system_html = _render_system_context_html(system_zone)
+    system_html = _render_system_geometry_html(system_zone)
     return f'<div class="ner-verdict-surface">{gate_html}{system_html}</div>'
 
 

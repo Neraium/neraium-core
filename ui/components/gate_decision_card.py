@@ -23,7 +23,7 @@ def _authority_level(decision: str | None) -> str:
 
 def _decision_label(authority_level: str) -> str:
     if authority_level == "ADMITTED":
-        return "COHERENT CHANGE DETECTED"
+        return "COHERENT SYSTEM CHANGE DETECTED"
     if authority_level == "VOID":
         return "SIGNAL INVALID"
     return "VARIATION SUPPRESSED"
@@ -38,19 +38,25 @@ def _authority_statement(authority_level: str) -> str:
 
 
 def _supporting_line(authority_level: str, transition_type: str, risk_direction: str) -> str:
-    """Short supporting line explaining what happened, readable in 1-2 seconds."""
+    """Short supporting line explaining what happened, readable in 1-2 seconds.
+
+    Uses clear, authoritative language:
+    - Change Intensity: magnitude of system movement
+    - System Movement: detected directional shift
+    - System Change: the actual transition event
+    """
     if authority_level == "ADMITTED":
         if risk_direction == "DEGRADING":
-            return "System moving away from stable baseline."
+            return "System moving away from baseline. Change intensity increasing."
         elif risk_direction == "UNCERTAIN":
-            return "System change detected; direction forming."
-        return "System shows coherent transition."
+            return "System change confirmed; direction stabilizing."
+        return "Coherent system change with stable trajectory."
     if authority_level == "VOID":
-        return "Signal quality insufficient for judgment."
+        return "Insufficient signal integrity for determination."
     # SUPPRESSED
     if risk_direction == "STABLE":
-        return "System remains stable within normal range."
-    return "No sustained change confirmed."
+        return "System remains within normal operating baseline."
+    return "No sustained system movement detected."
 
 
 def _confidence_label(raw_confidence: str | None) -> str:
