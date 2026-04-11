@@ -30,6 +30,7 @@ def build_operations_view(
     state: SystemState,
     *,
     width_px: int = 1440,
+    records: list[dict[str, Any]] | None = None,
     reasoning_context: dict[str, Any] | None = None,
     operator_question: str = "What is admissible right now?",
     gate_decision: dict[str, Any] | None = None,
@@ -70,7 +71,7 @@ def build_operations_view(
                 "role": "supporting_context",
                 "visual_emphasis": "secondary",
                 "brightness": "55%",
-                "content": render_structural_flow_viz(state, gate_decision=gate),
+                "content": render_structural_flow_viz(state, gate_decision=gate, records=records),
                 "timeline_strip": _timeline_strip(state, gate),
             },
             "reasoning": {
