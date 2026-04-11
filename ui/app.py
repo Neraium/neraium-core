@@ -280,7 +280,11 @@ def _render_system_context_html(system_zone: dict[str, Any]) -> str:
         for idx, point in enumerate(points):
             if not isinstance(point, dict):
                 continue
-            t_norm = idx / max(path_len - 1, 1)
+            point_idx = idx
+            t_value = point.get("t")
+            if isinstance(t_value, (int, float)):
+                point_idx = int(max(0, min(path_len - 1, int(t_value))))
+            t_norm = point_idx / max(path_len - 1, 1)
             drift = _cl(_f(point.get("x"), 0.0), 0.0, 1.0)
             mapped.append({**point, "x": t_norm, "y": drift})
         return mapped

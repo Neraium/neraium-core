@@ -2,8 +2,8 @@ from __future__ import annotations
 
 import csv
 import json
+import math
 import runpy
-import csv
 from csv import DictReader
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -22,10 +22,26 @@ def _clamp(value: float, low: float = 0.0, high: float = 1.0) -> float:
     return max(low, min(high, float(value)))
 
 
+def _is_numeric_string(value: str) -> bool:
+    try:
+        float(value)
+    except (TypeError, ValueError):
+        return False
+    return True
+
+
 def _normalize_sensor_values(sensor_values: Any) -> dict[str, float]:
     if not isinstance(sensor_values, dict):
         return {}
-    return {str(key): float(value) for key, value in sensor_values.items() if isinstance(value, (int, float))}
+    normalized: dict[str, float] = {}
+    for key, value in sensor_values.items():
+        if not isinstance(value, (int, float)):
+            continue
+        numeric = float(value)
+        if not math.isfinite(numeric):
+            continue
+        normalized[str(key)] = numeric
+    return normalized
 
 
 def _health_from_drift(drift: float) -> str:
@@ -100,17 +116,23 @@ def _normalize_records(rows: Iterable[dict[str, Any]], *, limit: int | None) -> 
 
 def _coerce_float(value: Any, default: float = 0.0) -> float:
     try:
-        return float(value)
+        parsed = float(value)
     except (TypeError, ValueError):
         return default
+    if not math.isfinite(parsed):
+        return default
+    return parsed
 
 
 def _normalize_timestamp(value: Any, index: int, base_time: datetime) -> str:
     try:
-        if isinstance(value, (int, float)):
-            # greenhouse_results_turbo uses Excel-style serial day values.
-            return (datetime(1899, 12, 30, tzinfo=timezone.utc) + timedelta(days=float(value))).isoformat()
         raw = str(value or "").strip()
+        if isinstance(value, (int, float)):
+            return (datetime(1899, 12, 30, tzinfo=timezone.utc) + timedelta(days=float(value))).isoformat()
+        if raw and _is_numeric_string(raw):
+            serial = float(raw)
+            if math.isfinite(serial):
+                return (datetime(1899, 12, 30, tzinfo=timezone.utc) + timedelta(days=serial)).isoformat()
         if raw:
             return datetime.fromisoformat(raw.replace("Z", "+00:00")).astimezone(timezone.utc).isoformat()
     except (TypeError, ValueError):
@@ -131,7 +153,70 @@ def _resolve_turbo_source() -> Path | None:
     return None
 
 
-def _load_rows_from_turbo_results(*, limit: int | None) -> list[dict[str, Any]]:
+def _parse_sensor_values_from_row(row: dict[str, Any]) -> dict[str, float]:
+    sensor_values: dict[str, float] = {}
+    non_sensor_cols = {
+        "timestamp", "site_id", "asset_id", "state", "regime_name", "interpreted_state", "system_health", "risk_level",
+        "signal_emitted", "event_admitted", "confidence", "confidence_score", "structural_drift_score", "relational_stability_score",
+        "explanation", "explanation_text", "operator_message",
+    }
+    for col, value in row.items():
+        if col in non_sensor_cols:
+            continue
+        if not value or not _is_numeric_string(str(value)):
+            continue
+        numeric = float(value)
+        if not math.isfinite(numeric):
+            continue
+        sensor_values[col] = numeric
+    return sensor_values
+
+
+def _normalize_engine_result(result: dict[str, Any], frame: dict[str, Any]) -> dict[str, Any]:
+    drift = _clamp(_coerce_float(result.get("structural_drift_score"), _coerce_float(result.get("drift_score"), 0.0)))
+    stability = _clamp(_coerce_float(result.get("relational_stability_score"), _coerce_float(result.get("stability_score"), 1.0)))
+    confidence = _clamp(
+        _coerce_float(
+            result.get("confidence_score"),
+            _coerce_float(result.get("confidence"), _clamp(0.62 + drift * 0.3)),
+        )
+    )
+    admitted_raw = str(result.get("signal_emitted") or result.get("event_admitted") or "").strip().lower()
+    admitted = admitted_raw in {"true", "1", "yes", "admit", "admitted"} or (drift >= 0.55 and stability <= 0.45)
+    return {
+        **result,
+        "timestamp": frame["timestamp"],
+        "site_id": frame["site_id"],
+        "asset_id": frame["asset_id"],
+        "sensor_values": frame["sensor_values"],
+        "state": str(result.get("state") or _state_from_drift(drift)),
+        "regime_name": str(result.get("regime_name") or result.get("interpreted_state") or result.get("state") or "greenhouse_demo"),
+        "structural_drift_score": round(drift, 6),
+        "relational_stability_score": round(stability, 6),
+        "system_health": str(result.get("risk_level") or result.get("system_health") or _health_from_drift(drift)).lower(),
+        "confidence_score": round(confidence, 6),
+        "event_admitted": bool(admitted),
+        "evidence_summary": str(
+            result.get("explanation_text")
+            or result.get("explanation")
+            or result.get("operator_message")
+            or "Processed telemetry replayed through StructuralEngine."
+        ).strip(),
+    }
+
+
+def _run_structural_replay(frames: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    engine = StructuralEngine()
+    records: list[dict[str, Any]] = []
+    for frame in frames:
+        result = engine.process_frame(frame)
+        if not isinstance(result, dict):
+            continue
+        records.append(_normalize_engine_result(result, frame))
+    return records
+
+
+def _load_rows_from_turbo_results(*, limit: int | None, curated: bool) -> list[dict[str, Any]]:
     source = _resolve_turbo_source()
     if source is None:
         return []
@@ -145,39 +230,52 @@ def _load_rows_from_turbo_results(*, limit: int | None) -> list[dict[str, Any]]:
         raw_rows = raw_rows[:limit]
 
     base_time = datetime.now(timezone.utc) - timedelta(minutes=max(1, len(raw_rows)))
-    normalized: list[dict[str, Any]] = []
+    if curated:
+        normalized: list[dict[str, Any]] = []
+        for idx, row in enumerate(raw_rows):
+            drift = _clamp(_coerce_float(row.get("structural_drift_score")))
+            stability = _clamp(_coerce_float(row.get("relational_stability_score"), 1.0))
+            confidence = _clamp(_coerce_float(row.get("confidence_score"), _coerce_float(row.get("confidence"), 0.6)))
+            regime_name = str(row.get("regime_name") or row.get("interpreted_state") or row.get("state") or "greenhouse_demo")
+            evidence = str(row.get("explanation_text") or row.get("explanation") or row.get("operator_message") or "").strip()
+            admitted_raw = str(row.get("signal_emitted") or row.get("event_admitted") or "").strip().lower()
+            admitted = admitted_raw in {"true", "1", "yes", "admit", "admitted"} or (drift >= 0.55 and stability <= 0.45)
+            if admitted and not evidence:
+                evidence = "Processed transition evidence exceeded gate threshold."
+            if not evidence:
+                evidence = "Processed telemetry ingested from greenhouse_results_turbo."
+            normalized.append(
+                {
+                    "timestamp": _normalize_timestamp(row.get("timestamp"), idx, base_time),
+                    "site_id": str(row.get("site_id") or "grow-house"),
+                    "asset_id": str(row.get("asset_id") or "zone-A"),
+                    "state": str(row.get("state") or _state_from_drift(drift)),
+                    "regime_name": regime_name,
+                    "structural_drift_score": round(drift, 6),
+                    "relational_stability_score": round(stability, 6),
+                    "system_health": str(row.get("risk_level") or row.get("system_health") or _health_from_drift(drift)).lower(),
+                    "confidence_score": round(confidence, 6),
+                    "event_admitted": bool(admitted),
+                    "evidence_summary": evidence,
+                    "sensor_values": _parse_sensor_values_from_row(row),
+                }
+            )
+        normalized.sort(key=lambda entry: str(entry.get("timestamp") or ""))
+        return normalized
+
+    replay_frames: list[dict[str, Any]] = []
     for idx, row in enumerate(raw_rows):
-        drift = _clamp(_coerce_float(row.get("structural_drift_score")))
-        stability = _clamp(_coerce_float(row.get("relational_stability_score"), 1.0))
-        confidence = _clamp(_coerce_float(row.get("confidence_score"), _coerce_float(row.get("confidence"), 0.6)))
-        regime_name = str(row.get("regime_name") or row.get("interpreted_state") or row.get("state") or "greenhouse_demo")
-        evidence = str(row.get("explanation_text") or row.get("explanation") or row.get("operator_message") or "").strip()
-
-        admitted_raw = str(row.get("signal_emitted") or row.get("event_admitted") or "").strip().lower()
-        admitted = admitted_raw in {"true", "1", "yes", "admit", "admitted"} or (drift >= 0.55 and stability <= 0.45)
-        if admitted and not evidence:
-            evidence = "Processed transition evidence exceeded gate threshold."
-        if not evidence:
-            evidence = "Processed telemetry ingested from greenhouse_results_turbo."
-
-        normalized.append(
+        replay_frames.append(
             {
                 "timestamp": _normalize_timestamp(row.get("timestamp"), idx, base_time),
                 "site_id": str(row.get("site_id") or "grow-house"),
                 "asset_id": str(row.get("asset_id") or "zone-A"),
-                "state": str(row.get("state") or _state_from_drift(drift)),
-                "regime_name": regime_name,
-                "structural_drift_score": round(drift, 6),
-                "relational_stability_score": round(stability, 6),
-                "system_health": str(row.get("risk_level") or row.get("system_health") or _health_from_drift(drift)).lower(),
-                "confidence_score": round(confidence, 6),
-                "event_admitted": bool(admitted),
-                "evidence_summary": evidence,
-                "sensor_values": {},
+                "sensor_values": _parse_sensor_values_from_row(row),
             }
         )
-    normalized.sort(key=lambda entry: str(entry.get("timestamp") or ""))
-    return normalized
+    replayed = _run_structural_replay(replay_frames)
+    replayed.sort(key=lambda entry: str(entry.get("timestamp") or ""))
+    return replayed
 
 
 def _extract_rows_from_script_scope(scope: dict[str, Any], *, limit: int | None) -> list[dict[str, Any]]:
@@ -250,15 +348,11 @@ def _load_rows_from_greenhouse_scenario(*, limit: int | None) -> list[dict[str, 
     return _normalize_records(rows, limit=limit)
 
 
-def load_greenhouse_demo_bundle(*, limit: int | None = 180, curated: bool = True) -> tuple[list[dict[str, Any]], str]:
-    """Load UI-ready greenhouse replay rows and the source label used to produce them."""
-    del curated  # Compatibility shim; curated slicing is no longer applied for turbo/script/scenario data.
-
-    turbo = _load_rows_from_turbo_results(limit=limit)
+def load_greenhouse_demo_bundle(*, limit: int | None = 320, curated: bool = True) -> tuple[list[dict[str, Any]], str]:
+    turbo = _load_rows_from_turbo_results(limit=limit, curated=curated)
     if turbo:
         source = _resolve_turbo_source()
-        source_label = str(source.relative_to(REPO_ROOT)) if source is not None else "greenhouse_results_turbo.csv"
-        return turbo, source_label
+        return turbo, str(source.relative_to(REPO_ROOT)) if source else "greenhouse_results_turbo"
 
     ultrafast = _load_rows_from_ultrafast_script(limit=limit)
     if ultrafast:
