@@ -83,18 +83,38 @@ def build_tetrahedral_plot_and_text(
         trail_colors = plt.cm.viridis(progression)
 
         for idx in range(1, len(trail_points)):
+            recency = idx / max(len(trail_points) - 1, 1)
             ax.plot(
                 [xs[idx - 1], xs[idx]],
                 [ys[idx - 1], ys[idx]],
                 [zs[idx - 1], zs[idx]],
                 color=trail_colors[idx],
-                linewidth=1.8,
-                alpha=0.8,
+                linewidth=0.9 + (1.9 * recency),
+                alpha=0.22 + (0.7 * recency),
             )
-        ax.scatter(xs, ys, zs, c=progression, cmap="viridis", s=12, alpha=0.6)
+        for idx, (x, y, z) in enumerate(trail_points):
+            recency = progression[idx]
+            ax.scatter(
+                [x],
+                [y],
+                [z],
+                c=[trail_colors[idx]],
+                s=8 + (8 * recency),
+                alpha=0.22 + (0.5 * recency),
+            )
 
     if current_point is not None:
-        ax.scatter([current_point[0]], [current_point[1]], [current_point[2]], color="#F97316", s=72, alpha=1.0)
+        ax.scatter(
+            [current_point[0]],
+            [current_point[1]],
+            [current_point[2]],
+            color="#F97316",
+            s=116,
+            edgecolors="#FFFFFF",
+            linewidths=1.4,
+            alpha=1.0,
+            zorder=6,
+        )
 
     ax.set_xlim(-1.2, 1.2)
     ax.set_ylim(-1.2, 1.2)
