@@ -54,6 +54,11 @@ def _coerce_optional_bool(value: Any) -> bool | None:
     return None
 
 
+def _is_truthy(value: Any) -> bool:
+    parsed = _coerce_optional_bool(value)
+    return bool(parsed)
+
+
 def _normalize_numeric_timestamp(value: float) -> str | None:
     if not math.isfinite(value):
         return None

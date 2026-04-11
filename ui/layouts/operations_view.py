@@ -30,7 +30,7 @@ def _timeline_strip(state: SystemState, gate: dict[str, Any]) -> dict[str, Any]:
         )
 
     decision = (gate.get("decision") or "SUPPRESS").upper()
-    admitted_stage = "admitted" if decision == "ADMIT" else ("suppressed" if decision == "SUPPRESS" else "void")
+    admitted_stage = "confirmed" if decision == "ADMIT" else ("observed" if decision == "SUPPRESS" else "void")
     stages.append(
         {
             "t": gate.get("timestamp") or state.position.t,
@@ -39,10 +39,10 @@ def _timeline_strip(state: SystemState, gate: dict[str, Any]) -> dict[str, Any]:
             "emphasis": "high",
             "visual_weight": 1.0,
             "tone": (
-                "authority_admitted"
-                if admitted_stage == "admitted"
-                else "authority_suppressed"
-                if admitted_stage == "suppressed"
+                "authority_confirmed"
+                if admitted_stage == "confirmed"
+                else "authority_observed"
+                if admitted_stage == "observed"
                 else "authority_void"
             ),
         }
@@ -52,7 +52,7 @@ def _timeline_strip(state: SystemState, gate: dict[str, Any]) -> dict[str, Any]:
         "readability": "high_contrast_compact",
         "hierarchy": "history_then_gate_authority",
         "current_authority_stage": admitted_stage.upper(),
-        "legend": ["BASELINE", "TRANSITION", "ADMITTED", "SUPPRESSED", "VOID"],
+        "legend": ["BASELINE", "TRANSITION", "CONFIRMED", "OBSERVED", "VOID"],
         "sequence": stages,
     }
 
@@ -89,7 +89,7 @@ def build_operations_view(
     return {
         "mode": "operations",
         "viewport": "mobile" if width_px < 760 else "desktop",
-        "hierarchy": "Reality Status → Gate Authority → Secondary Context",
+        "hierarchy": "Verdict → System Trajectory → Reasoning → Evidence",
         "zones": {
             "gate": {
                 "layout": "full_width_authority_banner",
@@ -98,7 +98,7 @@ def build_operations_view(
                 "content": render_gate_decision_card(gate),
             },
             "system_state": {
-                "title": "System Context",
+                "title": "System Trajectory",
                 "role": "supporting_context",
                 "visual_emphasis": "secondary",
                 "brightness": "55%",
@@ -112,7 +112,7 @@ def build_operations_view(
                 "content": render_operational_reasoning_panel(operator_question, context),
             },
             "record": {
-                "role": "audit_evidence",
+                "role": "evidence_record",
                 "visual_emphasis": "secondary",
                 "brightness": "55%",
                 "content": render_event_ledger(context.get("recent_admitted_events")),

@@ -6,10 +6,10 @@ from typing import Any
 def _reality_status(decision: str | None) -> str:
     normalized = (decision or "SUPPRESS").upper()
     if normalized == "ADMIT":
-        return "Change is real"
+        return "ADMITTED AS REAL"
     if normalized in {"ADMISSIBILITY_VOID", "VOID"}:
-        return "Signal not valid"
-    return "No confirmed change"
+        return "Signal invalid"
+    return "Not confirmed as real"
 
 
 def _authority_level(decision: str | None) -> str:
@@ -23,18 +23,18 @@ def _authority_level(decision: str | None) -> str:
 
 def _decision_label(authority_level: str) -> str:
     if authority_level == "ADMITTED":
-        return "ADMIT"
+        return "ADMITTED AS REAL"
     if authority_level == "VOID":
-        return "VOID"
-    return "SUPPRESS"
+        return "VOIDED"
+    return "NOT CONFIRMED"
 
 
 def _authority_statement(authority_level: str) -> str:
     if authority_level == "ADMITTED":
-        return "Coherent reorganization confirmed."
+        return "Coherent reorganization confirmed in replay telemetry."
     if authority_level == "VOID":
-        return "Observed signal failed coherence standards."
-    return "Observed instability not admitted as real."
+        return "Observed signal failed coherence checks."
+    return "Observed variation is below confirmation threshold."
 
 
 def _confidence_label(raw_confidence: str | None) -> str:
@@ -81,7 +81,7 @@ def _operator_takeaway(
 ) -> str:
     if authority_level == "ADMITTED":
         if risk_direction == "UNCERTAIN":
-            return "Admitted transition; trajectory unresolved."
+            return "Confirmed transition; direction still forming."
         return f"{transition_intensity} intensity {transition_type} transition."
     if authority_level == "VOID":
         return "Signal invalid for persistent transition."
