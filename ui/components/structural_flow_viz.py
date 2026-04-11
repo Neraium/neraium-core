@@ -28,19 +28,19 @@ def _event_point_style(
         return {
             **point,
             "event_type": "admitted",
-            "color": _with_alpha("#62FFB3", 0.55 + recency_ratio * 0.35),
-            "glow": round(0.48 + recency_ratio * 0.42, 3),
-            "opacity": round(0.74 + recency_ratio * 0.22, 3),
-            "radius": round(3.2 + recency_ratio * 3.1, 3),
+            "color": _with_alpha("#68FFD8", 0.72 + recency_ratio * 0.24),
+            "glow": round(0.64 + recency_ratio * 0.34, 3),
+            "opacity": round(0.9 + recency_ratio * 0.1, 3),
+            "radius": round(4.0 + recency_ratio * 3.2, 3),
             "blend_mode": "screen",
         }
     return {
         **point,
         "event_type": "suppressed",
-        "color": _with_alpha("#FF6B8A", 0.3 + recency_ratio * 0.3),
-        "glow": round(0.16 + recency_ratio * 0.2, 3),
-        "opacity": round(0.28 + recency_ratio * 0.3, 3),
-        "radius": round(2.7 + recency_ratio * 2.1, 3),
+        "color": _with_alpha("#9CA3AF", 0.15 + recency_ratio * 0.18),
+        "glow": round(0.08 + recency_ratio * 0.12, 3),
+        "opacity": round(0.16 + recency_ratio * 0.18, 3),
+        "radius": round(2.3 + recency_ratio * 1.4, 3),
         "blend_mode": "multiply",
     }
 
@@ -142,9 +142,10 @@ def render_structural_flow_viz(
             "y": state.position.y,
             "t": state.position.t,
             "highlight": "focus_node",
-            "halo_radius": round(clamp(0.02 + velocity_mag * 0.1, 0.02, 0.12), 4),
-            "glow": round(clamp(0.38 + state.drift_intensity * 0.42, 0.38, 0.96), 3),
+            "halo_radius": round(clamp(0.045 + velocity_mag * 0.12, 0.045, 0.17), 4),
+            "glow": round(clamp(0.58 + state.drift_intensity * 0.38, 0.58, 0.99), 3),
             "phase": regime_phase,
+            "dominance": "primary_focus",
         },
         "velocity_vector": {
             "origin": {"x": state.position.x, "y": state.position.y},
@@ -193,14 +194,14 @@ def render_structural_flow_viz(
             "event_visual_encoding": {
                 "continuity_anchor": "trajectory.path",
                 "admitted": {
-                    "color": "#62FFB3",
-                    "glow_range": [0.48, 0.9],
-                    "opacity_range": [0.74, 0.96],
+                    "color": "#68FFD8",
+                    "glow_range": [0.64, 0.98],
+                    "opacity_range": [0.9, 1.0],
                 },
                 "suppressed": {
-                    "color": "#FF6B8A",
-                    "glow_range": [0.16, 0.36],
-                    "opacity_range": [0.28, 0.58],
+                    "color": "#9CA3AF",
+                    "glow_range": [0.08, 0.2],
+                    "opacity_range": [0.16, 0.34],
                 },
             },
         },
