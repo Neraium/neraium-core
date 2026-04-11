@@ -79,7 +79,14 @@ def _extract_unit_trajectory(df: pd.DataFrame, unit_id: int) -> list[list[float]
             }
         )
 
-        tetra_state = result.get("tetrahedral_state") if isinstance(result, dict) else None
+        if not (isinstance(result, dict) and bool(result.get("engine_ready", False))):
+            # StructuralEngine emits a deterministic warmup tetrahedral position
+            # ([0, 0, 0]) before baseline/recent windows are ready.
+            # Skip those placeholders so the plotted path reflects only physical
+            # post-warmup trajectory points.
+            continue
+
+        tetra_state = result.get("tetrahedral_state")
         position = tetra_state.get("position") if isinstance(tetra_state, dict) else None
         if isinstance(position, (list, tuple)) and len(position) == 3:
             trajectory.append([float(position[0]), float(position[1]), float(position[2])])
