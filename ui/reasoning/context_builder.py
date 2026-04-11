@@ -121,6 +121,13 @@ def build_reasoning_context(
     max_recent_events: int = 6,
 ) -> dict[str, Any]:
     admitted_events = [event for event in build_admitted_events(records) if event.event_admitted]
+
+    gate = gate_decision or {}
+    decision = str(gate.get("decision") or "SUPPRESS").upper()
+    latest_timestamp = str(records[-1].get("timestamp")) if records else None
+    if decision == "SUPPRESS" and latest_timestamp is not None:
+        admitted_events = [event for event in admitted_events if event.timestamp != latest_timestamp]
+
     transition_point = admitted_events[0].timestamp if admitted_events else None
 
     top_signals = None
@@ -138,7 +145,6 @@ def build_reasoning_context(
     if state.velocity[1] < 0:
         stability_direction = "recovering"
 
-    gate = gate_decision or {}
     transition = gate.get("transition") if isinstance(gate.get("transition"), dict) else {}
     has_previous_row = bool(records and len(records) > 1)
     previous_row = records[-2] if has_previous_row else {}
