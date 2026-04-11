@@ -2624,8 +2624,8 @@ class StructuralEngine:
                     else None
                 ),
                 geometry_curvature=(
-                    float((analytics.get("geometry") or {}).get("curvature", 0.0))
-                    if isinstance(analytics.get("geometry"), dict)
+                    float((analytics.get("geometry") or {}).get("curvature"))
+                    if isinstance((analytics.get("geometry") or {}).get("curvature"), (int, float))
                     else None
                 ),
             )
