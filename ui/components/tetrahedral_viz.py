@@ -47,7 +47,9 @@ def build_tetrahedral_plot_and_text(
             "**Nearest vertex:** —"
         )
 
-    fig = plt.figure(figsize=(5.8, 4.4), dpi=120)
+    # Use a Figure instance directly instead of pyplot-managed figures so
+    # repeated renders do not accumulate global open-figure state.
+    fig = Figure(figsize=(5.8, 4.4), dpi=120)
     ax = fig.add_subplot(111, projection="3d")
 
     # Tetrahedron frame
