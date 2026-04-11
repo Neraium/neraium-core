@@ -3,6 +3,8 @@ from __future__ import annotations
 import csv
 import json
 import runpy
+import csv
+from csv import DictReader
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterable
@@ -12,7 +14,8 @@ from neraium_core.alignment import StructuralEngine
 REPO_ROOT = Path(__file__).resolve().parents[1]
 ULTRAFAST_DEMO_SCRIPT = REPO_ROOT / "greenhouse_demo" / "run_grow_demo_ultrafast.py"
 GREENHOUSE_SCENARIO_JSON = REPO_ROOT / "apps" / "api" / "demo_data" / "cannabis_grow_op_scenario.json"
-IGROW_DIR = REPO_ROOT / "WUR_AutonomousGreenhouseProject_EDA-main" / "iGrow"
+WUR_TURBO_SOURCE = REPO_ROOT / "WUR_AutonomousGreenhouseProject_EDA-main" / "iGrow" / "greenhouse_results_turbo"
+LOCAL_TURBO_SOURCE = REPO_ROOT / "greenhouse_demo" / "greenhouse_results_turbo.csv"
 
 
 def _clamp(value: float, low: float = 0.0, high: float = 1.0) -> float:
@@ -95,6 +98,88 @@ def _normalize_records(rows: Iterable[dict[str, Any]], *, limit: int | None) -> 
     return normalized
 
 
+def _coerce_float(value: Any, default: float = 0.0) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _normalize_timestamp(value: Any, index: int, base_time: datetime) -> str:
+    try:
+        if isinstance(value, (int, float)):
+            # greenhouse_results_turbo uses Excel-style serial day values.
+            return (datetime(1899, 12, 30, tzinfo=timezone.utc) + timedelta(days=float(value))).isoformat()
+        raw = str(value or "").strip()
+        if raw:
+            return datetime.fromisoformat(raw.replace("Z", "+00:00")).astimezone(timezone.utc).isoformat()
+    except (TypeError, ValueError):
+        pass
+    return (base_time + timedelta(minutes=index)).isoformat()
+
+
+def _resolve_turbo_source() -> Path | None:
+    candidates = [
+        WUR_TURBO_SOURCE,
+        WUR_TURBO_SOURCE.with_suffix(".csv"),
+        WUR_TURBO_SOURCE / "greenhouse_results_turbo.csv",
+        LOCAL_TURBO_SOURCE,
+    ]
+    for candidate in candidates:
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+def _load_rows_from_turbo_results(*, limit: int | None) -> list[dict[str, Any]]:
+    source = _resolve_turbo_source()
+    if source is None:
+        return []
+    csv.field_size_limit(10_000_000)
+    with source.open("r", encoding="utf-8") as handle:
+        raw_rows = list(DictReader(handle))
+
+    if not raw_rows:
+        return []
+    if isinstance(limit, int) and limit > 0:
+        raw_rows = raw_rows[:limit]
+
+    base_time = datetime.now(timezone.utc) - timedelta(minutes=max(1, len(raw_rows)))
+    normalized: list[dict[str, Any]] = []
+    for idx, row in enumerate(raw_rows):
+        drift = _clamp(_coerce_float(row.get("structural_drift_score")))
+        stability = _clamp(_coerce_float(row.get("relational_stability_score"), 1.0))
+        confidence = _clamp(_coerce_float(row.get("confidence_score"), _coerce_float(row.get("confidence"), 0.6)))
+        regime_name = str(row.get("regime_name") or row.get("interpreted_state") or row.get("state") or "greenhouse_demo")
+        evidence = str(row.get("explanation_text") or row.get("explanation") or row.get("operator_message") or "").strip()
+
+        admitted_raw = str(row.get("signal_emitted") or row.get("event_admitted") or "").strip().lower()
+        admitted = admitted_raw in {"true", "1", "yes", "admit", "admitted"} or (drift >= 0.55 and stability <= 0.45)
+        if admitted and not evidence:
+            evidence = "Processed transition evidence exceeded gate threshold."
+        if not evidence:
+            evidence = "Processed telemetry ingested from greenhouse_results_turbo."
+
+        normalized.append(
+            {
+                "timestamp": _normalize_timestamp(row.get("timestamp"), idx, base_time),
+                "site_id": str(row.get("site_id") or "grow-house"),
+                "asset_id": str(row.get("asset_id") or "zone-A"),
+                "state": str(row.get("state") or _state_from_drift(drift)),
+                "regime_name": regime_name,
+                "structural_drift_score": round(drift, 6),
+                "relational_stability_score": round(stability, 6),
+                "system_health": str(row.get("risk_level") or row.get("system_health") or _health_from_drift(drift)).lower(),
+                "confidence_score": round(confidence, 6),
+                "event_admitted": bool(admitted),
+                "evidence_summary": evidence,
+                "sensor_values": {},
+            }
+        )
+    normalized.sort(key=lambda entry: str(entry.get("timestamp") or ""))
+    return normalized
+
+
 def _extract_rows_from_script_scope(scope: dict[str, Any], *, limit: int | None) -> list[dict[str, Any]]:
     candidates = (
         "build_ultrafast_demo_rows",
@@ -165,131 +250,11 @@ def _load_rows_from_greenhouse_scenario(*, limit: int | None) -> list[dict[str, 
     return _normalize_records(rows, limit=limit)
 
 
-def _parse_timestamp(value: str, fallback_index: int) -> float:
-    raw = (value or "").strip()
-    if not raw:
-        return float(fallback_index)
-    try:
-        return float(raw)
-    except ValueError:
-        pass
-    normalized = raw.replace("Z", "+00:00")
-    for parser in (datetime.fromisoformat,):
-        try:
-            return parser(normalized).timestamp()
-        except ValueError:
-            continue
-    return float(fallback_index)
-
-
-def _is_numeric_string(value: str) -> bool:
-    try:
-        float(value)
-    except (TypeError, ValueError):
-        return False
-    return True
-
-
-def _discover_igrow_csv() -> Path | None:
-    if not IGROW_DIR.is_dir():
-        return None
-    candidates = sorted(IGROW_DIR.glob("*.csv"), key=lambda p: p.stat().st_size, reverse=True)
-    if not candidates:
-        return None
-    priority = ["Greenhouse_climate", "climate", "sensor", "timeseries"]
-    for key in priority:
-        for candidate in candidates:
-            if key.lower() in candidate.name.lower():
-                return candidate
-    return candidates[0]
-
-
-def _load_igrow_frames(*, limit: int | None) -> tuple[list[dict[str, Any]], Path | None]:
-    csv_path = _discover_igrow_csv()
-    if csv_path is None:
-        return [], None
-
-    frames: list[dict[str, Any]] = []
-    with csv_path.open("r", encoding="utf-8", newline="") as handle:
-        reader = csv.DictReader(handle)
-        if reader.fieldnames is None:
-            return [], csv_path
-
-        fieldnames = [str(name) for name in reader.fieldnames]
-        ts_col = next((c for c in fieldnames if "time" in c.lower() or "date" in c.lower()), fieldnames[0])
-
-        for idx, row in enumerate(reader):
-            sensor_values: dict[str, float] = {}
-            for col, raw in row.items():
-                if col is None or col == ts_col:
-                    continue
-                value = (raw or "").strip()
-                if not value or not _is_numeric_string(value):
-                    continue
-                sensor_values[col] = float(value)
-            if not sensor_values:
-                continue
-
-            timestamp = _parse_timestamp(str(row.get(ts_col) or ""), idx)
-            frames.append(
-                {
-                    "timestamp": timestamp,
-                    "site_id": "greenhouse",
-                    "asset_id": "igrow",
-                    "sensor_values": sensor_values,
-                }
-            )
-            if isinstance(limit, int) and limit > 0 and len(frames) >= limit:
-                break
-
-    return frames, csv_path
-
-
-def _curated_slice(records: list[dict[str, Any]], *, target: int = 240) -> list[dict[str, Any]]:
-    if len(records) <= target:
-        return records
-
-    quarter = max(10, target // 4)
-    stable = [r for r in records if float(r.get("structural_drift_score") or 0.0) < 0.25][:quarter]
-    transition = [r for r in records if 0.25 <= float(r.get("structural_drift_score") or 0.0) < 0.5][:quarter]
-    divergence = [r for r in records if 0.5 <= float(r.get("structural_drift_score") or 0.0) < 0.75][:quarter]
-    reorg = [r for r in records if float(r.get("structural_drift_score") or 0.0) >= 0.75][:quarter]
-
-    curated = stable + transition + divergence + reorg
-    if len(curated) < target:
-        remaining = [r for r in records if r not in curated]
-        curated.extend(remaining[: target - len(curated)])
-    return curated[:target]
-
-
-def _run_structural_replay(frames: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    if not frames:
-        return []
-
-    engine = StructuralEngine(baseline_window=20, recent_window=6)
-    records: list[dict[str, Any]] = []
-    for frame in frames:
-        result = engine.process_frame(frame)
-        if not isinstance(result, dict):
-            continue
-        result["timestamp"] = frame["timestamp"]
-        result["site_id"] = frame["site_id"]
-        result["asset_id"] = frame["asset_id"]
-        result["sensor_values"] = frame["sensor_values"]
-        records.append(result)
-    return records
-
-
-def load_greenhouse_demo_bundle(*, limit: int | None = 320, curated: bool = True) -> tuple[list[dict[str, Any]], str]:
-    igrow_frames, csv_path = _load_igrow_frames(limit=limit)
-    if igrow_frames:
-        records = _run_structural_replay(igrow_frames)
-        if curated:
-            records = _curated_slice(records)
-        if records:
-            source_label = str(csv_path.relative_to(REPO_ROOT)) if csv_path is not None else "iGrow/*.csv"
-            return records, source_label
-
+def load_greenhouse_demo_records(*, limit: int | None = 180) -> list[dict[str, Any]]:
+    """Load UI-ready greenhouse replay rows from processed greenhouse outputs when available."""
+    turbo = _load_rows_from_turbo_results(limit=limit)
+    if turbo:
+        return turbo
     ultrafast = _load_rows_from_ultrafast_script(limit=limit)
     if ultrafast:
         return ultrafast, str(ULTRAFAST_DEMO_SCRIPT.relative_to(REPO_ROOT))
