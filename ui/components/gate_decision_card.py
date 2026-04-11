@@ -23,10 +23,10 @@ def _authority_level(decision: str | None) -> str:
 
 def _decision_label(authority_level: str) -> str:
     if authority_level == "ADMITTED":
-        return "ADMITTED AS REAL"
+        return "CONFIRMED"
     if authority_level == "VOID":
         return "VOIDED"
-    return "NOT CONFIRMED"
+    return "SUPPRESSED"
 
 
 def _authority_statement(authority_level: str) -> str:

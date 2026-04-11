@@ -89,7 +89,6 @@ footer {
 }
 
 .ner-verdict-card {
-  min-height: 220px;
   border-color: color-mix(in srgb, var(--verdict-accent), var(--line) 70%);
   box-shadow: inset 0 0 0 1px rgba(10, 18, 30, 0.7), 0 8px 20px rgba(1, 8, 16, 0.45);
 }
@@ -204,4 +203,59 @@ footer {
   border-color: var(--line-strong) !important;
   color: #eff8ff !important;
   box-shadow: inset 0 0 0 1px rgba(95, 205, 255, 0.22);
+}
+
+/* ── Verdict surface: verdict card + trajectory as one connected block ─── */
+.ner-verdict-surface .ner-verdict-card {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+  border-bottom-color: rgba(125, 209, 255, 0.1);
+  margin-bottom: 0;
+}
+.ner-verdict-surface .ner-system-panel {
+  margin-top: 0;
+  border-top: 1px solid rgba(125, 209, 255, 0.07);
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+  border-color: color-mix(in srgb, var(--line) 100%, transparent 0%);
+}
+
+/* ── Section spacing: breathe between major zones ──────────────────────── */
+.ner-panel {
+  margin-top: 28px;
+}
+.ner-verdict-surface {
+  margin-top: 0;
+}
+
+/* ── Controls row: compact horizontal strip ─────────────────────────────── */
+.ner-controls-row {
+  margin: 18px 0 4px;
+  gap: 10px !important;
+  align-items: flex-end !important;
+}
+.ner-controls-row button {
+  min-width: 64px;
+  height: 36px;
+  font-size: 12px !important;
+  letter-spacing: 0.04em;
+  border: 1px solid var(--line) !important;
+  background: rgba(10, 18, 33, 0.88) !important;
+  color: #c8daf2 !important;
+  border-radius: 4px !important;
+}
+.ner-controls-row button:hover {
+  border-color: var(--line-strong) !important;
+  color: #eef6ff !important;
+}
+
+/* ── Evidence records: compact, low-weight ──────────────────────────────── */
+.ner-record-card {
+  padding: 7px 10px 8px;
+  margin-top: 8px;
+}
+
+/* ── Verdict text: scale down slightly from 80px to keep it dense ───────── */
+.ner-verdict-main {
+  font-size: 68px;
 }

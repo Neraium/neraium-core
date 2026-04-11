@@ -200,14 +200,14 @@ def _render_gate_decision_html(gate_card: dict[str, Any]) -> str:
         "VOID": {"accent": "#8ea4ff", "badge": "#8ea4ff"},
     }.get(authority_level, {"accent": "#8ea4ff", "badge": "#8ea4ff"})
 
-    label = escape(str(gate_card.get("label") or "UNSPECIFIED GATE DECISION"))
-    authority_badge = escape(str(gate_card.get("authority_badge") or authority_level))
-    authority_statement = escape(str(gate_card.get("authority_statement") or "No authority statement available."))
-    risk_direction = escape(str(gate_card.get("risk_direction") or "UNCERTAIN"))
-    transition_type = escape(str(gate_card.get("transition_type") or "STABLE"))
+    label = escape(str(gate_card.get("label") or authority_level))
+    authority_statement = escape(str(gate_card.get("authority_statement") or ""))
     confidence = escape(str(gate_card.get("confidence") or "LOW"))
-    timestamp_display = escape(str(gate_card.get("timestamp_display") or "unknown"))
-    doctrine_version = escape(str(gate_card.get("doctrine_version") or "unknown"))
+    transition_type = escape(str(gate_card.get("transition_type") or "STABLE"))
+    risk_direction = escape(str(gate_card.get("risk_direction") or "UNCERTAIN"))
+    ts_raw = str(gate_card.get("timestamp") or "")
+    ts_display = escape(ts_raw[:19].replace("T", " ")) if ts_raw else "—"
+    doctrine_version = escape(str(gate_card.get("doctrine_version") or "—"))
 
     def _chip(label_text: str, value: str) -> str:
         return (
@@ -217,18 +217,21 @@ def _render_gate_decision_html(gate_card: dict[str, Any]) -> str:
             f"</span>"
         )
 
+    accent = style["accent"]
+    badge = style["badge"]
     return f"""
-<div class="ner-panel ner-verdict-card" style="--verdict-accent:{style["accent"]};--verdict-badge:{style["badge"]};">
-  <div class="ner-eyebrow">Verdict</div>
+<div class="ner-panel ner-verdict-card" style="--verdict-accent:{accent};--verdict-badge:{badge};">
   <div class="ner-verdict-main">{label}</div>
   <div class="ner-verdict-subtitle">{authority_statement}</div>
   <div class="ner-chip-row">
-    {_chip("Truth", "Confirmed" if authority_level == "ADMITTED" else "Unconfirmed")}
-    {_chip("Status", "Recorded" if authority_level == "ADMITTED" else "Observed")}
-    {_chip("Action", "Observation only")}
     {_chip("Confidence", confidence)}
+    {_chip("Phase", transition_type)}
+    {_chip("Risk", risk_direction)}
   </div>
-  <div class="ner-meta-row"><span class="ner-badge">{authority_badge}</span><span>{timestamp_display} · Engine {doctrine_version}</span></div>
+  <div class="ner-meta-row">
+    <span style="font-size:11px;color:#4e6580;">{ts_display}</span>
+    <span style="font-size:11px;color:#4e6580;">Engine {doctrine_version}</span>
+  </div>
 </div>
 """.strip()
 
@@ -327,8 +330,8 @@ def _render_system_context_html(system_zone: dict[str, Any]) -> str:
 
     parts.append(f'<line x1="{PX}" y1="{PY + IH}" x2="{PX + IW}" y2="{PY + IH}" stroke="rgba(147,197,253,0.45)" stroke-width="1"/>')
     parts.append(f'<line x1="{PX}" y1="{PY}" x2="{PX}" y2="{PY + IH}" stroke="rgba(147,197,253,0.45)" stroke-width="1"/>')
-    parts.append(f'<text x="{PX + IW - 4}" y="{PY + IH + 20}" text-anchor="end" fill="rgba(203,213,225,0.9)" font-size="11">Replay progression</text>')
-    parts.append(f'<text x="{PX - 8}" y="{PY - 8}" text-anchor="end" fill="rgba(203,213,225,0.9)" font-size="11">Dynamic signal strength</text>')
+    parts.append(f'<text x="{PX + IW - 4}" y="{PY + IH + 20}" text-anchor="end" fill="rgba(203,213,225,0.9)" font-size="11">Replay →</text>')
+    parts.append(f'<text x="{PX - 8}" y="{PY - 8}" text-anchor="end" fill="rgba(203,213,225,0.9)" font-size="11">Signal</text>')
 
     if len(chart_points) >= 2:
         pts_str = " ".join(
@@ -345,7 +348,7 @@ def _render_system_context_html(system_zone: dict[str, Any]) -> str:
     cx_p = sx(current.get("x", 1.0))
     cy_p = sy(current.get("y", 0.0))
     parts.append(f'<circle cx="{cx_p}" cy="{cy_p}" r="6.5" fill="#E2E8F0" stroke="#0EA5E9" stroke-width="2"/>')
-    parts.append(f'<text x="{min(cx_p + 12, W - 12)}" y="{max(cy_p - 10, PY + 12)}" fill="#E2E8F0" font-size="11">Current replay point</text>')
+    parts.append(f'<text x="{min(cx_p + 12, W - 12)}" y="{max(cy_p - 10, PY + 12)}" fill="#E2E8F0" font-size="11">Now</text>')
 
     svg_body = "\n".join(parts)
     svg_html = f'<svg class="ner-system-canvas" viewBox="0 0 {W} {H}" width="100%">\n{svg_body}\n</svg>'
@@ -384,16 +387,11 @@ def _render_system_context_html(system_zone: dict[str, Any]) -> str:
             f'{"".join(items)}</div>'
         )
 
-    badge_colors = {"ADMIT": "#62FFB3", "SUPPRESS": "#FB923C", "VOID": "#A78BFA"}
-    badge_color = badge_colors.get(decision, "#9CA3AF")
-    status_chip = "Confirmed" if decision == "ADMIT" else ("Observed" if decision == "SUPPRESS" else "Voided")
     header_html = (
         f'<div class="ner-panel-head">'
-        f'<span class="ner-eyebrow">System Trajectory</span>'
-        f'<span class="ner-subtle" style="font-size:12px;">Replay of structural signal over time</span>'
+        f'<span class="ner-eyebrow">Structural trajectory</span>'
         f'<div class="ner-panel-meta">'
-        f'<span class="ner-chip-mini">Points {len(chart_points)}</span>'
-        f'<span class="ner-chip-mini" style="color:{badge_color};border-color:{badge_color}66;">{status_chip}</span>'
+        f'<span class="ner-chip-mini">{len(chart_points)} states</span>'
         f'</div></div>'
     )
 
@@ -403,10 +401,10 @@ def _render_system_context_html(system_zone: dict[str, Any]) -> str:
     start_signal = _f(chart_points[0].get("y"), 0.0) if chart_points else 0.0
     context_row = (
         '<div class="ner-system-context-grid">'
-        f'<div><span class="ner-context-label">Current Signal</span><span class="ner-context-value">{y:.3f}</span></div>'
-        f'<div><span class="ner-context-label">Start → Now</span><span class="ner-context-value">{start_signal:.3f} → {y:.3f}</span></div>'
-        f'<div><span class="ner-context-label">Current Phase</span><span class="ner-context-value">{phase_label}</span></div>'
-        f'<div><span class="ner-context-label">Replay Index</span><span class="ner-context-value">{int(round(x * max(point_count - 1, 0)))} / {max(point_count - 1, 0)}</span></div>'
+        f'<div><span class="ner-context-label">Signal</span><span class="ner-context-value">{y:.3f}</span></div>'
+        f'<div><span class="ner-context-label">Range</span><span class="ner-context-value">{start_signal:.3f} → {y:.3f}</span></div>'
+        f'<div><span class="ner-context-label">Phase</span><span class="ner-context-value">{phase_label}</span></div>'
+        f'<div><span class="ner-context-label">Index</span><span class="ner-context-value">{int(round(x * max(point_count - 1, 0)))} / {max(point_count - 1, 0)}</span></div>'
         '</div>'
     )
 
@@ -436,26 +434,7 @@ def _render_reasoning_html(reasoning_panel: dict[str, Any]) -> str:
     else:
         insufficient_text = ""
 
-    gate_ref = panel.get("gate_reference") if isinstance(panel.get("gate_reference"), dict) else {}
-    gate_decision_val = str(panel.get("gate_outcome") or gate_ref.get("decision") or "SUPPRESS").upper()
-    confidence_val = escape(str(gate_ref.get("confidence") or "unknown"))
     op_impl = escape(str(panel.get("operational_implication") or "No implication available."))
-
-    gate_badge_colors = {
-        "ADMIT": ("rgba(98,255,179,0.12)", "#34D399", "#D1FAE5"),
-        "SUPPRESS": ("rgba(251,146,60,0.12)", "#F97316", "#FED7AA"),
-        "VOID": ("rgba(167,139,250,0.12)", "#A78BFA", "#EDE9FE"),
-    }
-    gb_bg, gb_border, gb_text = gate_badge_colors.get(gate_decision_val, ("rgba(156,163,175,0.1)", "#9CA3AF", "#E5E7EB"))
-
-    def _section(title: str, body_html: str, accent: str = "#3B82F6") -> str:
-        return (
-            f'<div class="ner-reason-section">'
-            f'<div class="ner-reason-title" style="color:{accent};">'
-            f'{title}</div>'
-            f'{body_html}'
-            f'</div>'
-        )
 
     observed = escape(str(facts[0])) if facts else "No observed signal."
     assessment_source = grounded_text or insufficient_text or "No assessment available."
@@ -488,22 +467,10 @@ def _render_reasoning_html(reasoning_panel: dict[str, Any]) -> str:
         f"</details>"
     )
 
-    status_label = "Confirmed" if gate_decision_val == "ADMIT" else ("Observed" if gate_decision_val == "SUPPRESS" else "Voided")
-    gate_body = (
-        f'<div class="ner-reason-gate-row">'
-        f'<span style="font-size:11px;font-weight:800;padding:4px 10px;border-radius:999px;'
-        f'background:{gb_bg};color:{gb_text};border:1px solid {gb_border}44;letter-spacing:0.06em;'
-        f'text-transform:uppercase;">{status_label}</span>'
-        f'<span class="ner-subtle">Status signal</span>'
-        f'<span class="ner-subtle">Confidence: {confidence_val}</span>'
-        f'</div>'
-    )
-    gate_section = _section("System Status", gate_body, "#FB923C")
-
     return (
         f'<div class="ner-panel">'
         f'<div class="ner-eyebrow">Reasoning</div>'
-        f'{core_lines}{details_html}{gate_section}'
+        f'{core_lines}{details_html}'
         f'</div>'
     )
 
@@ -597,6 +564,13 @@ def _render_record_html(record_panel: dict[str, Any]) -> str:
 
 
 
+def _render_verdict_surface_html(gate_card: dict[str, Any], system_zone: dict[str, Any]) -> str:
+    """Merge verdict card and trajectory into one visually connected surface."""
+    gate_html = _render_gate_decision_html(gate_card)
+    system_html = _render_system_context_html(system_zone)
+    return f'<div class="ner-verdict-surface">{gate_html}{system_html}</div>'
+
+
 def create_gradio_app():
     try:
         import gradio as gr
@@ -615,7 +589,8 @@ def create_gradio_app():
         active_rows = _rows_until(frame_index)
         latest = active_rows[-1] if active_rows else {}
         confidence = f"{float(latest.get('confidence_score') or 0.0):.2f}"
-        gate_state = "Confirmed" if latest.get("event_admitted") else "Observed"
+        regime_raw = str(latest.get("system_phase") or latest.get("regime_name") or "unknown")
+        regime_display = regime_raw.replace("_", " ").title()
         return f"""
             <div class="ner-command-header">
               <div class="ner-brand">
@@ -625,8 +600,7 @@ def create_gradio_app():
               <div class="ner-header-metrics">
                 <span>Doctrine v2026.04</span>
                 <span>Confidence {escape(confidence)}</span>
-                <span>Status {escape(gate_state)}</span>
-                <span>Phase {escape(str(latest.get("system_phase") or latest.get("regime_name") or "unknown"))}</span>
+                <span>Regime {escape(regime_display)}</span>
                 <span>Frame {int(frame_index)} / {int(total_steps)}</span>
               </div>
             </div>
@@ -654,15 +628,14 @@ def create_gradio_app():
             gate_decision=gate_decision,
         )
         gate_content = surface["zones"]["gate"]["content"]
-        gate_html = _render_gate_decision_html(gate_content if isinstance(gate_content, dict) else {})
-        system_html = _render_system_context_html(surface["zones"]["system_state"])
+        gate_card = gate_content if isinstance(gate_content, dict) else {}
+        verdict_html = _render_verdict_surface_html(gate_card, surface["zones"]["system_state"])
         reasoning_html = _render_reasoning_html(surface["zones"]["reasoning"]["content"])
         record_html = _render_record_html(surface["zones"]["record"]["content"])
         header_html = render_command_header(frame_index)
         return (
             header_html,
-            gate_html,
-            system_html,
+            verdict_html,
             reasoning_html,
             record_html,
         )
@@ -670,10 +643,10 @@ def create_gradio_app():
     def pause_playback() -> None:
         playback_state["playing"] = False
 
-    def reset_playback() -> tuple[int, str, str, str, str, str]:
+    def reset_playback() -> tuple[int, str, str, str, str]:
         pause_playback()
-        header_html, gate_html, system_html, reasoning_html, record_html = load_operations_surface(1)
-        return 1, header_html, gate_html, system_html, reasoning_html, record_html
+        header_html, verdict_html, reasoning_html, record_html = load_operations_surface(1)
+        return 1, header_html, verdict_html, reasoning_html, record_html
 
     def autoplay(start_frame: int, speed_multiplier: float):
         playback_state["playing"] = True
@@ -686,7 +659,7 @@ def create_gradio_app():
         playback_state["playing"] = False
 
     default_step = min(30, total_steps)
-    initial_header, initial_gate, initial_system, initial_reasoning, initial_record = load_operations_surface(default_step)
+    initial_header, initial_verdict, initial_reasoning, initial_record = load_operations_surface(default_step)
 
     css_path = Path(__file__).parent / "themes" / "neraium_dark.css"
     css = css_path.read_text(encoding="utf-8") if css_path.exists() else ""
@@ -694,26 +667,22 @@ def create_gradio_app():
     with gr.Blocks(css=css, theme=gr.themes.Base(), elem_classes=["ner-app"]) as app:
         playing_state = gr.State(False)
         header = gr.HTML(value=initial_header)
+        verdict = gr.HTML(value=initial_verdict)
 
-        with gr.Row(elem_classes=["ner-hero-row"]):
-            with gr.Column(scale=8):
-                gate = gr.HTML(value=initial_gate)
-            with gr.Column(scale=4):
-                frame_step = gr.Slider(minimum=1, maximum=total_steps, step=1, value=default_step, label="Playback frame")
-                speed = gr.Slider(minimum=0.1, maximum=1.5, step=0.1, value=0.6, label="Playback speed")
-                with gr.Row():
-                    play_btn = gr.Button("Play")
-                    pause_btn = gr.Button("Pause")
-                    reset_btn = gr.Button("Reset")
+        with gr.Row(elem_classes=["ner-controls-row"]):
+            frame_step = gr.Slider(minimum=1, maximum=total_steps, step=1, value=default_step, label="Frame", scale=4)
+            speed = gr.Slider(minimum=0.1, maximum=1.5, step=0.1, value=0.6, label="Speed", scale=2)
+            play_btn = gr.Button("Play", size="sm", scale=1)
+            pause_btn = gr.Button("Pause", size="sm", scale=1)
+            reset_btn = gr.Button("Reset", size="sm", scale=1)
 
-        system = gr.HTML(value=initial_system)
         reasoning = gr.HTML(value=initial_reasoning)
         record = gr.HTML(value=initial_record)
         timer = gr.Timer(value=1.0, active=True)
 
-        frame_step.change(fn=load_operations_surface, inputs=[frame_step], outputs=[header, gate, system, reasoning, record])
-        play_btn.click(fn=autoplay, inputs=[frame_step, speed], outputs=[frame_step, header, gate, system, reasoning, record])
+        frame_step.change(fn=load_operations_surface, inputs=[frame_step], outputs=[header, verdict, reasoning, record])
+        play_btn.click(fn=autoplay, inputs=[frame_step, speed], outputs=[frame_step, header, verdict, reasoning, record])
         pause_btn.click(fn=pause_playback)
-        reset_btn.click(fn=reset_playback, outputs=[frame_step, header, gate, system, reasoning, record])
+        reset_btn.click(fn=reset_playback, outputs=[frame_step, header, verdict, reasoning, record])
 
     return app
