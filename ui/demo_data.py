@@ -250,11 +250,16 @@ def _load_rows_from_greenhouse_scenario(*, limit: int | None) -> list[dict[str, 
     return _normalize_records(rows, limit=limit)
 
 
-def load_greenhouse_demo_records(*, limit: int | None = 180) -> list[dict[str, Any]]:
-    """Load UI-ready greenhouse replay rows from processed greenhouse outputs when available."""
+def load_greenhouse_demo_bundle(*, limit: int | None = 180, curated: bool = True) -> tuple[list[dict[str, Any]], str]:
+    """Load UI-ready greenhouse replay rows and the source label used to produce them."""
+    del curated  # Compatibility shim; curated slicing is no longer applied for turbo/script/scenario data.
+
     turbo = _load_rows_from_turbo_results(limit=limit)
     if turbo:
-        return turbo
+        source = _resolve_turbo_source()
+        source_label = str(source.relative_to(REPO_ROOT)) if source is not None else "greenhouse_results_turbo.csv"
+        return turbo, source_label
+
     ultrafast = _load_rows_from_ultrafast_script(limit=limit)
     if ultrafast:
         return ultrafast, str(ULTRAFAST_DEMO_SCRIPT.relative_to(REPO_ROOT))
@@ -263,6 +268,6 @@ def load_greenhouse_demo_records(*, limit: int | None = 180) -> list[dict[str, A
     return scenario, str(GREENHOUSE_SCENARIO_JSON.relative_to(REPO_ROOT))
 
 
-def load_greenhouse_demo_records(*, limit: int | None = 320, curated: bool = True) -> list[dict[str, Any]]:
+def load_greenhouse_demo_records(*, limit: int | None = 180, curated: bool = True) -> list[dict[str, Any]]:
     rows, _ = load_greenhouse_demo_bundle(limit=limit, curated=curated)
     return rows
