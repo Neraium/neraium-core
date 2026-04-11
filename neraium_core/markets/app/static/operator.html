@@ -1,49 +1,6 @@
-<!doctype html>
-<html lang="en">
-<head>
-  <meta charset="utf-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1"/>
-  <title>Neraium Markets Operator Console</title>
-  <link rel="stylesheet" href="/static/operator.css"/>
-</head>
-<body>
-<div class="app">
-  <nav>
-    <h1>Neraium Markets</h1>
-    <button class="nav-btn active" data-page="command">Command Center</button>
-    <button class="nav-btn" data-page="live">Live Session</button>
-    <button class="nav-btn" data-page="replay">Replay / Historical</button>
-    <button class="nav-btn" data-page="signals">Signals / History</button>
-    <button class="nav-btn" data-page="integrations">Integrations / Data</button>
-    <p class="muted" style="padding:12px">Market data only. No trade execution.</p>
-  </nav>
-  <main>
-    <header>
-      <div class="title">Operator Console</div>
-      <span id="providerPill" class="pill">Provider: unknown</span>
-      <span id="sessionPill" class="pill">State: disconnected</span>
-      <span id="eventPill" class="pill">Last event: -</span>
-      <span id="signalPill" class="pill">Last signal: -</span>
-    </header>
-    <div class="content">
-      <section id="page-command" class="page active">
-        <div id="commandMessages"></div>
-        <div class="grid grid-2">
-          <div class="panel"><h2>Session status</h2><div id="statusStrip"></div></div>
-          <div class="panel"><h2>Quick controls</h2><div class="controls"><button id="startBtn">Start session</button><button id="stopBtn">Stop session</button><input id="symbolsInput" value="__DEFAULT_LIVE_SYMBOLS__"/><select id="timeframeInput"><option>1m</option><option selected>__DEFAULT_LIVE_TIMEFRAME__</option><option>15m</option></select></div><div class="muted" style="margin-top:8px">First-run defaults: __DEFAULT_LIVE_SYMBOLS__ @ __DEFAULT_LIVE_TIMEFRAME__.</div></div>
-        </div>
-        <div class="panel" style="margin-top:14px"><h2>Latest Signals</h2><div style="max-height:360px;overflow:auto"><table id="latestTable"></table></div></div>
-        <div class="grid grid-2" style="margin-top:14px"><div class="panel"><h2>Current session summary</h2><div id="sessionSummary"></div></div><div class="panel"><h2>First-run launch checklist</h2><div id="launchChecklist"></div></div></div>
-        <div class="panel" style="margin-top:14px"><h2>Recent warnings</h2><div id="warnings"></div></div>
-      </section>
-      <section id="page-live" class="page"><div class="panel"><h2>Live status</h2><div id="liveStatus"></div></div><div class="panel" style="margin-top:14px"><h2>Latest governed outputs</h2><div style="max-height:420px;overflow:auto"><table id="liveSignals"></table></div></div></section>
-      <section id="page-replay" class="page"><div id="replayMessages"></div><div class="panel"><h2>Historical fetch</h2><div class="controls"><input id="fetchSymbols" value="SPY,QQQ,IWM"/><select id="fetchTimeframe"><option>15m</option><option>1h</option><option>daily</option></select><input id="fetchStart" type="date"/><input id="fetchEnd" type="date"/><button id="fetchBtn">Fetch Massive data</button></div></div><div class="panel" style="margin-top:14px"><h2>Replay run</h2><div class="controls"><select id="datasetSelect"></select><input id="replayDataDir" placeholder="optional data_dir"/><button id="runReplayBtn">Run replay</button></div><div id="replayMeta" style="margin-top:8px"></div></div><div class="panel" style="margin-top:14px"><h2>Replay results</h2><div style="max-height:360px;overflow:auto"><table id="replayTable"></table></div><button id="exportReplayBtn" style="margin-top:10px">Export replay CSV</button></div></section>
-      <section id="page-signals" class="page"><div class="panel"><h2>Filters</h2><div class="controls"><input id="histTicker" placeholder="Ticker"/><select id="histSession"><option value="">All sessions</option><option value="live">Live</option><option value="replay">Replay</option></select><input id="histPermission" placeholder="Permission"/><input id="histBestAction" placeholder="Best action"/><input id="histStart" type="datetime-local"/><input id="histEnd" type="datetime-local"/><label><input id="histSuppressed" type="checkbox"/> Include suppressed</label><button id="loadHistoryBtn">Load history</button></div><div id="historySummary" class="muted"></div></div><div class="panel" style="margin-top:14px"><h2>Signal history</h2><div style="max-height:480px;overflow:auto"><table id="historyTable"></table></div></div></section>
-      <section id="page-integrations" class="page"><div class="grid grid-2"><div class="panel"><h2>Massive provider health</h2><div id="providerStatus"></div></div><div class="panel"><h2>Connectivity and ingestion issues</h2><div id="integrationWarnings"></div></div></div><div class="panel" style="margin-top:14px"><h2>Cached datasets</h2><div id="datasets"></div></div></section>
-    </div>
-  </main>
-</div>
-<div id="detail" class="detail"></div>
-<script src="/static/operator.js"></script>
-</body>
-</html>
+
+<!-- saved from url=(0011)about:blank -->
+<html lang="en"><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"><script type="text/javascript" charset="utf-8" src="https://js.intercomcdn.com/frame-modern.3fa1db07.js" integrity="sha384-Tf9Me924KolvoyGEhvRJWCzngBsaWTeR4TTBWGmEu2+3PsNapbwGJAIm9xWRFb/X" crossorigin="anonymous"></script><script type="text/javascript" charset="utf-8" src="https://js.intercomcdn.com/vendor-modern.df860bed.js" integrity="sha384-IeAzuEgsz9i8zmnRBvD70kVOgniwl0NKdgrlVKYNDroH/msv6UJnh49lLfpcntrB" crossorigin="anonymous"></script></head>
+      <body>
+      
+    </body></html>
