@@ -66,6 +66,8 @@ def build_operations_view(
     reasoning_context: dict[str, Any] | None = None,
     operator_question: str = "What is admissible right now?",
     gate_decision: dict[str, Any] | None = None,
+    current_frame: int = 1,
+    total_frames: int = 1,
 ) -> dict[str, object]:
     context = dict(reasoning_context or {})
     raw_gate = gate_decision or context.get("gate_decision") or {}
@@ -103,7 +105,13 @@ def build_operations_view(
                 "role": "supporting_context",
                 "visual_emphasis": "secondary",
                 "brightness": "55%",
-                "content": render_system_geometry_viz(state, gate_decision=gate, records=records),
+                "content": render_system_geometry_viz(
+                    state,
+                    gate_decision=gate,
+                    records=records,
+                    current_frame=current_frame,
+                    total_frames=total_frames,
+                ),
                 "timeline_strip": _timeline_strip(state, gate),
             },
             "reasoning": {
