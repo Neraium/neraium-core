@@ -124,18 +124,57 @@ def _coerce_float(value: Any, default: float = 0.0) -> float:
     return parsed
 
 
+def _coerce_optional_bool(value: Any) -> bool | None:
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return value
+    raw = str(value).strip().lower()
+    if not raw:
+        return None
+    if raw in {"true", "1", "yes", "admit", "admitted"}:
+        return True
+    if raw in {"false", "0", "no", "deny", "denied", "suppressed"}:
+        return False
+    return None
+
+
+def _normalize_numeric_timestamp(value: float) -> str | None:
+    if not math.isfinite(value):
+        return None
+    abs_value = abs(value)
+    if abs_value > 10_000_000:
+        epoch_seconds = value
+        if abs_value >= 1_000_000_000_000_000_000:
+            epoch_seconds = value / 1_000_000_000
+        elif abs_value >= 1_000_000_000_000_000:
+            epoch_seconds = value / 1_000_000
+        elif abs_value >= 1_000_000_000_000:
+            epoch_seconds = value / 1_000
+        try:
+            return datetime.fromtimestamp(epoch_seconds, tz=timezone.utc).isoformat()
+        except (OverflowError, OSError, ValueError):
+            return None
+    try:
+        return (datetime(1899, 12, 30, tzinfo=timezone.utc) + timedelta(days=value)).isoformat()
+    except OverflowError:
+        return None
+
+
 def _normalize_timestamp(value: Any, index: int, base_time: datetime) -> str:
     try:
         raw = str(value or "").strip()
         if isinstance(value, (int, float)):
-            return (datetime(1899, 12, 30, tzinfo=timezone.utc) + timedelta(days=float(value))).isoformat()
+            normalized = _normalize_numeric_timestamp(float(value))
+            if normalized:
+                return normalized
         if raw and _is_numeric_string(raw):
-            serial = float(raw)
-            if math.isfinite(serial):
-                return (datetime(1899, 12, 30, tzinfo=timezone.utc) + timedelta(days=serial)).isoformat()
+            normalized = _normalize_numeric_timestamp(float(raw))
+            if normalized:
+                return normalized
         if raw:
             return datetime.fromisoformat(raw.replace("Z", "+00:00")).astimezone(timezone.utc).isoformat()
-    except (TypeError, ValueError):
+    except (TypeError, ValueError, OverflowError):
         pass
     return (base_time + timedelta(minutes=index)).isoformat()
 
@@ -181,8 +220,10 @@ def _normalize_engine_result(result: dict[str, Any], frame: dict[str, Any]) -> d
             _coerce_float(result.get("confidence"), _clamp(0.62 + drift * 0.3)),
         )
     )
-    admitted_raw = str(result.get("signal_emitted") or result.get("event_admitted") or "").strip().lower()
-    admitted = admitted_raw in {"true", "1", "yes", "admit", "admitted"} or (drift >= 0.55 and stability <= 0.45)
+    admitted_override = _coerce_optional_bool(result.get("signal_emitted"))
+    if admitted_override is None:
+        admitted_override = _coerce_optional_bool(result.get("event_admitted"))
+    admitted = admitted_override if admitted_override is not None else (drift >= 0.55 and stability <= 0.45)
     return {
         **result,
         "timestamp": frame["timestamp"],
@@ -238,8 +279,10 @@ def _load_rows_from_turbo_results(*, limit: int | None, curated: bool) -> list[d
             confidence = _clamp(_coerce_float(row.get("confidence_score"), _coerce_float(row.get("confidence"), 0.6)))
             regime_name = str(row.get("regime_name") or row.get("interpreted_state") or row.get("state") or "greenhouse_demo")
             evidence = str(row.get("explanation_text") or row.get("explanation") or row.get("operator_message") or "").strip()
-            admitted_raw = str(row.get("signal_emitted") or row.get("event_admitted") or "").strip().lower()
-            admitted = admitted_raw in {"true", "1", "yes", "admit", "admitted"} or (drift >= 0.55 and stability <= 0.45)
+            admitted_override = _coerce_optional_bool(row.get("signal_emitted"))
+            if admitted_override is None:
+                admitted_override = _coerce_optional_bool(row.get("event_admitted"))
+            admitted = admitted_override if admitted_override is not None else (drift >= 0.55 and stability <= 0.45)
             if admitted and not evidence:
                 evidence = "Processed transition evidence exceeded gate threshold."
             if not evidence:
