@@ -64,7 +64,7 @@ def _normalize_numeric_timestamp(value: float) -> str | None:
             epoch_seconds = value / 1_000_000_000
         elif abs_value >= 1_000_000_000_000_000:
             epoch_seconds = value / 1_000_000
-        elif abs_value >= 1_000_000_000_000:
+        elif abs_value >= 10_000_000_000:
             epoch_seconds = value / 1_000
         try:
             return datetime.fromtimestamp(epoch_seconds, tz=timezone.utc).isoformat()
@@ -197,6 +197,9 @@ def _load_rows_from_turbo_results(*, limit: int | None) -> list[dict[str, Any]]:
         ).strip()
         if not explanation_text:
             explanation_text = "No explanation provided in greenhouse_results_turbo.csv."
+        event_admitted_override = _coerce_optional_bool(row.get("signal_emitted"))
+        if event_admitted_override is None:
+            event_admitted_override = _coerce_optional_bool(row.get("event_admitted"))
         normalized.append(
             {
                 "timestamp": _normalize_timestamp(row.get("timestamp"), idx, base_time),
@@ -211,7 +214,7 @@ def _load_rows_from_turbo_results(*, limit: int | None) -> list[dict[str, Any]]:
                 "dynamic_signal_strength": dynamic_signal_strength,
                 "structural_drift_score": dynamic_signal_strength,
                 "relational_stability_score": round(1.0 - dynamic_signal_strength, 6),
-                "event_admitted": _is_truthy(row.get("signal_emitted")),
+                "event_admitted": bool(event_admitted_override),
                 "transition_type": (phase or "STABLE").upper(),
                 "evidence_summary": explanation_text,
                 "explanation_text": explanation_text,
