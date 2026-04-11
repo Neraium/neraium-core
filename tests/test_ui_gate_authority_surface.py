@@ -208,6 +208,7 @@ def test_gate_banner_treats_admitted_no_history_transition_as_uncertain() -> Non
     gate_content = view["zones"]["gate"]["content"]
 
     assert gate_content["risk_direction"] == "UNCERTAIN"
+    assert gate_content["operator_takeaway"] == "Admitted change detected, but directional trend remains uncertain."
     assert gate_content["trajectory_statement"] == "Directional trajectory remains uncertain under current evidence."
     assert (
         gate_content["if_sustained_statement"]

@@ -73,8 +73,15 @@ def _normalize_transition_type(transition_type: Any) -> str:
     return "STABLE"
 
 
-def _operator_takeaway(authority_level: str, transition_type: str, transition_intensity: str) -> str:
+def _operator_takeaway(
+    authority_level: str,
+    transition_type: str,
+    transition_intensity: str,
+    risk_direction: str,
+) -> str:
     if authority_level == "ADMITTED":
+        if risk_direction == "UNCERTAIN":
+            return "Admitted change detected, but directional trend remains uncertain."
         return (
             f"System has entered a {transition_intensity.lower()}-intensity "
             f"{transition_type.lower()} transition."
@@ -151,7 +158,7 @@ def render_gate_decision_card(decision: dict[str, Any] | None) -> dict[str, Any]
         "transition_type": transition_type,
         "transition_intensity": intensity,
         "operator_takeaway_label": "Operator Takeaway",
-        "operator_takeaway": _operator_takeaway(authority_level, transition_type, intensity),
+        "operator_takeaway": _operator_takeaway(authority_level, transition_type, intensity, risk_direction),
         "trajectory_statement": _trajectory_statement(authority_level, risk_direction),
         "risk_direction": risk_direction,
         "if_sustained_statement": _if_sustained_statement(risk_direction, authority_level),
