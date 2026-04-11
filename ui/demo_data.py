@@ -362,6 +362,6 @@ def load_greenhouse_demo_bundle(*, limit: int | None = 320, curated: bool = True
     return scenario, str(GREENHOUSE_SCENARIO_JSON.relative_to(REPO_ROOT))
 
 
-def load_greenhouse_demo_records(*, limit: int | None = 320, curated: bool = True) -> list[dict[str, Any]]:
+def load_greenhouse_demo_records(*, limit: int | None = 180, curated: bool = True) -> list[dict[str, Any]]:
     rows, _ = load_greenhouse_demo_bundle(limit=limit, curated=curated)
     return rows
