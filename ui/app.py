@@ -754,6 +754,26 @@ def create_gradio_app():
         "Step 3: Reorganization / Admit": demo_rows[:3],
     }
 
+    def render_command_header(step_label: str) -> str:
+        active_rows = demo_steps.get(step_label) or demo_steps["Step 3: Reorganization / Admit"]
+        latest = active_rows[-1] if active_rows else {}
+        confidence = f"{float(latest.get('confidence_score') or 0.0):.2f}"
+        gate_state = "ADMIT" if latest.get("event_admitted") else "SUPPRESS"
+        return f"""
+            <div class="ner-command-header">
+              <div class="ner-brand">
+                <span class="ner-wordmark">NERAIUM</span>
+                <span class="ner-env">GREENHOUSE / DEMO</span>
+              </div>
+              <div class="ner-header-metrics">
+                <span>Doctrine v2026.04</span>
+                <span>Confidence {escape(confidence)}</span>
+                <span>Gate {escape(gate_state)}</span>
+                <span>State LIVE DEMO</span>
+              </div>
+            </div>
+            """
+
     def load_operations_surface(step_label: str):
         active_rows = demo_steps.get(step_label) or demo_steps["Step 3: Reorganization / Admit"]
         app_state = create_app_state(active_rows)
@@ -780,7 +800,9 @@ def create_gradio_app():
         system_html = _render_system_context_html(surface["zones"]["system_state"])
         reasoning_html = _render_reasoning_html(surface["zones"]["reasoning"]["content"])
         record_html = _render_record_html(surface["zones"]["record"]["content"])
+        header_html = render_command_header(step_label)
         return (
+            header_html,
             gate_html,
             system_html,
             reasoning_html,
@@ -788,30 +810,13 @@ def create_gradio_app():
         )
 
     default_step = "Step 3: Reorganization / Admit"
-    initial_gate, initial_system, initial_reasoning, initial_record = load_operations_surface(default_step)
-    initial_confidence = f"{float(demo_rows[-1].get('confidence_score') or 0.0):.2f}"
-    initial_gate_state = "ADMIT" if demo_rows[-1].get("event_admitted") else "SUPPRESS"
+    initial_header, initial_gate, initial_system, initial_reasoning, initial_record = load_operations_surface(default_step)
 
     css_path = Path(__file__).parent / "themes" / "neraium_dark.css"
     css = css_path.read_text(encoding="utf-8") if css_path.exists() else ""
 
     with gr.Blocks(css=css, theme=gr.themes.Base(), elem_classes=["ner-app"]) as app:
-        gr.HTML(
-            f"""
-            <div class="ner-command-header">
-              <div class="ner-brand">
-                <span class="ner-wordmark">NERAIUM</span>
-                <span class="ner-env">GREENHOUSE / DEMO</span>
-              </div>
-              <div class="ner-header-metrics">
-                <span>Doctrine v2026.04</span>
-                <span>Confidence {escape(initial_confidence)}</span>
-                <span>Gate {escape(initial_gate_state)}</span>
-                <span>State LIVE DEMO</span>
-              </div>
-            </div>
-            """
-        )
+        header = gr.HTML(value=initial_header)
 
         with gr.Row(elem_classes=["ner-hero-row"]):
             with gr.Column(scale=8):
@@ -828,6 +833,6 @@ def create_gradio_app():
         reasoning = gr.HTML(value=initial_reasoning)
         record = gr.HTML(value=initial_record)
 
-        demo_step.change(fn=load_operations_surface, inputs=[demo_step], outputs=[gate, system, reasoning, record])
+        demo_step.change(fn=load_operations_surface, inputs=[demo_step], outputs=[header, gate, system, reasoning, record])
 
     return app
