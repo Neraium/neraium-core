@@ -6,8 +6,8 @@ from ui.components import (
     render_event_ledger,
     render_gate_decision_card,
     render_operational_reasoning_panel,
-    render_structural_flow_viz,
 )
+from ui.components.system_geometry_viz import render_system_geometry_viz
 from ui.core_integration import SystemState
 
 
@@ -99,11 +99,11 @@ def build_operations_view(
                 "content": render_gate_decision_card(gate),
             },
             "system_state": {
-                "title": "System Trajectory",
+                "title": "System Geometry",
                 "role": "supporting_context",
                 "visual_emphasis": "secondary",
                 "brightness": "55%",
-                "content": render_structural_flow_viz(state, gate_decision=gate, records=records),
+                "content": render_system_geometry_viz(state, gate_decision=gate, records=records),
                 "timeline_strip": _timeline_strip(state, gate),
             },
             "reasoning": {
