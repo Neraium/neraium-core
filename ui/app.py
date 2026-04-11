@@ -20,6 +20,7 @@ def load_builtin_demo_rows() -> list[dict[str, Any]]:
             "structural_drift_score": 0.22,
             "relational_stability_score": 0.84,
             "coherence_score": 0.87,
+            "snr_score": 1.65,
             "persistence_minutes": 0,
             "corroborating_signal_count": 0,
             "event_admitted": False,
@@ -34,6 +35,7 @@ def load_builtin_demo_rows() -> list[dict[str, Any]]:
             "structural_drift_score": 0.58,
             "relational_stability_score": 0.44,
             "coherence_score": 0.56,
+            "snr_score": 1.62,
             "persistence_minutes": 12,
             "corroborating_signal_count": 1,
             "event_admitted": False,
@@ -48,6 +50,7 @@ def load_builtin_demo_rows() -> list[dict[str, Any]]:
             "structural_drift_score": 0.77,
             "relational_stability_score": 0.27,
             "coherence_score": 0.74,
+            "snr_score": 2.1,
             "persistence_minutes": 44,
             "corroborating_signal_count": 3,
             "event_admitted": True,
@@ -210,9 +213,11 @@ def _render_gate_decision_html(gate_card: dict[str, Any]) -> str:
     )
 
     label = escape(str(gate_card.get("label") or "UNSPECIFIED GATE DECISION"))
-    subheader = escape(authority_level)
+    subheader = escape(str(gate_card.get("authority_badge") or authority_level))
     trajectory = escape(str(gate_card.get("trajectory_statement") or "No trajectory statement available."))
     risk_direction = escape(str(gate_card.get("risk_direction") or "UNCERTAIN"))
+    transition_type = escape(str(gate_card.get("transition_type") or "STABLE"))
+    operator_takeaway = escape(str(gate_card.get("operator_takeaway") or "No operator takeaway available."))
     if_sustained = escape(
         str(
             gate_card.get("if_sustained_statement")
@@ -220,16 +225,26 @@ def _render_gate_decision_html(gate_card: dict[str, Any]) -> str:
         )
     )
     confidence = escape(str(gate_card.get("confidence") or "LOW"))
+    timestamp_display = escape(str(gate_card.get("timestamp_display") or "Change evaluated at: unknown"))
 
     return f"""
 <div style="border:1px solid {style["border"]};border-left:8px solid {style["border"]};border-radius:12px;padding:16px;background:{style["bg"]};color:{style["fg"]};">
-  <div style="font-size:24px;font-weight:800;letter-spacing:0.02em;">{label}</div>
-  <div style="margin-top:4px;font-size:12px;font-weight:700;letter-spacing:0.08em;color:{style["subtle"]};">{subheader}</div>
-  <div style="margin-top:14px;display:grid;gap:10px;">
-    <div><div style="font-size:11px;text-transform:uppercase;opacity:0.8;">Trajectory</div><div style="font-size:15px;font-weight:600;">{trajectory}</div></div>
-    <div><div style="font-size:11px;text-transform:uppercase;opacity:0.8;">Risk Direction</div><div style="font-size:15px;font-weight:600;">{risk_direction}</div></div>
-    <div><div style="font-size:11px;text-transform:uppercase;opacity:0.8;">If Sustained</div><div style="font-size:15px;font-weight:600;">{if_sustained}</div></div>
-    <div><div style="font-size:11px;text-transform:uppercase;opacity:0.8;">Confidence</div><div style="font-size:15px;font-weight:600;">{confidence}</div></div>
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;">
+    <div style="font-size:28px;font-weight:900;line-height:1.12;letter-spacing:0.015em;max-width:80%;">{label}</div>
+    <div style="font-size:11px;font-weight:800;letter-spacing:0.08em;text-transform:uppercase;padding:6px 10px;border:1px solid {style["border"]};border-radius:999px;background:rgba(255,255,255,0.08);white-space:nowrap;">{subheader}</div>
+  </div>
+  <div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;">
+    <div style="font-size:11px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;padding:4px 8px;border:1px solid {style["border"]};border-radius:999px;color:{style["subtle"]};">Risk: {risk_direction}</div>
+    <div style="font-size:11px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase;padding:4px 8px;border:1px solid {style["border"]};border-radius:999px;color:{style["subtle"]};">Transition: {transition_type}</div>
+  </div>
+  <div style="margin-top:12px;font-size:16px;font-weight:800;">{operator_takeaway}</div>
+  <div style="margin-top:12px;display:grid;gap:8px;">
+    <div><div style="font-size:11px;text-transform:uppercase;opacity:0.72;">Trajectory</div><div style="font-size:14px;font-weight:560;opacity:0.93;">{trajectory}</div></div>
+    <div><div style="font-size:11px;text-transform:uppercase;opacity:0.72;">If Sustained</div><div style="font-size:14px;font-weight:560;opacity:0.93;">{if_sustained}</div></div>
+  </div>
+  <div style="margin-top:10px;display:flex;justify-content:space-between;gap:10px;font-size:12px;opacity:0.76;">
+    <span>Confidence: <strong>{confidence}</strong></span>
+    <span>{timestamp_display}</span>
   </div>
 </div>
 """.strip()
