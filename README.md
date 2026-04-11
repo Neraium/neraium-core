@@ -67,7 +67,7 @@ python start_ui.py
 ### Hosted/production launcher
 
 ```bash
-python start_ui_prod.py
+python start_site.py
 ```
 
 - Runs without opening a browser.
@@ -78,7 +78,7 @@ python start_ui_prod.py
 Example (explicit local prod-style boot):
 
 ```bash
-PORT=8080 python start_ui_prod.py
+PORT=8080 python start_site.py
 ```
 
 ---
