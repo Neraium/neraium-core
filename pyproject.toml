@@ -1,12 +1,12 @@
 [build-system]
-requires = []
-build-backend = "build_backend"
-backend-path = ["."]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "neraium-core"
 version = "0.1.0"
 description = "Read-only structural instability instrumentation engine and API"
+readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
   "fastapi>=0.110",
@@ -72,3 +72,10 @@ math-all = [
   "pulp>=2.7",
   "anthropic>=0.30",
 ]
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.packages.find]
+include = ["neraium_core*", "ui*"]
+exclude = ["tests*", "docs*"]
