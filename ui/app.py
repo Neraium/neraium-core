@@ -222,7 +222,7 @@ def _render_gate_decision_html(gate_card: dict[str, Any]) -> str:
     {_chip("Confidence", confidence)}
     {_chip("Risk", risk_direction)}
     {_chip("Transition", transition_type)}
-    {_chip("Doctrine", doctrine_version.split(".")[0])}
+    {_chip("Doctrine", doctrine_version)}
   </div>
   <div class="ner-meta-row"><span class="ner-badge">{authority_badge}</span><span>{timestamp_display}</span></div>
 </div>
