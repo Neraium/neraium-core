@@ -626,7 +626,7 @@ def create_gradio_app():
             </div>
             """
 
-    def load_operations_surface(frame_index: int, apply_stability: bool = True):
+    def load_operations_surface(frame_index: int, apply_stability: bool = False):
         active_rows = _rows_until(frame_index)
         app_state = create_app_state(active_rows)
         system_state = build_system_state(active_rows, config=UIConfig())
@@ -683,6 +683,9 @@ def create_gradio_app():
         playback_state["playing"] = True
         pace_controller.speed_multiplier = float(speed_multiplier or 1.0)
         frame = max(1, int(start_frame))
+        # Start each autoplay run with a fresh stabilizer state so seeks/scrubs
+        # do not leak prior hysteresis into the new playback segment.
+        verdict_stabilizer.reset()
 
         while frame <= total_steps and playback_state["playing"]:
             # Calculate adaptive delay based on phase
