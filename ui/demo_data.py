@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import runpy
+import csv
+from csv import DictReader
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterable
@@ -9,6 +11,8 @@ from typing import Any, Iterable
 REPO_ROOT = Path(__file__).resolve().parents[1]
 ULTRAFAST_DEMO_SCRIPT = REPO_ROOT / "greenhouse_demo" / "run_grow_demo_ultrafast.py"
 GREENHOUSE_SCENARIO_JSON = REPO_ROOT / "apps" / "api" / "demo_data" / "cannabis_grow_op_scenario.json"
+WUR_TURBO_SOURCE = REPO_ROOT / "WUR_AutonomousGreenhouseProject_EDA-main" / "iGrow" / "greenhouse_results_turbo"
+LOCAL_TURBO_SOURCE = REPO_ROOT / "greenhouse_demo" / "greenhouse_results_turbo.csv"
 
 
 def _clamp(value: float, low: float = 0.0, high: float = 1.0) -> float:
@@ -91,6 +95,88 @@ def _normalize_records(rows: Iterable[dict[str, Any]], *, limit: int | None) -> 
     return normalized
 
 
+def _coerce_float(value: Any, default: float = 0.0) -> float:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return default
+
+
+def _normalize_timestamp(value: Any, index: int, base_time: datetime) -> str:
+    try:
+        if isinstance(value, (int, float)):
+            # greenhouse_results_turbo uses Excel-style serial day values.
+            return (datetime(1899, 12, 30, tzinfo=timezone.utc) + timedelta(days=float(value))).isoformat()
+        raw = str(value or "").strip()
+        if raw:
+            return datetime.fromisoformat(raw.replace("Z", "+00:00")).astimezone(timezone.utc).isoformat()
+    except (TypeError, ValueError):
+        pass
+    return (base_time + timedelta(minutes=index)).isoformat()
+
+
+def _resolve_turbo_source() -> Path | None:
+    candidates = [
+        WUR_TURBO_SOURCE,
+        WUR_TURBO_SOURCE.with_suffix(".csv"),
+        WUR_TURBO_SOURCE / "greenhouse_results_turbo.csv",
+        LOCAL_TURBO_SOURCE,
+    ]
+    for candidate in candidates:
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+def _load_rows_from_turbo_results(*, limit: int | None) -> list[dict[str, Any]]:
+    source = _resolve_turbo_source()
+    if source is None:
+        return []
+    csv.field_size_limit(10_000_000)
+    with source.open("r", encoding="utf-8") as handle:
+        raw_rows = list(DictReader(handle))
+
+    if not raw_rows:
+        return []
+    if isinstance(limit, int) and limit > 0:
+        raw_rows = raw_rows[:limit]
+
+    base_time = datetime.now(timezone.utc) - timedelta(minutes=max(1, len(raw_rows)))
+    normalized: list[dict[str, Any]] = []
+    for idx, row in enumerate(raw_rows):
+        drift = _clamp(_coerce_float(row.get("structural_drift_score")))
+        stability = _clamp(_coerce_float(row.get("relational_stability_score"), 1.0))
+        confidence = _clamp(_coerce_float(row.get("confidence_score"), _coerce_float(row.get("confidence"), 0.6)))
+        regime_name = str(row.get("regime_name") or row.get("interpreted_state") or row.get("state") or "greenhouse_demo")
+        evidence = str(row.get("explanation_text") or row.get("explanation") or row.get("operator_message") or "").strip()
+
+        admitted_raw = str(row.get("signal_emitted") or row.get("event_admitted") or "").strip().lower()
+        admitted = admitted_raw in {"true", "1", "yes", "admit", "admitted"} or (drift >= 0.55 and stability <= 0.45)
+        if admitted and not evidence:
+            evidence = "Processed transition evidence exceeded gate threshold."
+        if not evidence:
+            evidence = "Processed telemetry ingested from greenhouse_results_turbo."
+
+        normalized.append(
+            {
+                "timestamp": _normalize_timestamp(row.get("timestamp"), idx, base_time),
+                "site_id": str(row.get("site_id") or "grow-house"),
+                "asset_id": str(row.get("asset_id") or "zone-A"),
+                "state": str(row.get("state") or _state_from_drift(drift)),
+                "regime_name": regime_name,
+                "structural_drift_score": round(drift, 6),
+                "relational_stability_score": round(stability, 6),
+                "system_health": str(row.get("risk_level") or row.get("system_health") or _health_from_drift(drift)).lower(),
+                "confidence_score": round(confidence, 6),
+                "event_admitted": bool(admitted),
+                "evidence_summary": evidence,
+                "sensor_values": {},
+            }
+        )
+    normalized.sort(key=lambda entry: str(entry.get("timestamp") or ""))
+    return normalized
+
+
 def _extract_rows_from_script_scope(scope: dict[str, Any], *, limit: int | None) -> list[dict[str, Any]]:
     candidates = (
         "build_ultrafast_demo_rows",
@@ -160,7 +246,10 @@ def _load_rows_from_greenhouse_scenario(*, limit: int | None) -> list[dict[str, 
 
 
 def load_greenhouse_demo_records(*, limit: int | None = 180) -> list[dict[str, Any]]:
-    """Load UI-ready greenhouse replay rows, preferring the ultrafast script source when available."""
+    """Load UI-ready greenhouse replay rows from processed greenhouse outputs when available."""
+    turbo = _load_rows_from_turbo_results(limit=limit)
+    if turbo:
+        return turbo
     ultrafast = _load_rows_from_ultrafast_script(limit=limit)
     if ultrafast:
         return ultrafast
