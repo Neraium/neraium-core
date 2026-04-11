@@ -228,15 +228,14 @@ def _render_gate_decision_html(gate_card: dict[str, Any]) -> str:
 
     return f"""
 <div class="ner-panel ner-verdict-card" style="--verdict-accent:{style["accent"]};--verdict-badge:{style["badge"]};">
-  <div class="ner-eyebrow">Gate Verdict</div>
+  <div class="ner-eyebrow">System Decision Surface</div>
   <div class="ner-verdict-main">{label}</div>
   <div class="ner-verdict-subtitle">{authority_statement}</div>
   <div class="ner-verdict-takeaway">{operator_takeaway}</div>
   <div class="ner-chip-row">
-    {_chip("Authority", authority_badge)}
+    {_chip("Confidence", confidence)}
     {_chip("Risk", risk_direction)}
     {_chip("Transition", transition_type)}
-    {_chip("Confidence", confidence)}
     {_chip("Doctrine", doctrine_version)}
   </div>
   <div class="ner-verdict-projection">
@@ -534,9 +533,24 @@ def _render_system_context_html(system_zone: dict[str, Any]) -> str:
         f'</div></div>'
     )
 
+    position = content.get("current_position") if isinstance(content.get("current_position"), dict) else {}
+    velocity = content.get("velocity_vector") if isinstance(content.get("velocity_vector"), dict) else {}
+    x = _f(position.get("x"), 0.0)
+    y = _f(position.get("y"), 0.0)
+    phase_label = escape(str(position.get("phase") or phase).upper())
+    velocity_mag = _f(velocity.get("magnitude"), 0.0)
+    context_row = (
+        '<div class="ner-system-context-grid">'
+        f'<div><span class="ner-context-label">Current Position</span><span class="ner-context-value">X {x:.2f} · Y {y:.2f}</span></div>'
+        f'<div><span class="ner-context-label">Trajectory</span><span class="ner-context-value">Vector {velocity_mag:.2f}</span></div>'
+        f'<div><span class="ner-context-label">Phase</span><span class="ner-context-value">{phase_label}</span></div>'
+        f'<div><span class="ner-context-label">Timeline</span><span class="ner-context-value">Recent transitions</span></div>'
+        '</div>'
+    )
+
     return (
         f'<div class="ner-panel ner-system-panel">'
-        f'{header_html}{svg_html}{timeline_html}</div>'
+        f'{header_html}{context_row}{svg_html}{timeline_html}</div>'
     )
 
 
@@ -586,14 +600,14 @@ def _render_reasoning_html(reasoning_panel: dict[str, Any]) -> str:
     if facts:
         facts_items = "".join(
             f'<div style="display:flex;gap:8px;margin-bottom:5px;">'
-            f'<span style="color:#4B5563;margin-top:1px;flex-shrink:0;">·</span>'
-            f'<span style="font-size:13px;line-height:1.55;color:#D1D5DB;">{escape(str(f))}</span>'
+            f'<span style="color:#8DB9FF;margin-top:1px;flex-shrink:0;">·</span>'
+            f'<span style="font-size:14px;line-height:1.5;color:#E1EBFF;">{escape(str(f))}</span>'
             f'</div>'
             for f in facts
         )
         facts_body = f'<div class="ner-facts-list">{facts_items}</div>'
     else:
-        facts_body = '<div style="font-size:13px;color:#6B7280;font-style:italic;">No observed facts available.</div>'
+        facts_body = '<div style="font-size:14px;color:#AFC2E6;font-style:italic;">No observed facts available.</div>'
     facts_section = _section("Observed Facts", facts_body, "#60A5FA")
 
     # Grounded Answer section
@@ -601,11 +615,11 @@ def _render_reasoning_html(reasoning_panel: dict[str, Any]) -> str:
         grounded_body = f'<div class="ner-reason-copy">{escape(grounded_text)}</div>'
     elif insufficient_text:
         grounded_body = (
-            f'<div style="font-size:13px;line-height:1.55;color:#9CA3AF;font-style:italic;">'
+            f'<div style="font-size:14px;line-height:1.5;color:#B6C8E8;font-style:italic;">'
             f'{escape(insufficient_text)}</div>'
         )
     else:
-        grounded_body = '<div style="font-size:13px;color:#6B7280;font-style:italic;">No grounded answer available.</div>'
+        grounded_body = '<div style="font-size:14px;color:#AFC2E6;font-style:italic;">No grounded answer available.</div>'
     grounded_section = _section("Grounded Answer", grounded_body, "#818CF8")
 
     # Operational Implication section
@@ -626,7 +640,7 @@ def _render_reasoning_html(reasoning_panel: dict[str, Any]) -> str:
 
     return (
         f'<div class="ner-panel">'
-        f'<div class="ner-eyebrow">Reasoning Chain</div>'
+        f'<div class="ner-eyebrow">Operational Reasoning</div>'
         f'{facts_section}{grounded_section}{impl_section}{gate_section}'
         f'</div>'
     )
@@ -684,7 +698,7 @@ def _render_record_html(record_panel: dict[str, Any]) -> str:
         raw_decision = str(entry.get("gate_decision") or "SUPPRESS").upper()
         st = decision_styles.get(raw_decision, default_style)
         ts = escape(str(entry.get("timestamp") or "n/a"))
-        summary = escape(str(entry.get("summary") or "No evidence summary."))
+        summary = escape(str(entry.get("summary") or "No summary."))
         prev_state = escape(str(entry.get("previous_state_summary") or "n/a"))
         curr_state = escape(str(entry.get("current_state_summary") or "n/a"))
         raw_transition = str(entry.get("transition_type") or "STABLE").upper()
@@ -692,32 +706,31 @@ def _render_record_html(record_panel: dict[str, Any]) -> str:
 
         return (
             f'<div class="ner-record-card" style="--card-border:{st["border"]};--card-bg:{st["bg"]};">'
-            # Header row: timestamp + decision badge + transition type
+            # Header row: compact operational fields
             f'<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px;">'
-            f'<span style="font-size:12px;font-weight:700;color:{st["ts_color"]};font-variant-numeric:tabular-nums;">'
-            f'{ts}</span>'
+            f'<span style="font-size:11px;font-weight:700;color:{st["ts_color"]};font-variant-numeric:tabular-nums;">timestamp {ts}</span>'
             f'<span style="font-size:10px;font-weight:800;padding:2px 8px;border-radius:999px;'
             f'background:{st["badge_bg"]};color:{st["badge_text"]};border:1px solid {st["badge_border"]};'
-            f'letter-spacing:0.07em;text-transform:uppercase;">{escape(raw_decision)}</span>'
+            f'letter-spacing:0.07em;text-transform:uppercase;">decision {escape(raw_decision)}</span>'
             f'<span style="font-size:10px;font-weight:700;padding:2px 8px;border-radius:999px;'
             f'background:rgba(255,255,255,0.04);color:{transition_color};'
             f'border:1px solid {transition_color}33;letter-spacing:0.05em;text-transform:uppercase;">'
-            f'{escape(raw_transition)}</span>'
+            f'transition {escape(raw_transition)}</span>'
             f'</div>'
             # Summary
-            f'<div style="font-size:13px;line-height:1.55;color:#D1D5DB;margin-bottom:10px;">{summary}</div>'
+            f'<div style="font-size:14px;line-height:1.45;color:#E5EDFF;margin-bottom:10px;">summary {summary}</div>'
             # State transition row
             f'<div class="ner-state-shift">'
             f'<div style="flex:1;min-width:0;">'
             f'<div style="font-size:9px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;'
-            f'color:#4B5563;margin-bottom:3px;">Previous</div>'
-            f'<div style="color:#94A3B8;line-height:1.4;word-break:break-word;">{prev_state}</div>'
+            f'color:#A7BADD;margin-bottom:3px;">previous state</div>'
+            f'<div style="color:#D7E5FF;line-height:1.4;word-break:break-word;">{prev_state}</div>'
             f'</div>'
-            f'<div style="color:#374151;font-size:14px;padding-top:14px;flex-shrink:0;">→</div>'
+            f'<div style="color:#B9CAEA;font-size:14px;padding-top:14px;flex-shrink:0;">→</div>'
             f'<div style="flex:1;min-width:0;">'
             f'<div style="font-size:9px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase;'
-            f'color:#4B5563;margin-bottom:3px;">Current</div>'
-            f'<div style="color:#CBD5E1;line-height:1.4;word-break:break-word;">{curr_state}</div>'
+            f'color:#A7BADD;margin-bottom:3px;">current state</div>'
+            f'<div style="color:#F0F5FF;line-height:1.4;word-break:break-word;">{curr_state}</div>'
             f'</div>'
             f'</div>'
             f'</div>'
