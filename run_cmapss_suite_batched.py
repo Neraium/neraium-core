@@ -62,13 +62,19 @@ def _print_fd001_interpretation_note(timeline_df: pd.DataFrame, unit_summary_df:
     fd004_comparison_path = Path("FD004_by_unit_results.csv")
     smoother_vs_fd004 = None
     if fd004_comparison_path.exists():
-        fd004_df = pd.read_csv(fd004_comparison_path)
-        fd004_df.columns = [c.lower() for c in fd004_df.columns]
-        required_cols = {"cycle", "structural_drift_score"}
-        if required_cols.issubset(fd004_df.columns):
-            fd004_cycle_profile = fd004_df.groupby("cycle")["structural_drift_score"].mean().sort_index()
-            fd004_flip_ratio, fd004_mean_step = _oscillation_stats(fd004_cycle_profile)
-            smoother_vs_fd004 = (fd001_flip_ratio < fd004_flip_ratio) and (fd001_mean_step <= fd004_mean_step)
+        try:
+            fd004_df = pd.read_csv(fd004_comparison_path)
+            fd004_df.columns = [c.lower() for c in fd004_df.columns]
+            required_cols = {"cycle", "structural_drift_score"}
+            if required_cols.issubset(fd004_df.columns):
+                fd004_cycle_profile = fd004_df.groupby("cycle")["structural_drift_score"].mean().sort_index()
+                fd004_flip_ratio, fd004_mean_step = _oscillation_stats(fd004_cycle_profile)
+                smoother_vs_fd004 = (fd001_flip_ratio < fd004_flip_ratio) and (fd001_mean_step <= fd004_mean_step)
+        except Exception as err:
+            print(
+                "- FD004 smoothness comparison warning: "
+                f"could not parse {fd004_comparison_path} ({err})."
+            )
 
     print("\nFD001 INTERPRETATION NOTE")
     print("- first cycle of meaningful structural drift:", first_structural_cycle)
