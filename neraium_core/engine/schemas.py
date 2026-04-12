@@ -5,6 +5,7 @@ All frames and results flowing through the engine must conform to these schemas.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, asdict
 from typing import Any, Optional
 
@@ -43,8 +44,10 @@ class InputFrame:
                 raise ValueError(f"Invalid sensor name: must be non-empty string, got {name!r}")
             if not isinstance(value, (int, float)):
                 raise ValueError(f"Invalid sensor value for {name}: must be number, got {value!r}")
-            if value != value:  # NaN check
+            if math.isnan(value):
                 raise ValueError(f"Invalid sensor value for {name}: cannot be NaN")
+            if math.isinf(value):
+                raise ValueError(f"Invalid sensor value for {name}: cannot be infinite")
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary representation."""
