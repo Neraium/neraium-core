@@ -5,9 +5,9 @@ import json
 import logging
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Iterable, Literal
 
-from neraium_core.sii import SIIEngine
+from neraium_core.sii import SIIConfig, SIIEngine
 from neraium_core.logging_utils import log_structured, summarize_exception_for_logs
 
 logger = logging.getLogger(__name__)
@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 EXPECTED_FD001_COLUMNS = 26
 OPERATING_SETTING_COUNT = 3
 SENSOR_COUNT = 21
+FD001ReplayMode = Literal["full", "smoke"]
 
 
 @dataclass(frozen=True)
@@ -282,13 +283,29 @@ def _run_unit_timeline(
     rows: list[Fd001Row],
     *,
     unit_id: int,
+    replay_mode: FD001ReplayMode,
     max_cycles: int | None,
+    every_nth_cycle: int | None,
     site_id: str,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], dict[str, Any]]:
-    capped_rows = rows[: int(max_cycles)] if (max_cycles is not None and max_cycles > 0) else rows
+    if every_nth_cycle is not None and every_nth_cycle <= 0:
+        raise ValueError("every_nth_cycle must be > 0 when provided")
+    sampled_rows = rows[:: int(every_nth_cycle)] if (every_nth_cycle is not None and every_nth_cycle > 1) else rows
+    capped_rows = sampled_rows[: int(max_cycles)] if (max_cycles is not None and max_cycles > 0) else sampled_rows
 
     # Explicit per-unit state scoping: instantiate a new engine per unit timeline.
-    engine = SIIEngine()
+    if replay_mode == "smoke":
+        engine = SIIEngine(
+            config=SIIConfig(
+                baseline_window=12,
+                recent_window=4,
+                max_history=96,
+                freeze_baseline_frames=4,
+                min_samples_for_alerts=8,
+            )
+        )
+    else:
+        engine = SIIEngine()
     confidence_stabilizer = _TemporalConfidenceStabilizer(alpha=0.45, window=3, max_step=0.12)
     unit_full: list[dict[str, Any]] = []
     unit_summary: list[dict[str, Any]] = []
@@ -300,7 +317,13 @@ def _run_unit_timeline(
     log_structured(
         logger,
         event="fd001_replay_started",
-        fields={"unit_id": unit_id, "max_cycles": max_cycles, "ingest_path": "fd001_replay"},
+        fields={
+            "unit_id": unit_id,
+            "replay_mode": replay_mode,
+            "max_cycles": max_cycles,
+            "every_nth_cycle": every_nth_cycle,
+            "ingest_path": "fd001_replay",
+        },
         level=logging.INFO,
     )
     try:
@@ -388,12 +411,17 @@ def replay_fd001_units(
     grouped_rows: dict[int, list[Fd001Row]],
     *,
     unit_ids: list[int] | None = None,
+    replay_mode: FD001ReplayMode = "full",
     max_cycles: int | None = None,
+    every_nth_cycle: int | None = None,
     site_id: str = "cmapss-fd001",
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
     full_results: list[dict[str, Any]] = []
     summary_rows: list[dict[str, Any]] = []
     unit_milestones: list[dict[str, Any]] = []
+
+    if replay_mode not in {"full", "smoke"}:
+        raise ValueError("replay_mode must be one of: full, smoke")
 
     replay_units = sorted(unit_ids) if unit_ids else sorted(grouped_rows)
     for unit_id in replay_units:
@@ -401,7 +429,9 @@ def replay_fd001_units(
         unit_full, unit_summary, milestones = _run_unit_timeline(
             rows,
             unit_id=unit_id,
+            replay_mode=replay_mode,
             max_cycles=max_cycles,
+            every_nth_cycle=every_nth_cycle,
             site_id=site_id,
         )
         full_results.extend(unit_full)
