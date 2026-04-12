@@ -41,8 +41,13 @@ def _x_values(df: pd.DataFrame) -> tuple[pd.Series, str]:
     for candidate in TIMELINE_CANDIDATE_COLUMNS:
         if candidate in lower_col_map:
             source_col = lower_col_map[candidate]
-            series = pd.to_numeric(df[source_col], errors="coerce").ffill().fillna(0)
-            return series, source_col
+            numeric_series = pd.to_numeric(df[source_col], errors="coerce")
+            if numeric_series.notna().any():
+                return numeric_series.ffill().fillna(0), source_col
+
+            datetime_series = pd.to_datetime(df[source_col], errors="coerce")
+            if datetime_series.notna().any():
+                return datetime_series.ffill().bfill(), source_col
     return pd.Series(range(len(df)), index=df.index), "index"
 
 
