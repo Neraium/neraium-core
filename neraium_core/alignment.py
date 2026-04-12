@@ -131,6 +131,9 @@ DEFAULT_ALERT_PERSISTENCE = LOCKED_FD004_POLICY_DEFAULTS["alert_persistence"]
 DEFAULT_FAST_TRIGGER_MULTIPLIER = LOCKED_FD004_POLICY_DEFAULTS["fast_trigger_multiplier"]
 DEFAULT_ALERT_LATCH_ENABLED = LOCKED_FD004_POLICY_DEFAULTS["alert_latch_enabled"]
 DEFAULT_UNLATCH_RATIO = LOCKED_FD004_POLICY_DEFAULTS["unlatch_ratio"]
+DEFAULT_SENSOR_NORMALIZATION_ALPHA = 0.01
+DEFAULT_DRIFT_EMA_ALPHA = 0.2
+DEFAULT_TRANSITION_PERSISTENCE = 3
 
 
 def _to_epoch_seconds(value: object) -> float:
@@ -368,6 +371,14 @@ class StructuralEngine:
         self._drift_watch_alert_thresholds: tuple[float, float] | None = None
         self._drift_smoothing_buffer: deque[float] = deque(maxlen=self.drift_smoothing_window)
         self._drift_smoothing_sum: float = 0.0
+        self._drift_ema_alpha: float = DEFAULT_DRIFT_EMA_ALPHA
+        self._smoothed_drift_ema: float | None = None
+        self._prev_smoothed_drift: float | None = None
+        self._drift_counter: int = 0
+        self._transition_persistence_length: int = DEFAULT_TRANSITION_PERSISTENCE
+        self._prev_corr_matrix: np.ndarray | None = None
+        self._sensor_norm_alpha: float = DEFAULT_SENSOR_NORMALIZATION_ALPHA
+        self._norm_stats: dict[str, np.ndarray] | None = None
         self._watch_counter: int = 0
         self._alert_counter: int = 0
         self._alert_latched: bool = False
@@ -446,6 +457,9 @@ class StructuralEngine:
             "structural_drift_score_smoothed": 0.0,
             "drift_smooth": 0.0,
             "relational_stability_score": 1.0,
+            "dynamic_signal_strength": 0.0,
+            "system_phase": "STABLE",
+            "transition_detected": False,
             "system_health": 100,
             "drift_alert": False,
             "sensor_relationships": self.sensor_order,
@@ -886,9 +900,42 @@ class StructuralEngine:
                 self.sensor_order = merged
                 for f in self.frames:
                     sv = f.get("sensor_values") or {}
-                    f["_vector"] = _vector_from_sensor_values(sv, self.sensor_order)
+                    raw_vec = _vector_from_sensor_values(sv, self.sensor_order)
+                    f["_vector"] = self._normalize_sensor_vector(raw_vec)
                 self._sensor_schema_dirty = True
-        return _vector_from_sensor_values(sensor_values, self.sensor_order)
+        raw_vector = _vector_from_sensor_values(sensor_values, self.sensor_order)
+        return self._normalize_sensor_vector(raw_vector)
+
+    def _normalize_sensor_vector(self, vector: np.ndarray) -> np.ndarray:
+        values = np.asarray(vector, dtype=float)
+        if values.size == 0:
+            return values
+        finite = np.isfinite(values)
+        safe_values = np.where(finite, values, 0.0)
+        if self._norm_stats is None:
+            self._norm_stats = {
+                "mean": safe_values.copy(),
+                "std": np.ones_like(safe_values, dtype=float),
+            }
+            return np.where(finite, safe_values, np.nan)
+        mean = self._norm_stats["mean"]
+        std = self._norm_stats["std"]
+        if mean.shape != values.shape:
+            new_mean = np.zeros_like(safe_values, dtype=float)
+            new_std = np.ones_like(safe_values, dtype=float)
+            common = min(mean.shape[0], safe_values.shape[0])
+            if common > 0:
+                new_mean[:common] = mean[:common]
+                new_std[:common] = std[:common]
+            self._norm_stats = {"mean": new_mean, "std": new_std}
+            mean = self._norm_stats["mean"]
+            std = self._norm_stats["std"]
+        alpha = float(self._sensor_norm_alpha)
+        mean[finite] = (1.0 - alpha) * mean[finite] + alpha * safe_values[finite]
+        std[finite] = (1.0 - alpha) * std[finite] + alpha * np.abs(safe_values[finite] - mean[finite])
+        normalized = (safe_values - mean) / (std + 1e-6)
+        normalized[~finite] = np.nan
+        return normalized
 
     @staticmethod
     def _is_real_numeric_value(value: object) -> bool:
@@ -1828,21 +1875,54 @@ class StructuralEngine:
                 # binding stage outputs into runtime diagnostics.
                 drift_score = structural_drift(corr_recent, baseline_corr_used, norm="fro")
                 drift_score = float(drift_score)
+                if self._smoothed_drift_ema is None:
+                    self._smoothed_drift_ema = drift_score
+                else:
+                    alpha = float(self._drift_ema_alpha)
+                    self._smoothed_drift_ema = alpha * drift_score + (1.0 - alpha) * self._smoothed_drift_ema
+                drift_score = float(self._smoothed_drift_ema)
                 self._drift_score_history.append(drift_score)
                 self._structural_drift_history.append(drift_score)
-                if self._drift_watch_alert_thresholds is None:
-                    self._baseline_drift_score_samples.append(drift_score)
-                    if len(self._baseline_drift_score_samples) >= MIN_BASELINE_SAMPLES_FOR_CALIBRATION:
-                        watch_thr = float(np.quantile(list(self._baseline_drift_score_samples), self.watch_quantile))
-                        alert_thr = float(np.quantile(list(self._baseline_drift_score_samples), self.alert_quantile))
-                        if alert_thr < watch_thr:
-                            watch_thr, alert_thr = alert_thr, watch_thr
-                        self._drift_watch_alert_thresholds = (watch_thr, alert_thr)
+                self._baseline_drift_score_samples.append(drift_score)
+                if len(self._baseline_drift_score_samples) >= MIN_BASELINE_SAMPLES_FOR_CALIBRATION:
+                    drift_baseline_window = list(self._baseline_drift_score_samples)[
+                        -min(30, len(self._baseline_drift_score_samples)) :
+                    ]
+                    watch_thr = float(np.percentile(drift_baseline_window, 100.0 * self.watch_quantile))
+                    alert_thr = float(np.percentile(drift_baseline_window, 100.0 * self.alert_quantile))
+                    if alert_thr < watch_thr:
+                        watch_thr, alert_thr = alert_thr, watch_thr
+                    self._drift_watch_alert_thresholds = (watch_thr, alert_thr)
                 alert_state, smoothed_drift_score = self._update_drift_state_machine(drift_score)
+                if self._prev_smoothed_drift is None:
+                    drift_velocity = 0.0
+                else:
+                    drift_velocity = abs(float(smoothed_drift_score) - self._prev_smoothed_drift)
+                self._prev_smoothed_drift = float(smoothed_drift_score)
                 rel_delta_legacy = flatten_upper_tri(corr_recent) - flatten_upper_tri(baseline_corr_used)
                 relational_raw = float(np.mean(np.abs(rel_delta_legacy))) if rel_delta_legacy.size else 0.0
                 relational_raw = max(relational_raw, stage_relational_raw, 0.5 * stage_structural_raw)
-                stability_score = 1.0 / (1.0 + drift_score)
+                if self._prev_corr_matrix is not None and self._prev_corr_matrix.shape == corr_recent.shape:
+                    relational_stability = 1.0 - float(np.mean(np.abs(corr_recent - self._prev_corr_matrix)))
+                else:
+                    relational_stability = 1.0
+                relational_stability = self._clamp01(relational_stability)
+                self._prev_corr_matrix = np.array(corr_recent, dtype=float, copy=True)
+                stability_score = float(relational_stability)
+                if drift_score < 0.2 and drift_velocity < 0.05:
+                    system_phase = "STABLE"
+                elif drift_score < 0.5:
+                    system_phase = "TRANSITION"
+                else:
+                    system_phase = "REORGANIZATION"
+                transition_threshold = (
+                    self._drift_watch_alert_thresholds[0] if self._drift_watch_alert_thresholds is not None else 0.5
+                )
+                if drift_score > float(transition_threshold):
+                    self._drift_counter += 1
+                else:
+                    self._drift_counter = 0
+                transition_detected = self._drift_counter >= self._transition_persistence_length
 
                 regime_drift = 0.0
                 if regime_name is not None:
@@ -1988,7 +2068,10 @@ class StructuralEngine:
                         "structural_drift_score": round(drift_score, 4),
                         "structural_drift_score_smoothed": round(float(smoothed_drift_score), 4),
                         "drift_smooth": round(float(smoothed_drift_score), 4),
-                        "relational_stability_score": round(stability_score, 4),
+                        "relational_stability_score": round(relational_stability, 4),
+                        "dynamic_signal_strength": round(float(drift_velocity), 4),
+                        "system_phase": system_phase,
+                        "transition_detected": bool(transition_detected),
                         "system_health": self._system_health(drift_score, stability_score),
                         # Backward-compat precedence: `state` intentionally reflects
                         # policy state so existing consumers stay single-field.
@@ -2004,7 +2087,6 @@ class StructuralEngine:
                         "latest_drift_smoothed": round(float(smoothed_drift_score), 4),
                         "baseline_mode": baseline_mode,
                         "context_dominance_score": round(float(rep.diagnostics.get("context_dominance_score", 0.0)), 4),
-                        "dynamic_signal_strength": round(float(rep.diagnostics.get("dynamic_signal_strength", 0.0)), 4),
                         "early_separation_flag": bool(rep.diagnostics.get("early_separation_flag", False)),
                     }
                 )
