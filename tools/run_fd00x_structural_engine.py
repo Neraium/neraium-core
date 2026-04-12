@@ -141,7 +141,21 @@ def main() -> None:
     file_path = _resolve_input_path(dataset, args.input)
 
     df = pd.read_csv(file_path, sep=r"\s+", header=None)
-    df = df.iloc[:, : len(FD00X_COLUMNS)].copy()
+    expected_columns = len(FD00X_COLUMNS)
+    actual_columns = df.shape[1]
+    if actual_columns != expected_columns:
+        extra_columns = df.iloc[:, expected_columns:] if actual_columns > expected_columns else None
+        trailing_empty_columns = bool(
+            extra_columns is not None and extra_columns.isna().all().all()
+        )
+        if actual_columns > expected_columns and trailing_empty_columns:
+            df = df.iloc[:, :expected_columns].copy()
+        else:
+            raise ValueError(
+                "Unexpected FD00x column count in input "
+                f"{file_path}: expected {expected_columns}, found {actual_columns}. "
+                "Refusing to remap columns to avoid silent feature shifts."
+            )
     df.columns = FD00X_COLUMNS
 
     engine = StructuralEngine(
