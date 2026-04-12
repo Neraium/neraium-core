@@ -11,6 +11,7 @@ METRICS = (
     "relational_instability_score",
     "transition_pressure",
 )
+TIMELINE_CANDIDATE_COLUMNS = ("time", "timestamp", "cycle")
 
 
 def parse_args() -> argparse.Namespace:
@@ -35,10 +36,14 @@ def _validate_columns(df: pd.DataFrame, label: str) -> None:
         raise ValueError(f"{label} is missing required columns: {joined}")
 
 
-def _x_values(df: pd.DataFrame) -> pd.Series:
-    if "time" in df.columns:
-        return pd.to_numeric(df["time"], errors="coerce").fillna(method="ffill").fillna(0)
-    return pd.Series(range(len(df)), index=df.index)
+def _x_values(df: pd.DataFrame) -> tuple[pd.Series, str]:
+    lower_col_map = {column.lower(): column for column in df.columns}
+    for candidate in TIMELINE_CANDIDATE_COLUMNS:
+        if candidate in lower_col_map:
+            source_col = lower_col_map[candidate]
+            series = pd.to_numeric(df[source_col], errors="coerce").ffill().fillna(0)
+            return series, source_col
+    return pd.Series(range(len(df)), index=df.index), "index"
 
 
 def _y_limits(values_left: pd.Series, values_right: pd.Series) -> tuple[float, float] | None:
@@ -64,8 +69,8 @@ def main() -> None:
     _validate_columns(fd001_df, "FD001 CSV")
     _validate_columns(fd004_df, "FD004 CSV")
 
-    x_fd001 = _x_values(fd001_df)
-    x_fd004 = _x_values(fd004_df)
+    x_fd001, x_fd001_label = _x_values(fd001_df)
+    x_fd004, x_fd004_label = _x_values(fd004_df)
 
     fig, axes = plt.subplots(nrows=3, ncols=2, figsize=(14, 10), sharex=False)
 
@@ -83,8 +88,8 @@ def main() -> None:
         right_ax.set_title(f"FD004 {metric}")
 
         left_ax.set_ylabel(metric)
-        left_ax.set_xlabel("time" if "time" in fd001_df.columns else "index")
-        right_ax.set_xlabel("time" if "time" in fd004_df.columns else "index")
+        left_ax.set_xlabel(x_fd001_label)
+        right_ax.set_xlabel(x_fd004_label)
 
         limits = _y_limits(fd001_y, fd004_y)
         if limits is not None:
