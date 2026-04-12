@@ -317,6 +317,7 @@ class StructuralEngine:
         self._fast_geometry_update_interval: int = FAST_MODE_GEOMETRY_UPDATE_INTERVAL if self.fast_mode else 1
         self._fast_geometry_downsample_step: int = FAST_MODE_GEOMETRY_DOWNSAMPLE_STEP if self.fast_mode else 1
         self._fast_geometry_payload_cache: dict[str, object] | None = None
+        self._fast_geometry_refresh_tick: int = 0
         # Extra frames after windows first fill before EMERGING/SUSTAINED labels are trusted.
         _stab = os.environ.get("NERAIUM_TRANSITION_STABILIZATION_MARGIN") or os.environ.get(
             "NERAIUM_TRANSITION_WARMUP_MARGIN", "8"
@@ -638,7 +639,7 @@ class StructuralEngine:
         """Fast-mode geometry throttle: reuse cached payloads between sampled updates."""
         should_refresh = (
             self._fast_geometry_payload_cache is None
-            or (len(self.frames) % max(1, self._fast_geometry_update_interval) == 0)
+            or (self._fast_geometry_refresh_tick % max(1, self._fast_geometry_update_interval) == 0)
         )
         if should_refresh:
             matrix = z_recent_valid
@@ -712,6 +713,7 @@ class StructuralEngine:
         self._first_alert_logged = False
         self._experimental_analytics_debug_logged = False
         self._geometry_debug_frames_logged = 0
+        self._fast_geometry_refresh_tick = 0
         self._last_geometry_debug_branching_factor = None
         self.reset_baseline()
 
@@ -739,6 +741,7 @@ class StructuralEngine:
             "baseline_coverage_samples": int(self._baseline_coverage_samples),
             "current_episode": dict(self._current_episode),
             "episode_history": list(self._episode_history),
+            "fast_geometry_refresh_tick": int(self._fast_geometry_refresh_tick),
         }
 
     def restore_state(self, state: Dict[str, object]) -> None:
@@ -753,6 +756,7 @@ class StructuralEngine:
         self._shock_activity_history = deque(list(state.get("shock_activity_history", [])), maxlen=TRANSITION_MEMORY_WINDOW)
         self._structural_drift_history = deque(list(state.get("structural_drift_history", [])), maxlen=TRANSITION_MEMORY_WINDOW)
         self._tetrahedral_position_history = deque(list(state.get("tetrahedral_position_history", [])), maxlen=64)
+        self._fast_geometry_refresh_tick = int(state.get("fast_geometry_refresh_tick", len(self.frames)))
         self._watch_counter = int(state.get("watch_counter", 0))
         self._alert_counter = int(state.get("alert_counter", 0))
         self._alert_latched = bool(state.get("alert_latched", False))
@@ -1656,6 +1660,7 @@ class StructuralEngine:
         stored = dict(frame)
         stored["_vector"] = vector
         self.frames.append(stored)
+        self._fast_geometry_refresh_tick += 1
 
         try:
             ts_val = float(frame["timestamp"])
