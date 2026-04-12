@@ -3,7 +3,7 @@ from __future__ import annotations
 import csv
 import json
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Iterable, Literal
 
@@ -295,14 +295,16 @@ def _run_unit_timeline(
 
     # Explicit per-unit state scoping: instantiate a new engine per unit timeline.
     if replay_mode == "smoke":
+        smoke_config = replace(
+            SIIConfig.from_env(),
+            baseline_window=12,
+            recent_window=4,
+            max_history=96,
+            freeze_baseline_frames=4,
+            min_samples_for_alerts=8,
+        )
         engine = SIIEngine(
-            config=SIIConfig(
-                baseline_window=12,
-                recent_window=4,
-                max_history=96,
-                freeze_baseline_frames=4,
-                min_samples_for_alerts=8,
-            )
+            config=smoke_config
         )
     else:
         engine = SIIEngine()
