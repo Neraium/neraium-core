@@ -105,6 +105,10 @@ TRANSITION_MEMORY_WINDOW = 8
 TRANSITION_EMERGING_THRESHOLD = 0.85
 TRANSITION_SUSTAINED_THRESHOLD = 1.15
 
+# Fast mode keeps the public output contract but thins/defers non-critical heavy analytics.
+FAST_MODE_GEOMETRY_UPDATE_INTERVAL = 3
+FAST_MODE_GEOMETRY_DOWNSAMPLE_STEP = 2
+
 # Calibrate alert thresholds from early nominal scores to reduce false positives
 # and prevent early single-sample spikes from triggering alerts.
 MIN_BASELINE_SAMPLES_FOR_CALIBRATION = 28
@@ -310,6 +314,9 @@ class StructuralEngine:
         }
         self.transition_aware_enabled: bool = _env_enabled("NERAIUM_TRANSITION_AWARE", default="1")
         self.fast_mode: bool = os.getenv("NERAIUM_FAST_MODE", "0") == "1"
+        self._fast_geometry_update_interval: int = FAST_MODE_GEOMETRY_UPDATE_INTERVAL if self.fast_mode else 1
+        self._fast_geometry_downsample_step: int = FAST_MODE_GEOMETRY_DOWNSAMPLE_STEP if self.fast_mode else 1
+        self._fast_geometry_payload_cache: dict[str, object] | None = None
         # Extra frames after windows first fill before EMERGING/SUSTAINED labels are trusted.
         _stab = os.environ.get("NERAIUM_TRANSITION_STABILIZATION_MARGIN") or os.environ.get(
             "NERAIUM_TRANSITION_WARMUP_MARGIN", "8"
@@ -318,7 +325,10 @@ class StructuralEngine:
         self.transition_classification_min_history: int = int(
             os.environ.get("NERAIUM_TRANSITION_MIN_HISTORY", "6").strip() or "6"
         )
-        self.geometry_layer = StatisticalGeometryLayer(max_history=384, graph_window=24, stats_window=16)
+        if self.fast_mode:
+            self.geometry_layer = StatisticalGeometryLayer(max_history=192, graph_window=12, stats_window=8)
+        else:
+            self.geometry_layer = StatisticalGeometryLayer(max_history=384, graph_window=24, stats_window=16)
         self._frame_debug: bool = _effective_frame_debug(frame_debug)
         if drift_smoothing_window < 1:
             raise ValueError("drift_smoothing_window must be >= 1")
@@ -618,6 +628,55 @@ class StructuralEngine:
             "baseline_locked": self.baseline_locked,
             "baseline_mode": mode,
         }
+
+    def _fast_mode_geometry_payload(
+        self,
+        *,
+        frame: Dict[str, object],
+        z_recent_valid: np.ndarray,
+    ) -> dict[str, object]:
+        """Fast-mode geometry throttle: reuse cached payloads between sampled updates."""
+        should_refresh = (
+            self._fast_geometry_payload_cache is None
+            or (len(self.frames) % max(1, self._fast_geometry_update_interval) == 0)
+        )
+        if should_refresh:
+            matrix = z_recent_valid
+            if (
+                isinstance(matrix, np.ndarray)
+                and matrix.ndim == 2
+                and matrix.shape[0] >= 6
+                and self._fast_geometry_downsample_step > 1
+            ):
+                matrix = matrix[:: self._fast_geometry_downsample_step]
+            self._fast_geometry_payload_cache = self.geometry_layer.update(
+                entity_id=str(frame.get("asset_id", "unknown")),
+                matrix=matrix,
+                representation_mode=self.representation_config.resolved_mode(),
+            )
+        payload = self._fast_geometry_payload_cache
+        return payload if isinstance(payload, dict) else {"available": False, "reason": "fast_mode_unavailable"}
+
+    def _apply_fast_mode_payload_downgrades(self, result: Dict[str, object]) -> None:
+        """Documented fast-mode simplifications while preserving stable return schema keys."""
+        exp = result.get("experimental_analytics")
+        if not isinstance(exp, dict):
+            result["experimental_analytics"] = self._analytics_unavailable_payload("fast_mode")
+
+        result.setdefault("drift_noise", {"available": False, "reason": "fast_mode"})
+        result.setdefault(
+            "multi_scale",
+            {
+                "short_term_state": "fast_mode",
+                "mid_term_state": "fast_mode",
+                "long_term_state": "fast_mode",
+                "scale_conflict": 0.0,
+                "scale_alignment": 1.0,
+                "scale_conflict_reason": "fast_mode",
+            },
+        )
+        result.setdefault("robustness", {})
+        result.setdefault("sensitivity", {"top_drivers": [], "feature_contributions": {}})
 
     def process_stream_frame(self, frame: Dict) -> Dict:
         """Streaming-compatible alias that preserves deterministic batch semantics."""
@@ -1998,11 +2057,17 @@ class StructuralEngine:
                     result["transition_pressure"] = 0.0
                     result["transition_state"] = "NONE"
 
-                geometry_payload = self.geometry_layer.update(
-                    entity_id=str(frame.get("asset_id", "unknown")),
-                    matrix=z_recent_valid,
-                    representation_mode=self.representation_config.resolved_mode(),
-                )
+                if self.fast_mode:
+                    geometry_payload = self._fast_mode_geometry_payload(
+                        frame=frame,
+                        z_recent_valid=z_recent_valid,
+                    )
+                else:
+                    geometry_payload = self.geometry_layer.update(
+                        entity_id=str(frame.get("asset_id", "unknown")),
+                        matrix=z_recent_valid,
+                        representation_mode=self.representation_config.resolved_mode(),
+                    )
                 geometry_metrics = geometry_payload.get("geometry", {}) if isinstance(geometry_payload, dict) else {}
                 state_space_statistics = (
                     geometry_payload.get("state_space_statistics", {}) if isinstance(geometry_payload, dict) else {}
@@ -3023,17 +3088,9 @@ class StructuralEngine:
             result["readiness"] = rd_final.as_dict()
             result["engine_ready"] = rd_final.ready
             result["confidence_score"] = round(float(result.get("confidence_score", 0.0) or 0.0), 4)
-            slim = {
-                "state": result.get("state", "STABLE"),
-                "transition_state": result.get("transition_state", "NONE"),
-                "structural_drift_score": float(result.get("structural_drift_score", 0.0) or 0.0),
-                "transition_pressure": float(result.get("transition_pressure", 0.0) or 0.0),
-                "latest_instability": float(result.get("latest_instability", 0.0) or 0.0),
-                "engine_ready": bool(result.get("engine_ready", False)),
-                "confidence_score": float(result.get("confidence_score", 0.0) or 0.0),
-            }
-            self.latest_result = slim
-            return slim
+            self._apply_fast_mode_payload_downgrades(result)
+            self.latest_result = dict(result)
+            return result
 
         drift_noise = classify_drift_noise(list(self._drift_score_history))
         result["drift_noise"] = drift_noise
