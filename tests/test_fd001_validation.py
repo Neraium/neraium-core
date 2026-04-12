@@ -112,3 +112,40 @@ def test_replay_fd001_units_smoke():
     assert "first_decision_cycle" not in summary[0]
     assert milestones[0]["unit_id"] == 1
     assert milestones[0]["max_cycle_observed"] == 2
+
+
+def test_replay_fd001_units_smoke_mode_supports_sampling_and_preserves_schema():
+    rows = [
+        Fd001Row(unit_id=1, cycle=1, operating_settings=(0.0, 0.1, 0.2), sensors=tuple(float(i) for i in range(21))),
+        Fd001Row(unit_id=1, cycle=2, operating_settings=(0.0, 0.1, 0.2), sensors=tuple(float(i + 1) for i in range(21))),
+        Fd001Row(unit_id=1, cycle=3, operating_settings=(0.0, 0.1, 0.2), sensors=tuple(float(i + 2) for i in range(21))),
+        Fd001Row(unit_id=1, cycle=4, operating_settings=(0.0, 0.1, 0.2), sensors=tuple(float(i + 3) for i in range(21))),
+    ]
+    grouped = group_rows_by_unit(rows)
+
+    full, summary, milestones = replay_fd001_units(
+        grouped,
+        unit_ids=[1],
+        replay_mode="smoke",
+        every_nth_cycle=2,
+        max_cycles=2,
+    )
+
+    assert [row["cycle"] for row in full] == [1, 3]
+    assert len(summary) == 2
+    assert milestones[0]["max_cycle_observed"] == 3
+    assert set(summary[0]) == {
+        "unit_id",
+        "cycle",
+        "row_index",
+        "decision_action",
+        "decision_confidence_raw",
+        "decision_confidence",
+        "risk_current_level",
+        "risk_trend",
+        "risk_trend_direction",
+        "top_hypothesis_id",
+        "top_hypothesis_confidence_raw",
+        "top_hypothesis_confidence",
+        "top_attribution_driver",
+    }
