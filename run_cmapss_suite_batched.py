@@ -1,12 +1,83 @@
 import time
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 from neraium_core.alignment import StructuralEngine
 
 DATA_DIR = Path(r"C:\Users\Owner\Desktop\CMAPSSData")
 DATASETS = ["FD001", "FD002", "FD003", "FD004"]
+
+
+def _first_cycle_at_or_above(profile: pd.Series, threshold: float) -> int | None:
+    hits = profile[profile >= threshold]
+    if hits.empty:
+        return None
+    return int(hits.index.min())
+
+
+def _oscillation_stats(profile: pd.Series) -> tuple[float, float]:
+    values = profile.to_numpy(dtype=float)
+    if values.size <= 2:
+        return 0.0, 0.0
+
+    diff = np.diff(values)
+    nonzero = diff[np.abs(diff) > 1e-12]
+    if nonzero.size <= 1:
+        flip_ratio = 0.0
+    else:
+        signs = np.sign(nonzero)
+        flips = int(np.sum(signs[1:] != signs[:-1]))
+        flip_ratio = float(flips / (len(signs) - 1))
+
+    mean_step = float(np.mean(np.abs(diff))) if diff.size else 0.0
+    return flip_ratio, mean_step
+
+
+def _print_fd001_interpretation_note(timeline_df: pd.DataFrame, unit_summary_df: pd.DataFrame) -> None:
+    if timeline_df.empty:
+        print("FD001 interpretation note: unavailable (no timeline rows).")
+        return
+
+    by_cycle = timeline_df.groupby("cycle", as_index=True).agg(
+        structural_drift_score=("structural_drift_score", "mean"),
+        relational_instability_score=("relational_instability_score", "mean"),
+    )
+
+    structural_threshold = max(0.15, float(by_cycle["structural_drift_score"].quantile(0.70)))
+    relational_threshold = max(0.15, float(by_cycle["relational_instability_score"].quantile(0.70)))
+
+    first_structural_cycle = _first_cycle_at_or_above(by_cycle["structural_drift_score"], structural_threshold)
+    first_relational_cycle = _first_cycle_at_or_above(by_cycle["relational_instability_score"], relational_threshold)
+
+    total_lead_time = None
+    if first_structural_cycle is not None:
+        lead = unit_summary_df["last_cycle"] - first_structural_cycle
+        total = lead[lead > 0].sum()
+        total_lead_time = int(total) if total > 0 else 0
+
+    fd001_flip_ratio, fd001_mean_step = _oscillation_stats(by_cycle["structural_drift_score"])
+
+    fd004_comparison_path = Path("FD004_by_unit_results.csv")
+    smoother_vs_fd004 = None
+    if fd004_comparison_path.exists():
+        fd004_df = pd.read_csv(fd004_comparison_path)
+        fd004_df.columns = [c.lower() for c in fd004_df.columns]
+        required_cols = {"cycle", "structural_drift_score"}
+        if required_cols.issubset(fd004_df.columns):
+            fd004_cycle_profile = fd004_df.groupby("cycle")["structural_drift_score"].mean().sort_index()
+            fd004_flip_ratio, fd004_mean_step = _oscillation_stats(fd004_cycle_profile)
+            smoother_vs_fd004 = (fd001_flip_ratio < fd004_flip_ratio) and (fd001_mean_step <= fd004_mean_step)
+
+    print("\nFD001 INTERPRETATION NOTE")
+    print("- first cycle of meaningful structural drift:", first_structural_cycle)
+    print("- first cycle of meaningful relational instability:", first_relational_cycle)
+    print("- total lead time before failure (if threshold crossed):", total_lead_time)
+    if smoother_vs_fd004 is None:
+        print("- FD004 smoothness comparison: unavailable (missing or incompatible FD004 comparison data).")
+    else:
+        print("- drift profile smoother than FD004 (oscillation-based):", "yes" if smoother_vs_fd004 else "no")
 
 def load_train_dataset(name: str) -> pd.DataFrame:
     path = DATA_DIR / f"train_{name}.txt"
@@ -51,6 +122,7 @@ def run_dataset(name: str) -> dict:
     )
 
     results = []
+    timeline_rows = []
     t0 = time.time()
 
     for idx, unit in enumerate(units, start=1):
@@ -90,6 +162,15 @@ def run_dataset(name: str) -> dict:
 
             if first_alert_cycle is None and (policy_alert or state == "ALERT"):
                 first_alert_cycle = int(row.cycle)
+
+            timeline_rows.append(
+                {
+                    "unit": int(unit),
+                    "cycle": int(row.cycle),
+                    "structural_drift_score": float(out.get("structural_drift_score", 0.0) or 0.0),
+                    "relational_instability_score": float(out.get("relational_instability_score", 0.0) or 0.0),
+                }
+            )
 
         results.append({
             "dataset": name,
@@ -132,6 +213,9 @@ def run_dataset(name: str) -> dict:
     print(f"mean first alert cycle: {summary['mean_first_alert_cycle']}")
     print(f"misses: {summary['misses']}")
     print(f"saved -> {out_csv}")
+
+    if name == "FD001":
+        _print_fd001_interpretation_note(pd.DataFrame(timeline_rows), res)
 
     return summary
 
