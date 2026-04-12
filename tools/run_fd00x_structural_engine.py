@@ -8,7 +8,8 @@ import pandas as pd
 from neraium_core.alignment import StructuralEngine
 
 DATA_DIR = Path("/content/data")  # change to your folder
-DATASET = "FD004"  # FD001, FD002, FD003, FD004
+SUPPORTED_DATASETS = ("FD001", "FD002", "FD003", "FD004")
+FD00X_COLUMNS = ["unit", "cycle"] + [f"os{i}" for i in range(1, 4)] + [f"s{i}" for i in range(1, 22)]
 TETRA_VERTICES = {
     "STRUCTURAL": (1.0, 1.0, 1.0),
     "RELATIONAL": (1.0, -1.0, -1.0),
@@ -25,8 +26,12 @@ TETRA_EDGES = [
 ]
 
 
-def _plot_tetra_trajectory(trajectory: list[list[float]], unit: int) -> None:
-    import matplotlib.pyplot as plt
+def _plot_tetra_trajectory(trajectory: list[list[float]], dataset: str, unit: int) -> None:
+    try:
+        import matplotlib.pyplot as plt
+    except ImportError:
+        print("matplotlib not installed; skipping tetrahedral trajectory plot")
+        return
 
     if not trajectory:
         print(f"no tetrahedral trajectory points found for unit {unit}")
@@ -70,26 +75,74 @@ def _plot_tetra_trajectory(trajectory: list[list[float]], unit: int) -> None:
     ax.set_xlabel("X")
     ax.set_ylabel("Y")
     ax.set_zlabel("Z")
-    ax.set_title(f"{DATASET} tetrahedral trajectory (unit {unit})")
+    ax.set_title(f"{dataset} tetrahedral trajectory (unit {unit})")
     ax.legend(loc="best")
 
-    output_path = Path(f"fd00x_tetra_unit_{unit}.png")
+    output_path = Path(f"{dataset}_tetra_unit_{unit}.png")
     plt.tight_layout()
     plt.savefig(output_path, dpi=140)
     plt.close(fig)
     print("saved", output_path)
 
 
+def _plot_structural_metric(out_df: pd.DataFrame, dataset: str, unit: int) -> None:
+    try:
+        import matplotlib.pyplot as plt
+    except ImportError:
+        print("matplotlib not installed; skipping structural metric plot")
+        return
+
+    unit_df = out_df[out_df["unit"] == unit].sort_values("cycle").reset_index(drop=True)
+    if unit_df.empty:
+        print(f"no rows found for unit {unit}; skipping structural metric plot")
+        return
+
+    metric_column = (
+        "structural_drift_score_smoothed"
+        if "structural_drift_score_smoothed" in unit_df.columns
+        else "structural_drift_score"
+    )
+    if metric_column not in unit_df.columns:
+        print("no structural drift metric available in output; skipping plot")
+        return
+
+    fig, ax = plt.subplots(figsize=(10, 4))
+    ax.plot(unit_df["cycle"], unit_df[metric_column], linewidth=1.8, color="tab:blue")
+    ax.set_xlabel("Cycle")
+    ax.set_ylabel(metric_column)
+    ax.set_title(f"{dataset} structural metric over cycles (unit {unit})")
+    ax.grid(alpha=0.25)
+
+    output_path = Path(f"{dataset}_structural_metric_unit_{unit}.png")
+    plt.tight_layout()
+    plt.savefig(output_path, dpi=140)
+    plt.close(fig)
+    print("saved", output_path)
+
+
+def _resolve_input_path(dataset: str, user_input: str | None) -> Path:
+    if user_input:
+        path = Path(user_input).expanduser()
+        if not path.exists():
+            raise FileNotFoundError(f"input path does not exist: {path}")
+        return path
+    return DATA_DIR / f"test_{dataset}.txt"
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run FD00x structural engine")
+    parser.add_argument("--dataset", choices=SUPPORTED_DATASETS, default="FD004", help="CMAPSS dataset id")
+    parser.add_argument("--input", default=None, help="Path to a test_FD00x.txt file (optional)")
     parser.add_argument("--plot-tetra", action="store_true", help="Plot tetrahedral trajectory for selected unit")
     parser.add_argument("--unit", type=int, default=1, help="Unit id to collect tetrahedral trajectory")
     args = parser.parse_args()
 
-    file_path = DATA_DIR / f"test_{DATASET}.txt"
+    dataset = str(args.dataset)
+    file_path = _resolve_input_path(dataset, args.input)
 
     df = pd.read_csv(file_path, sep=r"\s+", header=None)
-    df.columns = ["unit", "cycle"] + [f"os{i}" for i in range(1, 4)] + [f"s{i}" for i in range(1, 22)]
+    df = df.iloc[:, : len(FD00X_COLUMNS)].copy()
+    df.columns = FD00X_COLUMNS
 
     engine = StructuralEngine(
         baseline_window=50,
@@ -126,14 +179,18 @@ def main() -> None:
         global_t += 1.0
 
     out_df = pd.DataFrame(results)
-    out_df.to_csv(f"{DATASET}_results.csv", index=False)
+    out_df.to_csv(f"{dataset}_results.csv", index=False)
+    unit_df = out_df[out_df["unit"] == args.unit].sort_values("cycle").reset_index(drop=True)
+    unit_df.to_csv(f"{dataset}_unit_{args.unit}_results.csv", index=False)
 
-    print("saved", f"{DATASET}_results.csv")
+    print("saved", f"{dataset}_results.csv")
+    print("saved", f"{dataset}_unit_{args.unit}_results.csv")
     print(out_df.head())
     print(out_df.columns.tolist())
+    _plot_structural_metric(out_df, dataset=dataset, unit=args.unit)
 
     if args.plot_tetra:
-        _plot_tetra_trajectory(tetra_trajectory, args.unit)
+        _plot_tetra_trajectory(tetra_trajectory, dataset=dataset, unit=args.unit)
 
 
 if __name__ == "__main__":
