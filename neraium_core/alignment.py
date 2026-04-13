@@ -462,7 +462,6 @@ class StructuralEngine:
             "policy_alert": False,
             "structural_drift_score": 0.0,
             "structural_drift_score_smoothed": 0.0,
-            "drift_smooth": 0.0,
             "relational_stability_score": 1.0,  # Placeholder; use relational_instability_score for actual metric
             "dynamic_signal_strength": 0.0,
             "system_phase": "STABLE",
@@ -473,8 +472,6 @@ class StructuralEngine:
             "regime_name": None,
             "regime_distance": None,
             "regime_drift": 0.0,
-            "latest_drift": 0.0,
-            "latest_drift_smoothed": 0.0,
             "watch_threshold": None,
             "alert_threshold": None,
             "latest_instability": 0.0,
@@ -2102,7 +2099,6 @@ class StructuralEngine:
                     {
                         "structural_drift_score": round(drift_score, 4),
                         "structural_drift_score_smoothed": round(float(smoothed_drift_score), 4),
-                        "drift_smooth": round(float(smoothed_drift_score), 4),
                         "relational_stability_score": round(relational_stability, 4),
                         "dynamic_signal_strength": round(float(drift_velocity), 4),
                         "system_phase": system_phase,
@@ -2118,8 +2114,6 @@ class StructuralEngine:
                         "regime_name": regime_name,
                         "regime_distance": round(regime_distance, 4) if regime_distance is not None else None,
                         "regime_drift": round(float(regime_drift), 4),
-                        "latest_drift": round(float(drift_score), 4),
-                        "latest_drift_smoothed": round(float(smoothed_drift_score), 4),
                         "baseline_mode": baseline_mode,
                         "context_dominance_score": round(float(rep.diagnostics.get("context_dominance_score", 0.0)), 4),
                         "early_separation_flag": bool(rep.diagnostics.get("early_separation_flag", False)),
@@ -3158,7 +3152,7 @@ class StructuralEngine:
 
                 print(
                     "[NERAIUM_DEBUG_SII_VERBOSE]"
-                    f" state={result.get('state')} drift_score={float(result.get('latest_drift', 0.0)):.6g}"
+                    f" state={result.get('state')} drift_score={float(result.get('structural_drift_score', 0.0)):.6g}"
                     f" drift_thr={drift_thr}"
                     f" drift_persist=(watch={self._watch_counter}, alert={self._alert_counter}, latched={self._alert_latched})"
                     f" composite={float(result.get('latest_instability', 0.0)):.6g}"
@@ -3174,7 +3168,7 @@ class StructuralEngine:
                 if result.get("state") in {"WATCH", "ALERT"} and not self._first_alert_logged:
                     print(
                         "[NERAIUM_DEBUG_SII_VERBOSE][first_alert]"
-                        f" state={result.get('state')} latest_drift={float(result.get('latest_drift', 0.0)):.6g}"
+                        f" state={result.get('state')} drift_score={float(result.get('structural_drift_score', 0.0)):.6g}"
                         f" drift_thr={drift_thr} drift_score_tail={drift_score_tail}"
                         f" drift_persist=(watch={consec_watch}, alert={consec_alert})"
                         f" composite_thr={comp_thr}"
