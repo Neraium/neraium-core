@@ -814,10 +814,9 @@ def create_gradio_app():
             <div class="ner-command-header">
               <div class="ner-brand">
                 <span class="ner-wordmark">NERAIUM</span>
-                <span class="ner-env">GREENHOUSE / DEMO</span>
+                <span class="ner-env">Synthetic Demo</span>
               </div>
               <div class="ner-header-metrics">
-                <span>Doctrine v2026.04</span>
                 <span>Confidence {escape(confidence)}</span>
                 <span>Phase {escape(phase_label)}</span>
                 <span>Frame {int(frame_index)} / {int(total_steps)}</span>
@@ -885,21 +884,6 @@ def create_gradio_app():
         header_html, verdict_html, reasoning_html, record_html, tetra_plot, tetra_text = load_operations_surface(1, apply_stability=False)
         return 1, header_html, verdict_html, reasoning_html, record_html, tetra_plot, tetra_text
 
-    def switch_mode(mode: str) -> tuple[dict[str, Any], str, str, str, str, Any, str]:
-        """Switch between synthetic demo and real replay modes."""
-        nonlocal demo_rows, total_steps
-        pause_playback()
-        verdict_stabilizer.reset()
-        reasoning_tracker.reset()
-
-        use_synthetic = mode == "demo"
-        playback_state["current_mode"] = mode
-        demo_rows = load_builtin_demo_rows(use_synthetic=use_synthetic)
-        total_steps = max(len(demo_rows), 1)
-
-        header_html, verdict_html, reasoning_html, record_html, tetra_plot, tetra_text = load_operations_surface(1, apply_stability=False)
-        return gr.update(maximum=total_steps, value=1), header_html, verdict_html, reasoning_html, record_html, tetra_plot, tetra_text
-
     def autoplay(start_frame: int, speed_multiplier: float):
         playback_state["playing"] = True
         pace_controller.speed_multiplier = float(speed_multiplier or 1.0)
@@ -929,30 +913,20 @@ def create_gradio_app():
     css = css_path.read_text(encoding="utf-8") if css_path.exists() else ""
 
     with gr.Blocks(css=css, theme=gr.themes.Base(), elem_classes=["ner-app"]) as app:
-        playing_state = gr.State(False)
         header = gr.HTML(value=initial_header)
         verdict = gr.HTML(value=initial_verdict)
-
-        with gr.Row(elem_classes=["ner-mode-row"]):
-            mode_selector = gr.Radio(
-                choices=["demo", "real"],
-                value="demo",
-                label="Replay Mode",
-                scale=1,
-                info="Demo: synthetic progression (recommended) | Real: actual greenhouse data"
-            )
 
         with gr.Row(elem_classes=["ner-controls-row"]):
             frame_step = gr.Slider(minimum=1, maximum=total_steps, step=1, value=default_step, label="Frame", scale=4)
             speed = gr.Slider(minimum=0.1, maximum=1.5, step=0.1, value=0.6, label="Speed", scale=2)
             play_btn = gr.Button("Play", size="sm", scale=1)
             pause_btn = gr.Button("Pause", size="sm", scale=1)
-            reset_btn = gr.Button("Reset", size="sm", scale=1)
+            restart_btn = gr.Button("Restart", size="sm", scale=1)
 
         reasoning = gr.HTML(value=initial_reasoning)
         record = gr.HTML(value=initial_record)
         with gr.Row(elem_classes=["ner-tetra-row"]):
-            tetra_plot = gr.Plot(value=initial_tetra_plot, label="Tetrahedral State")
+            tetra_plot = gr.Plot(value=initial_tetra_plot, label="Structural State (Tetrahedral)")
             tetra_details = gr.Markdown(value=initial_tetra_text)
 
         frame_step.change(
@@ -966,11 +940,6 @@ def create_gradio_app():
             outputs=[frame_step, header, verdict, reasoning, record, tetra_plot, tetra_details],
         )
         pause_btn.click(fn=pause_playback)
-        reset_btn.click(fn=reset_playback, outputs=[frame_step, header, verdict, reasoning, record, tetra_plot, tetra_details])
-        mode_selector.change(
-            fn=switch_mode,
-            inputs=[mode_selector],
-            outputs=[frame_step, header, verdict, reasoning, record, tetra_plot, tetra_details],
-        )
+        restart_btn.click(fn=reset_playback, outputs=[frame_step, header, verdict, reasoning, record, tetra_plot, tetra_details])
 
     return app
