@@ -73,13 +73,13 @@ This report contains benchmark metrics from local validation runs across availab
             report += f"- **Units with >50 cycles:** {metrics.p50_gt_50_cycles:.1f}%\n"
             report += f"- **Units with >100 cycles:** {metrics.p50_gt_100_cycles:.1f}%\n\n"
 
-            report += f"**Best Case:**\n"
+            report += f"**Best Case (longest lead time — earliest structural detection):**\n"
             report += f"- Unit {metrics.best_case_unit}: {metrics.best_case_lead_time:.2f} cycles\n\n"
 
             report += f"**Median Case:**\n"
             report += f"- Unit {metrics.median_case_unit}: {metrics.median_case_lead_time:.2f} cycles\n\n"
 
-            report += f"**Worst Case:**\n"
+            report += f"**Worst Case (shortest lead time — latest detection):**\n"
             report += f"- Unit {metrics.worst_case_unit}: {metrics.worst_case_lead_time:.2f} cycles\n\n"
 
             report += "**Outputs:**\n"
@@ -91,17 +91,18 @@ This report contains benchmark metrics from local validation runs across availab
         report += "No datasets were successfully processed.\n"
 
     report += "\n## Notes\n\n"
-    report += "- **Lead Time:** Cycles from first structural divergence to failure (or end-of-run if explicit failure not defined).\n"
+    report += "- **Lead Time:** Cycles from first structural divergence to failure (or end-of-run if failure is not explicitly labeled).\n"
     report += "- **Structural Drift Score:** Primary indicator of system degradation based on relational pattern divergence.\n"
     report += "- **Relational Instability Score:** Secondary indicator based on temporal sensor relationships.\n"
     report += "- **Early Signal Threshold:** Default 0.5 (configurable) defines structural divergence detection point.\n"
-    report += "- **IMS Dataset:** Represents continuous real-world system operation (1 unit, 961 cycles). Lead time reflects early detection of structural divergence without explicit failure labels or training artifacts.\n"
+    report += "- **IMS Dataset:** Represents continuous real-world system operation (1 unit, 961 cycles). Lead time reflects early detection of structural divergence without explicit failure labels or training artifacts.\n\n"
+    report += "**IMS Interpretation:** IMS represents a continuous real-world bearing system run. The system detects structural divergence significantly before failure without requiring labels or training data. The reported lead time reflects early detection of system-level change rather than prediction.\n"
 
     report += "\n## Plots\n\n"
     report += "For each dataset, three representative plots are generated:\n\n"
-    report += "- **Best Case:** Unit with longest lead time (maximum structural divergence detection window)\n"
+    report += "- **Best Case:** Unit with longest lead time (earliest structural detection)\n"
     report += "- **Median Case:** Unit at 50th percentile of lead time distribution\n"
-    report += "- **Worst Case:** Unit with shortest lead time (minimum structural divergence detection window)\n\n"
+    report += "- **Worst Case:** Unit with shortest lead time (latest detection)\n\n"
     report += "Each plot overlays:\n"
     report += "- Structural Drift Score (primary indicator)\n"
     report += "- Relational Instability Score (secondary indicator)\n"
