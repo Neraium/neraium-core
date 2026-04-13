@@ -11,7 +11,7 @@ from typing import Dict, List, Optional
 import numpy as np
 
 from .atomic_alerting import AlertTransition
-from .atomic_monitor import AtomicMonitor, AtomicUpdate
+from .atomic_monitor import AtomicMonitor
 
 
 @dataclass

@@ -63,9 +63,9 @@ class HistoricalReplayEngine:
             confidence = max(0.0, min(1.0, confidence))
             governance = dict((output.get("structural_law_intelligence") or {}).get("structural_law_governance") or {})
             law_usage = [
-                str(l.get("law_id"))
-                for l in list(governance.get("laws") or [])
-                if l.get("current_stage") != "rejected_or_falsified"
+                str(law.get("law_id"))
+                for law in list(governance.get("laws") or [])
+                if law.get("current_stage") != "rejected_or_falsified"
             ]
 
             step = ReplayStepResult(

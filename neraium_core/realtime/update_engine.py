@@ -5,7 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from neraium_core.alignment import StructuralEngine
-from neraium_core.realtime.profiling import StageTimer, profiling_enabled, run_timed
+from neraium_core.realtime.profiling import profiling_enabled, run_timed
 from neraium_core.realtime.state import NeraiumIncrementalState
 
 

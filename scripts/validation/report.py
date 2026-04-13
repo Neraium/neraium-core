@@ -5,7 +5,6 @@ from __future__ import annotations
 from datetime import datetime
 from pathlib import Path
 
-import pandas as pd
 
 from scripts.validation.metrics import DatasetMetrics
 
@@ -42,16 +41,15 @@ def generate_markdown_report(
 
     if fd004_metrics:
         # Calculate earliest detection info
-        fd004_best = fd004_metrics.best_case_lead_time
         fd004_median = fd004_metrics.median_lead_time
 
-        report += f"**Neraium detects structural system change 100–400+ cycles before failure (FD004)**\n\n"
+        report += "**Neraium detects structural system change 100–400+ cycles before failure (FD004)**\n\n"
         report += f"- {fd004_metrics.p50_gt_100_cycles:.1f}% of systems show >100 cycle early detection\n"
         report += f"- Median detection occurs ~{round(fd004_median)} cycles before failure\n"
-        report += f"- Works with zero training and zero labels\n"
+        report += "- Works with zero training and zero labels\n"
         report += f"- Performance validated across a {fd004_metrics.unit_count}-unit fleet (FD004) and real-world continuous system data (IMS)\n\n"
 
-    report += f"""## Summary
+    report += """## Summary
 
 This report contains benchmark metrics from local validation runs across available datasets.
 
@@ -92,13 +90,13 @@ This report contains benchmark metrics from local validation runs across availab
             report += f"- **Units with >50 cycles:** {metrics.p50_gt_50_cycles:.1f}%\n"
             report += f"- **Units with >100 cycles:** {metrics.p50_gt_100_cycles:.1f}%\n\n"
 
-            report += f"**Best Case (longest lead time — earliest structural detection):**\n"
+            report += "**Best Case (longest lead time — earliest structural detection):**\n"
             report += f"- Unit {metrics.best_case_unit}: {metrics.best_case_lead_time:.2f} cycles\n\n"
 
-            report += f"**Median Case:**\n"
+            report += "**Median Case:**\n"
             report += f"- Unit {metrics.median_case_unit}: {metrics.median_case_lead_time:.2f} cycles\n\n"
 
-            report += f"**Worst Case (shortest lead time — latest detection):**\n"
+            report += "**Worst Case (shortest lead time — latest detection):**\n"
             report += f"- Unit {metrics.worst_case_unit}: {metrics.worst_case_lead_time:.2f} cycles\n\n"
 
             report += "**Outputs:**\n"

@@ -406,7 +406,7 @@ class StructuralEngine:
         curvature_tail = self._history_tail("curvature", size=8)
 
         pressure_persist = self._persistent_worsening(pressure_tail, worsen_if_high=True)
-        lock_persist = self._persistent_worsening(lock_tail, worsen_if_high=True)
+        self._persistent_worsening(lock_tail, worsen_if_high=True)
         contraction_persist = self._persistent_worsening(contraction_tail, worsen_if_high=True)
         recovery_fall_persist = self._persistent_worsening(recovery_tail, worsen_if_high=False)
         directional_fall_persist = self._persistent_worsening(directional_tail, worsen_if_high=False)

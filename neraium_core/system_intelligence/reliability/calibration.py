@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
 
 from .memory import ReliabilityRecordStore
 from .types import Horizon, OutputFamily, ReliabilityContext, ReliabilityTrace

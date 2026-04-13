@@ -299,7 +299,7 @@ def _generate_synthetic_replay(*, timesteps: int = 120, base_time: datetime | No
 
     for t in range(timesteps):
         # Phase progression (deterministic, smooth)
-        progress = t / max(timesteps - 1, 1)
+        t / max(timesteps - 1, 1)
 
         # Define phase boundaries
         if t < 20:

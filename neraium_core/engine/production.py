@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import Optional
 
 from neraium_core.alignment import StructuralEngine
 from neraium_core.engine.config import ProductionEngineConfig, ProductionLoggingConfig

@@ -1,28 +1,18 @@
 from __future__ import annotations
 
-import base64
-import json
 import logging
 import math
 import os
-import tempfile
-import threading
 import time
-import urllib.error
-import urllib.request
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
 from datetime import datetime, timezone
-from pathlib import Path
 from typing import Any, Literal
-from urllib.parse import urlparse
 
 import numpy as np
-from fastapi import Depends, FastAPI, File, Form, Header, HTTPException, Query, Request, UploadFile, status
+from fastapi import Depends, FastAPI, Header, HTTPException, Query, Request, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.gzip import GZipMiddleware
-from pydantic import BaseModel
-from starlette.responses import JSONResponse, PlainTextResponse, Response, StreamingResponse
-from starlette.types import Message
+from starlette.responses import JSONResponse, PlainTextResponse, StreamingResponse
 
 from .bootstrap.config import (
     cors_allow_headers,
@@ -49,7 +39,6 @@ from .schemas.assistant import AssistantRequest, AssistantResponse, ReportReques
 from .schemas.chat import ChatRequest, ChatResponse
 from .schemas.common import (
     ActionResponse,
-    CanonicalOutputResponse,
     ClientErrorReport,
     CurrentStateEnvelope,
     DecisionEnvelope,
@@ -63,28 +52,12 @@ from .schemas.common import (
     ResultEnvelope,
     ResultsEnvelope,
 )
-from .schemas.ingest import (
-    BatchIngestRequest,
-    CanonicalIngestRequest,
-    CsvColumnMappingPayload,
-    CsvIngestRequest,
-    CsvPreviewRequest,
-    CsvPreviewResponse,
-    DemoCmapssStartRequest,
-    DemoSeedRequest,
-    IngestFrameRequest,
-    IngestJobEnvelope,
-    IngestRequest,
-    JsonIngestRequest,
-)
-from .schemas.integrations import PullIntegrationStartRequest, PullIntegrationStatusEnvelope
 from .schemas.runs import ActivateRunRequest, CreateRunRequest, LockBaselineRequest, RunEnvelope, RunsEnvelope, UpdateRunRequest
 
 from .integration import (
     IntegrationMappingError,
     apply_integration_mapping,
     load_integration_config,
-    resolve_customer_integration,
 )
 # from .web import build_web_router
 from .routers.health import build_health_router
@@ -107,7 +80,6 @@ from .services.request_context import (
     resolve_customer_id,
     resolve_customer_id_for_run,
     resolve_run_id,
-    require_run_id,
     request_run_id_or_active,
     resolve_run_id_with_default,
 )
@@ -119,12 +91,6 @@ from .services.ingest_jobs import IngestJobsManager
 from .services.demo_jobs import DemoJobsManager
 from .services.pull_integrations import PullIntegrationsManager
 from .services.state_restore import OperationalStateRestoreService
-from .services.geometry import (
-    STRUCTURAL_FLOW_PLANE_MAX_N,
-    _build_geometry_edges,
-    _diamond_plane_positions_four,
-    _plane_ring_positions,
-)
 from ._core_imports import (
     ResultStore,
     StructuralMonitoringService,

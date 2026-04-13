@@ -43,14 +43,13 @@ Run names default to a UTC timestamp so consecutive runs never overwrite each ot
 from __future__ import annotations
 
 import argparse
-import json
 import os
 import sys
 import time
 from datetime import datetime, timezone
 from typing import Dict, List, Optional, Tuple
 
-from .config import ALL_DATASETS, DEFAULT_PRESET, PRESETS, DetectorConfig
+from .config import DEFAULT_PRESET, PRESETS, DetectorConfig
 from .evaluation import (
     AggregateMetrics,
     PresetComparisonRow,
@@ -107,7 +106,7 @@ def run_evaluate(
         ``healthy_fraction × n_cycles`` of each unit (frozen before scoring).
         See StructuralDriftDetector.process_unit for implementation details.
     """
-    print(f"\n[evaluate] Running atomic layer detector …")
+    print("\n[evaluate] Running atomic layer detector …")
     results = evaluate_detector(config, unit_data, sensor_cols)
     metrics = compute_aggregate_metrics(results, config)
 
@@ -134,7 +133,7 @@ def run_tune_mode(
     Grid swept (defined in config):
         threshold_std  × persistence  × healthy_fraction
     """
-    print(f"\n[tune] Sweeping parameter grid …")
+    print("\n[tune] Sweeping parameter grid …")
     grid_size = (
         len(config.tune_threshold_values)
         * len(config.tune_persistence_values)
@@ -157,7 +156,7 @@ def run_tune_mode(
         print(f"  FPR              : {best.false_positive_rate:.3f}")
         print(f"  mean_lead        : {best.mean_lead:.1f} cycles")
         print(f"  score            : {best.score:.2f}")
-        print(f"  ────────────────────────────────────────────────────────")
+        print("  ────────────────────────────────────────────────────────")
 
         # Save best config
         best_cfg = config.with_overrides(
@@ -186,7 +185,7 @@ def run_compare_baselines_mode(
     All methods use the same persistence / threshold_std / EMA alpha from
     config and are evaluated with identical FP / coverage / lead definitions.
     """
-    print(f"\n[compare_baselines] Running all methods …")
+    print("\n[compare_baselines] Running all methods …")
     comparison = compare_baselines(config, unit_data, sensor_cols)
 
     outpath = os.path.join(run_dir, "baseline_comparison.csv")
@@ -262,7 +261,7 @@ def run_plot_mode(
     """
     Generate diagnostic plots.  If results is None, re-runs the detector.
     """
-    print(f"\n[plot] Generating diagnostic plots …")
+    print("\n[plot] Generating diagnostic plots …")
 
     if results is None:
         results = evaluate_detector(config, unit_data, sensor_cols)
@@ -339,7 +338,7 @@ def _print_metrics(label: str, m: AggregateMetrics) -> None:
     print(f"  Mean lead        : {m.mean_lead:.1f} cycles")
     print(f"  Median lead      : {m.median_lead:.1f} cycles")
     print(f"  Score            : {m.score:.2f}")
-    print(f"  ────────────────────────────────────────────────────────────")
+    print("  ────────────────────────────────────────────────────────────")
 
 
 # ─────────────────────────────────────────────────────────────────────────────

@@ -25,9 +25,8 @@ Optional dependency: ``pulp``   (pip install pulp)   — only required for MIP.
 
 from __future__ import annotations
 
-import math
 from dataclasses import dataclass, field
-from typing import Any, Callable
+from typing import Any
 
 import numpy as np
 
@@ -152,7 +151,7 @@ class CalibrationOptimizer:
         """
         scores_arr = np.asarray(scores, dtype=float)
         labels_arr = np.asarray(labels, dtype=int)
-        n = len(scores_arr)
+        len(scores_arr)
 
         def false_positive_rate(params: np.ndarray) -> float:
             watch, _alert = params

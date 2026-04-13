@@ -42,10 +42,10 @@ def summarize_results(results: Iterable[Dict[str, Any]]) -> Dict[str, float]:
     for r in rows:
         exp = r.get("experimental_analytics", {}) or {}
         b = (exp.get("branching_analysis", {}) or {}).get("branch_count_estimate")
-        l = (exp.get("constraint_analysis", {}) or {}).get("lock_in_score")
+        lock_in_score = (exp.get("constraint_analysis", {}) or {}).get("lock_in_score")
         h = (exp.get("horizon_analysis", {}) or {}).get("horizon_steps")
         branches.append(float(b or 1.0))
-        lockins.append(float(l or 0.0))
+        lockins.append(float(lock_in_score or 0.0))
         horizons.append(float(h or 0.0))
         advanced_pop.append(1.0 if isinstance(exp, dict) and len(exp) > 0 else 0.0)
 

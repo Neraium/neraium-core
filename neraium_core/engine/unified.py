@@ -14,7 +14,7 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
-from typing import Optional, Any
+from typing import Any
 
 from neraium_core.engine.production import ProductionEngine, InputFrame, EngineResult, BatchResult
 from neraium_core.engine.config import ProductionEngineConfig, ProductionLoggingConfig

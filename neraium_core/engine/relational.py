@@ -15,9 +15,7 @@ from typing import Dict, Any
 import numpy as np
 
 from neraium_core.geometry import (
-    correlation_matrix,
     signal_structural_importance,
-    structural_drift,
 )
 from neraium_core.graph import graph_metrics, thresholded_adjacency
 from neraium_core.subsystems import subsystem_spectral_measures

@@ -11,7 +11,7 @@ Note: This layer handles all output formatting. It is deliberately
 separated from detection logic so packaging changes don't affect core.
 """
 
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any
 
 
 def create_warmup_payload(frame: Dict[str, object]) -> Dict[str, object]:
