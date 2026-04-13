@@ -212,8 +212,18 @@ def _load_rows_from_turbo_results(*, limit: int | None) -> list[dict[str, Any]]:
 
         # Compute tetrahedral state
         structural_drift = dynamic_signal_strength
-        relational_instability = 1.0 - dynamic_signal_strength
-        temporal_consistency = _clamp(_coerce_float(row.get("coherence_score"), confidence))
+        relational_instability = _clamp(
+            _coerce_float(
+                row.get("relational_instability_score"),
+                1.0 - _coerce_float(row.get("relational_stability_score"), dynamic_signal_strength),
+            )
+        )
+        temporal_consistency = _clamp(
+            _coerce_float(
+                row.get("temporal_consistency_score"),
+                _coerce_float(row.get("coherence_score"), confidence),
+            )
+        )
         transition_pressure = _clamp(_coerce_float(row.get("transition_pressure"), 0.0))
 
         tetrahedral_state = compute_tetrahedral_state(
@@ -242,7 +252,7 @@ def _load_rows_from_turbo_results(*, limit: int | None) -> list[dict[str, Any]]:
                 "confidence_score": confidence,
                 "dynamic_signal_strength": dynamic_signal_strength,
                 "structural_drift_score": dynamic_signal_strength,
-                "relational_stability_score": round(1.0 - dynamic_signal_strength, 6),
+                "relational_stability_score": round(1.0 - relational_instability, 6),
                 "event_admitted": bool(event_admitted_override),
                 "transition_type": (phase or "STABLE").upper(),
                 "evidence_summary": explanation_text,
