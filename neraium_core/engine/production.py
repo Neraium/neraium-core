@@ -90,13 +90,23 @@ class ProductionEngine:
         self._frame_count_by_unit[frame.unit_id] += 1
         frame_count = self._frame_count_by_unit[frame.unit_id]
 
-        # Prepare frame for engine (add required legacy fields)
+        # === INGESTION ADAPTER: Convert InputFrame to canonical internal frame ===
+        # ProductionEngine is an ingestion adapter that normalizes the public API
+        # (InputFrame with unit_id) to the canonical internal frame format.
+        #
+        # Public API fields → Internal canonical fields:
+        #   - unit_id → asset_id (primary equipment identifier)
+        #   - sensors → sensor_values (normalized sensor readings)
+        #   - timestamp → timestamp (passed through as numeric; engine accepts float or ISO-8601)
+        #   - (injected) → site_id: "production" (operational location)
+        #
+        # See PHASE_A_CONTRACT_AND_ISOLATION.md for the canonical frame contract.
+
         engine_frame = {
-            "timestamp": frame.timestamp,
-            "sensor_values": frame.sensors,
-            "unit_id": frame.unit_id,
-            "site_id": "production",  # Legacy field, required by engine
-            "asset_id": frame.unit_id,  # Map unit_id to asset_id
+            "timestamp": frame.timestamp,  # Numeric or ISO-8601 string
+            "asset_id": frame.unit_id,    # Public API uses unit_id; internal uses asset_id
+            "site_id": "production",      # Injected by adapter; identifies this as production data
+            "sensor_values": frame.sensors,  # Sensor readings (normalized to canonical names)
         }
 
         try:
