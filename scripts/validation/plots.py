@@ -41,7 +41,7 @@ def create_unit_plot(
     # Plot structural drift score
     if "structural_drift_score" in unit_data.columns:
         ax.plot(
-            x,
+            cycle_col,
             unit_data["structural_drift_score"].values,
             label="Structural Drift Score",
             linewidth=2,
@@ -51,7 +51,7 @@ def create_unit_plot(
     # Plot relational instability score if available
     if "relational_instability_score" in unit_data.columns:
         ax.plot(
-            x,
+            cycle_col,
             unit_data["relational_instability_score"].values,
             label="Relational Instability Score",
             linewidth=2,
@@ -59,7 +59,7 @@ def create_unit_plot(
         )
     elif "composite_score" in unit_data.columns:
         ax.plot(
-            x,
+            cycle_col,
             unit_data["composite_score"].values,
             label="Composite Score",
             linewidth=2,
@@ -81,7 +81,7 @@ def create_unit_plot(
         ax.axvline(x=failure, color="darkred", linestyle=":", linewidth=2, label="Failure Point")
 
     # Mark end of run
-    ax.axvline(x=len(unit_data) - 1, color="gray", linestyle=":", linewidth=1.5, alpha=0.7, label="End of Run")
+    ax.axvline(x=cycle_col[-1], color="gray", linestyle=":", linewidth=1.5, alpha=0.7, label="End of Run")
 
     ax.set_xlabel("Cycle", fontsize=11)
     ax.set_ylabel("Score", fontsize=11)
@@ -140,7 +140,7 @@ def generate_hero_plot(
         # Plot structural drift score
         if "structural_drift_score" in unit_data.columns:
             ax.plot(
-                x,
+                cycle_col,
                 unit_data["structural_drift_score"].values,
                 label="Structural Drift Score",
                 linewidth=2.5,
@@ -150,7 +150,7 @@ def generate_hero_plot(
         # Plot relational instability score if available
         if "relational_instability_score" in unit_data.columns:
             ax.plot(
-                x,
+                cycle_col,
                 unit_data["relational_instability_score"].values,
                 label="Relational Instability Score",
                 linewidth=2.5,
@@ -158,7 +158,7 @@ def generate_hero_plot(
             )
         elif "composite_score" in unit_data.columns:
             ax.plot(
-                x,
+                cycle_col,
                 unit_data["composite_score"].values,
                 label="Composite Score",
                 linewidth=2.5,
@@ -180,7 +180,7 @@ def generate_hero_plot(
             ax.axvline(x=failure, color="darkred", linestyle=":", linewidth=2, label="Failure Point")
 
         # Mark end of run
-        ax.axvline(x=len(unit_data) - 1, color="gray", linestyle=":", linewidth=1.5, alpha=0.7, label="End of Run")
+        ax.axvline(x=cycle_col[-1], color="gray", linestyle=":", linewidth=1.5, alpha=0.7, label="End of Run")
 
         ax.set_xlabel("Cycle", fontsize=12)
         ax.set_ylabel("Score", fontsize=12)

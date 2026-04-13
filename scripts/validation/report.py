@@ -49,7 +49,7 @@ def generate_markdown_report(
         report += f"- {fd004_metrics.p50_gt_100_cycles:.1f}% of systems show >100 cycle early detection\n"
         report += f"- Median detection occurs ~{round(fd004_median)} cycles before failure\n"
         report += f"- Works with zero training and zero labels\n"
-        report += f"- Performance validated across a 248-unit fleet (FD004) and real-world continuous system data (IMS)\n\n"
+        report += f"- Performance validated across a {fd004_metrics.unit_count}-unit fleet (FD004) and real-world continuous system data (IMS)\n\n"
 
     report += f"""## Summary
 
@@ -156,7 +156,7 @@ def generate_hero_summary(metrics_list: list[DatasetMetrics]) -> str:
 
     if fd004_metrics:
         summary += "## Core Result\n\n"
-        summary += f"- **248-unit fleet (FD004):** Median {round(fd004_metrics.median_lead_time)}-cycle early detection\n"
+        summary += f"- **{fd004_metrics.unit_count}-unit fleet (FD004):** Median {round(fd004_metrics.median_lead_time)}-cycle early detection\n"
         summary += f"- **{fd004_metrics.p50_gt_100_cycles:.1f}% of systems** detected >100 cycles before failure\n"
         summary += f"- **Best observed:** {round(fd004_metrics.best_case_lead_time)}-cycle early detection\n\n"
 
