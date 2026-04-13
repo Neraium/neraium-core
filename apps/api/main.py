@@ -65,6 +65,7 @@ from .routers.alerts import build_alerts_router
 from .routers.geometry import build_geometry_router
 from .routers.ingest import build_ingest_router
 from .routers.demo import build_demo_router
+from .routers.demo_playback import build_demo_playback_router
 from .routers.integrations import build_integrations_router
 from .routers.onboarding import build_onboarding_router
 DEFAULT_MAX_REQUEST_BODY_BYTES = request_body_limit_bytes()
@@ -612,6 +613,8 @@ def create_app(
             ),
         )
     )
+
+    app.include_router(build_demo_playback_router())
 
     app.include_router(
         build_onboarding_router(
