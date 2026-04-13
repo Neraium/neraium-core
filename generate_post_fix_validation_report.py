@@ -265,7 +265,7 @@ def verify_a3_stability(results):
 
     consistency_ok = crashes == 0 and frames_processed > 0
     completion_ok = crashes == 0 and frames_processed == expected_frames
-    recovery_ok = crashes == 0 and (dropout_events == 0 or frames_processed > 0)
+    recovery_ok = crashes == 0 and dropout_events > 0 and frames_processed > 0
 
     stability_report = {
         'timestamp': datetime.now().isoformat(),
@@ -289,14 +289,18 @@ def verify_a3_stability(results):
             'dropout_recovery': {
                 'status': 'PASS' if recovery_ok else 'FAIL',
                 'description': 'System recovered after dropouts',
-                'evidence': f"Handled {dropout_events} dropout events with {crashes} crashes",
+                'evidence': (
+                    f"Handled {dropout_events} dropout events with {crashes} crashes"
+                    if dropout_events > 0
+                    else "No dropout events observed; recovery behavior not exercised"
+                ),
             },
         },
         'summary': {
             'total_frames': frames_processed,
             'sensor_dropout_events_handled': dropout_events,
             'crashes': crashes,
-            'overall_status': 'STABLE' if completion_ok else 'UNSTABLE',
+            'overall_status': 'STABLE' if completion_ok and recovery_ok else 'UNSTABLE',
         }
     }
 
@@ -360,25 +364,27 @@ def evaluate_a2_behavior(results):
     logger.info("=" * 80)
 
     a2_result = results.get('A2', {})
+    detections = a2_result.get('signal_detected_count', 0)
+    signal_checks_ok = detections > 0
 
     behavior_report = {
         'timestamp': datetime.now().isoformat(),
         'fix': 'A2 - No-Signal Detection',
         'test_type': 'Weak/flatline signal detection',
         'analysis': {
-            'signal_detected_events': a2_result.get('signal_detected_count', 0),
+            'signal_detected_events': detections,
             'max_drift_score': a2_result.get('max_drift', 0.0),
             'system_visibility': 'Enhanced with no_signal_detected flag',
-            'status': 'OPERATIONAL',
+            'status': 'OPERATIONAL' if signal_checks_ok else 'DEGRADED',
         },
         'checks': {
             'signal_surfaced': {
-                'status': 'PASS' if a2_result.get('signal_detected_count', 0) > 0 else 'FAIL',
+                'status': 'PASS' if signal_checks_ok else 'FAIL',
                 'description': 'System surfaces no-signal events consistently',
-                'evidence': f"{a2_result.get('signal_detected_count', 0)} detection events in test",
+                'evidence': f"{detections} detection events in test",
             },
             'not_suppressed': {
-                'status': 'PASS' if a2_result.get('signal_detected_count', 0) > 0 else 'FAIL',
+                'status': 'PASS' if signal_checks_ok else 'FAIL',
                 'description': 'System is no longer silent on weak signals',
                 'evidence': 'no_signal_detected field added to output',
             },
@@ -455,16 +461,30 @@ def generate_executive_summary(results, stability_a3, improvement_a0, behavior_a
 
     # Determine overall verdict
     all_stable = all(results[a].get('crashes', 0) == 0 for a in ['A0', 'A1', 'A2', 'A3', 'A4'])
+    a2_checks_pass = all(
+        check.get('status') == 'PASS'
+        for check in behavior_a2.get('checks', {}).values()
+    )
+    a3_stable = stability_a3.get('summary', {}).get('overall_status') == 'STABLE'
     has_regressions = regressions['regressions_detected']
 
-    if all_stable and not has_regressions:
+    if all_stable and a2_checks_pass and a3_stable and not has_regressions:
         verdict = "Improved with no regressions"
-    elif all_stable and has_regressions:
+    elif all_stable and a2_checks_pass and a3_stable and has_regressions:
         verdict = "Improved with minor regressions"
-    elif not all_stable:
+    elif not all_stable or not a2_checks_pass or not a3_stable:
         verdict = "Issues detected"
     else:
         verdict = "Mixed results"
+
+    def _status_mark(ok):
+        return "✓ PASS" if ok else "✗ FAIL"
+
+    a0_ok = results.get('A0', {}).get('crashes', 0) == 0
+    a1_ok = results.get('A1', {}).get('status') == 'PASS'
+    a2_ok = results.get('A2', {}).get('crashes', 0) == 0 and a2_checks_pass
+    a3_ok = stability_a3.get('summary', {}).get('overall_status') == 'STABLE'
+    a4_ok = results.get('A4', {}).get('status') == 'PASS'
 
     summary = f"""# POST-FIX VALIDATION SUMMARY
 
@@ -489,14 +509,14 @@ This report validates that the three recent fixes (A0, A2, A3) improved system b
 - ✓ no_signal_detected flag surfaced in output
 - ✓ Detection only triggers in late lifecycle (>100 frames)
 - Signal detection events: {results.get('A2', {}).get('signal_detected_count', 0)}
-- Status: **PASSED**
+- Status: **{behavior_a2.get('analysis', {}).get('status', 'UNKNOWN')}**
 
 **A3 (Sensor Dropout Handling)**
 - ✓ Zero crashes despite sensor dropouts
 - ✓ Vector dimensions remain consistent
 - ✓ System recovers after dropouts
 - Dropouts handled: {results.get('A3', {}).get('sensor_dropouts_handled', 0)}
-- Status: **STABLE**
+- Status: **{stability_a3.get('summary', {}).get('overall_status', 'UNKNOWN')}**
 
 **Control Group (A1, A4)**
 - ✓ No regressions detected
@@ -510,11 +530,11 @@ This report validates that the three recent fixes (A0, A2, A3) improved system b
 
 | Asset | Type | Frames | Crashes | Max Drift | Status |
 |-------|------|--------|---------|-----------|--------|
-| A0 | Baseline Drift | {results.get('A0', {}).get('frames_processed', 0)} | {results.get('A0', {}).get('crashes', 0)} | {results.get('A0', {}).get('max_drift', 0.0)} | ✓ PASS |
-| A1 | Normal (Control) | {results.get('A1', {}).get('frames_processed', 0)} | {results.get('A1', {}).get('crashes', 0)} | {results.get('A1', {}).get('max_drift', 0.0)} | ✓ PASS |
-| A2 | Weak Signal | {results.get('A2', {}).get('frames_processed', 0)} | {results.get('A2', {}).get('crashes', 0)} | {results.get('A2', {}).get('max_drift', 0.0)} | ✓ PASS |
-| A3 | Sensor Dropout | {results.get('A3', {}).get('frames_processed', 0)} | {results.get('A3', {}).get('crashes', 0)} | {results.get('A3', {}).get('max_drift', 0.0)} | ✓ PASS |
-| A4 | Normal (Control) | {results.get('A4', {}).get('frames_processed', 0)} | {results.get('A4', {}).get('crashes', 0)} | {results.get('A4', {}).get('max_drift', 0.0)} | ✓ PASS |
+| A0 | Baseline Drift | {results.get('A0', {}).get('frames_processed', 0)} | {results.get('A0', {}).get('crashes', 0)} | {results.get('A0', {}).get('max_drift', 0.0)} | {_status_mark(a0_ok)} |
+| A1 | Normal (Control) | {results.get('A1', {}).get('frames_processed', 0)} | {results.get('A1', {}).get('crashes', 0)} | {results.get('A1', {}).get('max_drift', 0.0)} | {_status_mark(a1_ok)} |
+| A2 | Weak Signal | {results.get('A2', {}).get('frames_processed', 0)} | {results.get('A2', {}).get('crashes', 0)} | {results.get('A2', {}).get('max_drift', 0.0)} | {_status_mark(a2_ok)} |
+| A3 | Sensor Dropout | {results.get('A3', {}).get('frames_processed', 0)} | {results.get('A3', {}).get('crashes', 0)} | {results.get('A3', {}).get('max_drift', 0.0)} | {_status_mark(a3_ok)} |
+| A4 | Normal (Control) | {results.get('A4', {}).get('frames_processed', 0)} | {results.get('A4', {}).get('crashes', 0)} | {results.get('A4', {}).get('max_drift', 0.0)} | {_status_mark(a4_ok)} |
 
 ### Regression Check Results
 
