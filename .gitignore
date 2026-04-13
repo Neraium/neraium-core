@@ -78,3 +78,9 @@ Thumbs.db
 logs/
 *.log
 
+
+# Validation baseline files (test artifacts)
+FD004_BASELINE.csv
+FD001_BASELINE.csv
+fd001_canonical_fast_outputs/
+fd004_canonical_fast_outputs/
