@@ -19,10 +19,6 @@ from typing import Optional
 import click
 
 from neraium_core.engine import Engine
-from scripts.validation.metrics import compute_metrics
-from scripts.validation.plots import generate_plots, generate_hero_plot
-from scripts.validation.report import generate_markdown_report, generate_hero_summary
-
 
 logger = logging.getLogger(__name__)
 
@@ -133,9 +129,6 @@ def validate(
 
     logger.info(f"Processing {len(datasets)} dataset(s): {list(datasets.keys())}")
 
-    # Create unified engine
-    engine = Engine(enable_shadow_mode=shadow_mode, baseline_window=12, recent_window=6)
-
     # Process each dataset
     all_results = {}
     for dataset_name, dataset_path in datasets.items():
@@ -148,7 +141,8 @@ def validate(
             continue
 
         try:
-            # Replay through engine
+            # Replay through a fresh engine instance to isolate dataset state
+            engine = Engine(enable_shadow_mode=shadow_mode, baseline_window=12, recent_window=6)
             replay_summary = engine.replay(dataset_path, dataset_type=dataset_name)
             logger.info(f"  ✓ Replayed {replay_summary['records_processed']} records")
 
