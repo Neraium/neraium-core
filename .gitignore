@@ -9,3 +9,5 @@ __pycache__/
 .claude/
 *.db
 *.db-wal
+*.db
+*.db-wal
