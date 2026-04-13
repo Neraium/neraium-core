@@ -848,6 +848,54 @@ def create_gradio_app():
             </div>
             """
 
+    def has_significant_state_change(frame_index: int, previous_frame_index: int) -> bool:
+        """Check if there's a significant state change between frames.
+
+        Ensures we capture important transitions even if timing doesn't align.
+        Important changes: verdict flip, health status change, major metric shifts.
+        """
+        if previous_frame_index is None or frame_index <= previous_frame_index:
+            return True
+
+        current_rows = _rows_until(frame_index)
+        previous_rows = _rows_until(previous_frame_index)
+
+        if not current_rows or not previous_rows:
+            return True
+
+        curr = current_rows[-1] if current_rows else {}
+        prev = previous_rows[-1] if previous_rows else {}
+
+        # Check verdict decision change
+        if curr.get("event_admitted") != prev.get("event_admitted"):
+            return True
+
+        # Check system health change
+        if curr.get("system_health") != prev.get("system_health"):
+            return True
+
+        # Check transition type change
+        if curr.get("transition_type") != prev.get("transition_type"):
+            return True
+
+        # Check for large metric shifts
+        drift_delta = abs(_safe_float(curr.get("structural_drift_score")) - _safe_float(prev.get("structural_drift_score")))
+        if drift_delta > 0.15:
+            return True
+
+        stability_delta = abs(_safe_float(curr.get("relational_stability_score")) - _safe_float(prev.get("relational_stability_score")))
+        if stability_delta > 0.15:
+            return True
+
+        return False
+
+    def _safe_float(value: Any, default: float = 0.0) -> float:
+        """Safely convert value to float."""
+        try:
+            return float(value)
+        except (TypeError, ValueError):
+            return default
+
     def load_operations_surface(frame_index: int, apply_stability: bool = False):
         active_rows = _rows_until(frame_index)
         app_state = create_app_state(active_rows)
@@ -913,6 +961,9 @@ def create_gradio_app():
 
         Backend processes all frames at full speed, but UI only redraws
         at 5-6 Hz to avoid the "frame loading" slideshow effect.
+
+        Also renders frames with significant state changes to ensure important
+        transitions (verdict flips, health status changes) are captured.
         """
         playback_state["playing"] = True
         pace_controller.speed_multiplier = float(speed_multiplier or 1.0)
@@ -923,8 +974,9 @@ def create_gradio_app():
         # do not leak prior hysteresis into the new playback segment.
         verdict_stabilizer.reset()
 
-        # Track previously yielded frame to avoid duplicate renders
+        # Track previously yielded frame to avoid duplicate renders and for change detection
         last_yielded_frame = None
+        last_rendered_frame = None
         elapsed_time = 0.0
 
         while frame <= total_steps and playback_state["playing"]:
@@ -932,12 +984,20 @@ def create_gradio_app():
             step_delay = pace_controller.get_step_delay(frame - 1, demo_rows)
             elapsed_time += step_delay
 
-            # Only update UI when it's time (frame skipping for smooth perception)
-            if frame_controller.should_render_frame(elapsed_time) or frame == total_steps:
-                # Only yield if this is a new frame (not a duplicate from skipped frames)
+            # Render frame if:
+            # 1. Enough time has passed (smooth UI cadence), OR
+            # 2. Significant state change detected (important transitions), OR
+            # 3. Final frame (always show ending)
+            should_render_by_time = frame_controller.should_render_frame(elapsed_time)
+            should_render_by_change = has_significant_state_change(frame, last_rendered_frame)
+            should_render_final = frame == total_steps
+
+            if should_render_by_time or should_render_by_change or should_render_final:
+                # Only yield if this is a new frame (not a duplicate)
                 if last_yielded_frame != frame:
                     yield (frame, *load_operations_surface(frame, apply_stability=True))
                     last_yielded_frame = frame
+                    last_rendered_frame = frame
 
             frame += 1
 
