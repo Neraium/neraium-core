@@ -84,3 +84,11 @@ FD004_BASELINE.csv
 FD001_BASELINE.csv
 fd001_canonical_fast_outputs/
 fd004_canonical_fast_outputs/
+
+# Generated output directories
+fd00x/
+fd004_outputs_subset/
+debug_outputs/
+backup_claude_ui/
+greenhouse_demo/
+validation_results_post_fix/
