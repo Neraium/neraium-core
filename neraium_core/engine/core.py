@@ -66,7 +66,7 @@ def assess_data_quality(
     sensor_names: List[str],
     timestamps_baseline: Optional[List[float]] = None,
     timestamps_recent: Optional[List[float]] = None,
-) -> Tuple[object, dict, bool]:
+) -> Tuple[object, dict, bool, np.ndarray, np.ndarray]:
     """Assess data quality and decide if degraded analytics needed.
 
     Args:
@@ -77,7 +77,7 @@ def assess_data_quality(
         timestamps_recent: Recent timestamps
 
     Returns:
-        (dq_report, dq_summary_dict, use_degraded)
+        (dq_report, dq_summary_dict, use_degraded, baseline_window_out, recent_window_out)
     """
     dq_report = compute_data_quality(
         baseline_window,
@@ -97,7 +97,7 @@ def assess_data_quality(
         baseline_window = impute_missing_simple(baseline_window, method="column_mean")
         recent_window = impute_missing_simple(recent_window, method="column_mean")
 
-    return dq_report, dq_summary, use_degraded
+    return dq_report, dq_summary, use_degraded, baseline_window, recent_window
 
 
 def get_valid_signal_mask(
