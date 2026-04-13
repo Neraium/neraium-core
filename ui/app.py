@@ -516,7 +516,7 @@ def _render_system_context_html(system_zone: dict[str, Any]) -> str:
                 run_start = idx
                 run_phase = point["phase"]
         phase_runs.append((run_start, len(chart_points) - 1, run_phase))
-    phase_colors = {"STABLE": "rgba(30,64,175,0.14)", "TRANSITION": "rgba(91,33,182,0.12)", "REORGANIZATION": "rgba(194,65,12,0.12)"}
+    phase_colors = {"STABLE": "rgba(74,222,128,0.18)", "TRANSITION": "rgba(250,204,21,0.16)", "REORGANIZATION": "rgba(239,68,68,0.18)"}
     for start_idx, end_idx, phase_name in phase_runs:
         x0 = sx(start_idx / max(point_count - 1, 1))
         x1 = sx(end_idx / max(point_count - 1, 1))
@@ -544,8 +544,12 @@ def _render_system_context_html(system_zone: dict[str, Any]) -> str:
 
     cx_p = sx(current.get("x", 1.0))
     cy_p = sy(current.get("y", 0.0))
-    parts.append(f'<circle cx="{cx_p}" cy="{cy_p}" r="6.5" fill="#E2E8F0" stroke="#0EA5E9" stroke-width="2"/>')
-    parts.append(f'<text x="{min(cx_p + 12, W - 12)}" y="{max(cy_p - 10, PY + 12)}" fill="#E2E8F0" font-size="11">Now</text>')
+    # Vertical line marking current position
+    parts.append(f'<line x1="{cx_p}" y1="{PY}" x2="{cx_p}" y2="{PY + IH}" stroke="#0EA5E9" stroke-width="1.5" opacity="0.6" stroke-dasharray="3,2"/>')
+    # Current position marker
+    parts.append(f'<circle cx="{cx_p}" cy="{cy_p}" r="6.5" fill="#0EA5E9" stroke="#E2E8F0" stroke-width="2"/>')
+    # "Now" label
+    parts.append(f'<text x="{min(cx_p + 12, W - 12)}" y="{max(cy_p - 10, PY + 12)}" fill="#0EA5E9" font-size="11" font-weight="600">Now</text>')
 
     svg_body = "\n".join(parts)
     svg_html = f'<svg class="ner-system-canvas" viewBox="0 0 {W} {H}" width="100%">\n{svg_body}\n</svg>'
@@ -615,8 +619,7 @@ def _render_system_context_html(system_zone: dict[str, Any]) -> str:
 def _render_reasoning_html(reasoning_panel: dict[str, Any]) -> str:
     """Render reasoning panel with improved clarity and readability.
 
-    Displays 3 clear lines: Observed, Assessment, Implication.
-    Each is fully visible with no truncation or clipping.
+    Collapses by default. Shows 3 clear lines when expanded: Observed, Assessment, Implication.
     Uses larger fonts and better spacing for better readability.
     """
     panel = reasoning_panel if isinstance(reasoning_panel, dict) else {}
@@ -675,16 +678,25 @@ def _render_reasoning_html(reasoning_panel: dict[str, Any]) -> str:
         f"</details>"
     )
 
+    # Collapse reasoning panel by default
     return (
+        f'<details class="ner-collapsible-panel">'
+        f'<summary style="cursor:pointer;font-weight:600;color:#e2e8f0;font-size:13px;padding:12px;margin:-12px;display:flex;align-items:center;gap:8px;">'
+        f'<span style="display:inline-block;width:12px;height:12px;border:1.5px solid #94a3b8;border-radius:2px;"></span>'
+        f'Show Reasoning'
+        f'</summary>'
+        f'<div style="padding:12px 0;border-top:1px solid rgba(255,255,255,0.08);">'
         f'<div class="ner-panel">'
         f'<div class="ner-eyebrow">Analytical Reasoning</div>'
         f'{core_lines}{details_html}'
         f'</div>'
+        f'</div>'
+        f'</details>'
     )
 
 
 def _render_record_html(record_panel: dict[str, Any]) -> str:
-    """Render evidence/record panel with improved spacing and scanability."""
+    """Render evidence/record panel with improved spacing and scanability. Collapses by default."""
     panel = record_panel if isinstance(record_panel, dict) else {}
     entries = panel.get("entries")
     if not isinstance(entries, list):
@@ -761,11 +773,20 @@ def _render_record_html(record_panel: dict[str, Any]) -> str:
             'No evidence entries recorded yet.</div>'
         )
 
+    # Collapse evidence panel by default
     return (
+        f'<details class="ner-collapsible-panel">'
+        f'<summary style="cursor:pointer;font-weight:600;color:#e2e8f0;font-size:13px;padding:12px;margin:-12px;display:flex;align-items:center;gap:8px;">'
+        f'<span style="display:inline-block;width:12px;height:12px;border:1.5px solid #94a3b8;border-radius:2px;"></span>'
+        f'Show Evidence'
+        f'</summary>'
+        f'<div style="padding:12px 0;border-top:1px solid rgba(255,255,255,0.08);">'
         f'<div class="ner-panel">'
         f'<div class="ner-eyebrow">Evidence Record</div>'
         f'<div>{cards_html}</div>'
         f'</div>'
+        f'</div>'
+        f'</details>'
     )
 
 
