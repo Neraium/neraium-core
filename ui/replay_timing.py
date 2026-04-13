@@ -310,3 +310,76 @@ def _calculate_average_run_length(sequence: list[str], value: str) -> float:
         runs.append(current_run)
 
     return sum(runs) / len(runs) if runs else 0.0
+
+
+class SmoothUIFrameController:
+    """Manages frame skipping and UI update rate decoupling.
+
+    The backend processes all frames at full speed, but the UI only redraws
+    at a human-friendly rate (5-6 Hz) to avoid the "frame loading" effect.
+
+    This creates the perception of continuous motion rather than a slideshow.
+    """
+
+    def __init__(self, target_ui_hz: float = 5.5):
+        """Initialize frame controller.
+
+        Args:
+            target_ui_hz: Target UI update frequency in Hz (default 5.5 = ~180ms per update)
+        """
+        self.target_ui_hz = max(3.0, min(15.0, float(target_ui_hz)))
+        self.target_frame_interval = 1.0 / self.target_ui_hz
+        self._last_ui_update_time = 0.0
+        self._frame_accumulator = 0
+        self._total_elapsed = 0.0
+
+    def should_render_frame(self, current_time: float) -> bool:
+        """Check if enough time has passed to render the next UI frame.
+
+        Args:
+            current_time: Current elapsed time in seconds
+
+        Returns:
+            True if UI should update, False to skip this frame
+        """
+        elapsed_since_update = current_time - self._last_ui_update_time
+        if elapsed_since_update >= self.target_frame_interval:
+            self._last_ui_update_time = current_time
+            return True
+        return False
+
+    def reset(self) -> None:
+        """Reset timing state."""
+        self._last_ui_update_time = 0.0
+        self._frame_accumulator = 0
+        self._total_elapsed = 0.0
+
+
+class InterpolationHelper:
+    """Provides smooth interpolation for visual state transitions.
+
+    Prevents hard jumps in progress indicators, drift values, etc.
+    """
+
+    @staticmethod
+    def lerp(start: float, end: float, t: float) -> float:
+        """Linear interpolation between two values.
+
+        Args:
+            start: Starting value
+            end: Ending value
+            t: Interpolation factor (0.0 to 1.0)
+
+        Returns:
+            Interpolated value
+        """
+        return start + (end - start) * max(0.0, min(1.0, t))
+
+    @staticmethod
+    def smooth_step(t: float) -> float:
+        """Smoothstep interpolation (cubic ease in/out).
+
+        Creates smoother motion than linear interpolation.
+        """
+        t = max(0.0, min(1.0, t))
+        return t * t * (3.0 - 2.0 * t)

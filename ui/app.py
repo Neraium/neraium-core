@@ -15,6 +15,8 @@ from ui.replay_timing import (
     ReplayPaceController,
     VerdictStabilizer,
     ReasoningStateTracker,
+    SmoothUIFrameController,
+    InterpolationHelper,
 )
 
 
@@ -813,6 +815,7 @@ def create_gradio_app():
     verdict_stabilizer = VerdictStabilizer(hysteresis_threshold=0.08)
     reasoning_tracker = ReasoningStateTracker(change_threshold=0.06)
     pace_controller = ReplayPaceController()
+    frame_controller = SmoothUIFrameController(target_ui_hz=5.5)  # ~180ms per UI update
 
     def _rows_until(frame_index: int) -> list[dict[str, Any]]:
         idx = max(1, min(total_steps, int(frame_index)))
@@ -906,21 +909,39 @@ def create_gradio_app():
         return 1, header_html, verdict_html, reasoning_html, record_html, tetra_plot, tetra_text
 
     def autoplay(start_frame: int, speed_multiplier: float):
+        """Smooth playback with frame skipping for polished UI feel.
+
+        Backend processes all frames at full speed, but UI only redraws
+        at 5-6 Hz to avoid the "frame loading" slideshow effect.
+        """
         playback_state["playing"] = True
         pace_controller.speed_multiplier = float(speed_multiplier or 1.0)
+        frame_controller.reset()
+
         frame = max(1, int(start_frame))
         # Start each autoplay run with a fresh stabilizer state so seeks/scrubs
         # do not leak prior hysteresis into the new playback segment.
         verdict_stabilizer.reset()
 
+        # Track previously yielded frame to avoid duplicate renders
+        last_yielded_frame = None
+        elapsed_time = 0.0
+
         while frame <= total_steps and playback_state["playing"]:
             # Calculate adaptive delay based on phase
             step_delay = pace_controller.get_step_delay(frame - 1, demo_rows)
+            elapsed_time += step_delay
 
-            yield (frame, *load_operations_surface(frame, apply_stability=True))
+            # Only update UI when it's time (frame skipping for smooth perception)
+            if frame_controller.should_render_frame(elapsed_time) or frame == total_steps:
+                # Only yield if this is a new frame (not a duplicate from skipped frames)
+                if last_yielded_frame != frame:
+                    yield (frame, *load_operations_surface(frame, apply_stability=True))
+                    last_yielded_frame = frame
+
             frame += 1
 
-            # Sleep with calculated adaptive delay
+            # Sleep with calculated adaptive delay to maintain backend frame rate
             time.sleep(step_delay)
 
         playback_state["playing"] = False
