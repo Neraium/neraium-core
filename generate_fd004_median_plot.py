@@ -2,9 +2,7 @@
 """Generate FD004 median case plot with corrected best/worst semantics."""
 
 import pandas as pd
-import numpy as np
 import matplotlib.pyplot as plt
-from pathlib import Path
 
 # Load summary data with lead times
 scored = pd.read_csv("fd004_canonical_fast_outputs/FD004_scored.csv")
@@ -19,7 +17,7 @@ median_idx = len(sorted_by_lead) // 2
 median_unit = int(sorted_by_lead.iloc[median_idx]["unit"])
 median_lead_time = float(sorted_by_lead.iloc[median_idx]["alert_lead"])
 
-print(f"\n=== FD004 Median Case ===")
+print("\n=== FD004 Median Case ===")
 print(f"Unit: {median_unit}")
 print(f"Lead Time: {median_lead_time:.1f} cycles")
 print(f"Median of distribution: {median_lead:.1f} cycles")

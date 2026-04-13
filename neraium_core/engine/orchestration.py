@@ -11,9 +11,8 @@ alignment.py StructuralEngine.process_frame(). By delegating to
 specialized modules, we reduce complexity and improve testability.
 """
 
-from typing import Dict, Any, Optional, List, Tuple
+from typing import Dict, Any, Optional, List
 import numpy as np
-from collections import deque
 
 from . import (
     core,

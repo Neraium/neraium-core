@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from dataclasses import asdict
 
 from neraium_core.gate.evaluator import (
     evaluate_candidate_assertion,

@@ -13,16 +13,14 @@ No assumptions. Evidence only.
 
 import sys
 import time
-import json
 import logging
 from collections import defaultdict
-from datetime import datetime, timedelta
 
 import numpy as np
 
 logging.getLogger("neraium_core").setLevel(logging.CRITICAL)
 
-from neraium_core.engine.production import ProductionEngine, InputFrame, EngineResult
+from neraium_core.engine.production import ProductionEngine, InputFrame
 
 
 class Evidence:
@@ -65,7 +63,7 @@ class Evidence:
         report += f"Results: {len(self.passed)}/{total} passed ({pct}%)\n"
 
         if self.measurements:
-            report += f"\nMeasurements:\n"
+            report += "\nMeasurements:\n"
             for k, v in sorted(self.measurements.items()):
                 if isinstance(v, dict):
                     report += f"  {k}:\n"
@@ -475,11 +473,11 @@ def main():
     evidence = Evidence()
 
     try:
-        soak_ok = soak_test(evidence)
-        fault_ok = fault_injection_test(evidence)
-        perf_ok = performance_benchmark(evidence)
-        det_ok = determinism_test(evidence)
-        cons_ok = state_consistency_test(evidence)
+        soak_test(evidence)
+        fault_injection_test(evidence)
+        performance_benchmark(evidence)
+        determinism_test(evidence)
+        state_consistency_test(evidence)
     except Exception as e:
         print(f"\n✗ VALIDATION CRASHED: {e}")
         import traceback

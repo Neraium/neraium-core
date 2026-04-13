@@ -133,27 +133,27 @@ def _infer_table_schema(rows: list[dict[str, Any]], headers: list[str]) -> Schem
     ts_col = next(
         (
             h
-            for h, l in lower_map.items()
-            if l in {"timestamp", "time", "datetime", "date"}
-            or l.endswith("_timestamp")
-            or l.endswith("_time")
-            or l.endswith("_at")
+            for h, normalized_header in lower_map.items()
+            if normalized_header in {"timestamp", "time", "datetime", "date"}
+            or normalized_header.endswith("_timestamp")
+            or normalized_header.endswith("_time")
+            or normalized_header.endswith("_at")
         ),
         None,
     )
     asset_col = next(
         (
             h
-            for h, l in lower_map.items()
-            if l in {"asset", "asset_id", "machine", "unit", "unit_id", "equipment"}
-            or l.endswith("_asset")
-            or l.endswith("_machine")
-            or l.endswith("_unit")
-            or l.endswith("_tag")
+            for h, normalized_header in lower_map.items()
+            if normalized_header in {"asset", "asset_id", "machine", "unit", "unit_id", "equipment"}
+            or normalized_header.endswith("_asset")
+            or normalized_header.endswith("_machine")
+            or normalized_header.endswith("_unit")
+            or normalized_header.endswith("_tag")
         ),
         None,
     )
-    site_col = next((h for h, l in lower_map.items() if l in {"site", "site_id", "plant", "factory", "line"}), None)
+    site_col = next((h for h, normalized_header in lower_map.items() if normalized_header in {"site", "site_id", "plant", "factory", "line"}), None)
 
     sensor_cols: list[str] = []
     metadata_cols: list[str] = []

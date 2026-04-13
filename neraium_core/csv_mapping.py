@@ -6,11 +6,10 @@ to the canonical ingest frame shape (timestamp, site_id, asset_id, sensor_values
 from __future__ import annotations
 
 import csv
-import math
 import re
 from dataclasses import dataclass, field
 from io import StringIO
-from typing import Any, Dict, Iterable, List, Mapping, MutableMapping, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
 # --- Header heuristics (normalized: lower, collapsed spaces) ---
 

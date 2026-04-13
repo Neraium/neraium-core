@@ -24,7 +24,6 @@ MIN_FILTERED_HEALTHY_SAMPLES = 10
 # HYBRID DETECTOR (V4)
 # =========================
 
-import numpy as np
 
 
 def _cfg_get(config, key, default):
@@ -147,7 +146,6 @@ def detect_anomaly(series, config):
 
     early_trigger_std = _cfg_get(config, "early_trigger_std", 1.5)
 
-    triggered = False
     warning_idx = None
 
     persistence_count = 0
@@ -190,7 +188,6 @@ def detect_anomaly(series, config):
         # 4. FINAL DECISION
         # -------------------------
         if persistent_anomaly or (early_trend and early_threshold_hit):
-            triggered = True
             warning_idx = i
             break
 

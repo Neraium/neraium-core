@@ -8,7 +8,7 @@ Responsibilities:
 - Alert persistence and unlatching logic
 """
 
-from typing import Optional, Tuple
+from typing import Tuple
 from collections import deque
 import numpy as np
 

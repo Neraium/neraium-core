@@ -10,7 +10,7 @@ Produces structured comparison artifact showing per-field mismatches.
 
 import json
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 from collections import defaultdict
 
 

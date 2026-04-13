@@ -68,7 +68,7 @@ class InterventionIntelligenceEngine:
             "distance_to_critical_region": float(transition.get("distance_to_critical_region", 1.0)),
             "reversibility_score": float(transition.get("reversibility_score", 0.5)),
             "mechanism_candidates": [str(m.get("mechanism", "")) for m in (mechanism.get("mechanism_candidates") or [])[:4]],
-            "law_candidates": [str(l.get("law", "")) for l in (laws.get("law_candidates") or [])[:4]],
+            "law_candidates": [str(law.get("law", "")) for law in (laws.get("law_candidates") or [])[:4]],
             "novelty_score": novelty_score,
             "family_similarity": float(family_similarity or 0.0),
             "support_count": int(support_count or 0),

@@ -228,8 +228,8 @@ def plot_baseline_comparison(
     width = 0.25
 
     fig, ax = plt.subplots(figsize=(10, 5))
-    bars1 = ax.bar(x - width, coverage, width, label="Coverage", color="#1f77b4")
-    bars2 = ax.bar(x, fpr, width, label="FPR (↓ better)", color="#d62728")
+    ax.bar(x - width, coverage, width, label="Coverage", color="#1f77b4")
+    ax.bar(x, fpr, width, label="FPR (↓ better)", color="#d62728")
 
     ax2 = ax.twinx()
     ax2.bar(x + width, mean_lead, width, label="Mean lead (cycles)", color="#2ca02c",
@@ -293,7 +293,6 @@ def plot_tuning_heatmap(
     If multiple healthy_fraction values were swept, each gets its own facet.
     """
     plt = _require_matplotlib()
-    from dataclasses import asdict
 
     if not tuning_rows:
         return

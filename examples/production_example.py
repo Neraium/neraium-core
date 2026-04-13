@@ -22,7 +22,7 @@ def main():
     """Run production example."""
     # Setup logging
     logging_config = ProductionLoggingConfig(level="INFO")
-    logger = setup_logging(logging_config)
+    setup_logging(logging_config)
 
     # Create engine with defaults (or from env vars)
     config = ProductionEngineConfig()
@@ -94,7 +94,7 @@ def main():
 
     print("Summary Statistics:")
     print(f"  Total frames processed: {len(results_log)}")
-    print(f"  State distribution:")
+    print("  State distribution:")
     for state, count in sorted(state_counts.items()):
         pct = (count / len(results_log)) * 100
         print(f"    - {state}: {count} ({pct:.1f}%)")

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from statistics import mean
-from typing import Any
 
 from evaluation.scenarios import INTERVENTIONS, Scenario
 

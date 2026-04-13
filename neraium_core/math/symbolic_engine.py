@@ -28,7 +28,7 @@ except ImportError:  # pragma: no cover
     _SYMPY_AVAILABLE = False
     sp = None  # type: ignore[assignment]
 
-from neraium_core.scoring import DEFAULT_WEIGHTS, DEFAULT_COMPONENTS
+from neraium_core.scoring import DEFAULT_WEIGHTS
 
 COMPONENT_NAMES: list[str] = [k for k in DEFAULT_WEIGHTS if DEFAULT_WEIGHTS[k] > 0]
 

@@ -120,7 +120,7 @@ def create_synthetic_test_data(output_dir: Path) -> Path:
 
 def analyze_test_data(dataset_path: Path, output_dir: Path):
     """Analyze the synthetic test data to document failure modes."""
-    logger.info(f"\nAnalyzing test data structure...")
+    logger.info("\nAnalyzing test data structure...")
 
     df = pd.read_csv(dataset_path)
 
@@ -142,7 +142,7 @@ def analyze_test_data(dataset_path: Path, output_dir: Path):
             'sensor_dropouts': len(sensor_cols) - len([c for c in sensor_cols if pd.notna(asset_df.iloc[-1][c])]),
         }
 
-    logger.info(f"\nTest Data Profile:")
+    logger.info("\nTest Data Profile:")
     logger.info(f"{'Asset':<8} {'Max Drift':<12} {'First Alert':<15} {'Start Sensors':<15} {'End Sensors':<15} {'Dropouts':<10}")
     logger.info("-" * 80)
     for aid in sorted(analysis.keys()):
@@ -161,7 +161,7 @@ def simulate_engine_behavior(dataset_path: Path, output_dir: Path) -> Dict[str, 
 
     This avoids the dimension mismatch errors and lets us focus on the data patterns.
     """
-    logger.info(f"\nSimulating engine behavior on test data...")
+    logger.info("\nSimulating engine behavior on test data...")
 
     df = pd.read_csv(dataset_path)
     sensor_cols = [c for c in df.columns if c.startswith('sensor_')]
@@ -373,7 +373,7 @@ def analyze_root_causes(telemetry: Dict[str, PerAssetTelemetry], test_profile: D
 
 def generate_comparison_plots(dataset_path: Path, output_dir: Path):
     """Generate comparison plots."""
-    logger.info(f"\nGenerating comparison plots...")
+    logger.info("\nGenerating comparison plots...")
 
     df = pd.read_csv(dataset_path)
     sensor_cols = [c for c in df.columns if c.startswith('sensor_')]
@@ -510,7 +510,7 @@ def main():
     logger.info("DIAGNOSTIC COMPLETE")
     logger.info("="*80)
     logger.info(f"Output directory: {output_dir}")
-    logger.info(f"\nKey findings:")
+    logger.info("\nKey findings:")
     for aid in ["A0", "A2", "A3"]:
         t = telemetry.get(aid)
         if not t:
@@ -522,7 +522,7 @@ def main():
             )
         else:
             logger.info(f"  • {aid}: max score {t.max_drift_score:.3f} vs alert threshold 0.700")
-    logger.info(f"\nReview:")
+    logger.info("\nReview:")
     logger.info(f"  - {report_file} (main analysis)")
     logger.info(f"  - {output_dir}/asset_comparison.png (visualization)")
     logger.info(f"  - {output_dir}/test_data_profile.json (data profile)")

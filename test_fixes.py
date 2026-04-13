@@ -19,7 +19,7 @@ def test_fix1_sensor_dropout():
         "asset_id": "asset1",
         "sensor_values": {"temp": 25.0, "pressure": 100.0, "vibration": 0.5}
     }
-    result1 = engine.process_frame(frame1)
+    engine.process_frame(frame1)
     print(f"Frame 1 processed: {len(engine.sensor_order)} sensors, vector dimension: {engine._expected_vector_dimension}")
 
     # Frame 2: Same sensors
@@ -29,7 +29,7 @@ def test_fix1_sensor_dropout():
         "asset_id": "asset1",
         "sensor_values": {"temp": 26.0, "pressure": 101.0, "vibration": 0.6}
     }
-    result2 = engine.process_frame(frame2)
+    engine.process_frame(frame2)
     print(f"Frame 2 processed: {len(engine.sensor_order)} sensors")
 
     # Frame 3: Missing sensor (dropout)
@@ -40,9 +40,9 @@ def test_fix1_sensor_dropout():
         "sensor_values": {"temp": 27.0, "vibration": 0.7}  # pressure is missing
     }
     try:
-        result3 = engine.process_frame(frame3)
+        engine.process_frame(frame3)
         print(f"Frame 3 processed (sensor dropout): {len(engine.sensor_order)} sensors")
-        print(f"  -> No crash! Sensor dropout handled gracefully")
+        print("  -> No crash! Sensor dropout handled gracefully")
         print(f"  -> Sensor presence mask history length: {len(engine._sensor_presence_mask_history)}")
         assert engine._expected_vector_dimension == 3, "Vector dimension should be consistent"
         print(f"  -> Vector dimension consistent: {engine._expected_vector_dimension}")
@@ -58,9 +58,9 @@ def test_fix1_sensor_dropout():
         "sensor_values": {"temp": 28.0, "pressure": 102.0, "vibration": 0.8, "humidity": 45.0}
     }
     try:
-        result4 = engine.process_frame(frame4)
+        engine.process_frame(frame4)
         print(f"Frame 4 processed (new sensor): {len(engine.sensor_order)} sensors")
-        print(f"  -> New sensor added, all frames rebuilt")
+        print("  -> New sensor added, all frames rebuilt")
     except Exception as e:
         print(f"  -> ERROR: {e}")
         return False
@@ -91,9 +91,9 @@ def test_fix2_baseline_debug():
                 "s3": 50.0 + np.random.normal(0, 0.05),
             }
         }
-        result = engine.process_frame(frame)
+        engine.process_frame(frame)
 
-    print(f"Processed 50 frames")
+    print("Processed 50 frames")
     print(f"  -> Baseline magnitude history length: {len(engine._baseline_magnitude_history)}")
     print(f"  -> Baseline delta history length: {len(engine._baseline_delta_history)}")
 
@@ -176,9 +176,9 @@ def test_fix4_adaptive_threshold():
                 "s3": 50.0 - drift_amount * 0.3 + np.random.normal(0, 0.1),
             }
         }
-        result = engine.process_frame(frame)
+        engine.process_frame(frame)
 
-    print(f"Processed 100 frames")
+    print("Processed 100 frames")
     print(f"  -> Drift score history length: {len(engine._drift_score_history)}")
     print(f"  -> Computed adaptive threshold: {engine._computed_adaptive_threshold}")
     print(f"  -> Drift watch/alert thresholds: {engine._drift_watch_alert_thresholds}")

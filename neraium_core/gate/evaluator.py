@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from dataclasses import asdict
 from typing import Iterable
 
 from neraium_core.doctrine import DoctrineAssessment, assess_assertion

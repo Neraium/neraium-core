@@ -40,7 +40,7 @@ def build_attribution(result: dict[str, Any]) -> dict[str, Any]:
     curvature = clamp01(safe_float(geometry.get("curvature", 0.0))) if geometry.get("available") is not False else 0.0
     dir_cons = clamp01(safe_float(geometry.get("directional_consistency", 0.0))) if geometry.get("available") is not False else 0.0
 
-    contraction = clamp01(safe_float(state_space.get("state_contraction_score", 0.0))) if state_space.get("available") is not False else 0.0
+    clamp01(safe_float(state_space.get("state_contraction_score", 0.0))) if state_space.get("available") is not False else 0.0
 
     branching = clamp01(safe_float(state_graph.get("branching_factor", 0.0))) if state_graph.get("available") is not False else 0.0
     path_commit = clamp01(safe_float(state_graph.get("path_commitment_score", 0.0))) if state_graph.get("available") is not False else 0.0

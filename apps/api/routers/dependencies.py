@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from threading import Lock
-from typing import Any, Callable, Mapping, MutableMapping
+from typing import Any, Callable, MutableMapping
 
 
 @dataclass(frozen=True)

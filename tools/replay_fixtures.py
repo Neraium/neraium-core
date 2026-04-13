@@ -85,7 +85,7 @@ def _print_result(name: str, status_code: int, response: dict) -> None:
 
 def run_clean_json(base_url: str, api_key: str | None) -> None:
     fixture = json.loads((FIXTURES_DIR / "clean.json").read_text())
-    items = [i for i in fixture["items"] if not str(i.get("_fixture", "")).startswith("_")]
+    [i for i in fixture["items"] if not str(i.get("_fixture", "")).startswith("_")]
     payload = {"items": [i for i in fixture["items"] if not i.get("_fixture")]}
     # Strip metadata keys from fixture wrapper before sending
     payload = {k: v for k, v in fixture.items() if not k.startswith("_")}

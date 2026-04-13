@@ -175,7 +175,7 @@ class ShadowModeSummaryReport:
         latencies = [
             f.get("processing_latency_ms", 0.0) for f in self.frames
         ]
-        latencies = [l for l in latencies if isinstance(l, (int, float))]
+        latencies = [latency for latency in latencies if isinstance(latency, (int, float))]
 
         if not latencies:
             return {

@@ -14,7 +14,6 @@ Run: python validation/fast_validation.py
 
 import sys
 import time
-from datetime import datetime
 
 import numpy as np
 
@@ -283,9 +282,9 @@ noisy_stable = sum(1 for r in noisy_results[10:] if r.state == "STABLE")
 
 if stable_count > noisy_stable:
     report(f"Unit isolation: Stable={stable_count} STABLE, Noisy={noisy_stable} STABLE", "✓")
-    passed.append(f"Unit isolation: Units properly isolated (stable > noisy)")
+    passed.append("Unit isolation: Units properly isolated (stable > noisy)")
 else:
-    report(f"Unit isolation: Unclear separation", "⚠")
+    report("Unit isolation: Unclear separation", "⚠")
 
 # ============================================================================
 # SUMMARY
@@ -303,12 +302,12 @@ if failed:
     for f in failed:
         print(f"  ✗ {f}")
 
-print(f"\nMeasurements:")
+print("\nMeasurements:")
 print(f"  Latency (avg):     {measurements.get('avg_latency_ms', 0):.2f}ms")
 print(f"  Latency (p99):     {measurements.get('p99_latency_ms', 0):.2f}ms")
 print(f"  Throughput:        {measurements.get('throughput_fps', 0):.0f} frames/sec")
 
-print(f"\nValidation Status:")
+print("\nValidation Status:")
 if len(failed) == 0:
     print("  ✓ PASS - Safe to deploy")
     status = "PASS"

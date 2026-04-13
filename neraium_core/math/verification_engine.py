@@ -172,7 +172,7 @@ class MonotonicityVerifier:
     def _verify_fd(self) -> VerificationResult:
         from neraium_core.scoring import composite_instability_score_normalized
 
-        rng = np.random.default_rng(42)
+        np.random.default_rng(42)
         violations = []
 
         for name in COMPONENT_NAMES:
@@ -422,7 +422,7 @@ class DecisionRuleVerifier:
         conclusions: dict[str, dict[str, Any]] = {}
 
         for rule in rules:
-            name = rule.get("name", "unnamed")
+            rule.get("name", "unnamed")
             if_cond = str(rule.get("if", {}))
             then_cond = rule.get("then", {})
 

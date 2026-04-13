@@ -7,7 +7,6 @@ import pytest
 
 from neraium_core.sii import SIIApplication, SIIConfig
 from neraium_core.sii.live_ingestion import (
-    LiveIngestionConfig,
     LiveIngestionRunner,
     LiveIngestionBatch,
     USGSLiveProviderConfig,

@@ -413,12 +413,12 @@ def _render_system_geometry_html(system_zone: dict[str, Any]) -> str:
     )
 
     header_html = (
-        f'<div class="ner-panel-head">'
-        f'<div>'
-        f'<span class="ner-eyebrow">System Geometry</span>'
-        f'<span>Real-time structural analysis • Network deformation reflects system stability</span>'
-        f'</div>'
-        f'</div>'
+        '<div class="ner-panel-head">'
+        '<div>'
+        '<span class="ner-eyebrow">System Geometry</span>'
+        '<span>Real-time structural analysis • Network deformation reflects system stability</span>'
+        '</div>'
+        '</div>'
     )
 
     return (
@@ -463,7 +463,7 @@ def _render_system_context_html(system_zone: dict[str, Any]) -> str:
     trajectory = content.get("trajectory") if isinstance(content.get("trajectory"), dict) else {}
     gate_coupling = content.get("gate_coupling") if isinstance(content.get("gate_coupling"), dict) else {}
     replay_series = content.get("replay_series") if isinstance(content.get("replay_series"), list) else []
-    decision = str(gate_coupling.get("decision") or "SUPPRESS").upper()
+    str(gate_coupling.get("decision") or "SUPPRESS").upper()
     path = trajectory.get("path") if isinstance(trajectory.get("path"), list) else []
     if replay_series:
         points = replay_series
@@ -572,7 +572,7 @@ def _render_system_context_html(system_zone: dict[str, Any]) -> str:
             stage = str(step.get("stage") or "baseline").lower()
             color = stage_palette.get(stage, "#4B5563")
             connector = (
-                f'<div style="flex:1;height:1px;background:rgba(255,255,255,0.07);margin:0 3px;align-self:center;"></div>'
+                '<div style="flex:1;height:1px;background:rgba(255,255,255,0.07);margin:0 3px;align-self:center;"></div>'
                 if i < len(sequence) - 1
                 else ""
             )
@@ -641,7 +641,7 @@ def _render_reasoning_html(reasoning_panel: dict[str, Any]) -> str:
     else:
         insufficient_text = ""
 
-    op_impl = escape(str(panel.get("operational_implication") or "No implication available."))
+    escape(str(panel.get("operational_implication") or "No implication available."))
 
     observed = escape(str(facts[0])) if facts else "No observed signal."
     assessment_source = grounded_text or insufficient_text or "No assessment available."
@@ -823,7 +823,7 @@ def create_gradio_app():
         latest = active_rows[-1] if active_rows else {}
         confidence = f"{float(latest.get('confidence_score') or 0.0):.2f}"
         regime_raw = str(latest.get("system_phase") or latest.get("regime_name") or "unknown")
-        regime_display = regime_raw.replace("_", " ").title()
+        regime_raw.replace("_", " ").title()
 
         # Add phase progress indicator
         phase_label = "Baseline"

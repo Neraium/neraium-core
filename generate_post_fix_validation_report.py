@@ -10,7 +10,6 @@ Outputs to: ./validation_results_post_fix/
 
 import json
 import logging
-import os
 from datetime import datetime
 from pathlib import Path
 
@@ -18,7 +17,6 @@ import numpy as np
 import pandas as pd
 
 from neraium_core.alignment import StructuralEngine
-from neraium_core.engine.production import ProductionEngine, InputFrame
 
 # ============================================================================
 # CONFIGURATION
@@ -783,11 +781,11 @@ def main():
         logger.info("VALIDATION COMPLETE")
         logger.info("=" * 80)
         logger.info("\nGenerated artifacts:")
-        logger.info(f"  ✓ asset_comparison.csv")
-        logger.info(f"  ✓ POST_FIX_VALIDATION_SUMMARY.md")
-        logger.info(f"  ✓ INVESTOR_SUMMARY.md")
-        logger.info(f"  ✓ a3_stability_report.md")
-        logger.info(f"  ✓ validation_results_detailed.json")
+        logger.info("  ✓ asset_comparison.csv")
+        logger.info("  ✓ POST_FIX_VALIDATION_SUMMARY.md")
+        logger.info("  ✓ INVESTOR_SUMMARY.md")
+        logger.info("  ✓ a3_stability_report.md")
+        logger.info("  ✓ validation_results_detailed.json")
         logger.info(f"\nAll outputs saved to: {OUTPUT_DIR}/")
 
         return 0

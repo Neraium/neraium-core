@@ -13,11 +13,9 @@ Runtime: ~60 seconds
 Run: python validation/production_validation.py
 """
 
-import json
 import logging
 import sys
 import time
-from datetime import datetime
 
 import numpy as np
 
@@ -67,7 +65,7 @@ class ValidationReport:
         report += f"Elapsed: {elapsed:.1f}s\n"
 
         if self.measurements:
-            report += f"\nMeasurements:\n"
+            report += "\nMeasurements:\n"
             for k, v in sorted(self.measurements.items()):
                 if "latency" in k.lower():
                     report += f"  {k}: {v:.3f}ms\n"
@@ -168,7 +166,7 @@ def test_load_stability(report):
             sensors = {"a": 65 + np.sin(frame_num / 100) * 10, "b": 100 + np.cos(frame_num / 100) * 5, "c": 0.5 + (frame_num % 20) / 100}
 
             start = time.time()
-            result = engine.process_frame(InputFrame(timestamp=ts, unit_id=unit_id, sensors=sensors))
+            engine.process_frame(InputFrame(timestamp=ts, unit_id=unit_id, sensors=sensors))
             latencies.append((time.time() - start) * 1000)
 
             if (frame_num + 1) % 100 == 0 and unit_idx == 0:
@@ -208,7 +206,7 @@ def test_errors(report):
     print("\n[TEST 3/6] Error Handling")
     print("-" * 80)
 
-    engine = ProductionEngine()
+    ProductionEngine()
 
     # Test bad inputs
     bad_cases = [
@@ -355,7 +353,7 @@ def test_state_integrity(report):
             invalid_trans += 1
 
     if invalid_trans == 0:
-        report.pass_check("State Transitions", f"All valid (0 invalid ALERT->STABLE)")
+        report.pass_check("State Transitions", "All valid (0 invalid ALERT->STABLE)")
     else:
         report.fail_check("State Transitions", f"{invalid_trans} invalid transitions")
 
@@ -370,7 +368,7 @@ def test_state_integrity(report):
             inconsistent += 1
 
     if inconsistent == 0:
-        report.pass_check("Metric Consistency", f"All metrics internally consistent")
+        report.pass_check("Metric Consistency", "All metrics internally consistent")
     else:
         report.warn("Metric Consistency", f"{inconsistent} potentially inconsistent frames")
 
