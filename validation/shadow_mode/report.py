@@ -246,7 +246,9 @@ class ShadowModeSummaryReport:
         per_asset = defaultdict(int)
         for asset_id, frames in self.per_asset.items():
             for i in range(len(frames) - 1):
-                if frames[i].get("state") != frames[i + 1].get("state"):
+                current_state = frames[i].get("state", "UNKNOWN")
+                next_state = frames[i + 1].get("state", "UNKNOWN")
+                if current_state != next_state:
                     per_asset[asset_id] += 1
         return dict(per_asset)
 
