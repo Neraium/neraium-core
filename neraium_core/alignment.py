@@ -420,6 +420,31 @@ class StructuralEngine:
         # Rolling component history for MC bootstrapping (last 50 frames).
         self._component_history: deque[dict[str, float]] = deque(maxlen=50)
 
+        # FIX 1: Global sensor registry for handling sensor dropout (A3)
+        # Track all observed sensor keys with stable ordering to prevent dimension mismatches
+        self._global_sensor_index: dict[str, int] = {}  # {sensor_name: position}
+        self._sensor_last_values: dict[str, float] = {}  # Last known value for each sensor
+        self._sensor_presence_mask_history: deque[list[int]] = deque(maxlen=120)  # Track which sensors were present
+        self._expected_vector_dimension: int | None = None  # Assert consistent dimensions
+
+        # FIX 2: Baseline adaptation debug visibility (A0)
+        # Log baseline magnitude and delta for visibility into baseline adaptation
+        self._baseline_magnitude_history: deque[float] = deque(maxlen=120)  # Frobenius norm of baseline
+        self._baseline_delta_history: deque[float] = deque(maxlen=120)  # Delta between baseline and current
+        self._baseline_debug_enabled: bool = _env_enabled("NERAIUM_BASELINE_DEBUG", default="0")
+
+        # FIX 3: No-signal detection - track drift distribution per asset (A2)
+        # Detect "flatline behavior" when variance(drift_scores) is very small
+        # This identifies systems that are silent despite being in late lifecycle
+        self._no_signal_detected: bool = False
+        self._flatline_threshold: float = 0.05  # Variance threshold for flatline detection
+        self._late_lifecycle_frames: int = 0  # Count frames in late lifecycle phase
+
+        # FIX 4: Adaptive threshold flexibility (SAFE)
+        # Compute dynamic threshold from drift distribution instead of fixed 0.7
+        self._adaptive_threshold_enabled: bool = _env_enabled("NERAIUM_ADAPTIVE_THRESHOLD", default="1")
+        self._computed_adaptive_threshold: float | None = None  # Computed threshold
+
         # Startup: verify scoring invariants once (log warning, never raise).
         try:
             _vreport = run_all_checks()
@@ -511,6 +536,7 @@ class StructuralEngine:
             "state_graph": {"available": False, "reason": "insufficient history"},
             "geometry_explanations": {"available": False, "reason": "insufficient history"},
             "tetrahedral_state": self._safe_default_tetrahedral_payload(),
+            "no_signal_detected": False,  # FIX 3: Surface flatline/no-signal condition
         }
 
     def _safe_default_tetrahedral_payload(self) -> Dict[str, object]:
@@ -885,10 +911,12 @@ class StructuralEngine:
         }
 
     def _vector_from_frame(self, frame: Dict) -> np.ndarray:
-        """Project sensor_values into a vector; grow ``sensor_order`` when new keys appear.
+        """Project sensor_values into a vector with padding for missing/dropout sensors.
 
-        Previously only the first frame's keys were used, so adding channels later was ignored
-        (stuck at e.g. four nodes). Merging keys and rebuilding buffered vectors fixes that.
+        FIX 1 (A3): Handle sensor dropout gracefully by:
+        1. Maintaining stable sensor ordering via global sensor index
+        2. Padding missing sensors with last known value or 0.0 (not NaN)
+        3. Tracking sensor presence mask for diagnostics
         """
         sensor_values = frame.get("sensor_values") or {}
         incoming = sorted(
@@ -896,6 +924,13 @@ class StructuralEngine:
             for name, value in sensor_values.items()
             if self._is_real_numeric_value(value)
         )
+
+        # Update global sensor index with any new sensors
+        for sensor_name in incoming:
+            if sensor_name not in self._global_sensor_index:
+                # New sensor: assign next position
+                self._global_sensor_index[sensor_name] = len(self._global_sensor_index)
+
         if not self.sensor_order:
             self.sensor_order = list(incoming)
         else:
@@ -904,11 +939,159 @@ class StructuralEngine:
                 self.sensor_order = merged
                 for f in self.frames:
                     sv = f.get("sensor_values") or {}
-                    raw_vec = _vector_from_sensor_values(sv, self.sensor_order)
+                    raw_vec = self._vector_from_frame_with_padding(sv, self.sensor_order)
                     f["_vector"] = self._normalize_sensor_vector(raw_vec)
                 self._sensor_schema_dirty = True
-        raw_vector = _vector_from_sensor_values(sensor_values, self.sensor_order)
+
+        raw_vector = self._vector_from_frame_with_padding(sensor_values, self.sensor_order)
+
+        # FIX 1: Validate dimension consistency
+        if self._expected_vector_dimension is None:
+            self._expected_vector_dimension = len(raw_vector)
+        elif len(raw_vector) != self._expected_vector_dimension:
+            import logging as _log
+            _log.getLogger(__name__).error(
+                f"Dimension mismatch in sensor vector: expected {self._expected_vector_dimension}, got {len(raw_vector)}. "
+                f"Sensor order: {self.sensor_order}"
+            )
+            # Pad or truncate to match expected dimension
+            if len(raw_vector) < self._expected_vector_dimension:
+                raw_vector = np.pad(raw_vector, (0, self._expected_vector_dimension - len(raw_vector)),
+                                   mode='constant', constant_values=0.0)
+            else:
+                raw_vector = raw_vector[:self._expected_vector_dimension]
+
         return self._normalize_sensor_vector(raw_vector)
+
+    def _vector_from_frame_with_padding(self, sensor_values: Dict[str, object], order: List[str]) -> np.ndarray:
+        """FIX 1 (A3): Build vector with padding for missing sensors.
+
+        Instead of using NaN for missing sensors, use last known value or 0.0.
+        This prevents dimension mismatches and ensures vectors are always usable.
+        """
+        values: list[float] = []
+        present_mask: list[int] = []
+
+        for name in order:
+            v = sensor_values.get(name)
+            try:
+                if self._is_real_numeric_value(v):
+                    fv = float(v)
+                    values.append(fv)
+                    self._sensor_last_values[name] = fv  # Update last known value
+                    present_mask.append(1)  # Sensor was present
+                else:
+                    # Sensor missing in this frame: use last known value or 0.0
+                    fv = self._sensor_last_values.get(name, 0.0)
+                    values.append(fv)
+                    present_mask.append(0)  # Sensor was missing
+            except (TypeError, ValueError):
+                # Invalid value: use last known or 0.0
+                fv = self._sensor_last_values.get(name, 0.0)
+                values.append(fv)
+                present_mask.append(0)
+
+        # Track presence mask for diagnostics
+        if present_mask:
+            self._sensor_presence_mask_history.append(present_mask)
+
+        return np.asarray(values, dtype=float)
+
+    def _compute_baseline_debug_metrics(self, baseline_corr: np.ndarray, current_corr: np.ndarray) -> None:
+        """FIX 2 (A0): Track baseline magnitude and delta for adaptation visibility.
+
+        Helps diagnose whether baseline is absorbing drift (too high alpha)
+        or staying true to initial conditions (too low alpha).
+        """
+        try:
+            if not isinstance(baseline_corr, np.ndarray) or not isinstance(current_corr, np.ndarray):
+                return
+
+            # Baseline magnitude: Frobenius norm
+            baseline_mag = float(np.linalg.norm(baseline_corr, 'fro'))
+            self._baseline_magnitude_history.append(baseline_mag)
+
+            # Delta: difference in correlation structure
+            delta = float(np.linalg.norm(baseline_corr - current_corr, 'fro'))
+            self._baseline_delta_history.append(delta)
+
+            # Log if debug enabled
+            if self._baseline_debug_enabled:
+                import logging as _log
+                logger = _log.getLogger(__name__)
+                alpha = self.baseline_adaptation_alpha
+                logger.debug(
+                    f"Baseline adaptation (α={alpha:.3f}): magnitude={baseline_mag:.4f}, "
+                    f"delta={delta:.4f}, mag_trend={self._trend_direction(list(self._baseline_magnitude_history)[-3:])}"
+                )
+        except Exception:
+            pass  # Silently skip debug metrics on error
+
+    @staticmethod
+    def _trend_direction(values: list[float]) -> str:
+        """Simple trend direction for last 3 values."""
+        if len(values) < 2:
+            return "flat"
+        if values[-1] > values[-2]:
+            return "up" if len(values) < 3 or values[-2] > values[-3] else "inflection"
+        elif values[-1] < values[-2]:
+            return "down" if len(values) < 3 or values[-2] < values[-3] else "inflection"
+        return "flat"
+
+    def _compute_adaptive_threshold(self) -> float | None:
+        """FIX 4: Compute adaptive threshold from drift history percentile.
+
+        Fallback: use default 0.7 if insufficient history or disabled.
+        When adaptive mode is enabled, uses 95th percentile of historical drift.
+        """
+        if not self._adaptive_threshold_enabled:
+            return None
+
+        drift_hist = list(self._drift_score_history)
+        if len(drift_hist) < 30:
+            # Need sufficient history to compute meaningful percentile
+            return None
+
+        try:
+            # Use 95th percentile as alert threshold
+            threshold_95 = float(np.percentile(np.asarray(drift_hist, dtype=float), 95))
+            # Clamp to reasonable bounds
+            return max(0.5, min(threshold_95, 1.5))
+        except Exception:
+            return None
+
+    def _detect_flatline_behavior(self) -> bool:
+        """FIX 3 (A2): Detect no-signal condition - absence of structural change.
+
+        When system is in late lifecycle (many frames processed) but drift scores show
+        flatline behavior (very low variance), this indicates missing/suppressed signal.
+        """
+        # Need sufficient history to detect patterns
+        drift_hist = list(self._drift_score_history)
+        if len(drift_hist) < 20:
+            return False
+
+        # Check recent window (last 20 frames) for flatline
+        recent_drift = np.asarray(drift_hist[-20:], dtype=float)
+        variance = float(np.var(recent_drift))
+
+        # Also check that we're in late lifecycle (enough frames processed)
+        frame_count = len(self.frames)
+        is_late_lifecycle = frame_count >= max(100, self.baseline_window * 3)
+
+        # Flatline: very low variance AND in late lifecycle
+        is_flatline = variance < self._flatline_threshold and is_late_lifecycle
+
+        if is_flatline:
+            self._late_lifecycle_frames += 1
+            # Require sustained flatline for 5+ frames to confirm
+            if self._late_lifecycle_frames < 5:
+                return False
+            return True
+        else:
+            self._late_lifecycle_frames = 0
+
+        return False
 
     def _normalize_sensor_vector(self, vector: np.ndarray) -> np.ndarray:
         values = np.asarray(vector, dtype=float)
@@ -1924,7 +2107,17 @@ class StructuralEngine:
                     alert_thr = float(np.percentile(drift_baseline_window, 100.0 * self.alert_quantile))
                     if alert_thr < watch_thr:
                         watch_thr, alert_thr = alert_thr, watch_thr
+
+                    # FIX 4: Optional adaptive threshold flexibility
+                    # Compute adaptive threshold if enabled and sufficient history available
+                    adaptive_alert = self._compute_adaptive_threshold()
+                    if adaptive_alert is not None:
+                        # Use adaptive threshold, but maintain relationship between watch and alert
+                        alert_thr = adaptive_alert
+                        watch_thr = alert_thr * 0.75  # Maintain 3:4 ratio
+
                     self._drift_watch_alert_thresholds = (watch_thr, alert_thr)
+                    self._computed_adaptive_threshold = alert_thr if adaptive_alert is not None else None
                 alert_state, smoothed_drift_score = self._update_drift_state_machine(drift_score)
                 if self._prev_smoothed_drift is None:
                     drift_velocity = 0.0
@@ -2874,6 +3067,8 @@ class StructuralEngine:
                     self._baseline_coverage_samples = self.baseline_window
                 else:
                     alpha = self.baseline_adaptation_alpha
+                    # FIX 2 (A0): Track debug metrics before update
+                    self._compute_baseline_debug_metrics(self._rolling_baseline_corr, corr_recent)
                     self._rolling_baseline_corr = alpha * self._rolling_baseline_corr + (1.0 - alpha) * corr_recent
 
                 if self._stable_manifold_corr is None or self._stable_manifold_corr.shape != corr_recent.shape:
@@ -3431,6 +3626,10 @@ class StructuralEngine:
             "readiness": rd_final.as_dict(),
             "transition_outputs_actionable": rd_final.transition_classification_ready,
         }
+
+        # FIX 3 (A2): Detect flatline/no-signal condition
+        self._no_signal_detected = self._detect_flatline_behavior()
+        result["no_signal_detected"] = self._no_signal_detected
 
         # Final policy enforcement and architecture-specific payload packaging.
         self._enforce_policy_contract(result)
