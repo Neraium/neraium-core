@@ -210,17 +210,17 @@ def _render_gate_decision_html(gate_card: dict[str, Any]) -> str:
     """Render the verdict/gate decision card with maximum visual authority.
 
     Uses:
-    - Pure white text on darker backgrounds for contrast
-    - Larger fonts for readability
-    - Clear visual hierarchy
-    - System terminology for clarity
+    - Pure white text (#FFFFFF) on dark backgrounds
+    - Large, bold fonts for decisive readability
+    - Sharp color states: green (stable), orange (transition), red (risk), purple (void)
+    - No soft overlays or gradients
     """
     authority_level = str(gate_card.get("authority_level") or "VOID").upper()
     style = {
-        "SUPPRESSED": {"accent": "#FB923C", "badge": "#FB923C", "bg": "rgba(251, 146, 60, 0.12)"},
-        "ADMITTED": {"accent": "#10B981", "badge": "#10B981", "bg": "rgba(16, 185, 129, 0.12)"},
-        "VOID": {"accent": "#A78BFA", "badge": "#A78BFA", "bg": "rgba(167, 139, 250, 0.12)"},
-    }.get(authority_level, {"accent": "#8ea4ff", "badge": "#8ea4ff", "bg": "rgba(142, 164, 255, 0.08)"})
+        "SUPPRESSED": {"accent": "#F97316", "badge": "#F97316"},
+        "ADMITTED": {"accent": "#22C55E", "badge": "#22C55E"},
+        "VOID": {"accent": "#A78BFA", "badge": "#A78BFA"},
+    }.get(authority_level, {"accent": "#3B82F6", "badge": "#3B82F6"})
 
     label = escape(str(gate_card.get("label") or authority_level))
     authority_statement = escape(str(gate_card.get("authority_statement") or ""))
@@ -490,8 +490,8 @@ def _render_system_context_html(system_zone: dict[str, Any]) -> str:
     parts.append(
         f'<defs>'
         f'<linearGradient id="tg" x1="{PX}" y1="{PY}" x2="{PX}" y2="{PY + IH}" gradientUnits="userSpaceOnUse">'
-        f'<stop offset="0%" stop-color="#38BDF8" stop-opacity="0.86"/>'
-        f'<stop offset="100%" stop-color="#1D4ED8" stop-opacity="0.72"/>'
+        f'<stop offset="0%" stop-color="#3B82F6" stop-opacity="0.9"/>'
+        f'<stop offset="100%" stop-color="#06B6D4" stop-opacity="0.8"/>'
         f'</linearGradient>'
         f'</defs>'
     )
@@ -500,10 +500,10 @@ def _render_system_context_html(system_zone: dict[str, Any]) -> str:
     y_ticks = [0.0, 0.25, 0.5, 0.75, 1.0]
     for y_tick in y_ticks:
         y_pos = sy(y_tick)
-        parts.append(f'<line x1="{PX}" y1="{y_pos}" x2="{PX + IW}" y2="{y_pos}" stroke="rgba(148,163,184,0.16)" stroke-width="1"/>')
+        parts.append(f'<line x1="{PX}" y1="{y_pos}" x2="{PX + IW}" y2="{y_pos}" stroke="rgba(255,255,255,0.15)" stroke-width="1"/>')
         # Label the strength value correctly (0 at bottom, 1 at top)
         parts.append(
-            f'<text x="{PX - 10}" y="{y_pos + 4}" text-anchor="end" fill="rgba(203,213,225,0.88)" font-size="10">{y_tick:.2f}</text>'
+            f'<text x="{PX - 10}" y="{y_pos + 4}" text-anchor="end" fill="rgba(255,255,255,0.9)" font-size="10">{y_tick:.2f}</text>'
         )
 
     phase_runs: list[tuple[int, int, str]] = []
@@ -516,7 +516,7 @@ def _render_system_context_html(system_zone: dict[str, Any]) -> str:
                 run_start = idx
                 run_phase = point["phase"]
         phase_runs.append((run_start, len(chart_points) - 1, run_phase))
-    phase_colors = {"STABLE": "rgba(74,222,128,0.18)", "TRANSITION": "rgba(250,204,21,0.16)", "REORGANIZATION": "rgba(239,68,68,0.18)"}
+    phase_colors = {"STABLE": "rgba(34,197,94,0.25)", "TRANSITION": "rgba(249,115,22,0.25)", "REORGANIZATION": "rgba(239,68,68,0.25)"}
     for start_idx, end_idx, phase_name in phase_runs:
         x0 = sx(start_idx / max(point_count - 1, 1))
         x1 = sx(end_idx / max(point_count - 1, 1))
@@ -525,10 +525,10 @@ def _render_system_context_html(system_zone: dict[str, Any]) -> str:
                 f'<rect x="{x0}" y="{PY}" width="{max(1.0, x1 - x0)}" height="{IH}" fill="{phase_colors.get(phase_name, "rgba(71,85,105,0.08)")}" />'
             )
 
-    parts.append(f'<line x1="{PX}" y1="{PY + IH}" x2="{PX + IW}" y2="{PY + IH}" stroke="rgba(147,197,253,0.45)" stroke-width="1"/>')
-    parts.append(f'<line x1="{PX}" y1="{PY}" x2="{PX}" y2="{PY + IH}" stroke="rgba(147,197,253,0.45)" stroke-width="1"/>')
-    parts.append(f'<text x="{PX + IW - 4}" y="{PY + IH + 20}" text-anchor="end" fill="rgba(203,213,225,0.9)" font-size="11">Replay →</text>')
-    parts.append(f'<text x="{PX - 8}" y="{PY - 8}" text-anchor="end" fill="rgba(203,213,225,0.9)" font-size="11">Signal</text>')
+    parts.append(f'<line x1="{PX}" y1="{PY + IH}" x2="{PX + IW}" y2="{PY + IH}" stroke="rgba(255,255,255,0.4)" stroke-width="1.5"/>')
+    parts.append(f'<line x1="{PX}" y1="{PY}" x2="{PX}" y2="{PY + IH}" stroke="rgba(255,255,255,0.4)" stroke-width="1.5"/>')
+    parts.append(f'<text x="{PX + IW - 4}" y="{PY + IH + 20}" text-anchor="end" fill="rgba(255,255,255,0.95)" font-size="11">Replay →</text>')
+    parts.append(f'<text x="{PX - 8}" y="{PY - 8}" text-anchor="end" fill="rgba(255,255,255,0.95)" font-size="11">Signal</text>')
 
     if len(chart_points) >= 2:
         pts_str = " ".join(
@@ -545,21 +545,21 @@ def _render_system_context_html(system_zone: dict[str, Any]) -> str:
     cx_p = sx(current.get("x", 1.0))
     cy_p = sy(current.get("y", 0.0))
     # Vertical line marking current position
-    parts.append(f'<line x1="{cx_p}" y1="{PY}" x2="{cx_p}" y2="{PY + IH}" stroke="#0EA5E9" stroke-width="1.5" opacity="0.6" stroke-dasharray="3,2"/>')
+    parts.append(f'<line x1="{cx_p}" y1="{PY}" x2="{cx_p}" y2="{PY + IH}" stroke="#06B6D4" stroke-width="2" opacity="0.8" stroke-dasharray="4,3"/>')
     # Current position marker
-    parts.append(f'<circle cx="{cx_p}" cy="{cy_p}" r="6.5" fill="#0EA5E9" stroke="#E2E8F0" stroke-width="2"/>')
+    parts.append(f'<circle cx="{cx_p}" cy="{cy_p}" r="7" fill="#06B6D4" stroke="#FFFFFF" stroke-width="2.5"/>')
     # "Now" label
-    parts.append(f'<text x="{min(cx_p + 12, W - 12)}" y="{max(cy_p - 10, PY + 12)}" fill="#0EA5E9" font-size="11" font-weight="600">Now</text>')
+    parts.append(f'<text x="{min(cx_p + 12, W - 12)}" y="{max(cy_p - 10, PY + 12)}" fill="#FFFFFF" font-size="12" font-weight="700">NOW</text>')
 
     svg_body = "\n".join(parts)
     svg_html = f'<svg class="ner-system-canvas" viewBox="0 0 {W} {H}" width="100%">\n{svg_body}\n</svg>'
 
     sequence = timeline_data.get("sequence") if isinstance(timeline_data.get("sequence"), list) else []
     stage_palette = {
-        "admitted": "#62FFB3",
-        "suppressed": "#FB923C",
-        "transition": "#818CF8",
-        "baseline": "#4B5563",
+        "admitted": "#22C55E",
+        "suppressed": "#F97316",
+        "transition": "#3B82F6",
+        "baseline": "#6B7280",
         "void": "#A78BFA",
     }
     timeline_html = ""
@@ -704,44 +704,44 @@ def _render_record_html(record_panel: dict[str, Any]) -> str:
 
     decision_styles = {
         "ADMIT": {
-            "bg": "rgba(52,211,153,0.08)",
-            "border": "rgba(52,211,153,0.22)",
-            "badge_bg": "rgba(52,211,153,0.14)",
-            "badge_text": "#34D399",
-            "badge_border": "rgba(52,211,153,0.38)",
-            "ts_color": "#6EE7B7",
+            "bg": "rgba(34,197,94,0.15)",
+            "border": "rgba(34,197,94,0.3)",
+            "badge_bg": "#22C55E",
+            "badge_text": "#FFFFFF",
+            "badge_border": "#22C55E",
+            "ts_color": "#22C55E",
         },
         "SUPPRESS": {
-            "bg": "rgba(251,146,60,0.06)",
-            "border": "rgba(251,146,60,0.18)",
-            "badge_bg": "rgba(251,146,60,0.12)",
-            "badge_text": "#FB923C",
-            "badge_border": "rgba(251,146,60,0.35)",
-            "ts_color": "#FCA96A",
+            "bg": "rgba(249,115,22,0.15)",
+            "border": "rgba(249,115,22,0.3)",
+            "badge_bg": "#F97316",
+            "badge_text": "#FFFFFF",
+            "badge_border": "#F97316",
+            "ts_color": "#F97316",
         },
         "VOID": {
-            "bg": "rgba(167,139,250,0.06)",
-            "border": "rgba(167,139,250,0.18)",
-            "badge_bg": "rgba(167,139,250,0.12)",
-            "badge_text": "#A78BFA",
-            "badge_border": "rgba(167,139,250,0.35)",
-            "ts_color": "#C4B5FD",
+            "bg": "rgba(167,139,250,0.15)",
+            "border": "rgba(167,139,250,0.3)",
+            "badge_bg": "#A78BFA",
+            "badge_text": "#FFFFFF",
+            "badge_border": "#A78BFA",
+            "ts_color": "#A78BFA",
         },
     }
     default_style = {
-        "bg": "rgba(75,85,99,0.06)",
-        "border": "rgba(75,85,99,0.18)",
-        "badge_bg": "rgba(75,85,99,0.12)",
-        "badge_text": "#9CA3AF",
-        "badge_border": "rgba(75,85,99,0.3)",
+        "bg": "rgba(107,114,128,0.15)",
+        "border": "rgba(107,114,128,0.3)",
+        "badge_bg": "#6B7280",
+        "badge_text": "#FFFFFF",
+        "badge_border": "#6B7280",
         "ts_color": "#9CA3AF",
     }
 
     transition_colors = {
-        "REORGANIZATION": "#FB923C",
-        "TRANSITION": "#818CF8",
-        "STABLE": "#4B5563",
-        "RECOVERY": "#34D399",
+        "REORGANIZATION": "#EF4444",
+        "TRANSITION": "#F97316",
+        "STABLE": "#22C55E",
+        "RECOVERY": "#10B981",
     }
 
     def _entry_card(entry: dict[str, Any]) -> str:
@@ -835,12 +835,12 @@ def create_gradio_app():
             <div class="ner-command-header">
               <div class="ner-brand">
                 <span class="ner-wordmark">NERAIUM</span>
-                <span class="ner-env">Synthetic Demo</span>
+                <span class="ner-env">SYSTEM INTELLIGENCE</span>
               </div>
               <div class="ner-header-metrics">
-                <span>Confidence {escape(confidence)}</span>
-                <span>Phase {escape(phase_label)}</span>
-                <span>Frame {int(frame_index)} / {int(total_steps)}</span>
+                <span>CONFIDENCE: {escape(confidence)}</span>
+                <span>PHASE: {escape(phase_label)}</span>
+                <span>FRAME: {int(frame_index)} / {int(total_steps)}</span>
               </div>
             </div>
             """
