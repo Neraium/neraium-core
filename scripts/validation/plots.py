@@ -102,6 +102,107 @@ def create_unit_plot(
     return fig, ax
 
 
+def generate_hero_plot(
+    df: pd.DataFrame,
+    median_unit: str | int,
+    output_path: Path,
+    drift_threshold: float = 0.5,
+) -> Optional[Path]:
+    """
+    Generate a single hero plot for the median case (FD004).
+
+    This is the key visual for investor presentations showing typical detection behavior.
+
+    Args:
+        df: Full dataset DataFrame
+        median_unit: Unit ID for median case
+        output_path: Path to save the plot
+        drift_threshold: Drift threshold for early signal
+
+    Returns:
+        Path to saved plot or None if generation failed
+    """
+    unit_data = df[df["unit"] == median_unit]
+    if len(unit_data) == 0:
+        print(f"  Warning: No data for median unit {median_unit}")
+        return None
+
+    try:
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        fig, ax = plt.subplots(figsize=(14, 6))
+
+        # Ensure data is sorted by cycle
+        unit_data = unit_data.sort_values("cycle").reset_index(drop=True)
+
+        x = range(len(unit_data))
+        cycle_col = unit_data["cycle"].values if "cycle" in unit_data.columns else x
+
+        # Plot structural drift score
+        if "structural_drift_score" in unit_data.columns:
+            ax.plot(
+                x,
+                unit_data["structural_drift_score"].values,
+                label="Structural Drift Score",
+                linewidth=2.5,
+                color="#1f77b4",
+            )
+
+        # Plot relational instability score if available
+        if "relational_instability_score" in unit_data.columns:
+            ax.plot(
+                x,
+                unit_data["relational_instability_score"].values,
+                label="Relational Instability Score",
+                linewidth=2.5,
+                color="#ff7f0e",
+            )
+        elif "composite_score" in unit_data.columns:
+            ax.plot(
+                x,
+                unit_data["composite_score"].values,
+                label="Composite Score",
+                linewidth=2.5,
+                color="#ff7f0e",
+            )
+
+        # Plot drift threshold line (early signal)
+        ax.axhline(
+            y=drift_threshold,
+            color="red",
+            linestyle="--",
+            linewidth=2,
+            label=f"Early Signal Threshold ({drift_threshold})",
+        )
+
+        # Mark failure point if available
+        if "failure_cycle" in unit_data.columns:
+            failure = unit_data["failure_cycle"].iloc[0]
+            ax.axvline(x=failure, color="darkred", linestyle=":", linewidth=2, label="Failure Point")
+
+        # Mark end of run
+        ax.axvline(x=len(unit_data) - 1, color="gray", linestyle=":", linewidth=1.5, alpha=0.7, label="End of Run")
+
+        ax.set_xlabel("Cycle", fontsize=12)
+        ax.set_ylabel("Score", fontsize=12)
+        ax.set_title(
+            "Neraium detects structural change before failure (FD004 median case)",
+            fontsize=13,
+            fontweight="bold",
+        )
+        ax.legend(loc="best", fontsize=11)
+        ax.grid(True, alpha=0.3)
+        ax.set_ylim(bottom=0)
+
+        fig.tight_layout()
+        fig.savefig(output_path, dpi=100, bbox_inches="tight")
+        plt.close(fig)
+        return output_path
+
+    except Exception as e:
+        print(f"  Error generating hero plot: {e}")
+        return None
+
+
 def generate_plots(
     df: pd.DataFrame,
     dataset_name: str,

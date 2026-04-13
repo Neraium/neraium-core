@@ -26,8 +26,8 @@ import pandas as pd
 from scripts.validation.config import build_config, parse_args, discover_local_paths
 from scripts.validation.loaders import load_dataset
 from scripts.validation.metrics import compute_metrics, create_lead_time_summary
-from scripts.validation.plots import generate_plots
-from scripts.validation.report import generate_markdown_report, write_report
+from scripts.validation.plots import generate_plots, generate_hero_plot
+from scripts.validation.report import generate_markdown_report, write_report, generate_hero_summary, write_hero_summary
 
 
 def print_discovery_status(paths: dict[str, Path | None]) -> None:
@@ -140,6 +140,7 @@ def main() -> int:
     # Process datasets
     processed = {}
     all_metrics = []
+    fd004_df = None  # Keep FD004 dataframe for hero plot
 
     for dataset_name in config.datasets:
         path = config.get_path(dataset_name)
@@ -152,6 +153,9 @@ def main() -> int:
         processed[dataset_name] = success
         if success and metrics:
             all_metrics.append(metrics)
+            # Store FD004 data for hero plot
+            if dataset_name.lower() == "fd004" and df is not None:
+                fd004_df = df
 
     # Generate report
     print("\n" + "=" * 60)
@@ -160,6 +164,27 @@ def main() -> int:
     report_path = write_report(report_text, config.output_dir)
     print(f"✓ Report written: {report_path}")
 
+    # Generate hero summary
+    print("Generating hero summary...")
+    hero_summary_text = generate_hero_summary(all_metrics)
+    hero_summary_path = write_hero_summary(hero_summary_text, config.output_dir)
+    print(f"✓ Hero summary written: {hero_summary_path}")
+
+    # Generate hero plot (FD004 median case)
+    if fd004_df is not None:
+        print("Generating hero plot...")
+        fd004_metrics = next((m for m in all_metrics if m.dataset_name == "FD004"), None)
+        if fd004_metrics:
+            hero_plot_path = config.output_dir / "hero_plot.png"
+            plot_result = generate_hero_plot(
+                fd004_df,
+                fd004_metrics.median_case_unit,
+                hero_plot_path,
+                config.drift_threshold,
+            )
+            if plot_result:
+                print(f"✓ Hero plot written: {plot_result}")
+
     # Summary
     print("\n" + "=" * 60)
     print("VALIDATION COMPLETE")
@@ -167,7 +192,11 @@ def main() -> int:
     success_count = sum(1 for v in processed.values() if v)
     print(f"\nProcessed: {success_count}/{len(config.datasets)} datasets")
     print(f"Output Directory: {config.output_dir.resolve()}")
-    print(f"Report: {report_path.name}")
+    print(f"\nGenerated Files:")
+    print(f"  - {report_path.name}")
+    print(f"  - {hero_summary_path.name}")
+    if fd004_df is not None and fd004_metrics:
+        print(f"  - hero_plot.png")
 
     return 0 if success_count > 0 else 1
 
