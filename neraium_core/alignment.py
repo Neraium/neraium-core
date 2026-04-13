@@ -1697,6 +1697,34 @@ class StructuralEngine:
         }
 
     def process_frame(self, frame: Dict) -> Dict:
+        # === CANONICAL INTERNAL FRAME CONTRACT ENFORCEMENT ===
+        # All ingestion adapters must provide frames that satisfy this contract.
+        # See PHASE_A_CONTRACT_AND_ISOLATION.md for details.
+
+        # Required identity fields
+        assert "timestamp" in frame and frame["timestamp"], \
+            "Frame contract violation: 'timestamp' required and non-empty"
+        assert "asset_id" in frame and frame["asset_id"], \
+            "Frame contract violation: 'asset_id' required and non-empty"
+        assert "site_id" in frame and frame["site_id"] is not None, \
+            "Frame contract violation: 'site_id' required and must not be None"
+
+        # Required sensor data
+        assert "sensor_values" in frame, \
+            "Frame contract violation: 'sensor_values' key required (may be empty dict)"
+        assert isinstance(frame["sensor_values"], dict), \
+            f"Frame contract violation: 'sensor_values' must be dict, got {type(frame['sensor_values'])}"
+
+        # Timestamp must be convertible to float (will be handled as numeric or ISO-8601 string)
+        try:
+            float(frame["timestamp"])
+        except (TypeError, ValueError):
+            # Allow ISO-8601 string format; conversion handled later in processing
+            assert isinstance(frame["timestamp"], str), \
+                f"Frame contract violation: 'timestamp' must be string or numeric, got {type(frame['timestamp'])}"
+
+        # End contract enforcement
+
         vector = self._vector_from_frame(frame)
         sensor_values = frame.get("sensor_values") or {}
 
