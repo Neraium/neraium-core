@@ -49,7 +49,7 @@ def build_tetrahedral_plot_and_text(
 
     # Use a Figure instance directly instead of pyplot-managed figures so
     # repeated renders do not accumulate global open-figure state.
-    fig = Figure(figsize=(5.8, 4.4), dpi=120)
+    fig = Figure(figsize=(6.0, 5.0), dpi=100)
     ax = fig.add_subplot(111, projection="3d")
 
     # Tetrahedron frame
@@ -109,9 +109,9 @@ def build_tetrahedral_plot_and_text(
             [current_point[1]],
             [current_point[2]],
             color="#F97316",
-            s=116,
+            s=150,
             edgecolors="#FFFFFF",
-            linewidths=1.4,
+            linewidths=1.8,
             alpha=1.0,
             zorder=6,
         )
@@ -138,10 +138,11 @@ def build_tetrahedral_plot_and_text(
         movement_summary = str(tetra_state.get("movement_summary") or movement_summary)
         nearest_vertex = str(tetra_state.get("nearest_vertex") or nearest_vertex)
 
+    # Format details in a clean, readable way
     details_md = (
-        f"**Interpreted label:** {interpreted_label}\n\n"
-        f"**Movement summary:** {movement_summary}\n\n"
-        f"**Nearest vertex:** {nearest_vertex}"
+        f"**State:** {interpreted_label}\n\n"
+        f"{movement_summary}\n\n"
+        f"**Position:** {nearest_vertex}"
     )
 
     return fig, details_md
