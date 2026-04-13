@@ -444,6 +444,13 @@ class StructuralEngine:
           - Primary policy/state fields are always present.
           - Legacy aliases remain available even before full analytics are ready.
           - Nested diagnostic payload slots are pre-populated for stable schemas.
+
+        Note on drift/instability fields:
+          - structural_drift_score: Unnormalized drift (0=aligned, 1=misaligned)
+          - structural_drift_score_smoothed: EMA-filtered drift
+          - drift_smooth: Alias for smoothed version (deprecated)
+          - relational_instability_score: Computed from correlation deviation [0=stable, 1=unstable]
+          - relational_stability_score: Placeholder (default 1.0, not computed, kept for compatibility)
         """
         return {
             "timestamp": frame["timestamp"],
@@ -455,8 +462,7 @@ class StructuralEngine:
             "policy_alert": False,
             "structural_drift_score": 0.0,
             "structural_drift_score_smoothed": 0.0,
-            "drift_smooth": 0.0,
-            "relational_stability_score": 1.0,
+            "relational_stability_score": 1.0,  # Placeholder; use relational_instability_score for actual metric
             "dynamic_signal_strength": 0.0,
             "system_phase": "STABLE",
             "transition_detected": False,
@@ -466,8 +472,6 @@ class StructuralEngine:
             "regime_name": None,
             "regime_distance": None,
             "regime_drift": 0.0,
-            "latest_drift": 0.0,
-            "latest_drift_smoothed": 0.0,
             "watch_threshold": None,
             "alert_threshold": None,
             "latest_instability": 0.0,
@@ -1697,6 +1701,34 @@ class StructuralEngine:
         }
 
     def process_frame(self, frame: Dict) -> Dict:
+        # === CANONICAL INTERNAL FRAME CONTRACT ENFORCEMENT ===
+        # All ingestion adapters must provide frames that satisfy this contract.
+        # See PHASE_A_CONTRACT_AND_ISOLATION.md for details.
+
+        # Required identity fields
+        assert "timestamp" in frame and frame["timestamp"], \
+            "Frame contract violation: 'timestamp' required and non-empty"
+        assert "asset_id" in frame and frame["asset_id"], \
+            "Frame contract violation: 'asset_id' required and non-empty"
+        assert "site_id" in frame and frame["site_id"] is not None, \
+            "Frame contract violation: 'site_id' required and must not be None"
+
+        # Required sensor data
+        assert "sensor_values" in frame, \
+            "Frame contract violation: 'sensor_values' key required (may be empty dict)"
+        assert isinstance(frame["sensor_values"], dict), \
+            f"Frame contract violation: 'sensor_values' must be dict, got {type(frame['sensor_values'])}"
+
+        # Timestamp must be convertible to float (will be handled as numeric or ISO-8601 string)
+        try:
+            float(frame["timestamp"])
+        except (TypeError, ValueError):
+            # Allow ISO-8601 string format; conversion handled later in processing
+            assert isinstance(frame["timestamp"], str), \
+                f"Frame contract violation: 'timestamp' must be string or numeric, got {type(frame['timestamp'])}"
+
+        # End contract enforcement
+
         vector = self._vector_from_frame(frame)
         sensor_values = frame.get("sensor_values") or {}
 
@@ -2067,7 +2099,6 @@ class StructuralEngine:
                     {
                         "structural_drift_score": round(drift_score, 4),
                         "structural_drift_score_smoothed": round(float(smoothed_drift_score), 4),
-                        "drift_smooth": round(float(smoothed_drift_score), 4),
                         "relational_stability_score": round(relational_stability, 4),
                         "dynamic_signal_strength": round(float(drift_velocity), 4),
                         "system_phase": system_phase,
@@ -2083,8 +2114,6 @@ class StructuralEngine:
                         "regime_name": regime_name,
                         "regime_distance": round(regime_distance, 4) if regime_distance is not None else None,
                         "regime_drift": round(float(regime_drift), 4),
-                        "latest_drift": round(float(drift_score), 4),
-                        "latest_drift_smoothed": round(float(smoothed_drift_score), 4),
                         "baseline_mode": baseline_mode,
                         "context_dominance_score": round(float(rep.diagnostics.get("context_dominance_score", 0.0)), 4),
                         "early_separation_flag": bool(rep.diagnostics.get("early_separation_flag", False)),
@@ -3123,7 +3152,7 @@ class StructuralEngine:
 
                 print(
                     "[NERAIUM_DEBUG_SII_VERBOSE]"
-                    f" state={result.get('state')} drift_score={float(result.get('latest_drift', 0.0)):.6g}"
+                    f" state={result.get('state')} drift_score={float(result.get('structural_drift_score', 0.0)):.6g}"
                     f" drift_thr={drift_thr}"
                     f" drift_persist=(watch={self._watch_counter}, alert={self._alert_counter}, latched={self._alert_latched})"
                     f" composite={float(result.get('latest_instability', 0.0)):.6g}"
@@ -3139,7 +3168,7 @@ class StructuralEngine:
                 if result.get("state") in {"WATCH", "ALERT"} and not self._first_alert_logged:
                     print(
                         "[NERAIUM_DEBUG_SII_VERBOSE][first_alert]"
-                        f" state={result.get('state')} latest_drift={float(result.get('latest_drift', 0.0)):.6g}"
+                        f" state={result.get('state')} drift_score={float(result.get('structural_drift_score', 0.0)):.6g}"
                         f" drift_thr={drift_thr} drift_score_tail={drift_score_tail}"
                         f" drift_persist=(watch={consec_watch}, alert={consec_alert})"
                         f" composite_thr={comp_thr}"

@@ -1,11 +1,51 @@
-# neraium-core
+# Neraium: Structural Drift Detection for Industrial Equipment
 
-`neraium-core` is a deployable, **pilot-ready Systemic Infrastructure Intelligence (SII) platform**.  
-It ingests multivariate telemetry, computes **Systemic Infrastructure Intelligence (SII)**, and returns operator-facing evidence outputs.
+Neraium detects **systemic structural instability** in industrial equipment by monitoring how sensor signals **relate** to each other over time, not individual sensor values.
+
+**Get started in 2 minutes:**
+
+```python
+from neraium_core import Engine
+
+# Create engine
+engine = Engine()
+
+# Process live frames (production use)
+result = engine.ingest_frame(
+    timestamp=1704067200.0,
+    unit_id="pump_001",
+    sensors={"temp": 65.3, "vibration": 0.12, "pressure": 101.5}
+)
+print(result)  # EngineResult(state="STABLE", drift_score=0.23, health_percentage=92)
+
+# Or validate historical datasets
+engine.replay("FD004.csv", dataset_type="fd004")
+metrics = engine.get_summary()
+evidence = engine.get_evidence_report()
+```
+
+**Or use the CLI for validation:**
+
+```bash
+neraium validate --fd004 ./FD004.csv --ims ./IMS.csv --output ./results
+```
 
 ---
 
-## How Neraium is different
+## Production Readiness
+
+**Status**: Pilot-ready with known limitations. See **[PRODUCTION_READINESS_MEASURED.md](./PRODUCTION_READINESS_MEASURED.md)** for:
+- ✓ Measured accuracy (92.3% overall, 0% on 3/4 assets in FD004)
+- ✓ Actual latency (<50ms per frame)
+- ✓ Known failure cases (A0, A2, A3 equipment)
+- ✓ Deployment checklist and operational monitoring
+- ✓ Clear guidance on when NOT to use
+
+**Do not deploy without reading that document first.**
+
+---
+
+## How Neraium is Different
 
 Most tools optimize for **single sensors** or **component failure prediction**: thresholds, per-signal anomalies, or models trained on “normal” history. Neraium focuses on **systemic stability**, how signals **relate** to each other over time, so teams can see **structural drift and approaching instability** before many component-level alarms fire.
 
@@ -18,68 +58,53 @@ Most tools optimize for **single sensors** or **component failure prediction**: 
 **Full customer-facing narrative (positioning vs predictive maintenance and AI monitoring):**  
 → **[docs/HOW_NERAIUM_IS_DIFFERENT.md](docs/HOW_NERAIUM_IS_DIFFERENT.md)**
 
-Pilot/operator workflow quickstart:
-→ **[docs/OPERATOR_WORKFLOW.md](docs/OPERATOR_WORKFLOW.md)**
+## Recommended Workflows
 
-Canonical investor/demo artifact workflow:
+### Production Live Ingestion
+
 ```bash
-python tools/run_investor_proof_demo.py
+# Start API server
+python -m uvicorn apps.api.main:app --host 0.0.0.0 --port 8000
+
+# In another terminal, ingest frames
+curl -X POST http://localhost:8000/ingest \
+  -H "Content-Type: application/json" \
+  -d '{
+    "timestamp": 1704067200.0,
+    "unit_id": "pump_001",
+    "sensors": {"temp": 65.3, "vibration": 0.12}
+  }'
 ```
-This emits deterministic proof artifacts under `reports/demo_proof/` showing a single-run narrative:
-`Normal -> Drift -> Rising Instability -> Critical`.
 
-Canonical founder-safe live demo workflow (live + backup mode in one command):
+See [PRODUCTION_READINESS_MEASURED.md](./PRODUCTION_READINESS_MEASURED.md) for deployment checklist.
+
+### Validation & Benchmarking
+
 ```bash
-python tools/run_canonical_demo.py --base-url http://127.0.0.1:7860 --customer-id customer-a --max-frames 240
+# Run validation on all datasets
+neraium validate --all --output ./results
+
+# Or specific datasets
+neraium validate --fd004 ./FD004.csv --ims ./IMS.csv --shadow-mode
 ```
 
-
-Canonical multi-scenario proof package (threshold comparison baseline + founder artifact):
-```bash
-python tools/run_proof_package.py
-```
-This emits deterministic artifacts under `reports/proof_package/` across stable, drift, spike, progressive-critical, and messy-data scenarios with scenario-level timelines, summaries, and a one-glance founder/investor brief.
-Workflow doc:
-→ **[docs/PROOF_PACKAGE_WORKFLOW.md](docs/PROOF_PACKAGE_WORKFLOW.md)**
-
-Runbook:
-→ **[docs/CANONICAL_DEMO_RUNBOOK.md](docs/CANONICAL_DEMO_RUNBOOK.md)**
-
-AWS App Runner deployment (source repository):
-→ **[docs/AWS_APP_RUNNER.md](docs/AWS_APP_RUNNER.md)**
-
-Production deployment/readiness quick guide:
-→ **[docs/PRODUCTION_READINESS.md](docs/PRODUCTION_READINESS.md)**
-
-## Gate-centered greenhouse demo launchers
-
-Use these launchers when you want the hosted UI at `app.neraium.com` (or any managed runtime) to always boot directly into the built-in gate-centered greenhouse demo state.
-
-### Local development launcher
+### UI (Optional)
 
 ```bash
+# Development (opens browser)
 python start_ui.py
-```
 
-- Opens a browser window automatically.
-- Keeps local iteration simple while preserving the current demo behavior.
-
-### Hosted/production launcher
-
-```bash
+# Production (no browser)
 python start_site.py
 ```
 
-- Runs without opening a browser.
-- Binds to `0.0.0.0` for container/service networking.
-- Uses `PORT` when provided by the host platform, otherwise defaults to port `7860`.
-- Auto-loads the built-in greenhouse demo state on first render so the UI is immediately usable.
+## Documentation
 
-Example (explicit local prod-style boot):
-
-```bash
-PORT=8080 python start_site.py
-```
+- **[PRODUCTION_READINESS_MEASURED.md](./PRODUCTION_READINESS_MEASURED.md)** ← Start here for deployment
+- **[PHASE_A_CONTRACT_AND_ISOLATION.md](./PHASE_A_CONTRACT_AND_ISOLATION.md)** - Internal schema contract
+- **[PHASE_B_UNIFY_SURFACE.md](./PHASE_B_UNIFY_SURFACE.md)** - Architecture decisions
+- **[docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md)** - Technical architecture
+- **[docs/HOW_NERAIUM_IS_DIFFERENT.md](./docs/HOW_NERAIUM_IS_DIFFERENT.md)** - Product positioning
 
 ---
 
