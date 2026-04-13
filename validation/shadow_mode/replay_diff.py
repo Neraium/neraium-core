@@ -17,6 +17,15 @@ from collections import defaultdict
 class ReplayDiff:
     """Compare two evidence logs from runs on identical telemetry."""
 
+    # Fields that vary across runs due to execution environment, not decision logic
+    NON_DETERMINISTIC_FIELDS = {
+        "processing_latency_ms",  # Runtime varies by machine/load
+        "timestamp_utc",          # Generated at runtime
+        "run_id",                 # Unique per execution
+        "session_id",             # Unique per execution
+        "execution_timestamp",    # Generated at runtime
+    }
+
     def __init__(
         self,
         run_a_evidence: Path,
@@ -55,6 +64,10 @@ class ReplayDiff:
 
             # Aggregate field differences
             for field in self._get_all_fields(frame_a, frame_b):
+                # Skip non-deterministic fields that vary across runs
+                if field in self.NON_DETERMINISTIC_FIELDS:
+                    continue
+
                 val_a = self._get_field(frame_a, field)
                 val_b = self._get_field(frame_b, field)
 
@@ -96,6 +109,10 @@ class ReplayDiff:
         differences = []
 
         for field in self._get_all_fields(frame_a, frame_b):
+            # Skip non-deterministic fields that vary across runs
+            if field in self.NON_DETERMINISTIC_FIELDS:
+                continue
+
             val_a = self._get_field(frame_a, field)
             val_b = self._get_field(frame_b, field)
 
