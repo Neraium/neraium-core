@@ -54,6 +54,22 @@ def ensure_dependencies() -> None:
     subprocess.check_call([sys.executable, "-m", "pip", "install", "-q", "-e", str(REPO_ROOT)])
 
 
+def _resolve_server_port() -> int | None:
+    """Resolve server port from platform-assigned PORT env var when available."""
+    raw_port = os.getenv("PORT")
+    if not raw_port:
+        return None
+    try:
+        port = int(raw_port)
+    except ValueError:
+        print(f"Warning: ignoring invalid PORT value {raw_port!r}; using Gradio defaults.")
+        return None
+    if port <= 0 or port > 65535:
+        print(f"Warning: ignoring out-of-range PORT value {port}; using Gradio defaults.")
+        return None
+    return port
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Run Neraium synthetic demo with Gradio UI",
@@ -96,8 +112,11 @@ def main() -> None:
     print()
 
     app = create_gradio_app()
+    server_port = _resolve_server_port()
     app.launch(
         inbrowser=True,
+        server_name="0.0.0.0",
+        server_port=server_port,
         share=args.share,
         show_error=True,
         quiet=False,
