@@ -34,6 +34,20 @@ def _extract_position(tetrahedral_state: dict[str, Any] | None) -> tuple[float, 
     return None
 
 
+def _nearest_vertex(point: tuple[float, float, float]) -> str | None:
+    """Find the nearest vertex to a given point."""
+    if point is None:
+        return None
+    min_dist = float("inf")
+    nearest = None
+    for vertex_name, vertex_pos in _VERTEX_POINTS.items():
+        dist = sum((p - v) ** 2 for p, v in zip(point, vertex_pos)) ** 0.5
+        if dist < min_dist:
+            min_dist = dist
+            nearest = vertex_name
+    return nearest
+
+
 def build_tetrahedral_plot_and_text(
     latest_record: dict[str, Any] | None,
     history_records: list[dict[str, Any]] | None = None,
@@ -52,6 +66,10 @@ def build_tetrahedral_plot_and_text(
     fig = Figure(figsize=(6.0, 5.0), dpi=100)
     ax = fig.add_subplot(111, projection="3d")
 
+    tetra_state = latest_record.get("tetrahedral_state") if isinstance(latest_record, dict) else None
+    current_point = _extract_position(tetra_state)
+    nearest_vertex = _nearest_vertex(current_point)
+
     # Tetrahedron frame
     vertex_names = list(_VERTEX_POINTS.keys())
     edge_pairs = [(0, 1), (0, 2), (0, 3), (1, 2), (1, 3), (2, 3)]
@@ -62,8 +80,14 @@ def build_tetrahedral_plot_and_text(
         ax.plot([x1, x2], [y1, y2], [z1, z2], color="#64748B", linewidth=1.2, alpha=0.7)
 
     for name, (x, y, z) in _VERTEX_POINTS.items():
-        ax.scatter([x], [y], [z], color="#93C5FD", s=28, alpha=0.95)
-        ax.text(x * 1.08, y * 1.08, z * 1.08, name, color="#E2E8F0", fontsize=8)
+        is_nearest = name == nearest_vertex
+        color = "#FCD34D" if is_nearest else "#93C5FD"
+        size = 48 if is_nearest else 28
+        alpha = 1.0 if is_nearest else 0.95
+        ax.scatter([x], [y], [z], color=color, s=size, alpha=alpha)
+        fontweight = "bold" if is_nearest else "normal"
+        fontsize = 9 if is_nearest else 8
+        ax.text(x * 1.08, y * 1.08, z * 1.08, name, color="#E2E8F0", fontsize=fontsize, weight=fontweight)
 
     trail_points: list[tuple[float, float, float]] = []
     for row in (history_records or [])[-history_limit:]:
@@ -71,9 +95,6 @@ def build_tetrahedral_plot_and_text(
         point = _extract_position(tetra)
         if point is not None:
             trail_points.append(point)
-
-    tetra_state = latest_record.get("tetrahedral_state") if isinstance(latest_record, dict) else None
-    current_point = _extract_position(tetra_state)
 
     if trail_points:
         xs = [point[0] for point in trail_points]
@@ -127,7 +148,10 @@ def build_tetrahedral_plot_and_text(
     ax.set_facecolor("#020617")
     fig.patch.set_facecolor("#020617")
     ax.view_init(elev=18, azim=35)
-    ax.set_title("Tetrahedral State Trajectory", color="#E2E8F0", fontsize=10, pad=10)
+    ax.set_title("Tetrahedral State Trajectory\nSystem position in structural state space", color="#E2E8F0", fontsize=10, pad=10, linespacing=1.6)
+    # Adjust the second line to be smaller and more subtle
+    ax.texts[-1].set_fontsize(7)
+    ax.texts[-1].set_color("#94A3B8")
     fig.tight_layout()
 
     interpreted_label = "Unavailable"

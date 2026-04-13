@@ -817,6 +817,35 @@ button:active,
 }
 
 /* ============================================================================
+   COLLAPSIBLE PANELS
+   ============================================================================ */
+
+.ner-collapsible-panel {
+  border-radius: 6px;
+  background: transparent;
+  margin-bottom: 16px;
+}
+
+.ner-collapsible-panel summary {
+  outline: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.ner-collapsible-panel summary::-webkit-details-marker {
+  display: none;
+}
+
+.ner-collapsible-panel[open] summary span {
+  transform: rotate(90deg);
+}
+
+.ner-collapsible-panel summary span {
+  display: inline-block;
+  transition: transform 0.2s ease;
+}
+
+/* ============================================================================
    RESPONSIVE
    ============================================================================ */
 
