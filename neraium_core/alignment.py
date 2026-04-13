@@ -384,6 +384,14 @@ class StructuralEngine:
         self._alert_latched: bool = False
         self._current_alert_state: str = "STABLE"
 
+        # Priority 1: Better transition logic with momentum awareness
+        self._drift_momentum_history: deque[float] = deque(maxlen=5)  # Rate of change tracking
+        self._last_smooth_drift: float | None = None  # Previous smooth drift value
+
+        # Priority 2: Better false positive control
+        self._spike_rejection_counter: int = 0  # Track potential spike candidates
+        self._post_false_alarm_cooldown: int = 0  # Cooldown after false alert rejection
+
         # Composite-score threshold calibration for legacy compatibility outputs.
         self._baseline_composite_score_samples: deque[float] = deque(maxlen=256)
         self._composite_watch_alert_thresholds: tuple[float, float] | None = None
@@ -1293,36 +1301,75 @@ class StructuralEngine:
         # to avoid false positives driven by unstable correlation estimates.
         if self._drift_watch_alert_thresholds is None:
             self._current_alert_state = "STABLE"
+            self._last_smooth_drift = smooth
             return self._current_alert_state, smooth
 
         watch_thr, alert_thr = self._drift_watch_alert_thresholds
-        if smooth > alert_thr:
+
+        # Priority 1: Calculate momentum (rate of change) for better transition logic
+        momentum = 0.0
+        if self._last_smooth_drift is not None:
+            momentum = smooth - self._last_smooth_drift
+            self._drift_momentum_history.append(momentum)
+        self._last_smooth_drift = smooth
+
+        # Calculate average momentum over recent history for trend confirmation
+        avg_momentum = float(np.mean(list(self._drift_momentum_history))) if self._drift_momentum_history else 0.0
+
+        # Priority 2: Spike rejection - reject single samples that spike above threshold
+        # but don't show sustained upward momentum
+        is_potential_spike = False
+        if smooth > alert_thr and avg_momentum < 0.05:  # Single spike without upward trend
+            self._spike_rejection_counter += 1
+            if self._spike_rejection_counter < 2:  # Allow 1 sample grace period
+                is_potential_spike = True
+        else:
+            self._spike_rejection_counter = max(0, self._spike_rejection_counter - 1)
+
+        # Priority 2: Post-false-alarm cooldown prevents rapid re-alerting
+        if self._post_false_alarm_cooldown > 0:
+            self._post_false_alarm_cooldown -= 1
+            # Require extra persistence during cooldown
+            extra_persistence_boost = 1
+        else:
+            extra_persistence_boost = 0
+
+        # Update counters with improved logic
+        if smooth > alert_thr and not is_potential_spike:
             self._alert_counter += 1
         else:
-            self._alert_counter = max(0, self._alert_counter - 1)
+            # Faster decay for alert counter to reduce false positive persistence
+            self._alert_counter = max(0, self._alert_counter - 2)
 
-        if smooth > watch_thr:
+        if smooth > watch_thr and not is_potential_spike:
             self._watch_counter += 1
         else:
+            # Faster decay for watch counter
             self._watch_counter = max(0, self._watch_counter - 1)
 
-        if self._alert_counter >= self.alert_persistence:
+        # Priority 1: Momentum-aware latching - only latch if momentum confirms drift
+        if self._alert_counter >= self.alert_persistence and avg_momentum >= 0.01:
             self._alert_latched = True
-        if smooth > (alert_thr * self.fast_trigger_multiplier):
+
+        # Fast trigger now requires stronger momentum confirmation (Priority 1 improvement)
+        if smooth > (alert_thr * self.fast_trigger_multiplier) and avg_momentum > 0.05:
             self._alert_latched = True
             self._alert_counter = max(self._alert_counter, self.alert_persistence)
+
         if not self.alert_latch_enabled and smooth <= alert_thr:
             self._alert_latched = False
 
-        if self._alert_latched and smooth < (watch_thr * self.unlatch_ratio):
+        # Stricter unlatch: require deeper drop with sustained negative momentum (Priority 1)
+        if self._alert_latched and smooth < (watch_thr * self.unlatch_ratio) and avg_momentum < -0.02:
             self._alert_latched = False
             self._alert_counter = 0
+            self._post_false_alarm_cooldown = 3  # Cool down for 3 frames (Priority 2)
 
         if self._alert_latched:
             self._current_alert_state = "ALERT"
-        elif self._alert_counter >= self.alert_persistence:
+        elif self._alert_counter >= (self.alert_persistence + extra_persistence_boost):
             self._current_alert_state = "ALERT"
-        elif self._watch_counter >= self.watch_persistence:
+        elif self._watch_counter >= (self.watch_persistence + 1):  # Require extra WATCH persistence
             self._current_alert_state = "WATCH"
         else:
             self._current_alert_state = "STABLE"
