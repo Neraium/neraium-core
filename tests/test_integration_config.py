@@ -5,7 +5,6 @@ import json
 import pytest
 
 from apps.api.integration import (
-    IntegrationConfigError,
     IntegrationMappingError,
     apply_integration_mapping,
     load_integration_config,

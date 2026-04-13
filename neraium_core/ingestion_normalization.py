@@ -7,7 +7,6 @@ from .pipeline import (
     DEFAULT_ASSET_ID,
     DEFAULT_SITE_ID,
     CanonicalIngestionSignalRecord,
-    build_frame,
     canonical_records_to_frames,
     coerce_float,
     normalize_identifier,

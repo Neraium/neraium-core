@@ -1916,7 +1916,7 @@ class StructuralEngine:
         # End contract enforcement
 
         vector = self._vector_from_frame(frame)
-        sensor_values = frame.get("sensor_values") or {}
+        frame.get("sensor_values") or {}
 
         history_transition_len_before = len(self._transition_pressure_history)
         history_shock_len_before = len(self._shock_activity_history)
@@ -3344,7 +3344,7 @@ class StructuralEngine:
                 causal_prop = analytics.get("causal_propagation") if isinstance(analytics.get("causal_propagation"), dict) else {}
                 causal_prop_top_sources = causal_prop.get("top_sources")
                 causal_prop_spread = causal_prop.get("spread_scores")
-                causal_prop_top_pairs = causal_prop.get("top_pairs")
+                causal_prop.get("top_pairs")
                 graph = analytics.get("graph")
                 causal_graph = analytics.get("causal_graph")
 

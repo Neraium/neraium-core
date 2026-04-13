@@ -332,8 +332,8 @@ class MathAgent:
 
         # Extract reasoning steps (lines before ANSWER:)
         lines = result.answer.split("\n")
-        steps = [l for l in lines if not l.startswith("ANSWER:")]
-        answer_lines = [l for l in lines if l.startswith("ANSWER:")]
+        steps = [line for line in lines if not line.startswith("ANSWER:")]
+        answer_lines = [line for line in lines if line.startswith("ANSWER:")]
         final_answer = answer_lines[-1].replace("ANSWER:", "").strip() if answer_lines else result.answer
         result.reasoning_steps = [s.strip() for s in steps if s.strip()]
 

@@ -66,7 +66,7 @@ def process_dataset(
     # Load dataset
     df = load_dataset(path, dataset_name)
     if df is None:
-        print(f"  ✗ Failed to load dataset")
+        print("  ✗ Failed to load dataset")
         return False, None, None, None
 
     print(f"  ✓ Loaded: {len(df)} records from {df['unit'].nunique()} units")
@@ -74,7 +74,7 @@ def process_dataset(
     try:
         # Compute metrics
         metrics = compute_metrics(df, dataset_name.upper(), drift_threshold)
-        print(f"  ✓ Computed metrics")
+        print("  ✓ Computed metrics")
 
         # Create output directory
         dataset_output_dir = output_dir / dataset_name.lower()
@@ -94,7 +94,7 @@ def process_dataset(
 
         # Generate plots
         plots_dir = dataset_output_dir / "plots"
-        print(f"  Generating plots...")
+        print("  Generating plots...")
         generate_plots(
             df,
             dataset_name.upper(),
@@ -128,7 +128,7 @@ def main() -> int:
     print_discovery_status(discovered)
 
     # Show configuration
-    print(f"\nConfiguration:")
+    print("\nConfiguration:")
     print(f"  Drift Threshold: {config.drift_threshold}")
     print(f"  Output Directory: {config.output_dir}")
     print(f"  Datasets to Process: {', '.join(config.datasets)}")
@@ -192,11 +192,11 @@ def main() -> int:
     success_count = sum(1 for v in processed.values() if v)
     print(f"\nProcessed: {success_count}/{len(config.datasets)} datasets")
     print(f"Output Directory: {config.output_dir.resolve()}")
-    print(f"\nGenerated Files:")
+    print("\nGenerated Files:")
     print(f"  - {report_path.name}")
     print(f"  - {hero_summary_path.name}")
     if fd004_df is not None and fd004_metrics:
-        print(f"  - hero_plot.png")
+        print("  - hero_plot.png")
 
     return 0 if success_count > 0 else 1
 

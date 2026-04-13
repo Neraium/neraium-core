@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-import math
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
 from typing import Any
 
 import pytest

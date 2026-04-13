@@ -55,7 +55,7 @@ def print_summary():
     report += f"Results: {len(passed)}/{total} passed ({pct}%)\n"
 
     if measurements:
-        report += f"\nMeasurements:\n"
+        report += "\nMeasurements:\n"
         for k, v in sorted(measurements.items()):
             if isinstance(v, dict):
                 report += f"  {k}:\n"
@@ -105,7 +105,7 @@ for frame_num in range(250):
 
             if result.state not in {"STABLE", "WATCH", "ALERT"}:
                 soak_errors += 1
-        except Exception as e:
+        except Exception:
             soak_errors += 1
 
 if soak_errors == 0:

@@ -17,7 +17,6 @@ from neraium_core.data_quality import (
     impute_missing_simple,
     should_use_degraded_analytics,
 )
-from neraium_core.context_invariant_representation import build_temporal_representation
 
 
 def vector_from_sensor_values(

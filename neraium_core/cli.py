@@ -266,7 +266,7 @@ def _generate_consolidated_report(
         if result["status"] == "success":
             metrics = result.get("metrics", {})
             lines.extend([
-                f"**Status**: ✓ Success",
+                "**Status**: ✓ Success",
                 "",
                 "**Metrics**:",
                 f"- Total frames: {metrics.get('total_frames', 'N/A')}",
@@ -285,7 +285,7 @@ def _generate_consolidated_report(
         else:
             error = result.get("error", "Unknown error")
             lines.extend([
-                f"**Status**: ✗ Failed",
+                "**Status**: ✗ Failed",
                 f"**Error**: {error}",
                 "",
             ])

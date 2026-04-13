@@ -3,7 +3,7 @@
 import json
 import tempfile
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict
 
 import pytest
 
@@ -13,8 +13,8 @@ from validation.shadow_mode.evidence import (
     EvidenceFrame,
     EvidenceDataFrame,
 )
-from validation.shadow_mode.report import ShadowModeSummaryReport, generate_report_from_evidence
-from validation.shadow_mode.replay_diff import ReplayDiff, generate_replay_diff
+from validation.shadow_mode.report import ShadowModeSummaryReport
+from validation.shadow_mode.replay_diff import ReplayDiff
 
 
 # ============================================================================

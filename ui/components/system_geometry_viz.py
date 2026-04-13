@@ -337,7 +337,7 @@ def render_system_geometry_viz(
         for steps_back in [2, 4]:
             if len(rows) > steps_back:
                 prior_drift = safe_float(rows[-steps_back - 1].get("structural_drift_score"), 0.0)
-                prior_stability = 1.0 - prior_drift
+                1.0 - prior_drift
                 opacity = clamp(0.08 + (5 - steps_back) * 0.04, 0.04, 0.16)
                 prior_trails.append({
                     "steps_back": steps_back,

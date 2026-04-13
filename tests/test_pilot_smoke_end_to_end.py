@@ -4,7 +4,6 @@ import math
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-import pytest
 
 from neraium_core.alignment import StructuralEngine
 from neraium_core.service import StructuralMonitoringService

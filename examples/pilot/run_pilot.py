@@ -518,7 +518,7 @@ def _run_scenario(
             if score is not None and advance_smoother:
                 prev_score = score
 
-            action = str(result.get("action_state", ""))
+            str(result.get("action_state", ""))
             if first_watch is None and pilot_state == "WATCH":
                 first_watch = logical_t
             if first_alert is None and pilot_state == "ALERT":

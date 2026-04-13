@@ -8,9 +8,7 @@ This script demonstrates:
 4. Exporting evidence to CSV
 """
 
-import json
 import sys
-from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict
 
@@ -238,13 +236,13 @@ def main():
     )
 
     print("\n✅ Example completed successfully!")
-    print(f"\nNext steps:")
-    print(f"1. Review the summary reports:")
+    print("\nNext steps:")
+    print("1. Review the summary reports:")
     print(f"   - {output_dir / 'engine_v1_report.json'}")
     print(f"   - {output_dir / 'engine_v2_report.json'}")
-    print(f"2. Analyze the replay diff:")
+    print("2. Analyze the replay diff:")
     print(f"   - {output_dir / 'replay_diff.json'}")
-    print(f"3. Export evidence to your analytics tool:")
+    print("3. Export evidence to your analytics tool:")
     print(f"   - {output_dir / 'engine_v1_evidence.csv'}")
     print(f"   - {output_dir / 'engine_v2_evidence.csv'}")
 

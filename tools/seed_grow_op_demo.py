@@ -179,9 +179,9 @@ def main() -> None:
 
     asset_meta, scenario_frames = load_scenario(scenario_path, phase_filter=args.phase)
     if not scenario_frames:
-        raise ValueError(f"No frames loaded — check --phase filter or scenario path.")
+        raise ValueError("No frames loaded — check --phase filter or scenario path.")
 
-    print(f"\nNeraium Cannabis Grow Op Demo")
+    print("\nNeraium Cannabis Grow Op Demo")
     print(f"{'='*50}")
     print(f"  Endpoint : {args.base_url}")
     run_id = ensure_run(args.base_url, args.customer_id)
@@ -310,19 +310,19 @@ def main() -> None:
     output_path.parent.mkdir(parents=True, exist_ok=True)
     output_path.write_text(json.dumps(summary, indent=2), encoding="utf-8")
 
-    print(f"\nRecommendation")
+    print("\nRecommendation")
     print(f"  {summary['outputs']['recommendation']}")
-    print(f"\nExplanation")
+    print("\nExplanation")
     print(f"  {clip_text(summary['outputs']['explanation'])}")
-    print(f"\nMemory recall")
+    print("\nMemory recall")
     print(
         f"  is_novel={summary['outputs']['memory_recall']['is_novel']}  "
         f"nearest_found={summary['outputs']['memory_recall']['nearest_match_found']}  "
         f"similarity={summary['outputs']['memory_recall']['nearest_match_similarity']}"
     )
-    print(f"\nClient report excerpt")
+    print("\nClient report excerpt")
     print(f"  {clip_text(summary['outputs']['client_report'])}")
-    print(f"\nTechnician summary excerpt")
+    print("\nTechnician summary excerpt")
     print(f"  {clip_text(summary['outputs']['technician_summary'])}")
     print(f"\nOutput bundle written to {output_path}")
 

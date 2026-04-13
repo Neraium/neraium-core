@@ -4,7 +4,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from evaluation.metrics import EvaluationRecord, compute_metrics
+from evaluation.metrics import compute_metrics
 from evaluation.runner import NeraiumModel, _record_from_prediction
 from evaluation.scenarios import Scenario, build_benchmark_scenarios
 

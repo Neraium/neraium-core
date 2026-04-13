@@ -72,7 +72,7 @@ for frame_num in range(50):
                 states_observed.add(result.state)
             else:
                 errors += 1
-        except Exception as e:
+        except Exception:
             errors += 1
 
 if errors == 0:
@@ -156,7 +156,7 @@ p95 = latencies[int(len(latencies) * 0.95)]
 p99 = latencies[int(len(latencies) * 0.99)]
 avg_lat = np.mean(latencies)
 
-validate_pass("PERFORMANCE", f"300 frames measured")
+validate_pass("PERFORMANCE", "300 frames measured")
 measure("Latency (p50)", f"{p50:.1f}", " ms")
 measure("Latency (p95)", f"{p95:.1f}", " ms")
 measure("Latency (p99)", f"{p99:.1f}", " ms")
@@ -258,7 +258,7 @@ if evidence['fail']:
     for f in evidence['fail']:
         print(f"  {f}")
 
-print(f"\nMeasured:")
+print("\nMeasured:")
 for name, (value, unit) in sorted(evidence['measure'].items()):
     print(f"  {name}: {value}{unit}")
 
