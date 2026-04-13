@@ -32,6 +32,16 @@ if unit_data.empty:
     print(f"ERROR: No data for unit {median_unit}")
     exit(1)
 
+# Load IMS policy results to get actual per-unit thresholds
+policy_results = pd.read_csv("FD004_ims_policy_tuned_results.csv")
+unit_policy = policy_results[policy_results["unit"] == median_unit].iloc[0]
+watch_threshold = float(unit_policy["ims_watch_threshold"])
+alert_threshold = float(unit_policy["ims_alert_threshold"])
+
+print(f"\nThresholds for Unit {median_unit}:")
+print(f"  Watch Threshold (65th percentile): {watch_threshold:.4f}")
+print(f"  Alert Threshold (85th percentile): {alert_threshold:.4f}")
+
 # Get summary info
 unit_summary = scored[scored["unit"] == median_unit].iloc[0]
 alert_cycle = int(unit_summary["alert_cycle"]) if pd.notna(unit_summary["alert_cycle"]) else None
@@ -53,14 +63,21 @@ if "structural_drift_score" in unit_data.columns:
         color="#1f77b4",
     )
 
-# Plot early signal threshold
-drift_threshold = 0.5
+# Plot per-unit thresholds derived from quantiles
 ax.axhline(
-    y=drift_threshold,
+    y=watch_threshold,
+    color="orange",
+    linestyle="--",
+    linewidth=2,
+    label=f"Watch Threshold ({watch_threshold:.4f})",
+    alpha=0.8,
+)
+ax.axhline(
+    y=alert_threshold,
     color="red",
     linestyle="--",
     linewidth=2,
-    label=f"Early Signal Threshold ({drift_threshold})",
+    label=f"Alert Threshold ({alert_threshold:.4f})",
     alpha=0.8,
 )
 
