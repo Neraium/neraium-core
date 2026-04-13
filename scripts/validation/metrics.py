@@ -50,7 +50,8 @@ def compute_lead_time(row_data: pd.DataFrame, drift_threshold: float) -> Optiona
     """
     Compute lead time from structural_drift_score.
 
-    Lead time = cycles from when drift score exceeds threshold to end.
+    Lead time = cycles from first structural divergence to failure (or end-of-run if failure is not explicitly labeled).
+    Structural divergence is defined as the point where the structural_drift_score first exceeds the threshold.
     """
     if not len(row_data):
         return None
@@ -125,8 +126,8 @@ def compute_metrics(
     p50_gt_100 = (lead_times_array > 100).sum() / len(lead_times) * 100 if lead_times else 0.0
 
     # Find best, worst, median cases
-    # Best case = maximum lead time (longest early detection window before failure)
-    # Worst case = minimum lead time (shortest early detection window before failure)
+    # Best case = maximum lead time (longest lead time = earliest structural detection)
+    # Worst case = minimum lead time (shortest lead time = latest structural detection)
     best_idx = np.argmax(lead_times_array)
     worst_idx = np.argmin(lead_times_array)
     median_idx = np.argsort(lead_times_array)[len(lead_times_array) // 2]
