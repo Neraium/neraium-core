@@ -40,27 +40,57 @@ failure_cycle = int(unit_summary["failure_cycle"]) if pd.notna(unit_summary["fai
 print(f"Alert cycle: {alert_cycle}")
 print(f"Failure cycle: {failure_cycle}")
 
+# Compute smoothed drift metric (matching policy evaluation logic)
+unit_data["drift_smooth"] = unit_data["structural_drift_score"].rolling(25, min_periods=1).mean()
+
+# Derive thresholds from smoothed metric
+watch_threshold = float(unit_data["drift_smooth"].quantile(0.65))
+alert_threshold = float(unit_data["drift_smooth"].quantile(0.85))
+
+print(f"Watch threshold (drift_smooth 65th percentile): {watch_threshold:.3f}")
+print(f"Alert threshold (drift_smooth 85th percentile): {alert_threshold:.3f}")
+
 # Create plot
 fig, ax = plt.subplots(figsize=(14, 6))
 
-# Plot structural drift score
+# Plot raw structural drift score (lighter, for reference)
 if "structural_drift_score" in unit_data.columns:
     ax.plot(
         unit_data["cycle"],
         unit_data["structural_drift_score"],
-        label="Structural Drift Score",
+        label="Structural Drift Score (raw)",
+        linewidth=1.5,
+        color="#1f77b4",
+        alpha=0.4,
+    )
+
+# Plot smoothed drift metric (primary, for policy evaluation)
+if "drift_smooth" in unit_data.columns:
+    ax.plot(
+        unit_data["cycle"],
+        unit_data["drift_smooth"],
+        label="Drift Smooth (25-cycle rolling mean)",
         linewidth=2.5,
         color="#1f77b4",
     )
 
-# Plot early signal threshold
-drift_threshold = 0.5
+# Plot watch threshold (derived from smoothed metric)
 ax.axhline(
-    y=drift_threshold,
+    y=watch_threshold,
+    color="orange",
+    linestyle="--",
+    linewidth=2,
+    label=f"Watch Threshold ({watch_threshold:.3f})",
+    alpha=0.8,
+)
+
+# Plot alert threshold (derived from smoothed metric)
+ax.axhline(
+    y=alert_threshold,
     color="red",
     linestyle="--",
     linewidth=2,
-    label=f"Early Signal Threshold ({drift_threshold})",
+    label=f"Alert Threshold ({alert_threshold:.3f})",
     alpha=0.8,
 )
 
