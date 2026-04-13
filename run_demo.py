@@ -1,126 +1,110 @@
 #!/usr/bin/env python3
-"""
-Run the Neraium synthetic demo with Gradio UI.
+"""Run Neraium demo using FastAPI backend + Next.js frontend.
 
-The canonical way to launch the Neraium demo:
-
+Primary demo command:
     python run_demo.py
-
-This starts a local Gradio app that shows:
-- Live tetrahedral state visualization
-- System drift and health metrics
-- Verdict (admitted/suppressed) gate decisions
-- Reasoning and evidence panels
-- Playback controls (Play, Pause, Restart, Speed)
-
-The demo plays through 120 timesteps of synthetic data showing a complete
-system progression: Baseline → Drift → Transition → Reorganization → Recovery.
-
-Optional flags:
-    --help          Show this help message
-    --share         Generate a public sharing URL (requires cloudflared or ngrok)
 """
 
 from __future__ import annotations
 
 import argparse
 import os
+import shutil
+import signal
+import subprocess
 import sys
+import time
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent
+FRONTEND_DIR = REPO_ROOT / "frontend"
 
 
 def _ensure_repo_on_path() -> None:
-    """Add repo to sys.path so imports work."""
     root = str(REPO_ROOT)
     if root not in sys.path:
         sys.path.insert(0, root)
 
 
-def ensure_dependencies() -> None:
-    """Install dependencies from pyproject.toml if needed."""
-    import subprocess
+def _run(cmd: list[str], *, cwd: Path | None = None) -> None:
+    subprocess.check_call(cmd, cwd=str(cwd) if cwd else None)
 
-    need_install = False
+
+def _ensure_backend_dependencies() -> None:
     try:
-        import gradio  # noqa: F401
+        import fastapi  # noqa: F401
+        import uvicorn  # noqa: F401
     except ImportError:
-        need_install = True
-
-    if not need_install:
-        return
-
-    subprocess.check_call([sys.executable, "-m", "pip", "install", "-q", "-e", str(REPO_ROOT)])
+        _run([sys.executable, "-m", "pip", "install", "-q", "-e", str(REPO_ROOT)])
 
 
-def _resolve_server_port() -> int | None:
-    """Resolve server port from platform-assigned PORT env var when available."""
-    raw_port = os.getenv("PORT")
-    if not raw_port:
-        return None
-    try:
-        port = int(raw_port)
-    except ValueError:
-        print(f"Warning: ignoring invalid PORT value {raw_port!r}; using Gradio defaults.")
-        return None
-    if port <= 0 or port > 65535:
-        print(f"Warning: ignoring out-of-range PORT value {port}; using Gradio defaults.")
-        return None
-    return port
+def _ensure_frontend_dependencies() -> None:
+    npm = shutil.which("npm")
+    if not npm:
+        raise RuntimeError("npm is required to run the Next.js frontend. Install Node.js 18+.")
+    if not (FRONTEND_DIR / "node_modules").exists():
+        _run([npm, "install"], cwd=FRONTEND_DIR)
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(
-        description="Run Neraium synthetic demo with Gradio UI",
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog=__doc__,
-    )
-    parser.add_argument(
-        "--share",
-        action="store_true",
-        help="Generate a public sharing URL (requires cloudflared or ngrok)",
-    )
+    parser = argparse.ArgumentParser(description="Run Neraium demo (FastAPI + Next.js)")
+    parser.add_argument("--backend-port", type=int, default=8000)
+    parser.add_argument("--frontend-port", type=int, default=3000)
+    parser.add_argument("--backend-only", action="store_true")
     args = parser.parse_args()
 
     os.chdir(REPO_ROOT)
     _ensure_repo_on_path()
-    ensure_dependencies()
-
-    # Import after ensuring dependencies
-    from ui.app import create_gradio_app
+    _ensure_backend_dependencies()
 
     print("=" * 70)
-    print("Neraium Demo - Structural Instability Detection")
+    print("Neraium Demo — FastAPI + Next.js")
     print("=" * 70)
-    print()
-    print("Starting synthetic demo with Gradio UI...")
-    print()
-    print("The demo shows a complete system progression:")
-    print("  • Baseline        (0-20 steps):  Stable operation")
-    print("  • Drift Watch     (20-35 steps): Early signs of change")
-    print("  • Transition      (35-55 steps): System changing")
-    print("  • Reorganization  (55-80 steps): Major structural shift")
-    print("  • Recovery        (80-120 steps): System reaching new equilibrium")
-    print()
-    print("Use the controls to:")
-    print("  • Play   - Start automatic playback")
-    print("  • Pause  - Pause playback")
-    print("  • Restart - Go back to beginning")
-    print("  • Speed  - Adjust playback speed")
-    print("  • Frame  - Jump to any point in the timeline")
-    print()
 
-    app = create_gradio_app()
-    server_port = _resolve_server_port()
-    app.launch(
-        inbrowser=True,
-        server_name="0.0.0.0",
-        server_port=server_port,
-        share=args.share,
-        show_error=True,
-        quiet=False,
+    backend_env = os.environ.copy()
+    backend_env["PORT"] = str(args.backend_port)
+
+    backend_proc = subprocess.Popen(
+        [sys.executable, "-m", "uvicorn", "apps.api.main:app", "--host", "0.0.0.0", "--port", str(args.backend_port)],
+        env=backend_env,
     )
+    frontend_proc: subprocess.Popen[bytes] | None = None
+
+    try:
+        if args.backend_only:
+            print(f"Backend running at http://localhost:{args.backend_port}")
+            print("Press Ctrl+C to stop.")
+            backend_proc.wait()
+            return
+
+        _ensure_frontend_dependencies()
+        frontend_env = os.environ.copy()
+        frontend_env["NEXT_PUBLIC_NERAIUM_API_BASE"] = f"http://localhost:{args.backend_port}"
+
+        npm = shutil.which("npm") or "npm"
+        frontend_proc = subprocess.Popen([npm, "run", "dev", "--", "-p", str(args.frontend_port)], cwd=str(FRONTEND_DIR), env=frontend_env)
+
+        print(f"Backend:  http://localhost:{args.backend_port}")
+        print(f"Frontend: http://localhost:{args.frontend_port}")
+        print("Press Ctrl+C to stop.")
+
+        while True:
+            if backend_proc.poll() is not None:
+                raise RuntimeError("Backend process exited unexpectedly.")
+            if frontend_proc and frontend_proc.poll() is not None:
+                raise RuntimeError("Frontend process exited unexpectedly.")
+            time.sleep(0.5)
+
+    except KeyboardInterrupt:
+        pass
+    finally:
+        for proc in [frontend_proc, backend_proc]:
+            if proc and proc.poll() is None:
+                proc.send_signal(signal.SIGINT)
+                try:
+                    proc.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
 
 
 if __name__ == "__main__":
