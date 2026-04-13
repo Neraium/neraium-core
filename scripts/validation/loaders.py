@@ -22,7 +22,15 @@ class FDDatasetLoader(DatasetLoader):
 
     @staticmethod
     def load(path: Path) -> pd.DataFrame:
-        """Load FD CMAPSS dataset."""
+        """Load FD CMAPSS dataset.
+
+        Returns DataFrame with canonical frame contract columns:
+        - asset_id: Equipment identifier (derived from 'unit')
+        - cycle: Time index
+        - timestamp: ISO-8601 timestamp
+        - site_id: Operational site (default: "default-site")
+        - structural_drift_score: Normalized drift metric
+        """
         df = pd.read_csv(path)
 
         # Ensure required columns exist
@@ -30,6 +38,17 @@ class FDDatasetLoader(DatasetLoader):
         missing = [c for c in required if c not in df.columns]
         if missing:
             raise ValueError(f"FD dataset missing columns: {missing}")
+
+        # === Ingestion Adapter: Normalize to canonical internal frame contract ===
+
+        # Normalize identity fields
+        df["asset_id"] = df["unit"].astype(str)  # Map unit → asset_id
+        df["site_id"] = "default-site"  # Default site
+
+        # Create timestamp from cycle if not present
+        if "timestamp" not in df.columns:
+            # Use cycle as timestamp proxy (seconds since start)
+            df["timestamp"] = df["cycle"].astype(str)
 
         # Normalize drift score column names
         drift_cols = [c for c in df.columns if "drift" in c.lower()]
@@ -58,17 +77,18 @@ class IMSDatasetLoader(DatasetLoader):
 
     @staticmethod
     def load(path: Path) -> pd.DataFrame:
-        """Load IMS dataset."""
+        """Load IMS dataset.
+
+        Returns DataFrame with canonical frame contract columns:
+        - asset_id: Equipment identifier (derived from file_name or id)
+        - cycle: Time index
+        - timestamp: ISO-8601 timestamp
+        - site_id: Operational site (default: "default-site")
+        - structural_drift_score: Normalized drift metric
+        """
         df = pd.read_csv(path)
 
-        # IMS datasets have different column names
-        # Standardize them
-        if "drift_smooth" in df.columns:
-            df["structural_drift_score"] = df["drift_smooth"]
-        elif "drift" in df.columns:
-            df["structural_drift_score"] = df["drift"]
-        else:
-            df["structural_drift_score"] = 0.0
+        # === Ingestion Adapter: Normalize to canonical internal frame contract ===
 
         # Create time-based cycle if not present
         if "cycle" not in df.columns:
@@ -77,13 +97,29 @@ class IMSDatasetLoader(DatasetLoader):
             else:
                 df["cycle"] = range(len(df))
 
-        # Create unit identifier if not present
+        # Normalize unit/asset_id identifier
         if "unit" not in df.columns:
             if "file_name" in df.columns:
-                # Use file_name as unit identifier
                 df["unit"] = df["file_name"]
             else:
                 df["unit"] = 1
+
+        # Map unit → asset_id (canonical form)
+        df["asset_id"] = df["unit"].astype(str)
+        df["site_id"] = "default-site"  # Default site
+
+        # Create timestamp from cycle if not present
+        if "timestamp" not in df.columns:
+            df["timestamp"] = df["cycle"].astype(str)
+
+        # IMS datasets have different drift column names
+        # Standardize them
+        if "drift_smooth" in df.columns:
+            df["structural_drift_score"] = df["drift_smooth"]
+        elif "drift" in df.columns:
+            df["structural_drift_score"] = df["drift"]
+        else:
+            df["structural_drift_score"] = 0.0
 
         return df
 
@@ -93,8 +129,18 @@ class GenericDatasetLoader(DatasetLoader):
 
     @staticmethod
     def load(path: Path) -> pd.DataFrame:
-        """Load generic CSV dataset."""
+        """Load generic CSV dataset.
+
+        Returns DataFrame with canonical frame contract columns:
+        - asset_id: Equipment identifier (derived from unit/id)
+        - cycle: Time index
+        - timestamp: ISO-8601 timestamp
+        - site_id: Operational site (default: "default-site")
+        - structural_drift_score: Normalized drift metric
+        """
         df = pd.read_csv(path)
+
+        # === Ingestion Adapter: Normalize to canonical internal frame contract ===
 
         # Ensure basic columns
         if "unit" not in df.columns:
@@ -110,6 +156,14 @@ class GenericDatasetLoader(DatasetLoader):
                 df["cycle"] = range(len(df))
             else:
                 df["cycle"] = range(len(df))
+
+        # Normalize identity fields to canonical form
+        df["asset_id"] = df["unit"].astype(str)  # Map unit → asset_id
+        df["site_id"] = "default-site"  # Default site
+
+        # Create timestamp from cycle if not present
+        if "timestamp" not in df.columns:
+            df["timestamp"] = df["cycle"].astype(str)
 
         # Normalize drift score
         if "structural_drift_score" not in df.columns:

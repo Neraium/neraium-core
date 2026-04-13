@@ -15,6 +15,20 @@ The engine is organized into clear responsibility layers:
 Core detections (drift, relational, temporal, transitions) form the
 production-critical path. Auxiliary analytics are isolated in the
 separate auxiliary/ package.
+
+Primary Interface
+=================
+For most users, import the unified Engine:
+
+    from neraium_core import Engine
+
+    engine = Engine()
+    result = engine.ingest_frame(timestamp=..., unit_id=..., sensors={...})
+
+See unified.py for full API documentation.
 """
 
-__all__ = []
+from neraium_core.engine.unified import Engine
+from neraium_core.engine.production import ProductionEngine, InputFrame, EngineResult, BatchResult
+
+__all__ = ["Engine", "ProductionEngine", "InputFrame", "EngineResult", "BatchResult"]

@@ -31,7 +31,7 @@ def summarize_results(results: Iterable[Dict[str, Any]]) -> Dict[str, float]:
     if not rows:
         return EvalSummary(0, 0, 0, 0, 0, 0).to_dict()
 
-    drift = np.asarray([float(r.get("latest_drift", 0.0) or 0.0) for r in rows], dtype=float)
+    drift = np.asarray([float(r.get("structural_drift_score", 0.0) or 0.0) for r in rows], dtype=float)
     states = [str(r.get("state", "STABLE")) for r in rows]
     first_watch = next((i for i, s in enumerate(states) if s in {"WATCH", "ALERT"}), len(rows))
 
