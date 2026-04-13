@@ -75,6 +75,8 @@ class CorpusSnapshotRegistry:
     def list_corpus_ids_by_type(self, corpus_type: str) -> list[str]:
         ids: list[str] = []
         for row in self.list_snapshots():
+            if row.get("deprecated") or row.get("exclude_from_release_gating"):
+                continue
             cid = row.get("corpus_id")
             ctype = row.get("corpus_type")
             if not ctype and cid:
