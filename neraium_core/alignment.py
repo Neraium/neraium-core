@@ -1706,8 +1706,8 @@ class StructuralEngine:
         # See PHASE_A_CONTRACT_AND_ISOLATION.md for details.
 
         # Required identity fields
-        assert "timestamp" in frame and frame["timestamp"], \
-            "Frame contract violation: 'timestamp' required and non-empty"
+        assert "timestamp" in frame and frame["timestamp"] is not None, \
+            "Frame contract violation: 'timestamp' required and must not be None"
         assert "asset_id" in frame and frame["asset_id"], \
             "Frame contract violation: 'asset_id' required and non-empty"
         assert "site_id" in frame and frame["site_id"] is not None, \
