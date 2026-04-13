@@ -732,6 +732,10 @@ class StructuralEngine:
         self.frames.clear()
         self._history_ring.clear()
         self.sensor_order = []
+        self._global_sensor_index.clear()
+        self._sensor_last_values.clear()
+        self._sensor_presence_mask_history.clear()
+        self._expected_vector_dimension = None
         self.latest_result = None
         self.score_history.clear()
         self._structural_uncertainty.reset()
@@ -954,12 +958,8 @@ class StructuralEngine:
                 f"Dimension mismatch in sensor vector: expected {self._expected_vector_dimension}, got {len(raw_vector)}. "
                 f"Sensor order: {self.sensor_order}"
             )
-            # Pad or truncate to match expected dimension
-            if len(raw_vector) < self._expected_vector_dimension:
-                raw_vector = np.pad(raw_vector, (0, self._expected_vector_dimension - len(raw_vector)),
-                                   mode='constant', constant_values=0.0)
-            else:
-                raw_vector = raw_vector[:self._expected_vector_dimension]
+            # Schema can evolve as new sensors appear; update expected width instead of truncating.
+            self._expected_vector_dimension = len(raw_vector)
 
         return self._normalize_sensor_vector(raw_vector)
 
@@ -1891,6 +1891,9 @@ class StructuralEngine:
         # Required identity fields
         assert "timestamp" in frame and frame["timestamp"] is not None, \
             "Frame contract violation: 'timestamp' required and must not be None"
+        if isinstance(frame["timestamp"], str):
+            assert frame["timestamp"].strip(), \
+                "Frame contract violation: 'timestamp' string must be non-empty"
         assert "asset_id" in frame and frame["asset_id"], \
             "Frame contract violation: 'asset_id' required and non-empty"
         assert "site_id" in frame and frame["site_id"] is not None, \
