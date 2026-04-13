@@ -125,8 +125,10 @@ def compute_metrics(
     p50_gt_100 = (lead_times_array > 100).sum() / len(lead_times) * 100 if lead_times else 0.0
 
     # Find best, worst, median cases
-    best_idx = np.argmin(lead_times_array)
-    worst_idx = np.argmax(lead_times_array)
+    # Best case = maximum lead time (longest early detection window before failure)
+    # Worst case = minimum lead time (shortest early detection window before failure)
+    best_idx = np.argmax(lead_times_array)
+    worst_idx = np.argmin(lead_times_array)
     median_idx = np.argsort(lead_times_array)[len(lead_times_array) // 2]
 
     best_unit = units[best_idx]
