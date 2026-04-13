@@ -85,7 +85,16 @@ def create_unit_plot(
 
     ax.set_xlabel("Cycle", fontsize=11)
     ax.set_ylabel("Score", fontsize=11)
-    ax.set_title(f"{dataset_name} - Unit {unit_id} ({case_name.title()} Case)", fontsize=12, fontweight="bold")
+
+    # Create descriptive titles for each case
+    case_descriptions = {
+        "best": "Best Case (Longest Lead Time — Earliest Detection)",
+        "median": "Median Case",
+        "worst": "Worst Case (Shortest Lead Time — Latest Detection)",
+    }
+    case_desc = case_descriptions.get(case_name.lower(), case_name.title() + " Case")
+
+    ax.set_title(f"{dataset_name} - Unit {unit_id} - {case_desc}", fontsize=12, fontweight="bold")
     ax.legend(loc="best", fontsize=10)
     ax.grid(True, alpha=0.3)
     ax.set_ylim(bottom=0)
