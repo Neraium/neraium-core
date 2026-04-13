@@ -8,6 +8,8 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
+from neraium_core.tetrahedral_state import compute_tetrahedral_state
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 WINDOWS_TURBO_SOURCE = Path(
     "C:/Users/Owner/Downloads/WUR_AutonomousGreenhouseProject_EDA-main/"
@@ -186,6 +188,8 @@ def _load_rows_from_turbo_results(*, limit: int | None) -> list[dict[str, Any]]:
         return []
     base_time = datetime.now(timezone.utc) - timedelta(minutes=max(1, len(raw_rows)))
     normalized: list[dict[str, Any]] = []
+    position_history: list[list[float]] = []
+
     for idx, row in enumerate(raw_rows):
         dynamic_signal_strength = _clamp(
             _coerce_float(
@@ -205,6 +209,26 @@ def _load_rows_from_turbo_results(*, limit: int | None) -> list[dict[str, Any]]:
         event_admitted_override = _coerce_optional_bool(row.get("signal_emitted"))
         if event_admitted_override is None:
             event_admitted_override = _coerce_optional_bool(row.get("event_admitted"))
+
+        # Compute tetrahedral state
+        structural_drift = dynamic_signal_strength
+        relational_instability = 1.0 - dynamic_signal_strength
+        temporal_consistency = _clamp(_coerce_float(row.get("coherence_score"), confidence))
+        transition_pressure = _clamp(_coerce_float(row.get("transition_pressure"), 0.0))
+
+        tetrahedral_state = compute_tetrahedral_state(
+            structural_drift_score=structural_drift,
+            relational_instability_score=relational_instability,
+            transition_pressure=transition_pressure,
+            temporal_consistency_score=temporal_consistency,
+            history_positions=position_history[-50:] if len(position_history) > 0 else None,
+        )
+
+        # Track position for history
+        position = tetrahedral_state.get("position", [0.0, 0.0, 0.0])
+        if isinstance(position, (list, tuple)) and len(position) >= 3:
+            position_history.append([float(position[0]), float(position[1]), float(position[2])])
+
         normalized.append(
             {
                 "timestamp": _normalize_timestamp(row.get("timestamp"), idx, base_time),
@@ -224,6 +248,7 @@ def _load_rows_from_turbo_results(*, limit: int | None) -> list[dict[str, Any]]:
                 "evidence_summary": explanation_text,
                 "explanation_text": explanation_text,
                 "sensor_values": _parse_sensor_values_from_row(row),
+                "tetrahedral_state": tetrahedral_state,
             }
         )
     normalized.sort(key=lambda entry: str(entry.get("timestamp") or ""))
@@ -260,6 +285,7 @@ def _generate_synthetic_replay(*, timesteps: int = 120, base_time: datetime | No
         base_time = datetime(2026, 4, 10, 0, 0, 0, tzinfo=timezone.utc)
 
     rows: list[dict[str, Any]] = []
+    position_history: list[list[float]] = []
 
     for t in range(timesteps):
         # Phase progression (deterministic, smooth)
@@ -353,6 +379,34 @@ def _generate_synthetic_replay(*, timesteps: int = 120, base_time: datetime | No
         # Build the row
         timestamp = (base_time + timedelta(minutes=t)).isoformat()
 
+        # Compute transition pressure from phase progression
+        if phase == "BASELINE":
+            transition_pressure = 0.0
+        elif phase == "DRIFT_WATCH":
+            transition_pressure = 0.25 * ((t - 20) / 15.0)
+        elif phase == "TRANSITION_ACTIVE":
+            transition_pressure = 0.25 + 0.65 * ((t - 35) / 20.0)
+        elif phase == "REORGANIZATION_UNDERWAY":
+            transition_pressure = 0.90 + 0.08 * ((t - 55) / 25.0)
+        else:  # NEW_BASELINE
+            transition_pressure = max(0.0, 0.98 - 0.20 * ((t - 80) / max(timesteps - 80, 1)))
+
+        transition_pressure = _clamp(transition_pressure, 0.0, 1.0)
+
+        # Compute tetrahedral state
+        tetrahedral_state = compute_tetrahedral_state(
+            structural_drift_score=drift,
+            relational_instability_score=1.0 - stability,
+            transition_pressure=transition_pressure,
+            temporal_consistency_score=coherence,
+            history_positions=position_history[-50:] if len(position_history) > 0 else None,
+        )
+
+        # Track position for history
+        position = tetrahedral_state.get("position", [0.0, 0.0, 0.0])
+        if isinstance(position, (list, tuple)) and len(position) >= 3:
+            position_history.append([float(position[0]), float(position[1]), float(position[2])])
+
         row: dict[str, Any] = {
             "timestamp": timestamp,
             "site_id": "greenhouse-demo",
@@ -376,6 +430,7 @@ def _generate_synthetic_replay(*, timesteps: int = 120, base_time: datetime | No
             "explanation_text": _synthetic_explanation(phase, drift, stability, event_admitted),
             "evidence_summary": _synthetic_explanation(phase, drift, stability, event_admitted),
             "sensor_values": {},
+            "tetrahedral_state": tetrahedral_state,
         }
         rows.append(row)
 
