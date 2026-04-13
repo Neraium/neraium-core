@@ -148,10 +148,24 @@ def build_tetrahedral_plot_and_text(
     ax.set_facecolor("#020617")
     fig.patch.set_facecolor("#020617")
     ax.view_init(elev=18, azim=35)
-    ax.set_title("Tetrahedral State Trajectory\nSystem position in structural state space", color="#E2E8F0", fontsize=10, pad=10, linespacing=1.6)
-    # Adjust the second line to be smaller and more subtle
-    ax.texts[-1].set_fontsize(7)
-    ax.texts[-1].set_color("#94A3B8")
+    title_text = ax.set_title("Tetrahedral State Trajectory", color="#E2E8F0", fontsize=10, pad=18)
+    # Render subtitle as a dedicated title-adjacent text artist instead of
+    # mutating ax.texts[-1], which may target non-title labels.
+    subtitle_text = ax.text2D(
+        0.5,
+        0.96,
+        "System position in structural state space",
+        transform=ax.transAxes,
+        ha="center",
+        va="top",
+        color="#94A3B8",
+        fontsize=7,
+    )
+    # Keep explicit references so future style changes target the intended
+    # title/subtitle artists only.
+    title_text.set_linespacing(1.6)
+    subtitle_text.set_fontsize(7)
+    subtitle_text.set_color("#94A3B8")
     fig.tight_layout()
 
     interpreted_label = "Unavailable"
