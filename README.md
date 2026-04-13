@@ -2,7 +2,18 @@
 
 Neraium detects **systemic structural instability** in industrial equipment by monitoring how sensor signals **relate** to each other over time, not individual sensor values.
 
-**Get started in 2 minutes:**
+**See it in action (2 minutes):**
+
+```bash
+# Run the interactive demo
+python run_demo.py
+```
+
+This opens a browser showing the synthetic demo: a complete system lifecycle from stable baseline through drift, transition, reorganization, and recovery. See the tetrahedral structural state visualization and gate verdicts update in real time.
+
+→ **[DEMO.md](./DEMO.md)** for full guide
+
+**Or get started programmatically:**
 
 ```python
 from neraium_core import Engine
@@ -88,15 +99,20 @@ neraium validate --all --output ./results
 neraium validate --fd004 ./FD004.csv --ims ./IMS.csv --shadow-mode
 ```
 
-### UI (Optional)
+### Interactive Demo & Visualization
 
 ```bash
-# Development (opens browser)
-python start_ui.py
+# Launch the interactive demo (recommended way to see the system in action)
+python run_demo.py
 
-# Production (no browser)
-python start_site.py
+# This shows:
+# - Synthetic system lifecycle: baseline → drift → transition → reorganization → recovery
+# - Tetrahedral state visualization in 3D structural space
+# - Gate verdicts (admitted/suppressed) with reasoning
+# - Real-time charts and metrics
 ```
+
+See [DEMO.md](./DEMO.md) for full guide, controls, and optional flags.
 
 ## Documentation
 
