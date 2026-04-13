@@ -103,24 +103,26 @@ class ShadowModeSummaryReport:
         }
 
     def _transition_analysis(self) -> Dict[str, Any]:
-        """Analyze state transitions."""
+        """Analyze state transitions across per-asset chronology."""
         transitions = []
-        for i in range(len(self.frames) - 1):
-            current = self.frames[i]
-            next_frame = self.frames[i + 1]
 
-            if current.get("asset_id") == next_frame.get("asset_id"):
-                current_state = current.get("state", "UNKNOWN")
-                next_state = next_frame.get("state", "UNKNOWN")
+        # Compute transitions per asset to handle interleaved telemetry correctly
+        per_asset_transitions = self._count_transitions_per_asset()
+
+        # Build detailed transition list from per-asset frames
+        for asset_id, frames in self.per_asset.items():
+            for i in range(len(frames) - 1):
+                current_state = frames[i].get("state", "UNKNOWN")
+                next_state = frames[i + 1].get("state", "UNKNOWN")
 
                 if current_state != next_state:
                     transitions.append(
                         {
-                            "frame_index": i,
-                            "asset_id": current.get("asset_id"),
+                            "frame_index": frames[i].get("frame_index"),
+                            "asset_id": asset_id,
                             "from": current_state,
                             "to": next_state,
-                            "timestamp": next_frame.get("timestamp_utc"),
+                            "timestamp": frames[i + 1].get("timestamp_utc"),
                         }
                     )
 
@@ -128,10 +130,13 @@ class ShadowModeSummaryReport:
             f"{t['from']}->{t['to']}" for t in transitions
         )
 
+        # Total transitions is sum of per-asset transitions
+        total_transitions = sum(per_asset_transitions.values())
+
         return {
-            "total_transitions": len(transitions),
+            "total_transitions": total_transitions,
             "transition_types": dict(transition_types),
-            "per_asset_transitions": self._count_transitions_per_asset(),
+            "per_asset_transitions": per_asset_transitions,
         }
 
     def _data_quality_summary(self) -> Dict[str, Any]:
@@ -204,8 +209,10 @@ class ShadowModeSummaryReport:
     def _validation_summary(self) -> Dict[str, Any]:
         """Validation and contradiction summary."""
         input_errors = []
+        failed_frame_count = 0
         for f in self.frames:
             if not f.get("input_validation_passed", True):
+                failed_frame_count += 1
                 errors = f.get("validation_errors", [])
                 input_errors.extend(errors)
 
@@ -215,7 +222,7 @@ class ShadowModeSummaryReport:
             "total_validation_failures": len(input_errors),
             "failure_types": dict(error_counts),
             "failure_rate_percent": round(
-                100 * len(input_errors) / len(self.frames), 2
+                100 * failed_frame_count / len(self.frames), 2
             )
             if self.frames
             else 0.0,
