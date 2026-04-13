@@ -68,7 +68,13 @@ class CoreDetectionOrchestrator:
             - temporal_metrics: Timing and rate features
         """
         # Step 1: Data quality assessment
-        dq_report, dq_summary, use_degraded = core.assess_data_quality(
+        (
+            dq_report,
+            dq_summary,
+            use_degraded,
+            baseline_window,
+            recent_window,
+        ) = core.assess_data_quality(
             baseline_window,
             recent_window,
             sensor_names,
@@ -101,6 +107,7 @@ class CoreDetectionOrchestrator:
 
             # Structural drift
             drift_score = structural_drift(corr_recent, corr_baseline, norm="fro")
+            self.drift_machine.calibrate_thresholds()
             alert_state, smoothed_drift = self.drift_machine.update(drift_score)
 
             # Relational metrics
