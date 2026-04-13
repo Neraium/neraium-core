@@ -7,10 +7,10 @@ mismatch errors in the geometry layer. This is our first ROOT CAUSE discovery!
 
 import json
 import logging
-import csv
+import argparse
 from pathlib import Path
-from dataclasses import dataclass, asdict
-from typing import Dict, List, Any
+from dataclasses import dataclass
+from typing import Dict
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
@@ -247,8 +247,6 @@ def analyze_root_causes(telemetry: Dict[str, PerAssetTelemetry], test_profile: D
             continue
 
         t = telemetry[aid]
-        profile = test_profile.get(aid, {})
-
         logger.info(f"\n{aid}:")
         logger.info(f"  Max drift: {t.max_drift_score:.3f}")
         logger.info(f"  Alerts: {t.alert_count}, Watches: {t.watch_count}, Stable: {t.stable_count}")
@@ -265,7 +263,7 @@ def analyze_root_causes(telemetry: Dict[str, PerAssetTelemetry], test_profile: D
         if aid == 'A0':
             # Late drift detection
             if t.max_drift_score < 0.5:
-                root_cause = "WEAK DRIFT SIGNAL - Max drift 0.15 < alert threshold 0.7"
+                root_cause = f"WEAK DRIFT SIGNAL - Max drift {t.max_drift_score:.3f} < alert threshold 0.7"
             else:
                 root_cause = "LATE DRIFT - Drift appears too close to end of run"
             finding['root_cause'] = root_cause
@@ -300,30 +298,46 @@ def analyze_root_causes(telemetry: Dict[str, PerAssetTelemetry], test_profile: D
 
     report.append("\n## Detailed Root Cause Analysis\n")
 
+    a0 = telemetry.get('A0')
+    a2 = telemetry.get('A2')
+    a3 = telemetry.get('A3')
+
     report.append("\n### A0: Late Drift Detection\n")
-    report.append("**Observation**: Max structural_drift_score = 0.150 (well below 0.7 threshold)\n")
+    if a0:
+        report.append(f"**Observation**: Max structural_drift_score = {a0.max_drift_score:.3f} (below 0.7 threshold)\n")
+        report.append(
+            f"**Evidence**: First alert cycle would be >50/{a0.total_cycles}, arriving too late.\n"
+        )
     report.append("**Problem**: Drift signal is too weak to trigger alerts\n")
     report.append("**Root Cause**: Baseline adaptation is absorbing the initial drift signal.\n")
     report.append("The rolling baseline (α=0.92) adapts too quickly to the degrading state,\n")
     report.append("preventing the engine from accumulating enough evidence of structural change.\n")
-    report.append("**Evidence**: First alert cycle would be >50/59, arriving too late.\n")
 
     report.append("\n### A2: Subthreshold Weak Drift\n")
-    report.append("**Observation**: Max structural_drift_score = 0.050 (15x below 0.7 threshold)\n")
+    if a2:
+        ratio = 0.7 / max(a2.max_drift_score, 1e-12)
+        report.append(
+            f"**Observation**: Max structural_drift_score = {a2.max_drift_score:.3f} ({ratio:.1f}x below 0.7 threshold)\n"
+        )
+        report.append(f"**Evidence**: Alert threshold is 0.7 but max observed is {a2.max_drift_score:.3f}.\n")
     report.append("**Problem**: The failure mode generates almost NO drift signal\n")
     report.append("**Root Cause**: Feature space may not capture this failure mechanism.\n")
     report.append("Either the selected sensors don't respond to this specific degradation,\n")
     report.append("or the geometric drift metric (Mahalanobis distance) doesn't detect it.\n")
-    report.append("**Evidence**: Alert threshold is 0.7 but max observed is 0.050.\n")
 
     report.append("\n### A3: Missing/Incomplete Features\n")
-    report.append("**Observation**: Sensors drop from 5 to 3 during failure period\n")
+    if a3:
+        report.append(
+            f"**Observation**: Sensors drop from {a3.max_sensors} to {a3.min_sensors} during failure period\n"
+        )
+        report.append(
+            f"**Evidence**: Sensor count reduced from {a3.max_sensors} → {a3.min_sensors}, triggering ValueError in stat_geometry.\n"
+        )
     report.append("**Problem**: Engine crashes with dimension mismatch errors\n")
     report.append("ValueError: operands could not be broadcast together with shapes (630,) (414,)\n")
     report.append("**Root Cause**: The geometry layer (fleet summary) expects consistent feature counts.\n")
     report.append("When a unit drops sensors, its vector dimension changes, causing broadcast failures\n")
     report.append("during inter-unit distance calculations.\n")
-    report.append("**Evidence**: Sensor count reduced from 5 → 3, triggering ValueError in stat_geometry.\n")
 
     report.append("\n## Comparison: Working Assets\n")
     report.append("| Asset | Max Drift | Alerts | Status |\n")
@@ -445,9 +459,22 @@ def generate_comparison_plots(dataset_path: Path, output_dir: Path):
     plt.close()
 
 
+def parse_args() -> argparse.Namespace:
+    """Parse command-line arguments."""
+    parser = argparse.ArgumentParser(description="Run structural engine asset group diagnostics.")
+    parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=Path(__file__).resolve().parent / "debug_outputs",
+        help="Directory where diagnostic artifacts are written.",
+    )
+    return parser.parse_args()
+
+
 def main():
     """Run complete diagnostic."""
-    output_dir = Path("/home/user/neraium-core/debug_outputs")
+    args = parse_args()
+    output_dir = args.output_dir.resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
 
     logger.info("="*80)
@@ -484,9 +511,17 @@ def main():
     logger.info("="*80)
     logger.info(f"Output directory: {output_dir}")
     logger.info(f"\nKey findings:")
-    logger.info(f"  • A0: WEAK DRIFT - max score 0.150 << 0.7 threshold")
-    logger.info(f"  • A2: SUBTHRESHOLD - max score 0.050, failure not in feature space")
-    logger.info(f"  • A3: MISSING SENSORS - sensor dropouts cause geometry layer errors")
+    for aid in ["A0", "A2", "A3"]:
+        t = telemetry.get(aid)
+        if not t:
+            continue
+        if aid == "A3":
+            logger.info(
+                f"  • {aid}: MISSING SENSORS - sensor range {t.max_sensors}→{t.min_sensors}, "
+                f"missing values={t.missing_values_total}"
+            )
+        else:
+            logger.info(f"  • {aid}: max score {t.max_drift_score:.3f} vs alert threshold 0.700")
     logger.info(f"\nReview:")
     logger.info(f"  - {report_file} (main analysis)")
     logger.info(f"  - {output_dir}/asset_comparison.png (visualization)")
