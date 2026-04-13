@@ -16,10 +16,9 @@ import logging
 from pathlib import Path
 from typing import Optional, Any
 
-from neraium_core.alignment import StructuralEngine
 from neraium_core.engine.production import ProductionEngine, InputFrame, EngineResult, BatchResult
 from neraium_core.engine.config import ProductionEngineConfig, ProductionLoggingConfig
-from scripts.validation.loaders import load_dataset
+from neraium_core.engine.dataset_loader import load_dataset
 
 
 logger = logging.getLogger(__name__)
@@ -97,6 +96,13 @@ class Engine:
         self._replay_results: list[dict] = []
 
         self._logger = logging.getLogger(__name__)
+
+    def _reset_runtime_state(self) -> None:
+        """Reset runtime state to ensure replay isolation between datasets."""
+        self._production_engine = ProductionEngine(self.config, self.logging_config)
+        self._structural_engine = self._production_engine._engine
+        self._replay_results = []
+        self._shadow_mode_evidence = []
 
     def ingest_frame(
         self,
@@ -182,8 +188,10 @@ class Engine:
             df = df[df["asset_id"].isin(unit_filter)]
             self._logger.info(f"Filtered to {len(df)} records for units: {unit_filter}")
 
+        # Replay uses an isolated runtime state for deterministic dataset-level metrics
+        self._reset_runtime_state()
+
         # Replay: iterate through frames in order
-        self._replay_results = []
         for _, row in df.iterrows():
             try:
                 # Convert row to engine frame format
