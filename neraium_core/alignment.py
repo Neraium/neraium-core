@@ -444,6 +444,13 @@ class StructuralEngine:
           - Primary policy/state fields are always present.
           - Legacy aliases remain available even before full analytics are ready.
           - Nested diagnostic payload slots are pre-populated for stable schemas.
+
+        Note on drift/instability fields:
+          - structural_drift_score: Unnormalized drift (0=aligned, 1=misaligned)
+          - structural_drift_score_smoothed: EMA-filtered drift
+          - drift_smooth: Alias for smoothed version (deprecated)
+          - relational_instability_score: Computed from correlation deviation [0=stable, 1=unstable]
+          - relational_stability_score: Placeholder (default 1.0, not computed, kept for compatibility)
         """
         return {
             "timestamp": frame["timestamp"],
@@ -456,7 +463,7 @@ class StructuralEngine:
             "structural_drift_score": 0.0,
             "structural_drift_score_smoothed": 0.0,
             "drift_smooth": 0.0,
-            "relational_stability_score": 1.0,
+            "relational_stability_score": 1.0,  # Placeholder; use relational_instability_score for actual metric
             "dynamic_signal_strength": 0.0,
             "system_phase": "STABLE",
             "transition_detected": False,
