@@ -4,6 +4,14 @@ This is the ONLY official benchmark runner for FD004/FD001 datasets.
 It uses StructuralEngine to process CMAPSS data and generate results.
 
 Usage:
+    # With explicit paths
+    python -m runners.run_fd004_canonical --test test_FD004.txt --rul RUL_FD004.txt
+
+    # Using environment variable
+    export CMAPSS_DATA_DIR=/path/to/cmapss/data
+    python -m runners.run_fd004_canonical
+
+    # Using ./data/ directory in repo (if present)
     python -m runners.run_fd004_canonical
 
 Output:
@@ -18,12 +26,13 @@ Output:
 
 from __future__ import annotations
 
+import argparse
 import json
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
@@ -41,10 +50,9 @@ OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 # Timestamp for this run
 TIMESTAMP = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
 
-# FD004 dataset paths (user must provide)
-DATA_DIR = Path.home() / "CMAPSSData"  # Change path as needed
-TEST_FILE = DATA_DIR / "test_FD004.txt"
-RUL_FILE = DATA_DIR / "RUL_FD004.txt"
+# FD004 dataset paths will be resolved at runtime
+TEST_FILE: Path | None = None
+RUL_FILE: Path | None = None
 
 # Output paths (canonical naming scheme)
 RESULTS_CSV = OUTPUT_DIR / f"FD004_{TIMESTAMP}.csv"
@@ -76,6 +84,82 @@ ENGINE_CONFIG = {
 # ============================================================
 # HELPERS
 # ============================================================
+
+def resolve_data_paths(test_arg: str | None = None, rul_arg: str | None = None) -> tuple[Path, Path]:
+    """Resolve test and RUL file paths with fallback logic.
+
+    Priority:
+    1. Command-line arguments (--test, --rul)
+    2. Environment variable CMAPSS_DATA_DIR
+    3. ./data/ directory in current repo
+    4. Raise error if not found
+
+    Args:
+        test_arg: Path to test file from command-line (can be relative or absolute)
+        rul_arg: Path to RUL file from command-line (can be relative or absolute)
+
+    Returns:
+        Tuple of (test_file, rul_file) as Path objects
+
+    Raises:
+        FileNotFoundError: If files cannot be located
+    """
+    test_file = None
+    rul_file = None
+
+    # Priority 1: Command-line arguments
+    if test_arg and rul_arg:
+        test_file = Path(test_arg).resolve()
+        rul_file = Path(rul_arg).resolve()
+        if test_file.exists() and rul_file.exists():
+            return test_file, rul_file
+        else:
+            missing = []
+            if not test_file.exists():
+                missing.append(str(test_file))
+            if not rul_file.exists():
+                missing.append(str(rul_file))
+            raise FileNotFoundError(f"Files not found: {', '.join(missing)}")
+
+    # Priority 2: Environment variable CMAPSS_DATA_DIR
+    env_dir = os.getenv("CMAPSS_DATA_DIR")
+    if env_dir:
+        env_path = Path(env_dir).resolve()
+        test_file = env_path / "test_FD004.txt"
+        rul_file = env_path / "RUL_FD004.txt"
+        if test_file.exists() and rul_file.exists():
+            return test_file, rul_file
+        else:
+            missing = []
+            if not test_file.exists():
+                missing.append(str(test_file))
+            if not rul_file.exists():
+                missing.append(str(rul_file))
+            raise FileNotFoundError(
+                f"CMAPSS_DATA_DIR={env_dir} set but files not found: {', '.join(missing)}"
+            )
+
+    # Priority 3: ./data/ directory in repo
+    repo_data_dir = Path("./data").resolve()
+    if repo_data_dir.exists():
+        test_file = repo_data_dir / "test_FD004.txt"
+        rul_file = repo_data_dir / "RUL_FD004.txt"
+        if test_file.exists() and rul_file.exists():
+            return test_file, rul_file
+
+    # Priority 4: Error
+    raise FileNotFoundError(
+        "Cannot locate CMAPSS data files. Tried:\n"
+        "  1. Command-line arguments (--test, --rul)\n"
+        "  2. Environment variable CMAPSS_DATA_DIR\n"
+        "  3. ./data/ directory in repo\n"
+        "\n"
+        "Please provide files using one of these methods:\n"
+        f"  • python -m runners.run_fd004_canonical --test <path> --rul <path>\n"
+        f"  • export CMAPSS_DATA_DIR=/path/to/cmapss/data\n"
+        f"  • Place files in ./data/ directory"
+    )
+
 
 def classify_alert_quality(lead_time: float) -> str:
     """Classify alert lead time quality.
@@ -276,6 +360,8 @@ def generate_charts(results_df: pd.DataFrame, scored_df: pd.DataFrame) -> None:
         results_df: DataFrame from run_engine (all frames)
         scored_df: DataFrame from score_results (summary per unit)
     """
+    import matplotlib.pyplot as plt
+
     print("\nGenerating charts...")
 
     lead = scored_df.loc[scored_df["has_alert"], "alert_lead"]
@@ -363,18 +449,42 @@ def print_summary(summary: dict[str, Any], scored_df: pd.DataFrame) -> None:
 
 def main() -> None:
     """Run canonical FD004 benchmark."""
-    if not TEST_FILE.exists():
-        raise FileNotFoundError(f"Missing test file: {TEST_FILE}\nPlease configure DATA_DIR in this script.")
-    if not RUL_FILE.exists():
-        raise FileNotFoundError(f"Missing RUL file: {RUL_FILE}\nPlease configure DATA_DIR in this script.")
+    parser = argparse.ArgumentParser(
+        description="Canonical FD004 benchmark runner using StructuralEngine",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "Path resolution priority:\n"
+            "  1. Command-line arguments (--test, --rul)\n"
+            "  2. Environment variable CMAPSS_DATA_DIR\n"
+            "  3. ./data/ directory in repo\n"
+        ),
+    )
+    parser.add_argument(
+        "--test",
+        type=str,
+        default=None,
+        help="Path to test file (e.g., test_FD004.txt). Can be relative or absolute.",
+    )
+    parser.add_argument(
+        "--rul",
+        type=str,
+        default=None,
+        help="Path to RUL file (e.g., RUL_FD004.txt). Can be relative or absolute.",
+    )
+    args = parser.parse_args()
+
+    # Resolve data paths with fallback logic
+    global TEST_FILE, RUL_FILE
+    TEST_FILE, RUL_FILE = resolve_data_paths(args.test, args.rul)
 
     print("=" * 70)
     print("CANONICAL FD004 BENCHMARK RUNNER")
     print("=" * 70)
-    print(f"Test File: {TEST_FILE}")
-    print(f"RUL File: {RUL_FILE}")
-    print(f"Output Dir: {OUTPUT_DIR}")
-    print(f"Timestamp: {TIMESTAMP}")
+    print(f"\nResolved paths:")
+    print(f"  Test File: {TEST_FILE}")
+    print(f"  RUL File:  {RUL_FILE}")
+    print(f"  Output Dir: {OUTPUT_DIR}")
+    print(f"  Timestamp: {TIMESTAMP}")
 
     # Load data
     df = load_fd004(TEST_FILE)
