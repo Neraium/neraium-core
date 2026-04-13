@@ -13,7 +13,7 @@
 
 :root {
   /* BACKGROUND PALETTE - Deep, authoritative */
-  --bg-primary: #0A0E1A;
+  --bg-primary: #000000;
   --bg-secondary: #0F1426;
   --bg-tertiary: #14192E;
   --bg-accent: #1A2847;
@@ -98,15 +98,15 @@ input[type="range"] {
 
 .ner-command-header {
   min-height: 72px;
-  border: 1px solid var(--border-primary);
+  border: 3px solid #3B82F6;
   border-radius: 8px;
-  background: var(--bg-secondary);
+  background: linear-gradient(135deg, #1E40AF 0%, #2563EB 100%);
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: 18px 32px;
   margin: 0 0 36px 0;
-  box-shadow: var(--shadow-md);
+  box-shadow: 0 0 30px rgba(59, 130, 246, 0.6);
   transition: all 0.25s ease;
 }
 
@@ -162,14 +162,14 @@ input[type="range"] {
 .ner-controls-row {
   margin: 0 !important;
   gap: 16px !important;
-  background: var(--bg-secondary);
-  border: 1px solid var(--border-primary);
+  background: linear-gradient(135deg, #1A1F35 0%, #0F1426 100%);
+  border: 2px solid #3B82F6;
   border-top: none;
   border-radius: 0 0 8px 8px;
   padding: 22px 32px !important;
   display: flex !important;
   align-items: center !important;
-  box-shadow: var(--shadow-md);
+  box-shadow: 0 0 25px rgba(59, 130, 246, 0.4);
   margin-bottom: 36px !important;
 }
 
@@ -301,11 +301,11 @@ input[type="range"] {
    ============================================================================ */
 
 .ner-verdict-card {
-  border: 2px solid var(--status-admitted);
+  border: 4px solid var(--status-admitted);
   border-radius: 8px;
   background: var(--bg-secondary);
   padding: 44px 40px;
-  box-shadow: var(--shadow-lg);
+  box-shadow: 0 0 40px rgba(34, 197, 94, 0.5);
   position: relative;
   overflow: hidden;
   transition: all 0.25s ease;
@@ -316,12 +316,21 @@ input[type="range"] {
 .ner-verdict-card[style*="--verdict-accent:#f97316"],
 .ner-verdict-card[style*="--verdict-accent:#F97316"] {
   border-color: var(--status-suppressed);
+  box-shadow: 0 0 40px rgba(249, 115, 22, 0.5);
 }
 
 /* Void state - purple */
 .ner-verdict-card[style*="--verdict-accent:#A78BFA"],
 .ner-verdict-card[style*="--verdict-accent:#b89fff"] {
   border-color: var(--status-void);
+  box-shadow: 0 0 40px rgba(167, 139, 250, 0.5);
+}
+
+/* Risk state - red */
+.ner-verdict-card[style*="--verdict-accent:#EF4444"],
+.ner-verdict-card[style*="--verdict-accent:#ef4444"] {
+  border-color: var(--status-risk);
+  box-shadow: 0 0 40px rgba(239, 68, 68, 0.5);
 }
 
 .ner-verdict-main {
@@ -365,7 +374,7 @@ input[type="range"] {
 }
 
 .ner-chip {
-  border: 1px solid var(--border-primary);
+  border: 2px solid var(--border-primary);
   background: var(--bg-tertiary);
   padding: 11px 18px;
   border-radius: 6px;
@@ -375,6 +384,7 @@ input[type="range"] {
   font-size: 12px;
   font-weight: 700;
   transition: all 0.2s ease;
+  box-shadow: 0 0 15px rgba(59, 130, 246, 0.3);
 }
 
 .ner-chip-label {
