@@ -133,7 +133,7 @@ def run_synthetic_asset_group_validation():
                 frames_processed += 1
 
                 if result:
-                    drift = result.get('drift_score', 0.0)
+                    drift = result.get('structural_drift_score', result.get('drift_score', 0.0))
                     max_drift = max(max_drift, drift)
 
                     state = result.get('state', 'STABLE')
@@ -258,36 +258,45 @@ def verify_a3_stability(results):
 
     a3_result = results.get('A3', {})
 
+    crashes = a3_result.get('crashes', 0)
+    frames_processed = a3_result.get('frames_processed', 0)
+    expected_frames = 150
+    dropout_events = a3_result.get('sensor_dropouts_handled', 0)
+
+    consistency_ok = crashes == 0 and frames_processed > 0
+    completion_ok = crashes == 0 and frames_processed == expected_frames
+    recovery_ok = crashes == 0 and (dropout_events == 0 or frames_processed > 0)
+
     stability_report = {
         'timestamp': datetime.now().isoformat(),
         'test_type': 'Sensor Dropout Handling (A3)',
         'checks': {
             'zero_crashes': {
-                'status': 'PASS' if a3_result.get('crashes', 0) == 0 else 'FAIL',
+                'status': 'PASS' if crashes == 0 else 'FAIL',
                 'description': 'No crashes from sensor dropouts',
-                'evidence': f"Crashes: {a3_result.get('crashes', 0)}",
+                'evidence': f"Crashes: {crashes}",
             },
             'consistent_dimensions': {
-                'status': 'PASS',
+                'status': 'PASS' if consistency_ok else 'FAIL',
                 'description': 'Vector dimensions remained consistent',
-                'evidence': f"Processed {a3_result.get('frames_processed', 0)} frames without dimension errors",
+                'evidence': f"Processed {frames_processed} frames with {crashes} crashes",
             },
             'successful_completion': {
-                'status': 'PASS',
+                'status': 'PASS' if completion_ok else 'FAIL',
                 'description': 'Full run completed successfully',
-                'evidence': f"Handled {a3_result.get('sensor_dropouts_handled', 0)} dropout events",
+                'evidence': f"Processed {frames_processed}/{expected_frames} frames and handled {dropout_events} dropout events",
             },
             'dropout_recovery': {
-                'status': 'PASS',
+                'status': 'PASS' if recovery_ok else 'FAIL',
                 'description': 'System recovered after dropouts',
-                'evidence': f"All {a3_result.get('frames_processed', 0)} frames processed successfully",
+                'evidence': f"Handled {dropout_events} dropout events with {crashes} crashes",
             },
         },
         'summary': {
-            'total_frames': a3_result.get('frames_processed', 0),
-            'sensor_dropout_events_handled': a3_result.get('sensor_dropouts_handled', 0),
-            'crashes': a3_result.get('crashes', 0),
-            'overall_status': 'STABLE' if a3_result.get('crashes', 0) == 0 else 'UNSTABLE',
+            'total_frames': frames_processed,
+            'sensor_dropout_events_handled': dropout_events,
+            'crashes': crashes,
+            'overall_status': 'STABLE' if completion_ok else 'UNSTABLE',
         }
     }
 
@@ -364,12 +373,12 @@ def evaluate_a2_behavior(results):
         },
         'checks': {
             'signal_surfaced': {
-                'status': 'PASS',
+                'status': 'PASS' if a2_result.get('signal_detected_count', 0) > 0 else 'FAIL',
                 'description': 'System surfaces no-signal events consistently',
                 'evidence': f"{a2_result.get('signal_detected_count', 0)} detection events in test",
             },
             'not_suppressed': {
-                'status': 'PASS',
+                'status': 'PASS' if a2_result.get('signal_detected_count', 0) > 0 else 'FAIL',
                 'description': 'System is no longer silent on weak signals',
                 'evidence': 'no_signal_detected field added to output',
             },
