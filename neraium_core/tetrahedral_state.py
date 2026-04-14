@@ -89,10 +89,12 @@ def compute_motion_features(positions: Sequence[Sequence[float]]) -> dict[str, f
             cos_theta = max(-1.0, min(1.0, cos_theta))
             curvature = float(np.arccos(cos_theta) / np.pi)
 
+    # Updated terminology: explicitly mark as geometric_* to clarify these are spatial motions in tetrahedral space,
+    # not state transitions or behavioral changes
     if speed < 0.02:
-        movement_summary = "stationary"
+        movement_summary = "geometric_stationary"
     elif curvature > 0.35:
-        movement_summary = "turning"
+        movement_summary = "geometric_turning"
     else:
         movement_summary = "steady_drift"
 
@@ -100,6 +102,71 @@ def compute_motion_features(positions: Sequence[Sequence[float]]) -> dict[str, f
         "speed": float(speed),
         "curvature": float(curvature),
         "movement_summary": movement_summary,
+    }
+
+
+def compute_semantic_consistency_flags(
+    state_label: str,
+    motion_summary: str,
+    policy_state: str | None = None,
+    transition_state: str | None = None,
+    drift_score: float | None = None,
+) -> dict[str, object]:
+    """Assess semantic consistency between tetrahedral geometry and system state.
+
+    Flags contradictions that may confuse users (e.g., ALERT state but BALANCED geometry).
+    """
+    consistency_status = "coherent"
+    tension_type: str | None = None
+    semantic_context = ""
+
+    # Tension 1: ALERT state but geometry shows no dominance
+    if (
+        policy_state == "ALERT"
+        and state_label == "GEOMETRICALLY_NEUTRAL"
+    ):
+        consistency_status = "tension"
+        tension_type = "alert_but_geometrically_neutral"
+        semantic_context = (
+            "System is in ALERT (high instability), but structural dimensions are equally "
+            "involved rather than localized to one axis. Indicates system-wide departure, not "
+            "localized stress. All four metrics are significantly elevated."
+        )
+
+    # Tension 2: High drift but geometric motion is stationary
+    if (
+        drift_score is not None
+        and drift_score >= 0.5
+        and motion_summary == "geometric_stationary"
+    ):
+        if not tension_type:
+            consistency_status = "tension"
+            tension_type = "high_drift_with_geometric_stasis"
+            semantic_context = (
+                "System is dwelling in an elevated stress region. Drift is high, but "
+                "metric values are not changing rapidly frame-to-frame, so the geometric "
+                "position in tetrahedral space remains fixed. This is normal when the system "
+                "is sustained at an elevated operating point."
+            )
+
+    # Tension 3: Sustained transition but geometric motion is stationary
+    if (
+        transition_state == "SUSTAINED_TRANSITION"
+        and motion_summary == "geometric_stationary"
+    ):
+        if not tension_type:
+            consistency_status = "tension"
+            tension_type = "sustained_transition_with_geometric_stasis"
+            semantic_context = (
+                "System is in an active, persisting state transition. Geometric position "
+                "is stable (stasis) because transition pressure remains constant. Geometric "
+                "motion measures position movement in tetrahedral space, not state evolution."
+            )
+
+    return {
+        "consistency_status": consistency_status,
+        "tension_type": tension_type,
+        "semantic_context": semantic_context,
     }
 
 
@@ -113,8 +180,17 @@ def compute_tetrahedral_state(
     regime_drift: float | None = None,
     reversibility: float | None = None,
     geometry_curvature: float | None = None,
+    policy_state: str | None = None,
+    transition_state: str | None = None,
 ) -> dict[str, object]:
-    """Build a read-only tetrahedral state payload from existing metrics."""
+    """Build a read-only tetrahedral state payload from existing metrics.
+
+    Optional parameters:
+    - policy_state: Current ALERT/WATCH/STABLE (used for semantic consistency checking)
+    - transition_state: WARMUP/STABLE/EMERGING_TRANSITION/SUSTAINED_TRANSITION
+
+    Includes semantic consistency flags to identify contradictions between geometry and policy.
+    """
     weights = compute_tetrahedral_weights(
         structural_drift_score=structural_drift_score,
         relational_instability_score=relational_instability_score,
@@ -135,11 +211,22 @@ def compute_tetrahedral_state(
         curvature = float(max(0.0, min(1.0, 0.65 * curvature + 0.35 * _clamp01(float(geometry_curvature)))))
 
     weight_peak = float(weights[nearest_vertex_key])
-    state_label = "BALANCED"
+    # Renamed: BALANCED → GEOMETRICALLY_NEUTRAL (clearer meaning)
+    state_label = "GEOMETRICALLY_NEUTRAL"
     if weight_peak >= 0.45:
         state_label = f"{_VERTEX_LABELS[nearest_vertex_key]}_DOMINANT"
     elif edge_alignment >= 0.35:
         state_label = "EDGE_ALIGNED"
+
+    # Compute semantic consistency flags
+    motion_summary_value = str(motion["movement_summary"])
+    semantic_flags = compute_semantic_consistency_flags(
+        state_label=state_label,
+        motion_summary=motion_summary_value,
+        policy_state=policy_state,
+        transition_state=transition_state,
+        drift_score=float(structural_drift_score),
+    )
 
     payload = {
         "weights": {k: round(float(v), 6) for k, v in weights.items()},
@@ -151,10 +238,16 @@ def compute_tetrahedral_state(
         "speed": round(float(motion["speed"]), 6),
         "curvature": round(float(curvature), 6),
         "state_label": state_label,
-        "movement_summary": str(motion["movement_summary"]),
+        "geometric_motion_class": motion_summary_value,  # New name (clearer meaning)
+        "movement_summary": motion_summary_value,  # Backward compatibility
+        "semantic_consistency": semantic_flags,
     }
     if regime_drift is not None:
         payload["regime_drift"] = round(_clamp01(float(regime_drift)), 6)
     if reversibility is not None:
         payload["reversibility"] = round(_clamp01(float(reversibility)), 6)
+    if policy_state is not None:
+        payload["policy_state_context"] = policy_state
+    if transition_state is not None:
+        payload["transition_state_context"] = transition_state
     return payload
