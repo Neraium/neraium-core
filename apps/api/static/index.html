@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Neraium SII</title>
+    <link rel="stylesheet" href="/web/styles.css?v=__NERAIUM_ASSET_VERSION__">
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://cdn.jsdelivr.net/npm/three@0.162.0/build/three.module.js",
+            "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.162.0/examples/jsm/"
+        }
+    }
+    </script>
+</head>
+<body>
+    <div id="app">
+        <div id="loadingOverlay" style="display: none;">
+            <div id="loadingMessage">Loading...</div>
+        </div>
+        <div id="seedDemoBtn"></div>
+        <div id="runsSearchInput"></div>
+        <div id="runResultsSearchInput"></div>
+        <div id="runRangeControls" data-range=""></div>
+        <div id="uploadDropZone"></div>
+        <div id="selectedFileName"></div>
+        <div id="dashboardEmpty"></div>
+        <div id="runDetailEmpty"></div>
+        <div id="runResultsEmpty"></div>
+    </div>
+    <script type="module" src="/web/app.js?v=__NERAIUM_ASSET_VERSION__"></script>
+</body>
+</html>
