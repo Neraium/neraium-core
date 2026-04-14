@@ -55,6 +55,9 @@ try:
 except ImportError:  # pragma: no cover - optional dependency
     tqdm = None
 
+# Force disable tqdm due to compatibility issues with GroupBy
+tqdm = None
+
 
 # ============================================================
 # TURBO CONFIGURATION
@@ -262,7 +265,7 @@ def run_engine(df: pd.DataFrame) -> list[dict[str, Any]]:
     else:
         print("Progress mode: tqdm progress bar.")
 
-    unit_groups = df.groupby("unit", sort=True)
+    unit_groups = list(df.groupby("unit", sort=True))
     unit_iter = unit_groups
     if tqdm is not None:
         unit_iter = tqdm(
