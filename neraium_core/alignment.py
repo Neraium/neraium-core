@@ -1340,6 +1340,78 @@ class StructuralEngine:
         health += stability_score * 20.0
         return int(round(max(0.0, min(100.0, health))))
 
+    def _compute_display_health(
+        self,
+        policy_state: str,
+        smoothed_drift: float,
+        watch_threshold: float | None,
+        alert_threshold: float | None,
+    ) -> int:
+        """
+        Compute UI-safe display_health metric aligned with policy state machine.
+
+        Mapping:
+        - STABLE (warmup or drift < watch_thr): 70-100
+        - WATCH (watch_thr <= drift < alert_thr): 35-70
+        - ALERT (drift >= alert_thr): 0-35
+
+        During warmup (no thresholds), returns 95 for safety.
+        Interpolates smoothly within each band based on drift relative to thresholds.
+        """
+        # Warmup: thresholds not yet calibrated; keep health high for safety
+        if watch_threshold is None or alert_threshold is None:
+            return 95
+
+        # Clamp drift to non-negative for computation
+        drift = max(0.0, smoothed_drift)
+
+        if policy_state == "ALERT":
+            # ALERT: maps to 0-35
+            # At alert_threshold: 35, above alert_threshold: down to 0
+            if drift <= alert_threshold:
+                # Shouldn't happen, but handle gracefully
+                return 35
+            else:
+                # Drift above alert threshold: interpolate down to 0
+                # Use a scale that drops health significantly as drift increases
+                # Map (alert_thr, alert_thr+1.0) -> (35, 0)
+                excess_drift = drift - alert_threshold
+                # Scale: every unit of drift above alert reduces health by ~35 points
+                health = max(0.0, 35.0 - excess_drift * 35.0)
+                return int(round(health))
+
+        elif policy_state == "WATCH":
+            # WATCH: maps to 35-70
+            # At watch_threshold: 70, at alert_threshold: 35
+            if drift <= watch_threshold:
+                # Shouldn't happen, but handle gracefully
+                return 70
+            else:
+                # Interpolate between watch and alert thresholds
+                drift_range = alert_threshold - watch_threshold
+                if drift_range > 0:
+                    progress = (drift - watch_threshold) / drift_range
+                    progress = max(0.0, min(1.0, progress))  # Clamp to [0, 1]
+                    health = 70.0 - progress * 35.0  # From 70 down to 35
+                else:
+                    health = 70.0
+                return int(round(health))
+
+        else:
+            # STABLE (or unknown): maps to 70-100
+            # At 0 drift: 100, at watch_threshold: 70
+            if drift >= watch_threshold:
+                # Shouldn't happen, but handle gracefully
+                return 70
+            else:
+                # Interpolate between 0 and watch_threshold
+                if watch_threshold > 0:
+                    progress = drift / watch_threshold
+                    health = 100.0 - progress * 30.0  # From 100 down to 70
+                else:
+                    health = 100.0
+                return int(round(max(70.0, health)))
+
     def _update_drift_state_machine(self, drift_score: float) -> tuple[str, float]:
         # O(1) rolling mean for drift smoothing to avoid frame-level overhead.
         raw = float(drift_score)
@@ -2428,6 +2500,16 @@ class StructuralEngine:
                 base_components.update(raw_canonical)
                 components = base_components
 
+                # Compute health metrics
+                raw_health = self._system_health(drift_score, stability_score)
+                watch_thr = None
+                alert_thr = None
+                if self._drift_watch_alert_thresholds is not None:
+                    watch_thr, alert_thr = self._drift_watch_alert_thresholds
+                display_health = self._compute_display_health(
+                    alert_state, float(smoothed_drift_score), watch_thr, alert_thr
+                )
+
                 result.update(
                     {
                         "structural_drift_score": round(drift_score, 4),
@@ -2436,7 +2518,9 @@ class StructuralEngine:
                         "dynamic_signal_strength": round(float(drift_velocity), 4),
                         "system_phase": system_phase,
                         "transition_detected": bool(transition_detected),
-                        "system_health": self._system_health(drift_score, stability_score),
+                        "raw_system_health": raw_health,
+                        "display_health": display_health,
+                        "system_health": display_health,  # Backward-compat: use display_health for UI
                         # Backward-compat precedence: `state` intentionally reflects
                         # policy state so existing consumers stay single-field.
                         "state": alert_state,

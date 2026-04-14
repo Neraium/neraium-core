@@ -257,7 +257,9 @@ class SIIResult(TypedDict):
     confidence_reasoning: list[str]
     explanation: str
     read_only: bool
-    system_health: int
+    raw_system_health: int
+    display_health: int
+    system_health: int  # Deprecated: kept for backward compatibility; use display_health for UI
     attribution: dict[str, Any]
     regime_memory: dict[str, Any]
     risk_assessment: dict[str, Any]

@@ -162,7 +162,9 @@ def _compact_result_view(result: dict[str, Any] | None) -> dict[str, Any] | None
         "state": result.get("state"),
         "regime_name": result.get("regime_name"),
         "risk_level": result.get("risk_level"),
-        "system_health": result.get("system_health"),
+        "raw_system_health": result.get("raw_system_health"),
+        "display_health": result.get("display_health"),
+        "system_health": result.get("system_health"),  # Backward-compat: same as display_health
         "structural_drift_score": result.get("structural_drift_score"),
         "alert": result.get("alert"),
         "confidence": result.get("confidence"),
