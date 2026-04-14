@@ -59,7 +59,7 @@ from .integration import (
     apply_integration_mapping,
     load_integration_config,
 )
-# from .web import build_web_router
+from .web import build_web_router
 from .routers.health import build_health_router
 from .routers.alerts import build_alerts_router
 from .routers.geometry import build_geometry_router
@@ -92,6 +92,12 @@ from .services.ingest_jobs import IngestJobsManager
 from .services.demo_jobs import DemoJobsManager
 from .services.pull_integrations import PullIntegrationsManager
 from .services.state_restore import OperationalStateRestoreService
+from .services.geometry import (
+    STRUCTURAL_FLOW_PLANE_MAX_N,
+    _build_geometry_edges,
+    _diamond_plane_positions_four,
+    _plane_ring_positions,
+)
 from ._core_imports import (
     ResultStore,
     StructuralMonitoringService,
@@ -1297,7 +1303,7 @@ def create_app(
             site_id=site_id,
         )
 
-# app.include_router(build_web_router())
+    app.include_router(build_web_router())
     _mount_web_static(app)
 
     return app
