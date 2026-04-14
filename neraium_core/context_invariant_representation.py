@@ -106,7 +106,7 @@ def _rolling_median(arr: np.ndarray, window: int) -> np.ndarray:
         end_idx = t + 1
 
         # For initial partial windows, rebuild from scratch (smaller cost)
-        if t < w - 1:
+        if t <= w - 1:
             # Rebuild sorted window for this time step
             window_vals = a[start_idx:end_idx]
             for col in range(d):

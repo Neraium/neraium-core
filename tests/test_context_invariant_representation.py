@@ -6,6 +6,7 @@ from neraium_core.alignment import StructuralEngine
 from neraium_core.context_invariant_representation import (
     TemporalRepresentationConfig,
     build_temporal_representation,
+    _rolling_median,
 )
 
 
@@ -94,3 +95,73 @@ def test_structural_engine_emits_context_diagnostics() -> None:
     exp = out.get("experimental_analytics") or {}
     assert "context_diagnostics" in exp
     assert exp.get("representation", {}).get("mode") == "combined"
+
+
+def test_rolling_median_no_index_error_on_window_transition() -> None:
+    """Regression test for IndexError in rolling_median at window completion.
+
+    Previously, the condition `if t < w - 1:` caused an off-by-one error where
+    at t = w-1 (first complete window), the code would incorrectly use sliding
+    window logic and try to access a[t-w] = a[-1] (last element) instead of
+    rebuilding the complete window. This test ensures the fix is in place.
+
+    See: https://github.com/neraium/neraium-core/issues/XXXX
+    """
+    # Single column case that triggered the original error
+    arr = np.array([
+        [1.0],
+        [2.0],
+        [3.0],
+        [4.0],
+        [5.0],
+    ], dtype=float)
+
+    # Should not raise IndexError
+    result = _rolling_median(arr, window=3)
+
+    # Verify results are correct
+    assert result.shape == arr.shape
+    # First value: median of [1.0] = 1.0
+    assert np.isclose(result[0, 0], 1.0)
+    # Second value: median of [1.0, 2.0] = 1.5
+    assert np.isclose(result[1, 0], 1.5)
+    # Third value: median of [1.0, 2.0, 3.0] = 2.0
+    assert np.isclose(result[2, 0], 2.0)
+    # Fourth value: median of [2.0, 3.0, 4.0] = 3.0
+    assert np.isclose(result[3, 0], 3.0)
+    # Fifth value: median of [3.0, 4.0, 5.0] = 4.0
+    assert np.isclose(result[4, 0], 4.0)
+
+
+def test_rolling_median_multi_column() -> None:
+    """Test rolling_median with multiple columns after window transition fix."""
+    arr = np.array([
+        [1.0, 10.0],
+        [2.0, 20.0],
+        [3.0, 30.0],
+        [4.0, 40.0],
+        [5.0, 50.0],
+    ], dtype=float)
+
+    result = _rolling_median(arr, window=3)
+
+    assert result.shape == arr.shape
+    # Check column 0
+    assert np.isclose(result[2, 0], 2.0)
+    assert np.isclose(result[3, 0], 3.0)
+    # Check column 1
+    assert np.isclose(result[2, 1], 20.0)
+    assert np.isclose(result[3, 1], 30.0)
+
+
+def test_rolling_median_larger_window() -> None:
+    """Test rolling_median with larger windows to ensure sustained correctness."""
+    arr = np.arange(20, dtype=float).reshape(-1, 1)
+
+    result = _rolling_median(arr, window=5)
+
+    assert result.shape == arr.shape
+    # At index 4 (first complete window): median of [0, 1, 2, 3, 4] = 2
+    assert np.isclose(result[4, 0], 2.0)
+    # At index 10: median of [6, 7, 8, 9, 10] = 8
+    assert np.isclose(result[10, 0], 8.0)
