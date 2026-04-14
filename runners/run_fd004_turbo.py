@@ -625,9 +625,12 @@ def main() -> None:
 
     if args.max_cycles:
         # Keep first max_cycles per unit
-        df = df.groupby("unit", as_index=False).apply(
-            lambda x: x.nsmallest(args.max_cycles, "cycle")
-        ).reset_index(drop=True)
+        # Use explicit loop to avoid pandas groupby.apply() column dropping bug
+        dfs = []
+        for unit_id in df["unit"].unique():
+            unit_df = df[df["unit"] == unit_id].nsmallest(args.max_cycles, "cycle")
+            dfs.append(unit_df)
+        df = pd.concat(dfs, ignore_index=True)
 
     print(f"\nLoaded {len(df)} rows from {df['unit'].nunique()} units")
     print(f"  (Using units: {list(units_to_process)})")
