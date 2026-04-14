@@ -288,7 +288,7 @@ class StructuralEngine:
         self._last_corr_recent: Optional[np.ndarray] = None
         # Optimization: Cache graph metrics and correlation matrices to avoid recomputation
         self._cached_graph_metrics: dict[str, object] | None = None
-        self._cached_graph_metrics_corr_hash: int = 0
+        self._cached_graph_metrics_hash: int | None = None
         self._cached_correlation_matrix_recent: Optional[np.ndarray] = None
         self._cached_correlation_matrix_baseline: Optional[np.ndarray] = None
         self._transition_pressure_ema: float = 0.0
@@ -495,12 +495,14 @@ class StructuralEngine:
         return corr_recent
 
     def _get_cached_graph_metrics(self, adjacency: np.ndarray, corr_recent: np.ndarray) -> dict[str, float]:
-        """Get graph metrics, using cache if correlation matrix hasn't changed."""
+        """Get graph metrics, using cache if both adjacency and correlation matrix haven't changed."""
         try:
-            # Hash the correlation matrix to detect changes
-            current_hash = hash(corr_recent.tobytes())
+            # Hash both adjacency and correlation matrix to detect changes
+            adj_hash = hash(adjacency.tobytes())
+            corr_hash = hash(corr_recent.tobytes())
+            combined_hash = hash((adj_hash, corr_hash))
             if (self._cached_graph_metrics is not None and
-                current_hash == self._cached_graph_metrics_corr_hash):
+                combined_hash == getattr(self, '_cached_graph_metrics_hash', None)):
                 return self._cached_graph_metrics
         except Exception:
             pass
@@ -509,7 +511,9 @@ class StructuralEngine:
         metrics = graph_metrics(adjacency, corr=corr_recent)
         self._cached_graph_metrics = metrics
         try:
-            self._cached_graph_metrics_corr_hash = hash(corr_recent.tobytes())
+            adj_hash = hash(adjacency.tobytes())
+            corr_hash = hash(corr_recent.tobytes())
+            self._cached_graph_metrics_hash = hash((adj_hash, corr_hash))
         except Exception:
             pass
         return metrics
