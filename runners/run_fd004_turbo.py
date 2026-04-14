@@ -267,6 +267,7 @@ def run_engine(df: pd.DataFrame) -> list[dict[str, Any]]:
     if tqdm is not None:
         unit_iter = tqdm(
             unit_groups,
+            total=total_units,
             desc="Processing units",
             ascii=True,
             dynamic_ncols=True,
