@@ -9,7 +9,10 @@ ArrayLike = Any
 
 
 def lagged_correlation_matrix(observations: ArrayLike, lag: int = 1) -> np.ndarray:
-    """Structural directional proxy C_ij = corr(x_i(t), x_j(t+lag))."""
+    """Structural directional proxy C_ij = corr(x_i(t), x_j(t+lag)).
+
+    Vectorized implementation using batch covariance for O(n²) instead of O(n²·T).
+    """
     data = np.asarray(observations, dtype=float)
     if data.ndim != 2:
         raise ValueError("Expected 2D observations")
@@ -19,12 +22,25 @@ def lagged_correlation_matrix(observations: ArrayLike, lag: int = 1) -> np.ndarr
     current = np.nan_to_num(data[:-lag], nan=0.0, posinf=0.0, neginf=0.0)
     future = np.nan_to_num(data[lag:], nan=0.0, posinf=0.0, neginf=0.0)
     n_features = data.shape[1]
-    result = np.zeros((n_features, n_features), dtype=float)
 
+    # Vectorized correlation computation using standardization
     with np.errstate(invalid="ignore", divide="ignore"):
-        for i in range(n_features):
-            for j in range(n_features):
-                result[i, j] = np.corrcoef(current[:, i], future[:, j])[0, 1]
+        # Normalize: (x - mean) / std
+        current_mean = np.mean(current, axis=0, keepdims=True)
+        current_std = np.std(current, axis=0, keepdims=True)
+        current_std = np.where(current_std < 1e-12, 1e-12, current_std)
+        current_norm = (current - current_mean) / current_std
+
+        future_mean = np.mean(future, axis=0, keepdims=True)
+        future_std = np.std(future, axis=0, keepdims=True)
+        future_std = np.where(future_std < 1e-12, 1e-12, future_std)
+        future_norm = (future - future_mean) / future_std
+
+        # Compute correlation: mean(norm_x * norm_y) over time
+        # Shape: (T, n_features) @ (n_features, n_features) = (T, n_features)
+        # Then mean over T to get (n_features, n_features)
+        n_obs = current.shape[0]
+        result = (current_norm.T @ future_norm) / max(1.0, float(n_obs))
 
     return np.nan_to_num(result, nan=0.0, posinf=0.0, neginf=0.0)
 
