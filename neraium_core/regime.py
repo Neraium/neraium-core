@@ -1,9 +1,19 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 import numpy as np
+
+try:
+    from scipy.spatial import cKDTree
+    _SCIPY_SPATIAL_AVAILABLE = True
+except ImportError:
+    _SCIPY_SPATIAL_AVAILABLE = False
+    cKDTree = None  # type: ignore[assignment]
+
+# Use KD-tree indexing when regime library exceeds this size for O(log k) lookups
+_KDTREE_MIN_REGIMES = 20
 
 
 @dataclass(frozen=True)
@@ -112,15 +122,75 @@ def assign_regime(
     sig = np.asarray(signature, dtype=float)
     threshold = float("inf") if max_distance is None else float(max_distance)
 
+    # For large regime libraries, use KD-tree for faster nearest-neighbor search
+    candidates = [r for r in regimes if not (r.get("pending", False) and not include_pending)]
+    if not candidates:
+        return None
+
+    # Try KD-tree acceleration for large regime libraries
+    if _SCIPY_SPATIAL_AVAILABLE and len(candidates) >= _KDTREE_MIN_REGIMES:
+        try:
+            # Build KD-tree from regime centroids
+            centroids = []
+            regime_indices = []
+            for idx, regime in enumerate(candidates):
+                center = np.asarray(regime.get("mean", []), dtype=float)
+                if center.size > 0:
+                    centroids.append(center)
+                    regime_indices.append(idx)
+
+            if centroids:
+                tree = cKDTree(np.array(centroids))
+                # Query for k nearest neighbors (use k=3 to account for closest matches)
+                distances, indices = tree.query(sig[:len(centroids[0])], k=min(3, len(centroids)))
+
+                if np.isscalar(distances):
+                    # Single nearest neighbor
+                    distances = np.array([distances])
+                    indices = np.array([indices])
+
+                # Check candidates in order of proximity
+                nearest_name: str | None = None
+                nearest_distance: float = float("inf")
+                nearest_margin: float = float("-inf")
+                nearest_index = 0
+
+                for dist, idx in zip(distances, indices):
+                    if idx >= len(regime_indices):
+                        continue
+                    regime_idx = regime_indices[idx]
+                    regime = candidates[regime_idx]
+                    structure = _lawful_structure_from_regime(regime, threshold=threshold)
+                    full_dist, proto_idx = structure.nearest_distance(sig)
+
+                    if not np.isfinite(full_dist):
+                        continue
+                    margin = structure.coherence_margin(sig)
+                    if full_dist < nearest_distance:
+                        nearest_distance = float(full_dist)
+                        nearest_name = structure.name
+                        nearest_margin = float(margin)
+                        nearest_index = int(proto_idx)
+
+                if nearest_name is not None and (max_distance is None or nearest_distance <= float(max_distance)):
+                    return {
+                        "name": nearest_name,
+                        "distance": nearest_distance,
+                        "prototype_index": nearest_index,
+                        "coherence_margin": nearest_margin,
+                    }
+                return None
+        except Exception:
+            pass  # Fall through to linear search
+
+    # Linear search fallback
     nearest_name: str | None = None
     nearest_distance: float = float("inf")
     nearest_margin: float = float("-inf")
     nearest_index = 0
 
-    for regime in regimes:
+    for regime in candidates:
         structure = _lawful_structure_from_regime(regime, threshold=threshold)
-        if structure.pending and not include_pending:
-            continue
         dist, idx = structure.nearest_distance(sig)
         if not np.isfinite(dist):
             continue

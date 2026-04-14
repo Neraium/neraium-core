@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import bisect
 from dataclasses import dataclass
 
 import numpy as np
@@ -81,19 +82,58 @@ def _rolling_mean(arr: np.ndarray, window: int) -> np.ndarray:
 
 
 def _rolling_median(arr: np.ndarray, window: int) -> np.ndarray:
+    """Efficient rolling median using sorted list per column for O(w·log w) complexity.
+
+    Instead of recomputing full median via np.median (which sorts the window each time),
+    maintain a sorted list and insert/remove in O(log w) via bisect. This gives O(n·d·log w)
+    instead of O(n·d·w·log w).
+    """
     n, d = arr.shape
     w = max(1, int(window))
     a = np.asarray(arr, dtype=float)
     out = np.zeros_like(a, dtype=float)
+
     if w == 1:
         return a
-    wm1 = w - 1
-    for t in range(min(wm1, n)):
+
+    # For each column, maintain a sorted list and compute rolling median
+    sorted_windows = [[] for _ in range(d)]
+    deque_windows = [[] for _ in range(d)]
+
+    for t in range(n):
         lo = max(0, t - w + 1)
-        out[t] = np.median(a[lo : t + 1], axis=0)
-    if n > wm1:
-        sw = _sliding_row_windows(a, w)
-        out[wm1:] = np.median(sw, axis=1)
+        start_idx = max(0, t - w + 1)
+        end_idx = t + 1
+
+        # For initial partial windows, rebuild from scratch (smaller cost)
+        if t < w - 1:
+            # Rebuild sorted window for this time step
+            window_vals = a[start_idx:end_idx]
+            for col in range(d):
+                sorted_windows[col] = sorted(window_vals[:, col])
+                deque_windows[col] = list(window_vals[:, col])
+        else:
+            # Sliding window: remove oldest, add newest
+            old_val = a[t - w, :]
+            new_val = a[t, :]
+
+            for col in range(d):
+                # Remove old value from sorted list
+                old_v = old_val[col]
+                sorted_windows[col].pop(bisect.bisect_left(sorted_windows[col], old_v))
+                # Add new value
+                new_v = new_val[col]
+                bisect.insort(sorted_windows[col], new_v)
+
+        # Extract median from sorted list
+        sorted_len = len(sorted_windows[0])
+        mid = sorted_len // 2
+        for col in range(d):
+            if sorted_len % 2 == 1:
+                out[t, col] = sorted_windows[col][mid]
+            else:
+                out[t, col] = (sorted_windows[col][mid - 1] + sorted_windows[col][mid]) / 2.0
+
     return out
 
 
