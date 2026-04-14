@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from functools import lru_cache
 from typing import Any
 
 import numpy as np
@@ -19,6 +20,18 @@ except ImportError:
 
 
 ArrayLike = Any
+
+
+def _matrix_to_hashable(arr: np.ndarray) -> tuple:
+    """Convert matrix to hashable tuple for caching."""
+    return tuple(arr.flat)
+
+
+@lru_cache(maxsize=64)
+def _top_k_eigh_cached(data_tuple: tuple, shape: tuple, k: int) -> tuple[np.ndarray, np.ndarray]:
+    """Cached version of _top_k_eigh."""
+    matrix = np.array(data_tuple).reshape(shape)
+    return _top_k_eigh(matrix, k)
 
 
 def _top_k_eigh(matrix: np.ndarray, k: int) -> tuple[np.ndarray, np.ndarray]:
@@ -105,12 +118,27 @@ def spectral_gap(matrix: ArrayLike) -> float:
     return float(evals[0] - evals[1])
 
 
-def dominant_mode_loading(matrix: ArrayLike) -> dict[str, list[float] | float]:
+def dominant_mode_loading(matrix: ArrayLike, cached: bool = True) -> dict[str, list[float] | float]:
+    """Compute dominant eigenvalue and eigenvector.
+
+    Args:
+        matrix: Square matrix
+        cached: If True, results are cached for identical matrices (default True)
+
+    Returns:
+        Dict with 'dominant_eigenvalue' and 'dominant_eigenvector' keys
+    """
     values = np.asarray(matrix, dtype=float)
     if values.ndim != 2 or values.shape[0] != values.shape[1] or values.size == 0:
         return {"dominant_eigenvalue": 0.0, "dominant_eigenvector": []}
     safe = np.nan_to_num(values, nan=0.0, posinf=0.0, neginf=0.0)
-    evals, evecs = _top_k_eigh(safe, k=1)
+
+    if cached:
+        data_tuple = _matrix_to_hashable(safe)
+        evals, evecs = _top_k_eigh_cached(data_tuple, safe.shape, k=1)
+    else:
+        evals, evecs = _top_k_eigh(safe, k=1)
+
     if evals.size == 0:
         return {"dominant_eigenvalue": 0.0, "dominant_eigenvector": []}
     return {

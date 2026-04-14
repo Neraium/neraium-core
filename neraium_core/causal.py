@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Optional
+import os
 
 import numpy as np
 
@@ -145,13 +146,8 @@ def rank_actions(*, validation_plan: dict[str, Any], risk_assessment: dict[str, 
     }
 
 
-def granger_causality_matrix(X: np.ndarray, lag: int = 1) -> np.ndarray:
-    """
-    Lightweight Granger-style proxy matrix.
-
-    This is not formal causal proof. It estimates directional influence using
-    lagged univariate regression quality as a structural proxy.
-    """
+def _granger_causality_matrix_serial(X: np.ndarray, lag: int = 1) -> np.ndarray:
+    """Serial version of Granger causality matrix computation."""
     X = np.asarray(X, dtype=float)
 
     if X.ndim != 2 or X.shape[0] <= lag or X.shape[1] < 2:
@@ -186,6 +182,41 @@ def granger_causality_matrix(X: np.ndarray, lag: int = 1) -> np.ndarray:
             C[i, j] = 1.0 / (error + 1e-6)
 
     return C
+
+
+def granger_causality_matrix(X: np.ndarray, lag: int = 1, parallel: Optional[bool] = None) -> np.ndarray:
+    """Lightweight Granger-style proxy matrix.
+
+    This is not formal causal proof. It estimates directional influence using
+    lagged univariate regression quality as a structural proxy.
+
+    Args:
+        X: Time-series matrix of shape (T, N)
+        lag: Lag for causality computation
+        parallel: If True, use parallel computation. If None, auto-detect based on size
+                 and NERAIUM_PARALLEL_CAUSAL env var.
+
+    Returns:
+        Causality matrix of shape (N, N)
+    """
+    if parallel is None:
+        # Auto-detect: use parallel if matrix is large and env var allows
+        use_parallel = (
+            os.environ.get("NERAIUM_PARALLEL_CAUSAL", "").strip().lower() in ("1", "true", "yes")
+            and X.shape[1] >= 8  # Only worth parallelizing for large matrices
+        )
+    else:
+        use_parallel = parallel
+
+    if use_parallel:
+        try:
+            from neraium_core.realtime.parallel_causal import granger_causality_matrix_parallel
+            return granger_causality_matrix_parallel(X, lag)
+        except ImportError:
+            # Fall back to serial if parallel module not available
+            pass
+
+    return _granger_causality_matrix_serial(X, lag)
 
 
 def causal_metrics(C: np.ndarray) -> dict[str, float]:
