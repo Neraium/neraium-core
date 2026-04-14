@@ -50,6 +50,11 @@ import pandas as pd
 
 from neraium_core.alignment import StructuralEngine
 
+try:
+    from tqdm.auto import tqdm
+except ImportError:  # pragma: no cover - optional dependency
+    tqdm = None
+
 
 # ============================================================
 # TURBO CONFIGURATION
@@ -252,11 +257,40 @@ def run_engine(df: pd.DataFrame) -> list[dict[str, Any]]:
     total_units = df["unit"].nunique()
 
     print(f"\nProcessing {total_units} units through StructuralEngine (TURBO)...")
+    if tqdm is None:
+        print("Progress mode: fallback text indicator (install tqdm for dynamic progress bars).")
+    else:
+        print("Progress mode: tqdm progress bars.")
 
-    for idx, (unit, unit_df) in enumerate(df.groupby("unit", sort=True), start=1):
+    unit_groups = df.groupby("unit", sort=True)
+    unit_iter = unit_groups
+    if tqdm is not None:
+        unit_iter = tqdm(
+            unit_groups,
+            total=total_units,
+            desc="Units",
+            unit="unit",
+            dynamic_ncols=True,
+        )
+
+    for idx, (unit, unit_df) in enumerate(unit_iter, start=1):
         unit_df = unit_df.sort_values("cycle").reset_index(drop=True)
+        total_cycles = len(unit_df)
+        cycle_iter = unit_df.iterrows()
 
-        for _, row in unit_df.iterrows():
+        if tqdm is not None:
+            cycle_iter = tqdm(
+                unit_df.iterrows(),
+                total=total_cycles,
+                desc=f"Unit {int(unit)}",
+                unit="frame",
+                leave=False,
+                dynamic_ncols=True,
+            )
+        else:
+            print(f"  Unit {idx}/{total_units} (id={int(unit)}): 0/{total_cycles} frames", end="\r")
+
+        for cycle_idx, (_, row) in enumerate(cycle_iter, start=1):
             # Build sensor values dict from os1-3 and s1-21
             sensor_values = {
                 f"os{i}": float(row[f"os{i}"]) for i in range(1, 4)
@@ -292,8 +326,23 @@ def run_engine(df: pd.DataFrame) -> list[dict[str, Any]]:
                 "alert_threshold": float(out.get("alert_threshold", np.nan) or np.nan),
             })
 
-        if idx % 5 == 0 or idx == total_units:
-            print(f"  ✓ Processed {idx}/{total_units} units")
+            if tqdm is None:
+                should_update = (
+                    cycle_idx == 1
+                    or cycle_idx == total_cycles
+                    or cycle_idx % max(1, total_cycles // 10) == 0
+                )
+                if should_update:
+                    print(
+                        f"  Unit {idx}/{total_units} (id={int(unit)}): "
+                        f"{cycle_idx}/{total_cycles} frames",
+                        end="\r",
+                    )
+
+        if tqdm is None:
+            print(f"  ✓ Unit {idx}/{total_units} (id={int(unit)}) complete".ljust(80))
+        elif hasattr(unit_iter, "set_postfix_str"):
+            unit_iter.set_postfix_str(f"last=unit_{int(unit)}")
 
     return rows
 
