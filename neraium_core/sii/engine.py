@@ -127,6 +127,88 @@ class SystemicInfrastructureIntelligenceEngine:
             },
         )
 
+    def _compute_display_health_for_engine(
+        self,
+        decision_state: str,
+        structural_drift_score: float,
+        processed_frames: int,
+    ) -> int:
+        """
+        Compute UI-safe display_health metric based on engine state.
+
+        Since engine.py doesn't have access to calibrated policy thresholds,
+        we use decision_state to determine the band and structural_drift_score
+        to interpolate within that band.
+
+        Mapping:
+        - Warmup (processed_frames < min_samples): 95 (safe during calibration)
+        - STABLE: 70-100 (drift progresses from 0.0 toward watch threshold estimate)
+        - WATCH: 35-70 (drift progresses within watch state)
+        - ALERT: 0-35 (drift progresses in alert state)
+
+        Returns:
+            Display health value [0, 100]
+        """
+        # During warmup, return high health value to avoid false alarms
+        # while system calibrates its baselines
+        min_alerts = int(getattr(self.config, "min_samples_for_alerts", 50))
+        if processed_frames < min_alerts:
+            return 95
+
+        # Clamp drift to non-negative
+        drift = max(0.0, float(structural_drift_score))
+
+        if decision_state == "ALERT":
+            # ALERT state: maps to 0-35
+            # At typical alert threshold (~2.0): health = 35
+            # Higher drift: health drops toward 0
+            # Use a simple heuristic: map drift to health
+            # At drift=2.0, health=35; for each additional unit, drop by ~18
+            alert_threshold_estimate = 2.0
+            if drift <= alert_threshold_estimate:
+                health = 35.0
+            else:
+                excess = drift - alert_threshold_estimate
+                health = max(0.0, 35.0 - (excess * 18.0))
+            return int(round(health))
+
+        elif decision_state == "WATCH":
+            # WATCH state: maps to 35-70
+            # Estimate watch threshold at ~1.0, alert threshold at ~2.0
+            # Interpolate between these
+            watch_estimate = 1.0
+            alert_estimate = 2.0
+
+            if drift <= watch_estimate:
+                health = 70.0
+            elif drift >= alert_estimate:
+                health = 35.0
+            else:
+                # Interpolate between watch and alert thresholds
+                range_size = alert_estimate - watch_estimate
+                progress = (drift - watch_estimate) / range_size
+                progress = max(0.0, min(1.0, progress))
+                health = 70.0 - (progress * 35.0)
+            return int(round(health))
+
+        else:
+            # STABLE state: maps to 70-100
+            # At drift=0: health=100
+            # At estimated watch threshold (~1.0): health=70
+            watch_estimate = 1.0
+
+            if drift >= watch_estimate:
+                health = 70.0
+            else:
+                # Interpolate from 100 at drift=0 to 70 at drift=watch_estimate
+                if watch_estimate > 0:
+                    progress = drift / watch_estimate
+                    health = 100.0 - (progress * 30.0)
+                else:
+                    health = 100.0
+                health = max(70.0, health)
+            return int(round(health))
+
     @staticmethod
     def _to_float_timestamp(value: str, fallback: float) -> float:
         text = str(value or "").strip()
@@ -942,7 +1024,12 @@ class SystemicInfrastructureIntelligenceEngine:
                     self.logger.exception("context_provider_snapshot_failed")
                     context = None
 
-            system_health = int(max(0.0, min(100.0, 100.0 - (composite * 55.0))))
+            raw_system_health = int(max(0.0, min(100.0, 100.0 - (composite * 55.0))))
+            display_health = self._compute_display_health_for_engine(
+                decision_state=decision_state,
+                structural_drift_score=float(structural_score),
+                processed_frames=int(self.state.processed_frames),
+            )
             out: SIIResult = {
                 "timestamp": frame.timestamp,
                 "site_id": frame.site_id,
@@ -964,7 +1051,9 @@ class SystemicInfrastructureIntelligenceEngine:
                     confidence_reasoning=list(conf.reasoning),
                 ),
                 "read_only": True,
-                "system_health": system_health,
+                "raw_system_health": raw_system_health,
+                "display_health": display_health,
+                "system_health": display_health,  # Backward-compat: use display_health for UI
                 "attribution": {
                     "status": "ready",
                     "top_sensors": attribution.top_sensors,
