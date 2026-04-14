@@ -77,6 +77,12 @@ from neraium_core.temporal_features import derive_temporal_rate_features
 from neraium_core.stat_geometry import StatisticalGeometryLayer
 from neraium_core.temporal_quality import derive_temporal_quality_signals
 from neraium_core.detection.readiness import compute_engine_readiness
+from neraium_core.performance_throttle import (
+    CausalAnalysisThrottle,
+    RegimePersistenceThrottle,
+    StorageBound,
+    ThrottleConfig,
+)
 from neraium_core.staged_pipeline import (
     AttributionStage,
     DecisionStage,
@@ -411,6 +417,12 @@ class StructuralEngine:
         persisted = self.regime_store.load()
         self.regime_signatures: list[dict[str, object]] = list(persisted.get("regimes", []))
         self.regime_baselines: dict[str, dict[str, object]] = dict(persisted.get("baselines", {}))
+
+        # Performance throttling for expensive operations
+        self._throttle_config = ThrottleConfig()
+        self._causal_throttle = CausalAnalysisThrottle(self._throttle_config)
+        self._persistence_throttle = RegimePersistenceThrottle(self._throttle_config)
+        self._storage_bound = StorageBound(self._throttle_config)
 
         # Baseline management: lock prevents rolling update; metadata for UI/API.
         self.baseline_locked: bool = False
@@ -2282,7 +2294,18 @@ class StructuralEngine:
                             persist_regime_state = True
 
                     if persist_regime_state:
-                        self._persist_regime_state()
+                        # Throttle regime persistence to reduce I/O overhead
+                        if self._persistence_throttle.should_persist():
+                            # Bound regime storage to prevent unbounded growth
+                            self._storage_bound.prune_regime_baselines(self.regime_baselines)
+                            pruned_sigs = self._storage_bound.prune_regime_signatures(self.regime_signatures)
+                            if pruned_sigs > 0:
+                                self.regime_signatures = self.regime_signatures[-self._throttle_config.max_regime_signatures:]
+
+                            self._persist_regime_state()
+                            self._persistence_throttle.mark_persistence()
+                        else:
+                            self._persistence_throttle.skip_persistence()
 
                 signal_importance = signal_structural_importance(corr_recent)
                 adjacency = thresholded_adjacency(corr_recent, threshold=0.6)
@@ -2290,41 +2313,60 @@ class StructuralEngine:
 
                 directional = directional_metrics(lagged_correlation_matrix(z_recent_valid, lag=1))
 
-                causal_matrix = granger_causality_matrix(z_recent_valid)
-                causal = causal_metrics(causal_matrix)
-                causal_graph = causal_graph_metrics(causal_matrix, threshold=0.1)
+                # Lazy causal analysis: skip expensive computation when instability is low
+                # Use heuristic: relational + drift scores to estimate likely instability
+                causal_instability_estimate = float(max(relational_raw, drift_score))
+                should_compute_causal = self._causal_throttle.should_compute_causal(causal_instability_estimate)
 
-                valid_sensor_names = [rep.feature_names[i] for i in range(len(valid_mask)) if valid_mask[i]]
+                causal_matrix = None
+                causal = {}
+                causal_graph = {}
+                valid_sensor_names = []
                 causal_prop = None
                 dominant_causal_source = None
                 causal_chains = None
-                if _env_enabled("NERAIUM_CAUSAL_INTELLIGENCE", default="1"):
-                    try:
-                        causal_prop = causal_propagation_spread(
-                            causal_matrix,
-                            threshold=0.1,
-                            max_steps=2,
-                            top_k=3,
-                        )
-                        top_sources = causal_prop.get("top_sources") if isinstance(causal_prop, dict) else None
-                        if top_sources:
-                            top_idx = int(top_sources[0])
-                            if 0 <= top_idx < len(valid_sensor_names):
-                                dominant_causal_source = valid_sensor_names[top_idx]
-                    except Exception:
-                        causal_prop = None
 
-                if _env_enabled("NERAIUM_CAUSAL_ROOT_CAUSE_CHAINS", default="1"):
-                    try:
-                        causal_chains = causal_root_cause_chains(
-                            causal_matrix,
-                            valid_sensor_names,
-                            threshold=0.1,
-                            max_depth=3,
-                            chain_count=2,
-                        )
-                    except Exception:
-                        causal_chains = None
+                if should_compute_causal:
+                    causal_matrix = granger_causality_matrix(z_recent_valid)
+                    causal = causal_metrics(causal_matrix)
+                    causal_graph = causal_graph_metrics(causal_matrix, threshold=0.1)
+                    valid_sensor_names = [rep.feature_names[i] for i in range(len(valid_mask)) if valid_mask[i]]
+
+                    if _env_enabled("NERAIUM_CAUSAL_INTELLIGENCE", default="1"):
+                        try:
+                            causal_prop = causal_propagation_spread(
+                                causal_matrix,
+                                threshold=0.1,
+                                max_steps=2,
+                                top_k=3,
+                            )
+                            top_sources = causal_prop.get("top_sources") if isinstance(causal_prop, dict) else None
+                            if top_sources:
+                                top_idx = int(top_sources[0])
+                                if 0 <= top_idx < len(valid_sensor_names):
+                                    dominant_causal_source = valid_sensor_names[top_idx]
+                        except Exception:
+                            causal_prop = None
+
+                    if _env_enabled("NERAIUM_CAUSAL_ROOT_CAUSE_CHAINS", default="1"):
+                        try:
+                            causal_chains = causal_root_cause_chains(
+                                causal_matrix,
+                                valid_sensor_names,
+                                threshold=0.1,
+                                max_depth=3,
+                                chain_count=2,
+                            )
+                        except Exception:
+                            causal_chains = None
+                    self._causal_throttle.record_computation(True)
+                else:
+                    self._causal_throttle.record_computation(False)
+                    # When causal is skipped, provide a zero matrix for attribution
+                    n_sensors = z_recent_valid.shape[1] if z_recent_valid.ndim >= 2 else 0
+                    valid_sensor_names = [rep.feature_names[i] for i in range(len(valid_mask)) if valid_mask[i]]
+                    causal_matrix = np.zeros((n_sensors, n_sensors), dtype=float)
+
                 attr = causal_attribution(
                     baseline_corr_used,
                     corr_recent,
@@ -3738,5 +3780,9 @@ class StructuralEngine:
             self._structural_drift_history.append(float(result.get("structural_drift_score", 0.0) or 0.0))
 
         self.latest_result = result
+
+        # Update throttle frame counts
+        self._causal_throttle.update_frame_count()
+        self._persistence_throttle.update_frame_count()
 
         return result
