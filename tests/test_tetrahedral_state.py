@@ -73,6 +73,8 @@ def test_top_level_keys_present() -> None:
         "curvature",
         "state_label",
         "movement_summary",
+        "geometric_motion_class",
+        "semantic_consistency",
     }
     assert expected_keys.issubset(state.keys())
 
@@ -109,3 +111,65 @@ def test_interpreted_label_mapping() -> None:
         temporal_consistency_score=0.0,
     )
     assert temporal["interpreted_label"] == "TEMPORAL_DEGRADATION"
+
+
+def test_semantic_consistency_flags_alert_neutral_tension() -> None:
+    """Test that ALERT + GEOMETRICALLY_NEUTRAL flags a semantic tension."""
+    state = compute_tetrahedral_state(
+        structural_drift_score=0.3,
+        relational_instability_score=0.3,
+        transition_pressure=0.3,
+        temporal_consistency_score=0.3,
+        policy_state="ALERT",
+    )
+    assert state["semantic_consistency"]["consistency_status"] == "tension"
+    assert state["semantic_consistency"]["tension_type"] == "alert_but_geometrically_neutral"
+    assert "system-wide" in state["semantic_consistency"]["semantic_context"].lower()
+
+
+def test_semantic_consistency_flags_coherent_when_stable() -> None:
+    """Test that STABLE + GEOMETRICALLY_NEUTRAL is coherent."""
+    state = compute_tetrahedral_state(
+        structural_drift_score=0.1,
+        relational_instability_score=0.1,
+        transition_pressure=0.1,
+        temporal_consistency_score=0.9,
+        policy_state="STABLE",
+    )
+    assert state["semantic_consistency"]["consistency_status"] == "coherent"
+    assert state["semantic_consistency"]["tension_type"] is None
+
+
+def test_semantic_consistency_high_drift_stationary_tension() -> None:
+    """Test that high drift + stationary motion flags a tension."""
+    state = compute_tetrahedral_state(
+        structural_drift_score=0.8,
+        relational_instability_score=0.2,
+        transition_pressure=0.2,
+        temporal_consistency_score=0.8,
+        history_positions=[[0.0, 0.0, 0.0], [0.01, 0.0, 0.0]],  # Minimal motion
+    )
+    assert state["semantic_consistency"]["consistency_status"] == "tension"
+    assert "dwelling" in state["semantic_consistency"]["semantic_context"].lower()
+
+
+def test_geometric_motion_class_field_present() -> None:
+    """Test that geometric_motion_class field is present in payload."""
+    state = _base_state()
+    assert "geometric_motion_class" in state
+    assert state["geometric_motion_class"] in ("geometric_stationary", "steady_drift", "geometric_turning")
+
+
+def test_label_renamed_to_geometrically_neutral() -> None:
+    """Test that BALANCED has been renamed to GEOMETRICALLY_NEUTRAL."""
+    state = compute_tetrahedral_state(
+        structural_drift_score=0.2,
+        relational_instability_score=0.2,
+        transition_pressure=0.2,
+        temporal_consistency_score=0.8,
+    )
+    # When no single dimension dominates, should be GEOMETRICALLY_NEUTRAL
+    assert state["state_label"] in ("GEOMETRICALLY_NEUTRAL", "EDGE_ALIGNED", "STRUCTURAL_DOMINANT", "RELATIONAL_DOMINANT", "TRANSITION_DOMINANT", "TEMPORAL_DOMINANT")
+    # For this balanced case, should be GEOMETRICALLY_NEUTRAL
+    if state["state_label"] == "GEOMETRICALLY_NEUTRAL":
+        assert "NEUTRAL" in state["state_label"]

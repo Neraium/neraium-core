@@ -169,18 +169,37 @@ def build_tetrahedral_plot_and_text(
     fig.tight_layout()
 
     interpreted_label = "Unavailable"
-    movement_summary = "No tetrahedral state available in this frame."
+    geometric_motion = "No tetrahedral state available in this frame."
     nearest_vertex = "—"
+    semantic_consistency = None
+
     if isinstance(tetra_state, dict):
         interpreted_label = str(tetra_state.get("interpreted_label") or interpreted_label)
-        movement_summary = str(tetra_state.get("movement_summary") or movement_summary)
+        # Use new field name with fallback to old name
+        geometric_motion = str(
+            tetra_state.get("geometric_motion_class")
+            or tetra_state.get("movement_summary")
+            or geometric_motion
+        )
         nearest_vertex = str(tetra_state.get("nearest_vertex") or nearest_vertex)
+        semantic_consistency = tetra_state.get("semantic_consistency")
 
     # Format details in a clean, readable way
-    details_md = (
-        f"**State:** {interpreted_label}\n\n"
-        f"{movement_summary}\n\n"
-        f"**Position:** {nearest_vertex}"
-    )
+    details_md = f"**Geometric Position:** {nearest_vertex}\n\n"
+
+    # Add motion information with context
+    details_md += f"**Geometric Motion:** {geometric_motion}\n\n"
+
+    # Add semantic consistency information if there's a tension
+    if semantic_consistency and isinstance(semantic_consistency, dict):
+        consistency_status = semantic_consistency.get("consistency_status", "unknown")
+        if consistency_status == "tension":
+            tension_type = semantic_consistency.get("tension_type", "unknown")
+            context = semantic_consistency.get("semantic_context", "")
+            details_md += f"⚠️ **Semantic Tension:** {tension_type}\n\n"
+            if context:
+                details_md += f"*{context}*\n\n"
+
+    details_md += f"**Interpreted Label:** {interpreted_label}"
 
     return fig, details_md
