@@ -93,3 +93,5 @@ backup_claude_ui/
 greenhouse_demo/
 validation_results_post_fix/
 .claude/
+.claude/
+**/__pycache__/
