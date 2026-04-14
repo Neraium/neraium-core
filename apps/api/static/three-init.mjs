@@ -1,39 +1,25 @@
-// Three.js initialization module
+/**
+ * Loads Three.js + addons from jsDelivr (ESM). Same version as download_three_vendor.py.
+ * Does not rely on the API serving /web/vendor/three — only /web/three-init.mjs must load.
+ */
 import * as THREE from "three";
-import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 
-export function initThreeScene() {
-    const scene = new THREE.Scene();
-    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-    const renderer = new THREE.WebGLRenderer();
+window.__THREE_ESM = THREE;
 
-    renderer.setSize(window.innerWidth, window.innerHeight);
-    document.body.appendChild(renderer.domElement);
+try {
+  const { OrbitControls } = await import("three/addons/controls/OrbitControls.js");
+  const { RoomEnvironment } = await import("three/addons/environments/RoomEnvironment.js");
+  const { Line2 } = await import("three/addons/lines/Line2.js");
+  const { LineGeometry } = await import("three/addons/lines/LineGeometry.js");
+  const { LineMaterial } = await import("three/addons/lines/LineMaterial.js");
+  const { PMREMGenerator } = await import("three/addons/utils/PMREMGenerator.js");
 
-    // Add orbit controls
-    const controls = new OrbitControls(camera, renderer.domElement);
-    controls.autoRotate = true;
-
-    // Add a simple geometry
-    const geometry = new THREE.BoxGeometry();
-    const material = new THREE.MeshBasicMaterial({ color: 0x00ff00 });
-    const cube = new THREE.Mesh(geometry, material);
-    scene.add(cube);
-
-    camera.position.z = 5;
-
-    const animate = () => {
-        requestAnimationFrame(animate);
-        controls.update();
-        renderer.render(scene, camera);
-    };
-
-    animate();
+  window.__OrbitControls = OrbitControls;
+  window.__RoomEnvironment = RoomEnvironment;
+  window.__PMREMGenerator = PMREMGenerator;
+  window.__Line2 = Line2;
+  window.__LineGeometry = LineGeometry;
+  window.__LineMaterial = LineMaterial;
+} catch (err) {
+  console.error("three-init: addon modules failed (CDN / network / import map):", err);
 }
-
-// Handle window resize
-window.addEventListener('resize', () => {
-    const width = window.innerWidth;
-    const height = window.innerHeight;
-    // Camera and renderer resize would go here
-});
