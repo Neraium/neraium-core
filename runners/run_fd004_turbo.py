@@ -262,7 +262,7 @@ def run_engine(df: pd.DataFrame) -> list[dict[str, Any]]:
     else:
         print("Progress mode: tqdm progress bar.")
 
-    unit_groups = df.groupby("unit", sort=True)
+    unit_groups = list(df.groupby("unit", sort=True))
     unit_iter = unit_groups
     if tqdm is not None:
         unit_iter = tqdm(
