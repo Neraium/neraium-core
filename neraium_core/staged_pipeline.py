@@ -7,6 +7,7 @@ from typing import Any
 import numpy as np
 
 from neraium_core.features.window_feature_extractor import summarize_feature_delta
+from neraium_core.realtime.circular_buffer import CircularNumpyBuffer, CircularMatrix2DBuffer
 
 
 def clamp(x: float, lo: float, hi: float) -> float:
@@ -90,8 +91,9 @@ class NodeRuntime:
     sensor_names: list[str]
     baseline_window: int
     recent_window: int
-    values_history: deque[np.ndarray] = field(default_factory=lambda: deque(maxlen=500))
-    timestamp_history: deque[float] = field(default_factory=lambda: deque(maxlen=500))
+    # High-performance circular buffers instead of deques
+    _values_buffer: CircularMatrix2DBuffer = field(default=None)  # type: ignore
+    _timestamp_buffer: CircularNumpyBuffer = field(default=None)  # type: ignore
     score_history: deque[float] = field(default_factory=lambda: deque(maxlen=120))
     interpreted_history: deque[str] = field(default_factory=lambda: deque(maxlen=20))
     baseline_profile: NodeBaselineProfile = field(default_factory=NodeBaselineProfile)
@@ -102,16 +104,54 @@ class NodeRuntime:
     _baseline_gap: list[float] = field(default_factory=list)
     _baseline_instability: list[float] = field(default_factory=list)
 
+    def __post_init__(self):
+        """Initialize circular buffers with proper dimensions."""
+        if self._values_buffer is None:
+            self._values_buffer = CircularMatrix2DBuffer(500, len(self.sensor_names))
+        if self._timestamp_buffer is None:
+            self._timestamp_buffer = CircularNumpyBuffer(500)
+
+    # Backward compatibility properties
+    @property
+    def values_history(self):
+        """Return a deque-like interface for backward compatibility."""
+        class DequeAdapter:
+            def __init__(self, buffer: CircularMatrix2DBuffer):
+                self.buffer = buffer
+            def append(self, v):
+                self.buffer.append(v)
+            def __len__(self):
+                return len(self.buffer)
+            def __iter__(self):
+                return iter(self.buffer.to_array())
+        return DequeAdapter(self._values_buffer)
+
+    @property
+    def timestamp_history(self):
+        """Return a deque-like interface for backward compatibility."""
+        class DequeAdapter:
+            def __init__(self, buffer: CircularNumpyBuffer):
+                self.buffer = buffer
+            def append(self, v):
+                self.buffer.append(v)
+            def __len__(self):
+                return len(self.buffer)
+            def __iter__(self):
+                return iter(self.buffer.to_array())
+        return DequeAdapter(self._timestamp_buffer)
+
     def push(self, ts: float, sensors: dict[str, float]) -> np.ndarray:
         vec = np.array([safe_float(sensors.get(s), np.nan) for s in self.sensor_names], dtype=float)
-        self.values_history.append(vec)
-        self.timestamp_history.append(ts)
+        self._values_buffer.append(vec)
+        self._timestamp_buffer.append(ts)
         return vec
 
     def recent_matrix(self) -> np.ndarray | None:
-        if len(self.values_history) < self.recent_window:
+        if len(self._values_buffer) < self.recent_window:
             return None
-        m = np.vstack(list(self.values_history)[-self.recent_window :])
+        m = self._values_buffer.recent(self.recent_window)
+        if m is None:
+            return None
         if np.isnan(m).any():
             col_mean = np.nanmean(m, axis=0)
             col_mean = np.nan_to_num(col_mean, nan=0.0)
@@ -120,9 +160,12 @@ class NodeRuntime:
         return m
 
     def baseline_matrix(self) -> np.ndarray | None:
-        if len(self.values_history) < self.baseline_window:
+        if len(self._values_buffer) < self.baseline_window:
             return None
-        m = np.vstack(list(self.values_history)[: self.baseline_window])
+        m = self._values_buffer.baseline(self.baseline_window)
+        if m is None:
+            return None
+        m = m.copy()  # Copy to allow modification
         if np.isnan(m).any():
             col_mean = np.nanmean(m, axis=0)
             col_mean = np.nan_to_num(col_mean, nan=0.0)
@@ -131,14 +174,16 @@ class NodeRuntime:
         return m
 
     def recent_timestamps(self) -> list[float] | None:
-        if len(self.timestamp_history) < self.recent_window:
+        if len(self._timestamp_buffer) < self.recent_window:
             return None
-        return list(self.timestamp_history)[-self.recent_window :]
+        arr = self._timestamp_buffer.to_array()
+        return arr[-self.recent_window:].tolist()
 
     def baseline_timestamps(self) -> list[float] | None:
-        if len(self.timestamp_history) < self.baseline_window:
+        if len(self._timestamp_buffer) < self.baseline_window:
             return None
-        return list(self.timestamp_history)[: self.baseline_window]
+        arr = self._timestamp_buffer.to_array()
+        return arr[:self.baseline_window].tolist()
 
 
 class DataQualityStage:

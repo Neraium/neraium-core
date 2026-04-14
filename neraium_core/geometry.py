@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from functools import lru_cache
 from typing import Any
 import warnings
 
@@ -11,6 +12,34 @@ import numpy as np
 _FAST_CORR_MIN_SENSORS = 20
 
 ArrayLike = Any
+
+
+def _array_to_hashable(arr: np.ndarray) -> tuple:
+    """Convert numpy array to hashable tuple for caching."""
+    return tuple(arr.flat)
+
+
+@lru_cache(maxsize=128)
+def _correlation_matrix_cached(data_tuple: tuple, n_frames: int, n_sensors: int) -> np.ndarray:
+    """Cached correlation computation with array converted to tuple."""
+    data = np.array(data_tuple).reshape(n_frames, n_sensors)
+
+    if n_sensors >= _FAST_CORR_MIN_SENSORS:
+        with np.errstate(invalid="ignore", divide="ignore"):
+            mean = np.nanmean(data, axis=0)
+            std = np.nanstd(data, axis=0, ddof=1)
+        mean = np.nan_to_num(mean, nan=0.0)
+        std = np.where(std < 1e-12, 1.0, std)
+        z = (data - mean) / std
+        z = np.nan_to_num(z, nan=0.0, posinf=0.0, neginf=0.0)
+        corr = (z.T @ z) / max(n_frames - 1, 1)
+    else:
+        with np.errstate(invalid="ignore", divide="ignore"):
+            corr = np.corrcoef(data, rowvar=False)
+
+    corr = np.nan_to_num(corr, nan=0.0, posinf=0.0, neginf=0.0)
+    np.fill_diagonal(corr, 1.0)
+    return corr
 
 
 def _as_2d_array(values: ArrayLike) -> np.ndarray:
@@ -47,30 +76,17 @@ def normalize_window(observations: ArrayLike) -> tuple[np.ndarray, np.ndarray, n
 
 
 def correlation_matrix(observations: ArrayLike) -> np.ndarray:
-    """Compute correlation geometry R_t from row-wise observations."""
+    """Compute correlation geometry R_t from row-wise observations.
+
+    Results are cached for identical input matrices to avoid redundant computation
+    when the same observation window is processed multiple times.
+    """
     data = _as_2d_array(observations)
     n_frames, n_sensors = data.shape
 
-    if n_sensors >= _FAST_CORR_MIN_SENSORS:
-        # Vectorised path: z-score columns then (X^T X) / (n-1).
-        # Avoids np.corrcoef's internal copy and scales as O(n_frames * n_sensors²)
-        # with BLAS matmul — same asymptotic but lower constant for wide matrices.
-        with np.errstate(invalid="ignore", divide="ignore"):
-            mean = np.nanmean(data, axis=0)
-            std = np.nanstd(data, axis=0, ddof=1)  # sample std so (z.T @ z)/(n-1) = Pearson r
-        mean = np.nan_to_num(mean, nan=0.0)
-        std = np.where(std < 1e-12, 1.0, std)
-        z = (data - mean) / std
-        z = np.nan_to_num(z, nan=0.0, posinf=0.0, neginf=0.0)
-        corr = (z.T @ z) / max(n_frames - 1, 1)
-    else:
-        # Small matrix: np.corrcoef is fine and avoids the extra allocation.
-        with np.errstate(invalid="ignore", divide="ignore"):
-            corr = np.corrcoef(data, rowvar=False)
-
-    corr = np.nan_to_num(corr, nan=0.0, posinf=0.0, neginf=0.0)
-    np.fill_diagonal(corr, 1.0)
-    return corr
+    # Use cached computation for better performance on repeated windows
+    data_tuple = _array_to_hashable(data)
+    return _correlation_matrix_cached(data_tuple, n_frames, n_sensors)
 
 
 def structural_drift(current_corr: ArrayLike, baseline_corr: ArrayLike, norm: str = "fro") -> float:
