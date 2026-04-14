@@ -322,17 +322,21 @@ def run_engine(df: pd.DataFrame) -> list[dict[str, Any]]:
             })
 
             if tqdm is None:
-                should_update = (
-                    cycle_idx == 1
-                    or cycle_idx == total_cycles
-                    or cycle_idx % max(1, total_cycles // 10) == 0
-                )
+                # Update more frequently during warmup (before window-based processing)
+                # and less frequently during full processing (to reduce I/O overhead)
+                if cycle_idx <= engine.baseline_window:
+                    should_update = (cycle_idx == 1) or (cycle_idx % max(1, engine.baseline_window // 5) == 0) or (cycle_idx == total_cycles)
+                else:
+                    should_update = (cycle_idx == 1) or (cycle_idx == total_cycles) or (cycle_idx % max(1, total_cycles // 10) == 0)
+
                 if should_update:
                     print(
                         f"  Unit {idx}/{total_units} (id={int(unit)}): "
                         f"{cycle_idx}/{total_cycles} frames",
                         end="\r",
                     )
+                    import sys
+                    sys.stdout.flush()
 
         if tqdm is None:
             print(f"  ✓ Unit {idx}/{total_units} (id={int(unit)}) complete".ljust(80))

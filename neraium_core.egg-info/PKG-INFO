@@ -61,7 +61,7 @@ Neraium detects **systemic structural instability** in industrial equipment by m
 python run_demo.py
 ```
 
-This opens a browser showing the synthetic demo: a complete system lifecycle from stable baseline through drift, transition, reorganization, and recovery. See the tetrahedral structural state visualization and gate verdicts update in real time.
+This starts the FastAPI demo backend and Next.js frontend for the synthetic lifecycle demo (baseline → drift → transition → reorganization → recovery), including tetrahedral structural state and gate verdicts.
 
 → **[DEMO.md](./DEMO.md)** for full guide
 
@@ -188,7 +188,7 @@ Neraium is intentionally constrained for current deployments:
 ## Primary product path (pilot-first)
 
 - **Primary API runtime**: `apps.api.main:app` for ingest, state, alerting, and integration operations.
-- **Replacement UI package**: `ui/` (run with `python -m ui.app`) for pilot, operations, and demo views.
+- **Active demo UI**: `frontend/` (Next.js) + `apps/api` demo playback endpoints (`/api/demo/*`).
 - **Operational workflow**: create/activate runs, ingest live/batch telemetry, review risk/recommendation/history.
 - **Legacy static UI removed**: `apps/api/static` is intentionally not part of current runtime.
 
