@@ -260,17 +260,17 @@ def run_engine(df: pd.DataFrame) -> list[dict[str, Any]]:
     if tqdm is None:
         print("Progress mode: fallback text indicator (install tqdm for dynamic progress bars).")
     else:
-        print("Progress mode: tqdm progress bars.")
+        print("Progress mode: tqdm progress bar.")
 
     unit_groups = df.groupby("unit", sort=True)
     unit_iter = unit_groups
     if tqdm is not None:
         unit_iter = tqdm(
             unit_groups,
-            total=total_units,
-            desc="Units",
-            unit="unit",
+            desc="Processing units",
+            ascii=True,
             dynamic_ncols=True,
+            leave=True,
         )
 
     for idx, (unit, unit_df) in enumerate(unit_iter, start=1):
@@ -278,16 +278,7 @@ def run_engine(df: pd.DataFrame) -> list[dict[str, Any]]:
         total_cycles = len(unit_df)
         cycle_iter = unit_df.iterrows()
 
-        if tqdm is not None:
-            cycle_iter = tqdm(
-                unit_df.iterrows(),
-                total=total_cycles,
-                desc=f"Unit {int(unit)}",
-                unit="frame",
-                leave=False,
-                dynamic_ncols=True,
-            )
-        else:
+        if tqdm is None:
             print(f"  Unit {idx}/{total_units} (id={int(unit)}): 0/{total_cycles} frames", end="\r")
 
         for cycle_idx, (_, row) in enumerate(cycle_iter, start=1):
@@ -341,8 +332,8 @@ def run_engine(df: pd.DataFrame) -> list[dict[str, Any]]:
 
         if tqdm is None:
             print(f"  ✓ Unit {idx}/{total_units} (id={int(unit)}) complete".ljust(80))
-        elif hasattr(unit_iter, "set_postfix_str"):
-            unit_iter.set_postfix_str(f"last=unit_{int(unit)}")
+        else:
+            tqdm.write(f"Unit {idx}/{total_units} complete")
 
     return rows
 
