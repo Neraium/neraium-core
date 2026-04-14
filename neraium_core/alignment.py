@@ -286,6 +286,11 @@ class StructuralEngine:
         self._stable_manifold_corr: Optional[np.ndarray] = None
         self._low_transition_activity_streak: int = 0
         self._last_corr_recent: Optional[np.ndarray] = None
+        # Optimization: Cache graph metrics and correlation matrices to avoid recomputation
+        self._cached_graph_metrics: dict[str, object] | None = None
+        self._cached_graph_metrics_corr_hash: int = 0
+        self._cached_correlation_matrix_recent: Optional[np.ndarray] = None
+        self._cached_correlation_matrix_baseline: Optional[np.ndarray] = None
         self._transition_pressure_ema: float = 0.0
         self._prev_stable_novelty: float = 0.0
         self._prev_regime_novelty: float = 0.0
@@ -469,6 +474,45 @@ class StructuralEngine:
     def stage_groups() -> list[dict[str, object]]:
         """Return static stage boundary metadata for extraction planning."""
         return [dict(group) for group in structural_engine_stage_groups()]
+
+    def _get_or_compute_correlation_recent(self, z_recent_valid: np.ndarray) -> np.ndarray:
+        """Get recent correlation matrix, reusing cache if available."""
+        # Use array content hash to detect changes
+        try:
+            current_hash = hash(z_recent_valid.tobytes())
+            if (self._cached_correlation_matrix_recent is not None and
+                current_hash == getattr(self, '_cached_correlation_matrix_recent_hash', None)):
+                return self._cached_correlation_matrix_recent
+        except Exception:
+            pass
+
+        corr_recent = correlation_matrix(z_recent_valid)
+        self._cached_correlation_matrix_recent = corr_recent
+        try:
+            self._cached_correlation_matrix_recent_hash = hash(z_recent_valid.tobytes())
+        except Exception:
+            pass
+        return corr_recent
+
+    def _get_cached_graph_metrics(self, adjacency: np.ndarray, corr_recent: np.ndarray) -> dict[str, float]:
+        """Get graph metrics, using cache if correlation matrix hasn't changed."""
+        try:
+            # Hash the correlation matrix to detect changes
+            current_hash = hash(corr_recent.tobytes())
+            if (self._cached_graph_metrics is not None and
+                current_hash == self._cached_graph_metrics_corr_hash):
+                return self._cached_graph_metrics
+        except Exception:
+            pass
+
+        # Recompute metrics
+        metrics = graph_metrics(adjacency, corr=corr_recent)
+        self._cached_graph_metrics = metrics
+        try:
+            self._cached_graph_metrics_corr_hash = hash(corr_recent.tobytes())
+        except Exception:
+            pass
+        return metrics
 
     def _default_result_payload(self, frame: Dict) -> Dict[str, object]:
         """Warmup-safe output contract with backward-compatible fields.
@@ -2120,7 +2164,7 @@ class StructuralEngine:
                 result["signal_degradation"] = signal_degradation
 
                 corr_baseline = correlation_matrix(z_base_valid)
-                corr_recent = correlation_matrix(z_recent_valid)
+                corr_recent = self._get_or_compute_correlation_recent(z_recent_valid)
 
                 # Adaptive baseline: use rolling baseline when available to avoid static reference.
                 baseline_corr_used = corr_baseline
@@ -2238,7 +2282,7 @@ class StructuralEngine:
 
                 signal_importance = signal_structural_importance(corr_recent)
                 adjacency = thresholded_adjacency(corr_recent, threshold=0.6)
-                graph = graph_metrics(adjacency, corr=corr_recent)
+                graph = self._get_cached_graph_metrics(adjacency, corr_recent)
 
                 directional = directional_metrics(lagged_correlation_matrix(z_recent_valid, lag=1))
 

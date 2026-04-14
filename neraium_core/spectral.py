@@ -63,11 +63,29 @@ def spectral_radius(matrix: ArrayLike) -> float:
     values = np.asarray(matrix, dtype=float)
     if values.ndim != 2 or values.shape[0] != values.shape[1] or values.size == 0:
         return 0.0
+    n = values.shape[0]
     safe = np.nan_to_num(values, nan=0.0, posinf=0.0, neginf=0.0)
+
     # Spectral radius = max |eigenvalue| across the full spectrum.
-    # ARPACK's "LM" finds algebraically largest, not largest-magnitude, so it can
-    # miss a large-magnitude negative eigenvalue (e.g. diag(-2, 1) → reports 1, not 2).
-    # eigvalsh computes all eigenvalues without eigenvectors and is fast enough here.
+    # For large matrices, compute only the top-k eigenvalues (both positive and negative extremes)
+    # to find the one with largest magnitude, rather than full decomposition.
+    if _SCIPY_SPARSE_AVAILABLE and n > _ARPACK_MIN_N:
+        try:
+            sparse_m = _sp_sparse.csr_matrix(safe)
+            # Get the largest and smallest (most negative) eigenvalues
+            evals_pos, _ = _top_k_eigh(safe, k=1)  # Largest eigenvalue
+            evals_neg, _ = _top_k_eigh(-safe, k=1)  # Smallest (most negative, i.e., most negative of original)
+
+            radius = 0.0
+            if evals_pos.size > 0:
+                radius = max(radius, float(np.abs(evals_pos[0])))
+            if evals_neg.size > 0:
+                radius = max(radius, float(np.abs(-evals_neg[0])))  # Negate to get original scale
+            return radius
+        except Exception:
+            pass  # Fall through to full decomposition
+
+    # Fall back to full eigendecomposition for small matrices
     evals = np.linalg.eigvalsh(safe)
     return float(np.max(np.abs(evals))) if evals.size else 0.0
 
