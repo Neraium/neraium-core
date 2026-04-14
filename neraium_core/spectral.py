@@ -22,15 +22,19 @@ except ImportError:
 ArrayLike = Any
 
 
-def _matrix_to_hashable(arr: np.ndarray) -> tuple:
-    """Convert matrix to hashable tuple for caching."""
-    return tuple(arr.flat)
+def _matrix_to_hashable(arr: np.ndarray) -> bytes:
+    """Convert matrix to hashable bytes for cache keying.
+
+    Uses raw memory bytes (O(n²) to produce, but O(1) hash comparison vs
+    O(n²) element-by-element tuple comparison in lru_cache lookups).
+    """
+    return arr.tobytes()
 
 
 @lru_cache(maxsize=64)
-def _top_k_eigh_cached(data_tuple: tuple, shape: tuple, k: int) -> tuple[np.ndarray, np.ndarray]:
-    """Cached version of _top_k_eigh."""
-    matrix = np.array(data_tuple).reshape(shape)
+def _top_k_eigh_cached(data_bytes: bytes, shape: tuple, k: int) -> tuple[np.ndarray, np.ndarray]:
+    """Cached version of _top_k_eigh keyed by raw matrix bytes."""
+    matrix = np.frombuffer(data_bytes, dtype=np.float64).reshape(shape).copy()
     return _top_k_eigh(matrix, k)
 
 
@@ -134,8 +138,8 @@ def dominant_mode_loading(matrix: ArrayLike, cached: bool = True) -> dict[str, l
     safe = np.nan_to_num(values, nan=0.0, posinf=0.0, neginf=0.0)
 
     if cached:
-        data_tuple = _matrix_to_hashable(safe)
-        evals, evecs = _top_k_eigh_cached(data_tuple, safe.shape, k=1)
+        data_bytes = _matrix_to_hashable(safe)
+        evals, evecs = _top_k_eigh_cached(data_bytes, safe.shape, k=1)
     else:
         evals, evecs = _top_k_eigh(safe, k=1)
 
@@ -144,4 +148,38 @@ def dominant_mode_loading(matrix: ArrayLike, cached: bool = True) -> dict[str, l
     return {
         "dominant_eigenvalue": float(evals[0]),
         "dominant_eigenvector": [float(v) for v in evecs[:, 0]],
+    }
+
+
+def spectral_bundle(matrix: ArrayLike) -> dict[str, Any]:
+    """Compute spectral_radius, spectral_gap, and dominant mode in one eigendecomposition.
+
+    Replaces three separate calls (spectral_radius, spectral_gap, dominant_mode_loading)
+    that each re-decompose the same matrix. For an n×n symmetric matrix, one eigh call
+    gives all three: the largest eigenvalue is the radius, the gap is λ₁-λ₂, and the
+    dominant eigenvector is the first column.
+
+    Returns dict with keys: radius, gap, dominant_eigenvalue, dominant_eigenvector.
+    """
+    values = np.asarray(matrix, dtype=float)
+    if values.ndim != 2 or values.shape[0] != values.shape[1] or values.size == 0:
+        return {"radius": 0.0, "gap": 0.0, "dominant_eigenvalue": 0.0, "dominant_eigenvector": []}
+    n = values.shape[0]
+    safe = np.nan_to_num(values, nan=0.0, posinf=0.0, neginf=0.0)
+
+    # k=2 gives radius (λ₁), gap (λ₁-λ₂), and dominant mode — one decomposition for all three.
+    # For 1×1 matrices k is capped to 1 by _top_k_eigh.
+    data_bytes = _matrix_to_hashable(safe)
+    evals, evecs = _top_k_eigh_cached(data_bytes, safe.shape, k=min(2, n))
+
+    radius = float(np.abs(evals[0])) if evals.size >= 1 else 0.0
+    gap = float(evals[0] - evals[1]) if evals.size >= 2 else 0.0
+    dominant_eigenvalue = float(evals[0]) if evals.size >= 1 else 0.0
+    dominant_eigenvector = [float(v) for v in evecs[:, 0]] if evecs.size >= 1 else []
+
+    return {
+        "radius": radius,
+        "gap": gap,
+        "dominant_eigenvalue": dominant_eigenvalue,
+        "dominant_eigenvector": dominant_eigenvector,
     }

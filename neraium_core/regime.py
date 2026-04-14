@@ -64,9 +64,30 @@ class LawfulStructure:
         return float(self.coherence_threshold - dist)
 
 
-def build_regime_signature(mean: np.ndarray, std: np.ndarray) -> np.ndarray:
-    """Build a regime signature using the StructuralOperator induced by moments."""
-    return StructuralOperator.from_statistics(mean, std).apply()
+def build_regime_signature(
+    mean: np.ndarray,
+    std: np.ndarray,
+    corr_upper_tri: np.ndarray | None = None,
+) -> np.ndarray:
+    """Build a regime signature using the StructuralOperator induced by moments.
+
+    When ``corr_upper_tri`` is provided (the flattened upper triangle of the
+    current correlation matrix), it is appended as a compressed correlation
+    fingerprint.  This catches regime shifts that preserve marginal statistics
+    (mean/std) but change inter-sensor coupling structure.  The correlation
+    component is gated by ``NERAIUM_RICH_REGIME_SIGNATURES=1``; when disabled
+    the signature is identical to the legacy mean/std-only form so existing
+    persisted regime libraries remain compatible.
+    """
+    import os
+    base = StructuralOperator.from_statistics(mean, std).apply()
+    if corr_upper_tri is not None and os.environ.get("NERAIUM_RICH_REGIME_SIGNATURES", "").strip().lower() in ("1", "true", "yes"):
+        corr = np.asarray(corr_upper_tri, dtype=float)
+        corr = np.nan_to_num(corr, nan=0.0, posinf=0.0, neginf=0.0)
+        # Cap to 15 elements to keep signatures compact; discard near-zero entries.
+        corr_compressed = corr[:15]
+        return np.concatenate([base, corr_compressed])
+    return base
 
 
 def regime_distance(a: np.ndarray, b: np.ndarray) -> float:

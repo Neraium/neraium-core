@@ -22,15 +22,11 @@ def _per_signal_correlation_drift_contribution(
     n = delta.shape[0]
     if n == 0:
         return np.array([], dtype=float)
-    # Contribution of row i: norm of row i and column i (excluding diagonal once)
-    contrib = np.zeros(n, dtype=float)
-    for i in range(n):
-        row_norm = float(np.linalg.norm(delta[i, :]))
-        col_norm = float(np.linalg.norm(delta[:, i]))
-        # Avoid double-counting diagonal
-        diag_val = delta[i, i]
-        contrib[i] = np.sqrt(row_norm**2 + col_norm**2 - diag_val**2)
-    return contrib
+    # Vectorized: row/column squared norms minus diagonal double-count, all at once.
+    row_sq = np.sum(delta ** 2, axis=1)   # ||delta[i,:]||^2 for each i
+    col_sq = np.sum(delta ** 2, axis=0)   # ||delta[:,i]||^2 for each i
+    diag_sq = np.diag(delta) ** 2         # delta[i,i]^2 for each i
+    return np.sqrt(np.maximum(0.0, row_sq + col_sq - diag_sq))
 
 
 def _causal_outbound_strength(causal_matrix: np.ndarray) -> np.ndarray:
