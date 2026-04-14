@@ -55,6 +55,9 @@ try:
 except ImportError:  # pragma: no cover - optional dependency
     tqdm = None
 
+# Force disable tqdm due to compatibility issues with GroupBy
+tqdm = None
+
 
 # ============================================================
 # TURBO CONFIGURATION
