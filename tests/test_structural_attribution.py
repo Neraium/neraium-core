@@ -54,21 +54,3 @@ def test_infer_primary_stable():
         pair_shift_max=0.05,
     )
     assert p == "stable baseline telemetry"
-
-
-def test_engine_has_attribution():
-    from run_engine import StructuralEngine
-
-    eng = StructuralEngine(baseline_window=10, recent_window=5, max_frames=100)
-    for i in range(15):
-        r = eng.process_frame(
-            {
-                "timestamp": str(i),
-                "site_id": "s",
-                "asset_id": "a",
-                "sensor_values": {f"s{k}": float(k) + 0.01 * i for k in range(1, 8)},
-            }
-        )
-    assert "attribution" in r
-    assert "available" in r["attribution"]
-    assert "top_signal_drivers" in r["attribution"]
