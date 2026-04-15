@@ -67,7 +67,7 @@ from neraium_core.structural_upgrade import (
     update_episode_memory,
 )
 from neraium_core.scoring import canonicalize_components, canonicalize_weights, composite_instability_score_normalized
-from neraium_core.spectral import dominant_mode_loading, spectral_gap, spectral_radius
+from neraium_core.spectral import dominant_mode_loading, spectral_gap, spectral_radius, spectral_bundle
 from neraium_core.context_invariant_representation import (
     RepresentationWeights,
     TemporalRepresentationConfig,
@@ -2197,7 +2197,14 @@ class StructuralEngine:
 
             warning = early_warning_metrics(np.nan_to_num(recent_window, nan=0.0))
 
-            signature = build_regime_signature(recent_mean, recent_std)
+            # Use previous frame's correlation structure (one-frame lag is fine for
+            # slow-changing regimes) to enrich the signature when opted in.
+            _prev_corr_upper = (
+                flatten_upper_tri(self._last_corr_recent)
+                if self._last_corr_recent is not None
+                else None
+            )
+            signature = build_regime_signature(recent_mean, recent_std, corr_upper_tri=_prev_corr_upper)
             self.regime_signatures = update_regime_library(signature, self.regime_signatures)
             assigned_regime = assign_regime(signature, self.regime_signatures)
 
@@ -2393,23 +2400,30 @@ class StructuralEngine:
                 causal_matrix = None
                 causal = {}
                 causal_graph = {}
-                valid_sensor_names = []
+                valid_sensor_names = [rep.feature_names[i] for i in range(len(valid_mask)) if valid_mask[i]]
                 causal_prop = None
                 dominant_causal_source = None
                 causal_chains = None
 
+                # Tiered causal analysis:
+                #   Tier 1 (light)  – instability low:  Granger + 1-hop propagation, no chains
+                #   Tier 2 (full)   – instability high:  Granger + multi-hop propagation + chains
+                #   Skip            – throttle says skip: zero matrix for attribution
+                _high_instability = causal_instability_estimate >= 0.5
                 if should_compute_causal:
                     causal_matrix = granger_causality_matrix(z_recent_valid)
                     causal = causal_metrics(causal_matrix)
                     causal_graph = causal_graph_metrics(causal_matrix, threshold=0.1)
-                    valid_sensor_names = [rep.feature_names[i] for i in range(len(valid_mask)) if valid_mask[i]]
 
                     if _env_enabled("NERAIUM_CAUSAL_INTELLIGENCE", default="1"):
                         try:
+                            # Tier 2: full multi-hop propagation when instability is elevated
+                            # Tier 1: single-hop only (faster) during stable periods
+                            _prop_steps = 2 if _high_instability else 1
                             causal_prop = causal_propagation_spread(
                                 causal_matrix,
                                 threshold=0.1,
-                                max_steps=2,
+                                max_steps=_prop_steps,
                                 top_k=3,
                             )
                             top_sources = causal_prop.get("top_sources") if isinstance(causal_prop, dict) else None
@@ -2420,7 +2434,8 @@ class StructuralEngine:
                         except Exception:
                             causal_prop = None
 
-                    if _env_enabled("NERAIUM_CAUSAL_ROOT_CAUSE_CHAINS", default="1"):
+                    # Tier 2 only: root-cause chain tracing is expensive; skip when stable
+                    if _high_instability and _env_enabled("NERAIUM_CAUSAL_ROOT_CAUSE_CHAINS", default="1"):
                         try:
                             causal_chains = causal_root_cause_chains(
                                 causal_matrix,
@@ -2436,7 +2451,6 @@ class StructuralEngine:
                     self._causal_throttle.record_computation(False)
                     # When causal is skipped, provide a zero matrix for attribution
                     n_sensors = z_recent_valid.shape[1] if z_recent_valid.ndim >= 2 else 0
-                    valid_sensor_names = [rep.feature_names[i] for i in range(len(valid_mask)) if valid_mask[i]]
                     causal_matrix = np.zeros((n_sensors, n_sensors), dtype=float)
 
                 attr = causal_attribution(
@@ -2466,11 +2480,8 @@ class StructuralEngine:
 
                 subsystem = subsystem_spectral_measures(corr_recent)
 
-                spectral = {
-                    "radius": spectral_radius(corr_recent),
-                    "gap": spectral_gap(corr_recent),
-                    **dominant_mode_loading(corr_recent),
-                }
+                # Single eigendecomposition (k=2) covers radius, gap, and dominant mode.
+                spectral = spectral_bundle(corr_recent)
 
                 entropy_score = float(interaction_entropy(corr_recent))
                 raw_components = {
