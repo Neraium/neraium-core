@@ -81,6 +81,7 @@ class SIIConfig:
     spike_threshold_multiplier: float = 1.0
     decision_thresholds_json: str = "{\"default\": 1.0}"
     log_level: str = "INFO"
+    read_only: bool = False
 
     def __post_init__(self) -> None:
         if self.baseline_window < 4:
@@ -252,6 +253,7 @@ class SIIConfig:
             spike_threshold_multiplier=_env_float("SII_SPIKE_THRESHOLD_MULTIPLIER", 1.0),
             decision_thresholds_json=os.getenv("SII_DECISION_THRESHOLDS_JSON", "{\"default\": 1.0}"),
             log_level=os.getenv("SII_LOG_LEVEL", "INFO").upper(),
+            read_only=_env_bool("SII_READ_ONLY", False),
         )
 
 
