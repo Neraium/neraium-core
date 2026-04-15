@@ -9,6 +9,7 @@ description = "Read-only structural instability instrumentation engine and API"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
+  "click>=7.0",
   "fastapi>=0.110",
   "gradio>=4.0",
   "numpy>=1.24",
