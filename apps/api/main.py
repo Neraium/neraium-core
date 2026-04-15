@@ -146,7 +146,10 @@ def _ensure_default_run(
 def is_api_key_valid(configured_key: str | None, provided_key: str | None) -> bool:
     if not configured_key:
         return True
-    return configured_key == provided_key
+    if not provided_key:
+        return False
+    import hmac
+    return hmac.compare_digest(configured_key, provided_key)
 
 
 def _results_envelope(results: list[dict[str, Any]], latest: dict[str, Any] | None) -> dict[str, Any]:
@@ -270,6 +273,17 @@ def create_app(
         else DEFAULT_MAX_REQUEST_BODY_BYTES
     )
 
+    _WEAK_API_KEYS = {"change-me", "changeme", "secret", "apikey", "api-key", "test", "dev", "development", "password"}
+    if runtime_mode == "production":
+        if not api_key:
+            logger.error(
+                "startup_api_key_missing: NERAIUM_API_KEY is not set; all protected endpoints are unauthenticated in production."
+            )
+        elif len(api_key) < 16 or api_key.lower() in _WEAK_API_KEYS:
+            logger.warning(
+                "startup_api_key_weak: NERAIUM_API_KEY appears weak (too short or a known default); use a cryptographically random key in production."
+            )
+
     runtime_status = get_core_runtime_status()
     validate_runtime_or_raise(runtime_status)
 
@@ -289,6 +303,7 @@ def create_app(
     app = FastAPI(title="Neraium SII API", version="0.1.0")
     app.state.request_body_limit = request_body_limit
     register_exception_handlers(app, logger=logger)
+    app.add_middleware(SecurityHeadersMiddleware)
     app.add_middleware(RequestCorrelationIdMiddleware)
     app.add_middleware(MaxRequestBodySizeMiddleware, max_body_size=request_body_limit)
     app.add_middleware(SecurityHeadersMiddleware)

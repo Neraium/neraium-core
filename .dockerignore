@@ -7,6 +7,7 @@ __pycache__/
 *.pyo
 *.pyd
 .venv/
+.venv-ci/
 venv/
 dist/
 build/
@@ -32,3 +33,17 @@ neraium.db
 neraium.db-*
 *.log
 *.tmp
+archive/
+backup_claude_ui/
+debug_outputs/
+diagnostics/
+notebooks/
+outputs/
+reports/
+evaluation/
+validation/
+validation_results*/
+*.png
+*.csv
+*.json.bak
+runners/

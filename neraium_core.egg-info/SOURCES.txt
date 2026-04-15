@@ -40,6 +40,7 @@ neraium_core/memory_recall_service.py
 neraium_core/metrics.py
 neraium_core/models.py
 neraium_core/output_contract.py
+neraium_core/performance_throttle.py
 neraium_core/pilot_config.py
 neraium_core/pilot_schema.py
 neraium_core/pipeline.py
@@ -54,7 +55,6 @@ neraium_core/sii_cli.py
 neraium_core/spectral.py
 neraium_core/stability_evaluation.py
 neraium_core/staged_pipeline.py
-neraium_core/stock_market_adapter.py
 neraium_core/store.py
 neraium_core/structural_attribution.py
 neraium_core/structural_upgrade.py
@@ -387,7 +387,6 @@ tests/test_intervention_intelligence_layer.py
 tests/test_intervention_recommendation_ranker.py
 tests/test_law_engine_decision.py
 tests/test_law_governance.py
-tests/test_lead_time_engine.py
 tests/test_local_validation_pipeline.py
 tests/test_math_upgrades.py
 tests/test_memory_recall.py
@@ -420,10 +419,8 @@ tests/test_reliability_calibration_layer.py
 tests/test_representation_quality_stage.py
 tests/test_result_projector.py
 tests/test_rich_signal_features.py
-tests/test_run_engine_horizon_early_warning.py
 tests/test_run_fd_test_gal2.py
 tests/test_run_fd_test_replay.py
-tests/test_run_live_stock_market.py
 tests/test_run_release_candidate.py
 tests/test_runtime_config.py
 tests/test_score_computation_stage.py
