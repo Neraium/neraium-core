@@ -4,6 +4,7 @@ Version: 0.1.0
 Summary: Read-only structural instability instrumentation engine and API
 Requires-Python: >=3.10
 Description-Content-Type: text/markdown
+Requires-Dist: click>=7.0
 Requires-Dist: fastapi>=0.110
 Requires-Dist: gradio>=4.0
 Requires-Dist: numpy>=1.24
