@@ -28,4 +28,8 @@ python -c "import importlib; importlib.import_module(\"apps.api.main\")" >/dev/n
   exit 1
 }
 
-exec python -m uvicorn apps.api.main:app --host 0.0.0.0 --port "${PORT:-8000}" --proxy-headers
+exec python -m uvicorn apps.api.main:app \
+  --host 0.0.0.0 \
+  --port "${PORT:-8000}" \
+  --proxy-headers \
+  --h11-max-incomplete-event-size "${NERAIUM_UVICORN_H11_MAX_INCOMPLETE_EVENT_SIZE:-67108864}"
