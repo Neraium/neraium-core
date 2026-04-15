@@ -34,6 +34,7 @@ from .bootstrap.runtime import (
 from .bootstrap.static import _mount_web_static
 from .middleware.correlation import RequestCorrelationIdMiddleware
 from .middleware.request_limits import MaxRequestBodySizeMiddleware
+from .middleware.security_headers import SecurityHeadersMiddleware
 from .schemas.alerts import AlertAcknowledgeRequest, AlertResolveRequest, AlertsEnvelope
 from .schemas.assistant import AssistantRequest, AssistantResponse, ReportRequest, ReportResponse
 from .schemas.chat import ChatRequest, ChatResponse
@@ -290,6 +291,7 @@ def create_app(
     register_exception_handlers(app, logger=logger)
     app.add_middleware(RequestCorrelationIdMiddleware)
     app.add_middleware(MaxRequestBodySizeMiddleware, max_body_size=request_body_limit)
+    app.add_middleware(SecurityHeadersMiddleware)
     app.add_middleware(GZipMiddleware, minimum_size=1024, compresslevel=5)
     cors_allow_origins_list = cors_allow_origins()
     cors_allow_origin_regex_value = cors_allow_origin_regex()
