@@ -306,6 +306,7 @@ def create_app(
     app.add_middleware(SecurityHeadersMiddleware)
     app.add_middleware(RequestCorrelationIdMiddleware)
     app.add_middleware(MaxRequestBodySizeMiddleware, max_body_size=request_body_limit)
+    app.add_middleware(SecurityHeadersMiddleware)
     app.add_middleware(GZipMiddleware, minimum_size=1024, compresslevel=5)
     cors_allow_origins_list = cors_allow_origins()
     cors_allow_origin_regex_value = cors_allow_origin_regex()
