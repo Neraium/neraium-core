@@ -60,6 +60,7 @@ from .integration import (
     apply_integration_mapping,
     load_integration_config,
 )
+from .utils.read_only import enforce_read_only
 from .web import build_web_router
 from .routers.health import build_health_router
 from .routers.alerts import build_alerts_router
@@ -302,6 +303,7 @@ def create_app(
 
     app = FastAPI(title="Neraium SII API", version="0.1.0")
     app.state.request_body_limit = request_body_limit
+    app.state.read_only = os.getenv("SII_READ_ONLY", "").strip().lower() in {"1", "true", "yes", "on"}
     register_exception_handlers(app, logger=logger)
     app.add_middleware(SecurityHeadersMiddleware)
     app.add_middleware(RequestCorrelationIdMiddleware)
@@ -663,6 +665,7 @@ def create_app(
         _: None = Depends(require_api_key),
         customer_id: str | None = Query(default=None),
     ) -> dict[str, Any]:
+        enforce_read_only(app.state.read_only)
         try:
             run = service_instance.create_run(
                 name=payload.name.strip(),
@@ -680,6 +683,7 @@ def create_app(
         _: None = Depends(require_api_key),
         customer_id: str | None = Query(default=None),
     ) -> dict[str, Any]:
+        enforce_read_only(app.state.read_only)
         try:
             run = service_instance.activate_run(
                 payload.run_id.strip(),
@@ -720,6 +724,7 @@ def create_app(
         _: None = Depends(require_api_key),
         customer_id: str | None = Query(default=None),
     ) -> dict[str, Any]:
+        enforce_read_only(app.state.read_only)
         try:
             run = service_instance.update_run(
                 run_id,
@@ -740,6 +745,7 @@ def create_app(
         _: None = Depends(require_api_key),
         customer_id: str | None = Query(default=None),
     ) -> dict[str, Any]:
+        enforce_read_only(app.state.read_only)
         try:
             run = service_instance.activate_run(
                 run_id.strip(),
@@ -766,6 +772,7 @@ def create_app(
         _: None = Depends(require_api_key),
         customer_id: str | None = Query(default=None),
     ) -> dict[str, bool]:
+        enforce_read_only(app.state.read_only)
         resolved_customer = resolve_customer_id(customer_id)
         run = service_instance.get_run(run_id, customer_id=resolved_customer)
         if run is None:
@@ -780,6 +787,7 @@ def create_app(
         _: None = Depends(require_api_key),
         customer_id: str | None = Query(default=None),
     ) -> dict[str, Any]:
+        enforce_read_only(app.state.read_only)
         resolved_customer = resolve_customer_id(customer_id)
         try:
             service_instance.lock_baseline_for_run(
@@ -913,6 +921,7 @@ def create_app(
         payload: ChatRequest,
         _: None = Depends(require_api_key),
     ) -> dict[str, Any]:
+        enforce_read_only(app.state.read_only)
         req_ctx = payload.context if payload.context is not None else None
         resolved_customer = resolve_customer_id(getattr(req_ctx, "customer_id", None))
         requested_run = getattr(req_ctx, "run_id", None)
@@ -1079,6 +1088,7 @@ def create_app(
         payload: AssistantRequest,
         _: None = Depends(require_api_key),
     ) -> dict[str, Any]:
+        enforce_read_only(app.state.read_only)
         resolved_customer = resolve_customer_id(payload.customer_id)
         resolved_run = resolve_run_id(service_instance, payload.run_id, customer_id=resolved_customer)
         return service_instance.generate_assistant_response(
@@ -1093,6 +1103,7 @@ def create_app(
         payload: AssistantRequest,
         _: None = Depends(require_api_key),
     ) -> dict[str, Any]:
+        enforce_read_only(app.state.read_only)
         resolved_customer = resolve_customer_id(payload.customer_id)
         resolved_run = resolve_run_id(service_instance, payload.run_id, customer_id=resolved_customer)
         return service_instance.generate_assistant_response(
@@ -1107,6 +1118,7 @@ def create_app(
         payload: AssistantRequest,
         _: None = Depends(require_api_key),
     ) -> dict[str, Any]:
+        enforce_read_only(app.state.read_only)
         resolved_customer = resolve_customer_id(payload.customer_id)
         resolved_run = resolve_run_id(service_instance, payload.run_id, customer_id=resolved_customer)
         mode = payload.mode or "why_recommended"
@@ -1127,6 +1139,7 @@ def create_app(
         payload: ReportRequest,
         _: None = Depends(require_api_key),
     ) -> dict[str, Any]:
+        enforce_read_only(app.state.read_only)
         resolved_customer = resolve_customer_id(payload.customer_id)
         resolved_run = resolve_run_id(service_instance, payload.run_id, customer_id=resolved_customer)
         report = service_instance.generate_report_response(
@@ -1147,6 +1160,7 @@ def create_app(
         format: Literal["txt", "md"] = Query(default="txt"),
         _: None = Depends(require_api_key),
     ) -> PlainTextResponse:
+        enforce_read_only(app.state.read_only)
         resolved_customer = resolve_customer_id(payload.customer_id)
         resolved_run = resolve_run_id(service_instance, payload.run_id, customer_id=resolved_customer)
         report = service_instance.generate_report_response(
@@ -1163,6 +1177,7 @@ def create_app(
 
     @app.post("/reset", response_model=ActionResponse)
     def reset(_: None = Depends(require_api_key)) -> dict[str, bool]:
+        enforce_read_only(app.state.read_only)
         logger.info("reset endpoint called")
         service_instance.reset()
         return {"ok": True}
