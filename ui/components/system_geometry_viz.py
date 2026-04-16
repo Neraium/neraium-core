@@ -263,6 +263,71 @@ def _edge_color_by_drift(drift_intensity: float) -> str:
         return "#FB923C"
 
 
+def _to_state_level(drift: float, stability: float, confidence: float) -> str:
+    """Derive high-level system state from current metrics."""
+    if drift >= 0.78 or (drift >= 0.62 and stability <= 0.36):
+        return "Alert"
+    if drift >= 0.48 or stability <= 0.52:
+        return "Drifting"
+    if drift <= 0.14 and stability >= 0.84 and confidence >= 0.78:
+        return "Baseline"
+    return "Stable"
+
+
+def _trend_word(delta: float, *, deadband: float = 0.012) -> str:
+    if delta > deadband:
+        return "increasing"
+    if delta < -deadband:
+        return "decreasing"
+    return "holding"
+
+
+def _trend_label(metric: str, value: float, delta: float) -> str:
+    direction = _trend_word(delta)
+    if metric == "stability":
+        if value >= 0.76:
+            level = "High"
+        elif value >= 0.56:
+            level = "Moderate"
+        else:
+            level = "Low"
+    elif metric == "drift":
+        if value <= 0.26:
+            level = "Low"
+        elif value <= 0.56:
+            level = "Moderate"
+        else:
+            level = "High"
+    else:
+        if value >= 0.76:
+            level = "Strong"
+        elif value >= 0.56:
+            level = "Moderate"
+        else:
+            level = "Weak"
+    return f"{metric.title()}: {level} and {direction}"
+
+
+def _triangle_point_from_metrics(drift: float, stability: float, coherence: float) -> tuple[float, float]:
+    """Map metrics to a 2D triangle coordinate using weighted vertices.
+
+    Vertex layout:
+    - top: Stability
+    - left: Coherence / Structure
+    - right: Drift
+    """
+    stability_v = (0.5, 0.14)
+    coherence_v = (0.18, 0.84)
+    drift_v = (0.82, 0.84)
+    total = max(drift + stability + coherence, 1e-6)
+    w_d = drift / total
+    w_s = stability / total
+    w_c = coherence / total
+    x = (w_s * stability_v[0]) + (w_c * coherence_v[0]) + (w_d * drift_v[0])
+    y = (w_s * stability_v[1]) + (w_c * coherence_v[1]) + (w_d * drift_v[1])
+    return (round(clamp(x, 0.0, 1.0), 4), round(clamp(y, 0.0, 1.0), 4))
+
+
 def render_system_geometry_viz(
     state: Any,  # SystemState
     gate_decision: dict[str, Any] | None = None,
@@ -301,6 +366,7 @@ def render_system_geometry_viz(
     # Extract system metrics from state
     drift_intensity = clamp(state.drift_intensity if state else 0.0, 0.0, 1.0)
     stability = 1.0 - drift_intensity  # Inverse of drift
+    confidence = clamp(state.confidence if state else 0.0, 0.0, 1.0)
 
     # Compute smooth velocity from drift progression
     previous_drift = 0.0
@@ -329,6 +395,37 @@ def render_system_geometry_viz(
     edges = _compute_edge_strength(deformed_nodes, drift_intensity, stability)
 
     rows = records or []
+    latest_row = rows[-1] if rows else {}
+    previous_row = rows[-2] if len(rows) > 1 else {}
+    coherence_value = clamp(
+        safe_float(latest_row.get("coherence_score"), max(0.0, 1.0 - (drift_intensity * 0.72))),
+        0.0,
+        1.0,
+    )
+    previous_drift_value = clamp(safe_float(previous_row.get("structural_drift_score"), drift_intensity), 0.0, 1.0)
+    previous_stability_value = clamp(
+        safe_float(previous_row.get("relational_stability_score"), max(0.0, 1.0 - previous_drift_value)),
+        0.0,
+        1.0,
+    )
+    previous_coherence_value = clamp(
+        safe_float(previous_row.get("coherence_score"), max(0.0, 1.0 - (previous_drift_value * 0.72))),
+        0.0,
+        1.0,
+    )
+    drift_delta = round(drift_intensity - previous_drift_value, 6)
+    stability_delta = round(stability - previous_stability_value, 6)
+    coherence_delta = round(coherence_value - previous_coherence_value, 6)
+
+    current_triangle_point = _triangle_point_from_metrics(drift_intensity, stability, coherence_value)
+    previous_triangle_point = _triangle_point_from_metrics(previous_drift_value, previous_stability_value, previous_coherence_value)
+    state_label = _to_state_level(drift_intensity, stability, confidence)
+    trend_lines = {
+        "stability": _trend_label("stability", stability, stability_delta),
+        "drift": _trend_label("drift", drift_intensity, drift_delta),
+        "coherence": _trend_label("coherence", coherence_value, coherence_delta),
+        "state": f"State: {state_label}",
+    }
 
     # Generate prior stable states as subtle trails
     prior_trails = []
@@ -423,10 +520,34 @@ def render_system_geometry_viz(
         "metrics": {
             "drift_intensity": drift_intensity,
             "stability": stability,
-            "structure_coherence": stability,  # Tightness of structure
+            "structure_coherence": coherence_value,
             "deformation_magnitude": drift_intensity,
             "velocity_magnitude": math.sqrt(velocity[0]**2 + velocity[1]**2),
+            "confidence": confidence,
+            "drift_delta": drift_delta,
+            "stability_delta": stability_delta,
+            "coherence_delta": coherence_delta,
         },
+        "global_state": state_label,
+        "triangle_state": {
+            "labels": {
+                "top": "Stability",
+                "left": "Coherence (System Alignment)",
+                "right": "Drift",
+                "center": "System State",
+            },
+            "current_point": {"x": current_triangle_point[0], "y": current_triangle_point[1]},
+            "previous_point": {"x": previous_triangle_point[0], "y": previous_triangle_point[1]},
+            "direction_vector": {
+                "dx": round(current_triangle_point[0] - previous_triangle_point[0], 5),
+                "dy": round(current_triangle_point[1] - previous_triangle_point[1], 5),
+            },
+            "geometry_warp": {
+                "drift_pull": round(drift_intensity * 0.08, 5),
+                "coherence_collapse": round((1.0 - coherence_value) * 0.06, 5),
+            },
+        },
+        "interpretation": trend_lines,
         "animation": {
             "current_frame": current_frame,
             "total_frames": total_frames,
