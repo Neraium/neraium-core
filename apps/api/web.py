@@ -5,7 +5,7 @@ import os
 from pathlib import Path
 
 from fastapi import APIRouter
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse, Response
 
 
 def build_web_router() -> APIRouter:
@@ -96,6 +96,12 @@ def build_web_router() -> APIRouter:
     @router.get("/demo/full", include_in_schema=False)
     def web_demo_full_entry_redirect() -> RedirectResponse:
         return RedirectResponse(url="/dashboard?replay=1&autoplay=1", status_code=307)
+
+    @router.get("/favicon.ico", include_in_schema=False)
+    def favicon() -> Response:
+        # Simple SVG favicon as a data URI to avoid 404
+        svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect fill="#0b1320" width="32" height="32"/><text x="16" y="24" font-size="22" font-family="Arial" font-weight="bold" fill="#ffffff" text-anchor="middle">N</text></svg>'
+        return Response(content=svg.encode('utf-8'), media_type="image/svg+xml", headers={"Cache-Control": "public, max-age=86400"})
 
     return router
 
