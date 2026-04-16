@@ -46,9 +46,18 @@ export default function ReplayChart({ frames, currentIndex }: ReplayChartProps) 
   const driftPath = driftPoints.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ')
   const stabilityPath = stabilityPoints.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ')
 
-  // Build filled area paths for visual effect
-  const driftAreaPath = driftPath ? `M ${driftPath} L ${PX + IW},${PY + IH} L ${PX},${PY + IH} Z` : ''
-  const stabilityAreaPath = stabilityPath ? `M ${stabilityPath} L ${PX + IW},${PY + IH} L ${PX},${PY + IH} Z` : ''
+  const latestDriftPoint = driftPoints[driftPoints.length - 1]
+  const latestStabilityPoint = stabilityPoints[stabilityPoints.length - 1]
+
+  // Build filled area paths for visual effect (closes at latest visible point)
+  const driftAreaPath =
+    driftPath && latestDriftPoint
+      ? `M ${driftPath} L ${latestDriftPoint.x.toFixed(1)},${PY + IH} L ${PX},${PY + IH} Z`
+      : ''
+  const stabilityAreaPath =
+    stabilityPath && latestStabilityPoint
+      ? `M ${stabilityPath} L ${latestStabilityPoint.x.toFixed(1)},${PY + IH} L ${PX},${PY + IH} Z`
+      : ''
 
   return (
     <div className="panel">
@@ -147,10 +156,10 @@ export default function ReplayChart({ frames, currentIndex }: ReplayChartProps) 
             strokeDasharray="5,4"
             opacity="0.6"
           />
-          {driftPoints[currentIndex] && (
+          {latestDriftPoint && (
             <circle
               cx={currentX}
-              cy={driftPoints[currentIndex].y}
+              cy={latestDriftPoint.y}
               r="7"
               fill="#3B82F6"
               stroke="#FFFFFF"
@@ -158,10 +167,10 @@ export default function ReplayChart({ frames, currentIndex }: ReplayChartProps) 
               opacity="0.95"
             />
           )}
-          {stabilityPoints[currentIndex] && (
+          {latestStabilityPoint && (
             <circle
               cx={currentX}
-              cy={stabilityPoints[currentIndex].y}
+              cy={latestStabilityPoint.y}
               r="7"
               fill="#22C55E"
               stroke="#FFFFFF"
