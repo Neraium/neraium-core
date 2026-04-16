@@ -1,5 +1,5 @@
 interface InsightPanelsProps {
-  frame: any
+  frame: Record<string, unknown>
 }
 
 export default function InsightPanels({ frame }: InsightPanelsProps) {

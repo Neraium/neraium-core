@@ -1,5 +1,5 @@
 interface TetrahedronPanelProps {
-  frame: any
+  frame: Record<string, unknown>
 }
 
 export default function TetrahedronPanel({ frame }: TetrahedronPanelProps) {

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import os
+from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from starlette.responses import JSONResponse
@@ -65,8 +66,8 @@ def build_integrations_router(*, deps: IntegrationsRouterDependencies) -> APIRou
             )
             deps.log_structured(logger, event="pull_integration_started", fields={"customer_id": resolved_customer, "run_id": resolved_run, "endpoint_url": endpoint_url, "polling_interval_seconds": polling_interval_seconds, "auth_type": auth_type}, level=logging.INFO)
             return deps.pull_manager.public_pull_state(state, customer_id=resolved_customer)
-        except HTTPException as exc:
-            return JSONResponse(status_code=exc.status_code, content={"detail": str(exc.detail)})
+        except HTTPException:
+            raise
 
     @router.post("/integrations/pull/stop", response_model=PullIntegrationStatusEnvelope)
     def stop_pull(_: None = Depends(deps.require_api_key), customer_id: str | None = Query(default=None)) -> dict[str, Any]:

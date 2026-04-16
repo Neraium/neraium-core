@@ -1,5 +1,5 @@
 interface HeaderBarProps {
-  frame: any
+  frame: Record<string, unknown>
 }
 
 export default function HeaderBar({ frame }: HeaderBarProps) {
