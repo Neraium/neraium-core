@@ -9,9 +9,9 @@ export default function InsightPanels({ frame }: InsightPanelsProps) {
     return '#9CA3AF'
   }
 
-  const health = frame.system_health || 'nominal'
+  const health = ((frame.system_health as string) || 'nominal').toLowerCase()
   const healthColor = health === 'degraded' ? '#EF4444' : health === 'watch' ? '#F97316' : '#22C55E'
-  const transitionType = frame.transition_type || 'STABLE'
+  const transitionType = (frame.transition_type as string) || 'STABLE'
 
   return (
     <div className="panel">
@@ -30,7 +30,7 @@ export default function InsightPanels({ frame }: InsightPanelsProps) {
 
         <div className="insight-card">
           <div className="insight-title">Event Status</div>
-          <div className="insight-value" style={{ color: getStatusColor(frame.event_admitted) }}>
+          <div className="insight-value" style={{ color: getStatusColor(frame.event_admitted as boolean | string | undefined) }}>
             {frame.event_admitted ? 'ADMITTED' : 'SUPPRESSED'}
           </div>
           <div className="insight-detail">Gate decision on signal</div>
@@ -46,14 +46,14 @@ export default function InsightPanels({ frame }: InsightPanelsProps) {
 
         <div className="insight-card">
           <div className="insight-title">Persistence</div>
-          <div className="insight-value">{frame.persistence_minutes || 0} min</div>
+          <div className="insight-value">{((frame.persistence_minutes as number) || 0)} min</div>
           <div className="insight-detail">Signal duration</div>
         </div>
 
         <div className="insight-card">
           <div className="insight-title">Phase</div>
           <div className="insight-value">
-            {frame.phase ? frame.phase.toUpperCase().replace(/_/g, ' ') : 'UNKNOWN'}
+            {frame.phase ? (frame.phase as string).toUpperCase().replace(/_/g, ' ') : 'UNKNOWN'}
           </div>
           <div className="insight-detail">Operating regime</div>
         </div>
@@ -61,7 +61,7 @@ export default function InsightPanels({ frame }: InsightPanelsProps) {
         <div className="insight-card">
           <div className="insight-title">Timestamp</div>
           <div className="insight-value" style={{ fontSize: '12px' }}>
-            {frame.timestamp ? new Date(frame.timestamp).toLocaleTimeString() : '—'}
+            {frame.timestamp ? new Date(frame.timestamp as string).toLocaleTimeString() : '—'}
           </div>
           <div className="insight-detail">Frame timestamp</div>
         </div>
@@ -85,7 +85,7 @@ export default function InsightPanels({ frame }: InsightPanelsProps) {
                 transition: 'all 0.5s ease-in-out',
               }}
             >
-              {(frame.structural_drift_score * 100).toFixed(1)}%
+              {(((frame.structural_drift_score as number) || 0) * 100).toFixed(1)}%
             </div>
           </div>
           <div style={{ padding: '8px', background: 'rgba(255,255,255,0.03)', borderRadius: '4px' }}>
@@ -101,7 +101,7 @@ export default function InsightPanels({ frame }: InsightPanelsProps) {
                 transition: 'all 0.5s ease-in-out',
               }}
             >
-              {(frame.relational_stability_score * 100).toFixed(1)}%
+              {(((frame.relational_stability_score as number) || 0) * 100).toFixed(1)}%
             </div>
           </div>
           <div style={{ padding: '8px', background: 'rgba(255,255,255,0.03)', borderRadius: '4px' }}>
@@ -117,7 +117,7 @@ export default function InsightPanels({ frame }: InsightPanelsProps) {
                 transition: 'all 0.5s ease-in-out',
               }}
             >
-              {(frame.coherence_score * 100).toFixed(1)}%
+              {(((frame.coherence_score as number) || 0) * 100).toFixed(1)}%
             </div>
           </div>
           <div style={{ padding: '8px', background: 'rgba(255,255,255,0.03)', borderRadius: '4px' }}>
@@ -133,7 +133,7 @@ export default function InsightPanels({ frame }: InsightPanelsProps) {
                 transition: 'all 0.5s ease-in-out',
               }}
             >
-              {(frame.confidence * 100).toFixed(1)}%
+              {(((frame.confidence as number) || 0) * 100).toFixed(1)}%
             </div>
           </div>
         </div>

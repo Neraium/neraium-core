@@ -17,7 +17,7 @@ export function normalizeFrame(raw: BackendFrame): DemoFrame {
       confidence: Number(raw.confidence_score ?? raw.alignment_confidence ?? raw.confidence ?? 0),
     },
     tetrahedral_state: {
-      position: (raw.tetrahedral_state as Record<string, unknown>)?.position ?? [0, 0, 0],
+      position: ((raw.tetrahedral_state as Record<string, unknown>)?.position as [number, number, number] | { x: number; y: number; z: number } | undefined) ?? [0, 0, 0],
       interpreted_label: String((raw.tetrahedral_state as Record<string, unknown>)?.interpreted_label ?? ""),
       movement_summary: String((raw.tetrahedral_state as Record<string, unknown>)?.movement_summary ?? ""),
       nearest_vertex: String((raw.tetrahedral_state as Record<string, unknown>)?.nearest_vertex ?? ""),

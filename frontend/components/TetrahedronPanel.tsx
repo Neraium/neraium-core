@@ -3,10 +3,10 @@ interface TetrahedronPanelProps {
 }
 
 export default function TetrahedronPanel({ frame }: TetrahedronPanelProps) {
-  const drift = frame.structural_drift_score || 0
-  const stability = frame.relational_stability_score || 0
-  const coherence = frame.coherence_score || 0
-  const confidence = frame.confidence || 0
+  const drift = ((frame.structural_drift_score as number) || 0)
+  const stability = ((frame.relational_stability_score as number) || 0)
+  const coherence = ((frame.coherence_score as number) || 0)
+  const confidence = ((frame.confidence as number) || 0)
 
   // Tetrahedron visualization - simplified 2D projection
   const W = 300

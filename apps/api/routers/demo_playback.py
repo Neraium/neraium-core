@@ -99,7 +99,10 @@ def _load_fd004_frames(unit_id: str = "unit_001") -> list[dict[str, Any]]:
     fd004_csv = repo_root / "fd004_outputs_subset" / "fd004_real_timeseries.csv"
 
     if not fd004_csv.is_file():
-        raise FileNotFoundError(f"FD004 timeseries file missing at {fd004_csv}")
+        raise HTTPException(
+            status_code=404,
+            detail=f"FD004 timeseries file not found at {fd004_csv}"
+        )
 
     rows: list[dict[str, Any]] = []
     with fd004_csv.open("r", encoding="utf-8") as f:
