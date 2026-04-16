@@ -10,7 +10,7 @@ import ReplayChart from '@/components/ReplayChart'
 import PlaybackControls from '@/components/PlaybackControls'
 
 // Transform DemoFrame to the format the components expect
-function transformFrame(demoFrame: DemoFrame): any {
+function transformFrame(demoFrame: DemoFrame): Frame {
   return {
     index: demoFrame.frame_index,
     total: demoFrame.frame_count,
@@ -59,16 +59,15 @@ export default function Home() {
   useEffect(() => {
     const loadDemoData = async () => {
       try {
-        const demoData = await fetchFD004DemoInit('unit_001')
-        if (demoData.frames && demoData.frames.length > 0) {
-          const transformedFrames = demoData.frames.map(transformFrame)
+        const demoFrames = await fetchFD004DemoInit('unit_001')
+        if (demoFrames && demoFrames.length > 0) {
+          const transformedFrames = demoFrames.map(transformFrame)
           setFrames(transformedFrames)
           setCurrentFrameIndex(0)
           setIsConnected(true)
         }
         setLoading(false)
       } catch (error) {
-        console.error('Failed to fetch demo data:', error)
         setIsConnected(false)
         setLoading(false)
       }

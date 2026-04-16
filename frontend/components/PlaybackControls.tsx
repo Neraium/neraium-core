@@ -1,3 +1,7 @@
+const SPEED_MIN = 0.5
+const SPEED_MAX = 2
+const SPEED_STEP = 0.1
+
 interface PlaybackControlsProps {
   currentIndex: number
   totalFrames: number
@@ -43,9 +47,9 @@ export default function PlaybackControls({
           <label>Speed</label>
           <input
             type="range"
-            min="0.5"
-            max="2"
-            step="0.1"
+            min={SPEED_MIN}
+            max={SPEED_MAX}
+            step={SPEED_STEP}
             value={playbackSpeed}
             onChange={(e) => onSpeedChange(parseFloat(e.target.value))}
             style={{ width: '120px' }}

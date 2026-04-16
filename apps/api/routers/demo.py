@@ -663,6 +663,44 @@ def build_demo_router(*, deps: DemoRouterDependencies) -> APIRouter:
 
         return _build_fd004_demo_frames(unit_id, rows, site_id, asset_id)
 
+    @router.get("/api/demo/fd004/init")
+    def demo_fd004_init(
+        unit_id: str = Query(default="unit_001"),
+        max_frames: int | None = Query(default=None),
+        _: None = Depends(deps.require_api_key),
+    ) -> dict[str, Any]:
+        """Load FD004 dataset and return frame sequence for frontend replay."""
+        logger.info(f"Serving FD004 demo for {unit_id}")
+        try:
+            site_id, asset_id, rows = deps.load_fd004_single_unit(unit_id, max_frames)
+        except Exception as exc:
+            detail = deps.summarize_exception_for_logs(exc)
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to load FD004 data: {detail}"
+            ) from exc
+
+        return _build_fd004_demo_frames(unit_id, rows, site_id, asset_id)
+
+    @router.get("/api/demo/fd004/initUnit")
+    def demo_fd004_init_unit(
+        id: str = Query(default="unit_001"),
+        max_frames: int | None = Query(default=None),
+        _: None = Depends(deps.require_api_key),
+    ) -> dict[str, Any]:
+        """Load FD004 dataset and return frame sequence for frontend replay (alternate parameter name)."""
+        logger.info(f"Serving FD004 demo for {id}")
+        try:
+            site_id, asset_id, rows = deps.load_fd004_single_unit(id, max_frames)
+        except Exception as exc:
+            detail = deps.summarize_exception_for_logs(exc)
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to load FD004 data: {detail}"
+            ) from exc
+
+        return _build_fd004_demo_frames(id, rows, site_id, asset_id)
+
     @router.get("/demo/fd004/status")
     def demo_fd004_status(
         run_id: str = Query(..., min_length=1),
