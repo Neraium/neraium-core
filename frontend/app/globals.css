@@ -175,25 +175,65 @@ a {
 .tetra {
   display: flex;
   flex-direction: column;
+  position: relative;
 }
 
 .tetra h3 {
-  margin: 0 0 6px;
+  margin: 0 0 8px;
   font-size: 14px;
   font-weight: 600;
-}
-
-.tetra p {
-  margin: 0 0 12px;
-  font-size: 11px;
-  color: #94a3b8;
 }
 
 .tetra canvas {
   width: 100% !important;
   height: 100% !important;
-  min-height: 300px !important;
+  min-height: 360px !important;
   flex: 1;
+  border-radius: 8px;
+  background: linear-gradient(135deg, #0a1428 0%, #0f172a 100%);
+}
+
+/* Confidence indicator */
+.tetra-status {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #1e293b;
+}
+
+.confidence-indicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.confidence-label {
+  color: #94a3b8;
+  font-weight: 600;
+  min-width: 70px;
+}
+
+.confidence-bar {
+  flex: 1;
+  height: 6px;
+  background: #1e293b;
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.confidence-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #3b82f6, #64b5f6);
+  transition: width 200ms ease;
+  border-radius: 3px;
+  box-shadow: 0 0 8px rgba(100, 181, 246, 0.4);
+}
+
+.confidence-value {
+  color: #64b5f6;
+  font-weight: 700;
+  min-width: 35px;
+  text-align: right;
 }
 
 /* Insights */

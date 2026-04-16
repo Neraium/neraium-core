@@ -60,7 +60,10 @@ export default function HomePage() {
 
       <section className="view-main">
         <ReplayChart frames={frames} currentIndex={index} />
-        <TetrahedronPanel position={extractPosition(currentFrame)} />
+        <TetrahedronPanel
+          position={extractPosition(currentFrame)}
+          confidence={currentFrame.metrics?.confidence ?? 0.5}
+        />
       </section>
 
       <InsightPanels frame={currentFrame} />
