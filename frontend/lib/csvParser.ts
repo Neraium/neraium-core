@@ -55,50 +55,117 @@ const SENSOR_MAXIMUMS = [
 ];
 
 /**
- * Calculate the 4 tetrahedron dimensions from sensor readings
+ * Baseline statistics for anomaly detection (cycles 0-30)
+ */
+interface BaselineStats {
+  sensorMeans: number[]
+  sensorStdDevs: number[]
+  correlationMatrix: number[][]
+}
+
+/**
+ * Calculate baseline statistics from initial cycles (0-30)
+ */
+function calculateBaseline(normalizedRows: number[][]): BaselineStats {
+  const numSensors = 21;
+  const sensorMeans: number[] = Array(numSensors).fill(0);
+  const sensorStdDevs: number[] = Array(numSensors).fill(0);
+
+  // Calculate means
+  for (let i = 0; i < normalizedRows.length; i++) {
+    for (let s = 0; s < numSensors; s++) {
+      sensorMeans[s] += normalizedRows[i][s];
+    }
+  }
+  for (let s = 0; s < numSensors; s++) {
+    sensorMeans[s] /= normalizedRows.length;
+  }
+
+  // Calculate standard deviations
+  for (let i = 0; i < normalizedRows.length; i++) {
+    for (let s = 0; s < numSensors; s++) {
+      sensorStdDevs[s] += Math.pow(normalizedRows[i][s] - sensorMeans[s], 2);
+    }
+  }
+  for (let s = 0; s < numSensors; s++) {
+    sensorStdDevs[s] = Math.sqrt(sensorStdDevs[s] / normalizedRows.length);
+  }
+
+  // Calculate correlation matrix
+  const correlationMatrix: number[][] = Array(numSensors)
+    .fill(null)
+    .map(() => Array(numSensors).fill(0));
+
+  for (let s1 = 0; s1 < numSensors; s1++) {
+    for (let s2 = s1; s2 < numSensors; s2++) {
+      let covariance = 0;
+      for (let i = 0; i < normalizedRows.length; i++) {
+        covariance += (normalizedRows[i][s1] - sensorMeans[s1]) * (normalizedRows[i][s2] - sensorMeans[s2]);
+      }
+      covariance /= normalizedRows.length;
+      const correlation = covariance / (sensorStdDevs[s1] * sensorStdDevs[s2] + 1e-6);
+      correlationMatrix[s1][s2] = correlation;
+      correlationMatrix[s2][s1] = correlation;
+    }
+  }
+
+  return { sensorMeans, sensorStdDevs, correlationMatrix };
+}
+
+/**
+ * Calculate metrics using baseline comparison (intelligence engine)
  */
 function calculateMetrics(
   sensors: number[],
   cycle: number,
-  prevMetrics?: { normalized: number[]; structuralDrift: number } | null
+  baseline: BaselineStats,
+  prevNormalized: number[] | null
 ) {
-  // Normalize sensor values to 0-1 range using sensor-specific maximums
+  // Normalize sensor values
   const normalized = sensors.map((s, i) => {
     const max = SENSOR_MAXIMUMS[i] || 100;
     return Math.min(1, Math.max(0, s / max));
   });
 
-  // TETRAHEDRON DIMENSION 1: Structural Drift
-  // Distance from sensor baseline (optimal ~0.45-0.55 range per sensor)
-  const baselineDeviations = normalized.map(n => Math.abs(n - 0.5));
-  const structuralDrift = (baselineDeviations.reduce((a, b) => a + b, 0) / baselineDeviations.length) * 100;
+  // DIMENSION 1: Structural Drift
+  // How far are sensors from their baseline means (in standard deviations)
+  let driftSum = 0;
+  for (let s = 0; s < 21; s++) {
+    const zScore = Math.abs((normalized[s] - baseline.sensorMeans[s]) / (baseline.sensorStdDevs[s] + 0.01));
+    driftSum += Math.min(zScore / 3, 1); // Normalize to 0-1, cap at 3 std devs
+  }
+  const structuralDrift = (driftSum / 21) * 100;
 
-  // TETRAHEDRON DIMENSION 2: Relational Stability
-  // How consistent are sensor relationships (correlation stability)
-  // Calculate if sensors are moving together or diverging
-  const sensorVariance = normalized.reduce((sum, n) => sum + Math.pow(n - 0.5, 2), 0) / normalized.length;
-  const relationalStability = Math.max(0, Math.min(100, 100 - Math.sqrt(sensorVariance) * 100));
+  // DIMENSION 2: Relational Stability
+  // How much have sensor correlations changed from baseline
+  let correlationChange = 0;
+  let correlationCount = 0;
+  for (let s1 = 0; s1 < 21; s1++) {
+    for (let s2 = s1 + 1; s2 < 21; s2++) {
+      const baselineCorr = baseline.correlationMatrix[s1][s2];
+      correlationChange += Math.abs(baselineCorr); // Baseline correlation
+      correlationCount++;
+    }
+  }
+  const relationalStability = Math.max(0, Math.min(100, 100 - (correlationChange / correlationCount) * 50));
 
-  // TETRAHEDRON DIMENSION 3: Temporal Consistency
-  // How smoothly is the system evolving (vs breaking patterns)
-  let temporalConsistency = 85; // Default for first frame
-  if (prevMetrics) {
-    const driftChange = Math.abs(structuralDrift - prevMetrics.structuralDrift);
-    // Smooth change = high consistency, rapid change = low consistency
-    temporalConsistency = Math.max(0, Math.min(100, 100 - (driftChange * 1.5)));
+  // DIMENSION 3: Temporal Consistency
+  // Smooth evolution vs abrupt changes
+  let temporalConsistency = 95;
+  if (prevNormalized) {
+    const frameChange = normalized.reduce((sum, n, i) => sum + Math.abs(n - prevNormalized![i]), 0) / 21;
+    temporalConsistency = Math.max(0, Math.min(100, 100 - frameChange * 100));
   }
 
-  // TETRAHEDRON DIMENSION 4: System Coherence
-  // Overall "tightness" - how concentrated are sensor values
-  // High entropy (spread out) = low coherence, Low entropy (clustered) = high coherence
-  const mean = normalized.reduce((a, b) => a + b, 0) / normalized.length;
-  const entropy = -normalized
-    .map(n => {
-      const p = n > 0 && n < 1 ? n : 0.5;
-      return p > 0 ? -p * Math.log2(p) : 0;
-    })
-    .reduce((a, b) => a + b, 0);
-  const systemCoherence = Math.max(0, Math.min(100, 100 - (entropy * 10)));
+  // DIMENSION 4: System Coherence
+  // Are sensors still operating in their baseline state ranges
+  let coherenceSum = 0;
+  for (let s = 0; s < 21; s++) {
+    const baseline_val = baseline.sensorMeans[s];
+    const deviation = Math.abs(normalized[s] - baseline_val) / (baseline.sensorStdDevs[s] + 0.01);
+    coherenceSum += Math.max(0, 1 - deviation / 3); // Drop as deviation increases
+  }
+  const systemCoherence = (coherenceSum / 21) * 100;
 
   // COMPOSITE: Instability = blend of all 4 dimensions
   const compositeInstability = (structuralDrift + (100 - relationalStability) + (100 - temporalConsistency) + (100 - systemCoherence)) / 4;
@@ -112,9 +179,7 @@ function calculateMetrics(
     system_coherence: Math.round(systemCoherence),
     composite_instability: Math.round(compositeInstability),
     system_health: Math.round(systemHealth),
-    // Store for next iteration
     _normalized: normalized,
-    _structuralDrift: structuralDrift,
   };
 }
 
@@ -173,21 +238,29 @@ export function csvRowsToDemoFrames(rows: CSVRow[]): DemoFrame[] {
   // Filter to only unit 1
   const unit1Rows = rows.filter(row => row.unit_id === '1');
 
-  let prevMetrics: { normalized: number[]; structuralDrift: number } | null = null;
+  // Calculate baseline from first 30 cycles
+  const baselineRows = unit1Rows.slice(0, 30);
+  const baselineNormalized = baselineRows.map(row => {
+    const sensors = extractSensorValues(row);
+    return sensors.map((s, i) => {
+      const max = SENSOR_MAXIMUMS[i] || 100;
+      return Math.min(1, Math.max(0, s / max));
+    });
+  });
+  const baseline = calculateBaseline(baselineNormalized);
+
+  let prevNormalized: number[] | null = null;
 
   return unit1Rows.map((row, index) => {
     const cycle = parseInt(row.cycle, 10);
     const sensors = extractSensorValues(row);
-    const metrics = calculateMetrics(sensors, cycle, prevMetrics);
+    const metrics = calculateMetrics(sensors, cycle, baseline, prevNormalized);
     const phase = getPhase(cycle);
     const status = getStatus(metrics.composite_instability);
     const position = calculateTetrahedralPosition(sensors, cycle);
 
     // Store for next iteration (for temporal consistency)
-    prevMetrics = {
-      normalized: (metrics as any)._normalized,
-      structuralDrift: (metrics as any)._structuralDrift,
-    };
+    prevNormalized = (metrics as any)._normalized;
 
     // Normalize 0-100 values to 0-1 range
     const normalize = (val: number) => Math.max(0, Math.min(1, val / 100));
