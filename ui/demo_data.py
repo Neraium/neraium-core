@@ -8,6 +8,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
+from neraium_core.alignment import StructuralEngine
 from neraium_core.tetrahedral_state import compute_tetrahedral_state
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -189,16 +190,14 @@ def _load_rows_from_turbo_results(*, limit: int | None) -> list[dict[str, Any]]:
     base_time = datetime.now(timezone.utc) - timedelta(minutes=max(1, len(raw_rows)))
     normalized: list[dict[str, Any]] = []
     position_history: list[list[float]] = []
+    engine = StructuralEngine()
 
     for idx, row in enumerate(raw_rows):
-        dynamic_signal_strength = _clamp(
-            _coerce_float(
-                row.get("dynamic_signal_strength"),
-                _coerce_float(row.get("signal_strength"), _coerce_float(row.get("structural_drift_score"), 0.0)),
-            )
-        )
-        confidence = _clamp(_coerce_float(row.get("confidence_score"), _coerce_float(row.get("confidence"), 0.0)))
-        risk_level = str(row.get("risk_level") or "unknown").strip()
+        timestamp = _normalize_timestamp(row.get("timestamp"), idx, base_time)
+        site_id = str(row.get("site_id") or "grow-house")
+        asset_id = str(row.get("asset_id") or "zone-A")
+        sensor_values = _parse_sensor_values_from_row(row)
+
         phase = str(row.get("phase") or row.get("transition_state") or "unknown").strip()
         interpreted_state = str(row.get("interpreted_state") or row.get("state") or "unknown").strip()
         explanation_text = str(
@@ -206,25 +205,69 @@ def _load_rows_from_turbo_results(*, limit: int | None) -> list[dict[str, Any]]:
         ).strip()
         if not explanation_text:
             explanation_text = "No explanation provided in greenhouse_results_turbo.csv."
-        event_admitted_override = _coerce_optional_bool(row.get("signal_emitted"))
-        if event_admitted_override is None:
-            event_admitted_override = _coerce_optional_bool(row.get("event_admitted"))
 
-        # Compute tetrahedral state
-        structural_drift = dynamic_signal_strength
-        relational_instability = _clamp(
-            _coerce_float(
-                row.get("relational_instability_score"),
-                1.0 - _coerce_float(row.get("relational_stability_score"), dynamic_signal_strength),
+        normalized_row: dict[str, Any] = {
+            "timestamp": timestamp,
+            "site_id": site_id,
+            "asset_id": asset_id,
+            "sensor_values": sensor_values,
+            "state": interpreted_state,
+            "regime_name": phase or interpreted_state,
+            "system_phase": phase,
+            "transition_type": (phase or "STABLE").upper(),
+            "explanation_text": explanation_text,
+            "evidence_summary": explanation_text,
+        }
+
+        if sensor_values:
+            result = engine.process_frame(
+                {
+                    "timestamp": timestamp,
+                    "site_id": site_id,
+                    "asset_id": asset_id,
+                    "sensor_values": sensor_values,
+                }
             )
-        )
+            if isinstance(result, dict):
+                normalized_row.update(_normalize_engine_result(result, normalized_row))
+
+        # Fall back to CSV metrics if engine output is unavailable.
+        if "structural_drift_score" not in normalized_row:
+            dynamic_signal_strength = _clamp(
+                _coerce_float(
+                    row.get("dynamic_signal_strength"),
+                    _coerce_float(row.get("signal_strength"), _coerce_float(row.get("structural_drift_score"), 0.0)),
+                )
+            )
+            confidence = _clamp(_coerce_float(row.get("confidence_score"), _coerce_float(row.get("confidence"), 0.0)))
+            event_admitted_override = _coerce_optional_bool(row.get("signal_emitted"))
+            if event_admitted_override is None:
+                event_admitted_override = _coerce_optional_bool(row.get("event_admitted"))
+
+            normalized_row.update(
+                {
+                    "risk_level": str(row.get("risk_level") or "unknown").strip(),
+                    "system_health": str(row.get("risk_level") or "unknown").strip().lower(),
+                    "confidence_score": confidence,
+                    "dynamic_signal_strength": dynamic_signal_strength,
+                    "structural_drift_score": dynamic_signal_strength,
+                    "relational_stability_score": round(
+                        _clamp(_coerce_float(row.get("relational_stability_score"), 1.0 - dynamic_signal_strength)),
+                        6,
+                    ),
+                    "event_admitted": bool(event_admitted_override),
+                }
+            )
+
+        structural_drift = _clamp(_coerce_float(normalized_row.get("structural_drift_score"), 0.0))
+        relational_instability = _clamp(1.0 - _coerce_float(normalized_row.get("relational_stability_score"), 1.0))
         temporal_consistency = _clamp(
             _coerce_float(
                 row.get("temporal_consistency_score"),
-                _coerce_float(row.get("coherence_score"), confidence),
+                _coerce_float(row.get("coherence_score"), _coerce_float(normalized_row.get("confidence_score"), 0.0)),
             )
         )
-        transition_pressure = _clamp(_coerce_float(row.get("transition_pressure"), 0.0))
+        transition_pressure = _clamp(_coerce_float(row.get("transition_pressure"), structural_drift))
 
         tetrahedral_state = compute_tetrahedral_state(
             structural_drift_score=structural_drift,
@@ -233,34 +276,12 @@ def _load_rows_from_turbo_results(*, limit: int | None) -> list[dict[str, Any]]:
             temporal_consistency_score=temporal_consistency,
             history_positions=position_history[-50:] if len(position_history) > 0 else None,
         )
-
-        # Track position for history
         position = tetrahedral_state.get("position", [0.0, 0.0, 0.0])
         if isinstance(position, (list, tuple)) and len(position) >= 3:
             position_history.append([float(position[0]), float(position[1]), float(position[2])])
 
-        normalized.append(
-            {
-                "timestamp": _normalize_timestamp(row.get("timestamp"), idx, base_time),
-                "site_id": str(row.get("site_id") or "grow-house"),
-                "asset_id": str(row.get("asset_id") or "zone-A"),
-                "system_phase": phase,
-                "state": interpreted_state,
-                "regime_name": phase or interpreted_state,
-                "risk_level": risk_level,
-                "system_health": risk_level.lower(),
-                "confidence_score": confidence,
-                "dynamic_signal_strength": dynamic_signal_strength,
-                "structural_drift_score": dynamic_signal_strength,
-                "relational_stability_score": round(1.0 - relational_instability, 6),
-                "event_admitted": bool(event_admitted_override),
-                "transition_type": (phase or "STABLE").upper(),
-                "evidence_summary": explanation_text,
-                "explanation_text": explanation_text,
-                "sensor_values": _parse_sensor_values_from_row(row),
-                "tetrahedral_state": tetrahedral_state,
-            }
-        )
+        normalized_row["tetrahedral_state"] = tetrahedral_state
+        normalized.append(normalized_row)
     normalized.sort(key=lambda entry: str(entry.get("timestamp") or ""))
     if isinstance(limit, int) and limit > 0:
         return normalized[:limit]
