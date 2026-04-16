@@ -57,6 +57,23 @@ export default function HomePage() {
         playing={playing}
       />
 
+      <div className="summary-band">
+        <div className="summary-item">
+          <span className="summary-label">Phase</span>
+          <span className="summary-value">{currentFrame.current_phase ?? "UNKNOWN"}</span>
+        </div>
+        <div className="summary-divider" />
+        <div className="summary-item">
+          <span className="summary-label">Confidence</span>
+          <span className="summary-value">{Math.round((currentFrame.metrics?.confidence ?? 0) * 100)}%</span>
+        </div>
+        <div className="summary-divider" />
+        <div className="summary-item">
+          <span className="summary-label">Stability</span>
+          <span className="summary-value">{(currentFrame.metrics?.relational_stability ?? 0).toFixed(2)}</span>
+        </div>
+      </div>
+
       <section className="view-main">
         <ReplayChart frames={frames} currentIndex={index} />
         <TetrahedronPanel
