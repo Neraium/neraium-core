@@ -3,8 +3,6 @@
 import { useEffect, useState, useRef } from 'react'
 import axios from 'axios'
 import HeaderBar from '@/components/HeaderBar'
-import PlaybackControls from '@/components/PlaybackControls'
-import ReplayChart from '@/components/ReplayChart'
 import TetrahedronPanel from '@/components/TetrahedronPanel'
 import InsightPanels from '@/components/InsightPanels'
 
@@ -25,97 +23,81 @@ interface Frame {
 }
 
 export default function Home() {
-  const [frames, setFrames] = useState<Frame[]>([])
-  const [currentIndex, setCurrentIndex] = useState(0)
-  const [isPlaying, setIsPlaying] = useState(false)
-  const [playbackSpeed, setPlaybackSpeed] = useState(1.0)
+  const [currentFrame, setCurrentFrame] = useState<Frame | null>(null)
+  const [allFrames, setAllFrames] = useState<Frame[]>([])
+  const [currentFrameIndex, setCurrentFrameIndex] = useState(0)
   const [loading, setLoading] = useState(true)
-  const playbackIntervalRef = useRef<NodeJS.Timeout | null>(null)
+  const [isConnected, setIsConnected] = useState(false)
+  const pollIntervalRef = useRef<NodeJS.Timeout | null>(null)
 
   const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
-  // Fetch frames on mount
+  // Load all frames once on mount
   useEffect(() => {
-    const fetchFrames = async () => {
+    const loadFrames = async () => {
       try {
         const response = await axios.get(`${apiBase}/api/ui/frames`)
-        setFrames(response.data.frames || [])
-        setCurrentIndex(0)
+        const frames = response.data.frames || []
+        setAllFrames(frames)
+        setIsConnected(true)
+        setLoading(false)
       } catch (error) {
         console.error('Failed to fetch frames:', error)
-        // Fallback: create synthetic frames
-        const syntheticFrames = generateSyntheticFrames()
-        setFrames(syntheticFrames)
-      } finally {
+        setIsConnected(false)
         setLoading(false)
       }
     }
-    fetchFrames()
+    loadFrames()
   }, [apiBase])
 
-  // Handle playback
+  // Simulate live polling through the frame sequence
   useEffect(() => {
-    if (!isPlaying || frames.length === 0) {
-      if (playbackIntervalRef.current) {
-        clearInterval(playbackIntervalRef.current)
-        playbackIntervalRef.current = null
-      }
-      return
-    }
+    if (allFrames.length === 0) return
 
-    const delay = Math.max(100, Math.floor(1000 / playbackSpeed))
-    playbackIntervalRef.current = setInterval(() => {
-      setCurrentIndex((prev) => {
-        if (prev >= frames.length - 1) {
-          setIsPlaying(false)
-          return 0
-        }
-        return prev + 1
+    // Set initial frame
+    setCurrentFrame(allFrames[0])
+    setCurrentFrameIndex(0)
+
+    // Poll for "new" data by advancing through frames
+    // This simulates real-time updates at ~2 second intervals
+    pollIntervalRef.current = setInterval(() => {
+      setCurrentFrameIndex((prev) => {
+        const nextIndex = (prev + 1) % allFrames.length
+        setCurrentFrame(allFrames[nextIndex])
+        return nextIndex
       })
-    }, delay)
+    }, 2000)
 
     return () => {
-      if (playbackIntervalRef.current) {
-        clearInterval(playbackIntervalRef.current)
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current)
       }
     }
-  }, [isPlaying, playbackSpeed, frames.length])
-
-  const currentFrame = frames[currentIndex] || {}
+  }, [allFrames])
 
   return (
     <div className="demo-app">
-      <HeaderBar frame={currentFrame} />
-      <PlaybackControls
-        currentIndex={currentIndex}
-        totalFrames={frames.length}
-        isPlaying={isPlaying}
-        playbackSpeed={playbackSpeed}
-        onIndexChange={setCurrentIndex}
-        onPlayPause={() => setIsPlaying(!isPlaying)}
-        onSpeedChange={setPlaybackSpeed}
-        onRestart={() => {
-          setCurrentIndex(0)
-          setIsPlaying(false)
-        }}
-      />
-      <div className="demo-main">
-        {loading ? (
-          <div style={{ padding: '40px', textAlign: 'center', color: '#9CA3AF' }}>
-            Loading demo...
-          </div>
-        ) : frames.length === 0 ? (
-          <div style={{ padding: '40px', textAlign: 'center', color: '#9CA3AF' }}>
-            No frames available
-          </div>
-        ) : (
-          <>
-            <ReplayChart frames={frames} currentIndex={currentIndex} />
+      {loading ? (
+        <div style={{ padding: '40px', textAlign: 'center', color: '#9CA3AF' }}>
+          Connecting to live system monitoring...
+        </div>
+      ) : !isConnected ? (
+        <div style={{ padding: '40px', textAlign: 'center', color: '#9CA3AF' }}>
+          Connection lost. Retrying...
+        </div>
+      ) : currentFrame ? (
+        <>
+          <HeaderBar frame={currentFrame} />
+          <div className="demo-main">
             <TetrahedronPanel frame={currentFrame} />
             <InsightPanels frame={currentFrame} />
-          </>
-        )}
-      </div>
+          </div>
+        </>
+      ) : (
+        <div style={{ padding: '40px', textAlign: 'center', color: '#9CA3AF' }}>
+          Loading system data...
+        </div>
+      )}
     </div>
   )
 }

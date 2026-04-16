@@ -71,6 +71,21 @@ neraium_core.egg-info/requires.txt
 neraium_core.egg-info/top_level.txt
 neraium_core/adapters/__init__.py
 neraium_core/adapters/raw_telemetry_adapter.py
+neraium_core/agnostic_runner/__init__.py
+neraium_core/agnostic_runner/__main__.py
+neraium_core/agnostic_runner/cli.py
+neraium_core/agnostic_runner/config.py
+neraium_core/agnostic_runner/runner.py
+neraium_core/agnostic_runner/adapters/__init__.py
+neraium_core/agnostic_runner/adapters/api_source.py
+neraium_core/agnostic_runner/adapters/base.py
+neraium_core/agnostic_runner/adapters/csv_source.py
+neraium_core/agnostic_runner/adapters/database_sink.py
+neraium_core/agnostic_runner/adapters/json_sink.py
+neraium_core/agnostic_runner/adapters/kafka_sink.py
+neraium_core/agnostic_runner/adapters/kafka_source.py
+neraium_core/agnostic_runner/adapters/registry.py
+neraium_core/agnostic_runner/adapters/webhook_sink.py
 neraium_core/auxiliary/__init__.py
 neraium_core/benchmarks/__init__.py
 neraium_core/benchmarks/platform_hotpath.py
@@ -95,7 +110,6 @@ neraium_core/engine/drift.py
 neraium_core/engine/logging_setup.py
 neraium_core/engine/orchestration.py
 neraium_core/engine/packaging.py
-neraium_core/engine/production.py
 neraium_core/engine/relational.py
 neraium_core/engine/schemas.py
 neraium_core/engine/state.py
@@ -321,6 +335,7 @@ neraium_core/system_intelligence/universal/__init__.py
 neraium_core/system_intelligence/universal/experimental_layer.py
 tests/test_active_learning_layer.py
 tests/test_adaptive_gal2_fusion.py
+tests/test_agnostic_runner.py
 tests/test_alert_state_management.py
 tests/test_alignment_stage_boundaries.py
 tests/test_alignment_tetrahedral_fallback.py
@@ -330,6 +345,7 @@ tests/test_api_db_path_fallback.py
 tests/test_api_mvp_web.py
 tests/test_api_operational_state_persistence.py
 tests/test_api_product_basics.py
+tests/test_api_security_headers.py
 tests/test_api_service_layer_endpoints.py
 tests/test_api_structural_flow_geometry.py
 tests/test_api_validation_errors.py
