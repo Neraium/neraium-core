@@ -178,6 +178,115 @@ input[type="range"] {
   margin-bottom: 36px !important;
 }
 
+.ner-status-bar {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 16px;
+  border: 1px solid rgba(109, 149, 246, 0.45);
+  border-radius: 14px;
+  background: linear-gradient(135deg, rgba(12, 20, 39, 0.95), rgba(18, 35, 71, 0.92));
+  padding: 14px 20px;
+  margin-bottom: 18px;
+}
+
+.ner-status-left,
+.ner-status-center,
+.ner-status-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.ner-status-center {
+  justify-content: center;
+  color: var(--text-secondary);
+  font-weight: 700;
+}
+
+.ner-status-right {
+  justify-content: flex-end;
+}
+
+.ner-status-sub {
+  font-size: 11px;
+  color: var(--text-tertiary);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.ner-pill {
+  font-size: 11px;
+  color: #dbeafe;
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  border-radius: 999px;
+  padding: 5px 10px;
+  background: rgba(15, 23, 42, 0.9);
+}
+
+.ner-pill-state {
+  border-color: rgba(34, 211, 238, 0.7);
+  color: #67e8f9;
+}
+
+.ner-main-content-row {
+  gap: 16px !important;
+  align-items: stretch !important;
+}
+
+.ner-replay-chart-panel {
+  margin-top: 0;
+  min-height: 100%;
+}
+
+.ner-replay-summary {
+  font-size: 12px;
+  color: #cbd5e1;
+  margin-bottom: 8px;
+}
+
+.ner-insight-panel {
+  margin-top: 0;
+  min-height: 100%;
+}
+
+.ner-insight-state {
+  font-size: 28px;
+  font-weight: 800;
+  color: #e2e8f0;
+  margin-top: 2px;
+}
+
+.ner-insight-grid {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  row-gap: 10px;
+  column-gap: 14px;
+  margin-top: 14px;
+}
+
+.ner-insight-grid span {
+  color: var(--text-tertiary);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.ner-insight-grid strong {
+  color: var(--text-primary);
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+
+.ner-insight-note {
+  margin-top: 16px;
+  color: #cbd5e1;
+  font-size: 13px;
+  line-height: 1.6;
+  border-top: 1px solid rgba(148, 163, 184, 0.22);
+  padding-top: 12px;
+}
+
 /* Slider styling - thick tracks, larger handles */
 .ner-controls-row .gr-slider {
   flex: 1;
