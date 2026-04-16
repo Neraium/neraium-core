@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import csv
 import json
 import threading
 import time
 from dataclasses import dataclass
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any
 
 from fastapi import APIRouter, HTTPException, Query
@@ -90,6 +93,113 @@ class DemoReplayStore:
 _store = DemoReplayStore()
 
 
+def _load_fd004_frames(unit_id: str = "unit_001") -> list[dict[str, Any]]:
+    """Load FD004 frames from CSV and convert to demo frame format."""
+    repo_root = Path(__file__).resolve().parents[3]
+    fd004_csv = repo_root / "fd004_outputs_subset" / "fd004_real_timeseries.csv"
+
+    if not fd004_csv.is_file():
+        raise FileNotFoundError(f"FD004 timeseries file missing at {fd004_csv}")
+
+    rows: list[dict[str, Any]] = []
+    with fd004_csv.open("r", encoding="utf-8") as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            if str(row.get("asset_id", "")).strip() == unit_id:
+                rows.append({
+                    "timestamp": row.get("timestamp", ""),
+                    "asset_id": row.get("asset_id", unit_id),
+                    "cycle": int(row.get("cycle", 0)),
+                    "structural_drift_score": float(row.get("structural_drift_score", 0.0)),
+                    "composite_instability": float(row.get("composite_instability", 0.0)),
+                    "trend": row.get("trend", "stable"),
+                    "phase": row.get("phase", "stable"),
+                    "risk_level": row.get("risk_level", "LOW"),
+                    "estimated_rul": float(row.get("estimated_rul", 0.0)),
+                    "operator_message": row.get("operator_message", ""),
+                })
+
+    if not rows:
+        raise ValueError(f"No data found for unit {unit_id} in FD004 dataset")
+
+    return rows
+
+
+def _build_fd004_demo_frames(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Convert FD004 rows to demo frames with all required fields."""
+    frames: list[dict[str, Any]] = []
+
+    for idx, row in enumerate(rows):
+        # Map risk_level to status
+        risk = str(row.get("risk_level", "LOW")).upper()
+        if risk == "HIGH":
+            status = "degraded"
+        elif risk == "MEDIUM":
+            status = "watch"
+        else:
+            status = "nominal"
+
+        # Map phase to current_phase
+        phase = str(row.get("phase", "stable")).upper()
+
+        # Calculate coherence and confidence based on data availability
+        coherence = 1.0 - float(row.get("structural_drift_score", 0.0))
+        confidence = 0.8 + (0.2 * (1.0 - abs(float(row.get("composite_instability", 0.0)) - 0.5) * 2))
+
+        frames.append({
+            "frame_index": idx,
+            "frame_count": len(rows),
+            "timestamp": row.get("timestamp", datetime.now(timezone.utc).isoformat()),
+            "current_phase": phase,
+            "verdict": "ADMITTED" if risk == "HIGH" else "SUPPRESSED",
+            "status": status,
+            "metrics": {
+                "structural_drift": float(row.get("structural_drift_score", 0.0)),
+                "relational_stability": 1.0 - float(row.get("composite_instability", 0.0)),
+                "coherence": max(0.0, min(1.0, coherence)),
+                "confidence": max(0.0, min(1.0, confidence)),
+            },
+            "tetrahedral_state": {
+                "position": [
+                    float(row.get("structural_drift_score", 0.0)),
+                    1.0 - float(row.get("composite_instability", 0.0)),
+                    float(row.get("estimated_rul", 0.0)) / 100.0,
+                ],
+                "interpreted_label": f"{phase} (Cycle {row.get('cycle', 0)})",
+                "movement_summary": f"RUL: {row.get('estimated_rul', 0):.0f} cycles | Trend: {row.get('trend', 'stable')}",
+                "nearest_vertex": phase,
+            },
+            "reasoning": {
+                "summary": row.get("operator_message", f"Engine in {phase} phase. RUL: {row.get('estimated_rul', 0):.0f} cycles."),
+                "context": {
+                    "cycle": row.get("cycle", 0),
+                    "estimated_rul": row.get("estimated_rul", 0),
+                    "trend": row.get("trend", "stable"),
+                    "risk_level": row.get("risk_level", "LOW"),
+                },
+            },
+            "evidence": [
+                {
+                    "type": "structural_drift",
+                    "value": float(row.get("structural_drift_score", 0.0)),
+                    "threshold": 0.5,
+                },
+                {
+                    "type": "composite_instability",
+                    "value": float(row.get("composite_instability", 0.0)),
+                    "threshold": 0.5,
+                },
+            ],
+            "gate_decision": {
+                "decision": "ADMITTED" if risk == "HIGH" else "SUPPRESSED",
+                "confidence": max(0.0, min(1.0, confidence)),
+                "reasoning": f"Risk level is {risk}",
+            },
+        })
+
+    return frames
+
+
 def _build_summary(replay: DemoReplay) -> dict[str, Any]:
     frames = replay.frames
     if not frames:
@@ -133,6 +243,30 @@ def build_demo_playback_router() -> APIRouter:
             "initial_frame": replay.frames[0],
             "frames": replay.frames,
         }
+
+    @router.get("/fd004/init")
+    def demo_fd004_init(unit_id: str = Query(default="unit_001")) -> dict[str, Any]:
+        """Load FD004 single unit data as a frame sequence for replay."""
+        try:
+            rows = _load_fd004_frames(unit_id=unit_id)
+            frames = _build_fd004_demo_frames(rows)
+            if not frames:
+                raise HTTPException(status_code=503, detail="FD004 frames unavailable.")
+            return {
+                "mode": "fd004-replay",
+                "summary": {
+                    "mode": "fd004-replay",
+                    "unit_id": unit_id,
+                    "frame_count": len(frames),
+                    "total_cycles": frames[-1].get("reasoning", {}).get("context", {}).get("cycle", 0) if frames else 0,
+                },
+                "initial_frame": frames[0],
+                "frames": frames,
+            }
+        except FileNotFoundError as e:
+            raise HTTPException(status_code=404, detail=str(e))
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
 
     @router.get("/frame/{index}")
     def demo_frame(index: int, use_synthetic: bool = Query(default=True)) -> dict[str, Any]:
