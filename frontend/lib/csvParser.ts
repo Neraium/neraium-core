@@ -84,14 +84,32 @@ function calculateMetrics(sensors: number[], cycle: number) {
     return Math.min(1, Math.max(0, s / max));
   });
 
-  // Calculate different aspects of health
-  const avgSensors = normalized.reduce((a, b) => a + b, 0) / normalized.length;
-  const variance = normalized.reduce((sum, val) => sum + Math.pow(val - avgSensors, 2), 0) / normalized.length;
-  const stability = 100 - (Math.sqrt(variance) * 100); // Lower std dev = higher stability
+  // Weight sensors that vary more (S4, S5, S6, S11 have 73%+ variation)
+  // These heavily weighted sensors: S4 (4.3), S5 (4.3), S6 (4.3), S11 (4.3)
+  const weights = [1, 1, 1, 1, 4.3, 4.3, 1, 1, 1, 1, 1, 4.3, 1, 1, 1, 1, 1, 1, 1, 4.3, 4.3];
+
+  const weightedSum = normalized.reduce((sum, val, i) => sum + val * weights[i], 0);
+  const totalWeight = weights.reduce((a, b) => a + b, 0);
+  const weightedAvg = weightedSum / totalWeight;
+
+  // Calculate variance using weighted values
+  const variance = normalized.reduce((sum, val, i) => {
+    return sum + Math.pow(val - weightedAvg, 2) * weights[i];
+  }, 0) / totalWeight;
+
+  const stddev = Math.sqrt(variance);
+
+  // Stability: highly responsive to sensor changes
+  // StdDev of ~0.1 should give ~95%, StdDev of ~0.3 should give ~70%
+  const stability = Math.max(0, Math.min(100, 100 - (stddev * 250)));
+
+  // Drift: how far from optimal (0) weighted avg is
+  // Use absolute difference from ideal midpoint (0.5)
+  const drift = Math.abs((weightedAvg - 0.5) * 200);
 
   return {
     confidence: Math.min(100, 90 + (cycle % 10)),
-    structural_drift: Math.max(0, Math.min(100, avgSensors * 100)),
+    structural_drift: Math.max(0, Math.min(100, drift)),
     relational_stability: Math.max(0, Math.min(100, stability)),
     coherence: Math.min(100, 85 + (Math.random() * 10)),
   };

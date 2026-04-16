@@ -106,27 +106,45 @@ export default function TetrahedronPanel({ frame }: TetrahedronPanelProps) {
 
         <div className="tetra-info">
           <div className="tetra-label">
-            <strong>Drift</strong>
-            <div style={{ marginTop: '4px', fontSize: '16px', color: '#3B82F6', transition: 'all 0.5s ease-in-out' }}>
-              {(drift * 100).toFixed(1)}%
+            <strong>Stability</strong>
+            <div style={{
+              marginTop: '4px',
+              fontSize: '20px',
+              fontWeight: 'bold',
+              color: stability > 0.7 ? '#22C55E' : stability > 0.4 ? '#F97316' : '#EF4444',
+              transition: 'all 0.3s ease-in-out',
+              padding: '8px',
+              backgroundColor: 'rgba(255,255,255,0.05)',
+              borderRadius: '4px'
+            }}>
+              {(stability * 100).toFixed(0)}%
             </div>
           </div>
           <div className="tetra-label">
-            <strong>Stability</strong>
-            <div style={{ marginTop: '4px', fontSize: '16px', color: '#22C55E', transition: 'all 0.5s ease-in-out' }}>
-              {(stability * 100).toFixed(1)}%
+            <strong>Drift</strong>
+            <div style={{
+              marginTop: '4px',
+              fontSize: '20px',
+              fontWeight: 'bold',
+              color: drift < 0.3 ? '#22C55E' : drift < 0.6 ? '#F97316' : '#EF4444',
+              transition: 'all 0.3s ease-in-out',
+              padding: '8px',
+              backgroundColor: 'rgba(255,255,255,0.05)',
+              borderRadius: '4px'
+            }}>
+              {(drift * 100).toFixed(0)}%
             </div>
           </div>
           <div className="tetra-label">
             <strong>Coherence</strong>
-            <div style={{ marginTop: '4px', fontSize: '16px', color: '#06B6D4', transition: 'all 0.5s ease-in-out' }}>
-              {(coherence * 100).toFixed(1)}%
+            <div style={{ marginTop: '4px', fontSize: '14px', color: '#06B6D4', transition: 'all 0.5s ease-in-out' }}>
+              {(coherence * 100).toFixed(0)}%
             </div>
           </div>
           <div className="tetra-label">
             <strong>Confidence</strong>
-            <div style={{ marginTop: '4px', fontSize: '16px', color: '#F97316', transition: 'all 0.5s ease-in-out' }}>
-              {(confidence * 100).toFixed(1)}%
+            <div style={{ marginTop: '4px', fontSize: '14px', color: '#F97316', transition: 'all 0.5s ease-in-out' }}>
+              {(confidence * 100).toFixed(0)}%
             </div>
           </div>
         </div>
