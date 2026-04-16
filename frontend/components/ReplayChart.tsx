@@ -22,15 +22,18 @@ export default function ReplayChart({ frames, currentIndex }: ReplayChartProps) 
   const getDriftValue = (frame: FrameData) => frame.structural_drift_score || 0
   const getStabilityValue = (frame: FrameData) => frame.relational_stability_score || 0
 
-  // Create data points for drift
-  const driftPoints = frames.map((frame, idx) => ({
+  // Only show data up to current frame (live effect)
+  const visibleFrames = frames.slice(0, currentIndex + 1)
+
+  // Create data points for drift (only up to current index)
+  const driftPoints = visibleFrames.map((frame, idx) => ({
     x: (idx / Math.max(frames.length - 1, 1)) * IW + PX,
     y: PY + IH - getDriftValue(frame) * IH,
     value: getDriftValue(frame),
   }))
 
-  // Create data points for stability
-  const stabilityPoints = frames.map((frame, idx) => ({
+  // Create data points for stability (only up to current index)
+  const stabilityPoints = visibleFrames.map((frame, idx) => ({
     x: (idx / Math.max(frames.length - 1, 1)) * IW + PX,
     y: PY + IH - getStabilityValue(frame) * IH,
     value: getStabilityValue(frame),
@@ -39,7 +42,7 @@ export default function ReplayChart({ frames, currentIndex }: ReplayChartProps) 
   // Current frame position
   const currentX = (currentIndex / Math.max(frames.length - 1, 1)) * IW + PX
 
-  // Build polyline points
+  // Build polyline points (only visible frames)
   const driftPath = driftPoints.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ')
   const stabilityPath = stabilityPoints.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ')
 
