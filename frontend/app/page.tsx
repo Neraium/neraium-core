@@ -59,9 +59,10 @@ export default function Home() {
   useEffect(() => {
     const loadDemoData = async () => {
       try {
-        const demoData = await fetchFD004DemoInit('unit_001')
-        if (demoData.frames && demoData.frames.length > 0) {
-          const transformedFrames = demoData.frames.map(transformFrame)
+        const demoFrames = await fetchFD004DemoInit('unit_001')
+        console.log('Frames length:', demoFrames?.length)
+        if (demoFrames && demoFrames.length > 0) {
+          const transformedFrames = demoFrames.map(transformFrame)
           setFrames(transformedFrames)
           setCurrentFrameIndex(0)
           setIsConnected(true)
