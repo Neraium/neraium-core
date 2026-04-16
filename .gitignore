@@ -42,6 +42,8 @@ neraium_markets/output/
 # Front-end vendor/cache artifacts
 # ------------------------------------------------------------
 node_modules/
+.next/
+package-lock.json
 apps/api/static/vendor/three/
 apps/__pycache__/
 

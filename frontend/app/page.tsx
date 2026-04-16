@@ -46,34 +46,54 @@ export default function HomePage() {
   const currentFrame = useMemo(() => frames[index], [frames, index]);
 
   if (!currentFrame) {
-    return <main className="loading">Loading Neraium demo...</main>;
+    return <main className="loading">Loading...</main>;
   }
 
   return (
-    <main className="page">
+    <main className="system">
       <HeaderBar
         phase={currentFrame.current_phase ?? "UNKNOWN"}
         confidence={currentFrame.metrics?.confidence ?? 0}
-        index={index}
-        total={frames.length}
+        playing={playing}
       />
-      <ReplayChart frames={frames} currentIndex={index} />
-      <section className="split">
-        <TetrahedronPanel position={extractPosition(currentFrame)} />
-        <div>
-          <PlaybackControls
-            playing={playing}
-            speed={speed}
-            onPlayPause={() => setPlaying((v) => !v)}
-            onRestart={() => {
-              setIndex(0);
-              setPlaying(true);
-            }}
-            onSpeed={setSpeed}
-          />
-          <InsightPanels frame={currentFrame} />
+
+      <div className="summary-band">
+        <div className="summary-item">
+          <span className="summary-label">Phase</span>
+          <span className="summary-value">{currentFrame.current_phase ?? "UNKNOWN"}</span>
         </div>
+        <div className="summary-divider" />
+        <div className="summary-item">
+          <span className="summary-label">Confidence</span>
+          <span className="summary-value">{Math.round((currentFrame.metrics?.confidence ?? 0) * 100)}%</span>
+        </div>
+        <div className="summary-divider" />
+        <div className="summary-item">
+          <span className="summary-label">Stability</span>
+          <span className="summary-value">{(currentFrame.metrics?.relational_stability ?? 0).toFixed(2)}</span>
+        </div>
+      </div>
+
+      <section className="view-main">
+        <ReplayChart frames={frames} currentIndex={index} />
+        <TetrahedronPanel
+          position={extractPosition(currentFrame)}
+          confidence={currentFrame.metrics?.confidence ?? 0.5}
+        />
       </section>
+
+      <InsightPanels frame={currentFrame} />
+
+      <PlaybackControls
+        playing={playing}
+        speed={speed}
+        onPlayPause={() => setPlaying((v) => !v)}
+        onRestart={() => {
+          setIndex(0);
+          setPlaying(true);
+        }}
+        onSpeed={setSpeed}
+      />
     </main>
   );
 }

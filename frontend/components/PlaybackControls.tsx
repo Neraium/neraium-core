@@ -10,7 +10,7 @@ type Props = {
 
 export function PlaybackControls({ playing, speed, onPlayPause, onRestart, onSpeed }: Props) {
   return (
-    <section className="panel controls">
+    <div className="controls">
       <button onClick={onPlayPause}>{playing ? "Pause" : "Play"}</button>
       <button onClick={onRestart}>Restart</button>
       <select value={speed} onChange={(e) => onSpeed(Number(e.target.value))}>
@@ -18,6 +18,6 @@ export function PlaybackControls({ playing, speed, onPlayPause, onRestart, onSpe
           <option value={v} key={v}>{v}x</option>
         ))}
       </select>
-    </section>
+    </div>
   );
 }
