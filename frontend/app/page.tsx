@@ -1,8 +1,7 @@
 'use client'
 
 import { useEffect, useState, useRef } from 'react'
-import { fetchFD004DemoInit } from '@/lib/api'
-import { DemoFrame } from '@/lib/types'
+import { fetchFD004DemoInit } from '@/'
 import HeaderBar from '@/components/HeaderBar'
 import TetrahedronPanel from '@/components/TetrahedronPanel'
 import InsightPanels from '@/components/InsightPanels'
