@@ -8,7 +8,7 @@ from typing import Any
 from ui.config import UIConfig
 from ui.components.tetrahedral_viz import build_tetrahedral_plot_and_text
 from ui.core_integration import build_system_state, evaluate_gate
-from ui.demo_data import load_greenhouse_demo_records
+from ui.demo_data import load_fd004_demo_records, load_greenhouse_demo_records
 from ui.layouts.operations_view import build_operations_view
 from ui.reasoning import build_reasoning_context
 from ui.replay_timing import (
@@ -806,10 +806,13 @@ def create_gradio_app():
     except ImportError:
         raise RuntimeError("Gradio is not installed")
 
-    # Use synthetic demo by default for clear, readable progression
-    demo_rows = load_builtin_demo_rows(use_synthetic=True)
+    # Use FD004 real prognostics demo by default
+    demo_rows = load_fd004_demo_records(limit=250, unit_id="unit_001")
+    if not demo_rows:
+        # Fallback to synthetic greenhouse demo if FD004 data unavailable
+        demo_rows = load_builtin_demo_rows(use_synthetic=True)
     total_steps = max(len(demo_rows), 1)
-    playback_state = {"playing": False, "current_mode": "synthetic"}
+    playback_state = {"playing": False, "current_mode": "fd004"}
 
     # Replay stabilization for verdict and reasoning
     verdict_stabilizer = VerdictStabilizer(hysteresis_threshold=0.08)
