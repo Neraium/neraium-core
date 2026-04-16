@@ -248,9 +248,10 @@ def _render_gate_decision_html(gate_card: dict[str, Any]) -> str:
 
     transition_type = escape(str(gate_card.get("transition_type") or "STABLE"))
     risk_direction = escape(str(gate_card.get("risk_direction") or "UNCERTAIN"))
-    ts_raw = str(gate_card.get("timestamp") or "")
-    ts_display = escape(ts_raw[:19].replace("T", " ")) if ts_raw else "—"
+    ts_meta = str(gate_card.get("timestamp_display") or "").replace("Change evaluated at: ", "").strip()
+    ts_display = escape(ts_meta) if ts_meta else "—"
     doctrine_version = escape(str(gate_card.get("doctrine_version") or "—"))
+    system_insights = gate_card.get("system_insights") if isinstance(gate_card.get("system_insights"), dict) else {}
 
     def _chip(label_text: str, value: str, accent_color: str) -> str:
         """Render a higher-contrast information chip."""
@@ -262,16 +263,67 @@ def _render_gate_decision_html(gate_card: dict[str, Any]) -> str:
         )
 
     accent = style["accent"]
+    dominant_state = escape(str(system_insights.get("system_state") or "Unknown"))
+    dominant_state_html = (
+        '<div style="margin:14px 0 10px 0;padding:12px 14px;border:1px solid rgba(255,255,255,0.2);'
+        'border-radius:8px;background:rgba(15,23,42,0.75);display:flex;justify-content:space-between;align-items:center;">'
+        '<span style="font-size:11px;letter-spacing:0.08em;color:#94a3b8;font-weight:700;text-transform:uppercase;">System State</span>'
+        f'<span style="font-size:20px;font-weight:800;color:#f8fafc;letter-spacing:0.02em;">{dominant_state}</span>'
+        '</div>'
+    )
+
+    insight_section = ""
+    metrics = system_insights.get("metrics") if isinstance(system_insights.get("metrics"), list) else []
+    if system_insights:
+        rows = []
+        for metric in metrics:
+            if not isinstance(metric, dict):
+                continue
+            trend = metric.get("trend") if isinstance(metric.get("trend"), dict) else {}
+            arrow = escape(str(trend.get("arrow") or "→"))
+            trend_label = escape(str(trend.get("label") or "Stable"))
+            mlabel = escape(str(metric.get("label") or "Metric"))
+            mvalue = escape(str(metric.get("value") or "0"))
+            rows.append(
+                '<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;'
+                'border-bottom:1px solid rgba(148,163,184,0.14);">'
+                f'<span style="color:#cbd5e1;font-size:12px;">{mlabel}</span>'
+                f'<span style="color:#f8fafc;font-size:12px;font-weight:700;">{arrow} {mvalue} · {trend_label}</span>'
+                '</div>'
+            )
+        phase_context = escape(str(system_insights.get("phase_context") or "—"))
+        timestamp_display = escape(str(system_insights.get("timestamp_display") or "—"))
+        insight_text = escape(str(system_insights.get("insight_text") or "—"))
+        decision_line = escape(str(system_insights.get("decision") or "Decision: Accepted"))
+        transition_line = escape(str(system_insights.get("state_transition") or "State Transition: Confirmed"))
+        insight_section = (
+            '<div style="margin-top:10px;padding:12px;border:1px solid rgba(148,163,184,0.22);'
+            'border-radius:8px;background:rgba(2,6,23,0.65);">'
+            f'<div style="display:flex;gap:10px;flex-wrap:wrap;font-size:12px;color:#dbeafe;font-weight:600;">'
+            f'<span>{decision_line}</span><span>{transition_line}</span></div>'
+            f'<div style="margin-top:8px;font-size:12px;color:#94a3b8;">Phase Context: '
+            f'<span style="color:#e2e8f0;font-weight:600;">{phase_context}</span></div>'
+            f'<div style="margin-top:8px;">{"".join(rows)}</div>'
+            f'<div style="margin-top:8px;font-size:12px;color:#94a3b8;">Last Evaluated: '
+            f'<span style="color:#e2e8f0;font-weight:600;">{timestamp_display}</span></div>'
+            f'<div style="margin-top:8px;padding:8px;border-left:3px solid {accent};'
+            f'background:rgba(30,41,59,0.45);font-size:12px;color:#e2e8f0;">'
+            f'<strong>System Insight:</strong> {insight_text}</div>'
+            '</div>'
+        )
+
     return f"""
 <div class="ner-panel ner-verdict-card" style="--verdict-accent:{accent};">
   <div class="ner-verdict-main">{label}</div>
   <div class="ner-verdict-subtitle">{authority_statement}</div>
   <div class="ner-verdict-supporting">{supporting_line}</div>
+  {dominant_state_html}
   <div class="ner-chip-row">
     {_chip("Confidence", confidence, accent)}
-    {_chip("Phase", transition_type, accent)}
+    {_chip("State Transition", "Confirmed", accent)}
     {_chip("Risk", risk_direction, accent)}
   </div>
+  {insight_section}
   <div class="ner-meta-row">
     <span>{ts_display}</span>
     <span>Engine {doctrine_version}</span>

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any
 
 
@@ -27,6 +28,20 @@ def _decision_label(authority_level: str) -> str:
     if authority_level == "VOID":
         return "SIGNAL INVALID"
     return "VARIATION SUPPRESSED"
+
+
+def _format_timestamp(timestamp: Any) -> str:
+    if not timestamp:
+        return "—"
+    raw = str(timestamp).strip()
+    if not raw:
+        return "—"
+    normalized = raw.replace("Z", "+00:00")
+    try:
+        parsed = datetime.fromisoformat(normalized)
+    except ValueError:
+        return raw
+    return parsed.strftime("%b %d, %I:%M:%S %p")
 
 
 def _authority_statement(authority_level: str) -> str:
@@ -106,6 +121,41 @@ def _normalize_transition_type(transition_type: Any) -> str:
     return "STABLE"
 
 
+def _trend_indicator(delta: Any, *, invert: bool = False) -> dict[str, str]:
+    value = _to_float(delta) or 0.0
+    if abs(value) < 0.01:
+        return {"direction": "flat", "arrow": "→", "label": "Stable"}
+    rising = value > 0
+    if invert:
+        rising = not rising
+    if rising:
+        return {"direction": "up", "arrow": "↑", "label": "Increasing"}
+    return {"direction": "down", "arrow": "↓", "label": "Decreasing"}
+
+
+def _map_system_state(transition_type: str, authority_level: str, drift_delta: float) -> str:
+    normalized_transition = transition_type.upper()
+    if normalized_transition in {"INSTABILITY", "REORGANIZATION", "DIVERGENCE"} or drift_delta >= 0.30:
+        return "Alert"
+    if normalized_transition in {"TRANSITION", "DRIFT"} or drift_delta >= 0.12:
+        return "Drifting"
+    if authority_level == "SUPPRESSED":
+        return "Baseline"
+    return "Stable"
+
+
+def _insight_text(system_state: str, authority_level: str, drift_trend: str) -> str:
+    if system_state == "Alert":
+        return "Relational instability emerging"
+    if system_state == "Drifting":
+        if drift_trend == "up":
+            return "Drift increasing but below alert threshold"
+        return "System movement detected; monitor for threshold escalation"
+    if system_state == "Stable" and authority_level == "ADMITTED":
+        return "System remains within baseline structure"
+    return "System remains within baseline structure"
+
+
 def _operator_takeaway(
     authority_level: str,
     transition_type: str,
@@ -172,8 +222,20 @@ def render_gate_decision_card(decision: dict[str, Any] | None) -> dict[str, Any]
     transition = gate.get("transition") if isinstance(gate.get("transition"), dict) else {}
     transition_type = _normalize_transition_type(transition.get("type"))
     intensity = _transition_intensity(transition, gate.get("persistence_minutes"))
+    drift_delta = _to_float(transition.get("delta_drift")) or 0.0
+    stability_delta = _to_float(transition.get("delta_stability")) or 0.0
+    coherence_delta = _to_float(transition.get("delta_coherence")) or 0.0
     risk_direction = _risk_direction(transition_type, transition, authority_level)
     timestamp = gate.get("timestamp")
+    formatted_timestamp = _format_timestamp(timestamp)
+    drift_trend = _trend_indicator(drift_delta)
+    stability_trend = _trend_indicator(stability_delta, invert=True)
+    coherence_trend = _trend_indicator(coherence_delta)
+    duration_trend = _trend_indicator(gate.get("persistence_minutes"))
+    phase_context = str(gate.get("phase_label") or transition_type.replace("_", " ").title())
+    if phase_context.strip().lower() == "ramp up":
+        phase_context = "Ramp Up (System stabilizing)"
+    system_state = _map_system_state(transition_type, authority_level, drift_delta)
 
     return {
         "component": "gate_authority_banner",
@@ -189,6 +251,10 @@ def render_gate_decision_card(decision: dict[str, Any] | None) -> dict[str, Any]
         "supporting_line": _supporting_line(authority_level, transition_type, risk_direction),
         "confidence": _confidence_label(gate.get("confidence_label")),
         "transition_type": transition_type,
+        "state_transition_label": "State Transition",
+        "state_transition": "Confirmed",
+        "decision_label": "Decision",
+        "decision_status": "Accepted" if authority_level == "ADMITTED" else "Observed",
         "transition_intensity": intensity,
         "operator_takeaway_label": "Operator Takeaway",
         "operator_takeaway": _operator_takeaway(authority_level, transition_type, intensity, risk_direction),
@@ -203,7 +269,7 @@ def render_gate_decision_card(decision: dict[str, Any] | None) -> dict[str, Any]
         "doctrine_version": gate.get("doctrine_version") or "unknown",
         "timestamp": timestamp,
         "timestamp_label": "Change evaluated at",
-        "timestamp_display": f"Change evaluated at: {timestamp}" if timestamp else "Change evaluated at: unknown",
+        "timestamp_display": f"Change evaluated at: {formatted_timestamp}" if formatted_timestamp != "—" else "Change evaluated at: unknown",
         "reason": reason,
         "refusal_reason": refusal_reason,
         "criteria_summary": gate.get("criteria_summary") or gate.get("observed_facts") or [],
@@ -215,6 +281,25 @@ def render_gate_decision_card(decision: dict[str, Any] | None) -> dict[str, Any]
             "persistence_minutes": gate.get("persistence_minutes"),
             "transition_type": transition_type,
             "transition_intensity": intensity,
+        },
+        "system_insights": {
+            "title": "System Insights",
+            "system_state_label": "System State",
+            "system_state": system_state,
+            "phase_label": "Phase Context",
+            "phase_context": phase_context,
+            "decision": "Decision: Accepted" if authority_level == "ADMITTED" else "Signal Accepted",
+            "state_transition": "State Transition: Confirmed",
+            "metrics": [
+                {"label": "Structural Drift", "value": round(drift_delta, 3), "trend": drift_trend},
+                {"label": "Relational Stability", "value": round(stability_delta, 3), "trend": stability_trend},
+                {"label": "Current State Duration", "value": round(_to_float(gate.get("persistence_minutes")) or 0.0, 1), "trend": duration_trend},
+                {"label": "Coherence Shift", "value": round(coherence_delta, 3), "trend": coherence_trend},
+            ],
+            "timestamp_label": "Last Evaluated",
+            "timestamp_display": formatted_timestamp,
+            "insight_label": "System Insight",
+            "insight_text": _insight_text(system_state, authority_level, drift_trend["direction"]),
         },
         "no_signal_admitted": authority_level == "SUPPRESSED",
         "absence_statement": (
