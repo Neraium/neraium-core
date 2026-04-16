@@ -4,7 +4,9 @@ import { useEffect, useMemo, useState } from "react";
 
 import { fetchDemoInit } from "@/lib/api";
 import { DemoFrame } from "@/lib/types";
-import { HeaderBar } from "@/components/HeaderBar";
+import { AppShell } from "@/components/AppShell";
+import { Topbar } from "@/components/Topbar";
+import { DemoHero } from "@/components/DemoHero";
 import { ReplayChart } from "@/components/ReplayChart";
 import { TetrahedronPanel } from "@/components/TetrahedronPanel";
 import { PlaybackControls } from "@/components/PlaybackControls";
@@ -46,34 +48,57 @@ export default function HomePage() {
   const currentFrame = useMemo(() => frames[index], [frames, index]);
 
   if (!currentFrame) {
-    return <main className="loading">Loading Neraium demo...</main>;
+    return (
+      <AppShell>
+        <Topbar phase="LOADING" confidence={0} index={0} total={1} />
+        <div className="content">
+          <div className="page">
+            <div style={{ padding: "40px", textAlign: "center", color: "#96acc4" }}>
+              Loading Neraium structural synthesis demo...
+            </div>
+          </div>
+        </div>
+      </AppShell>
+    );
   }
 
   return (
-    <main className="page">
-      <HeaderBar
+    <AppShell>
+      <Topbar
         phase={currentFrame.current_phase ?? "UNKNOWN"}
         confidence={currentFrame.metrics?.confidence ?? 0}
         index={index}
         total={frames.length}
       />
-      <ReplayChart frames={frames} currentIndex={index} />
-      <section className="split">
-        <TetrahedronPanel position={extractPosition(currentFrame)} />
-        <div>
-          <PlaybackControls
-            playing={playing}
-            speed={speed}
-            onPlayPause={() => setPlaying((v) => !v)}
-            onRestart={() => {
-              setIndex(0);
-              setPlaying(true);
-            }}
-            onSpeed={setSpeed}
-          />
-          <InsightPanels frame={currentFrame} />
+      <div className="content">
+        <div className="page demo-section">
+          <DemoHero frame={currentFrame} />
+
+          <ReplayChart frames={frames} currentIndex={index} />
+
+          <div className="tetra-chart-grid">
+            <TetrahedronPanel position={extractPosition(currentFrame)} />
+            <div>
+              <div className="panel">
+                <div className="panel-header">
+                  <h3>Playback Controls</h3>
+                </div>
+                <PlaybackControls
+                  playing={playing}
+                  speed={speed}
+                  onPlayPause={() => setPlaying((v) => !v)}
+                  onRestart={() => {
+                    setIndex(0);
+                    setPlaying(true);
+                  }}
+                  onSpeed={setSpeed}
+                />
+              </div>
+              <InsightPanels frame={currentFrame} />
+            </div>
+          </div>
         </div>
-      </section>
-    </main>
+      </div>
+    </AppShell>
   );
 }

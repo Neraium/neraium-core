@@ -24,19 +24,21 @@ export function ReplayChart({ frames, currentIndex }: Props) {
 
   return (
     <section className="panel">
-      <h3>Structural Drift & System Health</h3>
-      <svg viewBox={`0 0 ${width} ${height}`} className="chart" aria-label="drift chart">
-        <rect x={toX(0)} y={pad} width={toX(20) - toX(0)} height={height - pad * 2} fill="#1e293b" opacity="0.25" />
-        <rect x={toX(20)} y={pad} width={toX(35) - toX(20)} height={height - pad * 2} fill="#1d4ed8" opacity="0.17" />
-        <rect x={toX(35)} y={pad} width={toX(55) - toX(35)} height={height - pad * 2} fill="#b45309" opacity="0.17" />
-        <rect x={toX(55)} y={pad} width={toX(80) - toX(55)} height={height - pad * 2} fill="#991b1b" opacity="0.17" />
-        <rect x={toX(80)} y={pad} width={toX(frames.length - 1) - toX(80)} height={height - pad * 2} fill="#065f46" opacity="0.17" />
+      <div className="panel-header">
+        <h3>Drift & Stability Timeline</h3>
+      </div>
+      <p className="subtitle">Track structural drift (orange) and relational stability (green) across all frames. Shaded regions indicate lifecycle phases.</p>
+      <svg viewBox={`0 0 ${width} ${height}`} className="chart" aria-label="drift and stability chart">
+        <rect x={toX(0)} y={pad} width={toX(20) - toX(0)} height={height - pad * 2} fill="#32d583" opacity="0.08" />
+        <rect x={toX(20)} y={pad} width={toX(35) - toX(20)} height={height - pad * 2} fill="#5b9bd5" opacity="0.08" />
+        <rect x={toX(35)} y={pad} width={toX(55) - toX(35)} height={height - pad * 2} fill="#f0b14a" opacity="0.08" />
+        <rect x={toX(55)} y={pad} width={toX(80) - toX(55)} height={height - pad * 2} fill="#ea6f6f" opacity="0.08" />
+        <rect x={toX(80)} y={pad} width={toX(frames.length - 1) - toX(80)} height={height - pad * 2} fill="#32d583" opacity="0.08" />
 
         <path d={driftPath} stroke="#f97316" strokeWidth="3" fill="none" />
-        <path d={healthPath} stroke="#22c55e" strokeWidth="3" fill="none" />
-        <line x1={toX(currentIndex)} x2={toX(currentIndex)} y1={pad} y2={height - pad} stroke="#f8fafc" strokeDasharray="6,4" />
+        <path d={healthPath} stroke="#32d583" strokeWidth="3" fill="none" />
+        <line x1={toX(currentIndex)} x2={toX(currentIndex)} y1={pad} y2={height - pad} stroke="#d7e5f5" strokeDasharray="6,4" strokeWidth="2" />
       </svg>
-      <p className="subtle">Orange: structural drift, Green: relational stability, shaded regions: lifecycle phases.</p>
     </section>
   );
 }
