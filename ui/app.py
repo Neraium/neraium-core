@@ -449,112 +449,274 @@ def _render_system_context_html(system_zone: dict[str, Any]) -> str:
     def _cl(v: float, lo: float, hi: float) -> float:
         return max(lo, min(hi, v))
 
-    # Canvas layout
-    W, H = 900, 300
-    PX, PY = 56, 46
-    IW = W - 2 * PX
-    IH = H - 2 * PY
-
-    def sx(x: Any) -> float:
-        return round(PX + _cl(_f(x), 0.0, 1.0) * IW, 2)
-
-    def sy(y: Any) -> float:
-        # Flip Y-axis: 0 at bottom, 1 at top
-        return round(PY + IH - _cl(_f(y), 0.0, 1.0) * IH, 2)
-
-    trajectory = content.get("trajectory") if isinstance(content.get("trajectory"), dict) else {}
-    gate_coupling = content.get("gate_coupling") if isinstance(content.get("gate_coupling"), dict) else {}
     replay_series = content.get("replay_series") if isinstance(content.get("replay_series"), list) else []
-    str(gate_coupling.get("decision") or "SUPPRESS").upper()
+    trajectory = content.get("trajectory") if isinstance(content.get("trajectory"), dict) else {}
     path = trajectory.get("path") if isinstance(trajectory.get("path"), list) else []
-    if replay_series:
-        points = replay_series
-    else:
-        points = [{"index": idx, "signal": _f(p.get("x"), 0.0), "phase": "unknown"} for idx, p in enumerate(path) if isinstance(p, dict)]
+    points_source = replay_series if replay_series else [{"index": idx, "signal": _f(p.get("x"), 0.0), "phase": "unknown"} for idx, p in enumerate(path) if isinstance(p, dict)]
 
-    point_count = max(len(points), 1)
     chart_points: list[dict[str, Any]] = []
-    for idx, point in enumerate(points):
+    for idx, point in enumerate(points_source):
         if not isinstance(point, dict):
             continue
-        signal = _cl(_f(point.get("signal"), point.get("y")), 0.0, 1.0)
+        drift_value = _cl(_f(point.get("drift"), _f(point.get("signal"), _f(point.get("y"), 0.0))), 0.0, 1.0)
+        stability_value = _cl(_f(point.get("stability"), 1.0 - drift_value), 0.0, 1.0)
         chart_points.append(
             {
-                "x": idx / max(point_count - 1, 1),
-                "y": signal,
+                "index": idx,
+                "drift": drift_value,
+                "stability": stability_value,
+                "signal": _cl(_f(point.get("signal"), drift_value), 0.0, 1.0),
                 "phase": str(point.get("phase") or "unknown").upper(),
                 "timestamp": str(point.get("timestamp") or ""),
+                "event_admitted": bool(point.get("event_admitted")),
             }
         )
-    current = chart_points[-1] if chart_points else {"x": 1.0, "y": 0.0, "phase": "UNKNOWN"}
+
+    point_count = len(chart_points)
+    if point_count == 0:
+        chart_points = [{"index": 0, "drift": 0.0, "stability": 1.0, "signal": 0.0, "phase": "UNKNOWN", "timestamp": "", "event_admitted": False}]
+        point_count = 1
+
+    transition_frame: int | None = None
+    for point in chart_points:
+        phase = str(point.get("phase") or "").upper()
+        if phase in {"TRANSITION", "REORGANIZATION"} or bool(point.get("event_admitted")):
+            transition_frame = int(point.get("index", 0))
+            break
+    if transition_frame is None and point_count >= 3:
+        for point in chart_points:
+            if _f(point.get("drift")) >= _f(point.get("stability")):
+                transition_frame = int(point.get("index", 0))
+                break
+
+    axis_mode = "cycles_to_transition" if transition_frame is not None else "lifecycle_progress_pct"
+    center_transition = bool(content.get("center_transition_axis"))
+
+    for point in chart_points:
+        idx = int(point.get("index", 0))
+        if transition_frame is not None:
+            x_value = float(transition_frame - idx)
+            if center_transition:
+                x_value = float(idx - transition_frame)
+            point["x_value"] = x_value
+            point["x_label"] = f"{int(round(x_value)):+d}" if x_value != 0 else "0"
+        else:
+            x_value = (idx / max(point_count - 1, 1)) * 100.0
+            point["x_value"] = x_value
+            point["x_label"] = f"{x_value:.0f}%"
+
+    for idx, point in enumerate(chart_points):
+        if idx == 0:
+            slope = 0.0
+        else:
+            prev_drift = _f(chart_points[idx - 1].get("drift"), 0.0)
+            slope = _f(point.get("drift"), 0.0) - prev_drift
+        point["drift_slope"] = slope
+        point["abs_slope"] = abs(slope)
+
+    x_values = [_f(p.get("x_value"), 0.0) for p in chart_points]
+    y_values = [_f(p.get("drift"), 0.0) for p in chart_points] + [_f(p.get("stability"), 0.0) for p in chart_points] + [_f(p.get("drift_slope"), 0.0) for p in chart_points]
+    y_min = min(y_values) if y_values else 0.0
+    y_max = max(y_values) if y_values else 1.0
+    y_span = max(y_max - y_min, 0.08)
+    y_pad = min(max(y_span * 0.12, 0.02), 0.16)
+    y_domain_min = y_min - y_pad
+    y_domain_max = y_max + y_pad
+
+    min_chart_width = 1400
+    px_per_frame = 8
+    W = max(min_chart_width, point_count * px_per_frame)
+    H = 360
+    PX, PY = 92, 48
+    IW = max(W - 2 * PX, 1)
+    IH = max(H - 2 * PY, 1)
+
+    x_min = min(x_values) if x_values else 0.0
+    x_max = max(x_values) if x_values else 1.0
+    x_span = max(x_max - x_min, 1e-9)
+
+    def sx(x: float) -> float:
+        return round(PX + ((x - x_min) / x_span) * IW, 2)
+
+    def sy(y: float) -> float:
+        return round(PY + IH - ((_cl(y, y_domain_min, y_domain_max) - y_domain_min) / max(y_domain_max - y_domain_min, 1e-9)) * IH, 2)
+
+    def _series_points(key: str) -> str:
+        return " ".join(f"{sx(_f(p.get('x_value'), 0.0))},{sy(_f(p.get(key), 0.0))}" for p in chart_points)
+
+    transition_x = sx(0.0) if axis_mode == "cycles_to_transition" else None
+    current = chart_points[-1]
+    current_x = sx(_f(current.get("x_value"), 0.0))
+    current_y_drift = sy(_f(current.get("drift"), 0.0))
+
+    max_abs_slope = max((_f(p.get("abs_slope"), 0.0) for p in chart_points), default=1.0)
+    max_abs_slope = max(max_abs_slope, 1e-6)
 
     parts: list[str] = []
     parts.append(
-        f'<defs>'
-        f'<linearGradient id="tg" x1="{PX}" y1="{PY}" x2="{PX}" y2="{PY + IH}" gradientUnits="userSpaceOnUse">'
-        f'<stop offset="0%" stop-color="#3B82F6" stop-opacity="0.9"/>'
-        f'<stop offset="100%" stop-color="#06B6D4" stop-opacity="0.8"/>'
-        f'</linearGradient>'
-        f'</defs>'
+        '<defs>'
+        '<linearGradient id="gridFade" x1="0" y1="0" x2="0" y2="1">'
+        '<stop offset="0%" stop-color="rgba(148,163,184,0.26)"/>'
+        '<stop offset="100%" stop-color="rgba(148,163,184,0.09)"/>'
+        '</linearGradient>'
+        '<linearGradient id="driftStroke" x1="0" y1="0" x2="1" y2="0">'
+        '<stop offset="0%" stop-color="#64748B" stop-opacity="0.36"/>'
+        '<stop offset="60%" stop-color="#38BDF8" stop-opacity="0.86"/>'
+        '<stop offset="100%" stop-color="#06B6D4" stop-opacity="1"/>'
+        '</linearGradient>'
+        '<linearGradient id="stabilityStroke" x1="0" y1="0" x2="1" y2="0">'
+        '<stop offset="0%" stop-color="#94A3B8" stop-opacity="0.3"/>'
+        '<stop offset="70%" stop-color="#22C55E" stop-opacity="0.74"/>'
+        '<stop offset="100%" stop-color="#86EFAC" stop-opacity="0.88"/>'
+        '</linearGradient>'
+        '<filter id="transitionGlow" x="-50%" y="-50%" width="200%" height="200%">'
+        '<feGaussianBlur stdDeviation="6" result="blur"/>'
+        '<feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>'
+        '</filter>'
+        '</defs>'
     )
 
-    # Y-axis ticks from bottom (0) to top (1) - note sy() inverts the coordinates
-    y_ticks = [0.0, 0.25, 0.5, 0.75, 1.0]
+    y_tick_count = 5
+    y_ticks = [y_domain_min + (i / y_tick_count) * (y_domain_max - y_domain_min) for i in range(y_tick_count + 1)]
     for y_tick in y_ticks:
         y_pos = sy(y_tick)
-        parts.append(f'<line x1="{PX}" y1="{y_pos}" x2="{PX + IW}" y2="{y_pos}" stroke="rgba(255,255,255,0.15)" stroke-width="1"/>')
-        # Label the strength value correctly (0 at bottom, 1 at top)
+        parts.append(f'<line x1="{PX}" y1="{y_pos}" x2="{PX + IW}" y2="{y_pos}" stroke="url(#gridFade)" stroke-width="1"/>')
+        parts.append(f'<text x="{PX - 12}" y="{y_pos + 4}" text-anchor="end" fill="rgba(226,232,240,0.95)" font-size="11">{y_tick:.2f}</text>')
+
+    x_ticks: list[float] = []
+    if axis_mode == "cycles_to_transition":
+        if transition_frame is not None:
+            start_cycle = int(round(max(x_values)))
+            end_cycle = int(round(min(x_values)))
+            step = max(int(round((start_cycle - end_cycle) / 6.0)), 1)
+            x_ticks = [float(v) for v in range(start_cycle, end_cycle - 1, -step)]
+            if 0.0 not in x_ticks:
+                x_ticks.append(0.0)
+            x_ticks = sorted(set(x_ticks), reverse=True)
+    else:
+        x_ticks = [0.0, 20.0, 40.0, 60.0, 80.0, 100.0]
+
+    for x_tick in x_ticks:
+        x_pos = sx(x_tick)
+        parts.append(f'<line x1="{x_pos}" y1="{PY}" x2="{x_pos}" y2="{PY + IH}" stroke="rgba(148,163,184,0.18)" stroke-width="1" stroke-dasharray="2,4"/>')
+        label = f"{int(round(x_tick))}" if axis_mode == "cycles_to_transition" else f"{int(round(x_tick))}%"
+        parts.append(f'<text x="{x_pos}" y="{PY + IH + 18}" text-anchor="middle" fill="rgba(226,232,240,0.82)" font-size="11">{label}</text>')
+
+    parts.append(f'<line x1="{PX}" y1="{PY + IH}" x2="{PX + IW}" y2="{PY + IH}" stroke="rgba(226,232,240,0.5)" stroke-width="1.5"/>')
+    parts.append(f'<line x1="{PX}" y1="{PY}" x2="{PX}" y2="{PY + IH}" stroke="rgba(226,232,240,0.5)" stroke-width="1.5"/>')
+
+    parts.append(
+        f'<text x="{PX + IW - 4}" y="{PY + IH + 36}" text-anchor="end" fill="rgba(226,232,240,0.98)" font-size="12" font-weight="700">'
+        f'{"Cycles Until Structural Transition" if axis_mode == "cycles_to_transition" else "Lifecycle Progression (%)"}'
+        '</text>'
+    )
+    parts.append(f'<text x="{PX - 10}" y="{PY - 12}" text-anchor="start" fill="rgba(226,232,240,0.96)" font-size="12" font-weight="700">Structural Signal Level</text>')
+
+    # Divergence fill between stability and drift.
+    divergence_d = []
+    for idx, point in enumerate(chart_points):
+        x_pos = sx(_f(point.get("x_value"), 0.0))
+        y_drift = sy(_f(point.get("drift"), 0.0))
+        if idx == 0:
+            divergence_d.append(f"M{x_pos},{y_drift}")
+        else:
+            divergence_d.append(f"L{x_pos},{y_drift}")
+    for point in reversed(chart_points):
+        x_pos = sx(_f(point.get("x_value"), 0.0))
+        y_stability = sy(_f(point.get("stability"), 0.0))
+        divergence_d.append(f"L{x_pos},{y_stability}")
+    divergence_d.append("Z")
+    parts.append(
+        f'<path d="{" ".join(divergence_d)}" fill="rgba(56,189,248,0.16)" stroke="rgba(56,189,248,0.22)" stroke-width="1"/>'
+    )
+
+    # Main lines.
+    parts.append(f'<polyline points="{_series_points("stability")}" fill="none" stroke="url(#stabilityStroke)" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round"/>')
+    parts.append(f'<polyline points="{_series_points("drift")}" fill="none" stroke="url(#driftStroke)" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/>')
+
+    # Drift slope trail with progressive intensity near instability.
+    for idx in range(1, len(chart_points)):
+        prev = chart_points[idx - 1]
+        curr = chart_points[idx]
+        x0 = sx(_f(prev.get("x_value"), 0.0))
+        y0 = sy(_f(prev.get("drift_slope"), 0.0))
+        x1 = sx(_f(curr.get("x_value"), 0.0))
+        y1 = sy(_f(curr.get("drift_slope"), 0.0))
+        recency = idx / max(len(chart_points) - 1, 1)
+        slope_intensity = _cl(_f(curr.get("abs_slope"), 0.0) / max_abs_slope, 0.0, 1.0)
+        opacity = 0.08 + 0.46 * recency + 0.34 * slope_intensity
+        width = 1.0 + 2.2 * slope_intensity
         parts.append(
-            f'<text x="{PX - 10}" y="{y_pos + 4}" text-anchor="end" fill="rgba(255,255,255,0.9)" font-size="10">{y_tick:.2f}</text>'
+            f'<line x1="{x0}" y1="{y0}" x2="{x1}" y2="{y1}" stroke="rgba(251,146,60,{opacity:.3f})" stroke-width="{width:.2f}" '
+            f'stroke-linecap="round"/>'
         )
 
-    phase_runs: list[tuple[int, int, str]] = []
-    if chart_points:
-        run_start = 0
-        run_phase = chart_points[0]["phase"]
-        for idx, point in enumerate(chart_points[1:], start=1):
-            if point["phase"] != run_phase:
-                phase_runs.append((run_start, idx - 1, run_phase))
-                run_start = idx
-                run_phase = point["phase"]
-        phase_runs.append((run_start, len(chart_points) - 1, run_phase))
-    phase_colors = {"STABLE": "rgba(34,197,94,0.25)", "TRANSITION": "rgba(249,115,22,0.25)", "REORGANIZATION": "rgba(239,68,68,0.25)"}
-    for start_idx, end_idx, phase_name in phase_runs:
-        x0 = sx(start_idx / max(point_count - 1, 1))
-        x1 = sx(end_idx / max(point_count - 1, 1))
-        if x1 > x0:
+    # Progressive emphasis dots: older muted, newer bright.
+    for idx, point in enumerate(chart_points):
+        recency = idx / max(len(chart_points) - 1, 1)
+        drift = _f(point.get("drift"), 0.0)
+        instability = 1.0 - _f(point.get("stability"), 1.0)
+        highlight = _cl((drift + instability) * 0.5, 0.0, 1.0)
+        opacity = 0.14 + recency * 0.64
+        radius = 1.8 + recency * 2.6 + highlight * 1.6
+        parts.append(
+            f'<circle cx="{sx(_f(point.get("x_value"), 0.0))}" cy="{sy(drift)}" r="{radius:.2f}" fill="rgba(6,182,212,{opacity:.3f})"/>'
+        )
+
+    if transition_x is not None:
+        parts.append(
+            f'<line x1="{transition_x}" y1="{PY}" x2="{transition_x}" y2="{PY + IH}" stroke="#F97316" stroke-width="3.5" '
+            f'opacity="0.92" filter="url(#transitionGlow)"/>'
+        )
+        marker_point = next((p for p in chart_points if abs(_f(p.get("x_value"), 9999.0)) < 1e-6), chart_points[min(max(transition_frame or 0, 0), len(chart_points) - 1)])
+        marker_y = sy(_f(marker_point.get("drift"), 0.0))
+        parts.append(f'<circle cx="{transition_x}" cy="{marker_y}" r="11" fill="rgba(249,115,22,0.28)" stroke="rgba(251,191,36,0.85)" stroke-width="2.5" filter="url(#transitionGlow)"/>')
+        parts.append(f'<circle cx="{transition_x}" cy="{marker_y}" r="4.2" fill="#FDBA74"/>')
+        parts.append(
+            f'<text x="{transition_x + 10}" y="{max(PY + 18, marker_y - 14)}" fill="#FDBA74" font-size="12" font-weight="800">Transition Point</text>'
+        )
+        parts.append(
+            f'<text x="{transition_x + 10}" y="{max(PY + 34, marker_y + 4)}" fill="rgba(253,186,116,0.85)" font-size="11">Structural Break Detected</text>'
+        )
+
+    # Current frame anchor.
+    parts.append(f'<line x1="{current_x}" y1="{PY}" x2="{current_x}" y2="{PY + IH}" stroke="#22D3EE" stroke-width="2.6" opacity="0.9" stroke-dasharray="5,3"/>')
+    parts.append(f'<circle cx="{current_x}" cy="{current_y_drift}" r="7.8" fill="#22D3EE" stroke="#E2E8F0" stroke-width="2.6"/>')
+    parts.append(f'<text x="{min(current_x + 12, W - 18)}" y="{max(current_y_drift - 10, PY + 16)}" fill="#E0F2FE" font-size="12" font-weight="800">Current Frame</text>')
+
+    # Optional subtle projected path after current point.
+    if point_count >= 4:
+        tail = chart_points[-4:]
+        if len(tail) >= 2:
+            slope = _f(tail[-1].get("drift"), 0.0) - _f(tail[-2].get("drift"), 0.0)
+            proj1_x = _f(chart_points[-1].get("x_value"), 0.0) - 2.0 if axis_mode == "cycles_to_transition" else min(100.0, _f(chart_points[-1].get("x_value"), 0.0) + 8.0)
+            proj2_x = proj1_x - 2.0 if axis_mode == "cycles_to_transition" else min(100.0, proj1_x + 8.0)
+            base_drift = _f(chart_points[-1].get("drift"), 0.0)
+            proj1_y = _cl(base_drift + slope * 0.8, y_domain_min, y_domain_max)
+            proj2_y = _cl(proj1_y + slope * 0.8, y_domain_min, y_domain_max)
+            proj_pts = f"{current_x},{current_y_drift} {sx(proj1_x)},{sy(proj1_y)} {sx(proj2_x)},{sy(proj2_y)}"
             parts.append(
-                f'<rect x="{x0}" y="{PY}" width="{max(1.0, x1 - x0)}" height="{IH}" fill="{phase_colors.get(phase_name, "rgba(71,85,105,0.08)")}" />'
+                f'<polyline points="{proj_pts}" fill="none" stroke="rgba(148,163,184,0.45)" stroke-width="1.8" stroke-dasharray="6,5"/>'
+            )
+            parts.append(
+                f'<text x="{sx(proj1_x) + 8}" y="{sy(proj1_y) - 8}" fill="rgba(148,163,184,0.72)" font-size="10">Available future states</text>'
             )
 
-    parts.append(f'<line x1="{PX}" y1="{PY + IH}" x2="{PX + IW}" y2="{PY + IH}" stroke="rgba(255,255,255,0.4)" stroke-width="1.5"/>')
-    parts.append(f'<line x1="{PX}" y1="{PY}" x2="{PX}" y2="{PY + IH}" stroke="rgba(255,255,255,0.4)" stroke-width="1.5"/>')
-    parts.append(f'<text x="{PX + IW - 4}" y="{PY + IH + 20}" text-anchor="end" fill="rgba(255,255,255,0.95)" font-size="11">Replay →</text>')
-    parts.append(f'<text x="{PX - 8}" y="{PY - 8}" text-anchor="end" fill="rgba(255,255,255,0.95)" font-size="11">Signal</text>')
-
-    if len(chart_points) >= 2:
-        pts_str = " ".join(
-            f"{sx(p.get('x', 0.5))},{sy(p.get('y', 0.5))}"
-            for p in chart_points
-            if isinstance(p, dict)
-        )
-        parts.append(
-            f'<polyline points="{pts_str}" fill="none" stroke="url(#tg)" '
-            f'stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" '
-            f'opacity="0.94"/>'
-        )
-
-    cx_p = sx(current.get("x", 1.0))
-    cy_p = sy(current.get("y", 0.0))
-    # Vertical line marking current position
-    parts.append(f'<line x1="{cx_p}" y1="{PY}" x2="{cx_p}" y2="{PY + IH}" stroke="#06B6D4" stroke-width="2" opacity="0.8" stroke-dasharray="4,3"/>')
-    # Current position marker
-    parts.append(f'<circle cx="{cx_p}" cy="{cy_p}" r="7" fill="#06B6D4" stroke="#FFFFFF" stroke-width="2.5"/>')
-    # "Now" label
-    parts.append(f'<text x="{min(cx_p + 12, W - 12)}" y="{max(cy_p - 10, PY + 12)}" fill="#FFFFFF" font-size="12" font-weight="700">NOW</text>')
-
     svg_body = "\n".join(parts)
-    svg_html = f'<svg class="ner-system-canvas" viewBox="0 0 {W} {H}" width="100%">\n{svg_body}\n</svg>'
+    svg_html = (
+        f'<div class="ner-timeline-scroll-region" data-current-frame="{int(current.get("index", 0))}">'
+        f'<svg class="ner-system-canvas ner-system-canvas--timeline" viewBox="0 0 {W} {H}" width="{W}" height="{H}">\n{svg_body}\n</svg>'
+        f'</div>'
+    )
+
+    legend_html = (
+        '<div class="ner-chart-legend">'
+        '<span><i style="background:#22C55E"></i>Relational Stability</span>'
+        '<span><i style="background:#06B6D4"></i>Structural Drift</span>'
+        '<span><i style="background:#FB923C"></i>Drift Acceleration</span>'
+        '<span><i style="background:rgba(56,189,248,0.35)"></i>Divergence Envelope</span>'
+        '</div>'
+    )
 
     sequence = timeline_data.get("sequence") if isinstance(timeline_data.get("sequence"), list) else []
     stage_palette = {
@@ -580,8 +742,8 @@ def _render_system_context_html(system_zone: dict[str, Any]) -> str:
             )
             items.append(
                 f'<div style="display:flex;flex-direction:column;align-items:center;gap:3px;">'
-                f'<div style="width:7px;height:7px;border-radius:50%;background:{color};box-shadow:0 0 6px {color}66;"></div>'
-                f'<span style="font-size:8.5px;font-weight:700;letter-spacing:0.05em;color:{color};text-transform:uppercase;">'
+                f'<div style="width:8px;height:8px;border-radius:50%;background:{color};box-shadow:0 0 8px {color}66;"></div>'
+                f'<span style="font-size:9px;font-weight:700;letter-spacing:0.05em;color:{color};text-transform:uppercase;">'
                 f'{escape(label)}</span></div>{connector}'
             )
         timeline_html = (
@@ -591,30 +753,37 @@ def _render_system_context_html(system_zone: dict[str, Any]) -> str:
         )
 
     header_html = (
-        f'<div class="ner-panel-head">'
-        f'<div style="display:flex;flex-direction:column;gap:2px;">'
-        f'<span class="ner-eyebrow">Replay telemetry</span>'
-        f'<span style="font-size:11px;color:#7c8ba8;">System path across {len(chart_points)} states · shows trajectory evidence</span>'
-        f'</div>'
-        f'</div>'
+        '<div class="ner-panel-head">'
+        '<div style="display:flex;flex-direction:column;gap:2px;">'
+        '<span class="ner-eyebrow">Replay telemetry</span>'
+        f'<span style="font-size:12px;color:#7c8ba8;">Structural evolution across {point_count} frames · divergence and breakpoints emphasized</span>'
+        '</div>'
+        '</div>'
     )
 
-    x = _f(current.get("x"), 0.0)
-    y = _f(current.get("y"), 0.0)
+    current_drift = _f(current.get("drift"), 0.0)
+    current_stability = _f(current.get("stability"), 1.0)
     phase_label = escape(str(current.get("phase") or "UNKNOWN").upper())
-    start_signal = _f(chart_points[0].get("y"), 0.0) if chart_points else 0.0
     context_row = (
         '<div class="ner-system-context-grid">'
-        f'<div><span class="ner-context-label">Strength</span><span class="ner-context-value">{y:.3f}</span></div>'
-        f'<div><span class="ner-context-label">Trajectory</span><span class="ner-context-value">{start_signal:.3f} → {y:.3f}</span></div>'
-        f'<div><span class="ner-context-label">Regime</span><span class="ner-context-value">{phase_label}</span></div>'
-        f'<div><span class="ner-context-label">Position</span><span class="ner-context-value">{int(round(x * max(point_count - 1, 0)))} / {max(point_count - 1, 0)}</span></div>'
+        f'<div><span class="ner-context-label">Current Drift</span><span class="ner-context-value">{current_drift:.3f}</span></div>'
+        f'<div><span class="ner-context-label">Current Stability</span><span class="ner-context-value">{current_stability:.3f}</span></div>'
+        f'<div><span class="ner-context-label">Divergence</span><span class="ner-context-value">{abs(current_drift - current_stability):.3f}</span></div>'
+        f'<div><span class="ner-context-label">Lifecycle Position</span><span class="ner-context-value">{int(current.get("index", 0))} / {max(point_count - 1, 0)}</span></div>'
         '</div>'
+    )
+
+    axis_context = (
+        f'<div class="ner-axis-context">'
+        f'<span>Axis Mode: {"Cycles Until Structural Transition" if axis_mode == "cycles_to_transition" else "Lifecycle Progression (%)"}</span>'
+        f'<span>{"Transition anchor at 0" if axis_mode == "cycles_to_transition" else "No transition frame detected; using progression view"}</span>'
+        f'<span>Tooltip semantics: Drift = structural pressure, Stability = relational integrity, Acceleration = change velocity</span>'
+        f'</div>'
     )
 
     return (
         f'<div class="ner-panel ner-system-panel">'
-        f'{header_html}{context_row}{svg_html}{timeline_html}</div>'
+        f'{header_html}{context_row}{axis_context}{legend_html}{svg_html}{timeline_html}</div>'
     )
 
 

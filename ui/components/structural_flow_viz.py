@@ -98,11 +98,21 @@ def render_structural_flow_viz(
             signal_value = float(row.get("dynamic_signal_strength", row.get("structural_drift_score", 0.0)))
         except (TypeError, ValueError):
             signal_value = 0.0
+        try:
+            drift_value = float(row.get("structural_drift_score", signal_value))
+        except (TypeError, ValueError):
+            drift_value = signal_value
+        try:
+            stability_value = float(row.get("relational_stability_score", 1.0 - drift_value))
+        except (TypeError, ValueError):
+            stability_value = 1.0 - drift_value
         replay_series.append(
             {
                 "index": idx,
                 "timestamp": row.get("timestamp"),
                 "signal": clamp(signal_value, 0.0, 1.0),
+                "drift": clamp(drift_value, 0.0, 1.0),
+                "stability": clamp(stability_value, 0.0, 1.0),
                 "phase": str(row.get("system_phase") or row.get("transition_type") or row.get("regime_name") or "unknown"),
                 "event_admitted": bool(row.get("event_admitted")),
             }
