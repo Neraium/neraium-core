@@ -59,7 +59,7 @@ export default function Home() {
   useEffect(() => {
     const loadDemoData = async () => {
       try {
-        const demoFrames = await fetchFD004DemoInit('unit_001')
+        const demoFrames = await fetchFD004DemoInit ('unit_001')
         console.log('Frames length:', demoFrames?.length)
         if (demoFrames && demoFrames.length > 0) {
           const transformedFrames = demoFrames.map(transformFrame)
