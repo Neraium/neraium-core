@@ -108,7 +108,10 @@ function calculateTetrahedralPosition(sensors: number[], cycle: number): [number
  * Convert CSV rows to DemoFrame format
  */
 export function csvRowsToDemoFrames(rows: CSVRow[]): DemoFrame[] {
-  return rows.map((row, index) => {
+  // Filter to only unit 1
+  const unit1Rows = rows.filter(row => row.unit_id === '1');
+
+  return unit1Rows.map((row, index) => {
     const cycle = parseInt(row.cycle, 10);
     const sensors = extractSensorValues(row);
     const metrics = calculateMetrics(sensors, cycle);
@@ -118,7 +121,7 @@ export function csvRowsToDemoFrames(rows: CSVRow[]): DemoFrame[] {
 
     return {
       frame_index: index,
-      frame_count: rows.length,
+      frame_count: unit1Rows.length,
       timestamp: new Date(Date.now() - (rows.length - index) * 100).toISOString(),
       current_phase: phase,
       verdict: metrics.confidence > 85 ? 'ADMITTED' : 'PENDING',
