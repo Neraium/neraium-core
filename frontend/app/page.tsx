@@ -9,17 +9,31 @@ import InsightPanels from '@/components/InsightPanels'
 import ReplayChart from '@/components/ReplayChart'
 import PlaybackControls from '@/components/PlaybackControls'
 
+function getSystemHealth(structuralDrift: number, relationalStability: number): string {
+  const drift = Math.max(0, Math.min(1, structuralDrift))
+  const stability = Math.max(0, Math.min(1, relationalStability))
+  const instability = 1 - stability
+
+  if (drift >= 0.78 || instability >= 0.55) return 'critical'
+  if (drift >= 0.55 || instability >= 0.35) return 'warning'
+  return 'nominal'
+}
+
 // Transform DemoFrame to the format the components expect
 function transformFrame(demoFrame: DemoFrame): Frame {
+  const structuralDrift = demoFrame.metrics.structural_drift
+  const relationalStability = demoFrame.metrics.relational_stability
+  const derivedHealth = getSystemHealth(structuralDrift, relationalStability)
+
   return {
     index: demoFrame.frame_index,
     total: demoFrame.frame_count,
     timestamp: demoFrame.timestamp,
     phase: demoFrame.current_phase,
-    system_health: demoFrame.status.toLowerCase(),
+    system_health: derivedHealth,
     confidence: demoFrame.metrics.confidence,
-    structural_drift_score: demoFrame.metrics.structural_drift,
-    relational_stability_score: demoFrame.metrics.relational_stability,
+    structural_drift_score: structuralDrift,
+    relational_stability_score: relationalStability,
     coherence_score: demoFrame.metrics.coherence,
     event_admitted: demoFrame.verdict === 'ADMITTED' || demoFrame.verdict === 'admitted',
     transition_type: demoFrame.verdict,

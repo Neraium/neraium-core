@@ -19,55 +19,44 @@ export default function ReplayChart({ frames, currentIndex }: ReplayChartProps) 
   const IW = W - 2 * PX
   const IH = H - 2 * PY
 
-  const getDriftValue = (frame: FrameData) => Math.max(0, Math.min(1, frame.structural_drift_score || 0))
-  const getStabilityValue = (frame: FrameData) => Math.max(0, Math.min(1, frame.relational_stability_score || 0))
+  const getDriftPercent = (frame: FrameData) => Math.max(0, Math.min(100, (frame.structural_drift_score || 0) * 100))
+  const getInstabilityPercent = (frame: FrameData) => {
+    const stability = Math.max(0, Math.min(100, (frame.relational_stability_score || 0) * 100))
+    return 100 - stability
+  }
 
-  // Only show data up to current frame (live effect)
-  const visibleFrames = frames.slice(0, currentIndex + 1)
-
-  // Create data points for drift (only up to current index)
-  const driftPoints = visibleFrames.map((frame, idx) => ({
+  // Render full timeline and use the cursor to show replay position
+  const driftPoints = frames.map((frame, idx) => ({
     x: (idx / Math.max(frames.length - 1, 1)) * IW + PX,
-    y: PY + IH - getDriftValue(frame) * IH,
-    value: getDriftValue(frame),
+    y: PY + IH - (getDriftPercent(frame) / 100) * IH,
+    value: getDriftPercent(frame),
   }))
 
-  // Create data points for stability (only up to current index)
-  const stabilityPoints = visibleFrames.map((frame, idx) => ({
+  const instabilityPoints = frames.map((frame, idx) => ({
     x: (idx / Math.max(frames.length - 1, 1)) * IW + PX,
-    y: PY + IH - getStabilityValue(frame) * IH,
-    value: getStabilityValue(frame),
+    y: PY + IH - (getInstabilityPercent(frame) / 100) * IH,
+    value: getInstabilityPercent(frame),
   }))
 
   // Current frame position
   const currentX = (currentIndex / Math.max(frames.length - 1, 1)) * IW + PX
+  const currentDriftPoint = driftPoints[currentIndex]
+  const currentInstabilityPoint = instabilityPoints[currentIndex]
 
-  // Build polyline points (only visible frames)
+  // Build polyline points
   const driftPath = driftPoints.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ')
-  const stabilityPath = stabilityPoints.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ')
-
-  // Build filled area paths for visual effect
-  const driftAreaPath = driftPath ? `M ${driftPath} L ${PX + IW},${PY + IH} L ${PX},${PY + IH} Z` : ''
-  const stabilityAreaPath = stabilityPath ? `M ${stabilityPath} L ${PX + IW},${PY + IH} L ${PX},${PY + IH} Z` : ''
+  const instabilityPath = instabilityPoints.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ')
 
   return (
     <div className="panel">
       <div className="panel-head">
         <span className="eyebrow">Replay Timeline</span>
-        <span className="panel-subtitle">Structural drift and relational stability across {frames.length} frames</span>
+        <span className="panel-subtitle">Structural drift and relational instability across {frames.length} frames</span>
       </div>
       <div className="chart-container">
         <svg className="chart-svg" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMid meet">
-          {/* Background */}
+          <rect x={0} y={0} width={W} height={H} fill="rgba(0,0,0,0.18)" />
           <defs>
-            <linearGradient id="driftAreaGrad" x1="0%" y1="0%" x2="0%" y2="100%">
-              <stop offset="0%" stopColor="rgba(59, 130, 246, 0.2)" />
-              <stop offset="100%" stopColor="rgba(59, 130, 246, 0.02)" />
-            </linearGradient>
-            <linearGradient id="stabilityAreaGrad" x1="0%" y1="0%" x2="0%" y2="100%">
-              <stop offset="0%" stopColor="rgba(34, 197, 94, 0.2)" />
-              <stop offset="100%" stopColor="rgba(34, 197, 94, 0.02)" />
-            </linearGradient>
             <filter id="glow">
               <feGaussianBlur stdDeviation="2" result="coloredBlur" />
               <feMerge>
@@ -78,7 +67,7 @@ export default function ReplayChart({ frames, currentIndex }: ReplayChartProps) 
           </defs>
 
           {/* Grid */}
-          {[0.25, 0.5, 0.75].map((y) => (
+          {[0, 0.25, 0.5, 0.75, 1].map((y) => (
             <line
               key={`grid-${y}`}
               x1={PX}
@@ -91,7 +80,7 @@ export default function ReplayChart({ frames, currentIndex }: ReplayChartProps) 
           ))}
 
           {/* Value markers */}
-          {[0.25, 0.5, 0.75].map((y) => (
+          {[0, 0.25, 0.5, 0.75, 1].map((y) => (
             <text
               key={`marker-${y}`}
               x={PX - 8}
@@ -100,7 +89,7 @@ export default function ReplayChart({ frames, currentIndex }: ReplayChartProps) 
               fontSize="10"
               textAnchor="end"
             >
-              {(y * 100).toFixed(0)}%
+              {(y * 100).toFixed(0)}
             </text>
           ))}
 
@@ -108,18 +97,14 @@ export default function ReplayChart({ frames, currentIndex }: ReplayChartProps) 
           <line x1={PX} y1={PY} x2={PX} y2={PY + IH} stroke="rgba(255,255,255,0.2)" strokeWidth="1.5" />
           <line x1={PX} y1={PY + IH} x2={PX + IW} y2={PY + IH} stroke="rgba(255,255,255,0.2)" strokeWidth="1.5" />
 
-          {/* Filled areas under lines */}
-          {stabilityAreaPath && <path d={stabilityAreaPath} fill="url(#stabilityAreaGrad)" />}
-          {driftAreaPath && <path d={driftAreaPath} fill="url(#driftAreaGrad)" />}
-
-          {/* Stability line */}
-          {stabilityPath && (
+          {/* Instability line */}
+          {instabilityPath && (
             <polyline
-              points={stabilityPath}
+              points={instabilityPath}
               fill="none"
-              stroke="#22C55E"
+              stroke="#FF8A5C"
               strokeWidth="2.5"
-              opacity="0.9"
+              opacity="0.95"
               filter="url(#glow)"
             />
           )}
@@ -147,10 +132,10 @@ export default function ReplayChart({ frames, currentIndex }: ReplayChartProps) 
             strokeDasharray="5,4"
             opacity="0.6"
           />
-          {driftPoints[currentIndex] && (
+          {currentDriftPoint && (
             <circle
               cx={currentX}
-              cy={driftPoints[currentIndex].y}
+              cy={currentDriftPoint.y}
               r="7"
               fill="#3B82F6"
               stroke="#FFFFFF"
@@ -158,12 +143,12 @@ export default function ReplayChart({ frames, currentIndex }: ReplayChartProps) 
               opacity="0.95"
             />
           )}
-          {stabilityPoints[currentIndex] && (
+          {currentInstabilityPoint && (
             <circle
               cx={currentX}
-              cy={stabilityPoints[currentIndex].y}
+              cy={currentInstabilityPoint.y}
               r="7"
-              fill="#22C55E"
+              fill="#FF8A5C"
               stroke="#FFFFFF"
               strokeWidth="2"
               opacity="0.95"
@@ -179,29 +164,30 @@ export default function ReplayChart({ frames, currentIndex }: ReplayChartProps) 
             fontWeight="600"
             textAnchor="end"
           >
-            Signal
+            Value
           </text>
           <text
-            x={PX + IW + 8}
+            x={PX + IW - 16}
             y={PY + IH + 24}
             fill="rgba(255,255,255,0.7)"
             fontSize="12"
             fontWeight="600"
+            textAnchor="end"
           >
-            Timeline →
+            Cycle
           </text>
 
           {/* Legend */}
           <g>
-            <rect x={PX + 16} y={PY + 8} width={160} height={48} fill="rgba(0,0,0,0.4)" rx="4" />
-            <line x1={PX + 24} y1={PY + 18} x2={PX + 44} y2={PY + 18} stroke="#22C55E" strokeWidth="2.5" />
+            <rect x={PX + 16} y={PY + 8} width={230} height={48} fill="rgba(0,0,0,0.45)" rx="4" />
+            <line x1={PX + 24} y1={PY + 18} x2={PX + 44} y2={PY + 18} stroke="#3B82F6" strokeWidth="2.5" />
             <text x={PX + 52} y={PY + 22} fill="rgba(255,255,255,0.85)" fontSize="11" fontWeight="600">
-              Stability
+              structural_drift_score
             </text>
 
-            <line x1={PX + 24} y1={PY + 38} x2={PX + 44} y2={PY + 38} stroke="#3B82F6" strokeWidth="2.5" />
+            <line x1={PX + 24} y1={PY + 38} x2={PX + 44} y2={PY + 38} stroke="#FF8A5C" strokeWidth="2.5" />
             <text x={PX + 52} y={PY + 42} fill="rgba(255,255,255,0.85)" fontSize="11" fontWeight="600">
-              Drift
+              relational_instability_score
             </text>
           </g>
         </svg>

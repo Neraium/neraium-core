@@ -10,7 +10,12 @@ export default function InsightPanels({ frame }: InsightPanelsProps) {
   }
 
   const health = ((frame.system_health as string) || 'nominal').toLowerCase()
-  const healthColor = health === 'degraded' ? '#EF4444' : health === 'watch' ? '#F97316' : '#22C55E'
+  const healthColor =
+    health === 'critical' || health === 'degraded'
+      ? '#EF4444'
+      : health === 'watch' || health === 'warning'
+        ? '#F97316'
+        : '#22C55E'
   const transitionType = (frame.transition_type as string) || 'STABLE'
 
   return (

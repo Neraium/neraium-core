@@ -4,8 +4,8 @@ interface HeaderBarProps {
 
 export default function HeaderBar({ frame }: HeaderBarProps) {
   const confidence = frame.confidence ? ((frame.confidence as number) * 100).toFixed(0) : '—'
-  const phase = frame.phase ? (frame.phase as string).toUpperCase().replace(/_/g, ' ') : 'UNKNOWN'
-  const health = frame.system_health ? (frame.system_health as string).toUpperCase() : 'NOMINAL'
+  const healthRaw = frame.system_health ? (frame.system_health as string).toUpperCase() : 'NOMINAL'
+  const health = healthRaw === 'WARNING' ? 'WATCH' : healthRaw
 
   // Format timestamp for display
   const timestamp = frame.timestamp ? new Date(frame.timestamp as string).toLocaleTimeString() : new Date().toLocaleTimeString()

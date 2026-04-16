@@ -77,7 +77,7 @@ const SENSOR_MAXIMUMS = [
 /**
  * Calculate health metrics from sensor readings
  */
-function calculateMetrics(sensors: number[], cycle: number) {
+function calculateMetrics(sensors: number[], cycle: number, maxCycle: number) {
   // Normalize sensor values to 0-1 range using sensor-specific maximums
   const normalized = sensors.map((s, i) => {
     const max = SENSOR_MAXIMUMS[i] || 100;
@@ -89,11 +89,17 @@ function calculateMetrics(sensors: number[], cycle: number) {
   const variance = normalized.reduce((sum, val) => sum + Math.pow(val - avgSensors, 2), 0) / normalized.length;
   const stability = 100 - (Math.sqrt(variance) * 100); // Lower std dev = higher stability
 
+  const cycleRatio = Math.max(0, Math.min(1, cycle / Math.max(maxCycle, 1)));
+  const structuralDrift = 15 + cycleRatio * 65 + variance * 15;
+  const relationalStability = 96 - cycleRatio * 50 - variance * 20;
+  const coherence = (relationalStability * 0.55) + ((100 - structuralDrift) * 0.45);
+  const confidence = 72 + (coherence * 0.28) + ((100 - structuralDrift) * 0.08);
+
   return {
-    confidence: Math.min(100, 90 + (cycle % 10)),
-    structural_drift: Math.max(0, Math.min(100, avgSensors * 100)),
-    relational_stability: Math.max(0, Math.min(100, stability)),
-    coherence: Math.min(100, 85 + (Math.random() * 10)),
+    confidence: Math.max(0, Math.min(100, confidence)),
+    structural_drift: Math.max(0, Math.min(100, structuralDrift)),
+    relational_stability: Math.max(0, Math.min(100, relationalStability)),
+    coherence: Math.max(0, Math.min(100, coherence)),
   };
 }
 
@@ -112,8 +118,8 @@ function getPhase(cycle: number): string {
  * Determine health status
  */
 function getStatus(drift: number, stability: number): string {
-  if (drift > 50 || stability < 30) return 'critical';
-  if (drift > 30 || stability < 50) return 'warning';
+  if (drift >= 78 || stability <= 45) return 'critical';
+  if (drift >= 55 || stability <= 65) return 'warning';
   return 'nominal';
 }
 
@@ -141,11 +147,12 @@ function calculateTetrahedralPosition(sensors: number[], cycle: number): [number
 export function csvRowsToDemoFrames(rows: CSVRow[]): DemoFrame[] {
   // Filter to only unit 1
   const unit1Rows = rows.filter(row => row.unit_id === '1');
+  const maxCycle = unit1Rows.reduce((max, row) => Math.max(max, parseInt(row.cycle, 10) || 0), 0);
 
   return unit1Rows.map((row, index) => {
     const cycle = parseInt(row.cycle, 10);
     const sensors = extractSensorValues(row);
-    const metrics = calculateMetrics(sensors, cycle);
+    const metrics = calculateMetrics(sensors, cycle, maxCycle);
     const phase = getPhase(cycle);
     const status = getStatus(metrics.structural_drift, metrics.relational_stability);
     const position = calculateTetrahedralPosition(sensors, cycle);
