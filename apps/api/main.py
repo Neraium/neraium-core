@@ -70,6 +70,7 @@ from .routers.demo import build_demo_router
 from .routers.demo_playback import build_demo_playback_router
 from .routers.integrations import build_integrations_router
 from .routers.onboarding import build_onboarding_router
+from .routers.ui_replay import router as ui_replay_router
 DEFAULT_MAX_REQUEST_BODY_BYTES = request_body_limit_bytes()
 
 from .routers.dependencies import (
@@ -642,6 +643,7 @@ def create_app(
     )
 
     app.include_router(build_demo_playback_router())
+    app.include_router(ui_replay_router)
 
     app.include_router(
         build_onboarding_router(
