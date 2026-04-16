@@ -65,13 +65,20 @@ export default function Home() {
         const csvContent = await response.text()
         const csvRows = parseCSV(csvContent)
 
-        if (csvRows && csvRows.length > 0) {
-          const demoFrames = csvRowsToDemoFrames(csvRows)
-          const transformedFrames = demoFrames.map(transformFrame)
-          setFrames(transformedFrames)
-          setCurrentFrameIndex(0)
-          setIsConnected(true)
+        if (!csvRows || csvRows.length === 0) {
+          throw new Error('No CSV rows parsed')
         }
+
+        const demoFrames = csvRowsToDemoFrames(csvRows)
+
+        if (!demoFrames || demoFrames.length === 0) {
+          throw new Error('No demo frames generated from CSV rows')
+        }
+
+        const transformedFrames = demoFrames.map(transformFrame)
+        setFrames(transformedFrames)
+        setCurrentFrameIndex(0)
+        setIsConnected(true)
         setLoading(false)
       } catch (error) {
         console.error('Error loading CSV data:', error)

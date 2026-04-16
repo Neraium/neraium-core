@@ -13,21 +13,22 @@ export interface CSVRow {
  * Parse CSV content into rows
  */
 export function parseCSV(csvContent: string): CSVRow[] {
-  const lines = csvContent.trim().split('\n');
+  const lines = csvContent.trim().split('\n').map(line => line.trim());
   if (lines.length < 2) return [];
 
   const headers = lines[0].split(',').map(h => h.trim());
   const rows: CSVRow[] = [];
 
   for (let i = 1; i < lines.length; i++) {
+    if (!lines[i]) continue; // Skip empty lines
     const values = lines[i].split(',').map(v => v.trim());
-    const row: CSVRow = {};
+    const row: Record<string, string> = {};
 
     headers.forEach((header, index) => {
       row[header] = values[index] || '';
     });
 
-    rows.push(row);
+    rows.push(row as CSVRow);
   }
 
   return rows;
