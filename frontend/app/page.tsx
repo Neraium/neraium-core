@@ -1,8 +1,8 @@
 'use client'
 
 import { useEffect, useState, useRef } from 'react'
-import { fetchFD004DemoInit } from '@/lib/api'
 import { DemoFrame } from '@/lib/types'
+import { parseCSV, csvRowsToDemoFrames } from '@/lib/csvParser'
 import HeaderBar from '@/components/HeaderBar'
 import TetrahedronPanel from '@/components/TetrahedronPanel'
 import InsightPanels from '@/components/InsightPanels'
@@ -55,12 +55,18 @@ export default function Home() {
   const animationFrameRef = useRef<number | null>(null)
   const lastFrameTimeRef = useRef<number>(0)
 
-  // Load demo data from the correct backend endpoint
+  // Load demo data from CSV file
   useEffect(() => {
     const loadDemoData = async () => {
       try {
-        const demoFrames = await fetchFD004DemoInit('unit_001')
-        if (demoFrames && demoFrames.length > 0) {
+        const response = await fetch('/fd004_ingest_ready_part_1.csv')
+        if (!response.ok) throw new Error('Failed to load CSV')
+
+        const csvContent = await response.text()
+        const csvRows = parseCSV(csvContent)
+
+        if (csvRows && csvRows.length > 0) {
+          const demoFrames = csvRowsToDemoFrames(csvRows)
           const transformedFrames = demoFrames.map(transformFrame)
           setFrames(transformedFrames)
           setCurrentFrameIndex(0)
@@ -68,6 +74,7 @@ export default function Home() {
         }
         setLoading(false)
       } catch (error) {
+        console.error('Error loading CSV data:', error)
         setIsConnected(false)
         setLoading(false)
       }
@@ -145,11 +152,11 @@ export default function Home() {
     <div className="demo-app">
       {loading ? (
         <div style={{ padding: '40px', textAlign: 'center', color: '#9CA3AF' }}>
-          Loading FD004 engine data...
+          Loading CSV demo data...
         </div>
       ) : !isConnected ? (
         <div style={{ padding: '40px', textAlign: 'center', color: '#9CA3AF' }}>
-          Failed to load demo data. Please refresh.
+          Failed to load CSV data. Please refresh.
         </div>
       ) : frames.length === 0 ? (
         <div style={{ padding: '40px', textAlign: 'center', color: '#9CA3AF' }}>
