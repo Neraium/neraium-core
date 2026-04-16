@@ -51,6 +51,11 @@ from neraium_core.geometry import (
     signal_structural_importance,
     structural_drift,
 )
+from neraium_core.operator.structural_operator import (
+    fit_structural_operator,
+    operator_drift,
+    structural_stability,
+)
 from neraium_core.graph import graph_metrics, thresholded_adjacency
 from neraium_core.regime import build_regime_signature, assign_regime, update_regime_library
 from neraium_core.regime_store import RegimeStore
@@ -660,11 +665,15 @@ class StructuralEngine:
         result["core_structural_outputs"] = {
             "structural_drift_score": float(result.get("structural_drift_score", 0.0) or 0.0),
             "structural_drift_score_smoothed": float(result.get("structural_drift_score_smoothed", 0.0) or 0.0),
+            "operator_drift_score": float(result.get("operator_drift_score", 0.0) or 0.0),
             "transition_pressure": float(result.get("transition_pressure", 0.0) or 0.0),
             "transition_state": str(result.get("transition_state", "NONE")),
             "regime_name": result.get("regime_name"),
             "regime_distance": result.get("regime_distance"),
             "regime_drift": float(result.get("regime_drift", 0.0) or 0.0),
+            "spectral_radius": float(result.get("spectral_radius", 0.5) or 0.5),
+            "stability_margin": float(result.get("stability_margin", 0.5) or 0.5),
+            "is_structurally_stable": bool(result.get("is_structurally_stable", True)),
         }
         result["policy_outputs"] = {
             "policy_state": policy_state,
@@ -2275,9 +2284,42 @@ class StructuralEngine:
                 stage_structural_raw, _ = StructuralDriftStage.score(stage_features, self._stage_baseline_profile)
                 stage_relational_raw, _ = RelationalInstabilityStage.score(stage_features, self._stage_baseline_profile)
                 temporal_raw, _ = TemporalCoherenceStage.score(ts_recent, self._stage_baseline_profile)
+
+                # === VAR(1) STRUCTURAL OPERATOR COMPUTATION ===
+                # Fit structural operators on both windows to capture directed dynamics
+                operator_baseline = None
+                operator_recent = None
+                operator_drift_score = 0.0
+                stability_properties = {}
+
+                try:
+                    operator_baseline = fit_structural_operator(
+                        z_base_valid,
+                        signal_names=self.sensor_order,
+                    )
+                    operator_recent = fit_structural_operator(
+                        z_recent_valid,
+                        signal_names=self.sensor_order,
+                    )
+
+                    # Compute true operator drift (directed coupling change)
+                    op_drift = operator_drift(operator_recent, operator_baseline, include_innovation=True)
+                    operator_drift_score = float(op_drift.get("total_drift", 0.0))
+
+                    # Extract stability properties from recent operator
+                    stability_properties = structural_stability(operator_recent)
+                except Exception as e:
+                    # Fallback to geometric drift if operator computation fails
+                    operator_drift_score = structural_drift(corr_recent, baseline_corr_used, norm="fro")
+                    stability_properties = {"spectral_radius": 0.5, "stability_margin": 0.5, "is_stable": True}
+
                 # Preserve production sensitivity by keeping legacy drift geometry while
                 # binding stage outputs into runtime diagnostics.
-                drift_score = structural_drift(corr_recent, baseline_corr_used, norm="fro")
+                # Use operator drift as primary signal, fall back to geometric drift
+                if operator_drift_score > 0:
+                    drift_score = float(operator_drift_score)
+                else:
+                    drift_score = structural_drift(corr_recent, baseline_corr_used, norm="fro")
                 drift_score = float(drift_score)
                 if self._smoothed_drift_ema is None:
                     self._smoothed_drift_ema = drift_score
@@ -2545,6 +2587,13 @@ class StructuralEngine:
                         "baseline_mode": baseline_mode,
                         "context_dominance_score": round(float(rep.diagnostics.get("context_dominance_score", 0.0)), 4),
                         "early_separation_flag": bool(rep.diagnostics.get("early_separation_flag", False)),
+                        # VAR(1) Structural Operator Properties
+                        "operator_drift_score": round(operator_drift_score, 6),
+                        "spectral_radius": round(float(stability_properties.get("spectral_radius", 0.5)), 6),
+                        "stability_margin": round(float(stability_properties.get("stability_margin", 0.5)), 6),
+                        "is_structurally_stable": bool(stability_properties.get("is_stable", True)),
+                        "coupling_asymmetry": round(float(stability_properties.get("coupling_asymmetry", 0.0)), 6),
+                        "innovation_entropy": round(float(stability_properties.get("innovation_entropy", 0.0)), 6),
                     }
                 )
                 if self._drift_watch_alert_thresholds is not None:
