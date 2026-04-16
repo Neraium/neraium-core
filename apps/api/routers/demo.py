@@ -426,6 +426,212 @@ def build_demo_router(*, deps: DemoRouterDependencies) -> APIRouter:
     def run_demo_start(_: None = Depends(deps.require_api_key), customer_id: str | None = Query(default=None)) -> dict[str, Any]:
         return _start_grow_op_demo(customer_id=customer_id)
 
+    def _start_fd004_demo(customer_id: str | None = None, unit_id: str | None = None) -> dict[str, Any]:
+        resolved_customer = deps.resolve_customer_id(customer_id)
+        resolved_unit = unit_id or "unit_001"
+        try:
+            site_id, asset_id, rows = deps.load_fd004_single_unit(resolved_unit)
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=f"Failed to load FD004 unit {resolved_unit}: {exc}") from exc
+
+        run = deps.service_instance.create_run(
+            name=f"FD004 Single Unit Demo — {asset_id} {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}",
+            config={"source": "fd004-demo", "site_id": site_id, "asset_id": asset_id, "unit_id": resolved_unit},
+            activate=True,
+            customer_id=resolved_customer,
+        )
+        run_id = str(run.get("run_id") or "")
+        if not run_id:
+            raise HTTPException(status_code=500, detail="Failed to create demo run.")
+
+        job_id = str(uuid4())
+        now = deps.utc_now_iso()
+        with deps.demo_jobs_lock:
+            deps.demo_jobs[job_id] = {
+                "job_id": job_id,
+                "status": "pending",
+                "run_id": run_id,
+                "customer_id": resolved_customer,
+                "progress": 0,
+                "processed": 0,
+                "total_frames": len(rows),
+                "message": "Preparing FD004 demo stream...",
+                "error": None,
+                "created_at": now,
+                "updated_at": now,
+            }
+
+        # Warm start with first 12 frames
+        fd004_warm_start_frames = 12
+        preloaded = 0
+        if fd004_warm_start_frames > 0:
+            try:
+                # Convert FD004 rows to ingestion format
+                warm_start_payload = [
+                    {
+                        "timestamp": row["timestamp"],
+                        "site_id": site_id,
+                        "asset_id": asset_id,
+                        "customer_id": resolved_customer,
+                        "sensor_values": {
+                            "structural_drift_score": row["structural_drift_score"],
+                            "composite_instability": row["composite_instability"],
+                            "cycle": row["cycle"],
+                            "estimated_rul": row["estimated_rul"],
+                        },
+                    }
+                    for row in rows[:fd004_warm_start_frames]
+                ]
+                seed_results = deps.service_instance.ingest_batch(warm_start_payload, run_id=run_id, customer_id=resolved_customer)
+                preloaded = len(seed_results)
+            except Exception as exc:
+                with deps.demo_jobs_lock:
+                    job = deps.demo_jobs.get(job_id)
+                    if job is not None:
+                        job.update({"status": "error", "message": "FD004 demo warm start failed.", "error": str(exc)})
+                        job["updated_at"] = deps.utc_now_iso()
+                detail = deps.summarize_exception_for_logs(exc)
+                raise HTTPException(
+                    status_code=500,
+                    detail=f"Failed to start FD004 demo ingest: {detail}",
+                ) from exc
+
+        with deps.demo_jobs_lock:
+            job = deps.demo_jobs.get(job_id)
+            if job is not None:
+                pct = int(round((preloaded / max(1, len(rows))) * 100))
+                remaining_frames = max(0, len(rows) - preloaded)
+                stream_frames_goal = remaining_frames if remaining_frames > 0 else len(rows)
+                job.update({
+                    "status": "running",
+                    "progress": max(0, min(100, pct)),
+                    "processed": preloaded,
+                    "message": "FD004 demo telemetry warm start complete." if preloaded else "Streaming FD004 demo telemetry...",
+                    "error": None,
+                    "stream_frames_goal": stream_frames_goal,
+                })
+                job["updated_at"] = deps.utc_now_iso()
+
+        fd004_stream_frame_interval = 0.5
+
+        def _run_fd004_demo_job() -> None:
+            processed_total = preloaded
+            frame_index = preloaded
+            frame_interval = max(0.05, float(fd004_stream_frame_interval))
+            remaining_frames = max(0, len(rows) - preloaded)
+            stream_frames_goal = remaining_frames if remaining_frames > 0 else len(rows)
+            target_total = processed_total + stream_frames_goal
+
+            def _job_is_active() -> bool:
+                with deps.demo_jobs_lock:
+                    current_job = deps.demo_jobs.get(job_id)
+                    return bool(current_job and str(current_job.get("status") or "").lower() in {"pending", "running", "complete"})
+
+            try:
+                if not rows:
+                    with deps.demo_jobs_lock:
+                        job = deps.demo_jobs.get(job_id)
+                        if job is not None:
+                            job.update({"status": "error", "progress": 0, "processed": processed_total, "message": "FD004 demo stream failed.", "error": "No frames available to stream."})
+                            job["updated_at"] = deps.utc_now_iso()
+                    return
+
+                while processed_total < target_total and _job_is_active():
+                    source_frame = rows[frame_index % len(rows)]
+                    generated_frame = {
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                        "site_id": site_id,
+                        "asset_id": asset_id,
+                        "customer_id": resolved_customer,
+                        "sensor_values": {
+                            "structural_drift_score": source_frame["structural_drift_score"],
+                            "composite_instability": source_frame["composite_instability"],
+                            "cycle": source_frame["cycle"],
+                            "estimated_rul": source_frame["estimated_rul"],
+                        },
+                    }
+                    results = deps.service_instance.ingest_batch([generated_frame], run_id=run_id, customer_id=resolved_customer)
+                    processed_total += len(results)
+                    frame_index += 1
+                    with deps.demo_jobs_lock:
+                        job = deps.demo_jobs.get(job_id)
+                        if job is not None:
+                            streamed = processed_total - preloaded
+                            pct = int(round((streamed / max(1, stream_frames_goal)) * 100))
+                            job.update({
+                                "status": "running",
+                                "progress": max(1, min(99, pct)),
+                                "processed": processed_total,
+                                "message": "Streaming FD004 demo telemetry...",
+                                "error": None,
+                            })
+                            job["updated_at"] = deps.utc_now_iso()
+                    time.sleep(frame_interval)
+                with deps.demo_jobs_lock:
+                    job = deps.demo_jobs.get(job_id)
+                    if job is not None and processed_total >= target_total:
+                        job.update({
+                            "status": "complete",
+                            "progress": 100,
+                            "processed": processed_total,
+                            "message": "FD004 demo telemetry stream complete.",
+                            "error": None,
+                        })
+                        job["updated_at"] = deps.utc_now_iso()
+            except Exception as exc:
+                with deps.demo_jobs_lock:
+                    job = deps.demo_jobs.get(job_id)
+                    if job is not None:
+                        job.update({"status": "error", "message": "FD004 demo stream failed.", "error": str(exc)})
+                        job["updated_at"] = deps.utc_now_iso()
+
+        worker = threading.Thread(target=_run_fd004_demo_job, daemon=True, name=f"demo-fd004-{job_id}")
+        with deps.demo_jobs_lock:
+            job = deps.demo_jobs.get(job_id)
+            if job is not None:
+                job["_thread"] = worker
+                job["worker_thread_name"] = worker.name
+        worker.start()
+        return {
+            "status": "started",
+            "job_id": job_id,
+            "run_id": run_id,
+            "unit_id": resolved_unit,
+            "processed": preloaded,
+            "warm_start_frames": fd004_warm_start_frames,
+            "total_frames": len(rows),
+            "demo": "fd004",
+            "message": "FD004 single unit demo seeding started.",
+        }
+
+    @router.post("/demo/fd004/start")
+    def demo_fd004_start(
+        _: None = Depends(deps.require_api_key),
+        customer_id: str | None = Query(default=None),
+        unit_id: str | None = Query(default="unit_001"),
+    ) -> dict[str, Any]:
+        return _start_fd004_demo(customer_id=customer_id, unit_id=unit_id)
+
+    @router.get("/demo/fd004/status")
+    def demo_fd004_status(
+        run_id: str = Query(..., min_length=1),
+        job_id: str | None = Query(default=None),
+        customer_id: str | None = Query(default=None),
+        _: None = Depends(deps.require_api_key),
+    ) -> dict[str, Any]:
+        resolved_customer = deps.resolve_customer_id(customer_id)
+        if job_id:
+            with deps.demo_jobs_lock:
+                job = deps.demo_jobs.get(job_id)
+            if job and str(job.get("customer_id") or "") == resolved_customer and str(job.get("run_id") or "") == run_id:
+                return {"run_id": run_id, "job": deps.public_demo_job(job), "status": "ready" if str(job.get("status")) == "complete" else str(job.get("status") or "unknown")}
+        run = deps.service_instance.get_run(run_id, customer_id=resolved_customer)
+        if run is None:
+            raise HTTPException(status_code=404, detail=f"Unknown run_id: {run_id}")
+        recent = deps.service_instance.list_recent_results(limit=5, run_id=run_id, customer_id=resolved_customer)
+        state = deps.service_instance.get_current_state(run_id=run_id, customer_id=resolved_customer)
+        return {"run_id": run_id, "status": "ready" if recent else "empty", "frames_processed": len(recent), "risk_level": str((state or {}).get("risk_level") or "UNKNOWN").upper()}
+
     @router.get("/demo/grow-op/status")
     def demo_grow_op_status(run_id: str = Query(..., min_length=1), job_id: str | None = Query(default=None), customer_id: str | None = Query(default=None), _: None = Depends(deps.require_api_key)) -> dict[str, Any]:
         resolved_customer = deps.resolve_customer_id(customer_id)
