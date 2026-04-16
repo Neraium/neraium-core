@@ -1,228 +1,109 @@
-"use client";
-
-import { useMemo } from "react";
-import { DemoFrame } from "@/lib/types";
-
-type Props = {
-  frames: DemoFrame[];
-  currentIndex: number;
-};
-
-type PhaseRegion = {
-  startIndex: number;
-  endIndex: number;
-  phase: string;
-  color: string;
-};
-
-type InstabilityRegion = {
-  startIndex: number;
-  endIndex: number;
-  severity: number; // 0-1
-};
-
-function getPhaseColor(phase: string): string {
-  const p = String(phase || "").toUpperCase();
-  if (p.includes("STABLE")) return "#065f46";
-  if (p.includes("DRIFT") || p.includes("DEGRA")) return "#b45309";
-  if (p.includes("CRITICAL") || p.includes("ALERT")) return "#991b1b";
-  if (p.includes("RECOVERY")) return "#0b5e1f";
-  return "#1e293b";
+interface ReplayChartProps {
+  frames: any[]
+  currentIndex: number
 }
 
-function identifyPhaseRegions(frames: DemoFrame[]): PhaseRegion[] {
-  if (frames.length === 0) return [];
+export default function ReplayChart({ frames, currentIndex }: ReplayChartProps) {
+  if (frames.length === 0) return null
 
-  const regions: PhaseRegion[] = [];
-  let currentPhase = frames[0].current_phase;
-  let startIndex = 0;
+  const W = 900
+  const H = 250
+  const PX = 56
+  const PY = 30
+  const IW = W - 2 * PX
+  const IH = H - 2 * PY
 
-  for (let i = 1; i < frames.length; i++) {
-    if (frames[i].current_phase !== currentPhase) {
-      regions.push({
-        startIndex,
-        endIndex: i - 1,
-        phase: currentPhase,
-        color: getPhaseColor(currentPhase),
-      });
-      currentPhase = frames[i].current_phase;
-      startIndex = i;
-    }
-  }
+  const getDriftValue = (frame: any) => frame.structural_drift_score || 0
+  const getStabilityValue = (frame: any) => frame.relational_stability_score || 0
 
-  // Add final region
-  regions.push({
-    startIndex,
-    endIndex: frames.length - 1,
-    phase: currentPhase,
-    color: getPhaseColor(currentPhase),
-  });
+  // Create data points for drift
+  const driftPoints = frames.map((frame, idx) => ({
+    x: (idx / Math.max(frames.length - 1, 1)) * IW + PX,
+    y: PY + IH - getDriftValue(frame) * IH,
+    value: getDriftValue(frame),
+  }))
 
-  return regions;
-}
+  // Create data points for stability
+  const stabilityPoints = frames.map((frame, idx) => ({
+    x: (idx / Math.max(frames.length - 1, 1)) * IW + PX,
+    y: PY + IH - getStabilityValue(frame) * IH,
+    value: getStabilityValue(frame),
+  }))
 
-function identifyInstabilityRegions(frames: DemoFrame[]): InstabilityRegion[] {
-  const regions: InstabilityRegion[] = [];
-  const threshold = 0.4; // Below this stability = unstable
+  // Current frame position
+  const currentX = (currentIndex / Math.max(frames.length - 1, 1)) * IW + PX
 
-  let inUnstable = false;
-  let unstableStart = 0;
-  let maxUnstability = 0;
-
-  for (let i = 0; i < frames.length; i++) {
-    const stability = frames[i].metrics?.relational_stability ?? 1;
-    const isUnstable = stability < threshold;
-
-    if (isUnstable && !inUnstable) {
-      unstableStart = i;
-      inUnstable = true;
-      maxUnstability = 1 - stability;
-    } else if (!isUnstable && inUnstable) {
-      regions.push({
-        startIndex: unstableStart,
-        endIndex: i - 1,
-        severity: maxUnstability,
-      });
-      inUnstable = false;
-      maxUnstability = 0;
-    } else if (inUnstable) {
-      maxUnstability = Math.max(maxUnstability, 1 - stability);
-    }
-  }
-
-  if (inUnstable) {
-    regions.push({
-      startIndex: unstableStart,
-      endIndex: frames.length - 1,
-      severity: maxUnstability,
-    });
-  }
-
-  return regions;
-}
-
-export function ReplayChart({ frames, currentIndex }: Props) {
-  const width = 900;
-  const height = 280;
-  const pad = 24;
-
-  const phaseRegions = useMemo(() => identifyPhaseRegions(frames), [frames]);
-  const instabilityRegions = useMemo(() => identifyInstabilityRegions(frames), [frames]);
-
-  const toX = (index: number) => pad + (index / Math.max(frames.length - 1, 1)) * (width - pad * 2);
-  const toY = (value: number) => height - pad - value * (height - pad * 2);
-
-  const driftPath = frames
-    .map((f, i) => `${i === 0 ? "M" : "L"}${toX(i)},${toY(f.metrics?.structural_drift ?? 0)}`)
-    .join(" ");
-  const healthPath = frames
-    .map((f, i) => `${i === 0 ? "M" : "L"}${toX(i)},${toY(f.metrics?.relational_stability ?? 0)}`)
-    .join(" ");
-
-  const currentX = toX(currentIndex);
-  const progressPercent = (currentIndex / Math.max(frames.length - 1, 1)) * 100;
+  // Build polyline points
+  const driftPath = driftPoints.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ')
+  const stabilityPath = stabilityPoints.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ')
 
   return (
-    <section className="panel">
-      <h3>System Evolution</h3>
-      <p className="subtle">Structural drift (orange) and relational stability (green) across phases. Red highlights instability periods.</p>
-
+    <div className="panel">
+      <div className="panel-head">
+        <span className="eyebrow">Replay Timeline</span>
+        <span className="panel-subtitle">Structural drift and relational stability across {frames.length} frames</span>
+      </div>
       <div className="chart-container">
-        <svg viewBox={`0 0 ${width} ${height}`} className="chart" aria-label="system evolution chart">
+        <svg className="chart-svg" viewBox={`0 0 ${W} ${H}`}>
+          {/* Background */}
           <defs>
-            <linearGradient id="instabilityGrad" x1="0%" x2="0%" y1="0%" y2="100%">
-              <stop offset="0%" stopColor="#991b1b" stopOpacity="0.3" />
-              <stop offset="100%" stopColor="#991b1b" stopOpacity="0" />
+            <linearGradient id="driftGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+              <stop offset="0%" stopColor="rgba(59, 130, 246, 0.3)" />
+              <stop offset="100%" stopColor="rgba(59, 130, 246, 0.05)" />
+            </linearGradient>
+            <linearGradient id="stabilityGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+              <stop offset="0%" stopColor="rgba(34, 197, 94, 0.3)" />
+              <stop offset="100%" stopColor="rgba(34, 197, 94, 0.05)" />
             </linearGradient>
           </defs>
 
-          {/* Phase regions as background */}
-          {phaseRegions.map((region, idx) => (
-            <rect
-              key={`phase-${idx}`}
-              x={toX(region.startIndex)}
-              y={pad}
-              width={toX(region.endIndex + 1) - toX(region.startIndex)}
-              height={height - pad * 2}
-              fill={region.color}
-              opacity="0.08"
-            />
-          ))}
-
-          {/* Instability overlay */}
-          {instabilityRegions.map((region, idx) => (
-            <rect
-              key={`unstable-${idx}`}
-              x={toX(region.startIndex)}
-              y={pad}
-              width={toX(region.endIndex + 1) - toX(region.startIndex)}
-              height={height - pad * 2}
-              fill="url(#instabilityGrad)"
-            />
-          ))}
-
-          {/* Phase transition boundaries */}
-          {phaseRegions.map((region, idx) => {
-            if (idx === phaseRegions.length - 1) return null; // Skip last, no boundary after
-            return (
-              <line
-                key={`boundary-${idx}`}
-                x1={toX(region.endIndex + 0.5)}
-                x2={toX(region.endIndex + 0.5)}
-                y1={pad}
-                y2={height - pad}
-                stroke="#475569"
-                strokeWidth="1"
-                strokeDasharray="3,2"
-                opacity="0.4"
-              />
-            );
-          })}
-
-          {/* Data traces */}
-          <path d={driftPath} stroke="#f97316" strokeWidth="3" fill="none" strokeLinecap="round" strokeLinejoin="round" />
-          <path d={healthPath} stroke="#22c55e" strokeWidth="3" fill="none" strokeLinecap="round" strokeLinejoin="round" />
-
-          {/* Current position indicator with animation */}
-          <g className="current-marker">
+          {/* Grid */}
+          {[0.25, 0.5, 0.75].map((y) => (
             <line
-              x1={currentX}
-              x2={currentX}
-              y1={pad - 4}
-              y2={height - pad + 4}
-              stroke="#64b5f6"
-              strokeWidth="2"
-              opacity="0.7"
+              key={`grid-${y}`}
+              x1={PX}
+              y1={PY + IH - y * IH}
+              x2={PX + IW}
+              y2={PY + IH - y * IH}
+              stroke="rgba(255,255,255,0.08)"
+              strokeWidth="1"
             />
-            <circle cx={currentX} cy={pad - 6} r="3" fill="#64b5f6" opacity="0.8" />
-          </g>
+          ))}
 
-          {/* Progress overlay glow */}
-          <rect
-            x={pad}
-            y={pad}
-            width={currentX - pad}
-            height={height - pad * 2}
-            fill="#64b5f6"
-            opacity="0.02"
-          />
+          {/* Axis */}
+          <line x1={PX} y1={PY} x2={PX} y2={PY + IH} stroke="rgba(255,255,255,0.3)" strokeWidth="1.5" />
+          <line x1={PX} y1={PY + IH} x2={PX + IW} y2={PY + IH} stroke="rgba(255,255,255,0.3)" strokeWidth="1.5" />
+
+          {/* Stability line */}
+          <polyline points={stabilityPath} fill="none" stroke="#22C55E" strokeWidth="2" opacity="0.7" />
+
+          {/* Drift line */}
+          <polyline points={driftPath} fill="none" stroke="#3B82F6" strokeWidth="2" opacity="0.9" />
+
+          {/* Current position indicator */}
+          <line x1={currentX} y1={PY} x2={currentX} y2={PY + IH} stroke="#06B6D4" strokeWidth="2" strokeDasharray="4,3" opacity="0.8" />
+          <circle cx={currentX} cy={driftPoints[currentIndex]?.y || PY + IH / 2} r="6" fill="#06B6D4" stroke="#FFFFFF" strokeWidth="2" />
+
+          {/* Labels */}
+          <text x={PX - 12} y={PY - 8} fill="rgba(255,255,255,0.8)" fontSize="11" fontWeight="600" textAnchor="end">
+            Signal
+          </text>
+          <text x={PX + IW + 4} y={PY + IH + 20} fill="rgba(255,255,255,0.8)" fontSize="11" fontWeight="600">
+            Timeline →
+          </text>
+
+          {/* Legend */}
+          <line x1={PX + 12} y1={PY + 12} x2={PX + 32} y2={PY + 12} stroke="#22C55E" strokeWidth="2" />
+          <text x={PX + 40} y={PY + 16} fill="rgba(255,255,255,0.8)" fontSize="10">
+            Stability
+          </text>
+
+          <line x1={PX + 12} y1={PY + 28} x2={PX + 32} y2={PY + 28} stroke="#3B82F6" strokeWidth="2" />
+          <text x={PX + 40} y={PY + 32} fill="rgba(255,255,255,0.8)" fontSize="10">
+            Drift
+          </text>
         </svg>
-
-        {/* Progress bar underneath */}
-        <div className="chart-progress">
-          <div className="progress-bar" style={{ width: `${progressPercent}%` }} />
-        </div>
       </div>
-
-      {/* Phase legend */}
-      <div className="chart-legend">
-        {phaseRegions.map((region, idx) => (
-          <span key={`legend-${idx}`} className="legend-item">
-            <span className="legend-color" style={{ backgroundColor: region.color }} />
-            <span className="legend-label">{region.phase}</span>
-          </span>
-        ))}
-      </div>
-    </section>
-  );
+    </div>
+  )
 }

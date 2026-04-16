@@ -1,38 +1,33 @@
-"use client";
+interface HeaderBarProps {
+  frame: any
+}
 
-type Props = {
-  phase: string;
-  confidence: number;
-  playing: boolean;
-};
+export default function HeaderBar({ frame }: HeaderBarProps) {
+  const confidence = frame.confidence ? (frame.confidence * 100).toFixed(0) : '—'
+  const phase = frame.phase ? frame.phase.toUpperCase().replace(/_/g, ' ') : 'UNKNOWN'
+  const index = frame.index || 0
+  const total = frame.total || 0
 
-export function HeaderBar({ phase, confidence, playing }: Props) {
   return (
-    <header className="header">
-      {/* Left: System name */}
-      <div className="header-left">
-        <h1>Neraium</h1>
+    <div className="demo-header">
+      <div className="header-brand">
+        <span className="brand-wordmark">NERAIUM</span>
+        <span className="brand-env">System Intelligence</span>
       </div>
-
-      {/* Center: Phase and confidence (prominent) */}
-      <div className="header-center">
-        <div className="phase-block">
-          <span className="phase-label">Phase</span>
-          <span className="phase-value">{phase}</span>
+      <div className="header-metrics">
+        <div className="header-metric">
+          <span className="metric-label">Confidence</span>
+          <span className="metric-value">{confidence}%</span>
         </div>
-        <div className="confidence-block">
-          <span className="confidence-label">Confidence</span>
-          <span className="confidence-value">{Math.round(confidence * 100)}%</span>
+        <div className="header-metric">
+          <span className="metric-label">Phase</span>
+          <span className="metric-value">{phase}</span>
         </div>
-      </div>
-
-      {/* Right: Live status */}
-      <div className="header-right">
-        <div className={`status-indicator ${playing ? "live" : "paused"}`}>
-          <span className="status-dot" />
-          <span className="status-text">{playing ? "LIVE" : "PAUSED"}</span>
+        <div className="header-metric">
+          <span className="metric-label">Frame</span>
+          <span className="metric-value">{index} / {total}</span>
         </div>
       </div>
-    </header>
-  );
+    </div>
+  )
 }

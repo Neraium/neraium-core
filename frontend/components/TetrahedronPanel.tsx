@@ -1,235 +1,136 @@
-"use client";
-
-import { Canvas, useFrame } from "@react-three/fiber";
-import { OrbitControls } from "@react-three/drei";
-import { useMemo, useRef, useEffect } from "react";
-import * as THREE from "three";
-
-type PositionPointProps = {
-  position: [number, number, number];
-  confidence: number;
-};
-
-function PositionPoint({ position, confidence }: PositionPointProps) {
-  const ref = useRef<THREE.Mesh>(null);
-  const groupRef = useRef<THREE.Group>(null);
-
-  useFrame(() => {
-    if (!ref.current) return;
-    // Smooth position interpolation
-    ref.current.position.lerp(new THREE.Vector3(...position), 0.12);
-
-    // Pulse animation based on confidence
-    if (groupRef.current) {
-      const time = Date.now() * 0.001;
-      const confidenceFactor = Math.max(0.6, confidence); // Min 60% size
-      const basePulse = 0.08 * confidenceFactor;
-      const pulse = basePulse + Math.sin(time * 2.5) * basePulse * 0.4;
-      groupRef.current.children[0].scale.set(pulse, pulse, pulse);
-
-      // Glow intensity based on confidence
-      const glowMaterial = groupRef.current.children[0].material as THREE.MeshStandardMaterial;
-      if (glowMaterial) {
-        glowMaterial.emissiveIntensity = 0.3 + confidence * 0.7;
-      }
-    }
-  });
-
-  return (
-    <group ref={groupRef}>
-      <mesh ref={ref}>
-        <sphereGeometry args={[0.08, 24, 24]} />
-        <meshStandardMaterial
-          color="#f97316"
-          emissive="#f97316"
-          emissiveIntensity={0.5 + confidence * 0.5}
-          metalness={0.3}
-          roughness={0.4}
-        />
-      </mesh>
-    </group>
-  );
+interface TetrahedronPanelProps {
+  frame: any
 }
 
-type VertexProps = {
-  position: [number, number, number];
-  currentPos: [number, number, number];
-  confidence: number;
-};
+export default function TetrahedronPanel({ frame }: TetrahedronPanelProps) {
+  const drift = frame.structural_drift_score || 0
+  const stability = frame.relational_stability_score || 0
+  const coherence = frame.coherence_score || 0
+  const confidence = frame.confidence || 0
 
-function TetrahedronVertex({ position, currentPos, confidence }: VertexProps) {
-  const meshRef = useRef<THREE.Mesh>(null);
+  // Tetrahedron visualization - simplified 2D projection
+  const W = 300
+  const H = 250
+  const center = { x: W / 2, y: H / 2 }
 
-  useEffect(() => {
-    // Calculate distance from current position
-    const dx = position[0] - currentPos[0];
-    const dy = position[1] - currentPos[1];
-    const dz = position[2] - currentPos[2];
-    const distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
+  // Project 3D tetrahedron coordinates to 2D
+  const scale = 60
+  const vertices = [
+    // Apex
+    { x: center.x, y: center.y - 80, label: 'Coherence', value: coherence },
+    // Base triangle
+    { x: center.x - 70, y: center.y + 60, label: 'Drift', value: drift },
+    { x: center.x + 70, y: center.y + 60, label: 'Stability', value: stability },
+    { x: center.x, y: center.y + 80, label: 'Confidence', value: confidence },
+  ]
 
-    // Distance-based opacity: closer = brighter
-    const maxDistance = Math.sqrt(2 * 2 * 2) * 2; // Max possible distance in our space
-    const proximity = Math.max(0, 1 - distance / maxDistance);
-    const baseOpacity = 0.3 + proximity * 0.7; // 0.3 - 1.0
-    const opacity = baseOpacity * (0.7 + confidence * 0.3); // Modulate by confidence
-
-    if (meshRef.current) {
-      const material = meshRef.current.material as THREE.MeshStandardMaterial;
-      material.opacity = opacity;
-      material.emissiveIntensity = proximity * 0.5; // Glow closer vertices
-    }
-  }, [currentPos, confidence, position]);
-
-  return (
-    <mesh ref={meshRef} position={position}>
-      <sphereGeometry args={[0.06, 16, 16]} />
-      <meshStandardMaterial
-        color="#93c5fd"
-        transparent
-        opacity={0.8}
-        metalness={0.5}
-        roughness={0.3}
-        emissive="#60a5fa"
-        emissiveIntensity={0.2}
-      />
-    </mesh>
-  );
-}
-
-type EdgeProps = {
-  start: [number, number, number];
-  end: [number, number, number];
-  currentPos: [number, number, number];
-  confidence: number;
-};
-
-function TetrahedronEdge({ start, end, currentPos, confidence }: EdgeProps) {
-  const lineRef = useRef<THREE.LineSegments>(null);
-
-  useEffect(() => {
-    if (!lineRef.current) return;
-
-    // Calculate proximity of edge to current position
-    const midX = (start[0] + end[0]) / 2;
-    const midY = (start[1] + end[1]) / 2;
-    const midZ = (start[2] + end[2]) / 2;
-
-    const dx = midX - currentPos[0];
-    const dy = midY - currentPos[1];
-    const dz = midZ - currentPos[2];
-    const distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
-
-    const maxDistance = Math.sqrt(2 * 2 * 2) * 2;
-    const proximity = Math.max(0, 1 - distance / maxDistance);
-    const opacity = (0.2 + proximity * 0.6) * (0.7 + confidence * 0.3);
-
-    if (lineRef.current.material instanceof THREE.LineBasicMaterial) {
-      lineRef.current.material.opacity = opacity;
-    }
-  }, [currentPos, confidence, start, end]);
-
-  const points = [new THREE.Vector3(...start), new THREE.Vector3(...end)];
-  const geometry = new THREE.BufferGeometry().setFromPoints(points);
+  // Edges of tetrahedron
+  const edges = [
+    [0, 1],
+    [0, 2],
+    [0, 3],
+    [1, 2],
+    [2, 3],
+    [1, 3],
+  ]
 
   return (
-    <lineSegments ref={lineRef} geometry={geometry}>
-      <lineBasicMaterial
-        color="#64748b"
-        transparent
-        opacity={0.5}
-        linewidth={1}
-      />
-    </lineSegments>
-  );
-}
+    <div className="panel">
+      <div className="panel-head">
+        <span className="eyebrow">Structural State (Tetrahedron)</span>
+        <span className="panel-subtitle">4-dimensional system state projection</span>
+      </div>
+      <div className="tetra-container">
+        <div className="tetra-canvas">
+          <svg viewBox={`0 0 ${W} ${H}`} style={{ width: '100%', maxWidth: '400px' }}>
+            <defs>
+              <radialGradient id="tetraGrad" cx="50%" cy="50%" r="70%">
+                <stop offset="0%" stopColor="rgba(59, 130, 246, 0.1)" />
+                <stop offset="100%" stopColor="rgba(5, 7, 15, 0.8)" />
+              </radialGradient>
+            </defs>
 
-type Props = {
-  position: [number, number, number];
-  confidence?: number;
-};
+            {/* Background */}
+            <rect width={W} height={H} fill="url(#tetraGrad)" />
 
-export function TetrahedronPanel({ position, confidence = 0.5 }: Props) {
-  const vertices: [number, number, number][] = useMemo(
-    () => [
-      [1, 1, 1],
-      [1, -1, -1],
-      [-1, 1, -1],
-      [-1, -1, 1],
-    ],
-    []
-  );
+            {/* Edges */}
+            {edges.map((edge, idx) => {
+              const v1 = vertices[edge[0]]
+              const v2 = vertices[edge[1]]
+              return (
+                <line
+                  key={`edge-${idx}`}
+                  x1={v1.x}
+                  y1={v1.y}
+                  x2={v2.x}
+                  y2={v2.y}
+                  stroke="rgba(147, 197, 253, 0.3)"
+                  strokeWidth="1.5"
+                />
+              )
+            })}
 
-  const edges = useMemo(
-    () => [
-      [vertices[0], vertices[1]],
-      [vertices[0], vertices[2]],
-      [vertices[0], vertices[3]],
-      [vertices[1], vertices[2]],
-      [vertices[1], vertices[3]],
-      [vertices[2], vertices[3]],
-    ],
-    [vertices]
-  );
+            {/* Vertices */}
+            {vertices.map((vertex, idx) => (
+              <g key={`vertex-${idx}`}>
+                {/* Glow */}
+                <circle cx={vertex.x} cy={vertex.y} r={12} fill="rgba(59, 130, 246, 0.15)" />
+                {/* Node */}
+                <circle
+                  cx={vertex.x}
+                  cy={vertex.y}
+                  r={8}
+                  fill="#3B82F6"
+                  stroke="#FFFFFF"
+                  strokeWidth="1.5"
+                  opacity={0.5 + vertex.value * 0.5}
+                />
+                {/* Label */}
+                <text
+                  x={vertex.x}
+                  y={vertex.y + 20}
+                  fill="rgba(203, 213, 225, 0.9)"
+                  fontSize="10"
+                  fontWeight="600"
+                  textAnchor="middle"
+                >
+                  {vertex.label}
+                </text>
+              </g>
+            ))}
 
-  return (
-    <section className="panel tetra">
-      <h3>System State · Tetrahedral Geometry</h3>
-      <Canvas camera={{ position: [2.5, 2.3, 2.7], fov: 45 }}>
-        {/* Enhanced lighting setup */}
-        <ambientLight intensity={0.5} />
-        <pointLight position={[4, 3, 3]} intensity={1.2} color="#ffffff" />
-        <pointLight position={[-3, -2, -3]} intensity={0.5} color="#60a5fa" decay={2} />
+            {/* Center point */}
+            <circle cx={center.x} cy={center.y} r="3" fill="#06B6D4" />
+          </svg>
+        </div>
 
-        {/* Tetrahedron structure */}
-        <group>
-          {/* Edges with dynamic opacity */}
-          {edges.map((edge, idx) => (
-            <TetrahedronEdge
-              key={`edge-${idx}`}
-              start={edge[0] as [number, number, number]}
-              end={edge[1] as [number, number, number]}
-              currentPos={position}
-              confidence={confidence}
-            />
-          ))}
-
-          {/* Vertices with distance-based emphasis */}
-          {vertices.map((v, i) => (
-            <TetrahedronVertex
-              key={`vertex-${i}`}
-              position={v}
-              currentPos={position}
-              confidence={confidence}
-            />
-          ))}
-        </group>
-
-        {/* Current position with confidence-based intensity */}
-        <PositionPoint position={position} confidence={confidence} />
-
-        {/* Orbit controls */}
-        <OrbitControls
-          enablePan={false}
-          minDistance={2}
-          maxDistance={5}
-          autoRotate={false}
-          dampingFactor={0.05}
-        />
-      </Canvas>
-
-      {/* Status indicator */}
-      <div className="tetra-status">
-        <div className="confidence-indicator">
-          <span className="confidence-label">Confidence</span>
-          <div className="confidence-bar">
-            <div
-              className="confidence-fill"
-              style={{ width: `${confidence * 100}%` }}
-            />
+        <div className="tetra-info">
+          <div className="tetra-label">
+            <strong>Drift</strong>
+            <div style={{ marginTop: '4px', fontSize: '16px', color: '#3B82F6' }}>
+              {(drift * 100).toFixed(0)}%
+            </div>
           </div>
-          <span className="confidence-value">{Math.round(confidence * 100)}%</span>
+          <div className="tetra-label">
+            <strong>Stability</strong>
+            <div style={{ marginTop: '4px', fontSize: '16px', color: '#22C55E' }}>
+              {(stability * 100).toFixed(0)}%
+            </div>
+          </div>
+          <div className="tetra-label">
+            <strong>Coherence</strong>
+            <div style={{ marginTop: '4px', fontSize: '16px', color: '#06B6D4' }}>
+              {(coherence * 100).toFixed(0)}%
+            </div>
+          </div>
+          <div className="tetra-label">
+            <strong>Confidence</strong>
+            <div style={{ marginTop: '4px', fontSize: '16px', color: '#F97316' }}>
+              {(confidence * 100).toFixed(0)}%
+            </div>
+          </div>
         </div>
       </div>
-    </section>
-  );
+    </div>
+  )
 }
