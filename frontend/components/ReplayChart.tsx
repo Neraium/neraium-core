@@ -1,6 +1,7 @@
 interface FrameData {
   structural_drift_score: number
   relational_stability_score: number
+  event_admitted?: boolean
   [key: string]: any
 }
 
@@ -49,6 +50,21 @@ export default function ReplayChart({ frames, currentIndex }: ReplayChartProps) 
   // Build filled area paths for visual effect
   const driftAreaPath = driftPath ? `M ${driftPath} L ${PX + IW},${PY + IH} L ${PX},${PY + IH} Z` : ''
   const stabilityAreaPath = stabilityPath ? `M ${stabilityPath} L ${PX + IW},${PY + IH} L ${PX},${PY + IH} Z` : ''
+
+  // Find flag events (changes in decision or admission status)
+  const flagEvents: Array<{ index: number; x: number; admitted: boolean }> = []
+  for (let i = 1; i < frames.length; i++) {
+    const prev = frames[i - 1]
+    const curr = frames[i]
+    const prevAdmitted = prev.event_admitted || false
+    const currAdmitted = curr.event_admitted || false
+
+    // Mark when a decision changes
+    if (prevAdmitted !== currAdmitted && i <= currentIndex) {
+      const xPos = (i / Math.max(frames.length - 1, 1)) * IW + PX
+      flagEvents.push({ index: i, x: xPos, admitted: currAdmitted })
+    }
+  }
 
   return (
     <div className="panel">
@@ -135,6 +151,59 @@ export default function ReplayChart({ frames, currentIndex }: ReplayChartProps) 
               filter="url(#glow)"
             />
           )}
+
+          {/* Flag event markers */}
+          {flagEvents.map((event, idx) => (
+            <g key={`flag-${idx}`}>
+              {/* Vertical line marking the flag */}
+              <line
+                x1={event.x}
+                y1={PY}
+                x2={event.x}
+                y2={PY + IH}
+                stroke={event.admitted ? '#22C55E' : '#F97316'}
+                strokeWidth="2"
+                opacity="0.5"
+                strokeDasharray="3,2"
+              />
+              {/* Flag marker icon at top */}
+              <g>
+                {/* Flag background */}
+                <circle
+                  cx={event.x}
+                  cy={PY - 16}
+                  r="8"
+                  fill={event.admitted ? '#22C55E' : '#F97316'}
+                  opacity="0.9"
+                />
+                {/* Flag symbol */}
+                <text
+                  x={event.x}
+                  y={PY - 12}
+                  fill="#FFFFFF"
+                  fontSize="12"
+                  fontWeight="700"
+                  textAnchor="middle"
+                  dominantBaseline="middle"
+                >
+                  {event.admitted ? '✓' : '✕'}
+                </text>
+              </g>
+              {/* Label */}
+              <text
+                x={event.x}
+                y={PY - 32}
+                fill={event.admitted ? '#22C55E' : '#F97316'}
+                fontSize="9"
+                fontWeight="600"
+                textAnchor="middle"
+                opacity="0.8"
+                textTransform="uppercase"
+              >
+                {event.admitted ? 'ADMITTED' : 'SUPPRESSED'}
+              </text>
+            </g>
+          ))}
 
           {/* Current position indicator */}
           <line
