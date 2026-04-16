@@ -486,3 +486,112 @@ def load_greenhouse_demo_records(*, limit: int | None = 180, use_synthetic: bool
 
     rows, _ = load_greenhouse_demo_bundle(limit=limit)
     return rows
+
+
+def load_fd004_demo_records(*, limit: int | None = 250, unit_id: str = "unit_001") -> list[dict[str, Any]]:
+    """Load FD004 demo records from real prognostics dataset.
+
+    Args:
+        limit: Maximum number of records to return
+        unit_id: The FD004 unit to load (e.g., "unit_001")
+
+    Returns:
+        List of demo records normalized to UI contract format
+    """
+    fd004_csv = REPO_ROOT / "fd004_outputs_subset" / "fd004_real_timeseries.csv"
+
+    if not fd004_csv.is_file():
+        return []
+
+    csv.field_size_limit(10_000_000)
+    rows: list[dict[str, Any]] = []
+    position_history: list[list[float]] = []
+
+    with fd004_csv.open("r", encoding="utf-8") as f:
+        reader = DictReader(f)
+        for row in reader:
+            if str(row.get("asset_id", "")).strip() != unit_id:
+                continue
+
+            # Extract and normalize FD004 fields
+            timestamp_str = str(row.get("timestamp", "")).strip()
+            timestamp = timestamp_str if timestamp_str else datetime.now(timezone.utc).isoformat()
+
+            drift = _clamp(_coerce_float(row.get("structural_drift_score"), 0.0))
+            composite_instability = _clamp(_coerce_float(row.get("composite_instability"), 0.0))
+            stability = _clamp(1.0 - composite_instability)
+
+            trend = str(row.get("trend", "stable")).lower().strip()
+            phase = str(row.get("phase", "stable")).lower().strip()
+            risk_level_raw = str(row.get("risk_level", "LOW")).upper().strip()
+
+            # Map risk level to system health
+            if risk_level_raw == "HIGH":
+                system_health = "critical"
+                confidence_boost = 0.85
+            elif risk_level_raw == "MEDIUM":
+                system_health = "degraded"
+                confidence_boost = 0.75
+            else:
+                system_health = "nominal"
+                confidence_boost = 0.65
+
+            # Determine transition type based on trend
+            if trend == "increasing":
+                transition_type = "REORGANIZATION"
+            elif trend == "decreasing":
+                transition_type = "TRANSITION"
+            else:
+                transition_type = "STABLE"
+
+            # Compute confidence score based on drift and stability
+            confidence = _clamp(confidence_boost * (1.0 - drift * 0.4) + stability * 0.2)
+
+            # Compute tetrahedral state
+            transition_pressure = _clamp(drift)
+            coherence = _clamp(0.85 - composite_instability * 0.5)
+
+            tetrahedral_state = compute_tetrahedral_state(
+                structural_drift_score=drift,
+                relational_instability_score=composite_instability,
+                transition_pressure=transition_pressure,
+                temporal_consistency_score=coherence,
+                history_positions=position_history[-50:] if len(position_history) > 0 else None,
+            )
+
+            # Track position for history
+            position = tetrahedral_state.get("position", [0.0, 0.0, 0.0])
+            if isinstance(position, (list, tuple)) and len(position) >= 3:
+                position_history.append([float(position[0]), float(position[1]), float(position[2])])
+
+            operator_message = str(row.get("operator_message", "")).strip()
+
+            normalized_row = {
+                "timestamp": timestamp,
+                "site_id": "fd004-prognostics",
+                "asset_id": unit_id,
+                "system_phase": phase,
+                "state": phase,
+                "regime_name": phase,
+                "transition_type": transition_type,
+                "system_health": system_health,
+                "risk_level": risk_level_raw.lower(),
+                "confidence_score": round(confidence, 6),
+                "structural_drift_score": round(drift, 6),
+                "relational_stability_score": round(stability, 6),
+                "coherence_score": round(coherence, 6),
+                "dynamic_signal_strength": round(drift, 6),
+                "snr_score": round(1.5 + drift * 0.8, 6),
+                "persistence_minutes": 0.0,
+                "corroborating_signal_count": 0,
+                "event_admitted": drift >= 0.55 and stability <= 0.45,
+                "explanation_text": operator_message or f"FD004 unit {unit_id} prognostics: {phase} phase, {risk_level_raw} risk.",
+                "evidence_summary": operator_message or f"FD004 unit {unit_id} prognostics: {phase} phase, {risk_level_raw} risk.",
+                "sensor_values": {},
+                "tetrahedral_state": tetrahedral_state,
+            }
+            rows.append(normalized_row)
+
+    if isinstance(limit, int) and limit > 0:
+        return rows[:limit]
+    return rows
