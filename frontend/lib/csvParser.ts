@@ -48,20 +48,50 @@ function extractSensorValues(row: CSVRow): number[] {
 }
 
 /**
+ * Sensor-specific maximum values for proper normalization (observed from data)
+ */
+const SENSOR_MAXIMUMS = [
+  500,    // S1: ~518
+  650,    // S2: ~642
+  1600,   // S3: ~1585
+  1400,   // S4: ~1404
+  15,     // S5: ~14.6
+  22,     // S6: ~21.6
+  600,    // S7: ~553
+  2400,   // S8: ~2387
+  9100,   // S9: ~9053
+  1.5,    // S10: ~1.3
+  50,     // S11: ~47
+  550,    // S12: ~521
+  2400,   // S13: ~2388
+  8200,   // S14: ~8136
+  11,     // S15: ~10.9
+  0.04,   // S16: ~0.03
+  400,    // S17: ~392
+  2400,   // S18: ~2388
+  100,    // S19: ~100
+  40,     // S20: ~39
+  10,     // S21: ~9
+];
+
+/**
  * Calculate health metrics from sensor readings
  */
 function calculateMetrics(sensors: number[], cycle: number) {
-  // Normalize sensor values to 0-100 range for metrics
-  const normalized = sensors.map(s => Math.min(100, Math.max(0, s / 100)));
+  // Normalize sensor values to 0-1 range using sensor-specific maximums
+  const normalized = sensors.map((s, i) => {
+    const max = SENSOR_MAXIMUMS[i] || 100;
+    return Math.min(1, Math.max(0, s / max));
+  });
 
   // Calculate different aspects of health
   const avgSensors = normalized.reduce((a, b) => a + b, 0) / normalized.length;
   const variance = normalized.reduce((sum, val) => sum + Math.pow(val - avgSensors, 2), 0) / normalized.length;
-  const stability = 100 - (variance * 10); // Lower variance = higher stability
+  const stability = 100 - (Math.sqrt(variance) * 100); // Lower std dev = higher stability
 
   return {
     confidence: Math.min(100, 90 + (cycle % 10)),
-    structural_drift: Math.max(0, Math.min(100, 100 - (avgSensors * 1.3))),
+    structural_drift: Math.max(0, Math.min(100, avgSensors * 100)),
     relational_stability: Math.max(0, Math.min(100, stability)),
     coherence: Math.min(100, 85 + (Math.random() * 10)),
   };
