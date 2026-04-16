@@ -1053,6 +1053,66 @@ def _compute_replay_events(rows: list[dict[str, Any]], baseline_frames: int = 30
     }
 
 
+def _build_frame_states(rows: list[dict[str, Any]], baseline_frames: int = 30) -> list[dict[str, Any]]:
+    """Create a single synchronized frame-state contract for each replay timestep."""
+    if not rows:
+        return []
+
+    events = _compute_replay_events(rows, baseline_frames=baseline_frames)
+    baseline_complete_idx = events.get("baseline_complete")
+    drift_detected_idx = events.get("drift_detected")
+    alert_triggered_idx = events.get("alert_triggered")
+
+    frame_states: list[dict[str, Any]] = []
+    for i, row in enumerate(rows):
+        structural_drift = max(0.0, min(1.0, float(row.get("structural_drift_score") or 0.0)))
+        relational_stability = max(0.0, min(1.0, float(row.get("relational_stability_score") or 0.0)))
+        relational_instability = max(0.0, min(1.0, 1.0 - relational_stability))
+        coherence = max(0.0, min(1.0, float(row.get("coherence_score") or (1.0 - (structural_drift * 0.72)))))
+        confidence = max(0.0, min(1.0, float(row.get("confidence_score") or 0.0)))
+
+        if baseline_complete_idx is not None and i <= baseline_complete_idx:
+            state = "baseline"
+        elif alert_triggered_idx is not None and i >= alert_triggered_idx:
+            state = "alert"
+        elif drift_detected_idx is not None and i >= drift_detected_idx:
+            state = "drifting"
+        else:
+            state = "stable"
+
+        previous_drift = structural_drift if i == 0 else frame_states[i - 1]["structural_drift"]
+        drift_delta = structural_drift - previous_drift
+        trend = "up" if drift_delta > 0.01 else "down" if drift_delta < -0.01 else "flat"
+
+        frame_states.append(
+            {
+                "frame": i + 1,
+                "timestamp": row.get("timestamp"),
+                "structural_drift": structural_drift,
+                "relational_instability": relational_instability,
+                "coherence": coherence,
+                "stability": relational_stability,
+                "confidence": confidence,
+                "state": state,
+                "trend": trend,
+                "baseline_complete": bool(baseline_complete_idx is not None and i >= baseline_complete_idx),
+                "drift_detected": bool(drift_detected_idx is not None and i >= drift_detected_idx),
+                "alert_triggered": bool(alert_triggered_idx is not None and i >= alert_triggered_idx),
+            }
+        )
+    return frame_states
+
+
+def _explanation_for_state(state: str) -> str:
+    mapping = {
+        "baseline": "System learning baseline behavior",
+        "stable": "System remains within learned structure",
+        "drifting": "Deviation increasing relative to baseline",
+        "alert": "System has exceeded acceptable structural bounds",
+    }
+    return mapping.get(state, mapping["stable"])
+
+
 def _build_clean_ticks(y_min: float, y_max: float, max_ticks: int = 6) -> list[float]:
     """Build rounded y-axis ticks for tight domains."""
     if y_max <= y_min:
@@ -1076,6 +1136,7 @@ def _build_clean_ticks(y_min: float, y_max: float, max_ticks: int = 6) -> list[f
 
 def _render_replay_monitor(
     rows: list[dict[str, Any]],
+    frame_states: list[dict[str, Any]],
     frame_index: int,
     *,
     auto_follow: bool = True,
@@ -1088,6 +1149,7 @@ def _render_replay_monitor(
 
     idx = max(1, min(len(rows), int(frame_index)))
     current = rows[idx - 1]
+    current_frame_state = frame_states[idx - 1]
     events = _compute_replay_events(rows, baseline_frames=30)
     baseline_complete = events.get("baseline_complete")
     drift_detected = events.get("drift_detected")
@@ -1095,30 +1157,13 @@ def _render_replay_monitor(
 
     drift_series = [float(r.get("structural_drift_score") or 0.0) for r in rows]
     instability_series = [max(0.0, 1.0 - float(r.get("relational_stability_score") or 0.0)) for r in rows]
-    active_drift = drift_series[idx - 1]
-    active_instability = instability_series[idx - 1]
-    confidence = float(current.get("confidence_score") or 0.0)
-
-    if idx - 1 <= (baseline_complete or 0):
-        state_label = "Baseline"
-    elif alert_triggered is not None and (idx - 1) >= alert_triggered:
-        state_label = "Alert"
-    elif drift_detected is not None and (idx - 1) >= drift_detected:
-        state_label = "Drifting"
-    else:
-        state_label = "Stable"
-
-    trend_delta = active_drift - drift_series[max(0, idx - 4)]
-    trend_label = "Rising" if trend_delta > 0.05 else "Falling" if trend_delta < -0.05 else "Flat"
+    active_drift = float(current_frame_state["structural_drift"])
+    active_instability = float(current_frame_state["relational_instability"])
+    confidence = float(current_frame_state["confidence"])
+    state_label = str(current_frame_state["state"]).title()
+    trend_label = {"up": "Up", "down": "Down", "flat": "Flat"}.get(str(current_frame_state["trend"]), "Flat")
     phase = str(current.get("transition_type") or current.get("system_phase") or "stable").replace("_", " ").title()
-
-    explanation = "System remains within learned structure."
-    if state_label == "Drifting":
-        explanation = "Relational stability is weakening relative to baseline."
-    elif state_label == "Alert":
-        explanation = "Deviation is increasing and has crossed alert criteria."
-    elif state_label == "Baseline":
-        explanation = "System is learning normal behavior and calibrating baseline."
+    explanation = _explanation_for_state(str(current_frame_state["state"]))
 
     # Moving viewport
     window = 100
@@ -1259,6 +1304,7 @@ def _render_replay_monitor(
         f'<div class="ner-insight-state">{escape(state_label)}</div>'
         f'<div class="ner-insight-grid"><span>Structural Drift</span><strong>{active_drift:.3f}</strong>'
         f'<span>Relational Instability</span><strong>{active_instability:.3f}</strong>'
+        f'<span>Timestamp</span><strong>{escape(str(current_frame_state.get("timestamp") or "—"))}</strong>'
         f'<span>Confidence</span><strong>{confidence:.2f}</strong>'
         f'<span>Trend</span><strong>{escape(trend_label)}</strong>'
         f'<span>Phase</span><strong>{escape(phase)}</strong></div>'
@@ -1287,6 +1333,7 @@ def create_gradio_app():
         # Fallback to synthetic greenhouse demo if FD004 data unavailable
         demo_rows = load_builtin_demo_rows(use_synthetic=True)
     total_steps = max(len(demo_rows), 1)
+    frame_states = _build_frame_states(demo_rows, baseline_frames=30)
     playback_state = {"playing": False, "current_mode": "fd004"}
 
     # Replay stabilization for verdict and reasoning
@@ -1349,6 +1396,9 @@ def create_gradio_app():
 
     def load_operations_surface(frame_index: int, speed_multiplier: float = 0.6, auto_follow: bool = True, normalized_scale: bool = False, apply_stability: bool = False):
         active_rows = _rows_until(frame_index)
+        active_idx = max(1, min(total_steps, int(frame_index)))
+        active_frame_state = frame_states[active_idx - 1] if frame_states else {}
+        previous_frame_state = frame_states[active_idx - 2] if active_idx > 1 and frame_states else None
         app_state = create_app_state(active_rows)
         system_state = build_system_state(active_rows, config=UIConfig())
         latest = active_rows[-1] if active_rows else {}
@@ -1375,6 +1425,8 @@ def create_gradio_app():
             records=active_rows,
             reasoning_context=reasoning_context,
             gate_decision=gate_decision,
+            frame_state=active_frame_state,
+            previous_frame_state=previous_frame_state,
             current_frame=frame_index,
             total_frames=total_steps,
         )
@@ -1384,6 +1436,7 @@ def create_gradio_app():
         gate_card["system_confidence_score"] = system_state.confidence
         status_html, chart_html, insight_html = _render_replay_monitor(
             demo_rows,
+            frame_states,
             frame_index,
             auto_follow=auto_follow,
             normalized_scale=normalized_scale,
