@@ -1,4 +1,5 @@
 import { DemoInitResponse } from "./types";
+import { normalizeDemoInitResponse } from "./normalize";
 
 const API_BASE = process.env.NEXT_PUBLIC_NERAIUM_API_BASE ?? "http://localhost:8000";
 
@@ -7,5 +8,6 @@ export async function fetchDemoInit(): Promise<DemoInitResponse> {
   if (!response.ok) {
     throw new Error(`Failed to load demo init: ${response.status}`);
   }
-  return response.json();
+  const raw = await response.json();
+  return normalizeDemoInitResponse(raw);
 }

@@ -52,8 +52,8 @@ export default function HomePage() {
   return (
     <main className="page">
       <HeaderBar
-        phase={currentFrame.current_phase}
-        confidence={currentFrame.metrics.confidence}
+        phase={currentFrame.current_phase ?? "UNKNOWN"}
+        confidence={currentFrame.metrics?.confidence ?? 0}
         index={index}
         total={frames.length}
       />
