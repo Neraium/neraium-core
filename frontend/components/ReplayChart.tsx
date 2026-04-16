@@ -27,6 +27,9 @@ export default function ReplayChart({ frames, currentIndex }: ReplayChartProps) 
 
   const driftValues = useMemo(() => frames.map((frame) => getDriftPercent(frame)), [frames])
   const instabilityValues = useMemo(() => frames.map((frame) => getInstabilityPercent(frame)), [frames])
+  const visibleEndIndex = safeIndex
+  const visibleDriftValues = driftValues.slice(0, visibleEndIndex + 1)
+  const visibleInstabilityValues = instabilityValues.slice(0, visibleEndIndex + 1)
 
   const Y_MIN = 0
   const Y_MAX = 100
@@ -34,7 +37,7 @@ export default function ReplayChart({ frames, currentIndex }: ReplayChartProps) 
   const domain = useMemo(() => {
     if (yMode === 'normalized') return { min: Y_MIN, max: Y_MAX }
 
-    const values = [...driftValues, ...instabilityValues]
+    const values = [...visibleDriftValues, ...visibleInstabilityValues]
     const dataMin = Math.min(...values)
     const dataMax = Math.max(...values)
     const spread = Math.max(dataMax - dataMin, 0)
@@ -55,7 +58,7 @@ export default function ReplayChart({ frames, currentIndex }: ReplayChartProps) 
     }
 
     return { min, max }
-  }, [driftValues, instabilityValues, yMode])
+  }, [visibleDriftValues, visibleInstabilityValues, yMode])
 
   if (frames.length === 0) return null
 
@@ -77,14 +80,16 @@ export default function ReplayChart({ frames, currentIndex }: ReplayChartProps) 
 
   const driftPoints = driftValues.map((value, idx) => ({ x: xFor(idx), y: yToPx(value), value }))
   const instabilityPoints = instabilityValues.map((value, idx) => ({ x: xFor(idx), y: yToPx(value), value }))
+  const visibleDriftPoints = driftPoints.slice(0, visibleEndIndex + 1)
+  const visibleInstabilityPoints = instabilityPoints.slice(0, visibleEndIndex + 1)
 
   const currentX = xFor(safeIndex)
   const activeBandWidth = Math.max(10, pixelsPerFrame * 0.85)
   const currentDriftPoint = driftPoints[safeIndex]
   const currentInstabilityPoint = instabilityPoints[safeIndex]
 
-  const driftPath = driftPoints.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ')
-  const instabilityPath = instabilityPoints.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ')
+  const driftPath = visibleDriftPoints.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ')
+  const instabilityPath = visibleInstabilityPoints.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ')
 
   const yTicks = Array.from({ length: 5 }).map((_, i) => {
     const t = i / 4
@@ -109,7 +114,7 @@ export default function ReplayChart({ frames, currentIndex }: ReplayChartProps) 
       <div className="panel-head replay-chart-head">
         <div>
           <span className="eyebrow">Replay Timeline</span>
-          <span className="panel-subtitle">Structural drift and relational instability across {frames.length} frames</span>
+          <span className="panel-subtitle">Live-feed replay of structural drift and relational instability across {frames.length} frames</span>
         </div>
         <div className="chart-head-values" aria-live="polite">
           <div><span>Drift</span><strong>{currentDriftPoint?.value.toFixed(2)}%</strong></div>
@@ -180,6 +185,14 @@ export default function ReplayChart({ frames, currentIndex }: ReplayChartProps) 
               height={IH}
               fill="rgba(6,182,212,0.14)"
               rx="3"
+            />
+
+            <rect
+              x={currentX + activeBandWidth / 2}
+              y={M.top}
+              width={Math.max((M.left + plotWidth) - (currentX + activeBandWidth / 2), 0)}
+              height={IH}
+              fill="rgba(2,6,23,0.5)"
             />
 
             <polyline points={instabilityPath} fill="none" stroke="#FF8A5C" strokeWidth="2.6" opacity="0.98" filter="url(#glow)" />
