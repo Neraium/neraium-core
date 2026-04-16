@@ -281,144 +281,145 @@ def _render_gate_decision_html(gate_card: dict[str, Any]) -> str:
 
 
 def _render_system_geometry_html(system_zone: dict[str, Any]) -> str:
-    """Render structural geometry visualization as SVG.
-
-    Shows nodes (sensors) and edges (relationships) with deformation indicating
-    system stability vs. drift. Replaces the old line chart.
-    """
+    """Render directional system-state triangle with trend interpretation."""
     content = system_zone.get("content") if isinstance(system_zone, dict) else {}
     if not isinstance(content, dict):
         content = {}
 
-    # Extract geometry data
-    nodes = content.get("nodes", []) if isinstance(content.get("nodes"), list) else []
-    edges = content.get("edges", []) if isinstance(content.get("edges"), list) else []
     metrics = content.get("metrics", {}) if isinstance(content.get("metrics"), dict) else {}
-    phase_visual = content.get("phase_visual", {}) if isinstance(content.get("phase_visual"), dict) else {}
+    triangle_state = content.get("triangle_state", {}) if isinstance(content.get("triangle_state"), dict) else {}
+    interpretation = content.get("interpretation", {}) if isinstance(content.get("interpretation"), dict) else {}
+    global_state = str(content.get("global_state") or "Stable")
 
     drift_intensity = float(metrics.get("drift_intensity", 0.0))
     stability = float(metrics.get("stability", 1.0))
+    coherence = float(metrics.get("structure_coherence", 0.0))
+    confidence = float(metrics.get("confidence", 0.0))
+    drift_delta = float(metrics.get("drift_delta", 0.0))
+    stability_delta = float(metrics.get("stability_delta", 0.0))
+    coherence_delta = float(metrics.get("coherence_delta", 0.0))
 
-    # Canvas dimensions
-    W, H = 900, 350
-    PX, PY = 56, 46
-    IW, IH = W - 2 * PX, H - 2 * PY
+    labels = triangle_state.get("labels", {}) if isinstance(triangle_state.get("labels"), dict) else {}
+    current = triangle_state.get("current_point", {}) if isinstance(triangle_state.get("current_point"), dict) else {}
+    previous = triangle_state.get("previous_point", {}) if isinstance(triangle_state.get("previous_point"), dict) else {}
+    warp = triangle_state.get("geometry_warp", {}) if isinstance(triangle_state.get("geometry_warp"), dict) else {}
+    current_x = float(current.get("x", 0.5))
+    current_y = float(current.get("y", 0.5))
+    previous_x = float(previous.get("x", current_x))
+    previous_y = float(previous.get("y", current_y))
 
-    def scale_x(x: float | None) -> float:
-        """Normalize x from [0, 1] to canvas coordinates."""
-        return PX + float(0.5 if x is None else x) * IW
+    def _drift_color(value: float) -> str:
+        if value < 0.28:
+            return "#38BDF8"
+        if value < 0.52:
+            return "#A78BFA"
+        if value < 0.72:
+            return "#FB923C"
+        return "#EF4444"
 
-    def scale_y(y: float | None) -> float:
-        """Normalize y from [0, 1] to canvas coordinates (inverted)."""
-        return PY + IH - (float(0.5 if y is None else y) * IH)
+    drift_color = _drift_color(drift_intensity)
+    state_styles = {
+        "Baseline": ("#22C55E", "rgba(34,197,94,0.22)"),
+        "Stable": ("#38BDF8", "rgba(56,189,248,0.2)"),
+        "Drifting": ("#FB923C", "rgba(251,146,60,0.22)"),
+        "Alert": ("#EF4444", "rgba(239,68,68,0.24)"),
+    }
+    state_accent, state_bg = state_styles.get(global_state, ("#38BDF8", "rgba(56,189,248,0.2)"))
+    drift_glow = 0.22 + (drift_intensity * 0.5)
 
-    parts = []
+    W, H = 860, 390
+    cx = lambda x: round(x * W, 2)
+    cy = lambda y: round(y * H, 2)
+    drift_pull = float(warp.get("drift_pull", 0.0))
+    coherence_collapse = float(warp.get("coherence_collapse", 0.0))
+    top = (0.5 + drift_pull * 0.6, 0.14 + coherence_collapse * 0.3)
+    left = (0.18 - coherence_collapse, 0.84 + coherence_collapse * 0.5)
+    right = (0.82 + drift_pull, 0.84 + coherence_collapse * 0.45)
 
-    # Background and gradient
+    parts: list[str] = []
     parts.append(
-        f'<defs>'
-        f'<radialGradient id="geom_bg" cx="50%" cy="50%" r="70%">'
-        f'<stop offset="0%" stop-color="#11183A" stop-opacity="0.8"/>'
-        f'<stop offset="100%" stop-color="#05070F" stop-opacity="0.95"/>'
-        f'</radialGradient>'
-        f'<style>'
-        f'.geom-node {{fill: {phase_visual.get("color_accent", "#60A5FA")}; opacity: 0.88;}}'
-        f'.geom-edge {{stroke-opacity: 0.42;}}'
-        f'.geom-label {{fill: #cbd5e1; font-size: 10px; font-weight: 600;}}'
-        f'</style>'
-        f'</defs>'
+        '<defs>'
+        '<marker id="trendArrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">'
+        f'<path d="M0,0 L8,4 L0,8 Z" fill="{drift_color}" opacity="0.9"/>'
+        '</marker>'
+        '<linearGradient id="triStroke" x1="0" y1="0" x2="1" y2="1">'
+        '<stop offset="0%" stop-color="rgba(148,163,184,0.65)"/>'
+        '<stop offset="100%" stop-color="rgba(148,163,184,0.3)"/>'
+        '</linearGradient>'
+        f'<filter id="driftGlow"><feGaussianBlur stdDeviation="{2.8 + drift_intensity * 3.5:.2f}" result="b"/>'
+        '<feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>'
+        '</defs>'
     )
 
-    # Draw background
-    parts.append(f'<rect x="{PX}" y="{PY}" width="{IW}" height="{IH}" fill="url(#geom_bg)" rx="4"/>')
+    parts.append('<rect x="28" y="24" width="560" height="340" rx="12" fill="rgba(2,6,23,0.88)" stroke="rgba(148,163,184,0.2)"/>')
+    parts.append(
+        f'<polygon points="{cx(top[0])},{cy(top[1])} {cx(left[0])},{cy(left[1])} {cx(right[0])},{cy(right[1])}" '
+        f'fill="rgba(15,23,42,0.74)" stroke="url(#triStroke)" stroke-width="2.2"/>'
+    )
 
-    # Draw edges (relationships)
-    if edges:
-        for edge in edges:
-            if not isinstance(edge, dict):
-                continue
-            x1 = scale_x(float(edge.get("x1", 0.5)))
-            y1 = scale_y(float(edge.get("y1", 0.5)))
-            x2 = scale_x(float(edge.get("x2", 0.5)))
-            y2 = scale_y(float(edge.get("y2", 0.5)))
-            opacity = float(edge.get("opacity", 0.3))
-            edge_color = escape(str(edge.get("color", phase_visual.get("color_accent", "#60A5FA"))))
-            parts.append(
-                f'<line x1="{x1:.1f}" y1="{y1:.1f}" x2="{x2:.1f}" y2="{y2:.1f}" '
-                f'class="geom-edge" stroke="{edge_color}" stroke-width="1.2" opacity="{opacity:.3f}"/>'
-            )
+    parts.append(
+        f'<polyline points="{cx(previous_x)},{cy(previous_y)} {cx((previous_x + current_x) / 2)},{cy((previous_y + current_y) / 2)} {cx(current_x)},{cy(current_y)}" '
+        'fill="none" stroke="rgba(148,163,184,0.38)" stroke-width="3.2" stroke-dasharray="4,5"/>'
+    )
+    parts.append(
+        f'<line x1="{cx(previous_x)}" y1="{cy(previous_y)}" x2="{cx(current_x)}" y2="{cy(current_y)}" '
+        f'stroke="{drift_color}" stroke-width="2.2" marker-end="url(#trendArrow)" opacity="0.85"/>'
+    )
+    parts.append(
+        f'<circle cx="{cx(previous_x)}" cy="{cy(previous_y)}" r="9" fill="rgba(148,163,184,0.2)" stroke="rgba(148,163,184,0.55)" stroke-width="1.5"/>'
+    )
+    parts.append(
+        f'<circle cx="{cx(current_x)}" cy="{cy(current_y)}" r="{10 + drift_intensity * 6:.1f}" fill="{drift_color}" opacity="{0.28 + drift_glow:.3f}" filter="url(#driftGlow)"/>'
+    )
+    parts.append(
+        f'<circle cx="{cx(current_x)}" cy="{cy(current_y)}" r="8.2" fill="{drift_color}" stroke="#E2E8F0" stroke-width="2"/>'
+    )
 
-    # Draw nodes (sensors)
-    if nodes:
-        for node in nodes:
-            if not isinstance(node, dict):
-                continue
-            x = scale_x(float(node.get("x", 0.5)))
-            y = scale_y(float(node.get("y", 0.5)))
-            label = escape(str(node.get("label", "?")))
-            radius = 5.5 + drift_intensity * 2.0  # Radius increases with drift
-
-            # Glow effect for node
-            glow_radius = radius + 3.0
-            parts.append(
-                f'<circle cx="{x:.1f}" cy="{y:.1f}" r="{glow_radius:.1f}" '
-                f'fill="{phase_visual.get("color_accent", "#60A5FA")}" '
-                f'opacity="{0.15 * (1.0 - drift_intensity):.3f}"/>'
-            )
-
-            # Node circle
-            parts.append(
-                f'<circle cx="{x:.1f}" cy="{y:.1f}" r="{radius:.1f}" '
-                f'class="geom-node" stroke="{phase_visual.get("color_accent", "#60A5FA")}" '
-                f'stroke-width="1.5" stroke-opacity="0.72"/>'
-            )
-
-            # Node label
-            parts.append(
-                f'<text x="{x:.1f}" y="{y + 3:.1f}" text-anchor="middle" '
-                f'class="geom-label">{label}</text>'
-            )
-
-    # Border
-    parts.append(f'<rect x="{PX}" y="{PY}" width="{IW}" height="{IH}" fill="none" '
-                 f'stroke="rgba(147,197,253,0.35)" stroke-width="1" rx="4"/>')
-
-    # Axes labels
-    parts.append(f'<text x="{PX - 8}" y="{PY - 8}" fill="rgba(203,213,225,0.8)" '
-                 f'font-size="11" text-anchor="end" font-weight="600">Structure</text>')
-    parts.append(f'<text x="{PX + IW + 8}" y="{PY + IH + 20}" fill="rgba(203,213,225,0.8)" '
-                 f'font-size="11" text-anchor="start" font-weight="600">Deformation ↑</text>')
+    parts.append(f'<text x="{cx(top[0])}" y="{cy(top[1]) - 12}" text-anchor="middle" fill="#CFE3FF" font-size="12" font-weight="700">{escape(str(labels.get("top", "Stability")))}</text>')
+    parts.append(f'<text x="{cx(left[0]) - 8}" y="{cy(left[1]) + 20}" text-anchor="end" fill="#CFE3FF" font-size="12" font-weight="700">{escape(str(labels.get("left", "Coherence")))}</text>')
+    parts.append(f'<text x="{cx(right[0]) + 8}" y="{cy(right[1]) + 20}" text-anchor="start" fill="{drift_color}" font-size="12" font-weight="800">{escape(str(labels.get("right", "Drift")))}</text>')
+    parts.append(
+        f'<circle cx="{cx(0.5)}" cy="{cy(0.58)}" r="24" fill="{state_bg}" stroke="{state_accent}" stroke-width="1.2"/>'
+        f'<text x="{cx(0.5)}" y="{cy(0.58) - 2}" text-anchor="middle" fill="#E2E8F0" font-size="9" font-weight="700">{escape(str(labels.get("center", "System State")))}</text>'
+        f'<text x="{cx(0.5)}" y="{cy(0.58) + 12}" text-anchor="middle" fill="{state_accent}" font-size="12" font-weight="800">{escape(global_state.upper())}</text>'
+    )
+    parts.append(f'<text x="{cx(previous_x) - 10}" y="{cy(previous_y) - 10}" fill="rgba(148,163,184,0.86)" font-size="10">prev</text>')
+    parts.append(f'<text x="{cx(current_x) + 10}" y="{cy(current_y) - 10}" fill="{drift_color}" font-size="10" font-weight="700">now</text>')
 
     svg_body = "\n".join(parts)
-    svg_html = f'<svg class="ner-system-canvas" viewBox="0 0 {W} {H}" width="100%">\n{svg_body}\n</svg>'
+    svg_html = f'<svg class="ner-system-canvas ner-system-canvas--triangle" viewBox="0 0 {W} {H}" width="100%">\n{svg_body}\n</svg>'
 
-    # Metrics row
-    metrics_html = (
-        f'<div class="ner-system-context-grid">'
-        f'<div>'
-        f'<span class="ner-context-label">Structure Integrity</span>'
-        f'<span class="ner-context-value">{stability:.2%}</span>'
-        f'</div>'
-        f'<div>'
-        f'<span class="ner-context-label">System Deformation</span>'
-        f'<span class="ner-context-value">{drift_intensity:.2%}</span>'
-        f'</div>'
-        f'<div>'
-        f'<span class="ner-context-label">Operating Phase</span>'
-        f'<span class="ner-context-value">{phase_visual.get("tone", "coherent").upper()}</span>'
-        f'</div>'
-        f'<div>'
-        f'<span class="ner-context-label">Monitored Sensors</span>'
-        f'<span class="ner-context-value">{len(nodes)}</span>'
-        f'</div>'
-        f'</div>'
+    trend_rows = (
+        f'<li>{escape(str(interpretation.get("stability") or "Stability: unavailable"))}</li>'
+        f'<li>{escape(str(interpretation.get("drift") or "Drift: unavailable"))}</li>'
+        f'<li>{escape(str(interpretation.get("coherence") or "Coherence: unavailable"))}</li>'
+        f'<li>{escape(str(interpretation.get("state") or f"State: {global_state}"))}</li>'
+    )
+    interpretation_html = (
+        '<div class="ner-system-interpretation">'
+        '<h4>Interpretation</h4>'
+        f'<ul>{trend_rows}</ul>'
+        '<div class="ner-delta-row">'
+        f'<span>ΔDrift {drift_delta:+.3f}</span>'
+        f'<span>ΔStability {stability_delta:+.3f}</span>'
+        f'<span>ΔCoherence {coherence_delta:+.3f}</span>'
+        '</div>'
+        '</div>'
+    )
+
+    indicator_html = (
+        f'<div class="ner-global-state-indicator" style="--state-accent:{state_accent};--state-bg:{state_bg};">'
+        '<span class="ner-global-state-label">Overall System State</span>'
+        f'<strong>{escape(global_state)}</strong>'
+        f'<small>Confidence {confidence:.2f} • Drift {drift_intensity:.2%} • Coherence {coherence:.2%}</small>'
+        '</div>'
     )
 
     header_html = (
         '<div class="ner-panel-head">'
         '<div>'
-        '<span class="ner-eyebrow">System Geometry</span>'
-        '<span>Real-time structural analysis • Network deformation reflects system stability</span>'
+        '<span class="ner-eyebrow">System State Triangle</span>'
+        '<span>Directional evolution across stability, coherence, and drift with trend context.</span>'
         '</div>'
         '</div>'
     )
@@ -426,8 +427,8 @@ def _render_system_geometry_html(system_zone: dict[str, Any]) -> str:
     return (
         f'<div class="ner-panel ner-system-panel">'
         f'{header_html}'
-        f'{svg_html}'
-        f'{metrics_html}'
+        f'{indicator_html}'
+        f'<div class="ner-system-main-row">{svg_html}{interpretation_html}</div>'
         f'</div>'
     )
 
