@@ -612,6 +612,52 @@ def build_demo_router(*, deps: DemoRouterDependencies) -> APIRouter:
     ) -> dict[str, Any]:
         return _start_fd004_demo(customer_id=customer_id, unit_id=unit_id)
 
+    @router.get("/api/demo/init")
+    def demo_init(
+        unit_id: str = Query(default="unit_001"),
+        max_frames: int | None = Query(default=None),
+        _: None = Depends(deps.require_api_key),
+    ) -> dict[str, Any]:
+        """Load FD004 dataset and return frame sequence for frontend replay."""
+        try:
+            site_id, asset_id, rows = deps.load_fd004_single_unit(unit_id, max_frames)
+        except Exception as exc:
+            detail = deps.summarize_exception_for_logs(exc)
+            raise HTTPException(
+                status_code=500,
+                detail=f"Failed to load FD004 data: {detail}"
+            ) from exc
+
+        # Transform rows into frame sequence
+        frames: list[dict[str, Any]] = []
+        for row in rows:
+            frame = {
+                "timestamp": row.get("timestamp", ""),
+                "sensor_values": {
+                    "cycle": row.get("cycle", 0),
+                    "structural_drift_score": row.get("structural_drift_score", 0.0),
+                    "composite_instability": row.get("composite_instability", 0.0),
+                    "estimated_rul": row.get("estimated_rul", 0.0),
+                },
+                "drift": row.get("structural_drift_score", 0.0),
+                "stability": 1.0 - min(1.0, max(0.0, row.get("composite_instability", 0.0))),
+                "system_state": {
+                    "trend": row.get("trend", "stable"),
+                    "phase": row.get("phase", "stable"),
+                    "risk_level": row.get("risk_level", "LOW"),
+                    "operator_message": row.get("operator_message", ""),
+                }
+            }
+            frames.append(frame)
+
+        return {
+            "frames": frames,
+            "total_frames": len(frames),
+            "unit_id": unit_id,
+            "site_id": site_id,
+            "asset_id": asset_id,
+        }
+
     @router.get("/demo/fd004/status")
     def demo_fd004_status(
         run_id: str = Query(..., min_length=1),
