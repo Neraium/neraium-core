@@ -332,6 +332,8 @@ def render_system_geometry_viz(
     state: Any,  # SystemState
     gate_decision: dict[str, Any] | None = None,
     records: list[dict[str, Any]] | None = None,
+    frame_state: dict[str, Any] | None = None,
+    previous_frame_state: dict[str, Any] | None = None,
     current_frame: int = 1,
     total_frames: int = 1,
 ) -> dict[str, object]:
@@ -364,15 +366,29 @@ def render_system_geometry_viz(
     nodes = _generate_sensor_nodes(num_sensors)
 
     # Extract system metrics from state
-    drift_intensity = clamp(state.drift_intensity if state else 0.0, 0.0, 1.0)
-    stability = 1.0 - drift_intensity  # Inverse of drift
-    confidence = clamp(state.confidence if state else 0.0, 0.0, 1.0)
+    drift_intensity = clamp(
+        safe_float((frame_state or {}).get("structural_drift"), state.drift_intensity if state else 0.0),
+        0.0,
+        1.0,
+    )
+    stability = clamp(
+        safe_float((frame_state or {}).get("stability"), 1.0 - drift_intensity),
+        0.0,
+        1.0,
+    )
+    confidence = clamp(
+        safe_float((frame_state or {}).get("confidence"), state.confidence if state else 0.0),
+        0.0,
+        1.0,
+    )
 
     # Compute smooth velocity from drift progression
     previous_drift = 0.0
     transition_type = "STABLE"
 
-    if records and len(records) > 1:
+    if previous_frame_state is not None:
+        previous_drift = clamp(safe_float(previous_frame_state.get("structural_drift"), 0.0), 0.0, 1.0)
+    elif records and len(records) > 1:
         # Get previous drift for velocity calculation
         prev_record = records[-2]
         previous_drift = clamp(float(prev_record.get("structural_drift_score", 0.0)), 0.0, 1.0)
@@ -398,18 +414,34 @@ def render_system_geometry_viz(
     latest_row = rows[-1] if rows else {}
     previous_row = rows[-2] if len(rows) > 1 else {}
     coherence_value = clamp(
-        safe_float(latest_row.get("coherence_score"), max(0.0, 1.0 - (drift_intensity * 0.72))),
+        safe_float(
+            (frame_state or {}).get("coherence"),
+            safe_float(latest_row.get("coherence_score"), max(0.0, 1.0 - (drift_intensity * 0.72))),
+        ),
         0.0,
         1.0,
     )
-    previous_drift_value = clamp(safe_float(previous_row.get("structural_drift_score"), drift_intensity), 0.0, 1.0)
+    previous_drift_value = clamp(
+        safe_float(
+            (previous_frame_state or {}).get("structural_drift"),
+            safe_float(previous_row.get("structural_drift_score"), drift_intensity),
+        ),
+        0.0,
+        1.0,
+    )
     previous_stability_value = clamp(
-        safe_float(previous_row.get("relational_stability_score"), max(0.0, 1.0 - previous_drift_value)),
+        safe_float(
+            (previous_frame_state or {}).get("stability"),
+            safe_float(previous_row.get("relational_stability_score"), max(0.0, 1.0 - previous_drift_value)),
+        ),
         0.0,
         1.0,
     )
     previous_coherence_value = clamp(
-        safe_float(previous_row.get("coherence_score"), max(0.0, 1.0 - (previous_drift_value * 0.72))),
+        safe_float(
+            (previous_frame_state or {}).get("coherence"),
+            safe_float(previous_row.get("coherence_score"), max(0.0, 1.0 - (previous_drift_value * 0.72))),
+        ),
         0.0,
         1.0,
     )
@@ -419,7 +451,7 @@ def render_system_geometry_viz(
 
     current_triangle_point = _triangle_point_from_metrics(drift_intensity, stability, coherence_value)
     previous_triangle_point = _triangle_point_from_metrics(previous_drift_value, previous_stability_value, previous_coherence_value)
-    state_label = _to_state_level(drift_intensity, stability, confidence)
+    state_label = str((frame_state or {}).get("state") or _to_state_level(drift_intensity, stability, confidence)).title()
     trend_lines = {
         "stability": _trend_label("stability", stability, stability_delta),
         "drift": _trend_label("drift", drift_intensity, drift_delta),

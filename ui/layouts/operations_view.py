@@ -66,6 +66,8 @@ def build_operations_view(
     reasoning_context: dict[str, Any] | None = None,
     operator_question: str = "What is admissible right now?",
     gate_decision: dict[str, Any] | None = None,
+    frame_state: dict[str, Any] | None = None,
+    previous_frame_state: dict[str, Any] | None = None,
     current_frame: int = 1,
     total_frames: int = 1,
 ) -> dict[str, object]:
@@ -109,6 +111,8 @@ def build_operations_view(
                     state,
                     gate_decision=gate,
                     records=records,
+                    frame_state=frame_state,
+                    previous_frame_state=previous_frame_state,
                     current_frame=current_frame,
                     total_frames=total_frames,
                 ),
