@@ -1,3 +1,5 @@
+import { useEffect, useMemo, useRef, useState } from 'react'
+
 interface FrameData {
   structural_drift_score: number
   relational_stability_score: number
@@ -9,15 +11,13 @@ interface ReplayChartProps {
   currentIndex: number
 }
 
-export default function ReplayChart({ frames, currentIndex }: ReplayChartProps) {
-  if (frames.length === 0) return null
+type YMode = 'auto' | 'normalized'
 
-  const W = 1200
-  const H = 320
-  const PX = 60
-  const PY = 40
-  const IW = W - 2 * PX
-  const IH = H - 2 * PY
+export default function ReplayChart({ frames, currentIndex }: ReplayChartProps) {
+  const [yMode, setYMode] = useState<YMode>('auto')
+  const scrollRef = useRef<HTMLDivElement | null>(null)
+
+  const safeIndex = Math.max(0, Math.min(currentIndex, Math.max(frames.length - 1, 0)))
 
   const getDriftPercent = (frame: FrameData) => Math.max(0, Math.min(100, (frame.structural_drift_score || 0) * 100))
   const getInstabilityPercent = (frame: FrameData) => {
@@ -25,172 +25,191 @@ export default function ReplayChart({ frames, currentIndex }: ReplayChartProps) 
     return 100 - stability
   }
 
-  // Render full timeline and use the cursor to show replay position
-  const driftPoints = frames.map((frame, idx) => ({
-    x: (idx / Math.max(frames.length - 1, 1)) * IW + PX,
-    y: PY + IH - (getDriftPercent(frame) / 100) * IH,
-    value: getDriftPercent(frame),
-  }))
+  const driftValues = useMemo(() => frames.map((frame) => getDriftPercent(frame)), [frames])
+  const instabilityValues = useMemo(() => frames.map((frame) => getInstabilityPercent(frame)), [frames])
 
-  const instabilityPoints = frames.map((frame, idx) => ({
-    x: (idx / Math.max(frames.length - 1, 1)) * IW + PX,
-    y: PY + IH - (getInstabilityPercent(frame) / 100) * IH,
-    value: getInstabilityPercent(frame),
-  }))
+  const Y_MIN = 0
+  const Y_MAX = 100
 
-  // Current frame position
-  const currentX = (currentIndex / Math.max(frames.length - 1, 1)) * IW + PX
-  const currentDriftPoint = driftPoints[currentIndex]
-  const currentInstabilityPoint = instabilityPoints[currentIndex]
+  const domain = useMemo(() => {
+    if (yMode === 'normalized') return { min: Y_MIN, max: Y_MAX }
 
-  // Build polyline points
+    const values = [...driftValues, ...instabilityValues]
+    const dataMin = Math.min(...values)
+    const dataMax = Math.max(...values)
+    const spread = Math.max(dataMax - dataMin, 0)
+
+    const padding = spread < 4
+      ? Math.max(spread * 0.18, 0.35)
+      : Math.max(spread * 0.12, 0.8)
+
+    const min = Math.max(Y_MIN, dataMin - padding)
+    const max = Math.min(Y_MAX, dataMax + padding)
+
+    if (max - min < 1.2) {
+      const center = (max + min) / 2
+      return {
+        min: Math.max(Y_MIN, center - 0.7),
+        max: Math.min(Y_MAX, center + 0.7),
+      }
+    }
+
+    return { min, max }
+  }, [driftValues, instabilityValues, yMode])
+
+  if (frames.length === 0) return null
+
+  const H = 420
+  const M = { top: 30, right: 30, bottom: 48, left: 66 }
+  const pixelsPerFrame = 12
+  const minPlotWidth = 920
+  const plotWidth = Math.max(minPlotWidth, Math.max(frames.length - 1, 1) * pixelsPerFrame)
+  const W = M.left + M.right + plotWidth
+  const IH = H - M.top - M.bottom
+
+  const yToPx = (value: number) => {
+    const den = Math.max(domain.max - domain.min, 0.001)
+    const t = (value - domain.min) / den
+    return M.top + IH - t * IH
+  }
+
+  const xFor = (idx: number) => M.left + ((idx / Math.max(frames.length - 1, 1)) * plotWidth)
+
+  const driftPoints = driftValues.map((value, idx) => ({ x: xFor(idx), y: yToPx(value), value }))
+  const instabilityPoints = instabilityValues.map((value, idx) => ({ x: xFor(idx), y: yToPx(value), value }))
+
+  const currentX = xFor(safeIndex)
+  const activeBandWidth = Math.max(10, pixelsPerFrame * 0.85)
+  const currentDriftPoint = driftPoints[safeIndex]
+  const currentInstabilityPoint = instabilityPoints[safeIndex]
+
   const driftPath = driftPoints.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ')
   const instabilityPath = instabilityPoints.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ')
 
+  const yTicks = Array.from({ length: 5 }).map((_, i) => {
+    const t = i / 4
+    const v = domain.min + (domain.max - domain.min) * t
+    return { value: v, y: yToPx(v) }
+  })
+
+  useEffect(() => {
+    const el = scrollRef.current
+    if (!el) return
+
+    const targetLeft = currentX - el.clientWidth * 0.5
+    const maxScroll = Math.max(el.scrollWidth - el.clientWidth, 0)
+    el.scrollTo({
+      left: Math.max(0, Math.min(targetLeft, maxScroll)),
+      behavior: 'smooth',
+    })
+  }, [currentX])
+
   return (
-    <div className="panel">
-      <div className="panel-head">
-        <span className="eyebrow">Replay Timeline</span>
-        <span className="panel-subtitle">Structural drift and relational instability across {frames.length} frames</span>
+    <div className="panel replay-chart-panel">
+      <div className="panel-head replay-chart-head">
+        <div>
+          <span className="eyebrow">Replay Timeline</span>
+          <span className="panel-subtitle">Structural drift and relational instability across {frames.length} frames</span>
+        </div>
+        <div className="chart-head-values" aria-live="polite">
+          <div><span>Drift</span><strong>{currentDriftPoint?.value.toFixed(2)}%</strong></div>
+          <div><span>Instability</span><strong>{currentInstabilityPoint?.value.toFixed(2)}%</strong></div>
+        </div>
       </div>
-      <div className="chart-container">
-        <svg className="chart-svg" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMid meet">
-          <rect x={0} y={0} width={W} height={H} fill="rgba(0,0,0,0.18)" />
-          <defs>
-            <filter id="glow">
-              <feGaussianBlur stdDeviation="2" result="coloredBlur" />
-              <feMerge>
-                <feMergeNode in="coloredBlur" />
-                <feMergeNode in="SourceGraphic" />
-              </feMerge>
-            </filter>
-          </defs>
 
-          {/* Grid */}
-          {[0, 0.25, 0.5, 0.75, 1].map((y) => (
+      <div className="chart-toolbar" role="group" aria-label="Y-axis scaling mode">
+        <button
+          className={`btn btn-subtle ${yMode === 'auto' ? 'active' : ''}`}
+          onClick={() => setYMode('auto')}
+          type="button"
+        >
+          Auto-fit data view
+        </button>
+        <button
+          className={`btn btn-subtle ${yMode === 'normalized' ? 'active' : ''}`}
+          onClick={() => setYMode('normalized')}
+          type="button"
+        >
+          Normalized 0–100
+        </button>
+      </div>
+
+      <div className="chart-legend" aria-hidden="true">
+        <span><i className="swatch swatch-drift" /> Structural drift</span>
+        <span><i className="swatch swatch-instability" /> Relational instability</span>
+        <span><i className="swatch swatch-active" /> Active frame</span>
+      </div>
+
+      <div ref={scrollRef} className="chart-scroll-container">
+        <div className="chart-container" style={{ minWidth: `${W}px` }}>
+          <svg className="chart-svg" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none">
+            <rect x={0} y={0} width={W} height={H} fill="rgba(5,10,24,0.72)" />
+            <defs>
+              <filter id="glow">
+                <feGaussianBlur stdDeviation="2" result="coloredBlur" />
+                <feMerge>
+                  <feMergeNode in="coloredBlur" />
+                  <feMergeNode in="SourceGraphic" />
+                </feMerge>
+              </filter>
+            </defs>
+
+            {yTicks.map((tick) => (
+              <g key={`grid-${tick.value.toFixed(4)}`}>
+                <line
+                  x1={M.left}
+                  y1={tick.y}
+                  x2={M.left + plotWidth}
+                  y2={tick.y}
+                  stroke="rgba(255,255,255,0.1)"
+                  strokeWidth="1"
+                />
+                <text x={M.left - 10} y={tick.y + 4} fill="rgba(203,213,225,0.8)" fontSize="11" textAnchor="end">
+                  {tick.value.toFixed(1)}
+                </text>
+              </g>
+            ))}
+
+            <line x1={M.left} y1={M.top} x2={M.left} y2={M.top + IH} stroke="rgba(255,255,255,0.35)" strokeWidth="1.5" />
+            <line x1={M.left} y1={M.top + IH} x2={M.left + plotWidth} y2={M.top + IH} stroke="rgba(255,255,255,0.35)" strokeWidth="1.5" />
+
+            <rect
+              x={currentX - activeBandWidth / 2}
+              y={M.top}
+              width={activeBandWidth}
+              height={IH}
+              fill="rgba(6,182,212,0.14)"
+              rx="3"
+            />
+
+            <polyline points={instabilityPath} fill="none" stroke="#FF8A5C" strokeWidth="2.6" opacity="0.98" filter="url(#glow)" />
+            <polyline points={driftPath} fill="none" stroke="#60A5FA" strokeWidth="2.8" opacity="1" filter="url(#glow)" />
+
             <line
-              key={`grid-${y}`}
-              x1={PX}
-              y1={PY + IH - y * IH}
-              x2={PX + IW}
-              y2={PY + IH - y * IH}
-              stroke="rgba(255,255,255,0.05)"
-              strokeWidth="1"
-            />
-          ))}
-
-          {/* Value markers */}
-          {[0, 0.25, 0.5, 0.75, 1].map((y) => (
-            <text
-              key={`marker-${y}`}
-              x={PX - 8}
-              y={PY + IH - y * IH + 4}
-              fill="rgba(255,255,255,0.3)"
-              fontSize="10"
-              textAnchor="end"
-            >
-              {(y * 100).toFixed(0)}
-            </text>
-          ))}
-
-          {/* Axis */}
-          <line x1={PX} y1={PY} x2={PX} y2={PY + IH} stroke="rgba(255,255,255,0.2)" strokeWidth="1.5" />
-          <line x1={PX} y1={PY + IH} x2={PX + IW} y2={PY + IH} stroke="rgba(255,255,255,0.2)" strokeWidth="1.5" />
-
-          {/* Instability line */}
-          {instabilityPath && (
-            <polyline
-              points={instabilityPath}
-              fill="none"
-              stroke="#FF8A5C"
-              strokeWidth="2.5"
-              opacity="0.95"
-              filter="url(#glow)"
-            />
-          )}
-
-          {/* Drift line */}
-          {driftPath && (
-            <polyline
-              points={driftPath}
-              fill="none"
-              stroke="#3B82F6"
-              strokeWidth="2.5"
-              opacity="1"
-              filter="url(#glow)"
-            />
-          )}
-
-          {/* Current position indicator */}
-          <line
-            x1={currentX}
-            y1={PY}
-            x2={currentX}
-            y2={PY + IH}
-            stroke="#06B6D4"
-            strokeWidth="2"
-            strokeDasharray="5,4"
-            opacity="0.6"
-          />
-          {currentDriftPoint && (
-            <circle
-              cx={currentX}
-              cy={currentDriftPoint.y}
-              r="7"
-              fill="#3B82F6"
-              stroke="#FFFFFF"
-              strokeWidth="2"
+              x1={currentX}
+              y1={M.top}
+              x2={currentX}
+              y2={M.top + IH}
+              stroke="#22D3EE"
+              strokeWidth="2.4"
               opacity="0.95"
             />
-          )}
-          {currentInstabilityPoint && (
-            <circle
-              cx={currentX}
-              cy={currentInstabilityPoint.y}
-              r="7"
-              fill="#FF8A5C"
-              stroke="#FFFFFF"
-              strokeWidth="2"
-              opacity="0.95"
-            />
-          )}
 
-          {/* Labels */}
-          <text
-            x={PX - 16}
-            y={PY - 12}
-            fill="rgba(255,255,255,0.7)"
-            fontSize="12"
-            fontWeight="600"
-            textAnchor="end"
-          >
-            Value
-          </text>
-          <text
-            x={PX + IW - 16}
-            y={PY + IH + 24}
-            fill="rgba(255,255,255,0.7)"
-            fontSize="12"
-            fontWeight="600"
-            textAnchor="end"
-          >
-            Cycle
-          </text>
+            {currentDriftPoint && (
+              <circle cx={currentX} cy={currentDriftPoint.y} r="7.5" fill="#60A5FA" stroke="#FFFFFF" strokeWidth="2" opacity="1" />
+            )}
+            {currentInstabilityPoint && (
+              <circle cx={currentX} cy={currentInstabilityPoint.y} r="7.5" fill="#FF8A5C" stroke="#FFFFFF" strokeWidth="2" opacity="1" />
+            )}
 
-          {/* Legend */}
-          <g>
-            <rect x={PX + 16} y={PY + 8} width={230} height={48} fill="rgba(0,0,0,0.45)" rx="4" />
-            <line x1={PX + 24} y1={PY + 18} x2={PX + 44} y2={PY + 18} stroke="#3B82F6" strokeWidth="2.5" />
-            <text x={PX + 52} y={PY + 22} fill="rgba(255,255,255,0.85)" fontSize="11" fontWeight="600">
-              structural_drift_score
+            <text x={M.left - 22} y={M.top - 8} fill="rgba(226,232,240,0.95)" fontSize="12" fontWeight="700" textAnchor="end">
+              Signal (%)
             </text>
-
-            <line x1={PX + 24} y1={PY + 38} x2={PX + 44} y2={PY + 38} stroke="#FF8A5C" strokeWidth="2.5" />
-            <text x={PX + 52} y={PY + 42} fill="rgba(255,255,255,0.85)" fontSize="11" fontWeight="600">
-              relational_instability_score
+            <text x={M.left + plotWidth} y={H - 14} fill="rgba(226,232,240,0.95)" fontSize="12" fontWeight="700" textAnchor="end">
+              Frame {safeIndex + 1} / {frames.length}
             </text>
-          </g>
-        </svg>
+          </svg>
+        </div>
       </div>
     </div>
   )
