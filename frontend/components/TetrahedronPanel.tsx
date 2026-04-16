@@ -3,25 +3,29 @@ interface TetrahedronPanelProps {
 }
 
 export default function TetrahedronPanel({ frame }: TetrahedronPanelProps) {
-  const drift = ((frame.structural_drift_score as number) || 0)
-  const stability = ((frame.relational_stability_score as number) || 0)
-  const coherence = ((frame.coherence_score as number) || 0)
-  const confidence = ((frame.confidence as number) || 0)
+  // The 4 dimensions of the tetrahedron (system state geometry)
+  const structuralDrift = ((frame.structural_drift_score as number) || 0)
+  const relationalStability = ((frame.relational_stability_score as number) || 0)
+  const temporalConsistency = ((frame.temporal_consistency_score as number) || 0)
+  const systemCoherence = ((frame.system_coherence as number) || 0)
+  const compositeInstability = ((frame.composite_instability as number) || 0)
+  const systemHealth = ((frame.system_health_metric as number) || 0)
 
-  // Tetrahedron visualization - simplified 2D projection
+  // Tetrahedron visualization - 4D state space projection
   const W = 300
   const H = 250
   const center = { x: W / 2, y: H / 2 }
 
-  // Project 3D tetrahedron coordinates to 2D
-  const scale = 60
+  // Project 4D tetrahedron to 2D (using isometric-like projection)
   const vertices = [
-    // Apex
-    { x: center.x, y: center.y - 80, label: 'Coherence', value: coherence },
-    // Base triangle
-    { x: center.x - 70, y: center.y + 60, label: 'Drift', value: drift },
-    { x: center.x + 70, y: center.y + 60, label: 'Stability', value: stability },
-    { x: center.x, y: center.y + 80, label: 'Confidence', value: confidence },
+    // Vertex 1: Structural Drift
+    { x: center.x, y: center.y - 80, label: 'Drift', value: structuralDrift, color: '#3B82F6' },
+    // Vertex 2: Relational Stability
+    { x: center.x - 70, y: center.y + 60, label: 'Stability', value: relationalStability, color: '#22C55E' },
+    // Vertex 3: Temporal Consistency
+    { x: center.x + 70, y: center.y + 60, label: 'Temporal', value: temporalConsistency, color: '#06B6D4' },
+    // Vertex 4: System Coherence
+    { x: center.x, y: center.y + 80, label: 'Coherence', value: systemCoherence, color: '#F97316' },
   ]
 
   // Edges of tetrahedron
@@ -74,13 +78,13 @@ export default function TetrahedronPanel({ frame }: TetrahedronPanelProps) {
             {vertices.map((vertex, idx) => (
               <g key={`vertex-${idx}`}>
                 {/* Glow */}
-                <circle cx={vertex.x} cy={vertex.y} r={12} fill="rgba(59, 130, 246, 0.15)" />
+                <circle cx={vertex.x} cy={vertex.y} r={12} fill={vertex.color} opacity="0.15" />
                 {/* Node */}
                 <circle
                   cx={vertex.x}
                   cy={vertex.y}
                   r={8}
-                  fill="#3B82F6"
+                  fill={vertex.color}
                   stroke="#FFFFFF"
                   strokeWidth="1.5"
                   opacity={0.5 + vertex.value * 0.5}
@@ -89,8 +93,8 @@ export default function TetrahedronPanel({ frame }: TetrahedronPanelProps) {
                 <text
                   x={vertex.x}
                   y={vertex.y + 20}
-                  fill="rgba(203, 213, 225, 0.9)"
-                  fontSize="10"
+                  fill={vertex.color}
+                  fontSize="11"
                   fontWeight="600"
                   textAnchor="middle"
                 >
@@ -105,46 +109,51 @@ export default function TetrahedronPanel({ frame }: TetrahedronPanelProps) {
         </div>
 
         <div className="tetra-info">
+          <div style={{ marginBottom: '12px', paddingBottom: '12px', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+            <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.6)', marginBottom: '4px' }}>TETRAHEDRON STATE</div>
+            <div style={{ fontSize: '13px', fontWeight: '600', color: compositeInstability > 0.7 ? '#EF4444' : compositeInstability > 0.5 ? '#F97316' : '#22C55E' }}>
+              Risk: {compositeInstability > 0.7 ? 'CRITICAL' : compositeInstability > 0.5 ? 'HIGH' : compositeInstability > 0.3 ? 'MEDIUM' : 'LOW'}
+            </div>
+          </div>
+
           <div className="tetra-label">
-            <strong>Stability</strong>
+            <strong style={{ color: '#3B82F6' }}>Structural Drift</strong>
+            <div style={{ marginTop: '4px', fontSize: '18px', fontWeight: 'bold', color: '#3B82F6', transition: 'all 0.3s ease-in-out' }}>
+              {(structuralDrift * 100).toFixed(0)}%
+            </div>
+          </div>
+
+          <div className="tetra-label">
+            <strong style={{ color: '#22C55E' }}>Relational Stability</strong>
+            <div style={{ marginTop: '4px', fontSize: '18px', fontWeight: 'bold', color: '#22C55E', transition: 'all 0.3s ease-in-out' }}>
+              {(relationalStability * 100).toFixed(0)}%
+            </div>
+          </div>
+
+          <div className="tetra-label">
+            <strong style={{ color: '#06B6D4' }}>Temporal Consistency</strong>
+            <div style={{ marginTop: '4px', fontSize: '14px', color: '#06B6D4', transition: 'all 0.3s ease-in-out' }}>
+              {(temporalConsistency * 100).toFixed(0)}%
+            </div>
+          </div>
+
+          <div className="tetra-label">
+            <strong style={{ color: '#F97316' }}>System Coherence</strong>
+            <div style={{ marginTop: '4px', fontSize: '14px', color: '#F97316', transition: 'all 0.3s ease-in-out' }}>
+              {(systemCoherence * 100).toFixed(0)}%
+            </div>
+          </div>
+
+          <div className="tetra-label" style={{ marginTop: '8px', paddingTop: '8px', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
+            <strong>System Health</strong>
             <div style={{
               marginTop: '4px',
-              fontSize: '20px',
+              fontSize: '16px',
               fontWeight: 'bold',
-              color: stability > 0.7 ? '#22C55E' : stability > 0.4 ? '#F97316' : '#EF4444',
-              transition: 'all 0.3s ease-in-out',
-              padding: '8px',
-              backgroundColor: 'rgba(255,255,255,0.05)',
-              borderRadius: '4px'
+              color: systemHealth > 0.7 ? '#22C55E' : systemHealth > 0.4 ? '#F97316' : '#EF4444',
+              transition: 'all 0.3s ease-in-out'
             }}>
-              {(stability * 100).toFixed(0)}%
-            </div>
-          </div>
-          <div className="tetra-label">
-            <strong>Drift</strong>
-            <div style={{
-              marginTop: '4px',
-              fontSize: '20px',
-              fontWeight: 'bold',
-              color: drift < 0.3 ? '#22C55E' : drift < 0.6 ? '#F97316' : '#EF4444',
-              transition: 'all 0.3s ease-in-out',
-              padding: '8px',
-              backgroundColor: 'rgba(255,255,255,0.05)',
-              borderRadius: '4px'
-            }}>
-              {(drift * 100).toFixed(0)}%
-            </div>
-          </div>
-          <div className="tetra-label">
-            <strong>Coherence</strong>
-            <div style={{ marginTop: '4px', fontSize: '14px', color: '#06B6D4', transition: 'all 0.5s ease-in-out' }}>
-              {(coherence * 100).toFixed(0)}%
-            </div>
-          </div>
-          <div className="tetra-label">
-            <strong>Confidence</strong>
-            <div style={{ marginTop: '4px', fontSize: '14px', color: '#F97316', transition: 'all 0.5s ease-in-out' }}>
-              {(confidence * 100).toFixed(0)}%
+              {(systemHealth * 100).toFixed(0)}%
             </div>
           </div>
         </div>

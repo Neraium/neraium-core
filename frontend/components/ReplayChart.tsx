@@ -1,6 +1,7 @@
 interface FrameData {
   structural_drift_score: number
-  relational_stability_score: number
+  composite_instability?: number
+  risk_level?: string
   [key: string]: any
 }
 
@@ -20,7 +21,7 @@ export default function ReplayChart({ frames, currentIndex }: ReplayChartProps) 
   const IH = H - 2 * PY
 
   const getDriftValue = (frame: FrameData) => frame.structural_drift_score || 0
-  const getStabilityValue = (frame: FrameData) => frame.relational_stability_score || 0
+  const getInstabilityValue = (frame: FrameData) => frame.composite_instability || 0
 
   // Only show data up to current frame (live effect)
   const visibleFrames = frames.slice(0, currentIndex + 1)
@@ -32,11 +33,11 @@ export default function ReplayChart({ frames, currentIndex }: ReplayChartProps) 
     value: getDriftValue(frame),
   }))
 
-  // Create data points for stability (only up to current index)
-  const stabilityPoints = visibleFrames.map((frame, idx) => ({
+  // Create data points for instability (only up to current index)
+  const instabilityPoints = visibleFrames.map((frame, idx) => ({
     x: (idx / Math.max(frames.length - 1, 1)) * IW + PX,
-    y: PY + IH - getStabilityValue(frame) * IH,
-    value: getStabilityValue(frame),
+    y: PY + IH - getInstabilityValue(frame) * IH,
+    value: getInstabilityValue(frame),
   }))
 
   // Current frame position
@@ -44,15 +45,16 @@ export default function ReplayChart({ frames, currentIndex }: ReplayChartProps) 
 
   // Build polyline points (only visible frames)
   const driftPath = driftPoints.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ')
-  const stabilityPath = stabilityPoints.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ')
+  const instabilityPath = instabilityPoints.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ')
 
   // Get current values for status display
-  const currentStability = getStabilityValue(frames[currentIndex] || frames[0])
   const currentDrift = getDriftValue(frames[currentIndex] || frames[0])
+  const currentInstability = getInstabilityValue(frames[currentIndex] || frames[0])
+  const riskLevel = (frames[currentIndex] as any)?.risk_level || 'LOW'
 
-  // Determine color based on stability
-  const stabilityColor = currentStability > 70 ? '#22C55E' : currentStability > 40 ? '#F97316' : '#EF4444'
-  const driftColor = currentDrift < 30 ? '#22C55E' : currentDrift < 60 ? '#F97316' : '#EF4444'
+  // Determine color based on instability
+  const instabilityColor = currentInstability > 0.7 ? '#EF4444' : currentInstability > 0.5 ? '#F97316' : '#22C55E'
+  const driftColor = currentDrift > 0.6 ? '#EF4444' : currentDrift > 0.4 ? '#F97316' : '#22C55E'
 
   return (
     <div className="panel">
@@ -96,8 +98,8 @@ export default function ReplayChart({ frames, currentIndex }: ReplayChartProps) 
           <line x1={PX} y1={PY} x2={PX} y2={PY + IH} stroke="rgba(255,255,255,0.4)" strokeWidth="2" />
           <line x1={PX} y1={PY + IH} x2={PX + IW} y2={PY + IH} stroke="rgba(255,255,255,0.4)" strokeWidth="2" />
 
-          {/* Stability line */}
-          <polyline points={stabilityPath} fill="none" stroke="#22C55E" strokeWidth="3" opacity="0.85" />
+          {/* Instability line */}
+          <polyline points={instabilityPath} fill="none" stroke="#EF4444" strokeWidth="3" opacity="0.85" />
 
           {/* Drift line */}
           <polyline points={driftPath} fill="none" stroke="#3B82F6" strokeWidth="3" opacity="0.95" />
@@ -114,20 +116,20 @@ export default function ReplayChart({ frames, currentIndex }: ReplayChartProps) 
             Timeline →
           </text>
 
-          {/* Legend with current values */}
-          <line x1={PX + 12} y1={PY + 12} x2={PX + 32} y2={PY + 12} stroke="#22C55E" strokeWidth="3" />
+          {/* Legend with current values and risk */}
+          <line x1={PX + 12} y1={PY + 12} x2={PX + 32} y2={PY + 12} stroke="#3B82F6" strokeWidth="3" />
           <text x={PX + 40} y={PY + 16} fill="rgba(255,255,255,0.9)" fontSize="11" fontWeight="600">
-            Stability: {currentStability.toFixed(0)}%
+            Structural Drift: {(currentDrift * 100).toFixed(0)}%
           </text>
 
-          <line x1={PX + 12} y1={PY + 30} x2={PX + 32} y2={PY + 30} stroke="#3B82F6" strokeWidth="3" />
+          <line x1={PX + 12} y1={PY + 30} x2={PX + 32} y2={PY + 30} stroke="#EF4444" strokeWidth="3" />
           <text x={PX + 40} y={PY + 34} fill="rgba(255,255,255,0.9)" fontSize="11" fontWeight="600">
-            Drift: {currentDrift.toFixed(0)}%
+            Instability: {(currentInstability * 100).toFixed(0)}% • Risk: {riskLevel}
           </text>
 
           {/* Status indicators */}
-          <circle cx={PX + IW - 50} cy={PY + 16} r="4" fill={stabilityColor} opacity="0.8" />
-          <circle cx={PX + IW - 50} cy={PY + 34} r="4" fill={driftColor} opacity="0.8" />
+          <circle cx={PX + IW - 50} cy={PY + 16} r="4" fill={driftColor} opacity="0.8" />
+          <circle cx={PX + IW - 50} cy={PY + 34} r="4" fill={instabilityColor} opacity="0.8" />
         </svg>
       </div>
     </div>
