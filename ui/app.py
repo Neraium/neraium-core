@@ -969,6 +969,203 @@ def _render_verdict_surface_html(gate_card: dict[str, Any], system_zone: dict[st
     return f'<div class="ner-verdict-surface">{gate_html}{system_html}</div>'
 
 
+def _compute_replay_events(rows: list[dict[str, Any]], baseline_frames: int = 30) -> dict[str, Any]:
+    """Compute baseline completion, drift detection, and alert trigger frames from replay logic."""
+    if not rows:
+        return {"baseline_complete": None, "drift_detected": None, "alert_triggered": None}
+
+    baseline_idx = min(max(baseline_frames - 1, 0), len(rows) - 1)
+    baseline_slice = rows[: baseline_idx + 1]
+    drift_values = [float(r.get("structural_drift_score") or 0.0) for r in baseline_slice]
+    mean = sum(drift_values) / max(len(drift_values), 1)
+    variance = sum((v - mean) ** 2 for v in drift_values) / max(len(drift_values), 1)
+    std = variance**0.5
+    drift_threshold = mean + (2.0 * std)
+
+    drift_detected: int | None = None
+    for i, row in enumerate(rows):
+        transition = str(row.get("transition_type") or "").upper()
+        drift = float(row.get("structural_drift_score") or 0.0)
+        if i >= baseline_idx and (transition in {"TRANSITION", "REORGANIZATION"} or drift >= drift_threshold):
+            drift_detected = i
+            break
+
+    alert_triggered = next((i for i, row in enumerate(rows) if bool(row.get("event_admitted"))), None)
+    return {
+        "baseline_complete": baseline_idx,
+        "drift_detected": drift_detected,
+        "alert_triggered": alert_triggered,
+        "drift_threshold": drift_threshold,
+    }
+
+
+def _render_replay_monitor(
+    rows: list[dict[str, Any]],
+    frame_index: int,
+    *,
+    auto_follow: bool = True,
+    normalized_scale: bool = False,
+) -> tuple[str, str, str]:
+    """Render top status bar, replay chart panel, and right-side insight panel."""
+    if not rows:
+        empty = '<div class="ner-panel">No replay rows available.</div>'
+        return empty, empty, empty
+
+    idx = max(1, min(len(rows), int(frame_index)))
+    current = rows[idx - 1]
+    events = _compute_replay_events(rows, baseline_frames=30)
+    baseline_complete = events.get("baseline_complete")
+    drift_detected = events.get("drift_detected")
+    alert_triggered = events.get("alert_triggered")
+
+    drift_series = [float(r.get("structural_drift_score") or 0.0) for r in rows]
+    instability_series = [max(0.0, 1.0 - float(r.get("relational_stability_score") or 0.0)) for r in rows]
+    active_drift = drift_series[idx - 1]
+    active_instability = instability_series[idx - 1]
+    confidence = float(current.get("confidence_score") or 0.0)
+
+    if idx - 1 <= (baseline_complete or 0):
+        state_label = "Baseline"
+    elif alert_triggered is not None and (idx - 1) >= alert_triggered:
+        state_label = "Alert"
+    elif drift_detected is not None and (idx - 1) >= drift_detected:
+        state_label = "Drifting"
+    else:
+        state_label = "Stable"
+
+    trend_delta = active_drift - drift_series[max(0, idx - 4)]
+    trend_label = "Rising" if trend_delta > 0.05 else "Falling" if trend_delta < -0.05 else "Flat"
+    phase = str(current.get("transition_type") or current.get("system_phase") or "stable").replace("_", " ").title()
+
+    explanation = "System remains within learned structure."
+    if state_label == "Drifting":
+        explanation = "Relational stability is weakening relative to baseline."
+    elif state_label == "Alert":
+        explanation = "Deviation is increasing and has crossed alert criteria."
+    elif state_label == "Baseline":
+        explanation = "System is learning normal behavior and calibrating baseline."
+
+    # Moving viewport
+    window = 100
+    if auto_follow and len(rows) > window:
+        half = window // 2
+        start = max(0, min(len(rows) - window, (idx - 1) - half))
+        end = min(len(rows) - 1, start + window - 1)
+    else:
+        start, end = 0, len(rows) - 1
+
+    vis_drift = drift_series[start : end + 1]
+    vis_instability = instability_series[start : end + 1]
+    all_vis = vis_drift + vis_instability
+    if normalized_scale:
+        y_min, y_max = 0.0, 100.0
+    else:
+        data_min = min(all_vis) if all_vis else 0.0
+        data_max = max(all_vis) if all_vis else 1.0
+        span = max(data_max - data_min, 0.08)
+        pad = span * 0.15
+        y_min, y_max = data_min - pad, data_max + pad
+
+    W, H = 980, 430
+    PX, PY = 70, 46
+    IW, IH = W - 2 * PX, H - 2 * PY
+
+    def sx(i: int) -> float:
+        denom = max(end - start, 1)
+        return round(PX + ((i - start) / denom) * IW, 2)
+
+    def sy(v: float) -> float:
+        val = v * 100.0 if normalized_scale else v
+        return round(PY + IH - ((val - y_min) / max(y_max - y_min, 1e-9)) * IH, 2)
+
+    y_ticks = 5
+    parts = ['<defs><filter id="activeGlow"><feGaussianBlur stdDeviation="4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>']
+
+    # Phase shading
+    baseline_end = baseline_complete if baseline_complete is not None else 0
+    if start <= baseline_end:
+        bx0, bx1 = sx(start), sx(min(end, baseline_end))
+        parts.append(f'<rect x="{bx0}" y="{PY}" width="{max(bx1-bx0,1)}" height="{IH}" fill="rgba(59,130,246,0.09)"/>')
+    if drift_detected is not None and drift_detected <= end:
+        dx0 = sx(max(start, drift_detected))
+        dx1 = sx(end)
+        parts.append(f'<rect x="{dx0}" y="{PY}" width="{max(dx1-dx0,1)}" height="{IH}" fill="rgba(249,115,22,0.06)"/>')
+    if alert_triggered is not None and alert_triggered <= end:
+        ax0 = sx(max(start, alert_triggered))
+        ax1 = sx(end)
+        parts.append(f'<rect x="{ax0}" y="{PY}" width="{max(ax1-ax0,1)}" height="{IH}" fill="rgba(239,68,68,0.06)"/>')
+
+    for i in range(y_ticks + 1):
+        yv = y_min + (i / y_ticks) * (y_max - y_min)
+        y = sy(yv if normalized_scale else yv)
+        parts.append(f'<line x1="{PX}" y1="{y}" x2="{PX+IW}" y2="{y}" stroke="rgba(148,163,184,0.18)" stroke-width="1"/>')
+        label = f"{yv:.0f}" if normalized_scale else f"{yv:.2f}"
+        parts.append(f'<text x="{PX-10}" y="{y+4}" text-anchor="end" fill="rgba(203,213,225,0.9)" font-size="11">{label}</text>')
+
+    for t in range(start, end + 1, max((end - start) // 6, 1)):
+        x = sx(t)
+        parts.append(f'<line x1="{x}" y1="{PY}" x2="{x}" y2="{PY+IH}" stroke="rgba(148,163,184,0.14)" stroke-dasharray="3,4"/>')
+        parts.append(f'<text x="{x}" y="{PY+IH+18}" text-anchor="middle" fill="rgba(203,213,225,0.9)" font-size="11">{t+1}</text>')
+
+    drift_pts = " ".join(f"{sx(i)},{sy(drift_series[i])}" for i in range(start, end + 1))
+    inst_pts = " ".join(f"{sx(i)},{sy(instability_series[i])}" for i in range(start, end + 1))
+    parts.append(f'<polyline points="{inst_pts}" fill="none" stroke="#22C55E" stroke-width="2.4"/>')
+    parts.append(f'<polyline points="{drift_pts}" fill="none" stroke="#06B6D4" stroke-width="3"/>')
+
+    def marker(frame: int | None, label: str, color: str) -> None:
+        if frame is None or frame < start or frame > end:
+            return
+        x = sx(frame)
+        parts.append(f'<line x1="{x}" y1="{PY}" x2="{x}" y2="{PY+IH}" stroke="{color}" stroke-width="2" stroke-dasharray="5,4"/>')
+        parts.append(f'<text x="{x+6}" y="{PY+16}" fill="{color}" font-size="11" font-weight="700">{escape(label)}</text>')
+
+    marker(baseline_complete, "Baseline Complete", "#60A5FA")
+    marker(drift_detected, "Drift Detected", "#FB923C")
+    marker(alert_triggered, "Alert Triggered", "#F87171")
+
+    active_idx = idx - 1
+    active_x = sx(active_idx)
+    parts.append(f'<line x1="{active_x}" y1="{PY}" x2="{active_x}" y2="{PY+IH}" stroke="#E2E8F0" stroke-width="2.4" filter="url(#activeGlow)"/>')
+    parts.append(f'<circle cx="{active_x}" cy="{sy(active_drift)}" r="6.5" fill="#06B6D4" stroke="#E2E8F0" stroke-width="2"/>')
+    parts.append(f'<circle cx="{active_x}" cy="{sy(active_instability)}" r="6.5" fill="#22C55E" stroke="#E2E8F0" stroke-width="2"/>')
+
+    summary = (
+        f"System learned baseline over first 30 frames. Drift first detected at frame "
+        f"{(drift_detected + 1) if drift_detected is not None else 'N/A'}. "
+        f"Alert triggered at frame {(alert_triggered + 1) if alert_triggered is not None else 'N/A'}."
+    )
+    chart_html = (
+        '<div class="ner-panel ner-replay-chart-panel">'
+        f'<div class="ner-replay-summary">{escape(summary)}</div>'
+        '<svg class="ner-system-canvas" viewBox="0 0 980 430" width="980" height="430">'
+        + "".join(parts)
+        + "</svg>"
+        '<div class="ner-chart-legend"><span><i style="background:#06B6D4"></i>Structural Drift</span>'
+        '<span><i style="background:#22C55E"></i>Relational Instability</span></div></div>'
+    )
+
+    insight_html = (
+        '<div class="ner-panel ner-insight-panel">'
+        '<div class="ner-eyebrow">Replay Insight</div>'
+        f'<div class="ner-insight-state">{escape(state_label)}</div>'
+        f'<div class="ner-insight-grid"><span>Structural Drift</span><strong>{active_drift:.3f}</strong>'
+        f'<span>Relational Instability</span><strong>{active_instability:.3f}</strong>'
+        f'<span>Confidence</span><strong>{confidence:.2f}</strong>'
+        f'<span>Trend</span><strong>{escape(trend_label)}</strong>'
+        f'<span>Phase</span><strong>{escape(phase)}</strong></div>'
+        f'<p class="ner-insight-note">{escape(explanation)}</p></div>'
+    )
+
+    status_html = (
+        '<div class="ner-status-bar">'
+        '<div class="ner-status-left"><span class="ner-wordmark">NERAIUM</span><span class="ner-status-sub">Live System Replay</span></div>'
+        f'<div class="ner-status-center">{escape(str(current.get("asset_id") or "Unknown Asset"))} · Frame {idx} / {len(rows)}</div>'
+        f'<div class="ner-status-right"><span class="ner-pill ner-pill-state">{escape(state_label)}</span>'
+        f'<span class="ner-pill">Confidence {confidence:.2f}</span></div></div>'
+    )
+    return status_html, chart_html, insight_html
+
+
 def create_gradio_app():
     try:
         import gradio as gr
@@ -992,33 +1189,6 @@ def create_gradio_app():
     def _rows_until(frame_index: int) -> list[dict[str, Any]]:
         idx = max(1, min(total_steps, int(frame_index)))
         return demo_rows[:idx]
-
-    def render_command_header(frame_index: int) -> str:
-        active_rows = _rows_until(frame_index)
-        latest = active_rows[-1] if active_rows else {}
-        confidence = f"{float(latest.get('confidence_score') or 0.0):.2f}"
-        regime_raw = str(latest.get("system_phase") or latest.get("regime_name") or "unknown")
-        regime_raw.replace("_", " ").title()
-
-        # Add phase progress indicator
-        phase_label = "Baseline"
-        transition_type = str(latest.get("transition_type", "STABLE")).upper()
-        if transition_type in {"TRANSITION", "REORGANIZATION"}:
-            phase_label = transition_type.title()
-
-        return f"""
-            <div class="ner-command-header">
-              <div class="ner-brand">
-                <span class="ner-wordmark">NERAIUM</span>
-                <span class="ner-env">SYSTEM INTELLIGENCE</span>
-              </div>
-              <div class="ner-header-metrics">
-                <span>CONFIDENCE: {escape(confidence)}</span>
-                <span>PHASE: {escape(phase_label)}</span>
-                <span>FRAME: {int(frame_index)} / {int(total_steps)}</span>
-              </div>
-            </div>
-            """
 
     def has_significant_state_change(frame_index: int, previous_frame_index: int) -> bool:
         """Check if there's a significant state change between frames.
@@ -1068,7 +1238,7 @@ def create_gradio_app():
         except (TypeError, ValueError):
             return default
 
-    def load_operations_surface(frame_index: int, apply_stability: bool = False):
+    def load_operations_surface(frame_index: int, speed_multiplier: float = 0.6, auto_follow: bool = True, normalized_scale: bool = False, apply_stability: bool = False):
         active_rows = _rows_until(frame_index)
         app_state = create_app_state(active_rows)
         system_state = build_system_state(active_rows, config=UIConfig())
@@ -1103,14 +1273,19 @@ def create_gradio_app():
         gate_card = gate_content if isinstance(gate_content, dict) else {}
         # Inject system state confidence as single source of truth
         gate_card["system_confidence_score"] = system_state.confidence
-        verdict_html = _render_verdict_surface_html(gate_card, surface["zones"]["system_state"])
+        status_html, chart_html, insight_html = _render_replay_monitor(
+            demo_rows,
+            frame_index,
+            auto_follow=auto_follow,
+            normalized_scale=normalized_scale,
+        )
         reasoning_html = _render_reasoning_html(surface["zones"]["reasoning"]["content"])
         record_html = _render_record_html(surface["zones"]["record"]["content"])
-        header_html = render_command_header(frame_index)
         tetra_plot, tetra_text = build_tetrahedral_plot_and_text(latest, active_rows)
         return (
-            header_html,
-            verdict_html,
+            status_html,
+            chart_html,
+            insight_html,
             reasoning_html,
             record_html,
             tetra_plot,
@@ -1120,13 +1295,13 @@ def create_gradio_app():
     def pause_playback() -> None:
         playback_state["playing"] = False
 
-    def reset_playback() -> tuple[int, str, str, str, str, Any, str]:
+    def reset_playback() -> tuple[int, str, str, str, str, str, Any, str]:
         pause_playback()
         # Reset stabilizers when resetting playback
         verdict_stabilizer.reset()
         reasoning_tracker.reset()
-        header_html, verdict_html, reasoning_html, record_html, tetra_plot, tetra_text = load_operations_surface(1, apply_stability=False)
-        return 1, header_html, verdict_html, reasoning_html, record_html, tetra_plot, tetra_text
+        status_html, chart_html, insight_html, reasoning_html, record_html, tetra_plot, tetra_text = load_operations_surface(1, apply_stability=False)
+        return 1, status_html, chart_html, insight_html, reasoning_html, record_html, tetra_plot, tetra_text
 
     def autoplay(start_frame: int, speed_multiplier: float):
         """Smooth playback with frame skipping for polished UI feel.
@@ -1167,7 +1342,7 @@ def create_gradio_app():
             if should_render_by_time or should_render_by_change or should_render_final:
                 # Only yield if this is a new frame (not a duplicate)
                 if last_yielded_frame != frame:
-                    yield (frame, *load_operations_surface(frame, apply_stability=True))
+                    yield (frame, *load_operations_surface(frame, speed_multiplier, True, False, apply_stability=True))
                     last_yielded_frame = frame
                     last_rendered_frame = frame
 
@@ -1179,7 +1354,7 @@ def create_gradio_app():
         playback_state["playing"] = False
 
     default_step = min(30, total_steps)
-    initial_header, initial_verdict, initial_reasoning, initial_record, initial_tetra_plot, initial_tetra_text = load_operations_surface(
+    initial_status, initial_chart, initial_insight, initial_reasoning, initial_record, initial_tetra_plot, initial_tetra_text = load_operations_surface(
         default_step, apply_stability=False
     )
 
@@ -1187,15 +1362,19 @@ def create_gradio_app():
     css = css_path.read_text(encoding="utf-8") if css_path.exists() else ""
 
     with gr.Blocks(css=css, theme=gr.themes.Base(), elem_classes=["ner-app"]) as app:
-        header = gr.HTML(value=initial_header)
-        verdict = gr.HTML(value=initial_verdict)
+        status = gr.HTML(value=initial_status)
+        with gr.Row(elem_classes=["ner-main-content-row"]):
+            chart = gr.HTML(value=initial_chart, scale=3)
+            insight = gr.HTML(value=initial_insight, scale=1)
 
         with gr.Row(elem_classes=["ner-controls-row"]):
-            frame_step = gr.Slider(minimum=1, maximum=total_steps, step=1, value=default_step, label="Frame", scale=4)
-            speed = gr.Slider(minimum=0.1, maximum=1.5, step=0.1, value=0.6, label="Speed", scale=2)
             play_btn = gr.Button("Play", size="sm", scale=1)
             pause_btn = gr.Button("Pause", size="sm", scale=1)
             restart_btn = gr.Button("Restart", size="sm", scale=1)
+            speed = gr.Slider(minimum=0.1, maximum=1.5, step=0.1, value=0.6, label="Speed", scale=2)
+            frame_step = gr.Slider(minimum=1, maximum=total_steps, step=1, value=default_step, label="Scrub", scale=5)
+            auto_follow = gr.Checkbox(value=True, label="Auto-follow")
+            normalized_scale = gr.Checkbox(value=False, label="0-100 scale")
 
         reasoning = gr.HTML(value=initial_reasoning)
         record = gr.HTML(value=initial_record)
@@ -1205,15 +1384,25 @@ def create_gradio_app():
 
         frame_step.change(
             fn=load_operations_surface,
-            inputs=[frame_step],
-            outputs=[header, verdict, reasoning, record, tetra_plot, tetra_details],
+            inputs=[frame_step, speed, auto_follow, normalized_scale],
+            outputs=[status, chart, insight, reasoning, record, tetra_plot, tetra_details],
+        )
+        auto_follow.change(
+            fn=load_operations_surface,
+            inputs=[frame_step, speed, auto_follow, normalized_scale],
+            outputs=[status, chart, insight, reasoning, record, tetra_plot, tetra_details],
+        )
+        normalized_scale.change(
+            fn=load_operations_surface,
+            inputs=[frame_step, speed, auto_follow, normalized_scale],
+            outputs=[status, chart, insight, reasoning, record, tetra_plot, tetra_details],
         )
         play_btn.click(
             fn=autoplay,
             inputs=[frame_step, speed],
-            outputs=[frame_step, header, verdict, reasoning, record, tetra_plot, tetra_details],
+            outputs=[frame_step, status, chart, insight, reasoning, record, tetra_plot, tetra_details],
         )
         pause_btn.click(fn=pause_playback)
-        restart_btn.click(fn=reset_playback, outputs=[frame_step, header, verdict, reasoning, record, tetra_plot, tetra_details])
+        restart_btn.click(fn=reset_playback, outputs=[frame_step, status, chart, insight, reasoning, record, tetra_plot, tetra_details])
 
     return app
