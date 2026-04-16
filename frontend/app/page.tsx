@@ -63,7 +63,7 @@ export default function Home() {
       return
     }
 
-    const delay = Math.max(100, Math.floor(500 / playbackSpeed))
+    const delay = Math.max(100, Math.floor(1000 / playbackSpeed))
     playbackIntervalRef.current = setInterval(() => {
       setCurrentIndex((prev) => {
         if (prev >= frames.length - 1) {
@@ -122,7 +122,7 @@ export default function Home() {
 
 function generateSyntheticFrames(): Frame[] {
   const frames: Frame[] = []
-  const totalFrames = 30
+  const totalFrames = 250
 
   for (let i = 0; i < totalFrames; i++) {
     const progress = i / totalFrames
