@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from html import escape
+import math
 from pathlib import Path
 import time
 from typing import Any
@@ -1052,6 +1053,27 @@ def _compute_replay_events(rows: list[dict[str, Any]], baseline_frames: int = 30
     }
 
 
+def _build_clean_ticks(y_min: float, y_max: float, max_ticks: int = 6) -> list[float]:
+    """Build rounded y-axis ticks for tight domains."""
+    if y_max <= y_min:
+        return [round(y_min, 3), round(y_max + 1.0, 3)]
+    steps = [1, 2, 2.5, 5, 10]
+    span = y_max - y_min
+    target = max(span / max(max_ticks - 1, 1), 1e-6)
+    magnitude = 10 ** math.floor(math.log10(target))
+    raw = target / magnitude
+    chosen = next((s for s in steps if s >= raw), steps[-1]) * magnitude
+    start = math.floor(y_min / chosen) * chosen
+    end = math.ceil(y_max / chosen) * chosen
+    tick_count = int(round((end - start) / chosen)) + 1
+    while tick_count > max_ticks:
+        chosen *= 2
+        start = math.floor(y_min / chosen) * chosen
+        end = math.ceil(y_max / chosen) * chosen
+        tick_count = int(round((end - start) / chosen)) + 1
+    return [round(start + i * chosen, 6) for i in range(tick_count)]
+
+
 def _render_replay_monitor(
     rows: list[dict[str, Any]],
     frame_index: int,
@@ -1109,15 +1131,27 @@ def _render_replay_monitor(
 
     vis_drift = drift_series[start : end + 1]
     vis_instability = instability_series[start : end + 1]
+    baseline_end = baseline_complete if baseline_complete is not None else 0
+    baseline_slice_end = min(baseline_end + 1, len(rows))
+    baseline_drift = drift_series[:baseline_slice_end] or [0.0]
+    baseline_instability = instability_series[:baseline_slice_end] or [0.0]
+    baseline_all = baseline_drift + baseline_instability
+    baseline_low = min(baseline_all)
+    baseline_high = max(baseline_all)
+    baseline_mean = sum(baseline_all) / max(len(baseline_all), 1)
+
     all_vis = vis_drift + vis_instability
     if normalized_scale:
         y_min, y_max = 0.0, 100.0
+        y_ticks = [0, 20, 40, 60, 80, 100]
     else:
-        data_min = min(all_vis) if all_vis else 0.0
-        data_max = max(all_vis) if all_vis else 1.0
-        span = max(data_max - data_min, 0.08)
-        pad = span * 0.15
+        data_min = min(all_vis + [baseline_low]) if all_vis else baseline_low
+        data_max = max(all_vis + [baseline_high]) if all_vis else baseline_high
+        span = max(data_max - data_min, 0.05)
+        pad = max(span * 0.2, 0.02)
         y_min, y_max = data_min - pad, data_max + pad
+        y_ticks = _build_clean_ticks(y_min, y_max, max_ticks=6)
+        y_min, y_max = y_ticks[0], y_ticks[-1]
 
     W, H = 980, 430
     PX, PY = 70, 46
@@ -1131,11 +1165,9 @@ def _render_replay_monitor(
         val = v * 100.0 if normalized_scale else v
         return round(PY + IH - ((val - y_min) / max(y_max - y_min, 1e-9)) * IH, 2)
 
-    y_ticks = 5
     parts = ['<defs><filter id="activeGlow"><feGaussianBlur stdDeviation="4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>']
 
     # Phase shading
-    baseline_end = baseline_complete if baseline_complete is not None else 0
     if start <= baseline_end:
         bx0, bx1 = sx(start), sx(min(end, baseline_end))
         parts.append(f'<rect x="{bx0}" y="{PY}" width="{max(bx1-bx0,1)}" height="{IH}" fill="rgba(59,130,246,0.09)"/>')
@@ -1148,11 +1180,22 @@ def _render_replay_monitor(
         ax1 = sx(end)
         parts.append(f'<rect x="{ax0}" y="{PY}" width="{max(ax1-ax0,1)}" height="{IH}" fill="rgba(239,68,68,0.06)"/>')
 
-    for i in range(y_ticks + 1):
-        yv = y_min + (i / y_ticks) * (y_max - y_min)
-        y = sy(yv if normalized_scale else yv)
+    baseline_band_lo = baseline_low * 100.0 if normalized_scale else baseline_low
+    baseline_band_hi = baseline_high * 100.0 if normalized_scale else baseline_high
+    baseline_mid = baseline_mean * 100.0 if normalized_scale else baseline_mean
+    band_top = sy(baseline_band_hi)
+    band_bottom = sy(baseline_band_lo)
+    parts.append(
+        f'<rect x="{PX}" y="{min(band_top, band_bottom)}" width="{IW}" height="{max(abs(band_bottom-band_top),1)}" '
+        'fill="rgba(148,163,184,0.10)"/>'
+    )
+    parts.append(f'<line x1="{PX}" y1="{sy(baseline_mid)}" x2="{PX+IW}" y2="{sy(baseline_mid)}" stroke="rgba(148,163,184,0.5)" stroke-dasharray="4,4"/>')
+    parts.append(f'<text x="{PX+8}" y="{max(PY+14, sy(baseline_mid)-6)}" fill="rgba(203,213,225,0.9)" font-size="11">Baseline range</text>')
+
+    for yv in y_ticks:
+        y = sy(yv)
         parts.append(f'<line x1="{PX}" y1="{y}" x2="{PX+IW}" y2="{y}" stroke="rgba(148,163,184,0.18)" stroke-width="1"/>')
-        label = f"{yv:.0f}" if normalized_scale else f"{yv:.2f}"
+        label = f"{yv:.0f}" if normalized_scale else (f"{yv:.2f}" if abs(yv) < 1 else f"{yv:.1f}")
         parts.append(f'<text x="{PX-10}" y="{y+4}" text-anchor="end" fill="rgba(203,213,225,0.9)" font-size="11">{label}</text>')
 
     for t in range(start, end + 1, max((end - start) // 6, 1)):
@@ -1187,14 +1230,27 @@ def _render_replay_monitor(
         f"{(drift_detected + 1) if drift_detected is not None else 'N/A'}. "
         f"Alert triggered at frame {(alert_triggered + 1) if alert_triggered is not None else 'N/A'}."
     )
+    if state_label == "Alert":
+        system_insight = "System Insight: Deviation is increasing and now beyond baseline safety bounds."
+    elif state_label == "Drifting":
+        system_insight = "System Insight: Drift is increasing but remains below confirmed alert threshold."
+    elif state_label == "Baseline":
+        system_insight = "System Insight: System remains within baseline structure while calibration completes."
+    else:
+        system_insight = "System Insight: System remains within baseline structure with stable drift behavior."
+
     chart_html = (
         '<div class="ner-panel ner-replay-chart-panel">'
+        f'<div class="ner-replay-insight">{escape(system_insight)}</div>'
         f'<div class="ner-replay-summary">{escape(summary)}</div>'
         '<svg class="ner-system-canvas" viewBox="0 0 980 430" width="980" height="430">'
         + "".join(parts)
         + "</svg>"
         '<div class="ner-chart-legend"><span><i style="background:#06B6D4"></i>Structural Drift</span>'
-        '<span><i style="background:#22C55E"></i>Relational Instability</span></div></div>'
+        '<span><i style="background:#22C55E"></i>Relational Instability</span>'
+        f'<span class="ner-live-value">Structural Drift: <strong>{active_drift*100.0:.1f}%</strong></span>'
+        f'<span class="ner-live-value">Relational Instability: <strong>{active_instability*100.0:.1f}%</strong></span>'
+        '</div></div>'
     )
 
     insight_html = (

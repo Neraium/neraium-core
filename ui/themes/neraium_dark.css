@@ -696,11 +696,29 @@ input[type="range"] {
   white-space: nowrap;
 }
 
+.ner-live-value {
+  margin-left: 8px;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+
+.ner-live-value strong {
+  color: #E2E8F0;
+  font-size: 13px;
+}
+
 .ner-chart-legend i {
   width: 12px;
   height: 12px;
   border-radius: 2px;
   box-shadow: 0 0 8px rgba(56, 189, 248, 0.25);
+}
+
+.ner-replay-insight {
+  margin-bottom: 8px;
+  color: #CFE8FF;
+  font-size: 13px;
+  font-weight: 700;
 }
 
 .ner-axis-context {
