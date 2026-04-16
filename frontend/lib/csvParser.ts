@@ -112,8 +112,9 @@ function getPhase(cycle: number): string {
  * Determine health status
  */
 function getStatus(drift: number, stability: number): string {
-  if (drift > 50 || stability < 30) return 'critical';
-  if (drift > 30 || stability < 50) return 'warning';
+  // More nuanced health assessment
+  if (drift > 75 || stability < 15) return 'critical';
+  if (drift > 60 || stability < 30) return 'warning';
   return 'nominal';
 }
 

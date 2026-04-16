@@ -14,11 +14,12 @@ export default function ReplayChart({ frames, currentIndex }: ReplayChartProps) 
   if (frames.length === 0) return null
 
   const W = 1200
-  const H = 320
-  const PX = 60
-  const PY = 40
-  const IW = W - 2 * PX
-  const IH = H - 2 * PY
+  const H = 360
+  const PX = 80  // Increased left padding for Y-axis labels
+  const PY = 50   // Increased top padding
+  const PB = 60   // Bottom padding for X-axis labels
+  const IW = W - PX - 40  // Right padding
+  const IH = H - PY - PB  // Adjusted for bottom padding
 
   const getDriftValue = (frame: FrameData) => Math.max(0, Math.min(1, frame.structural_drift_score || 0))
   const getStabilityValue = (frame: FrameData) => Math.max(0, Math.min(1, frame.relational_stability_score || 0))
@@ -50,6 +51,9 @@ export default function ReplayChart({ frames, currentIndex }: ReplayChartProps) 
   // Build filled area paths for visual effect
   const driftAreaPath = driftPath ? `M ${driftPath} L ${PX + IW},${PY + IH} L ${PX},${PY + IH} Z` : ''
   const stabilityAreaPath = stabilityPath ? `M ${stabilityPath} L ${PX + IW},${PY + IH} L ${PX},${PY + IH} Z` : ''
+
+  // Bottom axis line position
+  const bottomY = PY + IH
 
   // Find flag events (changes in decision or admission status)
   const flagEvents: Array<{ index: number; x: number; admitted: boolean }> = []
@@ -106,23 +110,69 @@ export default function ReplayChart({ frames, currentIndex }: ReplayChartProps) 
             />
           ))}
 
-          {/* Value markers */}
-          {[0.25, 0.5, 0.75].map((y) => (
-            <text
-              key={`marker-${y}`}
-              x={PX - 8}
-              y={PY + IH - y * IH + 4}
-              fill="rgba(255,255,255,0.3)"
-              fontSize="10"
-              textAnchor="end"
-            >
-              {(y * 100).toFixed(0)}%
-            </text>
+          {/* Y-Axis value markers */}
+          {[0, 0.25, 0.5, 0.75, 1.0].map((y) => (
+            <g key={`y-marker-${y}`}>
+              <line
+                x1={PX - 6}
+                y1={PY + IH - y * IH}
+                x2={PX}
+                y2={PY + IH - y * IH}
+                stroke="rgba(255,255,255,0.2)"
+                strokeWidth="1"
+              />
+              <text
+                x={PX - 12}
+                y={PY + IH - y * IH + 4}
+                fill="rgba(255,255,255,0.5)"
+                fontSize="11"
+                fontWeight="500"
+                textAnchor="end"
+              >
+                {(y * 100).toFixed(0)}%
+              </text>
+            </g>
           ))}
 
-          {/* Axis */}
-          <line x1={PX} y1={PY} x2={PX} y2={PY + IH} stroke="rgba(255,255,255,0.2)" strokeWidth="1.5" />
-          <line x1={PX} y1={PY + IH} x2={PX + IW} y2={PY + IH} stroke="rgba(255,255,255,0.2)" strokeWidth="1.5" />
+          {/* Y-Axis label */}
+          <text
+            x={-H / 2}
+            y={16}
+            fill="rgba(255,255,255,0.5)"
+            fontSize="11"
+            fontWeight="600"
+            textAnchor="middle"
+            transform={`rotate(-90 ${16} ${H / 2})`}
+          >
+            Signal
+          </text>
+
+          {/* X and Y Axes */}
+          <line x1={PX} y1={PY} x2={PX} y2={PY + IH} stroke="rgba(255,255,255,0.3)" strokeWidth="2" />
+          <line x1={PX} y1={PY + IH} x2={PX + IW} y2={PY + IH} stroke="rgba(255,255,255,0.3)" strokeWidth="2" />
+
+          {/* X-Axis ticks and labels */}
+          {[0, 0.25, 0.5, 0.75, 1.0].map((x) => (
+            <g key={`x-marker-${x}`}>
+              <line
+                x1={PX + x * IW}
+                y1={PY + IH}
+                x2={PX + x * IW}
+                y2={PY + IH + 6}
+                stroke="rgba(255,255,255,0.2)"
+                strokeWidth="1"
+              />
+              <text
+                x={PX + x * IW}
+                y={PY + IH + 22}
+                fill="rgba(255,255,255,0.5)"
+                fontSize="10"
+                textAnchor="middle"
+              >
+                {x === 0 ? 'Start' : x === 1 ? 'End' : `${(x * 100).toFixed(0)}%`}
+              </text>
+            </g>
+          ))}
 
           {/* Filled areas under lines */}
           {stabilityAreaPath && <path d={stabilityAreaPath} fill="url(#stabilityAreaGrad)" />}
@@ -239,37 +289,16 @@ export default function ReplayChart({ frames, currentIndex }: ReplayChartProps) 
             />
           )}
 
-          {/* Labels */}
-          <text
-            x={PX - 16}
-            y={PY - 12}
-            fill="rgba(255,255,255,0.7)"
-            fontSize="12"
-            fontWeight="600"
-            textAnchor="end"
-          >
-            Signal
-          </text>
-          <text
-            x={PX + IW + 8}
-            y={PY + IH + 24}
-            fill="rgba(255,255,255,0.7)"
-            fontSize="12"
-            fontWeight="600"
-          >
-            Timeline →
-          </text>
-
           {/* Legend */}
           <g>
-            <rect x={PX + 16} y={PY + 8} width={160} height={48} fill="rgba(0,0,0,0.4)" rx="4" />
-            <line x1={PX + 24} y1={PY + 18} x2={PX + 44} y2={PY + 18} stroke="#22C55E" strokeWidth="2.5" />
-            <text x={PX + 52} y={PY + 22} fill="rgba(255,255,255,0.85)" fontSize="11" fontWeight="600">
+            <rect x={PX + 24} y={PY + 12} width={170} height={52} fill="rgba(0,0,0,0.5)" rx="4" stroke="rgba(255,255,255,0.1)" strokeWidth="1" />
+            <line x1={PX + 32} y1={PY + 24} x2={PX + 52} y2={PY + 24} stroke="#22C55E" strokeWidth="2.5" />
+            <text x={PX + 60} y={PY + 28} fill="rgba(255,255,255,0.9)" fontSize="11" fontWeight="600">
               Stability
             </text>
 
-            <line x1={PX + 24} y1={PY + 38} x2={PX + 44} y2={PY + 38} stroke="#3B82F6" strokeWidth="2.5" />
-            <text x={PX + 52} y={PY + 42} fill="rgba(255,255,255,0.85)" fontSize="11" fontWeight="600">
+            <line x1={PX + 32} y1={PY + 44} x2={PX + 52} y2={PY + 44} stroke="#3B82F6" strokeWidth="2.5" />
+            <text x={PX + 60} y={PY + 48} fill="rgba(255,255,255,0.9)" fontSize="11" fontWeight="600">
               Drift
             </text>
           </g>
