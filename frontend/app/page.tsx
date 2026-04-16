@@ -54,8 +54,7 @@ export default function HomePage() {
       <HeaderBar
         phase={currentFrame.current_phase ?? "UNKNOWN"}
         confidence={currentFrame.metrics?.confidence ?? 0}
-        index={index}
-        total={frames.length}
+        playing={playing}
       />
 
       <section className="view-main">
