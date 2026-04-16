@@ -58,6 +58,11 @@ interface Frame {
 }
 
 const DEFAULT_FRAME_INTERVAL = 500 // milliseconds
+const TRAILING_WINDOW = 24
+
+function formatPhase(phase: string): string {
+  return phase.replace(/_/g, ' ').toUpperCase()
+}
 
 export default function Home() {
   const [frames, setFrames] = useState<Frame[]>([])
@@ -167,7 +172,62 @@ export default function Home() {
     setIsPlaying(true)
   }
 
+  const handleStep = (direction: 1 | -1) => {
+    setCurrentFrameIndex((prevIndex) => {
+      const nextIndex = Math.max(0, Math.min(frames.length - 1, prevIndex + direction))
+      return nextIndex
+    })
+    lastFrameTimeRef.current = 0
+  }
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!frames.length) return
+      if (event.key === ' ') {
+        event.preventDefault()
+        setIsPlaying((prev) => !prev)
+      } else if (event.key === 'ArrowRight') {
+        event.preventDefault()
+        handleStep(1)
+      } else if (event.key === 'ArrowLeft') {
+        event.preventDefault()
+        handleStep(-1)
+      } else if (event.key.toLowerCase() === 'r') {
+        event.preventDefault()
+        handleRestart()
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [frames.length])
+
   const currentFrame = frames[currentFrameIndex] || null
+  const playbackProgress = frames.length ? ((currentFrameIndex + 1) / frames.length) * 100 : 0
+
+  const currentDrift = currentFrame ? currentFrame.structural_drift_score * 100 : 0
+  const currentStability = currentFrame ? currentFrame.relational_stability_score * 100 : 0
+  const currentCoherence = currentFrame ? currentFrame.coherence_score * 100 : 0
+  const currentConfidence = currentFrame ? currentFrame.confidence * 100 : 0
+
+  const trailingStart = Math.max(0, currentFrameIndex - TRAILING_WINDOW + 1)
+  const trailingFrames = frames.slice(trailingStart, currentFrameIndex + 1)
+  const trailingDriftAvg = trailingFrames.length
+    ? trailingFrames.reduce((acc, frame) => acc + frame.structural_drift_score, 0) / trailingFrames.length
+    : 0
+
+  const phaseBoundaries = frames.reduce<Array<{ label: string; index: number; key: string }>>((acc, frame, index) => {
+    const key = frame.phase || 'unknown'
+    const previous = acc[acc.length - 1]
+    if (!previous || previous.key !== key) {
+      acc.push({ key, label: formatPhase(key), index })
+    }
+    return acc
+  }, [])
+
+  const activePhase = currentFrame ? formatPhase(currentFrame.phase || 'unknown') : 'UNKNOWN'
+  const admittedRate = frames.length
+    ? (frames.slice(0, currentFrameIndex + 1).filter((frame) => frame.event_admitted).length / (currentFrameIndex + 1)) * 100
+    : 0
 
   return (
     <div className="demo-app">
@@ -186,15 +246,52 @@ export default function Home() {
       ) : currentFrame ? (
         <>
           <HeaderBar frame={currentFrame} />
+          <section className="session-strip">
+            <div className="session-strip-head">
+              <div>
+                <p className="session-title">Session Overview</p>
+                <p className="session-subtitle">
+                  Phase <strong>{activePhase}</strong> • frame {currentFrameIndex + 1}/{frames.length}
+                </p>
+              </div>
+              <div className="session-hotkeys">
+                <span>Space: Play/Pause</span>
+                <span>←/→: Step frame</span>
+                <span>R: Restart</span>
+              </div>
+            </div>
+            <div className="session-progress-track">
+              <div className="session-progress-fill" style={{ width: `${playbackProgress.toFixed(2)}%` }} />
+            </div>
+            <div className="session-grid">
+              <article className="session-card">
+                <p>Structural drift</p>
+                <strong>{currentDrift.toFixed(1)}%</strong>
+                <span>Trailing avg {(trailingDriftAvg * 100).toFixed(1)}%</span>
+              </article>
+              <article className="session-card">
+                <p>Relational stability</p>
+                <strong>{currentStability.toFixed(1)}%</strong>
+                <span>Instability {(100 - currentStability).toFixed(1)}%</span>
+              </article>
+              <article className="session-card">
+                <p>Coherence / confidence</p>
+                <strong>{currentCoherence.toFixed(1)}% / {currentConfidence.toFixed(1)}%</strong>
+                <span>Signal admitted {admittedRate.toFixed(1)}% of replay</span>
+              </article>
+            </div>
+          </section>
           <PlaybackControls
             currentIndex={currentFrameIndex}
             totalFrames={frames.length}
             isPlaying={isPlaying}
             playbackSpeed={playbackSpeed}
+            phaseMarkers={phaseBoundaries}
             onIndexChange={handleIndexChange}
             onPlayPause={handlePlayPause}
             onSpeedChange={handleSpeedChange}
             onRestart={handleRestart}
+            onStep={handleStep}
           />
           <div className="demo-main">
             <ReplayChart frames={frames} currentIndex={currentFrameIndex} />

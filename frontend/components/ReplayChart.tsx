@@ -96,6 +96,10 @@ export default function ReplayChart({ frames, currentIndex }: ReplayChartProps) 
     const v = domain.min + (domain.max - domain.min) * t
     return { value: v, y: yToPx(v) }
   })
+  const thresholdLines = [
+    { label: 'Watch', value: 55, stroke: 'rgba(245, 158, 11, 0.5)' },
+    { label: 'Critical', value: 78, stroke: 'rgba(239, 68, 68, 0.55)' },
+  ]
 
   useEffect(() => {
     const el = scrollRef.current
@@ -174,6 +178,30 @@ export default function ReplayChart({ frames, currentIndex }: ReplayChartProps) 
                 </text>
               </g>
             ))}
+            {thresholdLines
+              .filter((line) => line.value >= domain.min && line.value <= domain.max)
+              .map((line) => (
+                <g key={line.label}>
+                  <line
+                    x1={M.left}
+                    y1={yToPx(line.value)}
+                    x2={M.left + plotWidth}
+                    y2={yToPx(line.value)}
+                    stroke={line.stroke}
+                    strokeDasharray="6 4"
+                    strokeWidth="1.3"
+                  />
+                  <text
+                    x={M.left + 8}
+                    y={yToPx(line.value) - 6}
+                    fill={line.stroke}
+                    fontSize="10"
+                    fontWeight="700"
+                  >
+                    {line.label}
+                  </text>
+                </g>
+              ))}
 
             <line x1={M.left} y1={M.top} x2={M.left} y2={M.top + IH} stroke="rgba(255,255,255,0.35)" strokeWidth="1.5" />
             <line x1={M.left} y1={M.top + IH} x2={M.left + plotWidth} y2={M.top + IH} stroke="rgba(255,255,255,0.35)" strokeWidth="1.5" />
@@ -197,6 +225,21 @@ export default function ReplayChart({ frames, currentIndex }: ReplayChartProps) 
 
             <polyline points={instabilityPath} fill="none" stroke="#FF8A5C" strokeWidth="2.6" opacity="0.98" filter="url(#glow)" />
             <polyline points={driftPath} fill="none" stroke="#60A5FA" strokeWidth="2.8" opacity="1" filter="url(#glow)" />
+
+            {visibleDriftPoints
+              .filter((point) => point.value >= 78)
+              .map((point, idx) => (
+                <circle
+                  key={`high-drift-${idx}`}
+                  cx={point.x}
+                  cy={point.y}
+                  r="3.6"
+                  fill="#ef4444"
+                  stroke="#fee2e2"
+                  strokeWidth="1.2"
+                  opacity="0.9"
+                />
+              ))}
 
             <line
               x1={currentX}
