@@ -16,10 +16,10 @@ export function ReplayChart({ frames, currentIndex }: Props) {
   const toY = (value: number) => height - pad - value * (height - pad * 2);
 
   const driftPath = frames
-    .map((f, i) => `${i === 0 ? "M" : "L"}${toX(i)},${toY(f.metrics.structural_drift)}`)
+    .map((f, i) => `${i === 0 ? "M" : "L"}${toX(i)},${toY(f.metrics?.structural_drift ?? 0)}`)
     .join(" ");
   const healthPath = frames
-    .map((f, i) => `${i === 0 ? "M" : "L"}${toX(i)},${toY(f.metrics.relational_stability)}`)
+    .map((f, i) => `${i === 0 ? "M" : "L"}${toX(i)},${toY(f.metrics?.relational_stability ?? 0)}`)
     .join(" ");
 
   return (
