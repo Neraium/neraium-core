@@ -4,9 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import { fetchDemoInit } from "@/lib/api";
 import { DemoFrame } from "@/lib/types";
-import { AppShell } from "@/components/AppShell";
-import { Topbar } from "@/components/Topbar";
-import { DemoHero } from "@/components/DemoHero";
+import { HeaderBar } from "@/components/HeaderBar";
 import { ReplayChart } from "@/components/ReplayChart";
 import { TetrahedronPanel } from "@/components/TetrahedronPanel";
 import { PlaybackControls } from "@/components/PlaybackControls";
@@ -48,57 +46,35 @@ export default function HomePage() {
   const currentFrame = useMemo(() => frames[index], [frames, index]);
 
   if (!currentFrame) {
-    return (
-      <AppShell>
-        <Topbar phase="LOADING" confidence={0} index={0} total={1} />
-        <div className="content">
-          <div className="page">
-            <div style={{ padding: "40px", textAlign: "center", color: "#96acc4" }}>
-              Loading Neraium structural synthesis demo...
-            </div>
-          </div>
-        </div>
-      </AppShell>
-    );
+    return <main className="loading">Loading...</main>;
   }
 
   return (
-    <AppShell>
-      <Topbar
+    <main className="system">
+      <HeaderBar
         phase={currentFrame.current_phase ?? "UNKNOWN"}
         confidence={currentFrame.metrics?.confidence ?? 0}
         index={index}
         total={frames.length}
       />
-      <div className="content">
-        <div className="page demo-section">
-          <DemoHero frame={currentFrame} />
 
-          <ReplayChart frames={frames} currentIndex={index} />
+      <section className="view-main">
+        <ReplayChart frames={frames} currentIndex={index} />
+        <TetrahedronPanel position={extractPosition(currentFrame)} />
+      </section>
 
-          <div className="tetra-chart-grid">
-            <TetrahedronPanel position={extractPosition(currentFrame)} />
-            <div>
-              <div className="panel">
-                <div className="panel-header">
-                  <h3>Playback Controls</h3>
-                </div>
-                <PlaybackControls
-                  playing={playing}
-                  speed={speed}
-                  onPlayPause={() => setPlaying((v) => !v)}
-                  onRestart={() => {
-                    setIndex(0);
-                    setPlaying(true);
-                  }}
-                  onSpeed={setSpeed}
-                />
-              </div>
-              <InsightPanels frame={currentFrame} />
-            </div>
-          </div>
-        </div>
-      </div>
-    </AppShell>
+      <InsightPanels frame={currentFrame} />
+
+      <PlaybackControls
+        playing={playing}
+        speed={speed}
+        onPlayPause={() => setPlaying((v) => !v)}
+        onRestart={() => {
+          setIndex(0);
+          setPlaying(true);
+        }}
+        onSpeed={setSpeed}
+      />
+    </main>
   );
 }

@@ -33,8 +33,7 @@ export function TetrahedronPanel({ position }: { position: [number, number, numb
 
   return (
     <section className="panel tetra">
-      <h3>Tetrahedral State</h3>
-      <p className="subtle">System position in structural state space</p>
+      <h3>System State</h3>
       <Canvas camera={{ position: [2.5, 2.3, 2.7], fov: 45 }}>
         <ambientLight intensity={0.6} />
         <pointLight position={[4, 3, 3]} intensity={1.2} />
