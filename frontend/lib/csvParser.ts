@@ -128,10 +128,10 @@ export function csvRowsToDemoFrames(rows: CSVRow[]): DemoFrame[] {
       verdict: metrics.confidence > 85 ? 'ADMITTED' : 'PENDING',
       status: status.toUpperCase(),
       metrics: {
-        structural_drift: Math.round(metrics.structural_drift * 100) / 100,
-        relational_stability: Math.round(metrics.relational_stability * 100) / 100,
-        coherence: Math.round(metrics.coherence * 100) / 100,
-        confidence: Math.round(metrics.confidence * 100) / 100,
+        structural_drift: Math.round((metrics.structural_drift / 100) * 100) / 100,
+        relational_stability: Math.round((metrics.relational_stability / 100) * 100) / 100,
+        coherence: Math.round((metrics.coherence / 100) * 100) / 100,
+        confidence: Math.round((metrics.confidence / 100) * 100) / 100,
       },
       tetrahedral_state: {
         position: {
