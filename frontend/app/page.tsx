@@ -17,9 +17,14 @@ function transformFrame(demoFrame: DemoFrame): Frame {
     timestamp: demoFrame.timestamp,
     phase: demoFrame.current_phase,
     system_health: demoFrame.status.toLowerCase(),
+    risk_level: (demoFrame as any).risk_level || 'LOW',
     confidence: demoFrame.metrics.confidence,
     structural_drift_score: demoFrame.metrics.structural_drift,
     relational_stability_score: demoFrame.metrics.relational_stability,
+    temporal_consistency_score: (demoFrame.metrics as any).temporal_consistency || 0,
+    system_coherence: demoFrame.metrics.coherence,
+    composite_instability: (demoFrame.metrics as any).composite_instability || 0,
+    system_health_metric: (demoFrame.metrics as any).system_health || 0,
     coherence_score: demoFrame.metrics.coherence,
     event_admitted: demoFrame.verdict === 'ADMITTED' || demoFrame.verdict === 'admitted',
     transition_type: demoFrame.verdict,
@@ -33,9 +38,14 @@ interface Frame {
   timestamp: string
   phase: string
   system_health: string
+  risk_level: string
   confidence: number
   structural_drift_score: number
   relational_stability_score: number
+  temporal_consistency_score: number
+  system_coherence: number
+  composite_instability: number
+  system_health_metric: number
   coherence_score: number
   event_admitted: boolean
   transition_type: string
