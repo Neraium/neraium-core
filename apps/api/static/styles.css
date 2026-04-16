@@ -5723,3 +5723,60 @@ details > summary:hover {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+
+/* Mobile-first usability refinements */
+@media (max-width: 740px) {
+  .content {
+    padding: 10px;
+    padding-bottom: max(12px, env(safe-area-inset-bottom, 0px));
+  }
+
+  .panel,
+  .operator-section,
+  .page-dashboard > .panel:not(.control-center) {
+    padding: 12px;
+  }
+
+  .telemetry-status-strip {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .telemetry-status-strip .chip {
+    justify-content: center;
+    min-height: 38px;
+    width: 100%;
+  }
+
+  .dashboard-hero-score-row {
+    gap: 12px;
+  }
+
+  .health-ring-wrap,
+  .health-ring {
+    width: 104px;
+    height: 104px;
+  }
+
+  .graph-controls-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  .graph-controls-row button,
+  .graph-controls-row input,
+  .graph-controls-row .subtitle {
+    width: 100%;
+  }
+
+  .table-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .data-table {
+    min-width: 640px;
+  }
+}
