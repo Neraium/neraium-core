@@ -7,10 +7,12 @@ interface PlaybackControlsProps {
   totalFrames: number
   isPlaying: boolean
   playbackSpeed: number
+  phaseMarkers: Array<{ label: string; index: number; key: string }>
   onIndexChange: (index: number) => void
   onPlayPause: () => void
   onSpeedChange: (speed: number) => void
   onRestart: () => void
+  onStep: (direction: 1 | -1) => void
 }
 
 export default function PlaybackControls({
@@ -18,13 +20,15 @@ export default function PlaybackControls({
   totalFrames,
   isPlaying,
   playbackSpeed,
+  phaseMarkers,
   onIndexChange,
   onPlayPause,
   onSpeedChange,
   onRestart,
+  onStep,
 }: PlaybackControlsProps) {
   return (
-    <div className="demo-controls-row">
+    <div className="demo-controls-row" role="region" aria-label="Playback controls">
       <div className="controls-group">
         <div className="control-slider">
           <label>Frame</label>
@@ -60,13 +64,31 @@ export default function PlaybackControls({
         </div>
 
         <div className="control-buttons">
+          <button className="btn btn-secondary" onClick={() => onStep(-1)}>
+            ← Prev
+          </button>
           <button className={`btn ${isPlaying ? 'active' : ''}`} onClick={onPlayPause}>
             {isPlaying ? '⏸ Pause' : '▶ Play'}
+          </button>
+          <button className="btn btn-secondary" onClick={() => onStep(1)}>
+            Next →
           </button>
           <button className="btn" onClick={onRestart}>
             ↻ Restart
           </button>
         </div>
+      </div>
+      <div className="phase-chip-row" aria-label="Phase jump shortcuts">
+        {phaseMarkers.map((phase) => (
+          <button
+            key={`${phase.key}-${phase.index}`}
+            type="button"
+            className={`phase-chip ${currentIndex >= phase.index ? 'reached' : ''}`}
+            onClick={() => onIndexChange(phase.index)}
+          >
+            {phase.label}
+          </button>
+        ))}
       </div>
     </div>
   )
