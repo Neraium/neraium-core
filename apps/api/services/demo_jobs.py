@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import csv
 import json
 import logging
 import math
@@ -269,6 +270,46 @@ class DemoJobsManager:
         with self.store.greenhouse_demo_cache_lock:
             self.store.greenhouse_demo_cache[limited] = list(rows)
         return rows
+
+    def load_fd004_single_unit(self, unit_id: str = "unit_001", max_frames: int | None = None) -> tuple[str, str, list[dict[str, Any]]]:
+        """Load a single unit from the FD004 dataset."""
+        # Locate the FD004 CSV file
+        repo_root = Path(__file__).resolve().parents[3]
+        fd004_csv = repo_root / "fd004_outputs_subset" / "fd004_real_timeseries.csv"
+
+        if not fd004_csv.is_file():
+            raise FileNotFoundError(f"FD004 timeseries file missing at {fd004_csv}")
+
+        rows: list[dict[str, Any]] = []
+        with fd004_csv.open("r", encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                if str(row.get("asset_id", "")).strip() == unit_id:
+                    rows.append({
+                        "timestamp": row.get("timestamp", ""),
+                        "asset_id": row.get("asset_id", unit_id),
+                        "cycle": int(row.get("cycle", 0)),
+                        "structural_drift_score": float(row.get("structural_drift_score", 0.0)),
+                        "composite_instability": float(row.get("composite_instability", 0.0)),
+                        "trend": row.get("trend", "stable"),
+                        "phase": row.get("phase", "stable"),
+                        "risk_level": row.get("risk_level", "LOW"),
+                        "estimated_rul": float(row.get("estimated_rul", 0.0)),
+                        "operator_message": row.get("operator_message", ""),
+                    })
+
+        if not rows:
+            raise ValueError(f"No data found for unit {unit_id} in FD004 dataset")
+
+        # Limit frames if requested
+        if max_frames is not None:
+            limited = max(30, min(500, int(max_frames)))
+            rows = rows[:limited]
+
+        site_id = "fd004-real"
+        asset_id = unit_id
+
+        return site_id, asset_id, rows
 
     @staticmethod
     def _build_demo_sensor_values_row(i: int, p: float, drift_lift: float, vib_spike: float) -> dict[str, float]:

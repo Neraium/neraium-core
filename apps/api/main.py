@@ -622,6 +622,7 @@ def create_app(
                 demo_jobs=state_store.demo_jobs,
                 demo_jobs_lock=state_store.demo_jobs_lock,
                 load_greenhouse_demo_subset=demo_manager.load_greenhouse_demo_subset,
+                load_fd004_single_unit=demo_manager.load_fd004_single_unit,
                 log_structured=log_structured,
                 summarize_exception_for_logs=summarize_exception_for_logs,
                 utc_now_iso=_utc_now_iso,
