@@ -276,3 +276,125 @@ function exportData(format, runId) {
   const url = apiUrl("/results/export/download", tenantScopeParams({ format, run_id: runId || "", limit: 500 }));
   window.location.href = url;
 }
+
+// Load dashboard with analysis results applied to data
+async function loadDashboard() {
+  try {
+    const activeRun = state.activeRun?.run_id;
+    const recentResults = await fetchRecentResults({ run_id: activeRun, limit: 50 });
+    state.dashboardRecent = Array.isArray(recentResults?.results) ? recentResults.results : [];
+
+    const latest = state.dashboardRecent?.[0] || null;
+    state.dashboardCurrentAlertStatus = latest?.alert_status || null;
+
+    // Render health score
+    const healthScore = healthScoreFromSignals(latest);
+    const healthScoreEl = qs("#dashboardHealthScore");
+    const healthCaptionEl = qs("#dashboardHealthCaption");
+    const { animateNumberText } = window.NeraiumUI || {};
+
+    if (healthScoreEl) {
+      if (healthScore !== null) {
+        healthScoreEl.textContent = String(healthScore);
+        if (animateNumberText) {
+          animateNumberText(healthScoreEl, healthScore, { decimals: 0, suffix: "" });
+        }
+      } else {
+        healthScoreEl.textContent = "-";
+      }
+    }
+    if (healthCaptionEl) {
+      healthCaptionEl.textContent = latest ? "Operational health" : "No active telemetry";
+    }
+    setHealthRingScore(healthScore);
+
+    // Render risk and trend
+    const riskEl = qs("#snapshotRisk");
+    const trendEl = qs("#snapshotTrend");
+    if (riskEl) riskEl.textContent = normalizeRiskLevel(latest?.risk_level) || "UNKNOWN";
+    if (trendEl) trendEl.textContent = (latest?.trend || "-").toUpperCase();
+
+    // Render state
+    const stateEl = qs("#snapshotState");
+    if (stateEl) stateEl.textContent = latest?.state || latest?.interpreted_state || "Unknown";
+
+    // Render recommendation
+    const recommendationEl = qs("#snapshotRecommendation");
+    if (recommendationEl) {
+      recommendationEl.textContent = latest?.operator_message || "Upload telemetry to start monitoring.";
+    }
+
+    // Render metrics
+    const trendMetricEl = qs("#metricTrend");
+    const phaseEl = qs("#metricPhaseBadge");
+    const riskBadgeEl = qs("#metricRiskBadge");
+    const confidenceEl = qs("#metricStateConfidence");
+
+    if (trendMetricEl) trendMetricEl.textContent = latest?.trend || "-";
+    if (phaseEl) phaseEl.innerHTML = latest ? phaseBadgeHtml(phaseFromResult(latest)) : "-";
+    if (riskBadgeEl) riskBadgeEl.innerHTML = riskBadgeHtml(normalizeRiskLevel(latest?.risk_level));
+    if (confidenceEl) {
+      const conf = latest?.confidence || latest?.state_confidence || 0;
+      confidenceEl.textContent = typeof conf === "number" ? `${Math.round(conf)}%` : "--%";
+    }
+
+    // Render risk explanation
+    renderRiskExplanation(latest, {}, state.dashboardRecent);
+
+  } catch (err) {
+    console.error("Dashboard load error:", err);
+    setStatus(String(err.message || err), true, true);
+  }
+}
+
+// Load validation/replay page with demo scenario
+async function loadValidationPage() {
+  try {
+    const demoBtn = qs("#seedDemoBtn");
+    if (demoBtn && !demoBtn.dataset.wired) {
+      demoBtn.dataset.wired = "1";
+      demoBtn.addEventListener("click", async () => {
+        try {
+          setStatus("Starting validation replay...", false, false);
+          const demoPanel = qs("#demoProgressPanel");
+          if (demoPanel) demoPanel.classList.remove("hidden");
+
+          // Fetch demo scenario
+          const demoRes = await fetchJson(apiUrl("/demo/scenario", tenantScopeParams()));
+          const results = Array.isArray(demoRes?.results) ? demoRes.results : [];
+
+          state.dashboardRecent = results;
+          state.demo = {
+            enabled: true,
+            replay: {
+              uiState: "completed",
+              totalFrames: results.length,
+              currentFrame: results.length
+            }
+          };
+
+          // Update progress panel
+          const phaseEl = qs("#demoProgressPhase");
+          const countEl = qs("#demoProgressCount");
+          const textEl = qs("#demoProgressText");
+
+          if (phaseEl) phaseEl.textContent = "Validation replay completed";
+          if (countEl) countEl.textContent = `${results.length}/${results.length}`;
+          if (textEl) textEl.textContent = "Replay analysis complete. Review results in Investigation run.";
+
+          setStatus("Replay completed. Opening run investigation...", false, false);
+          setTimeout(() => {
+            window.location.href = "/app/runs";
+          }, 2000);
+
+        } catch (err) {
+          const { friendlyErrorMessage } = window.NeraiumUI || {};
+          const msg = friendlyErrorMessage ? friendlyErrorMessage(err, "replay") : String(err.message || err);
+          setStatus(msg, true, true);
+        }
+      });
+    }
+  } catch (err) {
+    console.error("Validation page load error:", err);
+  }
+}
