@@ -161,7 +161,8 @@ def build_ingest_router(
         if "multipart/form-data" in content_type:
             try:
                 form = await request.form()
-            except Exception:
+            except Exception as exc:
+                logger.warning(f"Failed to parse multipart form data: {exc}")
                 form = None
             if form is not None:
                 uploaded = form.get("file")
@@ -187,7 +188,8 @@ def build_ingest_router(
         else:
             try:
                 raw = await request.json()
-            except Exception:
+            except Exception as exc:
+                logger.warning(f"Failed to parse request JSON: {exc}")
                 raw = None
             if isinstance(raw, dict):
                 raw_csv_sample = raw.get("csv_sample")

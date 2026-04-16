@@ -1,7 +1,8 @@
 'use client'
 
 import { useEffect, useState, useRef } from 'react'
-import { fetchFD004DemoInit } from '@/'
+import { fetchFD004DemoInit } from '@/lib/api'
+import { DemoFrame } from '@/lib/types'
 import HeaderBar from '@/components/HeaderBar'
 import TetrahedronPanel from '@/components/TetrahedronPanel'
 import InsightPanels from '@/components/InsightPanels'
@@ -9,7 +10,7 @@ import ReplayChart from '@/components/ReplayChart'
 import PlaybackControls from '@/components/PlaybackControls'
 
 // Transform DemoFrame to the format the components expect
-function transformFrame(demoFrame: DemoFrame): any {
+function transformFrame(demoFrame: DemoFrame): Frame {
   return {
     index: demoFrame.frame_index,
     total: demoFrame.frame_count,
@@ -58,8 +59,7 @@ export default function Home() {
   useEffect(() => {
     const loadDemoData = async () => {
       try {
-        const demoFrames = await fetchFD004DemoInit ('unit_001')
-        console.log('Frames length:', demoFrames?.length)
+        const demoFrames = await fetchFD004DemoInit('unit_001')
         if (demoFrames && demoFrames.length > 0) {
           const transformedFrames = demoFrames.map(transformFrame)
           setFrames(transformedFrames)
@@ -68,7 +68,6 @@ export default function Home() {
         }
         setLoading(false)
       } catch (error) {
-        console.error('Failed to fetch demo data:', error)
         setIsConnected(false)
         setLoading(false)
       }

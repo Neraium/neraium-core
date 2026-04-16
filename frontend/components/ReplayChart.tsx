@@ -1,5 +1,11 @@
+interface FrameData {
+  structural_drift_score: number
+  relational_stability_score: number
+  [key: string]: any
+}
+
 interface ReplayChartProps {
-  frames: any[]
+  frames: FrameData[]
   currentIndex: number
 }
 
@@ -13,8 +19,8 @@ export default function ReplayChart({ frames, currentIndex }: ReplayChartProps) 
   const IW = W - 2 * PX
   const IH = H - 2 * PY
 
-  const getDriftValue = (frame: any) => frame.structural_drift_score || 0
-  const getStabilityValue = (frame: any) => frame.relational_stability_score || 0
+  const getDriftValue = (frame: FrameData) => frame.structural_drift_score || 0
+  const getStabilityValue = (frame: FrameData) => frame.relational_stability_score || 0
 
   // Create data points for drift
   const driftPoints = frames.map((frame, idx) => ({
