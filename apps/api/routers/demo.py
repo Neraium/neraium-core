@@ -619,6 +619,7 @@ def build_demo_router(*, deps: DemoRouterDependencies) -> APIRouter:
         _: None = Depends(deps.require_api_key),
     ) -> dict[str, Any]:
         """Load FD004 dataset and return frame sequence for frontend replay."""
+        logger.info(f"Serving FD004 demo for {unit_id}")
         try:
             site_id, asset_id, rows = deps.load_fd004_single_unit(unit_id, max_frames)
         except Exception as exc:
