@@ -61,8 +61,8 @@ function calculateMetrics(sensors: number[], cycle: number) {
 
   return {
     confidence: Math.min(100, 90 + (cycle % 10)),
-    structural_drift: Math.max(0, 30 - (avgSensors * 0.3)),
-    relational_stability: Math.max(0, stability),
+    structural_drift: Math.max(0, Math.min(100, 100 - (avgSensors * 1.3))),
+    relational_stability: Math.max(0, Math.min(100, stability)),
     coherence: Math.min(100, 85 + (Math.random() * 10)),
   };
 }
