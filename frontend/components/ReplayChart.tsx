@@ -52,9 +52,9 @@ export default function ReplayChart({ frames, currentIndex }: ReplayChartProps) 
   const currentInstability = getInstabilityValue(frames[currentIndex] || frames[0])
   const riskLevel = (frames[currentIndex] as any)?.risk_level || 'LOW'
 
-  // Determine color based on instability
-  const instabilityColor = currentInstability > 0.7 ? '#EF4444' : currentInstability > 0.5 ? '#F97316' : '#22C55E'
-  const driftColor = currentDrift > 0.6 ? '#EF4444' : currentDrift > 0.4 ? '#F97316' : '#22C55E'
+  // Determine color based on instability and drift (0-1 scale)
+  const instabilityColor = currentInstability > 0.5 ? '#EF4444' : currentInstability > 0.3 ? '#F97316' : '#22C55E'
+  const driftColor = currentDrift > 0.5 ? '#EF4444' : currentDrift > 0.3 ? '#F97316' : '#22C55E'
 
   return (
     <div className="panel">

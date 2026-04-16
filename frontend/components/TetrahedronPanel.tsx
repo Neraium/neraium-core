@@ -111,8 +111,8 @@ export default function TetrahedronPanel({ frame }: TetrahedronPanelProps) {
         <div className="tetra-info">
           <div style={{ marginBottom: '12px', paddingBottom: '12px', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
             <div style={{ fontSize: '12px', color: 'rgba(255,255,255,0.6)', marginBottom: '4px' }}>TETRAHEDRON STATE</div>
-            <div style={{ fontSize: '13px', fontWeight: '600', color: compositeInstability > 0.7 ? '#EF4444' : compositeInstability > 0.5 ? '#F97316' : '#22C55E' }}>
-              Risk: {compositeInstability > 0.7 ? 'CRITICAL' : compositeInstability > 0.5 ? 'HIGH' : compositeInstability > 0.3 ? 'MEDIUM' : 'LOW'}
+            <div style={{ fontSize: '13px', fontWeight: '600', color: compositeInstability > 0.5 ? '#EF4444' : compositeInstability > 0.3 ? '#F97316' : '#22C55E' }}>
+              Risk: {compositeInstability > 0.5 ? 'CRITICAL' : compositeInstability > 0.3 ? 'HIGH' : compositeInstability > 0.15 ? 'MEDIUM' : 'LOW'}
             </div>
           </div>
 
@@ -150,7 +150,7 @@ export default function TetrahedronPanel({ frame }: TetrahedronPanelProps) {
               marginTop: '4px',
               fontSize: '16px',
               fontWeight: 'bold',
-              color: systemHealth > 0.7 ? '#22C55E' : systemHealth > 0.4 ? '#F97316' : '#EF4444',
+              color: systemHealth > 0.5 ? '#22C55E' : systemHealth > 0.3 ? '#F97316' : '#EF4444',
               transition: 'all 0.3s ease-in-out'
             }}>
               {(systemHealth * 100).toFixed(0)}%
