@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import math
+import time
 from typing import Any
 from fastapi import APIRouter
 
@@ -11,6 +13,10 @@ from ui.core_integration import build_system_state, evaluate_gate, classify_tran
 from ui.layouts.operations_view import build_operations_view
 
 router = APIRouter(prefix="/api/ui", tags=["ui-replay"])
+
+# Track state for live simulation
+_simulation_start_time = time.time()
+_frame_index = 0
 
 
 def _build_frame(row: dict[str, Any], previous_row: dict[str, Any] | None, index: int, total: int) -> dict[str, Any]:
@@ -88,5 +94,86 @@ async def get_frame(index: int, use_synthetic: bool = True) -> dict[str, Any]:
     row = rows[index]
     previous_row = rows[index - 1] if index > 0 else None
     frame = _build_frame(row, previous_row, index + 1, len(rows))
+
+    return frame
+
+
+@router.get("/live")
+async def get_live_data() -> dict[str, Any]:
+    """
+    Get live simulated system data with continuously changing metrics.
+    This endpoint generates synthetic real-time sensor data that updates
+    smoothly to simulate actual live system monitoring.
+    """
+    global _simulation_start_time, _frame_index
+
+    # Get elapsed time since simulation start (in seconds)
+    elapsed = time.time() - _simulation_start_time
+
+    # Use elapsed time to drive multiple cycles through the demo data
+    # Each cycle is ~60 seconds
+    rows = load_builtin_demo_rows(use_synthetic=True)
+    cycle_position = (elapsed / 60.0) % len(rows)
+    frame_idx = int(cycle_position)
+
+    # Get interpolation factor for smooth transitions between frames
+    interpolation = cycle_position - frame_idx
+
+    # Get current and next frame for interpolation
+    row = rows[frame_idx % len(rows)]
+    next_row = rows[(frame_idx + 1) % len(rows)]
+
+    # Build base frame
+    previous_row = rows[(frame_idx - 1) % len(rows)] if frame_idx > 0 else None
+    frame = _build_frame(row, previous_row, frame_idx + 1, len(rows))
+
+    # Generate smoothly transitioning metrics by interpolating between frames
+    def lerp(a: float, b: float, t: float) -> float:
+        """Linear interpolation."""
+        return a + (b - a) * t
+
+    # Add small oscillations on top for "real" data variation
+    oscillation = 0.02 * math.sin(elapsed * 2 * math.pi / 5.0)  # 5-second cycle
+
+    # Interpolate key metrics
+    drift_base = float(row.get("structural_drift_score", 0.0))
+    drift_next = float(next_row.get("structural_drift_score", 0.0))
+    frame["structural_drift_score"] = max(0, min(1,
+        lerp(drift_base, drift_next, interpolation) + oscillation * 0.5
+    ))
+
+    stability_base = float(row.get("relational_stability_score", 0.0))
+    stability_next = float(next_row.get("relational_stability_score", 0.0))
+    frame["relational_stability_score"] = max(0, min(1,
+        lerp(stability_base, stability_next, interpolation) + oscillation * 0.3
+    ))
+
+    coherence_base = float(row.get("coherence_score", 0.0))
+    coherence_next = float(next_row.get("coherence_score", 0.0))
+    frame["coherence_score"] = max(0, min(1,
+        lerp(coherence_base, coherence_next, interpolation) + oscillation * 0.2
+    ))
+
+    confidence_base = float(row.get("confidence_score", 0.0))
+    confidence_next = float(next_row.get("confidence_score", 0.0))
+    frame["confidence"] = max(0, min(1,
+        lerp(confidence_base, confidence_next, interpolation) + oscillation * 0.1
+    ))
+
+    # Update timestamp to now
+    from datetime import datetime, timezone
+    frame["timestamp"] = datetime.now(timezone.utc).isoformat()
+    frame["is_live"] = True
+
+    # Determine system health based on metrics
+    drift = frame["structural_drift_score"]
+    stability = frame["relational_stability_score"]
+
+    if drift > 0.7 or stability < 0.3:
+        frame["system_health"] = "degraded"
+    elif drift > 0.5 or stability < 0.5:
+        frame["system_health"] = "watch"
+    else:
+        frame["system_health"] = "nominal"
 
     return frame

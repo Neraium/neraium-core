@@ -32,48 +32,45 @@ export default function Home() {
 
   const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000'
 
-  // Load all frames once on mount
+  // Poll for live data from the backend
   useEffect(() => {
-    const loadFrames = async () => {
+    const pollLiveData = async () => {
       try {
-        const response = await axios.get(`${apiBase}/api/ui/frames`)
-        const frames = response.data.frames || []
-        setAllFrames(frames)
+        const response = await axios.get(`${apiBase}/api/ui/live`)
+        const liveFrame = response.data
+        setCurrentFrame(liveFrame)
         setIsConnected(true)
         setLoading(false)
       } catch (error) {
-        console.error('Failed to fetch frames:', error)
-        setIsConnected(false)
-        setLoading(false)
+        console.error('Failed to fetch live data:', error)
+        // Fallback: try regular frames
+        try {
+          const response = await axios.get(`${apiBase}/api/ui/frames`)
+          const frames = response.data.frames || []
+          if (frames.length > 0) {
+            setAllFrames(frames)
+            setCurrentFrame(frames[0])
+            setIsConnected(true)
+            setLoading(false)
+          }
+        } catch (fallbackError) {
+          setIsConnected(false)
+        }
       }
     }
-    loadFrames()
-  }, [apiBase])
 
-  // Simulate live polling through the frame sequence
-  useEffect(() => {
-    if (allFrames.length === 0) return
+    // Initial load
+    pollLiveData()
 
-    // Set initial frame
-    setCurrentFrame(allFrames[0])
-    setCurrentFrameIndex(0)
-
-    // Poll for "new" data by advancing through frames
-    // This simulates real-time updates at ~2 second intervals
-    pollIntervalRef.current = setInterval(() => {
-      setCurrentFrameIndex((prev) => {
-        const nextIndex = (prev + 1) % allFrames.length
-        setCurrentFrame(allFrames[nextIndex])
-        return nextIndex
-      })
-    }, 2000)
+    // Poll for live data every 500ms for smooth updates
+    pollIntervalRef.current = setInterval(pollLiveData, 500)
 
     return () => {
       if (pollIntervalRef.current) {
         clearInterval(pollIntervalRef.current)
       }
     }
-  }, [allFrames])
+  }, [apiBase])
 
   return (
     <div className="demo-app">
