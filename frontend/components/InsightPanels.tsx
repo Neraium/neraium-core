@@ -82,9 +82,10 @@ export default function InsightPanels({ frame }: InsightPanelsProps) {
                 backgroundClip: 'text',
                 WebkitBackgroundClip: 'text',
                 WebkitTextFillColor: 'transparent',
+                transition: 'all 0.5s ease-in-out',
               }}
             >
-              {(frame.structural_drift_score * 100).toFixed(0)}%
+              {(frame.structural_drift_score * 100).toFixed(1)}%
             </div>
           </div>
           <div style={{ padding: '8px', background: 'rgba(255,255,255,0.03)', borderRadius: '4px' }}>
@@ -97,9 +98,10 @@ export default function InsightPanels({ frame }: InsightPanelsProps) {
                 backgroundClip: 'text',
                 WebkitBackgroundClip: 'text',
                 WebkitTextFillColor: 'transparent',
+                transition: 'all 0.5s ease-in-out',
               }}
             >
-              {(frame.relational_stability_score * 100).toFixed(0)}%
+              {(frame.relational_stability_score * 100).toFixed(1)}%
             </div>
           </div>
           <div style={{ padding: '8px', background: 'rgba(255,255,255,0.03)', borderRadius: '4px' }}>
@@ -112,9 +114,10 @@ export default function InsightPanels({ frame }: InsightPanelsProps) {
                 backgroundClip: 'text',
                 WebkitBackgroundClip: 'text',
                 WebkitTextFillColor: 'transparent',
+                transition: 'all 0.5s ease-in-out',
               }}
             >
-              {(frame.coherence_score * 100).toFixed(0)}%
+              {(frame.coherence_score * 100).toFixed(1)}%
             </div>
           </div>
           <div style={{ padding: '8px', background: 'rgba(255,255,255,0.03)', borderRadius: '4px' }}>
@@ -127,9 +130,10 @@ export default function InsightPanels({ frame }: InsightPanelsProps) {
                 backgroundClip: 'text',
                 WebkitBackgroundClip: 'text',
                 WebkitTextFillColor: 'transparent',
+                transition: 'all 0.5s ease-in-out',
               }}
             >
-              {(frame.confidence * 100).toFixed(0)}%
+              {(frame.confidence * 100).toFixed(1)}%
             </div>
           </div>
         </div>

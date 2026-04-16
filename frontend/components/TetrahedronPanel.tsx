@@ -107,26 +107,26 @@ export default function TetrahedronPanel({ frame }: TetrahedronPanelProps) {
         <div className="tetra-info">
           <div className="tetra-label">
             <strong>Drift</strong>
-            <div style={{ marginTop: '4px', fontSize: '16px', color: '#3B82F6' }}>
-              {(drift * 100).toFixed(0)}%
+            <div style={{ marginTop: '4px', fontSize: '16px', color: '#3B82F6', transition: 'all 0.5s ease-in-out' }}>
+              {(drift * 100).toFixed(1)}%
             </div>
           </div>
           <div className="tetra-label">
             <strong>Stability</strong>
-            <div style={{ marginTop: '4px', fontSize: '16px', color: '#22C55E' }}>
-              {(stability * 100).toFixed(0)}%
+            <div style={{ marginTop: '4px', fontSize: '16px', color: '#22C55E', transition: 'all 0.5s ease-in-out' }}>
+              {(stability * 100).toFixed(1)}%
             </div>
           </div>
           <div className="tetra-label">
             <strong>Coherence</strong>
-            <div style={{ marginTop: '4px', fontSize: '16px', color: '#06B6D4' }}>
-              {(coherence * 100).toFixed(0)}%
+            <div style={{ marginTop: '4px', fontSize: '16px', color: '#06B6D4', transition: 'all 0.5s ease-in-out' }}>
+              {(coherence * 100).toFixed(1)}%
             </div>
           </div>
           <div className="tetra-label">
             <strong>Confidence</strong>
-            <div style={{ marginTop: '4px', fontSize: '16px', color: '#F97316' }}>
-              {(confidence * 100).toFixed(0)}%
+            <div style={{ marginTop: '4px', fontSize: '16px', color: '#F97316', transition: 'all 0.5s ease-in-out' }}>
+              {(confidence * 100).toFixed(1)}%
             </div>
           </div>
         </div>
