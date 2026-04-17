@@ -43,8 +43,8 @@ export default function ReplayChart({ frames, currentIndex }: ReplayChartProps) 
     const spread = Math.max(dataMax - dataMin, 0)
 
     const padding = spread < 4
-      ? Math.max(spread * 0.18, 0.35)
-      : Math.max(spread * 0.12, 0.8)
+      ? Math.max(spread * 0.06, 0.15)
+      : Math.max(spread * 0.04, 0.3)
 
     const min = Math.max(Y_MIN, dataMin - padding)
     const max = Math.min(Y_MAX, dataMax + padding)
@@ -52,8 +52,8 @@ export default function ReplayChart({ frames, currentIndex }: ReplayChartProps) 
     if (max - min < 1.2) {
       const center = (max + min) / 2
       return {
-        min: Math.max(Y_MIN, center - 0.7),
-        max: Math.min(Y_MAX, center + 0.7),
+        min: Math.max(Y_MIN, center - 0.35),
+        max: Math.min(Y_MAX, center + 0.35),
       }
     }
 
@@ -258,14 +258,12 @@ export default function ReplayChart({ frames, currentIndex }: ReplayChartProps) 
               <circle cx={currentX} cy={currentInstabilityPoint.y} r="7.5" fill="#FF8A5C" stroke="#FFFFFF" strokeWidth="2" opacity="1" />
             )}
 
-            <text x={M.left - 22} y={M.top - 8} fill="rgba(226,232,240,0.95)" fontSize="12" fontWeight="700" textAnchor="end">
-              Signal (%)
-            </text>
-            <text x={M.left + plotWidth} y={H - 14} fill="rgba(226,232,240,0.95)" fontSize="12" fontWeight="700" textAnchor="end">
-              Frame {safeIndex + 1} / {frames.length}
-            </text>
           </svg>
         </div>
+      </div>
+
+      <div className="chart-footer">
+        <span>Frame {safeIndex + 1} / {frames.length}</span>
       </div>
     </div>
   )

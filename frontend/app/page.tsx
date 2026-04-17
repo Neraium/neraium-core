@@ -7,6 +7,7 @@ import HeaderBar from '@/components/HeaderBar'
 import TetrahedronPanel from '@/components/TetrahedronPanel'
 import InsightPanels from '@/components/InsightPanels'
 import ReplayChart from '@/components/ReplayChart'
+import DriftAlert from '@/components/DriftAlert'
 import PlaybackControls from '@/components/PlaybackControls'
 
 function getSystemHealth(structuralDrift: number, relationalStability: number): string {
@@ -294,6 +295,7 @@ export default function Home() {
             onStep={handleStep}
           />
           <div className="demo-main">
+            <DriftAlert frames={frames} currentIndex={currentFrameIndex} />
             <ReplayChart frames={frames} currentIndex={currentFrameIndex} />
             <TetrahedronPanel frame={currentFrame} />
             <InsightPanels frame={currentFrame} />

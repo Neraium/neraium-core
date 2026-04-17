@@ -583,6 +583,14 @@ input[type="range"] {
   display: block;
 }
 
+.chart-footer {
+  padding: 8px 0;
+  text-align: right;
+  font-size: 11px;
+  color: #cbd5e1;
+  font-weight: 600;
+}
+
 /* Tetrahedron */
 .tetra-container {
   display: flex;
@@ -670,6 +678,78 @@ input[type="range"] {
   color: #64748B;
   margin-top: 6px;
   font-weight: 500;
+}
+
+/* Alerts */
+.drift-alert {
+  display: flex;
+  gap: 16px;
+  padding: 16px 20px;
+  border-radius: 8px;
+  margin-bottom: 20px;
+  align-items: flex-start;
+  animation: slideInDown 0.3s ease;
+}
+
+@keyframes slideInDown {
+  from {
+    opacity: 0;
+    transform: translateY(-12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.critical-alert {
+  background: linear-gradient(135deg, rgba(239, 68, 68, 0.15), rgba(220, 38, 38, 0.1));
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  box-shadow: 0 8px 24px rgba(239, 68, 68, 0.1);
+}
+
+.alert-icon {
+  flex-shrink: 0;
+  font-size: 22px;
+  color: #ef4444;
+  font-weight: 700;
+}
+
+.alert-content {
+  flex: 1;
+}
+
+.alert-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: #fecaca;
+  margin-bottom: 4px;
+}
+
+.alert-message {
+  font-size: 12px;
+  color: #fca5a5;
+  line-height: 1.4;
+}
+
+.alert-dismiss {
+  flex-shrink: 0;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  background: rgba(239, 68, 68, 0.1);
+  color: #ef4444;
+  font-size: 18px;
+  font-weight: 700;
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+
+.alert-dismiss:hover {
+  background: rgba(239, 68, 68, 0.2);
 }
 
 /* Responsive */
