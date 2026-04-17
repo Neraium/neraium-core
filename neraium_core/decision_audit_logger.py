@@ -7,10 +7,20 @@ from __future__ import annotations
 
 import csv
 import logging
+import re
 from pathlib import Path
 from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
+
+
+def _sanitize_for_csv(text: str) -> str:
+    """Remove emoji and control characters for Windows-safe CSV output."""
+    if not isinstance(text, str):
+        return str(text)
+    # Remove emoji (U+1F300-U+1F9FF range) and control characters
+    text = re.sub(r'[\U0001F300-\U0001F9FF\x00-\x1f\x7f-\x9f]', '', text)
+    return text.strip()
 
 
 class DecisionAuditLogger:
@@ -38,7 +48,7 @@ class DecisionAuditLogger:
     def __init__(self, output_path: Path | str):
         self.output_path = Path(output_path)
         self.output_path.parent.mkdir(parents=True, exist_ok=True)
-        self.file = open(self.output_path, "w", newline="")
+        self.file = open(self.output_path, "w", newline="", encoding="utf-8")
         self.writer = csv.DictWriter(self.file, fieldnames=self.AUDIT_FIELDS)
         self.writer.writeheader()
         self.row_count = 0
@@ -74,8 +84,12 @@ class DecisionAuditLogger:
                 if value is None:
                     return ""
                 if isinstance(value, list):
-                    return ";".join(str(v) for v in value)
-                return str(value)
+                    sanitized = [_sanitize_for_csv(str(v)) if parts[1] in ("summary", "reasons") else str(v) for v in value]
+                    return ";".join(sanitized)
+                result = str(value)
+                if parts[1] in ("summary", "reasons"):
+                    result = _sanitize_for_csv(result)
+                return result
             return ""
 
         return ""
