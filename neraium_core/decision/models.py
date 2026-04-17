@@ -187,6 +187,13 @@ class Decision:
     pattern_match_tier: Optional[str] = None  # "weak", "moderate", "strong"
     pattern_influence_summary: Optional[str] = None  # Explanation of how patterns influenced decision
 
+    # Phase 6: Multi-Horizon Action Intelligence
+    action_horizon: Optional[str] = None  # "now" | "soon" | "watchlist"
+    primary_action: Optional[str] = None  # Primary recommended action
+    secondary_actions: list[str] = field(default_factory=list)  # Supporting actions
+    action_priority_reason: Optional[str] = None  # Why this horizon was chosen
+    action_tradeoff_note: Optional[str] = None  # Tradeoffs in action selection (e.g., deferred due to cost)
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "finding_confidence": self.finding_confidence,
@@ -215,4 +222,9 @@ class Decision:
             "pattern_outcome_type": self.pattern_outcome_type,
             "pattern_match_tier": self.pattern_match_tier,
             "pattern_influence_summary": self.pattern_influence_summary,
+            "action_horizon": self.action_horizon,
+            "primary_action": self.primary_action,
+            "secondary_actions": self.secondary_actions,
+            "action_priority_reason": self.action_priority_reason,
+            "action_tradeoff_note": self.action_tradeoff_note,
         }

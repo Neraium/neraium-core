@@ -722,6 +722,16 @@ class TestIntegration:
             "degradation_stage",
             "stage_transition_event",
             "stage_specific_recommendation",
+            # Phase 5 fields
+            "pattern_outcome_type",
+            "pattern_match_tier",
+            "pattern_influence_summary",
+            # Phase 6 fields
+            "action_horizon",
+            "primary_action",
+            "secondary_actions",
+            "action_priority_reason",
+            "action_tradeoff_note",
         }
 
         assert set(decision_dict.keys()) == required_fields
