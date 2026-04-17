@@ -374,6 +374,7 @@ tests/test_counterfactual_guidance.py
 tests/test_counterfactual_simulation.py
 tests/test_csv_semantic_mapping.py
 tests/test_data_connectors.py
+tests/test_decision_audit_logger.py
 tests/test_decision_interface.py
 tests/test_decision_layer.py
 tests/test_decision_resolver.py
