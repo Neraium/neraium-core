@@ -20,21 +20,25 @@ def score_finding_confidence(
 
     Returns [0, 1] where 1 = very confident.
     """
-    base_confidence = 0.5
+    base_confidence = 0.1
 
     if drift_score > 0.5:
-        base_confidence += 0.3
+        base_confidence += 0.4
     elif drift_score > 0.3:
-        base_confidence += 0.15
+        base_confidence += 0.25
+    elif drift_score > 0.15:
+        base_confidence += 0.1
 
     if relational_instability > 0.4:
-        base_confidence += 0.15
+        base_confidence += 0.2
+
+    if state in {"ALERT"}:
+        base_confidence += 0.2
+    elif state in {"WATCH"}:
+        base_confidence += 0.1
 
     signal_quality = 1.0 - (data_quality_issues / max(1, signal_count))
     base_confidence *= signal_quality
-
-    if state in {"ALERT", "WATCH"}:
-        base_confidence = min(1.0, base_confidence + 0.2)
 
     return min(1.0, max(0.0, base_confidence))
 

@@ -28,14 +28,16 @@ def classify_severity(
     if state == "ALERT":
         return "ELEVATED"
 
-    if state == "WATCH":
-        if drift_score > 0.5:
-            return "ELEVATED"
-        return "MODERATE"
-
     if system_phase == "degrading":
-        if relational_instability > 0.5:
+        if relational_instability > 0.4:
             return "ELEVATED"
+        return "ELEVATED" if drift_score > 0.5 else "MODERATE"
+
+    if state == "WATCH":
+        if drift_score > 0.6:
+            return "ELEVATED"
+        if drift_score > 0.4:
+            return "MODERATE"
         return "MODERATE"
 
     if drift_score > 0.6:
@@ -56,8 +58,7 @@ def compute_suppress_flag(
     """Determine if we should suppress this finding from operators.
 
     Never suppresses HIGH severity.
-    HIGH-confidence or ELEVATED findings are not suppressed.
-    Low findings with low confidence + high transience can be suppressed.
+    Transient events can suppress MODERATE/ELEVATED if very confident in transience.
     """
     if severity == "HIGH":
         return False
@@ -65,15 +66,18 @@ def compute_suppress_flag(
     if finding_confidence > 0.8:
         return False
 
-    if severity in {"ELEVATED"}:
-        return False
+    if transient_score > 0.72:
+        if severity == "MODERATE" and finding_confidence < 0.7:
+            return True
 
     if severity == "MODERATE" and finding_confidence < 0.4:
         if transient_score > 0.7:
             return True
 
     if severity == "LOW":
-        if finding_confidence < 0.5 and transient_score > 0.6:
+        if finding_confidence < 0.5 and transient_score > 0.4:
+            return True
+        if finding_confidence < 0.3:
             return True
 
     return False

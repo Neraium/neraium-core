@@ -23,26 +23,34 @@ def score_transient_likelihood(
     """
     score = 0.0
 
-    if shock_activity > 0.7:
-        score += 0.4
+    if shock_activity > 0.75:
+        score += 0.65
+    elif shock_activity > 0.6:
+        score += 0.45
 
     if state in {"STABLE", "NOMINAL"}:
-        score += 0.2
+        score += 0.15
 
     if drift_score < 0.3:
         score += 0.1
 
     if drift_trend < 0.0:
         score += 0.15
+    elif drift_trend > 0.15:
+        score -= 0.1
 
     if system_phase in {"stable", "recovering"}:
         score += 0.15
+    elif system_phase in {"transitional"}:
+        score += 0.1
 
     if drift_history and len(drift_history) >= 3:
         recent = drift_history[-3:]
         variance = _compute_variance(recent)
-        if variance > 0.05:
-            score -= 0.15
+        if variance > 0.08:
+            score -= 0.2
+        elif variance < 0.02:
+            score += 0.05
 
     return min(1.0, max(0.0, score))
 
@@ -51,7 +59,7 @@ def is_known_safe_transient(
     *,
     state: str,
     system_phase: str,
-    frames_in_state: int,
+    regime_name: str | None = None,
     recent_events: list[str] | None = None,
 ) -> bool:
     """Check if this looks like a known safe transient event.
@@ -61,7 +69,7 @@ def is_known_safe_transient(
     - Scheduled maintenance windows
     - Oscillations after mode changes
     """
-    if frames_in_state < 2:
+    if regime_name in {"startup", "initialization", "calibration"}:
         return True
 
     if system_phase == "recovering":

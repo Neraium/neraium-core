@@ -22,7 +22,6 @@ class DecisionEngine:
     def __init__(self):
         self.pattern_memory = pm_module.PatternMemory()
         self.previous_state: Optional[dict[str, Any]] = None
-        self.frames_in_state: int = 0
         self.recent_events: list[str] = []
 
     def decide(
@@ -58,11 +57,6 @@ class DecisionEngine:
         subsystem_instability = float(sii_output.get("subsystem_instability", 0.0))
         time_to_instability = sii_output.get("time_to_instability")
 
-        # Track state transitions
-        if prev_output and prev_output.get("state") != state:
-            self.frames_in_state = 1
-        else:
-            self.frames_in_state = max(1, self.frames_in_state + 1)
 
         # === SEVERITY CLASSIFICATION ===
         severity = policy.classify_severity(
@@ -95,7 +89,7 @@ class DecisionEngine:
         is_safe_transient = transient_gating.is_known_safe_transient(
             state=state,
             system_phase=system_phase,
-            frames_in_state=self.frames_in_state,
+            regime_name=regime_name,
             recent_events=self.recent_events,
         )
 
@@ -106,7 +100,7 @@ class DecisionEngine:
             finding_confidence=finding_confidence,
         )
 
-        if is_safe_transient and severity == "LOW":
+        if is_safe_transient and severity in {"LOW", "MODERATE", "ELEVATED"}:
             suppress_flag = True
 
         # Final check: CRITICAL never suppressed
@@ -162,14 +156,16 @@ class DecisionEngine:
             if isinstance(drivers, list):
                 top_signals = drivers[:3]
 
-        rec = recommendation.recommend_action(
-            severity=severity,
-            state=state,
-            drift_score=drift_score,
-            time_to_instability=time_to_instability,
-            top_signals=top_signals,
-            action_confidence=action_confidence,
-        ) if policy.should_recommend(severity=severity, action_confidence=action_confidence) else None
+        rec = None
+        if not is_safe_transient and policy.should_recommend(severity=severity, action_confidence=action_confidence):
+            rec = recommendation.recommend_action(
+                severity=severity,
+                state=state,
+                drift_score=drift_score,
+                time_to_instability=time_to_instability,
+                top_signals=top_signals,
+                action_confidence=action_confidence,
+            )
 
         # === SUMMARY ===
         summary = policy.compute_summary(
