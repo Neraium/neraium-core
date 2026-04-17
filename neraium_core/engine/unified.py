@@ -188,6 +188,7 @@ class Engine:
         dataset_path: Path | str,
         dataset_type: str,
         unit_filter: str | list[str] | None = None,
+        decision_audit_out: Path | str | None = None,
     ) -> dict[str, Any]:
         dataset_path = Path(dataset_path)
         if not dataset_path.exists():
@@ -205,24 +206,65 @@ class Engine:
 
         self._reset_runtime_state()
 
-        for _, row in df.iterrows():
-            try:
-                asset_id = row["asset_id"]
-                engine = self._get_engine_for_unit(asset_id)
-                result = engine.process_frame(
-                    {
-                        "timestamp": row["timestamp"],
-                        "asset_id": asset_id,
-                        "site_id": row.get("site_id", "default-site"),
-                        "sensor_values": self._extract_sensors_from_row(row),
-                        "structural_drift_score": row.get("structural_drift_score", 0.0),
-                    }
-                )
-                self._replay_results.append(result)
-                if self.enable_shadow_mode:
-                    self._shadow_mode_evidence.append({"timestamp": row["timestamp"], "asset_id": row["asset_id"], "result": result})
-            except Exception as e:
-                self._logger.warning(f"Error processing row: {e}")
+        # Initialize decision audit logger if requested
+        audit_logger = None
+        if decision_audit_out:
+            from neraium_core.decision_audit_logger import DecisionAuditLogger
+            audit_logger = DecisionAuditLogger(decision_audit_out)
+            self._logger.info(f"Decision audit logging enabled: {decision_audit_out}")
+
+        try:
+            for _, row in df.iterrows():
+                try:
+                    asset_id = row["asset_id"]
+                    engine = self._get_engine_for_unit(asset_id)
+                    raw_result = engine.process_frame(
+                        {
+                            "timestamp": row["timestamp"],
+                            "asset_id": asset_id,
+                            "site_id": row.get("site_id", "default-site"),
+                            "sensor_values": self._extract_sensors_from_row(row),
+                            "structural_drift_score": row.get("structural_drift_score", 0.0),
+                        }
+                    )
+                    self._replay_results.append(raw_result)
+
+                    # Integrate decision layer if audit logging is enabled
+                    if audit_logger:
+                        try:
+                            decision_engine = self._get_decision_engine_for_unit(asset_id)
+                            prev_output = self._previous_outputs.get(asset_id)
+                            decision = decision_engine.decide(raw_result, prev_output)
+                            self._previous_outputs[asset_id] = raw_result
+
+                            # Prepare audit row with decision data
+                            audit_row = dict(raw_result)
+                            audit_row["unit_id"] = asset_id
+                            audit_row["decision"] = decision.to_dict()
+                            audit_row["cycle"] = row.get("cycle", "")
+                            audit_row["phase"] = raw_result.get("system_phase", "")
+                            audit_row["composite_instability"] = raw_result.get("relational_instability_score", 0.0)
+
+                            audit_logger.write_frame(audit_row)
+                        except Exception as e:
+                            self._logger.warning(f"Error in decision audit for {asset_id}: {e}")
+                            # Write audit row without decision data when decision processing fails
+                            audit_row = dict(raw_result)
+                            audit_row["unit_id"] = asset_id
+                            audit_row["decision"] = {}
+                            audit_row["cycle"] = row.get("cycle", "")
+                            audit_row["phase"] = raw_result.get("system_phase", "")
+                            audit_row["composite_instability"] = raw_result.get("relational_instability_score", 0.0)
+                            audit_logger.write_frame(audit_row)
+
+                    if self.enable_shadow_mode:
+                        self._shadow_mode_evidence.append({"timestamp": row["timestamp"], "asset_id": row["asset_id"], "result": raw_result})
+                except Exception as e:
+                    self._logger.warning(f"Error processing row: {e}")
+
+        finally:
+            if audit_logger:
+                audit_logger.close()
 
         return {
             "dataset": str(dataset_path),
@@ -230,6 +272,7 @@ class Engine:
             "records_loaded": len(df),
             "records_processed": len(self._replay_results),
             "units": df["asset_id"].nunique() if len(df) > 0 else 0,
+            "decision_audit_logged": decision_audit_out is not None,
         }
 
     def get_summary(self) -> dict[str, Any]:

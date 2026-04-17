@@ -75,6 +75,12 @@ def cli():
     is_flag=True,
     help="Verbose output",
 )
+@click.option(
+    "--decision-audit-out",
+    type=click.Path(),
+    default=None,
+    help="Path to write decision audit CSV during replay",
+)
 def validate(
     fd004: Optional[str],
     ims: Optional[str],
@@ -84,6 +90,7 @@ def validate(
     shadow_mode: bool,
     drift_threshold: float,
     verbose: bool,
+    decision_audit_out: Optional[str],
 ):
     """Run validation and generate benchmark artifacts.
 
@@ -143,8 +150,22 @@ def validate(
         try:
             # Replay through a fresh engine instance to isolate dataset state
             engine = Engine(enable_shadow_mode=shadow_mode, baseline_window=12, recent_window=6)
-            replay_summary = engine.replay(dataset_path, dataset_type=dataset_name)
+
+            # Prepare decision audit path if specified
+            audit_path = None
+            if decision_audit_out:
+                audit_dir = Path(decision_audit_out)
+                audit_dir.mkdir(parents=True, exist_ok=True)
+                audit_path = audit_dir / f"{dataset_name}_decision_audit.csv"
+
+            replay_summary = engine.replay(
+                dataset_path,
+                dataset_type=dataset_name,
+                decision_audit_out=audit_path,
+            )
             logger.info(f"  ✓ Replayed {replay_summary['records_processed']} records")
+            if replay_summary.get('decision_audit_logged'):
+                logger.info(f"  ✓ Decision audit logged: {audit_path}")
 
             # Get summary metrics
             summary = engine.get_summary()

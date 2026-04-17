@@ -15,6 +15,7 @@ neraium_core/context_invariant_representation.py
 neraium_core/csv_mapping.py
 neraium_core/data_connectors.py
 neraium_core/data_quality.py
+neraium_core/decision_audit_logger.py
 neraium_core/decision_interface.py
 neraium_core/decision_layer.py
 neraium_core/decision_resolver.py
