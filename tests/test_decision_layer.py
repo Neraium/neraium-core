@@ -709,6 +709,19 @@ class TestIntegration:
             "recommended_action",
             "recommended_target",
             "reasons",
+            # Phase 3 fields
+            "trajectory",
+            "temporal_confidence_delta",
+            "transition_event",
+            "temporal_context",
+            "consistency_check_passed",
+            "persistence_state",
+            "persistence_frames_at_level",
+            "is_first_appearance",
+            # Phase 4 fields
+            "degradation_stage",
+            "stage_transition_event",
+            "stage_specific_recommendation",
         }
 
         assert set(decision_dict.keys()) == required_fields
