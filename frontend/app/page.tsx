@@ -296,8 +296,8 @@ export default function Home() {
           />
           <div className="demo-main">
             <DriftAlert frames={frames} currentIndex={currentFrameIndex} />
-            <ReplayChart frames={frames} currentIndex={currentFrameIndex} />
             <TetrahedronPanel frame={currentFrame} />
+            <ReplayChart frames={frames} currentIndex={currentFrameIndex} />
             <InsightPanels frame={currentFrame} />
           </div>
         </>
