@@ -194,6 +194,10 @@ class Decision:
     action_priority_reason: Optional[str] = None  # Why this horizon was chosen
     action_tradeoff_note: Optional[str] = None  # Tradeoffs in action selection (e.g., deferred due to cost)
 
+    # Phase 7: System Coherence and Output Quality
+    decision_trace: Optional[dict[str, Any]] = None  # Lightweight trace of contributing factors
+    coherence_errors: list[str] = field(default_factory=list)  # Any coherence issues found (internal)
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "finding_confidence": self.finding_confidence,
@@ -227,4 +231,5 @@ class Decision:
             "secondary_actions": self.secondary_actions,
             "action_priority_reason": self.action_priority_reason,
             "action_tradeoff_note": self.action_tradeoff_note,
+            "decision_trace": self.decision_trace,
         }

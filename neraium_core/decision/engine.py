@@ -19,6 +19,9 @@ from neraium_core.decision.temporal_intelligence import TemporalIntelligence
 from neraium_core.decision import degradation_stage
 from neraium_core.decision.pattern_outcome_influence import PatternOutcomeInfluencer
 from neraium_core.decision.action_horizon import ActionHorizonPolicy, compute_primary_action, compute_secondary_actions
+from neraium_core.decision import coherence
+from neraium_core.decision import traceability as trace_module
+from neraium_core.decision import normalization
 
 
 class DecisionEngine:
@@ -428,6 +431,19 @@ class DecisionEngine:
             action_priority_reason=action_priority_reason,
             action_tradeoff_note=None,
         )
+
+        # === PHASE 7: COHERENCE VALIDATION AND TRACEABILITY ===
+        # Validate coherence
+        is_coherent, coherence_errors = coherence.validate_decision_coherence(decision)
+        decision.coherence_errors = coherence_errors
+
+        # Enforce corrections if incoherent
+        if not is_coherent:
+            decision, corrections = coherence.enforce_decision_coherence(decision)
+
+        # Build decision trace for lightweight traceability
+        trace = trace_module.build_decision_trace(decision)
+        decision.decision_trace = trace_module.format_trace_for_display(trace).get("decision_trace")
 
         # Track state
         self.previous_state = sii_output
