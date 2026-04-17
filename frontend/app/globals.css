@@ -188,14 +188,19 @@ input[type="range"] {
 
 .session-card strong {
   display: block;
-  font-size: 20px;
-  color: #f8fafc;
-  margin-top: 4px;
+  font-size: 22px;
+  color: #f1f5f9;
+  margin-top: 6px;
+  font-weight: 800;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
 }
 
 .session-card span {
   font-size: 11px;
   color: #94a3b8;
+  font-weight: 500;
+  margin-top: 4px;
+  display: block;
 }
 
 /* Header bar */
@@ -270,12 +275,12 @@ input[type="range"] {
 }
 
 .control-slider label {
-  font-size: 12px;
-  color: #cbd5e1;
+  font-size: 11px;
+  color: #94a3b8;
   min-width: 50px;
   text-transform: uppercase;
-  letter-spacing: 0.05em;
-  font-weight: 600;
+  letter-spacing: 0.08em;
+  font-weight: 700;
 }
 
 .control-slider input[type="range"] {
