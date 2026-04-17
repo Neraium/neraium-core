@@ -10,6 +10,25 @@ from typing import Any, Literal, Optional
 
 
 SeverityLevel = Literal["HIGH", "ELEVATED", "MODERATE", "LOW"]
+TrajectoryLabel = Literal["improving", "stable", "degrading", "unstable"]
+
+
+@dataclass
+class TemporalContext:
+    """Track temporal patterns and drift behavior across recent frames."""
+    severity_history: list[str] = field(default_factory=list)  # Last 5-10 severity levels
+    drift_scores: list[float] = field(default_factory=list)  # Last 5-10 drift scores
+    confidence_scores: list[float] = field(default_factory=list)  # Confidence evolution
+    trajectory: TrajectoryLabel = "stable"  # Current trajectory direction
+    drift_velocity: float = 0.0  # Rate of drift change [-1, 1]
+    oscillation_detected: bool = False  # Whether severity is oscillating
+    persistent_frames_at_level: int = 0  # Consecutive frames at current level
+    last_recommendation: Optional[str] = None  # Last emitted recommendation
+    last_recommendation_frame: int = -1000  # When last recommendation was made
+    confidence_trend: float = 0.0  # Is confidence increasing/decreasing [-1, 1]
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
 
 
 @dataclass
@@ -137,6 +156,13 @@ class Decision:
     persistence_frames_at_level: int = 0  # How many consecutive frames at current severity
     is_first_appearance: bool = False  # First frame at this severity level
 
+    # Phase 3: Temporal Intelligence
+    trajectory: TrajectoryLabel = "stable"  # Direction of severity evolution
+    temporal_confidence_delta: float = 0.0  # Change in confidence over last few frames [-1, 1]
+    transition_event: Optional[str] = None  # Only set when real state transition occurs
+    temporal_context: Optional[TemporalContext] = None  # Full temporal context for this frame
+    consistency_check_passed: bool = True  # Whether decision is consistent with recent history
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "finding_confidence": self.finding_confidence,
@@ -154,4 +180,9 @@ class Decision:
             "persistence_state": self.persistence_state.to_dict() if self.persistence_state else None,
             "persistence_frames_at_level": self.persistence_frames_at_level,
             "is_first_appearance": self.is_first_appearance,
+            "trajectory": self.trajectory,
+            "temporal_confidence_delta": self.temporal_confidence_delta,
+            "transition_event": self.transition_event,
+            "temporal_context": self.temporal_context.to_dict() if self.temporal_context else None,
+            "consistency_check_passed": self.consistency_check_passed,
         }

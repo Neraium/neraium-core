@@ -6,7 +6,7 @@ Takes SII output and produces a Decision object.
 from __future__ import annotations
 
 from typing import Any, Optional
-from neraium_core.decision.models import Decision, SeverityLevel, PersistenceState
+from neraium_core.decision.models import Decision, SeverityLevel, PersistenceState, TemporalContext, TrajectoryLabel
 from neraium_core.decision import confidence as conf_module
 from neraium_core.decision import transient_gating
 from neraium_core.decision import specificity
@@ -15,6 +15,7 @@ from neraium_core.decision import pattern_memory as pm_module
 from neraium_core.decision import recommendation
 from neraium_core.decision import policy
 from neraium_core.decision import persistence_tracker
+from neraium_core.decision.temporal_intelligence import TemporalIntelligence
 
 
 class DecisionEngine:
@@ -23,9 +24,11 @@ class DecisionEngine:
     def __init__(self, enable_persistence_tracking: bool = True):
         self.pattern_memory = pm_module.PatternMemory()
         self.persistence_tracker = persistence_tracker.PersistenceTracker()
+        self.temporal_intelligence = TemporalIntelligence()
         self.previous_state: Optional[dict[str, Any]] = None
         self.previous_persistence: Optional[PersistenceState] = None
         self.previous_severity: Optional[SeverityLevel] = None
+        self.previous_trajectory: Optional[TrajectoryLabel] = None
         self.recent_events: list[str] = []
         self.enable_persistence_tracking = enable_persistence_tracking
         self.frame_counter = 0
@@ -69,6 +72,11 @@ class DecisionEngine:
         trajectory = 0.0
         persistence_frames = 0
         is_first_appearance = False
+        temporal_trajectory: TrajectoryLabel = "stable"
+        transition_event: Optional[str] = None
+        temporal_context: Optional[TemporalContext] = None
+        temporal_confidence_delta = 0.0
+        consistency_check_passed = True
 
         if self.enable_persistence_tracking:
             # Update persistence tracker
@@ -107,6 +115,17 @@ class DecisionEngine:
             data_quality_issues=data_quality_issues,
             state=state,
             relational_instability=relational_instability,
+        )
+
+        # === PHASE 3: TEMPORAL CONTEXT UPDATE ===
+        temporal_context = self.temporal_intelligence.update_temporal_context(
+            severity=severity,  # Will use raw policy classification
+            drift_score=drift_score,
+            finding_confidence=finding_confidence,
+        )
+        temporal_trajectory = temporal_context.trajectory
+        temporal_confidence_delta = self.temporal_intelligence.compute_confidence_delta(
+            finding_confidence
         )
 
         # === TRANSIENT DETECTION ===
@@ -160,6 +179,7 @@ class DecisionEngine:
             sii_output=sii_output,
             shock_activity=shock_activity,
             subsystem_instability=subsystem_instability,
+            temporal_context=temporal_context,
         )
 
         causal_chain_strength = causal_chains.chain_strength(causal_chain)
@@ -186,6 +206,14 @@ class DecisionEngine:
             recommendation_clarity=recommendation_clarity,
         )
 
+        # === PHASE 3: STATE TRANSITION DETECTION ===
+        transition_event = self.temporal_intelligence.detect_state_transition(
+            previous_trajectory=self.previous_trajectory,
+            current_trajectory=temporal_trajectory,
+            previous_severity=self.previous_severity,
+            current_severity=severity,
+        )
+
         # === RECOMMENDATIONS WITH ESCALATION ===
         top_signals = []
         if isinstance(attribution, dict):
@@ -209,16 +237,27 @@ class DecisionEngine:
                 last_action=last_action,
             )
 
-            # Check if we should emit this recommendation
+            # === PHASE 3: DECISION CONSISTENCY LAYER ===
             if rec and self.previous_persistence:
                 frames_since_last = self.frame_counter - self.previous_persistence.last_recommendation_frame
+
+                # Check consistency
+                consistency_check_passed = self.temporal_intelligence.should_accept_recommendation_flip(
+                    new_action=rec.action,
+                    last_action=last_action,
+                    frames_since_last=frames_since_last,
+                    severity_changed=severity_escalated,
+                )
+
+                # Also check normal emission logic
                 should_emit = recommendation.should_emit_recommendation(
                     current_action=rec.action,
                     last_action=last_action,
                     frames_since_last=frames_since_last,
                     severity_changed=severity_escalated,
                 )
-                if not should_emit:
+
+                if not (should_emit and consistency_check_passed):
                     rec = None
 
         # === SUMMARY ===
@@ -228,6 +267,13 @@ class DecisionEngine:
             primary_finding=primary_finding,
             suppress=suppress_flag,
             persistence_frames=persistence_frames if self.enable_persistence_tracking else 0,
+        )
+
+        # === PHASE 3: ENHANCE SUMMARY WITH TEMPORAL CONTEXT ===
+        summary = self.temporal_intelligence.enhance_summary_for_trajectory(
+            summary=summary,
+            trajectory=temporal_trajectory,
+            confidence_trend=temporal_context.confidence_trend,
         )
 
         # === REASONS ===
@@ -275,12 +321,18 @@ class DecisionEngine:
             persistence_state=next_persistence,
             persistence_frames_at_level=persistence_frames,
             is_first_appearance=is_first_appearance,
+            trajectory=temporal_trajectory,
+            temporal_confidence_delta=temporal_confidence_delta,
+            transition_event=transition_event,
+            temporal_context=temporal_context,
+            consistency_check_passed=consistency_check_passed,
         )
 
         # Track state
         self.previous_state = sii_output
         self.previous_persistence = next_persistence
         self.previous_severity = severity
+        self.previous_trajectory = temporal_trajectory
         return decision
 
     def _compute_drift_trend(self, drift_history: Any) -> float:
