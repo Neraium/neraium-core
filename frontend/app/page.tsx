@@ -1,14 +1,16 @@
 'use client'
 
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState, useRef, lazy, Suspense } from 'react'
 import { DemoFrame } from '@/lib/types'
-import { parseCSV, csvRowsToDemoFrames } from '@/lib/csvParser'
+import { parseCSV, csvRowsToDemoFrames, loadCSVWithProgress } from '@/lib/csvParser'
 import HeaderBar from '@/components/HeaderBar'
-import TetrahedronPanel from '@/components/TetrahedronPanel'
-import InsightPanels from '@/components/InsightPanels'
-import ReplayChart from '@/components/ReplayChart'
-import DriftAlert from '@/components/DriftAlert'
+import LoadingSkeleton from '@/components/LoadingSkeleton'
 import PlaybackControls from '@/components/PlaybackControls'
+
+const TetrahedronPanel = lazy(() => import('@/components/TetrahedronPanel'))
+const InsightPanels = lazy(() => import('@/components/InsightPanels'))
+const ReplayChart = lazy(() => import('@/components/ReplayChart'))
+const DriftAlert = lazy(() => import('@/components/DriftAlert'))
 
 function getSystemHealth(structuralDrift: number, relationalStability: number): string {
   const drift = Math.max(0, Math.min(1, structuralDrift))
@@ -71,23 +73,27 @@ export default function Home() {
   const [isPlaying, setIsPlaying] = useState(true)
   const [playbackSpeed, setPlaybackSpeed] = useState(1.0)
   const [loading, setLoading] = useState(true)
+  const [loadingProgress, setLoadingProgress] = useState(0)
   const [isConnected, setIsConnected] = useState(false)
   const animationFrameRef = useRef<number | null>(null)
   const lastFrameTimeRef = useRef<number>(0)
 
-  // Load demo data from CSV file
+  // Load demo data from CSV file with streaming
   useEffect(() => {
     const loadDemoData = async () => {
       try {
-        const response = await fetch('/fd004_ingest_ready_part_1.csv')
-        if (!response.ok) throw new Error('Failed to load CSV')
+        const csvContent = await loadCSVWithProgress(
+          '/fd004_ingest_ready_part_1.csv',
+          (progress) => setLoadingProgress(progress)
+        )
 
-        const csvContent = await response.text()
         const csvRows = parseCSV(csvContent)
 
         if (!csvRows || csvRows.length === 0) {
           throw new Error('No CSV rows parsed')
         }
+
+        setLoadingProgress(50)
 
         const demoFrames = csvRowsToDemoFrames(csvRows)
 
@@ -95,10 +101,13 @@ export default function Home() {
           throw new Error('No demo frames generated from CSV rows')
         }
 
+        setLoadingProgress(90)
+
         const transformedFrames = demoFrames.map(transformFrame)
         setFrames(transformedFrames)
         setCurrentFrameIndex(0)
         setIsConnected(true)
+        setLoadingProgress(100)
         setLoading(false)
       } catch (error) {
         console.error('Error loading CSV data:', error)
@@ -233,9 +242,15 @@ export default function Home() {
   return (
     <div className="demo-app">
       {loading ? (
-        <div style={{ padding: '40px', textAlign: 'center', color: '#9CA3AF' }}>
-          Loading CSV demo data...
-        </div>
+        <>
+          <LoadingSkeleton />
+          <div className="loading-progress-overlay">
+            <div className="loading-progress-bar">
+              <div className="loading-progress-fill" style={{ width: `${loadingProgress}%` }} />
+            </div>
+            <p className="loading-progress-text">{Math.round(loadingProgress)}%</p>
+          </div>
+        </>
       ) : !isConnected ? (
         <div style={{ padding: '40px', textAlign: 'center', color: '#9CA3AF' }}>
           Failed to load CSV data. Please refresh.
@@ -295,10 +310,18 @@ export default function Home() {
             onStep={handleStep}
           />
           <div className="demo-main">
-            <DriftAlert frames={frames} currentIndex={currentFrameIndex} />
-            <TetrahedronPanel frame={currentFrame} />
-            <ReplayChart frames={frames} currentIndex={currentFrameIndex} />
-            <InsightPanels frame={currentFrame} />
+            <Suspense fallback={<div className="skeleton-panel" style={{ height: '200px' }} />}>
+              <DriftAlert frames={frames} currentIndex={currentFrameIndex} />
+            </Suspense>
+            <Suspense fallback={<div className="skeleton-panel" style={{ height: '400px' }} />}>
+              <TetrahedronPanel frame={currentFrame} />
+            </Suspense>
+            <Suspense fallback={<div className="skeleton-panel" style={{ height: '300px' }} />}>
+              <ReplayChart frames={frames} currentIndex={currentFrameIndex} />
+            </Suspense>
+            <Suspense fallback={<div className="skeleton-panel" style={{ height: '250px' }} />}>
+              <InsightPanels frame={currentFrame} />
+            </Suspense>
           </div>
         </>
       ) : (

@@ -199,3 +199,45 @@ export function csvRowsToDemoFrames(rows: CSVRow[]): DemoFrame[] {
     };
   });
 }
+
+/**
+ * Stream CSV loading with progress callback
+ */
+export async function loadCSVWithProgress(
+  url: string,
+  onProgress?: (progress: number, totalBytes?: number) => void
+): Promise<string> {
+  const response = await fetch(url);
+  if (!response.ok) throw new Error('Failed to load CSV');
+
+  const total = parseInt(response.headers.get('content-length') || '0', 10);
+  let loaded = 0;
+
+  if (!response.body) throw new Error('No response body');
+
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    chunks.push(value);
+    loaded += value.length;
+
+    if (onProgress) {
+      const progress = total > 0 ? (loaded / total) * 100 : 0;
+      onProgress(progress, total);
+    }
+  }
+
+  const chunksAll = new Uint8Array(chunks.reduce((a, b) => a + b.length, 0));
+  let position = 0;
+  for (const chunk of chunks) {
+    chunksAll.set(chunk, position);
+    position += chunk.length;
+  }
+
+  const decoder = new TextDecoder();
+  return decoder.decode(chunksAll);
+}
