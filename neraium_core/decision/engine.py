@@ -6,7 +6,7 @@ Takes SII output and produces a Decision object.
 from __future__ import annotations
 
 from typing import Any, Optional
-from neraium_core.decision.models import Decision, SeverityLevel
+from neraium_core.decision.models import Decision, SeverityLevel, PersistenceState
 from neraium_core.decision import confidence as conf_module
 from neraium_core.decision import transient_gating
 from neraium_core.decision import specificity
@@ -14,15 +14,21 @@ from neraium_core.decision import causal_chains
 from neraium_core.decision import pattern_memory as pm_module
 from neraium_core.decision import recommendation
 from neraium_core.decision import policy
+from neraium_core.decision import persistence_tracker
 
 
 class DecisionEngine:
     """Main decision layer orchestrator."""
 
-    def __init__(self):
+    def __init__(self, enable_persistence_tracking: bool = True):
         self.pattern_memory = pm_module.PatternMemory()
+        self.persistence_tracker = persistence_tracker.PersistenceTracker()
         self.previous_state: Optional[dict[str, Any]] = None
+        self.previous_persistence: Optional[PersistenceState] = None
+        self.previous_severity: Optional[SeverityLevel] = None
         self.recent_events: list[str] = []
+        self.enable_persistence_tracking = enable_persistence_tracking
+        self.frame_counter = 0
 
     def decide(
         self,
@@ -38,6 +44,8 @@ class DecisionEngine:
         Returns:
             Decision object containing finding, action, and meta-information
         """
+        self.frame_counter += 1
+
         # Extract key metrics
         state = sii_output.get("state", "STABLE")
         drift_score = float(sii_output.get("structural_drift_score", 0.0))
@@ -57,13 +65,39 @@ class DecisionEngine:
         subsystem_instability = float(sii_output.get("subsystem_instability") or 0.0)
         time_to_instability = sii_output.get("time_to_instability")
 
+        # === SEVERITY CLASSIFICATION WITH HYSTERESIS ===
+        trajectory = 0.0
+        persistence_frames = 0
+        is_first_appearance = False
 
-        # === SEVERITY CLASSIFICATION ===
+        if self.enable_persistence_tracking:
+            # Update persistence tracker
+            persistence_state = self.persistence_tracker.update_frame(
+                current_severity=policy.classify_severity(
+                    state=state,
+                    drift_score=drift_score,
+                    relational_instability=relational_instability,
+                    system_phase=system_phase,
+                ) if self.previous_severity else "LOW",
+                previous_severity=self.previous_severity,
+                confidence=0.5,
+                state=state,
+                frame_number=self.frame_counter,
+            )
+            trajectory = self.persistence_tracker.compute_trajectory(persistence_state.level_history)
+            persistence_frames = persistence_state.consecutive_frames_at_level.get(
+                self.previous_severity or "LOW", 0
+            )
+            is_first_appearance = persistence_frames <= 1
+
         severity = policy.classify_severity(
             state=state,
             drift_score=drift_score,
             relational_instability=relational_instability,
             system_phase=system_phase,
+            prior_severity=self.previous_severity if self.enable_persistence_tracking else None,
+            persistence_frames=persistence_frames if self.enable_persistence_tracking else 0,
+            persistence_trajectory=trajectory if self.enable_persistence_tracking else 0.0,
         )
 
         # === FINDING CONFIDENCE ===
@@ -93,25 +127,28 @@ class DecisionEngine:
             recent_events=self.recent_events,
         )
 
-        # === SUPPRESSION LOGIC ===
+        # === SUPPRESSION LOGIC WITH PERSISTENCE ===
         suppress_flag = policy.compute_suppress_flag(
             severity=severity,
             transient_score=transient_score,
             finding_confidence=finding_confidence,
+            persistence_frames=persistence_frames if self.enable_persistence_tracking else 0,
+            is_first_appearance=is_first_appearance if self.enable_persistence_tracking else False,
+            frame_number=self.frame_counter if self.enable_persistence_tracking else 0,
         )
 
         if is_safe_transient and severity in {"LOW", "MODERATE", "ELEVATED"}:
             suppress_flag = True
 
-        # Final check: CRITICAL never suppressed
-        if severity == "CRITICAL":
+        # Final check: HIGH never suppressed
+        if severity == "HIGH":
             suppress_flag = False
 
         # === SPECIFIC FINDINGS ===
         findings_list = specificity.extract_findings(
             sii_output=sii_output,
             attribution=attribution,
-            prev_state=prev_output,
+            prev_state=self.previous_state,
         )
 
         primary_finding = "System stable"
@@ -140,7 +177,7 @@ class DecisionEngine:
 
         # === ACTION CONFIDENCE ===
         pattern_match_conf = pattern_match.confidence if pattern_match else 0.0
-        recommendation_clarity = 0.8 if severity in {"CRITICAL", "HIGH"} else 0.5
+        recommendation_clarity = 0.8 if severity == "HIGH" else 0.5
 
         action_confidence = conf_module.score_action_confidence(
             finding_confidence=finding_confidence,
@@ -149,12 +186,15 @@ class DecisionEngine:
             recommendation_clarity=recommendation_clarity,
         )
 
-        # === RECOMMENDATIONS ===
+        # === RECOMMENDATIONS WITH ESCALATION ===
         top_signals = []
         if isinstance(attribution, dict):
             drivers = attribution.get("top_drivers", [])
             if isinstance(drivers, list):
                 top_signals = drivers[:3]
+
+        last_action = self.previous_persistence.last_recommendation_action if self.previous_persistence else None
+        severity_escalated = severity != self.previous_severity if self.previous_severity else False
 
         rec = None
         if not is_safe_transient and policy.should_recommend(severity=severity, action_confidence=action_confidence):
@@ -165,7 +205,21 @@ class DecisionEngine:
                 time_to_instability=time_to_instability,
                 top_signals=top_signals,
                 action_confidence=action_confidence,
+                persistence_frames=persistence_frames if self.enable_persistence_tracking else 0,
+                last_action=last_action,
             )
+
+            # Check if we should emit this recommendation
+            if rec and self.previous_persistence:
+                frames_since_last = self.frame_counter - self.previous_persistence.last_recommendation_frame
+                should_emit = recommendation.should_emit_recommendation(
+                    current_action=rec.action,
+                    last_action=last_action,
+                    frames_since_last=frames_since_last,
+                    severity_changed=severity_escalated,
+                )
+                if not should_emit:
+                    rec = None
 
         # === SUMMARY ===
         summary = policy.compute_summary(
@@ -173,6 +227,7 @@ class DecisionEngine:
             state=state,
             primary_finding=primary_finding,
             suppress=suppress_flag,
+            persistence_frames=persistence_frames if self.enable_persistence_tracking else 0,
         )
 
         # === REASONS ===
@@ -183,7 +238,25 @@ class DecisionEngine:
             causal_chain_strength=causal_chain_strength,
             suppress=suppress_flag,
             is_safe_transient=is_safe_transient,
+            is_first_appearance=is_first_appearance if self.enable_persistence_tracking else False,
         )
+
+        # === BUILD PERSISTENCE STATE FOR NEXT FRAME ===
+        next_persistence = None
+        if self.enable_persistence_tracking:
+            next_persistence = self.persistence_tracker.update_frame(
+                current_severity=severity,
+                previous_severity=self.previous_severity,
+                confidence=finding_confidence,
+                state=state,
+                frame_number=self.frame_counter,
+            )
+            if rec:
+                next_persistence.last_recommendation_frame = self.frame_counter
+                next_persistence.last_recommendation_action = rec.action
+                next_persistence.last_recommendation_id = recommendation.recommendation_hash(
+                    rec.action, rec.target, rec.urgency
+                )
 
         # === BUILD DECISION ===
         decision = Decision(
@@ -199,10 +272,15 @@ class DecisionEngine:
             recommended_action=rec.action if rec else None,
             recommended_target=rec.target if rec else None,
             reasons=reasons,
+            persistence_state=next_persistence,
+            persistence_frames_at_level=persistence_frames,
+            is_first_appearance=is_first_appearance,
         )
 
         # Track state
         self.previous_state = sii_output
+        self.previous_persistence = next_persistence
+        self.previous_severity = severity
         return decision
 
     def _compute_drift_trend(self, drift_history: Any) -> float:
@@ -223,12 +301,16 @@ class DecisionEngine:
         causal_chain_strength: float,
         suppress: bool,
         is_safe_transient: bool,
+        is_first_appearance: bool = False,
     ) -> list[str]:
         """Build human-readable reasons for the decision."""
         reasons = []
 
         if severity == "HIGH":
             reasons.append("HIGH severity: immediate attention warranted")
+
+        if is_first_appearance and severity in {"ELEVATED", "MODERATE"}:
+            reasons.append("First appearance at this severity level; confirmation in progress")
 
         if finding_confidence > 0.8:
             reasons.append("Finding is high-confidence")

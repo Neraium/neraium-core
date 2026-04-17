@@ -13,6 +13,24 @@ SeverityLevel = Literal["HIGH", "ELEVATED", "MODERATE", "LOW"]
 
 
 @dataclass
+class PersistenceState:
+    """Track consecutive frames at each severity level for hysteresis logic."""
+    consecutive_frames_at_level: dict[str, int] = field(
+        default_factory=lambda: {"HIGH": 0, "ELEVATED": 0, "MODERATE": 0, "LOW": 0}
+    )
+    level_history: list[str] = field(default_factory=list)
+    current_level: str = "LOW"
+    suppression_streak: int = 0
+    last_recommendation_frame: int = -1000
+    last_recommendation_action: str = ""
+    last_recommendation_id: str = ""
+    suppression_reason: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass
 class Finding:
     """A specific observable change in the system."""
     category: str  # e.g., "correlation_loss", "subsystem_instability", "signal_degradation"
@@ -112,6 +130,13 @@ class Decision:
     # Why we made this decision
     reasons: list[str] = field(default_factory=list)
 
+    # Persistence tracking state (for hysteresis across frames)
+    persistence_state: Optional[PersistenceState] = None
+
+    # Persistence context
+    persistence_frames_at_level: int = 0  # How many consecutive frames at current severity
+    is_first_appearance: bool = False  # First frame at this severity level
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "finding_confidence": self.finding_confidence,
@@ -126,4 +151,7 @@ class Decision:
             "recommended_action": self.recommended_action,
             "recommended_target": self.recommended_target,
             "reasons": self.reasons,
+            "persistence_state": self.persistence_state.to_dict() if self.persistence_state else None,
+            "persistence_frames_at_level": self.persistence_frames_at_level,
+            "is_first_appearance": self.is_first_appearance,
         }

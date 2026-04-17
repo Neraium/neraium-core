@@ -12,27 +12,66 @@ def classify_severity(
     drift_score: float,
     relational_instability: float,
     system_phase: str,
+    prior_severity: str | None = None,
+    persistence_frames: int = 0,
+    persistence_trajectory: float = 0.0,
 ) -> SeverityLevel:
-    """Map observable metrics to severity level.
+    """Map observable metrics to severity level with hysteresis.
 
-    Aligned with existing system: HIGH | ELEVATED | MODERATE | LOW
-
-    HIGH: Immediate threat to safe operation (state=ALERT + high drift)
-    ELEVATED: Significant degradation, needs action soon
-    MODERATE: Changes detected, needs monitoring
+    HIGH: Immediate threat (state=ALERT + high drift OR sustained multi-indicator degradation)
+    ELEVATED: Significant degradation requiring action
+    MODERATE: Changes detected, monitoring required
     LOW: Minor variations, normal operation
+
+    Hysteresis: consider prior severity and persistence to avoid flip-flopping.
+    Trajectory: prefer lower classification if system is improving.
+    HIGH escalation: allowed immediately if metrics strongly warrant it (state=ALERT + drift>0.7).
     """
+    # Base classification from current metrics
+    candidate_severity = _base_severity_classification(
+        state=state,
+        drift_score=drift_score,
+        relational_instability=relational_instability,
+        system_phase=system_phase,
+    )
+
+    # Apply hysteresis: smooth transitions
+    if prior_severity is not None:
+        candidate_severity = _apply_hysteresis(
+            candidate=candidate_severity,
+            prior=prior_severity,
+            persistence_frames=persistence_frames,
+            trajectory=persistence_trajectory,
+            state=state,
+            drift_score=drift_score,
+        )
+
+    return candidate_severity
+
+
+def _base_severity_classification(
+    *,
+    state: str,
+    drift_score: float,
+    relational_instability: float,
+    system_phase: str,
+) -> SeverityLevel:
+    """Base severity without hysteresis."""
+    # ALERT state with significant drift: HIGH
     if state == "ALERT" and drift_score > 0.7:
         return "HIGH"
 
+    # ALERT state alone: ELEVATED (not immediate HIGH, requires sustained evidence)
     if state == "ALERT":
         return "ELEVATED"
 
+    # Degrading phase with relational breakdown: ELEVATED
     if system_phase == "degrading":
         if relational_instability > 0.4:
             return "ELEVATED"
         return "ELEVATED" if drift_score > 0.5 else "MODERATE"
 
+    # WATCH state: depends on drift magnitude
     if state == "WATCH":
         if drift_score > 0.6:
             return "ELEVATED"
@@ -40,6 +79,7 @@ def classify_severity(
             return "MODERATE"
         return "MODERATE"
 
+    # Baseline classification
     if drift_score > 0.6:
         return "MODERATE"
 
@@ -49,29 +89,104 @@ def classify_severity(
     return "LOW"
 
 
+def _apply_hysteresis(
+    *,
+    candidate: SeverityLevel,
+    prior: SeverityLevel,
+    persistence_frames: int,
+    trajectory: float,
+    state: str,
+    drift_score: float,
+) -> SeverityLevel:
+    """Apply hysteresis to prevent flip-flopping between severity levels.
+
+    HIGH escalation: allowed immediately if metrics strongly warrant it (state=ALERT + drift>0.7).
+    MODERATE→ELEVATED: requires 2 frames of sustained evidence.
+    HIGH downgrade: requires 2 frames of stability.
+    Trajectory: prefer lower classification if system is improving.
+    """
+    # Improving trajectory: prefer lower classification
+    if trajectory < -0.15 and candidate == "ELEVATED":
+        return "MODERATE"
+    if trajectory < -0.15 and candidate == "HIGH":
+        return "ELEVATED"
+
+    # HIGH escalation: allow immediately if metrics strongly indicate HIGH
+    # (e.g., state=ALERT + drift>0.7 is unambiguous)
+    if candidate == "HIGH" and prior in {"MODERATE", "LOW"}:
+        # Check if metrics strongly warrant HIGH
+        is_strong_high = state == "ALERT" and drift_score > 0.7
+
+        if is_strong_high:
+            # Metrics clearly indicate HIGH - allow immediately
+            return "HIGH"
+        else:
+            # Weaker signals - require persistence
+            if persistence_frames < 2:
+                return prior  # Wait for more evidence
+
+    # MODERATE → ELEVATED: requires at least 2 frames of elevation signals
+    if candidate == "ELEVATED" and prior == "MODERATE":
+        if persistence_frames < 2:
+            return "MODERATE"
+
+    # Never downgrade from HIGH immediately (requires clear recovery)
+    if prior == "HIGH" and candidate in {"ELEVATED", "MODERATE", "LOW"}:
+        # Allow downgrade only if stable for 2+ frames
+        if persistence_frames < 2:
+            return "HIGH"
+
+    return candidate
+
+
 def compute_suppress_flag(
     *,
     severity: SeverityLevel,
     transient_score: float,
     finding_confidence: float,
+    persistence_frames: int = 0,
+    is_first_appearance: bool = False,
+    frame_number: int = 0,
 ) -> bool:
     """Determine if we should suppress this finding from operators.
 
-    Never suppresses HIGH severity.
-    Transient events can suppress MODERATE/ELEVATED if very confident in transience.
+    Never suppresses CRITICAL/HIGH severity.
+    Requires sustained evidence before surfacing ELEVATED/MODERATE.
+    Applies startup suppression to reduce false positives.
     """
+    # CRITICAL/HIGH never suppressed
     if severity == "HIGH":
         return False
 
-    if finding_confidence > 0.8:
+    # High confidence findings almost never suppressed
+    if finding_confidence > 0.85:
         return False
 
-    if transient_score > 0.72:
-        if severity == "MODERATE" and finding_confidence < 0.7:
+    # Startup suppression (first 8 frames)
+    startup_window = 8
+    if frame_number < startup_window:
+        # First appearance at ELEVATED: suppress until confirmed (2+ frames)
+        if is_first_appearance and severity in {"ELEVATED", "MODERATE"}:
+            if persistence_frames < 2:
+                return True
+        # High transience score during startup
+        if transient_score > 0.65 and severity == "MODERATE":
+            if persistence_frames < 2:
+                return True
+
+    # Transience suppression
+    if transient_score > 0.75:
+        if severity in {"MODERATE", "LOW"}:
             return True
 
-    if severity == "MODERATE" and finding_confidence < 0.4:
-        if transient_score > 0.7:
+    if transient_score > 0.65 and severity == "MODERATE" and finding_confidence < 0.6:
+        return True
+
+    # Low confidence suppression
+    if severity == "MODERATE":
+        if finding_confidence < 0.4 and transient_score > 0.7:
+            return True
+        if finding_confidence < 0.3:
             return True
 
     if severity == "LOW":
@@ -89,19 +204,22 @@ def compute_summary(
     state: str,
     primary_finding: str,
     suppress: bool,
+    persistence_frames: int = 0,
 ) -> str:
     """Generate a one-line summary of the decision."""
+    persistence_hint = f" ({persistence_frames}f)" if persistence_frames > 1 else ""
+
     if suppress:
         return f"[SUPPRESSED] {primary_finding} (transient/low confidence)"
 
     if severity == "HIGH":
-        return f"⚠️ HIGH: {primary_finding} — Immediate attention required"
+        return f"⚠️ HIGH{persistence_hint}: {primary_finding} — Immediate attention required"
 
     if severity == "ELEVATED":
-        return f"⚡ ELEVATED: {primary_finding} — Action needed soon"
+        return f"⚡ ELEVATED{persistence_hint}: {primary_finding} — Action needed soon"
 
     if severity == "MODERATE":
-        return f"📊 MODERATE: {primary_finding} — Monitor closely"
+        return f"📊 MODERATE{persistence_hint}: {primary_finding} — Monitor closely"
 
     return f"ℹ️ {primary_finding}"
 
