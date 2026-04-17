@@ -575,6 +575,7 @@ input[type="range"] {
   height: 430px;
   background: linear-gradient(135deg, rgba(15, 23, 42, 0.4), rgba(2, 6, 23, 0.4));
   padding: 4px;
+  position: relative;
 }
 
 .chart-svg {
@@ -589,6 +590,76 @@ input[type="range"] {
   font-size: 11px;
   color: #cbd5e1;
   font-weight: 600;
+}
+
+.chart-tooltip {
+  position: absolute;
+  bottom: 12px;
+  left: 12px;
+  background: linear-gradient(135deg, rgba(15, 23, 42, 0.95), rgba(5, 15, 35, 0.98));
+  border: 1.5px solid rgba(59, 130, 246, 0.4);
+  border-radius: 8px;
+  padding: 12px 14px;
+  font-size: 12px;
+  color: #e2e8f0;
+  backdrop-filter: blur(8px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4), 0 0 16px rgba(59, 130, 246, 0.15);
+  pointer-events: none;
+  z-index: 10;
+  min-width: 160px;
+  animation: tooltipAppear 0.2s ease-out;
+}
+
+@keyframes tooltipAppear {
+  from {
+    opacity: 0;
+    transform: translateY(4px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.tooltip-frame {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #94a3b8;
+  font-weight: 700;
+  margin-bottom: 8px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.tooltip-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  padding: 4px 0;
+}
+
+.tooltip-label {
+  font-size: 11px;
+  color: #cbd5e1;
+  font-weight: 600;
+}
+
+.tooltip-label.drift {
+  color: #93c5fd;
+}
+
+.tooltip-label.instability {
+  color: #fed7aa;
+}
+
+.tooltip-value {
+  font-size: 13px;
+  font-weight: 800;
+  color: #ffffff;
+  text-align: right;
+  min-width: 50px;
 }
 
 /* Tetrahedron */

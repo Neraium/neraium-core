@@ -13,9 +13,18 @@ interface ReplayChartProps {
 
 type YMode = 'auto' | 'normalized'
 
+interface HoverState {
+  x: number
+  frameIndex: number
+  driftValue: number
+  instabilityValue: number
+}
+
 export default function ReplayChart({ frames, currentIndex }: ReplayChartProps) {
   const [yMode, setYMode] = useState<YMode>('auto')
+  const [hoverState, setHoverState] = useState<HoverState | null>(null)
   const scrollRef = useRef<HTMLDivElement | null>(null)
+  const svgRef = useRef<SVGSVGElement | null>(null)
 
   const safeIndex = Math.max(0, Math.min(currentIndex, Math.max(frames.length - 1, 0)))
 
@@ -76,7 +85,18 @@ export default function ReplayChart({ frames, currentIndex }: ReplayChartProps) 
     return M.top + IH - t * IH
   }
 
+  const pxToY = (px: number) => {
+    const t = (M.top + IH - px) / IH
+    return domain.min + t * (domain.max - domain.min)
+  }
+
   const xFor = (idx: number) => M.left + ((idx / Math.max(frames.length - 1, 1)) * plotWidth)
+
+  const findClosestFrameIndex = (px: number) => {
+    const relativeX = px - M.left
+    const ratio = Math.max(0, Math.min(1, relativeX / plotWidth))
+    return Math.round(ratio * Math.max(frames.length - 1, 1))
+  }
 
   const driftPoints = driftValues.map((value, idx) => ({ x: xFor(idx), y: yToPx(value), value }))
   const instabilityPoints = instabilityValues.map((value, idx) => ({ x: xFor(idx), y: yToPx(value), value }))
@@ -101,6 +121,16 @@ export default function ReplayChart({ frames, currentIndex }: ReplayChartProps) 
     { label: 'Critical', value: 78, stroke: 'rgba(239, 68, 68, 0.55)' },
   ]
 
+  const criticalDriftPoints = useMemo(
+    () => visibleDriftPoints.filter((p) => p.value >= 78),
+    [visibleDriftPoints]
+  )
+
+  const criticalInstabilityPoints = useMemo(
+    () => visibleInstabilityPoints.filter((p) => p.value >= 78),
+    [visibleInstabilityPoints]
+  )
+
   useEffect(() => {
     const el = scrollRef.current
     if (!el) return
@@ -112,6 +142,37 @@ export default function ReplayChart({ frames, currentIndex }: ReplayChartProps) 
       behavior: 'smooth',
     })
   }, [currentX])
+
+  const handleSvgHover = (e: React.MouseEvent<SVGSVGElement>) => {
+    if (!svgRef.current) return
+    const svg = svgRef.current
+    const rect = svg.getBoundingClientRect()
+    const relativeX = e.clientX - rect.left
+    const relativeY = e.clientY - rect.top
+
+    // Scale to SVG coordinates
+    const scaleX = svg.viewBox.baseVal.width / rect.width
+    const scaleY = svg.viewBox.baseVal.height / rect.height
+    const svgX = relativeX * scaleX
+    const svgY = relativeY * scaleY
+
+    // Only show tooltip in plot area
+    if (svgX >= M.left && svgX <= M.left + plotWidth && svgY >= M.top && svgY <= M.top + IH) {
+      const frameIdx = findClosestFrameIndex(svgX)
+      const driftVal = driftValues[frameIdx] || 0
+      const instabilityVal = instabilityValues[frameIdx] || 0
+      setHoverState({
+        x: svgX,
+        frameIndex: frameIdx,
+        driftValue: driftVal,
+        instabilityValue: instabilityVal,
+      })
+    }
+  }
+
+  const handleSvgLeave = () => {
+    setHoverState(null)
+  }
 
   return (
     <div className="panel replay-chart-panel">
@@ -151,8 +212,14 @@ export default function ReplayChart({ frames, currentIndex }: ReplayChartProps) 
 
       <div ref={scrollRef} className="chart-scroll-container">
         <div className="chart-container" style={{ minWidth: `${W}px` }}>
-          <svg className="chart-svg" viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="none">
-            <rect x={0} y={0} width={W} height={H} fill="rgba(5,10,24,0.72)" />
+          <svg
+            ref={svgRef}
+            className="chart-svg"
+            viewBox={`0 0 ${W} ${H}`}
+            preserveAspectRatio="none"
+            onMouseMove={handleSvgHover}
+            onMouseLeave={handleSvgLeave}
+          >
             <defs>
               <filter id="glow">
                 <feGaussianBlur stdDeviation="2" result="coloredBlur" />
@@ -161,7 +228,21 @@ export default function ReplayChart({ frames, currentIndex }: ReplayChartProps) 
                   <feMergeNode in="SourceGraphic" />
                 </feMerge>
               </filter>
+              <filter id="brightGlow">
+                <feGaussianBlur stdDeviation="3" result="coloredBlur" />
+                <feMerge>
+                  <feMergeNode in="coloredBlur" />
+                  <feMergeNode in="coloredBlur" />
+                  <feMergeNode in="SourceGraphic" />
+                </feMerge>
+              </filter>
+              <linearGradient id="bgGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+                <stop offset="0%" stopColor="rgba(5,10,24,0.9)" />
+                <stop offset="100%" stopColor="rgba(2,6,23,0.8)" />
+              </linearGradient>
             </defs>
+
+            <rect x={0} y={0} width={W} height={H} fill="url(#bgGradient)" />
 
             {yTicks.map((tick) => (
               <g key={`grid-${tick.value.toFixed(4)}`}>
@@ -223,23 +304,36 @@ export default function ReplayChart({ frames, currentIndex }: ReplayChartProps) 
               fill="rgba(2,6,23,0.5)"
             />
 
-            <polyline points={instabilityPath} fill="none" stroke="#FF8A5C" strokeWidth="2.6" opacity="0.98" filter="url(#glow)" />
-            <polyline points={driftPath} fill="none" stroke="#60A5FA" strokeWidth="2.8" opacity="1" filter="url(#glow)" />
+            <polyline points={instabilityPath} fill="none" stroke="#FF8A5C" strokeWidth="3" opacity="0.95" filter="url(#glow)" vectorEffect="non-scaling-stroke" />
+            <polyline points={driftPath} fill="none" stroke="#60A5FA" strokeWidth="3" opacity="1" filter="url(#glow)" vectorEffect="non-scaling-stroke" />
 
-            {visibleDriftPoints
-              .filter((point) => point.value >= 78)
-              .map((point, idx) => (
-                <circle
-                  key={`high-drift-${idx}`}
-                  cx={point.x}
-                  cy={point.y}
-                  r="3.6"
-                  fill="#ef4444"
-                  stroke="#fee2e2"
-                  strokeWidth="1.2"
-                  opacity="0.9"
-                />
-              ))}
+            {criticalDriftPoints.map((point, idx) => (
+              <circle
+                key={`critical-drift-${idx}`}
+                cx={point.x}
+                cy={point.y}
+                r="4.2"
+                fill="#ef4444"
+                stroke="#fca5a5"
+                strokeWidth="1.5"
+                opacity="0.95"
+                filter="url(#brightGlow)"
+              />
+            ))}
+
+            {criticalInstabilityPoints.map((point, idx) => (
+              <circle
+                key={`critical-instability-${idx}`}
+                cx={point.x}
+                cy={point.y}
+                r="4.2"
+                fill="#fb923c"
+                stroke="#fed7aa"
+                strokeWidth="1.5"
+                opacity="0.95"
+                filter="url(#brightGlow)"
+              />
+            ))}
 
             <line
               x1={currentX}
@@ -247,18 +341,73 @@ export default function ReplayChart({ frames, currentIndex }: ReplayChartProps) 
               x2={currentX}
               y2={M.top + IH}
               stroke="#22D3EE"
-              strokeWidth="2.4"
-              opacity="0.95"
+              strokeWidth="2.6"
+              opacity="0.9"
+              filter="url(#glow)"
+              vectorEffect="non-scaling-stroke"
             />
 
             {currentDriftPoint && (
-              <circle cx={currentX} cy={currentDriftPoint.y} r="7.5" fill="#60A5FA" stroke="#FFFFFF" strokeWidth="2" opacity="1" />
+              <g>
+                <circle cx={currentX} cy={currentDriftPoint.y} r="8" fill="none" stroke="#FFFFFF" strokeWidth="2.2" opacity="0.4" />
+                <circle cx={currentX} cy={currentDriftPoint.y} r="5.5" fill="#FFFFFF" stroke="#60A5FA" strokeWidth="1.8" opacity="1" filter="url(#brightGlow)" />
+              </g>
             )}
             {currentInstabilityPoint && (
-              <circle cx={currentX} cy={currentInstabilityPoint.y} r="7.5" fill="#FF8A5C" stroke="#FFFFFF" strokeWidth="2" opacity="1" />
+              <g>
+                <circle cx={currentX} cy={currentInstabilityPoint.y} r="8" fill="none" stroke="#FFFFFF" strokeWidth="2.2" opacity="0.4" />
+                <circle cx={currentX} cy={currentInstabilityPoint.y} r="5.5" fill="#FFFFFF" stroke="#FF8A5C" strokeWidth="1.8" opacity="1" filter="url(#brightGlow)" />
+              </g>
+            )}
+
+            {hoverState && (
+              <>
+                <line
+                  x1={hoverState.x}
+                  y1={M.top}
+                  x2={hoverState.x}
+                  y2={M.top + IH}
+                  stroke="rgba(255,255,255,0.3)"
+                  strokeWidth="1.2"
+                  strokeDasharray="4 2"
+                  opacity="0.6"
+                  vectorEffect="non-scaling-stroke"
+                />
+                <circle
+                  cx={hoverState.x}
+                  cy={yToPx(hoverState.driftValue)}
+                  r="4"
+                  fill="rgba(96, 165, 250, 0.6)"
+                  stroke="#60A5FA"
+                  strokeWidth="1.5"
+                  opacity="0.8"
+                />
+                <circle
+                  cx={hoverState.x}
+                  cy={yToPx(hoverState.instabilityValue)}
+                  r="4"
+                  fill="rgba(255, 138, 92, 0.6)"
+                  stroke="#FF8A5C"
+                  strokeWidth="1.5"
+                  opacity="0.8"
+                />
+              </>
             )}
 
           </svg>
+          {hoverState && (
+            <div className="chart-tooltip" style={{ opacity: 0.95 }}>
+              <div className="tooltip-frame">Frame {hoverState.frameIndex + 1}</div>
+              <div className="tooltip-row">
+                <span className="tooltip-label drift">Drift</span>
+                <span className="tooltip-value">{hoverState.driftValue.toFixed(1)}%</span>
+              </div>
+              <div className="tooltip-row">
+                <span className="tooltip-label instability">Instability</span>
+                <span className="tooltip-value">{hoverState.instabilityValue.toFixed(1)}%</span>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
