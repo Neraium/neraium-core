@@ -17,6 +17,7 @@ from neraium_core.engine.config import ProductionEngineConfig, ProductionLogging
 from neraium_core.engine.dataset_loader import load_dataset
 from neraium_core.engine.logging_setup import get_logger
 from neraium_core.engine.schemas import BatchResult, EngineResult, InputFrame
+from neraium_core.engine_optimizations import get_asset_config
 
 logger = logging.getLogger(__name__)
 
@@ -45,12 +46,28 @@ class Engine:
 
         self._logger = get_logger(__name__, self.logging_config)
         self._frame_count_by_unit: dict[str, int] = {}
+        self._structural_engines: dict[str, StructuralEngine] = {}  # Per-unit engines for asset-specific tuning
 
         self._structural_engine = self._build_structural_engine()
         self._shadow_mode_evidence: list[dict[str, Any]] = []
         self._replay_results: list[dict[str, Any]] = []
 
-    def _build_structural_engine(self) -> StructuralEngine:
+    def _build_structural_engine(self, unit_id: str | None = None) -> StructuralEngine:
+        """Build structural engine with optional asset-specific tuning."""
+        asset_config = get_asset_config(unit_id) if unit_id else None
+
+        if asset_config:
+            return StructuralEngine(
+                baseline_window=asset_config.baseline_window,
+                recent_window=asset_config.recent_window,
+                frame_debug=False,
+                drift_smoothing_window=asset_config.drift_smoothing_window,
+                watch_quantile=asset_config.watch_quantile,
+                alert_quantile=asset_config.alert_quantile,
+                watch_persistence=asset_config.watch_persistence,
+                alert_persistence=asset_config.alert_persistence,
+            )
+
         return StructuralEngine(
             baseline_window=self.config.baseline_window,
             recent_window=self.config.recent_window,
@@ -61,6 +78,12 @@ class Engine:
             watch_persistence=5,
             alert_persistence=3,
         )
+
+    def _get_engine_for_unit(self, unit_id: str) -> StructuralEngine:
+        """Get or create engine for specific unit, using asset-specific config if available."""
+        if unit_id not in self._structural_engines:
+            self._structural_engines[unit_id] = self._build_structural_engine(unit_id)
+        return self._structural_engines[unit_id]
 
     def _reset_runtime_state(self) -> None:
         self._structural_engine = self._build_structural_engine()
@@ -95,7 +118,9 @@ class Engine:
         }
 
         try:
-            raw_result = self._structural_engine.process_frame(engine_frame)
+            # Use asset-specific engine if available, otherwise fallback to default
+            engine = self._get_engine_for_unit(frame.unit_id)
+            raw_result = engine.process_frame(engine_frame)
 
             state = self._extract_state(raw_result)
             drift_score = self._extract_drift_score(raw_result)
@@ -110,9 +135,9 @@ class Engine:
                 drift_score=drift_score,
                 stability_score=stability_score,
                 health_percentage=health_percentage,
-                baseline_ready=len(self._structural_engine.frames) >= self._structural_engine.baseline_window,
+                baseline_ready=len(engine.frames) >= engine.baseline_window,
                 sensor_count=len(frame.sensors),
-                model_age_frames=len(self._structural_engine.frames),
+                model_age_frames=len(engine.frames),
             )
             result.validate()
 
@@ -162,10 +187,12 @@ class Engine:
 
         for _, row in df.iterrows():
             try:
-                result = self._structural_engine.process_frame(
+                asset_id = row["asset_id"]
+                engine = self._get_engine_for_unit(asset_id)
+                result = engine.process_frame(
                     {
                         "timestamp": row["timestamp"],
-                        "asset_id": row["asset_id"],
+                        "asset_id": asset_id,
                         "site_id": row.get("site_id", "default-site"),
                         "sensor_values": self._extract_sensors_from_row(row),
                         "structural_drift_score": row.get("structural_drift_score", 0.0),
@@ -214,14 +241,28 @@ class Engine:
         }
 
     def get_readiness(self) -> dict[str, Any]:
-        frames_collected = len(self._structural_engine.frames)
-        baseline_ready = frames_collected >= self._structural_engine.baseline_window
+        # Aggregate readiness across all units if using per-unit engines
+        if self._structural_engines:
+            total_frames = sum(len(e.frames) for e in self._structural_engines.values())
+            all_baseline_ready = all(
+                len(e.frames) >= e.baseline_window for e in self._structural_engines.values()
+            )
+            all_sensors = set()
+            for e in self._structural_engines.values():
+                all_sensors.update(e.sensor_order)
+            baseline_window = next(iter(self._structural_engines.values())).baseline_window if self._structural_engines else self._structural_engine.baseline_window
+        else:
+            total_frames = len(self._structural_engine.frames)
+            all_baseline_ready = total_frames >= self._structural_engine.baseline_window
+            all_sensors = set(self._structural_engine.sensor_order)
+            baseline_window = self._structural_engine.baseline_window
+
         return {
-            "baseline_ready": baseline_ready,
-            "frames_collected": frames_collected,
-            "baseline_window": self._structural_engine.baseline_window,
-            "sensors_detected": len(self._structural_engine.sensor_order),
-            "sensor_names": list(self._structural_engine.sensor_order),
+            "baseline_ready": all_baseline_ready,
+            "frames_collected": total_frames,
+            "baseline_window": baseline_window,
+            "sensors_detected": len(all_sensors),
+            "sensor_names": sorted(list(all_sensors)),
             "units_tracked": len(self._frame_count_by_unit),
         }
 
