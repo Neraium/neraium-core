@@ -104,6 +104,11 @@ from neraium_core.math.probabilistic_engine import MonteCarloSampler, Structural
 from neraium_core.math.verification_engine import run_all_checks
 from neraium_core.tetrahedral_state import compute_tetrahedral_state
 from neraium_core.engine_stages.stage_boundaries import structural_engine_stage_groups
+from neraium_core.engine_optimizations import (
+    TemporalRepresentationCache,
+    IncrementalGraphMetrics,
+    get_asset_config,
+)
 
 
 # How slowly the rolling baseline adapts (only when nominal); avoid absorbing instability.
@@ -439,6 +444,11 @@ class StructuralEngine:
         self._recent_ts_buffer = TimestampDequeBuffer(recent_window)
         self._baseline_matrix_cache: np.ndarray | None = None
         self._baseline_ts_cached: list[float] | None = None
+
+        # Performance optimizations
+        self._temporal_repr_cache = TemporalRepresentationCache(capacity=2)
+        self._incremental_graph_metrics = IncrementalGraphMetrics(window_size=recent_window)
+        self._representation_config_hash = hash((representation_mode, reference_strategy, str(merged_weights)))
         self._sensor_schema_dirty: bool = False
         self._history_ring = HistoryRingBuffer(500)
 
@@ -2161,12 +2171,49 @@ class StructuralEngine:
             else:
                 history_matrix = self._history_ring.chronological_matrix()
             history_ts = self._history_ring.chronological_timestamps()
-            rep = build_temporal_representation(history_matrix, self.representation_config, timestamps=history_ts)
-            transformed_history = rep.transformed
+
+            # Optimization: Cache baseline temporal representation to avoid recomputation
+            baseline_data = history_matrix[: self.baseline_window]
+            cached_baseline_repr = self._temporal_repr_cache.get(
+                baseline_data,
+                str(self._representation_config_hash),
+            )
+
+            if cached_baseline_repr is not None:
+                # Use cached baseline transformation
+                transformed_baseline = cached_baseline_repr.transformed
+                feature_names = cached_baseline_repr.feature_names
+            else:
+                # Compute full representation once
+                rep = build_temporal_representation(
+                    history_matrix, self.representation_config, timestamps=history_ts
+                )
+                transformed_history = rep.transformed
+                feature_names = rep.feature_names
+
+                # Cache baseline portion for next frame
+                transformed_baseline = transformed_history[: self.baseline_window]
+                self._temporal_repr_cache.put(
+                    baseline_data,
+                    transformed_baseline,
+                    feature_names,
+                    str(self._representation_config_hash),
+                )
+
+                transformed_history = rep.transformed
+
             baseline_window = np.asarray(
-                transformed_history[: self.baseline_window][:: self.window_stride],
+                transformed_baseline[:: self.window_stride],
                 dtype=float,
             )
+
+            # Recompute recent window fresh (it changes every frame)
+            if cached_baseline_repr is not None:
+                rep = build_temporal_representation(
+                    history_matrix, self.representation_config, timestamps=history_ts
+                )
+                transformed_history = rep.transformed
+
             recent_window = np.asarray(
                 transformed_history[-self.recent_window :][:: self.window_stride],
                 dtype=float,

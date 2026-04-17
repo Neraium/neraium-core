@@ -23,6 +23,7 @@ neraium_core/demo_plot.py
 neraium_core/directional.py
 neraium_core/early_warning.py
 neraium_core/engine_ingress.py
+neraium_core/engine_optimizations.py
 neraium_core/engine_registry.py
 neraium_core/entropy.py
 neraium_core/explanation_layer.py
@@ -89,6 +90,16 @@ neraium_core/agnostic_runner/adapters/webhook_sink.py
 neraium_core/auxiliary/__init__.py
 neraium_core/benchmarks/__init__.py
 neraium_core/benchmarks/platform_hotpath.py
+neraium_core/decision/__init__.py
+neraium_core/decision/causal_chains.py
+neraium_core/decision/confidence.py
+neraium_core/decision/engine.py
+neraium_core/decision/models.py
+neraium_core/decision/pattern_memory.py
+neraium_core/decision/policy.py
+neraium_core/decision/recommendation.py
+neraium_core/decision/specificity.py
+neraium_core/decision/transient_gating.py
 neraium_core/detection/__init__.py
 neraium_core/detection/composite_signal.py
 neraium_core/detection/readiness.py
@@ -467,6 +478,7 @@ tests/test_structural_sandbox_layer.py
 tests/test_structural_system_intelligence_upgrade.py
 tests/test_structural_temporal_validation.py
 tests/test_structural_upgrade_evidence.py
+tests/test_system_insights_panel.py
 tests/test_temporal_alignment_impact.py
 tests/test_tetrahedral_state.py
 tests/test_trading_signals_intraday.py
