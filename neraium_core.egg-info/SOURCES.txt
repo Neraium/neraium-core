@@ -438,6 +438,8 @@ tests/test_openapi_smoke.py
 tests/test_operational_state_store.py
 tests/test_package_import.py
 tests/test_phase4_degradation_staging.py
+tests/test_phase6_action_horizons.py
+tests/test_phase6_validation.py
 tests/test_pilot_hardening.py
 tests/test_pilot_smoke_end_to_end.py
 tests/test_platform_benchmark.py
