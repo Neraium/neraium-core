@@ -18,6 +18,7 @@ from neraium_core.decision import persistence_tracker
 from neraium_core.decision.temporal_intelligence import TemporalIntelligence
 from neraium_core.decision import degradation_stage
 from neraium_core.decision.pattern_outcome_influence import PatternOutcomeInfluencer
+from neraium_core.decision.action_horizon import ActionHorizonPolicy, compute_primary_action, compute_secondary_actions
 
 
 class DecisionEngine:
@@ -28,6 +29,7 @@ class DecisionEngine:
         self.pattern_outcome_influencer = PatternOutcomeInfluencer()
         self.persistence_tracker = persistence_tracker.PersistenceTracker()
         self.temporal_intelligence = TemporalIntelligence()
+        self.action_horizon_policy = ActionHorizonPolicy()
         self.previous_state: Optional[dict[str, Any]] = None
         self.previous_persistence: Optional[PersistenceState] = None
         self.previous_severity: Optional[SeverityLevel] = None
@@ -367,6 +369,31 @@ class DecisionEngine:
             severity=severity,
         )
 
+        # === PHASE 6: ACTION HORIZON INTELLIGENCE ===
+        action_horizon, action_priority_reason = self.action_horizon_policy.compute_action_horizon(
+            severity=severity,
+            degradation_stage=current_degradation_stage,
+            trajectory=temporal_trajectory,
+            pattern_outcome_type=pattern_match.outcome_type if pattern_match else None,
+            pattern_match_tier=pattern_match.match_tier if pattern_match else None,
+            drift_score=drift_score,
+            finding_confidence=finding_confidence,
+            time_to_instability=time_to_instability,
+        )
+
+        primary_action = compute_primary_action(
+            horizon=action_horizon,
+            severity=severity,
+            stage=current_degradation_stage,
+        )
+
+        secondary_actions = compute_secondary_actions(
+            primary=primary_action,
+            severity=severity,
+            stage=current_degradation_stage,
+            drift_score=drift_score,
+        )
+
         # === BUILD DECISION ===
         decision = Decision(
             finding_confidence=finding_confidence,
@@ -395,6 +422,11 @@ class DecisionEngine:
             pattern_outcome_type=pattern_match.outcome_type if pattern_match else None,
             pattern_match_tier=pattern_match.match_tier if pattern_match else None,
             pattern_influence_summary=pattern_influence_summary,
+            action_horizon=action_horizon,
+            primary_action=primary_action,
+            secondary_actions=secondary_actions,
+            action_priority_reason=action_priority_reason,
+            action_tradeoff_note=None,
         )
 
         # Track state
