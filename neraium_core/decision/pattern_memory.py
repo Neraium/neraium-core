@@ -19,7 +19,7 @@ class PatternMemory:
         self,
         pattern_id: str,
         features: list[float],
-        outcome: str,
+        outcome_type: str,
         metadata: dict[str, Any] | None = None,
     ) -> None:
         """Store a pattern for future matching.
@@ -27,13 +27,13 @@ class PatternMemory:
         Args:
             pattern_id: Unique identifier (e.g., "asset_001:run_42")
             features: Vector of [drift, relational, shock, regime_distance, ...]
-            outcome: What happened ("self_resolved", "escalated", "cyclic", etc.)
-            metadata: Additional context (time_to_outcome, severity, etc.)
+            outcome_type: Outcome classification ("self_resolved", "persistent_degradation", "failure_progression", "unknown")
+            metadata: Additional context (time_to_outcome_hours, confidence_weight, stage_at_match, etc.)
         """
         self.patterns.append({
             "id": pattern_id,
             "features": list(features),
-            "outcome": outcome,
+            "outcome_type": outcome_type,
             "metadata": metadata or {},
         })
 
@@ -68,12 +68,19 @@ class PatternMemory:
         best_sim, best_pattern = max(scores, key=lambda x: x[0])
 
         metadata = best_pattern.get("metadata", {})
+        match_tier = _classify_match_tier(best_sim)
+        confidence_weight = metadata.get("confidence_weight", 1.0)
+
         return PatternMatch(
             pattern_id=best_pattern["id"],
             similarity=best_sim,
-            prior_outcome=best_pattern["outcome"],
+            prior_outcome=best_pattern["outcome_type"],
             time_to_outcome_hours=metadata.get("time_to_outcome_hours"),
             confidence=best_sim,
+            match_tier=match_tier,
+            outcome_type=best_pattern.get("outcome_type", "unknown"),
+            confidence_weight=confidence_weight,
+            stage_at_match=metadata.get("stage_at_match"),
         )
 
 
@@ -96,6 +103,22 @@ def cosine_similarity(v1: list[float], v2: list[float]) -> float:
         return dot / (mag1 * mag2)
     except (ValueError, ZeroDivisionError):
         return 0.0
+
+
+def _classify_match_tier(similarity: float) -> str:
+    """Classify pattern match quality tier based on cosine similarity.
+
+    Args:
+        similarity: Cosine similarity score [0, 1]
+
+    Returns:
+        "strong" if similarity >= 0.85, "moderate" if >= 0.7, else "weak"
+    """
+    if similarity >= 0.85:
+        return "strong"
+    if similarity >= 0.7:
+        return "moderate"
+    return "weak"
 
 
 def build_feature_vector(

@@ -107,6 +107,11 @@ class PatternMatch:
     prior_outcome: str  # e.g., "self_resolved", "escalated_to_failure"
     time_to_outcome_hours: Optional[float] = None
     confidence: float = 0.7
+    # Phase 5 additions
+    match_tier: Optional[str] = None  # "weak", "moderate", "strong"
+    outcome_type: Optional[str] = None  # "self_resolved" | "persistent_degradation" | "failure_progression" | "unknown"
+    confidence_weight: float = 1.0  # [0, 1] how much to weight this pattern in decisions
+    stage_at_match: Optional[str] = None  # degradation stage when pattern was originally observed
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -177,6 +182,11 @@ class Decision:
     stage_transition_event: Optional[str] = None  # Stage transition marker (e.g., "stage_transition:baseline→early_shift")
     stage_specific_recommendation: Optional[str] = None  # Stage-specific action recommendation
 
+    # Phase 5: Outcome-Aware Decision Intelligence
+    pattern_outcome_type: Optional[str] = None  # "self_resolved" | "persistent_degradation" | "failure_progression" | "unknown"
+    pattern_match_tier: Optional[str] = None  # "weak", "moderate", "strong"
+    pattern_influence_summary: Optional[str] = None  # Explanation of how patterns influenced decision
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "finding_confidence": self.finding_confidence,
@@ -202,4 +212,7 @@ class Decision:
             "degradation_stage": self.degradation_stage,
             "stage_transition_event": self.stage_transition_event,
             "stage_specific_recommendation": self.stage_specific_recommendation,
+            "pattern_outcome_type": self.pattern_outcome_type,
+            "pattern_match_tier": self.pattern_match_tier,
+            "pattern_influence_summary": self.pattern_influence_summary,
         }
