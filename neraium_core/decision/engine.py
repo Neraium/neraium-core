@@ -44,7 +44,7 @@ class DecisionEngine:
         relational_instability = float(sii_output.get("relational_instability_score", 0.0))
         system_phase = sii_output.get("system_phase", "stable")
         regime_name = sii_output.get("regime_name")
-        regime_distance = float(sii_output.get("regime_distance", 0.5))
+        regime_distance = float(sii_output.get("regime_distance") or 0.5)
 
         attribution = sii_output.get("attribution", {})
         sensor_count = len(sii_output.get("sensor_relationships", []))
@@ -53,8 +53,8 @@ class DecisionEngine:
         if isinstance(data_quality, dict):
             data_quality_issues = data_quality.get("missing_sensor_count", 0)
 
-        shock_activity = float(sii_output.get("shock_activity", 0.0))
-        subsystem_instability = float(sii_output.get("subsystem_instability", 0.0))
+        shock_activity = float(sii_output.get("shock_activity") or 0.0)
+        subsystem_instability = float(sii_output.get("subsystem_instability") or 0.0)
         time_to_instability = sii_output.get("time_to_instability")
 
 
