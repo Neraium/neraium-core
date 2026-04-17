@@ -856,6 +856,234 @@ input[type="range"] {
   letter-spacing: 0.05em;
 }
 
+/* Ultimate Tetrahedron */
+.tetra-panel-ultimate {
+  background: linear-gradient(135deg, rgba(5, 20, 45, 1), rgba(2, 10, 30, 1));
+  border: 2px solid rgba(59, 130, 246, 0.3);
+  box-shadow: 0 0 40px rgba(59, 130, 246, 0.15);
+}
+
+.tetra-ultimate-container {
+  display: flex;
+  gap: 32px;
+  padding: 24px;
+  align-items: stretch;
+}
+
+.tetra-canvas-ultimate {
+  flex: 1;
+  position: relative;
+  cursor: grab;
+}
+
+.tetra-canvas-ultimate:active {
+  cursor: grabbing;
+}
+
+.tetra-canvas-ultimate canvas {
+  width: 100% !important;
+  height: 100% !important;
+  display: block;
+}
+
+.tetra-info-ultimate {
+  flex: 0 0 380px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.metrics-display-ultimate {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.metric-ultimate {
+  background: linear-gradient(135deg, rgba(15, 23, 42, 0.8), rgba(9, 16, 34, 0.9));
+  border-left: 4px solid #3b82f6;
+  border-radius: 8px;
+  padding: 14px;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+.metric-ultimate:hover {
+  transform: translateY(-2px);
+  background: linear-gradient(135deg, rgba(15, 23, 42, 0.9), rgba(9, 16, 34, 1));
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.3);
+}
+
+.metric-label-ultimate {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #94a3b8;
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+
+.metric-value-ultimate {
+  font-size: 26px;
+  font-weight: 900;
+  margin-bottom: 10px;
+  display: block;
+}
+
+.metric-bar-ultimate {
+  height: 5px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 3px;
+  overflow: hidden;
+  position: relative;
+}
+
+.metric-bar-fill-ultimate {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  box-shadow: 0 0 12px currentColor;
+}
+
+.metric-bar-fill-ultimate::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.4), transparent);
+  animation: shimmer 2s infinite;
+}
+
+.tetra-summary-ultimate {
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.1), rgba(6, 182, 212, 0.08));
+  border: 1px solid rgba(59, 130, 246, 0.2);
+  border-radius: 10px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.summary-stat-ultimate {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.summary-stat-ultimate:last-child {
+  border-bottom: none;
+}
+
+.summary-stat-ultimate span:first-child {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #94a3b8;
+  font-weight: 700;
+}
+
+.summary-stat-ultimate span:last-child {
+  font-size: 16px;
+  font-weight: 900;
+  letter-spacing: 0.05em;
+}
+
+.health-badge-ultimate {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 12px 18px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 2px solid #3b82f6;
+  border-radius: 8px;
+  box-shadow: 0 0 20px rgba(59, 130, 246, 0.2);
+  transition: all 0.3s ease;
+}
+
+.health-badge-ultimate.critical-pulse {
+  animation: criticalPulse 0.8s ease-in-out infinite;
+}
+
+@keyframes criticalPulse {
+  0%, 100% {
+    box-shadow: 0 0 20px rgba(239, 68, 68, 0.3), inset 0 0 10px rgba(239, 68, 68, 0.1);
+  }
+  50% {
+    box-shadow: 0 0 40px rgba(239, 68, 68, 0.6), inset 0 0 20px rgba(239, 68, 68, 0.2);
+  }
+}
+
+.health-indicator-ultimate {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  animation: healthGlowUltimate 1.5s ease-in-out infinite;
+}
+
+@keyframes healthGlowUltimate {
+  0%, 100% {
+    box-shadow: 0 0 10px currentColor;
+  }
+  50% {
+    box-shadow: 0 0 20px currentColor;
+  }
+}
+
+.health-text-ultimate {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.health-label-ultimate {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: #cbd5e1;
+  font-weight: 800;
+}
+
+.health-status-ultimate {
+  font-size: 14px;
+  font-weight: 900;
+  letter-spacing: 0.05em;
+}
+
+.interaction-hint-ultimate {
+  background: linear-gradient(135deg, rgba(6, 182, 212, 0.1), rgba(59, 130, 246, 0.08));
+  border: 1px dashed rgba(6, 182, 212, 0.3);
+  border-radius: 8px;
+  padding: 14px;
+  font-size: 11px;
+  color: #cbd5e1;
+}
+
+.interaction-hint-ultimate p {
+  font-weight: 700;
+  margin-bottom: 8px;
+  color: #06b6d4;
+  font-size: 12px;
+}
+
+.interaction-hint-ultimate ul {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.interaction-hint-ultimate li {
+  color: #94a3b8;
+}
+
 /* Insights */
 .insights-grid {
   display: grid;
