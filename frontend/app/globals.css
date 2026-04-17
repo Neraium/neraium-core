@@ -1256,3 +1256,120 @@ input[type="range"] {
     flex-wrap: wrap;
   }
 }
+
+/* Loading skeleton animation */
+@keyframes skeleton-pulse {
+  0%, 100% {
+    background-color: rgba(255, 255, 255, 0.08);
+  }
+  50% {
+    background-color: rgba(255, 255, 255, 0.12);
+  }
+}
+
+@keyframes progress-shimmer {
+  0% {
+    background-position: -1000px 0;
+  }
+  100% {
+    background-position: 1000px 0;
+  }
+}
+
+.skeleton {
+  background-color: rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  animation: skeleton-pulse 1.5s ease-in-out infinite;
+}
+
+.skeleton-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 24px 40px;
+}
+
+.skeleton-title {
+  flex-grow: 1;
+  margin-right: 20px;
+}
+
+.skeleton-metric {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  flex: 1;
+}
+
+.skeleton-session {
+  border-color: rgba(255, 255, 255, 0.05);
+}
+
+.skeleton-progress {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.skeleton-progress-bar {
+  height: 100%;
+  width: 45%;
+  background: rgba(56, 189, 248, 0.3);
+  border-radius: 999px;
+}
+
+.skeleton-card {
+  opacity: 0.6;
+}
+
+.skeleton-controls {
+  pointer-events: none;
+}
+
+.skeleton-panel {
+  background: linear-gradient(140deg, rgba(15, 23, 42, 0.5), rgba(9, 16, 34, 0.4));
+  border: 1px solid rgba(148, 163, 184, 0.1);
+  border-radius: 12px;
+  animation: skeleton-pulse 1.5s ease-in-out infinite;
+}
+
+.loading-progress-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  pointer-events: none;
+}
+
+.loading-progress-bar {
+  width: 320px;
+  height: 4px;
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 999px;
+  overflow: hidden;
+  margin-bottom: 16px;
+  box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+}
+
+.loading-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #3b82f6 0%, #8b5cf6 50%, #3b82f6 100%);
+  background-size: 200% 100%;
+  border-radius: 999px;
+  transition: width 0.3s ease;
+  box-shadow: 0 0 12px rgba(59, 130, 246, 0.6);
+  animation: progress-shimmer 2s linear infinite;
+}
+
+.loading-progress-text {
+  text-align: center;
+  color: #cbd5e1;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+}
