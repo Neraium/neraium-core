@@ -66,15 +66,24 @@ class DecisionAuditLogger:
         for field in self.AUDIT_FIELDS:
             row[field] = self._extract_field(frame_data, field)
 
-        self.writer.writerow(row)
-        self.file.flush()
-        self.row_count += 1
+        try:
+            self.writer.writerow(row)
+            self.file.flush()
+            self.row_count += 1
+        except Exception as e:
+            logger.error(f"Error writing audit frame: {e}", exc_info=True)
+            raise
 
     def close(self) -> None:
         """Flush and close the file."""
-        self.file.flush()
-        self.file.close()
-        logger.info(f"Decision audit log closed: {self.row_count} rows written")
+        try:
+            self.file.flush()
+            self.file.close()
+            file_size = self.output_path.stat().st_size if self.output_path.exists() else 0
+            logger.info(f"Decision audit log closed: {self.row_count} rows written, file size: {file_size} bytes")
+        except Exception as e:
+            logger.error(f"Error closing audit log: {e}", exc_info=True)
+            raise
 
     @staticmethod
     def _extract_field(frame_data: dict[str, Any], field: str) -> str:
