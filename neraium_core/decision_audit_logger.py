@@ -56,6 +56,7 @@ class DecisionAuditLogger:
         self.file = open(self.output_path, "w", newline="", encoding="utf-8")
         self.writer = csv.DictWriter(self.file, fieldnames=self.AUDIT_FIELDS)
         self.writer.writeheader()
+        self.file.flush()
         self.row_count = 0
         logger.info(f"Decision audit logger initialized: {self.output_path}")
 
@@ -66,6 +67,7 @@ class DecisionAuditLogger:
             row[field] = self._extract_field(frame_data, field)
 
         self.writer.writerow(row)
+        self.file.flush()
         self.row_count += 1
 
     def close(self) -> None:
