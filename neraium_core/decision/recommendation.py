@@ -26,12 +26,12 @@ def recommend_action(
     if not top_signals:
         top_signals = []
 
-    if severity == "CRITICAL":
+    if severity == "HIGH":
         if time_to_instability and time_to_instability < 1.0:
             return Recommendation(
                 action="urgent_inspection_required",
                 target=top_signals[0] if top_signals else None,
-                urgency="CRITICAL",
+                urgency="HIGH",
                 rationale="System approaching critical threshold; immediate operator attention needed.",
                 time_window_hours=0.5,
                 confidence=action_confidence,
@@ -40,18 +40,18 @@ def recommend_action(
             return Recommendation(
                 action="escalate_to_operations",
                 target=top_signals[0] if top_signals else None,
-                urgency="CRITICAL",
-                rationale="Critical structural instability detected across multiple signals.",
+                urgency="HIGH",
+                rationale="Structural instability detected across multiple signals.",
                 time_window_hours=1.0,
                 confidence=action_confidence,
             )
 
-    if severity == "HIGH":
+    if severity == "ELEVATED":
         if drift_score > 0.7:
             return Recommendation(
                 action="schedule_inspection",
                 target=top_signals[0] if top_signals else None,
-                urgency="HIGH",
+                urgency="ELEVATED",
                 rationale=f"Major structural misalignment detected. Inspect {top_signals[0] if top_signals else 'key systems'} within 4 hours.",
                 time_window_hours=4.0,
                 confidence=action_confidence,
@@ -60,7 +60,7 @@ def recommend_action(
             return Recommendation(
                 action="increase_monitoring_cadence",
                 target=top_signals[0] if top_signals else None,
-                urgency="HIGH",
+                urgency="ELEVATED",
                 rationale="System trending toward instability. Increase sampling frequency to catch changes faster.",
                 time_window_hours=0.5,
                 confidence=action_confidence,

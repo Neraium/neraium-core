@@ -92,9 +92,9 @@ def apply_transient_suppression(
     """Determine if we should suppress based on transient likelihood.
 
     Returns (suppress, reason).
-    Never suppresses CRITICAL.
+    Never suppresses HIGH severity.
     """
-    if severity == "CRITICAL":
+    if severity == "HIGH":
         return False, ""
 
     if transient_score > 0.75:

@@ -9,7 +9,7 @@ from dataclasses import dataclass, field, asdict
 from typing import Any, Literal, Optional
 
 
-SeverityLevel = Literal["CRITICAL", "HIGH", "MODERATE", "LOW"]
+SeverityLevel = Literal["HIGH", "ELEVATED", "MODERATE", "LOW"]
 
 
 @dataclass

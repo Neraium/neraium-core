@@ -231,8 +231,8 @@ class DecisionEngine:
         """Build human-readable reasons for the decision."""
         reasons = []
 
-        if severity == "CRITICAL":
-            reasons.append("CRITICAL severity: immediate attention warranted")
+        if severity == "HIGH":
+            reasons.append("HIGH severity: immediate attention warranted")
 
         if finding_confidence > 0.8:
             reasons.append("Finding is high-confidence")
