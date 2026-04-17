@@ -5,8 +5,8 @@ Explains how we got from baseline to current state via observable cause-effect l
 
 from __future__ import annotations
 
-from typing import Any
-from neraium_core.decision.models import CausalChain, CausalStep
+from typing import Any, Optional
+from neraium_core.decision.models import CausalChain, CausalStep, TemporalContext
 
 
 def build_causal_chain(
@@ -14,6 +14,7 @@ def build_causal_chain(
     sii_output: dict[str, Any],
     shock_activity: float = 0.0,
     subsystem_instability: float = 0.0,
+    temporal_context: Optional[TemporalContext] = None,
 ) -> CausalChain | None:
     """Build causal chain from observable signals.
 
@@ -62,13 +63,21 @@ def build_causal_chain(
     elif drift > 0.65 and relational > 0.5:
         # Multi-indicator: both structural and relational breakdown
         root_cause = "persistent_structural_degradation"
+
+        # Phase 3: Strengthen confidence if temporal context shows persistence
+        temporal_strength = 0.8
+        if temporal_context and temporal_context.persistent_frames_at_level >= 5:
+            # Signal degradation sustained across multiple frames
+            temporal_strength = 0.9
+            root_cause = "persistent_structural_degradation"
+
         steps.append(CausalStep(
             trigger="Sustained baseline-to-recent misalignment",
             effect="Correlation matrices diverged; relationships unstable",
-            strength=min(1.0, (drift + relational) / 2.0 * 0.8),
+            strength=min(1.0, (drift + relational) / 2.0 * temporal_strength),
             involved_signals=top_drivers,
         ))
-        confidence = 0.8
+        confidence = min(1.0, 0.8 + (0.1 if temporal_context and temporal_context.persistent_frames_at_level >= 5 else 0))
 
     elif drift > 0.5:
         root_cause = "structural_alignment_shift"
