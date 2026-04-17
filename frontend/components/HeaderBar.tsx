@@ -2,12 +2,23 @@ interface HeaderBarProps {
   frame: Record<string, unknown>
 }
 
+const getHealthColor = (health: string): string => {
+  switch (health) {
+    case 'NOMINAL':
+      return '#10b981'
+    case 'WATCH':
+      return '#f59e0b'
+    case 'CRITICAL':
+      return '#ef4444'
+    default:
+      return '#10b981'
+  }
+}
+
 export default function HeaderBar({ frame }: HeaderBarProps) {
   const confidence = frame.confidence ? ((frame.confidence as number) * 100).toFixed(0) : '—'
   const healthRaw = frame.system_health ? (frame.system_health as string).toUpperCase() : 'NOMINAL'
   const health = healthRaw === 'WARNING' ? 'WATCH' : healthRaw
-
-  // Format timestamp for display
   const timestamp = frame.timestamp ? new Date(frame.timestamp as string).toLocaleTimeString() : new Date().toLocaleTimeString()
 
   return (
@@ -19,7 +30,7 @@ export default function HeaderBar({ frame }: HeaderBarProps) {
       <div className="header-metrics">
         <div className="header-metric">
           <span className="metric-label">System Health</span>
-          <span className="metric-value" style={{ color: health === 'NOMINAL' ? '#10b981' : health === 'WATCH' ? '#f59e0b' : '#ef4444' }}>
+          <span className="metric-value" style={{ color: getHealthColor(health) }}>
             {health}
           </span>
         </div>

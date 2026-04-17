@@ -147,26 +147,26 @@ export default function TetrahedronPanel({ frame }: TetrahedronPanelProps) {
 
         <div className="tetra-info">
           <div className="tetra-label" style={{ borderLeftColor: '#3B82F6' }}>
-            <strong>Drift</strong>
-            <div style={{ marginTop: '4px', fontSize: '16px', color: '#3B82F6', transition: 'all 0.5s ease-in-out' }}>
+            <div style={{ fontSize: '11px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.05em', color: '#94a3b8', marginBottom: '8px' }}>Drift</div>
+            <div style={{ fontSize: '20px', fontWeight: '800', color: '#3B82F6', transition: 'all 0.3s ease', background: 'linear-gradient(135deg, #3B82F6, #2563EB)', backgroundClip: 'text', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
               {(drift * 100).toFixed(1)}%
             </div>
           </div>
           <div className="tetra-label" style={{ borderLeftColor: '#22C55E' }}>
-            <strong>Stability</strong>
-            <div style={{ marginTop: '4px', fontSize: '16px', color: '#22C55E', transition: 'all 0.5s ease-in-out' }}>
+            <div style={{ fontSize: '11px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.05em', color: '#94a3b8', marginBottom: '8px' }}>Stability</div>
+            <div style={{ fontSize: '20px', fontWeight: '800', color: '#22C55E', transition: 'all 0.3s ease', background: 'linear-gradient(135deg, #22C55E, #16A34A)', backgroundClip: 'text', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
               {(stability * 100).toFixed(1)}%
             </div>
           </div>
           <div className="tetra-label" style={{ borderLeftColor: '#06B6D4' }}>
-            <strong>Coherence</strong>
-            <div style={{ marginTop: '4px', fontSize: '16px', color: '#06B6D4', transition: 'all 0.5s ease-in-out' }}>
+            <div style={{ fontSize: '11px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.05em', color: '#94a3b8', marginBottom: '8px' }}>Coherence</div>
+            <div style={{ fontSize: '20px', fontWeight: '800', color: '#06B6D4', transition: 'all 0.3s ease', background: 'linear-gradient(135deg, #06B6D4, #0891B2)', backgroundClip: 'text', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
               {(coherence * 100).toFixed(1)}%
             </div>
           </div>
           <div className="tetra-label" style={{ borderLeftColor: '#F97316' }}>
-            <strong>Confidence</strong>
-            <div style={{ marginTop: '4px', fontSize: '16px', color: '#F97316', transition: 'all 0.5s ease-in-out' }}>
+            <div style={{ fontSize: '11px', fontWeight: '700', textTransform: 'uppercase', letterSpacing: '0.05em', color: '#94a3b8', marginBottom: '8px' }}>Confidence</div>
+            <div style={{ fontSize: '20px', fontWeight: '800', color: '#F97316', transition: 'all 0.3s ease', background: 'linear-gradient(135deg, #F97316, #EA580C)', backgroundClip: 'text', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
               {(confidence * 100).toFixed(1)}%
             </div>
           </div>

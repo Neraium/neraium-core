@@ -72,70 +72,70 @@ export default function InsightPanels({ frame }: InsightPanelsProps) {
         </div>
       </div>
 
-      <div style={{ marginTop: '24px', paddingTop: '20px', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
-        <div className="insight-title" style={{ marginBottom: '12px' }}>
+      <div style={{ marginTop: '28px', paddingTop: '22px', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
+        <div className="insight-title" style={{ marginBottom: '16px' }}>
           Metrics Summary
         </div>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '12px' }}>
-          <div style={{ padding: '8px', background: 'rgba(255,255,255,0.03)', borderRadius: '4px' }}>
-            <div style={{ fontSize: '10px', color: '#9CA3AF', marginBottom: '4px' }}>Drift Score</div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '14px' }}>
+          <div style={{ padding: '12px', background: 'rgba(255,255,255,0.05)', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.08)', transition: 'all 0.2s ease' }} className="insight-card">
+            <div style={{ fontSize: '10px', color: '#94a3b8', marginBottom: '6px', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Drift Score</div>
             <div
               style={{
-                fontSize: '18px',
-                fontWeight: '700',
-                background: `linear-gradient(90deg, #3B82F6, transparent)`,
+                fontSize: '20px',
+                fontWeight: '800',
+                background: `linear-gradient(135deg, #3B82F6, #2563EB)`,
                 backgroundClip: 'text',
                 WebkitBackgroundClip: 'text',
                 WebkitTextFillColor: 'transparent',
-                transition: 'all 0.5s ease-in-out',
+                transition: 'all 0.3s ease',
               }}
             >
               {(((frame.structural_drift_score as number) || 0) * 100).toFixed(1)}%
             </div>
           </div>
-          <div style={{ padding: '8px', background: 'rgba(255,255,255,0.03)', borderRadius: '4px' }}>
-            <div style={{ fontSize: '10px', color: '#9CA3AF', marginBottom: '4px' }}>Stability</div>
+          <div style={{ padding: '12px', background: 'rgba(255,255,255,0.05)', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.08)', transition: 'all 0.2s ease' }} className="insight-card">
+            <div style={{ fontSize: '10px', color: '#94a3b8', marginBottom: '6px', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Stability</div>
             <div
               style={{
-                fontSize: '18px',
-                fontWeight: '700',
-                background: `linear-gradient(90deg, #22C55E, transparent)`,
+                fontSize: '20px',
+                fontWeight: '800',
+                background: `linear-gradient(135deg, #22C55E, #16A34A)`,
                 backgroundClip: 'text',
                 WebkitBackgroundClip: 'text',
                 WebkitTextFillColor: 'transparent',
-                transition: 'all 0.5s ease-in-out',
+                transition: 'all 0.3s ease',
               }}
             >
               {(((frame.relational_stability_score as number) || 0) * 100).toFixed(1)}%
             </div>
           </div>
-          <div style={{ padding: '8px', background: 'rgba(255,255,255,0.03)', borderRadius: '4px' }}>
-            <div style={{ fontSize: '10px', color: '#9CA3AF', marginBottom: '4px' }}>Coherence</div>
+          <div style={{ padding: '12px', background: 'rgba(255,255,255,0.05)', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.08)', transition: 'all 0.2s ease' }} className="insight-card">
+            <div style={{ fontSize: '10px', color: '#94a3b8', marginBottom: '6px', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Coherence</div>
             <div
               style={{
-                fontSize: '18px',
-                fontWeight: '700',
-                background: `linear-gradient(90deg, #06B6D4, transparent)`,
+                fontSize: '20px',
+                fontWeight: '800',
+                background: `linear-gradient(135deg, #06B6D4, #0891B2)`,
                 backgroundClip: 'text',
                 WebkitBackgroundClip: 'text',
                 WebkitTextFillColor: 'transparent',
-                transition: 'all 0.5s ease-in-out',
+                transition: 'all 0.3s ease',
               }}
             >
               {(((frame.coherence_score as number) || 0) * 100).toFixed(1)}%
             </div>
           </div>
-          <div style={{ padding: '8px', background: 'rgba(255,255,255,0.03)', borderRadius: '4px' }}>
-            <div style={{ fontSize: '10px', color: '#9CA3AF', marginBottom: '4px' }}>Confidence</div>
+          <div style={{ padding: '12px', background: 'rgba(255,255,255,0.05)', borderRadius: '8px', border: '1px solid rgba(255,255,255,0.08)', transition: 'all 0.2s ease' }} className="insight-card">
+            <div style={{ fontSize: '10px', color: '#94a3b8', marginBottom: '6px', fontWeight: '600', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Confidence</div>
             <div
               style={{
-                fontSize: '18px',
-                fontWeight: '700',
-                background: `linear-gradient(90deg, #F97316, transparent)`,
+                fontSize: '20px',
+                fontWeight: '800',
+                background: `linear-gradient(135deg, #F97316, #EA580C)`,
                 backgroundClip: 'text',
                 WebkitBackgroundClip: 'text',
                 WebkitTextFillColor: 'transparent',
-                transition: 'all 0.5s ease-in-out',
+                transition: 'all 0.3s ease',
               }}
             >
               {(((frame.confidence as number) || 0) * 100).toFixed(1)}%
