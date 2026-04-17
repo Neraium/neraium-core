@@ -25,6 +25,7 @@ def classify_severity(
 
     Hysteresis: consider prior severity and persistence to avoid flip-flopping.
     Trajectory: prefer lower classification if system is improving.
+    HIGH escalation: allowed immediately if metrics strongly warrant it (state=ALERT + drift>0.7).
     """
     # Base classification from current metrics
     candidate_severity = _base_severity_classification(
@@ -41,6 +42,8 @@ def classify_severity(
             prior=prior_severity,
             persistence_frames=persistence_frames,
             trajectory=persistence_trajectory,
+            state=state,
+            drift_score=drift_score,
         )
 
     return candidate_severity
@@ -92,11 +95,15 @@ def _apply_hysteresis(
     prior: SeverityLevel,
     persistence_frames: int,
     trajectory: float,
+    state: str,
+    drift_score: float,
 ) -> SeverityLevel:
     """Apply hysteresis to prevent flip-flopping between severity levels.
 
-    Requires sustained evidence before escalating.
-    Prefers lower classifications if trajectory is improving.
+    HIGH escalation: allowed immediately if metrics strongly warrant it (state=ALERT + drift>0.7).
+    MODERATE→ELEVATED: requires 2 frames of sustained evidence.
+    HIGH downgrade: requires 2 frames of stability.
+    Trajectory: prefer lower classification if system is improving.
     """
     # Improving trajectory: prefer lower classification
     if trajectory < -0.15 and candidate == "ELEVATED":
@@ -104,14 +111,22 @@ def _apply_hysteresis(
     if trajectory < -0.15 and candidate == "HIGH":
         return "ELEVATED"
 
-    # Escalation requirements (require multiple frames at prior level)
+    # HIGH escalation: allow immediately if metrics strongly indicate HIGH
+    # (e.g., state=ALERT + drift>0.7 is unambiguous)
     if candidate == "HIGH" and prior in {"MODERATE", "LOW"}:
-        # Jumping from MODERATE/LOW to HIGH: requires sustained evidence
-        if persistence_frames < 2:
-            return prior  # Wait for more evidence
+        # Check if metrics strongly warrant HIGH
+        is_strong_high = state == "ALERT" and drift_score > 0.7
 
+        if is_strong_high:
+            # Metrics clearly indicate HIGH - allow immediately
+            return "HIGH"
+        else:
+            # Weaker signals - require persistence
+            if persistence_frames < 2:
+                return prior  # Wait for more evidence
+
+    # MODERATE → ELEVATED: requires at least 2 frames of elevation signals
     if candidate == "ELEVATED" and prior == "MODERATE":
-        # MODERATE → ELEVATED: requires at least 2 frames of elevation signals
         if persistence_frames < 2:
             return "MODERATE"
 
