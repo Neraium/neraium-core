@@ -52,13 +52,18 @@ class DecisionAuditLogger:
 
     def __init__(self, output_path: Path | str):
         self.output_path = Path(output_path)
-        self.output_path.parent.mkdir(parents=True, exist_ok=True)
-        self.file = open(self.output_path, "w", newline="", encoding="utf-8")
-        self.writer = csv.DictWriter(self.file, fieldnames=self.AUDIT_FIELDS)
-        self.writer.writeheader()
-        self.file.flush()
-        self.row_count = 0
-        logger.info(f"Decision audit logger initialized: {self.output_path}")
+        try:
+            self.output_path.parent.mkdir(parents=True, exist_ok=True)
+            logger.debug(f"Created audit directory: {self.output_path.parent}")
+            self.file = open(self.output_path, "w", newline="", encoding="utf-8")
+            self.writer = csv.DictWriter(self.file, fieldnames=self.AUDIT_FIELDS)
+            self.writer.writeheader()
+            self.file.flush()
+            self.row_count = 0
+            logger.info(f"Decision audit logger initialized: {self.output_path}")
+        except Exception as e:
+            logger.error(f"Failed to initialize audit logger at {output_path}: {e}", exc_info=True)
+            raise
 
     def write_frame(self, frame_data: dict[str, Any]) -> None:
         """Write one audit row from frame data."""
