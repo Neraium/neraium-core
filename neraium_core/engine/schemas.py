@@ -85,6 +85,9 @@ class EngineResult:
     sensor_count: int = 0
     model_age_frames: int = 0
 
+    # Decision layer metadata (populated by DecisionEngine)
+    decision: dict[str, Any] | None = None
+
     def validate(self) -> None:
         """Validate result against schema constraints.
 

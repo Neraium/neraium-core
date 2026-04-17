@@ -18,6 +18,7 @@ from neraium_core.engine.dataset_loader import load_dataset
 from neraium_core.engine.logging_setup import get_logger
 from neraium_core.engine.schemas import BatchResult, EngineResult, InputFrame
 from neraium_core.engine_optimizations import get_asset_config
+from neraium_core.decision import DecisionEngine
 
 logger = logging.getLogger(__name__)
 
@@ -47,10 +48,13 @@ class Engine:
         self._logger = get_logger(__name__, self.logging_config)
         self._frame_count_by_unit: dict[str, int] = {}
         self._structural_engines: dict[str, StructuralEngine] = {}  # Per-unit engines for asset-specific tuning
+        self._decision_engines: dict[str, DecisionEngine] = {}  # Per-unit decision engines
 
         self._structural_engine = self._build_structural_engine()
+        self._decision_engine = DecisionEngine()  # Default decision engine
         self._shadow_mode_evidence: list[dict[str, Any]] = []
         self._replay_results: list[dict[str, Any]] = []
+        self._previous_outputs: dict[str, dict[str, Any]] = {}  # Track previous output per unit
 
     def _build_structural_engine(self, unit_id: str | None = None) -> StructuralEngine:
         """Build structural engine with optional asset-specific tuning."""
@@ -84,6 +88,12 @@ class Engine:
         if unit_id not in self._structural_engines:
             self._structural_engines[unit_id] = self._build_structural_engine(unit_id)
         return self._structural_engines[unit_id]
+
+    def _get_decision_engine_for_unit(self, unit_id: str) -> DecisionEngine:
+        """Get or create decision engine for specific unit."""
+        if unit_id not in self._decision_engines:
+            self._decision_engines[unit_id] = DecisionEngine()
+        return self._decision_engines[unit_id]
 
     def _reset_runtime_state(self) -> None:
         self._structural_engine = self._build_structural_engine()
@@ -140,6 +150,16 @@ class Engine:
                 model_age_frames=len(engine.frames),
             )
             result.validate()
+
+            # === DECISION LAYER INTEGRATION ===
+            # Apply decision logic to determine what to surface and recommend
+            decision_engine = self._get_decision_engine_for_unit(frame.unit_id)
+            prev_output = self._previous_outputs.get(frame.unit_id)
+            decision = decision_engine.decide(raw_result, prev_output)
+
+            # Attach decision to result
+            result.decision = decision.to_dict()
+            self._previous_outputs[frame.unit_id] = raw_result
 
             if self.enable_shadow_mode:
                 self._shadow_mode_evidence.append(result.to_dict())
