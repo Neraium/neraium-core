@@ -74,6 +74,10 @@ class DecisionAuditLogger:
         try:
             self.writer.writerow(row)
             self.file.flush()
+            # Force OS-level sync to ensure data is written to disk immediately
+            import os
+            if hasattr(os, 'fsync'):
+                os.fsync(self.file.fileno())
             self.row_count += 1
         except Exception as e:
             logger.error(f"Error writing audit frame: {e}", exc_info=True)
@@ -83,6 +87,10 @@ class DecisionAuditLogger:
         """Flush and close the file."""
         try:
             self.file.flush()
+            # Force OS-level sync on Windows to ensure data is written to disk
+            import os
+            if hasattr(os, 'fsync'):
+                os.fsync(self.file.fileno())
             self.file.close()
             file_size = self.output_path.stat().st_size if self.output_path.exists() else 0
             logger.info(f"Decision audit log closed: {self.row_count} rows written, file size: {file_size} bytes")
