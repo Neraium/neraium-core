@@ -634,6 +634,228 @@ input[type="range"] {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
 }
 
+/* Enhanced Tetrahedron */
+.tetra-panel-enhanced {
+  background: linear-gradient(135deg, rgba(15, 23, 42, 0.8), rgba(9, 16, 34, 0.9));
+  border: 1px solid rgba(59, 130, 246, 0.2);
+  box-shadow: 0 0 32px rgba(59, 130, 246, 0.08);
+}
+
+.tetra-container-enhanced {
+  display: flex;
+  gap: 28px;
+  align-items: stretch;
+  padding: 20px;
+}
+
+.tetra-canvas-enhanced {
+  flex: 1;
+  background: linear-gradient(135deg, rgba(5, 20, 45, 0.6), rgba(2, 10, 30, 0.8));
+  border: 1px solid rgba(59, 130, 246, 0.15);
+  border-radius: 14px;
+  min-height: 420px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  overflow: hidden;
+  box-shadow: inset 0 4px 16px rgba(0, 0, 0, 0.4), 0 8px 24px rgba(59, 130, 246, 0.1);
+}
+
+.tetra-3d-wrapper {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tetra-3d-wrapper svg {
+  filter: drop-shadow(0 8px 24px rgba(59, 130, 246, 0.15));
+}
+
+.health-badge {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 10px 16px;
+  background: rgba(255, 255, 255, 0.05);
+  border: 2px solid #3b82f6;
+  border-radius: 8px;
+  animation: healthPulse 2s ease-in-out infinite;
+}
+
+@keyframes healthPulse {
+  0%, 100% { box-shadow: 0 0 12px rgba(59, 130, 246, 0.3); }
+  50% { box-shadow: 0 0 20px rgba(59, 130, 246, 0.6); }
+}
+
+.health-indicator {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  animation: healthGlow 2s ease-in-out infinite;
+}
+
+@keyframes healthGlow {
+  0%, 100% { box-shadow: 0 0 8px currentColor; }
+  50% { box-shadow: 0 0 16px currentColor; }
+}
+
+.health-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.health-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #94a3b8;
+  font-weight: 700;
+}
+
+.health-status {
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+}
+
+.tetra-info-enhanced {
+  flex: 0 0 380px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.metrics-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.metric-card-enhanced {
+  background: linear-gradient(135deg, rgba(15, 23, 42, 0.7), rgba(9, 16, 34, 0.8));
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-top: 3px solid #3b82f6;
+  border-radius: 10px;
+  padding: 16px;
+  transition: all 0.3s ease;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  position: relative;
+  overflow: hidden;
+}
+
+.metric-card-enhanced::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.05), transparent);
+  pointer-events: none;
+}
+
+.metric-card-enhanced:hover {
+  border-color: rgba(255, 255, 255, 0.15);
+  background: linear-gradient(135deg, rgba(15, 23, 42, 0.85), rgba(9, 16, 34, 0.9));
+  transform: translateY(-2px);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
+}
+
+.metric-icon {
+  font-size: 20px;
+  margin-bottom: 8px;
+  display: inline-block;
+}
+
+.metric-label-text {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #94a3b8;
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+
+.metric-value-large {
+  font-size: 28px;
+  font-weight: 900;
+  margin-bottom: 10px;
+  display: block;
+}
+
+.metric-bar {
+  height: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 3px;
+  overflow: hidden;
+  position: relative;
+}
+
+.metric-bar-fill {
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+}
+
+.metric-bar-fill::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+  animation: shimmer 2s infinite;
+}
+
+@keyframes shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+.tetra-stats-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 16px;
+  background: linear-gradient(135deg, rgba(59, 130, 246, 0.08), rgba(6, 182, 212, 0.05));
+  border: 1px solid rgba(59, 130, 246, 0.15);
+  border-radius: 10px;
+  box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+.stat-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.stat-item:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.stat-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #94a3b8;
+  font-weight: 700;
+}
+
+.stat-value {
+  font-size: 18px;
+  font-weight: 900;
+  letter-spacing: 0.05em;
+}
+
 /* Insights */
 .insights-grid {
   display: grid;
