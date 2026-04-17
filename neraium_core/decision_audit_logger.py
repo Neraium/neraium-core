@@ -19,11 +19,10 @@ def _sanitize_for_csv(text: str) -> str:
     if not isinstance(text, str):
         return str(text)
     # Remove emoji (multiple ranges) and control characters
-    # U+1F300-U+1F9FF: Miscellaneous Symbols and Pictographs to Supplemental Symbols and Pictographs
-    # U+1F600-U+1F64F: Emoticons
-    # U+1F900-U+1F9FF: Supplemental Symbols and Pictographs
+    # U+2600-U+27BF: Miscellaneous Symbols and Dingbats
+    # U+1F300-U+1F9FF: Emoticons through Supplemental Symbols and Pictographs
     # Also remove variation selectors (U+FE0E, U+FE0F) and zero-width joiners
-    text = re.sub(r'[\U0001F300-\U0001F9FF\U0001F600-\U0001F64F\U0001F900-\U0001F9FF\uFE0E\uFE0F\u200D\x00-\x1f\x7f-\x9f]', '', text)
+    text = re.sub(r'[\u2600-\u27BF\U0001F300-\U0001F9FF\uFE0E\uFE0F\u200D\x00-\x1f\x7f-\x9f]', '', text)
     # Collapse multiple spaces into single space
     text = re.sub(r'\s+', ' ', text)
     return text.strip()
