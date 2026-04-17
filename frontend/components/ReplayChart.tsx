@@ -252,10 +252,10 @@ export default function ReplayChart({ frames, currentIndex }: ReplayChartProps) 
             />
 
             {currentDriftPoint && (
-              <circle cx={currentX} cy={currentDriftPoint.y} r="7.5" fill="#60A5FA" stroke="#FFFFFF" strokeWidth="2" opacity="1" />
+              <circle cx={currentX} cy={currentDriftPoint.y} r="6.5" fill="#FFFFFF" stroke="none" strokeWidth="0" opacity="0.9" />
             )}
             {currentInstabilityPoint && (
-              <circle cx={currentX} cy={currentInstabilityPoint.y} r="7.5" fill="#FF8A5C" stroke="#FFFFFF" strokeWidth="2" opacity="1" />
+              <circle cx={currentX} cy={currentInstabilityPoint.y} r="6.5" fill="#FFFFFF" stroke="none" strokeWidth="0" opacity="0.9" />
             )}
 
           </svg>
