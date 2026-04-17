@@ -11,6 +11,15 @@ from typing import Any, Literal, Optional
 
 SeverityLevel = Literal["HIGH", "ELEVATED", "MODERATE", "LOW"]
 TrajectoryLabel = Literal["improving", "stable", "degrading", "unstable"]
+DegradationStage = Literal[
+    "baseline",
+    "early_shift",
+    "emerging_degradation",
+    "persistent_degradation",
+    "accelerated_deterioration",
+    "chronic_degraded_state",
+    "failure_approach",
+]
 
 
 @dataclass
@@ -163,6 +172,11 @@ class Decision:
     temporal_context: Optional[TemporalContext] = None  # Full temporal context for this frame
     consistency_check_passed: bool = True  # Whether decision is consistent with recent history
 
+    # Phase 4: Degradation Stage Modeling
+    degradation_stage: DegradationStage = "baseline"  # Stage of degradation progression
+    stage_transition_event: Optional[str] = None  # Stage transition marker (e.g., "stage_transition:baseline→early_shift")
+    stage_specific_recommendation: Optional[str] = None  # Stage-specific action recommendation
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "finding_confidence": self.finding_confidence,
@@ -185,4 +199,7 @@ class Decision:
             "transition_event": self.transition_event,
             "temporal_context": self.temporal_context.to_dict() if self.temporal_context else None,
             "consistency_check_passed": self.consistency_check_passed,
+            "degradation_stage": self.degradation_stage,
+            "stage_transition_event": self.stage_transition_event,
+            "stage_specific_recommendation": self.stage_specific_recommendation,
         }
