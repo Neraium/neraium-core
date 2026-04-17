@@ -42,7 +42,7 @@ export default function PlaybackControls({
             }}
             style={{ flex: 1 }}
           />
-          <span style={{ fontSize: '12px', color: '#9CA3AF', minWidth: '60px' }}>
+          <span style={{ fontSize: '12px', color: '#94a3b8', minWidth: '70px', fontWeight: '500', fontVariantNumeric: 'tabular-nums' }}>
             {currentIndex + 1} / {totalFrames}
           </span>
         </div>
@@ -58,7 +58,7 @@ export default function PlaybackControls({
             onChange={(e) => onSpeedChange(parseFloat(e.target.value))}
             style={{ width: '120px' }}
           />
-          <span style={{ fontSize: '12px', color: '#9CA3AF', minWidth: '40px' }}>
+          <span style={{ fontSize: '12px', color: '#94a3b8', minWidth: '50px', fontWeight: '500', fontVariantNumeric: 'tabular-nums' }}>
             {playbackSpeed.toFixed(1)}x
           </span>
         </div>
