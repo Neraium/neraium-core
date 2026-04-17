@@ -17,6 +17,7 @@ from neraium_core.decision import policy
 from neraium_core.decision import persistence_tracker
 from neraium_core.decision.temporal_intelligence import TemporalIntelligence
 from neraium_core.decision import degradation_stage
+from neraium_core.decision.pattern_outcome_influence import PatternOutcomeInfluencer
 
 
 class DecisionEngine:
@@ -24,6 +25,7 @@ class DecisionEngine:
 
     def __init__(self, enable_persistence_tracking: bool = True):
         self.pattern_memory = pm_module.PatternMemory()
+        self.pattern_outcome_influencer = PatternOutcomeInfluencer()
         self.persistence_tracker = persistence_tracker.PersistenceTracker()
         self.temporal_intelligence = TemporalIntelligence()
         self.previous_state: Optional[dict[str, Any]] = None
@@ -148,6 +150,17 @@ class DecisionEngine:
             recent_events=self.recent_events,
         )
 
+        # === PATTERN MATCHING (moved earlier for Phase 5) ===
+        pattern_match = None
+        feature_vector = pm_module.build_feature_vector(
+            drift_score=drift_score,
+            relational_instability=relational_instability,
+            shock_activity=shock_activity,
+            regime_distance=regime_distance,
+            system_phase_encoded=0.5 if system_phase == "degrading" else 0.2,
+        )
+        pattern_match = self.pattern_memory.find_match(feature_vector)
+
         # === SUPPRESSION LOGIC WITH PERSISTENCE ===
         suppress_flag = policy.compute_suppress_flag(
             severity=severity,
@@ -164,6 +177,16 @@ class DecisionEngine:
         # Final check: HIGH never suppressed
         if severity == "HIGH":
             suppress_flag = False
+
+        # === PHASE 5: PATTERN OUTCOME INFLUENCE ON SUPPRESSION ===
+        # Check if pattern outcome suggests self-resolution (only for non-HIGH/ELEVATED)
+        pattern_based_suppress = self.pattern_outcome_influencer.adjust_suppression_for_self_resolving(
+            pattern_match=pattern_match,
+            severity=severity,
+            transient_score=transient_score,
+        )
+        if pattern_based_suppress and severity in {"LOW", "MODERATE"}:
+            suppress_flag = True
 
         # === SPECIFIC FINDINGS ===
         findings_list = specificity.extract_findings(
@@ -186,17 +209,6 @@ class DecisionEngine:
 
         causal_chain_strength = causal_chains.chain_strength(causal_chain)
 
-        # === PATTERN MATCHING ===
-        pattern_match = None
-        feature_vector = pm_module.build_feature_vector(
-            drift_score=drift_score,
-            relational_instability=relational_instability,
-            shock_activity=shock_activity,
-            regime_distance=regime_distance,
-            system_phase_encoded=0.5 if system_phase == "degrading" else 0.2,
-        )
-        pattern_match = self.pattern_memory.find_match(feature_vector)
-
         # === ACTION CONFIDENCE ===
         pattern_match_conf = pattern_match.confidence if pattern_match else 0.0
         recommendation_clarity = 0.8 if severity == "HIGH" else 0.5
@@ -206,6 +218,13 @@ class DecisionEngine:
             causal_chain_strength=causal_chain_strength,
             pattern_match_confidence=pattern_match_conf,
             recommendation_clarity=recommendation_clarity,
+        )
+
+        # === PHASE 5: PATTERN OUTCOME INFLUENCE ON ACTION CONFIDENCE ===
+        action_confidence = self.pattern_outcome_influencer.adjust_action_confidence(
+            base_action_confidence=action_confidence,
+            pattern_match=pattern_match,
+            severity=severity,
         )
 
         # === PHASE 3: STATE TRANSITION DETECTION ===
@@ -340,6 +359,14 @@ class DecisionEngine:
                     rec.action, rec.target, rec.urgency
                 )
 
+        # === PHASE 5: PATTERN OUTCOME INFLUENCE SUMMARY ===
+        pattern_influence_summary = self.pattern_outcome_influencer.compute_pattern_influence_summary(
+            pattern_match=pattern_match,
+            suppress=suppress_flag,
+            action_confidence=action_confidence,
+            severity=severity,
+        )
+
         # === BUILD DECISION ===
         decision = Decision(
             finding_confidence=finding_confidence,
@@ -365,6 +392,9 @@ class DecisionEngine:
             degradation_stage=current_degradation_stage,
             stage_transition_event=stage_transition_event,
             stage_specific_recommendation=stage_specific_recommendation,
+            pattern_outcome_type=pattern_match.outcome_type if pattern_match else None,
+            pattern_match_tier=pattern_match.match_tier if pattern_match else None,
+            pattern_influence_summary=pattern_influence_summary,
         )
 
         # Track state
