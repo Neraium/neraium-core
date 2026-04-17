@@ -93,13 +93,17 @@ neraium_core/benchmarks/__init__.py
 neraium_core/benchmarks/platform_hotpath.py
 neraium_core/decision/__init__.py
 neraium_core/decision/causal_chains.py
+neraium_core/decision/change_detection.py
 neraium_core/decision/confidence.py
+neraium_core/decision/degradation_stage.py
 neraium_core/decision/engine.py
 neraium_core/decision/models.py
 neraium_core/decision/pattern_memory.py
+neraium_core/decision/persistence_tracker.py
 neraium_core/decision/policy.py
 neraium_core/decision/recommendation.py
 neraium_core/decision/specificity.py
+neraium_core/decision/temporal_intelligence.py
 neraium_core/decision/transient_gating.py
 neraium_core/detection/__init__.py
 neraium_core/detection/composite_signal.py
@@ -377,6 +381,7 @@ tests/test_data_connectors.py
 tests/test_decision_audit_logger.py
 tests/test_decision_interface.py
 tests/test_decision_layer.py
+tests/test_decision_phase2_regression.py
 tests/test_decision_resolver.py
 tests/test_demo_data_normalization.py
 tests/test_demo_stage_classification.py

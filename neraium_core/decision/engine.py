@@ -6,7 +6,7 @@ Takes SII output and produces a Decision object.
 from __future__ import annotations
 
 from typing import Any, Optional
-from neraium_core.decision.models import Decision, SeverityLevel, PersistenceState, TemporalContext, TrajectoryLabel
+from neraium_core.decision.models import Decision, SeverityLevel, PersistenceState, TemporalContext, TrajectoryLabel, DegradationStage
 from neraium_core.decision import confidence as conf_module
 from neraium_core.decision import transient_gating
 from neraium_core.decision import specificity
@@ -16,6 +16,7 @@ from neraium_core.decision import recommendation
 from neraium_core.decision import policy
 from neraium_core.decision import persistence_tracker
 from neraium_core.decision.temporal_intelligence import TemporalIntelligence
+from neraium_core.decision import degradation_stage
 
 
 class DecisionEngine:
@@ -29,6 +30,7 @@ class DecisionEngine:
         self.previous_persistence: Optional[PersistenceState] = None
         self.previous_severity: Optional[SeverityLevel] = None
         self.previous_trajectory: Optional[TrajectoryLabel] = None
+        self.previous_degradation_stage: Optional[DegradationStage] = None
         self.recent_events: list[str] = []
         self.enable_persistence_tracking = enable_persistence_tracking
         self.frame_counter = 0
@@ -260,6 +262,22 @@ class DecisionEngine:
                 if not (should_emit and consistency_check_passed):
                     rec = None
 
+        # === PHASE 4: DEGRADATION STAGE CLASSIFICATION ===
+        drift_velocity = temporal_context.drift_velocity if temporal_context else 0.0
+        instability = float(relational_instability) if relational_instability else 0.0
+
+        current_degradation_stage = degradation_stage.classify_degradation_stage(
+            severity=severity,
+            temporal_context=temporal_context,
+            persistence_frames=persistence_frames if self.enable_persistence_tracking else 0,
+            drift_velocity=drift_velocity,
+            instability=instability,
+            finding_confidence=finding_confidence,
+        )
+
+        # Detect stage transition (to be populated after reasons are built)
+        stage_transition_event: Optional[str] = None
+
         # === SUMMARY ===
         summary = policy.compute_summary(
             severity=severity,
@@ -276,6 +294,15 @@ class DecisionEngine:
             confidence_trend=temporal_context.confidence_trend,
         )
 
+        # === PHASE 4: ENHANCE SUMMARY WITH DEGRADATION STAGE ===
+        stage_summary = degradation_stage.get_stage_summary(current_degradation_stage, severity)
+        if not suppress_flag:
+            summary = f"{stage_summary} {summary}" if stage_summary and summary else (stage_summary or summary)
+
+        # Get stage-specific recommendation
+        stage_rec = degradation_stage.get_stage_recommendation(current_degradation_stage)
+        stage_specific_recommendation = stage_rec.get("description", "")
+
         # === REASONS ===
         reasons = self._build_reasons(
             severity=severity,
@@ -286,6 +313,15 @@ class DecisionEngine:
             is_safe_transient=is_safe_transient,
             is_first_appearance=is_first_appearance if self.enable_persistence_tracking else False,
         )
+
+        # === PHASE 4: ADD STAGE TRANSITION TO REASONS ===
+        if self.previous_degradation_stage is not None and degradation_stage.should_emit_stage_transition(
+            self.previous_degradation_stage, current_degradation_stage
+        ):
+            stage_transition_event = degradation_stage.format_transition_event(
+                self.previous_degradation_stage, current_degradation_stage
+            )
+            reasons.append(f"Stage transition: {self.previous_degradation_stage} → {current_degradation_stage}")
 
         # === BUILD PERSISTENCE STATE FOR NEXT FRAME ===
         next_persistence = None
@@ -326,6 +362,9 @@ class DecisionEngine:
             transition_event=transition_event,
             temporal_context=temporal_context,
             consistency_check_passed=consistency_check_passed,
+            degradation_stage=current_degradation_stage,
+            stage_transition_event=stage_transition_event,
+            stage_specific_recommendation=stage_specific_recommendation,
         )
 
         # Track state
@@ -333,6 +372,7 @@ class DecisionEngine:
         self.previous_persistence = next_persistence
         self.previous_severity = severity
         self.previous_trajectory = temporal_trajectory
+        self.previous_degradation_stage = current_degradation_stage
         return decision
 
     def _compute_drift_trend(self, drift_history: Any) -> float:
