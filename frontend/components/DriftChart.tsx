@@ -8,7 +8,6 @@ interface DriftChartProps {
 }
 
 export default function DriftChart({ chart }: DriftChartProps) {
-  const containerRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
 
   useEffect(() => {
@@ -21,36 +20,30 @@ export default function DriftChart({ chart }: DriftChartProps) {
     const width = canvas.offsetWidth
     const height = canvas.offsetHeight
 
-    // Set canvas resolution
     canvas.width = width * window.devicePixelRatio
     canvas.height = height * window.devicePixelRatio
     ctx.scale(window.devicePixelRatio, window.devicePixelRatio)
 
-    // Clear canvas
-    ctx.fillStyle = 'rgba(2, 6, 23, 0.35)'
+    ctx.fillStyle = 'rgba(2, 6, 23, 0.28)'
     ctx.fillRect(0, 0, width, height)
 
-    // Dimensions
     const padding = { top: 16, right: 16, bottom: 24, left: 40 }
     const chartWidth = width - padding.left - padding.right
     const chartHeight = height - padding.top - padding.bottom
 
-    // Draw grid lines
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)'
+    ctx.strokeStyle = 'rgba(148, 163, 184, 0.14)'
     ctx.lineWidth = 1
-    const gridLines = 4
-    for (let i = 0; i <= gridLines; i++) {
-      const y = padding.top + (i * chartHeight) / gridLines
+    for (let i = 0; i <= 4; i++) {
+      const y = padding.top + (i * chartHeight) / 4
       ctx.beginPath()
       ctx.moveTo(padding.left, y)
       ctx.lineTo(width - padding.right, y)
       ctx.stroke()
     }
 
-    // Draw threshold line
     const thresholdY = padding.top + chartHeight * (1 - chart.detectionThreshold)
-    ctx.strokeStyle = 'rgba(239, 68, 68, 0.3)'
-    ctx.lineWidth = 2
+    ctx.strokeStyle = 'rgba(239, 68, 68, 0.38)'
+    ctx.lineWidth = 1.5
     ctx.setLineDash([4, 4])
     ctx.beginPath()
     ctx.moveTo(padding.left, thresholdY)
@@ -58,40 +51,31 @@ export default function DriftChart({ chart }: DriftChartProps) {
     ctx.stroke()
     ctx.setLineDash([])
 
-    // Draw data points and line
     if (chart.dataPoints.length > 1) {
       ctx.strokeStyle = '#60a5fa'
       ctx.lineWidth = 2
       ctx.beginPath()
-
       chart.dataPoints.forEach((point, idx) => {
         const x = padding.left + (idx / (chart.dataPoints.length - 1)) * chartWidth
         const y = padding.top + chartHeight * (1 - point.driftScore)
-
-        if (idx === 0) {
-          ctx.moveTo(x, y)
-        } else {
-          ctx.lineTo(x, y)
-        }
+        if (idx === 0) ctx.moveTo(x, y)
+        else ctx.lineTo(x, y)
       })
-
       ctx.stroke()
     }
 
-    // Draw data point dots
     chart.dataPoints.forEach((point, idx) => {
       const x = padding.left + (idx / (chart.dataPoints.length - 1)) * chartWidth
       const y = padding.top + chartHeight * (1 - point.driftScore)
       const isCurrentFrame = idx === chart.currentFrameIdx
 
-      ctx.fillStyle = isCurrentFrame ? '#3b82f6' : 'rgba(59, 130, 246, 0.4)'
+      ctx.fillStyle = isCurrentFrame ? '#93c5fd' : 'rgba(96, 165, 250, 0.34)'
       ctx.beginPath()
-      ctx.arc(x, y, isCurrentFrame ? 4 : 2, 0, Math.PI * 2)
+      ctx.arc(x, y, isCurrentFrame ? 3.5 : 2, 0, Math.PI * 2)
       ctx.fill()
     })
 
-    // Draw Y-axis labels
-    ctx.fillStyle = 'rgba(255, 255, 255, 0.4)'
+    ctx.fillStyle = 'rgba(203, 213, 225, 0.45)'
     ctx.font = '11px system-ui, -apple-system, sans-serif'
     ctx.textAlign = 'right'
     ctx.textBaseline = 'middle'
@@ -99,13 +83,10 @@ export default function DriftChart({ chart }: DriftChartProps) {
     for (let i = 0; i <= 4; i++) {
       const value = i / 4
       const y = padding.top + ((4 - i) * chartHeight) / 4
-      const label = (value * 100).toFixed(0) + '%'
-      ctx.fillText(label, padding.left - 8, y)
+      ctx.fillText((value * 100).toFixed(0) + '%', padding.left - 8, y)
     }
 
-    // Draw threshold label
-    ctx.fillStyle = 'rgba(239, 68, 68, 0.6)'
-    ctx.textAlign = 'right'
+    ctx.fillStyle = 'rgba(248, 113, 113, 0.74)'
     ctx.fillText('Threshold', padding.left - 8, thresholdY)
   }, [chart])
 
@@ -116,17 +97,17 @@ export default function DriftChart({ chart }: DriftChartProps) {
     <div style={styles.container}>
       <div style={styles.label}>Drift</div>
 
-      <div style={styles.chartContainer} ref={containerRef}>
+      <div style={styles.chartContainer}>
         <canvas ref={canvasRef} style={styles.canvas} />
       </div>
 
       <div style={styles.statsRow}>
         <div style={styles.stat}>
-          <span style={styles.statLabel}>Current Drift</span>
+          <span style={styles.statLabel}>Current</span>
           <span style={styles.statValue}>{(currentDrift * 100).toFixed(1)}%</span>
         </div>
         <div style={styles.stat}>
-          <span style={styles.statLabel}>Peak Drift</span>
+          <span style={styles.statLabel}>Peak</span>
           <span style={styles.statValue}>{(maxDrift * 100).toFixed(1)}%</span>
         </div>
         <div style={styles.stat}>
@@ -142,21 +123,21 @@ const styles = {
   container: {
     display: 'flex',
     flexDirection: 'column' as const,
-    gap: '16px',
-    padding: '24px',
+    gap: '14px',
+    padding: '14px 0',
     transition: 'all 0.45s ease',
   },
   label: {
-    fontSize: '10px',
+    fontSize: '11px',
     fontWeight: '700',
-    letterSpacing: '0.1em',
-    color: 'rgba(255, 255, 255, 0.4)',
+    letterSpacing: '0.12em',
+    color: 'rgba(203, 213, 225, 0.54)',
     textTransform: 'uppercase' as const,
   },
   chartContainer: {
     position: 'relative' as const,
     height: '180px',
-    borderRadius: '8px',
+    borderRadius: '10px',
     overflow: 'hidden',
   },
   canvas: {
@@ -167,26 +148,25 @@ const styles = {
   statsRow: {
     display: 'grid',
     gridTemplateColumns: 'repeat(3, 1fr)',
-    gap: '16px',
-    paddingTop: '12px',
-    borderTop: '1px solid rgba(148, 163, 184, 0.2)',
+    gap: '14px',
+    paddingTop: '8px',
   },
   stat: {
     display: 'flex',
     flexDirection: 'column' as const,
-    gap: '6px',
+    gap: '5px',
   },
   statLabel: {
     fontSize: '9px',
     fontWeight: '700',
-    letterSpacing: '0.1em',
-    color: 'rgba(255, 255, 255, 0.35)',
+    letterSpacing: '0.12em',
+    color: 'rgba(148, 163, 184, 0.66)',
     textTransform: 'uppercase' as const,
   },
   statValue: {
     fontSize: '13px',
     fontWeight: '600',
-    color: '#0ea5e9',
+    color: '#93c5fd',
     fontVariantNumeric: 'tabular-nums',
   },
 }

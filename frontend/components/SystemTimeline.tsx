@@ -7,7 +7,7 @@ interface SystemTimelineProps {
 }
 
 export default function SystemTimeline({ timeline }: SystemTimelineProps) {
-  const getStageColor = (stage: DegradationStage, isNow: boolean): string => {
+  const getStageColor = (stage: DegradationStage): string => {
     const colorMap: Record<DegradationStage, string> = {
       [DegradationStage.BASELINE]: '#22c55e',
       [DegradationStage.EARLY_SHIFT]: '#eab308',
@@ -25,37 +25,34 @@ export default function SystemTimeline({ timeline }: SystemTimelineProps) {
 
       <div style={styles.timelineTrack}>
         {timeline.stages.map((stage, idx) => {
-          const color = getStageColor(stage.stage, stage.isCurrent)
+          const color = getStageColor(stage.stage)
           const isCompleted = idx < timeline.currentIndex
           const isCurrent = stage.isCurrent
 
           return (
             <div key={idx} style={styles.timelineItem}>
-              {/* Connector line to next */}
               {idx < timeline.stages.length - 1 && (
                 <div
                   style={{
                     ...styles.connector,
-                    backgroundColor: isCompleted || isCurrent ? color : 'rgba(255, 255, 255, 0.1)',
+                    backgroundColor: isCompleted || isCurrent ? color : 'rgba(148, 163, 184, 0.18)',
                   }}
                 />
               )}
 
-              {/* Stage dot */}
               <div
                 style={{
                   ...styles.stageDot,
-                  backgroundColor: isCurrent ? color : isCompleted ? color : 'rgba(255, 255, 255, 0.1)',
-                  borderColor: isCurrent ? color : 'rgba(255, 255, 255, 0.2)',
-                  boxShadow: isCurrent ? `0 0 12px ${color}80` : 'none',
+                  backgroundColor: isCurrent ? color : isCompleted ? color : 'rgba(148, 163, 184, 0.14)',
+                  borderColor: isCurrent ? color : 'rgba(148, 163, 184, 0.24)',
+                  boxShadow: isCurrent ? `0 0 10px ${color}66` : 'none',
                 }}
               />
 
-              {/* Stage label */}
               <div
                 style={{
                   ...styles.stageLabel,
-                  color: isCurrent ? color : isCompleted ? 'rgba(255, 255, 255, 0.6)' : 'rgba(255, 255, 255, 0.3)',
+                  color: isCurrent ? color : isCompleted ? 'rgba(226, 232, 240, 0.64)' : 'rgba(148, 163, 184, 0.5)',
                   fontWeight: isCurrent ? '600' : '500',
                 }}
               >
@@ -66,9 +63,8 @@ export default function SystemTimeline({ timeline }: SystemTimelineProps) {
         })}
       </div>
 
-      {/* Current stage indicator */}
       <div style={styles.currentStageInfo}>
-        <span style={styles.currentLabel}>Now:</span>
+        <span style={styles.currentLabel}>Now</span>
         <span style={styles.currentStageName}>{timeline.stages[timeline.currentIndex].label}</span>
       </div>
     </div>
@@ -79,21 +75,20 @@ const styles = {
   container: {
     display: 'flex',
     flexDirection: 'column' as const,
-    gap: '20px',
-    padding: '18px 0',
+    gap: '18px',
+    padding: '14px 0',
     transition: 'all 0.45s ease',
   },
   label: {
     fontSize: '11px',
     fontWeight: '700',
-    letterSpacing: '0.1em',
-    color: 'rgba(255, 255, 255, 0.4)',
+    letterSpacing: '0.12em',
+    color: 'rgba(203, 213, 225, 0.54)',
     textTransform: 'uppercase' as const,
   },
   timelineTrack: {
     display: 'grid',
     gridTemplateColumns: 'repeat(6, minmax(56px, 1fr))',
-    gap: '0px',
     alignItems: 'center',
   },
   timelineItem: {
@@ -110,7 +105,7 @@ const styles = {
     width: '100%',
     height: '2px',
     zIndex: 0,
-    transition: 'background-color 0.3s ease',
+    transition: 'background-color 0.5s ease',
   },
   stageDot: {
     width: '12px',
@@ -118,33 +113,31 @@ const styles = {
     borderRadius: '50%',
     border: '2px solid',
     zIndex: 1,
-    transition: 'all 0.3s ease',
+    transition: 'all 0.45s ease',
   },
   stageLabel: {
     fontSize: '9px',
-    fontWeight: '500',
     letterSpacing: '0.06em',
     textAlign: 'center' as const,
     lineHeight: '1.4',
-    maxWidth: '65px',
+    maxWidth: '64px',
     textTransform: 'capitalize' as const,
   },
   currentStageInfo: {
     display: 'flex',
     gap: '10px',
-    padding: '14px 0',
-    borderTop: '1px solid rgba(148, 163, 184, 0.2)',
+    paddingTop: '8px',
     fontSize: '11px',
     alignItems: 'center',
   },
   currentLabel: {
-    color: 'rgba(255, 255, 255, 0.4)',
+    color: 'rgba(148, 163, 184, 0.72)',
     fontWeight: '700',
-    letterSpacing: '0.05em',
+    letterSpacing: '0.08em',
     textTransform: 'uppercase',
   },
   currentStageName: {
-    color: '#f5f5f5',
+    color: '#f8fafc',
     fontWeight: '500',
   },
 }

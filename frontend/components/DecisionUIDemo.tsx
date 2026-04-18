@@ -6,6 +6,7 @@ import { DEMO_SCENARIOS } from '@/lib/demoScenarios'
 import { DecisionUIState } from '@/lib/decisionToUI'
 
 const INTERPOLATION_MS = 2200
+const TEXT_LAG_MS = 220
 
 function lerp(a: number, b: number, t: number): number {
   return a + (b - a) * t
@@ -17,8 +18,8 @@ function easeInOut(t: number): number {
 
 function interpolateStates(from: DecisionUIState, to: DecisionUIState, t: number): DecisionUIState {
   const eased = easeInOut(Math.max(0, Math.min(1, t)))
-
   const trailLength = Math.min(from.tetrahedron.trailPoints.length, to.tetrahedron.trailPoints.length)
+
   const trailPoints = Array.from({ length: trailLength }, (_, i) => {
     const fromPoint = from.tetrahedron.trailPoints[i]
     const toPoint = to.tetrahedron.trailPoints[i]
@@ -64,12 +65,14 @@ function interpolateStates(from: DecisionUIState, to: DecisionUIState, t: number
 
 export default function DecisionUIDemo() {
   const [scenarioIndex, setScenarioIndex] = useState(0)
+  const [displayedScenarioIndex, setDisplayedScenarioIndex] = useState(0)
   const [isAutoPlay, setIsAutoPlay] = useState(true)
   const [fromScenarioIndex, setFromScenarioIndex] = useState(0)
   const [transitionStart, setTransitionStart] = useState<number | null>(null)
   const [progress, setProgress] = useState(1)
 
   const scenario = DEMO_SCENARIOS[scenarioIndex]
+  const displayedScenario = DEMO_SCENARIOS[displayedScenarioIndex]
 
   useEffect(() => {
     if (!isAutoPlay) return
@@ -83,6 +86,11 @@ export default function DecisionUIDemo() {
 
     return () => clearTimeout(timer)
   }, [isAutoPlay, scenarioIndex, scenario.durationMs])
+
+  useEffect(() => {
+    const timer = setTimeout(() => setDisplayedScenarioIndex(scenarioIndex), TEXT_LAG_MS)
+    return () => clearTimeout(timer)
+  }, [scenarioIndex])
 
   useEffect(() => {
     if (transitionStart === null || progress >= 1) return
@@ -104,15 +112,17 @@ export default function DecisionUIDemo() {
     return interpolateStates(DEMO_SCENARIOS[fromScenarioIndex].state, scenario.state, progress)
   }, [scenario, scenarioIndex, fromScenarioIndex, progress])
 
+  const meaningLine = displayedScenario.name === 'Emerging' ? 'Detected before failure conditions' : null
+
   return (
     <div style={styles.container}>
-      <DecisionUI state={uiState} narrative={scenario.narrative} />
+      <DecisionUI state={uiState} narrative={displayedScenario.narrative} meaningLine={meaningLine} />
 
       <div style={styles.controls}>
         <div style={styles.controlsContent}>
           <div style={styles.status}>
-            <span style={styles.label}>{scenario.name}</span>
-            <span style={styles.progress}>{scenarioIndex + 1}/{DEMO_SCENARIOS.length}</span>
+            <span style={styles.label}>{displayedScenario.name}</span>
+            <span style={styles.progress}>{displayedScenarioIndex + 1}/{DEMO_SCENARIOS.length}</span>
           </div>
 
           <div style={styles.controls2}>
@@ -161,12 +171,10 @@ export default function DecisionUIDemo() {
 }
 
 const styles = {
-  container: {
-    position: 'relative' as const,
-  },
+  container: { position: 'relative' as const },
   controls: {
     position: 'fixed' as const,
-    bottom: '32px',
+    bottom: '30px',
     left: '32px',
     zIndex: 100,
   },
@@ -183,12 +191,12 @@ const styles = {
     fontSize: '12px',
   },
   label: {
-    color: 'rgba(255, 255, 255, 0.55)',
+    color: 'rgba(255, 255, 255, 0.56)',
     fontWeight: '600',
-    letterSpacing: '0.06em',
+    letterSpacing: '0.07em',
   },
   progress: {
-    color: 'rgba(255, 255, 255, 0.35)',
+    color: 'rgba(255, 255, 255, 0.34)',
     fontSize: '11px',
     fontVariantNumeric: 'tabular-nums',
   },
@@ -197,8 +205,8 @@ const styles = {
     gap: '4px',
     padding: '8px 12px',
     borderRadius: '8px',
-    backgroundColor: 'rgba(4, 8, 17, 0.62)',
-    border: '1px solid rgba(255, 255, 255, 0.08)',
+    backgroundColor: 'rgba(7, 15, 30, 0.56)',
+    border: '1px solid rgba(148, 163, 184, 0.2)',
     backdropFilter: 'blur(8px)',
   },
   button: {
@@ -208,7 +216,7 @@ const styles = {
     borderRadius: '4px',
     border: 'none',
     backgroundColor: 'transparent',
-    color: 'rgba(255, 255, 255, 0.65)',
+    color: 'rgba(255, 255, 255, 0.68)',
     fontSize: '14px',
     fontWeight: '600',
     cursor: 'pointer',
