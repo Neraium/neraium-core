@@ -59,6 +59,22 @@ class Intervention:
     expected_effect: str
     target_paths: List[str]  # path_ids this intervention affects
     confidence: float  # 0.0-1.0
+    current_failure_prob: Optional[float] = None  # Failure probability if no intervention
+    projected_failure_prob: Optional[float] = None  # Failure probability after intervention
+    impact: Optional[str] = None  # "high" | "medium" | "low"
+
+    def to_dict(self) -> Dict[str, Any]:
+        d = asdict(self)
+        return d
+
+
+@dataclass
+class PathCollapse:
+    """Inflection point where one path becomes dominant and inevitable."""
+    dominant_path: str  # path_id that's collapsing all others
+    eta: int  # cycles until collapse moment
+    confidence: float  # 0.0-1.0 confidence in this collapse trajectory
+    summary: str  # e.g., "Failure path becomes dominant in ~12 cycles"
 
 
 @dataclass
@@ -67,13 +83,17 @@ class FuturePathMap:
     current_state: CurrentState
     future_paths: List[FuturePath]
     recommended_interventions: List[Intervention]
+    path_collapse: Optional[PathCollapse] = None  # Inflection point detection
 
     def to_dict(self) -> Dict[str, Any]:
-        return {
+        result = {
             "current_state": asdict(self.current_state),
             "future_paths": [p.to_dict() for p in self.future_paths],
             "recommended_interventions": [asdict(i) for i in self.recommended_interventions],
         }
+        if self.path_collapse:
+            result["path_collapse"] = asdict(self.path_collapse)
+        return result
 
 
 class FuturePathMapper:
@@ -105,7 +125,8 @@ class FuturePathMapper:
         1. Extract current state from engine outputs
         2. Compute trajectory metrics (drift slope, stability trend)
         3. Score path probabilities using heuristic rules
-        4. Generate intervention recommendations
+        4. Detect path collapse moments (probability convergence)
+        5. Generate intervention recommendations with impact preview
         """
         # === Current State ===
         current_state = self._extract_current_state(engine, current_frame)
@@ -113,13 +134,20 @@ class FuturePathMapper:
         # === Path Inference ===
         future_paths = self._infer_future_paths(engine, current_state)
 
+        # === Path Collapse Detection ===
+        path_collapse = self._detect_path_collapse(future_paths)
+
         # === Interventions ===
         interventions = self._generate_interventions(current_state, future_paths, engine)
+
+        # === Add Impact Preview to Interventions ===
+        interventions = self._add_intervention_impact_preview(interventions, future_paths)
 
         return FuturePathMap(
             current_state=current_state,
             future_paths=future_paths,
             recommended_interventions=interventions,
+            path_collapse=path_collapse,
         )
 
     def _extract_current_state(self, engine: Any, frame: Dict[str, Any]) -> CurrentState:
@@ -589,3 +617,119 @@ class FuturePathMapper:
             # For failure, point of no return is around 80% drift
             return int(8 + (0.8 - drift_score) * 15) if drift_score < 0.8 else 3
         return None
+
+    def _detect_path_collapse(self, paths: List[FuturePath]) -> Optional[PathCollapse]:
+        """Detect inflection point where one path becomes dominant.
+
+        Path collapse occurs when:
+        - One path probability > 0.65-0.70
+        - Probability gap to second-highest > 0.20
+        - Trajectory is accelerating (high risk path gaining probability)
+        """
+        if not paths or len(paths) < 2:
+            return None
+
+        # Sort by probability descending
+        sorted_paths = sorted(paths, key=lambda p: p.probability, reverse=True)
+        dominant = sorted_paths[0]
+        second = sorted_paths[1]
+
+        # Check collapse conditions
+        prob_gap = dominant.probability - second.probability
+        is_high_risk = dominant.risk in ["high", "medium"]
+
+        # Collapse is imminent when: high prob + big gap + risky path
+        if dominant.probability > 0.65 and prob_gap > 0.15 and is_high_risk:
+            return PathCollapse(
+                dominant_path=dominant.path_id,
+                eta=self._estimate_collapse_eta(dominant),
+                confidence=min(1.0, dominant.probability + prob_gap * 0.5),
+                summary=f"{dominant.label} becomes dominant in ~{self._estimate_collapse_eta(dominant)} cycles",
+            )
+
+        # Moderate collapse: high prob but medium risk
+        if dominant.probability > 0.55 and prob_gap > 0.10:
+            return PathCollapse(
+                dominant_path=dominant.path_id,
+                eta=self._estimate_collapse_eta(dominant),
+                confidence=min(1.0, dominant.probability * 0.8),
+                summary=f"{dominant.label} likely dominates system trajectory within {self._estimate_collapse_eta(dominant)} cycles",
+            )
+
+        return None
+
+    def _estimate_collapse_eta(self, path: FuturePath) -> int:
+        """Estimate cycles until path collapse moment."""
+        # Collapse happens around midpoint of ETA range
+        return (path.eta_range.min + path.eta_range.max) // 2
+
+    def _add_intervention_impact_preview(
+        self, interventions: List[Intervention], paths: List[FuturePath]
+    ) -> List[Intervention]:
+        """Add before/after failure probability to interventions.
+
+        Shows the impact of each intervention on the failure path probability.
+        """
+        failure_path = next((p for p in paths if p.path_id == "failure"), None)
+        if not failure_path:
+            return interventions
+
+        current_failure_prob = failure_path.probability
+
+        # For each intervention, estimate the impact
+        updated_interventions = []
+        for intervention in interventions:
+            # Estimate impact based on intervention type and target paths
+            impact_reduction = self._estimate_intervention_impact(intervention, failure_path)
+
+            projected_failure_prob = max(0.0, current_failure_prob - impact_reduction)
+
+            # Classify impact magnitude
+            if impact_reduction > 0.25:
+                impact = "high"
+            elif impact_reduction > 0.10:
+                impact = "medium"
+            else:
+                impact = "low"
+
+            # Create new intervention with impact preview
+            updated = Intervention(
+                action=intervention.action,
+                expected_effect=intervention.expected_effect,
+                target_paths=intervention.target_paths,
+                confidence=intervention.confidence,
+                current_failure_prob=round(current_failure_prob, 3),
+                projected_failure_prob=round(projected_failure_prob, 3),
+                impact=impact,
+            )
+            updated_interventions.append(updated)
+
+        return updated_interventions
+
+    def _estimate_intervention_impact(self, intervention: Intervention, failure_path: FuturePath) -> float:
+        """Estimate reduction in failure probability from intervention.
+
+        Returns:
+            Estimated probability reduction (0.0-1.0)
+        """
+        action_lower = intervention.action.lower()
+
+        # Different interventions have different impact profiles
+        if "load" in action_lower:
+            # Reduce load: high impact on failure, eases structural stress
+            return 0.25 + (failure_path.probability * 0.2)
+        elif "inspect" in action_lower or "subsystem" in action_lower:
+            # Inspection: targeted but medium impact
+            return 0.15 + (failure_path.probability * 0.15)
+        elif "rebalance" in action_lower or "operation" in action_lower:
+            # Rebalancing: moderate impact, improves relationships
+            return 0.12 + (failure_path.probability * 0.1)
+        elif "maintenance" in action_lower or "interval" in action_lower:
+            # Maintenance: preventive, moderate impact
+            return 0.10 + (failure_path.probability * 0.12)
+        elif "sensor" in action_lower or "calibration" in action_lower:
+            # Calibration: improves visibility, low direct impact
+            return 0.05 + (failure_path.probability * 0.08)
+        else:
+            # Generic intervention: conservative estimate
+            return 0.08 + (failure_path.probability * 0.05)

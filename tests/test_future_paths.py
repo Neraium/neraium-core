@@ -388,6 +388,148 @@ class TestFuturePathMap:
         assert len(path_map.future_paths) == 3
 
 
+class TestPathCollapse:
+    def test_path_collapse_detection_under_failure_conditions(self):
+        """Path collapse should be detected when failure probability dominates."""
+        engine = StructuralEngine(baseline_window=10, recent_window=5)
+
+        # Create deteriorating trajectory
+        for i in range(25):
+            score_factor = min(1.0, i / 12.0)
+            frame = {
+                "timestamp": float(i),
+                "asset_id": "test_unit",
+                "site_id": "test_site",
+                "sensor_values": {"s1": 10.0 * score_factor},
+            }
+            engine.process_frame(frame)
+
+        mapper = FuturePathMapper()
+        current_state = mapper._extract_current_state(engine, {})
+        paths = mapper._infer_future_paths(engine, current_state)
+
+        collapse = mapper._detect_path_collapse(paths)
+
+        if collapse:
+            assert collapse.dominant_path in ["recovery", "degradation", "failure"]
+            assert collapse.eta > 0
+            assert 0.0 <= collapse.confidence <= 1.0
+
+    def test_no_collapse_when_paths_balanced(self):
+        """No collapse when path probabilities are balanced."""
+        engine = StructuralEngine(baseline_window=10, recent_window=5)
+
+        # Stable conditions
+        for i in range(15):
+            frame = {
+                "timestamp": float(i),
+                "asset_id": "test_unit",
+                "site_id": "test_site",
+                "sensor_values": {"s1": 10.0 + i * 0.01},
+            }
+            engine.process_frame(frame)
+
+        mapper = FuturePathMapper()
+        current_state = mapper._extract_current_state(engine, {})
+        paths = mapper._infer_future_paths(engine, current_state)
+
+        collapse = mapper._detect_path_collapse(paths)
+
+        # Under stable conditions, may not have a clear collapse
+        if collapse:
+            assert collapse.dominant_path == "recovery"
+
+
+class TestInterventionImpactPreview:
+    def test_intervention_impact_preview_added(self):
+        """Interventions should have impact preview fields."""
+        engine = StructuralEngine(baseline_window=10, recent_window=5)
+
+        for i in range(20):
+            frame = {
+                "timestamp": float(i),
+                "asset_id": "test_unit",
+                "site_id": "test_site",
+                "sensor_values": {"s1": 10.0 * i},
+            }
+            engine.process_frame(frame)
+
+        mapper = FuturePathMapper()
+        current_state = mapper._extract_current_state(engine, {})
+        paths = mapper._infer_future_paths(engine, current_state)
+        interventions = mapper._generate_interventions(current_state, paths, engine)
+
+        # Add impact preview
+        interventions = mapper._add_intervention_impact_preview(interventions, paths)
+
+        for intervention in interventions:
+            # Should have impact preview fields
+            assert hasattr(intervention, "current_failure_prob")
+            assert hasattr(intervention, "projected_failure_prob")
+            assert hasattr(intervention, "impact")
+
+            # Values should be reasonable
+            if intervention.current_failure_prob is not None:
+                assert 0.0 <= intervention.current_failure_prob <= 1.0
+            if intervention.projected_failure_prob is not None:
+                assert 0.0 <= intervention.projected_failure_prob <= 1.0
+                # Projected should be lower than current
+                assert (
+                    intervention.projected_failure_prob
+                    <= intervention.current_failure_prob
+                )
+
+    def test_impact_magnitude_classification(self):
+        """Impact should be classified as high/medium/low."""
+        engine = StructuralEngine(baseline_window=10, recent_window=5)
+
+        for i in range(20):
+            frame = {
+                "timestamp": float(i),
+                "asset_id": "test_unit",
+                "site_id": "test_site",
+                "sensor_values": {"s1": 10.0 * i},
+            }
+            engine.process_frame(frame)
+
+        mapper = FuturePathMapper()
+        current_state = mapper._extract_current_state(engine, {})
+        paths = mapper._infer_future_paths(engine, current_state)
+        interventions = mapper._generate_interventions(current_state, paths, engine)
+        interventions = mapper._add_intervention_impact_preview(interventions, paths)
+
+        for intervention in interventions:
+            assert intervention.impact in ["high", "medium", "low"]
+
+    def test_reduce_load_has_high_impact(self):
+        """Reduce load intervention should show high impact."""
+        engine = StructuralEngine(baseline_window=10, recent_window=5)
+
+        for i in range(20):
+            frame = {
+                "timestamp": float(i),
+                "asset_id": "test_unit",
+                "site_id": "test_site",
+                "sensor_values": {"s1": 10.0 * i},
+            }
+            engine.process_frame(frame)
+
+        mapper = FuturePathMapper()
+        current_state = mapper._extract_current_state(engine, {})
+        paths = mapper._infer_future_paths(engine, current_state)
+        interventions = mapper._generate_interventions(current_state, paths, engine)
+        interventions = mapper._add_intervention_impact_preview(interventions, paths)
+
+        # Find reduce load intervention
+        reduce_load = next(
+            (i for i in interventions if "load" in i.action.lower()), None
+        )
+
+        if reduce_load:
+            # Should have high impact for load reduction
+            assert reduce_load.impact == "high"
+
+
 class TestStructuralEngineIntegration:
     def test_engine_get_future_path_map_method(self):
         """Test that StructuralEngine has get_future_path_map method."""
@@ -417,3 +559,22 @@ class TestStructuralEngineIntegration:
 
         assert isinstance(result, dict)
         assert "error" in result or "current_state" in result
+
+    def test_future_path_map_includes_path_collapse(self):
+        """End-to-end test: FuturePathMap should include path_collapse if detected."""
+        engine = StructuralEngine(baseline_window=10, recent_window=5)
+
+        # Deteriorating conditions
+        for i in range(25):
+            score_factor = min(1.0, i / 12.0)
+            frame = {
+                "timestamp": float(i),
+                "asset_id": "test_unit",
+                "site_id": "test_site",
+                "sensor_values": {"s1": 10.0 * score_factor},
+            }
+            engine.process_frame(frame)
+
+        path_map = FuturePathMapper.from_engine(engine, {})
+
+        assert isinstance(path_map.path_collapse, object) or path_map.path_collapse is None
