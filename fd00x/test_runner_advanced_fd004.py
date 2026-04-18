@@ -93,13 +93,13 @@ class AdvancedDriftMetrics:
     fault_mode_confidence: float  # [0, 1]
     dominant_component: str
 
-    # Condition-specific performance
-    lead_time_by_condition: Dict[int, Optional[float]] = field(default_factory=dict)
-    component_by_condition: Dict[int, str] = field(default_factory=dict)
-
     # Degradation trajectory
     degradation_trajectory: str  # "smooth", "stepped", "variable"
     trajectory_variance: float  # Measure of degradation smoothness
+
+    # Condition-specific performance (with defaults)
+    lead_time_by_condition: Dict[int, Optional[float]] = field(default_factory=dict)
+    component_by_condition: Dict[int, str] = field(default_factory=dict)
 
 
 class AdvancedFD004TestRunner:
