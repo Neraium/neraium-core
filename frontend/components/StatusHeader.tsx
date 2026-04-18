@@ -10,13 +10,13 @@ export default function StatusHeader({ status }: StatusHeaderProps) {
   const getSeverityColor = (severity: Severity): string => {
     switch (severity) {
       case Severity.HIGH:
-        return '#ef4444'
+        return '#dc2626'
       case Severity.ELEVATED:
-        return '#f97316'
+        return '#ea580c'
       case Severity.MODERATE:
-        return '#eab308'
+        return '#ca8a04'
       case Severity.LOW:
-        return '#22c55e'
+        return '#16a34a'
     }
   }
 
@@ -34,7 +34,15 @@ export default function StatusHeader({ status }: StatusHeaderProps) {
   }
 
   const getStageLabel = (stage: DegradationStage): string => {
-    return stage.replace(/_/g, ' ').toUpperCase()
+    const labels: Record<DegradationStage, string> = {
+      [DegradationStage.BASELINE]: 'Baseline',
+      [DegradationStage.EARLY_SHIFT]: 'Early Shift',
+      [DegradationStage.EMERGING]: 'Emerging',
+      [DegradationStage.PERSISTENT]: 'Persistent',
+      [DegradationStage.ACCELERATED]: 'Accelerated',
+      [DegradationStage.FAILURE_APPROACH]: 'Failure Approach',
+    }
+    return labels[stage]
   }
 
   const getTrajectoryIcon = (trajectory: Trajectory): string => {
@@ -42,7 +50,7 @@ export default function StatusHeader({ status }: StatusHeaderProps) {
       case Trajectory.DEGRADING:
         return '↓'
       case Trajectory.UNCERTAIN:
-        return '~'
+        return '≈'
       case Trajectory.STABLE:
         return '→'
     }
@@ -51,11 +59,11 @@ export default function StatusHeader({ status }: StatusHeaderProps) {
   const getConfidenceColor = (confidence: string): string => {
     switch (confidence) {
       case 'HIGH':
-        return '#3b82f6'
+        return '#0284c7'
       case 'MEDIUM':
-        return '#8b5cf6'
+        return '#7c3aed'
       case 'LOW':
-        return '#ef4444'
+        return '#dc2626'
       default:
         return '#6b7280'
     }
@@ -66,18 +74,25 @@ export default function StatusHeader({ status }: StatusHeaderProps) {
   const stageLabel = getStageLabel(status.degradationStage)
   const trajectoryIcon = getTrajectoryIcon(status.trajectory)
   const confidenceColor = getConfidenceColor(status.confidence)
+  const isPulsing = status.severity === Severity.HIGH || status.severity === Severity.ELEVATED
 
   return (
     <div style={styles.container}>
-      {/* Severity indicator - most prominent */}
       <div style={styles.severitySection}>
-        <div style={{ ...styles.severityBadge, borderColor: severityColor, backgroundColor: `${severityColor}15` }}>
-          <div style={{ ...styles.severityDot, backgroundColor: severityColor }} />
+        <div
+          style={{
+            ...styles.severityBadge,
+            borderColor: severityColor,
+            backgroundColor: `${severityColor}12`,
+            boxShadow: isPulsing ? `0 0 24px ${severityColor}40` : 'none',
+            transition: 'all 0.3s ease',
+          }}
+        >
+          <div style={{ ...styles.severityDot, backgroundColor: severityColor, animation: isPulsing ? 'pulse-sm 2s ease-in-out infinite' : 'none' }} />
           <span style={{ ...styles.severityText, color: severityColor }}>{severityLabel}</span>
         </div>
       </div>
 
-      {/* Stage and trajectory info */}
       <div style={styles.infoRow}>
         <div style={styles.infoItem}>
           <div style={styles.label}>STAGE</div>
@@ -87,8 +102,8 @@ export default function StatusHeader({ status }: StatusHeaderProps) {
         <div style={styles.infoItem}>
           <div style={styles.label}>TRAJECTORY</div>
           <div style={styles.value}>
-            <span style={{ fontSize: '20px', marginRight: '4px' }}>{trajectoryIcon}</span>
-            {status.trajectory}
+            <span style={styles.trajectoryIcon}>{trajectoryIcon}</span>
+            <span>{status.trajectory}</span>
           </div>
         </div>
 
@@ -105,11 +120,13 @@ const styles = {
   container: {
     display: 'flex',
     flexDirection: 'column' as const,
-    gap: '16px',
-    padding: '20px',
-    backgroundColor: 'rgba(30, 30, 30, 0.8)',
-    borderRadius: '8px',
-    border: '1px solid rgba(255, 255, 255, 0.1)',
+    gap: '24px',
+    padding: '24px',
+    backgroundColor: 'rgba(15, 15, 15, 0.6)',
+    borderRadius: '12px',
+    border: '1px solid rgba(255, 255, 255, 0.08)',
+    backdropFilter: 'blur(4px)',
+    transition: 'all 0.3s ease',
   },
   severitySection: {
     display: 'flex',
@@ -118,60 +135,63 @@ const styles = {
   severityBadge: {
     display: 'flex',
     alignItems: 'center',
-    gap: '10px',
-    padding: '12px 20px',
+    gap: '12px',
+    padding: '14px 24px',
     border: '2px solid',
-    borderRadius: '6px',
-    minWidth: '180px',
+    borderRadius: '8px',
+    minWidth: '200px',
     justifyContent: 'center',
+    transition: 'all 0.3s ease',
   },
   severityDot: {
-    width: '12px',
-    height: '12px',
+    width: '10px',
+    height: '10px',
     borderRadius: '50%',
-    animation: 'pulse 2s ease-in-out infinite',
+    flexShrink: 0,
   },
   severityText: {
-    fontSize: '16px',
+    fontSize: '15px',
     fontWeight: '700',
-    letterSpacing: '0.05em',
+    letterSpacing: '0.06em',
   },
   infoRow: {
     display: 'grid',
     gridTemplateColumns: 'repeat(3, 1fr)',
-    gap: '16px',
+    gap: '20px',
   },
   infoItem: {
     display: 'flex',
     flexDirection: 'column' as const,
-    gap: '6px',
+    gap: '8px',
   },
   label: {
-    fontSize: '11px',
-    fontWeight: '600',
-    letterSpacing: '0.08em',
-    color: 'rgba(255, 255, 255, 0.5)',
+    fontSize: '10px',
+    fontWeight: '700',
+    letterSpacing: '0.1em',
+    color: 'rgba(255, 255, 255, 0.4)',
     textTransform: 'uppercase' as const,
   },
   value: {
-    fontSize: '14px',
+    fontSize: '13px',
     fontWeight: '500',
     color: '#ffffff',
+    display: 'flex',
+    alignItems: 'center',
+    gap: '6px',
+  },
+  trajectoryIcon: {
+    fontSize: '16px',
+    fontWeight: '600',
   },
 }
 
-// Add keyframe animation via style tag
-const styleSheet = document.createElement('style')
-styleSheet.textContent = `
-  @keyframes pulse {
-    0%, 100% {
-      opacity: 1;
-    }
-    50% {
-      opacity: 0.5;
-    }
-  }
-`
 if (typeof document !== 'undefined') {
-  document.head.appendChild(styleSheet)
+  const style = document.createElement('style')
+  style.textContent = `
+    @keyframes pulse-sm {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+  `
+  document.head.appendChild(style)
 }
