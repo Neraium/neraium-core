@@ -382,6 +382,21 @@ class Engine:
             model_age_frames=len(self._structural_engine.frames),
         )
 
+    def get_future_path_map(self, unit_id: str | None = None) -> dict[str, Any]:
+        """Get future path map for a unit or default engine.
+
+        Args:
+            unit_id: Optional unit ID. Uses default engine if not provided.
+
+        Returns:
+            Dict with current_state, future_paths, and recommended_interventions
+        """
+        if unit_id is None:
+            return self._structural_engine.get_future_path_map()
+        else:
+            engine = self._get_engine_for_unit(unit_id)
+            return engine.get_future_path_map()
+
     @staticmethod
     def _extract_sensors_from_row(row: dict) -> dict[str, float]:
         skip_cols = {
