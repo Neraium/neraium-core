@@ -7,7 +7,7 @@ interface SystemTimelineProps {
 }
 
 export default function SystemTimeline({ timeline }: SystemTimelineProps) {
-  const getStageColor = (stage: DegradationStage, isCurrent: boolean): string => {
+  const getStageColor = (stage: DegradationStage, isNow: boolean): string => {
     const colorMap: Record<DegradationStage, string> = {
       [DegradationStage.BASELINE]: '#22c55e',
       [DegradationStage.EARLY_SHIFT]: '#eab308',
@@ -21,7 +21,7 @@ export default function SystemTimeline({ timeline }: SystemTimelineProps) {
 
   return (
     <div style={styles.container}>
-      <div style={styles.label}>DEGRADATION TIMELINE</div>
+      <div style={styles.label}>Timeline</div>
 
       <div style={styles.timelineTrack}>
         {timeline.stages.map((stage, idx) => {
@@ -68,7 +68,7 @@ export default function SystemTimeline({ timeline }: SystemTimelineProps) {
 
       {/* Current stage indicator */}
       <div style={styles.currentStageInfo}>
-        <span style={styles.currentLabel}>Current:</span>
+        <span style={styles.currentLabel}>Now:</span>
         <span style={styles.currentStageName}>{timeline.stages[timeline.currentIndex].label}</span>
       </div>
     </div>
@@ -80,15 +80,11 @@ const styles = {
     display: 'flex',
     flexDirection: 'column' as const,
     gap: '20px',
-    padding: '24px',
-    backgroundColor: 'rgba(15, 15, 15, 0.6)',
-    borderRadius: '12px',
-    border: '1px solid rgba(255, 255, 255, 0.08)',
-    backdropFilter: 'blur(4px)',
-    transition: 'all 0.3s ease',
+    padding: '18px 0',
+    transition: 'all 0.45s ease',
   },
   label: {
-    fontSize: '10px',
+    fontSize: '11px',
     fontWeight: '700',
     letterSpacing: '0.1em',
     color: 'rgba(255, 255, 255, 0.4)',
@@ -96,7 +92,7 @@ const styles = {
   },
   timelineTrack: {
     display: 'grid',
-    gridTemplateColumns: 'repeat(6, 1fr)',
+    gridTemplateColumns: 'repeat(6, minmax(56px, 1fr))',
     gap: '0px',
     alignItems: 'center',
   },
@@ -137,7 +133,7 @@ const styles = {
     display: 'flex',
     gap: '10px',
     padding: '14px 0',
-    borderTop: '1px solid rgba(255, 255, 255, 0.08)',
+    borderTop: '1px solid rgba(148, 163, 184, 0.2)',
     fontSize: '11px',
     alignItems: 'center',
   },

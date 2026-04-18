@@ -1,6 +1,6 @@
 'use client'
 
-import { DecisionUIState } from '@/lib/decisionToUI'
+import { DecisionUIState, ActionHorizon, Severity } from '@/lib/decisionToUI'
 import StatusHeader from '@/components/StatusHeader'
 import ActionPanel from '@/components/ActionPanel'
 import DecisionTrace from '@/components/DecisionTrace'
@@ -12,87 +12,54 @@ interface DecisionUIProps {
   state?: DecisionUIState
   isLoading?: boolean
   error?: string | null
+  narrative?: string
 }
 
-export default function DecisionUI({ state, isLoading = false, error = null }: DecisionUIProps) {
+function inferImpactWindow(state: DecisionUIState): string | null {
+  const summary = state.decisionTrace.patternInsight?.influenceSummary
+  if (summary && /window/i.test(summary)) return summary
+
+  if (state.actionPanel.horizon === ActionHorizon.NOW && state.statusHeader.severity === Severity.HIGH) {
+    return 'Failure window: narrowing'
+  }
+  if (state.actionPanel.horizon === ActionHorizon.NOW) return 'Estimated impact window: active'
+  if (state.actionPanel.horizon === ActionHorizon.SOON) return 'Action window open'
+  return 'Action window remains open'
+}
+
+export default function DecisionUI({ state, isLoading = false, error = null, narrative }: DecisionUIProps) {
   if (error) {
-    return (
-      <div style={styles.root}>
-        <div style={styles.errorContainer}>
-          <div style={styles.errorIcon}>⚠</div>
-          <div style={styles.errorTitle}>Unable to Load Decision State</div>
-          <div style={styles.errorMessage}>{error}</div>
-        </div>
-      </div>
-    )
+    return <div style={styles.root}><div style={styles.simpleText}>Unable to load decision state: {error}</div></div>
   }
 
   if (isLoading || !state) {
-    return (
-      <div style={styles.root}>
-        <div style={styles.loadingContainer}>
-          <div style={styles.loadingSpinner} />
-          <div style={styles.loadingText}>Loading decision state...</div>
-        </div>
-      </div>
-    )
+    return <div style={styles.root}><div style={styles.simpleText}>Loading decision state…</div></div>
   }
+
+  const impactWindow = inferImpactWindow(state)
 
   return (
     <div style={styles.root}>
-      {/* TIER 1: Status - most prominent */}
-      <div style={styles.tier1}>
-        <StatusHeader status={state.statusHeader} />
+      {narrative && <div style={styles.narrative}>{narrative}</div>}
+
+      <StatusHeader status={state.statusHeader} />
+      <ActionPanel action={state.actionPanel} impactWindow={impactWindow} />
+
+      <div style={styles.heroSection}>
+        <EnhancedTetrahedronViz tetrahedronState={state.tetrahedron} isInteractive={true} />
       </div>
 
-      {/* TIER 2: Action - immediate next step */}
-      <div style={styles.tier2}>
-        <ActionPanel action={state.actionPanel} />
+      <div style={styles.contextGrid}>
+        <SystemTimeline timeline={state.timeline} />
+        {state.driftChart.dataPoints.length > 0 ? <DriftChart chart={state.driftChart} /> : <div style={styles.simpleText}>No drift data</div>}
       </div>
 
-      {/* TIER 3: Visualizations - context */}
-      <div style={styles.tier3}>
-        <div style={styles.vizSection}>
-          {/* Tetrahedron */}
-          <div style={styles.tetrahedronPanel}>
-            {state.tetrahedron.trailPoints.length > 0 ? (
-              <EnhancedTetrahedronViz tetrahedronState={state.tetrahedron} isInteractive={true} />
-            ) : (
-              <div style={styles.emptyState}>No historical data</div>
-            )}
-          </div>
+      <DecisionTrace trace={state.decisionTrace} />
 
-          {/* Timeline and Drift */}
-          <div style={styles.rightColumn}>
-            <SystemTimeline timeline={state.timeline} />
-            {state.driftChart.dataPoints.length > 0 ? (
-              <DriftChart chart={state.driftChart} />
-            ) : (
-              <div style={styles.emptyChartContainer}>
-                <div style={styles.emptyState}>No drift data available</div>
-              </div>
-            )}
-          </div>
-        </div>
-      </div>
-
-      {/* TIER 4: Explanation - supporting details */}
-      <div style={styles.tier4}>
-        <DecisionTrace trace={state.decisionTrace} />
-      </div>
-
-      {/* Footer */}
       <div style={styles.footer}>
-        <span style={styles.timestamp}>
-          {new Date(state.timestamp).toLocaleString(undefined, {
-            month: 'short',
-            day: 'numeric',
-            hour: '2-digit',
-            minute: '2-digit',
-            second: '2-digit',
-            hour12: false,
-          })}
-        </span>
+        {new Date(state.timestamp).toLocaleString(undefined, {
+          month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+        })}
       </div>
     </div>
   )
@@ -102,159 +69,41 @@ const styles = {
   root: {
     display: 'flex',
     flexDirection: 'column' as const,
-    gap: '24px',
-    padding: '32px',
-    backgroundColor: '#000000',
-    color: '#ffffff',
+    gap: '28px',
+    padding: '36px 42px 84px',
+    background: 'radial-gradient(circle at 50% -10%, #111827 0%, #030712 50%, #000 100%)',
+    color: '#fff',
     minHeight: '100vh',
     fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif",
   },
-
-  // Error state
-  errorContainer: {
-    display: 'flex',
-    flexDirection: 'column' as const,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: '20px',
-    padding: '48px',
-    backgroundColor: 'rgba(15, 15, 15, 0.6)',
-    borderRadius: '12px',
-    border: '1px solid rgba(220, 38, 38, 0.3)',
-    minHeight: '300px',
-  },
-
-  errorIcon: {
-    fontSize: '48px',
-    opacity: 0.6,
-  },
-
-  errorTitle: {
-    fontSize: '16px',
-    fontWeight: '600',
-    color: '#dc2626',
-  },
-
-  errorMessage: {
+  narrative: {
     fontSize: '13px',
-    color: 'rgba(255, 255, 255, 0.6)',
-    textAlign: 'center',
+    letterSpacing: '0.06em',
+    color: 'rgba(226, 232, 240, 0.68)',
+    textTransform: 'uppercase' as const,
+    transition: 'opacity 0.45s ease',
   },
-
-  // Loading state
-  loadingContainer: {
-    display: 'flex',
-    flexDirection: 'column' as const,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: '20px',
-    padding: '48px',
-    minHeight: '300px',
+  heroSection: {
+    minHeight: '700px',
+    backgroundColor: 'rgba(7, 12, 24, 0.45)',
+    borderRadius: '18px',
+    padding: '22px',
+    transition: 'all 0.7s cubic-bezier(0.22, 1, 0.36, 1)',
   },
-
-  loadingSpinner: {
-    width: '32px',
-    height: '32px',
-    borderRadius: '50%',
-    border: '2px solid rgba(255, 255, 255, 0.1)',
-    borderTopColor: '#0284c7',
-    animation: 'spin 1s linear infinite',
-  },
-
-  loadingText: {
-    fontSize: '13px',
-    color: 'rgba(255, 255, 255, 0.5)',
-  },
-
-  // Tier structure
-  tier1: {
-    order: 1 as any,
-  },
-
-  tier2: {
-    order: 2 as any,
-  },
-
-  tier3: {
-    order: 3 as any,
-  },
-
-  vizSection: {
+  contextGrid: {
     display: 'grid',
     gridTemplateColumns: '1fr 1fr',
-    gap: '24px',
+    gap: '20px',
   },
-
-  tetrahedronPanel: {
-    display: 'flex',
-    flexDirection: 'column' as const,
-    gap: '16px',
-    padding: '24px',
-    backgroundColor: 'rgba(15, 15, 15, 0.6)',
-    borderRadius: '12px',
-    border: '1px solid rgba(255, 255, 255, 0.08)',
-    backdropFilter: 'blur(4px)',
-    minHeight: '520px',
-    transition: 'all 0.3s ease',
-  },
-
-
-  emptyState: {
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    flex: 1,
-    minHeight: '400px',
-    fontSize: '13px',
-    color: 'rgba(255, 255, 255, 0.3)',
-    fontStyle: 'italic',
-  },
-
-  emptyChartContainer: {
-    display: 'flex',
-    flexDirection: 'column' as const,
-    gap: '16px',
-    padding: '24px',
-    backgroundColor: 'rgba(15, 15, 15, 0.6)',
-    borderRadius: '12px',
-    border: '1px solid rgba(255, 255, 255, 0.08)',
-    minHeight: '240px',
-  },
-
-  rightColumn: {
-    display: 'flex',
-    flexDirection: 'column' as const,
-    gap: '24px',
-  },
-
-  tier4: {
-    order: 4 as any,
-    marginTop: '8px',
-  },
-
   footer: {
-    display: 'flex',
-    justifyContent: 'flex-end',
-    paddingTop: '24px',
-    borderTop: '1px solid rgba(255, 255, 255, 0.08)',
-    marginTop: '16px',
-  },
-
-  timestamp: {
     fontSize: '11px',
-    color: 'rgba(255, 255, 255, 0.3)',
-    fontFamily: 'monospace',
-    letterSpacing: '0.05em',
+    color: 'rgba(255,255,255,0.34)',
+    letterSpacing: '0.06em',
+    textAlign: 'right' as const,
     fontVariantNumeric: 'tabular-nums',
   },
-}
-
-if (typeof document !== 'undefined') {
-  const style = document.createElement('style')
-  style.textContent = `
-    @keyframes spin {
-      to { transform: rotate(360deg); }
-    }
-  `
-  document.head.appendChild(style)
+  simpleText: {
+    color: 'rgba(226, 232, 240, 0.62)',
+    fontSize: '13px',
+  },
 }

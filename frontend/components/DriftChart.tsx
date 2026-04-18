@@ -27,7 +27,7 @@ export default function DriftChart({ chart }: DriftChartProps) {
     ctx.scale(window.devicePixelRatio, window.devicePixelRatio)
 
     // Clear canvas
-    ctx.fillStyle = 'rgba(30, 30, 30, 0.5)'
+    ctx.fillStyle = 'rgba(2, 6, 23, 0.35)'
     ctx.fillRect(0, 0, width, height)
 
     // Dimensions
@@ -60,7 +60,7 @@ export default function DriftChart({ chart }: DriftChartProps) {
 
     // Draw data points and line
     if (chart.dataPoints.length > 1) {
-      ctx.strokeStyle = '#3b82f6'
+      ctx.strokeStyle = '#60a5fa'
       ctx.lineWidth = 2
       ctx.beginPath()
 
@@ -114,7 +114,7 @@ export default function DriftChart({ chart }: DriftChartProps) {
 
   return (
     <div style={styles.container}>
-      <div style={styles.label}>DRIFT TRAJECTORY</div>
+      <div style={styles.label}>Drift</div>
 
       <div style={styles.chartContainer} ref={containerRef}>
         <canvas ref={canvasRef} style={styles.canvas} />
@@ -144,11 +144,7 @@ const styles = {
     flexDirection: 'column' as const,
     gap: '16px',
     padding: '24px',
-    backgroundColor: 'rgba(15, 15, 15, 0.6)',
-    borderRadius: '12px',
-    border: '1px solid rgba(255, 255, 255, 0.08)',
-    backdropFilter: 'blur(4px)',
-    transition: 'all 0.3s ease',
+    transition: 'all 0.45s ease',
   },
   label: {
     fontSize: '10px',
@@ -159,10 +155,8 @@ const styles = {
   },
   chartContainer: {
     position: 'relative' as const,
-    height: '200px',
-    backgroundColor: 'rgba(255, 255, 255, 0.02)',
+    height: '180px',
     borderRadius: '8px',
-    border: '1px solid rgba(255, 255, 255, 0.06)',
     overflow: 'hidden',
   },
   canvas: {
@@ -175,7 +169,7 @@ const styles = {
     gridTemplateColumns: 'repeat(3, 1fr)',
     gap: '16px',
     paddingTop: '12px',
-    borderTop: '1px solid rgba(255, 255, 255, 0.08)',
+    borderTop: '1px solid rgba(148, 163, 184, 0.2)',
   },
   stat: {
     display: 'flex',
