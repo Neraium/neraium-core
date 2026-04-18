@@ -174,12 +174,12 @@ def format_causal_summary(causal_theme: CausalTheme) -> str:
     """Convert causal theme to human-readable summary."""
     theme_descriptions = {
         "relational_breakdown": "Relational breakdown is the primary driver",
-        "persistent_structural_degradation": "Persistent structural degradation detected",
-        "multi_signal_instability": "Multi-signal instability observed",
-        "transient_anomaly": "Transient anomaly detected (may self-resolve)",
-        "external_shock": "External shock or sudden change detected",
+        "persistent_structural_degradation": "Structural degradation is persistent",
+        "multi_signal_instability": "Multiple signals show instability",
+        "transient_anomaly": "Transient anomaly may self-resolve",
+        "external_shock": "External shock or sudden change present",
     }
-    return theme_descriptions.get(causal_theme, "System degradation detected")
+    return theme_descriptions.get(causal_theme, "System is degrading")
 
 
 def format_temporal_context(
@@ -192,7 +192,7 @@ def format_temporal_context(
     elif temporal_phase == "persistent":
         return f"Persistent degradation confirmed ({persistence_frames} frames)"
     elif temporal_phase == "accelerating":
-        return "Acceleration detected (drift increasing)"
+        return "Degradation is accelerating"
     elif temporal_phase == "chronic":
         return "Chronic degradation with stable drift"
     elif temporal_phase == "resolving":
@@ -212,7 +212,7 @@ def format_uncertainty_rationale(
         else:
             return "High confidence (strong signal quality)"
     elif uncertainty_context == "low_evidence":
-        return "Pattern match weak; relying on live evidence"
+        return "Pattern weak; using live evidence"
     elif uncertainty_context == "conflicting_signals":
         return "Signal emerging but trajectory unstable; monitoring"
     elif uncertainty_context == "unstable_trajectory":

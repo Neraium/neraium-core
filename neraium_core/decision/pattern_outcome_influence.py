@@ -162,7 +162,7 @@ class PatternOutcomeInfluencer:
             return None
 
         if pattern_match.match_tier == "weak":
-            return "Pattern match weak; relying on live evidence"
+            return "Pattern weak; using live evidence"
 
         if pattern_match.outcome_type == "self_resolved":
             if pattern_match.match_tier == "strong":
