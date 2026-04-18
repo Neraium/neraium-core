@@ -217,12 +217,12 @@ class AdvancedFD004TestRunner:
         # Run baseline drift detection
         scores = self.detector.process_unit(sensors)
 
-        # Compute multi-signal warning (enhanced trigger logic)
+        # Compute adaptive warning (enhanced trigger logic)
         n_cycles = len(sensors)
         degradation_onset = n_cycles - int(n_cycles * self.degradation_proxy_fraction)
         healthy_end = int(n_cycles * self.healthy_fraction)
 
-        warning_index_ms, trigger_info = self._compute_multi_signal_warning(
+        warning_index_ms, trigger_info = self._compute_adaptive_warning(
             ema_drift=scores.ema_drift,
             raw_drift=scores.raw_drift,
             n_cycles=n_cycles,
@@ -518,6 +518,139 @@ class AdvancedFD004TestRunner:
             "elapsed_seconds": elapsed,
             "throughput_units_per_second": len(results) / elapsed if elapsed > 0 else 0.0,
         }
+
+    def _compute_adaptive_warning(
+        self,
+        ema_drift: np.ndarray,
+        raw_drift: np.ndarray,
+        n_cycles: int,
+        degradation_onset: int,
+        baseline_cycles: int = 40,
+    ) -> Tuple[Optional[int], Dict]:
+        """Adaptive three-phase detection engine.
+
+        Phase 1: EARLY ALERT - Change-point detection (aggressive, any hint of change)
+        Phase 2: CONFIRM - Once alerted, require sustained evidence
+        Phase 3: CRITICAL - If confirmed, escalate
+
+        Returns:
+            (warning_index, trigger_info with phase info)
+        """
+        # Baseline from first 25% of healthy cycles
+        baseline_end = min(baseline_cycles, max(5, int(n_cycles * 0.25)))
+        baseline_data = ema_drift[:baseline_end]
+
+        baseline_mean = float(np.mean(baseline_data))
+        baseline_std = float(np.std(baseline_data))
+        baseline_std = max(baseline_std, 1e-6)
+
+        # ============================================================
+        # PHASE 1: EARLY ALERT - Multi-method change-point detection
+        # ============================================================
+        # Method 1: CUSUM (cumulative sum control chart) for sustained drift
+        cusum_threshold = 1.5 * baseline_std  # More sensitive (lower threshold)
+        cusum_positive = np.zeros(n_cycles)
+        cusum_negative = np.zeros(n_cycles)
+
+        for i in range(1, n_cycles):
+            delta = ema_drift[i] - baseline_mean
+            cusum_positive[i] = max(0, cusum_positive[i-1] + delta - baseline_std * 0.2)
+            cusum_negative[i] = min(0, cusum_negative[i-1] + delta + baseline_std * 0.2)
+
+        cusum_candidates = np.where(cusum_positive > cusum_threshold)[0]
+
+        # Method 2: Velocity-based detection (rate of change acceleration)
+        if n_cycles > 3:
+            velocity = np.abs(np.diff(ema_drift))
+            velocity_threshold = np.percentile(velocity[:baseline_end], 75) + 1.5 * np.std(velocity[:baseline_end])
+            velocity_candidates = np.where(velocity > velocity_threshold)[0] + 1
+        else:
+            velocity_candidates = np.array([], dtype=int)
+
+        # Method 3: Z-score anomaly detection (standardized deviation from baseline)
+        zscore = np.abs(ema_drift - baseline_mean) / (baseline_std + 1e-6)
+        zscore_candidates = np.where(zscore > 1.5)[0]  # Any 1.5σ deviation
+
+        # Combine all phase 1 candidates
+        phase1_candidates = np.unique(np.concatenate([cusum_candidates, velocity_candidates, zscore_candidates]))
+
+        # Filter out first 25% (healthy window)
+        min_cycle = int(n_cycles * 0.25)
+        phase1_candidates = phase1_candidates[phase1_candidates >= min_cycle]
+
+        # ============================================================
+        # PHASE 2: CONFIRM - Multi-signal validation (early confirmation)
+        # ============================================================
+        confirmed_idx = None
+        trigger_info = {
+            "phase": None,
+            "baseline_mean": baseline_mean,
+            "baseline_std": baseline_std,
+            "triggered_by": [],
+            "cusum_max": float(np.max(cusum_positive)),
+        }
+
+        if len(phase1_candidates) > 0:
+            first_alert = int(phase1_candidates[0])
+
+            # Optimized for EARLY confirmation: look back a bit and forward
+            # Use tighter window to get early signal
+            look_back = max(0, first_alert - 5)
+            look_forward = min(15, n_cycles - first_alert)  # Only need 15 cycles to confirm
+            window_end = first_alert + look_forward
+
+            # Check for signals in extended window
+            k_threshold = 1.5  # Slightly lower for faster confirmation
+            slope_threshold = 0.003  # Lower threshold for confirmation
+            multiplier = 1.2  # More lenient relative threshold
+
+            # Signal 1: Threshold breach
+            dynamic_threshold = baseline_mean + k_threshold * baseline_std
+            in_window = ema_drift[look_back:window_end]
+            threshold_breaches = np.sum(in_window >= dynamic_threshold)
+
+            # Signal 2: Sustained slope (even brief sustained increase)
+            if len(in_window) > 2:
+                slopes = np.diff(in_window)
+                # Look for any 2 consecutive positive slopes
+                slope_breaches = np.sum(slopes > slope_threshold)
+            else:
+                slope_breaches = 0
+
+            # Signal 3: Relative increase
+            relative_threshold = baseline_mean * multiplier
+            relative_breaches = np.sum(in_window >= relative_threshold)
+
+            # Signal 4: Overall trend (any increase from baseline in window)
+            window_increase = (np.mean(in_window) - baseline_mean) / (baseline_std + 1e-6)
+            trend_signal = window_increase > 1.0  # At least 1 sigma increase
+
+            # Count confirmatory evidence (require just 1 strong signal now for speed)
+            confirmation_votes = sum([
+                threshold_breaches > 2,
+                slope_breaches >= 1,
+                relative_breaches > 1,
+                trend_signal,
+            ])
+
+            # Single strong piece of evidence is enough once Phase 1 triggered
+            if confirmation_votes >= 1 or trend_signal:
+                confirmed_idx = first_alert
+                trigger_info["phase"] = "CONFIRMED"
+                trigger_info["triggered_by"] = ["phase1_alert"]
+                if threshold_breaches > 2:
+                    trigger_info["triggered_by"].append("threshold")
+                if slope_breaches >= 1:
+                    trigger_info["triggered_by"].append("slope")
+                if relative_breaches > 1:
+                    trigger_info["triggered_by"].append("relative")
+                if trend_signal:
+                    trigger_info["triggered_by"].append("trend")
+            else:
+                # Keep Phase 1 alert but no confirmation yet
+                trigger_info["phase"] = "ALERTED_UNCONFIRMED"
+
+        return confirmed_idx, trigger_info
 
     def _compute_multi_signal_warning(
         self,
