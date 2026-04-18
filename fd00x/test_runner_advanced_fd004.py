@@ -14,6 +14,7 @@ This runner handles multi-condition dynamics by:
 """
 from __future__ import annotations
 
+import csv
 import json
 import time
 from dataclasses import asdict, dataclass, field
@@ -48,6 +49,22 @@ class FaultModeSignature:
     component_dominance: Dict[str, float]  # Which components light up
     typical_lead_time: Optional[float]
     degradation_trajectory: str  # "monotonic" | "stepped" | "variable"
+
+
+@dataclass
+class PerCycleDriftData:
+    """Per-cycle time-series data for a single unit."""
+
+    unit_id: int
+    cycles: np.ndarray
+    raw_drift: np.ndarray
+    ema_drift: np.ndarray
+    warning_triggered: np.ndarray
+    warning_cycle: Optional[int]
+    lead_time_cycles: Optional[float]
+    component_scores: Dict[str, np.ndarray]
+    operating_conditions: np.ndarray
+    sensor_data: np.ndarray
 
 
 @dataclass
@@ -125,7 +142,7 @@ class AdvancedFD004TestRunner:
         self,
         dataset_path: Optional[str] = None,
         max_units: Optional[int] = None,
-    ) -> Tuple[List[AdvancedDriftMetrics], Dict]:
+    ) -> Tuple[List[AdvancedDriftMetrics], Dict, List[PerCycleDriftData]]:
         """Run advanced drift detection on complex FD004.
 
         Args:
@@ -133,7 +150,7 @@ class AdvancedFD004TestRunner:
             max_units: Limit test to first N units (None for all)
 
         Returns:
-            (list of AdvancedDriftMetrics, summary dict)
+            (list of AdvancedDriftMetrics, summary dict, list of PerCycleDriftData)
         """
         start_time = time.time()
 
@@ -147,6 +164,7 @@ class AdvancedFD004TestRunner:
             print("Each unit may contain multiple operating conditions...")
 
         results: List[AdvancedDriftMetrics] = []
+        per_cycle_data: List[PerCycleDriftData] = []
         condition_statistics: Dict[int, List[float]] = {i: [] for i in range(1, 7)}
 
         for idx, unit_id in enumerate(units):
@@ -154,8 +172,9 @@ class AdvancedFD004TestRunner:
                 print(f"  [{idx+1}/{len(units)}] Unit {unit_id}...", end=" ")
 
             unit_data = data_dict[unit_id]
-            metrics = self._process_unit_advanced(unit_id, unit_data, condition_statistics)
+            metrics, cycle_data = self._process_unit_advanced(unit_id, unit_data, condition_statistics)
             results.append(metrics)
+            per_cycle_data.append(cycle_data)
 
             if self.verbose:
                 print(f"conditions={metrics.n_operating_conditions}, fault_mode={metrics.inferred_fault_mode}")
@@ -173,15 +192,19 @@ class AdvancedFD004TestRunner:
         if self.verbose:
             self._print_advanced_summary(summary)
 
-        return results, summary
+        return results, summary, per_cycle_data
 
     def _process_unit_advanced(
         self,
         unit_id: int,
         unit_data: np.ndarray,
         condition_statistics: Dict[int, List[float]],
-    ) -> AdvancedDriftMetrics:
-        """Process a single unit with advanced multi-condition analysis."""
+    ) -> Tuple[AdvancedDriftMetrics, PerCycleDriftData]:
+        """Process a single unit with advanced multi-condition analysis.
+
+        Returns:
+            (AdvancedDriftMetrics with unit-level summary, PerCycleDriftData with time-series)
+        """
         # Extract columns: [cycle, setting1, setting2, setting3, s1-s21]
         cycles = unit_data[:, 0].astype(int)
         settings = unit_data[:, 1:4]  # 3 operating settings
@@ -251,7 +274,8 @@ class AdvancedFD004TestRunner:
             if lead_time < 0:
                 lead_time = None
 
-        return AdvancedDriftMetrics(
+        # Create unit-level summary metrics
+        metrics = AdvancedDriftMetrics(
             unit_id=unit_id,
             n_cycles=n_cycles,
             warning_cycle=scores.warning_index,
@@ -287,6 +311,22 @@ class AdvancedFD004TestRunner:
             degradation_trajectory=trajectory["type"],
             trajectory_variance=trajectory["variance"],
         )
+
+        # Create per-cycle time-series data
+        per_cycle = PerCycleDriftData(
+            unit_id=unit_id,
+            cycles=cycles,
+            raw_drift=scores.raw_drift,
+            ema_drift=scores.ema_drift,
+            warning_triggered=scores.warning_state.astype(int),
+            warning_cycle=scores.warning_index,
+            lead_time_cycles=lead_time,
+            component_scores=scores.component_scores,
+            operating_conditions=operating_conditions,
+            sensor_data=sensors,
+        )
+
+        return metrics, per_cycle
 
     def _detect_operating_conditions(self, settings: np.ndarray) -> np.ndarray:
         """Detect which of 6 operating conditions each cycle operates in.
@@ -514,39 +554,102 @@ class AdvancedFD004TestRunner:
         self,
         results: List[AdvancedDriftMetrics],
         summary: Dict,
+        per_cycle_data: List[PerCycleDriftData],
         output_dir: str = "fd004_advanced_results",
     ) -> Dict[str, Path]:
-        """Save advanced results to files."""
+        """Save advanced results to files.
+
+        Args:
+            results: List of per-unit summary metrics
+            summary: Overall summary statistics
+            per_cycle_data: List of per-cycle time-series data
+            output_dir: Output directory
+
+        Returns:
+            Dict of saved file paths
+        """
         out_path = Path(output_dir)
-        out_path.mkdir(exist_ok=True)
+        out_path.mkdir(parents=True, exist_ok=True)
 
         paths = {}
 
-        # CSV with advanced metrics
+        # Unit-level summary CSV
         csv_path = out_path / "fd004_advanced_drift_results.csv"
-        with open(csv_path, "w") as f:
+        with open(csv_path, "w", encoding="utf-8", newline="") as f:
             if results:
+                writer = csv.writer(f, quoting=csv.QUOTE_NONNUMERIC)
                 keys = list(asdict(results[0]).keys())
-                f.write(",".join(keys) + "\n")
+                writer.writerow(keys)
                 for r in results:
-                    values = [str(asdict(r)[k]) for k in keys]
-                    f.write(",".join(values) + "\n")
+                    values = [asdict(r)[k] for k in keys]
+                    writer.writerow(values)
         paths["csv"] = csv_path
+
+        # Per-cycle time-series CSV
+        cycle_csv_path = out_path / "fd004_cycle_drift_results.csv"
+        self._save_per_cycle_results(per_cycle_data, cycle_csv_path)
+        paths["cycle_csv"] = cycle_csv_path
 
         # JSON summary
         json_path = out_path / "fd004_advanced_summary.json"
-        with open(json_path, "w") as f:
+        with open(json_path, "w", encoding="utf-8") as f:
             json.dump(summary, f, indent=2)
         paths["json"] = json_path
 
         return paths
 
+    def _save_per_cycle_results(
+        self,
+        per_cycle_data: List[PerCycleDriftData],
+        output_path: Path,
+    ) -> None:
+        """Save per-cycle drift data as CSV.
+
+        Columns:
+        - unit_id: Unit identifier
+        - cycle: Cycle number
+        - raw_drift: Raw structural drift score
+        - ema_drift: EMA-smoothed drift score
+        - warning_triggered: Binary indicator (0 or 1)
+        - warning_cycle: Unit-level warning cycle (same for all cycles)
+        - lead_time_cycles: Unit-level lead time (same for all cycles)
+        """
+        with open(output_path, "w", encoding="utf-8", newline="") as f:
+            writer = csv.writer(f, quoting=csv.QUOTE_MINIMAL)
+
+            # Write header
+            header = [
+                "unit_id",
+                "cycle",
+                "raw_drift",
+                "ema_drift",
+                "warning_triggered",
+                "warning_cycle",
+                "lead_time_cycles",
+            ]
+            writer.writerow(header)
+
+            # Write data for each unit
+            for unit_data in per_cycle_data:
+                n_cycles = len(unit_data.cycles)
+                for i in range(n_cycles):
+                    row = [
+                        unit_data.unit_id,
+                        int(unit_data.cycles[i]),
+                        float(unit_data.raw_drift[i]),
+                        float(unit_data.ema_drift[i]),
+                        int(unit_data.warning_triggered[i]),
+                        unit_data.warning_cycle if unit_data.warning_cycle is not None else "",
+                        unit_data.lead_time_cycles if unit_data.lead_time_cycles is not None else "",
+                    ]
+                    writer.writerow(row)
+
 
 def main():
     """Run advanced FD004 detection."""
     runner = AdvancedFD004TestRunner(verbose=True)
-    results, summary = runner.run_fd004_advanced(max_units=None)
-    runner.save_results(results, summary)
+    results, summary, per_cycle_data = runner.run_fd004_advanced(max_units=None)
+    runner.save_results(results, summary, per_cycle_data)
 
 
 if __name__ == "__main__":

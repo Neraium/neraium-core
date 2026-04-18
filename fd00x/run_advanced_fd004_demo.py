@@ -14,6 +14,7 @@ from pathlib import Path
 import numpy as np
 
 from .config import DetectorConfig
+from .plotting import plot_unit_diagnosis
 from .test_runner_advanced_fd004 import AdvancedFD004TestRunner, AdvancedDriftMetrics
 
 
@@ -57,7 +58,7 @@ class AdvancedFD004Demo:
 
         print("[2/3] Running drift detection on FD004 (249 units)...")
         start = time.time()
-        results, summary = runner.run_fd004_advanced(dataset_path=dataset_path, max_units=max_units)
+        results, summary, per_cycle_data = runner.run_fd004_advanced(dataset_path=dataset_path, max_units=max_units)
         elapsed = time.time() - start
 
         # Display results
@@ -65,9 +66,13 @@ class AdvancedFD004Demo:
 
         # Save results
         print(f"\n[3/3] Saving results to {self.output_dir}...")
-        saved_files = runner.save_results(results, summary, str(self.output_dir))
+        saved_files = runner.save_results(results, summary, per_cycle_data, str(self.output_dir))
         print(f"  ✓ Saved: {saved_files['csv'].name}")
+        print(f"  ✓ Saved: {saved_files['cycle_csv'].name}")
         print(f"  ✓ Saved: {saved_files['json'].name}")
+
+        # Generate trajectory plots for units with valid alerts
+        self._generate_trajectory_plots(results, per_cycle_data, str(self.output_dir))
 
         # Summary file
         summary_path = self.output_dir / "ADVANCED_RESULTS.txt"
@@ -136,6 +141,58 @@ class AdvancedFD004Demo:
         print(f"  Rate:                   ~{(len(results)/elapsed*60):.0f} units/minute")
 
         print("─" * 80)
+
+    def _generate_trajectory_plots(
+        self,
+        results: list[AdvancedDriftMetrics],
+        per_cycle_data: list,
+        output_dir: str,
+    ) -> None:
+        """Generate trajectory plots for units with valid alerts (up to 10 units)."""
+        # Find units with valid alerts
+        valid_units = [
+            (r, pc) for r, pc in zip(results, per_cycle_data)
+            if r.warning_cycle is not None and not r.false_positive
+        ]
+
+        if not valid_units:
+            print("  [note] No units with valid alerts to plot")
+            return
+
+        # Plot up to 10 units with valid alerts
+        n_plots = min(10, len(valid_units))
+        print(f"\n  Generating trajectory plots for {n_plots} units...")
+
+        plots_dir = Path(output_dir) / "trajectory_plots"
+        plots_dir.mkdir(parents=True, exist_ok=True)
+
+        for i, (metrics, cycle_data) in enumerate(valid_units[:n_plots]):
+            unit_id = metrics.unit_id
+            lead_time = metrics.lead_time_cycles or 0
+            title_suffix = f"(Unit {unit_id}, Lead Time = {lead_time:.0f} cycles)"
+
+            # Calculate indices for healthy region and degradation onset
+            n_cycles = len(cycle_data.cycles)
+            healthy_end_index = int(n_cycles * 0.15)
+            degradation_index = n_cycles - int(n_cycles * 0.1)
+
+            try:
+                plot_path = plots_dir / f"fd004_unit_{unit_id}_trajectory.png"
+                plot_unit_diagnosis(
+                    unit_id=unit_id,
+                    sensor_data=cycle_data.sensor_data,
+                    raw_drift=cycle_data.raw_drift,
+                    ema_drift=cycle_data.ema_drift,
+                    threshold=0.5,  # Approximate threshold; could be refined
+                    warning_index=metrics.warning_cycle,
+                    healthy_end_index=healthy_end_index,
+                    degradation_index=degradation_index,
+                    save_path=str(plot_path),
+                    title_suffix=title_suffix,
+                )
+                print(f"    ✓ Plotted: {plot_path.name}")
+            except Exception as e:
+                print(f"    [warn] Failed to plot unit {unit_id}: {e}")
 
     def _format_detailed_report(
         self,
