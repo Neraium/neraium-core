@@ -1,8 +1,6 @@
 /**
  * Demo scenarios for DecisionUI
- * Optimized 30-second flow: Baseline → Degradation → Emergency
- *
- * Hero scenario: EMERGING - shows pattern detection and actionable guidance
+ * Narrative flow: Baseline → Early Shift → Emerging → Critical
  */
 
 import {
@@ -22,29 +20,33 @@ export const DEMO_SCENARIO_BASELINE: DecisionUIState = {
   },
   actionPanel: {
     horizon: ActionHorizon.WATCHLIST,
-    primaryAction: 'All nominal. Continue standard monitoring.',
+    primaryAction: 'Continue monitoring',
     urgencyLevel: 1,
   },
   tetrahedron: {
     currentPosition: { x: 0.2, y: 0.85, z: 0.15 },
     severityScalar: 0.2,
-    trailPoints: Array.from({ length: 15 }, (_, i) => ({
+    trailPoints: Array.from({ length: 16 }, (_, i) => ({
       position: {
-        x: 0.15 + i * 0.01,
-        y: 0.85 - i * 0.005,
+        x: 0.15 + i * 0.008,
+        y: 0.85 - i * 0.004,
         z: 0.15 + i * 0.002,
       },
-      timestamp: new Date(Date.now() - (14 - i) * 60000).toISOString(),
+      timestamp: new Date(Date.now() - (15 - i) * 60000).toISOString(),
       frameIdx: i,
     })),
-    velocity: [0.01, 0.01, 0.01],
+    velocity: [0.008, 0.006, 0.004],
     nearestVertex: 'AUTHORITY',
   },
   decisionTrace: {
-    primaryFactor: 'System stable within baseline',
-    secondaryFactors: ['Coherence stable', 'No degradation detected'],
-    confidenceRationale: 'Confidence: HIGH',
-    patternInsight: undefined,
+    primaryFactor: 'System stable',
+    secondaryFactors: ['Coherence steady', 'No drift signal'],
+    confidenceRationale: 'Confidence high',
+    patternInsight: {
+      tier: 'moderate',
+      outcomeType: 'nominal',
+      influenceSummary: 'Action window remains open',
+    },
   },
   timeline: {
     stages: [
@@ -53,75 +55,74 @@ export const DEMO_SCENARIO_BASELINE: DecisionUIState = {
       { stage: DegradationStage.EMERGING, label: 'Emerging', isCurrent: false },
       { stage: DegradationStage.PERSISTENT, label: 'Persistent', isCurrent: false },
       { stage: DegradationStage.ACCELERATED, label: 'Accelerated', isCurrent: false },
-      { stage: DegradationStage.FAILURE_APPROACH, label: 'Failure Approach', isCurrent: false },
+      { stage: DegradationStage.FAILURE_APPROACH, label: 'Failure', isCurrent: false },
     ],
     currentIndex: 0,
   },
   driftChart: {
-    dataPoints: Array.from({ length: 20 }, (_, i) => ({
-      timestamp: new Date(Date.now() - (19 - i) * 60000).toISOString(),
-      driftScore: 0.15 + Math.sin(i * 0.2) * 0.05,
+    dataPoints: Array.from({ length: 22 }, (_, i) => ({
+      timestamp: new Date(Date.now() - (21 - i) * 60000).toISOString(),
+      driftScore: 0.13 + Math.sin(i * 0.18) * 0.03,
       frameIdx: i,
     })),
     detectionThreshold: 0.2,
-    currentFrameIdx: 19,
+    currentFrameIdx: 21,
   },
   timestamp: new Date().toISOString(),
 }
 
-// HERO SCENARIO: Shows Neraium's core value - early detection with pattern matching
-export const DEMO_SCENARIO_EMERGING: DecisionUIState = {
+export const DEMO_SCENARIO_EARLY_SHIFT: DecisionUIState = {
   statusHeader: {
-    degradationStage: DegradationStage.EMERGING,
-    severity: Severity.ELEVATED,
-    trajectory: Trajectory.DEGRADING,
-    confidence: 'HIGH',
+    degradationStage: DegradationStage.EARLY_SHIFT,
+    severity: Severity.MODERATE,
+    trajectory: Trajectory.UNCERTAIN,
+    confidence: 'MEDIUM',
   },
   actionPanel: {
-    horizon: ActionHorizon.NOW,
-    primaryAction: 'Begin mitigation. Patterns match Q2 2023 failure event.',
-    urgencyLevel: 5,
+    horizon: ActionHorizon.SOON,
+    primaryAction: 'Schedule inspection',
+    urgencyLevel: 3,
   },
   tetrahedron: {
-    currentPosition: { x: 0.68, y: 0.35, z: 0.62 },
-    severityScalar: 0.75,
-    trailPoints: Array.from({ length: 15 }, (_, i) => ({
+    currentPosition: { x: 0.45, y: 0.65, z: 0.34 },
+    severityScalar: 0.48,
+    trailPoints: Array.from({ length: 16 }, (_, i) => ({
       position: {
-        x: 0.2 + i * 0.035,
-        y: 0.85 - i * 0.038,
-        z: 0.15 + i * 0.035,
+        x: 0.2 + i * 0.017,
+        y: 0.82 - i * 0.012,
+        z: 0.16 + i * 0.011,
       },
-      timestamp: new Date(Date.now() - (14 - i) * 60000).toISOString(),
+      timestamp: new Date(Date.now() - (15 - i) * 60000).toISOString(),
       frameIdx: i,
     })),
-    velocity: [0.12, 0.11, 0.08],
-    nearestVertex: 'STRUCTURAL',
+    velocity: [0.03, 0.025, 0.02],
+    nearestVertex: 'TEMPORAL',
   },
   decisionTrace: {
-    primaryFactor: 'Drift at 54% with structural degradation',
-    secondaryFactors: ['Stability at 42%', '5 corroborating signals'],
-    confidenceRationale: 'Confidence: HIGH',
+    primaryFactor: 'Early drift detected',
+    secondaryFactors: ['Drift rising', 'Stability softening'],
+    confidenceRationale: 'Confidence medium',
     patternInsight: {
-      tier: 'strong',
-      outcomeType: 'structural_cascade',
-      influenceSummary: 'Strong match to Q2 2023 cascade. 4-6 hour window to critical.',
+      tier: 'moderate',
+      outcomeType: 'emerging_shift',
+      influenceSummary: 'Failure window: stable',
     },
   },
   timeline: {
     stages: [
       { stage: DegradationStage.BASELINE, label: 'Baseline', isCurrent: false },
-      { stage: DegradationStage.EARLY_SHIFT, label: 'Early Shift', isCurrent: false },
-      { stage: DegradationStage.EMERGING, label: 'Emerging', isCurrent: true },
+      { stage: DegradationStage.EARLY_SHIFT, label: 'Early Shift', isCurrent: true },
+      { stage: DegradationStage.EMERGING, label: 'Emerging', isCurrent: false },
       { stage: DegradationStage.PERSISTENT, label: 'Persistent', isCurrent: false },
       { stage: DegradationStage.ACCELERATED, label: 'Accelerated', isCurrent: false },
-      { stage: DegradationStage.FAILURE_APPROACH, label: 'Failure Approach', isCurrent: false },
+      { stage: DegradationStage.FAILURE_APPROACH, label: 'Failure', isCurrent: false },
     ],
-    currentIndex: 2,
+    currentIndex: 1,
   },
   driftChart: {
     dataPoints: Array.from({ length: 24 }, (_, i) => ({
       timestamp: new Date(Date.now() - (23 - i) * 60000).toISOString(),
-      driftScore: Math.min(0.65, 0.15 + (i * 0.022)),
+      driftScore: 0.14 + i * 0.01,
       frameIdx: i,
     })),
     detectionThreshold: 0.2,
@@ -130,41 +131,101 @@ export const DEMO_SCENARIO_EMERGING: DecisionUIState = {
   timestamp: new Date().toISOString(),
 }
 
+export const DEMO_SCENARIO_EMERGING: DecisionUIState = {
+  statusHeader: {
+    degradationStage: DegradationStage.PERSISTENT,
+    severity: Severity.ELEVATED,
+    trajectory: Trajectory.DEGRADING,
+    confidence: 'HIGH',
+  },
+  actionPanel: {
+    horizon: ActionHorizon.NOW,
+    primaryAction: 'Escalate to operations',
+    urgencyLevel: 4,
+  },
+  tetrahedron: {
+    currentPosition: { x: 0.68, y: 0.38, z: 0.62 },
+    severityScalar: 0.76,
+    trailPoints: Array.from({ length: 18 }, (_, i) => ({
+      position: {
+        x: 0.25 + i * 0.024,
+        y: 0.8 - i * 0.025,
+        z: 0.2 + i * 0.024,
+      },
+      timestamp: new Date(Date.now() - (17 - i) * 60000).toISOString(),
+      frameIdx: i,
+    })),
+    velocity: [0.08, 0.07, 0.06],
+    nearestVertex: 'STRUCTURAL',
+  },
+  decisionTrace: {
+    primaryFactor: 'Degradation persists',
+    secondaryFactors: ['Pattern match strong', 'Corroborating signals rising'],
+    confidenceRationale: 'Confidence high',
+    patternInsight: {
+      tier: 'strong',
+      outcomeType: 'structural_cascade',
+      influenceSummary: 'Estimated impact window: 4–6 hours',
+    },
+  },
+  timeline: {
+    stages: [
+      { stage: DegradationStage.BASELINE, label: 'Baseline', isCurrent: false },
+      { stage: DegradationStage.EARLY_SHIFT, label: 'Early Shift', isCurrent: false },
+      { stage: DegradationStage.EMERGING, label: 'Emerging', isCurrent: false },
+      { stage: DegradationStage.PERSISTENT, label: 'Persistent', isCurrent: true },
+      { stage: DegradationStage.ACCELERATED, label: 'Accelerated', isCurrent: false },
+      { stage: DegradationStage.FAILURE_APPROACH, label: 'Failure', isCurrent: false },
+    ],
+    currentIndex: 3,
+  },
+  driftChart: {
+    dataPoints: Array.from({ length: 26 }, (_, i) => ({
+      timestamp: new Date(Date.now() - (25 - i) * 60000).toISOString(),
+      driftScore: Math.min(0.7, 0.18 + i * 0.02),
+      frameIdx: i,
+    })),
+    detectionThreshold: 0.2,
+    currentFrameIdx: 25,
+  },
+  timestamp: new Date().toISOString(),
+}
+
 export const DEMO_SCENARIO_CRITICAL: DecisionUIState = {
   statusHeader: {
-    degradationStage: DegradationStage.ACCELERATED,
+    degradationStage: DegradationStage.FAILURE_APPROACH,
     severity: Severity.HIGH,
     trajectory: Trajectory.DEGRADING,
     confidence: 'HIGH',
   },
   actionPanel: {
     horizon: ActionHorizon.NOW,
-    primaryAction: 'Activate failover immediately. Threshold breach imminent.',
+    primaryAction: 'Activate failover',
     urgencyLevel: 5,
   },
   tetrahedron: {
-    currentPosition: { x: 0.88, y: 0.15, z: 0.85 },
-    severityScalar: 0.95,
+    currentPosition: { x: 0.9, y: 0.14, z: 0.88 },
+    severityScalar: 0.96,
     trailPoints: Array.from({ length: 20 }, (_, i) => ({
       position: {
-        x: 0.2 + i * 0.035,
-        y: 0.85 - i * 0.038,
-        z: 0.15 + i * 0.035,
+        x: 0.28 + i * 0.03,
+        y: 0.72 - i * 0.03,
+        z: 0.24 + i * 0.03,
       },
       timestamp: new Date(Date.now() - (19 - i) * 60000).toISOString(),
       frameIdx: i,
     })),
-    velocity: [0.24, 0.22, 0.18],
+    velocity: [0.14, 0.12, 0.1],
     nearestVertex: 'STRUCTURAL',
   },
   decisionTrace: {
-    primaryFactor: 'Integrity critical (82%), cascade acceleration',
-    secondaryFactors: ['Stability 18%', '8 cascade signals confirmed'],
-    confidenceRationale: 'Confidence: HIGH',
+    primaryFactor: 'Failure risk accelerating',
+    secondaryFactors: ['Cascade confirmed', 'Instability compounding'],
+    confidenceRationale: 'Confidence high',
     patternInsight: {
       tier: 'strong',
       outcomeType: 'cascade_failure',
-      influenceSummary: 'Cascade confirmed. Window: 15-30 minutes to failure.',
+      influenceSummary: 'Failure window: narrowing',
     },
   },
   timeline: {
@@ -173,29 +234,28 @@ export const DEMO_SCENARIO_CRITICAL: DecisionUIState = {
       { stage: DegradationStage.EARLY_SHIFT, label: 'Early Shift', isCurrent: false },
       { stage: DegradationStage.EMERGING, label: 'Emerging', isCurrent: false },
       { stage: DegradationStage.PERSISTENT, label: 'Persistent', isCurrent: false },
-      { stage: DegradationStage.ACCELERATED, label: 'Accelerated', isCurrent: true },
-      { stage: DegradationStage.FAILURE_APPROACH, label: 'Failure Approach', isCurrent: false },
+      { stage: DegradationStage.ACCELERATED, label: 'Accelerated', isCurrent: false },
+      { stage: DegradationStage.FAILURE_APPROACH, label: 'Failure', isCurrent: true },
     ],
-    currentIndex: 4,
+    currentIndex: 5,
   },
   driftChart: {
-    dataPoints: Array.from({ length: 24 }, (_, i) => ({
-      timestamp: new Date(Date.now() - (23 - i) * 60000).toISOString(),
-      driftScore: Math.min(0.85, 0.15 + (i * 0.03)),
+    dataPoints: Array.from({ length: 26 }, (_, i) => ({
+      timestamp: new Date(Date.now() - (25 - i) * 60000).toISOString(),
+      driftScore: Math.min(0.9, 0.22 + i * 0.028),
       frameIdx: i,
     })),
     detectionThreshold: 0.2,
-    currentFrameIdx: 23,
+    currentFrameIdx: 25,
   },
   timestamp: new Date().toISOString(),
 }
 
-// Optimized order for demo: Baseline → Emerging (hero) → Critical (escalation)
 export const DEMO_SCENARIOS = [
-  { name: 'Baseline', state: DEMO_SCENARIO_BASELINE },
-  { name: 'Emerging', state: DEMO_SCENARIO_EMERGING },
-  { name: 'Critical', state: DEMO_SCENARIO_CRITICAL },
+  { name: 'Baseline', state: DEMO_SCENARIO_BASELINE, durationMs: 11000, narrative: 'System operating normally' },
+  { name: 'Early Shift', state: DEMO_SCENARIO_EARLY_SHIFT, durationMs: 11000, narrative: 'Early structural change detected' },
+  { name: 'Emerging', state: DEMO_SCENARIO_EMERGING, durationMs: 17000, narrative: 'Degradation detected before failure conditions' },
+  { name: 'Critical', state: DEMO_SCENARIO_CRITICAL, durationMs: 13000, narrative: 'Failure imminent. Action required now' },
 ]
 
-// For standalone hero demo
 export const HERO_SCENARIO = DEMO_SCENARIO_EMERGING
