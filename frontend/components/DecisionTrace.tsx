@@ -33,14 +33,14 @@ export default function DecisionTrace({ trace }: DecisionTraceProps) {
     <div style={styles.container}>
       {/* Primary factor - most important */}
       <div style={styles.section}>
-        <div style={styles.sectionLabel}>PRIMARY FACTOR</div>
+        <div style={styles.sectionLabel}>PRIMARY</div>
         <div style={styles.primaryFactor}>{trace.primaryFactor}</div>
       </div>
 
       {/* Secondary factors */}
       {trace.secondaryFactors.length > 0 && (
         <div style={styles.section}>
-          <div style={styles.sectionLabel}>SUPPORTING EVIDENCE</div>
+          <div style={styles.sectionLabel}>EVIDENCE</div>
           <div style={styles.factorsList}>
             {trace.secondaryFactors.map((factor, idx) => (
               <div key={idx} style={styles.factorItem}>
@@ -55,7 +55,7 @@ export default function DecisionTrace({ trace }: DecisionTraceProps) {
       {/* Pattern insight if available */}
       {trace.patternInsight && (
         <div style={styles.section}>
-          <div style={styles.sectionLabel}>PATTERN RECOGNITION</div>
+          <div style={styles.sectionLabel}>PATTERN</div>
           <div
             style={{
               ...styles.patternCard,
@@ -80,7 +80,7 @@ export default function DecisionTrace({ trace }: DecisionTraceProps) {
 
       {/* Confidence rationale */}
       <div style={styles.section}>
-        <div style={styles.sectionLabel}>CONFIDENCE BASIS</div>
+        <div style={styles.sectionLabel}>BASIS</div>
         <div style={styles.rationale}>{trace.confidenceRationale}</div>
       </div>
     </div>

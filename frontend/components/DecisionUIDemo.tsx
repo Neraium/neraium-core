@@ -6,7 +6,7 @@ import { DEMO_SCENARIOS } from '@/lib/demoScenarios'
 
 export default function DecisionUIDemo() {
   const [scenarioIndex, setScenarioIndex] = useState(0)
-  const [isAutoPlay, setIsAutoPlay] = useState(false)
+  const [isAutoPlay, setIsAutoPlay] = useState(true)
 
   const scenario = DEMO_SCENARIOS[scenarioIndex]
 
@@ -15,7 +15,7 @@ export default function DecisionUIDemo() {
 
     const timer = setTimeout(() => {
       setScenarioIndex((prev) => (prev + 1) % DEMO_SCENARIOS.length)
-    }, 4000)
+    }, 5000)
 
     return () => clearTimeout(timer)
   }, [isAutoPlay, scenarioIndex])
@@ -24,54 +24,43 @@ export default function DecisionUIDemo() {
     <div style={styles.container}>
       <DecisionUI state={scenario.state} />
 
-      {/* Demo controls */}
+      {/* Minimal demo controls */}
       <div style={styles.controls}>
         <div style={styles.controlsContent}>
-          <div style={styles.scenarioIndicator}>
-            <span style={styles.label}>Scenario:</span>
-            <span style={styles.scenarioName}>{scenario.name}</span>
-            <span style={styles.progress}>
-              {scenarioIndex + 1} / {DEMO_SCENARIOS.length}
-            </span>
+          <div style={styles.status}>
+            <span style={styles.label}>{scenario.name}</span>
+            <span style={styles.progress}>{scenarioIndex + 1}/{DEMO_SCENARIOS.length}</span>
           </div>
 
-          <div style={styles.buttonGroup}>
+          <div style={styles.controls2}>
             {scenarioIndex > 0 && (
               <button
                 onClick={() => setScenarioIndex(scenarioIndex - 1)}
-                style={{ ...styles.button, ...styles.buttonSecondary }}
+                style={styles.button}
+                title="Previous scenario"
               >
-                ← Previous
+                ‹
               </button>
             )}
 
-            {isAutoPlay ? (
-              <button
-                onClick={() => setIsAutoPlay(false)}
-                style={{ ...styles.button, ...styles.buttonPrimary }}
-              >
-                ⏸ Pause
-              </button>
-            ) : (
-              <button
-                onClick={() => setIsAutoPlay(true)}
-                style={{ ...styles.button, ...styles.buttonPrimary }}
-              >
-                ▶ Play
-              </button>
-            )}
+            <button
+              onClick={() => setIsAutoPlay(!isAutoPlay)}
+              style={styles.button}
+              title={isAutoPlay ? 'Pause' : 'Play'}
+            >
+              {isAutoPlay ? '❚❚' : '▶'}
+            </button>
 
             {scenarioIndex < DEMO_SCENARIOS.length - 1 && (
               <button
                 onClick={() => setScenarioIndex(scenarioIndex + 1)}
-                style={{ ...styles.button, ...styles.buttonSecondary }}
+                style={styles.button}
+                title="Next scenario"
               >
-                Next →
+                ›
               </button>
             )}
           </div>
-
-          <div style={styles.hint}>Click Play to auto-advance through scenarios</div>
         </div>
       </div>
     </div>
@@ -85,88 +74,65 @@ const styles = {
 
   controls: {
     position: 'fixed' as const,
-    bottom: '0',
-    left: '0',
-    right: '0',
-    padding: '16px',
-    backgroundColor: 'rgba(0, 0, 0, 0.9)',
-    borderTop: '1px solid rgba(255, 255, 255, 0.1)',
-    backdropFilter: 'blur(8px)',
+    bottom: '32px',
+    left: '32px',
+    padding: '0',
+    backgroundColor: 'transparent',
+    borderTop: 'none',
+    backdropFilter: 'none',
     zIndex: 100,
   },
 
   controlsContent: {
     display: 'flex',
     alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: '20px',
-    maxWidth: '1400px',
-    margin: '0 auto',
+    justifyContent: 'flex-start',
+    gap: '16px',
   },
 
-  scenarioIndicator: {
+  status: {
     display: 'flex',
     alignItems: 'center',
-    gap: '12px',
+    gap: '8px',
     fontSize: '12px',
   },
 
   label: {
-    color: 'rgba(255, 255, 255, 0.4)',
+    color: 'rgba(255, 255, 255, 0.5)',
     fontWeight: '600',
     letterSpacing: '0.05em',
-    textTransform: 'uppercase',
-  },
-
-  scenarioName: {
-    color: '#0284c7',
-    fontWeight: '600',
   },
 
   progress: {
     color: 'rgba(255, 255, 255, 0.3)',
     fontSize: '11px',
+    fontVariantNumeric: 'tabular-nums',
   },
 
-  buttonGroup: {
+  controls2: {
     display: 'flex',
-    gap: '8px',
+    gap: '4px',
+    padding: '8px 12px',
+    borderRadius: '6px',
+    backgroundColor: 'rgba(0, 0, 0, 0.4)',
+    border: '1px solid rgba(255, 255, 255, 0.08)',
+    backdropFilter: 'blur(4px)',
   },
 
   button: {
-    padding: '8px 16px',
-    borderRadius: '6px',
+    width: '28px',
+    height: '28px',
+    padding: '0',
+    borderRadius: '4px',
     border: 'none',
-    fontSize: '12px',
+    backgroundColor: 'transparent',
+    color: 'rgba(255, 255, 255, 0.6)',
+    fontSize: '14px',
     fontWeight: '600',
     cursor: 'pointer',
     transition: 'all 0.2s ease',
-  },
-
-  buttonPrimary: {
-    backgroundColor: '#0284c7',
-    color: '#ffffff',
-    boxShadow: '0 0 12px rgba(2, 132, 199, 0.3)',
-  },
-
-  buttonPrimaryHover: {
-    backgroundColor: '#0369a1',
-    boxShadow: '0 0 16px rgba(2, 132, 199, 0.4)',
-  },
-
-  buttonSecondary: {
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    color: 'rgba(255, 255, 255, 0.8)',
-  },
-
-  buttonSecondaryHover: {
-    backgroundColor: 'rgba(255, 255, 255, 0.15)',
-  },
-
-  hint: {
-    fontSize: '11px',
-    color: 'rgba(255, 255, 255, 0.3)',
-    fontStyle: 'italic',
-    whiteSpace: 'nowrap',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 }

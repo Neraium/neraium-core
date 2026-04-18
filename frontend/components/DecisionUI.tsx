@@ -55,7 +55,6 @@ export default function DecisionUI({ state, isLoading = false, error = null }: D
         <div style={styles.vizSection}>
           {/* Tetrahedron */}
           <div style={styles.tetrahedronPanel}>
-            <div style={styles.panelLabel}>SYSTEM STATE</div>
             {state.tetrahedron.trailPoints.length > 0 ? (
               <EnhancedTetrahedronViz tetrahedronState={state.tetrahedron} isInteractive={true} />
             ) : (
@@ -199,13 +198,6 @@ const styles = {
     transition: 'all 0.3s ease',
   },
 
-  panelLabel: {
-    fontSize: '10px',
-    fontWeight: '700',
-    letterSpacing: '0.1em',
-    color: 'rgba(255, 255, 255, 0.4)',
-    textTransform: 'uppercase',
-  },
 
   emptyState: {
     display: 'flex',
