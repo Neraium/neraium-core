@@ -88,6 +88,7 @@ from neraium_core.performance_throttle import (
     StorageBound,
     ThrottleConfig,
 )
+from neraium_core.future_paths import FuturePathMapper
 from neraium_core.staged_pipeline import (
     AttributionStage,
     DecisionStage,
@@ -3977,3 +3978,38 @@ class StructuralEngine:
         self._persistence_throttle.update_frame_count()
 
         return result
+
+    def get_future_path_map(self, current_frame: Optional[Dict] = None) -> Dict[str, object]:
+        """Generate future path map from current structural state.
+
+        Infers plausible future trajectories and recommends interventions
+        to navigate toward stable paths.
+
+        Args:
+            current_frame: Optional current frame dict. Uses latest_result if not provided.
+
+        Returns:
+            Dict with current_state, future_paths, and recommended_interventions
+        """
+        if self.latest_result is None:
+            return {
+                "current_state": {},
+                "future_paths": [],
+                "recommended_interventions": [],
+                "error": "No analysis results available yet. Process at least one frame first.",
+            }
+
+        try:
+            mapper = FuturePathMapper()
+            path_map = mapper.analyze(self, current_frame or self.latest_result)
+            return path_map.to_dict()
+        except Exception as e:
+            import logging as _log
+            logger = _log.getLogger(__name__)
+            logger.error(f"Error generating future path map: {e}")
+            return {
+                "current_state": {},
+                "future_paths": [],
+                "recommended_interventions": [],
+                "error": str(e),
+            }
