@@ -16,53 +16,53 @@ export default function StatusHeader({ status }: StatusHeaderProps) {
         : '#22c55e'
 
   const stageLabel: Record<DegradationStage, string> = {
-    [DegradationStage.BASELINE]: 'BASELINE STABILITY',
-    [DegradationStage.EARLY_SHIFT]: 'EARLY SHIFT',
-    [DegradationStage.EMERGING]: 'EMERGING DEGRADATION',
-    [DegradationStage.PERSISTENT]: 'PERSISTENT DEGRADATION',
-    [DegradationStage.ACCELERATED]: 'ACCELERATED DEGRADATION',
-    [DegradationStage.FAILURE_APPROACH]: 'FAILURE APPROACH',
+    [DegradationStage.BASELINE]: 'Baseline stability',
+    [DegradationStage.EARLY_SHIFT]: 'Early shift',
+    [DegradationStage.EMERGING]: 'Emerging degradation',
+    [DegradationStage.PERSISTENT]: 'Persistent degradation',
+    [DegradationStage.ACCELERATED]: 'Accelerated degradation',
+    [DegradationStage.FAILURE_APPROACH]: 'Failure approach',
   }
 
   return (
     <div style={styles.container}>
-      <div style={styles.line1}>{stageLabel[status.degradationStage]}</div>
-      <div style={{ ...styles.line2, color: severityColor }}>{status.severity} RISK</div>
-      <div style={styles.line3}>{status.trajectory.toUpperCase()}</div>
+      <div style={styles.stageLabel}>{stageLabel[status.degradationStage]}</div>
+      <div style={{ ...styles.riskLine, color: severityColor }}>{status.severity} RISK</div>
+      <div style={styles.trajectoryLine}>{status.trajectory.toUpperCase()}</div>
     </div>
   )
 }
 
-const styles = {
+const styles: Record<string, React.CSSProperties> = {
   container: {
     display: 'flex',
-    flexDirection: 'column' as const,
-    gap: '15px',
-    padding: '6px 0 2px',
-    transition: 'all 0.62s ease',
+    flexDirection: 'column',
+    gap: '10px',
+    padding: '8px 6px 2px',
+    transition: 'all 0.9s cubic-bezier(0.22, 1, 0.36, 1)',
   },
-  line1: {
-    fontSize: '44px',
-    fontWeight: '710',
-    letterSpacing: '0.02em',
-    lineHeight: 1.01,
-    color: 'rgba(248, 250, 252, 0.94)',
-    textTransform: 'uppercase' as const,
+  stageLabel: {
+    fontSize: '13px',
+    fontWeight: '600',
+    letterSpacing: '0.1em',
+    lineHeight: 1.2,
+    color: 'rgba(148, 163, 184, 0.72)',
+    textTransform: 'uppercase',
   },
-  line2: {
-    fontSize: '68px',
-    fontWeight: '850',
+  riskLine: {
+    fontSize: '72px',
+    fontWeight: '860',
     lineHeight: 0.9,
-    letterSpacing: '0.01em',
-    textTransform: 'uppercase' as const,
-    transition: 'color 0.62s ease',
-    textShadow: 'none',
+    letterSpacing: '-0.01em',
+    textTransform: 'uppercase',
+    transition: 'color 1.1s cubic-bezier(0.22, 1, 0.36, 1)',
   },
-  line3: {
-    fontSize: '22px',
-    fontWeight: '580',
-    letterSpacing: '0.14em',
-    color: 'rgba(203, 213, 225, 0.62)',
-    textTransform: 'uppercase' as const,
+  trajectoryLine: {
+    fontSize: '15px',
+    fontWeight: '560',
+    letterSpacing: '0.18em',
+    color: 'rgba(148, 163, 184, 0.55)',
+    textTransform: 'uppercase',
+    marginTop: '2px',
   },
 }

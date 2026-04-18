@@ -5,8 +5,8 @@ import DecisionUI from '@/components/DecisionUI'
 import { DEMO_SCENARIOS } from '@/lib/demoScenarios'
 import { DecisionUIState } from '@/lib/decisionToUI'
 
-const INTERPOLATION_MS = 2500
-const TEXT_LAG_MS = 260
+const INTERPOLATION_MS = 4200
+const TEXT_LAG_MS = 520
 
 function lerp(a: number, b: number, t: number): number {
   return a + (b - a) * t
@@ -63,6 +63,13 @@ function interpolateStates(from: DecisionUIState, to: DecisionUIState, t: number
   }
 }
 
+const MEANING_LINES: Record<string, string> = {
+  Baseline: 'System operating normally',
+  'Early Shift': 'Change detected',
+  Emerging: 'Detected before failure conditions',
+  Critical: 'Failure imminent',
+}
+
 export default function DecisionUIDemo() {
   const [scenarioIndex, setScenarioIndex] = useState(0)
   const [displayedScenarioIndex, setDisplayedScenarioIndex] = useState(0)
@@ -70,20 +77,32 @@ export default function DecisionUIDemo() {
   const [fromScenarioIndex, setFromScenarioIndex] = useState(0)
   const [transitionStart, setTransitionStart] = useState<number | null>(null)
   const [progress, setProgress] = useState(1)
+  const [controlsVisible, setControlsVisible] = useState(false)
 
   const scenario = DEMO_SCENARIOS[scenarioIndex]
   const displayedScenario = DEMO_SCENARIOS[displayedScenarioIndex]
 
   useEffect(() => {
-    if (!isAutoPlay) return
+    if (!isAutoPlay) {
+      setControlsVisible(true)
+      return
+    }
+    const t = setTimeout(() => setControlsVisible(false), 2200)
+    return () => clearTimeout(t)
+  }, [isAutoPlay, scenarioIndex])
 
+  useEffect(() => {
+    if (!isAutoPlay) return
+    if (scenarioIndex >= DEMO_SCENARIOS.length - 1) {
+      setIsAutoPlay(false)
+      return
+    }
     const timer = setTimeout(() => {
       setFromScenarioIndex(scenarioIndex)
-      setScenarioIndex((prev) => (prev + 1) % DEMO_SCENARIOS.length)
+      setScenarioIndex((prev) => prev + 1)
       setTransitionStart(performance.now())
       setProgress(0)
     }, scenario.durationMs)
-
     return () => clearTimeout(timer)
   }, [isAutoPlay, scenarioIndex, scenario.durationMs])
 
@@ -112,13 +131,24 @@ export default function DecisionUIDemo() {
     return interpolateStates(DEMO_SCENARIOS[fromScenarioIndex].state, scenario.state, progress)
   }, [scenario, scenarioIndex, fromScenarioIndex, progress])
 
-  const meaningLine = displayedScenario.name === 'Emerging' ? 'Detected before failure conditions' : null
+  const meaningLine = MEANING_LINES[displayedScenario.name] || null
 
   return (
-    <div style={styles.container}>
-      <DecisionUI state={uiState} narrative={displayedScenario.narrative} meaningLine={meaningLine} />
+    <div
+      style={styles.container}
+      onMouseMove={() => { if (isAutoPlay) setControlsVisible(true) }}
+      onMouseLeave={() => { if (isAutoPlay) setControlsVisible(false) }}
+    >
+      <DecisionUI state={uiState} narrative={displayedScenario.narrative} meaningLine={meaningLine} isAutoPlay={isAutoPlay} />
 
-      <div style={styles.controls}>
+      <div
+        style={{
+          ...styles.controls,
+          opacity: isAutoPlay ? (controlsVisible ? 0.38 : 0) : 1,
+          pointerEvents: isAutoPlay && !controlsVisible ? 'none' : 'auto',
+          transition: 'opacity 1.4s cubic-bezier(0.22, 1, 0.36, 1)',
+        }}
+      >
         <div style={styles.controlsContent}>
           <div style={styles.status}>
             <span style={styles.label}>{displayedScenario.name}</span>
@@ -163,6 +193,22 @@ export default function DecisionUIDemo() {
                 ›
               </button>
             )}
+
+            {scenarioIndex === DEMO_SCENARIOS.length - 1 && !isAutoPlay && (
+              <button
+                onClick={() => {
+                  setFromScenarioIndex(scenarioIndex)
+                  setScenarioIndex(0)
+                  setTransitionStart(performance.now())
+                  setProgress(0)
+                  setIsAutoPlay(true)
+                }}
+                style={styles.button}
+                title="Replay"
+              >
+                ↻
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -170,13 +216,15 @@ export default function DecisionUIDemo() {
   )
 }
 
-const styles = {
-  container: { position: 'relative' as const },
+const styles: Record<string, React.CSSProperties> = {
+  container: { position: 'relative' },
   controls: {
-    position: 'fixed' as const,
-    bottom: '30px',
-    left: '32px',
+    position: 'fixed',
+    bottom: '26px',
+    left: '28px',
     zIndex: 100,
+    opacity: 1,
+    transition: 'opacity 1.4s cubic-bezier(0.22, 1, 0.36, 1)',
   },
   controlsContent: {
     display: 'flex',
@@ -191,12 +239,12 @@ const styles = {
     fontSize: '12px',
   },
   label: {
-    color: 'rgba(255, 255, 255, 0.56)',
+    color: 'rgba(255, 255, 255, 0.48)',
     fontWeight: '600',
     letterSpacing: '0.07em',
   },
   progress: {
-    color: 'rgba(255, 255, 255, 0.34)',
+    color: 'rgba(255, 255, 255, 0.28)',
     fontSize: '11px',
     fontVariantNumeric: 'tabular-nums',
   },
@@ -205,9 +253,10 @@ const styles = {
     gap: '4px',
     padding: '8px 12px',
     borderRadius: '8px',
-    backgroundColor: 'rgba(7, 15, 30, 0.56)',
-    border: '1px solid rgba(148, 163, 184, 0.2)',
+    backgroundColor: 'rgba(7, 15, 30, 0.22)',
+    border: '1px solid rgba(148, 163, 184, 0.08)',
     backdropFilter: 'blur(8px)',
+    transition: 'opacity 1.4s cubic-bezier(0.22, 1, 0.36, 1), background-color 0.8s ease',
   },
   button: {
     width: '28px',
@@ -216,11 +265,11 @@ const styles = {
     borderRadius: '4px',
     border: 'none',
     backgroundColor: 'transparent',
-    color: 'rgba(255, 255, 255, 0.68)',
+    color: 'rgba(255, 255, 255, 0.58)',
     fontSize: '14px',
     fontWeight: '600',
     cursor: 'pointer',
-    transition: 'all 0.46s ease',
+    transition: 'all 0.6s cubic-bezier(0.22, 1, 0.36, 1)',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',

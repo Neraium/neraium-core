@@ -11,6 +11,12 @@ import {
   ActionHorizon,
 } from '@/lib/decisionToUI'
 
+const DEMO_BASE_TIME = new Date('2026-04-18T03:00:00.000Z').getTime()
+
+function isoAtOffset(minutesOffset: number): string {
+  return new Date(DEMO_BASE_TIME - minutesOffset * 60000).toISOString()
+}
+
 export const DEMO_SCENARIO_BASELINE: DecisionUIState = {
   statusHeader: {
     degradationStage: DegradationStage.BASELINE,
@@ -32,7 +38,7 @@ export const DEMO_SCENARIO_BASELINE: DecisionUIState = {
         y: 0.85 - i * 0.004,
         z: 0.15 + i * 0.002,
       },
-      timestamp: new Date(Date.now() - (15 - i) * 60000).toISOString(),
+      timestamp: isoAtOffset(15 - i),
       frameIdx: i,
     })),
     velocity: [0.008, 0.006, 0.004],
@@ -61,14 +67,14 @@ export const DEMO_SCENARIO_BASELINE: DecisionUIState = {
   },
   driftChart: {
     dataPoints: Array.from({ length: 22 }, (_, i) => ({
-      timestamp: new Date(Date.now() - (21 - i) * 60000).toISOString(),
+      timestamp: isoAtOffset(21 - i),
       driftScore: 0.13 + Math.sin(i * 0.18) * 0.03,
       frameIdx: i,
     })),
     detectionThreshold: 0.2,
     currentFrameIdx: 21,
   },
-  timestamp: new Date().toISOString(),
+  timestamp: new Date(DEMO_BASE_TIME).toISOString(),
 }
 
 export const DEMO_SCENARIO_EARLY_SHIFT: DecisionUIState = {
@@ -92,7 +98,7 @@ export const DEMO_SCENARIO_EARLY_SHIFT: DecisionUIState = {
         y: 0.82 - i * 0.012,
         z: 0.16 + i * 0.011,
       },
-      timestamp: new Date(Date.now() - (15 - i) * 60000).toISOString(),
+      timestamp: isoAtOffset(15 - i),
       frameIdx: i,
     })),
     velocity: [0.03, 0.025, 0.02],
@@ -121,14 +127,14 @@ export const DEMO_SCENARIO_EARLY_SHIFT: DecisionUIState = {
   },
   driftChart: {
     dataPoints: Array.from({ length: 24 }, (_, i) => ({
-      timestamp: new Date(Date.now() - (23 - i) * 60000).toISOString(),
+      timestamp: isoAtOffset(23 - i),
       driftScore: 0.14 + i * 0.01,
       frameIdx: i,
     })),
     detectionThreshold: 0.2,
     currentFrameIdx: 23,
   },
-  timestamp: new Date().toISOString(),
+  timestamp: new Date(DEMO_BASE_TIME).toISOString(),
 }
 
 export const DEMO_SCENARIO_EMERGING: DecisionUIState = {
@@ -152,7 +158,7 @@ export const DEMO_SCENARIO_EMERGING: DecisionUIState = {
         y: 0.8 - i * 0.025,
         z: 0.2 + i * 0.024,
       },
-      timestamp: new Date(Date.now() - (17 - i) * 60000).toISOString(),
+      timestamp: isoAtOffset(17 - i),
       frameIdx: i,
     })),
     velocity: [0.08, 0.07, 0.06],
@@ -181,14 +187,14 @@ export const DEMO_SCENARIO_EMERGING: DecisionUIState = {
   },
   driftChart: {
     dataPoints: Array.from({ length: 26 }, (_, i) => ({
-      timestamp: new Date(Date.now() - (25 - i) * 60000).toISOString(),
+      timestamp: isoAtOffset(25 - i),
       driftScore: Math.min(0.7, 0.18 + i * 0.02),
       frameIdx: i,
     })),
     detectionThreshold: 0.2,
     currentFrameIdx: 25,
   },
-  timestamp: new Date().toISOString(),
+  timestamp: new Date(DEMO_BASE_TIME).toISOString(),
 }
 
 export const DEMO_SCENARIO_CRITICAL: DecisionUIState = {
@@ -212,7 +218,7 @@ export const DEMO_SCENARIO_CRITICAL: DecisionUIState = {
         y: 0.72 - i * 0.03,
         z: 0.24 + i * 0.03,
       },
-      timestamp: new Date(Date.now() - (19 - i) * 60000).toISOString(),
+      timestamp: isoAtOffset(19 - i),
       frameIdx: i,
     })),
     velocity: [0.14, 0.12, 0.1],
@@ -241,21 +247,21 @@ export const DEMO_SCENARIO_CRITICAL: DecisionUIState = {
   },
   driftChart: {
     dataPoints: Array.from({ length: 26 }, (_, i) => ({
-      timestamp: new Date(Date.now() - (25 - i) * 60000).toISOString(),
+      timestamp: isoAtOffset(25 - i),
       driftScore: Math.min(0.9, 0.22 + i * 0.028),
       frameIdx: i,
     })),
     detectionThreshold: 0.2,
     currentFrameIdx: 25,
   },
-  timestamp: new Date().toISOString(),
+  timestamp: new Date(DEMO_BASE_TIME).toISOString(),
 }
 
 export const DEMO_SCENARIOS = [
-  { name: 'Baseline', state: DEMO_SCENARIO_BASELINE, durationMs: 11000, narrative: 'System operating normally' },
-  { name: 'Early Shift', state: DEMO_SCENARIO_EARLY_SHIFT, durationMs: 11000, narrative: 'Early structural change detected' },
-  { name: 'Emerging', state: DEMO_SCENARIO_EMERGING, durationMs: 17000, narrative: 'Degradation detected before failure conditions' },
-  { name: 'Critical', state: DEMO_SCENARIO_CRITICAL, durationMs: 13000, narrative: 'Failure imminent. Action required now' },
+  { name: 'Baseline', state: DEMO_SCENARIO_BASELINE, durationMs: 17000, narrative: 'System operating normally' },
+  { name: 'Early Shift', state: DEMO_SCENARIO_EARLY_SHIFT, durationMs: 17000, narrative: 'Early structural change detected' },
+  { name: 'Emerging', state: DEMO_SCENARIO_EMERGING, durationMs: 24000, narrative: 'Degradation detected before failure conditions' },
+  { name: 'Critical', state: DEMO_SCENARIO_CRITICAL, durationMs: 20000, narrative: 'Failure imminent. Action required now' },
 ]
 
 export const HERO_SCENARIO = DEMO_SCENARIO_EMERGING

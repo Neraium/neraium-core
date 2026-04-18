@@ -52,12 +52,18 @@ class DecisionAuditLogger:
 
     def __init__(self, output_path: Path | str):
         self.output_path = Path(output_path)
-        self.output_path.parent.mkdir(parents=True, exist_ok=True)
-        self.file = open(self.output_path, "w", newline="", encoding="utf-8")
-        self.writer = csv.DictWriter(self.file, fieldnames=self.AUDIT_FIELDS)
-        self.writer.writeheader()
-        self.row_count = 0
-        logger.info(f"Decision audit logger initialized: {self.output_path}")
+        try:
+            self.output_path.parent.mkdir(parents=True, exist_ok=True)
+            logger.debug(f"Created audit directory: {self.output_path.parent}")
+            self.file = open(self.output_path, "w", newline="", encoding="utf-8")
+            self.writer = csv.DictWriter(self.file, fieldnames=self.AUDIT_FIELDS)
+            self.writer.writeheader()
+            self.file.flush()
+            self.row_count = 0
+            logger.info(f"Decision audit logger initialized: {self.output_path}")
+        except Exception as e:
+            logger.error(f"Failed to initialize audit logger at {output_path}: {e}", exc_info=True)
+            raise
 
     def write_frame(self, frame_data: dict[str, Any]) -> None:
         """Write one audit row from frame data."""
@@ -65,14 +71,32 @@ class DecisionAuditLogger:
         for field in self.AUDIT_FIELDS:
             row[field] = self._extract_field(frame_data, field)
 
-        self.writer.writerow(row)
-        self.row_count += 1
+        try:
+            self.writer.writerow(row)
+            self.file.flush()
+            # Force OS-level sync to ensure data is written to disk immediately
+            import os
+            if hasattr(os, 'fsync'):
+                os.fsync(self.file.fileno())
+            self.row_count += 1
+        except Exception as e:
+            logger.error(f"Error writing audit frame: {e}", exc_info=True)
+            raise
 
     def close(self) -> None:
         """Flush and close the file."""
-        self.file.flush()
-        self.file.close()
-        logger.info(f"Decision audit log closed: {self.row_count} rows written")
+        try:
+            self.file.flush()
+            # Force OS-level sync on Windows to ensure data is written to disk
+            import os
+            if hasattr(os, 'fsync'):
+                os.fsync(self.file.fileno())
+            self.file.close()
+            file_size = self.output_path.stat().st_size if self.output_path.exists() else 0
+            logger.info(f"Decision audit log closed: {self.row_count} rows written, file size: {file_size} bytes")
+        except Exception as e:
+            logger.error(f"Error closing audit log: {e}", exc_info=True)
+            raise
 
     @staticmethod
     def _extract_field(frame_data: dict[str, Any], field: str) -> str:
