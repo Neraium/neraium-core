@@ -35,6 +35,7 @@ from neraium_core.decision.decision_window_engine import DecisionWindowEngine
 from neraium_core.decision.trajectory_engine import TrajectoryEngine
 from neraium_core.decision.intervention_guidance_engine import InterventionGuidanceEngine
 from neraium_core.decision.outcome_tracker import OutcomeTracker
+from neraium_core.decision.engine_optimized import DecisionComputationPipeline
 
 
 class DecisionEngine:
@@ -63,6 +64,7 @@ class DecisionEngine:
         self.enable_persistence_tracking = enable_persistence_tracking
         self.frame_counter = 0
         self.outcome_tracker: Optional[OutcomeTracker] = OutcomeTracker() if enable_outcome_tracking else None
+        self._pipeline = DecisionComputationPipeline()
 
     def decide(
         self,
@@ -80,24 +82,25 @@ class DecisionEngine:
         """
         self.frame_counter += 1
 
-        # Extract key metrics
-        state = sii_output.get("state", "STABLE")
-        drift_score = float(sii_output.get("structural_drift_score", 0.0))
-        relational_instability = float(sii_output.get("relational_instability_score", 0.0))
-        system_phase = sii_output.get("system_phase", "stable")
-        regime_name = sii_output.get("regime_name")
-        regime_distance = float(sii_output.get("regime_distance") or 0.5)
-
-        attribution = sii_output.get("attribution", {})
-        sensor_count = len(sii_output.get("sensor_relationships", []))
-        data_quality = sii_output.get("data_quality", {})
+        # Extract and normalize metrics in one pass
+        metrics = self._extract_metrics_from_output(sii_output)
+        state = metrics["state"]
+        drift_score = metrics["drift_score"]
+        relational_instability = metrics["relational_instability"]
+        system_phase = metrics["system_phase"]
+        regime_name = metrics["regime_name"]
+        regime_distance = metrics["regime_distance"]
+        attribution = metrics["attribution"]
+        sensor_count = metrics["sensor_count"]
+        data_quality = metrics["data_quality"]
         data_quality_issues = 0
         if isinstance(data_quality, dict):
             data_quality_issues = data_quality.get("missing_sensor_count", 0)
 
-        shock_activity = float(sii_output.get("shock_activity") or 0.0)
-        subsystem_instability = float(sii_output.get("subsystem_instability") or 0.0)
-        time_to_instability = sii_output.get("time_to_instability")
+        shock_activity = metrics["shock_activity"]
+        subsystem_instability = metrics["subsystem_instability"]
+        time_to_instability = metrics["time_to_instability"]
+        drift_history = metrics["drift_history"]
 
         # === SEVERITY CLASSIFICATION WITH HYSTERESIS ===
         trajectory = 0.0
@@ -110,9 +113,8 @@ class DecisionEngine:
         consistency_check_passed = True
 
         if self.enable_persistence_tracking:
-            # Update persistence tracker
             persistence_state = self.persistence_tracker.update_frame(
-                current_severity=policy.classify_severity(
+                current_severity=self._pipeline.phase_severity_classification(
                     state=state,
                     drift_score=drift_score,
                     relational_instability=relational_instability,
@@ -129,7 +131,7 @@ class DecisionEngine:
             )
             is_first_appearance = persistence_frames <= 1
 
-        severity = policy.classify_severity(
+        severity = self._pipeline.phase_severity_classification(
             state=state,
             drift_score=drift_score,
             relational_instability=relational_instability,
@@ -140,7 +142,7 @@ class DecisionEngine:
         )
 
         # === FINDING CONFIDENCE ===
-        finding_confidence = conf_module.score_finding_confidence(
+        finding_confidence = self._pipeline.phase_finding_confidence(
             drift_score=drift_score,
             signal_count=sensor_count,
             data_quality_issues=data_quality_issues,
@@ -169,10 +171,8 @@ class DecisionEngine:
         )
 
         # === TRANSIENT DETECTION ===
-        drift_history = sii_output.get("drift_history", [])
-        transient_score = transient_gating.score_transient_likelihood(
+        transient_score, is_safe_transient_flag = self._pipeline.phase_transient_detection(
             drift_score=drift_score,
-            drift_trend=self._compute_drift_trend(drift_history),
             shock_activity=shock_activity,
             system_phase=system_phase,
             state=state,
@@ -202,13 +202,13 @@ class DecisionEngine:
         )
 
         # === PATTERN MATCHING (moved earlier for Phase 5) ===
-        pattern_match = None
-        feature_vector = pm_module.build_feature_vector(
+        system_phase_encoded = 0.5 if system_phase == "degrading" else 0.2
+        feature_vector = self._pipeline.phase_pattern_matching(
             drift_score=drift_score,
             relational_instability=relational_instability,
             shock_activity=shock_activity,
             regime_distance=regime_distance,
-            system_phase_encoded=0.5 if system_phase == "degrading" else 0.2,
+            system_phase_encoded=system_phase_encoded,
         )
         pattern_match = self.pattern_memory.find_match(feature_vector)
 
@@ -642,14 +642,29 @@ class DecisionEngine:
         return decision
 
     def _compute_drift_trend(self, drift_history: Any) -> float:
-        """Compute drift trend from history."""
-        if not isinstance(drift_history, list) or len(drift_history) < 2:
-            return 0.0
-        try:
-            recent = [float(v) for v in drift_history[-5:]]
-            return (recent[-1] - recent[0]) / max(len(recent) - 1, 1)
-        except (ValueError, TypeError):
-            return 0.0
+        """Compute drift trend from history (delegated to pipeline)."""
+        return self._pipeline._compute_drift_trend(drift_history)
+
+    def _extract_metrics_from_output(self, sii_output: dict[str, Any]) -> dict[str, Any]:
+        """Extract and normalize all metrics from SII output in one pass.
+
+        Reduces repeated dictionary lookups and conversions.
+        """
+        return {
+            "state": sii_output.get("state", "STABLE"),
+            "drift_score": float(sii_output.get("structural_drift_score", 0.0)),
+            "relational_instability": float(sii_output.get("relational_instability_score", 0.0)),
+            "system_phase": sii_output.get("system_phase", "stable"),
+            "regime_name": sii_output.get("regime_name"),
+            "regime_distance": float(sii_output.get("regime_distance") or 0.5),
+            "attribution": sii_output.get("attribution", {}),
+            "sensor_count": len(sii_output.get("sensor_relationships", [])),
+            "data_quality": sii_output.get("data_quality", {}),
+            "shock_activity": float(sii_output.get("shock_activity") or 0.0),
+            "subsystem_instability": float(sii_output.get("subsystem_instability") or 0.0),
+            "time_to_instability": sii_output.get("time_to_instability"),
+            "drift_history": sii_output.get("drift_history", []),
+        }
 
     def _build_reasons(
         self,
