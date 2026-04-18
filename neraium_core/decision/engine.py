@@ -22,6 +22,9 @@ from neraium_core.decision.action_horizon import ActionHorizonPolicy, compute_pr
 from neraium_core.decision import coherence
 from neraium_core.decision import traceability as trace_module
 from neraium_core.decision import normalization
+from neraium_core.decision.evolution_tracker import EvolutionTracker
+from neraium_core.decision.temporal_coherence_scoring import TemporalCoherenceScorer
+from neraium_core.decision.models import EvolutionContext
 
 
 class DecisionEngine:
@@ -33,6 +36,8 @@ class DecisionEngine:
         self.persistence_tracker = persistence_tracker.PersistenceTracker()
         self.temporal_intelligence = TemporalIntelligence()
         self.action_horizon_policy = ActionHorizonPolicy()
+        self.evolution_tracker = EvolutionTracker()
+        self.coherence_scorer = TemporalCoherenceScorer()
         self.previous_state: Optional[dict[str, Any]] = None
         self.previous_persistence: Optional[PersistenceState] = None
         self.previous_severity: Optional[SeverityLevel] = None
@@ -126,6 +131,15 @@ class DecisionEngine:
             relational_instability=relational_instability,
         )
 
+        # === SPRINT 1: EVOLUTION TRACKING ===
+        evolution_trajectory = self.evolution_tracker.update_frame(
+            severity=severity,
+            drift_score=drift_score,
+            relational_instability=relational_instability,
+            regime_distance=regime_distance,
+            finding_confidence=finding_confidence,
+        )
+
         # === PHASE 3: TEMPORAL CONTEXT UPDATE ===
         temporal_context = self.temporal_intelligence.update_temporal_context(
             severity=severity,  # Will use raw policy classification
@@ -153,6 +167,15 @@ class DecisionEngine:
             system_phase=system_phase,
             regime_name=regime_name,
             recent_events=self.recent_events,
+        )
+
+        # === SPRINT 1: TEMPORAL COHERENCE SCORING ===
+        coherence_profile = self.coherence_scorer.update_metrics(
+            metrics={
+                "drift_score": drift_score,
+                "relational_instability": relational_instability,
+                "finding_confidence": finding_confidence,
+            }
         )
 
         # === PATTERN MATCHING (moved earlier for Phase 5) ===
@@ -397,6 +420,25 @@ class DecisionEngine:
             drift_score=drift_score,
         )
 
+        # === SPRINT 1: BUILD EVOLUTION CONTEXT ===
+        primary_coherence = coherence_profile.coherences.get("drift_score")
+        evolution_context = EvolutionContext(
+            regime_sequence=evolution_trajectory.regime_sequence,
+            current_regime=evolution_trajectory.regime_sequence[-1] if evolution_trajectory.regime_sequence else "STABLE",
+            regime_persistence=evolution_trajectory.current_regime_persistence,
+            regime_transitions_count=evolution_trajectory.regime_transitions_count,
+            trajectory_direction=evolution_trajectory.trajectory_direction if evolution_trajectory.is_degrading else "stable",
+            trajectory_velocity=evolution_trajectory.trajectory_velocity if hasattr(evolution_trajectory, 'trajectory_velocity') else 0.0,
+            movement_pattern=evolution_trajectory.movement_pattern,
+            is_degrading=evolution_trajectory.is_degrading,
+            regime_distance_trajectory=evolution_trajectory.regime_distances,
+            temporal_coherence=coherence_profile.overall_system_coherence,
+            is_coherent=coherence_profile.is_coherent_overall,
+            coherence_type=coherence_profile.primary_signal_type,
+            regime_entry_story=self.evolution_tracker.get_regime_entry_story(),
+            trajectory_story=self.evolution_tracker.get_trajectory_story(),
+        )
+
         # === BUILD DECISION ===
         decision = Decision(
             finding_confidence=finding_confidence,
@@ -430,6 +472,7 @@ class DecisionEngine:
             secondary_actions=secondary_actions,
             action_priority_reason=action_priority_reason,
             action_tradeoff_note=None,
+            evolution_context=evolution_context,
         )
 
         # === PHASE 7: COHERENCE VALIDATION AND TRACEABILITY ===
