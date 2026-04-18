@@ -5,8 +5,8 @@ import DecisionUI from '@/components/DecisionUI'
 import { DEMO_SCENARIOS } from '@/lib/demoScenarios'
 import { DecisionUIState } from '@/lib/decisionToUI'
 
-const INTERPOLATION_MS = 2200
-const TEXT_LAG_MS = 220
+const INTERPOLATION_MS = 2500
+const TEXT_LAG_MS = 260
 
 function lerp(a: number, b: number, t: number): number {
   return a + (b - a) * t
@@ -220,7 +220,7 @@ const styles = {
     fontSize: '14px',
     fontWeight: '600',
     cursor: 'pointer',
-    transition: 'all 0.3s ease',
+    transition: 'all 0.46s ease',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',

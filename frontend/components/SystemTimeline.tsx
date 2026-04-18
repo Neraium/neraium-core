@@ -75,9 +75,9 @@ const styles = {
   container: {
     display: 'flex',
     flexDirection: 'column' as const,
-    gap: '18px',
+    gap: '19px',
     padding: '14px 0',
-    transition: 'all 0.45s ease',
+    transition: 'all 0.62s ease',
   },
   label: {
     fontSize: '11px',
@@ -105,7 +105,7 @@ const styles = {
     width: '100%',
     height: '2px',
     zIndex: 0,
-    transition: 'background-color 0.5s ease',
+    transition: 'background-color 0.62s ease',
   },
   stageDot: {
     width: '12px',
@@ -113,7 +113,7 @@ const styles = {
     borderRadius: '50%',
     border: '2px solid',
     zIndex: 1,
-    transition: 'all 0.45s ease',
+    transition: 'all 0.62s ease',
   },
   stageLabel: {
     fontSize: '9px',

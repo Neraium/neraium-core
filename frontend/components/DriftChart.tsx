@@ -123,9 +123,9 @@ const styles = {
   container: {
     display: 'flex',
     flexDirection: 'column' as const,
-    gap: '14px',
-    padding: '14px 0',
-    transition: 'all 0.45s ease',
+    gap: '15px',
+    padding: '13px 0',
+    transition: 'all 0.62s ease',
   },
   label: {
     fontSize: '11px',
@@ -148,7 +148,7 @@ const styles = {
   statsRow: {
     display: 'grid',
     gridTemplateColumns: 'repeat(3, 1fr)',
-    gap: '14px',
+    gap: '15px',
     paddingTop: '8px',
   },
   stat: {

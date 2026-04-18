@@ -39,28 +39,43 @@ export default function DecisionUI({ state, isLoading = false, error = null, nar
 
   const impactWindow = inferImpactWindow(state)
   const isEmergingMoment = Boolean(meaningLine) && state.statusHeader.degradationStage !== DegradationStage.FAILURE_APPROACH
+  const severityTone = state.tetrahedron.severityScalar
+  const ambientDim = 1 - severityTone * 0.13
 
   return (
     <div style={styles.root}>
-      <div style={styles.surface}>
-        {narrative && <div style={styles.narrative}>{narrative}</div>}
+      <div
+        style={{
+          ...styles.surface,
+          background: `linear-gradient(180deg, rgba(15,23,42,${0.26 + severityTone * 0.12}) 0%, rgba(2,6,23,${0.13 + severityTone * 0.16}) 100%)`,
+        }}
+      >
+        {narrative && <div style={{ ...styles.narrative, opacity: ambientDim }}>{narrative}</div>}
 
-        <StatusHeader status={state.statusHeader} />
-        <ActionPanel action={state.actionPanel} impactWindow={impactWindow} />
-        {isEmergingMoment && <div style={styles.meaningLine}>{meaningLine}</div>}
+        <div style={{ opacity: ambientDim, transition: 'opacity 0.62s ease' }}>
+          <StatusHeader status={state.statusHeader} />
+        </div>
+
+        <div style={{ opacity: ambientDim, transition: 'opacity 0.62s ease', marginLeft: '1px' }}>
+          <ActionPanel action={state.actionPanel} impactWindow={impactWindow} />
+        </div>
+
+        {isEmergingMoment && <div style={{ ...styles.meaningLine, opacity: 0.9 * ambientDim }}>{meaningLine}</div>}
 
         <div style={styles.heroSection}>
           <EnhancedTetrahedronViz tetrahedronState={state.tetrahedron} isInteractive={true} />
         </div>
 
-        <div style={styles.contextGrid}>
+        <div style={{ ...styles.contextGrid, opacity: ambientDim, transition: 'opacity 0.62s ease' }}>
           <SystemTimeline timeline={state.timeline} />
           {state.driftChart.dataPoints.length > 0 ? <DriftChart chart={state.driftChart} /> : <div style={styles.simpleText}>No drift data</div>}
         </div>
 
-        <DecisionTrace trace={state.decisionTrace} />
+        <div style={{ opacity: ambientDim, transition: 'opacity 0.62s ease', marginLeft: '2px' }}>
+          <DecisionTrace trace={state.decisionTrace} />
+        </div>
 
-        <div style={styles.footer}>
+        <div style={{ ...styles.footer, opacity: 0.75 * ambientDim }}>
           {new Date(state.timestamp).toLocaleString(undefined, {
             month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
           })}
@@ -80,35 +95,35 @@ const styles = {
   surface: {
     display: 'flex',
     flexDirection: 'column' as const,
-    gap: '26px',
+    gap: '25px',
     maxWidth: '1480px',
     margin: '0 auto',
-    padding: '20px 24px 0',
-    background: 'linear-gradient(180deg, rgba(15,23,42,0.28) 0%, rgba(2,6,23,0.14) 100%)',
+    padding: '21px 25px 0 23px',
     borderRadius: '24px',
+    transition: 'background 0.62s ease',
   },
   narrative: {
     fontSize: '12px',
     letterSpacing: '0.08em',
     color: 'rgba(203, 213, 225, 0.65)',
     textTransform: 'uppercase' as const,
-    transition: 'opacity 0.45s ease',
+    transition: 'opacity 0.62s ease',
   },
   meaningLine: {
     fontSize: '13px',
     color: 'rgba(147, 197, 253, 0.78)',
     letterSpacing: '0.04em',
-    marginTop: '-8px',
-    transition: 'opacity 0.45s ease',
+    marginTop: '-7px',
+    transition: 'opacity 0.62s ease',
   },
   heroSection: {
     minHeight: '740px',
-    transition: 'all 0.7s cubic-bezier(0.22, 1, 0.36, 1)',
+    transition: 'all 0.8s cubic-bezier(0.22, 1, 0.36, 1)',
   },
   contextGrid: {
     display: 'grid',
     gridTemplateColumns: '1fr 1fr',
-    gap: '20px',
+    gap: '21px',
   },
   footer: {
     fontSize: '11px',
@@ -117,6 +132,7 @@ const styles = {
     textAlign: 'right' as const,
     fontVariantNumeric: 'tabular-nums',
     paddingBottom: '8px',
+    transition: 'opacity 0.62s ease',
   },
   simpleText: {
     color: 'rgba(226, 232, 240, 0.62)',

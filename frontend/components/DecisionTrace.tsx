@@ -50,9 +50,9 @@ const styles = {
   container: {
     display: 'flex',
     flexDirection: 'column' as const,
-    gap: '14px',
-    padding: '18px 0 4px',
-    transition: 'opacity 0.45s ease',
+    gap: '15px',
+    padding: '18px 0 5px',
+    transition: 'opacity 0.62s ease',
   },
   section: {
     display: 'flex',

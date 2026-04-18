@@ -50,8 +50,8 @@ export default function EnhancedTetrahedronViz({ tetrahedronState, isInteractive
   const rotationRef = useRef({ x: 0.2, y: 0.32 })
 
   const vignette = useMemo(() => {
-    const edge = 0.2 + tetrahedronState.severityScalar * 0.22
-    return `radial-gradient(circle at 50% 38%, rgba(15, 23, 42, 0.02) 34%, rgba(2, 6, 23, ${edge}) 96%)`
+    const edge = 0.18 + tetrahedronState.severityScalar * 0.3
+    return `radial-gradient(circle at 50% 38%, rgba(15, 23, 42, 0.02) 31%, rgba(2, 6, 23, ${edge}) 97%)`
   }, [tetrahedronState.severityScalar])
 
   useEffect(() => {
@@ -134,15 +134,15 @@ export default function EnhancedTetrahedronViz({ tetrahedronState, isInteractive
       animationId = requestAnimationFrame(animate)
 
       if (groupRef.current) {
-        rotationRef.current.y += isInteractive ? 0.00016 : 0.0001
+        rotationRef.current.y += isInteractive ? 0.00014 : 0.00009
         groupRef.current.rotation.x = rotationRef.current.x
         groupRef.current.rotation.y = rotationRef.current.y
       }
 
       if (statePointRef.current && stateGlowRef.current) {
         const target = targetPositionRef.current
-        statePointRef.current.position.lerp(target, 0.055)
-        stateGlowRef.current.position.lerp(target, 0.055)
+        statePointRef.current.position.lerp(target, 0.048)
+        stateGlowRef.current.position.lerp(target, 0.048)
 
         const sev = targetSeverityRef.current
         const color = severityColor(sev)
@@ -154,7 +154,7 @@ export default function EnhancedTetrahedronViz({ tetrahedronState, isInteractive
         const glowMat = stateGlowRef.current.material as THREE.MeshBasicMaterial
         glowMat.color.setHex(color)
         glowMat.opacity = 0.15 + sev * 0.22
-        const pulse = 1 + Math.sin(Date.now() * 0.0016) * 0.028
+        const pulse = 1 + Math.sin(Date.now() * 0.00135) * 0.024
         stateGlowRef.current.scale.setScalar(pulse)
       }
 
@@ -194,7 +194,7 @@ export default function EnhancedTetrahedronViz({ tetrahedronState, isInteractive
       const p = i / points.length
       const color = severityColor(tetrahedronState.severityScalar)
       const segGeom = new THREE.BufferGeometry().setFromPoints([points[i - 1], points[i]])
-      const segMat = new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.12 + p * 0.45 })
+      const segMat = new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.1 + p * 0.44 })
       trailGroup.add(new THREE.Line(segGeom, segMat))
 
       const node = new THREE.Mesh(
@@ -210,7 +210,7 @@ export default function EnhancedTetrahedronViz({ tetrahedronState, isInteractive
     <div className="relative w-full">
       <div
         ref={containerRef}
-        className="w-full rounded-3xl"
+        className="w-full rounded-3xl border border-slate-800/35"
         style={{ height: '810px', background: vignette }}
       />
       <div className="absolute bottom-6 right-6 text-xs text-slate-500 pointer-events-none">

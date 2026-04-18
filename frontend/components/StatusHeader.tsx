@@ -37,15 +37,15 @@ const styles = {
   container: {
     display: 'flex',
     flexDirection: 'column' as const,
-    gap: '14px',
+    gap: '15px',
     padding: '6px 0 2px',
-    transition: 'all 0.55s ease',
+    transition: 'all 0.62s ease',
   },
   line1: {
     fontSize: '44px',
     fontWeight: '710',
     letterSpacing: '0.02em',
-    lineHeight: 1.02,
+    lineHeight: 1.01,
     color: 'rgba(248, 250, 252, 0.94)',
     textTransform: 'uppercase' as const,
   },
@@ -55,7 +55,7 @@ const styles = {
     lineHeight: 0.92,
     letterSpacing: '0.01em',
     textTransform: 'uppercase' as const,
-    transition: 'color 0.55s ease',
+    transition: 'color 0.62s ease',
   },
   line3: {
     fontSize: '22px',
