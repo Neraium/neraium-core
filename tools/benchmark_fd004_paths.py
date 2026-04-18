@@ -15,10 +15,10 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from fd00x.config import DetectorConfig
-from fd00x.detector import StructuralDriftDetector
-from fd00x.evaluation import load_cmapss_dataset
-from fd00x.sii_ml import create_siiml
+from neraium_core.intelligence_stack.config import DetectorConfig
+from neraium_core.intelligence_stack.detector import StructuralDriftDetector
+from neraium_core.intelligence_stack.evaluation import load_cmapss_dataset
+from neraium_core.intelligence_stack.sii_ml import create_siiml
 
 
 @dataclass(frozen=True)

@@ -1,6 +1,6 @@
 import numpy as np
 
-from fd00x.sii import SII
+from neraium_core.intelligence_stack.sii import SII
 from neraium_core.early_warning import early_warning_metrics
 
 

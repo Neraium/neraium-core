@@ -27,7 +27,7 @@ import sys
 import time
 from pathlib import Path
 
-from .config import DetectorConfig
+from neraium_core.intelligence_stack.config import DetectorConfig
 from .test_runner_true_lead_time_fd004 import TrueLeadTimeFD004Runner
 
 
