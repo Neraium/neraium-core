@@ -25,7 +25,7 @@ class AdvancedFD004Demo:
         self.output_dir.mkdir(parents=True, exist_ok=True)
         self.verbose = verbose
 
-    def run(self, max_units: int | None = None) -> None:
+    def run(self, dataset_path: str | None = None, max_units: int | None = None) -> None:
         """Run complete advanced FD004 analysis."""
         print("\n" + "=" * 80)
         print("ADVANCED DRIFT DETECTION - NASA CMAPSS FD004")
@@ -42,6 +42,9 @@ class AdvancedFD004Demo:
         print("  • Per-condition lead time computation")
         print("=" * 80 + "\n")
 
+        if dataset_path:
+            print(f"Using dataset: {dataset_path}\n")
+
         # Run analysis
         print("[1/3] Initializing advanced detector...")
         config = DetectorConfig()
@@ -54,7 +57,7 @@ class AdvancedFD004Demo:
 
         print("[2/3] Running drift detection on FD004 (249 units)...")
         start = time.time()
-        results, summary = runner.run_fd004_advanced(max_units=max_units)
+        results, summary = runner.run_fd004_advanced(dataset_path=dataset_path, max_units=max_units)
         elapsed = time.time() - start
 
         # Display results
@@ -252,6 +255,12 @@ def main():
         description="Advanced drift detection for FD004 (6 conditions, 2 fault modes)"
     )
     parser.add_argument(
+        "--path",
+        type=str,
+        default=None,
+        help="Path to FD004 dataset file (test_FD004.txt or train_FD004.txt)",
+    )
+    parser.add_argument(
         "--max-units",
         type=int,
         default=None,
@@ -268,7 +277,7 @@ def main():
 
     demo = AdvancedFD004Demo(output_dir=args.output_dir, verbose=True)
     try:
-        demo.run(max_units=args.max_units)
+        demo.run(dataset_path=args.path, max_units=args.max_units)
     except KeyboardInterrupt:
         print("\n\nInterrupted by user")
         sys.exit(1)

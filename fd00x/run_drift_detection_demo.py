@@ -40,6 +40,7 @@ class DriftDetectionDemoRunner:
 
     def run(
         self,
+        dataset_path: str | None = None,
         max_units: int | None = None,
         skip_plots: bool = False,
         sample_units: list[int] | None = None,
@@ -47,6 +48,7 @@ class DriftDetectionDemoRunner:
         """Run the complete drift detection demo.
 
         Args:
+            dataset_path: Path to FD004 test/train data file
             max_units: Limit test to first N units
             skip_plots: Skip visualization generation
             sample_units: Specific units to visualize (if None, sample automatically)
@@ -68,7 +70,7 @@ class DriftDetectionDemoRunner:
 
         print("[2/4] Running drift detection on FD004...")
         start = time.time()
-        results, summary = runner.run_fd004(max_units=max_units)
+        results, summary = runner.run_fd004(dataset_path=dataset_path, max_units=max_units)
         elapsed = time.time() - start
 
         # Display summary
@@ -301,6 +303,12 @@ def main():
         description="Drift detection test runner for CMAPSS FD004 with multi-dimensional intelligence signals"
     )
     parser.add_argument(
+        "--path",
+        type=str,
+        default=None,
+        help="Path to FD004 dataset file (test_FD004.txt or train_FD004.txt)",
+    )
+    parser.add_argument(
         "--max-units",
         type=int,
         default=None,
@@ -329,6 +337,7 @@ def main():
     demo = DriftDetectionDemoRunner(output_dir=args.output_dir, verbose=True)
     try:
         demo.run(
+            dataset_path=args.path,
             max_units=args.max_units,
             skip_plots=args.no_plots,
             sample_units=args.units,
