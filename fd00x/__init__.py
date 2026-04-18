@@ -47,7 +47,7 @@ Key public API::
 
 from .config import ALL_DATASETS, DEFAULT_PRESET, PRESETS, DetectorConfig
 from .detector import StructuralDriftDetector, find_warning_index
-from .structural_signals import StructuralSignalDetector, create_structural_detector
+from .structural_signals import StructuralSignalDetector
 from .settings import get_optimal_config
 from .sii import LayerWeights, SII
 from .sii_ml import SIIML, create_siiml
@@ -60,7 +60,6 @@ __all__ = [
     "StructuralDriftDetector",
     "find_warning_index",
     "StructuralSignalDetector",
-    "create_structural_detector",
     "LayerWeights",
     "SII",
     "SIIML",

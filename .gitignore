@@ -91,6 +91,7 @@ fd004_canonical_fast_outputs/
 fd00x/*
 !fd00x/test_runner_advanced_fd004.py
 !fd00x/test_runner_true_lead_time_fd004.py
+!fd00x/structural_signals.py
 fd004_outputs_subset/
 debug_outputs/
 backup_claude_ui/
