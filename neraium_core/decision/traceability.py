@@ -1,7 +1,8 @@
 """Decision traceability: lightweight explanation of why decisions are made.
 
 Provides concise, human-readable trace of the top contributing factors
-to a decision without verbose lists.
+to a decision without verbose lists. Enhanced with causal abstraction,
+temporal judgment, and uncertainty handling.
 """
 
 from __future__ import annotations
@@ -9,38 +10,161 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Optional
 from neraium_core.decision.models import Decision
+from neraium_core.decision import reasoning_upgrade as upgrade
 
 
 @dataclass
 class DecisionTrace:
     """Lightweight explanation of decision reasoning."""
 
-    primary_factor: str  # Top contributing signal (max 50 chars)
-    secondary_factors: list[str]  # 1-2 supporting factors (max 30 chars each)
-    confidence_rationale: str  # Brief rationale for confidence level
+    primary_factor: str  # Causal theme (max 50 chars)
+    secondary_factors: list[str]  # Temporal phase + trajectory + persistence (max 3, 30 chars each)
+    confidence_rationale: str  # Uncertainty-aware brief rationale
 
 
 def build_decision_trace(decision: Decision) -> Optional[DecisionTrace]:
     """Extract key factors from a Decision into a concise trace.
 
+    Uses causal abstraction, temporal judgment, and uncertainty handling
+    to produce human-readable reasoning.
+
     Args:
         decision: Decision to extract trace from
 
     Returns:
-        DecisionTrace with primary and secondary factors
+        DecisionTrace with primary causal theme and secondary factors
     """
-    primary = _extract_primary_factor(decision)
-    secondary = _extract_secondary_factors(decision)
-    confidence = _extract_confidence_rationale(decision)
+    # Extract metrics needed for reasoning upgrade
+    drift = _estimate_drift_from_decision(decision)
+    relational_stability = _estimate_relational_stability(decision)
+    coherence = _estimate_coherence(decision)
+    drift_velocity = decision.temporal_context.drift_velocity if decision.temporal_context else 0.0
+    coherence_trend = decision.temporal_context.confidence_trend if decision.temporal_context else 0.0
 
-    if not primary:
-        return None
+    # Step 1: Derive causal theme
+    causal_theme = upgrade.derive_causal_theme(
+        drift=drift,
+        relational_stability=relational_stability,
+        coherence=coherence,
+        persistence_frames=decision.persistence_frames_at_level,
+        trajectory=decision.trajectory,
+    )
+
+    # Step 2: Classify temporal phase
+    temporal_phase = upgrade.classify_temporal_phase(
+        persistence_frames=decision.persistence_frames_at_level,
+        drift_velocity=drift_velocity,
+        trajectory=decision.trajectory,
+        coherence_trend=coherence_trend,
+    )
+
+    # Step 3: Classify uncertainty context
+    pattern_match_tier = decision.pattern_match_tier if decision.pattern_match else None
+    causal_chain_strength = _estimate_causal_chain_strength(decision)
+    uncertainty_context = upgrade.classify_uncertainty_context(
+        finding_confidence=decision.finding_confidence,
+        persistence_frames=decision.persistence_frames_at_level,
+        trajectory=decision.trajectory,
+        pattern_match_tier=pattern_match_tier,
+        causal_chain_strength=causal_chain_strength,
+    )
+
+    # Format primary factor using causal theme
+    primary = upgrade.format_causal_summary(causal_theme)
+
+    # Format secondary factors: temporal phase + trajectory + persistence
+    secondary = []
+    temporal_desc = upgrade.format_temporal_context(temporal_phase, decision.persistence_frames_at_level)
+    if temporal_desc:
+        secondary.append(temporal_desc)
+
+    # Add trajectory if different from implicit in temporal phase
+    if decision.trajectory == "unstable":
+        secondary.append("Trajectory unstable")
+
+    # Limit to 3 secondary factors
+    secondary = secondary[:3]
+
+    # Format confidence rationale using uncertainty context
+    confidence = upgrade.format_uncertainty_rationale(
+        uncertainty_context,
+        decision.finding_confidence,
+        decision.persistence_frames_at_level,
+    )
 
     return DecisionTrace(
         primary_factor=primary,
         secondary_factors=secondary,
         confidence_rationale=confidence,
     )
+
+
+def _estimate_drift_from_decision(decision: Decision) -> float:
+    """Estimate structural drift from decision data."""
+    # Use findings to infer drift magnitude
+    if decision.findings:
+        confidence_sum = sum(f.magnitude for f in decision.findings if f.magnitude)
+        if confidence_sum > 0:
+            return min(1.0, confidence_sum / len(decision.findings))
+
+    # Use causal chain as proxy
+    if decision.causal_chain and decision.causal_chain.confidence:
+        return min(1.0, decision.causal_chain.confidence)
+
+    # Estimate from severity and confidence
+    severity_map = {"LOW": 0.0, "MODERATE": 0.3, "ELEVATED": 0.6, "HIGH": 0.9}
+    base = severity_map.get(decision.severity, 0.0)
+    return min(1.0, base * decision.finding_confidence)
+
+
+def _estimate_relational_stability(decision: Decision) -> float:
+    """Estimate relational stability from decision data."""
+    # Use causal chain strength as proxy for relational stability
+    chain_strength = _estimate_causal_chain_strength(decision)
+
+    # Also consider pattern match quality
+    if decision.pattern_match:
+        return min(1.0, max(chain_strength, decision.pattern_match.confidence))
+
+    return chain_strength
+
+
+def _estimate_coherence(decision: Decision) -> float:
+    """Estimate system coherence from decision data."""
+    # High coherence when: few coherence errors, consistent trajectory, no contradiction
+    base_coherence = 0.7  # Assume good coherence by default
+
+    if decision.coherence_errors:
+        # Reduce coherence for each error
+        base_coherence -= 0.1 * min(3, len(decision.coherence_errors))
+
+    # Unstable trajectory reduces coherence
+    if decision.trajectory == "unstable":
+        base_coherence -= 0.2
+
+    # Improving coherence with high confidence
+    if decision.finding_confidence > 0.8 and decision.trajectory in {"stable", "recovering"}:
+        base_coherence = min(1.0, base_coherence + 0.1)
+
+    return max(0.0, min(1.0, base_coherence))
+
+
+def _estimate_causal_chain_strength(decision: Decision) -> float:
+    """Estimate causal chain strength from decision data."""
+    if decision.causal_chain is None:
+        return 0.3
+
+    chain_conf = float(decision.causal_chain.confidence or 0.5)
+    steps_count = len(decision.causal_chain.steps or [])
+
+    # Strength increases with confidence and number of well-formed steps
+    strength = chain_conf
+    if steps_count >= 2:
+        strength = min(1.0, strength + 0.15)
+    if steps_count >= 3:
+        strength = min(1.0, strength + 0.1)
+
+    return strength
 
 
 def _extract_primary_factor(decision: Decision) -> Optional[str]:
