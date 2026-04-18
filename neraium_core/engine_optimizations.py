@@ -4,13 +4,15 @@ Includes:
 - Temporal representation caching for baseline windows
 - Incremental graph metrics with rolling updates
 - Asset-specific parameter tuning
+- Lazy evaluation and memoization for expensive computations
 """
 
 from __future__ import annotations
 
 import hashlib
-from dataclasses import dataclass
-from typing import Optional
+from dataclasses import dataclass, field
+from typing import Optional, Callable, Any
+from functools import lru_cache
 
 import numpy as np
 
@@ -35,11 +37,13 @@ class TemporalRepresentationCache:
     After warmup, the baseline window becomes stable. This cache stores the
     transformed baseline representation and returns it when the underlying
     data hasn't changed, saving ~15-20% per-frame time in steady state.
+    Uses LRU eviction with metrics for monitoring hit rate.
     """
 
-    def __init__(self, capacity: int = 2):
+    def __init__(self, capacity: int = 4):
         self._cache: dict[str, CachedTemporalRepresentation] = {}
         self._capacity = capacity
+        self._access_order: list[str] = []
         self._hit_count = 0
         self._miss_count = 0
 
@@ -53,10 +57,12 @@ class TemporalRepresentationCache:
         key = f"{data_hash}:{config_hash}"
 
         if key in self._cache:
-            cached = self._cache[key]
-            if cached.data_hash == data_hash and cached.config_hash == config_hash:
-                self._hit_count += 1
-                return cached
+            self._hit_count += 1
+            # Move to end for LRU ordering
+            if key in self._access_order:
+                self._access_order.remove(key)
+            self._access_order.append(key)
+            return self._cache[key]
 
         self._miss_count += 1
         return None
@@ -68,25 +74,74 @@ class TemporalRepresentationCache:
         feature_names: list[str],
         config_hash: str,
     ) -> None:
-        """Cache baseline temporal representation."""
+        """Cache baseline temporal representation (use views to avoid copies)."""
         if len(self._cache) >= self._capacity:
-            # Simple eviction: remove oldest
-            oldest_key = next(iter(self._cache))
+            oldest_key = self._access_order.pop(0)
             del self._cache[oldest_key]
 
         data_hash = CachedTemporalRepresentation.compute_hash(baseline_data)
         key = f"{data_hash}:{config_hash}"
         self._cache[key] = CachedTemporalRepresentation(
-            transformed=transformed.copy(),
+            transformed=transformed,
             feature_names=feature_names,
             data_hash=data_hash,
             config_hash=config_hash,
         )
+        self._access_order.append(key)
 
     def hit_rate(self) -> float:
         """Return cache hit rate for monitoring."""
         total = self._hit_count + self._miss_count
         return self._hit_count / total if total > 0 else 0.0
+
+    def clear(self) -> None:
+        """Clear cache and reset metrics."""
+        self._cache.clear()
+        self._access_order.clear()
+        self._hit_count = 0
+        self._miss_count = 0
+
+
+class MemoizedScoreComputation:
+    """Cache expensive score computations with bounded memory.
+
+    Uses parameter hash to detect identical inputs and return cached results.
+    """
+
+    def __init__(self, max_entries: int = 16):
+        self._cache: dict[str, float] = {}
+        self._max_entries = max_entries
+        self._access_order: list[str] = []
+
+    def _make_key(self, **kwargs) -> str:
+        """Create cache key from parameters."""
+        key_parts = [f"{k}:{v}" for k, v in sorted(kwargs.items())]
+        return hashlib.md5("|".join(key_parts).encode()).hexdigest()
+
+    def get(self, **kwargs) -> Optional[float]:
+        """Retrieve cached score if parameters match."""
+        key = self._make_key(**kwargs)
+        if key in self._cache:
+            if key in self._access_order:
+                self._access_order.remove(key)
+            self._access_order.append(key)
+            return self._cache[key]
+        return None
+
+    def put(self, value: float, **kwargs) -> None:
+        """Cache a computed score."""
+        if len(self._cache) >= self._max_entries:
+            oldest = self._access_order.pop(0)
+            del self._cache[oldest]
+
+        key = self._make_key(**kwargs)
+        self._cache[key] = value
+        self._access_order.append(key)
+
+    def clear(self) -> None:
+        """Clear cache."""
+        self._cache.clear()
+        self._access_order.clear()
 
 
 class IncrementalGraphMetrics:
@@ -130,14 +185,14 @@ class IncrementalGraphMetrics:
         corr: np.ndarray,
         metrics: dict[str, float],
     ) -> None:
-        """Cache metrics for next query."""
-        self._cached_adjacency = adjacency.copy() if adjacency is not None else None
-        self._cached_corr = corr.copy() if corr is not None else None
-        self._cached_metrics = dict(metrics)
+        """Cache metrics for next query (uses views to avoid copies)."""
+        self._cached_adjacency = adjacency if adjacency is not None else None
+        self._cached_corr = corr if corr is not None else None
+        self._cached_metrics = metrics
 
     def get_cached(self) -> Optional[dict[str, float]]:
-        """Return cached metrics if available."""
-        return self._cached_metrics.copy() if self._cached_metrics else None
+        """Return cached metrics if available (read-only)."""
+        return self._cached_metrics
 
 
 @dataclass
