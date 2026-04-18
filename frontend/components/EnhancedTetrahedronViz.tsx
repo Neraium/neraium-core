@@ -16,7 +16,7 @@ const VERTICES = {
   AUTHORITY: { pos: [-1.0, 1.0, -1.0], color: 0x3b82f6 },
 }
 
-const SCALE = 2.0
+const SCALE = 1.72
 
 const severityColor = (severity: number): number => {
   if (severity >= 0.9) return 0xef4444
@@ -65,7 +65,6 @@ export default function EnhancedTetrahedronViz({ tetrahedronState, isInteractive
     let width = container.clientWidth
     let height = container.clientHeight
 
-    // Guard: container must have real dimensions
     if (width === 0 || height === 0) {
       const rect = container.getBoundingClientRect()
       width = rect.width || 640
@@ -74,10 +73,10 @@ export default function EnhancedTetrahedronViz({ tetrahedronState, isInteractive
 
     try {
       const scene = new THREE.Scene()
-      scene.fog = new THREE.FogExp2(0x020617, 0.09)
+      scene.fog = new THREE.FogExp2(0x020617, 0.07)
 
-      const camera = new THREE.PerspectiveCamera(66, width / height, 0.1, 1000)
-      camera.position.set(0, 1, 5.5)
+      const camera = new THREE.PerspectiveCamera(60, width / height, 0.1, 1000)
+      camera.position.set(0, 0.6, 6.2)
 
       const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true })
       renderer.setSize(width, height)
@@ -104,8 +103,8 @@ export default function EnhancedTetrahedronViz({ tetrahedronState, isInteractive
       Object.values(VERTICES).forEach((vertex) => {
         const pos = new THREE.Vector3(...(vertex.pos as [number, number, number])).multiplyScalar(SCALE)
         const node = new THREE.Mesh(
-          new THREE.IcosahedronGeometry(0.22, 2),
-          new THREE.MeshStandardMaterial({ color: vertex.color, emissive: vertex.color, emissiveIntensity: 0.18 }),
+          new THREE.IcosahedronGeometry(0.20, 2),
+          new THREE.MeshStandardMaterial({ color: vertex.color, emissive: vertex.color, emissiveIntensity: 0.22 }),
         )
         node.position.copy(pos)
         group.add(node)
@@ -115,35 +114,35 @@ export default function EnhancedTetrahedronViz({ tetrahedronState, isInteractive
       group.add(trailGroup)
 
       const point = new THREE.Mesh(
-        new THREE.SphereGeometry(0.36, 24, 24),
+        new THREE.SphereGeometry(0.34, 24, 24),
         new THREE.MeshPhongMaterial({ color: 0x22c55e, emissive: 0x22c55e, emissiveIntensity: 1.0, shininess: 150 }),
       )
       point.position.copy(targetPositionRef.current)
       group.add(point)
 
       const glow = new THREE.Mesh(
-        new THREE.SphereGeometry(0.72, 24, 24),
+        new THREE.SphereGeometry(0.66, 24, 24),
         new THREE.MeshBasicMaterial({ color: 0x22c55e, transparent: true, opacity: 0.38 }),
       )
       glow.position.copy(targetPositionRef.current)
       group.add(glow)
 
       const halo = new THREE.Mesh(
-        new THREE.SphereGeometry(1.1, 24, 24),
+        new THREE.SphereGeometry(1.0, 24, 24),
         new THREE.MeshBasicMaterial({ color: 0x22c55e, transparent: true, opacity: 0.08 }),
       )
       halo.position.copy(targetPositionRef.current)
       group.add(halo)
 
-      const key = new THREE.PointLight(0x93c5fd, 1.25)
+      const key = new THREE.PointLight(0x93c5fd, 1.35)
       key.position.set(6, 5, 6)
       scene.add(key)
 
-      const fill = new THREE.PointLight(0x22d3ee, 0.88)
+      const fill = new THREE.PointLight(0x22d3ee, 0.95)
       fill.position.set(-6, -4, 5)
       scene.add(fill)
 
-      scene.add(new THREE.AmbientLight(0xe2e8f0, 0.78))
+      scene.add(new THREE.AmbientLight(0xe2e8f0, 0.72))
 
       cameraRef.current = camera
       rendererRef.current = renderer
@@ -174,20 +173,20 @@ export default function EnhancedTetrahedronViz({ tetrahedronState, isInteractive
           const pointMat = statePointRef.current.material as THREE.MeshPhongMaterial
           pointMat.color.setHex(color)
           pointMat.emissive.setHex(color)
-          pointMat.emissiveIntensity = 0.8 + sev * 0.58
+          pointMat.emissiveIntensity = 0.8 + sev * 0.62
 
           const glowMat = stateGlowRef.current.material as THREE.MeshBasicMaterial
           glowMat.color.setHex(color)
-          glowMat.opacity = 0.28 + sev * 0.34
+          glowMat.opacity = 0.28 + sev * 0.38
 
           const haloMat = stateHaloRef.current.material as THREE.MeshBasicMaterial
           haloMat.color.setHex(color)
-          haloMat.opacity = 0.06 + sev * 0.14
+          haloMat.opacity = 0.06 + sev * 0.18
 
           const t = performance.now() * 0.0009
-          const pulse = 1 + Math.sin(t) * (0.04 + sev * 0.06)
+          const pulse = 1 + Math.sin(t) * (0.04 + sev * 0.07)
           stateGlowRef.current.scale.setScalar(pulse)
-          stateHaloRef.current.scale.setScalar(1 + Math.sin(t * 0.7) * (0.02 + sev * 0.03))
+          stateHaloRef.current.scale.setScalar(1 + Math.sin(t * 0.7) * (0.02 + sev * 0.04))
         }
 
         renderer.render(scene, camera)
@@ -229,12 +228,12 @@ export default function EnhancedTetrahedronViz({ tetrahedronState, isInteractive
       const p = i / points.length
       const color = severityColor(tetrahedronState.severityScalar)
       const segGeom = new THREE.BufferGeometry().setFromPoints([points[i - 1], points[i]])
-      const segMat = new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.08 + p * 0.38 })
+      const segMat = new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.10 + p * 0.42 })
       trailGroup.add(new THREE.Line(segGeom, segMat))
 
       const node = new THREE.Mesh(
-        new THREE.SphereGeometry(0.055 + p * 0.07, 10, 10),
-        new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.12 + p * 0.40 }),
+        new THREE.SphereGeometry(0.050 + p * 0.075, 10, 10),
+        new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.14 + p * 0.46 }),
       )
       node.position.copy(points[i])
       trailGroup.add(node)
@@ -251,6 +250,7 @@ export default function EnhancedTetrahedronViz({ tetrahedronState, isInteractive
         alignItems: 'center',
         justifyContent: 'center',
         position: 'relative',
+        padding: '18px',
       }}
     >
       {hasError ? (
@@ -263,9 +263,9 @@ export default function EnhancedTetrahedronViz({ tetrahedronState, isInteractive
             alignItems: 'center',
             justifyContent: 'center',
             borderRadius: '24px',
-            border: '1px dashed rgba(148,163,184,0.25)',
-            background: 'rgba(15,23,42,0.4)',
-            color: 'rgba(148,163,184,0.7)',
+            border: '1px dashed rgba(148,163,184,0.18)',
+            background: 'rgba(15,23,42,0.25)',
+            color: 'rgba(148,163,184,0.6)',
             fontSize: '14px',
           }}
         >
@@ -279,7 +279,7 @@ export default function EnhancedTetrahedronViz({ tetrahedronState, isInteractive
             height: '100%',
             minHeight: '500px',
             borderRadius: '24px',
-            border: '1px solid rgba(30,41,59,0.5)',
+            border: '1px solid rgba(30,41,59,0.22)',
             background: vignette,
             opacity: 1,
             zIndex: 1,

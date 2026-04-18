@@ -223,6 +223,8 @@ const styles: Record<string, React.CSSProperties> = {
     bottom: '26px',
     left: '28px',
     zIndex: 100,
+    opacity: 1,
+    transition: 'opacity 1.4s cubic-bezier(0.22, 1, 0.36, 1)',
   },
   controlsContent: {
     display: 'flex',
@@ -251,9 +253,10 @@ const styles: Record<string, React.CSSProperties> = {
     gap: '4px',
     padding: '8px 12px',
     borderRadius: '8px',
-    backgroundColor: 'rgba(7, 15, 30, 0.48)',
-    border: '1px solid rgba(148, 163, 184, 0.14)',
+    backgroundColor: 'rgba(7, 15, 30, 0.32)',
+    border: '1px solid rgba(148, 163, 184, 0.10)',
     backdropFilter: 'blur(8px)',
+    transition: 'opacity 1.4s cubic-bezier(0.22, 1, 0.36, 1), background-color 0.8s ease',
   },
   button: {
     width: '28px',

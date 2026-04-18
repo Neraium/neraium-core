@@ -88,7 +88,7 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     flexDirection: 'column',
     gap: '10px',
-    padding: '10px 0 8px',
+    padding: '10px 4px 8px',
     transition: 'all 0.9s cubic-bezier(0.22, 1, 0.36, 1)',
   },
   horizonLabel: {

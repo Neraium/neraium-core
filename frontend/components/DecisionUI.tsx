@@ -108,7 +108,7 @@ export default function DecisionUI({ state, isLoading = false, error = null, nar
 const styles: Record<string, React.CSSProperties> = {
   root: {
     minHeight: '100vh',
-    padding: '22px 28px 28px',
+    padding: '28px 32px 32px',
     background: 'radial-gradient(circle at 50% -10%, #0b1222 0%, #020617 58%, #000 100%)',
     fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif",
   },
@@ -118,7 +118,7 @@ const styles: Record<string, React.CSSProperties> = {
     gap: '22px',
     maxWidth: '1480px',
     margin: '0 auto',
-    padding: '24px 28px 16px',
+    padding: '28px 32px 18px',
     borderRadius: '24px',
     transition: 'background 1.1s cubic-bezier(0.22, 1, 0.36, 1)',
   },
@@ -135,12 +135,14 @@ const styles: Record<string, React.CSSProperties> = {
     gap: '36px',
     alignItems: 'stretch',
     minHeight: '640px',
+    paddingTop: '4px',
   },
   leftColumn: {
     display: 'flex',
     flexDirection: 'column',
     gap: '18px',
-    paddingTop: '6px',
+    paddingTop: '8px',
+    paddingLeft: '4px',
     minWidth: '480px',
     maxWidth: '540px',
     flex: '0 0 auto',
