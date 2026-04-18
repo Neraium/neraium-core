@@ -1,0 +1,48 @@
+{
+  "n_units_tested": 50,
+  "n_units_total": 248,
+  "detection_rate": 0.04,
+  "false_positive_rate": 0.0,
+  "median_lead_time": 27.5,
+  "mean_lead_time": 27.5,
+  "mean_raw_drift": 0.29844509295165755,
+  "mean_ema_drift": 0.2958509709238448,
+  "condition_analysis": {
+    "1": {
+      "detection_count": 1,
+      "median_lead_time": 8.0,
+      "mean_lead_time": 8.0
+    },
+    "2": {
+      "detection_count": 2,
+      "median_lead_time": 27.0,
+      "mean_lead_time": 27.0
+    },
+    "3": {
+      "detection_count": 0,
+      "median_lead_time": null,
+      "mean_lead_time": null
+    },
+    "4": {
+      "detection_count": 0,
+      "median_lead_time": null,
+      "mean_lead_time": null
+    },
+    "5": {
+      "detection_count": 0,
+      "median_lead_time": null,
+      "mean_lead_time": null
+    },
+    "6": {
+      "detection_count": 0,
+      "median_lead_time": null,
+      "mean_lead_time": null
+    }
+  },
+  "fault_mode_distribution": {
+    "HPC_like": 49,
+    "mixed": 1
+  },
+  "elapsed_seconds": 8.063015937805176,
+  "throughput_units_per_second": 6.201153561605193
+}
