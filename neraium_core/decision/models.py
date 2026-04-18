@@ -224,6 +224,9 @@ class Decision:
     # Sprint 1: Evolution Intelligence
     evolution_context: Optional[EvolutionContext] = None  # Full evolution picture
 
+    # Decision Window (when intervention stops working)
+    decision_window: Optional[dict[str, Any]] = None  # Intervention window: OPEN | NARROWING | CRITICAL | CLOSED
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "finding_confidence": self.finding_confidence,
@@ -259,4 +262,5 @@ class Decision:
             "action_tradeoff_note": self.action_tradeoff_note,
             "decision_trace": self.decision_trace,
             "evolution_context": self.evolution_context.to_dict() if self.evolution_context else None,
+            "decision_window": self.decision_window,
         }

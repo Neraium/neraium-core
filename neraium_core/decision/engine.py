@@ -31,6 +31,7 @@ from neraium_core.decision.evolution_decision_resolver import (
     EvolutionDecisionResolver,
     EvolutionDecisionResolution,
 )
+from neraium_core.decision.decision_window_engine import DecisionWindowEngine
 
 
 class DecisionEngine:
@@ -47,6 +48,7 @@ class DecisionEngine:
         self.degradation_tracker = CausalDegradationTracker()
         self.narrative_builder = EvolutionNarrativeBuilder()
         self.decision_resolver = EvolutionDecisionResolver()
+        self.window_engine = DecisionWindowEngine()
         self.previous_state: Optional[dict[str, Any]] = None
         self.previous_persistence: Optional[PersistenceState] = None
         self.previous_severity: Optional[SeverityLevel] = None
@@ -483,6 +485,33 @@ class DecisionEngine:
         severity = evolution_resolution.final_severity
         action_confidence_evolution_boost = evolution_resolution.recommendation_confidence_boost
 
+        # === DECISION WINDOW ENGINE: When intervention becomes ineffective ===
+        decision_window_result = self.window_engine.compute_window(
+            severity=severity,
+            degradation_stage=current_degradation_stage,
+            evolution_context=evolution_context,
+            degradation_map=degradation_map,
+            drift_score=drift_score,
+            persistence_frames=persistence_frames if self.enable_persistence_tracking else 0,
+            temporal_coherence=coherence_profile.overall_system_coherence,
+            finding_confidence=finding_confidence,
+            frame_number=self.frame_counter,
+        )
+
+        # Format window for decision output
+        decision_window_output = {
+            "status": decision_window_result.intervention_window.status,
+            "estimated_hours_remaining": decision_window_result.intervention_window.estimated_hours_remaining,
+            "confidence": round(decision_window_result.intervention_window.confidence, 3),
+            "phase": decision_window_result.intervention_window.phase,
+            "effectiveness": round(decision_window_result.intervention_window.effectiveness, 2),
+            "narrowing_rate": decision_window_result.intervention_window.narrowing_rate,
+            "recommended_urgency": decision_window_result.intervention_window.recommended_action_urgency,
+            "why_closing": decision_window_result.why_closing,
+            "if_wait_one_hour": decision_window_result.if_wait_one_hour,
+            "if_wait_next_stage": decision_window_result.if_wait_next_stage,
+        }
+
         # === BUILD DECISION ===
         decision = Decision(
             finding_confidence=finding_confidence,
@@ -517,6 +546,7 @@ class DecisionEngine:
             action_priority_reason=action_priority_reason,
             action_tradeoff_note=None,
             evolution_context=evolution_context,
+            decision_window=decision_window_output,
         )
 
         # === PHASE 7: COHERENCE VALIDATION AND TRACEABILITY ===
