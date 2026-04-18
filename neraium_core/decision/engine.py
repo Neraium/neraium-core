@@ -25,6 +25,8 @@ from neraium_core.decision import normalization
 from neraium_core.decision.evolution_tracker import EvolutionTracker
 from neraium_core.decision.temporal_coherence_scoring import TemporalCoherenceScorer
 from neraium_core.decision.models import EvolutionContext
+from neraium_core.decision.causal_degradation_tracker import CausalDegradationTracker
+from neraium_core.decision.evolution_narrative_builder import EvolutionNarrativeBuilder
 
 
 class DecisionEngine:
@@ -38,6 +40,8 @@ class DecisionEngine:
         self.action_horizon_policy = ActionHorizonPolicy()
         self.evolution_tracker = EvolutionTracker()
         self.coherence_scorer = TemporalCoherenceScorer()
+        self.degradation_tracker = CausalDegradationTracker()
+        self.narrative_builder = EvolutionNarrativeBuilder()
         self.previous_state: Optional[dict[str, Any]] = None
         self.previous_persistence: Optional[PersistenceState] = None
         self.previous_severity: Optional[SeverityLevel] = None
@@ -176,6 +180,12 @@ class DecisionEngine:
                 "relational_instability": relational_instability,
                 "finding_confidence": finding_confidence,
             }
+        )
+
+        # === SPRINT 2: CAUSAL DEGRADATION ANALYSIS ===
+        degradation_map = self.degradation_tracker.analyze_relationships(
+            sii_output=sii_output,
+            relational_instability=relational_instability,
         )
 
         # === PATTERN MATCHING (moved earlier for Phase 5) ===
@@ -437,6 +447,16 @@ class DecisionEngine:
             coherence_type=coherence_profile.primary_signal_type,
             regime_entry_story=self.evolution_tracker.get_regime_entry_story(),
             trajectory_story=self.evolution_tracker.get_trajectory_story(),
+        )
+
+        # === SPRINT 2: BUILD EVOLUTION NARRATIVE ===
+        evolution_narrative = self.narrative_builder.build_narrative(
+            evolution_context=evolution_context,
+            degradation_map=degradation_map,
+            severity=severity,
+            drift_score=drift_score,
+            finding_confidence=finding_confidence,
+            persistence_frames=persistence_frames if self.enable_persistence_tracking else 0,
         )
 
         # === BUILD DECISION ===
