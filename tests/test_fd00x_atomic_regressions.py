@@ -1,10 +1,10 @@
 import numpy as np
 from unittest.mock import patch
 
-from fd00x.atomic_baseline import AtomicBaselineLearner
-from fd00x.atomic_calibrated import AtomicMonitorCalibrated
-from fd00x.config import DetectorConfig
-from fd00x.detector import StructuralDriftDetector
+from neraium_core.intelligence_stack.atomic_baseline import AtomicBaselineLearner
+from neraium_core.intelligence_stack.atomic_calibrated import AtomicMonitorCalibrated
+from neraium_core.intelligence_stack.config import DetectorConfig
+from neraium_core.intelligence_stack.detector import StructuralDriftDetector
 
 
 def test_score_unit_uses_provided_reference_stats_without_refit() -> None:

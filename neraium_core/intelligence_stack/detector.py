@@ -1,15 +1,18 @@
-"""Structural Drift Detector for FD00x evaluation.
+"""Neraium Intelligence Stack: Layered anomaly detection via structural, relational, and regime evidence.
 
-Pure structural detection without experimental QIT layer.
+Implements five layers of the Intelligence Stack:
+1. Structural Geometry: Mahalanobis distance, covariance drift, correlation drift
+2. Relational Instability: Sensor correlation breakdown
+3. Trajectory Dynamics: EMA smoothing, velocity, acceleration, change-point detection
+4. Regime Transition: Online clustering, transition confidence, persistence metrics
+5. Evidence Fusion: Multi-signal confirmation gating, interpretable alerts
 
-Uses:
-- Raw structural drift: covariance, correlation, Mahalanobis distance
-- EMA smoothing for stability
-- Trajectory acceleration: 2nd derivative (degradation curvature)
-- Relational instability: correlation breakdown (systemic degradation)
-- Multi-signal confirmation: combine amplitude + structural signals
+All layers are causal (no future data), interpretable, and online-safe.
 
-No future data leakage. No RUL in detection logic.
+Walk-forward safety: reference statistics (mean, covariance, correlation) are
+frozen from the healthy segment (typically first 35% of lifecycle) and never updated.
+
+No RUL information in detection logic. Pure structural state transition detection.
 """
 from __future__ import annotations
 
@@ -19,6 +22,7 @@ from typing import Any, Dict, List, Optional
 import numpy as np
 
 from .config import DetectorConfig
+from .regime_transition import RegimeTransitionLayer, RegimeTransitionOutput
 from .structural_signals import StructuralSignalDetector
 
 
@@ -50,7 +54,15 @@ class ReferenceStats:
 
 @dataclass
 class UnitScores:
-    """Per-unit anomaly timeline and detection outputs."""
+    """Per-unit structural evidence timeline and detection outputs.
+
+    Outputs from all five Intelligence Stack layers:
+    - raw_drift: raw structural drift score [Structural Geometry]
+    - ema_drift: smoothed drift [Trajectory Dynamics]
+    - component_scores: individual layer outputs (drift, acceleration, correlation, etc.)
+    - regime_transition_timeline: per-cycle regime assignments [Regime Transition]
+    - warning_state: persistent binary warning state [Evidence Fusion]
+    """
 
     raw_drift: np.ndarray
     ema_drift: np.ndarray
@@ -65,25 +77,35 @@ class UnitScores:
     warning_exit_threshold: np.ndarray
     component_activation_rates: Dict[str, float]
     dominant_alert_component: str
+    regime_transition_timeline: List[Dict[str, Any]] = field(default_factory=list)
 
 
 class StructuralDriftDetector:
-    """Genuine structural drift detector without experimental layers.
+    """Neraium Intelligence Stack detector.
 
-    Detects degradation through:
-    1. Raw Structural Drift: Mahalanobis distance, covariance shift, correlation change
-    2. Trajectory Acceleration: 2nd derivative (degradation curvature)
-    3. Relational Instability: Sensor correlation breakdown
-    4. Multi-signal Confirmation: Combine structural + amplitude signals
-    5. Persistent Warning State: Lock once confirmed, no oscillation
+    Implements five-layer structural state transition detection:
 
-    Pure structural approach. No RUL information. No future data leakage.
+    1. **Structural Geometry**: Mahalanobis distance, covariance drift, correlation drift
+    2. **Relational Instability**: Sensor correlation breakdown and dependency fracture
+    3. **Trajectory Dynamics**: EMA smoothing, velocity, acceleration, CUSUM change-points
+    4. **Regime Transition**: Online clustering, transition confidence, persistence metrics
+    5. **Evidence Fusion**: Multi-signal confirmation, interpretable explanations
+
+    All layers are:
+    - Causal: no future data at any stage
+    - Online-safe: works with streaming input, no retraining
+    - Interpretable: mathematical (linear algebra, statistics) not black-box
+    - Trustworthy: confirmation gating prevents single-sensor false alarms
+
+    Reference statistics (mean, covariance, correlation) are frozen from the healthy
+    segment and never updated, ensuring walk-forward safety.
     """
 
     def __init__(self, config: DetectorConfig, verbose: bool = False) -> None:
         self.config = config
         self.verbose = verbose
         self.structural_detector = StructuralSignalDetector(verbose=verbose)
+        self.regime_layer = RegimeTransitionLayer(verbose=verbose)
 
     def fit_reference(self, healthy_data: np.ndarray) -> ReferenceStats:
         """Fit reference statistics from healthy (early) segment."""
@@ -127,24 +149,39 @@ class StructuralDriftDetector:
         override_threshold_std: Optional[float] = None,
         override_persistence: Optional[int] = None,
     ) -> UnitScores:
-        """Compute structural drift scores and detect warning."""
+        """Compute Intelligence Stack scores across all five layers.
+
+        Returns per-cycle evidence from:
+        - Structural Geometry (raw drift)
+        - Trajectory Dynamics (smoothed drift, velocity, acceleration)
+        - Relational Instability (correlation breakdown)
+        - Regime Transition (regime assignment, transition confidence)
+        - Evidence Fusion (confirmed warning state)
+        """
         arr = np.asarray(data, dtype=float)
         if arr.ndim != 2:
             raise ValueError("data must be 2D (cycles x sensors)")
 
-        # Compute raw structural drift at each cycle
+        # Layer 1: Structural Geometry
         raw = self._compute_structural_drift(arr, ref)
 
-        # Apply EMA smoothing
+        # Layer 3: Trajectory Dynamics (smoothing)
         ema = _apply_ema(raw, self.config.ema_alpha)
 
-        # Compute component scores (structural components, not QIT)
+        # Compute all component scores from layers 1-3 and 5
         component_arrays = self._compute_structural_components(arr, raw, ema, ref)
 
-        # Multi-signal detection with confirmation
-        warning_index, warning_state = self._detect_adaptive_warning(ema, raw, arr)
+        # Layer 4: Regime Transition
+        self.regime_layer.reset()
+        regime_timeline = self._compute_regime_timeline(raw, arr, ref, ema)
+        component_arrays["regime_transition"] = np.array(
+            [r["transition_score"] for r in regime_timeline], dtype=float
+        )
 
-        # Threshold: maximum EMA in healthy region
+        # Layer 5: Evidence Fusion with Confirmation Gating
+        warning_index, warning_state = self._detect_adaptive_warning(ema, raw, arr, regime_timeline)
+
+        # Threshold: maximum EMA in healthy region [Trajectory Dynamics evidence]
         threshold = float(np.max(ema[: max(1, min(ref.n_samples, ema.size))]))
 
         # Component activation rates (for compatibility)
@@ -165,6 +202,7 @@ class StructuralDriftDetector:
                         "level": "warning",
                         "score": float(ema[t]),
                         "dominant_detector": dominant_alert_component,
+                        "regime": regime_timeline[t]["regime_label"] if t < len(regime_timeline) else "unknown",
                     }
                 )
             prev_state = current_state
@@ -183,6 +221,7 @@ class StructuralDriftDetector:
             warning_exit_threshold=np.full(arr.shape[0], threshold * float(self.config.warning_exit_threshold_ratio), dtype=float),
             component_activation_rates=component_activation_rates,
             dominant_alert_component=dominant_alert_component,
+            regime_transition_timeline=regime_timeline,
         )
 
     def process_unit(
@@ -203,13 +242,102 @@ class StructuralDriftDetector:
             override_persistence=override_persistence,
         )
 
-    def _compute_structural_drift(self, data: np.ndarray, ref: ReferenceStats) -> np.ndarray:
-        """Compute raw structural drift score at each cycle.
+    def _compute_regime_timeline(
+        self, raw: np.ndarray, data: np.ndarray, ref: ReferenceStats, ema: np.ndarray
+    ) -> List[Dict[str, Any]]:
+        """Compute per-cycle Regime Transition layer (Layer 4) outputs.
 
-        Combines:
-        - Mahalanobis distance (mean shift)
-        - Covariance shift (structure change)
-        - Correlation change (relationship change)
+        Uses structural features (Mahalanobis, covariance drift, correlation drift)
+        to assign regime labels and detect transitions online with persistence metrics.
+
+        Args:
+            raw: raw structural drift scores
+            data: sensor data [n_cycles, n_sensors]
+            ref: reference statistics
+            ema: smoothed drift scores
+
+        Returns:
+            List of dicts with regime_id, regime_label, transition_score, etc.
+        """
+        n_cycles = data.shape[0]
+        window = 15
+
+        # Extract component structural features for regime assignment
+        mahal_scores = np.zeros(n_cycles)
+        cov_scores = np.zeros(n_cycles)
+        corr_scores = np.zeros(n_cycles)
+
+        for t in range(n_cycles):
+            window_start = max(0, t - window)
+            window_data = data[window_start : t + 1]
+
+            if window_data.shape[0] < 2:
+                continue
+
+            # Mahalanobis distance
+            delta = window_data[-1] - ref.mean
+            mahal_scores[t] = np.sqrt(delta @ ref.precision @ delta)
+
+            # Covariance shift
+            if window_data.shape[0] > 1:
+                recent_cov = np.cov(window_data.T) + np.eye(window_data.shape[1]) * 1e-6
+                cov_diff = recent_cov - ref.cov
+                cov_scores[t] = np.linalg.norm(cov_diff, "fro")
+
+            # Correlation shift
+            if window_data.shape[0] > 1:
+                recent_corr = np.corrcoef(window_data.T)
+                recent_corr = np.nan_to_num(recent_corr, nan=0.0)
+                corr_diff = recent_corr - ref.corr
+                corr_scores[t] = np.linalg.norm(corr_diff, "fro")
+
+        # Initialize regime layer from early structural features
+        healthy_end = min(40, max(5, int(n_cycles * 0.15)))
+        early_features = np.column_stack([mahal_scores[:healthy_end], cov_scores[:healthy_end], corr_scores[:healthy_end]])
+        self.regime_layer.initialize_regimes(early_features)
+
+        # Process each cycle through regime layer
+        regime_timeline = []
+        for t in range(n_cycles):
+            regime_output = self.regime_layer.process_cycle(
+                mahal_distance=float(mahal_scores[t]),
+                cov_drift=float(cov_scores[t]),
+                corr_drift=float(corr_scores[t]),
+            )
+
+            regime_timeline.append(
+                {
+                    "cycle": t,
+                    "regime_id": regime_output.regime_id,
+                    "regime_label": regime_output.regime_label,
+                    "transition_score": regime_output.transition_score,
+                    "transition_detected": regime_output.transition_detected,
+                    "persistence": regime_output.regime_persistence_cycles,
+                }
+            )
+
+        return regime_timeline
+
+    def _compute_structural_drift(self, data: np.ndarray, ref: ReferenceStats) -> np.ndarray:
+        """Compute Layer 1 (Structural Geometry) raw drift score at each cycle.
+
+        Combines three structural geometry signals:
+
+        1. **Mahalanobis Distance**: Shift in mean position relative to frozen reference
+           - Detects: operating point changes, sensor offset drift
+           - Formula: sqrt((x[t] - μ_ref)^T Σ_ref^{-1} (x[t] - μ_ref))
+
+        2. **Covariance Drift**: Change in state cloud shape and volume
+           - Detects: loss of constraints, sensor saturation, mode activation
+           - Formula: ||Σ_recent(t) - Σ_ref||_F (Frobenius norm)
+
+        3. **Correlation Drift**: Breakdown of pairwise relationships
+           - Detects: dependency fracture, systematic coupling loss
+           - Formula: ||R_recent(t) - R_ref||_F
+
+        All are normalized and equally weighted into final drift score.
+
+        Uses rolling window (15 cycles) to compute recent statistics without future leakage.
         """
         n_cycles = data.shape[0]
         drift = np.zeros(n_cycles)
@@ -252,22 +380,34 @@ class StructuralDriftDetector:
     def _compute_structural_components(
         self, data: np.ndarray, raw: np.ndarray, ema: np.ndarray, ref: ReferenceStats
     ) -> Dict[str, np.ndarray]:
-        """Compute individual structural component scores for diagnostics.
+        """Compute per-cycle component scores from Intelligence Stack layers for diagnostics.
 
-        Components:
-        - drift: base structural drift signal
+        Components mapped to layers:
+
+        Layer 1 (Structural Geometry):
+        - structural_geometry: normalized EMA drift
+
+        Layer 3 (Trajectory Dynamics):
         - acceleration: 2nd derivative (curvature)
-        - correlation: correlation breakdown
-        - change_point: change-point detections
-        - confirmation: confirmation signal
+        - change_point: CUSUM-based change-point detection
+
+        Layer 2 (Relational Instability):
+        - correlation: correlation breakdown detection
+
+        Layer 5 (Evidence Fusion):
+        - confirmation: confirmation signal (set by warning detection)
+
+        Note: regime_transition is added separately in score_unit.
         """
         n_cycles = len(raw)
 
-        # Drift component: normalized EMA
-        drift_component = ema / (np.max(ema) + 1e-6) if np.max(ema) > 0 else ema
+        # Layer 1: Structural Geometry
+        # Normalized drift score: combined Mahalanobis, covariance, correlation signals
+        structural_geometry = ema / (np.max(ema) + 1e-6) if np.max(ema) > 0 else ema
 
-        # Acceleration component: 2nd derivative
-        accel_component = np.zeros(n_cycles)
+        # Layer 3: Trajectory Dynamics
+        # Acceleration: 2nd derivative (curvature); detects sudden escalation
+        acceleration = np.zeros(n_cycles)
         if n_cycles > 2:
             vel = np.diff(ema)
             accel = np.diff(vel)
@@ -275,46 +415,69 @@ class StructuralDriftDetector:
             accel_threshold = 0.005 * baseline_std
             for i in range(len(accel)):
                 if accel[i] > accel_threshold:
-                    accel_component[i + 2] = min(1.0, accel[i] / (accel_threshold + 1e-6))
+                    acceleration[i + 2] = min(1.0, accel[i] / (accel_threshold + 1e-6))
 
-        # Correlation component: from structural detector
+        # Layer 2: Relational Instability
+        # Correlation breakdown: loss of pairwise sensor relationships
         corr_candidates = self.structural_detector.compute_correlation_breakdown(data)
-        correlation_component = np.zeros(n_cycles)
-        correlation_component[corr_candidates] = 1.0
+        relational_instability = np.zeros(n_cycles)
+        relational_instability[corr_candidates] = 1.0
 
-        # Change-point component: CUSUM-based
+        # Layer 3: Trajectory Dynamics
+        # Change-point detection (CUSUM): sustained elevation in drift score
         baseline_std = np.std(ema[: min(20, n_cycles)])
         cusum_threshold = 0.95 * baseline_std
         cusum_positive = np.zeros(n_cycles)
         for i in range(1, n_cycles):
             delta = ema[i] - np.mean(ema[: min(20, n_cycles)])
             cusum_positive[i] = max(0, cusum_positive[i - 1] + delta - baseline_std * 0.10)
-        change_point_component = np.minimum(cusum_positive / (cusum_threshold + 1e-6), 1.0)
+        trajectory_changepoint = np.minimum(cusum_positive / (cusum_threshold + 1e-6), 1.0)
 
-        # Confirmation component: will be set by warning detection
-        confirmation_component = np.zeros(n_cycles)
+        # Layer 5: Evidence Fusion
+        # Confirmation: set by warning detection logic; indicates multi-signal agreement
+        confirmation = np.zeros(n_cycles)
 
         return {
-            "drift": drift_component,
-            "acceleration": accel_component,
-            "correlation": correlation_component,
-            "change_point": change_point_component,
-            "confirmation": confirmation_component,
+            "structural_geometry": structural_geometry,
+            "acceleration": acceleration,
+            "relational_instability": relational_instability,
+            "trajectory_changepoint": trajectory_changepoint,
+            "confirmation": confirmation,
+            # Legacy API compatibility
+            "drift": structural_geometry,
+            "correlation": relational_instability,
+            "change_point": trajectory_changepoint,
         }
 
-    def _detect_adaptive_warning(self, ema: np.ndarray, raw: np.ndarray, sensor_data: np.ndarray) -> tuple[Optional[int], np.ndarray]:
-        """Three-phase detection: early signal, confirmation, persistence.
+    def _detect_adaptive_warning(
+        self,
+        ema: np.ndarray,
+        raw: np.ndarray,
+        sensor_data: np.ndarray,
+        regime_timeline: Optional[List[Dict[str, Any]]] = None,
+    ) -> tuple[Optional[int], np.ndarray]:
+        """Three-phase evidence-based detection with regime transition confirmation.
+
+        Integrates all Intelligence Stack layers:
+        1. Structural Geometry: amplitude and covariance signals
+        2. Relational Instability: correlation breakdown
+        3. Trajectory Dynamics: acceleration and CUSUM change-point
+        4. Regime Transition: transition score and persistence
+        5. Evidence Fusion: require ≥2 independent signals before confirmation
 
         Phase 1: EARLY SIGNAL
         - Detect amplitude changes (CUSUM, velocity, z-score)
-        - Detect structural changes (acceleration, correlation)
+        - Detect structural changes (acceleration, correlation breakdown)
+        - Detect regime transitions (sudden regime shifts)
 
         Phase 2: CONFIRMATION
-        - Require 2 signals, at least 1 structural
+        - Require ≥2 independent signals, with ≥1 structural
         - Confirm over 3-20 cycle window
+        - Incorporate regime transition confidence
 
         Phase 3: PERSISTENCE
-        - Once confirmed, lock warning state
+        - Once confirmed, lock warning state until evidence drops
+        - Persistent state prevents false oscillation
         """
         n_cycles = len(ema)
         if n_cycles < 10:
@@ -326,9 +489,9 @@ class StructuralDriftDetector:
         baseline_std = float(np.std(ema[:baseline_end]))
         baseline_std = max(baseline_std, 1e-6)
 
-        # --- PHASE 1: EARLY SIGNAL ---
+        # --- PHASE 1: EARLY SIGNAL (from all five layers) ---
 
-        # Amplitude signals
+        # Layer 1 & 3: Amplitude signals [Structural Geometry + Trajectory Dynamics]
         # CUSUM
         cusum_threshold = 0.95 * baseline_std
         cusum_positive = np.zeros(n_cycles)
@@ -337,7 +500,7 @@ class StructuralDriftDetector:
             cusum_positive[i] = max(0, cusum_positive[i - 1] + delta - baseline_std * 0.10)
         cusum_candidates = np.where(cusum_positive > cusum_threshold)[0]
 
-        # Velocity
+        # Velocity [Trajectory Dynamics]
         if n_cycles > 3:
             velocity = np.abs(np.diff(ema))
             baseline_vel = velocity[:baseline_end]
@@ -346,22 +509,40 @@ class StructuralDriftDetector:
         else:
             velocity_candidates = np.array([], dtype=int)
 
-        # Z-score
+        # Z-score [Structural Geometry]
         zscore = np.abs(ema - baseline_mean) / (baseline_std + 1e-6)
         zscore_candidates = np.where(zscore > 1.1)[0]
 
-        # Structural signals
+        # Structural signals [Trajectory Dynamics, Relational Instability]
         accel_candidates, corr_candidates = self.structural_detector.detect_all_structural_changes(raw, sensor_data, baseline_std)
 
-        # Combine all candidates
-        all_candidates = np.concatenate([cusum_candidates, velocity_candidates, zscore_candidates, accel_candidates, corr_candidates])
+        # Regime transition signals [Regime Transition layer]
+        regime_transition_candidates = np.array([], dtype=int)
+        if regime_timeline is not None and len(regime_timeline) > 0:
+            regime_transition_candidates = np.array(
+                [r["cycle"] for r in regime_timeline if r.get("transition_detected", False)],
+                dtype=int,
+            )
+
+        # Combine all candidates from all five layers
+        all_candidates = np.concatenate(
+            [cusum_candidates, velocity_candidates, zscore_candidates, accel_candidates, corr_candidates, regime_transition_candidates]
+        )
         phase1_candidates = np.unique(all_candidates)
 
         # Filter: only after 15% (healthy region boundary)
         min_cycle = int(n_cycles * 0.15)
         phase1_candidates = phase1_candidates[phase1_candidates >= min_cycle]
 
-        # --- PHASE 2: CONFIRMATION ---
+        # --- PHASE 2: CONFIRMATION (Evidence Fusion with gating) ---
+        # Layer 5: Evidence Fusion with strict multi-signal confirmation
+        #
+        # Confirmation rule (tight gating):
+        #   - Count independent signals in confirmation window
+        #   - Require ≥2 independent signal types
+        #   - At least 1 must be from structural layer (accel, corr, regime)
+        #
+        # This prevents single noisy signals from driving false alarms.
 
         confirmed_idx = None
         if len(phase1_candidates) > 0:
@@ -371,22 +552,38 @@ class StructuralDriftDetector:
             window_end = min(first_alert + look_forward, n_cycles)
             in_window = ema[look_back:window_end]
 
-            # Check for structural signals in window
+            # Structural signals (Layers 1, 2, 4)
             accel_in_window = np.any((accel_candidates >= look_back) & (accel_candidates < window_end))
             corr_in_window = np.any((corr_candidates >= look_back) & (corr_candidates < window_end))
-            has_structural = accel_in_window or corr_in_window
+            regime_in_window = np.any((regime_transition_candidates >= look_back) & (regime_transition_candidates < window_end))
 
-            # Check for amplitude signals
+            # Count independent structural signal types
+            structural_signals = sum([accel_in_window, corr_in_window, regime_in_window])
+            has_structural = structural_signals > 0
+
+            # Amplitude / Trajectory signals (Layer 3)
             window_has_elevation = np.mean(in_window) > baseline_mean * 1.02
             window_has_breach = np.any(in_window >= baseline_mean + 0.5 * baseline_std)
             window_has_trend = np.any(np.diff(in_window) > 0)
-            has_amplitude = window_has_elevation or window_has_breach or window_has_trend
 
-            # Confirm if structural OR amplitude present
-            if has_structural or has_amplitude:
+            # Count independent amplitude signal types
+            amplitude_signals = sum([window_has_elevation, window_has_breach, window_has_trend])
+            has_amplitude = amplitude_signals > 0
+
+            # Confirmation gating (Evidence Fusion — Tight Evidence Fusion Rule):
+            # Require EITHER:
+            #   (a) ≥2 structural signals (strong structural evidence), OR
+            #   (b) ≥1 structural signal AND ≥1 amplitude signal (multi-layer agreement)
+            #
+            # This prevents single noisy detectors from driving alarms while allowing
+            # legitimate multi-signal events to trigger warnings.
+            multi_structural = structural_signals >= 2
+            multi_layer = has_structural and has_amplitude
+            if multi_structural or multi_layer:
                 confirmed_idx = first_alert
 
-        # --- PHASE 3: PERSISTENCE ---
+        # --- PHASE 3: PERSISTENCE (Evidence Fusion) ---
+        # Once confirmed, lock warning state until evidence drops below exit threshold
 
         warning_state = np.zeros(n_cycles, dtype=bool)
         if confirmed_idx is not None:

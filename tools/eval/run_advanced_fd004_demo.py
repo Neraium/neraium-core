@@ -13,9 +13,9 @@ from pathlib import Path
 
 import numpy as np
 
-from .config import DetectorConfig
+from neraium_core.intelligence_stack.config import DetectorConfig
 from .plotting import plot_unit_diagnosis
-from .test_runner_advanced_fd004 import AdvancedFD004TestRunner, AdvancedDriftMetrics
+from tools.eval.test_runner_advanced_fd004 import AdvancedFD004TestRunner, AdvancedDriftMetrics
 
 
 class AdvancedFD004Demo:

@@ -1,6 +1,6 @@
 import numpy as np
 
-from fd00x.detector import _build_ensemble_vote_series, _causal_rolling_mean
+from neraium_core.intelligence_stack.detector import _build_ensemble_vote_series, _causal_rolling_mean
 
 
 def test_causal_rolling_mean_respects_partial_history() -> None:

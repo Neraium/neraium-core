@@ -3,7 +3,7 @@ Unit tests for the corrected persistence-based warning rule.
 
 What is being tested
 --------------------
-``fd00x.detector.find_warning_index`` implements the corrected semantics:
+``neraium_core.intelligence_stack.detector.find_warning_index`` implements the corrected semantics:
 
     A warning fires at the index where *persistence* CONSECUTIVE exceedances
     are CONFIRMED.  This is the index of the Nth exceedance — NOT backdated
@@ -42,7 +42,7 @@ Test coverage
 import numpy as np
 import pytest
 
-from fd00x.detector import compute_warning_state, find_warning_index
+from neraium_core.intelligence_stack.detector import compute_warning_state, find_warning_index
 
 
 # ─────────────────────────────────────────────────────────────────────────────

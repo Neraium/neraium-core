@@ -1,6 +1,10 @@
-"""Structural signal detection components for pure structural drift analysis.
+"""Relational Instability & Trajectory Dynamics layers of the Intelligence Stack.
 
-Computes real structural changes in sensor relationships and dynamics.
+Detects:
+- Relational Instability: breakdown of sensor correlations and dependencies
+- Trajectory Dynamics: acceleration spikes and change-point events
+
+These components are part of the Intelligence Stack's evidence fusion layer.
 """
 from __future__ import annotations
 
@@ -10,13 +14,21 @@ import numpy as np
 
 
 class StructuralSignalDetector:
-    """Detects genuine structural changes in system dynamics."""
+    """Detects genuine structural changes in system dynamics.
+
+    Implements two Intelligence Stack layers:
+    - Layer 2 (Relational Instability): correlation breakdown detection
+    - Layer 3 (Trajectory Dynamics): acceleration and change-point detection
+    """
 
     def __init__(self, verbose: bool = False) -> None:
         self.verbose = verbose
 
     def compute_correlation_breakdown(self, data: np.ndarray) -> np.ndarray:
-        """Detect indices where sensor correlations break down.
+        """Detect Layer 2 (Relational Instability): sensor correlation breakdown.
+
+        Identifies cycles where pairwise sensor relationships change significantly.
+        This indicates either dependency fracture or regime shift to new operating mode.
 
         Returns indices where significant correlation structure changes occur.
         """
@@ -56,7 +68,11 @@ class StructuralSignalDetector:
     def detect_all_structural_changes(
         self, raw: np.ndarray, sensor_data: np.ndarray, baseline_std: float
     ) -> Tuple[np.ndarray, np.ndarray]:
-        """Detect both acceleration and correlation changes.
+        """Detect Layer 3 (Trajectory Dynamics) and Layer 2 (Relational Instability) changes.
+
+        Combines two detection modes:
+        - Acceleration spikes (2nd derivative): sudden curvature in drift trajectory
+        - Correlation breakdown: sudden loss of pairwise sensor relationships
 
         Returns:
             (accel_candidates, corr_candidates): indices of detected changes

@@ -167,7 +167,7 @@ class DetectorConfig:
     WARNING SEMANTICS (corrected):
         The warning index is the index of the Nth consecutive exceedance —
         the CONFIRMATION step.  It is NOT backdated to the first step in
-        the exceedance run.  See ``fd00x.detector.find_warning_index``.
+        the exceedance run.  See ``neraium_core.intelligence_stack.detector.find_warning_index``.
     """
 
     threshold_mode: str = "mean_std"

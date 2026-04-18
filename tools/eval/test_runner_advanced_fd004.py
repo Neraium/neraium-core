@@ -23,9 +23,9 @@ from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 
-from .config import DetectorConfig
-from .detector import StructuralDriftDetector
-from .evaluation import load_cmapss_dataset
+from neraium_core.intelligence_stack.config import DetectorConfig
+from neraium_core.intelligence_stack.detector import StructuralDriftDetector
+from neraium_core.intelligence_stack.evaluation import load_cmapss_dataset
 
 
 @dataclass
