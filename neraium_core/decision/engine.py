@@ -33,6 +33,7 @@ from neraium_core.decision.evolution_decision_resolver import (
 )
 from neraium_core.decision.decision_window_engine import DecisionWindowEngine
 from neraium_core.decision.trajectory_engine import TrajectoryEngine
+from neraium_core.decision.intervention_guidance_engine import InterventionGuidanceEngine
 
 
 class DecisionEngine:
@@ -51,6 +52,7 @@ class DecisionEngine:
         self.decision_resolver = EvolutionDecisionResolver()
         self.window_engine = DecisionWindowEngine()
         self.trajectory_engine = TrajectoryEngine()
+        self.guidance_engine = InterventionGuidanceEngine()
         self.previous_state: Optional[dict[str, Any]] = None
         self.previous_persistence: Optional[PersistenceState] = None
         self.previous_severity: Optional[SeverityLevel] = None
@@ -552,6 +554,27 @@ class DecisionEngine:
             "convergence_point": trajectory_branching_result.convergence_point,
         }
 
+        # === INTERVENTION GUIDANCE: What actions would help? ===
+        guidance_result = self.guidance_engine.generate_guidance(
+            severity=severity,
+            degradation_stage=current_degradation_stage,
+            evolution_context=evolution_context,
+            degradation_map=degradation_map,
+            drift_score=drift_score,
+            temporal_coherence=coherence_profile.overall_system_coherence,
+            persistence_frames=persistence_frames if self.enable_persistence_tracking else 0,
+            window_status=decision_window_result.intervention_window.status,
+            estimated_hours_remaining=decision_window_result.intervention_window.estimated_hours_remaining,
+            most_likely_path=trajectory_branching_result.most_likely_path.name,
+            cascade_probability=next(
+                (p.probability for p in trajectory_branching_result.paths if p.name == "cascade_failure"),
+                0.0,
+            ),
+        )
+
+        # Format guidance for decision output
+        guidance_output = self.guidance_engine.format_for_operator_display(guidance_result)
+
         # === BUILD DECISION ===
         decision = Decision(
             finding_confidence=finding_confidence,
@@ -588,6 +611,7 @@ class DecisionEngine:
             evolution_context=evolution_context,
             decision_window=decision_window_output,
             trajectory_branching=trajectory_output,
+            intervention_guidance=guidance_output,
         )
 
         # === PHASE 7: COHERENCE VALIDATION AND TRACEABILITY ===

@@ -230,6 +230,9 @@ class Decision:
     # Trajectory Branching (what could happen next)
     trajectory_branching: Optional[dict[str, Any]] = None  # Multiple possible paths forward with probabilities
 
+    # Intervention Guidance (what actions would help)
+    intervention_guidance: Optional[dict[str, Any]] = None  # Structured recommendations for human operators
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "finding_confidence": self.finding_confidence,
@@ -267,4 +270,5 @@ class Decision:
             "evolution_context": self.evolution_context.to_dict() if self.evolution_context else None,
             "decision_window": self.decision_window,
             "trajectory_branching": self.trajectory_branching,
+            "intervention_guidance": self.intervention_guidance,
         }
