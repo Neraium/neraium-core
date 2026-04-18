@@ -90,21 +90,23 @@ const styles = {
     transition: 'color 0.62s ease, opacity 0.62s ease',
   },
   actionText: {
-    marginTop: '9px',
-    fontSize: '38px',
-    fontWeight: '520',
+    marginTop: '10px',
+    fontSize: '40px',
+    fontWeight: '540',
     color: '#f8fafc',
-    lineHeight: 1.05,
+    lineHeight: 1.1,
     maxWidth: '18ch',
     transition: 'opacity 0.62s ease, transform 0.62s ease',
+    letterSpacing: '0.01em',
   },
   windowText: {
-    marginTop: '8px',
+    marginTop: '10px',
     fontSize: '13px',
     letterSpacing: '0.08em',
-    color: 'rgba(203, 213, 225, 0.74)',
+    color: 'rgba(203, 213, 225, 0.80)',
     textTransform: 'uppercase' as const,
     transition: 'opacity 0.62s ease',
+    fontWeight: '500',
   },
 }
 
@@ -113,8 +115,8 @@ if (typeof document !== 'undefined' && !document.getElementById('action-panel-mo
   style.id = 'action-panel-motion'
   style.textContent = `
     @keyframes commandPulse {
-      0%, 100% { opacity: 1; transform: translateY(0px); }
-      50% { opacity: 0.94; transform: translateY(-1px); }
+      0%, 100% { opacity: 1; transform: translateY(0px) scale(1); }
+      50% { opacity: 0.96; transform: translateY(-2px) scale(1.01); }
     }
   `
   document.head.appendChild(style)

@@ -52,8 +52,15 @@ export default function DriftChart({ chart }: DriftChartProps) {
     ctx.setLineDash([])
 
     if (chart.dataPoints.length > 1) {
-      ctx.strokeStyle = '#60a5fa'
-      ctx.lineWidth = 2
+      const gradient = ctx.createLinearGradient(padding.left, 0, width - padding.right, 0)
+      gradient.addColorStop(0, 'rgba(96, 165, 250, 0.4)')
+      gradient.addColorStop(0.5, 'rgba(96, 165, 250, 0.8)')
+      gradient.addColorStop(1, 'rgba(59, 130, 246, 0.6)')
+
+      ctx.strokeStyle = gradient
+      ctx.lineWidth = 2.5
+      ctx.lineCap = 'round'
+      ctx.lineJoin = 'round'
       ctx.beginPath()
       chart.dataPoints.forEach((point, idx) => {
         const x = padding.left + (idx / (chart.dataPoints.length - 1)) * chartWidth
@@ -69,9 +76,22 @@ export default function DriftChart({ chart }: DriftChartProps) {
       const y = padding.top + chartHeight * (1 - point.driftScore)
       const isCurrentFrame = idx === chart.currentFrameIdx
 
-      ctx.fillStyle = isCurrentFrame ? '#93c5fd' : 'rgba(96, 165, 250, 0.34)'
+      if (isCurrentFrame) {
+        ctx.fillStyle = 'rgba(147, 197, 253, 0.2)'
+        ctx.beginPath()
+        ctx.arc(x, y, 8, 0, Math.PI * 2)
+        ctx.fill()
+
+        ctx.strokeStyle = 'rgba(147, 197, 253, 0.5)'
+        ctx.lineWidth = 1.5
+        ctx.beginPath()
+        ctx.arc(x, y, 7, 0, Math.PI * 2)
+        ctx.stroke()
+      }
+
+      ctx.fillStyle = isCurrentFrame ? '#93c5fd' : 'rgba(96, 165, 250, 0.42)'
       ctx.beginPath()
-      ctx.arc(x, y, isCurrentFrame ? 3.5 : 2, 0, Math.PI * 2)
+      ctx.arc(x, y, isCurrentFrame ? 4 : 2.5, 0, Math.PI * 2)
       ctx.fill()
     })
 

@@ -50,12 +50,13 @@ const styles = {
     textTransform: 'uppercase' as const,
   },
   line2: {
-    fontSize: '66px',
-    fontWeight: '840',
-    lineHeight: 0.92,
+    fontSize: '68px',
+    fontWeight: '850',
+    lineHeight: 0.9,
     letterSpacing: '0.01em',
     textTransform: 'uppercase' as const,
     transition: 'color 0.62s ease',
+    textShadow: 'none',
   },
   line3: {
     fontSize: '22px',
