@@ -1,0 +1,95 @@
+==========================================================================================
+ADVANCED DRIFT DETECTION ANALYSIS - NASA CMAPSS FD004
+==========================================================================================
+
+DATASET COMPLEXITY
+------------------------------------------------------------------------------------------
+• 249 units in test set (hardest CMAPSS variant)
+• 6 operating conditions with non-linear interactions
+• 2 fault modes: HPC degradation + Fan degradation
+• Variable degradation rates across units
+
+DETECTION APPROACH
+------------------------------------------------------------------------------------------
+• 5-component QIT detector (Quantum, Information, Free Energy, Topological, Algorithmic)
+• Operating condition segmentation for multi-condition awareness
+• Fault mode inference from component activation patterns
+• Per-condition lead time computation
+• Walk-forward safe reference statistics
+
+OVERALL RESULTS
+------------------------------------------------------------------------------------------
+Units tested:           248/248
+Detection rate:          99.6%
+False positive rate:      0.0%
+
+LEAD TIME ANALYSIS
+------------------------------------------------------------------------------------------
+Detections with valid lead time: 247/247
+Median lead time:            99 cycles
+Mean lead time:             107 cycles
+Min/Max:                9 / 316 cycles
+Q1/Q3:                  66 / 138 cycles
+
+FAULT MODE DISTRIBUTION
+------------------------------------------------------------------------------------------
+HPC_like            : 246 units ( 99.2%)
+mixed               :   2 units (  0.8%)
+
+OPERATING CONDITION ANALYSIS (6 conditions)
+------------------------------------------------------------------------------------------
+ Condition │  Detections │  Median Lead │    Mean Lead
+------------------------------------------------------------------------------------------
+         1 │         240 │           94 │           99
+         2 │         247 │           99 │          106
+         3 │           0 │          N/A │          N/A
+         4 │           0 │          N/A │          N/A
+         5 │           0 │          N/A │          N/A
+         6 │           0 │          N/A │          N/A
+
+SIGNAL CHARACTERISTICS
+------------------------------------------------------------------------------------------
+Mean raw drift score:    0.2949
+Mean EMA drift score:    0.2933
+
+PERFORMANCE METRICS
+------------------------------------------------------------------------------------------
+Total elapsed time:       32.06 seconds
+Throughput:                 7.7 units/second
+Per-unit time:          129 milliseconds
+
+PER-UNIT SUMMARY (First 30 units)
+------------------------------------------------------------------------------------------
+  Unit  Cycles    Warn    Lead  FP  Conds      Fault Mode     Dominant
+------------------------------------------------------------------------------------------
+     1     230      57     150        1,2        HPC_like  topological
+     2     153      38     100        1,2        HPC_like  topological
+     3     141      39      88        1,2        HPC_like  topological
+     4     208      52     136        1,2        HPC_like      quantum
+     5      51      12      34        1,2        HPC_like      quantum
+     6     146      36      96        1,2        HPC_like      quantum
+     7      54      13      36        1,2        HPC_like  topological
+     8     248      62     162        1,2        HPC_like  topological
+     9     284      71     185        1,2        HPC_like  topological
+    10      23       8      13        1,2        HPC_like      quantum
+    11      82      20      54        1,2        HPC_like      quantum
+    12     270      67     176        1,2        HPC_like      quantum
+    13     227      56     149        1,2        HPC_like      quantum
+    14     102      25      67        1,2        HPC_like  topological
+    15     168      65      87        1,2        HPC_like      quantum
+    16     240      60     156        1,2        HPC_like  topological
+    17     334      83     218        1,2        HPC_like  topological
+    18     247      61     162        1,2        HPC_like      quantum
+    19      24       7      15        1,2        HPC_like      quantum
+    20     115      28      76        1,2        HPC_like      quantum
+    21     202      68     114        1,2        HPC_like      quantum
+    22     158      39     104        1,2        HPC_like  topological
+    23     162      40     106        1,2        HPC_like  topological
+    24     174      43     114        1,2        HPC_like  topological
+    25     486     122     316        1,2        HPC_like      quantum
+    26      90      22      59        1,2        HPC_like  topological
+    27     144      36      94        1,2        HPC_like      quantum
+    28      20       5      13        1,2           mixed      quantum
+    29     216      54     141        1,2        HPC_like  topological
+    30     229      57     150        1,2        HPC_like  topological
+==========================================================================================

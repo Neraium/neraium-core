@@ -1,0 +1,16 @@
+{
+  "n_units_tested": 248,
+  "detection_rate": 0.9959677419354839,
+  "false_positive_rate": 0.0,
+  "n_detections": 247,
+  "n_false_positives": 0,
+  "median_true_lead_time": 72.0,
+  "mean_true_lead_time": 77.80319148936171,
+  "min_true_lead_time": 0.0,
+  "max_true_lead_time": 184.0,
+  "q1_true_lead_time": 45.75,
+  "q3_true_lead_time": 108.25,
+  "std_true_lead_time": 46.49271952185417,
+  "elapsed_seconds": 47.361255407333374,
+  "throughput_units_per_second": 5.2363476826587645
+}
