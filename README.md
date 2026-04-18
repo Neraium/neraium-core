@@ -164,6 +164,7 @@ See [DEMO.md](./DEMO.md) for full guide, controls, and optional flags.
 - **[PHASE_A_CONTRACT_AND_ISOLATION.md](./PHASE_A_CONTRACT_AND_ISOLATION.md)** - Internal schema contract
 - **[PHASE_B_UNIFY_SURFACE.md](./PHASE_B_UNIFY_SURFACE.md)** - Architecture decisions
 - **[docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md)** - Technical architecture
+- **[docs/NERAIUM_SYSTEM_DEFINITION.md](./docs/NERAIUM_SYSTEM_DEFINITION.md)** - Operational system definition
 - **[docs/HOW_NERAIUM_IS_DIFFERENT.md](./docs/HOW_NERAIUM_IS_DIFFERENT.md)** - Product positioning
 
 ---
