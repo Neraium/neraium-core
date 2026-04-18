@@ -1,8 +1,13 @@
-"""QIT-backed detector wrapper for FD00x evaluation pipelines.
+"""QIT-backed detector with structural change detection for FD00x evaluation.
 
-This module intentionally replaces previous atomic/structural internals with a
-single hierarchical QIT detection path while preserving the existing public API
-(`StructuralDriftDetector`, `fit_reference`, `score_unit`, `process_unit`).
+This module combines:
+1. QIT (Quantum Information Theoretic) detector for component-level anomalies
+2. Structural Signal Detection for early degradation signatures:
+   - Trajectory Acceleration (2nd derivative curvature)
+   - Relational Instability (correlation breakdown)
+
+The structural signals enable earlier detection by shifting focus from
+"signal magnitude" to "how signal is changing" (structure, dynamics, relationships).
 """
 from __future__ import annotations
 
@@ -13,6 +18,7 @@ import numpy as np
 
 from .config import DetectorConfig
 from .qit_detector import QITConfig, create_qit_detector
+from .structural_signals import StructuralSignalDetector
 
 
 @dataclass
@@ -57,11 +63,20 @@ class UnitScores:
 
 
 class StructuralDriftDetector:
-    """Compatibility wrapper exposing prior API with QIT internals."""
+    """Enhanced drift detector with structural change detection.
+
+    Combines QIT component analysis with structural signals:
+    - Trajectory Acceleration: Detects degradation curvature
+    - Relational Instability: Detects sensor correlation breakdown
+
+    These structural signals enable earlier detection while maintaining
+    safety through strict multi-signal confirmation.
+    """
 
     def __init__(self, config: DetectorConfig, verbose: bool = False) -> None:
         self.config = config
         self.verbose = verbose
+        self.structural_detector = StructuralSignalDetector(verbose=verbose)
 
     def fit_reference(self, healthy_data: np.ndarray) -> ReferenceStats:
         healthy = np.asarray(healthy_data, dtype=float)
@@ -239,11 +254,12 @@ class StructuralDriftDetector:
 
         # --- Structural signals (NEW) ---
 
-        # Signal 4: TRAJECTORY ACCELERATION (on raw signal, more responsive than EMA)
-        acceleration_candidates = self._detect_acceleration(raw, baseline_std)
-
-        # Signal 5: RELATIONAL INSTABILITY (correlation breakdown)
-        correlation_candidates = self._detect_correlation_breakdown(sensor_data)
+        # Signal 4 & 5: STRUCTURAL SIGNALS (from reusable module)
+        acceleration_candidates, correlation_candidates = (
+            self.structural_detector.detect_all_structural_changes(
+                raw, sensor_data, baseline_std
+            )
+        )
 
         # Combine ALL phase 1 candidates (both amplitude and structural)
         all_candidates = np.concatenate([
@@ -305,105 +321,6 @@ class StructuralDriftDetector:
             print(f"[DETECT] first_signal={first_signal_cycle}, structural={structural_change_cycle}, confirmed={confirmation_cycle}")
 
         return confirmed_idx, warning_state
-
-    def _detect_acceleration(self, signal: np.ndarray, baseline_std: float) -> np.ndarray:
-        """Detect trajectory acceleration (2nd derivative).
-
-        Triggers when drift is accelerating, detecting early curvature toward failure.
-        Much more aggressive: catch ANY sign of positive acceleration (curving upward).
-        """
-        if len(signal) < 6:
-            return np.array([], dtype=int)
-
-        # Compute velocity (1st derivative)
-        velocity = np.diff(signal)
-
-        # Compute acceleration (2nd derivative)
-        acceleration = np.diff(velocity)
-
-        # VERY aggressive threshold - catch smallest positive curvatures
-        accel_threshold = 0.005 * baseline_std  # Extremely sensitive
-
-        candidates = []
-
-        # Approach 1: Direct acceleration trigger
-        # If any acceleration is clearly positive, mark it
-        for i in range(len(acceleration)):
-            if acceleration[i] > accel_threshold:
-                # Check if this is part of a trend (not just noise)
-                # Look at next 2-3 points
-                future_window = acceleration[i:min(i+3, len(acceleration))]
-                if np.mean(future_window) > accel_threshold * 0.5:
-                    candidates.append(i + 1)
-
-        # Approach 2: Curvature detection
-        # Detect when slope itself is increasing (d²/dt² > 0 consistently)
-        window = 3
-        for i in range(window, len(acceleration)):
-            window_accel = acceleration[i-window:i]
-            # If most of this window is positive acceleration
-            if np.sum(window_accel > accel_threshold) >= 2:  # 2 out of 3
-                candidates.append(i + 1)
-
-        return np.array(np.unique(candidates), dtype=int)
-
-    def _detect_correlation_breakdown(self, sensor_data: np.ndarray) -> np.ndarray:
-        """Detect relational instability (correlation structure changes).
-
-        Triggers when sensor relationships degrade, indicating systemic failure onset.
-        Detects earlier than amplitude-based signals by catching correlations breakdown.
-        """
-        if sensor_data.shape[0] < 35 or sensor_data.shape[1] < 2:
-            return np.array([], dtype=int)
-
-        # Filter out near-constant sensors (avoid division by zero in corrcoef)
-        sensor_stds = np.std(sensor_data, axis=0)
-        variable_mask = sensor_stds > 1e-6
-        if np.sum(variable_mask) < 2:
-            return np.array([], dtype=int)
-
-        data_filtered = sensor_data[:, variable_mask]
-
-        # Baseline: correlation matrix from first 15% of data
-        baseline_end = min(40, max(5, int(data_filtered.shape[0] * 0.15)))
-        baseline_data = data_filtered[:baseline_end]
-
-        # Compute baseline correlation structure
-        baseline_corr = np.corrcoef(baseline_data.T)
-        baseline_corr = np.nan_to_num(baseline_corr, nan=0.0, posinf=0.0, neginf=0.0)
-
-        # Rolling window analysis
-        window = 20  # cycles
-        candidates = []
-
-        # Track correlation changes over time
-        for i in range(window, data_filtered.shape[0]):
-            window_start = max(0, i - window)
-            window_data = data_filtered[window_start:i]
-
-            if window_data.shape[0] < 3:
-                continue
-
-            # Compute correlation for this window
-            try:
-                rolling_corr = np.corrcoef(window_data.T)
-                rolling_corr = np.nan_to_num(rolling_corr, nan=0.0, posinf=0.0, neginf=0.0)
-            except:
-                continue
-
-            # Measure correlation change (Frobenius norm of difference)
-            diff = np.abs(rolling_corr - baseline_corr)
-            frobenius_distance = np.linalg.norm(diff, 'fro')
-
-            # Aggressive threshold for early detection
-            # Lower threshold catches structural changes earlier
-            n_sensors = data_filtered.shape[1]
-            threshold = 0.10 * np.sqrt(n_sensors)  # Very aggressive
-
-            if frobenius_distance > threshold:
-                candidates.append(i)
-
-        return np.array(np.unique(candidates), dtype=int)
 
     def _to_qit_config(self) -> QITConfig:
         amber_enter = max(0.0, min(1.0, float(self.config.qit_healthy)))
