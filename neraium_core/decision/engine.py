@@ -34,12 +34,13 @@ from neraium_core.decision.evolution_decision_resolver import (
 from neraium_core.decision.decision_window_engine import DecisionWindowEngine
 from neraium_core.decision.trajectory_engine import TrajectoryEngine
 from neraium_core.decision.intervention_guidance_engine import InterventionGuidanceEngine
+from neraium_core.decision.outcome_tracker import OutcomeTracker
 
 
 class DecisionEngine:
     """Main decision layer orchestrator."""
 
-    def __init__(self, enable_persistence_tracking: bool = True):
+    def __init__(self, enable_persistence_tracking: bool = True, enable_outcome_tracking: bool = False):
         self.pattern_memory = pm_module.PatternMemory()
         self.pattern_outcome_influencer = PatternOutcomeInfluencer()
         self.persistence_tracker = persistence_tracker.PersistenceTracker()
@@ -61,6 +62,7 @@ class DecisionEngine:
         self.recent_events: list[str] = []
         self.enable_persistence_tracking = enable_persistence_tracking
         self.frame_counter = 0
+        self.outcome_tracker: Optional[OutcomeTracker] = OutcomeTracker() if enable_outcome_tracking else None
 
     def decide(
         self,
@@ -633,6 +635,10 @@ class DecisionEngine:
         self.previous_severity = severity
         self.previous_trajectory = temporal_trajectory
         self.previous_degradation_stage = current_degradation_stage
+
+        # Log decision to outcome tracker if enabled
+        self._log_decision_to_tracker(decision, sii_output)
+
         return decision
 
     def _compute_drift_trend(self, drift_history: Any) -> float:
@@ -684,3 +690,47 @@ class DecisionEngine:
             reasons.append("Suppressed from operator view (low priority)")
 
         return reasons if reasons else ["No strong signals; baseline behavior"]
+
+    def _log_decision_to_tracker(self, decision: Decision, sii_output: dict[str, Any]) -> Optional[str]:
+        """Log decision to outcome tracker for later evaluation (if enabled).
+
+        Args:
+            decision: The decision object
+            sii_output: Original SII output
+
+        Returns:
+            decision_id if logged, None if tracking disabled
+        """
+        if self.outcome_tracker is None:
+            return None
+
+        asset_id = sii_output.get("asset_id", "unknown")
+        reasoning = "; ".join(decision.reasons[:3]) if decision.reasons else decision.summary
+
+        decision_id = self.outcome_tracker.log_decision(
+            asset_id=asset_id,
+            frame_number=self.frame_counter,
+            severity=decision.severity,
+            trajectory=decision.trajectory,
+            degradation_stage=decision.degradation_stage,
+            reasoning_summary=reasoning,
+            action_horizon=decision.action_horizon,
+            primary_action=decision.primary_action,
+            decision_window_status=decision.decision_window.get("status") if decision.decision_window else None,
+            pattern_match_tier=decision.pattern_match_tier,
+            predicted_outcome_type=decision.pattern_outcome_type,
+            confidence=decision.finding_confidence,
+            metadata={
+                "frame_number": self.frame_counter,
+                "transient_score": decision.transient_score,
+                "drift_score": float(sii_output.get("structural_drift_score", 0.0)),
+            },
+        )
+
+        # Store decision_id in decision object for reference
+        if decision.decision_trace is None:
+            decision.decision_trace = {}
+        if isinstance(decision.decision_trace, dict):
+            decision.decision_trace["decision_id"] = decision_id
+
+        return decision_id
