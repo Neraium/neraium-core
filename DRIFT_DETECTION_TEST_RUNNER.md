@@ -4,6 +4,23 @@
 
 This is an efficient, multi-dimensional drift detection test runner that uses all 5 intelligence components from the Neraium framework to detect early signals of system degradation on NASA CMAPSS FD004 dataset.
 
+### FD004 Complexity (Hardest CMAPSS Variant)
+
+FD004 is the most challenging CMAPSS subset:
+
+- **249 units** in the test set (vs 100 in FD001-FD003)
+- **6 operating conditions** with non-linear degradation interactions
+- **2 fault modes**:
+  - HPC (High Pressure Compressor) degradation
+  - Fan degradation
+- **Highly variable degradation rates** - Different conditions and fault modes produce very different degradation trajectories
+
+This complexity requires:
+- **Operating condition awareness** - Same component signal means different things in different operating states
+- **Fault mode differentiation** - Different intelligence components activate for HPC vs Fan failures
+- **Adaptive thresholding** - Baseline varies significantly across conditions
+- **Multi-scale temporal analysis** - Some signals appear at short timescales, others long timescales
+
 ### Intelligence Components
 
 The runner integrates **5 QIT (Quantum-Information-Topological) intelligence signals**:
@@ -30,16 +47,16 @@ The runner uses existing dependencies. Ensure you have CMAPSS FD004 data accessi
 # Alternative: Specify via --path argument
 ```
 
-### Basic Usage
+### Two Runner Options
 
-Run the complete drift detection pipeline on FD004:
+#### 1. Basic Runner (Comprehensive Analysis)
+Run the complete drift detection pipeline on all 249 units:
 
 ```bash
 python -m fd00x.run_drift_detection_demo
 ```
 
-### With Options
-
+**With Options:**
 ```bash
 # Test only first 50 units (faster)
 python -m fd00x.run_drift_detection_demo --max-units 50
@@ -59,6 +76,28 @@ python -m fd00x.run_drift_detection_demo \
   --output-dir ./test_results \
   --units 1 5 \
   --no-plots
+```
+
+#### 2. Advanced Runner (Multi-Condition & Fault Mode Analysis)
+For detailed analysis of FD004's complexity:
+
+```bash
+python -m fd00x.run_advanced_fd004_demo
+```
+
+**Features:**
+- **Operating condition segmentation** - Analyzes all 6 FD004 conditions separately
+- **Fault mode inference** - Distinguishes HPC degradation from Fan degradation
+- **Per-condition lead times** - Different degradation rates per condition
+- **Component sensitivity analysis** - Which detectors activate in each condition
+
+**With Options:**
+```bash
+# Analyze first 50 units
+python -m fd00x.run_advanced_fd004_demo --max-units 50
+
+# Custom output
+python -m fd00x.run_advanced_fd004_demo --output-dir ./fd004_analysis
 ```
 
 ## Output Files
@@ -252,6 +291,53 @@ ALERT  → (if EMA drops below 0.85×threshold for 'exit_persistence' cycles) �
 This prevents chattering and ensures sustained, high-confidence alerts.
 
 ## Advanced Topics
+
+### Multi-Condition Analysis (Advanced Runner)
+
+The advanced FD004 runner (`AdvancedFD004TestRunner`) handles the complexity of 6 operating conditions:
+
+```python
+from fd00x.test_runner_advanced_fd004 import AdvancedFD004TestRunner
+
+runner = AdvancedFD004TestRunner(verbose=True)
+results, summary = runner.run_fd004_advanced()
+
+# Results include:
+# - operating_conditions_present: Which of 6 conditions appear in each unit
+# - lead_time_by_condition: Different lead times per condition
+# - component_by_condition: Which component dominates each condition
+# - inferred_fault_mode: "HPC_like", "Fan_like", or "mixed"
+# - degradation_trajectory: "smooth", "stepped", or "variable"
+```
+
+**Output Example:**
+```
+Operating Condition Analysis (6 conditions):
+  Condition 1 : 45 detections, lead_time=150 cycles
+  Condition 2 : 38 detections, lead_time=120 cycles
+  Condition 3 : 42 detections, lead_time=180 cycles
+  ...
+
+Inferred Fault Modes (249 units, 2 modes):
+  HPC_like     : 145 units (58.2%)
+  Fan_like     : 104 units (41.8%)
+```
+
+### Fault Mode Signature Recognition
+
+The advanced runner infers fault mode from component activation patterns:
+
+**HPC Degradation Pattern:**
+- Higher information component activation
+- More topological changes
+- Typical lead time: ~150 cycles
+- Degradation trajectory: Monotonic (steady decline)
+
+**Fan Degradation Pattern:**
+- Higher algorithmic component changes
+- More quantum phase-space anomalies
+- Typical lead time: ~120 cycles
+- Degradation trajectory: Stepped (sudden jumps)
 
 ### Walk-Forward Safety
 
