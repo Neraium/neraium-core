@@ -35,6 +35,7 @@ from neraium_core.decision.decision_window_engine import DecisionWindowEngine
 from neraium_core.decision.trajectory_engine import TrajectoryEngine
 from neraium_core.decision.intervention_guidance_engine import InterventionGuidanceEngine
 from neraium_core.decision.outcome_tracker import OutcomeTracker
+from neraium_core.decision.engine_optimized import DecisionComputationPipeline
 
 
 class DecisionEngine:
@@ -63,6 +64,7 @@ class DecisionEngine:
         self.enable_persistence_tracking = enable_persistence_tracking
         self.frame_counter = 0
         self.outcome_tracker: Optional[OutcomeTracker] = OutcomeTracker() if enable_outcome_tracking else None
+        self._pipeline = DecisionComputationPipeline()
 
     def decide(
         self,
@@ -110,9 +112,8 @@ class DecisionEngine:
         consistency_check_passed = True
 
         if self.enable_persistence_tracking:
-            # Update persistence tracker
             persistence_state = self.persistence_tracker.update_frame(
-                current_severity=policy.classify_severity(
+                current_severity=self._pipeline.phase_severity_classification(
                     state=state,
                     drift_score=drift_score,
                     relational_instability=relational_instability,
@@ -129,7 +130,7 @@ class DecisionEngine:
             )
             is_first_appearance = persistence_frames <= 1
 
-        severity = policy.classify_severity(
+        severity = self._pipeline.phase_severity_classification(
             state=state,
             drift_score=drift_score,
             relational_instability=relational_instability,
@@ -140,7 +141,7 @@ class DecisionEngine:
         )
 
         # === FINDING CONFIDENCE ===
-        finding_confidence = conf_module.score_finding_confidence(
+        finding_confidence = self._pipeline.phase_finding_confidence(
             drift_score=drift_score,
             signal_count=sensor_count,
             data_quality_issues=data_quality_issues,
@@ -170,9 +171,8 @@ class DecisionEngine:
 
         # === TRANSIENT DETECTION ===
         drift_history = sii_output.get("drift_history", [])
-        transient_score = transient_gating.score_transient_likelihood(
+        transient_score, is_safe_transient_flag = self._pipeline.phase_transient_detection(
             drift_score=drift_score,
-            drift_trend=self._compute_drift_trend(drift_history),
             shock_activity=shock_activity,
             system_phase=system_phase,
             state=state,
