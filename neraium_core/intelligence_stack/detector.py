@@ -535,6 +535,14 @@ class StructuralDriftDetector:
         phase1_candidates = phase1_candidates[phase1_candidates >= min_cycle]
 
         # --- PHASE 2: CONFIRMATION (Evidence Fusion with gating) ---
+        # Layer 5: Evidence Fusion with strict multi-signal confirmation
+        #
+        # Confirmation rule (tight gating):
+        #   - Count independent signals in confirmation window
+        #   - Require ≥2 independent signal types
+        #   - At least 1 must be from structural layer (accel, corr, regime)
+        #
+        # This prevents single noisy signals from driving false alarms.
 
         confirmed_idx = None
         if len(phase1_candidates) > 0:
@@ -544,21 +552,34 @@ class StructuralDriftDetector:
             window_end = min(first_alert + look_forward, n_cycles)
             in_window = ema[look_back:window_end]
 
-            # Check for structural signals in window [Structural Geometry, Relational Instability, Trajectory]
+            # Structural signals (Layers 1, 2, 4)
             accel_in_window = np.any((accel_candidates >= look_back) & (accel_candidates < window_end))
             corr_in_window = np.any((corr_candidates >= look_back) & (corr_candidates < window_end))
             regime_in_window = np.any((regime_transition_candidates >= look_back) & (regime_transition_candidates < window_end))
-            has_structural = accel_in_window or corr_in_window or regime_in_window
 
-            # Check for amplitude signals [Trajectory Dynamics]
+            # Count independent structural signal types
+            structural_signals = sum([accel_in_window, corr_in_window, regime_in_window])
+            has_structural = structural_signals > 0
+
+            # Amplitude / Trajectory signals (Layer 3)
             window_has_elevation = np.mean(in_window) > baseline_mean * 1.02
             window_has_breach = np.any(in_window >= baseline_mean + 0.5 * baseline_std)
             window_has_trend = np.any(np.diff(in_window) > 0)
-            has_amplitude = window_has_elevation or window_has_breach or window_has_trend
 
-            # Confirmation gating: require ≥1 structural signal
-            # (prevents single noisy sensor from triggering alarm)
-            if has_structural or has_amplitude:
+            # Count independent amplitude signal types
+            amplitude_signals = sum([window_has_elevation, window_has_breach, window_has_trend])
+            has_amplitude = amplitude_signals > 0
+
+            # Confirmation gating (Evidence Fusion — Tight Evidence Fusion Rule):
+            # Require EITHER:
+            #   (a) ≥2 structural signals (strong structural evidence), OR
+            #   (b) ≥1 structural signal AND ≥1 amplitude signal (multi-layer agreement)
+            #
+            # This prevents single noisy detectors from driving alarms while allowing
+            # legitimate multi-signal events to trigger warnings.
+            multi_structural = structural_signals >= 2
+            multi_layer = has_structural and has_amplitude
+            if multi_structural or multi_layer:
                 confirmed_idx = first_alert
 
         # --- PHASE 3: PERSISTENCE (Evidence Fusion) ---
