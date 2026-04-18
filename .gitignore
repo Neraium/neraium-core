@@ -88,7 +88,8 @@ fd001_canonical_fast_outputs/
 fd004_canonical_fast_outputs/
 
 # Generated output directories
-fd00x/
+fd00x/*
+!fd00x/test_runner_advanced_fd004.py
 fd004_outputs_subset/
 debug_outputs/
 backup_claude_ui/
