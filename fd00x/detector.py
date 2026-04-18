@@ -130,45 +130,9 @@ class StructuralDriftDetector:
 
         ema = _apply_ema(raw, self.config.ema_alpha)
 
-        threshold_std = override_threshold_std if override_threshold_std is not None else self.config.threshold_std
-        threshold = float(np.mean(ema[: max(1, min(ref.n_samples, ema.size))]) + threshold_std * max(np.std(ema[: max(1, min(ref.n_samples, ema.size))]), 1e-6))
-
-        persistence = override_persistence if override_persistence is not None else self.config.persistence
-        if self.config.enable_ensemble_voting:
-            vote_series, vote_threshold = _build_ensemble_vote_series(
-                ema=ema,
-                threshold=threshold,
-                micro_window=self.config.micro_window,
-                meso_window=self.config.meso_window,
-                macro_window=self.config.macro_window,
-                acceleration_window=self.config.acceleration_window,
-                acceleration_threshold=self.config.acceleration_threshold,
-                min_votes=self.config.ensemble_min_votes,
-            )
-            warning_state = compute_warning_state(
-                scores=vote_series,
-                threshold=np.full(ema.shape[0], vote_threshold, dtype=float),
-                persistence=persistence,
-                require_upward_trend=False,
-                slope_window=1,
-                min_slope=0.0,
-                exit_threshold_ratio=1.0,
-                exit_persistence=self.config.exit_persistence,
-                min_anomaly_duration=max(self.config.min_anomaly_duration, persistence),
-            )
-        else:
-            warning_state = compute_warning_state(
-                scores=ema,
-                threshold=np.full(ema.shape[0], threshold, dtype=float),
-                persistence=persistence,
-                require_upward_trend=self.config.require_upward_ema_trend,
-                slope_window=self.config.slope_window,
-                min_slope=self.config.min_slope,
-                exit_threshold_ratio=self.config.warning_exit_threshold_ratio,
-                exit_persistence=self.config.exit_persistence,
-                min_anomaly_duration=max(self.config.min_anomaly_duration, persistence),
-            )
-        warning_index = _first_true_index(warning_state)
+        # Use adaptive three-phase detection engine (replaces old threshold-based approach)
+        warning_index, warning_state = self._detect_adaptive_warning(ema, raw)
+        threshold = float(np.max(ema[:max(1, min(ref.n_samples, ema.size))])) if ema.size > 0 else 0.0
 
         component_activation_rates = {
             k: float(np.mean(v >= self.config.fusion_activation_floor))
@@ -208,6 +172,103 @@ class StructuralDriftDetector:
             override_threshold_std=override_threshold_std,
             override_persistence=override_persistence,
         )
+
+    def _detect_adaptive_warning(self, ema: np.ndarray, raw: np.ndarray) -> tuple[Optional[int], np.ndarray]:
+        """Adaptive three-phase detection engine (core improvement).
+
+        Phase 1: EARLY ALERT - Change-point detection (CUSUM, Velocity, Z-Score)
+        Phase 2: CONFIRM - Multi-signal validation
+        Phase 3: CRITICAL - Escalate if confirmed
+
+        Returns:
+            (warning_index, warning_state_array)
+        """
+        n_cycles = len(ema)
+        if n_cycles < 5:
+            return None, np.zeros(n_cycles, dtype=bool)
+
+        # Compute baseline from first 25% (healthy phase)
+        baseline_end = min(40, max(5, int(n_cycles * 0.25)))
+        baseline_data = ema[:baseline_end]
+        baseline_mean = float(np.mean(baseline_data))
+        baseline_std = float(np.std(baseline_data))
+        baseline_std = max(baseline_std, 1e-6)
+
+        # Phase 1: EARLY ALERT (aggressive change-point detection)
+        # Method 1: CUSUM (cumulative sum control chart)
+        cusum_threshold = 1.5 * baseline_std
+        cusum_positive = np.zeros(n_cycles)
+        for i in range(1, n_cycles):
+            delta = ema[i] - baseline_mean
+            cusum_positive[i] = max(0, cusum_positive[i-1] + delta - baseline_std * 0.2)
+        cusum_candidates = np.where(cusum_positive > cusum_threshold)[0]
+
+        # Method 2: Velocity-based detection
+        if n_cycles > 3:
+            velocity = np.abs(np.diff(ema))
+            velocity_threshold = np.percentile(velocity[:baseline_end], 75) + 1.5 * np.std(velocity[:baseline_end])
+            velocity_candidates = np.where(velocity > velocity_threshold)[0] + 1
+        else:
+            velocity_candidates = np.array([], dtype=int)
+
+        # Method 3: Z-score anomalies
+        zscore = np.abs(ema - baseline_mean) / (baseline_std + 1e-6)
+        zscore_candidates = np.where(zscore > 1.5)[0]
+
+        # Combine phase 1 candidates
+        phase1_candidates = np.unique(np.concatenate([cusum_candidates, velocity_candidates, zscore_candidates]))
+
+        # Filter out early healthy phase (first 25% of cycles)
+        min_cycle = int(n_cycles * 0.25)
+        phase1_candidates = phase1_candidates[phase1_candidates >= min_cycle]
+
+        # Phase 2: CONFIRM (validate early alerts)
+        confirmed_idx = None
+        if len(phase1_candidates) > 0:
+            first_alert = int(phase1_candidates[0])
+            look_back = max(0, first_alert - 5)
+            look_forward = min(15, n_cycles - first_alert)
+            window_end = first_alert + look_forward
+            in_window = ema[look_back:window_end]
+
+            # Check for confirmation signals
+            k_threshold = 1.5
+            slope_threshold = 0.003
+            multiplier = 1.2
+
+            # Signal checks
+            dynamic_threshold = baseline_mean + k_threshold * baseline_std
+            threshold_breaches = np.sum(in_window >= dynamic_threshold)
+
+            if len(in_window) > 2:
+                slopes = np.diff(in_window)
+                slope_breaches = np.sum(slopes > slope_threshold)
+            else:
+                slope_breaches = 0
+
+            relative_threshold = baseline_mean * multiplier
+            relative_breaches = np.sum(in_window >= relative_threshold)
+
+            window_increase = (np.mean(in_window) - baseline_mean) / (baseline_std + 1e-6)
+            trend_signal = window_increase > 1.0
+
+            # Confirmation: require at least 1 strong signal
+            confirmation_votes = sum([
+                threshold_breaches > 2,
+                slope_breaches >= 1,
+                relative_breaches > 1,
+                trend_signal,
+            ])
+
+            if confirmation_votes >= 1 or trend_signal:
+                confirmed_idx = first_alert
+
+        # Build warning state array
+        warning_state = np.zeros(n_cycles, dtype=bool)
+        if confirmed_idx is not None:
+            warning_state[confirmed_idx:] = True
+
+        return confirmed_idx, warning_state
 
     def _to_qit_config(self) -> QITConfig:
         amber_enter = max(0.0, min(1.0, float(self.config.qit_healthy)))
