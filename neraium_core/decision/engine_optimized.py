@@ -186,6 +186,46 @@ class DecisionComputationPipeline:
         self._phase_cache.clear()
         self._score_cache.clear()
 
+    def phase_pattern_matching(
+        self,
+        drift_score: float,
+        relational_instability: float,
+        shock_activity: float,
+        regime_distance: float,
+        system_phase_encoded: float,
+        force_recompute: bool = False,
+    ) -> Any:
+        """Phase 4: Pattern matching with feature vector caching.
+
+        Pattern matching against historical patterns to identify
+        similar failure/degradation modes.
+        """
+        from neraium_core.decision import pattern_memory as pm_module
+
+        cache_key = f"pattern:{drift_score:.4f}:{relational_instability:.4f}:{shock_activity:.4f}:{regime_distance:.4f}:{system_phase_encoded:.4f}"
+
+        if not force_recompute and cache_key in self._phase_cache:
+            self._record_phase("pattern_matching", True)
+            return self._phase_cache[cache_key].result
+
+        feature_vector = pm_module.build_feature_vector(
+            drift_score=drift_score,
+            relational_instability=relational_instability,
+            shock_activity=shock_activity,
+            regime_distance=regime_distance,
+            system_phase_encoded=system_phase_encoded,
+        )
+        # Actual pattern matching is done by pattern_memory singleton
+        # This phase just caches the feature vector computation
+
+        self._phase_cache[cache_key] = ComputationPhaseResult(
+            phase_name="pattern_matching",
+            result=feature_vector,
+            cached=False,
+        )
+        self._record_phase("pattern_matching", False)
+        return feature_vector
+
     def cache_stats(self) -> dict[str, Any]:
         """Return caching statistics for monitoring."""
         return {
