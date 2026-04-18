@@ -63,6 +63,13 @@ function interpolateStates(from: DecisionUIState, to: DecisionUIState, t: number
   }
 }
 
+const MEANING_LINES: Record<string, string> = {
+  Baseline: 'System operating normally',
+  'Early Shift': 'Change detected',
+  Emerging: 'Detected before failure conditions',
+  Critical: 'Failure imminent',
+}
+
 export default function DecisionUIDemo() {
   const [scenarioIndex, setScenarioIndex] = useState(0)
   const [displayedScenarioIndex, setDisplayedScenarioIndex] = useState(0)
@@ -70,20 +77,33 @@ export default function DecisionUIDemo() {
   const [fromScenarioIndex, setFromScenarioIndex] = useState(0)
   const [transitionStart, setTransitionStart] = useState<number | null>(null)
   const [progress, setProgress] = useState(1)
+  const [controlsHovered, setControlsHovered] = useState(false)
+  const [dimControls, setDimControls] = useState(false)
 
   const scenario = DEMO_SCENARIOS[scenarioIndex]
   const displayedScenario = DEMO_SCENARIOS[displayedScenarioIndex]
 
   useEffect(() => {
-    if (!isAutoPlay) return
+    if (!isAutoPlay) {
+      setDimControls(false)
+      return
+    }
+    const t = setTimeout(() => setDimControls(true), 3000)
+    return () => clearTimeout(t)
+  }, [isAutoPlay, scenarioIndex])
 
+  useEffect(() => {
+    if (!isAutoPlay) return
+    if (scenarioIndex >= DEMO_SCENARIOS.length - 1) {
+      setIsAutoPlay(false)
+      return
+    }
     const timer = setTimeout(() => {
       setFromScenarioIndex(scenarioIndex)
-      setScenarioIndex((prev) => (prev + 1) % DEMO_SCENARIOS.length)
+      setScenarioIndex((prev) => prev + 1)
       setTransitionStart(performance.now())
       setProgress(0)
     }, scenario.durationMs)
-
     return () => clearTimeout(timer)
   }, [isAutoPlay, scenarioIndex, scenario.durationMs])
 
@@ -112,13 +132,22 @@ export default function DecisionUIDemo() {
     return interpolateStates(DEMO_SCENARIOS[fromScenarioIndex].state, scenario.state, progress)
   }, [scenario, scenarioIndex, fromScenarioIndex, progress])
 
-  const meaningLine = displayedScenario.name === 'Emerging' ? 'Detected before failure conditions' : null
+  const meaningLine = MEANING_LINES[displayedScenario.name] || null
 
   return (
     <div style={styles.container}>
-      <DecisionUI state={uiState} narrative={displayedScenario.narrative} meaningLine={meaningLine} />
+      <DecisionUI state={uiState} narrative={displayedScenario.narrative} meaningLine={meaningLine} isAutoPlay={isAutoPlay} />
 
-      <div style={styles.controls}>
+      <div
+        style={{
+          ...styles.controls,
+          opacity: isAutoPlay ? 0 : dimControls && !controlsHovered ? 0.18 : 1,
+          pointerEvents: isAutoPlay ? 'none' : 'auto',
+          transition: 'opacity 1s ease',
+        }}
+        onMouseEnter={() => setControlsHovered(true)}
+        onMouseLeave={() => setControlsHovered(false)}
+      >
         <div style={styles.controlsContent}>
           <div style={styles.status}>
             <span style={styles.label}>{displayedScenario.name}</span>
@@ -163,6 +192,22 @@ export default function DecisionUIDemo() {
                 ›
               </button>
             )}
+
+            {scenarioIndex === DEMO_SCENARIOS.length - 1 && !isAutoPlay && (
+              <button
+                onClick={() => {
+                  setFromScenarioIndex(scenarioIndex)
+                  setScenarioIndex(0)
+                  setTransitionStart(performance.now())
+                  setProgress(0)
+                  setIsAutoPlay(true)
+                }}
+                style={styles.button}
+                title="Replay"
+              >
+                ↻
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -170,10 +215,10 @@ export default function DecisionUIDemo() {
   )
 }
 
-const styles = {
-  container: { position: 'relative' as const },
+const styles: Record<string, React.CSSProperties> = {
+  container: { position: 'relative' },
   controls: {
-    position: 'fixed' as const,
+    position: 'fixed',
     bottom: '30px',
     left: '32px',
     zIndex: 100,

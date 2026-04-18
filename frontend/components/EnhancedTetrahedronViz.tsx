@@ -211,7 +211,7 @@ export default function EnhancedTetrahedronViz({ tetrahedronState, isInteractive
       <div
         ref={containerRef}
         className="w-full rounded-3xl border border-slate-800/35"
-        style={{ height: '810px', background: vignette }}
+        style={{ height: '560px', background: vignette }}
       />
       <div className="absolute bottom-6 right-6 text-xs text-slate-500 pointer-events-none">
         {isInteractive && 'Drag to rotate'}
