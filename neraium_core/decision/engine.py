@@ -27,6 +27,10 @@ from neraium_core.decision.temporal_coherence_scoring import TemporalCoherenceSc
 from neraium_core.decision.models import EvolutionContext
 from neraium_core.decision.causal_degradation_tracker import CausalDegradationTracker
 from neraium_core.decision.evolution_narrative_builder import EvolutionNarrativeBuilder
+from neraium_core.decision.evolution_decision_resolver import (
+    EvolutionDecisionResolver,
+    EvolutionDecisionResolution,
+)
 
 
 class DecisionEngine:
@@ -42,6 +46,7 @@ class DecisionEngine:
         self.coherence_scorer = TemporalCoherenceScorer()
         self.degradation_tracker = CausalDegradationTracker()
         self.narrative_builder = EvolutionNarrativeBuilder()
+        self.decision_resolver = EvolutionDecisionResolver()
         self.previous_state: Optional[dict[str, Any]] = None
         self.previous_persistence: Optional[PersistenceState] = None
         self.previous_severity: Optional[SeverityLevel] = None
@@ -430,6 +435,11 @@ class DecisionEngine:
             drift_score=drift_score,
         )
 
+        # === APPLY EVOLUTION-INFORMED CONFIDENCE BOOST ===
+        # (Before decision creation, so it's included in the final output)
+        if "action_confidence_evolution_boost" in locals():
+            action_confidence = min(1.0, action_confidence + action_confidence_evolution_boost)
+
         # === SPRINT 1: BUILD EVOLUTION CONTEXT ===
         primary_coherence = coherence_profile.coherences.get("drift_score")
         evolution_context = EvolutionContext(
@@ -458,6 +468,20 @@ class DecisionEngine:
             finding_confidence=finding_confidence,
             persistence_frames=persistence_frames if self.enable_persistence_tracking else 0,
         )
+
+        # === SPRINT 4: EVOLUTION-INFORMED DECISION RESOLUTION ===
+        evolution_resolution = self.decision_resolver.resolve_with_evolution(
+            threshold_severity=severity,
+            threshold_confidence=finding_confidence,
+            evolution_context=evolution_context,
+            degradation_map=degradation_map,
+            evolution_narrative=evolution_narrative,
+            persistence_frames=persistence_frames if self.enable_persistence_tracking else 0,
+        )
+
+        # Apply evolution-informed severity and boost action confidence
+        severity = evolution_resolution.final_severity
+        action_confidence_evolution_boost = evolution_resolution.recommendation_confidence_boost
 
         # === BUILD DECISION ===
         decision = Decision(
