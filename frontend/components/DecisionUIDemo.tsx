@@ -5,8 +5,8 @@ import DecisionUI from '@/components/DecisionUI'
 import { DEMO_SCENARIOS } from '@/lib/demoScenarios'
 import { DecisionUIState } from '@/lib/decisionToUI'
 
-const INTERPOLATION_MS = 2500
-const TEXT_LAG_MS = 260
+const INTERPOLATION_MS = 3200
+const TEXT_LAG_MS = 340
 
 function lerp(a: number, b: number, t: number): number {
   return a + (b - a) * t
@@ -77,18 +77,17 @@ export default function DecisionUIDemo() {
   const [fromScenarioIndex, setFromScenarioIndex] = useState(0)
   const [transitionStart, setTransitionStart] = useState<number | null>(null)
   const [progress, setProgress] = useState(1)
-  const [controlsHovered, setControlsHovered] = useState(false)
-  const [dimControls, setDimControls] = useState(false)
+  const [controlsVisible, setControlsVisible] = useState(false)
 
   const scenario = DEMO_SCENARIOS[scenarioIndex]
   const displayedScenario = DEMO_SCENARIOS[displayedScenarioIndex]
 
   useEffect(() => {
     if (!isAutoPlay) {
-      setDimControls(false)
+      setControlsVisible(true)
       return
     }
-    const t = setTimeout(() => setDimControls(true), 3000)
+    const t = setTimeout(() => setControlsVisible(false), 4000)
     return () => clearTimeout(t)
   }, [isAutoPlay, scenarioIndex])
 
@@ -135,18 +134,20 @@ export default function DecisionUIDemo() {
   const meaningLine = MEANING_LINES[displayedScenario.name] || null
 
   return (
-    <div style={styles.container}>
+    <div
+      style={styles.container}
+      onMouseMove={() => { if (isAutoPlay) setControlsVisible(true) }}
+      onMouseLeave={() => { if (isAutoPlay) setControlsVisible(false) }}
+    >
       <DecisionUI state={uiState} narrative={displayedScenario.narrative} meaningLine={meaningLine} isAutoPlay={isAutoPlay} />
 
       <div
         style={{
           ...styles.controls,
-          opacity: isAutoPlay ? 0 : dimControls && !controlsHovered ? 0.18 : 1,
-          pointerEvents: isAutoPlay ? 'none' : 'auto',
-          transition: 'opacity 1s ease',
+          opacity: isAutoPlay ? (controlsVisible ? 0.55 : 0) : 1,
+          pointerEvents: isAutoPlay && !controlsVisible ? 'none' : 'auto',
+          transition: 'opacity 1.4s cubic-bezier(0.22, 1, 0.36, 1)',
         }}
-        onMouseEnter={() => setControlsHovered(true)}
-        onMouseLeave={() => setControlsHovered(false)}
       >
         <div style={styles.controlsContent}>
           <div style={styles.status}>
@@ -219,8 +220,8 @@ const styles: Record<string, React.CSSProperties> = {
   container: { position: 'relative' },
   controls: {
     position: 'fixed',
-    bottom: '30px',
-    left: '32px',
+    bottom: '26px',
+    left: '28px',
     zIndex: 100,
   },
   controlsContent: {
@@ -236,12 +237,12 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: '12px',
   },
   label: {
-    color: 'rgba(255, 255, 255, 0.56)',
+    color: 'rgba(255, 255, 255, 0.48)',
     fontWeight: '600',
     letterSpacing: '0.07em',
   },
   progress: {
-    color: 'rgba(255, 255, 255, 0.34)',
+    color: 'rgba(255, 255, 255, 0.28)',
     fontSize: '11px',
     fontVariantNumeric: 'tabular-nums',
   },
@@ -250,8 +251,8 @@ const styles: Record<string, React.CSSProperties> = {
     gap: '4px',
     padding: '8px 12px',
     borderRadius: '8px',
-    backgroundColor: 'rgba(7, 15, 30, 0.56)',
-    border: '1px solid rgba(148, 163, 184, 0.2)',
+    backgroundColor: 'rgba(7, 15, 30, 0.48)',
+    border: '1px solid rgba(148, 163, 184, 0.14)',
     backdropFilter: 'blur(8px)',
   },
   button: {
@@ -261,11 +262,11 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: '4px',
     border: 'none',
     backgroundColor: 'transparent',
-    color: 'rgba(255, 255, 255, 0.68)',
+    color: 'rgba(255, 255, 255, 0.58)',
     fontSize: '14px',
     fontWeight: '600',
     cursor: 'pointer',
-    transition: 'all 0.46s ease',
+    transition: 'all 0.6s cubic-bezier(0.22, 1, 0.36, 1)',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',

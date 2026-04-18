@@ -17,9 +17,8 @@ export default function ActionPanel({ action, impactWindow }: ActionPanelProps) 
       setShowCommand(true)
       return
     }
-
     setShowCommand(false)
-    const timer = setTimeout(() => setShowCommand(true), 240)
+    const timer = setTimeout(() => setShowCommand(true), 340)
     return () => clearTimeout(timer)
   }, [isCritical, action.primaryAction])
 
@@ -53,8 +52,8 @@ export default function ActionPanel({ action, impactWindow }: ActionPanelProps) 
         style={{
           ...styles.horizonLabel,
           color: horizonColor,
-          animation: isCritical ? 'commandPulse 3.4s ease-in-out infinite' : 'none',
           opacity: showCommand ? 1 : 0.05,
+          transition: 'opacity 0.9s cubic-bezier(0.22, 1, 0.36, 1)',
         }}
       >
         {getHorizonLabel(action.horizon)}
@@ -63,59 +62,55 @@ export default function ActionPanel({ action, impactWindow }: ActionPanelProps) 
         style={{
           ...styles.actionText,
           opacity: showCommand ? 1 : 0.02,
-          transform: showCommand ? 'translateY(0px)' : 'translateY(4px)',
+          transform: showCommand ? 'translateY(0px)' : 'translateY(5px)',
+          transition: 'opacity 0.9s cubic-bezier(0.22, 1, 0.36, 1), transform 0.9s cubic-bezier(0.22, 1, 0.36, 1)',
         }}
       >
         {action.primaryAction}
       </div>
-      {impactWindow && <div style={{ ...styles.windowText, opacity: showCommand ? 0.9 : 0 }}>{impactWindow}</div>}
+      {impactWindow && (
+        <div
+          style={{
+            ...styles.windowText,
+            opacity: showCommand ? 0.78 : 0,
+            transition: 'opacity 0.9s cubic-bezier(0.22, 1, 0.36, 1)',
+          }}
+        >
+          {impactWindow}
+        </div>
+      )}
     </div>
   )
 }
 
-const styles = {
+const styles: Record<string, React.CSSProperties> = {
   container: {
     display: 'flex',
-    flexDirection: 'column' as const,
-    gap: '12px',
-    padding: '18px 0 16px',
-    transition: 'all 0.62s ease',
+    flexDirection: 'column',
+    gap: '10px',
+    padding: '10px 0 8px',
+    transition: 'all 0.9s cubic-bezier(0.22, 1, 0.36, 1)',
   },
   horizonLabel: {
-    fontSize: '30px',
+    fontSize: '22px',
     fontWeight: '780',
-    letterSpacing: '0.1em',
-    textTransform: 'uppercase' as const,
+    letterSpacing: '0.12em',
+    textTransform: 'uppercase',
     lineHeight: 1,
-    transition: 'color 0.62s ease, opacity 0.62s ease',
   },
   actionText: {
-    marginTop: '9px',
-    fontSize: '38px',
-    fontWeight: '520',
+    marginTop: '4px',
+    fontSize: '32px',
+    fontWeight: '540',
     color: '#f8fafc',
-    lineHeight: 1.05,
+    lineHeight: 1.1,
     maxWidth: '18ch',
-    transition: 'opacity 0.62s ease, transform 0.62s ease',
   },
   windowText: {
-    marginTop: '8px',
-    fontSize: '13px',
+    marginTop: '6px',
+    fontSize: '12px',
     letterSpacing: '0.08em',
-    color: 'rgba(203, 213, 225, 0.74)',
-    textTransform: 'uppercase' as const,
-    transition: 'opacity 0.62s ease',
+    color: 'rgba(148, 163, 184, 0.68)',
+    textTransform: 'uppercase',
   },
-}
-
-if (typeof document !== 'undefined' && !document.getElementById('action-panel-motion')) {
-  const style = document.createElement('style')
-  style.id = 'action-panel-motion'
-  style.textContent = `
-    @keyframes commandPulse {
-      0%, 100% { opacity: 1; transform: translateY(0px); }
-      50% { opacity: 0.94; transform: translateY(-1px); }
-    }
-  `
-  document.head.appendChild(style)
 }

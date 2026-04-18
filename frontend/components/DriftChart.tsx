@@ -1,15 +1,26 @@
 'use client'
 
-import { DriftChart as DriftChartType } from '@/lib/decisionToUI'
+import { DriftChart as DriftChartType, Severity } from '@/lib/decisionToUI'
 import { useEffect, useRef } from 'react'
 
 interface DriftChartProps {
   chart: DriftChartType
   minimal?: boolean
+  severity?: Severity
 }
 
-export default function DriftChart({ chart, minimal = false }: DriftChartProps) {
+function severityToColor(severity?: Severity): string {
+  switch (severity) {
+    case Severity.HIGH: return '#ef4444'
+    case Severity.ELEVATED: return '#f97316'
+    case Severity.MODERATE: return '#eab308'
+    default: return '#60a5fa'
+  }
+}
+
+export default function DriftChart({ chart, minimal = false, severity }: DriftChartProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
+  const lineColor = severityToColor(severity)
 
   useEffect(() => {
     if (!canvasRef.current || chart.dataPoints.length === 0) return
@@ -30,11 +41,11 @@ export default function DriftChart({ chart, minimal = false }: DriftChartProps) 
     ctx.fillStyle = `rgba(2, 6, 23, ${0.28 * m})`
     ctx.fillRect(0, 0, width, height)
 
-    const padding = { top: 16, right: 16, bottom: 24, left: 40 }
+    const padding = { top: 14, right: 14, bottom: 22, left: 36 }
     const chartWidth = width - padding.left - padding.right
     const chartHeight = height - padding.top - padding.bottom
 
-    ctx.strokeStyle = `rgba(148, 163, 184, ${0.14 * m})`
+    ctx.strokeStyle = `rgba(148, 163, 184, ${0.12 * m})`
     ctx.lineWidth = 1
     for (let i = 0; i <= 4; i++) {
       const y = padding.top + (i * chartHeight) / 4
@@ -45,9 +56,9 @@ export default function DriftChart({ chart, minimal = false }: DriftChartProps) 
     }
 
     const thresholdY = padding.top + chartHeight * (1 - chart.detectionThreshold)
-    ctx.strokeStyle = `rgba(239, 68, 68, ${0.38 * m})`
-    ctx.lineWidth = 1.5
-    ctx.setLineDash([4, 4])
+    ctx.strokeStyle = `rgba(239, 68, 68, ${0.28 * m})`
+    ctx.lineWidth = 1.2
+    ctx.setLineDash([3, 4])
     ctx.beginPath()
     ctx.moveTo(padding.left, thresholdY)
     ctx.lineTo(width - padding.right, thresholdY)
@@ -55,8 +66,10 @@ export default function DriftChart({ chart, minimal = false }: DriftChartProps) 
     ctx.setLineDash([])
 
     if (chart.dataPoints.length > 1) {
-      ctx.strokeStyle = minimal ? 'rgba(96, 165, 250, 0.35)' : '#60a5fa'
-      ctx.lineWidth = minimal ? 1.5 : 2
+      ctx.strokeStyle = minimal ? `${lineColor}59` : lineColor
+      ctx.lineWidth = minimal ? 1.5 : 2.2
+      ctx.lineJoin = 'round'
+      ctx.lineCap = 'round'
       ctx.beginPath()
       chart.dataPoints.forEach((point, idx) => {
         const x = padding.left + (idx / (chart.dataPoints.length - 1)) * chartWidth
@@ -72,28 +85,39 @@ export default function DriftChart({ chart, minimal = false }: DriftChartProps) 
       const y = padding.top + chartHeight * (1 - point.driftScore)
       const isCurrentFrame = idx === chart.currentFrameIdx
 
-      ctx.fillStyle = isCurrentFrame
-        ? (minimal ? 'rgba(147, 197, 253, 0.55)' : '#93c5fd')
-        : `rgba(96, 165, 250, ${0.34 * m})`
-      ctx.beginPath()
-      ctx.arc(x, y, isCurrentFrame ? 3.5 : 2, 0, Math.PI * 2)
-      ctx.fill()
+      if (isCurrentFrame) {
+        ctx.fillStyle = minimal ? `${lineColor}99` : lineColor
+        ctx.beginPath()
+        ctx.arc(x, y, 4.5, 0, Math.PI * 2)
+        ctx.fill()
+        ctx.strokeStyle = `rgba(248, 250, 252, ${0.35 * m})`
+        ctx.lineWidth = 1.2
+        ctx.beginPath()
+        ctx.arc(x, y, 7, 0, Math.PI * 2)
+        ctx.stroke()
+      } else {
+        ctx.fillStyle = `${lineColor}${Math.round(0.28 * m * 255).toString(16).padStart(2, '0')}`
+        ctx.beginPath()
+        ctx.arc(x, y, 2, 0, Math.PI * 2)
+        ctx.fill()
+      }
     })
 
-    ctx.fillStyle = `rgba(203, 213, 225, ${0.45 * m})`
-    ctx.font = '11px system-ui, -apple-system, sans-serif'
+    ctx.fillStyle = `rgba(148, 163, 184, ${0.45 * m})`
+    ctx.font = '10px system-ui, -apple-system, sans-serif'
     ctx.textAlign = 'right'
     ctx.textBaseline = 'middle'
 
     for (let i = 0; i <= 4; i++) {
       const value = i / 4
       const y = padding.top + ((4 - i) * chartHeight) / 4
-      ctx.fillText((value * 100).toFixed(0) + '%', padding.left - 8, y)
+      ctx.fillText((value * 100).toFixed(0), padding.left - 7, y)
     }
 
-    ctx.fillStyle = `rgba(248, 113, 113, ${0.74 * m})`
-    ctx.fillText('Threshold', padding.left - 8, thresholdY)
-  }, [chart, minimal])
+    ctx.fillStyle = `rgba(239, 68, 68, ${0.55 * m})`
+    ctx.font = '9px system-ui, -apple-system, sans-serif'
+    ctx.fillText('Threshold', padding.left - 7, thresholdY)
+  }, [chart, minimal, lineColor])
 
   const currentDrift = chart.dataPoints[chart.currentFrameIdx]?.driftScore ?? 0
   const maxDrift = Math.max(...chart.dataPoints.map((p) => p.driftScore), 0)
@@ -110,7 +134,7 @@ export default function DriftChart({ chart, minimal = false }: DriftChartProps) 
         <div style={styles.statsRow}>
           <div style={styles.stat}>
             <span style={styles.statLabel}>Current</span>
-            <span style={styles.statValue}>{(currentDrift * 100).toFixed(1)}%</span>
+            <span style={{ ...styles.statValue, color: lineColor }}>{(currentDrift * 100).toFixed(1)}%</span>
           </div>
           <div style={styles.stat}>
             <span style={styles.statLabel}>Peak</span>
@@ -130,21 +154,21 @@ const styles: Record<string, React.CSSProperties> = {
   container: {
     display: 'flex',
     flexDirection: 'column',
-    gap: '15px',
-    padding: '13px 0',
-    transition: 'all 0.62s ease',
+    gap: '12px',
+    padding: '10px 0',
+    transition: 'all 0.9s cubic-bezier(0.22, 1, 0.36, 1)',
   },
   label: {
-    fontSize: '11px',
+    fontSize: '10px',
     fontWeight: '700',
-    letterSpacing: '0.12em',
-    color: 'rgba(203, 213, 225, 0.54)',
+    letterSpacing: '0.14em',
+    color: 'rgba(148, 163, 184, 0.55)',
     textTransform: 'uppercase',
-    transition: 'opacity 0.62s ease',
+    transition: 'opacity 0.9s cubic-bezier(0.22, 1, 0.36, 1)',
   },
   chartContainer: {
     position: 'relative',
-    height: '140px',
+    height: '130px',
     borderRadius: '10px',
     overflow: 'hidden',
   },
@@ -156,19 +180,19 @@ const styles: Record<string, React.CSSProperties> = {
   statsRow: {
     display: 'grid',
     gridTemplateColumns: 'repeat(3, 1fr)',
-    gap: '15px',
-    paddingTop: '8px',
+    gap: '12px',
+    paddingTop: '6px',
   },
   stat: {
     display: 'flex',
     flexDirection: 'column',
-    gap: '5px',
+    gap: '4px',
   },
   statLabel: {
     fontSize: '9px',
     fontWeight: '700',
     letterSpacing: '0.12em',
-    color: 'rgba(148, 163, 184, 0.66)',
+    color: 'rgba(148, 163, 184, 0.58)',
     textTransform: 'uppercase',
   },
   statValue: {

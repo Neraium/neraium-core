@@ -40,7 +40,7 @@ export default function DecisionUI({ state, isLoading = false, error = null, nar
 
   const impactWindow = inferImpactWindow(state)
   const severityTone = state.tetrahedron.severityScalar
-  const ambientDim = 1 - severityTone * 0.13
+  const ambientDim = 1 - severityTone * 0.10
   const isChartMinimal = isAutoPlay && (
     state.statusHeader.degradationStage === DegradationStage.BASELINE ||
     state.statusHeader.degradationStage === DegradationStage.EARLY_SHIFT
@@ -54,45 +54,46 @@ export default function DecisionUI({ state, isLoading = false, error = null, nar
           background: `linear-gradient(180deg, rgba(15,23,42,${0.26 + severityTone * 0.12}) 0%, rgba(2,6,23,${0.13 + severityTone * 0.16}) 100%)`,
         }}
       >
-        {/* Top narrative */}
-        {narrative && <div style={styles.narrative}>{narrative}</div>}
+        {/* Narrative — subdued, top anchor */}
+        {narrative && (
+          <div style={styles.narrative}>{narrative}</div>
+        )}
 
-        {/* Hero split */}
+        {/* Hero split: left decision stack + right tetrahedron */}
         <div style={styles.heroSplit}>
-          {/* Left: status + action + meaning */}
           <div style={styles.leftColumn}>
             <StatusHeader status={state.statusHeader} />
-            <div style={{ marginTop: '8px' }}>
+            <div style={styles.actionWrap}>
               <ActionPanel action={state.actionPanel} impactWindow={impactWindow} />
             </div>
             {meaningLine && <div style={styles.meaningLine}>{meaningLine}</div>}
+            <div style={styles.reasoningWrap}>
+              <DecisionTrace trace={state.decisionTrace} severity={state.statusHeader.severity} />
+            </div>
           </div>
 
-          {/* Right: tetrahedron large and vertically centered */}
           <div style={styles.rightColumn}>
             <EnhancedTetrahedronViz tetrahedronState={state.tetrahedron} isInteractive={true} />
           </div>
         </div>
 
-        {/* Bottom support band: timeline + drift */}
-        <div style={{ ...styles.supportBand, opacity: ambientDim, transition: 'opacity 0.62s ease' }}>
+        {/* Support band: timeline + drift — visually connected */}
+        <div style={{ ...styles.supportBand, opacity: ambientDim }}>
           <div style={styles.supportItem}>
             <SystemTimeline timeline={state.timeline} />
           </div>
+          <div style={styles.supportDivider} />
           <div style={styles.supportItem}>
             {state.driftChart.dataPoints.length > 0 ? (
-              <DriftChart chart={state.driftChart} minimal={isChartMinimal} />
+              <DriftChart chart={state.driftChart} minimal={isChartMinimal} severity={state.statusHeader.severity} />
             ) : (
               <div style={styles.simpleText}>No drift data</div>
             )}
           </div>
         </div>
 
-        {/* Lower-left trace panel */}
-        <div style={{ ...styles.traceRow, opacity: ambientDim, transition: 'opacity 0.62s ease' }}>
-          <div style={styles.tracePanel}>
-            <DecisionTrace trace={state.decisionTrace} />
-          </div>
+        {/* Footer row — timestamp only, aligned */}
+        <div style={{ ...styles.footerRow, opacity: 0.55 * ambientDim }}>
           <div style={styles.footer}>
             {new Date(state.timestamp).toLocaleString(undefined, {
               month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
@@ -114,24 +115,24 @@ const styles: Record<string, React.CSSProperties> = {
   surface: {
     display: 'flex',
     flexDirection: 'column',
-    gap: '18px',
+    gap: '22px',
     maxWidth: '1480px',
     margin: '0 auto',
-    padding: '21px 25px 0 23px',
+    padding: '24px 28px 16px',
     borderRadius: '24px',
-    transition: 'background 0.62s ease',
+    transition: 'background 1.1s cubic-bezier(0.22, 1, 0.36, 1)',
   },
   narrative: {
-    fontSize: '12px',
-    letterSpacing: '0.08em',
-    color: 'rgba(203, 213, 225, 0.65)',
+    fontSize: '11px',
+    letterSpacing: '0.1em',
+    color: 'rgba(148, 163, 184, 0.55)',
     textTransform: 'uppercase',
-    transition: 'opacity 0.62s ease',
+    transition: 'opacity 0.9s cubic-bezier(0.22, 1, 0.36, 1)',
   },
   heroSplit: {
     display: 'grid',
-    gridTemplateColumns: 'minmax(320px, 1fr) 2fr',
-    gap: '28px',
+    gridTemplateColumns: 'minmax(360px, 1fr) 1.9fr',
+    gap: '36px',
     alignItems: 'center',
     minHeight: '0',
   },
@@ -139,49 +140,62 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     flexDirection: 'column',
     gap: '18px',
-    paddingTop: '8px',
+    paddingTop: '6px',
+    minWidth: 0,
+  },
+  actionWrap: {
+    marginTop: '2px',
+  },
+  meaningLine: {
+    fontSize: '13px',
+    color: 'rgba(147, 197, 253, 0.72)',
+    letterSpacing: '0.04em',
+    marginTop: '-4px',
+    transition: 'opacity 0.9s cubic-bezier(0.22, 1, 0.36, 1)',
+  },
+  reasoningWrap: {
+    marginTop: '8px',
+    paddingTop: '14px',
+    borderTop: '1px solid rgba(148, 163, 184, 0.12)',
   },
   rightColumn: {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
     minHeight: '0',
-  },
-  meaningLine: {
-    fontSize: '13px',
-    color: 'rgba(147, 197, 253, 0.78)',
-    letterSpacing: '0.04em',
-    marginTop: '4px',
-    transition: 'opacity 0.62s ease',
+    transform: 'translateY(-4%)',
   },
   supportBand: {
     display: 'grid',
-    gridTemplateColumns: '1fr 1fr',
-    gap: '21px',
-    paddingTop: '4px',
+    gridTemplateColumns: '1fr auto 1fr',
+    gap: '0',
+    alignItems: 'start',
+    paddingTop: '10px',
+    borderTop: '1px solid rgba(148, 163, 184, 0.10)',
+    transition: 'opacity 0.9s cubic-bezier(0.22, 1, 0.36, 1)',
   },
   supportItem: {
     minWidth: 0,
+    padding: '0 8px',
   },
-  traceRow: {
-    display: 'grid',
-    gridTemplateColumns: 'minmax(320px, 1fr) 2fr',
-    gap: '28px',
-    alignItems: 'end',
-    paddingBottom: '12px',
+  supportDivider: {
+    width: '1px',
+    backgroundColor: 'rgba(148, 163, 184, 0.10)',
+    minHeight: '100%',
+    alignSelf: 'stretch',
   },
-  tracePanel: {
+  footerRow: {
+    display: 'flex',
+    justifyContent: 'flex-end',
     paddingTop: '4px',
+    transition: 'opacity 0.9s cubic-bezier(0.22, 1, 0.36, 1)',
   },
   footer: {
-    fontSize: '11px',
-    color: 'rgba(203,213,225,0.34)',
+    fontSize: '10px',
+    color: 'rgba(148, 163, 184, 0.38)',
     letterSpacing: '0.08em',
     textAlign: 'right',
     fontVariantNumeric: 'tabular-nums',
-    paddingBottom: '8px',
-    transition: 'opacity 0.62s ease',
-    alignSelf: 'end',
   },
   simpleText: {
     color: 'rgba(226, 232, 240, 0.62)',
