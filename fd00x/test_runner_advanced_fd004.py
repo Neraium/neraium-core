@@ -54,6 +54,7 @@ class FaultModeSignature:
 class AdvancedDriftMetrics:
     """Enhanced metrics for multi-condition, multi-fault FD004."""
 
+<<<<<<< HEAD
     unit_id: int
     n_cycles: int
     warning_cycle: Optional[int]
@@ -66,12 +67,24 @@ class AdvancedDriftMetrics:
     operating_conditions_present: List[int]
 
     # Component behavior across conditions
+=======
+    # Required fields (no defaults)
+    unit_id: int
+    n_cycles: int
+    false_positive: bool
+    n_operating_conditions: int
+    primary_operating_condition: int
+    operating_conditions_present: List[int]
+>>>>>>> 681b4feac5ff8c170071f36f3a4843076b2429ec
     mean_raw_drift: float
     mean_ema_drift: float
     max_raw_drift: float
     max_ema_drift: float
+<<<<<<< HEAD
 
     # Per-component metrics
+=======
+>>>>>>> 681b4feac5ff8c170071f36f3a4843076b2429ec
     quantum_peak: float
     quantum_mean: float
     quantum_variance: float
@@ -87,6 +100,7 @@ class AdvancedDriftMetrics:
     algorithmic_peak: float
     algorithmic_mean: float
     algorithmic_variance: float
+<<<<<<< HEAD
 
     # Fault mode inference
     inferred_fault_mode: str  # "HPC_like" | "Fan_like" | "mixed" | "unknown"
@@ -101,6 +115,20 @@ class AdvancedDriftMetrics:
     degradation_trajectory: str = "unknown"  # "smooth", "stepped", "variable"
     trajectory_variance: float = 0.0  # Measure of degradation smoothness
 
+=======
+    inferred_fault_mode: str
+    fault_mode_confidence: float
+    dominant_component: str
+    degradation_trajectory: str
+    trajectory_variance: float
+
+    # Optional fields (with defaults)
+    warning_cycle: Optional[int] = None
+    lead_time_cycles: Optional[int] = None
+    lead_time_by_condition: Dict[int, Optional[float]] = field(default_factory=dict)
+    component_by_condition: Dict[int, str] = field(default_factory=dict)
+
+>>>>>>> 681b4feac5ff8c170071f36f3a4843076b2429ec
 
 class AdvancedFD004TestRunner:
     """Handles FD004 complexity: 6 operating conditions × 2 fault modes."""
