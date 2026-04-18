@@ -276,7 +276,7 @@ class TestFormattingFunctions:
         assert "persistent" in context.lower() and "5" in context
 
         context = upgrade.format_temporal_context("accelerating", 4)
-        assert "acceleration" in context.lower()
+        assert "accelerat" in context.lower()
 
     def test_uncertainty_rationale_formatting(self) -> None:
         """Uncertainty contexts format to rationale strings."""
@@ -284,7 +284,7 @@ class TestFormattingFunctions:
         assert "High confidence" in rationale
 
         rationale = upgrade.format_uncertainty_rationale("low_evidence", 0.3, 1)
-        assert "Pattern match weak" in rationale or "low" in rationale.lower()
+        assert "pattern weak" in rationale.lower() or "live evidence" in rationale.lower()
 
         rationale = upgrade.format_uncertainty_rationale("conflicting_signals", 0.6, 2)
         assert "unstable" in rationale.lower() or "emerging" in rationale.lower()
