@@ -575,13 +575,14 @@ class AdvancedFD004TestRunner:
 
         # Unit-level summary CSV
         csv_path = out_path / "fd004_advanced_drift_results.csv"
-        with open(csv_path, "w", encoding="utf-8") as f:
+        with open(csv_path, "w", encoding="utf-8", newline="") as f:
             if results:
+                writer = csv.writer(f, quoting=csv.QUOTE_NONNUMERIC)
                 keys = list(asdict(results[0]).keys())
-                f.write(",".join(keys) + "\n")
+                writer.writerow(keys)
                 for r in results:
-                    values = [str(asdict(r)[k]) for k in keys]
-                    f.write(",".join(values) + "\n")
+                    values = [asdict(r)[k] for k in keys]
+                    writer.writerow(values)
         paths["csv"] = csv_path
 
         # Per-cycle time-series CSV
