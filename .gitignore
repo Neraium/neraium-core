@@ -97,3 +97,5 @@ greenhouse_demo/
 validation_results_post_fix/
 sii_regimes.json
 data/*
+!data/test_FD004.txt
+!data/RUL_FD004.txt
