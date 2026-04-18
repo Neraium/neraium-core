@@ -4,68 +4,49 @@ import { ActionPanel as ActionPanelType, ActionHorizon } from '@/lib/decisionToU
 
 interface ActionPanelProps {
   action: ActionPanelType
+  impactWindow?: string | null
 }
 
-export default function ActionPanel({ action }: ActionPanelProps) {
+export default function ActionPanel({ action, impactWindow }: ActionPanelProps) {
+  const isCritical = action.horizon === ActionHorizon.NOW && action.urgencyLevel >= 5
+
   const getHorizonColor = (horizon: ActionHorizon): string => {
     switch (horizon) {
       case ActionHorizon.NOW:
-        return '#dc2626'
+        return '#ef4444'
       case ActionHorizon.SOON:
-        return '#ea580c'
+        return '#f97316'
       case ActionHorizon.WATCHLIST:
-        return '#7c3aed'
+        return '#22c55e'
     }
   }
 
   const getHorizonLabel = (horizon: ActionHorizon): string => {
     switch (horizon) {
       case ActionHorizon.NOW:
-        return 'Immediate'
+        return 'ACT NOW'
       case ActionHorizon.SOON:
-        return 'Near term'
+        return 'PLAN ACTION'
       case ActionHorizon.WATCHLIST:
-        return 'Monitor'
+        return 'MONITOR'
     }
   }
 
   const horizonColor = getHorizonColor(action.horizon)
-  const horizonLabel = getHorizonLabel(action.horizon)
-  const urgencyBars = Array.from({ length: 5 }, (_, i) => i < action.urgencyLevel)
 
   return (
     <div style={styles.container}>
       <div
         style={{
-          ...styles.horizonBadge,
-          backgroundColor: `${horizonColor}15`,
-          borderColor: horizonColor,
+          ...styles.horizonLabel,
+          color: horizonColor,
+          animation: isCritical ? 'commandPulse 2.8s ease-in-out infinite' : 'none',
         }}
       >
-        <span style={{ ...styles.horizonLabel, color: horizonColor }}>{horizonLabel}</span>
+        {getHorizonLabel(action.horizon)}
       </div>
-
-      <div style={styles.actionSection}>
-        <div style={styles.actionLabel}>ACTION</div>
-        <div style={styles.actionText}>{action.primaryAction}</div>
-      </div>
-
-      <div style={styles.urgencySection}>
-        <div style={styles.urgencyLabel}>URGENCY</div>
-        <div style={styles.urgencyBars}>
-          {urgencyBars.map((isActive, idx) => (
-            <div
-              key={idx}
-              style={{
-                ...styles.urgencyBar,
-                backgroundColor: isActive ? horizonColor : 'rgba(255, 255, 255, 0.06)',
-                transition: 'all 0.3s ease',
-              }}
-            />
-          ))}
-        </div>
-        <div style={styles.urgencyValue}>{action.urgencyLevel}/5</div>
-      </div>
+      <div style={styles.actionText}>{action.primaryAction}</div>
+      {impactWindow && <div style={styles.windowText}>{impactWindow}</div>}
     </div>
   )
 }
@@ -74,78 +55,44 @@ const styles = {
   container: {
     display: 'flex',
     flexDirection: 'column' as const,
-    gap: '20px',
-    padding: '24px',
-    backgroundColor: 'rgba(15, 15, 15, 0.6)',
-    borderRadius: '12px',
-    border: '1px solid rgba(255, 255, 255, 0.08)',
-    backdropFilter: 'blur(4px)',
-    transition: 'all 0.3s ease',
-  },
-  horizonBadge: {
-    display: 'inline-flex',
-    alignItems: 'center',
-    padding: '10px 16px',
-    borderRadius: '8px',
-    border: '1px solid',
-    width: 'fit-content',
-    transition: 'all 0.3s ease',
+    gap: '12px',
+    padding: '18px 0 16px',
+    transition: 'all 0.5s ease',
   },
   horizonLabel: {
-    fontSize: '11px',
-    fontWeight: '700',
-    letterSpacing: '0.06em',
-    textTransform: 'capitalize' as const,
-  },
-  actionSection: {
-    display: 'flex',
-    flexDirection: 'column' as const,
-    gap: '10px',
-  },
-  actionLabel: {
-    fontSize: '10px',
-    fontWeight: '700',
+    fontSize: '30px',
+    fontWeight: '780',
     letterSpacing: '0.1em',
-    color: 'rgba(255, 255, 255, 0.4)',
     textTransform: 'uppercase' as const,
+    lineHeight: 1,
+    transition: 'color 0.5s ease',
   },
   actionText: {
-    fontSize: '14px',
-    fontWeight: '400',
-    color: '#f5f5f5',
-    lineHeight: '1.6',
+    marginTop: '8px',
+    fontSize: '38px',
+    fontWeight: '520',
+    color: '#f8fafc',
+    lineHeight: 1.05,
+    maxWidth: '18ch',
+    transition: 'opacity 0.45s ease',
   },
-  urgencySection: {
-    display: 'flex',
-    alignItems: 'center',
-    gap: '14px',
-    paddingTop: '8px',
-    borderTop: '1px solid rgba(255, 255, 255, 0.08)',
-  },
-  urgencyLabel: {
-    fontSize: '10px',
-    fontWeight: '700',
-    letterSpacing: '0.1em',
-    color: 'rgba(255, 255, 255, 0.4)',
+  windowText: {
+    marginTop: '8px',
+    fontSize: '13px',
+    letterSpacing: '0.08em',
+    color: 'rgba(203, 213, 225, 0.74)',
     textTransform: 'uppercase' as const,
-    minWidth: '60px',
   },
-  urgencyBars: {
-    display: 'flex',
-    gap: '5px',
-    flex: 1,
-  },
-  urgencyBar: {
-    flex: 1,
-    height: '5px',
-    borderRadius: '1px',
-  },
-  urgencyValue: {
-    fontSize: '11px',
-    fontWeight: '600',
-    color: 'rgba(255, 255, 255, 0.5)',
-    minWidth: '38px',
-    textAlign: 'right' as const,
-    fontVariantNumeric: 'tabular-nums',
-  },
+}
+
+if (typeof document !== 'undefined' && !document.getElementById('action-panel-motion')) {
+  const style = document.createElement('style')
+  style.id = 'action-panel-motion'
+  style.textContent = `
+    @keyframes commandPulse {
+      0%, 100% { opacity: 1; transform: translateY(0px); }
+      50% { opacity: 0.92; transform: translateY(-1px); }
+    }
+  `
+  document.head.appendChild(style)
 }

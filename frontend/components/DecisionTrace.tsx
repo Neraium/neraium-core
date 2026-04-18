@@ -6,83 +6,42 @@ interface DecisionTraceProps {
   trace: DecisionTraceType
 }
 
-export default function DecisionTrace({ trace }: DecisionTraceProps) {
-  const getPatternTierColor = (tier: string): string => {
-    switch (tier) {
-      case 'moderate':
-        return '#f59e0b'
-      case 'strong':
-        return '#ef4444'
-      default:
-        return '#6b7280'
-    }
-  }
+const compress = (text: string) =>
+  text
+    .replace('Structural degradation is persistent', 'Degradation persists')
+    .replace('Degradation is accelerating', 'Accelerating')
+    .replace('Pattern weak; using live evidence', 'Pattern weak')
+    .replace('Confidence level: ', 'Confidence ')
 
-  const getPatternTierLabel = (tier: string): string => {
-    switch (tier) {
-      case 'moderate':
-        return 'MODERATE MATCH'
-      case 'strong':
-        return 'STRONG MATCH'
-      default:
-        return 'WEAK MATCH'
-    }
-  }
+export default function DecisionTrace({ trace }: DecisionTraceProps) {
+  const factors = trace.secondaryFactors.slice(0, 2).map((item) => compress(item))
 
   return (
     <div style={styles.container}>
-      {/* Primary factor - most important */}
       <div style={styles.section}>
-        <div style={styles.sectionLabel}>PRIMARY</div>
-        <div style={styles.primaryFactor}>{trace.primaryFactor}</div>
+        <div style={styles.label}>Driver</div>
+        <div style={styles.primary}>{compress(trace.primaryFactor)}</div>
       </div>
 
-      {/* Secondary factors */}
-      {trace.secondaryFactors.length > 0 && (
+      {factors.length > 0 && (
         <div style={styles.section}>
-          <div style={styles.sectionLabel}>EVIDENCE</div>
+          <div style={styles.label}>Signals</div>
           <div style={styles.factorsList}>
-            {trace.secondaryFactors.map((factor, idx) => (
-              <div key={idx} style={styles.factorItem}>
-                <span style={styles.factorBullet}>•</span>
-                <span>{factor}</span>
-              </div>
+            {factors.map((factor, idx) => (
+              <div key={idx} style={styles.factorItem}>• {factor}</div>
             ))}
           </div>
         </div>
       )}
 
-      {/* Pattern insight if available */}
       {trace.patternInsight && (
         <div style={styles.section}>
-          <div style={styles.sectionLabel}>PATTERN</div>
-          <div
-            style={{
-              ...styles.patternCard,
-              borderLeftColor: getPatternTierColor(trace.patternInsight.tier),
-            }}
-          >
-            <div style={styles.patternTierBadge}>
-              <span style={{ color: getPatternTierColor(trace.patternInsight.tier) }}>
-                {getPatternTierLabel(trace.patternInsight.tier)}
-              </span>
-            </div>
-            <div style={styles.patternType}>
-              <span style={styles.patternTypeLabel}>Outcome:</span>
-              <span>{trace.patternInsight.outcomeType}</span>
-            </div>
-            {trace.patternInsight.influenceSummary && (
-              <div style={styles.patternSummary}>{trace.patternInsight.influenceSummary}</div>
-            )}
-          </div>
+          <div style={styles.label}>Pattern</div>
+          <div style={styles.patternLine}>{compress(trace.patternInsight.influenceSummary)}</div>
         </div>
       )}
 
-      {/* Confidence rationale */}
-      <div style={styles.section}>
-        <div style={styles.sectionLabel}>BASIS</div>
-        <div style={styles.rationale}>{trace.confidenceRationale}</div>
-      </div>
+      <div style={styles.rationale}>{compress(trace.confidenceRationale)}</div>
     </div>
   )
 }
@@ -91,84 +50,45 @@ const styles = {
   container: {
     display: 'flex',
     flexDirection: 'column' as const,
-    gap: '20px',
-    padding: '24px',
-    backgroundColor: 'rgba(15, 15, 15, 0.6)',
-    borderRadius: '12px',
-    border: '1px solid rgba(255, 255, 255, 0.08)',
-    backdropFilter: 'blur(4px)',
-    transition: 'all 0.3s ease',
+    gap: '14px',
+    padding: '18px 0 4px',
+    transition: 'opacity 0.45s ease',
   },
   section: {
     display: 'flex',
     flexDirection: 'column' as const,
-    gap: '10px',
+    gap: '6px',
   },
-  sectionLabel: {
-    fontSize: '10px',
-    fontWeight: '700',
-    letterSpacing: '0.1em',
-    color: 'rgba(255, 255, 255, 0.4)',
+  label: {
+    fontSize: '11px',
+    letterSpacing: '0.12em',
+    color: 'rgba(203, 213, 225, 0.54)',
     textTransform: 'uppercase' as const,
+    fontWeight: '600',
   },
-  primaryFactor: {
-    fontSize: '14px',
-    fontWeight: '400',
-    color: '#f5f5f5',
-    lineHeight: '1.6',
+  primary: {
+    fontSize: '18px',
+    lineHeight: 1.35,
+    color: '#f8fafc',
   },
   factorsList: {
     display: 'flex',
     flexDirection: 'column' as const,
-    gap: '8px',
+    gap: '5px',
   },
   factorItem: {
-    display: 'flex',
-    gap: '10px',
-    fontSize: '13px',
-    color: 'rgba(255, 255, 255, 0.7)',
-    alignItems: 'flex-start',
+    color: 'rgba(226, 232, 240, 0.72)',
+    fontSize: '15px',
   },
-  factorBullet: {
-    color: 'rgba(255, 255, 255, 0.25)',
-    minWidth: '14px',
-    fontWeight: '300',
-  },
-  patternCard: {
-    display: 'flex',
-    flexDirection: 'column' as const,
-    gap: '12px',
-    padding: '14px',
-    borderLeft: '3px solid',
-    backgroundColor: 'rgba(255, 255, 255, 0.02)',
-    borderRadius: '6px',
-    transition: 'all 0.3s ease',
-  },
-  patternTierBadge: {
-    fontSize: '10px',
-    fontWeight: '700',
-    letterSpacing: '0.06em',
-    textTransform: 'uppercase' as const,
-  },
-  patternType: {
-    display: 'flex',
-    gap: '8px',
-    fontSize: '13px',
-    color: 'rgba(255, 255, 255, 0.75)',
-  },
-  patternTypeLabel: {
-    color: 'rgba(255, 255, 255, 0.4)',
-    fontWeight: '600',
-    fontSize: '12px',
-  },
-  patternSummary: {
-    fontSize: '12px',
-    color: 'rgba(255, 255, 255, 0.6)',
-    lineHeight: '1.6',
+  patternLine: {
+    color: 'rgba(253, 186, 116, 0.92)',
+    fontSize: '15px',
   },
   rationale: {
-    fontSize: '13px',
-    color: 'rgba(255, 255, 255, 0.65)',
-    lineHeight: '1.6',
+    marginTop: '2px',
+    fontSize: '12px',
+    color: 'rgba(148, 163, 184, 0.82)',
+    textTransform: 'uppercase' as const,
+    letterSpacing: '0.08em',
   },
 }
