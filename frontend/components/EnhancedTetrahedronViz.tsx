@@ -39,6 +39,20 @@ const toCoord = (p: Point3D): THREE.Vector3 => {
   return result.multiplyScalar(SCALE)
 }
 
+// Compute the visual center of the static tetrahedron geometry (average of vertices)
+const TETRA_CENTER = new THREE.Vector3(
+  (VERTICES.STRUCTURAL.pos[0] + VERTICES.RELATIONAL.pos[0] + VERTICES.TEMPORAL.pos[0] + VERTICES.AUTHORITY.pos[0]) / 4,
+  (VERTICES.STRUCTURAL.pos[1] + VERTICES.RELATIONAL.pos[1] + VERTICES.TEMPORAL.pos[1] + VERTICES.AUTHORITY.pos[1]) / 4,
+  (VERTICES.STRUCTURAL.pos[2] + VERTICES.RELATIONAL.pos[2] + VERTICES.TEMPORAL.pos[2] + VERTICES.AUTHORITY.pos[2]) / 4,
+).multiplyScalar(SCALE)
+
+// Maximum extent of static geometry from center (vertex furthest from center)
+const TETRA_RADIUS = Math.max(
+  ...Object.values(VERTICES).map((v) =>
+    new THREE.Vector3(...(v.pos as [number, number, number])).multiplyScalar(SCALE).distanceTo(TETRA_CENTER)
+  )
+)
+
 export default function EnhancedTetrahedronViz({ tetrahedronState, isInteractive = true }: EnhancedTetrahedronVizProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null)
@@ -75,8 +89,10 @@ export default function EnhancedTetrahedronViz({ tetrahedronState, isInteractive
       const scene = new THREE.Scene()
       scene.fog = new THREE.FogExp2(0x020617, 0.07)
 
-      const camera = new THREE.PerspectiveCamera(60, width / height, 0.1, 1000)
-      camera.position.set(0, 0.6, 6.2)
+      // Camera: pulled back to fit full geometry + glow + pulse + safe margin
+      const camera = new THREE.PerspectiveCamera(55, width / height, 0.1, 1000)
+      camera.position.set(0, 0.4, 7.8)
+      camera.lookAt(TETRA_CENTER)
 
       const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true })
       renderer.setSize(width, height)
@@ -88,6 +104,8 @@ export default function EnhancedTetrahedronViz({ tetrahedronState, isInteractive
       container.appendChild(renderer.domElement)
 
       const group = new THREE.Group()
+      // Center the group so the tetrahedron's visual center is at scene origin
+      group.position.copy(TETRA_CENTER).multiplyScalar(-1)
       scene.add(group)
 
       const vertices = Object.values(VERTICES)
@@ -121,14 +139,14 @@ export default function EnhancedTetrahedronViz({ tetrahedronState, isInteractive
       group.add(point)
 
       const glow = new THREE.Mesh(
-        new THREE.SphereGeometry(0.66, 24, 24),
+        new THREE.SphereGeometry(0.58, 24, 24),
         new THREE.MeshBasicMaterial({ color: 0x22c55e, transparent: true, opacity: 0.38 }),
       )
       glow.position.copy(targetPositionRef.current)
       group.add(glow)
 
       const halo = new THREE.Mesh(
-        new THREE.SphereGeometry(1.0, 24, 24),
+        new THREE.SphereGeometry(0.88, 24, 24),
         new THREE.MeshBasicMaterial({ color: 0x22c55e, transparent: true, opacity: 0.08 }),
       )
       halo.position.copy(targetPositionRef.current)
@@ -184,9 +202,9 @@ export default function EnhancedTetrahedronViz({ tetrahedronState, isInteractive
           haloMat.opacity = 0.06 + sev * 0.18
 
           const t = performance.now() * 0.0009
-          const pulse = 1 + Math.sin(t) * (0.04 + sev * 0.07)
+          const pulse = 1 + Math.sin(t) * (0.04 + sev * 0.06)
           stateGlowRef.current.scale.setScalar(pulse)
-          stateHaloRef.current.scale.setScalar(1 + Math.sin(t * 0.7) * (0.02 + sev * 0.04))
+          stateHaloRef.current.scale.setScalar(1 + Math.sin(t * 0.7) * (0.02 + sev * 0.03))
         }
 
         renderer.render(scene, camera)
