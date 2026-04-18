@@ -1,19 +1,27 @@
 """
 fd00x — Structural early-warning evaluation framework for CMAPSS turbofan data.
 
-This package upgrades the FD00x experiment scripts into a reproducible
-evaluation framework for structural drift / relationship-change detection.
+Pure structural detection without experimental layers.
+
+Uses:
+- Raw structural drift: covariance, correlation, Mahalanobis distance
+- Trajectory acceleration: 2nd derivative (degradation curvature)
+- Relational instability: correlation breakdown (systemic degradation)
+- Multi-signal confirmation: combine structural + amplitude signals
+
+No RUL in detection logic. No future data leakage.
 
 Module layout
 -------------
-config      Tunable parameters, named presets (default_trusted / balanced / strict)
-detector    Core structural drift detector, corrected persistence warning logic
-settings    SII-ML preset settings (conservative / balanced / aggressive)
-sii         Core SII with five-layer atomic scoring
-sii_ml      ML-enhanced SII (attention + graph learning + neural booster)
-evaluation  Dataset loading, metrics, baselines, tuning, scoring
-plotting    Diagnostic plots (lazy matplotlib import)
-experiment  CLI entry point and workflow runner
+config              Tunable parameters, named presets
+detector            Core structural drift detector (no QIT layer)
+structural_signals  Reusable structural change detection
+settings            SII-ML preset settings
+sii                 Core SII with five-layer atomic scoring
+sii_ml              ML-enhanced SII
+evaluation          Dataset loading, metrics, baselines, tuning
+plotting            Diagnostic plots
+experiment          CLI entry point and workflow runner
 
 Quick start
 -----------
@@ -39,7 +47,7 @@ Key public API::
 
 from .config import ALL_DATASETS, DEFAULT_PRESET, PRESETS, DetectorConfig
 from .detector import StructuralDriftDetector, find_warning_index
-from .qit_detector import QITConfig, QITDetector, create_qit_detector
+from .structural_signals import StructuralSignalDetector, create_structural_detector
 from .settings import get_optimal_config
 from .sii import LayerWeights, SII
 from .sii_ml import SIIML, create_siiml
@@ -51,9 +59,8 @@ __all__ = [
     "ALL_DATASETS",
     "StructuralDriftDetector",
     "find_warning_index",
-    "QITConfig",
-    "QITDetector",
-    "create_qit_detector",
+    "StructuralSignalDetector",
+    "create_structural_detector",
     "LayerWeights",
     "SII",
     "SIIML",

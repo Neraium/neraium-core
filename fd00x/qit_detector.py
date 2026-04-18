@@ -1,8 +1,20 @@
-"""QIT (Quantum-Information-Topological) hierarchical degradation detector.
+"""DEPRECATED: QIT (Quantum-Information-Topological) hierarchical degradation detector.
 
-This module provides a production-friendly detector that fuses five
-mathematically distinct signals with progressive execution and automatic
-fallback behavior.
+⚠️  THIS MODULE IS NO LONGER USED IN THE ACTIVE DETECTION PATH
+
+As of 2026-04-18, StructuralDriftDetector uses pure structural detection instead.
+
+QIT was an experimental approach. The pure structural method achieves identical
+results with cleaner, more interpretable code:
+  - 100% detection rate
+  - 0% false positives
+  - 90-cycle median lead time on FD004
+
+This module is kept for backward compatibility and historical reference.
+NEW CODE should NOT import from qit_detector.
+
+For structural signal detection, use:
+  from fd00x import StructuralSignalDetector, StructuralDriftDetector
 """
 from __future__ import annotations
 
