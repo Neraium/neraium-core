@@ -43,9 +43,9 @@ export default function SystemTimeline({ timeline }: SystemTimelineProps) {
               <div
                 style={{
                   ...styles.stageDot,
-                  backgroundColor: isCurrent ? color : isCompleted ? color : 'rgba(148, 163, 184, 0.14)',
-                  borderColor: isCurrent ? color : 'rgba(148, 163, 184, 0.24)',
-                  boxShadow: isCurrent ? `0 0 10px ${color}66` : 'none',
+                  backgroundColor: isCurrent ? color : isCompleted ? color : 'rgba(148, 163, 184, 0.18)',
+                  borderColor: isCurrent ? color : isCompleted ? color : 'rgba(148, 163, 184, 0.32)',
+                  boxShadow: isCurrent ? `0 0 12px ${color}88` : 'none',
                 }}
               />
 

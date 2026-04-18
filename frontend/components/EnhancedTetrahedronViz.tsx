@@ -81,7 +81,7 @@ export default function EnhancedTetrahedronViz({ tetrahedronState, isInteractive
         new THREE.Vector3(...(vertices[a].pos as [number, number, number])),
         new THREE.Vector3(...(vertices[b].pos as [number, number, number])),
       ])
-      const mat = new THREE.LineBasicMaterial({ color: 0x64748b, transparent: true, opacity: 0.88 })
+      const mat = new THREE.LineBasicMaterial({ color: 0x78829f, transparent: true, opacity: 0.94, linewidth: 1.5 })
       group.add(new THREE.Line(geom, mat))
     })
 
@@ -89,7 +89,7 @@ export default function EnhancedTetrahedronViz({ tetrahedronState, isInteractive
       const pos = new THREE.Vector3(...(vertex.pos as [number, number, number]))
       const node = new THREE.Mesh(
         new THREE.IcosahedronGeometry(0.16, 2),
-        new THREE.MeshStandardMaterial({ color: vertex.color, emissive: vertex.color, emissiveIntensity: 0.2 }),
+        new THREE.MeshStandardMaterial({ color: vertex.color, emissive: vertex.color, emissiveIntensity: 0.32 }),
       )
       node.position.copy(pos)
       group.add(node)
@@ -99,28 +99,28 @@ export default function EnhancedTetrahedronViz({ tetrahedronState, isInteractive
     group.add(trailGroup)
 
     const point = new THREE.Mesh(
-      new THREE.SphereGeometry(0.21, 20, 20),
-      new THREE.MeshPhongMaterial({ color: 0x22c55e, emissive: 0x22c55e, emissiveIntensity: 0.7, shininess: 150 }),
+      new THREE.SphereGeometry(0.23, 22, 22),
+      new THREE.MeshPhongMaterial({ color: 0x22c55e, emissive: 0x22c55e, emissiveIntensity: 0.85, shininess: 180 }),
     )
     point.position.copy(targetPositionRef.current)
     group.add(point)
 
     const glow = new THREE.Mesh(
-      new THREE.SphereGeometry(0.38, 20, 20),
-      new THREE.MeshBasicMaterial({ color: 0x22c55e, transparent: true, opacity: 0.22 }),
+      new THREE.SphereGeometry(0.42, 20, 20),
+      new THREE.MeshBasicMaterial({ color: 0x22c55e, transparent: true, opacity: 0.28 }),
     )
     glow.position.copy(targetPositionRef.current)
     group.add(glow)
 
-    const key = new THREE.PointLight(0x93c5fd, 0.95)
-    key.position.set(6, 5, 6)
+    const key = new THREE.PointLight(0x93c5fd, 1.1)
+    key.position.set(7, 6, 7)
     scene.add(key)
 
-    const fill = new THREE.PointLight(0x22d3ee, 0.62)
-    fill.position.set(-6, -4, 5)
+    const fill = new THREE.PointLight(0x22d3ee, 0.72)
+    fill.position.set(-7, -5, 6)
     scene.add(fill)
 
-    scene.add(new THREE.AmbientLight(0xe2e8f0, 0.62))
+    scene.add(new THREE.AmbientLight(0xe2e8f0, 0.68))
 
     cameraRef.current = camera
     rendererRef.current = renderer
@@ -149,12 +149,12 @@ export default function EnhancedTetrahedronViz({ tetrahedronState, isInteractive
         const pointMat = statePointRef.current.material as THREE.MeshPhongMaterial
         pointMat.color.setHex(color)
         pointMat.emissive.setHex(color)
-        pointMat.emissiveIntensity = 0.5 + sev * 0.48
+        pointMat.emissiveIntensity = 0.6 + sev * 0.52
 
         const glowMat = stateGlowRef.current.material as THREE.MeshBasicMaterial
         glowMat.color.setHex(color)
-        glowMat.opacity = 0.15 + sev * 0.22
-        const pulse = 1 + Math.sin(Date.now() * 0.00135) * 0.024
+        glowMat.opacity = 0.18 + sev * 0.28
+        const pulse = 1 + Math.sin(Date.now() * 0.00148) * 0.032
         stateGlowRef.current.scale.setScalar(pulse)
       }
 

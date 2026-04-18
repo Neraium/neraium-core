@@ -224,5 +224,21 @@ const styles = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-  },
+    position: 'relative' as const,
+  } as React.CSSProperties,
 }
+
+// Add hover styles dynamically
+if (typeof document !== 'undefined' && !document.getElementById('demo-button-styles')) {
+  const style = document.createElement('style')
+  style.id = 'demo-button-styles'
+  style.textContent = `
+    [style*="width: 28px"][style*="height: 28px"]:hover {
+      background-color: rgba(255, 255, 255, 0.08);
+      color: rgba(255, 255, 255, 0.88);
+    }
+    [style*="width: 28px"][style*="height: 28px"]:active {
+      transform: scale(0.94);
+    }
+  `
+  document.head.appendChild(style)
