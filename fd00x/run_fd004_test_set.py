@@ -1,20 +1,21 @@
 #!/usr/bin/env python3
-r"""Convenience runner for FD004 test set at C:\Users\Owner\Desktop\CMAPSSData\test_FD004.
+r"""FD004 test set runner using TRUE lead time from RUL data.
 
-This script automatically points to the test dataset and runs advanced analysis.
+This script uses the new StructuralDriftDetector with RUL_FD004.txt
+to compute TRUE lead time (not degradation proxies).
 
 Usage:
-    python run_fd004_test_set.py [--max-units N] [--output-dir DIR] [--basic]
+    python run_fd004_test_set.py [--max-units N] [--output-dir DIR] [--rul-path PATH]
 
 Examples:
-    # Run full advanced analysis on test set
+    # Run full analysis with auto-detected RUL file
     python run_fd004_test_set.py
 
     # Run on first 50 units
     python run_fd004_test_set.py --max-units 50
 
-    # Use basic runner instead
-    python run_fd004_test_set.py --basic
+    # Specify RUL file location
+    python run_fd004_test_set.py --rul-path /path/to/RUL_FD004.txt
 
     # Custom output directory
     python run_fd004_test_set.py --output-dir ./my_test_results
@@ -23,26 +24,23 @@ from __future__ import annotations
 
 import argparse
 import sys
+import time
 from pathlib import Path
 
-from .run_drift_detection_demo import DriftDetectionDemoRunner
-from .run_advanced_fd004_demo import AdvancedFD004Demo
+from .config import DetectorConfig
+from .test_runner_true_lead_time_fd004 import TrueLeadTimeFD004Runner
 
 
-def find_fd004_test_set() -> str:
-    r"""Locate FD004 test set.
+def find_fd004_dataset() -> str:
+    r"""Locate FD004 training dataset.
 
-    Searches in common locations:
-    1. C:\Users\Owner\Desktop\CMAPSSData\test_FD004.txt
-    2. ./data/test_FD004.txt
-    3. ./test_FD004.txt
-    4. Relative to script
+    Searches in common locations for train_FD004.txt
     """
     candidates = [
-        r"C:\Users\Owner\Desktop\CMAPSSData\test_FD004.txt",
-        "data/test_FD004.txt",
-        "test_FD004.txt",
-        Path(__file__).parent.parent / "data" / "test_FD004.txt",
+        "data/train_FD004.txt",
+        "train_FD004.txt",
+        Path(__file__).parent.parent / "data" / "train_FD004.txt",
+        Path(__file__).parent.parent / "archive" / "test_data" / "train_FD004.txt",
     ]
 
     for path_str in candidates:
@@ -51,22 +49,28 @@ def find_fd004_test_set() -> str:
             return str(path.resolve())
 
     raise FileNotFoundError(
-        f"Could not find FD004 test set. Searched:\n"
+        f"Could not find FD004 dataset. Searched:\n"
         + "\n".join(f"  - {c}" for c in candidates)
-        + f"\n\nPlease provide --path argument or place test_FD004.txt in one of these locations."
+        + f"\n\nPlease provide --path argument or place train_FD004.txt in one of these locations."
     )
 
 
 def main():
-    """Run drift detection on FD004 test set."""
+    """Run drift detection on FD004 with TRUE lead time."""
     parser = argparse.ArgumentParser(
-        description="Drift detection for FD004 test set (automatic path detection)"
+        description="FD004 drift detection with TRUE lead time from RUL data"
     )
     parser.add_argument(
         "--path",
         type=str,
         default=None,
-        help="Override FD004 dataset path (auto-detects if not provided)",
+        help="Path to FD004 training dataset (auto-detects if not provided)",
+    )
+    parser.add_argument(
+        "--rul-path",
+        type=str,
+        default=None,
+        help="Path to RUL_FD004.txt (auto-detects if not provided)",
     )
     parser.add_argument(
         "--max-units",
@@ -77,13 +81,8 @@ def main():
     parser.add_argument(
         "--output-dir",
         type=str,
-        default="fd004_test_set_results",
-        help="Output directory (default: fd004_test_set_results)",
-    )
-    parser.add_argument(
-        "--basic",
-        action="store_true",
-        help="Use basic runner instead of advanced (advanced recommended)",
+        default="fd004_true_lead_time_results",
+        help="Output directory (default: fd004_true_lead_time_results)",
     )
 
     args = parser.parse_args()
@@ -96,29 +95,37 @@ def main():
             sys.exit(1)
     else:
         try:
-            dataset_path = find_fd004_test_set()
-            print(f"✓ Found FD004 test set: {dataset_path}\n")
+            dataset_path = find_fd004_dataset()
+            print(f"✓ Found FD004 dataset: {dataset_path}\n")
         except FileNotFoundError as e:
             print(f"Error: {e}", file=sys.stderr)
             sys.exit(1)
 
-    # Run appropriate runner
+    # Run TRUE lead time evaluation
     try:
-        if args.basic:
-            print("Using BASIC runner...\n")
-            demo = DriftDetectionDemoRunner(output_dir=args.output_dir, verbose=True)
-            demo.run(
-                dataset_path=dataset_path,
-                max_units=args.max_units,
-                skip_plots=False,
-            )
-        else:
-            print("Using ADVANCED runner (recommended for FD004)...\n")
-            demo = AdvancedFD004Demo(output_dir=args.output_dir, verbose=True)
-            demo.run(
-                dataset_path=dataset_path,
-                max_units=args.max_units,
-            )
+        print("=" * 70)
+        print("FD004 TRUE LEAD TIME EVALUATION")
+        print("Using: StructuralDriftDetector + RUL_FD004.txt")
+        print("=" * 70)
+        print()
+
+        config = DetectorConfig()
+        runner = TrueLeadTimeFD004Runner(detector_config=config, verbose=True)
+
+        print("[1/2] Running drift detection...")
+        results, summary = runner.run_fd004_true_lead_time(
+            dataset_path=dataset_path,
+            rul_path=args.rul_path,
+            max_units=args.max_units,
+        )
+
+        print("[2/2] Saving results...")
+        saved_files = runner.save_results(results, summary, args.output_dir)
+        print(f"  ✓ Saved: {saved_files['csv'].name}")
+        print(f"  ✓ Saved: {saved_files['json'].name}")
+
+        print(f"\nOutput directory: {Path(args.output_dir).absolute()}\n")
+
     except KeyboardInterrupt:
         print("\n\nInterrupted by user")
         sys.exit(1)
