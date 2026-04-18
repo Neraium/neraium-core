@@ -12,6 +12,7 @@ __pycache__/
 # Virtual environments / packaging artifacts
 # ------------------------------------------------------------
 .venv/
+.venv-ci/
 venv/
 dist/
 build/
@@ -37,6 +38,8 @@ outputs/
 *.jsonl
 logs/*.csv
 neraium_markets/output/
+greenhouse_demo/
+archive/test_data/
 
 # ------------------------------------------------------------
 # Front-end vendor/cache artifacts
@@ -58,27 +61,6 @@ Thumbs.db
 # ------------------------------------------------------------
 cloudflared/config.yml
 .claude/
-.claude/
-
-.claude/
-
-.claude/
-# Python environments
-.venv/
-venv/
-.env/
-
-# Python cache
-__pycache__/
-*.pyc
-
-# OS junk
-.DS_Store
-Thumbs.db
-
-# Logs / temp
-logs/
-*.log
 
 
 # Validation baseline files (test artifacts)
