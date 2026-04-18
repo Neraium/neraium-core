@@ -98,8 +98,8 @@ class AdvancedDriftMetrics:
     component_by_condition: Dict[int, str] = field(default_factory=dict)
 
     # Degradation trajectory
-    degradation_trajectory: str  # "smooth", "stepped", "variable"
-    trajectory_variance: float  # Measure of degradation smoothness
+    degradation_trajectory: str = "unknown"  # "smooth", "stepped", "variable"
+    trajectory_variance: float = 0.0  # Measure of degradation smoothness
 
 
 class AdvancedFD004TestRunner:
