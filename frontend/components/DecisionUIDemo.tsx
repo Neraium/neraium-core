@@ -5,8 +5,8 @@ import DecisionUI from '@/components/DecisionUI'
 import { DEMO_SCENARIOS } from '@/lib/demoScenarios'
 import { DecisionUIState } from '@/lib/decisionToUI'
 
-const INTERPOLATION_MS = 3200
-const TEXT_LAG_MS = 340
+const INTERPOLATION_MS = 4200
+const TEXT_LAG_MS = 520
 
 function lerp(a: number, b: number, t: number): number {
   return a + (b - a) * t
@@ -87,7 +87,7 @@ export default function DecisionUIDemo() {
       setControlsVisible(true)
       return
     }
-    const t = setTimeout(() => setControlsVisible(false), 4000)
+    const t = setTimeout(() => setControlsVisible(false), 2200)
     return () => clearTimeout(t)
   }, [isAutoPlay, scenarioIndex])
 
@@ -144,7 +144,7 @@ export default function DecisionUIDemo() {
       <div
         style={{
           ...styles.controls,
-          opacity: isAutoPlay ? (controlsVisible ? 0.55 : 0) : 1,
+          opacity: isAutoPlay ? (controlsVisible ? 0.38 : 0) : 1,
           pointerEvents: isAutoPlay && !controlsVisible ? 'none' : 'auto',
           transition: 'opacity 1.4s cubic-bezier(0.22, 1, 0.36, 1)',
         }}
@@ -253,8 +253,8 @@ const styles: Record<string, React.CSSProperties> = {
     gap: '4px',
     padding: '8px 12px',
     borderRadius: '8px',
-    backgroundColor: 'rgba(7, 15, 30, 0.32)',
-    border: '1px solid rgba(148, 163, 184, 0.10)',
+    backgroundColor: 'rgba(7, 15, 30, 0.22)',
+    border: '1px solid rgba(148, 163, 184, 0.08)',
     backdropFilter: 'blur(8px)',
     transition: 'opacity 1.4s cubic-bezier(0.22, 1, 0.36, 1), background-color 0.8s ease',
   },

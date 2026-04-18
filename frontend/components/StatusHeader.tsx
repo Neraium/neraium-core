@@ -38,7 +38,7 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     flexDirection: 'column',
     gap: '10px',
-    padding: '6px 4px 2px',
+    padding: '8px 6px 2px',
     transition: 'all 0.9s cubic-bezier(0.22, 1, 0.36, 1)',
   },
   stageLabel: {

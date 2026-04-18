@@ -258,10 +258,10 @@ export const DEMO_SCENARIO_CRITICAL: DecisionUIState = {
 }
 
 export const DEMO_SCENARIOS = [
-  { name: 'Baseline', state: DEMO_SCENARIO_BASELINE, durationMs: 11000, narrative: 'System operating normally' },
-  { name: 'Early Shift', state: DEMO_SCENARIO_EARLY_SHIFT, durationMs: 11000, narrative: 'Early structural change detected' },
-  { name: 'Emerging', state: DEMO_SCENARIO_EMERGING, durationMs: 17000, narrative: 'Degradation detected before failure conditions' },
-  { name: 'Critical', state: DEMO_SCENARIO_CRITICAL, durationMs: 13000, narrative: 'Failure imminent. Action required now' },
+  { name: 'Baseline', state: DEMO_SCENARIO_BASELINE, durationMs: 17000, narrative: 'System operating normally' },
+  { name: 'Early Shift', state: DEMO_SCENARIO_EARLY_SHIFT, durationMs: 17000, narrative: 'Early structural change detected' },
+  { name: 'Emerging', state: DEMO_SCENARIO_EMERGING, durationMs: 24000, narrative: 'Degradation detected before failure conditions' },
+  { name: 'Critical', state: DEMO_SCENARIO_CRITICAL, durationMs: 20000, narrative: 'Failure imminent. Action required now' },
 ]
 
 export const HERO_SCENARIO = DEMO_SCENARIO_EMERGING

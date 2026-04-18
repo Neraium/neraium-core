@@ -63,7 +63,7 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     flexDirection: 'column',
     gap: '14px',
-    padding: '2px 0 4px',
+    padding: '2px 6px 4px',
     maxWidth: '420px',
     transition: 'opacity 0.9s cubic-bezier(0.22, 1, 0.36, 1)',
   },
@@ -114,7 +114,7 @@ const styles: Record<string, React.CSSProperties> = {
     padding: '3px 10px',
     borderRadius: '4px',
     border: '1px solid',
-    backgroundColor: 'rgba(2, 6, 23, 0.45)',
+    backgroundColor: 'rgba(2, 6, 23, 0.35)',
     textTransform: 'uppercase',
   },
 }
