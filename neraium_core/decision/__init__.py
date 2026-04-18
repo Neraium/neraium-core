@@ -18,6 +18,15 @@ from neraium_core.decision.models import (
 from neraium_core.decision.engine import DecisionEngine
 from neraium_core.decision.pattern_memory import PatternMemory
 from neraium_core.decision.pattern_outcome_influence import PatternOutcomeInfluencer
+from neraium_core.decision.outcome_tracker import (
+    OutcomeTracker,
+    LoggedDecision,
+    OutcomeLog,
+    DecisionPrediction,
+    DecisionOutcomeEvaluation,
+    SummaryMetrics,
+    OutcomeType,
+)
 
 __all__ = [
     "Decision",
@@ -30,4 +39,11 @@ __all__ = [
     "DecisionEngine",
     "PatternMemory",
     "PatternOutcomeInfluencer",
+    "OutcomeTracker",
+    "LoggedDecision",
+    "OutcomeLog",
+    "DecisionPrediction",
+    "DecisionOutcomeEvaluation",
+    "SummaryMetrics",
+    "OutcomeType",
 ]
