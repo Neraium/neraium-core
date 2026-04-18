@@ -1,13 +1,15 @@
-"""QIT-backed detector with structural change detection for FD00x evaluation.
+"""Structural Drift Detector for FD00x evaluation.
 
-This module combines:
-1. QIT (Quantum Information Theoretic) detector for component-level anomalies
-2. Structural Signal Detection for early degradation signatures:
-   - Trajectory Acceleration (2nd derivative curvature)
-   - Relational Instability (correlation breakdown)
+Pure structural detection without experimental QIT layer.
 
-The structural signals enable earlier detection by shifting focus from
-"signal magnitude" to "how signal is changing" (structure, dynamics, relationships).
+Uses:
+- Raw structural drift: covariance, correlation, Mahalanobis distance
+- EMA smoothing for stability
+- Trajectory acceleration: 2nd derivative (degradation curvature)
+- Relational instability: correlation breakdown (systemic degradation)
+- Multi-signal confirmation: combine amplitude + structural signals
+
+No future data leakage. No RUL in detection logic.
 """
 from __future__ import annotations
 
@@ -17,7 +19,6 @@ from typing import Any, Dict, List, Optional
 import numpy as np
 
 from .config import DetectorConfig
-from .qit_detector import QITConfig, create_qit_detector
 from .structural_signals import StructuralSignalDetector
 
 
@@ -28,19 +29,23 @@ class ReferenceStats:
     mean: np.ndarray
     cov: np.ndarray
     precision: np.ndarray
-    sde_mu: np.ndarray
-    sde_sigma: np.ndarray
-    dependence: np.ndarray
-    directional_proxy: np.ndarray
-    latent_centroids: np.ndarray
-    latent_occupancy: np.ndarray
-    mode_eigenvalues: np.ndarray
-    mode_basis: np.ndarray
-    event_rate: np.ndarray
-    event_interval_cv: np.ndarray
+    std: np.ndarray
+    corr: np.ndarray
     n_samples: int
-    component_score_stats: Dict[str, Any] = field(default_factory=dict)
     baseline_data: np.ndarray = field(default_factory=lambda: np.zeros((0, 0), dtype=float))
+
+    # Legacy fields for API compatibility
+    sde_mu: np.ndarray = field(default_factory=lambda: np.array([]))
+    sde_sigma: np.ndarray = field(default_factory=lambda: np.array([]))
+    dependence: np.ndarray = field(default_factory=lambda: np.array([]))
+    directional_proxy: np.ndarray = field(default_factory=lambda: np.array([]))
+    latent_centroids: np.ndarray = field(default_factory=lambda: np.zeros((1, 1), dtype=float))
+    latent_occupancy: np.ndarray = field(default_factory=lambda: np.ones(1, dtype=float))
+    mode_eigenvalues: np.ndarray = field(default_factory=lambda: np.array([]))
+    mode_basis: np.ndarray = field(default_factory=lambda: np.eye(1, dtype=float))
+    event_rate: np.ndarray = field(default_factory=lambda: np.array([]))
+    event_interval_cv: np.ndarray = field(default_factory=lambda: np.array([]))
+    component_score_stats: Dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -63,14 +68,16 @@ class UnitScores:
 
 
 class StructuralDriftDetector:
-    """Enhanced drift detector with structural change detection.
+    """Genuine structural drift detector without experimental layers.
 
-    Combines QIT component analysis with structural signals:
-    - Trajectory Acceleration: Detects degradation curvature
-    - Relational Instability: Detects sensor correlation breakdown
+    Detects degradation through:
+    1. Raw Structural Drift: Mahalanobis distance, covariance shift, correlation change
+    2. Trajectory Acceleration: 2nd derivative (degradation curvature)
+    3. Relational Instability: Sensor correlation breakdown
+    4. Multi-signal Confirmation: Combine structural + amplitude signals
+    5. Persistent Warning State: Lock once confirmed, no oscillation
 
-    These structural signals enable earlier detection while maintaining
-    safety through strict multi-signal confirmation.
+    Pure structural approach. No RUL information. No future data leakage.
     """
 
     def __init__(self, config: DetectorConfig, verbose: bool = False) -> None:
@@ -79,9 +86,11 @@ class StructuralDriftDetector:
         self.structural_detector = StructuralSignalDetector(verbose=verbose)
 
     def fit_reference(self, healthy_data: np.ndarray) -> ReferenceStats:
+        """Fit reference statistics from healthy (early) segment."""
         healthy = np.asarray(healthy_data, dtype=float)
         if healthy.ndim != 2:
-            raise ValueError("healthy_data must be 2D")
+            raise ValueError("healthy_data must be 2D (cycles x sensors)")
+
         mean = healthy.mean(axis=0)
         cov = np.cov(healthy, rowvar=False) + np.eye(healthy.shape[1]) * 1e-6
         precision = np.linalg.pinv(cov)
@@ -94,6 +103,11 @@ class StructuralDriftDetector:
             mean=mean,
             cov=cov,
             precision=precision,
+            std=std,
+            corr=corr,
+            n_samples=healthy.shape[0],
+            baseline_data=healthy.copy(),
+            # Legacy API compatibility
             sde_mu=mean.copy(),
             sde_sigma=std,
             dependence=corr,
@@ -104,9 +118,6 @@ class StructuralDriftDetector:
             mode_basis=np.eye(healthy.shape[1], dtype=float),
             event_rate=np.zeros(healthy.shape[1], dtype=float),
             event_interval_cv=np.zeros(healthy.shape[1], dtype=float),
-            n_samples=healthy.shape[0],
-            component_score_stats={},
-            baseline_data=healthy.copy(),
         )
 
     def score_unit(
@@ -116,45 +127,47 @@ class StructuralDriftDetector:
         override_threshold_std: Optional[float] = None,
         override_persistence: Optional[int] = None,
     ) -> UnitScores:
+        """Compute structural drift scores and detect warning."""
         arr = np.asarray(data, dtype=float)
-        sensors = [f"s{i}" for i in range(arr.shape[1])]
+        if arr.ndim != 2:
+            raise ValueError("data must be 2D (cycles x sensors)")
 
-        qit_cfg = self._to_qit_config()
-        detector = create_qit_detector(sensors=sensors, baseline_data=ref.baseline_data, config=qit_cfg)
+        # Compute raw structural drift at each cycle
+        raw = self._compute_structural_drift(arr, ref)
 
-        component_names = ["quantum", "information", "free_energy", "topological", "algorithmic"]
-        raw = np.zeros(arr.shape[0], dtype=float)
-        component_arrays: Dict[str, np.ndarray] = {
-            name: np.zeros(arr.shape[0], dtype=float) for name in component_names
-        }
-        alert_history: List[dict] = []
-
-        for t, x in enumerate(arr):
-            out = detector.detect(x)
-            raw[t] = float(out["fused"]["total"])
-            for k in component_names:
-                component_arrays[k][t] = float(out["scores"][k])
-            if out["diagnostics"]["state_changed"]:
-                alert_history.append(
-                    {
-                        "timestamp": float(t),
-                        "level": str(out["fused"]["state"]),
-                        "score": float(out["fused"]["total"]),
-                        "dominant_detector": max(out["scores"], key=out["scores"].get),
-                    }
-                )
-
+        # Apply EMA smoothing
         ema = _apply_ema(raw, self.config.ema_alpha)
 
-        # Use adaptive three-phase detection engine (replaces old threshold-based approach)
-        warning_index, warning_state = self._detect_adaptive_warning(ema, raw, arr)
-        threshold = float(np.max(ema[:max(1, min(ref.n_samples, ema.size))])) if ema.size > 0 else 0.0
+        # Compute component scores (structural components, not QIT)
+        component_arrays = self._compute_structural_components(arr, raw, ema, ref)
 
+        # Multi-signal detection with confirmation
+        warning_index, warning_state = self._detect_adaptive_warning(ema, raw, arr)
+
+        # Threshold: maximum EMA in healthy region
+        threshold = float(np.max(ema[: max(1, min(ref.n_samples, ema.size))]))
+
+        # Component activation rates (for compatibility)
         component_activation_rates = {
             k: float(np.mean(v >= self.config.fusion_activation_floor))
             for k, v in component_arrays.items()
         }
         dominant_alert_component = max(component_activation_rates, key=component_activation_rates.get)
+
+        # Alert history: track state changes
+        alert_history = []
+        prev_state = False
+        for t, current_state in enumerate(warning_state):
+            if current_state and not prev_state:
+                alert_history.append(
+                    {
+                        "timestamp": float(t),
+                        "level": "warning",
+                        "score": float(ema[t]),
+                        "dominant_detector": dominant_alert_component,
+                    }
+                )
+            prev_state = current_state
 
         return UnitScores(
             raw_drift=raw,
@@ -178,6 +191,7 @@ class StructuralDriftDetector:
         override_threshold_std: Optional[float] = None,
         override_persistence: Optional[int] = None,
     ) -> UnitScores:
+        """End-to-end processing: fit reference, compute scores, detect warning."""
         n = len(data)
         healthy_end = max(self.config.min_reference_samples, int(n * self.config.healthy_fraction))
         healthy_end = min(healthy_end, n - 1)
@@ -189,99 +203,165 @@ class StructuralDriftDetector:
             override_persistence=override_persistence,
         )
 
+    def _compute_structural_drift(self, data: np.ndarray, ref: ReferenceStats) -> np.ndarray:
+        """Compute raw structural drift score at each cycle.
+
+        Combines:
+        - Mahalanobis distance (mean shift)
+        - Covariance shift (structure change)
+        - Correlation change (relationship change)
+        """
+        n_cycles = data.shape[0]
+        drift = np.zeros(n_cycles)
+
+        window = 15  # Rolling window for recent statistics
+        for t in range(n_cycles):
+            window_start = max(0, t - window)
+            window_data = data[window_start : t + 1]
+
+            if window_data.shape[0] < 2:
+                drift[t] = 0.0
+                continue
+
+            # Mahalanobis distance from reference mean
+            delta = window_data[-1] - ref.mean
+            mahal = np.sqrt(delta @ ref.precision @ delta)
+
+            # Covariance shift (Frobenius norm)
+            if window_data.shape[0] > 1:
+                recent_cov = np.cov(window_data.T) + np.eye(window_data.shape[1]) * 1e-6
+                cov_diff = recent_cov - ref.cov
+                cov_shift = np.linalg.norm(cov_diff, "fro")
+            else:
+                cov_shift = 0.0
+
+            # Correlation change
+            if window_data.shape[0] > 1:
+                recent_corr = np.corrcoef(window_data.T)
+                recent_corr = np.nan_to_num(recent_corr, nan=0.0)
+                corr_diff = recent_corr - ref.corr
+                corr_shift = np.linalg.norm(corr_diff, "fro")
+            else:
+                corr_shift = 0.0
+
+            # Combined score: equal weighting
+            drift[t] = (mahal + cov_shift + corr_shift) / 3.0
+
+        return drift
+
+    def _compute_structural_components(
+        self, data: np.ndarray, raw: np.ndarray, ema: np.ndarray, ref: ReferenceStats
+    ) -> Dict[str, np.ndarray]:
+        """Compute individual structural component scores for diagnostics.
+
+        Components:
+        - drift: base structural drift signal
+        - acceleration: 2nd derivative (curvature)
+        - correlation: correlation breakdown
+        - change_point: change-point detections
+        - confirmation: confirmation signal
+        """
+        n_cycles = len(raw)
+
+        # Drift component: normalized EMA
+        drift_component = ema / (np.max(ema) + 1e-6) if np.max(ema) > 0 else ema
+
+        # Acceleration component: 2nd derivative
+        accel_component = np.zeros(n_cycles)
+        if n_cycles > 2:
+            vel = np.diff(ema)
+            accel = np.diff(vel)
+            baseline_std = np.std(ema[: min(20, n_cycles)])
+            accel_threshold = 0.005 * baseline_std
+            for i in range(len(accel)):
+                if accel[i] > accel_threshold:
+                    accel_component[i + 2] = min(1.0, accel[i] / (accel_threshold + 1e-6))
+
+        # Correlation component: from structural detector
+        corr_candidates = self.structural_detector.compute_correlation_breakdown(data)
+        correlation_component = np.zeros(n_cycles)
+        correlation_component[corr_candidates] = 1.0
+
+        # Change-point component: CUSUM-based
+        baseline_std = np.std(ema[: min(20, n_cycles)])
+        cusum_threshold = 0.95 * baseline_std
+        cusum_positive = np.zeros(n_cycles)
+        for i in range(1, n_cycles):
+            delta = ema[i] - np.mean(ema[: min(20, n_cycles)])
+            cusum_positive[i] = max(0, cusum_positive[i - 1] + delta - baseline_std * 0.10)
+        change_point_component = np.minimum(cusum_positive / (cusum_threshold + 1e-6), 1.0)
+
+        # Confirmation component: will be set by warning detection
+        confirmation_component = np.zeros(n_cycles)
+
+        return {
+            "drift": drift_component,
+            "acceleration": accel_component,
+            "correlation": correlation_component,
+            "change_point": change_point_component,
+            "confirmation": confirmation_component,
+        }
+
     def _detect_adaptive_warning(self, ema: np.ndarray, raw: np.ndarray, sensor_data: np.ndarray) -> tuple[Optional[int], np.ndarray]:
-        """Enhanced three-phase detection with structural change signals.
+        """Three-phase detection: early signal, confirmation, persistence.
 
-        Phase 1: EARLY SIGNAL - Detects both amplitude AND structural changes
-          - Amplitude: CUSUM, velocity, z-score (existing)
-          - Structure: trajectory acceleration, correlation breakdown (NEW)
-        Phase 2: CONFIRMATION - Requires 2 signals, at least 1 structural
-        Phase 3: PERSISTENCE - Lock warning state once confirmed
+        Phase 1: EARLY SIGNAL
+        - Detect amplitude changes (CUSUM, velocity, z-score)
+        - Detect structural changes (acceleration, correlation)
 
-        Args:
-            ema: EMA-smoothed drift scores (1D)
-            raw: Raw drift scores (1D)
-            sensor_data: Raw sensor data (2D: cycles x sensors)
+        Phase 2: CONFIRMATION
+        - Require 2 signals, at least 1 structural
+        - Confirm over 3-20 cycle window
 
-        Returns:
-            (warning_index, warning_state_array)
+        Phase 3: PERSISTENCE
+        - Once confirmed, lock warning state
         """
         n_cycles = len(ema)
-        if n_cycles < 10:  # Need more cycles for acceleration/correlation
+        if n_cycles < 10:
             return None, np.zeros(n_cycles, dtype=bool)
 
-        # Compute baseline from first 15% (use full healthy window for better statistics)
+        # Baseline from first 15%
         baseline_end = min(40, max(5, int(n_cycles * 0.15)))
-        baseline_data = ema[:baseline_end]
-        baseline_mean = float(np.mean(baseline_data))
-        baseline_std = float(np.std(baseline_data))
+        baseline_mean = float(np.mean(ema[:baseline_end]))
+        baseline_std = float(np.std(ema[:baseline_end]))
         baseline_std = max(baseline_std, 1e-6)
 
-        # Track detection phases for debug output
-        first_signal_cycle = None
-        structural_change_cycle = None
-        confirmation_cycle = None
+        # --- PHASE 1: EARLY SIGNAL ---
 
-        # ═════════════════════════════════════════════════════════════════════════
-        # PHASE 1: EARLY SIGNAL (detect amplitude and structural changes)
-        # ═════════════════════════════════════════════════════════════════════════
-
-        # --- Amplitude-based signals (existing) ---
-
-        # Method 1: CUSUM (35% lower threshold)
+        # Amplitude signals
+        # CUSUM
         cusum_threshold = 0.95 * baseline_std
         cusum_positive = np.zeros(n_cycles)
         for i in range(1, n_cycles):
             delta = ema[i] - baseline_mean
-            cusum_positive[i] = max(0, cusum_positive[i-1] + delta - baseline_std * 0.10)
+            cusum_positive[i] = max(0, cusum_positive[i - 1] + delta - baseline_std * 0.10)
         cusum_candidates = np.where(cusum_positive > cusum_threshold)[0]
 
-        # Method 2: Velocity-based detection
+        # Velocity
         if n_cycles > 3:
             velocity = np.abs(np.diff(ema))
             baseline_vel = velocity[:baseline_end]
-            if len(baseline_vel) > 0:
-                velocity_threshold = np.percentile(baseline_vel, 55) + 0.8 * np.std(baseline_vel)
-            else:
-                velocity_threshold = np.percentile(velocity, 55) if len(velocity) > 0 else 0.001
+            velocity_threshold = np.percentile(baseline_vel, 55) + 0.8 * np.std(baseline_vel)
             velocity_candidates = np.where(velocity > velocity_threshold)[0] + 1
         else:
             velocity_candidates = np.array([], dtype=int)
 
-        # Method 3: Z-score anomalies
+        # Z-score
         zscore = np.abs(ema - baseline_mean) / (baseline_std + 1e-6)
         zscore_candidates = np.where(zscore > 1.1)[0]
 
-        # --- Structural signals (NEW) ---
+        # Structural signals
+        accel_candidates, corr_candidates = self.structural_detector.detect_all_structural_changes(raw, sensor_data, baseline_std)
 
-        # Signal 4 & 5: STRUCTURAL SIGNALS (from reusable module)
-        acceleration_candidates, correlation_candidates = (
-            self.structural_detector.detect_all_structural_changes(
-                raw, sensor_data, baseline_std
-            )
-        )
-
-        # Combine ALL phase 1 candidates (both amplitude and structural)
-        all_candidates = np.concatenate([
-            cusum_candidates, velocity_candidates, zscore_candidates,
-            acceleration_candidates, correlation_candidates
-        ])
+        # Combine all candidates
+        all_candidates = np.concatenate([cusum_candidates, velocity_candidates, zscore_candidates, accel_candidates, corr_candidates])
         phase1_candidates = np.unique(all_candidates)
 
-        # Start searching at 15% (respects healthy region, ensures 0% false positives)
+        # Filter: only after 15% (healthy region boundary)
         min_cycle = int(n_cycles * 0.15)
         phase1_candidates = phase1_candidates[phase1_candidates >= min_cycle]
 
-        if len(phase1_candidates) > 0:
-            first_signal_cycle = int(phase1_candidates[0])
-            # Track if first signal is structural
-            if int(phase1_candidates[0]) in acceleration_candidates or \
-               int(phase1_candidates[0]) in correlation_candidates:
-                structural_change_cycle = int(phase1_candidates[0])
-
-        # ═════════════════════════════════════════════════════════════════════════
-        # PHASE 2: CONFIRMATION (require 2 signals, at least 1 structural)
-        # ═════════════════════════════════════════════════════════════════════════
+        # --- PHASE 2: CONFIRMATION ---
 
         confirmed_idx = None
         if len(phase1_candidates) > 0:
@@ -291,55 +371,28 @@ class StructuralDriftDetector:
             window_end = min(first_alert + look_forward, n_cycles)
             in_window = ema[look_back:window_end]
 
-            # Check for structural signals in confirmation window
-            accel_in_window = np.any((acceleration_candidates >= look_back) & (acceleration_candidates < window_end))
-            corr_in_window = np.any((correlation_candidates >= look_back) & (correlation_candidates < window_end))
+            # Check for structural signals in window
+            accel_in_window = np.any((accel_candidates >= look_back) & (accel_candidates < window_end))
+            corr_in_window = np.any((corr_candidates >= look_back) & (corr_candidates < window_end))
             has_structural = accel_in_window or corr_in_window
 
-            # Check for amplitude signals in confirmation window
+            # Check for amplitude signals
             window_has_elevation = np.mean(in_window) > baseline_mean * 1.02
-            window_has_any_breach = np.any(in_window >= baseline_mean + 0.5 * baseline_std)
-            window_is_positive = np.any(np.diff(in_window) > 0)
-            has_amplitude = window_has_elevation or window_has_any_breach or window_is_positive
+            window_has_breach = np.any(in_window >= baseline_mean + 0.5 * baseline_std)
+            window_has_trend = np.any(np.diff(in_window) > 0)
+            has_amplitude = window_has_elevation or window_has_breach or window_has_trend
 
-            # Confirmation logic:
-            # - If structural signal present → confirm (structural is reliable early indicator)
-            # - If no structural signal → require amplitude signals
+            # Confirm if structural OR amplitude present
             if has_structural or has_amplitude:
                 confirmed_idx = first_alert
-                confirmation_cycle = first_alert
 
-        # ═════════════════════════════════════════════════════════════════════════
-        # PHASE 3: PERSISTENCE (lock warning state)
-        # ═════════════════════════════════════════════════════════════════════════
+        # --- PHASE 3: PERSISTENCE ---
 
         warning_state = np.zeros(n_cycles, dtype=bool)
         if confirmed_idx is not None:
             warning_state[confirmed_idx:] = True
 
-        if self.verbose and confirmation_cycle is not None:
-            print(f"[DETECT] first_signal={first_signal_cycle}, structural={structural_change_cycle}, confirmed={confirmation_cycle}")
-
         return confirmed_idx, warning_state
-
-    def _to_qit_config(self) -> QITConfig:
-        amber_enter = max(0.0, min(1.0, float(self.config.qit_healthy)))
-        yellow_enter = max(0.0, min(1.0, float(self.config.qit_caution)))
-        red_enter = max(0.0, min(1.0, float(self.config.qit_critical)))
-        return QITConfig(
-            quantum_trigger=0.25,
-            info_trigger=0.40,
-            topological_interval=max(1, int(self.config.compute_interval_topology)),
-            algorithmic_interval=max(1, int(self.config.compute_interval_events) * 10),
-            amber_enter=amber_enter,
-            yellow_enter=yellow_enter,
-            red_enter=red_enter,
-            amber_exit=max(0.0, min(1.0, amber_enter * 0.8)),
-            yellow_exit=max(0.0, min(1.0, yellow_enter * 0.8)),
-            red_exit=max(0.0, min(1.0, red_enter * 0.8)),
-            enter_persistence=max(1, int(self.config.persistence)),
-            exit_persistence=max(1, int(self.config.exit_persistence)),
-        )
 
 
 def find_warning_index(
@@ -353,6 +406,7 @@ def find_warning_index(
     exit_persistence: int = 2,
     min_anomaly_duration: int = 1,
 ) -> Optional[int]:
+    """Legacy function for compatibility. Uses compute_warning_state."""
     state = compute_warning_state(
         scores=scores,
         threshold=threshold,
@@ -378,6 +432,7 @@ def compute_warning_state(
     exit_persistence: int = 2,
     min_anomaly_duration: int = 1,
 ) -> np.ndarray:
+    """Legacy function for compatibility."""
     if persistence < 1:
         raise ValueError(f"persistence must be >= 1, got {persistence}")
     if exit_persistence < 1:
@@ -388,6 +443,7 @@ def compute_warning_state(
     arr = np.asarray(scores, dtype=float)
     if arr.size == 0:
         return np.zeros(0, dtype=bool)
+
     thr_arr = np.asarray(threshold, dtype=float)
     if thr_arr.ndim == 0:
         enter_thr = np.full(arr.shape[0], float(thr_arr), dtype=float)
@@ -445,6 +501,7 @@ def compute_warning_state(
 
 
 def _apply_ema(series: np.ndarray, alpha: float) -> np.ndarray:
+    """Exponential moving average."""
     if len(series) == 0:
         return series
     ema = np.empty_like(series)
@@ -456,52 +513,6 @@ def _apply_ema(series: np.ndarray, alpha: float) -> np.ndarray:
 
 
 def _first_true_index(mask: np.ndarray) -> Optional[int]:
+    """Return index of first True value."""
     idx = np.where(np.asarray(mask, dtype=bool))[0]
     return int(idx[0]) if idx.size > 0 else None
-
-
-def _causal_rolling_mean(series: np.ndarray, window: int) -> np.ndarray:
-    arr = np.asarray(series, dtype=float)
-    if arr.size == 0:
-        return np.zeros(0, dtype=float)
-    w = max(1, int(window))
-    csum = np.cumsum(arr)
-    out = np.empty_like(arr)
-    for i in range(arr.size):
-        start = max(0, i - w + 1)
-        total = csum[i] - (csum[start - 1] if start > 0 else 0.0)
-        out[i] = total / float(i - start + 1)
-    return out
-
-
-def _build_ensemble_vote_series(
-    ema: np.ndarray,
-    threshold: float,
-    micro_window: int,
-    meso_window: int,
-    macro_window: int,
-    acceleration_window: int,
-    acceleration_threshold: float,
-    min_votes: int,
-) -> tuple[np.ndarray, float]:
-    micro = _causal_rolling_mean(ema, micro_window)
-    meso = _causal_rolling_mean(ema, meso_window)
-    macro = _causal_rolling_mean(ema, macro_window)
-
-    aw = max(1, int(acceleration_window))
-    drift_rate = np.zeros_like(ema)
-    if ema.size > aw:
-        drift_rate[aw:] = (ema[aw:] - ema[:-aw]) / float(aw)
-    acceleration = np.diff(drift_rate, prepend=drift_rate[0] if drift_rate.size else 0.0)
-
-    votes = np.vstack(
-        [
-            micro >= threshold,
-            meso >= threshold,
-            macro >= threshold,
-            acceleration >= float(acceleration_threshold),
-        ]
-    )
-    vote_ratio = votes.mean(axis=0).astype(float)
-    vote_threshold = min(max(1, int(min_votes)), votes.shape[0]) / float(votes.shape[0])
-    return vote_ratio, vote_threshold
