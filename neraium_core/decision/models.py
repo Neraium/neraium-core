@@ -227,6 +227,9 @@ class Decision:
     # Decision Window (when intervention stops working)
     decision_window: Optional[dict[str, Any]] = None  # Intervention window: OPEN | NARROWING | CRITICAL | CLOSED
 
+    # Trajectory Branching (what could happen next)
+    trajectory_branching: Optional[dict[str, Any]] = None  # Multiple possible paths forward with probabilities
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "finding_confidence": self.finding_confidence,
@@ -263,4 +266,5 @@ class Decision:
             "decision_trace": self.decision_trace,
             "evolution_context": self.evolution_context.to_dict() if self.evolution_context else None,
             "decision_window": self.decision_window,
+            "trajectory_branching": self.trajectory_branching,
         }

@@ -32,6 +32,7 @@ from neraium_core.decision.evolution_decision_resolver import (
     EvolutionDecisionResolution,
 )
 from neraium_core.decision.decision_window_engine import DecisionWindowEngine
+from neraium_core.decision.trajectory_engine import TrajectoryEngine
 
 
 class DecisionEngine:
@@ -49,6 +50,7 @@ class DecisionEngine:
         self.narrative_builder = EvolutionNarrativeBuilder()
         self.decision_resolver = EvolutionDecisionResolver()
         self.window_engine = DecisionWindowEngine()
+        self.trajectory_engine = TrajectoryEngine()
         self.previous_state: Optional[dict[str, Any]] = None
         self.previous_persistence: Optional[PersistenceState] = None
         self.previous_severity: Optional[SeverityLevel] = None
@@ -512,6 +514,44 @@ class DecisionEngine:
             "if_wait_next_stage": decision_window_result.if_wait_next_stage,
         }
 
+        # === TRAJECTORY BRANCHING: What could happen next? ===
+        trajectory_branching_result = self.trajectory_engine.branch_trajectories(
+            severity=severity,
+            degradation_stage=current_degradation_stage,
+            evolution_context=evolution_context,
+            degradation_map=degradation_map,
+            drift_score=drift_score,
+            temporal_coherence=coherence_profile.overall_system_coherence,
+            finding_confidence=finding_confidence,
+            persistence_frames=persistence_frames if self.enable_persistence_tracking else 0,
+        )
+
+        # Format trajectory for decision output
+        trajectory_output = {
+            "most_likely_path": {
+                "name": trajectory_branching_result.most_likely_path.name,
+                "probability": round(trajectory_branching_result.most_likely_path.probability, 3),
+                "likelihood": trajectory_branching_result.most_likely_path.likelihood_descriptor,
+                "conditions": trajectory_branching_result.most_likely_path.conditions,
+                "window_impact": trajectory_branching_result.most_likely_path.window_impact,
+                "reversible": trajectory_branching_result.most_likely_path.reversibility,
+            },
+            "all_paths": [
+                {
+                    "name": path.name,
+                    "probability": round(path.probability, 3),
+                    "likelihood": path.likelihood_descriptor,
+                    "conditions": path.conditions,
+                    "reversible": path.reversibility,
+                    "time_to_target": path.time_to_target,
+                }
+                for path in trajectory_branching_result.paths
+            ],
+            "critical_fork": trajectory_branching_result.critical_fork,
+            "divergence_reason": trajectory_branching_result.divergence_reason,
+            "convergence_point": trajectory_branching_result.convergence_point,
+        }
+
         # === BUILD DECISION ===
         decision = Decision(
             finding_confidence=finding_confidence,
@@ -547,6 +587,7 @@ class DecisionEngine:
             action_tradeoff_note=None,
             evolution_context=evolution_context,
             decision_window=decision_window_output,
+            trajectory_branching=trajectory_output,
         )
 
         # === PHASE 7: COHERENCE VALIDATION AND TRACEABILITY ===
