@@ -132,6 +132,29 @@ class Recommendation:
 
 
 @dataclass
+class EvolutionContext:
+    """Full evolution picture: regime progression, coherence, and trajectory."""
+
+    regime_sequence: list[str] = field(default_factory=list)  # ["STABLE", "WATCH", "ALERT", ...]
+    current_regime: str = "STABLE"
+    regime_persistence: int = 0  # Frames in current regime
+    regime_transitions_count: int = 0  # Total transitions seen
+    trajectory_direction: str = "stable"  # "degrading" | "stable" | "improving"
+    trajectory_velocity: float = 0.0  # Rate of severity change [-1, 1]
+    movement_pattern: str = "stable"  # "linear" | "oscillating" | "accelerating"
+    is_degrading: bool = False  # Overall direction toward higher severity?
+    regime_distance_trajectory: list[float] = field(default_factory=list)  # Distance evolution
+    temporal_coherence: float = 0.0  # Overall temporal coherence [0, 1]
+    is_coherent: bool = False  # Is degradation signal coherent (not noise)?
+    coherence_type: str = "noisy"  # "increasing" | "steady" | "decreasing" | "noisy"
+    regime_entry_story: str = ""  # How we got to current regime
+    trajectory_story: str = ""  # Direction and pattern
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)
+
+
+@dataclass
 class Decision:
     """The decision layer output: what to surface, what confidence, what to recommend."""
 
@@ -198,6 +221,18 @@ class Decision:
     decision_trace: Optional[dict[str, Any]] = None  # Lightweight trace of contributing factors
     coherence_errors: list[str] = field(default_factory=list)  # Any coherence issues found (internal)
 
+    # Sprint 1: Evolution Intelligence
+    evolution_context: Optional[EvolutionContext] = None  # Full evolution picture
+
+    # Decision Window (when intervention stops working)
+    decision_window: Optional[dict[str, Any]] = None  # Intervention window: OPEN | NARROWING | CRITICAL | CLOSED
+
+    # Trajectory Branching (what could happen next)
+    trajectory_branching: Optional[dict[str, Any]] = None  # Multiple possible paths forward with probabilities
+
+    # Intervention Guidance (what actions would help)
+    intervention_guidance: Optional[dict[str, Any]] = None  # Structured recommendations for human operators
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "finding_confidence": self.finding_confidence,
@@ -232,4 +267,8 @@ class Decision:
             "action_priority_reason": self.action_priority_reason,
             "action_tradeoff_note": self.action_tradeoff_note,
             "decision_trace": self.decision_trace,
+            "evolution_context": self.evolution_context.to_dict() if self.evolution_context else None,
+            "decision_window": self.decision_window,
+            "trajectory_branching": self.trajectory_branching,
+            "intervention_guidance": self.intervention_guidance,
         }

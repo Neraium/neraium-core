@@ -22,6 +22,18 @@ from neraium_core.decision.action_horizon import ActionHorizonPolicy, compute_pr
 from neraium_core.decision import coherence
 from neraium_core.decision import traceability as trace_module
 from neraium_core.decision import normalization
+from neraium_core.decision.evolution_tracker import EvolutionTracker
+from neraium_core.decision.temporal_coherence_scoring import TemporalCoherenceScorer
+from neraium_core.decision.models import EvolutionContext
+from neraium_core.decision.causal_degradation_tracker import CausalDegradationTracker
+from neraium_core.decision.evolution_narrative_builder import EvolutionNarrativeBuilder
+from neraium_core.decision.evolution_decision_resolver import (
+    EvolutionDecisionResolver,
+    EvolutionDecisionResolution,
+)
+from neraium_core.decision.decision_window_engine import DecisionWindowEngine
+from neraium_core.decision.trajectory_engine import TrajectoryEngine
+from neraium_core.decision.intervention_guidance_engine import InterventionGuidanceEngine
 
 
 class DecisionEngine:
@@ -33,6 +45,14 @@ class DecisionEngine:
         self.persistence_tracker = persistence_tracker.PersistenceTracker()
         self.temporal_intelligence = TemporalIntelligence()
         self.action_horizon_policy = ActionHorizonPolicy()
+        self.evolution_tracker = EvolutionTracker()
+        self.coherence_scorer = TemporalCoherenceScorer()
+        self.degradation_tracker = CausalDegradationTracker()
+        self.narrative_builder = EvolutionNarrativeBuilder()
+        self.decision_resolver = EvolutionDecisionResolver()
+        self.window_engine = DecisionWindowEngine()
+        self.trajectory_engine = TrajectoryEngine()
+        self.guidance_engine = InterventionGuidanceEngine()
         self.previous_state: Optional[dict[str, Any]] = None
         self.previous_persistence: Optional[PersistenceState] = None
         self.previous_severity: Optional[SeverityLevel] = None
@@ -126,6 +146,15 @@ class DecisionEngine:
             relational_instability=relational_instability,
         )
 
+        # === SPRINT 1: EVOLUTION TRACKING ===
+        evolution_trajectory = self.evolution_tracker.update_frame(
+            severity=severity,
+            drift_score=drift_score,
+            relational_instability=relational_instability,
+            regime_distance=regime_distance,
+            finding_confidence=finding_confidence,
+        )
+
         # === PHASE 3: TEMPORAL CONTEXT UPDATE ===
         temporal_context = self.temporal_intelligence.update_temporal_context(
             severity=severity,  # Will use raw policy classification
@@ -153,6 +182,21 @@ class DecisionEngine:
             system_phase=system_phase,
             regime_name=regime_name,
             recent_events=self.recent_events,
+        )
+
+        # === SPRINT 1: TEMPORAL COHERENCE SCORING ===
+        coherence_profile = self.coherence_scorer.update_metrics(
+            metrics={
+                "drift_score": drift_score,
+                "relational_instability": relational_instability,
+                "finding_confidence": finding_confidence,
+            }
+        )
+
+        # === SPRINT 2: CAUSAL DEGRADATION ANALYSIS ===
+        degradation_map = self.degradation_tracker.analyze_relationships(
+            sii_output=sii_output,
+            relational_instability=relational_instability,
         )
 
         # === PATTERN MATCHING (moved earlier for Phase 5) ===
@@ -397,6 +441,140 @@ class DecisionEngine:
             drift_score=drift_score,
         )
 
+        # === APPLY EVOLUTION-INFORMED CONFIDENCE BOOST ===
+        # (Before decision creation, so it's included in the final output)
+        if "action_confidence_evolution_boost" in locals():
+            action_confidence = min(1.0, action_confidence + action_confidence_evolution_boost)
+
+        # === SPRINT 1: BUILD EVOLUTION CONTEXT ===
+        primary_coherence = coherence_profile.coherences.get("drift_score")
+        evolution_context = EvolutionContext(
+            regime_sequence=evolution_trajectory.regime_sequence,
+            current_regime=evolution_trajectory.regime_sequence[-1] if evolution_trajectory.regime_sequence else "STABLE",
+            regime_persistence=evolution_trajectory.current_regime_persistence,
+            regime_transitions_count=evolution_trajectory.regime_transitions_count,
+            trajectory_direction=evolution_trajectory.trajectory_direction if evolution_trajectory.is_degrading else "stable",
+            trajectory_velocity=evolution_trajectory.trajectory_velocity if hasattr(evolution_trajectory, 'trajectory_velocity') else 0.0,
+            movement_pattern=evolution_trajectory.movement_pattern,
+            is_degrading=evolution_trajectory.is_degrading,
+            regime_distance_trajectory=evolution_trajectory.regime_distances,
+            temporal_coherence=coherence_profile.overall_system_coherence,
+            is_coherent=coherence_profile.is_coherent_overall,
+            coherence_type=coherence_profile.primary_signal_type,
+            regime_entry_story=self.evolution_tracker.get_regime_entry_story(),
+            trajectory_story=self.evolution_tracker.get_trajectory_story(),
+        )
+
+        # === SPRINT 2: BUILD EVOLUTION NARRATIVE ===
+        evolution_narrative = self.narrative_builder.build_narrative(
+            evolution_context=evolution_context,
+            degradation_map=degradation_map,
+            severity=severity,
+            drift_score=drift_score,
+            finding_confidence=finding_confidence,
+            persistence_frames=persistence_frames if self.enable_persistence_tracking else 0,
+        )
+
+        # === SPRINT 4: EVOLUTION-INFORMED DECISION RESOLUTION ===
+        evolution_resolution = self.decision_resolver.resolve_with_evolution(
+            threshold_severity=severity,
+            threshold_confidence=finding_confidence,
+            evolution_context=evolution_context,
+            degradation_map=degradation_map,
+            evolution_narrative=evolution_narrative,
+            persistence_frames=persistence_frames if self.enable_persistence_tracking else 0,
+        )
+
+        # Apply evolution-informed severity and boost action confidence
+        severity = evolution_resolution.final_severity
+        action_confidence_evolution_boost = evolution_resolution.recommendation_confidence_boost
+
+        # === DECISION WINDOW ENGINE: When intervention becomes ineffective ===
+        decision_window_result = self.window_engine.compute_window(
+            severity=severity,
+            degradation_stage=current_degradation_stage,
+            evolution_context=evolution_context,
+            degradation_map=degradation_map,
+            drift_score=drift_score,
+            persistence_frames=persistence_frames if self.enable_persistence_tracking else 0,
+            temporal_coherence=coherence_profile.overall_system_coherence,
+            finding_confidence=finding_confidence,
+            frame_number=self.frame_counter,
+        )
+
+        # Format window for decision output
+        decision_window_output = {
+            "status": decision_window_result.intervention_window.status,
+            "estimated_hours_remaining": decision_window_result.intervention_window.estimated_hours_remaining,
+            "confidence": round(decision_window_result.intervention_window.confidence, 3),
+            "phase": decision_window_result.intervention_window.phase,
+            "effectiveness": round(decision_window_result.intervention_window.effectiveness, 2),
+            "narrowing_rate": decision_window_result.intervention_window.narrowing_rate,
+            "recommended_urgency": decision_window_result.intervention_window.recommended_action_urgency,
+            "why_closing": decision_window_result.why_closing,
+            "if_wait_one_hour": decision_window_result.if_wait_one_hour,
+            "if_wait_next_stage": decision_window_result.if_wait_next_stage,
+        }
+
+        # === TRAJECTORY BRANCHING: What could happen next? ===
+        trajectory_branching_result = self.trajectory_engine.branch_trajectories(
+            severity=severity,
+            degradation_stage=current_degradation_stage,
+            evolution_context=evolution_context,
+            degradation_map=degradation_map,
+            drift_score=drift_score,
+            temporal_coherence=coherence_profile.overall_system_coherence,
+            finding_confidence=finding_confidence,
+            persistence_frames=persistence_frames if self.enable_persistence_tracking else 0,
+        )
+
+        # Format trajectory for decision output
+        trajectory_output = {
+            "most_likely_path": {
+                "name": trajectory_branching_result.most_likely_path.name,
+                "probability": round(trajectory_branching_result.most_likely_path.probability, 3),
+                "likelihood": trajectory_branching_result.most_likely_path.likelihood_descriptor,
+                "conditions": trajectory_branching_result.most_likely_path.conditions,
+                "window_impact": trajectory_branching_result.most_likely_path.window_impact,
+                "reversible": trajectory_branching_result.most_likely_path.reversibility,
+            },
+            "all_paths": [
+                {
+                    "name": path.name,
+                    "probability": round(path.probability, 3),
+                    "likelihood": path.likelihood_descriptor,
+                    "conditions": path.conditions,
+                    "reversible": path.reversibility,
+                    "time_to_target": path.time_to_target,
+                }
+                for path in trajectory_branching_result.paths
+            ],
+            "critical_fork": trajectory_branching_result.critical_fork,
+            "divergence_reason": trajectory_branching_result.divergence_reason,
+            "convergence_point": trajectory_branching_result.convergence_point,
+        }
+
+        # === INTERVENTION GUIDANCE: What actions would help? ===
+        guidance_result = self.guidance_engine.generate_guidance(
+            severity=severity,
+            degradation_stage=current_degradation_stage,
+            evolution_context=evolution_context,
+            degradation_map=degradation_map,
+            drift_score=drift_score,
+            temporal_coherence=coherence_profile.overall_system_coherence,
+            persistence_frames=persistence_frames if self.enable_persistence_tracking else 0,
+            window_status=decision_window_result.intervention_window.status,
+            estimated_hours_remaining=decision_window_result.intervention_window.estimated_hours_remaining,
+            most_likely_path=trajectory_branching_result.most_likely_path.name,
+            cascade_probability=next(
+                (p.probability for p in trajectory_branching_result.paths if p.name == "cascade_failure"),
+                0.0,
+            ),
+        )
+
+        # Format guidance for decision output
+        guidance_output = self.guidance_engine.format_for_operator_display(guidance_result)
+
         # === BUILD DECISION ===
         decision = Decision(
             finding_confidence=finding_confidence,
@@ -430,6 +608,10 @@ class DecisionEngine:
             secondary_actions=secondary_actions,
             action_priority_reason=action_priority_reason,
             action_tradeoff_note=None,
+            evolution_context=evolution_context,
+            decision_window=decision_window_output,
+            trajectory_branching=trajectory_output,
+            intervention_guidance=guidance_output,
         )
 
         # === PHASE 7: COHERENCE VALIDATION AND TRACEABILITY ===
