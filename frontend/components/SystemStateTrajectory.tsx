@@ -1,5 +1,6 @@
 'use client'
 
+import { useEffect, useState } from 'react'
 import { DecisionUIState } from '@/lib/decisionToUI'
 import SystemTimeline from '@/components/SystemTimeline'
 import DriftChart from '@/components/DriftChart'
@@ -11,6 +12,18 @@ interface SystemStateTrajectoryProps {
 }
 
 export default function SystemStateTrajectory({ state, systemName }: SystemStateTrajectoryProps) {
+  const [showTransitionGlow, setShowTransitionGlow] = useState(false)
+  const [prevStage, setPrevStage] = useState(state.statusHeader.degradationStage)
+
+  useEffect(() => {
+    if (state.statusHeader.degradationStage !== prevStage) {
+      setShowTransitionGlow(true)
+      setPrevStage(state.statusHeader.degradationStage)
+      const timer = setTimeout(() => setShowTransitionGlow(false), 1500)
+      return () => clearTimeout(timer)
+    }
+  }, [state.statusHeader.degradationStage, prevStage])
+
   const stateLabels: Record<string, string> = {
     baseline: 'Stable',
     early_shift: 'Early Drift',
@@ -34,7 +47,10 @@ export default function SystemStateTrajectory({ state, systemName }: SystemState
   const currentDescription = stateDescriptions[state.statusHeader.degradationStage] || 'System state change detected'
 
   return (
-    <div style={styles.container}>
+    <div style={{
+      ...styles.container,
+      ...(showTransitionGlow ? styles.containerGlow : {}),
+    }}>
       <div style={styles.header}>
         <div>
           <div style={styles.title}>System State & Trajectory</div>
@@ -151,7 +167,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   content: {
     display: 'grid',
-    gridTemplateColumns: '1fr 1fr 1fr',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
     gap: '16px',
     minHeight: '300px',
   },
@@ -218,4 +234,24 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: '8px',
     overflow: 'hidden',
   },
+  containerGlow: {
+    animation: 'transitionGlow 1.5s ease-out',
+    boxShadow: '0 0 20px rgba(96, 165, 250, 0.4), 0 0 40px rgba(96, 165, 250, 0.2)',
+  },
+}
+
+// Add animation styles
+if (typeof document !== 'undefined') {
+  const style = document.createElement('style')
+  style.textContent = `
+    @keyframes transitionGlow {
+      0% {
+        box-shadow: 0 0 30px rgba(96, 165, 250, 0.8), 0 0 60px rgba(96, 165, 250, 0.4);
+      }
+      100% {
+        box-shadow: 0 0 10px rgba(96, 165, 250, 0.1), 0 0 20px rgba(96, 165, 250, 0.05);
+      }
+    }
+  `
+  document.head.appendChild(style)
 }

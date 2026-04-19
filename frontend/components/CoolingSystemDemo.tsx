@@ -10,9 +10,11 @@ import { DecisionUIState } from '@/lib/decisionToUI'
 export default function CoolingSystemDemo() {
   const [scenarioIndex, setScenarioIndex] = useState(0)
   const [isAutoPlay, setIsAutoPlay] = useState(true)
+  const [isPaused, setIsPaused] = useState(false)
   const [displayedScenarioIndex, setDisplayedScenarioIndex] = useState(0)
   const [transitionStart, setTransitionStart] = useState<number | null>(null)
   const [elapsedMs, setElapsedMs] = useState(0)
+  const [speed, setSpeed] = useState(1)
 
   const scenario = COOLING_DEMO_SCENARIOS[scenarioIndex]
   const displayedScenario = COOLING_DEMO_SCENARIOS[displayedScenarioIndex]
@@ -21,26 +23,29 @@ export default function CoolingSystemDemo() {
   // Track elapsed time for progress indication
   useEffect(() => {
     const interval = setInterval(() => {
-      setElapsedMs(prev => prev + 100)
+      if (!isPaused) {
+        setElapsedMs(prev => prev + (100 * speed))
+      }
     }, 100)
     return () => clearInterval(interval)
-  }, [])
+  }, [isPaused, speed])
 
   // Auto-advance through scenarios
   useEffect(() => {
-    if (!isAutoPlay) return
+    if (!isAutoPlay || isPaused) return
     if (scenarioIndex >= COOLING_DEMO_SCENARIOS.length - 1) {
       setIsAutoPlay(false)
       return
     }
+    const adjustedDuration = scenario.durationMs / speed
     const timer = setTimeout(() => {
       setDisplayedScenarioIndex(scenarioIndex)
       setTransitionStart(Date.now())
       setScenarioIndex(i => i + 1)
       setElapsedMs(0)
-    }, scenario.durationMs)
+    }, adjustedDuration)
     return () => clearTimeout(timer)
-  }, [scenarioIndex, isAutoPlay, scenario.durationMs])
+  }, [scenarioIndex, isAutoPlay, isPaused, scenario.durationMs, speed])
 
   // Datacenter metrics showing cooling system health across fleet
   const systemHealthMetrics = useMemo(() => ({
@@ -51,9 +56,9 @@ export default function CoolingSystemDemo() {
     enteringInstability: Math.max(0, scenarioIndex - 0.5),
   }), [scenarioIndex])
 
-  // Calculate progress through full demo (3 minutes = 180s)
-  const totalDuration = COOLING_DEMO_SCENARIOS.reduce((sum, s) => sum + s.durationMs, 0)
-  const progressPercent = ((scenarioIndex * 45000 + elapsedMs) / totalDuration) * 100
+  // Calculate progress through full demo
+  const totalDuration = COOLING_DEMO_SCENARIOS.reduce((sum, s) => sum + s.durationMs / speed, 0)
+  const progressPercent = ((scenarioIndex * (scenario.durationMs / speed) + elapsedMs) / totalDuration) * 100
 
   return (
     <div style={styles.root}>
@@ -63,6 +68,57 @@ export default function CoolingSystemDemo() {
           <div>
             <h1 style={styles.title}>Datacenter Cooling System Intelligence</h1>
             <p style={styles.subtitle}>Real-time CRAC unit degradation tracking and predictive maintenance</p>
+          </div>
+          <div style={styles.controls}>
+            <div style={styles.controlGroup}>
+              <button
+                style={{...styles.button, ...(!isPaused ? styles.buttonActive : {})}}
+                onClick={() => { setIsPaused(false); setIsAutoPlay(true) }}
+              >
+                ▶ Play
+              </button>
+              <button
+                style={{...styles.button, ...(isPaused ? styles.buttonActive : {})}}
+                onClick={() => setIsPaused(!isPaused)}
+              >
+                ⏸ Pause
+              </button>
+              <button
+                style={styles.button}
+                onClick={() => {
+                  setScenarioIndex(Math.max(0, scenarioIndex - 1))
+                  setElapsedMs(0)
+                  setIsAutoPlay(false)
+                }}
+                disabled={scenarioIndex === 0}
+              >
+                ← Prev
+              </button>
+              <button
+                style={styles.button}
+                onClick={() => {
+                  setScenarioIndex(Math.min(COOLING_DEMO_SCENARIOS.length - 1, scenarioIndex + 1))
+                  setElapsedMs(0)
+                  setIsAutoPlay(false)
+                }}
+                disabled={scenarioIndex === COOLING_DEMO_SCENARIOS.length - 1}
+              >
+                Next →
+              </button>
+            </div>
+            <div style={styles.speedControl}>
+              <label style={styles.speedLabel}>Speed:</label>
+              <input
+                type="range"
+                min="0.5"
+                max="2"
+                step="0.25"
+                value={speed}
+                onChange={(e) => setSpeed(parseFloat(e.target.value))}
+                style={styles.speedSlider}
+              />
+              <span style={styles.speedValue}>{speed.toFixed(2)}x</span>
+            </div>
           </div>
           <div style={styles.demoStatus}>
             <div style={styles.statusLabel}>Demo: {scenarioIndex + 1} of {COOLING_DEMO_SCENARIOS.length}</div>
@@ -113,12 +169,16 @@ export default function CoolingSystemDemo() {
               }}
             />
           </div>
-          {isAutoPlay && (
+          {(isAutoPlay || isPaused) && (
             <div style={styles.autoplayIndicator}>
-              <div style={styles.autoplayDot} />
+              <div style={{...styles.autoplayDot, ...(isPaused ? {animation: 'none', opacity: 0.5} : {})}} />
               <span>Stage {scenarioIndex + 1} of {COOLING_DEMO_SCENARIOS.length}</span>
               <span style={styles.separator}>•</span>
-              <span>Next in {Math.ceil((scenario.durationMs - elapsedMs % scenario.durationMs) / 1000)}s</span>
+              {isPaused ? (
+                <span>Paused</span>
+              ) : (
+                <span>Next in {Math.ceil(((scenario.durationMs / speed) - elapsedMs % (scenario.durationMs / speed)) / 1000)}s</span>
+              )}
             </div>
           )}
         </div>
@@ -130,7 +190,7 @@ export default function CoolingSystemDemo() {
 const styles: Record<string, React.CSSProperties> = {
   root: {
     minHeight: '100vh',
-    padding: '28px 32px 32px',
+    padding: 'clamp(16px, 5vw, 32px)',
     background: 'radial-gradient(circle at 50% -10%, #0b1222 0%, #020617 58%, #000 100%)',
     fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif",
   },
@@ -147,9 +207,11 @@ const styles: Record<string, React.CSSProperties> = {
     alignItems: 'flex-start',
     paddingBottom: '20px',
     borderBottom: '1px solid rgba(148, 163, 184, 0.12)',
+    gap: '20px',
+    flexWrap: 'wrap',
   },
   title: {
-    fontSize: '24px',
+    fontSize: 'clamp(20px, 5vw, 24px)',
     fontWeight: '700',
     color: '#f1f5f9',
     margin: '0 0 8px 0',
@@ -262,9 +324,58 @@ const styles: Record<string, React.CSSProperties> = {
   separator: {
     color: 'rgba(148, 163, 184, 0.3)',
   },
+  controls: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '20px',
+    flexWrap: 'wrap',
+    flex: 1,
+  },
+  controlGroup: {
+    display: 'flex',
+    gap: '8px',
+  },
+  button: {
+    padding: '6px 12px',
+    fontSize: '12px',
+    fontWeight: '500',
+    border: '1px solid rgba(96, 165, 250, 0.3)',
+    borderRadius: '6px',
+    backgroundColor: 'rgba(15, 23, 42, 0.4)',
+    color: '#cbd5e1',
+    cursor: 'pointer',
+    transition: 'all 0.2s ease',
+    whiteSpace: 'nowrap',
+  } as React.CSSProperties,
+  buttonActive: {
+    backgroundColor: 'rgba(96, 165, 250, 0.2)',
+    borderColor: '#60a5fa',
+    color: '#60a5fa',
+  },
+  speedControl: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '10px',
+  },
+  speedLabel: {
+    fontSize: '12px',
+    color: 'rgba(148, 163, 184, 0.7)',
+    fontWeight: '500',
+  },
+  speedSlider: {
+    width: '80px',
+    height: '4px',
+    cursor: 'pointer',
+  } as React.CSSProperties,
+  speedValue: {
+    fontSize: '12px',
+    color: '#60a5fa',
+    fontWeight: '600',
+    minWidth: '40px',
+  },
 }
 
-// Add animation keyframes
+// Add animation keyframes and responsive styles
 if (typeof document !== 'undefined') {
   const style = document.createElement('style')
   style.textContent = `
@@ -284,6 +395,17 @@ if (typeof document !== 'undefined') {
       }
       50% {
         opacity: 0.4;
+      }
+    }
+    @media (max-width: 768px) {
+      button {
+        padding: 4px 8px !important;
+        font-size: 11px !important;
+      }
+    }
+    @media (max-width: 640px) {
+      [style*="gridTemplateColumns"] {
+        grid-template-columns: 1fr !important;
       }
     }
   `
