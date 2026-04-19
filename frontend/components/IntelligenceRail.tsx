@@ -201,6 +201,21 @@ export const IntelligenceRail: React.FC<IntelligenceRailProps> = ({
           {explanation}
         </p>
       </div>
+
+      {/* Divider */}
+      <div className="h-px bg-louddpax-border/50" />
+
+      {/* Powered by Neraium */}
+      <div className="flex flex-col items-center gap-2 pt-2">
+        <svg width="24" height="24" viewBox="0 0 24 24" className="opacity-60">
+          <rect x="4" y="4" width="4" height="16" fill="#7E9F2E" rx="0.5" />
+          <rect x="10" y="4" width="4" height="16" fill="#7E9F2E" rx="0.5" />
+          <rect x="16" y="8" width="4" height="12" fill="#7E9F2E" rx="0.5" />
+        </svg>
+        <p className="text-xs text-louddpax-muted tracking-widest">
+          Powered by Neraium
+        </p>
+      </div>
     </div>
   )
 }

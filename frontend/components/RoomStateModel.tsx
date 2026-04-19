@@ -352,6 +352,19 @@ export const RoomStateModel: React.FC<RoomStateModelProps> = ({
           />
         ))}
 
+        {/* Neraium watermark (subtle background) */}
+        <text
+          x="200"
+          y="360"
+          textAnchor="middle"
+          fontSize="8"
+          fill="#7E9F2E"
+          opacity="0.1"
+          letterSpacing="0.08em"
+        >
+          NERAIUM INTELLIGENCE
+        </text>
+
         {/* Drift score indicator (center bottom) */}
         <text
           x="200"

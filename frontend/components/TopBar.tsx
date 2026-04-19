@@ -23,10 +23,19 @@ export const TopBar: React.FC<TopBarProps> = ({
       <div className="max-w-[1920px] mx-auto flex items-center justify-between gap-8">
         {/* Left: Louddpax branding and location */}
         <div className="flex items-start gap-6">
+          <div className="flex items-start gap-4">
+            {/* Louddpax Logo */}
+            <svg width="48" height="48" viewBox="0 0 48 48" className="flex-shrink-0">
+              <circle cx="24" cy="24" r="22" fill="none" stroke="#7E9F2E" strokeWidth="1.5" opacity="0.3"/>
+              <circle cx="24" cy="24" r="16" fill="none" stroke="#7E9F2E" strokeWidth="1" opacity="0.2"/>
+              <path d="M 24 10 Q 32 14 32 24 Q 32 34 24 38 Q 16 34 16 24 Q 16 14 24 10" fill="#7E9F2E" opacity="0.8"/>
+              <circle cx="24" cy="24" r="4" fill="#050607"/>
+            </svg>
+          </div>
           <div>
             <div className="flex items-center gap-2 mb-2">
               <span className="text-xs font-bold tracking-wider text-louddpax-primary uppercase">
-                ◆ Louddpax
+                Louddpax
               </span>
               {isLive && (
                 <motion.div

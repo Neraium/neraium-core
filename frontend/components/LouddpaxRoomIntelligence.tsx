@@ -256,6 +256,21 @@ export const LouddpaxRoomIntelligence: React.FC = () => {
               </span>
             </div>
           </div>
+
+          {/* Branded Footer */}
+          <div className="mt-8 px-6 py-4 bg-gradient-to-r from-louddpax-primary/5 to-louddpax-primary/0 rounded border border-louddpax-primary/20">
+            <div className="flex items-center justify-center gap-4">
+              <div className="flex items-center gap-2">
+                <div className="w-1 h-1 rounded-full bg-louddpax-primary" />
+                <span className="text-xs text-louddpax-muted tracking-widest">LOUDDPAX</span>
+              </div>
+              <div className="w-px h-4 bg-louddpax-border/30" />
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-louddpax-muted tracking-widest">Powered by</span>
+                <span className="text-xs font-bold text-louddpax-primary tracking-widest">NERAIUM</span>
+              </div>
+            </div>
+          </div>
         </div>
 
         {/* Right: Intelligence Rail */}
