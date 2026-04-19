@@ -37,6 +37,7 @@ export default function CoolingSystemDemo() {
       setDisplayedScenarioIndex(scenarioIndex)
       setTransitionStart(Date.now())
       setScenarioIndex(i => i + 1)
+      setElapsedMs(0)
     }, scenario.durationMs)
     return () => clearTimeout(timer)
   }, [scenarioIndex, isAutoPlay, scenario.durationMs])
