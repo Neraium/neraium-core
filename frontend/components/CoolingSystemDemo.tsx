@@ -191,37 +191,44 @@ const styles: Record<string, React.CSSProperties> = {
   root: {
     minHeight: '100vh',
     padding: 'clamp(16px, 5vw, 32px)',
-    background: 'radial-gradient(circle at 50% -10%, #0b1222 0%, #020617 58%, #000 100%)',
-    fontFamily: "-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif",
+    background: 'radial-gradient(circle at 50% -10%, #0a0e27 0%, #050b15 40%, #000 100%)',
+    fontFamily: "'Space Mono', 'Courier New', monospace",
+    position: 'relative',
+    overflow: 'hidden',
   },
   surface: {
     display: 'flex',
     flexDirection: 'column',
-    gap: '20px',
+    gap: '24px',
     maxWidth: '1400px',
     margin: '0 auto',
+    position: 'relative',
+    zIndex: 1,
   },
   headerSection: {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
     paddingBottom: '20px',
-    borderBottom: '1px solid rgba(148, 163, 184, 0.12)',
+    borderBottom: '2px solid rgba(0, 255, 255, 0.3)',
     gap: '20px',
     flexWrap: 'wrap',
   },
   title: {
-    fontSize: 'clamp(20px, 5vw, 24px)',
-    fontWeight: '700',
-    color: '#f1f5f9',
-    margin: '0 0 8px 0',
-    letterSpacing: '-0.01em',
+    fontSize: 'clamp(22px, 6vw, 28px)',
+    fontWeight: '900',
+    color: '#00ffff',
+    margin: '0 0 12px 0',
+    letterSpacing: '0.05em',
+    textShadow: '0 0 10px rgba(0, 255, 255, 0.8), 0 0 20px rgba(0, 255, 255, 0.4)',
   },
   subtitle: {
-    fontSize: '13px',
-    color: 'rgba(148, 163, 184, 0.65)',
+    fontSize: '12px',
+    color: '#00d4ff',
     margin: 0,
-    fontWeight: '400',
+    fontWeight: '500',
+    letterSpacing: '0.08em',
+    textShadow: '0 0 8px rgba(0, 212, 255, 0.6)',
   },
   demoStatus: {
     display: 'flex',
@@ -299,8 +306,9 @@ const styles: Record<string, React.CSSProperties> = {
   },
   progressBar: {
     height: '100%',
-    background: 'linear-gradient(90deg, #60a5fa, #3b82f6)',
+    background: 'linear-gradient(90deg, #00ffff, #ff00ff)',
     transition: 'width 0.1s linear',
+    boxShadow: '0 0 15px rgba(0, 255, 255, 0.8), 0 0 30px rgba(255, 0, 255, 0.4)',
   },
   autoplayIndicator: {
     display: 'flex',
@@ -336,21 +344,26 @@ const styles: Record<string, React.CSSProperties> = {
     gap: '8px',
   },
   button: {
-    padding: '6px 12px',
-    fontSize: '12px',
-    fontWeight: '500',
-    border: '1px solid rgba(96, 165, 250, 0.3)',
-    borderRadius: '6px',
-    backgroundColor: 'rgba(15, 23, 42, 0.4)',
-    color: '#cbd5e1',
+    padding: '8px 16px',
+    fontSize: '11px',
+    fontWeight: '700',
+    border: '2px solid #00ffff',
+    borderRadius: '2px',
+    backgroundColor: 'rgba(0, 255, 255, 0.05)',
+    color: '#00ffff',
     cursor: 'pointer',
-    transition: 'all 0.2s ease',
+    transition: 'all 0.3s ease',
     whiteSpace: 'nowrap',
+    textShadow: '0 0 6px rgba(0, 255, 255, 0.8)',
+    boxShadow: '0 0 10px rgba(0, 255, 255, 0.3), inset 0 0 10px rgba(0, 255, 255, 0.1)',
+    letterSpacing: '0.05em',
   } as React.CSSProperties,
   buttonActive: {
-    backgroundColor: 'rgba(96, 165, 250, 0.2)',
-    borderColor: '#60a5fa',
-    color: '#60a5fa',
+    backgroundColor: 'rgba(0, 255, 255, 0.15)',
+    borderColor: '#00ffff',
+    color: '#00ffff',
+    boxShadow: '0 0 20px rgba(0, 255, 255, 0.6), inset 0 0 15px rgba(0, 255, 255, 0.2)',
+    textShadow: '0 0 10px rgba(0, 255, 255, 1)',
   },
   speedControl: {
     display: 'flex',
@@ -369,16 +382,19 @@ const styles: Record<string, React.CSSProperties> = {
   } as React.CSSProperties,
   speedValue: {
     fontSize: '12px',
-    color: '#60a5fa',
-    fontWeight: '600',
+    color: '#00ffff',
+    fontWeight: '700',
     minWidth: '40px',
+    textShadow: '0 0 6px rgba(0, 255, 255, 0.8)',
   },
 }
 
-// Add animation keyframes and responsive styles
+// Add animation keyframes, background grid, and responsive styles
 if (typeof document !== 'undefined') {
   const style = document.createElement('style')
   style.textContent = `
+    @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&display=swap');
+
     @keyframes fadeIn {
       from {
         opacity: 0;
@@ -394,13 +410,47 @@ if (typeof document !== 'undefined') {
         opacity: 1;
       }
       50% {
-        opacity: 0.4;
+        opacity: 0.5;
       }
     }
+    @keyframes gridScroll {
+      0% {
+        transform: translateY(0);
+      }
+      100% {
+        transform: translateY(100px);
+      }
+    }
+    @keyframes neonFlicker {
+      0%, 100% {
+        text-shadow: 0 0 10px rgba(0, 255, 255, 0.8), 0 0 20px rgba(0, 255, 255, 0.4);
+      }
+      50% {
+        text-shadow: 0 0 5px rgba(0, 255, 255, 0.6), 0 0 10px rgba(0, 255, 255, 0.2);
+      }
+    }
+
+    [style*="minHeight: 100vh"] {
+      background-image:
+        linear-gradient(0deg, transparent 24%, rgba(0, 255, 255, 0.05) 25%, rgba(0, 255, 255, 0.05) 26%, transparent 27%, transparent 74%, rgba(0, 255, 255, 0.05) 75%, rgba(0, 255, 255, 0.05) 76%, transparent 77%, transparent),
+        linear-gradient(90deg, transparent 24%, rgba(0, 255, 255, 0.05) 25%, rgba(0, 255, 255, 0.05) 26%, transparent 27%, transparent 74%, rgba(0, 255, 255, 0.05) 75%, rgba(0, 255, 255, 0.05) 76%, transparent 77%, transparent);
+      background-size: 50px 50px;
+      animation: gridScroll 20s linear infinite;
+    }
+
+    button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 0 25px rgba(0, 255, 255, 0.8), 0 0 40px rgba(0, 255, 255, 0.4) !important;
+    }
+
+    input[type="range"] {
+      accent-color: #00ffff;
+    }
+
     @media (max-width: 768px) {
       button {
-        padding: 4px 8px !important;
-        font-size: 11px !important;
+        padding: 6px 12px !important;
+        font-size: 10px !important;
       }
     }
     @media (max-width: 640px) {

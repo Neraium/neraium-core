@@ -83,14 +83,15 @@ const styles: Record<string, React.CSSProperties> = {
     flexDirection: 'column',
     gap: '16px',
     paddingBottom: '20px',
-    borderBottom: '1px solid rgba(148, 163, 184, 0.1)',
+    borderBottom: '2px solid rgba(0, 255, 255, 0.2)',
   },
   title: {
-    fontSize: '12px',
-    fontWeight: '600',
-    letterSpacing: '0.1em',
+    fontSize: '11px',
+    fontWeight: '700',
+    letterSpacing: '0.15em',
     textTransform: 'uppercase',
-    color: 'rgba(148, 163, 184, 0.72)',
+    color: '#00ffff',
+    textShadow: '0 0 8px rgba(0, 255, 255, 0.6)',
   },
   metricsGrid: {
     display: 'grid',
@@ -101,17 +102,20 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     alignItems: 'center',
     gap: '12px',
-    padding: '12px 14px',
-    backgroundColor: 'rgba(15, 23, 42, 0.4)',
-    borderRadius: '12px',
-    border: '1px solid rgba(148, 163, 184, 0.08)',
+    padding: '14px 16px',
+    backgroundColor: 'rgba(0, 20, 40, 0.3)',
+    borderRadius: '0',
+    border: '1px solid rgba(0, 255, 255, 0.15)',
+    backdropFilter: 'blur(8px)',
     transition: 'all 0.3s ease',
+    boxShadow: '0 0 15px rgba(0, 255, 255, 0.1), inset 0 0 10px rgba(0, 255, 255, 0.05)',
   },
   metricDot: {
-    width: '8px',
-    height: '8px',
+    width: '10px',
+    height: '10px',
     borderRadius: '50%',
     flexShrink: 0,
+    boxShadow: '0 0 12px currentColor',
   },
   metricContent: {
     display: 'flex',
@@ -119,15 +123,28 @@ const styles: Record<string, React.CSSProperties> = {
     gap: '2px',
   },
   metricValue: {
-    fontSize: '18px',
-    fontWeight: '700',
-    color: '#f1f5f9',
+    fontSize: '20px',
+    fontWeight: '900',
+    color: '#00ffff',
     lineHeight: 1,
+    fontFamily: "'Space Mono', monospace",
+    textShadow: '0 0 10px rgba(0, 255, 255, 0.8)',
   },
   metricLabel: {
-    fontSize: '10px',
-    color: 'rgba(148, 163, 184, 0.6)',
-    fontWeight: '500',
+    fontSize: '9px',
+    color: '#00d4ff',
+    fontWeight: '600',
     lineHeight: 1,
+    letterSpacing: '0.08em',
+    textTransform: 'uppercase',
   },
+}
+
+// Add neon effects and holographic styling
+if (typeof document !== 'undefined') {
+  const style = document.createElement('style')
+  style.textContent = `
+    @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&display=swap');
+  `
+  document.head.appendChild(style)
 }
