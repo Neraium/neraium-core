@@ -216,20 +216,22 @@ export const LouddpaxRoomIntelligence: React.FC = () => {
   }
 
   return (
-    <div className="flex flex-col h-screen bg-louddpax-bg text-louddpax-text overflow-hidden" suppressHydrationWarning>
+    <div className="flex flex-col h-screen bg-louddpax-bg text-louddpax-text overflow-hidden">
       {/* Top Bar */}
-      {mounted && (
-        <TopBar
-          facilityName="Highland Facility"
-          roomName="Room A-12"
-          growthPhase="Week 4 Flower"
-          isLive={true}
-          globalHealthScore={Math.round((1 - roomData.driftScore) * 100)}
-        />
-      )}
-      {!mounted && (
-        <div className="bg-louddpax-bg border-b border-louddpax-border px-8 py-6 opacity-0 h-24" />
-      )}
+      <div suppressHydrationWarning>
+        {mounted && (
+          <TopBar
+            facilityName="Highland Facility"
+            roomName="Room A-12"
+            growthPhase="Week 4 Flower"
+            isLive={true}
+            globalHealthScore={Math.round((1 - roomData.driftScore) * 100)}
+          />
+        )}
+        {!mounted && (
+          <div className="bg-louddpax-bg border-b border-louddpax-border px-8 py-6 opacity-0 h-24" />
+        )}
+      </div>
 
       {/* Main Content */}
       <div className="flex flex-1 overflow-hidden">
