@@ -65,16 +65,17 @@ export default function SensorChart({
       ctx.stroke()
 
       if (threshold) {
-        ctx.strokeStyle = 'rgba(34, 197, 94, 0.3)'
-        ctx.lineWidth = 1
-        ctx.setLineDash([2, 2])
+        ctx.lineWidth = 1.5
+        ctx.setLineDash([3, 3])
 
+        ctx.strokeStyle = 'rgba(34, 197, 94, 0.5)'
         const minY = height - padding - (threshold.min - min) * yScale
         ctx.beginPath()
         ctx.moveTo(padding, minY)
         ctx.lineTo(width - padding, minY)
         ctx.stroke()
 
+        ctx.strokeStyle = 'rgba(34, 197, 94, 0.5)'
         const maxY = height - padding - (threshold.max - min) * yScale
         ctx.beginPath()
         ctx.moveTo(padding, maxY)
@@ -82,7 +83,7 @@ export default function SensorChart({
         ctx.stroke()
 
         if (threshold.critical_max) {
-          ctx.strokeStyle = 'rgba(239, 68, 68, 0.3)'
+          ctx.strokeStyle = 'rgba(239, 68, 68, 0.6)'
           const critY = height - padding - (threshold.critical_max - min) * yScale
           ctx.beginPath()
           ctx.moveTo(padding, critY)

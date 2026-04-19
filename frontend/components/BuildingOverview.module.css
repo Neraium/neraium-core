@@ -109,8 +109,8 @@
 
 .roomName {
   font-size: 0.875rem;
-  font-weight: 600;
-  color: #f1f5f9;
+  font-weight: 700;
+  color: #dcfce7;
 }
 
 .roomMiniStats {
@@ -130,6 +130,19 @@
   height: 12px;
   border-radius: 50%;
   flex-shrink: 0;
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  box-shadow: 0 0 8px currentColor;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+    box-shadow: 0 0 8px currentColor;
+  }
+  50% {
+    opacity: 0.8;
+    box-shadow: 0 0 12px currentColor;
+  }
 }
 
 @media (max-width: 768px) {

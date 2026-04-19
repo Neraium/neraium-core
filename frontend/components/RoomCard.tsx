@@ -28,7 +28,7 @@ export default function RoomCard({ room, onClick }: Props) {
 
   return (
     <div
-      className={styles.card}
+      className={`${styles.card} ${room.status === 'critical' ? styles.critical : ''}`}
       onClick={onClick}
       style={{
         borderLeftColor: getStatusColor(room.status),
