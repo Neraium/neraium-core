@@ -1,0 +1,17 @@
+{
+  "source_file": "FD004_ims_policy_tuned_scored.csv",
+  "units": 248,
+  "watch_coverage": 0.5967741935483871,
+  "alert_coverage": 0.9758064516129032,
+  "mean_alert_lead": 175.48760330578511,
+  "median_alert_lead": 164.5,
+  "min_alert_lead": 30,
+  "max_alert_lead": 494,
+  "misses": 6,
+  "alert_quality_counts": {
+    "good": 134,
+    "very_early": 75,
+    "usable": 33,
+    "miss": 6
+  }
+}
