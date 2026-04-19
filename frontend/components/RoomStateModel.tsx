@@ -304,8 +304,9 @@ export const RoomStateModel: React.FC<RoomStateModelProps> = ({
             r="48"
             fill={coreColors[roomState.status].bg}
             opacity="0.1"
-            animate={{ r: [48, 52, 48] }}
+            animate={{ opacity: [0.1, 0.15, 0.1] }}
             transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
+            suppressHydrationWarning
           />
           <circle
             cx="200"
