@@ -210,25 +210,25 @@ const styles: Record<string, React.CSSProperties> = {
     justifyContent: 'space-between',
     alignItems: 'flex-start',
     paddingBottom: '20px',
-    borderBottom: '2px solid rgba(0, 255, 255, 0.3)',
+    borderBottom: '2px solid rgba(0, 153, 255, 0.3)',
     gap: '20px',
     flexWrap: 'wrap',
   },
   title: {
     fontSize: 'clamp(22px, 6vw, 28px)',
     fontWeight: '900',
-    color: '#00ffff',
+    color: '#0099ff',
     margin: '0 0 12px 0',
     letterSpacing: '0.05em',
-    textShadow: '0 0 10px rgba(0, 255, 255, 0.8), 0 0 20px rgba(0, 255, 255, 0.4)',
+    textShadow: '0 0 15px rgba(0, 153, 255, 1), 0 0 30px rgba(0, 153, 255, 0.6)',
   },
   subtitle: {
     fontSize: '12px',
-    color: '#00d4ff',
+    color: '#0088ff',
     margin: 0,
     fontWeight: '500',
     letterSpacing: '0.08em',
-    textShadow: '0 0 8px rgba(0, 212, 255, 0.6)',
+    textShadow: '0 0 10px rgba(0, 136, 255, 0.7)',
   },
   demoStatus: {
     display: 'flex',
@@ -306,9 +306,9 @@ const styles: Record<string, React.CSSProperties> = {
   },
   progressBar: {
     height: '100%',
-    background: 'linear-gradient(90deg, #00ffff, #ff00ff)',
-    transition: 'width 0.1s linear',
-    boxShadow: '0 0 15px rgba(0, 255, 255, 0.8), 0 0 30px rgba(255, 0, 255, 0.4)',
+    background: 'linear-gradient(90deg, #0066ff, #00ccff)',
+    transition: 'width 0.15s ease-out',
+    boxShadow: '0 0 20px rgba(0, 102, 255, 0.9), 0 0 40px rgba(0, 204, 255, 0.5)',
   },
   autoplayIndicator: {
     display: 'flex',
@@ -347,23 +347,23 @@ const styles: Record<string, React.CSSProperties> = {
     padding: '8px 16px',
     fontSize: '11px',
     fontWeight: '700',
-    border: '2px solid #00ffff',
+    border: '2px solid #0099ff',
     borderRadius: '2px',
-    backgroundColor: 'rgba(0, 255, 255, 0.05)',
-    color: '#00ffff',
+    backgroundColor: 'rgba(0, 102, 255, 0.08)',
+    color: '#0099ff',
     cursor: 'pointer',
-    transition: 'all 0.3s ease',
+    transition: 'all 0.3s cubic-bezier(0.22, 1, 0.36, 1)',
     whiteSpace: 'nowrap',
-    textShadow: '0 0 6px rgba(0, 255, 255, 0.8)',
-    boxShadow: '0 0 10px rgba(0, 255, 255, 0.3), inset 0 0 10px rgba(0, 255, 255, 0.1)',
+    textShadow: '0 0 8px rgba(0, 153, 255, 0.9)',
+    boxShadow: '0 0 12px rgba(0, 102, 255, 0.4), inset 0 0 10px rgba(0, 102, 255, 0.1)',
     letterSpacing: '0.05em',
   } as React.CSSProperties,
   buttonActive: {
-    backgroundColor: 'rgba(0, 255, 255, 0.15)',
-    borderColor: '#00ffff',
-    color: '#00ffff',
-    boxShadow: '0 0 20px rgba(0, 255, 255, 0.6), inset 0 0 15px rgba(0, 255, 255, 0.2)',
-    textShadow: '0 0 10px rgba(0, 255, 255, 1)',
+    backgroundColor: 'rgba(0, 153, 255, 0.15)',
+    borderColor: '#0099ff',
+    color: '#0099ff',
+    boxShadow: '0 0 25px rgba(0, 153, 255, 0.8), inset 0 0 15px rgba(0, 153, 255, 0.2)',
+    textShadow: '0 0 12px rgba(0, 153, 255, 1)',
   },
   speedControl: {
     display: 'flex',
@@ -382,10 +382,10 @@ const styles: Record<string, React.CSSProperties> = {
   } as React.CSSProperties,
   speedValue: {
     fontSize: '12px',
-    color: '#00ffff',
+    color: '#0099ff',
     fontWeight: '700',
     minWidth: '40px',
-    textShadow: '0 0 6px rgba(0, 255, 255, 0.8)',
+    textShadow: '0 0 8px rgba(0, 153, 255, 0.8)',
   },
 }
 
@@ -398,7 +398,7 @@ if (typeof document !== 'undefined') {
     @keyframes fadeIn {
       from {
         opacity: 0;
-        transform: translateY(10px);
+        transform: translateY(15px);
       }
       to {
         opacity: 1;
@@ -410,7 +410,7 @@ if (typeof document !== 'undefined') {
         opacity: 1;
       }
       50% {
-        opacity: 0.5;
+        opacity: 0.6;
       }
     }
     @keyframes gridScroll {
@@ -421,30 +421,30 @@ if (typeof document !== 'undefined') {
         transform: translateY(100px);
       }
     }
-    @keyframes neonFlicker {
-      0%, 100% {
-        text-shadow: 0 0 10px rgba(0, 255, 255, 0.8), 0 0 20px rgba(0, 255, 255, 0.4);
+    @keyframes transitionGlow {
+      0% {
+        box-shadow: 0 0 40px rgba(0, 153, 255, 1), 0 0 80px rgba(0, 153, 255, 0.5);
       }
-      50% {
-        text-shadow: 0 0 5px rgba(0, 255, 255, 0.6), 0 0 10px rgba(0, 255, 255, 0.2);
+      100% {
+        box-shadow: 0 0 15px rgba(0, 153, 255, 0.2), 0 0 30px rgba(0, 153, 255, 0.1);
       }
     }
 
     [style*="minHeight: 100vh"] {
       background-image:
-        linear-gradient(0deg, transparent 24%, rgba(0, 255, 255, 0.05) 25%, rgba(0, 255, 255, 0.05) 26%, transparent 27%, transparent 74%, rgba(0, 255, 255, 0.05) 75%, rgba(0, 255, 255, 0.05) 76%, transparent 77%, transparent),
-        linear-gradient(90deg, transparent 24%, rgba(0, 255, 255, 0.05) 25%, rgba(0, 255, 255, 0.05) 26%, transparent 27%, transparent 74%, rgba(0, 255, 255, 0.05) 75%, rgba(0, 255, 255, 0.05) 76%, transparent 77%, transparent);
+        linear-gradient(0deg, transparent 24%, rgba(0, 102, 255, 0.08) 25%, rgba(0, 102, 255, 0.08) 26%, transparent 27%, transparent 74%, rgba(0, 102, 255, 0.08) 75%, rgba(0, 102, 255, 0.08) 76%, transparent 77%, transparent),
+        linear-gradient(90deg, transparent 24%, rgba(0, 102, 255, 0.08) 25%, rgba(0, 102, 255, 0.08) 26%, transparent 27%, transparent 74%, rgba(0, 102, 255, 0.08) 75%, rgba(0, 102, 255, 0.08) 76%, transparent 77%, transparent);
       background-size: 50px 50px;
-      animation: gridScroll 20s linear infinite;
+      animation: gridScroll 25s linear infinite;
     }
 
     button:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 0 25px rgba(0, 255, 255, 0.8), 0 0 40px rgba(0, 255, 255, 0.4) !important;
+      transform: translateY(-2px) scale(1.02);
+      box-shadow: 0 0 30px rgba(0, 153, 255, 1), 0 0 50px rgba(0, 153, 255, 0.5) !important;
     }
 
     input[type="range"] {
-      accent-color: #00ffff;
+      accent-color: #0099ff;
     }
 
     @media (max-width: 768px) {
