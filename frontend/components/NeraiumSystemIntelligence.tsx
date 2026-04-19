@@ -2,11 +2,12 @@
 
 import { useEffect, useState, useRef } from 'react'
 import { generateContinuousDemoFrame } from '@/lib/continuousDemoData'
-import { PerceptualStateManager, TextUpdateManager } from '@/lib/perceptualSmoothing'
-import { HeroSystemOverview } from './HeroSystemOverview'
-import { SubsystemAnalysis } from './SubsystemAnalysis'
+import { PerceptualStateManager } from '@/lib/perceptualSmoothing'
+import { HeroSection } from './HeroSection'
+import { SubsystemCardsSection } from './SubsystemCardsSection'
+import { MetricsGridSection } from './MetricsGridSection'
 import { StateEvolutionSection } from './StateEvolutionSection'
-import { IntelligenceRailSticky } from './IntelligenceRailSticky'
+import { InsightsSection } from './InsightsSection'
 
 interface UnifiedState {
   timestamp: string
@@ -30,23 +31,18 @@ export function NeraiumSystemIntelligence() {
   const [frameIndex, setFrameIndex] = useState(0)
   const [isPlaying, setIsPlaying] = useState(true)
   const [playbackSpeed, setPlaybackSpeed] = useState(1)
-  const [totalFrames, setTotalFrames] = useState(2700) // 90 seconds at 30fps
-  const [displayTimeSeconds, setDisplayTimeSeconds] = useState(0) // For display only
-  const railRef = useRef<HTMLDivElement>(null)
+  const [totalFrames] = useState(2700)
+  const [displayTimeSeconds, setDisplayTimeSeconds] = useState(0)
 
-  // Perceptual smoothing managers
   const smoothingRef = useRef(new PerceptualStateManager())
-  const textManagerRef = useRef(new TextUpdateManager())
-  const lastDisplayUpdateRef = useRef(0)
   const internalSimLoopRef = useRef<NodeJS.Timeout>()
   const displayUpdateLoopRef = useRef<NodeJS.Timeout>()
 
-  // Initialize with first frame
+  // Initialize
   useEffect(() => {
     const firstFrame = generateContinuousDemoFrame(0, 2700)
     const smoothing = smoothingRef.current
 
-    // Initialize smoothed values
     smoothing.updateTargetValue('coherence', firstFrame.coherence)
     smoothing.updateTargetValue('drift', firstFrame.drift)
     smoothing.updateTargetValue('fragility', firstFrame.fragility)
@@ -63,45 +59,8 @@ export function NeraiumSystemIntelligence() {
       coherence: firstFrame.coherence,
       stability: 1.0,
       time: firstFrame.time,
-      rooms: [
-        { room_id: 'climate', room_name: 'Climate', status: 'nominal' },
-        { room_id: 'airflow', room_name: 'Airflow', status: 'nominal' },
-        { room_id: 'irrigation', room_name: 'Irrigation', status: 'nominal' },
-      ],
-      subsystems: [
-        {
-          subsystem_id: 'climate',
-          subsystem_name: 'Climate',
-          drift_contribution_pct: 0,
-          confidence: 0.9,
-          fragility_pct: 0,
-          behavioral_state: 'Nominal',
-        },
-        {
-          subsystem_id: 'airflow',
-          subsystem_name: 'Airflow',
-          drift_contribution_pct: 0,
-          confidence: 0.9,
-          fragility_pct: 0,
-          behavioral_state: 'Nominal',
-        },
-        {
-          subsystem_id: 'irrigation',
-          subsystem_name: 'Irrigation',
-          drift_contribution_pct: 0,
-          confidence: 0.9,
-          fragility_pct: 0,
-          behavioral_state: 'Nominal',
-        },
-        {
-          subsystem_id: 'plant',
-          subsystem_name: 'Plant Response',
-          drift_contribution_pct: 0,
-          confidence: 0.9,
-          fragility_pct: 0,
-          behavioral_state: 'Nominal',
-        },
-      ],
+      rooms: [],
+      subsystems: [],
       timeline_states: [],
       no_action_projection: [],
       critical_alerts: [],
@@ -117,15 +76,13 @@ export function NeraiumSystemIntelligence() {
     setLoading(false)
   }, [])
 
-  // Internal simulation loop (high frequency)
+  // Internal simulation loop
   useEffect(() => {
     const smoothing = smoothingRef.current
 
     internalSimLoopRef.current = setInterval(() => {
-      // Generate new frame continuously
       const frame = generateContinuousDemoFrame(frameIndex, 2700)
 
-      // Update all target values (happens frequently)
       smoothing.updateTargetValue('coherence', frame.coherence)
       smoothing.updateTargetValue('drift', frame.drift)
       smoothing.updateTargetValue('fragility', frame.fragility)
@@ -135,156 +92,109 @@ export function NeraiumSystemIntelligence() {
       smoothing.updateTargetValue('irrigation_drift', frame.subsystems.irrigation.drift)
       smoothing.updateTargetValue('plant_drift', frame.subsystems.plant.drift)
 
-      // Apply exponential smoothing
-      smoothing.updateSmoothedValues(16.67) // ~60fps
-    }, 16.67) // Run at ~60fps
+      smoothing.updateSmoothedValues(16.67)
+    }, 16.67)
 
     return () => {
       if (internalSimLoopRef.current) clearInterval(internalSimLoopRef.current)
     }
   }, [frameIndex])
 
-  // Geometry update loop (follows frame directly, high frequency)
-  // This updates the tetrahedron without delay
+  // Geometry updates (tetrahedron follows frame immediately)
   useEffect(() => {
-    const updateGeometry = () => {
-      const frame = generateContinuousDemoFrame(frameIndex, 2700)
+    const frame = generateContinuousDemoFrame(frameIndex, 2700)
+    const timeSeconds = Math.floor(frameIndex / 30)
+    setDisplayTimeSeconds(timeSeconds)
 
-      // Update display time once per second
-      const timeSeconds = Math.floor(frameIndex / 30)
-      setDisplayTimeSeconds(timeSeconds)
+    let sysState = 'stable'
+    if (frame.drift > 0.6) sysState = 'critical'
+    else if (frame.drift > 0.4) sysState = 'instability'
+    else if (frame.drift > 0.2) sysState = 'drift'
 
-      setUnifiedState((prev) =>
-        prev
-          ? {
-              ...prev,
-              // Geometry updates immediately (no smoothing)
-              drift: frame.drift,
-              coherence: frame.coherence,
-              stability: 1.0 - frame.drift,
-              time: frame.time,
-              timestamp: frame.timestamp,
-              // Subsystems for tetrahedron geometry
-              subsystems: [
-                {
-                  subsystem_id: 'climate',
-                  subsystem_name: 'Climate',
-                  drift_contribution_pct: frame.subsystems.climate.drift * 100,
-                  confidence: frame.subsystems.climate.confidence,
-                  fragility_pct: frame.fragility * 100,
-                  behavioral_state: 'Monitoring',
-                },
-                {
-                  subsystem_id: 'airflow',
-                  subsystem_name: 'Airflow',
-                  drift_contribution_pct: frame.subsystems.airflow.drift * 100,
-                  confidence: frame.subsystems.airflow.confidence,
-                  fragility_pct: frame.fragility * 100,
-                  behavioral_state: 'Monitoring',
-                },
-                {
-                  subsystem_id: 'irrigation',
-                  subsystem_name: 'Irrigation',
-                  drift_contribution_pct: frame.subsystems.irrigation.drift * 100,
-                  confidence: frame.subsystems.irrigation.confidence,
-                  fragility_pct: frame.fragility * 100,
-                  behavioral_state: 'Monitoring',
-                },
-                {
-                  subsystem_id: 'plant',
-                  subsystem_name: 'Plant Response',
-                  drift_contribution_pct: frame.subsystems.plant.drift * 100,
-                  confidence: frame.subsystems.plant.confidence,
-                  fragility_pct: frame.fragility * 100,
-                  behavioral_state: 'Monitoring',
-                },
-              ],
-            }
-          : prev
-      )
-    }
-
-    updateGeometry()
+    setUnifiedState((prev) =>
+      prev
+        ? {
+            ...prev,
+            drift: frame.drift,
+            coherence: frame.coherence,
+            stability: 1.0 - frame.drift,
+            state: sysState,
+            subsystems: [
+              {
+                subsystem_id: 'climate',
+                subsystem_name: 'Climate',
+                drift_contribution_pct: frame.subsystems.climate.drift * 100,
+                confidence: frame.subsystems.climate.confidence,
+                fragility_pct: frame.fragility * 100,
+                behavioral_state: frame.subsystems.climate.drift > 0.2 ? 'Coupling' : 'Stable',
+              },
+              {
+                subsystem_id: 'airflow',
+                subsystem_name: 'Airflow',
+                drift_contribution_pct: frame.subsystems.airflow.drift * 100,
+                confidence: frame.subsystems.airflow.confidence,
+                fragility_pct: frame.fragility * 100,
+                behavioral_state: frame.subsystems.airflow.drift > 0.2 ? 'Primary' : 'Stable',
+              },
+              {
+                subsystem_id: 'irrigation',
+                subsystem_name: 'Irrigation',
+                drift_contribution_pct: frame.subsystems.irrigation.drift * 100,
+                confidence: frame.subsystems.irrigation.confidence,
+                fragility_pct: frame.fragility * 100,
+                behavioral_state: frame.subsystems.irrigation.drift > 0.2 ? 'Coupled' : 'Stable',
+              },
+              {
+                subsystem_id: 'plant',
+                subsystem_name: 'Plant',
+                drift_contribution_pct: frame.subsystems.plant.drift * 100,
+                confidence: frame.subsystems.plant.confidence,
+                fragility_pct: frame.fragility * 100,
+                behavioral_state: 'Responsive',
+              },
+            ],
+            critical_alerts: frame.drift > 0.5 ? ['System under stress'] : [],
+            insights: {
+              current_state_insight:
+                frame.drift < 0.15
+                  ? 'System operating nominally'
+                  : frame.drift < 0.35
+                    ? 'Subtle asymmetry detected'
+                    : frame.drift < 0.55
+                      ? 'Drift spreading through coupling'
+                      : frame.drift < 0.75
+                        ? 'System deformation accelerating'
+                        : 'Critical stress detected',
+              operator_focus_insight:
+                frame.drift < 0.15
+                  ? 'Continue routine monitoring'
+                  : frame.drift < 0.35
+                    ? 'Monitor for escalation'
+                    : frame.drift < 0.55
+                      ? 'Prepare for intervention'
+                      : 'Intervention required',
+              recoverability_context: frame.drift > 0.65 ? 'Window closing—action required' : '',
+            },
+          }
+        : prev
+    )
   }, [frameIndex])
 
-  // Display update loop (low frequency, throttled)
+  // Display update loop (throttled)
   useEffect(() => {
     const smoothing = smoothingRef.current
-    const textManager = textManagerRef.current
 
     displayUpdateLoopRef.current = setInterval(() => {
-      // Check if we should update UI
       if (!smoothing.shouldUpdateUI()) return
-
-      // Build display state from smoothed values
-      const displayDrift = smoothing.getDisplayValue('drift')
-      const displayCoherence = smoothing.getDisplayValue('coherence')
-      const displayFragility = smoothing.getDisplayValue('fragility')
-      const displayConfidence = smoothing.getDisplayValue('confidence')
-
-      const climateDrift = smoothing.getDisplayValue('climate_drift')
-      const airflowDrift = smoothing.getDisplayValue('airflow_drift')
-      const irrigationDrift = smoothing.getDisplayValue('irrigation_drift')
-      const plantDrift = smoothing.getDisplayValue('plant_drift')
-
-      // Determine system state (smoothly)
-      let sysState = 'stable'
-      if (displayDrift > 0.6) sysState = 'critical'
-      else if (displayDrift > 0.4) sysState = 'instability'
-      else if (displayDrift > 0.2) sysState = 'drift'
-
-      // Build insights with text fade transitions
-      let currentStateInsight = 'System operating nominally'
-      let operatorFocusInsight = 'Continue routine monitoring'
-      let recoverabilityContext = ''
-
-      if (displayDrift < 0.15) {
-        currentStateInsight = 'System operating nominally'
-        operatorFocusInsight = 'Continue routine monitoring'
-      } else if (displayDrift < 0.35) {
-        currentStateInsight = 'Subtle asymmetry detected in subsystems'
-        operatorFocusInsight = 'Monitor for escalation'
-      } else if (displayDrift < 0.55) {
-        currentStateInsight = 'Drift beginning to spread through system coupling'
-        operatorFocusInsight = 'Prepare for intervention'
-        recoverabilityContext = 'Recovery window narrowing—action may still prevent escalation'
-      } else if (displayDrift < 0.75) {
-        currentStateInsight = 'System deformation accelerating—instability evident'
-        operatorFocusInsight = 'Intervention strongly recommended'
-        recoverabilityContext = 'Window closing—immediate action required'
-      } else {
-        currentStateInsight = 'Critical system stress—deformation irreversible'
-        operatorFocusInsight = 'System failure imminent'
-        recoverabilityContext = 'Recovery pathway closing immediately'
-      }
-
-      // Apply text fade transitions
-      const stateText = textManager.updateText('state', currentStateInsight)
-      const focusText = textManager.updateText('focus', operatorFocusInsight)
-      const recoverText = textManager.updateText('recoverability', recoverabilityContext)
-
-      setUnifiedState((prev) =>
-        prev
-          ? {
-              ...prev,
-              state: sysState,
-              critical_alerts: displayDrift > 0.5 ? ['System under structural stress'] : [],
-              insights: {
-                current_state_insight: currentStateInsight,
-                operator_focus_insight: operatorFocusInsight,
-                recoverability_context: recoverabilityContext,
-              },
-            }
-          : prev
-      )
-    }, 150) // Update UI every 150ms (6-7fps)
+      // UI already updated via geometry updates above
+    }, 150)
 
     return () => {
       if (displayUpdateLoopRef.current) clearInterval(displayUpdateLoopRef.current)
     }
   }, [])
 
-  // Playback advancement loop
+  // Playback advancement
   useEffect(() => {
     if (!isPlaying) return
 
@@ -297,93 +207,105 @@ export function NeraiumSystemIntelligence() {
         }
         return next
       })
-    }, (33.33 / playbackSpeed) * 0.5) // Advance frames at controlled rate
+    }, (33.33 / playbackSpeed) * 0.5)
 
     return () => clearInterval(interval)
   }, [isPlaying, playbackSpeed])
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center h-screen bg-black text-white">
-        <div className="text-sm font-light tracking-widest">Initializing System Intelligence…</div>
+      <div className="flex items-center justify-center h-screen bg-black">
+        <div className="text-lg font-light text-white/60 tracking-widest">
+          Initializing System Intelligence…
+        </div>
       </div>
     )
   }
 
   if (!unifiedState) {
     return (
-      <div className="flex items-center justify-center h-screen bg-black text-white">
-        <div className="text-sm font-light tracking-widest">No data available</div>
+      <div className="flex items-center justify-center h-screen bg-black">
+        <div className="text-lg font-light text-white/60">No data available</div>
       </div>
     )
   }
 
   return (
-    <div className="relative w-full min-h-screen bg-black text-white overflow-x-hidden font-sans">
-      {/* Playback controls - refined and minimal */}
-      <div className="fixed top-6 right-6 z-40 flex items-center gap-6">
-        {/* Time display - updates every second, not every frame */}
-        <div className="text-right">
-          <div className="text-xs font-light text-white/40 tracking-widest mb-1 uppercase">Elapsed</div>
-          <div className="text-2xl font-light tabular-nums">
-            {String(displayTimeSeconds).padStart(2, '0')}s
-            <span className="text-white/30 text-lg"> / 90s</span>
+    <div className="w-full min-h-screen bg-black text-white font-sans">
+      {/* Global playback controls - fixed at top */}
+      <div className="fixed top-0 left-0 right-0 z-50 bg-gradient-to-b from-black via-black/80 to-transparent pointer-events-none">
+        <div className="pointer-events-auto flex items-center justify-between px-8 py-6">
+          {/* Title */}
+          <div>
+            <h1 className="text-2xl font-light tracking-widest text-white">NERAIUM</h1>
+            <p className="text-xs font-light text-white/40 tracking-wide mt-1">System Intelligence</p>
           </div>
-        </div>
 
-        {/* Controls */}
-        <div className="flex gap-3">
-          <button
-            onClick={() => setIsPlaying(!isPlaying)}
-            className="w-10 h-10 flex items-center justify-center border border-white/20 hover:border-white/40 rounded transition-colors"
-            title={isPlaying ? 'Pause' : 'Play'}
-          >
-            {isPlaying ? '⏸' : '▶'}
-          </button>
-          <button
-            onClick={() => {
-              setFrameIndex(0)
-              setIsPlaying(false)
-            }}
-            className="w-10 h-10 flex items-center justify-center border border-white/20 hover:border-white/40 rounded transition-colors"
-            title="Reset"
-          >
-            ⟲
-          </button>
+          {/* Time and controls */}
+          <div className="flex items-center gap-8">
+            {/* Time display */}
+            <div className="text-right">
+              <div className="text-3xl font-light tabular-nums text-white">
+                {String(displayTimeSeconds).padStart(2, '0')}s
+                <span className="text-lg text-white/30 ml-1">/ 90s</span>
+              </div>
+            </div>
+
+            {/* Control buttons */}
+            <div className="flex gap-3">
+              <button
+                onClick={() => setIsPlaying(!isPlaying)}
+                className="w-12 h-12 flex items-center justify-center border border-white/20 hover:border-white/40 rounded-lg transition-all hover:bg-white/5"
+                title={isPlaying ? 'Pause' : 'Play'}
+              >
+                {isPlaying ? '⏸' : '▶'}
+              </button>
+              <button
+                onClick={() => {
+                  setFrameIndex(0)
+                  setIsPlaying(false)
+                }}
+                className="w-12 h-12 flex items-center justify-center border border-white/20 hover:border-white/40 rounded-lg transition-all hover:bg-white/5"
+                title="Reset"
+              >
+                ⟲
+              </button>
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* Main scroll surface */}
-      <div className="relative">
-        {/* SECTION 1: Hero System Overview */}
-        <div className="relative w-full h-screen sticky top-0 z-10">
-          <HeroSystemOverview state={unifiedState} railRef={railRef} />
+      {/* Main content */}
+      <div className="relative pt-32">
+        {/* HERO SECTION - Full viewport height */}
+        <HeroSection state={unifiedState} />
 
-          {/* Intelligence rail - sticky to hero section */}
-          <div
-            ref={railRef}
-            className="absolute top-0 right-0 h-full w-80 z-20 pointer-events-auto overflow-y-auto"
-            style={{
-              background: 'linear-gradient(90deg, transparent 0%, rgba(0,0,0,0.5) 15%, rgba(0,0,0,0.95) 100%)',
-            }}
-          >
-            <IntelligenceRailSticky state={unifiedState} />
-          </div>
+        {/* SUBSYSTEM ANALYSIS - Below fold */}
+        <div className="relative bg-black py-20 px-12 border-t border-white/5">
+          <SubsystemCardsSection subsystems={unifiedState.subsystems} />
         </div>
 
-        {/* SECTION 2: Subsystem Analysis */}
-        <div className="relative w-full bg-black py-32 px-12 border-t border-white/5">
-          <SubsystemAnalysis subsystems={unifiedState.subsystems} />
+        {/* METRICS GRID */}
+        <div className="relative bg-black py-20 px-12 border-t border-white/5">
+          <MetricsGridSection state={unifiedState} />
         </div>
 
-        {/* SECTION 3: State Evolution */}
-        <div className="relative w-full bg-black py-32 px-12 border-t border-white/5">
+        {/* STATE EVOLUTION */}
+        <div className="relative bg-black py-20 px-12 border-t border-white/5">
           <StateEvolutionSection
-            timeline={[]}
-            noActionProjection={[]}
+            timeline={unifiedState.timeline_states}
+            noActionProjection={unifiedState.no_action_projection}
             insights={unifiedState.insights}
           />
         </div>
+
+        {/* INSIGHTS BLOCK */}
+        <div className="relative bg-black py-20 px-12 border-t border-white/5">
+          <InsightsSection state={unifiedState} />
+        </div>
+
+        {/* Bottom padding */}
+        <div className="h-20" />
       </div>
     </div>
   )
