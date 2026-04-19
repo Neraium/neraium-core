@@ -55,7 +55,7 @@ const SubsystemNode: React.FC<{
       <motion.circle
         cx={x}
         cy={y}
-        r="24"
+        r={24}
         fill={statusColors[status].bg}
         opacity="0.15"
         animate={{ r: [24, 26, 24] }}
@@ -64,7 +64,7 @@ const SubsystemNode: React.FC<{
       <circle
         cx={x}
         cy={y}
-        r="20"
+        r={20}
         fill="none"
         stroke={statusColors[status].bg}
         strokeWidth="1.5"
@@ -73,13 +73,13 @@ const SubsystemNode: React.FC<{
       <motion.circle
         cx={x}
         cy={y}
-        r="16"
+        r={16}
         fill={statusColors[status].bg}
         opacity="0.3"
         animate={{ opacity: [0.3, 0.5, 0.3] }}
         transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
       />
-      <circle cx={x} cy={y} r="12" fill={statusColors[status].bg} />
+      <circle cx={x} cy={y} r={12} fill={statusColors[status].bg} />
 
       {/* Trend indicator */}
       <text
@@ -315,33 +315,33 @@ export const RoomStateModel: React.FC<RoomStateModelProps> = ({
         {/* Core node (room state) */}
         <g>
           <motion.circle
-            cx="200"
-            cy="200"
-            r="48"
+            cx={200}
+            cy={200}
+            r={48}
             fill={coreColors[roomState.status].bg}
             opacity="0.1"
             animate={{ r: [48, 52, 48] }}
             transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
           />
           <circle
-            cx="200"
-            cy="200"
-            r="44"
+            cx={200}
+            cy={200}
+            r={44}
             fill="none"
             stroke={coreColors[roomState.status].bg}
             strokeWidth="2"
             opacity="0.3"
           />
           <motion.circle
-            cx="200"
-            cy="200"
-            r="40"
+            cx={200}
+            cy={200}
+            r={40}
             fill={coreColors[roomState.status].bg}
             opacity="0.2"
             animate={{ opacity: [0.2, 0.4, 0.2] }}
             transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
           />
-          <circle cx="200" cy="200" r="36" fill={coreColors[roomState.status].bg} />
+          <circle cx={200} cy={200} r={36} fill={coreColors[roomState.status].bg} />
 
           {/* Core label */}
           <text
