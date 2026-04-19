@@ -1,7 +1,7 @@
 'use client'
 
-import { LouddpaxRoomIntelligence } from '@/components/LouddpaxRoomIntelligence'
+import { NeraiumDashboard } from '@/components/NeraiumDashboard'
 
 export default function Home() {
-  return <LouddpaxRoomIntelligence />
+  return <NeraiumDashboard />
 }
