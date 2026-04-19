@@ -64,11 +64,11 @@ export function StateEvolutionSection({
             const startX = scaleX(lastIdx)
             const startY = scaleY(timeline[lastIdx].drift)
 
-            const projPoints = noActionProjection.map((proj) => {
+            const projPoints = noActionProjection.map((proj, idx) => {
               const projIdx = lastIdx + proj.step
               const x = scaleX(projIdx)
               const y = scaleY(proj.drift)
-              return `${projPoints ? 'L' : 'M'} ${x} ${y}`
+              return `${idx === 0 ? 'M' : 'L'} ${x} ${y}`
             })
 
             return `M ${startX} ${startY} ${projPoints.join(' ')}`
