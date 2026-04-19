@@ -18,22 +18,17 @@ interface IntelligenceRailProps {
   explanation: string
 }
 
-const statusColors = {
-  optimal: 'text-louddpax-primary',
-  warning: 'text-louddpax-drift',
-  critical: 'text-louddpax-critical',
-}
-
-const statusBgColors = {
-  optimal: 'bg-louddpax-primary/10',
-  warning: 'bg-louddpax-drift/10',
-  critical: 'bg-louddpax-critical/10',
-}
-
-const statusBorderColors = {
-  optimal: 'border-louddpax-primary/30',
-  warning: 'border-louddpax-drift/30',
-  critical: 'border-louddpax-critical/30',
+const C = {
+  text: '#e8e9eb',
+  secondary: '#8a8f9a',
+  muted: '#4a4f5a',
+  neon: '#7cb342',
+  blue: '#5c9dff',
+  orange: '#ff9e6d',
+  red: '#e05c5c',
+  surface: '#080a0d',
+  surfaceHi: '#0f1116',
+  border: 'rgba(255,255,255,0.04)',
 }
 
 export const IntelligenceRail: React.FC<IntelligenceRailProps> = ({
@@ -51,169 +46,187 @@ export const IntelligenceRail: React.FC<IntelligenceRailProps> = ({
   }
 
   const statusType = getStateStatusType()
+  const statusColor = statusType === 'critical' ? C.red : statusType === 'warning' ? C.orange : C.neon
 
   return (
-    <div className="w-80 bg-louddpax-surface border-l border-louddpax-border p-6 flex flex-col gap-6 overflow-y-auto" suppressHydrationWarning>
+    <div style={{
+      width: '100%',
+      background: C.surface,
+      borderLeft: `1px solid ${C.border}`,
+      padding: '20px 22px',
+      display: 'flex',
+      flexDirection: 'column',
+      gap: 14,
+      overflowY: 'auto',
+      height: '100%',
+    }}>
       {/* State Label */}
       <motion.div
-        className={`px-4 py-3 rounded border ${statusBgColors[statusType]} ${statusBorderColors[statusType]}`}
         animate={{
           boxShadow:
             statusType === 'critical'
               ? [
-                  '0 0 0px rgba(201, 76, 76, 0)',
-                  '0 0 12px rgba(201, 76, 76, 0.2)',
-                  '0 0 0px rgba(201, 76, 76, 0)',
+                  '0 0 0px rgba(224, 92, 92, 0)',
+                  '0 0 16px rgba(224, 92, 92, 0.15)',
+                  '0 0 0px rgba(224, 92, 92, 0)',
                 ]
               : 'none',
         }}
-        transition={{ duration: 1.5, repeat: Infinity, ease: 'easeInOut' }}
+        transition={{ duration: 1.8, repeat: Infinity, ease: 'easeInOut' }}
+        style={{
+          padding: '14px 16px',
+          borderRadius: 8,
+          background: `${statusColor}08`,
+          border: `1px solid ${statusColor}25`,
+          borderLeft: `2px solid ${statusColor}`,
+        }}
       >
-        <p className="text-xs text-louddpax-muted tracking-widest uppercase mb-2">
+        <p style={{ fontSize: 8, color: C.muted, fontWeight: 700, letterSpacing: '0.14em', textTransform: 'uppercase', marginBottom: 6 }}>
           Current State
         </p>
-        <p
-          className={`text-xl font-light tracking-tight ${statusColors[statusType]}`}
-        >
+        <p style={{ fontSize: 18, fontWeight: 800, color: statusColor, letterSpacing: '-0.01em' }}>
           {stateLabel}
         </p>
       </motion.div>
 
-      {/* Divider */}
-      <div className="h-px bg-louddpax-border/50" />
-
       {/* Drift Score Gauge */}
       <div>
-        <p className="text-xs text-louddpax-muted tracking-widest uppercase mb-3">
+        <p style={{ fontSize: 8, color: C.muted, fontWeight: 700, letterSpacing: '0.14em', textTransform: 'uppercase', marginBottom: 8 }}>
           Drift Accumulation
         </p>
-        <div className="space-y-2">
-          <div className="flex items-center justify-between mb-2">
-            <span suppressHydrationWarning className="text-sm text-louddpax-text">
-              {Math.round(driftScore * 100)}%
-            </span>
-            <span className="text-xs text-louddpax-muted">
-              {driftScore < 0.3 ? 'BASELINE' : driftScore < 0.6 ? 'FORMING' : 'ADVANCED'}
-            </span>
-          </div>
-          <div className="h-2 bg-louddpax-border rounded-full overflow-hidden">
-            <motion.div
-              className="h-full rounded-full"
-              style={{
-                background:
-                  driftScore < 0.4
-                    ? 'linear-gradient(90deg, #7E9F2E, #A3E635)'
-                    : driftScore < 0.7
-                      ? 'linear-gradient(90deg, #D8A35D, #E8B878)'
-                      : 'linear-gradient(90deg, #C94C4C, #E87878)',
-              }}
-              initial={{ width: 0 }}
-              animate={{ width: `${driftScore * 100}%` }}
-              transition={{ duration: 0.8, ease: 'easeOut' }}
-            />
-          </div>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
+          <span style={{ fontSize: 13, color: C.text, fontWeight: 900, fontVariantNumeric: 'tabular-nums' }}>
+            {Math.round(driftScore * 100)}%
+          </span>
+          <span style={{ fontSize: 8, color: C.secondary, fontWeight: 700, letterSpacing: '0.08em' }}>
+            {driftScore < 0.3 ? 'BASELINE' : driftScore < 0.6 ? 'FORMING' : 'ADVANCED'}
+          </span>
+        </div>
+        <div style={{ height: 3, background: 'rgba(255,255,255,0.05)', borderRadius: 2, overflow: 'hidden' }}>
+          <motion.div
+            style={{
+              height: '100%',
+              borderRadius: 2,
+              background:
+                driftScore < 0.4
+                  ? 'linear-gradient(90deg, #7cb342, #9fd65c)'
+                  : driftScore < 0.7
+                    ? 'linear-gradient(90deg, #ff9e6d, #ffb88c)'
+                    : 'linear-gradient(90deg, #e05c5c, #e87878)',
+              boxShadow: `0 0 10px ${driftScore < 0.4 ? C.neon : driftScore < 0.7 ? C.orange : C.red}25`,
+            }}
+            initial={{ width: 0 }}
+            animate={{ width: `${driftScore * 100}%` }}
+            transition={{ duration: 0.8, ease: 'easeOut' }}
+          />
         </div>
       </div>
 
       {/* Confidence Score */}
-      <div>
-        <p className="text-xs text-louddpax-muted tracking-widest uppercase mb-2">
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '10px 12px',
+        background: C.surfaceHi,
+        borderRadius: 6,
+        border: `1px solid ${C.border}`,
+      }}>
+        <span style={{ fontSize: 8, color: C.muted, fontWeight: 700, letterSpacing: '0.14em', textTransform: 'uppercase' }}>
           Prediction Confidence
-        </p>
-        <p className="text-2xl font-light text-louddpax-text">
+        </span>
+        <span style={{ fontSize: 18, fontWeight: 900, color: C.text, fontVariantNumeric: 'tabular-nums' }}>
           {Math.round(confidence * 100)}
-          <span className="text-sm ml-1 text-louddpax-muted">%</span>
-        </p>
+          <span style={{ fontSize: 10, marginLeft: 2, color: C.secondary }}>%</span>
+        </span>
       </div>
 
       {/* Drift Onset Time */}
       {driftOnsetTime && (
-        <>
-          <div className="h-px bg-louddpax-border/50" />
-          <div>
-            <p className="text-xs text-louddpax-muted tracking-widest uppercase mb-2">
-              Drift Onset
-            </p>
-            <p className="text-sm text-louddpax-text font-mono">
-              {driftOnsetTime}
-            </p>
-          </div>
-        </>
+        <div style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          padding: '10px 12px',
+          background: C.surfaceHi,
+          borderRadius: 6,
+          border: `1px solid ${C.border}`,
+        }}>
+          <span style={{ fontSize: 8, color: C.muted, fontWeight: 700, letterSpacing: '0.14em', textTransform: 'uppercase' }}>
+            Drift Onset
+          </span>
+          <span style={{ fontSize: 11, color: C.text, fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
+            {driftOnsetTime}
+          </span>
+        </div>
       )}
 
       {/* Top Contributors */}
       <div>
-        <p className="text-xs text-louddpax-muted tracking-widest uppercase mb-3">
+        <p style={{ fontSize: 8, color: C.muted, fontWeight: 700, letterSpacing: '0.14em', textTransform: 'uppercase', marginBottom: 8 }}>
           Top Contributors
         </p>
-        <div className="space-y-2">
-          {topContributors.slice(0, 3).map((contributor, idx) => (
-            <motion.div
-              key={`${contributor.name}-${idx}`}
-              className={`px-3 py-2 rounded border ${statusBgColors[contributor.status]} ${statusBorderColors[contributor.status]}`}
-              animate={{
-                opacity: [0.7, 1, 0.7],
-              }}
-              transition={{
-                duration: 2,
-                repeat: Infinity,
-                ease: 'easeInOut',
-                delay: idx * 0.2,
-              }}
-            >
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-xs text-louddpax-text font-medium">
-                  {contributor.name}
-                </span>
-                <span
-                  className={`text-xs font-bold ${statusColors[contributor.status]}`}
-                >
-                  {Math.round(contributor.percentage)}%
-                </span>
-              </div>
-              <div className="h-1 bg-louddpax-border/30 rounded-full overflow-hidden">
-                <motion.div
-                  className="h-full"
-                  style={{
-                    background:
-                      contributor.status === 'critical'
-                        ? '#C94C4C'
-                        : contributor.status === 'warning'
-                          ? '#D8A35D'
-                          : '#7E9F2E',
-                  }}
-                  initial={{ width: 0 }}
-                  animate={{ width: `${contributor.percentage}%` }}
-                  transition={{ duration: 0.6, ease: 'easeOut' }}
-                />
-              </div>
-            </motion.div>
-          ))}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {topContributors.slice(0, 3).map((contributor, idx) => {
+            const ccol = contributor.status === 'critical' ? C.red : contributor.status === 'warning' ? C.orange : C.neon
+            return (
+              <motion.div
+                key={`${contributor.name}-${idx}`}
+                style={{
+                  padding: '10px 12px',
+                  borderRadius: 6,
+                  background: `${ccol}08`,
+                  border: `1px solid ${ccol}20`,
+                  borderLeft: `2px solid ${ccol}`,
+                }}
+                animate={{ opacity: [0.75, 1, 0.75] }}
+                transition={{ duration: 2.5, repeat: Infinity, ease: 'easeInOut', delay: idx * 0.25 }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+                  <span style={{ fontSize: 10, color: C.text, fontWeight: 700 }}>
+                    {contributor.name}
+                  </span>
+                  <span style={{ fontSize: 10, color: ccol, fontWeight: 800 }}>
+                    {Math.round(contributor.percentage)}%
+                  </span>
+                </div>
+                <div style={{ height: 2, background: 'rgba(255,255,255,0.05)', borderRadius: 1, overflow: 'hidden' }}>
+                  <motion.div
+                    style={{
+                      height: '100%',
+                      background: ccol,
+                      borderRadius: 1,
+                      boxShadow: `0 0 6px ${ccol}30`,
+                    }}
+                    initial={{ width: 0 }}
+                    animate={{ width: `${contributor.percentage}%` }}
+                    transition={{ duration: 0.6, ease: 'easeOut' }}
+                  />
+                </div>
+              </motion.div>
+            )
+          })}
         </div>
       </div>
 
-      {/* Plain English Explanation */}
+      {/* System Analysis */}
       <div>
-        <p className="text-xs text-louddpax-muted tracking-widest uppercase mb-2">
+        <p style={{ fontSize: 8, color: C.muted, fontWeight: 700, letterSpacing: '0.14em', textTransform: 'uppercase', marginBottom: 6 }}>
           System Analysis
         </p>
-        <p className="text-sm text-louddpax-text leading-relaxed">
+        <p style={{ fontSize: 11, color: C.text, fontWeight: 500, lineHeight: 1.55 }}>
           {explanation}
         </p>
       </div>
 
       {/* Divider */}
-      <div className="h-px bg-louddpax-border/50" />
+      <div style={{ height: 1, background: C.border, marginTop: 'auto' }} />
 
-      {/* Powered by Neraium */}
-      <div className="flex flex-col items-center gap-2 pt-2">
-        <svg width="24" height="24" viewBox="0 0 24 24" className="opacity-60">
-          <rect x="4" y="4" width="4" height="16" fill="#7E9F2E" rx="0.5" />
-          <rect x="10" y="4" width="4" height="16" fill="#7E9F2E" rx="0.5" />
-          <rect x="16" y="8" width="4" height="12" fill="#7E9F2E" rx="0.5" />
+      {/* Brand mark */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: 10, paddingTop: 4 }}>
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" opacity={0.5}>
+          <rect x="4" y="4" width="4" height="16" rx="1" fill={C.neon} opacity="0.9" />
+          <rect x="10" y="4" width="4" height="16" rx="1" fill={C.neon} opacity="0.7" />
+          <rect x="16" y="8" width="4" height="12" rx="1" fill={C.neon} opacity="0.5" />
         </svg>
-        <p className="text-xs text-louddpax-muted tracking-widest">
-          Powered by Neraium
+        <p style={{ fontSize: 8, color: C.muted, fontWeight: 700, letterSpacing: '0.14em', textTransform: 'uppercase' }}>
+          Neraium Intelligence
         </p>
       </div>
     </div>

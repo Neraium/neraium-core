@@ -1,10 +1,11 @@
 'use client'
 
-import React from 'react'
+import React, { useState } from 'react'
 import { LiveSystem } from '@/lib/simulation'
 import { FacilityHeader } from './FacilityHeader'
-import { FacilityMap } from './FacilityMap'
+import { SystemCoherenceCore } from './SystemCoherenceCore'
 import { FacilityIntelligencePanel } from './FacilityIntelligencePanel'
+import { SubsystemPanel } from './SubsystemPanel'
 import { NarrativeTimeline } from './NarrativeTimeline'
 
 interface Props {
@@ -16,6 +17,9 @@ interface Props {
 }
 
 export function FacilityOverview({ system, onSelectRoom, isPlaying, onTogglePlay, onStep }: Props) {
+  const [hoveredRoomId, setHoveredRoomId] = useState<string | null>(null)
+  const [hoveredStage, setHoveredStage] = useState<string | null>(null)
+
   return (
     <div style={{
       display: 'flex', flexDirection: 'column',
@@ -25,6 +29,7 @@ export function FacilityOverview({ system, onSelectRoom, isPlaying, onTogglePlay
       fontFamily: '-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif',
       overflow: 'hidden',
     }}>
+      {/* 1. FACILITY COMMAND STRIP */}
       <FacilityHeader
         system={system}
         isPlaying={isPlaying}
@@ -32,25 +37,64 @@ export function FacilityOverview({ system, onSelectRoom, isPlaying, onTogglePlay
         onStep={onStep}
       />
 
+      {/* Main body */}
       <div style={{ flex: 1, display: 'flex', overflow: 'hidden', minHeight: 0 }}>
+        {/* 2. HERO SYSTEM FIELD — dominant center */}
         <div style={{
-          flex: '0 0 62%',
+          flex: '1 1 0%',
           position: 'relative', overflow: 'hidden',
-          borderRight: '1px solid rgba(255,255,255,0.04)',
+          display: 'flex', flexDirection: 'column',
         }}>
-          <FacilityMap system={system} onSelectRoom={onSelectRoom} />
+          {/* System Coherence Core — takes most space */}
+          <div style={{ flex: '1 1 0%', position: 'relative', minHeight: 0 }}>
+            <SystemCoherenceCore
+              system={system}
+              onSelectRoom={onSelectRoom}
+              hoveredRoomId={hoveredRoomId}
+              onHoverRoom={setHoveredRoomId}
+            />
+          </div>
+
+          {/* 5. SUBSYSTEM BEHAVIOR PANELS — bottom of hero area */}
+          <div style={{
+            flexShrink: 0,
+            maxHeight: 220,
+            borderTop: '1px solid rgba(255,255,255,0.04)',
+            background: 'linear-gradient(180deg, transparent 0%, #080a0d 100%)',
+          }}>
+            <SubsystemPanel
+              system={system}
+              onSelectRoom={onSelectRoom}
+              hoveredRoomId={hoveredRoomId}
+              onHoverRoom={setHoveredRoomId}
+            />
+          </div>
         </div>
+
+        {/* 3. INTELLIGENCE RAIL — right side */}
         <div style={{
-          flex: '0 0 38%',
+          flex: '0 0 340px',
           display: 'flex', flexDirection: 'column',
           overflow: 'hidden',
+          borderLeft: '1px solid rgba(255,255,255,0.04)',
         }}>
-          <FacilityIntelligencePanel system={system} />
+          <FacilityIntelligencePanel
+            system={system}
+            hoveredRoomId={hoveredRoomId}
+          />
         </div>
       </div>
 
-      <div style={{ flexShrink: 0, borderTop: '1px solid rgba(255,255,255,0.04)', background: '#080a0d' }}>
-        <NarrativeTimeline system={system} />
+      {/* 6. TIMELINE — bottom */}
+      <div style={{
+        flexShrink: 0,
+        borderTop: '1px solid rgba(255,255,255,0.04)',
+        background: '#080a0d',
+      }}>
+        <NarrativeTimeline
+          system={system}
+          onHoverStage={setHoveredStage}
+        />
       </div>
     </div>
   )
