@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useRef } from 'react'
 import { generateContinuousDemoFrame } from '@/lib/continuousDemoData'
+import { PerceptualStateManager, TextUpdateManager } from '@/lib/perceptualSmoothing'
 import { HeroSystemOverview } from './HeroSystemOverview'
 import { SubsystemAnalysis } from './SubsystemAnalysis'
 import { StateEvolutionSection } from './StateEvolutionSection'
@@ -29,18 +30,34 @@ export function NeraiumSystemIntelligence() {
   const [frameIndex, setFrameIndex] = useState(0)
   const [isPlaying, setIsPlaying] = useState(true)
   const [playbackSpeed, setPlaybackSpeed] = useState(1)
-  const [totalFrames, setTotalFrames] = useState(1800) // 60 seconds at 30fps
+  const [totalFrames, setTotalFrames] = useState(2700) // 90 seconds at 30fps
   const railRef = useRef<HTMLDivElement>(null)
-  const frameTimeoutRef = useRef<NodeJS.Timeout>()
+
+  // Perceptual smoothing managers
+  const smoothingRef = useRef(new PerceptualStateManager())
+  const textManagerRef = useRef(new TextUpdateManager())
+  const lastDisplayUpdateRef = useRef(0)
+  const internalSimLoopRef = useRef<NodeJS.Timeout>()
+  const displayUpdateLoopRef = useRef<NodeJS.Timeout>()
 
   // Initialize with first frame
   useEffect(() => {
-    const firstFrame = generateContinuousDemoFrame(0, totalFrames)
+    const firstFrame = generateContinuousDemoFrame(0, 2700)
+    const smoothing = smoothingRef.current
 
-    // Transform to UnifiedState format
+    // Initialize smoothed values
+    smoothing.updateTargetValue('coherence', firstFrame.coherence)
+    smoothing.updateTargetValue('drift', firstFrame.drift)
+    smoothing.updateTargetValue('fragility', firstFrame.fragility)
+    smoothing.updateTargetValue('confidence', firstFrame.confidence)
+    smoothing.updateTargetValue('climate_drift', firstFrame.subsystems.climate.drift)
+    smoothing.updateTargetValue('airflow_drift', firstFrame.subsystems.airflow.drift)
+    smoothing.updateTargetValue('irrigation_drift', firstFrame.subsystems.irrigation.drift)
+    smoothing.updateTargetValue('plant_drift', firstFrame.subsystems.plant.drift)
+
     const systemState: UnifiedState = {
       timestamp: firstFrame.timestamp,
-      state: firstFrame.drift > 0.6 ? 'critical' : firstFrame.drift > 0.4 ? 'instability' : firstFrame.drift > 0.2 ? 'drift' : 'stable',
+      state: 'stable',
       drift: firstFrame.drift,
       coherence: firstFrame.coherence,
       stability: 1.0,
@@ -54,42 +71,42 @@ export function NeraiumSystemIntelligence() {
         {
           subsystem_id: 'climate',
           subsystem_name: 'Climate',
-          drift_contribution_pct: firstFrame.subsystems.climate.drift * 100,
-          confidence: firstFrame.subsystems.climate.confidence,
-          fragility_pct: firstFrame.fragility * 100,
-          behavioral_state: 'Monitoring',
+          drift_contribution_pct: 0,
+          confidence: 0.9,
+          fragility_pct: 0,
+          behavioral_state: 'Nominal',
         },
         {
           subsystem_id: 'airflow',
           subsystem_name: 'Airflow',
-          drift_contribution_pct: firstFrame.subsystems.airflow.drift * 100,
-          confidence: firstFrame.subsystems.airflow.confidence,
-          fragility_pct: firstFrame.fragility * 100,
-          behavioral_state: 'Monitoring',
+          drift_contribution_pct: 0,
+          confidence: 0.9,
+          fragility_pct: 0,
+          behavioral_state: 'Nominal',
         },
         {
           subsystem_id: 'irrigation',
           subsystem_name: 'Irrigation',
-          drift_contribution_pct: firstFrame.subsystems.irrigation.drift * 100,
-          confidence: firstFrame.subsystems.irrigation.confidence,
-          fragility_pct: firstFrame.fragility * 100,
-          behavioral_state: 'Monitoring',
+          drift_contribution_pct: 0,
+          confidence: 0.9,
+          fragility_pct: 0,
+          behavioral_state: 'Nominal',
         },
         {
           subsystem_id: 'plant',
           subsystem_name: 'Plant Response',
-          drift_contribution_pct: firstFrame.subsystems.plant.drift * 100,
-          confidence: firstFrame.subsystems.plant.confidence,
-          fragility_pct: firstFrame.fragility * 100,
-          behavioral_state: 'Monitoring',
+          drift_contribution_pct: 0,
+          confidence: 0.9,
+          fragility_pct: 0,
+          behavioral_state: 'Nominal',
         },
       ],
       timeline_states: [],
       no_action_projection: [],
-      critical_alerts: firstFrame.drift > 0.5 ? ['System under stress'] : [],
+      critical_alerts: [],
       insights: {
-        current_state_insight: 'System initializing...',
-        operator_focus_insight: 'Monitor for changes',
+        current_state_insight: 'System operating nominally',
+        operator_focus_insight: 'Continue routine monitoring',
         recoverability_context: '',
       },
       records: [],
@@ -99,115 +116,186 @@ export function NeraiumSystemIntelligence() {
     setLoading(false)
   }, [])
 
-  // Handle playback and frame generation
+  // Internal simulation loop (high frequency)
+  useEffect(() => {
+    const smoothing = smoothingRef.current
+
+    internalSimLoopRef.current = setInterval(() => {
+      // Generate new frame continuously
+      const frame = generateContinuousDemoFrame(frameIndex, 2700)
+
+      // Update all target values (happens frequently)
+      smoothing.updateTargetValue('coherence', frame.coherence)
+      smoothing.updateTargetValue('drift', frame.drift)
+      smoothing.updateTargetValue('fragility', frame.fragility)
+      smoothing.updateTargetValue('confidence', frame.confidence)
+      smoothing.updateTargetValue('climate_drift', frame.subsystems.climate.drift)
+      smoothing.updateTargetValue('airflow_drift', frame.subsystems.airflow.drift)
+      smoothing.updateTargetValue('irrigation_drift', frame.subsystems.irrigation.drift)
+      smoothing.updateTargetValue('plant_drift', frame.subsystems.plant.drift)
+
+      // Apply exponential smoothing
+      smoothing.updateSmoothedValues(16.67) // ~60fps
+    }, 16.67) // Run at ~60fps
+
+    return () => {
+      if (internalSimLoopRef.current) clearInterval(internalSimLoopRef.current)
+    }
+  }, [frameIndex])
+
+  // Geometry update loop (follows frame directly, high frequency)
+  // This updates the tetrahedron without delay
+  useEffect(() => {
+    const updateGeometry = () => {
+      const frame = generateContinuousDemoFrame(frameIndex, 2700)
+
+      setUnifiedState((prev) =>
+        prev
+          ? {
+              ...prev,
+              // Geometry updates immediately (no smoothing)
+              drift: frame.drift,
+              coherence: frame.coherence,
+              stability: 1.0 - frame.drift,
+              time: frame.time,
+              timestamp: frame.timestamp,
+              // Subsystems for tetrahedron geometry
+              subsystems: [
+                {
+                  subsystem_id: 'climate',
+                  subsystem_name: 'Climate',
+                  drift_contribution_pct: frame.subsystems.climate.drift * 100,
+                  confidence: frame.subsystems.climate.confidence,
+                  fragility_pct: frame.fragility * 100,
+                  behavioral_state: 'Monitoring',
+                },
+                {
+                  subsystem_id: 'airflow',
+                  subsystem_name: 'Airflow',
+                  drift_contribution_pct: frame.subsystems.airflow.drift * 100,
+                  confidence: frame.subsystems.airflow.confidence,
+                  fragility_pct: frame.fragility * 100,
+                  behavioral_state: 'Monitoring',
+                },
+                {
+                  subsystem_id: 'irrigation',
+                  subsystem_name: 'Irrigation',
+                  drift_contribution_pct: frame.subsystems.irrigation.drift * 100,
+                  confidence: frame.subsystems.irrigation.confidence,
+                  fragility_pct: frame.fragility * 100,
+                  behavioral_state: 'Monitoring',
+                },
+                {
+                  subsystem_id: 'plant',
+                  subsystem_name: 'Plant Response',
+                  drift_contribution_pct: frame.subsystems.plant.drift * 100,
+                  confidence: frame.subsystems.plant.confidence,
+                  fragility_pct: frame.fragility * 100,
+                  behavioral_state: 'Monitoring',
+                },
+              ],
+            }
+          : prev
+      )
+    }
+
+    updateGeometry()
+  }, [frameIndex])
+
+  // Display update loop (low frequency, throttled)
+  useEffect(() => {
+    const smoothing = smoothingRef.current
+    const textManager = textManagerRef.current
+
+    displayUpdateLoopRef.current = setInterval(() => {
+      // Check if we should update UI
+      if (!smoothing.shouldUpdateUI()) return
+
+      // Build display state from smoothed values
+      const displayDrift = smoothing.getDisplayValue('drift')
+      const displayCoherence = smoothing.getDisplayValue('coherence')
+      const displayFragility = smoothing.getDisplayValue('fragility')
+      const displayConfidence = smoothing.getDisplayValue('confidence')
+
+      const climateDrift = smoothing.getDisplayValue('climate_drift')
+      const airflowDrift = smoothing.getDisplayValue('airflow_drift')
+      const irrigationDrift = smoothing.getDisplayValue('irrigation_drift')
+      const plantDrift = smoothing.getDisplayValue('plant_drift')
+
+      // Determine system state (smoothly)
+      let sysState = 'stable'
+      if (displayDrift > 0.6) sysState = 'critical'
+      else if (displayDrift > 0.4) sysState = 'instability'
+      else if (displayDrift > 0.2) sysState = 'drift'
+
+      // Build insights with text fade transitions
+      let currentStateInsight = 'System operating nominally'
+      let operatorFocusInsight = 'Continue routine monitoring'
+      let recoverabilityContext = ''
+
+      if (displayDrift < 0.15) {
+        currentStateInsight = 'System operating nominally'
+        operatorFocusInsight = 'Continue routine monitoring'
+      } else if (displayDrift < 0.35) {
+        currentStateInsight = 'Subtle asymmetry detected in subsystems'
+        operatorFocusInsight = 'Monitor for escalation'
+      } else if (displayDrift < 0.55) {
+        currentStateInsight = 'Drift beginning to spread through system coupling'
+        operatorFocusInsight = 'Prepare for intervention'
+        recoverabilityContext = 'Recovery window narrowing—action may still prevent escalation'
+      } else if (displayDrift < 0.75) {
+        currentStateInsight = 'System deformation accelerating—instability evident'
+        operatorFocusInsight = 'Intervention strongly recommended'
+        recoverabilityContext = 'Window closing—immediate action required'
+      } else {
+        currentStateInsight = 'Critical system stress—deformation irreversible'
+        operatorFocusInsight = 'System failure imminent'
+        recoverabilityContext = 'Recovery pathway closing immediately'
+      }
+
+      // Apply text fade transitions
+      const stateText = textManager.updateText('state', currentStateInsight)
+      const focusText = textManager.updateText('focus', operatorFocusInsight)
+      const recoverText = textManager.updateText('recoverability', recoverabilityContext)
+
+      setUnifiedState((prev) =>
+        prev
+          ? {
+              ...prev,
+              state: sysState,
+              critical_alerts: displayDrift > 0.5 ? ['System under structural stress'] : [],
+              insights: {
+                current_state_insight: currentStateInsight,
+                operator_focus_insight: operatorFocusInsight,
+                recoverability_context: recoverabilityContext,
+              },
+            }
+          : prev
+      )
+    }, 150) // Update UI every 150ms (6-7fps)
+
+    return () => {
+      if (displayUpdateLoopRef.current) clearInterval(displayUpdateLoopRef.current)
+    }
+  }, [])
+
+  // Playback advancement loop
   useEffect(() => {
     if (!isPlaying) return
 
-    frameTimeoutRef.current = setTimeout(() => {
+    const interval = setInterval(() => {
       setFrameIndex((prev) => {
         const next = prev + 1
-        if (next >= totalFrames) {
+        if (next >= 2700) {
           setIsPlaying(false)
           return prev
         }
         return next
       })
-    }, (33.33 / playbackSpeed) * 0.8) // Adjust timing for smoother playback
+    }, (33.33 / playbackSpeed) * 0.5) // Advance frames at controlled rate
 
-    return () => {
-      if (frameTimeoutRef.current) clearTimeout(frameTimeoutRef.current)
-    }
-  }, [isPlaying, playbackSpeed, frameIndex, totalFrames])
-
-  // Generate frame data from continuous demo
-  useEffect(() => {
-    const frame = generateContinuousDemoFrame(frameIndex, totalFrames)
-
-    // Determine system state
-    let sysState = 'stable'
-    if (frame.drift > 0.6) sysState = 'critical'
-    else if (frame.drift > 0.4) sysState = 'instability'
-    else if (frame.drift > 0.2) sysState = 'drift'
-
-    // Build insights based on current state
-    let currentStateInsight = ''
-    let operatorFocusInsight = ''
-    let recoverabilityContext = ''
-
-    if (frame.drift < 0.15) {
-      currentStateInsight = 'System operating nominally'
-      operatorFocusInsight = 'Continue routine monitoring'
-    } else if (frame.drift < 0.35) {
-      currentStateInsight = 'Subtle asymmetry detected in subsystems'
-      operatorFocusInsight = 'Watch for escalation in Airflow coupling'
-    } else if (frame.drift < 0.55) {
-      currentStateInsight = 'Drift beginning to spread through system coupling'
-      operatorFocusInsight = 'Prepare for intervention if trend continues'
-      recoverabilityContext = 'Recovery window narrowing—action may still prevent escalation'
-    } else if (frame.drift < 0.75) {
-      currentStateInsight = 'System deformation accelerating—instability evident'
-      operatorFocusInsight = 'Intervention strongly recommended'
-      recoverabilityContext = 'Window closing—immediate action required'
-    } else {
-      currentStateInsight = 'Critical system stress—deformation irreversible'
-      operatorFocusInsight = 'System failure imminent'
-      recoverabilityContext = 'Recovery pathway closing immediately'
-    }
-
-    setUnifiedState((prev) =>
-      prev
-        ? {
-            ...prev,
-            timestamp: frame.timestamp,
-            state: sysState,
-            drift: frame.drift,
-            coherence: frame.coherence,
-            stability: 1.0 - frame.drift,
-            time: frame.time,
-            subsystems: [
-              {
-                subsystem_id: 'climate',
-                subsystem_name: 'Climate',
-                drift_contribution_pct: frame.subsystems.climate.drift * 100,
-                confidence: frame.subsystems.climate.confidence,
-                fragility_pct: frame.fragility * 100,
-                behavioral_state: frame.subsystems.climate.drift > 0.2 ? 'Coupling spreading' : 'Stable',
-              },
-              {
-                subsystem_id: 'airflow',
-                subsystem_name: 'Airflow',
-                drift_contribution_pct: frame.subsystems.airflow.drift * 100,
-                confidence: frame.subsystems.airflow.confidence,
-                fragility_pct: frame.fragility * 100,
-                behavioral_state: frame.subsystems.airflow.drift > 0.2 ? 'Primary driver' : 'Stable',
-              },
-              {
-                subsystem_id: 'irrigation',
-                subsystem_name: 'Irrigation',
-                drift_contribution_pct: frame.subsystems.irrigation.drift * 100,
-                confidence: frame.subsystems.irrigation.confidence,
-                fragility_pct: frame.fragility * 100,
-                behavioral_state: frame.subsystems.irrigation.drift > 0.2 ? 'Coupled response' : 'Stable',
-              },
-              {
-                subsystem_id: 'plant',
-                subsystem_name: 'Plant Response',
-                drift_contribution_pct: frame.subsystems.plant.drift * 100,
-                confidence: frame.subsystems.plant.confidence,
-                fragility_pct: frame.fragility * 100,
-                behavioral_state: frame.subsystems.plant.drift > 0.2 ? 'Stress response' : 'Nominal',
-              },
-            ],
-            critical_alerts: frame.drift > 0.5 ? ['System under structural stress'] : [],
-            insights: {
-              current_state_insight: currentStateInsight,
-              operator_focus_insight: operatorFocusInsight,
-              recoverability_context: recoverabilityContext,
-            },
-          }
-        : prev
-    )
-  }, [frameIndex, totalFrames])
+    return () => clearInterval(interval)
+  }, [isPlaying, playbackSpeed])
 
   if (loading) {
     return (
@@ -244,19 +332,8 @@ export function NeraiumSystemIntelligence() {
         >
           ⟲
         </button>
-        <input
-          type="range"
-          min="0"
-          max={totalFrames - 1}
-          value={frameIndex}
-          onChange={(e) => {
-            setFrameIndex(parseInt(e.target.value))
-            setIsPlaying(false)
-          }}
-          className="w-24"
-        />
-        <span className="text-white/50">
-          {frameIndex} / {totalFrames}
+        <span className="text-white/50 text-xs">
+          {Math.round(frameIndex / 30)}s / 90s
         </span>
       </div>
 

@@ -46,28 +46,30 @@ export function generateContinuousDemoFrame(
   frameIndex: number,
   totalFrames: number
 ): ContinuousFrameData {
-  // Total duration: 45 seconds at 30fps = 1350 frames, cap at 60s
-  const maxDurationSeconds = 60
+  // Extended duration: 90 seconds at 30fps = 2700 frames
+  // With early stability, this gives more time for perception
+  const maxDurationSeconds = 90
   const frameRate = 30
   const maxFrames = maxDurationSeconds * frameRate
 
-  // Normalize time to 0-1 over the demo duration
+  // Normalize time to 0-1 over the extended demo duration
   const normalizedTime = Math.min(frameIndex / maxFrames, 1.0)
   const timeSeconds = frameIndex / frameRate
 
   // ============================================
-  // PHASE 1: Micro-asymmetry (0-15s, t: 0-0.25)
+  // PHASE 1: Micro-asymmetry (0-20s, t: 0-0.222)
   // ============================================
-  // Almost imperceptible changes, system appears stable
-  const phase1End = 0.25
-  const microAsymmetryMagnitude = easeInCubic(normalizedTime / phase1End) * 0.05
+  // Much longer stable period for perception
+  const phase1End = 0.222
+  const microAsymmetryMagnitude =
+    normalizedTime < phase1End ? easeInCubic(normalizedTime / phase1End) * 0.03 : 0.03
 
   // ============================================
-  // PHASE 2: Airflow drift initiation (15-35s, t: 0.25-0.583)
+  // PHASE 2: Airflow drift initiation (20-60s, t: 0.222-0.667)
   // ============================================
-  // Drift begins in one subsystem and spreads through coupling
-  const phase2Start = 0.25
-  const phase2End = 0.583
+  // Slower, more gradual drift initiation with longer coupling phase
+  const phase2Start = 0.222
+  const phase2End = 0.667
   const phase2Progress =
     normalizedTime < phase2Start ? 0 : normalizedTime > phase2End ? 1 : (normalizedTime - phase2Start) / (phase2End - phase2Start)
 
@@ -84,9 +86,10 @@ export function generateContinuousDemoFrame(
   const plantCoupling = Math.max(0, phase2Progress - couplingDelay * 1.5) ** 1.2 * 0.2
 
   // ============================================
-  // PHASE 3: Strong deformation (35-60s, t: 0.583-1.0)
+  // PHASE 3: Strong deformation (60-90s, t: 0.667-1.0)
   // ============================================
-  const phase3Start = 0.583
+  // Final phase: accelerating but still smooth
+  const phase3Start = 0.667
   const phase3Progress =
     normalizedTime < phase3Start ? 0 : (normalizedTime - phase3Start) / (1.0 - phase3Start)
 

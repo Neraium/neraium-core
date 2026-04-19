@@ -68,37 +68,39 @@ export function SubsystemAnalysis({ subsystems }: SubsystemAnalysisProps) {
               </div>
             </div>
 
-            {/* Metrics in minimal format */}
+            {/* Metrics in minimal format - rounded and stable */}
             <div className="grid grid-cols-3 gap-6 mt-3">
-              {/* Drift contribution */}
+              {/* Drift contribution - rounded to whole % */}
               <div>
-                <div className="text-xs text-white/40 mb-1">Drift Contribution</div>
-                <div className="text-sm font-light">{subsystem.drift_contribution_pct.toFixed(1)}%</div>
+                <div className="text-xs text-white/40 mb-1">Drift</div>
+                <div className="text-sm font-light">{Math.round(subsystem.drift_contribution_pct)}%</div>
               </div>
 
-              {/* Confidence */}
+              {/* Confidence - rounded to nearest 5% */}
               <div>
                 <div className="text-xs text-white/40 mb-1">Confidence</div>
-                <div className="text-sm font-light">{(subsystem.confidence * 100).toFixed(0)}%</div>
+                <div className="text-sm font-light">
+                  {Math.round(subsystem.confidence * 20) * 5}%
+                </div>
               </div>
 
-              {/* Fragility (not confidence) */}
+              {/* Fragility (not confidence) - whole % */}
               <div>
                 <div className="text-xs text-white/40 mb-1">Fragility</div>
                 <div
                   className="text-sm font-light"
                   style={{
                     color:
-                      subsystem.fragility_pct > 0.65
+                      subsystem.fragility_pct > 65
                         ? '#ef4444'
-                        : subsystem.fragility_pct > 0.4
+                        : subsystem.fragility_pct > 40
                           ? '#f97316'
-                          : subsystem.fragility_pct > 0.2
+                          : subsystem.fragility_pct > 20
                             ? '#eab308'
                             : '#60a5fa',
                   }}
                 >
-                  {(subsystem.fragility_pct * 100).toFixed(0)}%
+                  {Math.round(subsystem.fragility_pct)}%
                 </div>
               </div>
             </div>
