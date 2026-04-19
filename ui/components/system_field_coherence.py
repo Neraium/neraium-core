@@ -163,6 +163,7 @@ def _compute_tetrahedron_geometry(
         "opacity": 0.5 + (coherence * 0.5),
     }
 
+    core_radius = max(0.08, 0.15 - (total_deformation * 0.05))
     core_tightening = core_resistance * 2.0
     effective_core_radius = max(0.06, core_radius - core_tightening)
 
