@@ -63,32 +63,33 @@ export default function SystemStateTrajectory({ state, systemName }: SystemState
       </div>
 
       <div style={styles.content}>
-        {/* Timeline showing state progression */}
-        <div style={styles.section}>
-          <div style={styles.sectionTitle}>State Progression</div>
-          <SystemTimeline timeline={state.timeline} />
-        </div>
-
-        {/* Drift trajectory chart */}
-        <div style={styles.section}>
-          <div style={styles.sectionTitle}>Drift Curve</div>
-          {state.driftChart.dataPoints.length > 0 ? (
-            <DriftChart chart={state.driftChart} minimal={false} severity={state.statusHeader.severity} />
-          ) : (
-            <div style={styles.placeholder}>No drift data available</div>
-          )}
-        </div>
-
-        {/* System state tetrahedron visualization */}
-        <div style={styles.section}>
+        {/* System state tetrahedron visualization - HERO */}
+        <div style={styles.tetrahedronHero}>
           <div style={styles.sectionTitle}>System State Space</div>
           {state.tetrahedron ? (
-            <div style={styles.tetrahedronContainer}>
-              <EnhancedTetrahedronViz tetrahedronState={state.tetrahedron} isInteractive={false} />
+            <div style={styles.tetrahedronContainerLarge}>
+              <EnhancedTetrahedronViz tetrahedronState={state.tetrahedron} isInteractive={true} />
             </div>
           ) : (
             <div style={styles.placeholder}>No state space data available</div>
           )}
+        </div>
+
+        {/* Supporting metrics - smaller */}
+        <div style={styles.supportingMetrics}>
+          <div style={styles.metricBox}>
+            <div style={styles.sectionTitle}>State Progression</div>
+            <SystemTimeline timeline={state.timeline} />
+          </div>
+
+          <div style={styles.metricBox}>
+            <div style={styles.sectionTitle}>Drift Curve</div>
+            {state.driftChart.dataPoints.length > 0 ? (
+              <DriftChart chart={state.driftChart} minimal={true} severity={state.statusHeader.severity} />
+            ) : (
+              <div style={styles.placeholder}>No drift data available</div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -171,10 +172,9 @@ const styles: Record<string, React.CSSProperties> = {
     fontWeight: '400',
   },
   content: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
-    gap: '16px',
-    minHeight: '300px',
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '24px',
   },
   section: {
     display: 'flex',
@@ -238,11 +238,39 @@ const styles: Record<string, React.CSSProperties> = {
     color: '#cbd5e1',
     marginTop: '2px',
   },
+  tetrahedronHero: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '12px',
+    padding: '24px',
+    backgroundColor: 'rgba(0, 30, 60, 0.6)',
+    borderRadius: '0',
+    border: '2px solid rgba(0, 102, 255, 0.3)',
+    backdropFilter: 'blur(12px)',
+    boxShadow: '0 0 50px rgba(0, 102, 255, 0.15), inset 0 0 30px rgba(0, 102, 255, 0.08)',
+  },
+  tetrahedronContainerLarge: {
+    width: '100%',
+    height: '500px',
+    borderRadius: '0',
+    overflow: 'hidden',
+    boxShadow: '0 0 60px rgba(0, 153, 255, 0.3), inset 0 0 40px rgba(0, 102, 255, 0.1)',
+  },
   tetrahedronContainer: {
     width: '100%',
     height: '300px',
     borderRadius: '8px',
     overflow: 'hidden',
+  },
+  supportingMetrics: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
+    gap: '16px',
+  },
+  metricBox: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '12px',
   },
   containerGlow: {
     animation: 'transitionGlow 1.5s ease-out',

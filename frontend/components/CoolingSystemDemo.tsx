@@ -126,17 +126,17 @@ export default function CoolingSystemDemo() {
           </div>
         </div>
 
-        {/* Layer 1: System Overview */}
-        <div style={styles.layer}>
-          <SystemOverview metrics={systemHealthMetrics} />
-        </div>
-
-        {/* Layer 2: System State & Trajectory */}
-        <div style={styles.layer}>
+        {/* Layer 2: System State & Trajectory - NOW HERO LAYER */}
+        <div style={styles.layerHero}>
           <SystemStateTrajectory
             state={state}
             systemName={scenario.name}
           />
+        </div>
+
+        {/* Layer 1: System Overview */}
+        <div style={styles.layer}>
+          <SystemOverview metrics={systemHealthMetrics} />
         </div>
 
         {/* Layer 3: Action Recommendations */}
@@ -250,6 +250,10 @@ const styles: Record<string, React.CSSProperties> = {
   },
   layer: {
     animation: 'fadeIn 0.5s ease',
+  },
+  layerHero: {
+    animation: 'fadeIn 0.6s ease',
+    marginTop: '10px',
   },
   footer: {
     display: 'flex',
