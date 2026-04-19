@@ -178,7 +178,7 @@ const ConnectionLine: React.FC<{
         <motion.circle
           cx={midX}
           cy={midY}
-          r={3 + tension * 2}
+          r={Math.max(3, 3 + tension * 2)}
           fill="none"
           stroke={isCritical ? '#C94C4C' : '#D8A35D'}
           strokeWidth="0.5"
@@ -235,12 +235,14 @@ export const RoomStateModel: React.FC<RoomStateModelProps> = ({
   }
 
   const tension = useMemo(
-    () =>
-      subsystems.reduce((sum, s) => {
+    () => {
+      if (subsystems.length === 0) return 0
+      return subsystems.reduce((sum, s) => {
         const multiplier =
           s.status === 'critical' ? 1.0 : s.status === 'warning' ? 0.6 : 0.2
         return sum + multiplier
-      }, 0) / subsystems.length,
+      }, 0) / subsystems.length
+    },
     [subsystems]
   )
 
