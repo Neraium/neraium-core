@@ -26,6 +26,7 @@ from ui.unified_shell_data import (
     build_timeline_states,
     build_intelligence_insights,
     get_critical_alerts,
+    _compute_time_to_consequence,
 )
 
 
@@ -1045,7 +1046,8 @@ def _load_unified_shell(
     rooms = build_facility_rooms_data(system_state, records)
     subsystems = build_subsystems_data(system_state, records)
     states_timeline = build_timeline_states(records)
-    insights = build_intelligence_insights(system_state, records, gate_decision)
+    time_to_consequence = _compute_time_to_consequence(records)
+    insights = build_intelligence_insights(system_state, records, gate_decision, time_to_consequence)
     critical_alerts = get_critical_alerts(system_state, gate_decision)
 
     rooms_needing_attention = sum(1 for r in rooms if r.get("state") in ("watch", "degraded", "critical"))
@@ -1066,6 +1068,7 @@ def _load_unified_shell(
         operator_focus_insight=insights.get("operator_focus", ""),
         path_outlook_insight=insights.get("path_outlook", ""),
         critical_alerts=critical_alerts if critical_alerts else None,
+        records=records,
     )
 
     return (

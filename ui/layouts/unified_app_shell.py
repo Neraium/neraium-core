@@ -28,6 +28,7 @@ from ui.components import (
     render_state_timeline,
 )
 from ui.core_integration import SystemState
+from ui.unified_shell_data import _compute_subsystem_criticality
 
 
 def build_unified_app_shell(
@@ -47,6 +48,7 @@ def build_unified_app_shell(
     operator_focus_insight: str = "Monitor irrigation timing in next cycle",
     path_outlook_insight: str = "Current trajectory stable through end of phase",
     critical_alerts: list[str] | None = None,
+    records: list[dict[str, Any]] | None = None,
 ) -> dict[str, str]:
     """Build the unified app shell.
 
@@ -89,6 +91,8 @@ def build_unified_app_shell(
     elif drift > 0.2:
         system_state = "drift"
 
+    critical_subsystem, _ = _compute_subsystem_criticality(records)
+
     top_bar_html = render_facility_command_strip(
         rooms=rooms,
         facility_coherence=facility_coherence,
@@ -105,6 +109,8 @@ def build_unified_app_shell(
         width=1000,
         height=700,
         interactive=True,
+        critical_subsystem_id=critical_subsystem,
+        records=records,
     )
 
     left_panel_html = render_subsystem_influence_panel(

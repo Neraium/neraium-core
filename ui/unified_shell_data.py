@@ -10,6 +10,78 @@ from typing import Any
 from ui.core_integration import SystemState
 
 
+def _compute_subsystem_criticality(
+    records: list[dict[str, Any]] | None = None,
+) -> tuple[str, float]:
+    """Determine most critical subsystem and its contribution magnitude.
+
+    Args:
+        records: Historical records
+
+    Returns:
+        Tuple of (critical_subsystem_id, criticality_score 0-1)
+    """
+    if not records or len(records) < 2:
+        return "climate", 0.5
+
+    latest = records[-1]
+    drift = float(latest.get("structural_drift_score", 0.2))
+
+    subsystem_contributions = {
+        "climate": drift * 0.35,
+        "airflow": drift * 0.3,
+        "irrigation": drift * 0.25,
+        "plant_response": drift * 0.1,
+    }
+
+    critical = max(subsystem_contributions, key=subsystem_contributions.get)
+    criticality = subsystem_contributions[critical]
+
+    return critical, min(criticality, 1.0)
+
+
+def _compute_time_to_consequence(
+    records: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    """Compute time-to-consequence based on drift velocity.
+
+    Args:
+        records: Historical records
+
+    Returns:
+        Dict with keys: cycles_to_critical, minutes_to_escalation, velocity
+    """
+    if not records or len(records) < 2:
+        return {
+            "cycles_to_critical": None,
+            "minutes_to_escalation": None,
+            "velocity": 0.0,
+        }
+
+    latest = records[-1]
+    previous = records[-2] if len(records) > 1 else records[0]
+
+    current_drift = float(latest.get("structural_drift_score", 0.2))
+    previous_drift = float(previous.get("structural_drift_score", 0.2))
+
+    velocity = current_drift - previous_drift
+    time_diff_minutes = 5
+
+    if velocity > 0.01:
+        drift_needed = 1.0 - current_drift
+        minutes_to_critical = (drift_needed / velocity) * time_diff_minutes if velocity > 0 else None
+        cycles_to_critical = int(minutes_to_critical / 30) if minutes_to_critical else None
+    else:
+        minutes_to_critical = None
+        cycles_to_critical = None
+
+    return {
+        "cycles_to_critical": cycles_to_critical,
+        "minutes_to_escalation": int(minutes_to_critical) if minutes_to_critical else None,
+        "velocity": velocity,
+    }
+
+
 def build_facility_rooms_data(
     system_state: SystemState | None,
     records: list[dict[str, Any]] | None = None,
@@ -34,6 +106,7 @@ def build_facility_rooms_data(
                 "state": "nominal",
                 "confidence": 0.85,
                 "changed_minutes_ago": 12,
+                "is_critical": False,
             },
             {
                 "room_id": "room_1",
@@ -42,6 +115,7 @@ def build_facility_rooms_data(
                 "state": "nominal",
                 "confidence": 0.78,
                 "changed_minutes_ago": 5,
+                "is_critical": False,
             },
             {
                 "room_id": "room_2",
@@ -50,10 +124,12 @@ def build_facility_rooms_data(
                 "state": "watch",
                 "confidence": 0.65,
                 "changed_minutes_ago": 0,
+                "is_critical": True,
             },
         ]
 
     latest = records[-1] if records else {}
+    critical_subsystem, _ = _compute_subsystem_criticality(records)
 
     phase = str(latest.get("regime_name", "unknown")).lower().replace("_", " ")
     health = str(latest.get("system_health", "nominal")).lower()
@@ -62,36 +138,20 @@ def build_facility_rooms_data(
     state_map = {"nominal": "nominal", "watch": "watch", "degraded": "degraded", "critical": "critical"}
     state = state_map.get(health, "nominal")
 
-    rooms.append(
-        {
-            "room_id": "climate",
-            "room_name": "Climate",
-            "phase": phase,
-            "state": state,
-            "confidence": confidence,
-            "changed_minutes_ago": 3 if len(records) > 1 else 0,
-        }
-    )
-    rooms.append(
-        {
-            "room_id": "airflow",
-            "room_name": "Airflow",
-            "phase": phase,
-            "state": state,
-            "confidence": confidence - 0.05,
-            "changed_minutes_ago": 7,
-        }
-    )
-    rooms.append(
-        {
-            "room_id": "irrigation",
-            "room_name": "Irrigation",
-            "phase": phase,
-            "state": "watch" if state == "nominal" else state,
-            "confidence": confidence - 0.1,
-            "changed_minutes_ago": 0,
-        }
-    )
+    subsystems = ["climate", "airflow", "irrigation"]
+    for i, subsys in enumerate(subsystems):
+        is_critical = subsys == critical_subsystem
+        rooms.append(
+            {
+                "room_id": subsys,
+                "room_name": subsys.title(),
+                "phase": phase,
+                "state": state,
+                "confidence": confidence - (i * 0.05),
+                "changed_minutes_ago": 3 - i if len(records) > 1 else 0,
+                "is_critical": is_critical,
+            }
+        )
 
     return rooms
 
@@ -234,6 +294,7 @@ def build_intelligence_insights(
     system_state: SystemState | None,
     records: list[dict[str, Any]] | None = None,
     gate_decision: dict[str, Any] | None = None,
+    time_to_consequence: dict[str, Any] | None = None,
 ) -> dict[str, str]:
     """Build operator intelligence insights.
 
@@ -241,6 +302,7 @@ def build_intelligence_insights(
         system_state: Current SystemState
         records: Historical records list
         gate_decision: Gate decision dict
+        time_to_consequence: Time-to-consequence metrics dict with cycles_to_critical, minutes_to_escalation, velocity
 
     Returns:
         Dictionary with insight keys
@@ -251,6 +313,9 @@ def build_intelligence_insights(
 
     gate_decision = gate_decision or {}
     decision = str(gate_decision.get("decision", "SUPPRESS")).upper()
+    time_to_consequence = time_to_consequence or {}
+    minutes_to_escalation = time_to_consequence.get("minutes_to_escalation")
+    cycles_to_critical = time_to_consequence.get("cycles_to_critical")
 
     if drift > 0.6:
         current_state = "Critical structural instability detected across multiple domains"
@@ -262,7 +327,10 @@ def build_intelligence_insights(
         current_state = "System operating nominally with stable coherence"
 
     if drift > 0.3:
-        onset = "Drift began ~45 minutes ago; has persisted through one full cycle"
+        if minutes_to_escalation and minutes_to_escalation > 0:
+            onset = f"Drift persisting; escalation expected within {minutes_to_escalation} minutes"
+        else:
+            onset = "Drift began ~45 minutes ago; has persisted through one full cycle"
     elif drift > 0.1:
         onset = "Current state established 12 minutes ago during post-irrigation phase"
     else:
@@ -285,7 +353,10 @@ def build_intelligence_insights(
     if decision == "ADMIT":
         focus = "⚠️ CRITICAL: Structural transition admitted. Execute intervention protocol immediately."
     elif drift > 0.3:
-        focus = "Monitor recovery trajectory. If drift continues to rise, structural intervention required."
+        if minutes_to_escalation and minutes_to_escalation < 30:
+            focus = f"Escalation within {minutes_to_escalation} minutes. Intervention needed now."
+        else:
+            focus = "Monitor recovery trajectory. If drift continues to rise, structural intervention required."
     elif drift > 0.1:
         focus = "Observe next irrigation cycle for coherence recovery. Adjust timing if drift persists."
     else:
@@ -295,7 +366,10 @@ def build_intelligence_insights(
         if records[-1].get("structural_drift_score", 0) < records[-6].get("structural_drift_score", 1):
             outlook = "Recovery trajectory confirmed. System moving toward baseline within next cycle window."
         else:
-            outlook = "Drift acceleration detected. Current path may become critical if coherence continues degrading."
+            if cycles_to_critical:
+                outlook = f"Drift acceleration detected. Critical threshold reachable in ~{cycles_to_critical} cycle windows."
+            else:
+                outlook = "Drift acceleration detected. Current path may become critical if coherence continues degrading."
     else:
         outlook = "Insufficient history to project trajectory. Wait for additional cycle data."
 

@@ -34,6 +34,7 @@ def _compute_tetrahedron_geometry(
     stability: float,
     state: str = "stable",
     history_max_drift: float = 0.0,
+    history_min_coherence: float = 1.0,
 ) -> dict[str, Any]:
     """Compute tetrahedron vertex positions governed by physics.
 
@@ -43,6 +44,7 @@ def _compute_tetrahedron_geometry(
     - Irreversibility: permanent deformation after critical threshold
     - Resistance between subsystems creates balance
     - All deformation eases, not snaps
+    - Core color marks threshold breach: once coherence < 0.4, core shifts to orange
 
     Args:
         coherence: Coherence score (0-1). Core resistance strength.
@@ -50,6 +52,7 @@ def _compute_tetrahedron_geometry(
         stability: Relational stability (0-1). Edge smoothness.
         state: One of stable, drift, instability, critical
         history_max_drift: Maximum drift ever reached (for hysteresis)
+        history_min_coherence: Minimum coherence ever reached (for threshold memory)
 
     Returns:
         Dictionary with vertex positions, edge states, coherence core params
@@ -163,10 +166,20 @@ def _compute_tetrahedron_geometry(
     core_tightening = core_resistance * 2.0
     effective_core_radius = max(0.06, core_radius - core_tightening)
 
+    threshold_breached = history_min_coherence < 0.4
+    if threshold_breached:
+        core_color = "#F97316"
+    elif coherence > 0.6:
+        core_color = "#22C55E"
+    elif coherence > 0.3:
+        core_color = "#3B82F6"
+    else:
+        core_color = "#F97316"
+
     coherence_core = {
         "radius": effective_core_radius,
         "base_radius": core_radius,
-        "color": "#22C55E" if coherence > 0.6 else "#3B82F6" if coherence > 0.3 else "#F97316",
+        "color": core_color,
         "pulse_intensity": core_pulse_intensity + (core_tightening * 0.5),
         "pulse_frequency": 1.0 + (drift * 0.6),
         "glow_spread": max(0.08, 0.15 + (drift * 0.1) - core_tightening),
@@ -220,6 +233,8 @@ def render_system_field_svg(
     width: int = 800,
     height: int = 600,
     interactive: bool = True,
+    critical_subsystem_id: str | None = None,
+    records: list[dict[str, Any]] | None = None,
 ) -> str:
     """Render the system field as an interactive SVG.
 
@@ -231,11 +246,22 @@ def render_system_field_svg(
         width: SVG width in pixels
         height: SVG height in pixels
         interactive: If True, add hover/click interactivity
+        critical_subsystem_id: ID of the most critical subsystem to highlight (climate, airflow, irrigation, plant_response)
+        records: Historical records list for computing minimum coherence
 
     Returns:
         SVG markup string
     """
-    geometry = _compute_tetrahedron_geometry(coherence, drift, stability, state)
+    history_min_coherence = 1.0
+    if records:
+        coherence_values = [float(r.get("coherence_score", 1.0)) for r in records]
+        if coherence_values:
+            history_min_coherence = min(coherence_values)
+
+    geometry = _compute_tetrahedron_geometry(
+        coherence, drift, stability, state,
+        history_min_coherence=history_min_coherence
+    )
 
     center_x = width / 2
     center_y = height / 2
@@ -420,21 +446,35 @@ def render_system_field_svg(
                     subsys_drift = si["influence_magnitude"]
                     break
 
+        is_critical = subsys_key == critical_subsystem_id
         v_color = "#3B82F6" if subsys_drift > 0.3 else "#93C5FD"
         v_radius = 8.0 + subsys_drift * 3.0
         v_opacity = 0.85 + subsys_drift * 0.15
-        v_glow_radius = v_radius + 3.0
+
+        if is_critical:
+            v_color = "#F97316" if drift > 0.4 else "#FB923C"
+            v_radius = v_radius + 2.5
+            v_opacity = min(1.0, v_opacity + 0.15)
+
+        v_glow_radius = v_radius + (6.0 if is_critical else 3.0)
 
         svg_parts.append(f"""
             <circle cx="{vx_svg:.1f}" cy="{vy_svg:.1f}" r="{v_glow_radius}"
-                fill="{v_color}" opacity="{v_opacity * 0.4}"
+                fill="{v_color}" opacity="{(v_opacity * 0.6) if is_critical else (v_opacity * 0.4)}"
                 filter="url(#coherenceGlow)"/>
         """)
+
+        if is_critical:
+            svg_parts.append(f"""
+                <circle cx="{vx_svg:.1f}" cy="{vy_svg:.1f}" r="{v_glow_radius * 0.7}"
+                    fill="{v_color}" opacity="{v_opacity * 0.3}"
+                    filter="url(#coherenceGlow)"/>
+            """)
 
         svg_parts.append(f"""
             <circle cx="{vx_svg:.1f}" cy="{vy_svg:.1f}" r="{v_radius}"
                 fill="{v_color}" opacity="{v_opacity}"
-                stroke="rgba(226,232,240,0.5)" stroke-width="1.4"
+                stroke="{v_color if is_critical else 'rgba(226,232,240,0.5)'}" stroke-width="{2.0 if is_critical else 1.4}"
                 class="ner-system-vertex" data-vertex="{v_name}"
                 data-subsystem="{subsys_key or 'none'}"/>
         """)
