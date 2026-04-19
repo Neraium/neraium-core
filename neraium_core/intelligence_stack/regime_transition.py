@@ -25,6 +25,9 @@ class RegimeTransitionOutput:
     transition_detected: bool
     regime_persistence: int
     regime_persistence_cycles: int
+    regime_instability_score: float = 0.0  # Frontier improvement: early instability signal
+    transition_confidence: float = 0.0  # Frontier improvement: confidence in transition
+    regime_wobble: bool = False  # Frontier improvement: unstable state assignment
 
 
 class RegimeTransitionLayer:
@@ -77,6 +80,10 @@ class RegimeTransitionLayer:
         self._feature_mean: Optional[np.ndarray] = None
         self._feature_std: Optional[np.ndarray] = None
 
+        # Frontier improvements: regime instability tracking
+        self._regime_assignment_history: list[int] = []  # Track regime assignments for wobble detection
+        self._feature_distance_history: list[float] = []  # Track feature distance to assigned regime
+
     def reset(self) -> None:
         """Reset online state for new unit."""
         self._regime_centroids = None
@@ -87,6 +94,8 @@ class RegimeTransitionLayer:
         self._current_regime = 0
         self._feature_mean = None
         self._feature_std = None
+        self._regime_assignment_history = []
+        self._feature_distance_history = []
 
     def initialize_regimes(self, features: np.ndarray) -> None:
         """Initialize regime centroids from early structural features.
@@ -134,7 +143,8 @@ class RegimeTransitionLayer:
             corr_drift: Frobenius norm of correlation change
 
         Returns:
-            RegimeTransitionOutput with regime ID, transition flag, persistence
+            RegimeTransitionOutput with regime ID, transition flag, persistence, and
+            frontier improvements: regime instability, transition confidence, regime wobble
         """
         # Construct feature vector
         features = np.array([mahal_distance, cov_drift, corr_drift], dtype=float)
@@ -159,15 +169,44 @@ class RegimeTransitionLayer:
         # Clip to valid range
         new_regime = np.clip(new_regime, 0, self.n_regimes - 1)
 
-        # Detect transition
-        transition_detected = new_regime != self._current_regime
-        transition_score = float(distances[new_regime])
+        # Frontier improvement 1: Regime instability score
+        # Measure closeness of second-nearest regime (uncertainty in assignment)
+        sorted_distances = np.sort(distances)
+        distance_to_nearest = float(sorted_distances[0])
+        distance_to_second = float(sorted_distances[1]) if len(sorted_distances) > 1 else float(sorted_distances[0])
 
-        # Update persistence counter
+        # Instability: low margin between nearest and second-nearest regimes
+        regime_separation = distance_to_second - distance_to_nearest
+        regime_instability = 1.0 - np.exp(-max(0, regime_separation))  # Lower separation = higher instability
+
+        # Frontier improvement 2: Transition confidence
+        # Confidence grows with persistence; drops if regime changes
+        transition_detected = new_regime != self._current_regime
+
         if transition_detected:
             self._persistence_counter = 1
+            transition_confidence = 0.0  # Just transitioned, low confidence
         else:
             self._persistence_counter += 1
+            # Confidence grows: 0 at t=1, 0.7 at t=5, 0.95 at t=15
+            transition_confidence = 1.0 - np.exp(-0.25 * self._persistence_counter)
+
+        # Frontier improvement 3: Regime wobble detection
+        # Track regime assignments in last few cycles; wobble = high variability
+        self._regime_assignment_history.append(new_regime)
+        self._feature_distance_history.append(distance_to_nearest)
+
+        wobble_window = 5
+        regime_wobble = False
+        if len(self._regime_assignment_history) >= wobble_window:
+            recent_regimes = self._regime_assignment_history[-wobble_window:]
+            unique_regimes = len(set(recent_regimes))
+            # Wobble: more than 2 regime changes in 5 cycles
+            wobble_transitions = sum(1 for i in range(1, len(recent_regimes)) if recent_regimes[i] != recent_regimes[i - 1])
+            regime_wobble = wobble_transitions >= 2
+
+        # Detect transition
+        transition_score = float(distances[new_regime])
 
         # Update regime centroid (online learning, slow)
         if self._regime_counts is not None:
@@ -193,6 +232,9 @@ class RegimeTransitionLayer:
             transition_detected=transition_detected and self._persistence_counter == 1,
             regime_persistence=self._persistence_counter,
             regime_persistence_cycles=self._persistence_counter,
+            regime_instability_score=float(regime_instability),
+            transition_confidence=float(transition_confidence),
+            regime_wobble=regime_wobble,
         )
 
 
