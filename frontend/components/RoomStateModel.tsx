@@ -35,8 +35,10 @@ const SubsystemNode: React.FC<{
   contribution: number
   trend: 'up' | 'down' | 'stable'
 }> = ({ name, angle, radius, status, contribution, trend }) => {
-  const x = Math.round((200 + radius * Math.cos((angle * Math.PI) / 180)) * 100) / 100
-  const y = Math.round((200 + radius * Math.sin((angle * Math.PI) / 180)) * 100) / 100
+  const safeAngle = angle ?? 0
+  const safeRadius = radius ?? 100
+  const x = Math.round((200 + safeRadius * Math.cos((safeAngle * Math.PI) / 180)) * 100) / 100
+  const y = Math.round((200 + safeRadius * Math.sin((safeAngle * Math.PI) / 180)) * 100) / 100
 
   const statusColors = {
     optimal: { bg: '#7E9F2E', ring: 'rgba(126, 159, 46, 0.3)' },
@@ -132,12 +134,10 @@ const ConnectionLine: React.FC<{
   const distance = Math.max(0, Math.hypot(x2 - x1, y2 - y1))
   const midX = (x1 + x2) / 2
   const midY = (y1 + y2) / 2
-  const safeStrokeWidth = Math.max(0.5, 1.5 + tension * 1.5)
+  const safeStrokeWidth = Math.max(0.5, 1.5 + (tension ?? 0) * 1.5)
 
   const isCritical = driftScore > 0.7
-  const glowColor = isCritical
-    ? 'rgba(201, 76, 76, 0.4)'
-    : 'rgba(126, 159, 46, 0.3)'
+  const tensionRadius = Math.max(3, 3 + (tension ?? 0) * 2)
 
   return (
     <g>
@@ -173,17 +173,16 @@ const ConnectionLine: React.FC<{
         suppressHydrationWarning
       />
 
-      {/* Tension indicator glow */}
       {tension > 0.5 && (
         <motion.circle
           cx={midX}
           cy={midY}
-          r={Math.max(3, 3 + tension * 2)}
+          r={tensionRadius}
           fill="none"
           stroke={isCritical ? '#C94C4C' : '#D8A35D'}
           strokeWidth="0.5"
           opacity="0.5"
-          animate={{ r: [3, 6, 3], opacity: [0.3, 0.8, 0.3] }}
+          animate={{ r: [tensionRadius * 0.75, tensionRadius * 1.5, tensionRadius * 0.75], opacity: [0.3, 0.8, 0.3] }}
           transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
         />
       )}
@@ -236,12 +235,14 @@ export const RoomStateModel: React.FC<RoomStateModelProps> = ({
 
   const tension = useMemo(
     () => {
-      if (subsystems.length === 0) return 0
-      return subsystems.reduce((sum, s) => {
+      if (!subsystems || subsystems.length === 0) return 0
+      const sum = subsystems.reduce((acc, s) => {
+        if (!s || !s.status) return acc
         const multiplier =
           s.status === 'critical' ? 1.0 : s.status === 'warning' ? 0.6 : 0.2
-        return sum + multiplier
-      }, 0) / subsystems.length
+        return acc + multiplier
+      }, 0)
+      return Math.max(0, Math.min(1, sum / subsystems.length))
     },
     [subsystems]
   )
