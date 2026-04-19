@@ -102,7 +102,7 @@ export const SubsystemCard: React.FC<SubsystemCardProps> = ({
         backgroundColor: colors.bg,
         borderColor: colors.border,
       }}
-      whileHover={{ borderColor: colors.text, scale: 1.02 }}
+      whileHover={{ borderColor: colors.text, scale: 1.02 } ?? 0}
       transition={{ duration: 0.2 }}
     >
       {/* Header */}
@@ -126,7 +126,7 @@ export const SubsystemCard: React.FC<SubsystemCardProps> = ({
 
       {/* Sparkline */}
       <div className="mb-4">
-        <MiniSparkline data={sparklineData} color={colors.spark} />
+        <MiniSparkline data={sparklineData} color={colors.spark ?? 0} />
       </div>
 
       {/* Drift Contribution */}

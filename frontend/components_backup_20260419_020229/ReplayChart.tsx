@@ -310,8 +310,8 @@ export default function ReplayChart({ frames, currentIndex }: ReplayChartProps) 
             {criticalDriftPoints.map((point, idx) => (
               <circle
                 key={`critical-drift-${idx}`}
-                cx={point.x}
-                cy={point.y}
+                cx={point.x ?? 0}
+                cy={point.y ?? 0}
                 r="4.2"
                 fill="#ef4444"
                 stroke="#fca5a5"
@@ -324,8 +324,8 @@ export default function ReplayChart({ frames, currentIndex }: ReplayChartProps) 
             {criticalInstabilityPoints.map((point, idx) => (
               <circle
                 key={`critical-instability-${idx}`}
-                cx={point.x}
-                cy={point.y}
+                cx={point.x ?? 0}
+                cy={point.y ?? 0}
                 r="4.2"
                 fill="#fb923c"
                 stroke="#fed7aa"
@@ -349,14 +349,14 @@ export default function ReplayChart({ frames, currentIndex }: ReplayChartProps) 
 
             {currentDriftPoint && (
               <g>
-                <circle cx={currentX} cy={currentDriftPoint.y} r="8" fill="none" stroke="#FFFFFF" strokeWidth="2.2" opacity="0.4" />
-                <circle cx={currentX} cy={currentDriftPoint.y} r="5.5" fill="#FFFFFF" stroke="#60A5FA" strokeWidth="1.8" opacity="1" filter="url(#brightGlow)" />
+                <circle cx={currentX} cy={currentDriftPoint.y ?? 0 ?? 0} r="8" fill="none" stroke="#FFFFFF" strokeWidth="2.2" opacity="0.4" />
+                <circle cx={currentX} cy={currentDriftPoint.y ?? 0 ?? 0} r="5.5" fill="#FFFFFF" stroke="#60A5FA" strokeWidth="1.8" opacity="1" filter="url(#brightGlow)" />
               </g>
             )}
             {currentInstabilityPoint && (
               <g>
-                <circle cx={currentX} cy={currentInstabilityPoint.y} r="8" fill="none" stroke="#FFFFFF" strokeWidth="2.2" opacity="0.4" />
-                <circle cx={currentX} cy={currentInstabilityPoint.y} r="5.5" fill="#FFFFFF" stroke="#FF8A5C" strokeWidth="1.8" opacity="1" filter="url(#brightGlow)" />
+                <circle cx={currentX} cy={currentInstabilityPoint.y ?? 0 ?? 0} r="8" fill="none" stroke="#FFFFFF" strokeWidth="2.2" opacity="0.4" />
+                <circle cx={currentX} cy={currentInstabilityPoint.y ?? 0 ?? 0} r="5.5" fill="#FFFFFF" stroke="#FF8A5C" strokeWidth="1.8" opacity="1" filter="url(#brightGlow)" />
               </g>
             )}
 
@@ -374,8 +374,8 @@ export default function ReplayChart({ frames, currentIndex }: ReplayChartProps) 
                   vectorEffect="non-scaling-stroke"
                 />
                 <circle
-                  cx={hoverState.x}
-                  cy={yToPx(hoverState.driftValue)}
+                  cx={hoverState.x ?? 0}
+                  cy={yToPx(hoverState.driftValue) ?? 0}
                   r="4"
                   fill="rgba(96, 165, 250, 0.6)"
                   stroke="#60A5FA"
@@ -383,8 +383,8 @@ export default function ReplayChart({ frames, currentIndex }: ReplayChartProps) 
                   opacity="0.8"
                 />
                 <circle
-                  cx={hoverState.x}
-                  cy={yToPx(hoverState.instabilityValue)}
+                  cx={hoverState.x ?? 0}
+                  cy={yToPx(hoverState.instabilityValue) ?? 0}
                   r="4"
                   fill="rgba(255, 138, 92, 0.6)"
                   stroke="#FF8A5C"

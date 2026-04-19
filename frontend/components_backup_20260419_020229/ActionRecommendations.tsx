@@ -79,19 +79,19 @@ export default function ActionRecommendations({ state }: ActionRecommendationsPr
             <ActionItem
               title="Primary Action"
               description={state.actionPanel.primaryAction}
-              urgency={state.actionPanel.urgencyLevel}
+              urgency={state.actionPanel.urgencyLevel ?? 0}
             />
             {horizon === ActionHorizon.NOW && (
               <>
                 <ActionItem
                   title="Verify"
                   description="Confirm system state with on-site inspection"
-                  urgency={5}
+                  urgency={5 ?? 0}
                 />
                 <ActionItem
                   title="Document"
                   description="Record current system readings and parameters"
-                  urgency={5}
+                  urgency={5 ?? 0}
                 />
               </>
             )}
@@ -99,14 +99,14 @@ export default function ActionRecommendations({ state }: ActionRecommendationsPr
               <ActionItem
                 title="Plan Service"
                 description="Schedule preventive maintenance within 48 hours"
-                urgency={horizon === ActionHorizon.NOW ? 5 : 3}
+                urgency={horizon === ActionHorizon.NOW ? 5 : 3 ?? 0}
               />
             )}
             {horizon === ActionHorizon.WATCHLIST && (
               <ActionItem
                 title="Monitor Trend"
                 description="Continue observing system behavior and trajectory"
-                urgency={1}
+                urgency={1 ?? 0}
               />
             )}
           </div>

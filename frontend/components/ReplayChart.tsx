@@ -20,7 +20,7 @@ interface HoverState {
   instabilityValue: number
 }
 
-export default function ReplayChart({ frames, currentIndex }: ReplayChartProps) {
+function ReplayChart({ frames, currentIndex }: ReplayChartProps) {
   const [yMode, setYMode] = useState<YMode>('auto')
   const [hoverState, setHoverState] = useState<HoverState | null>(null)
   const scrollRef = useRef<HTMLDivElement | null>(null)
@@ -310,8 +310,8 @@ export default function ReplayChart({ frames, currentIndex }: ReplayChartProps) 
             {criticalDriftPoints.map((point, idx) => (
               <circle
                 key={`critical-drift-${idx}`}
-                cx={point.x}
-                cy={point.y}
+                cx={(typeof ((typeof (point.x ?? 0) === "number" && !Number.isNaN(point.x ?? 0) ? point.x ?? 0 : 0)) == "number" && !Number.isNaN((typeof (point.x ?? 0) === "number" && !Number.isNaN(point.x ?? 0) ? point.x ?? 0 : 0)) ? (typeof (point.x ?? 0) === "number" && !Number.isNaN(point.x ?? 0) ? point.x ?? 0 : 0) : 0)}
+                cy={(typeof ((typeof (point.y ?? 0) === "number" && !Number.isNaN(point.y ?? 0) ? point.y ?? 0 : 0)) == "number" && !Number.isNaN((typeof (point.y ?? 0) === "number" && !Number.isNaN(point.y ?? 0) ? point.y ?? 0 : 0)) ? (typeof (point.y ?? 0) === "number" && !Number.isNaN(point.y ?? 0) ? point.y ?? 0 : 0) : 0)}
                 r="4.2"
                 fill="#ef4444"
                 stroke="#fca5a5"
@@ -324,8 +324,8 @@ export default function ReplayChart({ frames, currentIndex }: ReplayChartProps) 
             {criticalInstabilityPoints.map((point, idx) => (
               <circle
                 key={`critical-instability-${idx}`}
-                cx={point.x}
-                cy={point.y}
+                cx={(typeof ((typeof (point.x ?? 0) === "number" && !Number.isNaN(point.x ?? 0) ? point.x ?? 0 : 0)) == "number" && !Number.isNaN((typeof (point.x ?? 0) === "number" && !Number.isNaN(point.x ?? 0) ? point.x ?? 0 : 0)) ? (typeof (point.x ?? 0) === "number" && !Number.isNaN(point.x ?? 0) ? point.x ?? 0 : 0) : 0)}
+                cy={(typeof ((typeof (point.y ?? 0) === "number" && !Number.isNaN(point.y ?? 0) ? point.y ?? 0 : 0)) == "number" && !Number.isNaN((typeof (point.y ?? 0) === "number" && !Number.isNaN(point.y ?? 0) ? point.y ?? 0 : 0)) ? (typeof (point.y ?? 0) === "number" && !Number.isNaN(point.y ?? 0) ? point.y ?? 0 : 0) : 0)}
                 r="4.2"
                 fill="#fb923c"
                 stroke="#fed7aa"
@@ -349,14 +349,14 @@ export default function ReplayChart({ frames, currentIndex }: ReplayChartProps) 
 
             {currentDriftPoint && (
               <g>
-                <circle cx={currentX} cy={currentDriftPoint.y} r="8" fill="none" stroke="#FFFFFF" strokeWidth="2.2" opacity="0.4" />
-                <circle cx={currentX} cy={currentDriftPoint.y} r="5.5" fill="#FFFFFF" stroke="#60A5FA" strokeWidth="1.8" opacity="1" filter="url(#brightGlow)" />
+                <circle cx={(typeof ((typeof (currentX) === "number" && !Number.isNaN(currentX) ? currentX : 0)) == "number" && !Number.isNaN((typeof (currentX) === "number" && !Number.isNaN(currentX) ? currentX : 0)) ? (typeof (currentX) === "number" && !Number.isNaN(currentX) ? currentX : 0) : 0)} cy={(typeof ((typeof (currentDriftPoint.y ?? 0 ?? 0) === "number" && !Number.isNaN(currentDriftPoint.y ?? 0 ?? 0) ? currentDriftPoint.y ?? 0 ?? 0 : 0)) == "number" && !Number.isNaN((typeof (currentDriftPoint.y ?? 0 ?? 0) === "number" && !Number.isNaN(currentDriftPoint.y ?? 0 ?? 0) ? currentDriftPoint.y ?? 0 ?? 0 : 0)) ? (typeof (currentDriftPoint.y ?? 0 ?? 0) === "number" && !Number.isNaN(currentDriftPoint.y ?? 0 ?? 0) ? currentDriftPoint.y ?? 0 ?? 0 : 0) : 0)} r="8" fill="none" stroke="#FFFFFF" strokeWidth="2.2" opacity="0.4" />
+                <circle cx={(typeof ((typeof (currentX) === "number" && !Number.isNaN(currentX) ? currentX : 0)) == "number" && !Number.isNaN((typeof (currentX) === "number" && !Number.isNaN(currentX) ? currentX : 0)) ? (typeof (currentX) === "number" && !Number.isNaN(currentX) ? currentX : 0) : 0)} cy={(typeof ((typeof (currentDriftPoint.y ?? 0 ?? 0) === "number" && !Number.isNaN(currentDriftPoint.y ?? 0 ?? 0) ? currentDriftPoint.y ?? 0 ?? 0 : 0)) == "number" && !Number.isNaN((typeof (currentDriftPoint.y ?? 0 ?? 0) === "number" && !Number.isNaN(currentDriftPoint.y ?? 0 ?? 0) ? currentDriftPoint.y ?? 0 ?? 0 : 0)) ? (typeof (currentDriftPoint.y ?? 0 ?? 0) === "number" && !Number.isNaN(currentDriftPoint.y ?? 0 ?? 0) ? currentDriftPoint.y ?? 0 ?? 0 : 0) : 0)} r="5.5" fill="#FFFFFF" stroke="#60A5FA" strokeWidth="1.8" opacity="1" filter="url(#brightGlow)" />
               </g>
             )}
             {currentInstabilityPoint && (
               <g>
-                <circle cx={currentX} cy={currentInstabilityPoint.y} r="8" fill="none" stroke="#FFFFFF" strokeWidth="2.2" opacity="0.4" />
-                <circle cx={currentX} cy={currentInstabilityPoint.y} r="5.5" fill="#FFFFFF" stroke="#FF8A5C" strokeWidth="1.8" opacity="1" filter="url(#brightGlow)" />
+                <circle cx={(typeof ((typeof (currentX) === "number" && !Number.isNaN(currentX) ? currentX : 0)) == "number" && !Number.isNaN((typeof (currentX) === "number" && !Number.isNaN(currentX) ? currentX : 0)) ? (typeof (currentX) === "number" && !Number.isNaN(currentX) ? currentX : 0) : 0)} cy={(typeof ((typeof (currentInstabilityPoint.y ?? 0 ?? 0) === "number" && !Number.isNaN(currentInstabilityPoint.y ?? 0 ?? 0) ? currentInstabilityPoint.y ?? 0 ?? 0 : 0)) == "number" && !Number.isNaN((typeof (currentInstabilityPoint.y ?? 0 ?? 0) === "number" && !Number.isNaN(currentInstabilityPoint.y ?? 0 ?? 0) ? currentInstabilityPoint.y ?? 0 ?? 0 : 0)) ? (typeof (currentInstabilityPoint.y ?? 0 ?? 0) === "number" && !Number.isNaN(currentInstabilityPoint.y ?? 0 ?? 0) ? currentInstabilityPoint.y ?? 0 ?? 0 : 0) : 0)} r="8" fill="none" stroke="#FFFFFF" strokeWidth="2.2" opacity="0.4" />
+                <circle cx={(typeof ((typeof (currentX) === "number" && !Number.isNaN(currentX) ? currentX : 0)) == "number" && !Number.isNaN((typeof (currentX) === "number" && !Number.isNaN(currentX) ? currentX : 0)) ? (typeof (currentX) === "number" && !Number.isNaN(currentX) ? currentX : 0) : 0)} cy={(typeof ((typeof (currentInstabilityPoint.y ?? 0 ?? 0) === "number" && !Number.isNaN(currentInstabilityPoint.y ?? 0 ?? 0) ? currentInstabilityPoint.y ?? 0 ?? 0 : 0)) == "number" && !Number.isNaN((typeof (currentInstabilityPoint.y ?? 0 ?? 0) === "number" && !Number.isNaN(currentInstabilityPoint.y ?? 0 ?? 0) ? currentInstabilityPoint.y ?? 0 ?? 0 : 0)) ? (typeof (currentInstabilityPoint.y ?? 0 ?? 0) === "number" && !Number.isNaN(currentInstabilityPoint.y ?? 0 ?? 0) ? currentInstabilityPoint.y ?? 0 ?? 0 : 0) : 0)} r="5.5" fill="#FFFFFF" stroke="#FF8A5C" strokeWidth="1.8" opacity="1" filter="url(#brightGlow)" />
               </g>
             )}
 
@@ -374,8 +374,8 @@ export default function ReplayChart({ frames, currentIndex }: ReplayChartProps) 
                   vectorEffect="non-scaling-stroke"
                 />
                 <circle
-                  cx={hoverState.x}
-                  cy={yToPx(hoverState.driftValue)}
+                  cx={(typeof ((typeof (hoverState.x ?? 0) === "number" && !Number.isNaN(hoverState.x ?? 0) ? hoverState.x ?? 0 : 0)) == "number" && !Number.isNaN((typeof (hoverState.x ?? 0) === "number" && !Number.isNaN(hoverState.x ?? 0) ? hoverState.x ?? 0 : 0)) ? (typeof (hoverState.x ?? 0) === "number" && !Number.isNaN(hoverState.x ?? 0) ? hoverState.x ?? 0 : 0) : 0)}
+                  cy={(typeof ((typeof (yToPx(hoverState.driftValue) ?? 0) === "number" && !Number.isNaN(yToPx(hoverState.driftValue) ?? 0) ? yToPx(hoverState.driftValue) ?? 0 : 0)) == "number" && !Number.isNaN((typeof (yToPx(hoverState.driftValue) ?? 0) === "number" && !Number.isNaN(yToPx(hoverState.driftValue) ?? 0) ? yToPx(hoverState.driftValue) ?? 0 : 0)) ? (typeof (yToPx(hoverState.driftValue) ?? 0) === "number" && !Number.isNaN(yToPx(hoverState.driftValue) ?? 0) ? yToPx(hoverState.driftValue) ?? 0 : 0) : 0)}
                   r="4"
                   fill="rgba(96, 165, 250, 0.6)"
                   stroke="#60A5FA"
@@ -383,8 +383,8 @@ export default function ReplayChart({ frames, currentIndex }: ReplayChartProps) 
                   opacity="0.8"
                 />
                 <circle
-                  cx={hoverState.x}
-                  cy={yToPx(hoverState.instabilityValue)}
+                  cx={(typeof ((typeof (hoverState.x ?? 0) === "number" && !Number.isNaN(hoverState.x ?? 0) ? hoverState.x ?? 0 : 0)) == "number" && !Number.isNaN((typeof (hoverState.x ?? 0) === "number" && !Number.isNaN(hoverState.x ?? 0) ? hoverState.x ?? 0 : 0)) ? (typeof (hoverState.x ?? 0) === "number" && !Number.isNaN(hoverState.x ?? 0) ? hoverState.x ?? 0 : 0) : 0)}
+                  cy={(typeof ((typeof (yToPx(hoverState.instabilityValue) ?? 0) === "number" && !Number.isNaN(yToPx(hoverState.instabilityValue) ?? 0) ? yToPx(hoverState.instabilityValue) ?? 0 : 0)) == "number" && !Number.isNaN((typeof (yToPx(hoverState.instabilityValue) ?? 0) === "number" && !Number.isNaN(yToPx(hoverState.instabilityValue) ?? 0) ? yToPx(hoverState.instabilityValue) ?? 0 : 0)) ? (typeof (yToPx(hoverState.instabilityValue) ?? 0) === "number" && !Number.isNaN(yToPx(hoverState.instabilityValue) ?? 0) ? yToPx(hoverState.instabilityValue) ?? 0 : 0) : 0)}
                   r="4"
                   fill="rgba(255, 138, 92, 0.6)"
                   stroke="#FF8A5C"
@@ -417,3 +417,7 @@ export default function ReplayChart({ frames, currentIndex }: ReplayChartProps) 
     </div>
   )
 }
+
+
+export default ReplayChart
+export { ReplayChart }
