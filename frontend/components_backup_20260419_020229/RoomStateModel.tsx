@@ -178,7 +178,7 @@ const ConnectionLine: React.FC<{
         <motion.circle
           cx={midX}
           cy={midY}
-          r={3 + tension * 2 || 0}
+          r={3 + tension * 2}
           fill="none"
           stroke={isCritical ? '#C94C4C' : '#D8A35D'}
           strokeWidth="0.5"

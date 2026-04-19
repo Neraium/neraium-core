@@ -89,7 +89,7 @@ export const IntelligenceRail: React.FC<IntelligenceRailProps> = ({
         </p>
         <div className="space-y-2">
           <div className="flex items-center justify-between mb-2">
-            <span suppressHydrationWarning className="text-sm text-louddpax-text">
+            <span className="text-sm text-louddpax-text">
               {Math.round(driftScore * 100)}%
             </span>
             <span className="text-xs text-louddpax-muted">
