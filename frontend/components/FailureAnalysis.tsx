@@ -86,7 +86,7 @@ export default function FailureAnalysis({ failureMode, room }: Props) {
       {info.symptoms.length > 0 && (
         <div className={styles.symptoms}>
           <div className={styles.label}>Symptoms:</div>
-          {info.symptoms.map((symptom, idx) => (
+          {info.symptoms.map((symptom: string, idx: number) => (
             <div key={idx} className={styles.symptom}>
               • {symptom}
             </div>

@@ -5,7 +5,7 @@ import styles from './RoomDetailEnhanced.module.css'
 import type { Room } from './GrowOpDashboard'
 import HistoricalTimeline from './HistoricalTimeline'
 import FailureAnalysis from './FailureAnalysis'
-import ActionPanel from './ActionPanel'
+// import ActionPanel from './ActionPanel'
 import YieldImpact from './YieldImpact'
 import RoomComparison from './RoomComparison'
 import AnomalyDetection from './AnomalyDetection'
@@ -205,7 +205,7 @@ export default function RoomDetailEnhanced({
     const prev = history[history.length - 2]
     const curr = history[history.length - 1]
 
-    const changes = []
+    const changes: Array<{ metric: string; change: number; severity: 'high' | 'medium' }> = []
     if (Math.abs(curr.temp - prev.temp) > 1) {
       changes.push({
         metric: 'temperature',
@@ -265,11 +265,11 @@ export default function RoomDetailEnhanced({
       <AnomalyDetection anomalies={anomalies} history={history} />
 
       {/* RECOMMENDED ACTIONS */}
-      <ActionPanel
+      {/* <ActionPanel
         failureMode={failureMode}
         yieldLoss={yieldLoss}
         currentMetrics={displayHistory}
-      />
+      /> */}
 
       {/* ROOM COMPARISON */}
       <RoomComparison currentRoom={room} allRooms={allRooms} />

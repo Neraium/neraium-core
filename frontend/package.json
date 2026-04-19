@@ -9,6 +9,7 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@tailwindcss/postcss": "^4.2.2",
     "autoprefixer": "^10.5.0",
     "axios": "^1.6.0",
     "framer-motion": "^12.38.0",
