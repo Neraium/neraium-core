@@ -41,7 +41,7 @@ const FPB = 18
 // fpW and fpH available if needed for future layout calculations
 const FP_START_X = FPL + 14
 const FP_END_X   = FPW - FPR - 8
-const FP_CENTER_Y = FPT + fpH * 0.55
+const FP_CENTER_Y = FPT + FPH * 0.55
 
 export function DriftTrajectoryPanel({ state }: Props) {
   const { driftChart, statusHeader } = state

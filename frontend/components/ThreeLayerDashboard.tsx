@@ -119,8 +119,9 @@ const styles: Record<string, React.CSSProperties> = {
 }
 
 // Add animation keyframes via a style tag
-if (typeof document !== 'undefined') {
+if (typeof document !== 'undefined' && !document.getElementById('three-layer-dashboard-styles')) {
   const style = document.createElement('style')
+  style.id = 'three-layer-dashboard-styles'
   style.textContent = `
     @keyframes fadeIn {
       from {

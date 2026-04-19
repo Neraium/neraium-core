@@ -279,8 +279,9 @@ const styles: Record<string, React.CSSProperties> = {
 }
 
 // Add animation styles
-if (typeof document !== 'undefined') {
+if (typeof document !== 'undefined' && !document.getElementById('system-state-trajectory-styles')) {
   const style = document.createElement('style')
+  style.id = 'system-state-trajectory-styles'
   style.textContent = `
     @keyframes transitionGlow {
       0% {

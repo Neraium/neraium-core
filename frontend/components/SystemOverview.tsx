@@ -141,8 +141,9 @@ const styles: Record<string, React.CSSProperties> = {
 }
 
 // Add neon effects and holographic styling
-if (typeof document !== 'undefined') {
+if (typeof document !== 'undefined' && !document.getElementById('system-overview-font')) {
   const style = document.createElement('style')
+  style.id = 'system-overview-font'
   style.textContent = `
     @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&display=swap');
   `

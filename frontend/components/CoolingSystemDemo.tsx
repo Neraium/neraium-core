@@ -394,8 +394,9 @@ const styles: Record<string, React.CSSProperties> = {
 }
 
 // Add animation keyframes, background grid, and responsive styles
-if (typeof document !== 'undefined') {
+if (typeof document !== 'undefined' && !document.getElementById('cooling-system-demo-styles')) {
   const style = document.createElement('style')
+  style.id = 'cooling-system-demo-styles'
   style.textContent = `
     @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&display=swap');
 

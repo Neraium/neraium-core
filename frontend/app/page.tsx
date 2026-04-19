@@ -1,7 +1,7 @@
 'use client'
 
-import { NeraiumDashboard } from '@/components/NeraiumDashboard'
+import GrowOpDashboard from '@/components/GrowOpDashboard'
 
 export default function Home() {
-  return <NeraiumDashboard />
+  return <GrowOpDashboard />
 }
