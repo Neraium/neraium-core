@@ -51,6 +51,7 @@ def build_unified_app_shell(
     records: list[dict[str, Any]] | None = None,
     no_action_projection: list[dict[str, Any]] | None = None,
     no_action_consequence_insight: str = "",
+    recoverability_context: str = "",
 ) -> dict[str, str]:
     """Build the unified app shell.
 

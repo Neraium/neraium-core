@@ -1073,6 +1073,7 @@ def _load_unified_shell(
         records=records,
         no_action_projection=no_action_projection,
         no_action_consequence_insight=insights.get("no_action_consequence", ""),
+        recoverability_context=insights.get("recoverability", ""),
     )
 
     return (
