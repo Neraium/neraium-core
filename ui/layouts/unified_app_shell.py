@@ -81,9 +81,9 @@ def build_unified_app_shell(
     states_timeline = states_timeline or []
     critical_alerts = critical_alerts or []
 
-    coherence = state.coherence if state else 0.7
     drift = state.drift_intensity if state else 0.2
-    stability = state.stability if state else 0.8
+    coherence = float((records[-1] if records else {}).get("coherence_score", 0.7)) if records else 0.7
+    stability = float((records[-1] if records else {}).get("relational_stability_score", 0.8)) if records else 0.8
 
     system_state = "stable"
     if drift > 0.6:

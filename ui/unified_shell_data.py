@@ -199,8 +199,9 @@ def build_subsystems_data(
     subsystems = []
 
     drift = system_state.drift_intensity if system_state else 0.2
-    stability = system_state.stability if system_state else 0.8
-    coherence = system_state.coherence if system_state else 0.75
+    latest = records[-1] if records else {}
+    stability = float(latest.get("relational_stability_score", 0.8)) if latest else 0.8
+    coherence = float(latest.get("coherence_score", 0.75)) if latest else 0.75
 
     climate_drift_contrib = drift * 30
     climate_fragility = (climate_drift_contrib / 100) * (1.0 - coherence)
@@ -388,8 +389,9 @@ def build_intelligence_insights(
         Dictionary with insight keys including no-action consequence
     """
     drift = system_state.drift_intensity if system_state else 0.2
-    stability = system_state.stability if system_state else 0.8
-    coherence = system_state.coherence if system_state else 0.75
+    latest = records[-1] if records else {}
+    stability = float(latest.get("relational_stability_score", 0.8)) if latest else 0.8
+    coherence = float(latest.get("coherence_score", 0.75)) if latest else 0.75
 
     gate_decision = gate_decision or {}
     decision = str(gate_decision.get("decision", "SUPPRESS")).upper()
@@ -492,12 +494,14 @@ def build_intelligence_insights(
 def get_critical_alerts(
     system_state: SystemState | None,
     gate_decision: dict[str, Any] | None = None,
+    records: list[dict[str, Any]] | None = None,
 ) -> list[str]:
     """Build list of critical alerts.
 
     Args:
         system_state: Current SystemState
         gate_decision: Gate decision dict
+        records: Historical records list
 
     Returns:
         List of critical alert strings
@@ -512,11 +516,12 @@ def get_critical_alerts(
     if drift > 0.5:
         alerts.append("High structural drift. Recovery path becoming constrained.")
 
-    stability = system_state.stability if system_state else 0.8
+    latest = records[-1] if records else {}
+    stability = float(latest.get("relational_stability_score", 0.8)) if latest else 0.8
     if stability < 0.3:
         alerts.append("Relational stability critically low. Subsystem coupling degraded.")
 
-    coherence = system_state.coherence if system_state else 0.75
+    coherence = float(latest.get("coherence_score", 0.75)) if latest else 0.75
     if coherence < 0.4:
         alerts.append("System coherence below operational threshold. Imminent structural failure risk.")
 

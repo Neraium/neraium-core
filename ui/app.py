@@ -1043,14 +1043,14 @@ def _load_unified_shell(
     latest = records[-1] if records else {}
     timestamp = str(latest.get("timestamp", "")).replace("Z", "") if records else None
 
-    facility_coherence = system_state.coherence if system_state else 0.75
+    facility_coherence = float(latest.get("coherence_score", 0.75)) if latest else 0.75
     rooms = build_facility_rooms_data(system_state, records)
     subsystems = build_subsystems_data(system_state, records)
     states_timeline = build_timeline_states(records)
     time_to_consequence = _compute_time_to_consequence(records)
     no_action_projection = _compute_no_action_projection(records)
     insights = build_intelligence_insights(system_state, records, gate_decision, time_to_consequence, no_action_projection)
-    critical_alerts = get_critical_alerts(system_state, gate_decision)
+    critical_alerts = get_critical_alerts(system_state, gate_decision, records)
 
     rooms_needing_attention = sum(1 for r in rooms if r.get("state") in ("watch", "degraded", "critical"))
 
