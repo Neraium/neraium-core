@@ -137,11 +137,6 @@ const generateMockData = (degradationFactor: number = 0): RoomData & { subsystem
 }
 
 export const LouddpaxRoomIntelligence: React.FC = () => {
-  const [mounted, setMounted] = React.useState(false)
-
-  React.useEffect(() => {
-    setMounted(true)
-  }, [])
 
   const [roomData, setRoomData] = useState<RoomData & { subsystems: Subsystem[] }>(
     generateMockData(0)
@@ -227,23 +222,21 @@ export const LouddpaxRoomIntelligence: React.FC = () => {
           <StateEvolutionTimeline points={timelinePoints} />
 
           {/* Subsystems Grid */}
-          {mounted && (
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-              {roomData.subsystems.map((subsystem) => (
-                <div key={subsystem.name}>
-                  <SubsystemCard
-                    name={subsystem.name}
-                    keyValue={subsystem.value}
-                    unit={subsystem.unit}
-                    driftContribution={subsystem.contribution}
-                    trend={subsystem.trend}
-                    sparklineData={subsystem.sparklineData}
-                    status={subsystem.status}
-                  />
-                </div>
-              ))}
-            </div>
-          )}
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+            {roomData.subsystems.map((subsystem) => (
+              <div key={subsystem.name}>
+                <SubsystemCard
+                  name={subsystem.name}
+                  keyValue={subsystem.value}
+                  unit={subsystem.unit}
+                  driftContribution={subsystem.contribution}
+                  trend={subsystem.trend}
+                  sparklineData={subsystem.sparklineData}
+                  status={subsystem.status}
+                />
+              </div>
+            ))}
+          </div>
 
           {/* Debug Controls */}
           <div className="mt-8 px-6 py-4 bg-louddpax-surface rounded border border-louddpax-border/50">
