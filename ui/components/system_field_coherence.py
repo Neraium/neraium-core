@@ -157,7 +157,7 @@ def _compute_tetrahedron_geometry(
     coherence_ring = {
         "radius": 0.65,
         "is_stable": state == "stable",
-        "deformation": clamp(deformation, 0.0, 0.3),
+        "deformation": clamp(total_deformation, 0.0, 0.3),
         "glow_color": tension_color,
         "glow_intensity": 0.4 + (1.0 - coherence) * 0.6,
         "opacity": 0.5 + (coherence * 0.5),
