@@ -1,7 +1,7 @@
 'use client'
 
-import DecisionUIDemo from '@/components/DecisionUIDemo'
+import ThreeLayerDashboard from '@/components/ThreeLayerDashboard'
 
 export default function Home() {
-  return <DecisionUIDemo />
+  return <ThreeLayerDashboard />
 }
