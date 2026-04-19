@@ -54,15 +54,7 @@ const SubsystemNode: React.FC<{
 
   return (
     <g key={name}>
-      <motion.circle
-        cx={x}
-        cy={y}
-        r={24}
-        fill={statusColors[status].bg}
-        opacity="0.15"
-        animate={{ r: [24, 26, 24] }}
-        transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
-      />
+      <circle cx={x} cy={y} r={24} fill={statusColors[status].bg} opacity="0.15" />
       <circle
         cx={x}
         cy={y}
@@ -72,15 +64,7 @@ const SubsystemNode: React.FC<{
         strokeWidth="1.5"
         opacity="0.4"
       />
-      <motion.circle
-        cx={x}
-        cy={y}
-        r={16}
-        fill={statusColors[status].bg}
-        opacity="0.3"
-        animate={{ opacity: [0.3, 0.5, 0.3] }}
-        transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
-      />
+      <circle cx={x} cy={y} r={16} fill={statusColors[status].bg} opacity="0.3" />
       <circle cx={x} cy={y} r={12} fill={statusColors[status].bg} />
 
       {/* Trend indicator */}
@@ -151,7 +135,7 @@ const ConnectionLine: React.FC<{
         </filter>
       </defs>
 
-      <motion.line
+      <line
         x1={x1}
         y1={y1}
         x2={x2}
@@ -160,17 +144,6 @@ const ConnectionLine: React.FC<{
         strokeWidth={safeStrokeWidth}
         opacity={Math.max(0.1, Math.min(1, 0.3 + driftScore * 0.4))}
         filter="url(#lineGlow)"
-        animate={{
-          opacity: isCritical
-            ? [0.4, 0.7, 0.4]
-            : [0.3, 0.5, 0.3],
-        }}
-        transition={{
-          duration: isCritical ? 1.5 : 2.5,
-          repeat: Infinity,
-          ease: 'easeInOut',
-        }}
-        suppressHydrationWarning
       />
 
       {tension > 0.5 && tensionRadius && (
@@ -313,15 +286,7 @@ export const RoomStateModel: React.FC<RoomStateModelProps> = ({
 
         {/* Core node (room state) */}
         <g>
-          <motion.circle
-            cx={200}
-            cy={200}
-            r={48}
-            fill={coreColors[roomState.status].bg}
-            opacity="0.1"
-            animate={{ r: [48, 52, 48] }}
-            transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
-          />
+          <circle cx={200} cy={200} r={48} fill={coreColors[roomState.status].bg} opacity="0.1" />
           <circle
             cx={200}
             cy={200}
@@ -331,15 +296,7 @@ export const RoomStateModel: React.FC<RoomStateModelProps> = ({
             strokeWidth="2"
             opacity="0.3"
           />
-          <motion.circle
-            cx={200}
-            cy={200}
-            r={40}
-            fill={coreColors[roomState.status].bg}
-            opacity="0.2"
-            animate={{ opacity: [0.2, 0.4, 0.2] }}
-            transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
-          />
+          <circle cx={200} cy={200} r={40} fill={coreColors[roomState.status].bg} opacity="0.2" />
           <circle cx={200} cy={200} r={36} fill={coreColors[roomState.status].bg} />
 
           {/* Core label */}
