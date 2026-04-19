@@ -1,20 +1,20 @@
 .container {
   min-height: 100vh;
-  background: linear-gradient(135deg, #051a0f 0%, #0d2818 100%);
+  background: #000000;
   padding-bottom: 2rem;
 }
 
 .topBar {
-  background: linear-gradient(135deg, #0f3f2f 0%, #134d3a 100%);
+  background: #0a0a0a;
   padding: 1.5rem 2rem;
-  border-bottom: 2px solid #1b6b52;
+  border-bottom: 2px solid #22c55e;
   display: flex;
   align-items: center;
   gap: 2rem;
   position: sticky;
   top: 0;
   z-index: 100;
-  box-shadow: 0 8px 32px rgba(34, 197, 94, 0.1);
+  box-shadow: 0 8px 32px rgba(34, 197, 94, 0.15);
 }
 
 .backButton {
@@ -50,7 +50,7 @@
 }
 
 .infoBar {
-  background: rgba(20, 83, 61, 0.2);
+  background: rgba(255, 255, 255, 0.01);
   padding: 1rem 2rem;
   border-bottom: 1px solid rgba(34, 197, 94, 0.2);
   display: flex;
@@ -111,11 +111,11 @@
 }
 
 .chartContainer {
-  background: linear-gradient(135deg, #0d3a2b 0%, #134d3a 100%);
+  background: #111111;
   border: 2px solid rgba(34, 197, 94, 0.3);
   border-radius: 1rem;
   padding: 1.5rem;
-  box-shadow: 0 8px 24px rgba(34, 197, 94, 0.15), inset 0 1px 0px rgba(255, 255, 255, 0.05);
+  box-shadow: 0 8px 24px rgba(34, 197, 94, 0.2), inset 0 1px 0px rgba(255, 255, 255, 0.05);
 }
 
 .metricsTable {
@@ -137,15 +137,15 @@
 .metricsTable table {
   width: 100%;
   border-collapse: collapse;
-  background: linear-gradient(135deg, #0d3a2b 0%, #134d3a 100%);
+  background: #111111;
   border: 2px solid rgba(34, 197, 94, 0.3);
   border-radius: 1rem;
   overflow: hidden;
-  box-shadow: 0 8px 24px rgba(34, 197, 94, 0.15);
+  box-shadow: 0 8px 24px rgba(34, 197, 94, 0.2);
 }
 
 .metricsTable thead {
-  background: rgba(20, 83, 61, 0.5);
+  background: rgba(34, 197, 94, 0.1);
   border-bottom: 2px solid rgba(34, 197, 94, 0.3);
 }
 
