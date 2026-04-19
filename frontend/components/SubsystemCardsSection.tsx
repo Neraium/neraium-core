@@ -40,7 +40,12 @@ export function SubsystemCardsSection({ subsystems }: SubsystemCardsSectionProps
 
       {/* Subsystem cards grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-        {subsystems.map((subsystem) => {
+        {subsystems.map((subsystem, idx) => {
+          // Identify primary driver (highest drift contribution)
+          const maxDrift = Math.max(...subsystems.map((s) => s.drift_contribution_pct || 0))
+          const isPrimaryDriver = subsystem.drift_contribution_pct >= maxDrift && maxDrift > 0
+          const isSecondaryContributor = subsystem.drift_contribution_pct > 10 && subsystem.drift_contribution_pct < maxDrift
+
           const fragilityColor =
             subsystem.fragility_pct > 65
               ? '#ef4444'
@@ -50,18 +55,20 @@ export function SubsystemCardsSection({ subsystems }: SubsystemCardsSectionProps
                   ? '#eab308'
                   : '#60a5fa'
 
-          const borderColor =
-            subsystem.drift_contribution_pct > 20
-              ? 'border-orange-400/30'
-              : subsystem.drift_contribution_pct > 10
-                ? 'border-yellow-400/20'
-                : 'border-blue-400/20'
+          const borderColor = isPrimaryDriver
+            ? 'border-red-400/40'
+            : isSecondaryContributor
+              ? 'border-amber-400/30'
+              : 'border-blue-400/20'
 
           return (
             <div
               key={subsystem.subsystem_id}
               className={`relative p-8 border rounded-lg transition-all ${borderColor} hover:border-white/20`}
-              style={{ borderColor: `${fragilityColor}33` }}
+              style={{
+                borderColor: isPrimaryDriver ? '#ef4444' : isSecondaryContributor ? '#f59e0b' : `${fragilityColor}33`,
+                backgroundColor: isPrimaryDriver ? '#ef444408' : isSecondaryContributor ? '#f59e0b05' : undefined,
+              }}
             >
               {/* Left accent bar */}
               <div
@@ -71,7 +78,19 @@ export function SubsystemCardsSection({ subsystems }: SubsystemCardsSectionProps
 
               {/* Subsystem name and state */}
               <div className="mb-6">
-                <h3 className="text-lg font-light text-white/90">{subsystem.subsystem_name}</h3>
+                <div className="flex items-center justify-between gap-3">
+                  <h3 className="text-lg font-light text-white/90">{subsystem.subsystem_name}</h3>
+                  {isPrimaryDriver && (
+                    <div className="px-2 py-0.5 bg-red-400/20 border border-red-400/40 rounded text-xs font-light text-red-400">
+                      Primary Driver
+                    </div>
+                  )}
+                  {isSecondaryContributor && !isPrimaryDriver && (
+                    <div className="px-2 py-0.5 bg-amber-400/20 border border-amber-400/40 rounded text-xs font-light text-amber-400">
+                      Secondary
+                    </div>
+                  )}
+                </div>
                 <p className="text-xs font-light text-white/40 uppercase tracking-widest mt-2">
                   {subsystem.behavioral_state}
                 </p>

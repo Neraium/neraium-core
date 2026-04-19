@@ -83,6 +83,19 @@ export function HeroSection({ state }: HeroSectionProps) {
         </div>
       </div>
 
+      {/* Time-to-Impact Indicator (top-center-right) */}
+      {state.drift >= 0.15 && (
+        <div className="absolute top-12 right-1/4 z-30">
+          <div className="px-6 py-4 border border-amber-400/40 rounded-lg bg-black/40 backdrop-blur-sm">
+            <div className="text-xs font-light text-amber-400/80 uppercase tracking-widest mb-2">Time to Impact</div>
+            <div className="text-xl font-light text-amber-400">{state.drift < 0.6 ? '⏱' : '⚠'} {state.drift < 0.35 ? '30+' : state.drift < 0.6 ? '10-20' : '<5'} cycles</div>
+            <div className="text-xs font-light text-white/40 mt-1">
+              {state.drift < 0.35 ? 'Adequate window' : state.drift < 0.6 ? 'Narrowing' : 'Critical'}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Bottom-left: Operator focus insight */}
       {state.insights?.operator_focus_insight && (
         <div className="absolute bottom-12 left-12 z-30 max-w-md">

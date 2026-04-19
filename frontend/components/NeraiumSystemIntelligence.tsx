@@ -4,6 +4,7 @@ import { useEffect, useState, useRef } from 'react'
 import { generateContinuousDemoFrame } from '@/lib/continuousDemoData'
 import { PerceptualStateManager } from '@/lib/perceptualSmoothing'
 import { HeroSection } from './HeroSection'
+import { OperatorDecisionPanel } from './OperatorDecisionPanel'
 import { SubsystemCardsSection } from './SubsystemCardsSection'
 import { MetricsGridSection } from './MetricsGridSection'
 import { StateEvolutionSection } from './StateEvolutionSection'
@@ -279,6 +280,11 @@ export function NeraiumSystemIntelligence() {
       <div className="relative pt-32">
         {/* HERO SECTION - Full viewport height */}
         <HeroSection state={unifiedState} />
+
+        {/* OPERATOR DECISION PANEL - Critical action guidance */}
+        <div className="relative bg-black py-20 px-12 border-t border-white/5">
+          <OperatorDecisionPanel state={unifiedState} leadTimeEvent={unifiedState.leadTimeEvent} />
+        </div>
 
         {/* SUBSYSTEM ANALYSIS - Below fold */}
         <div className="relative bg-black py-20 px-12 border-t border-white/5">
