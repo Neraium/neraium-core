@@ -31,6 +31,7 @@ export function NeraiumSystemIntelligence() {
   const [isPlaying, setIsPlaying] = useState(true)
   const [playbackSpeed, setPlaybackSpeed] = useState(1)
   const [totalFrames, setTotalFrames] = useState(2700) // 90 seconds at 30fps
+  const [displayTimeSeconds, setDisplayTimeSeconds] = useState(0) // For display only
   const railRef = useRef<HTMLDivElement>(null)
 
   // Perceptual smoothing managers
@@ -148,6 +149,10 @@ export function NeraiumSystemIntelligence() {
   useEffect(() => {
     const updateGeometry = () => {
       const frame = generateContinuousDemoFrame(frameIndex, 2700)
+
+      // Update display time once per second
+      const timeSeconds = Math.floor(frameIndex / 30)
+      setDisplayTimeSeconds(timeSeconds)
 
       setUnifiedState((prev) =>
         prev
@@ -300,7 +305,7 @@ export function NeraiumSystemIntelligence() {
   if (loading) {
     return (
       <div className="flex items-center justify-center h-screen bg-black text-white">
-        <div>Initializing System Intelligence...</div>
+        <div className="text-sm font-light tracking-widest">Initializing System Intelligence…</div>
       </div>
     )
   }
@@ -308,33 +313,44 @@ export function NeraiumSystemIntelligence() {
   if (!unifiedState) {
     return (
       <div className="flex items-center justify-center h-screen bg-black text-white">
-        <div>No data available</div>
+        <div className="text-sm font-light tracking-widest">No data available</div>
       </div>
     )
   }
 
   return (
-    <div className="relative w-full min-h-screen bg-black text-white overflow-x-hidden">
-      {/* Playback controls - minimal and unobtrusive */}
-      <div className="fixed top-4 right-4 z-40 bg-black/80 backdrop-blur-sm border border-white/10 rounded p-3 flex gap-2 items-center text-xs">
-        <button
-          onClick={() => setIsPlaying(!isPlaying)}
-          className="px-2 py-1 bg-white/10 hover:bg-white/20 rounded text-xs"
-        >
-          {isPlaying ? '⏸' : '▶'}
-        </button>
-        <button
-          onClick={() => {
-            setFrameIndex(0)
-            setIsPlaying(false)
-          }}
-          className="px-2 py-1 bg-white/10 hover:bg-white/20 rounded text-xs"
-        >
-          ⟲
-        </button>
-        <span className="text-white/50 text-xs">
-          {Math.round(frameIndex / 30)}s / 90s
-        </span>
+    <div className="relative w-full min-h-screen bg-black text-white overflow-x-hidden font-sans">
+      {/* Playback controls - refined and minimal */}
+      <div className="fixed top-6 right-6 z-40 flex items-center gap-6">
+        {/* Time display - updates every second, not every frame */}
+        <div className="text-right">
+          <div className="text-xs font-light text-white/40 tracking-widest mb-1 uppercase">Elapsed</div>
+          <div className="text-2xl font-light tabular-nums">
+            {String(displayTimeSeconds).padStart(2, '0')}s
+            <span className="text-white/30 text-lg"> / 90s</span>
+          </div>
+        </div>
+
+        {/* Controls */}
+        <div className="flex gap-3">
+          <button
+            onClick={() => setIsPlaying(!isPlaying)}
+            className="w-10 h-10 flex items-center justify-center border border-white/20 hover:border-white/40 rounded transition-colors"
+            title={isPlaying ? 'Pause' : 'Play'}
+          >
+            {isPlaying ? '⏸' : '▶'}
+          </button>
+          <button
+            onClick={() => {
+              setFrameIndex(0)
+              setIsPlaying(false)
+            }}
+            className="w-10 h-10 flex items-center justify-center border border-white/20 hover:border-white/40 rounded transition-colors"
+            title="Reset"
+          >
+            ⟲
+          </button>
+        </div>
       </div>
 
       {/* Main scroll surface */}
@@ -348,7 +364,7 @@ export function NeraiumSystemIntelligence() {
             ref={railRef}
             className="absolute top-0 right-0 h-full w-80 z-20 pointer-events-auto overflow-y-auto"
             style={{
-              background: 'linear-gradient(90deg, transparent 0%, rgba(0,0,0,0.4) 20%, rgba(0,0,0,0.8) 100%)',
+              background: 'linear-gradient(90deg, transparent 0%, rgba(0,0,0,0.5) 15%, rgba(0,0,0,0.95) 100%)',
             }}
           >
             <IntelligenceRailSticky state={unifiedState} />
@@ -356,12 +372,12 @@ export function NeraiumSystemIntelligence() {
         </div>
 
         {/* SECTION 2: Subsystem Analysis */}
-        <div className="relative w-full bg-black py-24 px-8 border-t border-white/5">
+        <div className="relative w-full bg-black py-32 px-12 border-t border-white/5">
           <SubsystemAnalysis subsystems={unifiedState.subsystems} />
         </div>
 
         {/* SECTION 3: State Evolution */}
-        <div className="relative w-full bg-black py-24 px-8 border-t border-white/5">
+        <div className="relative w-full bg-black py-32 px-12 border-t border-white/5">
           <StateEvolutionSection
             timeline={[]}
             noActionProjection={[]}

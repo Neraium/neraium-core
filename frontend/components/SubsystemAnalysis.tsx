@@ -14,28 +14,29 @@ interface SubsystemAnalysisProps {
 }
 
 const SUBSYSTEM_POSITIONS: Record<string, string> = {
-  Climate: 'top-center',
+  Climate: 'top',
   Airflow: 'front-right',
   Irrigation: 'front-left',
-  Plant: 'back-center',
+  'Plant Response': 'back',
 }
 
 export function SubsystemAnalysis({ subsystems }: SubsystemAnalysisProps) {
   if (!subsystems || subsystems.length === 0) {
     return (
-      <div className="text-white/40 text-sm">
-        No subsystem data available
-      </div>
+      <div className="text-white/40 text-sm font-light">No subsystem data available</div>
     )
   }
 
   return (
-    <div className="relative space-y-8">
-      <div className="text-sm text-white/60 uppercase tracking-widest">
-        Subsystem Influence
+    <div className="relative space-y-12">
+      <div>
+        <div className="text-xs font-light text-white/40 uppercase tracking-widest mb-3">Subsystem Analysis</div>
+        <div className="text-sm font-light text-white/50">
+          Subsystem contributions to overall system drift, with confidence and fragility metrics
+        </div>
       </div>
 
-      <div className="space-y-6">
+      <div className="space-y-8">
         {subsystems.map((subsystem, idx) => (
           <div
             key={idx}
@@ -46,49 +47,51 @@ export function SubsystemAnalysis({ subsystems }: SubsystemAnalysisProps) {
               className="absolute -left-[1px] top-0 h-full w-[2px] transition-colors"
               style={{
                 backgroundColor:
-                  subsystem.fragility_pct > 0.65
+                  subsystem.fragility_pct > 65
                     ? '#ef4444'
-                    : subsystem.fragility_pct > 0.4
+                    : subsystem.fragility_pct > 40
                       ? '#f97316'
-                      : subsystem.fragility_pct > 0.2
+                      : subsystem.fragility_pct > 20
                         ? '#eab308'
                         : '#60a5fa',
               }}
             />
 
             {/* Subsystem name and position mapping */}
-            <div className="flex items-baseline justify-between mb-2">
+            <div className="flex items-baseline justify-between mb-3">
               <div>
-                <div className="text-base font-light">
-                  {subsystem.name}
-                </div>
-                <div className="text-xs text-white/40">
+                <div className="text-base font-light text-white/90">{subsystem.name}</div>
+                <div className="text-xs font-light text-white/30 mt-1">
                   {SUBSYSTEM_POSITIONS[subsystem.name] || subsystem.position}
                 </div>
               </div>
             </div>
 
             {/* Metrics in minimal format - rounded and stable */}
-            <div className="grid grid-cols-3 gap-6 mt-3">
+            <div className="grid grid-cols-3 gap-8 mt-4">
               {/* Drift contribution - rounded to whole % */}
               <div>
-                <div className="text-xs text-white/40 mb-1">Drift</div>
-                <div className="text-sm font-light">{Math.round(subsystem.drift_contribution_pct)}%</div>
+                <div className="text-xs font-light text-white/40 uppercase tracking-widest mb-2">Drift</div>
+                <div className="text-lg font-light text-white/70">
+                  <span>{Math.round(subsystem.drift_contribution_pct)}</span>
+                  <span className="text-white/40 text-sm">%</span>
+                </div>
               </div>
 
               {/* Confidence - rounded to nearest 5% */}
               <div>
-                <div className="text-xs text-white/40 mb-1">Confidence</div>
-                <div className="text-sm font-light">
-                  {Math.round(subsystem.confidence * 20) * 5}%
+                <div className="text-xs font-light text-white/40 uppercase tracking-widest mb-2">Confidence</div>
+                <div className="text-lg font-light text-white/70">
+                  <span>{Math.round(subsystem.confidence * 20) * 5}</span>
+                  <span className="text-white/40 text-sm">%</span>
                 </div>
               </div>
 
               {/* Fragility (not confidence) - whole % */}
               <div>
-                <div className="text-xs text-white/40 mb-1">Fragility</div>
+                <div className="text-xs font-light text-white/40 uppercase tracking-widest mb-2">Fragility</div>
                 <div
-                  className="text-sm font-light"
+                  className="text-lg font-light"
                   style={{
                     color:
                       subsystem.fragility_pct > 65
@@ -100,21 +103,20 @@ export function SubsystemAnalysis({ subsystems }: SubsystemAnalysisProps) {
                             : '#60a5fa',
                   }}
                 >
-                  {Math.round(subsystem.fragility_pct)}%
+                  <span>{Math.round(subsystem.fragility_pct)}</span>
+                  <span className="text-white/40 text-sm">%</span>
                 </div>
               </div>
             </div>
 
             {/* State description */}
             {subsystem.behavioral_state && (
-              <div className="text-xs text-white/60 mt-3 leading-relaxed">
-                {subsystem.behavioral_state}
-              </div>
+              <div className="text-xs font-light text-white/50 mt-4">{subsystem.behavioral_state}</div>
             )}
 
             {/* Coupling indicators - if stressed */}
             {subsystem.drift_contribution_pct > 15 && (
-              <div className="text-xs text-orange-400/70 mt-3">
+              <div className="text-xs font-light text-orange-400/70 mt-4">
                 ⚠ Elevated contribution to system drift
               </div>
             )}
@@ -123,9 +125,13 @@ export function SubsystemAnalysis({ subsystems }: SubsystemAnalysisProps) {
       </div>
 
       {/* Bottom guidance */}
-      <div className="mt-12 pt-8 border-t border-white/5 text-xs text-white/40 space-y-2">
-        <div>Fragility indicates brittleness (low confidence × high contribution = high fragility)</div>
-        <div>Watch for subsystems with elevated fragility—recovery window may be narrowing</div>
+      <div className="mt-16 pt-8 border-t border-white/5 space-y-2">
+        <div className="text-xs font-light text-white/40">
+          Fragility indicates brittleness—low confidence combined with high drift contribution.
+        </div>
+        <div className="text-xs font-light text-white/40">
+          Watch for subsystems with elevated fragility; recovery window may be narrowing.
+        </div>
       </div>
     </div>
   )
