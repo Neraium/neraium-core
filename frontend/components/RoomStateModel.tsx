@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useMemo } from 'react'
+import React, { useMemo, useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 
 interface RoomState {
@@ -170,6 +170,7 @@ const ConnectionLine: React.FC<{
           repeat: Infinity,
           ease: 'easeInOut',
         }}
+        suppressHydrationWarning
       />
 
       {/* Tension indicator glow */}
@@ -217,8 +218,22 @@ export const RoomStateModel: React.FC<RoomStateModelProps> = ({
   roomState,
   subsystems,
 }) => {
+  const [mounted, setMounted] = useState(false)
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+
   const subsystemAngles = [0, 60, 120, 180, 240, 300]
   const radius = 100
+
+  if (!mounted) {
+    return (
+      <div className="flex items-center justify-center w-full h-[500px] bg-louddpax-surface rounded-lg border border-louddpax-border overflow-hidden">
+        <div className="text-louddpax-muted text-sm">Loading visualization...</div>
+      </div>
+    )
+  }
 
   const coreColors = {
     stable: { bg: '#7E9F2E', ring: 'rgba(126, 159, 46, 0.5)' },
