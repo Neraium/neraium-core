@@ -1,0 +1,133 @@
+.card {
+  background: linear-gradient(135deg, #0f1419 0%, #0d111a 100%);
+  border: 1px solid rgba(212, 175, 55, 0.15);
+  border-left: 2px solid #fbbf24;
+  border-radius: 8px;
+  padding: 2.5rem;
+  cursor: pointer;
+  transition: all 0.6s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+  display: flex;
+  flex-direction: column;
+  gap: 1.75rem;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.7), inset 0 1px 0px rgba(255, 255, 255, 0.05);
+  position: relative;
+  overflow: hidden;
+}
+
+.card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(251, 191, 36, 0.3), transparent);
+  pointer-events: none;
+}
+
+.card:hover {
+  border-color: rgba(212, 175, 55, 0.35);
+  transform: translateY(-8px);
+  box-shadow: 0 32px 64px rgba(251, 191, 36, 0.15), inset 0 1px 0px rgba(255, 255, 255, 0.1);
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: start;
+  gap: 1.5rem;
+}
+
+.header h3 {
+  margin: 0;
+  font-size: 1.35rem;
+  font-weight: 400;
+  letter-spacing: -0.01em;
+  color: #f8fafc;
+}
+
+.location {
+  margin: 0.75rem 0 0 0;
+  font-size: 0.8rem;
+  color: #64748b;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.statusBadge {
+  padding: 0.625rem 1.25rem;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #ffffff;
+  white-space: nowrap;
+  backdrop-filter: blur(20px);
+}
+
+.stage {
+  font-size: 0.85rem;
+  color: #cbd5e1;
+  padding: 0.75rem 0;
+  border-top: 1px solid rgba(212, 175, 55, 0.1);
+  border-bottom: 1px solid rgba(212, 175, 55, 0.1);
+  letter-spacing: 0.3px;
+}
+
+.metrics {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1.5rem;
+}
+
+.metric {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.label {
+  font-size: 0.68rem;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 600;
+}
+
+.value {
+  font-size: 1.2rem;
+  font-weight: 300;
+  color: #f8fafc;
+  letter-spacing: -0.01em;
+}
+
+.footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.75rem;
+  color: #64748b;
+  padding-top: 0.75rem;
+  border-top: 1px solid rgba(212, 175, 55, 0.08);
+}
+
+.updated {
+  color: #94a3b8;
+}
+
+.clickHint {
+  color: #fbbf24;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+
+.critical {
+  animation: criticalGlow 2s ease-in-out infinite;
+  border-color: rgba(239, 68, 68, 0.3) !important;
+}
+
+@keyframes criticalGlow {
+  0%, 100% { box-shadow: 0 16px 48px rgba(0, 0, 0, 0.7), inset 0 1px 0px rgba(255, 255, 255, 0.05); }
+  50% { box-shadow: 0 24px 64px rgba(239, 68, 68, 0.2), inset 0 1px 0px rgba(255, 255, 255, 0.08); }
+}

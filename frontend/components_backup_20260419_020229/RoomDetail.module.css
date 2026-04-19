@@ -1,0 +1,380 @@
+.container {
+  min-height: 100vh;
+  background: #0a0a0a;
+  padding-bottom: 3rem;
+}
+
+.topBar {
+  background: linear-gradient(180deg, #0f1419 0%, #0a0a0a 100%);
+  padding: 2.5rem 4rem;
+  border-bottom: 1px solid rgba(212, 175, 55, 0.12);
+  display: flex;
+  align-items: center;
+  gap: 2.5rem;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.8);
+}
+
+.backButton {
+  background: transparent;
+  border: 1px solid rgba(212, 175, 55, 0.25);
+  color: #fbbf24;
+  padding: 0.75rem 1.5rem;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 500;
+  font-size: 0.85rem;
+  letter-spacing: 0.04em;
+  transition: all 0.4s ease;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  text-transform: uppercase;
+}
+
+.backButton:hover {
+  background: rgba(251, 191, 36, 0.08);
+  border-color: rgba(212, 175, 55, 0.4);
+  box-shadow: 0 8px 16px rgba(251, 191, 36, 0.12);
+  transform: translateX(-2px);
+}
+
+.topBar h1 {
+  margin: 0;
+  flex: 1;
+  font-size: 2.2rem;
+  font-weight: 300;
+  letter-spacing: -0.01em;
+  color: #fbbf24;
+  text-transform: uppercase;
+}
+
+.infoBar {
+  background: rgba(15, 20, 25, 0.6);
+  padding: 1.5rem 4rem;
+  border-bottom: 1px solid rgba(212, 175, 55, 0.1);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 3rem;
+  flex-wrap: wrap;
+}
+
+.info {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 0.85rem;
+  color: #cbd5e1;
+  flex-wrap: wrap;
+  letter-spacing: 0.3px;
+}
+
+.timeRangeSelector {
+  display: flex;
+  gap: 0.5rem;
+  background: transparent;
+  padding: 0;
+  border: none;
+}
+
+.timeButton {
+  background: transparent;
+  border: 1px solid rgba(212, 175, 55, 0.2);
+  color: #cbd5e1;
+  padding: 0.625rem 1rem;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 0.8rem;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  transition: all 0.3s ease;
+  text-transform: uppercase;
+}
+
+.timeButton:hover {
+  border-color: rgba(212, 175, 55, 0.35);
+  color: #f8fafc;
+}
+
+.timeButton.active {
+  background: #fbbf24;
+  color: #0a0a0a;
+  border-color: #fbbf24;
+  font-weight: 700;
+}
+
+.criticalSection {
+  max-width: 1600px;
+  margin: 3rem auto;
+  padding: 0 4rem;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 2.5rem;
+}
+
+.stateCard {
+  background: linear-gradient(135deg, #0f1419 0%, #0d111a 100%);
+  border: 1px solid rgba(212, 175, 55, 0.15);
+  border-radius: 8px;
+  padding: 2.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.7), inset 0 1px 0px rgba(255, 255, 255, 0.05);
+}
+
+.stateLabel {
+  font-size: 0.65rem;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 700;
+}
+
+.stateBadge {
+  font-size: 1.5rem;
+  font-weight: 400;
+  padding: 1rem;
+  border-radius: 4px;
+  text-align: center;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.stateBadge.optimal {
+  background: rgba(16, 185, 129, 0.1);
+  color: #6ee7b7;
+  border: 1px solid rgba(16, 185, 129, 0.2);
+}
+
+.stateBadge.warning {
+  background: rgba(245, 158, 11, 0.1);
+  color: #fcd34d;
+  border: 1px solid rgba(245, 158, 11, 0.2);
+}
+
+.stateBadge.critical {
+  background: rgba(239, 68, 68, 0.1);
+  color: #fca5a5;
+  border: 1px solid rgba(239, 68, 68, 0.2);
+  animation: criticalPulse 2s ease-in-out infinite;
+}
+
+@keyframes criticalPulse {
+  0%, 100% { box-shadow: 0 4px 12px rgba(239, 68, 68, 0.08); }
+  50% { box-shadow: 0 8px 24px rgba(239, 68, 68, 0.15); }
+}
+
+.stageText {
+  font-size: 0.85rem;
+  color: #cbd5e1;
+  letter-spacing: 0.3px;
+}
+
+.interventionCard {
+  background: linear-gradient(135deg, #0f1419 0%, #0d111a 100%);
+  border: 1px solid rgba(212, 175, 55, 0.15);
+  border-radius: 8px;
+  padding: 2.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.7);
+}
+
+.interventionLabel {
+  font-size: 0.65rem;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-weight: 700;
+}
+
+.interventionTime {
+  font-size: 2rem;
+  font-weight: 300;
+  color: #fbbf24;
+  letter-spacing: -0.01em;
+}
+
+.interventionSubtext {
+  font-size: 0.85rem;
+  color: #cbd5e1;
+  letter-spacing: 0.3px;
+}
+
+.chartsGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 2.5rem;
+  padding: 0;
+}
+
+.chartContainer {
+  background: linear-gradient(135deg, #0f1419 0%, #0d111a 100%);
+  border: 1px solid rgba(212, 175, 55, 0.15);
+  border-radius: 8px;
+  padding: 2rem;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.7);
+}
+
+.signalsSection {
+  max-width: 1600px;
+  margin: 3rem auto;
+  padding: 0 4rem;
+}
+
+.signalsSection h2 {
+  margin: 0 0 2rem 0;
+  font-size: 1.5rem;
+  font-weight: 300;
+  letter-spacing: -0.01em;
+  color: #f8fafc;
+  text-transform: uppercase;
+}
+
+.metricsTable {
+  max-width: 1600px;
+  margin: 3rem auto;
+  padding: 0 4rem;
+}
+
+.metricsTable h2 {
+  margin: 0 0 1.5rem 0;
+  font-size: 1.2rem;
+  font-weight: 300;
+  letter-spacing: -0.01em;
+  color: #f8fafc;
+  text-transform: uppercase;
+}
+
+.metricsTable table {
+  width: 100%;
+  border-collapse: collapse;
+  background: linear-gradient(135deg, #0f1419 0%, #0d111a 100%);
+  border: 1px solid rgba(212, 175, 55, 0.15);
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.7);
+}
+
+.metricsTable thead {
+  background: rgba(15, 20, 25, 0.8);
+  border-bottom: 1px solid rgba(212, 175, 55, 0.15);
+}
+
+.metricsTable th {
+  padding: 1.25rem;
+  text-align: left;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: #64748b;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.metricsTable tbody tr {
+  border-bottom: 1px solid rgba(212, 175, 55, 0.08);
+  transition: all 0.3s ease;
+}
+
+.metricsTable tbody tr:hover {
+  background: rgba(251, 191, 36, 0.05);
+}
+
+.metricsTable tbody tr:last-child {
+  border-bottom: none;
+}
+
+.metricsTable td {
+  padding: 1.25rem;
+  font-size: 0.85rem;
+  color: #cbd5e1;
+  letter-spacing: 0.2px;
+}
+
+.sensorName {
+  font-weight: 500;
+  color: #f8fafc;
+}
+
+.value {
+  font-weight: 400;
+  color: #cbd5e1;
+}
+
+.statusBadge {
+  display: inline-block;
+  padding: 0.5rem 0.875rem;
+  border-radius: 4px;
+  font-size: 0.7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #ffffff;
+}
+
+.statusBadge.optimal {
+  background: rgba(16, 185, 129, 0.2);
+  color: #6ee7b7;
+}
+
+.statusBadge.warning {
+  background: rgba(245, 158, 11, 0.2);
+  color: #fcd34d;
+}
+
+.statusBadge.critical {
+  background: rgba(239, 68, 68, 0.2);
+  color: #fca5a5;
+}
+
+.range {
+  color: #64748b;
+  font-size: 0.8rem;
+}
+
+@media (max-width: 1024px) {
+  .topBar, .infoBar, .criticalSection, .signalsSection, .metricsTable {
+    padding-left: 2rem;
+    padding-right: 2rem;
+  }
+}
+
+@media (max-width: 768px) {
+  .topBar {
+    flex-direction: column;
+    align-items: flex-start;
+    padding: 1.5rem;
+  }
+
+  .topBar h1 {
+    font-size: 1.5rem;
+  }
+
+  .infoBar {
+    flex-direction: column;
+    align-items: flex-start;
+    padding: 1rem 1.5rem;
+  }
+
+  .chartsGrid {
+    grid-template-columns: 1fr;
+  }
+
+  .metricsTable {
+    padding: 1rem 1.5rem;
+  }
+
+  .metricsTable table {
+    font-size: 0.75rem;
+  }
+
+  .metricsTable td,
+  .metricsTable th {
+    padding: 0.75rem;
+  }
+}
