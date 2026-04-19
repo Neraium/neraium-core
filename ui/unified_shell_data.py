@@ -13,7 +13,10 @@ from ui.core_integration import SystemState
 def _compute_subsystem_criticality(
     records: list[dict[str, Any]] | None = None,
 ) -> tuple[str, float]:
-    """Determine most critical subsystem and its contribution magnitude.
+    """Determine most critical subsystem with continuity memory.
+
+    Maintains focus on dominant driver unless conditions significantly shift,
+    preventing operator confusion from constant focus changes.
 
     Args:
         records: Historical records
@@ -34,8 +37,32 @@ def _compute_subsystem_criticality(
         "plant_response": drift * 0.1,
     }
 
-    critical = max(subsystem_contributions, key=subsystem_contributions.get)
-    criticality = subsystem_contributions[critical]
+    current_max = max(subsystem_contributions.values())
+    candidate = max(subsystem_contributions, key=subsystem_contributions.get)
+    candidate_score = subsystem_contributions[candidate]
+
+    if len(records) >= 3:
+        previous = records[-2]
+        previous_drift = float(previous.get("structural_drift_score", drift))
+        previous_contributions = {
+            "climate": previous_drift * 0.35,
+            "airflow": previous_drift * 0.3,
+            "irrigation": previous_drift * 0.25,
+            "plant_response": previous_drift * 0.1,
+        }
+        previous_critical = max(previous_contributions, key=previous_contributions.get)
+        previous_score = previous_contributions[previous_critical]
+
+        change_threshold = 0.15
+        if previous_critical != candidate and previous_score > candidate_score * (1.0 - change_threshold):
+            critical = previous_critical
+            criticality = max(previous_score, candidate_score)
+        else:
+            critical = candidate
+            criticality = candidate_score
+    else:
+        critical = candidate
+        criticality = candidate_score
 
     return critical, min(criticality, 1.0)
 
