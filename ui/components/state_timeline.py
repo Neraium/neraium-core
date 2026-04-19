@@ -27,14 +27,16 @@ def render_state_timeline(
     current_index: int | None = None,
     width: int = 1200,
     height: int = 140,
+    no_action_projection: list[dict[str, Any]] | None = None,
 ) -> str:
-    """Render the state timeline showing momentum and acceleration.
+    """Render the state timeline showing momentum, acceleration, and no-action trajectory.
 
     The timeline communicates:
     - Steepness = velocity of drift/recovery
     - Curvature = acceleration (drift speeding up/slowing down)
     - Spacing = temporal progression
-    - Future projection = extrapolated trajectory
+    - Current projection = extrapolated trajectory with continued current behavior
+    - No-action projection = what happens if system continues unchanged (divergence)
 
     Args:
         states: List of state dicts with keys:
@@ -43,6 +45,7 @@ def render_state_timeline(
         current_index: Index of current position in timeline
         width: SVG width in pixels
         height: SVG height in pixels
+        no_action_projection: Optional projected drift values if no intervention occurs
 
     Returns:
         SVG markup for the timeline
@@ -242,6 +245,47 @@ def render_state_timeline(
             <text x="{last_x + (x_spacing * proj_steps) + 10}" y="{last_y + (last_velocity * proj_steps * available_height) - 8}"
                 font-size="8" fill="rgba(226,232,240,0.5)" opacity="0.6">projected</text>
         """)
+
+    if no_action_projection and len(points_drift) > 1:
+        last_x = points_drift[-1][0]
+        last_y = points_drift[-1][1]
+
+        proj_steps = min(3, len(no_action_projection))
+        for step in range(proj_steps):
+            if step >= len(no_action_projection):
+                break
+
+            proj_x = last_x + (x_spacing * (step + 1))
+            if proj_x > margin_left + available_width:
+                break
+
+            proj_drift = float(no_action_projection[step].get("drift", 0.0))
+            proj_drift = max(0.0, min(1.0, proj_drift))
+            proj_y = baseline_y - (proj_drift - 0.5) * available_height
+
+            opacity = 0.3 - (step * 0.07)
+            color = "#EF4444" if proj_drift > 0.6 else "#F97316" if proj_drift > 0.4 else "#3B82F6"
+
+            svg_parts.append(f"""
+                <circle cx="{proj_x:.1f}" cy="{proj_y:.1f}" r="2.2"
+                    fill="{color}" opacity="{opacity * 0.8}"/>
+            """)
+
+        if proj_steps > 0:
+            end_x = last_x + (x_spacing * proj_steps)
+            end_proj_drift = float(no_action_projection[-1].get("drift", 0.0))
+            end_proj_y = baseline_y - (end_proj_drift - 0.5) * available_height
+
+            svg_parts.append(f"""
+                <path d="M{last_x:.1f},{last_y:.1f} L{end_x:.1f},{end_proj_y:.1f}"
+                    stroke="rgba(239,68,68,0.35)" stroke-width="1.4"
+                    stroke-dasharray="2,3" opacity="0.5"/>
+            """)
+
+            svg_parts.append(f"""
+                <text x="{end_x + 8}" y="{end_proj_y - 10}"
+                    font-size="7.5" fill="rgba(239,68,68,0.6)" opacity="0.6">no action</text>
+            """)
 
     legend_y = margin_top + available_height + 35
     legend_items = [

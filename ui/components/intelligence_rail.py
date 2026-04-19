@@ -69,8 +69,10 @@ def render_intelligence_rail(
     path_outlook: str,
     critical_alerts: list[str] | None = None,
     coherence_score: float = 0.75,
+    no_action_consequence: str = "",
+    recoverability_context: str = "",
 ) -> str:
-    """Render the intelligence rail.
+    """Render the intelligence rail with counterfactual awareness and recoverability context.
 
     Args:
         current_state: Description of current system state
@@ -81,6 +83,8 @@ def render_intelligence_rail(
         path_outlook: Where is the system heading / what's the trajectory
         critical_alerts: Optional list of critical items to highlight
         coherence_score: System coherence (0-1) for reactive styling
+        no_action_consequence: What happens if no intervention occurs
+        recoverability_context: Context on system recoverability window
 
     Returns:
         HTML markup for the intelligence rail
@@ -94,6 +98,13 @@ def render_intelligence_rail(
         ("Operator Focus", operator_focus, "elevated"),
         ("Path Outlook", path_outlook, "normal"),
     ]
+
+    if recoverability_context:
+        emphasis = "critical" if "closing" in recoverability_context.lower() or "immediately" in recoverability_context.lower() else "elevated"
+        sections.append(("Recoverability", recoverability_context, emphasis))
+
+    if no_action_consequence:
+        sections.append(("No-Action Consequence", no_action_consequence, "elevated"))
 
     emphasis_level = "normal"
     if critical_alerts:

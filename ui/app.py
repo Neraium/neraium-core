@@ -27,6 +27,7 @@ from ui.unified_shell_data import (
     build_intelligence_insights,
     get_critical_alerts,
     _compute_time_to_consequence,
+    _compute_no_action_projection,
 )
 
 
@@ -1047,7 +1048,8 @@ def _load_unified_shell(
     subsystems = build_subsystems_data(system_state, records)
     states_timeline = build_timeline_states(records)
     time_to_consequence = _compute_time_to_consequence(records)
-    insights = build_intelligence_insights(system_state, records, gate_decision, time_to_consequence)
+    no_action_projection = _compute_no_action_projection(records)
+    insights = build_intelligence_insights(system_state, records, gate_decision, time_to_consequence, no_action_projection)
     critical_alerts = get_critical_alerts(system_state, gate_decision)
 
     rooms_needing_attention = sum(1 for r in rooms if r.get("state") in ("watch", "degraded", "critical"))
@@ -1069,6 +1071,8 @@ def _load_unified_shell(
         path_outlook_insight=insights.get("path_outlook", ""),
         critical_alerts=critical_alerts if critical_alerts else None,
         records=records,
+        no_action_projection=no_action_projection,
+        no_action_consequence_insight=insights.get("no_action_consequence", ""),
     )
 
     return (

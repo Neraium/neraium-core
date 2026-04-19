@@ -202,53 +202,65 @@ def build_subsystems_data(
     stability = system_state.stability if system_state else 0.8
     coherence = system_state.coherence if system_state else 0.75
 
+    climate_drift_contrib = drift * 30
+    climate_fragility = (climate_drift_contrib / 100) * (1.0 - coherence)
     subsystems.append(
         {
             "subsystem_id": "climate",
             "subsystem_name": "Climate",
             "condition": f"{22 + drift * 5:.1f}°C",
             "behavioral_state": "Stabilizing" if stability > 0.6 else "Drifting",
-            "drift_contribution_pct": drift * 30,
+            "drift_contribution_pct": climate_drift_contrib,
             "confidence_pct": (1.0 - drift) * 100,
+            "fragility_pct": climate_fragility * 100,
             "explanation": "Temperature regulation within normal parameters.",
             "micro_activity": drift * 0.5,
         }
     )
 
+    airflow_drift_contrib = drift * 25
+    airflow_fragility = (airflow_drift_contrib / 100) * (1.0 - coherence)
     subsystems.append(
         {
             "subsystem_id": "airflow",
             "subsystem_name": "Airflow",
             "condition": f"{1.2 + drift * 0.4:.1f} m/s",
             "behavioral_state": "Recovering" if drift > 0 else "Optimal",
-            "drift_contribution_pct": drift * 25,
+            "drift_contribution_pct": airflow_drift_contrib,
             "confidence_pct": stability * 100,
+            "fragility_pct": airflow_fragility * 100,
             "explanation": "Airflow velocity trending upward in recovery window.",
             "micro_activity": drift * 0.3,
         }
     )
 
+    irrigation_drift_contrib = drift * 35
+    irrigation_fragility = (irrigation_drift_contrib / 100) * (1.0 - coherence)
     subsystems.append(
         {
             "subsystem_id": "irrigation",
             "subsystem_name": "Irrigation",
             "condition": f"{65 - drift * 20:.0f}% capacity",
             "behavioral_state": "Post-cycle" if drift > 0.3 else "Nominal",
-            "drift_contribution_pct": drift * 35,
+            "drift_contribution_pct": irrigation_drift_contrib,
             "confidence_pct": coherence * 100,
+            "fragility_pct": irrigation_fragility * 100,
             "explanation": "Irrigation cycle completed. System in recovery phase.",
             "micro_activity": (1.0 - stability) * 0.6,
         }
     )
 
+    plant_drift_contrib = max(0, drift * 40 - 10)
+    plant_fragility = (plant_drift_contrib / 100) * (1.0 - coherence)
     subsystems.append(
         {
             "subsystem_id": "plant_response",
             "subsystem_name": "Plant Response",
             "condition": "Robust",
             "behavioral_state": "Growing" if coherence > 0.7 else "Slowing",
-            "drift_contribution_pct": max(0, drift * 40 - 10),
+            "drift_contribution_pct": plant_drift_contrib,
             "confidence_pct": coherence * 100,
+            "fragility_pct": plant_fragility * 100,
             "explanation": "Plant layer showing healthy growth trajectory.",
             "micro_activity": 0.2,
         }
@@ -317,22 +329,63 @@ def build_timeline_states(
     return states
 
 
+def _compute_no_action_projection(
+    records: list[dict[str, Any]] | None = None,
+    steps: int = 3,
+) -> list[dict[str, Any]]:
+    """Project drift trajectory if no intervention occurs.
+
+    Assumes drift continues at current velocity without recovery attempt.
+
+    Args:
+        records: Historical records
+        steps: Number of projection steps (default 3)
+
+    Returns:
+        List of projected state dicts
+    """
+    if not records or len(records) < 2:
+        return []
+
+    latest = records[-1]
+    previous = records[-2] if len(records) > 1 else records[0]
+
+    current_drift = float(latest.get("structural_drift_score", 0.2))
+    previous_drift = float(previous.get("structural_drift_score", 0.2))
+
+    velocity = current_drift - previous_drift
+    projections = []
+
+    for step in range(1, steps + 1):
+        proj_drift = current_drift + (velocity * step)
+        proj_drift = min(1.0, max(0.0, proj_drift))
+
+        projections.append({
+            "drift": proj_drift,
+            "step": step,
+        })
+
+    return projections
+
+
 def build_intelligence_insights(
     system_state: SystemState | None,
     records: list[dict[str, Any]] | None = None,
     gate_decision: dict[str, Any] | None = None,
     time_to_consequence: dict[str, Any] | None = None,
+    no_action_projection: list[dict[str, Any]] | None = None,
 ) -> dict[str, str]:
-    """Build operator intelligence insights.
+    """Build operator intelligence insights with consequence awareness.
 
     Args:
         system_state: Current SystemState
         records: Historical records list
         gate_decision: Gate decision dict
         time_to_consequence: Time-to-consequence metrics dict with cycles_to_critical, minutes_to_escalation, velocity
+        no_action_projection: Projected drift if no intervention occurs
 
     Returns:
-        Dictionary with insight keys
+        Dictionary with insight keys including no-action consequence
     """
     drift = system_state.drift_intensity if system_state else 0.2
     stability = system_state.stability if system_state else 0.8
@@ -400,6 +453,30 @@ def build_intelligence_insights(
     else:
         outlook = "Insufficient history to project trajectory. Wait for additional cycle data."
 
+    if no_action_projection and len(no_action_projection) > 0:
+        final_drift = float(no_action_projection[-1].get("drift", drift))
+        if final_drift > 0.7:
+            consequence = "Without intervention: subsystem couplings will fracture irreversibly within projected window."
+        elif final_drift > 0.5:
+            consequence = "Without intervention: recovery becomes impossible as coupling stress exceeds resilience limits."
+        elif final_drift > 0.3:
+            consequence = "Without intervention: system enters degraded state with prolonged recovery timeline."
+        else:
+            consequence = "Without intervention: minor drift persists but system remains within stable operating envelope."
+    else:
+        consequence = ""
+
+    if drift > 0.65:
+        recoverability = "Recoverability window closing. Intervention required immediately to prevent permanent coupling fracture."
+    elif drift > 0.5:
+        recoverability = "System approaching irreversibility threshold. Recovery pathway narrowing with each cycle."
+    elif drift > 0.35:
+        recoverability = "Recovery still possible but window constraining. Subsystem couplings showing stress limits."
+    elif drift > 0.15:
+        recoverability = "System recoverable with standard intervention. Coherence structure still intact."
+    else:
+        recoverability = "System within stable baseline. Recovery paths fully open."
+
     return {
         "current_state": current_state,
         "onset": onset,
@@ -407,6 +484,8 @@ def build_intelligence_insights(
         "primary_driver": driver,
         "operator_focus": focus,
         "path_outlook": outlook,
+        "no_action_consequence": consequence,
+        "recoverability": recoverability,
     }
 
 

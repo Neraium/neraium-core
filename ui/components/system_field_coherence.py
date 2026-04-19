@@ -235,8 +235,9 @@ def render_system_field_svg(
     interactive: bool = True,
     critical_subsystem_id: str | None = None,
     records: list[dict[str, Any]] | None = None,
+    no_action_projection: list[dict[str, Any]] | None = None,
 ) -> str:
-    """Render the system field as an interactive SVG.
+    """Render the system field with divergence visualization for no-action trajectory.
 
     Args:
         coherence: System coherence score (0-1)
@@ -248,6 +249,7 @@ def render_system_field_svg(
         interactive: If True, add hover/click interactivity
         critical_subsystem_id: ID of the most critical subsystem to highlight (climate, airflow, irrigation, plant_response)
         records: Historical records list for computing minimum coherence
+        no_action_projection: Projected drift if no intervention occurs (shows divergence)
 
     Returns:
         SVG markup string
@@ -262,6 +264,17 @@ def render_system_field_svg(
         coherence, drift, stability, state,
         history_min_coherence=history_min_coherence
     )
+
+    no_action_drift = drift
+    if no_action_projection and len(no_action_projection) > 0:
+        no_action_drift = float(no_action_projection[0].get("drift", drift))
+
+    divergence_geometry = None
+    if no_action_drift > drift and drift > 0.15:
+        divergence_geometry = _compute_tetrahedron_geometry(
+            coherence, no_action_drift, stability, state,
+            history_min_coherence=history_min_coherence
+        )
 
     center_x = width / 2
     center_y = height / 2
@@ -304,9 +317,12 @@ def render_system_field_svg(
         breathing_duration = 1.2
         shimmer_duration = 2.0
 
+    fragility = drift * (1.0 - geometry["coherence"]) if geometry["coherence"] > 0 else drift
+    fragility_level = "critical" if fragility > 0.5 else "high" if fragility > 0.35 else "moderate" if fragility > 0.15 else "low"
+
     svg_parts.append(f"""<svg width="{width}" height="{height}" viewBox="0 0 {width} {height}"
         xmlns="http://www.w3.org/2000/svg" class="ner-system-field" preserveAspectRatio="xMidYMid meet"
-        data-drift="{drift:.2f}" data-coherence="{geometry['coherence']:.2f}" data-motion="{motion_responsivity}">
+        data-drift="{drift:.2f}" data-coherence="{geometry['coherence']:.2f}" data-motion="{motion_responsivity}" data-fragility="{fragility_level}">
         <defs>
             <filter id="coherenceGlow" x="-50%" y="-50%" width="200%" height="200%">
                 <feGaussianBlur stdDeviation="8" result="blur"/>
@@ -359,6 +375,17 @@ def render_system_field_svg(
                     50% {{ transform: translate(0, 1px) scale(1); }}
                     75% {{ transform: translate(-1px, -1px) scale(0.998); }}
                 }}
+                @keyframes warningJitter {{
+                    0% {{ transform: translate(0, 0); }}
+                    12% {{ transform: translate(0.5px, -0.3px); }}
+                    25% {{ transform: translate(-0.2px, 0.4px); }}
+                    37% {{ transform: translate(0.3px, 0.1px); }}
+                    50% {{ transform: translate(-0.4px, -0.2px); }}
+                    62% {{ transform: translate(0.2px, 0.3px); }}
+                    75% {{ transform: translate(-0.3px, -0.1px); }}
+                    87% {{ transform: translate(0.4px, 0.2px); }}
+                    100% {{ transform: translate(0, 0); }}
+                }}
                 .ner-coherence-core {{
                     animation: coreRadiate {breathing_duration:.2f}s cubic-bezier(0.34, 1.56, 0.64, 1) infinite;
                     filter: url(#coreRadiance);
@@ -369,6 +396,12 @@ def render_system_field_svg(
                 .ner-system-field {{
                     animation: ambientDrift {ambient_drift_duration:.1f}s ease-in-out infinite;
                     transform-origin: center;
+                }}
+                .ner-system-field[data-fragility="critical"] {{
+                    animation: warningJitter 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) infinite;
+                }}
+                .ner-system-field[data-fragility="high"] {{
+                    animation: warningJitter 1.2s ease-in-out infinite;
                 }}
                 .ner-tension-shimmer {{
                     animation: tensionShimmer {shimmer_duration:.2f}s ease-in-out infinite;
@@ -438,6 +471,22 @@ def render_system_field_svg(
                 opacity="{edge_opacity}" stroke-linecap="round"
                 stroke-linejoin="round"/>
         """)
+
+    if divergence_geometry and drift > 0.15:
+        for div_edge in divergence_geometry["edges"]:
+            div_x1, div_y1 = to_svg(*div_edge["p1"])
+            div_x2, div_y2 = to_svg(*div_edge["p2"])
+
+            div_color = "rgba(239,68,68,0.4)"
+            div_width = 0.8 + div_edge["tension"] * 1.0
+            div_opacity = 0.2 + div_edge["glow_intensity"] * 0.15
+
+            svg_parts.append(f"""
+                <line x1="{div_x1:.1f}" y1="{div_y1:.1f}" x2="{div_x2:.1f}" y2="{div_y2:.1f}"
+                    stroke="{div_color}" stroke-width="{div_width:.2f}"
+                    opacity="{div_opacity}" stroke-linecap="round"
+                    stroke-dasharray="2,3" stroke-linejoin="round"/>
+            """)
 
     vertices = geometry["vertices"]
     vertex_labels = {

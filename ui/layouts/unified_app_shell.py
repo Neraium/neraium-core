@@ -49,6 +49,8 @@ def build_unified_app_shell(
     path_outlook_insight: str = "Current trajectory stable through end of phase",
     critical_alerts: list[str] | None = None,
     records: list[dict[str, Any]] | None = None,
+    no_action_projection: list[dict[str, Any]] | None = None,
+    no_action_consequence_insight: str = "",
 ) -> dict[str, str]:
     """Build the unified app shell.
 
@@ -111,6 +113,7 @@ def build_unified_app_shell(
         interactive=True,
         critical_subsystem_id=critical_subsystem,
         records=records,
+        no_action_projection=no_action_projection,
     )
 
     left_panel_html = render_subsystem_influence_panel(
@@ -126,6 +129,8 @@ def build_unified_app_shell(
         path_outlook=path_outlook_insight,
         critical_alerts=critical_alerts if critical_alerts else None,
         coherence_score=coherence,
+        no_action_consequence=no_action_consequence_insight,
+        recoverability_context=insights.get("recoverability", ""),
     )
 
     bottom_timeline_html = render_state_timeline(
@@ -133,6 +138,7 @@ def build_unified_app_shell(
         current_index=len(states_timeline) - 1 if states_timeline else None,
         width=1400,
         height=140,
+        no_action_projection=no_action_projection,
     )
 
     return {
