@@ -216,18 +216,32 @@ def render_system_field_svg(
 
     svg_parts = []
 
+    pulse_freq = geometry["coherence_core"]["pulse_frequency"]
+    pulse_duration = max(0.8, 2.0 - (pulse_freq * 0.4))
+
     svg_parts.append(f"""<svg width="{width}" height="{height}" viewBox="0 0 {width} {height}"
-        xmlns="http://www.w3.org/2000/svg" class="ner-system-field">
+        xmlns="http://www.w3.org/2000/svg" class="ner-system-field" preserveAspectRatio="xMidYMid meet">
         <defs>
             <filter id="coherenceGlow" x="-50%" y="-50%" width="200%" height="200%">
                 <feGaussianBlur stdDeviation="8" result="blur"/>
+                <feFlood flood-color="rgba(34,197,94,0.3)" result="color"/>
+                <feComposite in="color" in2="blur" operator="in" result="coloredBlur"/>
                 <feMerge>
-                    <feMergeNode in="blur"/>
+                    <feMergeNode in="coloredBlur"/>
                     <feMergeNode in="SourceGraphic"/>
                 </feMerge>
             </filter>
             <filter id="coreRadiance" x="-80%" y="-80%" width="260%" height="260%">
-                <feGaussianBlur stdDeviation="12" result="blur"/>
+                <feGaussianBlur stdDeviation="14" result="blur"/>
+                <feFlood flood-color="rgba(34,197,94,0.4)" result="color"/>
+                <feComposite in="color" in2="blur" operator="in" result="coloredBlur"/>
+                <feMerge>
+                    <feMergeNode in="coloredBlur"/>
+                    <feMergeNode in="SourceGraphic"/>
+                </feMerge>
+            </filter>
+            <filter id="edgeTension">
+                <feGaussianBlur stdDeviation="1.5" result="blur"/>
                 <feMerge>
                     <feMergeNode in="blur"/>
                     <feMergeNode in="SourceGraphic"/>
@@ -240,11 +254,19 @@ def render_system_field_svg(
                 }}
                 @keyframes coreRadiate {{
                     0% {{ r: {geometry["coherence_core"]["radius"]:.3f}; }}
-                    50% {{ r: {geometry["coherence_core"]["radius"] + 0.05:.3f}; }}
+                    50% {{ r: {geometry["coherence_core"]["radius"] + 0.06:.3f}; }}
                     100% {{ r: {geometry["coherence_core"]["radius"]:.3f}; }}
                 }}
+                @keyframes ringBreathing {{
+                    0%, 100% {{ stroke-width: 1.8; opacity: 0.5; }}
+                    50% {{ stroke-width: 2.2; opacity: 0.7; }}
+                }}
                 .ner-coherence-core {{
-                    animation: coreRadiate {1.0 / geometry["coherence_core"]["pulse_frequency"]:.2f}s ease-in-out infinite;
+                    animation: coreRadiate {pulse_duration:.2f}s ease-in-out infinite;
+                    filter: url(#coreRadiance);
+                }}
+                .ner-coherence-ring {{
+                    animation: ringBreathing {pulse_duration * 1.5:.2f}s ease-in-out infinite;
                 }}
             </style>
         </defs>
@@ -252,23 +274,40 @@ def render_system_field_svg(
 
     svg_parts.append(f"""
         <rect width="{width}" height="{height}" fill="#020617" opacity="0"/>
+        <defs>
+            <radialGradient id="fieldGradient" cx="50%" cy="50%" r="50%">
+                <stop offset="0%" stop-color="rgba(59,130,246,0.05)" stop-opacity="1"/>
+                <stop offset="100%" stop-color="rgba(59,130,246,0.0)" stop-opacity="1"/>
+            </radialGradient>
+        </defs>
+        <circle cx="{center_x}" cy="{center_y}" r="{min(width,height)*0.45}" fill="url(#fieldGradient)"/>
     """)
 
     coherence_ring = geometry["coherence_ring"]
     ring_cx, ring_cy = center_x, center_y
     ring_r = coherence_ring["radius"] * scale
 
-    glow_opacity = coherence_ring["glow_intensity"] * 0.4
+    glow_opacity = coherence_ring["glow_intensity"] * 0.5
+    glow_spread = ring_r * (1.0 + coherence_ring["glow_intensity"] * 0.2)
+
     svg_parts.append(f"""
-        <circle cx="{ring_cx}" cy="{ring_cy}" r="{ring_r}"
+        <circle cx="{ring_cx}" cy="{ring_cy}" r="{glow_spread}"
             fill="none" stroke="{coherence_ring["glow_color"]}"
-            stroke-width="2.5" opacity="{glow_opacity}" filter="url(#coherenceGlow)"/>
+            stroke-width="3" opacity="{glow_opacity * 0.3}" filter="url(#coherenceGlow)"/>
     """)
 
     svg_parts.append(f"""
         <circle cx="{ring_cx}" cy="{ring_cy}" r="{ring_r}"
             fill="none" stroke="{coherence_ring["glow_color"]}"
-            stroke-width="1.2" opacity="{coherence_ring["opacity"]}"/>
+            stroke-width="2.2" opacity="{glow_opacity}"
+            class="ner-coherence-ring" filter="url(#coherenceGlow)"/>
+    """)
+
+    svg_parts.append(f"""
+        <circle cx="{ring_cx}" cy="{ring_cy}" r="{ring_r}"
+            fill="none" stroke="{coherence_ring["glow_color"]}"
+            stroke-width="1.0" opacity="{coherence_ring["opacity"] * 0.8}"
+            stroke-dasharray="4,2" stroke-linecap="round"/>
     """)
 
     for edge in geometry["edges"]:
@@ -276,44 +315,96 @@ def render_system_field_svg(
         x2, y2 = to_svg(*edge["p2"])
 
         edge_color = edge["color"]
-        edge_width = 1.2 + edge["tension"] * 2.0
+        edge_width = 1.4 + edge["tension"] * 2.2
         edge_opacity = edge["glow_intensity"]
+
+        tension = edge["tension"]
+        if tension > 0.5:
+            svg_parts.append(f"""
+                <line x1="{x1:.1f}" y1="{y1:.1f}" x2="{x2:.1f}" y2="{y2:.1f}"
+                    stroke="{edge_color}" stroke-width="{edge_width * 1.3:.2f}"
+                    opacity="{edge_opacity * 0.4}" stroke-linecap="round"
+                    filter="url(#edgeTension)"/>
+            """)
 
         svg_parts.append(f"""
             <line x1="{x1:.1f}" y1="{y1:.1f}" x2="{x2:.1f}" y2="{y2:.1f}"
                 stroke="{edge_color}" stroke-width="{edge_width:.2f}"
-                opacity="{edge_opacity}" stroke-linecap="round"/>
+                opacity="{edge_opacity}" stroke-linecap="round"
+                stroke-linejoin="round"/>
         """)
 
     vertices = geometry["vertices"]
+    vertex_labels = {
+        "top": "Climate",
+        "front_right": "Airflow",
+        "front_left": "Irrigation",
+        "back": "Plant",
+    }
+
     for v_name, (vx, vy, vz) in vertices.items():
         vx_svg, vy_svg = to_svg(vx, vy, vz)
 
-        is_highlighted = False
         v_color = "#93C5FD"
-        v_radius = 6.0
-        v_opacity = 0.8
+        v_radius = 7.0
+        v_opacity = 0.9
+        v_glow_radius = v_radius + 2.0
+
+        svg_parts.append(f"""
+            <circle cx="{vx_svg:.1f}" cy="{vy_svg:.1f}" r="{v_glow_radius}"
+                fill="{v_color}" opacity="{v_opacity * 0.3}"
+                filter="url(#coherenceGlow)"/>
+        """)
 
         svg_parts.append(f"""
             <circle cx="{vx_svg:.1f}" cy="{vy_svg:.1f}" r="{v_radius}"
-                fill="{v_color}" opacity="{v_opacity}"/>
+                fill="{v_color}" opacity="{v_opacity}"
+                stroke="rgba(226,232,240,0.4)" stroke-width="1.2"
+                class="ner-system-vertex" data-vertex="{v_name}"/>
+        """)
+
+        label_text = vertex_labels.get(v_name, v_name)
+        angle = math.atan2(vy_svg - center_y, vx_svg - center_x)
+        label_x = vx_svg + math.cos(angle) * (v_radius + 20)
+        label_y = vy_svg + math.sin(angle) * (v_radius + 20)
+
+        svg_parts.append(f"""
+            <text x="{label_x:.1f}" y="{label_y:.1f}"
+                font-size="11" font-weight="700" fill="#E2E8F0"
+                text-anchor="middle" alignment-baseline="middle"
+                opacity="0.85">{label_text}</text>
         """)
 
     core = geometry["coherence_core"]
     core_x, core_y = center_x, center_y
     core_r = core["radius"] * scale
-
     core_glow_r = core_r + core["glow_spread"] * scale
+
+    outer_glow_r = core_glow_r * 1.3
+    svg_parts.append(f"""
+        <circle cx="{core_x}" cy="{core_y}" r="{outer_glow_r}"
+            fill="none" stroke="{core["color"]}" stroke-width="1.2"
+            opacity="{core["pulse_intensity"] * 0.2}"
+            filter="url(#coreRadiance)"/>
+    """)
+
     svg_parts.append(f"""
         <circle cx="{core_x}" cy="{core_y}" r="{core_glow_r}"
-            fill="{core["color"]}" opacity="{core["pulse_intensity"] * 0.3}"
+            fill="{core["color"]}" opacity="{core["pulse_intensity"] * 0.4}"
+            filter="url(#coreRadiance)"/>
+    """)
+
+    svg_parts.append(f"""
+        <circle cx="{core_x}" cy="{core_y}" r="{core_glow_r * 0.7}"
+            fill="{core["color"]}" opacity="{core["pulse_intensity"] * 0.5}"
             filter="url(#coreRadiance)"/>
     """)
 
     svg_parts.append(f"""
         <circle cx="{core_x}" cy="{core_y}" r="{core_r}"
             fill="{core["color"]}" opacity="{core["opacity"]}"
-            class="ner-coherence-core" filter="url(#coreRadiance)"/>
+            class="ner-coherence-core"
+            stroke="rgba(226,232,240,0.2)" stroke-width="0.8"/>
     """)
 
     if interactive:
