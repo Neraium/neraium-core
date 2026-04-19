@@ -1,8 +1,10 @@
 'use client'
 
+import { useEffect, useState } from 'react'
 import { DecisionUIState } from '@/lib/decisionToUI'
 import SystemTimeline from '@/components/SystemTimeline'
 import DriftChart from '@/components/DriftChart'
+import EnhancedTetrahedronViz from '@/components/EnhancedTetrahedronViz'
 
 interface SystemStateTrajectoryProps {
   state: DecisionUIState
@@ -10,6 +12,18 @@ interface SystemStateTrajectoryProps {
 }
 
 export default function SystemStateTrajectory({ state, systemName }: SystemStateTrajectoryProps) {
+  const [showTransitionGlow, setShowTransitionGlow] = useState(false)
+  const [prevStage, setPrevStage] = useState(state.statusHeader.degradationStage)
+
+  useEffect(() => {
+    if (state.statusHeader.degradationStage !== prevStage) {
+      setShowTransitionGlow(true)
+      setPrevStage(state.statusHeader.degradationStage)
+      const timer = setTimeout(() => setShowTransitionGlow(false), 1500)
+      return () => clearTimeout(timer)
+    }
+  }, [state.statusHeader.degradationStage, prevStage])
+
   const stateLabels: Record<string, string> = {
     baseline: 'Stable',
     early_shift: 'Early Drift',
@@ -33,7 +47,10 @@ export default function SystemStateTrajectory({ state, systemName }: SystemState
   const currentDescription = stateDescriptions[state.statusHeader.degradationStage] || 'System state change detected'
 
   return (
-    <div style={styles.container}>
+    <div style={{
+      ...styles.container,
+      ...(showTransitionGlow ? styles.containerGlow : {}),
+    }}>
       <div style={styles.header}>
         <div>
           <div style={styles.title}>System State & Trajectory</div>
@@ -59,6 +76,18 @@ export default function SystemStateTrajectory({ state, systemName }: SystemState
             <DriftChart chart={state.driftChart} minimal={false} severity={state.statusHeader.severity} />
           ) : (
             <div style={styles.placeholder}>No drift data available</div>
+          )}
+        </div>
+
+        {/* System state tetrahedron visualization */}
+        <div style={styles.section}>
+          <div style={styles.sectionTitle}>System State Space</div>
+          {state.tetrahedron ? (
+            <div style={styles.tetrahedronContainer}>
+              <EnhancedTetrahedronViz tetrahedronState={state.tetrahedron} isInteractive={false} />
+            </div>
+          ) : (
+            <div style={styles.placeholder}>No state space data available</div>
           )}
         </div>
       </div>
@@ -95,23 +124,27 @@ const styles: Record<string, React.CSSProperties> = {
     flexDirection: 'column',
     gap: '16px',
     padding: '20px',
-    backgroundColor: 'rgba(15, 23, 42, 0.3)',
-    borderRadius: '12px',
-    border: '1px solid rgba(148, 163, 184, 0.08)',
+    backgroundColor: 'rgba(0, 20, 40, 0.4)',
+    borderRadius: '0',
+    border: '2px solid rgba(0, 255, 255, 0.2)',
+    backdropFilter: 'blur(10px)',
+    boxShadow: '0 0 30px rgba(0, 255, 255, 0.1), inset 0 0 20px rgba(0, 255, 255, 0.05)',
+    position: 'relative',
   },
   header: {
     display: 'flex',
     justifyContent: 'space-between',
     alignItems: 'flex-start',
     paddingBottom: '12px',
-    borderBottom: '1px solid rgba(148, 163, 184, 0.08)',
+    borderBottom: '1px solid rgba(0, 255, 255, 0.15)',
   },
   title: {
-    fontSize: '12px',
-    fontWeight: '600',
-    letterSpacing: '0.1em',
+    fontSize: '11px',
+    fontWeight: '700',
+    letterSpacing: '0.15em',
     textTransform: 'uppercase',
-    color: 'rgba(148, 163, 184, 0.72)',
+    color: '#00ffff',
+    textShadow: '0 0 8px rgba(0, 255, 255, 0.6)',
   },
   systemName: {
     fontSize: '13px',
@@ -127,9 +160,10 @@ const styles: Record<string, React.CSSProperties> = {
   },
   stateLabel: {
     fontSize: '14px',
-    fontWeight: '600',
-    color: '#60a5fa',
-    letterSpacing: '0.05em',
+    fontWeight: '700',
+    color: '#ff00ff',
+    letterSpacing: '0.08em',
+    textShadow: '0 0 10px rgba(255, 0, 255, 0.8), 0 0 20px rgba(255, 0, 255, 0.4)',
   },
   stateDescription: {
     fontSize: '11px',
@@ -138,7 +172,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   content: {
     display: 'grid',
-    gridTemplateColumns: '1fr 1fr',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
     gap: '16px',
     minHeight: '300px',
   },
@@ -148,11 +182,12 @@ const styles: Record<string, React.CSSProperties> = {
     gap: '12px',
   },
   sectionTitle: {
-    fontSize: '11px',
-    fontWeight: '500',
+    fontSize: '10px',
+    fontWeight: '700',
     textTransform: 'uppercase',
-    color: 'rgba(148, 163, 184, 0.55)',
-    letterSpacing: '0.05em',
+    color: '#00d4ff',
+    letterSpacing: '0.12em',
+    textShadow: '0 0 6px rgba(0, 212, 255, 0.5)',
   },
   placeholder: {
     padding: '20px',
@@ -164,10 +199,12 @@ const styles: Record<string, React.CSSProperties> = {
     display: 'flex',
     flexDirection: 'column',
     gap: '10px',
-    padding: '12px 14px',
-    backgroundColor: 'rgba(30, 41, 59, 0.5)',
-    borderRadius: '8px',
-    borderLeft: '3px solid rgba(96, 165, 250, 0.5)',
+    padding: '14px 16px',
+    backgroundColor: 'rgba(0, 30, 50, 0.4)',
+    borderRadius: '0',
+    borderLeft: '3px solid #ff00ff',
+    backdropFilter: 'blur(8px)',
+    boxShadow: '0 0 20px rgba(255, 0, 255, 0.1), inset 0 0 15px rgba(255, 0, 255, 0.05)',
   },
   insightTitle: {
     fontSize: '10px',
@@ -191,12 +228,40 @@ const styles: Record<string, React.CSSProperties> = {
   },
   insightValue: {
     fontSize: '12px',
-    color: '#cbd5e1',
-    fontWeight: '500',
+    color: '#00ffff',
+    fontWeight: '700',
+    fontFamily: "'Space Mono', monospace",
+    textShadow: '0 0 8px rgba(0, 255, 255, 0.6)',
   },
   factorItem: {
     fontSize: '11px',
     color: '#cbd5e1',
     marginTop: '2px',
   },
+  tetrahedronContainer: {
+    width: '100%',
+    height: '300px',
+    borderRadius: '8px',
+    overflow: 'hidden',
+  },
+  containerGlow: {
+    animation: 'transitionGlow 1.5s ease-out',
+    boxShadow: '0 0 20px rgba(96, 165, 250, 0.4), 0 0 40px rgba(96, 165, 250, 0.2)',
+  },
+}
+
+// Add animation styles
+if (typeof document !== 'undefined') {
+  const style = document.createElement('style')
+  style.textContent = `
+    @keyframes transitionGlow {
+      0% {
+        box-shadow: 0 0 30px rgba(96, 165, 250, 0.8), 0 0 60px rgba(96, 165, 250, 0.4);
+      }
+      100% {
+        box-shadow: 0 0 10px rgba(96, 165, 250, 0.1), 0 0 20px rgba(96, 165, 250, 0.05);
+      }
+    }
+  `
+  document.head.appendChild(style)
 }
