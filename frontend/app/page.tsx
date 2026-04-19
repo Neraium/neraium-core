@@ -1,4 +1,7 @@
+'use client'
+
 import dynamic from 'next/dynamic'
+import { Suspense } from 'react'
 
 const LouddpaxRoomIntelligence = dynamic(
   () => import('@/components/LouddpaxRoomIntelligence').then(mod => ({ default: mod.LouddpaxRoomIntelligence })),
@@ -6,7 +9,7 @@ const LouddpaxRoomIntelligence = dynamic(
     ssr: false,
     loading: () => (
       <div className="flex items-center justify-center h-screen bg-louddpax-bg">
-        <div className="animate-pulse text-louddpax-text">Loading Intelligence...</div>
+        <div className="text-louddpax-text">Loading...</div>
       </div>
     )
   }
@@ -14,8 +17,8 @@ const LouddpaxRoomIntelligence = dynamic(
 
 export default function Home() {
   return (
-    <div suppressHydrationWarning>
+    <Suspense fallback={<div className="flex items-center justify-center h-screen bg-louddpax-bg"><div className="text-louddpax-text">Loading...</div></div>}>
       <LouddpaxRoomIntelligence />
-    </div>
+    </Suspense>
   )
 }
