@@ -1,12 +1,13 @@
 .card {
-  background: linear-gradient(135deg, #0f172a 0%, #1a2332 100%);
-  border: 1px solid #334155;
-  border-radius: 0.5rem;
+  background: linear-gradient(135deg, #051a0f 0%, #0d2818 100%);
+  border: 2px solid rgba(34, 197, 94, 0.3);
+  border-radius: 0.75rem;
   padding: 1rem;
   height: 100%;
   display: flex;
   flex-direction: column;
   gap: 0.75rem;
+  box-shadow: 0 8px 24px rgba(34, 197, 94, 0.1), inset 0 1px 0px rgba(255, 255, 255, 0.03);
 }
 
 .header {
@@ -19,8 +20,8 @@
 .header h3 {
   margin: 0;
   font-size: 0.9rem;
-  font-weight: 600;
-  color: #e2e8f0;
+  font-weight: 700;
+  color: #a3e635;
 }
 
 .value {
@@ -57,19 +58,21 @@
 
 .thresholds {
   font-size: 0.7rem;
-  color: #94a3b8;
+  color: #a3e635;
   padding: 0.5rem;
-  background: rgba(30, 41, 59, 0.3);
-  border-radius: 0.25rem;
+  background: rgba(34, 197, 94, 0.1);
+  border-radius: 0.375rem;
+  border-left: 2px solid #22c55e;
+  padding-left: 0.75rem;
 }
 
 .chart {
   width: 100%;
   height: 80px;
   margin-top: 0.5rem;
-  border: 1px solid #334155;
-  border-radius: 0.25rem;
-  background: rgba(15, 23, 42, 0.5);
+  border: 1px solid rgba(34, 197, 94, 0.2);
+  border-radius: 0.375rem;
+  background: rgba(5, 26, 15, 0.7);
 }
 
 @media (max-width: 768px) {

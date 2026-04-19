@@ -1,6 +1,6 @@
 .container {
   min-height: 100vh;
-  background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+  background: linear-gradient(135deg, #051a0f 0%, #0d2818 100%);
   color: #e2e8f0;
   padding: 0;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen,
@@ -17,20 +17,25 @@
 }
 
 .header {
-  background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
+  background: linear-gradient(135deg, #0f3f2f 0%, #134d3a 100%);
   padding: 2rem;
-  border-bottom: 2px solid #475569;
+  border-bottom: 2px solid #1b6b52;
   display: flex;
   justify-content: space-between;
   align-items: start;
   gap: 2rem;
+  box-shadow: 0 8px 32px rgba(34, 197, 94, 0.1);
 }
 
 .header h1 {
   margin: 0;
   font-size: 2rem;
-  font-weight: 700;
-  color: #f1f5f9;
+  font-weight: 800;
+  background: linear-gradient(135deg, #86efac 0%, #4ade80 100%);
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  text-shadow: none;
 }
 
 .address {
@@ -51,9 +56,10 @@
   align-items: center;
   gap: 0.5rem;
   padding: 1rem 1.5rem;
-  background: rgba(30, 41, 59, 0.5);
+  background: rgba(20, 83, 61, 0.3);
   border-radius: 0.5rem;
-  border: 1px solid #475569;
+  border: 1px solid rgba(34, 197, 94, 0.3);
+  backdrop-filter: blur(10px);
 }
 
 .label {
@@ -79,8 +85,11 @@
 .roomsGrid h2 {
   margin: 0 0 1.5rem 0;
   font-size: 1.5rem;
-  font-weight: 600;
-  color: #f1f5f9;
+  font-weight: 700;
+  background: linear-gradient(135deg, #86efac 0%, #22c55e 100%);
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
 }
 
 .grid {

@@ -47,8 +47,8 @@ export default function SensorChart({
       const xStep = (width - 2 * padding) / (history.length - 1)
       const yScale = (height - 2 * padding) / range
 
-      ctx.strokeStyle = '#3b82f6'
-      ctx.lineWidth = 1.5
+      ctx.strokeStyle = '#22c55e'
+      ctx.lineWidth = 2
       ctx.beginPath()
 
       history.forEach((val, i) => {

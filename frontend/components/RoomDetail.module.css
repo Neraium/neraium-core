@@ -1,49 +1,58 @@
 .container {
   min-height: 100vh;
-  background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+  background: linear-gradient(135deg, #051a0f 0%, #0d2818 100%);
   padding-bottom: 2rem;
 }
 
 .topBar {
-  background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
+  background: linear-gradient(135deg, #0f3f2f 0%, #134d3a 100%);
   padding: 1.5rem 2rem;
-  border-bottom: 2px solid #475569;
+  border-bottom: 2px solid #1b6b52;
   display: flex;
   align-items: center;
   gap: 2rem;
   position: sticky;
   top: 0;
   z-index: 100;
+  box-shadow: 0 8px 32px rgba(34, 197, 94, 0.1);
 }
 
 .backButton {
-  background: rgba(59, 130, 246, 0.1);
-  border: 1px solid #3b82f6;
-  color: #60a5fa;
-  padding: 0.5rem 1rem;
-  border-radius: 0.375rem;
+  background: rgba(34, 197, 94, 0.15);
+  border: 1.5px solid #22c55e;
+  color: #86efac;
+  padding: 0.625rem 1.25rem;
+  border-radius: 0.5rem;
   cursor: pointer;
-  font-weight: 500;
-  transition: all 0.2s;
+  font-weight: 600;
+  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
 }
 
 .backButton:hover {
-  background: rgba(59, 130, 246, 0.2);
-  border-color: #60a5fa;
+  background: rgba(34, 197, 94, 0.25);
+  border-color: #4ade80;
+  box-shadow: 0 8px 16px rgba(34, 197, 94, 0.2);
+  transform: translateX(-2px);
 }
 
 .topBar h1 {
   margin: 0;
   flex: 1;
   font-size: 1.75rem;
-  font-weight: 700;
-  color: #f1f5f9;
+  font-weight: 800;
+  background: linear-gradient(135deg, #86efac 0%, #4ade80 100%);
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
 }
 
 .infoBar {
-  background: rgba(30, 41, 59, 0.5);
+  background: rgba(20, 83, 61, 0.2);
   padding: 1rem 2rem;
-  border-bottom: 1px solid #475569;
+  border-bottom: 1px solid rgba(34, 197, 94, 0.2);
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -63,32 +72,33 @@
 .timeRangeSelector {
   display: flex;
   gap: 0.5rem;
-  background: rgba(30, 41, 59, 0.5);
+  background: rgba(20, 83, 61, 0.3);
   padding: 0.25rem;
-  border-radius: 0.375rem;
-  border: 1px solid #475569;
+  border-radius: 0.5rem;
+  border: 1px solid rgba(34, 197, 94, 0.3);
 }
 
 .timeButton {
   background: transparent;
   border: none;
-  color: #94a3b8;
-  padding: 0.375rem 0.75rem;
-  border-radius: 0.25rem;
+  color: #a3e635;
+  padding: 0.375rem 0.875rem;
+  border-radius: 0.375rem;
   cursor: pointer;
   font-size: 0.875rem;
-  font-weight: 500;
-  transition: all 0.2s;
+  font-weight: 600;
+  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 .timeButton:hover {
-  color: #cbd5e1;
-  background: rgba(148, 163, 184, 0.1);
+  color: #dcfce7;
+  background: rgba(34, 197, 94, 0.15);
 }
 
 .timeButton.active {
-  background: #3b82f6;
+  background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
   color: #ffffff;
+  box-shadow: 0 4px 12px rgba(34, 197, 94, 0.3);
 }
 
 .chartsGrid {
@@ -101,11 +111,11 @@
 }
 
 .chartContainer {
-  background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
-  border: 1px solid #475569;
-  border-radius: 0.75rem;
+  background: linear-gradient(135deg, #0d3a2b 0%, #134d3a 100%);
+  border: 2px solid rgba(34, 197, 94, 0.3);
+  border-radius: 1rem;
   padding: 1.5rem;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+  box-shadow: 0 8px 24px rgba(34, 197, 94, 0.15), inset 0 1px 0px rgba(255, 255, 255, 0.05);
 }
 
 .metricsTable {
@@ -117,23 +127,26 @@
 .metricsTable h2 {
   margin: 0 0 1rem 0;
   font-size: 1.25rem;
-  font-weight: 600;
-  color: #f1f5f9;
+  font-weight: 700;
+  background: linear-gradient(135deg, #86efac 0%, #22c55e 100%);
+  background-clip: text;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
 }
 
 .metricsTable table {
   width: 100%;
   border-collapse: collapse;
-  background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
-  border: 1px solid #475569;
-  border-radius: 0.75rem;
+  background: linear-gradient(135deg, #0d3a2b 0%, #134d3a 100%);
+  border: 2px solid rgba(34, 197, 94, 0.3);
+  border-radius: 1rem;
   overflow: hidden;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+  box-shadow: 0 8px 24px rgba(34, 197, 94, 0.15);
 }
 
 .metricsTable thead {
-  background: rgba(30, 41, 59, 0.8);
-  border-bottom: 2px solid #475569;
+  background: rgba(20, 83, 61, 0.5);
+  border-bottom: 2px solid rgba(34, 197, 94, 0.3);
 }
 
 .metricsTable th {
@@ -147,12 +160,12 @@
 }
 
 .metricsTable tbody tr {
-  border-bottom: 1px solid #475569;
-  transition: background 0.2s;
+  border-bottom: 1px solid rgba(34, 197, 94, 0.15);
+  transition: all 0.3s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 .metricsTable tbody tr:hover {
-  background: rgba(148, 163, 184, 0.05);
+  background: rgba(34, 197, 94, 0.1);
 }
 
 .metricsTable tbody tr:last-child {
