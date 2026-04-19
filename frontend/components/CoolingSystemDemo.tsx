@@ -12,12 +12,21 @@ export default function CoolingSystemDemo() {
   const [isAutoPlay, setIsAutoPlay] = useState(true)
   const [displayedScenarioIndex, setDisplayedScenarioIndex] = useState(0)
   const [transitionStart, setTransitionStart] = useState<number | null>(null)
-  const [progress, setProgress] = useState(1)
+  const [elapsedMs, setElapsedMs] = useState(0)
 
   const scenario = COOLING_DEMO_SCENARIOS[scenarioIndex]
   const displayedScenario = COOLING_DEMO_SCENARIOS[displayedScenarioIndex]
   const state = displayedScenario.state
 
+  // Track elapsed time for progress indication
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setElapsedMs(prev => prev + 100)
+    }, 100)
+    return () => clearInterval(interval)
+  }, [])
+
+  // Auto-advance through scenarios
   useEffect(() => {
     if (!isAutoPlay) return
     if (scenarioIndex >= COOLING_DEMO_SCENARIOS.length - 1) {
@@ -34,12 +43,16 @@ export default function CoolingSystemDemo() {
 
   // Datacenter metrics showing cooling system health across fleet
   const systemHealthMetrics = useMemo(() => ({
-    healthy: Math.max(2, 12 - scenarioIndex * 2),
-    drifting: Math.min(4, scenarioIndex + 1),
-    unstable: Math.max(0, Math.floor(scenarioIndex * 0.5)),
-    earlyWarnings: Math.max(2, 6 - scenarioIndex),
-    enteringInstability: Math.max(0, scenarioIndex - 1),
+    healthy: Math.max(1, 14 - scenarioIndex * 3),
+    drifting: Math.min(5, scenarioIndex * 1.2),
+    unstable: Math.max(0, Math.floor(scenarioIndex * 0.7)),
+    earlyWarnings: Math.max(2, 8 - scenarioIndex * 1.5),
+    enteringInstability: Math.max(0, scenarioIndex - 0.5),
   }), [scenarioIndex])
+
+  // Calculate progress through full demo (3 minutes = 180s)
+  const totalDuration = COOLING_DEMO_SCENARIOS.reduce((sum, s) => sum + s.durationMs, 0)
+  const progressPercent = ((scenarioIndex * 45000 + elapsedMs) / totalDuration) * 100
 
   return (
     <div style={styles.root}>
@@ -89,13 +102,25 @@ export default function CoolingSystemDemo() {
           </div>
         </div>
 
-        {/* Auto-play indicator */}
-        {isAutoPlay && (
-          <div style={styles.autoplayIndicator}>
-            <div style={styles.autoplayDot} />
-            <span>Auto-advancing in {Math.ceil((scenario.durationMs - (Date.now() - (transitionStart || Date.now()))) / 1000)}s</span>
+        {/* Progress bar and demo timer */}
+        <div style={styles.progressSection}>
+          <div style={styles.progressBarContainer}>
+            <div
+              style={{
+                ...styles.progressBar,
+                width: `${Math.min(100, progressPercent)}%`,
+              }}
+            />
           </div>
-        )}
+          {isAutoPlay && (
+            <div style={styles.autoplayIndicator}>
+              <div style={styles.autoplayDot} />
+              <span>Stage {scenarioIndex + 1} of {COOLING_DEMO_SCENARIOS.length}</span>
+              <span style={styles.separator}>•</span>
+              <span>Next in {Math.ceil((scenario.durationMs - elapsedMs % scenario.durationMs) / 1000)}s</span>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   )
@@ -196,19 +221,33 @@ const styles: Record<string, React.CSSProperties> = {
     fontVariantNumeric: 'tabular-nums',
     whiteSpace: 'nowrap',
   },
+  progressSection: {
+    display: 'flex',
+    flexDirection: 'column',
+    gap: '12px',
+    paddingTop: '12px',
+  },
+  progressBarContainer: {
+    width: '100%',
+    height: '3px',
+    backgroundColor: 'rgba(148, 163, 184, 0.1)',
+    borderRadius: '2px',
+    overflow: 'hidden',
+  },
+  progressBar: {
+    height: '100%',
+    background: 'linear-gradient(90deg, #60a5fa, #3b82f6)',
+    transition: 'width 0.1s linear',
+  },
   autoplayIndicator: {
-    position: 'fixed',
-    bottom: '24px',
-    right: '32px',
     display: 'flex',
     alignItems: 'center',
     gap: '8px',
-    padding: '10px 16px',
-    backgroundColor: 'rgba(15, 23, 42, 0.8)',
-    borderRadius: '8px',
-    border: '1px solid rgba(148, 163, 184, 0.15)',
-    backdropFilter: 'blur(10px)',
-    fontSize: '12px',
+    padding: '10px 12px',
+    backgroundColor: 'rgba(15, 23, 42, 0.6)',
+    borderRadius: '6px',
+    border: '1px solid rgba(148, 163, 184, 0.12)',
+    fontSize: '11px',
     color: 'rgba(148, 163, 184, 0.7)',
   },
   autoplayDot: {
@@ -217,6 +256,10 @@ const styles: Record<string, React.CSSProperties> = {
     borderRadius: '50%',
     backgroundColor: '#60a5fa',
     animation: 'pulse 1.5s ease-in-out infinite',
+    flexShrink: 0,
+  },
+  separator: {
+    color: 'rgba(148, 163, 184, 0.3)',
   },
 }
 

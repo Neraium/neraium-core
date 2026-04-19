@@ -111,17 +111,24 @@ As the demo progresses, observe:
 ## Customizing the Demo
 
 ### To change auto-advance timing:
-Edit `frontend/components/CoolingSystemDemo.tsx`:
+Edit `frontend/lib/coolingSystemDemo.ts`:
 ```typescript
 export const COOLING_DEMO_SCENARIOS = [
   {
     name: '...',
     state: ...,
-    durationMs: 14000,  // ← Change this (milliseconds)
+    durationMs: 45000,  // ← Change this (milliseconds)
+                        // 45000ms = 45 seconds per stage
+                        // 4 stages × 45s = 3 minutes total
     narrative: '...',
   },
 ]
 ```
+
+For example:
+- `30000` (30s per stage) = 2 minute demo
+- `45000` (45s per stage) = 3 minute demo (current)
+- `60000` (60s per stage) = 4 minute demo
 
 ### To add more stages:
 1. Add a new scenario to `coolingSystemDemo.ts`
@@ -153,13 +160,15 @@ This cooling system demo directly maps to:
 
 ## Expected Behavior
 
-1. **Page loads** → Shows baseline (green, stable, "continue monitoring")
-2. **~14s** → Transitions to early drift (yellow, uncertain, "schedule inspection")
-3. **~28s** → Transitions to structural shift (orange, degrading, "immediate maintenance")
-4. **~44s** → Transitions to pre-instability (red, degrading, "CRITICAL action required")
-5. **~60s** → Demo stops, shows final state
+1. **0:00-0:45** → Baseline (green, stable, "continue monitoring")
+2. **0:45-1:30** → Early Drift (yellow, uncertain, "schedule inspection within 48h")
+3. **1:30-2:15** → Structural Shift (orange, degrading, "immediate maintenance required")
+4. **2:15-3:00** → Pre-instability (red, degrading, "CRITICAL: activate redundant cooling NOW")
+5. **3:00** → Demo stops, shows final state
 
-You can watch the entire lifecycle of system degradation in under 1 minute.
+You can watch the entire lifecycle of system degradation over 3 minutes, giving you plenty of time to observe each transition.
+
+Progress bar at the bottom shows overall demo progress, and the stage indicator shows which of the 4 stages you're currently viewing.
 
 ## Troubleshooting
 
