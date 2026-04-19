@@ -1,7 +1,7 @@
 'use client'
 
-import GrowOpDashboard from '@/components/GrowOpDashboard'
+import { LouddpaxDashboard } from '@/components/LouddpaxDashboard'
 
 export default function Home() {
-  return <GrowOpDashboard />
+  return <LouddpaxDashboard />
 }

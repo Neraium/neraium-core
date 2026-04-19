@@ -67,9 +67,9 @@ export function DriftTrajectoryPanel({ state }: Props) {
   const currentY = linePoints[n - 1]?.y ?? 0
 
   const lineColor =
-    severity === Severity.HIGH     ? '#ef4444' :
-    severity === Severity.ELEVATED ? '#f59e0b' :
-    severity === Severity.MODERATE ? '#fbbf24' : '#22c55e'
+    severity === Severity.HIGH     ? '#C94C4C' :
+    severity === Severity.ELEVATED ? '#D8A35D' :
+    severity === Severity.MODERATE ? '#FBBF24' : '#7E9F2E'
 
   const isAboveThreshold = currentValue > threshold
 
@@ -85,19 +85,19 @@ export function DriftTrajectoryPanel({ state }: Props) {
     return [
       {
         d: `M${FP_START_X},${FP_CENTER_Y} C${cp1x},${FP_CENTER_Y} ${cp2x},${FP_CENTER_Y + 6} ${FP_END_X},${FP_CENTER_Y + 7}`,
-        color: '#22c55e', label: 'Stable continuation',
+        color: '#7E9F2E', label: 'Stable continuation',
         opacity: 0.9, strokeWidth: 2.2, dasharray: undefined,
         dotY: FP_CENTER_Y + 7,
       },
       {
         d: `M${FP_START_X},${FP_CENTER_Y} C${cp1x},${FP_CENTER_Y} ${cp2x},${FP_CENTER_Y - 28} ${FP_END_X},${FP_CENTER_Y - 32}`,
-        color: '#f59e0b', label: 'Instability forming',
+        color: '#D8A35D', label: 'Instability forming',
         opacity: 0.55, strokeWidth: 1.6, dasharray: '7 5',
         dotY: FP_CENTER_Y - 32,
       },
       {
         d: `M${FP_START_X},${FP_CENTER_Y} C${cp1x},${FP_CENTER_Y} ${cp2x},${FP_CENTER_Y - 62} ${FP_END_X},${FP_CENTER_Y - 68}`,
-        color: '#ef4444', label: 'Critical transition',
+        color: '#C94C4C', label: 'Critical transition',
         opacity: 0.3, strokeWidth: 1.6, dasharray: '4 6',
         dotY: FP_CENTER_Y - 68,
       },
@@ -132,7 +132,7 @@ export function DriftTrajectoryPanel({ state }: Props) {
           preserveAspectRatio="none" style={{ display: 'block' }}>
           <defs>
             <linearGradient id="dtLineGrad" x1="0%" y1="0%" x2="100%" y2="0%">
-              <stop offset="0%"   stopColor="#22c55e" stopOpacity="0.75" />
+              <stop offset="0%"   stopColor="#7E9F2E" stopOpacity="0.75" />
               <stop offset="100%" stopColor={lineColor} stopOpacity="1" />
             </linearGradient>
             <linearGradient id="dtAreaGrad" x1="0%" y1="0%" x2="0%" y2="100%">
@@ -143,14 +143,14 @@ export function DriftTrajectoryPanel({ state }: Props) {
 
           {/* stable baseline zone */}
           <rect x={DCL} y={thresholdY} width={dcChartW} height={DCT + dcChartH - thresholdY}
-            fill="rgba(34,197,94,0.06)" />
+            fill="rgba(126,159,46,0.06)" />
 
           {/* deviation zone */}
           <rect x={DCL} y={DCT} width={dcChartW} height={thresholdY - DCT}
             fill={isAboveThreshold ? `rgba(${severity === Severity.HIGH ? '239,68,68' : '245,158,11'},0.06)` : 'none'} />
 
           {/* zone labels */}
-          <text x={DCL + 4} y={thresholdY - 5} fill="rgba(34,197,94,0.4)" fontSize={7}
+          <text x={DCL + 4} y={thresholdY - 5} fill="rgba(126,159,46,0.4)" fontSize={7}
             fontFamily="-apple-system,sans-serif" letterSpacing="0.08em">BASELINE</text>
           <text x={DCL + 4} y={DCT + 10} fill={`rgba(${isAboveThreshold ? (severity === Severity.HIGH ? '239,68,68' : '245,158,11') : '100,116,139'},0.4)`}
             fontSize={7} fontFamily="-apple-system,sans-serif" letterSpacing="0.08em">DEVIATION</text>

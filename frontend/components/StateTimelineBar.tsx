@@ -32,26 +32,26 @@ function getSegments(stage: DegradationStage): Segment[] {
   const idx = STAGE_ORDER.indexOf(stage)
   if (idx === 0) {
     return [
-      { color: '#22c55e', bg: 'rgba(34,197,94,0.15)', pct: 100 },
+      { color: '#7E9F2E', bg: 'rgba(126,159,46,0.15)', pct: 100 }
     ]
   }
   if (idx === 1) {
     return [
-      { color: '#22c55e', bg: 'rgba(34,197,94,0.15)',  pct: 68 },
-      { color: '#f59e0b', bg: 'rgba(245,158,11,0.15)', pct: 32 },
+      { color: '#7E9F2E', bg: 'rgba(126,159,46,0.15)',  pct: 68 },
+      { color: '#D8A35D', bg: 'rgba(216,163,93,0.15)', pct: 32 }
     ]
   }
   if (idx === 2 || idx === 3) {
     return [
-      { color: '#22c55e', bg: 'rgba(34,197,94,0.15)',  pct: 52 },
-      { color: '#f59e0b', bg: 'rgba(245,158,11,0.15)', pct: 26 },
-      { color: '#ef4444', bg: 'rgba(239,68,68,0.15)',   pct: 22 },
+      { color: '#7E9F2E', bg: 'rgba(126,159,46,0.15)',  pct: 52 },
+      { color: '#D8A35D', bg: 'rgba(216,163,93,0.15)', pct: 26 },
+      { color: '#C94C4C', bg: 'rgba(201,76,76,0.15)',   pct: 22 }
     ]
   }
   return [
-    { color: '#22c55e', bg: 'rgba(34,197,94,0.15)',  pct: 35 },
-    { color: '#f59e0b', bg: 'rgba(245,158,11,0.15)', pct: 20 },
-    { color: '#ef4444', bg: 'rgba(239,68,68,0.15)',   pct: 45 },
+    { color: '#7E9F2E', bg: 'rgba(126,159,46,0.15)',  pct: 35 },
+    { color: '#D8A35D', bg: 'rgba(216,163,93,0.15)', pct: 20 },
+    { color: '#C94C4C', bg: 'rgba(201,76,76,0.15)',   pct: 45 },
   ]
 }
 
@@ -59,9 +59,9 @@ function getMarkers(stage: DegradationStage): Marker[] {
   const idx     = STAGE_ORDER.indexOf(stage)
   const markers: Marker[] = []
 
-  if (idx >= 1) markers.push({ label: 'Drift detected',  pos: 66,  color: '#f59e0b' })
-  if (idx >= 3) markers.push({ label: 'Regime change',   pos: 79,  color: '#ef4444' })
-  if (idx >= 4) markers.push({ label: 'Intervention',    pos: 90,  color: '#ef4444' })
+  if (idx >= 1) markers.push({ label: 'Drift detected',  pos: 66,  color: '#D8A35D' })
+  if (idx >= 3) markers.push({ label: 'Regime change',   pos: 79,  color: '#C94C4C' })
+  if (idx >= 4) markers.push({ label: 'Intervention',    pos: 90,  color: '#C94C4C' })
 
   const nowPos = [44, 80, 86, 90, 94, 98][idx] ?? 44
   markers.push({ label: 'Now', pos: nowPos, color: '#ffffff' })
@@ -90,9 +90,9 @@ export function StateTimelineBar({ state }: Props) {
         </span>
         <div style={{ display: 'flex', gap: 18 }}>
           {[
-            { c: '#22c55e', l: 'Stable' },
-            { c: '#f59e0b', l: 'Transition' },
-            { c: '#ef4444', l: 'Unstable' },
+            { c: '#7E9F2E', l: 'Stable' },
+            { c: '#D8A35D', l: 'Transition' },
+            { c: '#C94C4C', l: 'Unstable' },
           ].map(({ c, l }) => (
             <span key={l} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 10, color: '#4b5563' }}>
               <span style={{ width: 10, height: 3, borderRadius: 2, background: c, display: 'inline-block' }} />

@@ -25,70 +25,114 @@ interface EdgeDef {
   type: 'loop' | 'control' | 'sensor'
 }
 
+/* ── Cannabis Grow Facility Topology ─────────────────────────────────────── */
+
 const NODES: NodeDef[] = [
-  { id: 'compressor', label: 'COMP', sublabel: 'Compressor',   x: 108, y: 200, r: 26, type: 'primary' },
-  { id: 'condenser',  label: 'COND', sublabel: 'Condenser',    x: 296, y: 68,  r: 26, type: 'primary' },
-  { id: 'expansion',  label: 'EXP',  sublabel: 'Expansion',    x: 484, y: 200, r: 26, type: 'primary' },
-  { id: 'evaporator', label: 'EVAP', sublabel: 'Evaporator',   x: 296, y: 332, r: 26, type: 'primary' },
-  { id: 'control',    label: 'CTRL', sublabel: 'Control Unit', x: 296, y: 200, r: 30, type: 'hub' },
-  { id: 'temp_a',     label: 'T-A',  sublabel: '',             x: 174, y: 114, r: 13, type: 'sensor' },
-  { id: 'flow_b',     label: 'F-B',  sublabel: '',             x: 418, y: 114, r: 13, type: 'sensor' },
-  { id: 'pressure',   label: 'P-01', sublabel: '',             x: 178, y: 296, r: 13, type: 'sensor' },
+  /* rooms */
+  { id: 'veg_a',  label: 'VEG-A',  sublabel: 'Vegetative A', x: 130, y: 100, r: 26, type: 'primary' },
+  { id: 'veg_b',  label: 'VEG-B',  sublabel: 'Vegetative B', x: 130, y: 300, r: 26, type: 'primary' },
+  { id: 'flow_a', label: 'FLOW-A', sublabel: 'Flowering A',  x: 462, y: 80,  r: 26, type: 'primary' },
+  { id: 'flow_b', label: 'FLOW-B', sublabel: 'Flowering B',  x: 462, y: 200, r: 26, type: 'primary' },
+  { id: 'flow_c', label: 'FLOW-C', sublabel: 'Flowering C',  x: 462, y: 320, r: 26, type: 'primary' },
+  /* hub */
+  { id: 'ctrl',   label: 'CTRL',   sublabel: 'Facility Control', x: 296, y: 200, r: 30, type: 'hub' },
+  /* sensors */
+  { id: 'env',    label: 'ENV',    sublabel: 'Climate',      x: 240, y: 340, r: 16, type: 'sensor' },
+  { id: 'h2o',    label: 'H₂O',    sublabel: 'Irrigation',   x: 352, y: 340, r: 16, type: 'sensor' },
 ]
 
 const EDGES: EdgeDef[] = [
-  { from: 'compressor', to: 'condenser',  type: 'loop'    },
-  { from: 'condenser',  to: 'expansion',  type: 'loop'    },
-  { from: 'expansion',  to: 'evaporator', type: 'loop'    },
-  { from: 'evaporator', to: 'compressor', type: 'loop'    },
-  { from: 'control',    to: 'compressor', type: 'control' },
-  { from: 'control',    to: 'condenser',  type: 'control' },
-  { from: 'control',    to: 'expansion',  type: 'control' },
-  { from: 'control',    to: 'evaporator', type: 'control' },
-  { from: 'temp_a',     to: 'condenser',  type: 'sensor'  },
-  { from: 'flow_b',     to: 'expansion',  type: 'sensor'  },
-  { from: 'pressure',   to: 'compressor', type: 'sensor'  },
+  /* control → rooms */
+  { from: 'ctrl', to: 'veg_a',  type: 'control' },
+  { from: 'ctrl', to: 'veg_b',  type: 'control' },
+  { from: 'ctrl', to: 'flow_a', type: 'control' },
+  { from: 'ctrl', to: 'flow_b', type: 'control' },
+  { from: 'ctrl', to: 'flow_c', type: 'control' },
+  /* rooms ↔ sensors */
+  { from: 'veg_a',  to: 'env', type: 'sensor' },
+  { from: 'veg_b',  to: 'env', type: 'sensor' },
+  { from: 'flow_a', to: 'env', type: 'sensor' },
+  { from: 'flow_b', to: 'h2o', type: 'sensor' },
+  { from: 'flow_c', to: 'h2o', type: 'sensor' },
+  /* room-to-room airflow */
+  { from: 'veg_a',  to: 'veg_b',  type: 'loop' },
+  { from: 'flow_a', to: 'flow_b', type: 'loop' },
+  { from: 'flow_b', to: 'flow_c', type: 'loop' },
 ]
 
 const NODE_MAP = Object.fromEntries(NODES.map(n => [n.id, n]))
 
-function getNodeStates(severity: Severity): Record<string, NodeHealth> {
-  if (severity === Severity.LOW) {
-    return { compressor:'stable', condenser:'stable', expansion:'stable', evaporator:'stable', control:'stable', temp_a:'stable', flow_b:'stable', pressure:'stable' }
+/* ── Health mapping ──────────────────────────────────────────────────────── */
+
+function getNodeStates(severity: Severity, stage: DegradationStage): Record<string, NodeHealth> {
+  const s = severity
+  const st = stage
+
+  if (s === Severity.LOW) {
+    return { veg_a:'stable', veg_b:'stable', flow_a:'stable', flow_b:'stable', flow_c:'stable', ctrl:'stable', env:'stable', h2o:'stable' }
   }
-  if (severity === Severity.MODERATE) {
-    return { compressor:'warning', condenser:'stable', expansion:'stable', evaporator:'stable', control:'stable', temp_a:'stable', flow_b:'stable', pressure:'warning' }
+
+  if (s === Severity.MODERATE) {
+    return { veg_a:'stable', veg_b:'stable', flow_a:'warning', flow_b:'stable', flow_c:'stable', ctrl:'stable', env:'warning', h2o:'stable' }
   }
-  if (severity === Severity.ELEVATED) {
-    return { compressor:'warning', condenser:'stable', expansion:'warning', evaporator:'stable', control:'warning', temp_a:'warning', flow_b:'stable', pressure:'warning' }
+
+  if (s === Severity.ELEVATED) {
+    return { veg_a:'stable', veg_b:'stable', flow_a:'warning', flow_b:'warning', flow_c:'stable', ctrl:'warning', env:'warning', h2o:'warning' }
   }
-  return { compressor:'critical', condenser:'warning', expansion:'critical', evaporator:'warning', control:'critical', temp_a:'warning', flow_b:'warning', pressure:'critical' }
+
+  /* HIGH / critical */
+  if (st === DegradationStage.FAILURE_APPROACH) {
+    return { veg_a:'warning', veg_b:'warning', flow_a:'critical', flow_b:'critical', flow_c:'critical', ctrl:'critical', env:'critical', h2o:'critical' }
+  }
+  return { veg_a:'warning', veg_b:'stable', flow_a:'critical', flow_b:'warning', flow_c:'stable', ctrl:'warning', env:'critical', h2o:'warning' }
 }
 
 const COLORS: Record<NodeHealth, { fill: string; stroke: string; glow: string; text: string; glowRadius: number }> = {
-  stable:   { fill: 'rgba(34,197,94,0.11)',   stroke: '#22c55e', glow: 'rgba(34,197,94,0.22)',   text: '#86efac', glowRadius: 8  },
-  warning:  { fill: 'rgba(245,158,11,0.14)',  stroke: '#f59e0b', glow: 'rgba(245,158,11,0.28)',  text: '#fcd34d', glowRadius: 11 },
-  critical: { fill: 'rgba(239,68,68,0.18)',   stroke: '#ef4444', glow: 'rgba(239,68,68,0.32)',   text: '#fca5a5', glowRadius: 15 },
+  stable:   { fill: 'rgba(126,159,46,0.12)',  stroke: '#7E9F2E', glow: 'rgba(126,159,46,0.25)',  text: '#A3E635', glowRadius: 8  },
+  warning:  { fill: 'rgba(216,163,93,0.14)',  stroke: '#D8A35D', glow: 'rgba(216,163,93,0.30)',  text: '#FCD34D', glowRadius: 12 },
+  critical: { fill: 'rgba(201,76,76,0.18)',   stroke: '#C94C4C', glow: 'rgba(201,76,76,0.35)',   text: '#FCA5A5', glowRadius: 16 },
 }
+
+/* ── Component ───────────────────────────────────────────────────────────── */
 
 export function SystemModelView({ state }: Props) {
   const { statusHeader } = state
-  const nodeStates = getNodeStates(statusHeader.severity)
+  const nodeStates = getNodeStates(statusHeader.severity, statusHeader.degradationStage)
   const severity = statusHeader.severity
+  const stage = statusHeader.degradationStage
 
   const panelGlow =
-    severity === Severity.HIGH     ? 'inset 0 0 80px rgba(239,68,68,0.07)'     :
-    severity === Severity.ELEVATED ? 'inset 0 0 60px rgba(245,158,11,0.06)'    :
-    severity === Severity.MODERATE ? 'inset 0 0 40px rgba(245,158,11,0.03)'    : 'none'
+    severity === Severity.HIGH     ? 'inset 0 0 80px rgba(201,76,76,0.08)'   :
+    severity === Severity.ELEVATED ? 'inset 0 0 60px rgba(216,163,93,0.06)'  :
+    severity === Severity.MODERATE ? 'inset 0 0 40px rgba(216,163,93,0.04)'  : 'none'
+
+  const pulseSpeed =
+    stage === DegradationStage.FAILURE_APPROACH ? '1.2s' :
+    stage === DegradationStage.ACCELERATED      ? '1.6s' :
+    stage === DegradationStage.PERSISTENT       ? '2.2s' :
+    stage === DegradationStage.EMERGING         ? '2.8s' :
+    stage === DegradationStage.EARLY_SHIFT      ? '3.5s' : '4.5s'
 
   return (
     <div style={{ width: '100%', height: '100%', position: 'relative', overflow: 'hidden', boxShadow: panelGlow }}>
+      {/* subtle grid background */}
+      <div style={{
+        position: 'absolute', inset: 0,
+        backgroundImage: `
+          linear-gradient(rgba(255,255,255,0.015) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(255,255,255,0.015) 1px, transparent 1px)
+        `,
+        backgroundSize: '40px 40px',
+        maskImage: 'radial-gradient(ellipse at center, black 40%, transparent 80%)',
+        WebkitMaskImage: 'radial-gradient(ellipse at center, black 40%, transparent 80%)',
+      }} />
+
       <div style={{
         position: 'absolute', top: 14, left: 18, zIndex: 10,
-        fontSize: 10, letterSpacing: '0.1em', textTransform: 'uppercase',
+        fontSize: 10, letterSpacing: '0.12em', textTransform: 'uppercase',
         color: '#4b5563', fontWeight: 700,
       }}>
-        System Model
+        Facility Topology
       </div>
 
       <svg
@@ -98,108 +142,100 @@ export function SystemModelView({ state }: Props) {
         style={{ display: 'block' }}
       >
         <style>{`
-          @keyframes smStablePulse   { 0%,100%{opacity:.22} 50%{opacity:.45} }
-          @keyframes smWarningPulse  { 0%,100%{opacity:.28} 50%{opacity:.65} }
-          @keyframes smCriticalPulse { 0%,100%{opacity:.32} 50%{opacity:.82} }
-          @keyframes smEdgeFlow      { 0%{stroke-dashoffset:24} 100%{stroke-dashoffset:0} }
-          @keyframes smCritEdgeFlow  { 0%{stroke-dashoffset:16} 100%{stroke-dashoffset:0} }
-          .sm-glow-stable   { animation: smStablePulse   4.2s ease-in-out infinite }
-          .sm-glow-warning  { animation: smWarningPulse  2.2s ease-in-out infinite }
-          .sm-glow-critical { animation: smCriticalPulse 1.1s ease-in-out infinite }
-          .sm-edge-warn     { animation: smEdgeFlow      2.8s linear infinite }
-          .sm-edge-crit     { animation: smCritEdgeFlow  1.2s linear infinite }
+          @keyframes nodePulse {
+            0%, 100% { transform: scale(1); opacity: 1; }
+            50%       { transform: scale(1.06); opacity: 0.92; }
+          }
+          @keyframes edgeFlow {
+            0%   { stroke-dashoffset: 24; }
+            100% { stroke-dashoffset: 0; }
+          }
+          @keyframes dataPacket {
+            0%   { offset-distance: 0%; opacity: 0; }
+            15%  { opacity: 1; }
+            85%  { opacity: 1; }
+            100% { offset-distance: 100%; opacity: 0; }
+          }
+          .node-group { transform-origin: center; animation: nodePulse ${pulseSpeed} ease-in-out infinite; }
+          .edge-loop  { stroke-dasharray: 6 4; animation: edgeFlow 1.4s linear infinite; }
+          .edge-ctrl   { stroke-dasharray: 3 3; animation: edgeFlow 2s linear infinite; }
+          .edge-sensor { stroke-dasharray: 2 2; animation: edgeFlow 1s linear infinite; }
         `}</style>
 
         <defs>
-          <pattern id="smGrid" width="38" height="38" patternUnits="userSpaceOnUse">
-            <path d="M38,0 L0,0 L0,38" fill="none" stroke="rgba(255,255,255,0.022)" strokeWidth="0.5"/>
-          </pattern>
+          {(['stable','warning','critical'] as NodeHealth[]).map(h => (
+            <filter key={h} id={`glow-${h}`} x="-50%" y="-50%" width="200%" height="200%">
+              <feGaussianBlur stdDeviation={COLORS[h].glowRadius / 2.5} result="blur" />
+              <feMerge>
+                <feMergeNode in="blur" />
+                <feMergeNode in="SourceGraphic" />
+              </feMerge>
+            </filter>
+          ))}
         </defs>
 
-        {/* background grid */}
-        <rect width="592" height="400" fill="url(#smGrid)" />
-
         {/* Edges */}
-        {EDGES.map(edge => {
-          const from = NODE_MAP[edge.from]
-          const to   = NODE_MAP[edge.to]
-          const fh   = nodeStates[edge.from]
-          const th   = nodeStates[edge.to]
-          const eh: NodeHealth =
-            (fh === 'critical' || th === 'critical') ? 'critical' :
-            (fh === 'warning'  || th === 'warning')  ? 'warning'  : 'stable'
-
-          const c  = COLORS[eh]
-          const sw = edge.type === 'loop' ? 1.8 : edge.type === 'control' ? 1.2 : 0.9
-          const op = eh === 'stable' ? 0.28 : eh === 'warning' ? 0.6 : 0.85
-          const da = eh !== 'stable'
-            ? (eh === 'critical' ? '7 4' : '9 5')
-            : (edge.type !== 'loop' ? '5 4' : undefined)
-
+        {EDGES.map((e, i) => {
+          const a = NODE_MAP[e.from]
+          const b = NODE_MAP[e.to]
+          if (!a || !b) return null
+          const healthA = nodeStates[e.from] ?? 'stable'
+          const healthB = nodeStates[e.to] ?? 'stable'
+          const health = healthA === 'critical' || healthB === 'critical' ? 'critical'
+                       : healthA === 'warning'  || healthB === 'warning'  ? 'warning'
+                       : 'stable'
+          const c = COLORS[health]
+          const dashClass = e.type === 'loop' ? 'edge-loop' : e.type === 'control' ? 'edge-ctrl' : 'edge-sensor'
           return (
-            <g key={`${edge.from}-${edge.to}`}>
-              {eh !== 'stable' && (
-                <line x1={from.x} y1={from.y} x2={to.x} y2={to.y}
-                  stroke={c.stroke} strokeWidth={sw + 7} strokeOpacity={0.06} />
-              )}
+            <g key={i}>
               <line
-                x1={from.x} y1={from.y} x2={to.x} y2={to.y}
-                stroke={c.stroke} strokeWidth={sw} strokeOpacity={op}
-                strokeDasharray={da}
-                className={eh === 'critical' ? 'sm-edge-crit' : eh === 'warning' ? 'sm-edge-warn' : undefined}
+                x1={a.x} y1={a.y} x2={b.x} y2={b.y}
+                stroke={c.glow} strokeWidth={e.type === 'loop' ? 2.5 : e.type === 'control' ? 1.8 : 1.2}
+                opacity={0.35}
+                className={dashClass}
+              />
+              <line
+                x1={a.x} y1={a.y} x2={b.x} y2={b.y}
+                stroke={c.stroke} strokeWidth={0.6}
+                opacity={0.55}
               />
             </g>
           )
         })}
 
         {/* Nodes */}
-        {NODES.map((node, idx) => {
-          const h  = nodeStates[node.id]
-          const c  = COLORS[h]
-          const delay = `${idx * 0.38}s`
-
+        {NODES.map(n => {
+          const health = nodeStates[n.id] ?? 'stable'
+          const c = COLORS[health]
+          const isHub = n.type === 'hub'
           return (
-            <g key={node.id}>
-              {/* glow halo */}
-              <circle
-                cx={node.x} cy={node.y}
-                r={node.r + c.glowRadius}
-                fill={c.glow}
-                className={`sm-glow-${h}`}
-                style={{ animationDelay: delay }}
-              />
-              {/* body */}
-              <circle
-                cx={node.x} cy={node.y} r={node.r}
-                style={{
-                  fill: c.fill,
-                  stroke: c.stroke,
-                  strokeWidth: node.type === 'hub' ? 2 : 1.5,
-                  strokeOpacity: h === 'stable' ? 0.55 : 0.92,
-                  transition: 'fill 0.9s ease, stroke 0.9s ease',
-                }}
-              />
-              {/* primary label */}
+            <g key={n.id} transform={`translate(${n.x},${n.y})`} className="node-group">
+              {/* outer glow ring */}
+              <circle r={n.r + 10} fill="none" stroke={c.glow} strokeWidth={1.5} opacity={0.4} filter={`url(#glow-${health})`} />
+              {/* core */}
+              <circle r={n.r} fill={c.fill} stroke={c.stroke} strokeWidth={isHub ? 2.2 : 1.6} filter={`url(#glow-${health})`} />
+              {/* hub inner ring */}
+              {isHub && <circle r={n.r - 8} fill="none" stroke={c.stroke} strokeWidth={0.8} opacity={0.5} />}
+              {/* label */}
               <text
-                x={node.x} y={node.y}
                 textAnchor="middle" dominantBaseline="central"
-                fill={c.text} fontSize={node.type === 'sensor' ? 7 : 8.5}
-                fontWeight="700" letterSpacing="0.06em"
-                fontFamily="-apple-system,'Segoe UI',sans-serif"
-                style={{ transition: 'fill 0.9s ease' }}
+                fill={c.text} fontSize={isHub ? 11 : n.type === 'sensor' ? 8 : 10}
+                fontWeight={800} letterSpacing="0.06em"
+                fontFamily="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif"
+                style={{ pointerEvents: 'none', textShadow: `0 0 10px ${c.glow}` }}
               >
-                {node.label}
+                {n.label}
               </text>
               {/* sublabel */}
-              {node.sublabel && (
+              {n.sublabel && (
                 <text
-                  x={node.x} y={node.y + node.r + 11}
+                  y={n.r + 14}
                   textAnchor="middle"
-                  fill="rgba(107,114,128,0.8)" fontSize="6.5"
-                  letterSpacing="0.08em"
-                  fontFamily="-apple-system,'Segoe UI',sans-serif"
+                  fill={c.text} fontSize={8} fontWeight={600} opacity={0.6}
+                  fontFamily="-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif"
+                  style={{ pointerEvents: 'none' }}
                 >
-                  {node.sublabel}
+                  {n.sublabel}
                 </text>
               )}
             </g>
