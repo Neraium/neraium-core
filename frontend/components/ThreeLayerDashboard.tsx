@@ -10,9 +10,14 @@ import { DecisionUIState } from '@/lib/decisionToUI'
 export default function ThreeLayerDashboard() {
   const [scenarioIndex, setScenarioIndex] = useState(0)
   const [isAutoPlay, setIsAutoPlay] = useState(true)
+  const [isMounted, setIsMounted] = useState(false)
 
   const scenario = DEMO_SCENARIOS[scenarioIndex]
   const state = scenario.state
+
+  useEffect(() => {
+    setIsMounted(true)
+  }, [])
 
   useEffect(() => {
     if (!isAutoPlay) return
@@ -59,9 +64,9 @@ export default function ThreeLayerDashboard() {
         <div style={styles.footer}>
           <div style={styles.footerContent}>
             <div style={styles.timestamp}>
-              {new Date().toLocaleString(undefined, {
+              {isMounted ? new Date().toLocaleString(undefined, {
                 month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
-              })}
+              }) : '\u00A0'}
             </div>
             <div style={styles.scenarioInfo}>
               Scenario {scenarioIndex + 1} of {DEMO_SCENARIOS.length}
