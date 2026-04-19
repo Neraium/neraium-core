@@ -202,7 +202,7 @@ export const LouddpaxRoomIntelligence: React.FC = () => {
   }
 
   return (
-    <div className="flex flex-col h-screen bg-louddpax-bg text-louddpax-text overflow-hidden">
+    <div className="flex flex-col h-screen bg-louddpax-bg text-louddpax-text overflow-hidden" suppressHydrationWarning>
       {/* Top Bar */}
       <TopBar
         facilityName="Highland Facility"
