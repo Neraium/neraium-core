@@ -46,8 +46,9 @@ function interpolateState(from: DecisionUIState, to: DecisionUIState, progress: 
 export default function CoolingSystemDemo() {
   const [scenarioIndex, setScenarioIndex] = useState(0)
   const [isAutoPlay, setIsAutoPlay] = useState(true)
-  const [startTime, setStartTime] = useState(Date.now())
+  const [startTime, setStartTime] = useState<number | null>(null)
   const [elapsedMs, setElapsedMs] = useState(0)
+  const [isHydrated, setIsHydrated] = useState(false)
 
   const scenario = COOLING_DEMO_SCENARIOS[scenarioIndex]
   const previousScenario = scenarioIndex > 0 ? COOLING_DEMO_SCENARIOS[scenarioIndex - 1] : scenario
@@ -55,8 +56,17 @@ export default function CoolingSystemDemo() {
     ? interpolateState(previousScenario.state, scenario.state, elapsedMs / scenario.durationMs)
     : scenario.state
 
+  // Initialize after hydration
+  useEffect(() => {
+    setIsHydrated(true)
+    if (startTime === null) {
+      setStartTime(Date.now())
+    }
+  }, [])
+
   // Update elapsed time smoothly
   useEffect(() => {
+    if (!startTime) return
     const animationFrame = setInterval(() => {
       setElapsedMs(Date.now() - startTime)
     }, 30)
@@ -90,9 +100,24 @@ export default function CoolingSystemDemo() {
   }, [scenarioIndex, elapsedMs, scenario.durationMs])
 
   const totalDuration = COOLING_DEMO_SCENARIOS.reduce((sum, s) => sum + s.durationMs, 0)
-  const totalElapsed = scenarioIndex * 30000 + elapsedMs
+  const totalElapsed = startTime ? (scenarioIndex * 30000 + elapsedMs) : 0
   const progressPercent = (totalElapsed / totalDuration) * 100
   const secondsRemaining = Math.ceil((totalDuration - totalElapsed) / 1000)
+
+  if (!isHydrated || !startTime) {
+    return (
+      <div style={styles.root}>
+        <div style={styles.surface}>
+          <div style={styles.headerSection}>
+            <div>
+              <h1 style={styles.title}>Datacenter CRAC Unit Degradation</h1>
+              <p style={styles.subtitle}>Loading...</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div style={styles.root}>
