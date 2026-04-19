@@ -36,6 +36,11 @@ def _compute_tetrahedron_geometry(
 ) -> dict[str, Any]:
     """Compute tetrahedron vertex positions based on system state.
 
+    Deformation is pronounced and unmistakable:
+    - At drift 0.2: visible asymmetry
+    - At drift 0.4: significant warping
+    - At drift 0.6+: structural breakdown evident
+
     Args:
         coherence: Coherence score (0-1). Controls core glow and ring stability.
         drift: Structural drift (0-1). Controls deformation and tension.
@@ -54,24 +59,28 @@ def _compute_tetrahedron_geometry(
         edge_opacity = 0.8
         core_radius = 0.15
         core_pulse_intensity = 0.3
+        instability_axis = (0, 0, 0)
     elif state == "drift":
-        deformation = drift * 0.15
+        deformation = drift * 0.35
         tension_color = "#3B82F6"
         edge_opacity = 0.6 + 0.2 * drift
         core_radius = 0.12 + 0.03 * drift
         core_pulse_intensity = 0.4 + 0.2 * drift
+        instability_axis = (math.sin(drift * math.pi * 0.5), 0, math.cos(drift * math.pi))
     elif state == "instability":
-        deformation = drift * 0.25
+        deformation = 0.2 + (drift * 0.45)
         tension_color = "#F97316"
-        edge_opacity = 0.7 + 0.2 * drift
-        core_radius = 0.1 + 0.05 * drift
-        core_pulse_intensity = 0.5 + 0.3 * drift
+        edge_opacity = 0.7 + 0.3 * drift
+        core_radius = 0.1 + 0.06 * drift
+        core_pulse_intensity = 0.5 + 0.35 * drift
+        instability_axis = (math.sin(drift * math.pi), math.cos(drift * math.pi * 0.3), 1)
     else:  # critical
-        deformation = 0.35
+        deformation = 0.55 + (0.2 * (1.0 - coherence))
         tension_color = "#EF4444"
-        edge_opacity = 0.9
-        core_radius = 0.08 + 0.07 * (1.0 - coherence)
-        core_pulse_intensity = 0.6 + 0.4 * (1.0 - coherence)
+        edge_opacity = 0.95
+        core_radius = 0.08 + 0.08 * (1.0 - coherence)
+        core_pulse_intensity = 0.7 + 0.3 * (1.0 - coherence)
+        instability_axis = (1, 0.5, 0.8)
 
     base_vertices = {
         "top": (0, -0.5 * base_scale, 0.5 * base_scale),
@@ -80,20 +89,22 @@ def _compute_tetrahedron_geometry(
         "back": (0, 0.3 * base_scale, -0.5 * base_scale),
     }
 
-    asymmetry_factor = clamp(deformation, 0.0, 0.4)
-    drift_direction = (
-        math.sin(drift * math.pi),
-        0,
-        math.cos(drift * math.pi * 0.5),
-    )
+    deformation = clamp(deformation, 0.0, 0.55)
+    drift_direction = instability_axis
 
     deformed_vertices = {}
     for name, (x, y, z) in base_vertices.items():
-        dx = drift_direction[0] * asymmetry_factor * abs(x)
-        dy = drift_direction[1] * asymmetry_factor * abs(y)
-        dz = drift_direction[2] * asymmetry_factor * abs(z)
+        magnitude = math.sqrt(x * x + y * y + z * z)
+        if magnitude > 0:
+            push_strength = magnitude * deformation * 1.8
+        else:
+            push_strength = deformation
 
-        scale_factor = 1.0 - (asymmetry_factor * 0.2) if asymmetry_factor > 0 else 1.0
+        dx = drift_direction[0] * push_strength * (1.0 + abs(x) * 0.5)
+        dy = drift_direction[1] * push_strength * (1.0 + abs(y) * 0.5)
+        dz = drift_direction[2] * push_strength * (1.0 + abs(z) * 0.5)
+
+        scale_factor = 1.0 - (deformation * 0.25)
 
         deformed_vertices[name] = (
             (x + dx) * scale_factor,
@@ -342,37 +353,57 @@ def render_system_field_svg(
         "back": "Plant",
     }
 
+    subsystem_to_vertex = {
+        "climate": "top",
+        "airflow": "front_right",
+        "irrigation": "front_left",
+        "plant_response": "back",
+    }
+
     for v_name, (vx, vy, vz) in vertices.items():
         vx_svg, vy_svg = to_svg(vx, vy, vz)
 
-        v_color = "#93C5FD"
-        v_radius = 7.0
-        v_opacity = 0.9
-        v_glow_radius = v_radius + 2.0
+        mapped_subsystem = [s for s, v in subsystem_to_vertex.items() if v == v_name]
+        subsys_key = mapped_subsystem[0] if mapped_subsystem else None
+
+        subsys_drift = 0.0
+        if subsys_key:
+            for si in geometry["subsystem_influence"]:
+                if si["domain"] == subsys_key:
+                    subsys_drift = si["influence_magnitude"]
+                    break
+
+        v_color = "#3B82F6" if subsys_drift > 0.3 else "#93C5FD"
+        v_radius = 8.0 + subsys_drift * 3.0
+        v_opacity = 0.85 + subsys_drift * 0.15
+        v_glow_radius = v_radius + 3.0
 
         svg_parts.append(f"""
             <circle cx="{vx_svg:.1f}" cy="{vy_svg:.1f}" r="{v_glow_radius}"
-                fill="{v_color}" opacity="{v_opacity * 0.3}"
+                fill="{v_color}" opacity="{v_opacity * 0.4}"
                 filter="url(#coherenceGlow)"/>
         """)
 
         svg_parts.append(f"""
             <circle cx="{vx_svg:.1f}" cy="{vy_svg:.1f}" r="{v_radius}"
                 fill="{v_color}" opacity="{v_opacity}"
-                stroke="rgba(226,232,240,0.4)" stroke-width="1.2"
-                class="ner-system-vertex" data-vertex="{v_name}"/>
+                stroke="rgba(226,232,240,0.5)" stroke-width="1.4"
+                class="ner-system-vertex" data-vertex="{v_name}"
+                data-subsystem="{subsys_key or 'none'}"/>
         """)
 
         label_text = vertex_labels.get(v_name, v_name)
         angle = math.atan2(vy_svg - center_y, vx_svg - center_x)
-        label_x = vx_svg + math.cos(angle) * (v_radius + 20)
-        label_y = vy_svg + math.sin(angle) * (v_radius + 20)
+        label_dist = v_radius + 18 + subsys_drift * 8
+        label_x = vx_svg + math.cos(angle) * label_dist
+        label_y = vy_svg + math.sin(angle) * label_dist
+        label_opacity = 0.6 + subsys_drift * 0.35
 
         svg_parts.append(f"""
             <text x="{label_x:.1f}" y="{label_y:.1f}"
-                font-size="11" font-weight="700" fill="#E2E8F0"
+                font-size="10" font-weight="700" fill="#E2E8F0"
                 text-anchor="middle" alignment-baseline="middle"
-                opacity="0.85">{label_text}</text>
+                opacity="{label_opacity}">{label_text}</text>
         """)
 
     core = geometry["coherence_core"]
@@ -414,25 +445,34 @@ def render_system_field_svg(
             sy_svg = center_y + sy * scale
 
             mag = subsys["influence_magnitude"]
-            mag_radius = 8 + mag * 6
-            mag_opacity = 0.3 + mag * 0.4
+            mag_radius = 6 + mag * 8
+            mag_opacity = 0.2 + mag * 0.6
+            glow_radius = mag_radius + 3 + mag * 4
+
+            svg_parts.append(f"""
+                <circle cx="{sx_svg:.1f}" cy="{sy_svg:.1f}" r="{glow_radius:.1f}"
+                    fill="#3B82F6" opacity="{mag_opacity * 0.3}"
+                    filter="url(#coherenceGlow)"/>
+            """)
 
             svg_parts.append(f"""
                 <circle cx="{sx_svg:.1f}" cy="{sy_svg:.1f}" r="{mag_radius:.1f}"
                     fill="#3B82F6" opacity="{mag_opacity}"
+                    stroke="rgba(59,130,246,0.5)" stroke-width="1.2"
                     class="ner-subsystem-vertex" data-subsystem="{subsys["domain"]}"/>
             """)
 
-            if mag > 0.1:
-                dir_x, dir_y = subsys["influence_direction"]
-                arrow_end_x = sx_svg + dir_x * mag * scale * 0.3
-                arrow_end_y = sy_svg + dir_y * mag * scale * 0.3
+            if mag > 0.15:
+                tension_pull = mag * scale * 0.5
+                pulling_x = center_x + (sx - sx * 0.3) * scale
+                pulling_y = center_y + (sy - sy * 0.3) * scale
 
                 svg_parts.append(f"""
                     <line x1="{sx_svg:.1f}" y1="{sy_svg:.1f}"
-                        x2="{arrow_end_x:.1f}" y2="{arrow_end_y:.1f}"
-                        stroke="#3B82F6" stroke-width="1.5"
-                        opacity="{0.4 + mag * 0.4}" stroke-linecap="round"/>
+                        x2="{pulling_x:.1f}" y2="{pulling_y:.1f}"
+                        stroke="#3B82F6" stroke-width="{1.0 + mag * 1.5:.2f}"
+                        opacity="{0.2 + mag * 0.5}" stroke-linecap="round"
+                        stroke-dasharray="2,3" filter="url(#edgeTension)"/>
                 """)
 
     svg_parts.append("</svg>")
