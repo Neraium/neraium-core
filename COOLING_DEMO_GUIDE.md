@@ -117,18 +117,18 @@ export const COOLING_DEMO_SCENARIOS = [
   {
     name: '...',
     state: ...,
-    durationMs: 45000,  // ← Change this (milliseconds)
-                        // 45000ms = 45 seconds per stage
-                        // 4 stages × 45s = 3 minutes total
+    durationMs: 30000,  // ← Change this (milliseconds)
+                        // 30000ms = 30 seconds per stage
+                        // 4 stages × 30s = 2 minutes total (current)
     narrative: '...',
   },
 ]
 ```
 
 For example:
-- `30000` (30s per stage) = 2 minute demo
-- `45000` (45s per stage) = 3 minute demo (current)
-- `60000` (60s per stage) = 4 minute demo
+- `20000` (20s per stage) = 80 second demo (fast)
+- `30000` (30s per stage) = 2 minute demo (current - recommended)
+- `45000` (45s per stage) = 3 minute demo (slower, more observation time)
 
 ### To add more stages:
 1. Add a new scenario to `coolingSystemDemo.ts`
@@ -160,15 +160,19 @@ This cooling system demo directly maps to:
 
 ## Expected Behavior
 
-1. **0:00-0:45** → Baseline (green, stable, "continue monitoring")
-2. **0:45-1:30** → Early Drift (yellow, uncertain, "schedule inspection within 48h")
-3. **1:30-2:15** → Structural Shift (orange, degrading, "immediate maintenance required")
-4. **2:15-3:00** → Pre-instability (red, degrading, "CRITICAL: activate redundant cooling NOW")
-5. **3:00** → Demo stops, shows final state
+1. **0:00-0:30** → Baseline (green, stable, "continue monitoring")
+2. **0:30-1:00** → Early Drift (yellow, uncertain, "schedule inspection within 48h")
+3. **1:00-1:30** → Structural Shift (orange, degrading, "immediate maintenance required")
+4. **1:30-2:00** → Pre-instability (red, degrading, "CRITICAL: activate redundant cooling NOW")
+5. **2:00** → Demo stops, shows final state
 
-You can watch the entire lifecycle of system degradation over 3 minutes, giving you plenty of time to observe each transition.
+Watch the entire lifecycle of system degradation over 2 minutes with smooth transitions. The tetrahedron on the right continuously animates, showing the system's position in 3D state space as it deteriorates. Fleet metrics degrade smoothly in real-time.
 
-Progress bar at the bottom shows overall demo progress, and the stage indicator shows which of the 4 stages you're currently viewing.
+**Key features:**
+- ✅ Smooth interpolation between all states
+- ✅ Animated tetrahedron showing 3D trajectory
+- ✅ Real-time progress bar and timer
+- ✅ Smooth metric transitions (no jumpy numbers)
 
 ## Troubleshooting
 
