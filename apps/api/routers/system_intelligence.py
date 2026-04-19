@@ -47,18 +47,16 @@ def _build_unified_state(records: list[dict[str, Any]]) -> dict[str, Any]:
         sys_state = "drift"
 
     # Build component data
-    rooms = build_facility_rooms_data(records=records)
-    subsystems = build_subsystems_data(records=records, drift=drift, coherence=coherence)
+    rooms = build_facility_rooms_data(system_state=system_state, records=records)
+    subsystems = build_subsystems_data(system_state=system_state, records=records)
     states_timeline = build_timeline_states(records=records)
     no_action_projection = _compute_no_action_projection(records, steps=3)
     insights = build_intelligence_insights(
+        system_state=system_state,
         records=records,
-        drift=drift,
-        coherence=coherence,
-        stability=stability,
         no_action_projection=no_action_projection,
     )
-    critical_alerts = get_critical_alerts(records=records)
+    critical_alerts = get_critical_alerts(system_state=system_state, records=records)
 
     return {
         "timestamp": latest_record.get("timestamp", ""),
