@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 interface TetrahedronVisualizationProps {
   state: any
@@ -8,41 +8,74 @@ interface TetrahedronVisualizationProps {
 
 export function TetrahedronVisualization({ state }: TetrahedronVisualizationProps) {
   const svgRef = useRef<SVGSVGElement>(null)
+  const [scale, setScale] = useState(1)
+
+  useEffect(() => {
+    // Update scale on window resize
+    const updateScale = () => {
+      if (svgRef.current) {
+        const rect = svgRef.current.getBoundingClientRect()
+        // Scale tetrahedron to use most of the available space
+        const idealSize = Math.min(rect.width, rect.height) * 0.8
+        setScale(idealSize / 300)
+      }
+    }
+
+    updateScale()
+    window.addEventListener('resize', updateScale)
+    return () => window.removeEventListener('resize', updateScale)
+  }, [])
 
   useEffect(() => {
     if (!svgRef.current || !state) return
 
-    // Calculate deformation based on drift
     const drift = state.drift || 0
     const coherence = state.coherence || 0.75
+    const subsystems = state.subsystems || {}
+
+    // Calculate deformation based on drift
     const totalDeformation = Math.min(drift * 0.3, 0.3)
 
-    // Core radius shrinks under stress
-    const coreRadius = Math.max(0.08, 0.15 - totalDeformation * 0.05)
+    // Core physics
+    const baseCoreRadius = 20
+    const coreRadius = Math.max(baseCoreRadius * 0.4, baseCoreRadius * (1 - totalDeformation / 0.3))
+    const coreGlow = coreRadius * 2
 
-    // Tetrahedron vertices (normalized to -1..1, centered)
-    // Will be scaled to canvas size
+    // Breathing animation speed (coherence drives it)
+    const breathCycleDuration = coherence > 0.6 ? 10 : coherence > 0.4 ? 5 : 2
+    const jitterIntensity = Math.max(0, (0.6 - coherence) * 2) // 0 at stable, max at critical
+
+    // Base tetrahedron vertices (unit tetrahedron)
     const baseVertices = [
-      { name: 'Climate', x: 0, y: -0.8, z: 0 },
-      { name: 'Airflow', x: 0.7, y: 0.4, z: 0 },
-      { name: 'Irrigation', x: -0.7, y: 0.4, z: 0 },
-      { name: 'Plant', x: 0, y: 0, z: 0.9 },
+      { name: 'Climate', x: 0, y: -1, z: -0.3, color: '#60a5fa' },
+      { name: 'Airflow', x: 0.866, y: 0.5, z: -0.3, color: '#f97316' },
+      { name: 'Irrigation', x: -0.866, y: 0.5, z: -0.3, color: '#eab308' },
+      { name: 'Plant', x: 0, y: 0, z: 1.2, color: '#34d399' },
     ]
 
-    // Apply deformation (asymmetry based on subsystem influence)
-    const vertices = baseVertices.map((v, i) => {
-      const subsystem = state.subsystems?.[i] || {}
-      const contribution = (subsystem.drift_contribution_pct || 0) / 100
+    // Get subsystem drifts
+    const subsystemDrifts = [
+      subsystems.climate?.drift || 0,
+      subsystems.airflow?.drift || 0,
+      subsystems.irrigation?.drift || 0,
+      subsystems.plant?.drift || 0,
+    ]
+
+    // Apply deformation based on subsystem influence
+    // Each vertex displaces based on its own subsystem's drift
+    const deformedVertices = baseVertices.map((v, i) => {
+      const contribution = subsystemDrifts[i] || 0
+      const deformationFactor = contribution * totalDeformation
 
       return {
         ...v,
-        x: v.x * (1 - totalDeformation * contribution * 0.1),
-        y: v.y * (1 - totalDeformation * contribution * 0.1),
-        z: v.z * (1 - totalDeformation * contribution * 0.05),
+        x: v.x * (1 - deformationFactor * 0.15),
+        y: v.y * (1 - deformationFactor * 0.15),
+        z: v.z * (1 - deformationFactor * 0.1),
       }
     })
 
-    // Edges connecting vertices
+    // Edges
     const edges = [
       [0, 1],
       [0, 2],
@@ -52,110 +85,187 @@ export function TetrahedronVisualization({ state }: TetrahedronVisualizationProp
       [2, 3],
     ]
 
-    // Project 3D to 2D with perspective
-    const project = (v: any) => {
-      const scale = 400 / (5 + v.z)
+    // Perspective projection
+    const project = (v: any, offsetX = 0, offsetY = 0) => {
+      const perspective = 5
+      const scale = perspective / (perspective + v.z)
       return {
-        x: 500 + v.x * scale,
-        y: 350 + v.y * scale,
+        x: 500 + (v.x * scale * 200 + offsetX) * (scale * 0.8),
+        y: 350 + (v.y * scale * 200 + offsetY) * (scale * 0.8),
         z: v.z,
+        scale,
       }
     }
 
-    const projectedVertices = vertices.map(project)
+    const projectedVertices = deformedVertices.map((v) => project(v))
 
     // Color based on system state
-    let edgeColor = '#60a5fa' // blue
-    let coreGlow = '#60a5fa'
-    if (state.state === 'critical') {
+    let edgeColor = '#60a5fa'
+    let coreGlowColor = '#60a5fa'
+    let edgeOpacity = 0.5 + coherence * 0.3
+
+    if (drift > 0.6) {
       edgeColor = '#ef4444'
-      coreGlow = '#ff6b6b'
-    } else if (state.state === 'instability') {
+      coreGlowColor = '#ff6b6b'
+      edgeOpacity = 0.7 + drift * 0.3
+    } else if (drift > 0.4) {
       edgeColor = '#f97316'
-      coreGlow = '#fb923c'
-    } else if (state.state === 'drift') {
+      coreGlowColor = '#fb923c'
+      edgeOpacity = 0.6 + drift * 0.2
+    } else if (drift > 0.2) {
       edgeColor = '#eab308'
-      coreGlow = '#facc15'
+      coreGlowColor = '#facc15'
+      edgeOpacity = 0.55 + drift * 0.15
     }
 
-    // Draw SVG
+    const now = Date.now()
+    const breathPulse =
+      0.5 + 0.5 * Math.sin((now / 1000) * (Math.PI * 2) / breathCycleDuration)
+
+    // Build SVG
     const svg = svgRef.current
     svg.innerHTML = `
       <defs>
-        <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
-          <feGaussianBlur stdDeviation="4" result="coloredBlur"/>
+        <filter id="core-glow" x="-100%" y="-100%" width="300%" height="300%">
+          <feGaussianBlur stdDeviation="12" result="coloredBlur"/>
+          <feMerge>
+            <feMergeNode in="coloredBlur"/>
+            <feMergeNode in="SourceGraphic"/>
+          </feMerge>
+        </filter>
+        <filter id="edge-glow" x="-50%" y="-50%" width="200%" height="200%">
+          <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
           <feMerge>
             <feMergeNode in="coloredBlur"/>
             <feMergeNode in="SourceGraphic"/>
           </feMerge>
         </filter>
         <style>
-          @keyframes breathe {
-            0%, 100% { r: ${coreRadius * 40}px; }
-            50% { r: ${coreRadius * 50}px; }
-          }
-          @keyframes drift-ambient {
+          @keyframes drift-motion {
             0%, 100% { transform: translate(0, 0); }
-            25% { transform: translate(2px, 1px); }
+            25% { transform: translate(3px, 2px); }
+            50% { transform: translate(0, 3px); }
+            75% { transform: translate(-3px, 2px); }
+          }
+          @keyframes jitter {
+            0%, 100% { transform: translate(0, 0); }
+            10% { transform: translate(2px, 1px); }
+            20% { transform: translate(-1px, 2px); }
+            30% { transform: translate(1px, -1px); }
+            40% { transform: translate(-2px, 0); }
             50% { transform: translate(0, 2px); }
-            75% { transform: translate(-2px, 1px); }
+            60% { transform: translate(2px, -1px); }
+            70% { transform: translate(-1px, 1px); }
+            80% { transform: translate(1px, -2px); }
+            90% { transform: translate(-2px, 1px); }
           }
-          @keyframes warning-jitter {
-            0%, 100% { transform: translate(0, 0); }
-            10% { transform: translate(1px, 0); }
-            20% { transform: translate(-1px, 0); }
-            30% { transform: translate(0.5px, 0.5px); }
-            40% { transform: translate(-0.5px, 0.5px); }
-            50% { transform: translate(0, -1px); }
-            60% { transform: translate(1px, 0); }
-            70% { transform: translate(-0.5px, 0); }
-            80% { transform: translate(0.5px, 0.5px); }
-            90% { transform: translate(-1px, 0); }
-          }
-          .tetrahedron {
-            animation: drift-ambient ${12 - drift * 6}s infinite ease-in-out;
-          }
-          .core {
-            animation: breathe 2s ease-in-out infinite;
-            ${state.state === 'critical' || state.state === 'instability' ? 'animation: breathe 1s ease-in-out infinite, warning-jitter 0.6s ease-in-out infinite;' : ''}
+          .tetrahedron-group {
+            animation: drift-motion ${10 - drift * 6}s ease-in-out infinite;
+            ${drift > 0.5 ? `animation: drift-motion ${10 - drift * 6}s ease-in-out infinite, jitter 0.4s ease-in-out infinite;` : ''}
           }
         </style>
       </defs>
 
-      <!-- Edges -->
-      <g class="tetrahedron" stroke="${edgeColor}" stroke-width="2" fill="none" opacity="0.6">
-        ${edges
-          .map(([a, b]) => {
-            const va = projectedVertices[a]
-            const vb = projectedVertices[b]
-            return `<line x1="${va.x}" y1="${va.y}" x2="${vb.x}" y2="${vb.y}"/>`
-          })
-          .join('')}
-      </g>
+      <!-- Ambient glow background -->
+      <circle cx="500" cy="350" r="280" fill="none" stroke="${coreGlowColor}" opacity="0.08" stroke-width="1"/>
+      <circle cx="500" cy="350" r="200" fill="none" stroke="${coreGlowColor}" opacity="0.05" stroke-width="1"/>
 
-      <!-- Vertices -->
-      <g class="tetrahedron" fill="${edgeColor}" opacity="0.8">
-        ${projectedVertices
-          .map((v) => `<circle cx="${v.x}" cy="${v.y}" r="6"/>`)
-          .join('')}
-      </g>
-
-      <!-- Core (coherence center) -->
-      <g class="tetrahedron" opacity="${Math.max(0.5, 1 - drift * 0.5)}">
-        <circle class="core" cx="500" cy="350" fill="${coreGlow}" opacity="0.4" filter="url(#glow)"/>
-        <circle cx="500" cy="350" r="3" fill="${coreGlow}" opacity="0.9"/>
-      </g>
-
-      <!-- No-action divergence (if projection exists) -->
-      ${
-        state.no_action_projection && state.no_action_projection.length > 0
-          ? `
-        <g stroke="#ef4444" stroke-width="1" fill="none" opacity="0.3" stroke-dasharray="4,4">
-          <line x1="500" y1="350" x2="${500 + Math.random() * 50 - 25}" y2="${350 + Math.random() * 50 - 25}"/>
+      <!-- Main tetrahedron group with motion -->
+      <g class="tetrahedron-group">
+        <!-- Edges with tension glow -->
+        <g stroke="${edgeColor}" stroke-width="3" fill="none" opacity="${edgeOpacity}" filter="url(#edge-glow)">
+          ${edges
+            .map(([a, b]) => {
+              const va = projectedVertices[a]
+              const vb = projectedVertices[b]
+              return `<line x1="${va.x}" y1="${va.y}" x2="${vb.x}" y2="${vb.y}"/>`
+            })
+            .join('')}
         </g>
-        `
-          : ''
-      }
+
+        <!-- Vertices (subsystem indicators) -->
+        <g>
+          ${projectedVertices
+            .map((v, idx) => {
+              const subsystem = baseVertices[idx]
+              const drift_val = subsystemDrifts[idx]
+              const vertexSize = 8 + drift_val * 6
+              const vertexColor = subsystem.color
+              return `
+                <circle
+                  cx="${v.x}"
+                  cy="${v.y}"
+                  r="${vertexSize}"
+                  fill="${vertexColor}"
+                  opacity="${0.6 + drift_val * 0.4}"
+                  filter="url(#edge-glow)"
+                />
+              `
+            })
+            .join('')}
+        </g>
+
+        <!-- Coherence core -->
+        <g opacity="${Math.max(0.3, 1 - drift * 0.5)}">
+          <!-- Outer glow rings -->
+          <circle
+            cx="500"
+            cy="350"
+            r="${coreGlow * breathPulse}"
+            fill="none"
+            stroke="${coreGlowColor}"
+            opacity="${0.15 * breathPulse}"
+            stroke-width="2"
+          />
+          <circle
+            cx="500"
+            cy="350"
+            r="${coreGlow * 0.6 * breathPulse}"
+            fill="none"
+            stroke="${coreGlowColor}"
+            opacity="${0.25 * breathPulse}"
+            stroke-width="2"
+          />
+
+          <!-- Core sphere -->
+          <circle
+            cx="500"
+            cy="350"
+            r="${coreRadius * breathPulse}"
+            fill="${coreGlowColor}"
+            opacity="0.4"
+            filter="url(#core-glow)"
+          />
+          <circle
+            cx="500"
+            cy="350"
+            r="${coreRadius * breathPulse * 0.6}"
+            fill="${coreGlowColor}"
+            opacity="0.7"
+          />
+        </g>
+      </g>
+
+      <!-- System state indicator text (minimal, positioned at edges) -->
+      <text
+        x="500"
+        y="30"
+        text-anchor="middle"
+        font-size="14"
+        fill="${edgeColor}"
+        opacity="0.6"
+        font-weight="300"
+      >
+        SYSTEM FIELD
+      </text>
+
+      <!-- Stats (minimal, positioned at bottom) -->
+      <text x="50" y="670" font-size="12" fill="white" opacity="0.4">
+        Coherence: ${(coherence * 100).toFixed(0)}%
+      </text>
+      <text x="950" y="670" font-size="12" fill="white" opacity="0.4" text-anchor="end">
+        Drift: ${(drift * 100).toFixed(0)}%
+      </text>
     `
   }, [state])
 
@@ -165,7 +275,15 @@ export function TetrahedronVisualization({ state }: TetrahedronVisualizationProp
       viewBox="0 0 1000 700"
       className="w-full h-full"
       style={{
-        filter: 'drop-shadow(0 0 30px rgba(96, 165, 250, 0.2))',
+        filter: `drop-shadow(0 0 40px ${
+          state.drift > 0.6
+            ? 'rgba(239, 68, 68, 0.3)'
+            : state.drift > 0.4
+              ? 'rgba(249, 115, 22, 0.3)'
+              : state.drift > 0.2
+                ? 'rgba(234, 179, 8, 0.3)'
+                : 'rgba(96, 165, 250, 0.2)'
+        })`,
       }}
     />
   )
