@@ -48,8 +48,18 @@ def _render_subsystem_entry(
 
     activity_color = "#22C55E" if micro_activity < 0.3 else "#3B82F6" if micro_activity < 0.6 else "#F97316"
 
+    strain_indicator = ""
+    if drift_contribution_pct > 40:
+        strain_opacity = min(0.6, (drift_contribution_pct - 40) / 20)
+        strain_indicator = f"""
+        <div class="ner-subsystem-strain" style="opacity: {strain_opacity};">
+            <span class="ner-strain-marker">⚡</span>
+            <span class="ner-strain-label">Residual strain detected</span>
+        </div>
+        """
+
     html = f"""
-    <div class="ner-subsystem-entry" data-subsystem="{escape(subsystem_id)}">
+    <div class="ner-subsystem-entry" data-subsystem="{escape(subsystem_id)}" data-strain-level="{min(100, drift_contribution_pct)}">
         <div class="ner-subsystem-header">
             <div class="ner-subsystem-name">{escape(subsystem_name)}</div>
             <div class="ner-micro-activity" style="background-color: {activity_color}; opacity: {0.4 + micro_activity * 0.6}"></div>
@@ -64,6 +74,8 @@ def _render_subsystem_entry(
             <span class="ner-state-label">State</span>
             <span class="ner-state-value">{escape(behavioral_state)}</span>
         </div>
+
+        {strain_indicator}
 
         <div class="ner-subsystem-metrics">
             <div class="ner-metric-row">

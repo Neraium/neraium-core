@@ -318,13 +318,13 @@ def build_intelligence_insights(
     cycles_to_critical = time_to_consequence.get("cycles_to_critical")
 
     if drift > 0.6:
-        current_state = "Critical structural instability detected across multiple domains"
+        current_state = "Multiple subsystem couplings fractured; system structure compromised"
     elif drift > 0.4:
-        current_state = "Persistent instability forming; recovery path uncertain"
+        current_state = "Coupling degradation spreading; coherence structure unstable"
     elif drift > 0.2:
-        current_state = "Mild drift emerging in climate and irrigation coupling"
+        current_state = "Early coupling stress between climate and response layers"
     else:
-        current_state = "System operating nominally with stable coherence"
+        current_state = "Subsystem couplings intact; system structure coherent"
 
     if drift > 0.3:
         if minutes_to_escalation and minutes_to_escalation > 0:
@@ -344,11 +344,11 @@ def build_intelligence_insights(
         coherence_text = "Subsystem decoupling detected; feedback pathways degraded"
 
     if drift > 0.4:
-        driver = "Irrigation timing misalignment driving plant-response feedback loop"
+        driver = "Airflow-irrigation coupling strained; system feedback pathways degrading"
     elif drift > 0.2:
-        driver = "Climate volatility in final stage of veg cycle triggering minor instability"
+        driver = "Climate-plant coherence weakening; subsystem integration under stress"
     else:
-        driver = "Stable environmental equilibrium maintained by active feedback"
+        driver = "All subsystem couplings stable; coherent equilibrium maintained"
 
     if decision == "ADMIT":
         focus = "⚠️ CRITICAL: Structural transition admitted. Execute intervention protocol immediately."

@@ -283,9 +283,30 @@ def render_system_field_svg(
     drift = geometry["drift"]
     core_tension = geometry["core_resistance"]
 
+    if drift < 0.15:
+        motion_responsivity = "minimal"
+        ambient_drift_duration = 12.0
+        breathing_duration = 4.0
+        shimmer_duration = 0.8
+    elif drift < 0.4:
+        motion_responsivity = "moderate"
+        ambient_drift_duration = 10.0
+        breathing_duration = 2.5
+        shimmer_duration = 1.2
+    elif drift < 0.6:
+        motion_responsivity = "elevated"
+        ambient_drift_duration = 6.0
+        breathing_duration = 1.8
+        shimmer_duration = 1.5
+    else:
+        motion_responsivity = "critical"
+        ambient_drift_duration = 3.5
+        breathing_duration = 1.2
+        shimmer_duration = 2.0
+
     svg_parts.append(f"""<svg width="{width}" height="{height}" viewBox="0 0 {width} {height}"
         xmlns="http://www.w3.org/2000/svg" class="ner-system-field" preserveAspectRatio="xMidYMid meet"
-        data-drift="{drift:.2f}" data-coherence="{geometry['coherence']:.2f}">
+        data-drift="{drift:.2f}" data-coherence="{geometry['coherence']:.2f}" data-motion="{motion_responsivity}">
         <defs>
             <filter id="coherenceGlow" x="-50%" y="-50%" width="200%" height="200%">
                 <feGaussianBlur stdDeviation="8" result="blur"/>
@@ -339,18 +360,18 @@ def render_system_field_svg(
                     75% {{ transform: translate(-1px, -1px) scale(0.998); }}
                 }}
                 .ner-coherence-core {{
-                    animation: coreRadiate {pulse_duration:.2f}s cubic-bezier(0.34, 1.56, 0.64, 1) infinite;
+                    animation: coreRadiate {breathing_duration:.2f}s cubic-bezier(0.34, 1.56, 0.64, 1) infinite;
                     filter: url(#coreRadiance);
                 }}
                 .ner-coherence-ring {{
-                    animation: ringBreathing {pulse_duration * 1.5:.2f}s cubic-bezier(0.34, 1.56, 0.64, 1) infinite;
+                    animation: ringBreathing {breathing_duration * 1.5:.2f}s cubic-bezier(0.34, 1.56, 0.64, 1) infinite;
                 }}
                 .ner-system-field {{
-                    animation: ambientDrift {8 + (drift * 4):.1f}s ease-in-out infinite;
+                    animation: ambientDrift {ambient_drift_duration:.1f}s ease-in-out infinite;
                     transform-origin: center;
                 }}
                 .ner-tension-shimmer {{
-                    animation: tensionShimmer {1.2 + (drift * 0.8):.2f}s ease-in-out infinite;
+                    animation: tensionShimmer {shimmer_duration:.2f}s ease-in-out infinite;
                 }}
             </style>
         </defs>
