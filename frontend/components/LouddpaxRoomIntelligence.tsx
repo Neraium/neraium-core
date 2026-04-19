@@ -137,11 +137,7 @@ const generateMockData = (degradationFactor: number = 0): RoomData & { subsystem
 }
 
 export const LouddpaxRoomIntelligence: React.FC = () => {
-  const [mounted, setMounted] = React.useState(false)
-
-  React.useEffect(() => {
-    setMounted(true)
-  }, [])
+  const [mounted, setMounted] = useState(false)
 
   const [roomData, setRoomData] = useState<RoomData & { subsystems: Subsystem[] }>(
     generateMockData(0)
@@ -169,6 +165,11 @@ export const LouddpaxRoomIntelligence: React.FC = () => {
   ])
 
   useEffect(() => {
+    setMounted(true)
+  }, [])
+
+  useEffect(() => {
+    if (!mounted) return
     const interval = setInterval(() => {
       setDegradationFactor((prev) => {
         const next = prev + 0.01
@@ -177,7 +178,7 @@ export const LouddpaxRoomIntelligence: React.FC = () => {
     }, 2000)
 
     return () => clearInterval(interval)
-  }, [])
+  }, [mounted])
 
   useEffect(() => {
     setRoomData(generateMockData(degradationFactor))
@@ -206,16 +207,29 @@ export const LouddpaxRoomIntelligence: React.FC = () => {
     critical: 'Critical',
   }
 
+  if (!mounted) {
+    return (
+      <div className="flex flex-col h-screen bg-louddpax-bg text-louddpax-text overflow-hidden items-center justify-center">
+        <div className="text-louddpax-text">Loading...</div>
+      </div>
+    )
+  }
+
   return (
-    <div className="flex flex-col h-screen bg-louddpax-bg text-louddpax-text overflow-hidden">
+    <div className="flex flex-col h-screen bg-louddpax-bg text-louddpax-text overflow-hidden" suppressHydrationWarning>
       {/* Top Bar */}
-      <TopBar
-        facilityName="Highland Facility"
-        roomName="Room A-12"
-        growthPhase="Week 4 Flower"
-        isLive={true}
-        globalHealthScore={Math.round((1 - roomData.driftScore) * 100)}
-      />
+      {mounted && (
+        <TopBar
+          facilityName="Highland Facility"
+          roomName="Room A-12"
+          growthPhase="Week 4 Flower"
+          isLive={true}
+          globalHealthScore={Math.round((1 - roomData.driftScore) * 100)}
+        />
+      )}
+      {!mounted && (
+        <div className="bg-louddpax-bg border-b border-louddpax-border px-8 py-6 opacity-0 h-24" />
+      )}
 
       {/* Main Content */}
       <div className="flex flex-1 overflow-hidden">
@@ -227,23 +241,21 @@ export const LouddpaxRoomIntelligence: React.FC = () => {
           <StateEvolutionTimeline points={timelinePoints} />
 
           {/* Subsystems Grid */}
-          {mounted && (
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-              {roomData.subsystems.map((subsystem) => (
-                <div key={subsystem.name}>
-                  <SubsystemCard
-                    name={subsystem.name}
-                    keyValue={subsystem.value}
-                    unit={subsystem.unit}
-                    driftContribution={subsystem.contribution}
-                    trend={subsystem.trend}
-                    sparklineData={subsystem.sparklineData}
-                    status={subsystem.status}
-                  />
-                </div>
-              ))}
-            </div>
-          )}
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+            {roomData.subsystems.map((subsystem) => (
+              <div key={subsystem.name}>
+                <SubsystemCard
+                  name={subsystem.name}
+                  keyValue={subsystem.value}
+                  unit={subsystem.unit}
+                  driftContribution={subsystem.contribution}
+                  trend={subsystem.trend}
+                  sparklineData={subsystem.sparklineData}
+                  status={subsystem.status}
+                />
+              </div>
+            ))}
+          </div>
 
           {/* Debug Controls */}
           <div className="mt-8 px-6 py-4 bg-louddpax-surface rounded border border-louddpax-border/50">

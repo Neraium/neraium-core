@@ -1,6 +1,6 @@
 'use client'
 
-import React from 'react'
+import React, { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
 
 interface TopBarProps {
@@ -18,6 +18,11 @@ export const TopBar: React.FC<TopBarProps> = ({
   isLive = true,
   globalHealthScore = 92,
 }) => {
+  const [mounted, setMounted] = useState(false)
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
   return (
     <div className="bg-louddpax-bg border-b border-louddpax-border px-8 py-6">
       <div className="max-w-[1920px] mx-auto flex items-center justify-between gap-8">
@@ -88,12 +93,22 @@ export const TopBar: React.FC<TopBarProps> = ({
             <p className="text-xs text-louddpax-muted tracking-widest uppercase mb-2">
               System Health
             </p>
-            <div className="flex items-baseline gap-2" suppressHydrationWarning>
-              <span className="text-3xl font-light tracking-tight text-louddpax-primary">
-                {globalHealthScore}
-              </span>
-              <span className="text-xs text-louddpax-muted uppercase">%</span>
-            </div>
+            {mounted && (
+              <div className="flex items-baseline gap-2">
+                <span className="text-3xl font-light tracking-tight text-louddpax-primary">
+                  {globalHealthScore}
+                </span>
+                <span className="text-xs text-louddpax-muted uppercase">%</span>
+              </div>
+            )}
+            {!mounted && (
+              <div className="flex items-baseline gap-2 opacity-0 h-10">
+                <span className="text-3xl font-light tracking-tight text-louddpax-primary">
+                  0
+                </span>
+                <span className="text-xs text-louddpax-muted uppercase">%</span>
+              </div>
+            )}
           </motion.div>
         </div>
       </div>
