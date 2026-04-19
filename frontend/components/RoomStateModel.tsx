@@ -53,8 +53,8 @@ const SubsystemNode: React.FC<{
   return (
     <g key={name}>
       <motion.circle
-        cx={x ?? 0}
-        cy={y ?? 0}
+        cx={x}
+        cy={y}
         r="24"
         fill={statusColors[status].bg}
         opacity="0.15"
@@ -62,8 +62,8 @@ const SubsystemNode: React.FC<{
         transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
       />
       <circle
-        cx={x ?? 0}
-        cy={y ?? 0}
+        cx={x}
+        cy={y}
         r="20"
         fill="none"
         stroke={statusColors[status].bg}
@@ -71,15 +71,15 @@ const SubsystemNode: React.FC<{
         opacity="0.4"
       />
       <motion.circle
-        cx={x ?? 0}
-        cy={y ?? 0}
+        cx={x}
+        cy={y}
         r="16"
         fill={statusColors[status].bg}
         opacity="0.3"
         animate={{ opacity: [0.3, 0.5, 0.3] }}
         transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
       />
-      <circle cx={x} cy={y} r="12" fill={statusColors[status].bg ?? 0 ?? 0} />
+      <circle cx={x} cy={y} r="12" fill={statusColors[status].bg} />
 
       {/* Trend indicator */}
       <text
@@ -176,9 +176,9 @@ const ConnectionLine: React.FC<{
       {/* Tension indicator glow */}
       {tension > 0.5 && (
         <motion.circle
-          cx={midX ?? 0}
-          cy={midY ?? 0}
-          r={3 + tension * 2 ?? 0}
+          cx={midX}
+          cy={midY}
+          r={3 + tension * 2}
           fill="none"
           stroke={isCritical ? '#C94C4C' : '#D8A35D'}
           strokeWidth="0.5"
