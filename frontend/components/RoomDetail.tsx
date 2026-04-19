@@ -3,6 +3,8 @@
 import React, { useState, useEffect } from 'react'
 import styles from './RoomDetail.module.css'
 import type { Room } from './GrowOpDashboard'
+import StateTimeline from './StateTimeline'
+import DriftIndicator from './DriftIndicator'
 import SensorChart from './SensorChart'
 
 interface Props {
@@ -61,14 +63,14 @@ const getThresholds = (sensor: string) => {
 
 const getSensorLabel = (key: string) => {
   const labels: Record<string, string> = {
-    temperature_f: 'Canopy Temperature',
-    humidity_rh: 'Relative Humidity',
-    co2_ppm: 'CO₂ Concentration',
-    vpd_kpa: 'Vapor Pressure Deficit',
-    ph: 'Reservoir pH',
-    ec_ms: 'Electrical Conductivity',
-    ppfd_umol: 'Light Intensity (PPFD)',
-    irrigation_ml: 'Irrigation Volume',
+    temperature_f: 'Temperature',
+    humidity_rh: 'Humidity',
+    co2_ppm: 'CO₂',
+    vpd_kpa: 'VPD',
+    ph: 'pH',
+    ec_ms: 'EC',
+    ppfd_umol: 'Light Intensity',
+    irrigation_ml: 'Irrigation',
   }
   return labels[key] || key
 }
@@ -91,7 +93,8 @@ const getStatusForValue = (
 
 export default function RoomDetail({ room, onBack, building }: Props) {
   const [historyData, setHistoryData] = useState<Record<string, number[]>>({})
-  const [timeRange, setTimeRange] = useState<'1h' | '6h' | '24h'>('1h')
+  const [driftScore, setDriftScore] = useState(0)
+  const [timeToIntervention, setTimeToIntervention] = useState('24-48 hours')
 
   useEffect(() => {
     const sensorKeys = Object.keys(room.sensors) as Array<
@@ -131,123 +134,86 @@ export default function RoomDetail({ room, onBack, building }: Props) {
           }
         })
 
+        // Calculate drift score
+        if (room.id === 'room-4') {
+          setDriftScore(Math.min(95, 20 + (updated['temperature_f']?.length || 0) * 0.5))
+          setTimeToIntervention(driftScore > 70 ? '4-8 hours' : '12-24 hours')
+        }
+
         return updated
       })
     }, 2000)
 
     return () => clearInterval(interval)
-  }, [room.id])
+  }, [room.id, driftScore])
 
+  const keySignals = ['temperature_f', 'humidity_rh', 'co2_ppm', 'vpd_kpa']
   const getSensorEntries = () => {
-    return Object.entries(room.sensors) as Array<
-      [string, number]
-    >
+    return Object.entries(room.sensors).filter(([key]) =>
+      keySignals.includes(key)
+    ) as Array<[string, number]>
   }
 
   return (
     <div className={styles.container}>
       <div className={styles.topBar}>
         <button className={styles.backButton} onClick={onBack}>
-          ← Back to Overview
+          ← Back
         </button>
         <h1>{room.name}</h1>
         <div />
       </div>
 
-      <div className={styles.infoBar}>
-        <div className={styles.info}>
-          <span>Floor {room.floor}</span>
-          <span>•</span>
-          <span>{room.zone} Zone</span>
-          <span>•</span>
-          <span>{room.stage}</span>
-          <span>•</span>
-          <span>
-            {room.plantCount}/{room.capacity} plants
-          </span>
+      {/* ROOM STATE & INTERVENTION WINDOW */}
+      <div className={styles.criticalSection}>
+        <div className={styles.stateCard}>
+          <div className={styles.stateLabel}>Current State</div>
+          <div className={`${styles.stateBadge} ${styles[room.status]}`}>
+            {room.status === 'critical' ? '🔴' : room.status === 'warning' ? '🟡' : '🟢'}
+            {room.status.toUpperCase()}
+          </div>
+          <div className={styles.stageText}>{room.stage}</div>
         </div>
 
-        <div className={styles.timeRangeSelector}>
-          {(['1h', '6h', '24h'] as const).map((range) => (
-            <button
-              key={range}
-              className={`${styles.timeButton} ${timeRange === range ? styles.active : ''}`}
-              onClick={() => setTimeRange(range)}
-            >
-              {range}
-            </button>
-          ))}
+        <DriftIndicator driftScore={driftScore} room={room} />
+
+        <div className={styles.interventionCard}>
+          <div className={styles.interventionLabel}>Action Window</div>
+          <div className={styles.interventionTime}>{timeToIntervention}</div>
+          <div className={styles.interventionSubtext}>
+            {driftScore > 70 ? '⚠️ Limited time to intervene' : '✓ Window still open'}
+          </div>
         </div>
       </div>
 
-      <div className={styles.chartsGrid}>
-        {getSensorEntries().map(([key, value]) => {
-          if (key === 'ph' && room.id === 'room-5') return null
-          if (key === 'ec_ms' && room.id === 'room-5') return null
-          if (key === 'ppfd_umol' && room.id === 'room-5') return null
-          if (key === 'irrigation_ml' && room.id === 'room-5') return null
+      {/* EVOLUTION TIMELINE */}
+      <StateTimeline room={room} historyData={historyData} />
 
-          const threshold = getThresholds(key)
-          const status = getStatusForValue(key, value)
-          const history = historyData[key] || [value]
+      {/* KEY SIGNALS - FOCUSED VIEW */}
+      <div className={styles.signalsSection}>
+        <h2>Key Climate Signals</h2>
+        <div className={styles.chartsGrid}>
+          {getSensorEntries().map(([key, value]) => {
+            const threshold = getThresholds(key)
+            const status = getStatusForValue(key, value)
+            const history = historyData[key] || [value]
 
-          return (
-            <div key={key} className={styles.chartContainer}>
-              <SensorChart
-                label={getSensorLabel(key)}
-                value={value}
-                unit={threshold?.unit || ''}
-                status={status}
-                history={history}
-                threshold={threshold}
-              />
-            </div>
-          )
-        })}
-      </div>
-
-      <div className={styles.metricsTable}>
-        <h2>Current Sensor Readings</h2>
-        <table>
-          <thead>
-            <tr>
-              <th>Sensor</th>
-              <th>Current Value</th>
-              <th>Status</th>
-              <th>Range</th>
-            </tr>
-          </thead>
-          <tbody>
-            {getSensorEntries().map(([key, value]) => {
-              const threshold = getThresholds(key)
-              const status = getStatusForValue(key, value)
-              if (threshold === undefined || threshold.unit === undefined)
-                return null
-
-              return (
-                <tr key={key}>
-                  <td className={styles.sensorName}>{getSensorLabel(key)}</td>
-                  <td className={styles.value}>
-                    {value.toFixed(key === 'temperature_f' || key === 'humidity_rh' ? 1 : 2)}{' '}
-                    {threshold.unit}
-                  </td>
-                  <td>
-                    <span
-                      className={`${styles.statusBadge} ${styles[status]}`}
-                    >
-                      {status.charAt(0).toUpperCase() + status.slice(1)}
-                    </span>
-                  </td>
-                  <td className={styles.range}>
-                    {threshold.min} - {threshold.max}{' '}
-                    {threshold.critical_max && `(critical: >${threshold.critical_max})`}
-                  </td>
-                </tr>
-              )
-            })}
-          </tbody>
-        </table>
+            return (
+              <div key={key} className={styles.chartContainer}>
+                <SensorChart
+                  label={getSensorLabel(key)}
+                  value={value}
+                  unit={threshold?.unit || ''}
+                  status={status}
+                  history={history}
+                  threshold={threshold}
+                />
+              </div>
+            )
+          })}
+        </div>
       </div>
     </div>
   )
 }
+
