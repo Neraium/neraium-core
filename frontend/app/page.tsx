@@ -1,7 +1,7 @@
 'use client'
 
-import ThreeLayerDashboard from '@/components/ThreeLayerDashboard'
+import GrowOpDashboard from '@/components/GrowOpDashboard'
 
 export default function Home() {
-  return <ThreeLayerDashboard />
+  return <GrowOpDashboard />
 }

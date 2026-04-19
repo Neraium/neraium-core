@@ -1,0 +1,239 @@
+.container {
+  min-height: 100vh;
+  background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+  padding-bottom: 2rem;
+}
+
+.topBar {
+  background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
+  padding: 1.5rem 2rem;
+  border-bottom: 2px solid #475569;
+  display: flex;
+  align-items: center;
+  gap: 2rem;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+.backButton {
+  background: rgba(59, 130, 246, 0.1);
+  border: 1px solid #3b82f6;
+  color: #60a5fa;
+  padding: 0.5rem 1rem;
+  border-radius: 0.375rem;
+  cursor: pointer;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.backButton:hover {
+  background: rgba(59, 130, 246, 0.2);
+  border-color: #60a5fa;
+}
+
+.topBar h1 {
+  margin: 0;
+  flex: 1;
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: #f1f5f9;
+}
+
+.infoBar {
+  background: rgba(30, 41, 59, 0.5);
+  padding: 1rem 2rem;
+  border-bottom: 1px solid #475569;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 2rem;
+  flex-wrap: wrap;
+}
+
+.info {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 0.875rem;
+  color: #cbd5e1;
+  flex-wrap: wrap;
+}
+
+.timeRangeSelector {
+  display: flex;
+  gap: 0.5rem;
+  background: rgba(30, 41, 59, 0.5);
+  padding: 0.25rem;
+  border-radius: 0.375rem;
+  border: 1px solid #475569;
+}
+
+.timeButton {
+  background: transparent;
+  border: none;
+  color: #94a3b8;
+  padding: 0.375rem 0.75rem;
+  border-radius: 0.25rem;
+  cursor: pointer;
+  font-size: 0.875rem;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.timeButton:hover {
+  color: #cbd5e1;
+  background: rgba(148, 163, 184, 0.1);
+}
+
+.timeButton.active {
+  background: #3b82f6;
+  color: #ffffff;
+}
+
+.chartsGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  gap: 1.5rem;
+  padding: 2rem;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.chartContainer {
+  background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
+  border: 1px solid #475569;
+  border-radius: 0.75rem;
+  padding: 1.5rem;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+}
+
+.metricsTable {
+  max-width: 1400px;
+  margin: 2rem auto;
+  padding: 0 2rem;
+}
+
+.metricsTable h2 {
+  margin: 0 0 1rem 0;
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #f1f5f9;
+}
+
+.metricsTable table {
+  width: 100%;
+  border-collapse: collapse;
+  background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
+  border: 1px solid #475569;
+  border-radius: 0.75rem;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+}
+
+.metricsTable thead {
+  background: rgba(30, 41, 59, 0.8);
+  border-bottom: 2px solid #475569;
+}
+
+.metricsTable th {
+  padding: 1rem;
+  text-align: left;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.metricsTable tbody tr {
+  border-bottom: 1px solid #475569;
+  transition: background 0.2s;
+}
+
+.metricsTable tbody tr:hover {
+  background: rgba(148, 163, 184, 0.05);
+}
+
+.metricsTable tbody tr:last-child {
+  border-bottom: none;
+}
+
+.metricsTable td {
+  padding: 1rem;
+  font-size: 0.875rem;
+  color: #e2e8f0;
+}
+
+.sensorName {
+  font-weight: 500;
+  color: #f1f5f9;
+}
+
+.value {
+  font-weight: 600;
+  color: #cbd5e1;
+}
+
+.statusBadge {
+  display: inline-block;
+  padding: 0.375rem 0.75rem;
+  border-radius: 0.375rem;
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #ffffff;
+}
+
+.statusBadge.optimal {
+  background: #10b981;
+}
+
+.statusBadge.warning {
+  background: #f59e0b;
+}
+
+.statusBadge.critical {
+  background: #ef4444;
+}
+
+.range {
+  color: #94a3b8;
+  font-size: 0.8rem;
+}
+
+@media (max-width: 768px) {
+  .topBar {
+    flex-direction: column;
+    align-items: flex-start;
+    padding: 1rem;
+  }
+
+  .topBar h1 {
+    font-size: 1.25rem;
+  }
+
+  .infoBar {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .chartsGrid {
+    grid-template-columns: 1fr;
+    padding: 1rem;
+  }
+
+  .metricsTable {
+    padding: 0 1rem;
+  }
+
+  .metricsTable table {
+    font-size: 0.75rem;
+  }
+
+  .metricsTable td,
+  .metricsTable th {
+    padding: 0.5rem;
+  }
+}
