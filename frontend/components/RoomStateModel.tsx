@@ -173,17 +173,15 @@ const ConnectionLine: React.FC<{
         suppressHydrationWarning
       />
 
-      {tension > 0.5 && (
-        <motion.circle
+      {tension > 0.5 && tensionRadius && (
+        <circle
           cx={midX}
           cy={midY}
-          r={tensionRadius}
+          r={Math.max(1, tensionRadius)}
           fill="none"
           stroke={isCritical ? '#C94C4C' : '#D8A35D'}
           strokeWidth="0.5"
-          opacity="0.5"
-          animate={{ r: [tensionRadius * 0.75, tensionRadius * 1.5, tensionRadius * 0.75], opacity: [0.3, 0.8, 0.3] }}
-          transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
+          opacity={Math.min(0.8, 0.3 + tension * 0.5)}
         />
       )}
     </g>
