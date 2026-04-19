@@ -131,7 +131,7 @@ def build_unified_app_shell(
         critical_alerts=critical_alerts if critical_alerts else None,
         coherence_score=coherence,
         no_action_consequence=no_action_consequence_insight,
-        recoverability_context=insights.get("recoverability", ""),
+        recoverability_context=recoverability_context,
     )
 
     bottom_timeline_html = render_state_timeline(
