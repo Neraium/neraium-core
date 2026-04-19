@@ -15,6 +15,8 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { DecisionUIState, Severity, DegradationStage, Trajectory } from '@/lib/decisionToUI'
 import { DEMO_SCENARIOS } from '@/lib/demoScenarios'
 
+const SIMULATION_EPOCH_MS = Date.UTC(2026, 0, 1, 8, 30, 0)
+
 /* ─── Types ───────────────────────────────────────────────────────────────── */
 
 export interface LiveSensors {
@@ -357,7 +359,7 @@ function simulateTick(
   const coherenceHistory = driftHistory.map(d => Math.max(0, 1 - d * 1.3))
   const instabilityHistory = driftHistory.map(d => d * 0.8 + smoothNoise(999, d * 10) * 0.1)
 
-  const now = new Date(Date.now() - (DEMO_SCENARIOS.length - scenarioIdx) * 60000)
+  const now = new Date(SIMULATION_EPOCH_MS + Math.round(simTime * 60_000) + scenarioIdx * 60_000)
 
   return {
     timestamp: now,
