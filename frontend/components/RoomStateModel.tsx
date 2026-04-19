@@ -1,79 +1,121 @@
 'use client'
 
-import React from 'react'
+import React, { useMemo, useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 
-type AnyProps = {
-  roomState?: {
-    status?: string
-    label?: string
+interface RoomState {
+  status: 'stable' | 'drift' | 'instability' | 'critical'
+  driftScore: number
+  temperature: number
+  humidity: number
+  co2: number
+  light: number
+  waterEc: number
+  plantHealth: number
+}
+
+interface Subsystem {
+  name: string
+  status: 'optimal' | 'warning' | 'critical'
+  contribution: number
+  value: number
+  trend: 'up' | 'down' | 'stable'
+}
+
+interface RoomStateModelProps {
+  roomState: RoomState
+  subsystems: Subsystem[]
+}
+
+const SubsystemNode: React.FC<{
+  name: string
+  angle: number
+  radius: number
+  status: 'optimal' | 'warning' | 'critical'
+  contribution: number
+  trend: 'up' | 'down' | 'stable'
+}> = ({ name, angle, radius, status, contribution, trend }) => {
+  const x = Math.round((200 + radius * Math.cos((angle * Math.PI) / 180)) * 100) / 100
+  const y = Math.round((200 + radius * Math.sin((angle * Math.PI) / 180)) * 100) / 100
+
+  const statusColors = {
+    optimal: { bg: '#7E9F2E', ring: 'rgba(126, 159, 46, 0.3)' },
+    warning: { bg: '#D8A35D', ring: 'rgba(216, 163, 93, 0.3)' },
+    critical: { bg: '#C94C4C', ring: 'rgba(201, 76, 76, 0.3)' },
   }
-  className?: string
-}
 
-const statusColors: Record<string, { bg: string }> = {
-  stable: { bg: '#22c55e' },
-  drift: { bg: '#f59e0b' },
-  critical: { bg: '#ef4444' },
-}
-
-function RoomStateModel({ roomState, className }: AnyProps) {
-  const status = roomState?.status ?? 'stable'
-  const label =
-    roomState?.label ??
-    (status === 'critical'
-      ? 'Critical Divergence'
-      : status === 'drift'
-        ? 'Drift Detected'
-        : 'Stable')
-
-  const color = statusColors[status] ?? statusColors.stable
-
-  const x = 200
-  const y = 200
+  const trendIndicator = {
+    up: '↑',
+    down: '↓',
+    stable: '→',
+  }
 
   return (
     <g key={name}>
-      <circle
-        cx={x}
-        cy={y}
+      <motion.circle
+        cx={x ?? 0}
+        cy={y ?? 0}
         r="24"
         fill={statusColors[status].bg}
         opacity="0.15"
+        animate={{ r: [24, 26, 24] }}
+        transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
       />
-
       <circle
-        cx={x}
-        cy={y}
-        r={20}
+        cx={x ?? 0}
+        cy={y ?? 0}
+        r="20"
         fill="none"
-        stroke={color.bg}
-        strokeWidth="2"
-        opacity={0.4}
+        stroke={statusColors[status].bg}
+        strokeWidth="1.5"
+        opacity="0.4"
       />
-
       <motion.circle
-        cx={x}
-        cy={y}
-        r={16}
+        cx={x ?? 0}
+        cy={y ?? 0}
+        r="16"
         fill={statusColors[status].bg}
         opacity="0.3"
         animate={{ opacity: [0.3, 0.5, 0.3] }}
         transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
-        suppressHydrationWarning
       />
-      <circle cx={x} cy={y} r="12" fill={statusColors[status].bg} suppressHydrationWarning />
+      <circle cx={x} cy={y} r="12" fill={statusColors[status].bg ?? 0 ?? 0} />
 
-      <circle cx={x} cy={y} r={12} fill={color.bg} />
+      {/* Trend indicator */}
+      <text
+        x={x}
+        y={y + 4}
+        textAnchor="middle"
+        fontSize="10"
+        fill="#050607"
+        fontWeight="600"
+      >
+        {trendIndicator[trend]}
+      </text>
 
+      {/* Label */}
       <text
         x={x}
         y={y + 40}
         textAnchor="middle"
-        fontSize="12"
-        fill="#ffffff"
+        fontSize="11"
+        fill="#E8EBF0"
+        fontWeight="500"
+        letterSpacing="0.05em"
       >
-        {label}
+        {name}
+      </text>
+
+      {/* Contribution percentage */}
+      <text
+        x={x}
+        y={y + 54}
+        textAnchor="middle"
+        fontSize="9"
+        fill="#8B92A0"
+        letterSpacing="0.06em"
+      >
+        {Math.round(contribution)}%
       </text>
     </g>
   )
@@ -134,16 +176,15 @@ const ConnectionLine: React.FC<{
       {/* Tension indicator glow */}
       {tension > 0.5 && (
         <motion.circle
-          cx={midX}
-          cy={midY}
-          r={3 + tension * 2}
+          cx={midX ?? 0}
+          cy={midY ?? 0}
+          r={3 + tension * 2 ?? 0}
           fill="none"
           stroke={isCritical ? '#C94C4C' : '#D8A35D'}
           strokeWidth="0.5"
           opacity="0.5"
-          animate={{ opacity: [0.3, 0.8, 0.3] }}
+          animate={{ r: [3, 6, 3], opacity: [0.3, 0.8, 0.3] }}
           transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
-          suppressHydrationWarning
         />
       )}
     </g>
@@ -177,6 +218,12 @@ export const RoomStateModel: React.FC<RoomStateModelProps> = ({
   roomState,
   subsystems,
 }) => {
+  const [mounted, setMounted] = useState(false)
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+
   const subsystemAngles = [0, 60, 120, 180, 240, 300]
   const radius = 100
 
@@ -196,6 +243,14 @@ export const RoomStateModel: React.FC<RoomStateModelProps> = ({
       }, 0) / subsystems.length,
     [subsystems]
   )
+
+  if (!mounted) {
+    return (
+      <div className="flex items-center justify-center w-full h-[500px] bg-louddpax-surface rounded-lg border border-louddpax-border overflow-hidden">
+        <div className="text-louddpax-muted text-sm">Loading visualization...</div>
+      </div>
+    )
+  }
 
   return (
     <div className="flex items-center justify-center w-full h-[500px] bg-louddpax-surface rounded-lg border border-louddpax-border overflow-hidden relative">
@@ -263,9 +318,8 @@ export const RoomStateModel: React.FC<RoomStateModelProps> = ({
             r="48"
             fill={coreColors[roomState.status].bg}
             opacity="0.1"
-            animate={{ opacity: [0.1, 0.15, 0.1] }}
+            animate={{ r: [48, 52, 48] }}
             transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
-            suppressHydrationWarning
           />
           <circle
             cx="200"
@@ -287,5 +341,61 @@ export const RoomStateModel: React.FC<RoomStateModelProps> = ({
           />
           <circle cx="200" cy="200" r="36" fill={coreColors[roomState.status].bg} />
 
-export default RoomStateModel
-export { RoomStateModel }
+          {/* Core label */}
+          <text
+            x="200"
+            y="205"
+            textAnchor="middle"
+            fontSize="12"
+            fill="#050607"
+            fontWeight="700"
+            letterSpacing="0.05em"
+          >
+            ROOM
+          </text>
+        </g>
+
+        {/* Subsystem nodes */}
+        {subsystems.map((subsystem, idx) => (
+          <SubsystemNode
+            key={`subsystem-${idx}`}
+            name={subsystem.name}
+            angle={subsystemAngles[idx]}
+            radius={radius}
+            status={subsystem.status}
+            contribution={subsystem.contribution}
+            trend={subsystem.trend}
+          />
+        ))}
+
+        {/* Neraium watermark (subtle background) */}
+        <text
+          x="200"
+          y="360"
+          textAnchor="middle"
+          fontSize="8"
+          fill="#7E9F2E"
+          opacity="0.1"
+          letterSpacing="0.08em"
+        >
+          NERAIUM INTELLIGENCE
+        </text>
+
+        {/* Drift score indicator (center bottom) */}
+        <text
+          x="200"
+          y="380"
+          textAnchor="middle"
+          fontSize="10"
+          fill="#8B92A0"
+          letterSpacing="0.06em"
+        >
+          DRIFT: {Math.round(roomState.driftScore * 100)}%
+        </text>
+      </svg>
+
+      {/* Overlay gradient for smooth edges */}
+      <div className="absolute inset-0 pointer-events-none bg-gradient-to-br from-louddpax-surface/0 via-transparent to-louddpax-surface/20 rounded-lg" />
+    </div>
+  )
+}
