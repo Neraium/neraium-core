@@ -68,6 +68,7 @@ def render_intelligence_rail(
     operator_focus: str,
     path_outlook: str,
     critical_alerts: list[str] | None = None,
+    coherence_score: float = 0.75,
 ) -> str:
     """Render the intelligence rail.
 
@@ -79,6 +80,7 @@ def render_intelligence_rail(
         operator_focus: What should the operator focus on
         path_outlook: Where is the system heading / what's the trajectory
         critical_alerts: Optional list of critical items to highlight
+        coherence_score: System coherence (0-1) for reactive styling
 
     Returns:
         HTML markup for the intelligence rail
@@ -92,6 +94,16 @@ def render_intelligence_rail(
         ("Operator Focus", operator_focus, "elevated"),
         ("Path Outlook", path_outlook, "normal"),
     ]
+
+    emphasis_level = "normal"
+    if critical_alerts:
+        emphasis_level = "critical"
+    elif coherence_score < 0.4:
+        emphasis_level = "critical"
+    elif coherence_score < 0.6:
+        emphasis_level = "elevated"
+
+    coherence_level_attr = "critical" if coherence_score < 0.4 else "low" if coherence_score < 0.6 else "normal"
 
     sections_html = "\n".join(
         _render_intelligence_section(title, content, emphasis)
@@ -114,7 +126,7 @@ def render_intelligence_rail(
         """
 
     html = f"""
-    <div class="ner-intelligence-rail">
+    <div class="ner-intelligence-rail" data-coherence-level="{coherence_level_attr}" data-emphasis="{emphasis_level}">
         <div class="ner-rail-header">
             <h3 class="ner-rail-title">Operator Intelligence</h3>
             <span class="ner-rail-subtitle">Machine-assisted reasoning</span>

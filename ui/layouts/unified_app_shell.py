@@ -119,6 +119,7 @@ def build_unified_app_shell(
         operator_focus=operator_focus_insight,
         path_outlook=path_outlook_insight,
         critical_alerts=critical_alerts if critical_alerts else None,
+        coherence_score=coherence,
     )
 
     bottom_timeline_html = render_state_timeline(
