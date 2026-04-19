@@ -221,18 +221,19 @@ export const LouddpaxRoomIntelligence: React.FC = () => {
           <StateEvolutionTimeline points={timelinePoints} />
 
           {/* Subsystems Grid */}
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-4" suppressHydrationWarning>
             {roomData.subsystems.map((subsystem) => (
-              <SubsystemCard
-                key={subsystem.name}
-                name={subsystem.name}
-                keyValue={subsystem.value}
-                unit={subsystem.unit}
-                driftContribution={subsystem.contribution}
-                trend={subsystem.trend}
-                sparklineData={subsystem.sparklineData}
-                status={subsystem.status}
-              />
+              <div key={subsystem.name} suppressHydrationWarning>
+                <SubsystemCard
+                  name={subsystem.name}
+                  keyValue={subsystem.value}
+                  unit={subsystem.unit}
+                  driftContribution={subsystem.contribution}
+                  trend={subsystem.trend}
+                  sparklineData={subsystem.sparklineData}
+                  status={subsystem.status}
+                />
+              </div>
             ))}
           </div>
 
