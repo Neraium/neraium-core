@@ -136,7 +136,7 @@ export default function RoomDetail({ room, onBack, building }: Props) {
 
         // Calculate drift score
         if (room.id === 'room-4') {
-          const newDriftScore = Math.min(95, 20 + (updated["temperature_f"]?.length || 0) * 0.5)
+          const newDriftScore = Math.min(95, 20 + (updated['temperature_f']?.length || 0) * 0.5)
           setDriftScore(newDriftScore)
           setTimeToIntervention(newDriftScore > 70 ? '4-8 hours' : '12-24 hours')
         }

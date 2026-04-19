@@ -52,14 +52,12 @@ const SubsystemNode: React.FC<{
 
   return (
     <g key={name}>
-      <motion.circle
+      <circle
         cx={x}
         cy={y}
         r="24"
         fill={statusColors[status].bg}
         opacity="0.15"
-        animate={{ r: [24, 26, 24] }}
-        transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
       />
       <circle
         cx={x}
@@ -73,13 +71,14 @@ const SubsystemNode: React.FC<{
       <motion.circle
         cx={x}
         cy={y}
-        r="16"
+        r={16}
         fill={statusColors[status].bg}
         opacity="0.3"
         animate={{ opacity: [0.3, 0.5, 0.3] }}
         transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
+        suppressHydrationWarning
       />
-      <circle cx={x} cy={y} r="12" fill={statusColors[status].bg} />
+      <circle cx={x} cy={y} r="12" fill={statusColors[status].bg} suppressHydrationWarning />
 
       {/* Trend indicator */}
       <text
@@ -183,8 +182,9 @@ const ConnectionLine: React.FC<{
           stroke={isCritical ? '#C94C4C' : '#D8A35D'}
           strokeWidth="0.5"
           opacity="0.5"
-          animate={{ r: [3, 6, 3], opacity: [0.3, 0.8, 0.3] }}
+          animate={{ opacity: [0.3, 0.8, 0.3] }}
           transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
+          suppressHydrationWarning
         />
       )}
     </g>
@@ -218,12 +218,6 @@ export const RoomStateModel: React.FC<RoomStateModelProps> = ({
   roomState,
   subsystems,
 }) => {
-  const [mounted, setMounted] = useState(false)
-
-  useEffect(() => {
-    setMounted(true)
-  }, [])
-
   const subsystemAngles = [0, 60, 120, 180, 240, 300]
   const radius = 100
 
@@ -243,14 +237,6 @@ export const RoomStateModel: React.FC<RoomStateModelProps> = ({
       }, 0) / subsystems.length,
     [subsystems]
   )
-
-  if (!mounted) {
-    return (
-      <div className="flex items-center justify-center w-full h-[500px] bg-louddpax-surface rounded-lg border border-louddpax-border overflow-hidden">
-        <div className="text-louddpax-muted text-sm">Loading visualization...</div>
-      </div>
-    )
-  }
 
   return (
     <div className="flex items-center justify-center w-full h-[500px] bg-louddpax-surface rounded-lg border border-louddpax-border overflow-hidden relative">
@@ -318,8 +304,9 @@ export const RoomStateModel: React.FC<RoomStateModelProps> = ({
             r="48"
             fill={coreColors[roomState.status].bg}
             opacity="0.1"
-            animate={{ r: [48, 52, 48] }}
+            animate={{ opacity: [0.1, 0.15, 0.1] }}
             transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
+            suppressHydrationWarning
           />
           <circle
             cx="200"

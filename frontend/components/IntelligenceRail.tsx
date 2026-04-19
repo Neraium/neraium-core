@@ -53,7 +53,7 @@ export const IntelligenceRail: React.FC<IntelligenceRailProps> = ({
   const statusType = getStateStatusType()
 
   return (
-    <div className="w-80 bg-louddpax-surface border-l border-louddpax-border p-6 flex flex-col gap-6 overflow-y-auto">
+    <div className="w-80 bg-louddpax-surface border-l border-louddpax-border p-6 flex flex-col gap-6 overflow-y-auto" suppressHydrationWarning>
       {/* State Label */}
       <motion.div
         className={`px-4 py-3 rounded border ${statusBgColors[statusType]} ${statusBorderColors[statusType]}`}
