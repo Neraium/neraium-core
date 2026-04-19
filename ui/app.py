@@ -11,6 +11,7 @@ from ui.components.tetrahedral_viz import build_tetrahedral_plot_and_text
 from ui.core_integration import build_system_state, evaluate_gate
 from ui.demo_data import load_fd004_demo_records, load_greenhouse_demo_records
 from ui.layouts.operations_view import build_operations_view
+from ui.layouts.unified_app_shell import build_unified_app_shell
 from ui.reasoning import build_reasoning_context
 from ui.replay_timing import (
     ReplayPaceController,
@@ -18,6 +19,15 @@ from ui.replay_timing import (
     ReasoningStateTracker,
     SmoothUIFrameController,
     InterpolationHelper,
+)
+from ui.unified_shell_data import (
+    build_facility_rooms_data,
+    build_subsystems_data,
+    build_timeline_states,
+    build_intelligence_insights,
+    get_critical_alerts,
+    _compute_time_to_consequence,
+    _compute_no_action_projection,
 )
 
 
@@ -1015,6 +1025,65 @@ def _render_record_html(record_panel: dict[str, Any]) -> str:
     )
 
 
+def _load_unified_shell(
+    system_state: SystemState,
+    records: list[dict[str, Any]] | None = None,
+    gate_decision: dict[str, Any] | None = None,
+) -> tuple[str, str, str, str, str]:
+    """Load the unified app shell with all integrated components.
+
+    Args:
+        system_state: Current SystemState
+        records: Historical records
+        gate_decision: Gate decision
+
+    Returns:
+        Tuple of (top_bar, system_field, left_panel, right_panel, bottom_timeline)
+    """
+    latest = records[-1] if records else {}
+    timestamp = str(latest.get("timestamp", "")).replace("Z", "") if records else None
+
+    facility_coherence = system_state.coherence if system_state else 0.75
+    rooms = build_facility_rooms_data(system_state, records)
+    subsystems = build_subsystems_data(system_state, records)
+    states_timeline = build_timeline_states(records)
+    time_to_consequence = _compute_time_to_consequence(records)
+    no_action_projection = _compute_no_action_projection(records)
+    insights = build_intelligence_insights(system_state, records, gate_decision, time_to_consequence, no_action_projection)
+    critical_alerts = get_critical_alerts(system_state, gate_decision)
+
+    rooms_needing_attention = sum(1 for r in rooms if r.get("state") in ("watch", "degraded", "critical"))
+
+    shell = build_unified_app_shell(
+        state=system_state,
+        rooms=rooms,
+        subsystems=subsystems,
+        states_timeline=states_timeline,
+        facility_coherence=facility_coherence,
+        rooms_needing_attention=rooms_needing_attention,
+        timestamp=timestamp,
+        feed_latency_ms=None,
+        current_state_insight=insights.get("current_state", ""),
+        onset_insight=insights.get("onset", ""),
+        coherence_insight=insights.get("coherence", ""),
+        primary_driver_insight=insights.get("primary_driver", ""),
+        operator_focus_insight=insights.get("operator_focus", ""),
+        path_outlook_insight=insights.get("path_outlook", ""),
+        critical_alerts=critical_alerts if critical_alerts else None,
+        records=records,
+        no_action_projection=no_action_projection,
+        no_action_consequence_insight=insights.get("no_action_consequence", ""),
+    )
+
+    return (
+        shell["top_bar"],
+        shell["system_field"],
+        shell["left_panel"],
+        shell["right_panel"],
+        shell["bottom_timeline"],
+    )
+
+
 
 def _render_verdict_surface_html(gate_card: dict[str, Any], system_zone: dict[str, Any]) -> str:
     """Merge verdict card and system geometry into one visually connected surface."""
@@ -1444,6 +1513,11 @@ def create_gradio_app():
         reasoning_html = _render_reasoning_html(surface["zones"]["reasoning"]["content"])
         record_html = _render_record_html(surface["zones"]["record"]["content"])
         tetra_plot, tetra_text = build_tetrahedral_plot_and_text(latest, active_rows)
+
+        top_bar, system_field, left_panel, right_panel, bottom_timeline = _load_unified_shell(
+            system_state, active_rows, gate_decision
+        )
+
         return (
             status_html,
             chart_html,
@@ -1452,7 +1526,27 @@ def create_gradio_app():
             record_html,
             tetra_plot,
             tetra_text,
+            top_bar,
+            system_field,
+            left_panel,
+            right_panel,
+            bottom_timeline,
         )
+
+    def load_unified_shell_surface(frame_index: int):
+        """Load only the unified shell components for the frame."""
+        active_rows = _rows_until(frame_index)
+        system_state = build_system_state(active_rows, config=UIConfig())
+        latest = active_rows[-1] if active_rows else {}
+        previous = active_rows[-2] if len(active_rows) > 1 else None
+
+        gate_decision = evaluate_gate(latest, previous, system_state)
+
+        top_bar, system_field, left_panel, right_panel, bottom_timeline = _load_unified_shell(
+            system_state, active_rows, gate_decision
+        )
+
+        return top_bar, system_field, left_panel, right_panel, bottom_timeline
 
     def pause_playback() -> None:
         playback_state["playing"] = False
@@ -1462,8 +1556,8 @@ def create_gradio_app():
         # Reset stabilizers when resetting playback
         verdict_stabilizer.reset()
         reasoning_tracker.reset()
-        status_html, chart_html, insight_html, reasoning_html, record_html, tetra_plot, tetra_text = load_operations_surface(1, apply_stability=False)
-        return 1, status_html, chart_html, insight_html, reasoning_html, record_html, tetra_plot, tetra_text
+        results = load_operations_surface(1, apply_stability=False)
+        return 1, results[0], results[1], results[2], results[3], results[4], results[5], results[6]
 
     def autoplay(start_frame: int, speed_multiplier: float):
         """Smooth playback with frame skipping for polished UI feel.
@@ -1516,15 +1610,37 @@ def create_gradio_app():
         playback_state["playing"] = False
 
     default_step = min(30, total_steps)
-    initial_status, initial_chart, initial_insight, initial_reasoning, initial_record, initial_tetra_plot, initial_tetra_text = load_operations_surface(
-        default_step, apply_stability=False
-    )
+    results = load_operations_surface(default_step, apply_stability=False)
+    initial_status = results[0]
+    initial_chart = results[1]
+    initial_insight = results[2]
+    initial_reasoning = results[3]
+    initial_record = results[4]
+    initial_tetra_plot = results[5]
+    initial_tetra_text = results[6]
+    initial_top_bar = results[7] if len(results) > 7 else ""
+    initial_system_field = results[8] if len(results) > 8 else ""
+    initial_left_panel = results[9] if len(results) > 9 else ""
+    initial_right_panel = results[10] if len(results) > 10 else ""
+    initial_bottom_timeline = results[11] if len(results) > 11 else ""
 
     css_path = Path(__file__).parent / "themes" / "neraium_dark.css"
     css = css_path.read_text(encoding="utf-8") if css_path.exists() else ""
 
     with gr.Blocks(css=css, theme=gr.themes.Base(), elem_classes=["ner-app"]) as app:
-        status = gr.HTML(value=initial_status)
+        with gr.Group(elem_classes=["ner-unified-app-shell"]):
+            top_bar = gr.HTML(value=initial_top_bar, elem_classes=["ner-facility-command-strip"])
+
+            with gr.Row(elem_classes=["ner-main-canvas"]):
+                left_panel = gr.HTML(value=initial_left_panel, elem_classes=["ner-side-panel"])
+                with gr.Column(elem_classes=["ner-system-field-container"]):
+                    system_field = gr.HTML(value=initial_system_field, elem_classes=["ner-system-field"])
+                right_panel = gr.HTML(value=initial_right_panel, elem_classes=["ner-side-panel"])
+
+            bottom_timeline = gr.HTML(value=initial_bottom_timeline, elem_classes=["ner-state-timeline-container"])
+
+        with gr.Group(label="Classic Operations View"):
+            status = gr.HTML(value=initial_status)
         with gr.Row(elem_classes=["ner-main-content-row"]):
             chart = gr.HTML(value=initial_chart, scale=3)
             insight = gr.HTML(value=initial_insight, scale=1)
@@ -1544,27 +1660,56 @@ def create_gradio_app():
             tetra_plot = gr.Plot(value=initial_tetra_plot, label="Structural State (Tetrahedral)")
             tetra_details = gr.Markdown(value=initial_tetra_text)
 
+        def _on_frame_change(frame_idx, sp, af, ns):
+            """Handle frame change and update both classic and unified views."""
+            results = load_operations_surface(frame_idx, sp, af, ns)
+            return (
+                results[0], results[1], results[2], results[3], results[4], results[5], results[6],
+                results[7], results[8], results[9], results[10], results[11],
+            )
+
         frame_step.change(
-            fn=load_operations_surface,
+            fn=_on_frame_change,
             inputs=[frame_step, speed, auto_follow, normalized_scale],
-            outputs=[status, chart, insight, reasoning, record, tetra_plot, tetra_details],
+            outputs=[status, chart, insight, reasoning, record, tetra_plot, tetra_details,
+                    top_bar, system_field, left_panel, right_panel, bottom_timeline],
         )
         auto_follow.change(
-            fn=load_operations_surface,
+            fn=_on_frame_change,
             inputs=[frame_step, speed, auto_follow, normalized_scale],
-            outputs=[status, chart, insight, reasoning, record, tetra_plot, tetra_details],
+            outputs=[status, chart, insight, reasoning, record, tetra_plot, tetra_details,
+                    top_bar, system_field, left_panel, right_panel, bottom_timeline],
         )
         normalized_scale.change(
-            fn=load_operations_surface,
+            fn=_on_frame_change,
             inputs=[frame_step, speed, auto_follow, normalized_scale],
-            outputs=[status, chart, insight, reasoning, record, tetra_plot, tetra_details],
+            outputs=[status, chart, insight, reasoning, record, tetra_plot, tetra_details,
+                    top_bar, system_field, left_panel, right_panel, bottom_timeline],
         )
+
+        def _autoplay_wrapper(start_frame, speed_mult):
+            """Wrapper for autoplay that updates unified shell."""
+            for yield_result in autoplay(start_frame, speed_mult):
+                frame, s, c, i, r, re, p, t = yield_result
+                ub, sf, lp, rp, bt = load_unified_shell_surface(frame)
+                yield frame, s, c, i, r, re, p, t, ub, sf, lp, rp, bt
+
         play_btn.click(
-            fn=autoplay,
+            fn=_autoplay_wrapper,
             inputs=[frame_step, speed],
-            outputs=[frame_step, status, chart, insight, reasoning, record, tetra_plot, tetra_details],
+            outputs=[frame_step, status, chart, insight, reasoning, record, tetra_plot, tetra_details,
+                    top_bar, system_field, left_panel, right_panel, bottom_timeline],
         )
         pause_btn.click(fn=pause_playback)
-        restart_btn.click(fn=reset_playback, outputs=[frame_step, status, chart, insight, reasoning, record, tetra_plot, tetra_details])
+
+        def _reset_wrapper():
+            """Wrapper for reset that updates unified shell."""
+            results = reset_playback()
+            frame = results[0]
+            ub, sf, lp, rp, bt = load_unified_shell_surface(frame)
+            return frame, results[1], results[2], results[3], results[4], results[5], results[6], results[7], ub, sf, lp, rp, bt
+
+        restart_btn.click(fn=_reset_wrapper, outputs=[frame_step, status, chart, insight, reasoning, record, tetra_plot, tetra_details,
+                                                      top_bar, system_field, left_panel, right_panel, bottom_timeline])
 
     return app
