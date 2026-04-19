@@ -136,8 +136,9 @@ export default function RoomDetail({ room, onBack, building }: Props) {
 
         // Calculate drift score
         if (room.id === 'room-4') {
-          setDriftScore(Math.min(95, 20 + (updated['temperature_f']?.length || 0) * 0.5))
-          setTimeToIntervention(driftScore > 70 ? '4-8 hours' : '12-24 hours')
+          const newDriftScore = Math.min(95, 20 + (updated["temperature_f"]?.length || 0) * 0.5)
+          setDriftScore(newDriftScore)
+          setTimeToIntervention(newDriftScore > 70 ? '4-8 hours' : '12-24 hours')
         }
 
         return updated
@@ -145,7 +146,7 @@ export default function RoomDetail({ room, onBack, building }: Props) {
     }, 2000)
 
     return () => clearInterval(interval)
-  }, [room.id, driftScore])
+  }, [room.id])
 
   const keySignals = ['temperature_f', 'humidity_rh', 'co2_ppm', 'vpd_kpa']
   const getSensorEntries = () => {
