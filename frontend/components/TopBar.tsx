@@ -83,11 +83,12 @@ export const TopBar: React.FC<TopBarProps> = ({
               ],
             }}
             transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
+            suppressHydrationWarning
           >
             <p className="text-xs text-louddpax-muted tracking-widest uppercase mb-2">
               System Health
             </p>
-            <div className="flex items-baseline gap-2">
+            <div className="flex items-baseline gap-2" suppressHydrationWarning>
               <span className="text-3xl font-light tracking-tight text-louddpax-primary">
                 {globalHealthScore}
               </span>

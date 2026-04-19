@@ -35,8 +35,8 @@ const SubsystemNode: React.FC<{
   contribution: number
   trend: 'up' | 'down' | 'stable'
 }> = ({ name, angle, radius, status, contribution, trend }) => {
-  const x = 200 + radius * Math.cos((angle * Math.PI) / 180)
-  const y = 200 + radius * Math.sin((angle * Math.PI) / 180)
+  const x = Math.round((200 + radius * Math.cos((angle * Math.PI) / 180)) * 100) / 100
+  const y = Math.round((200 + radius * Math.sin((angle * Math.PI) / 180)) * 100) / 100
 
   const statusColors = {
     optimal: { bg: '#7E9F2E', ring: 'rgba(126, 159, 46, 0.3)' },
@@ -129,9 +129,10 @@ const ConnectionLine: React.FC<{
   tension: number
   driftScore: number
 }> = ({ x1, y1, x2, y2, tension, driftScore }) => {
-  const distance = Math.hypot(x2 - x1, y2 - y1)
+  const distance = Math.max(0, Math.hypot(x2 - x1, y2 - y1))
   const midX = (x1 + x2) / 2
   const midY = (y1 + y2) / 2
+  const safeStrokeWidth = Math.max(0.5, 1.5 + tension * 1.5)
 
   const isCritical = driftScore > 0.7
   const glowColor = isCritical
@@ -156,8 +157,8 @@ const ConnectionLine: React.FC<{
         x2={x2}
         y2={y2}
         stroke={isCritical ? '#C94C4C' : '#7E9F2E'}
-        strokeWidth={1.5 + tension * 1.5}
-        opacity={0.3 + driftScore * 0.4}
+        strokeWidth={safeStrokeWidth}
+        opacity={Math.max(0.1, Math.min(1, 0.3 + driftScore * 0.4))}
         filter="url(#lineGlow)"
         animate={{
           opacity: isCritical
