@@ -1,0 +1,78 @@
+.card {
+  background: linear-gradient(135deg, #1a1a1a 0%, #141414 100%);
+  border: 1px solid rgba(16, 185, 129, 0.2);
+  border-radius: 1.25rem;
+  padding: 2rem;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
+}
+
+.card.critical {
+  border-color: rgba(239, 68, 68, 0.3);
+  box-shadow: 0 12px 32px rgba(239, 68, 68, 0.15);
+}
+
+.header {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 1rem;
+  align-items: flex-start;
+}
+
+.icon {
+  font-size: 2rem;
+}
+
+.title {
+  font-size: 1.1rem;
+  font-weight: 800;
+  color: #f0fdf4;
+  margin-bottom: 0.25rem;
+}
+
+.urgency {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #ef4444;
+  letter-spacing: 0.05em;
+}
+
+.description {
+  margin: 1rem 0;
+  color: #cbd5e1;
+  line-height: 1.5;
+}
+
+.symptoms {
+  margin: 1rem 0;
+  padding: 1rem;
+  background: rgba(255, 255, 255, 0.02);
+  border-radius: 0.75rem;
+}
+
+.label {
+  font-size: 0.8rem;
+  color: #a3e635;
+  text-transform: uppercase;
+  font-weight: 700;
+  margin-bottom: 0.5rem;
+}
+
+.symptom {
+  color: #a7f3d0;
+  font-size: 0.9rem;
+  margin: 0.25rem 0;
+}
+
+.action {
+  margin-top: 1rem;
+  padding: 1rem;
+  background: rgba(16, 185, 129, 0.08);
+  border-left: 3px solid #10b981;
+  border-radius: 0.75rem;
+}
+
+.actionText {
+  color: #f0fdf4;
+  font-weight: 600;
+  margin-top: 0.5rem;
+}
