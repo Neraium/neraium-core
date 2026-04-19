@@ -246,11 +246,9 @@ export const LouddpaxRoomIntelligence: React.FC = () => {
               <div key={subsystem.name}>
                 <SubsystemCard
                   name={subsystem.name}
-                  keyValue={subsystem.value}
-                  unit={subsystem.unit}
-                  driftContribution={subsystem.contribution}
+                  value={`${subsystem.value} ${subsystem.unit}`}
+                  contribution={subsystem.contribution}
                   trend={subsystem.trend}
-                  sparklineData={subsystem.sparklineData}
                   status={subsystem.status}
                 />
               </div>
