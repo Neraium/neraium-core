@@ -1628,6 +1628,8 @@ def create_gradio_app():
     css = css_path.read_text(encoding="utf-8") if css_path.exists() else ""
 
     with gr.Blocks(css=css, theme=gr.themes.Base(), elem_classes=["ner-app"]) as app:
+        gr.Markdown("# Neraium: Unified Operational Intelligence", elem_classes=["ner-title"])
+
         with gr.Group(elem_classes=["ner-unified-app-shell"]):
             top_bar = gr.HTML(value=initial_top_bar, elem_classes=["ner-facility-command-strip"])
 
@@ -1639,30 +1641,25 @@ def create_gradio_app():
 
             bottom_timeline = gr.HTML(value=initial_bottom_timeline, elem_classes=["ner-state-timeline-container"])
 
-        with gr.Group(label="Classic Operations View"):
-            status = gr.HTML(value=initial_status)
-        with gr.Row(elem_classes=["ner-main-content-row"]):
-            chart = gr.HTML(value=initial_chart, scale=3)
-            insight = gr.HTML(value=initial_insight, scale=1)
-
         with gr.Row(elem_classes=["ner-controls-row"]):
-            play_btn = gr.Button("Play", size="sm", scale=1)
-            pause_btn = gr.Button("Pause", size="sm", scale=1)
-            restart_btn = gr.Button("Restart", size="sm", scale=1)
+            play_btn = gr.Button("▶ Play", size="sm", scale=1)
+            pause_btn = gr.Button("⏸ Pause", size="sm", scale=1)
+            restart_btn = gr.Button("⏮ Restart", size="sm", scale=1)
             speed = gr.Slider(minimum=0.1, maximum=1.5, step=0.1, value=0.6, label="Speed", scale=2)
-            frame_step = gr.Slider(minimum=1, maximum=total_steps, step=1, value=default_step, label="Scrub", scale=5)
-            auto_follow = gr.Checkbox(value=True, label="Auto-follow")
-            normalized_scale = gr.Checkbox(value=False, label="0-100 scale")
+            frame_step = gr.Slider(minimum=1, maximum=total_steps, step=1, value=default_step, label="Frame", scale=5)
 
-        reasoning = gr.HTML(value=initial_reasoning)
-        record = gr.HTML(value=initial_record)
-        with gr.Row(elem_classes=["ner-tetra-row"]):
-            tetra_plot = gr.Plot(value=initial_tetra_plot, label="Structural State (Tetrahedral)")
-            tetra_details = gr.Markdown(value=initial_tetra_text)
+        # Hidden components for old UI (kept for internal use only)
+        status = gr.HTML(value=initial_status, visible=False)
+        chart = gr.HTML(value=initial_chart, visible=False)
+        insight = gr.HTML(value=initial_insight, visible=False)
+        reasoning = gr.HTML(value=initial_reasoning, visible=False)
+        record = gr.HTML(value=initial_record, visible=False)
+        tetra_plot = gr.Plot(value=initial_tetra_plot, visible=False)
+        tetra_details = gr.Markdown(value=initial_tetra_text, visible=False)
 
-        def _on_frame_change(frame_idx, sp, af, ns):
-            """Handle frame change and update both classic and unified views."""
-            results = load_operations_surface(frame_idx, sp, af, ns)
+        def _on_frame_change(frame_idx, sp):
+            """Handle frame change and update unified shell only."""
+            results = load_operations_surface(frame_idx, sp, True, False)
             return (
                 results[0], results[1], results[2], results[3], results[4], results[5], results[6],
                 results[7], results[8], results[9], results[10], results[11],
@@ -1670,19 +1667,7 @@ def create_gradio_app():
 
         frame_step.change(
             fn=_on_frame_change,
-            inputs=[frame_step, speed, auto_follow, normalized_scale],
-            outputs=[status, chart, insight, reasoning, record, tetra_plot, tetra_details,
-                    top_bar, system_field, left_panel, right_panel, bottom_timeline],
-        )
-        auto_follow.change(
-            fn=_on_frame_change,
-            inputs=[frame_step, speed, auto_follow, normalized_scale],
-            outputs=[status, chart, insight, reasoning, record, tetra_plot, tetra_details,
-                    top_bar, system_field, left_panel, right_panel, bottom_timeline],
-        )
-        normalized_scale.change(
-            fn=_on_frame_change,
-            inputs=[frame_step, speed, auto_follow, normalized_scale],
+            inputs=[frame_step, speed],
             outputs=[status, chart, insight, reasoning, record, tetra_plot, tetra_details,
                     top_bar, system_field, left_panel, right_panel, bottom_timeline],
         )
