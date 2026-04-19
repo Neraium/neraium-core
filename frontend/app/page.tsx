@@ -1,7 +1,7 @@
 'use client'
 
-import GrowOpDashboard from '@/components/GrowOpDashboard'
+import { LouddpaxRoomIntelligence } from '@/components/LouddpaxRoomIntelligence'
 
 export default function Home() {
-  return <GrowOpDashboard />
+  return <LouddpaxRoomIntelligence />
 }
