@@ -89,10 +89,13 @@ export const TopBar: React.FC<TopBarProps> = ({
               System Health
             </p>
             <div className="flex items-baseline gap-2" suppressHydrationWarning>
-              <span className="text-3xl font-light tracking-tight text-louddpax-primary">
+              <span
+                className="text-3xl font-light tracking-tight text-louddpax-primary"
+                suppressHydrationWarning
+              >
                 {globalHealthScore}
               </span>
-              <span className="text-xs text-louddpax-muted uppercase">%</span>
+              <span className="text-xs text-louddpax-muted uppercase" suppressHydrationWarning>%</span>
             </div>
           </motion.div>
         </div>
