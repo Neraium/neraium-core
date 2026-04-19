@@ -33,19 +33,23 @@ def _compute_tetrahedron_geometry(
     drift: float,
     stability: float,
     state: str = "stable",
+    history_max_drift: float = 0.0,
 ) -> dict[str, Any]:
-    """Compute tetrahedron vertex positions based on system state.
+    """Compute tetrahedron vertex positions governed by physics.
 
-    Deformation is pronounced and unmistakable:
-    - At drift 0.2: visible asymmetry
-    - At drift 0.4: significant warping
-    - At drift 0.6+: structural breakdown evident
+    Physics principles:
+    - Pre-deformation at low drift (anticipation before threshold)
+    - Coherence core tightens under stress (resisting force)
+    - Irreversibility: permanent deformation after critical threshold
+    - Resistance between subsystems creates balance
+    - All deformation eases, not snaps
 
     Args:
-        coherence: Coherence score (0-1). Controls core glow and ring stability.
-        drift: Structural drift (0-1). Controls deformation and tension.
-        stability: Relational stability (0-1). Controls edge smoothness.
+        coherence: Coherence score (0-1). Core resistance strength.
+        drift: Structural drift (0-1). Deformation driver.
+        stability: Relational stability (0-1). Edge smoothness.
         state: One of stable, drift, instability, critical
+        history_max_drift: Maximum drift ever reached (for hysteresis)
 
     Returns:
         Dictionary with vertex positions, edge states, coherence core params
@@ -53,34 +57,43 @@ def _compute_tetrahedron_geometry(
 
     base_scale = 1.0
 
+    pre_deformation = drift * 0.08 if drift > 0.05 else 0.0
+    explicit_deformation = max(0.0, drift - 0.15) * 0.4 if drift > 0.15 else 0.0
+
     if state == "stable":
-        deformation = 0.0
+        explicit_deformation = 0.0
         tension_color = "#22C55E"
         edge_opacity = 0.8
-        core_radius = 0.15
+        core_resistance = coherence * 0.15
         core_pulse_intensity = 0.3
         instability_axis = (0, 0, 0)
     elif state == "drift":
-        deformation = drift * 0.35
+        explicit_deformation = drift * 0.3
         tension_color = "#3B82F6"
         edge_opacity = 0.6 + 0.2 * drift
-        core_radius = 0.12 + 0.03 * drift
+        core_resistance = coherence * 0.12
         core_pulse_intensity = 0.4 + 0.2 * drift
         instability_axis = (math.sin(drift * math.pi * 0.5), 0, math.cos(drift * math.pi))
     elif state == "instability":
-        deformation = 0.2 + (drift * 0.45)
+        explicit_deformation = 0.2 + (drift * 0.4)
         tension_color = "#F97316"
         edge_opacity = 0.7 + 0.3 * drift
-        core_radius = 0.1 + 0.06 * drift
+        core_resistance = coherence * 0.08
         core_pulse_intensity = 0.5 + 0.35 * drift
         instability_axis = (math.sin(drift * math.pi), math.cos(drift * math.pi * 0.3), 1)
-    else:  # critical
-        deformation = 0.55 + (0.2 * (1.0 - coherence))
+    else:
+        explicit_deformation = 0.55 + (0.15 * (1.0 - coherence))
         tension_color = "#EF4444"
         edge_opacity = 0.95
-        core_radius = 0.08 + 0.08 * (1.0 - coherence)
+        core_resistance = coherence * 0.04
         core_pulse_intensity = 0.7 + 0.3 * (1.0 - coherence)
         instability_axis = (1, 0.5, 0.8)
+
+    hysteresis_residual = 0.0
+    if history_max_drift > 0.6 and drift < history_max_drift:
+        hysteresis_residual = (history_max_drift - 0.6) * (history_max_drift - drift) * 0.15
+
+    total_deformation = clamp(pre_deformation + explicit_deformation + hysteresis_residual, 0.0, 0.6)
 
     base_vertices = {
         "top": (0, -0.5 * base_scale, 0.5 * base_scale),
@@ -89,22 +102,21 @@ def _compute_tetrahedron_geometry(
         "back": (0, 0.3 * base_scale, -0.5 * base_scale),
     }
 
-    deformation = clamp(deformation, 0.0, 0.55)
     drift_direction = instability_axis
 
     deformed_vertices = {}
     for name, (x, y, z) in base_vertices.items():
         magnitude = math.sqrt(x * x + y * y + z * z)
         if magnitude > 0:
-            push_strength = magnitude * deformation * 1.8
+            push_strength = magnitude * total_deformation * (1.8 - core_resistance)
         else:
-            push_strength = deformation
+            push_strength = total_deformation * (1.0 - core_resistance)
 
         dx = drift_direction[0] * push_strength * (1.0 + abs(x) * 0.5)
         dy = drift_direction[1] * push_strength * (1.0 + abs(y) * 0.5)
         dz = drift_direction[2] * push_strength * (1.0 + abs(z) * 0.5)
 
-        scale_factor = 1.0 - (deformation * 0.25)
+        scale_factor = 1.0 - (total_deformation * 0.25)
 
         deformed_vertices[name] = (
             (x + dx) * scale_factor,
@@ -148,23 +160,31 @@ def _compute_tetrahedron_geometry(
         "opacity": 0.5 + (coherence * 0.5),
     }
 
+    core_tightening = core_resistance * 2.0
+    effective_core_radius = max(0.06, core_radius - core_tightening)
+
     coherence_core = {
-        "radius": core_radius,
+        "radius": effective_core_radius,
+        "base_radius": core_radius,
         "color": "#22C55E" if coherence > 0.6 else "#3B82F6" if coherence > 0.3 else "#F97316",
-        "pulse_intensity": core_pulse_intensity,
-        "pulse_frequency": 1.0 + (drift * 0.5),
-        "glow_spread": 0.15 + (drift * 0.1),
+        "pulse_intensity": core_pulse_intensity + (core_tightening * 0.5),
+        "pulse_frequency": 1.0 + (drift * 0.6),
+        "glow_spread": max(0.08, 0.15 + (drift * 0.1) - core_tightening),
         "opacity": 0.8 + (coherence * 0.2),
+        "resistance": core_resistance,
     }
 
     subsystem_influence = []
+    resistance_factor = core_resistance
     for domain_key, domain_info in SUBSYSTEM_DOMAINS.items():
         angle = math.radians(domain_info["angle"])
         influence_distance = 0.75
         x = influence_distance * math.cos(angle)
         y = influence_distance * math.sin(angle)
 
-        magnitude = clamp(drift * (1.0 if "climate" in domain_key else 0.7), 0.0, 1.0)
+        base_magnitude = drift * (1.0 if "climate" in domain_key else 0.7)
+        resisted_magnitude = base_magnitude * (1.0 - resistance_factor)
+        magnitude = clamp(resisted_magnitude, 0.0, 1.0)
 
         subsystem_influence.append({
             "domain": domain_key,
@@ -172,6 +192,7 @@ def _compute_tetrahedron_geometry(
             "position": (x, y),
             "influence_magnitude": magnitude,
             "influence_direction": (math.cos(angle), math.sin(angle)),
+            "resistance": resistance_factor,
         })
 
     return {
@@ -184,6 +205,10 @@ def _compute_tetrahedron_geometry(
         "drift": drift,
         "stability": stability,
         "coherence": coherence,
+        "total_deformation": total_deformation,
+        "core_resistance": core_resistance,
+        "pre_deformation": pre_deformation,
+        "hysteresis_residual": hysteresis_residual,
     }
 
 
@@ -228,10 +253,13 @@ def render_system_field_svg(
     svg_parts = []
 
     pulse_freq = geometry["coherence_core"]["pulse_frequency"]
-    pulse_duration = max(0.8, 2.0 - (pulse_freq * 0.4))
+    pulse_duration = max(0.6, 2.0 - (pulse_freq * 0.4))
+    drift = geometry["drift"]
+    core_tension = geometry["core_resistance"]
 
     svg_parts.append(f"""<svg width="{width}" height="{height}" viewBox="0 0 {width} {height}"
-        xmlns="http://www.w3.org/2000/svg" class="ner-system-field" preserveAspectRatio="xMidYMid meet">
+        xmlns="http://www.w3.org/2000/svg" class="ner-system-field" preserveAspectRatio="xMidYMid meet"
+        data-drift="{drift:.2f}" data-coherence="{geometry['coherence']:.2f}">
         <defs>
             <filter id="coherenceGlow" x="-50%" y="-50%" width="200%" height="200%">
                 <feGaussianBlur stdDeviation="8" result="blur"/>
@@ -258,26 +286,45 @@ def render_system_field_svg(
                     <feMergeNode in="SourceGraphic"/>
                 </feMerge>
             </filter>
+            <filter id="tensionShimmer" x="-50%" y="-50%" width="200%" height="200%">
+                <feGaussianBlur stdDeviation="6" result="blur"/>
+                <feMerge>
+                    <feMergeNode in="blur"/>
+                </feMerge>
+            </filter>
             <style>
-                @keyframes coherencePulse {{
-                    0%, 100% {{ opacity: 0.6; }}
-                    50% {{ opacity: 1.0; }}
-                }}
                 @keyframes coreRadiate {{
                     0% {{ r: {geometry["coherence_core"]["radius"]:.3f}; }}
-                    50% {{ r: {geometry["coherence_core"]["radius"] + 0.06:.3f}; }}
+                    50% {{ r: {geometry["coherence_core"]["radius"] + 0.05:.3f}; }}
                     100% {{ r: {geometry["coherence_core"]["radius"]:.3f}; }}
                 }}
                 @keyframes ringBreathing {{
                     0%, 100% {{ stroke-width: 1.8; opacity: 0.5; }}
                     50% {{ stroke-width: 2.2; opacity: 0.7; }}
                 }}
+                @keyframes tensionShimmer {{
+                    0%, 100% {{ opacity: 0.3; }}
+                    50% {{ opacity: 0.6; }}
+                }}
+                @keyframes ambientDrift {{
+                    0%, 100% {{ transform: translate(0, 0) scale(1); }}
+                    25% {{ transform: translate(1px, -1px) scale(1.002); }}
+                    50% {{ transform: translate(0, 1px) scale(1); }}
+                    75% {{ transform: translate(-1px, -1px) scale(0.998); }}
+                }}
                 .ner-coherence-core {{
-                    animation: coreRadiate {pulse_duration:.2f}s ease-in-out infinite;
+                    animation: coreRadiate {pulse_duration:.2f}s cubic-bezier(0.34, 1.56, 0.64, 1) infinite;
                     filter: url(#coreRadiance);
                 }}
                 .ner-coherence-ring {{
-                    animation: ringBreathing {pulse_duration * 1.5:.2f}s ease-in-out infinite;
+                    animation: ringBreathing {pulse_duration * 1.5:.2f}s cubic-bezier(0.34, 1.56, 0.64, 1) infinite;
+                }}
+                .ner-system-field {{
+                    animation: ambientDrift {8 + (drift * 4):.1f}s ease-in-out infinite;
+                    transform-origin: center;
+                }}
+                .ner-tension-shimmer {{
+                    animation: tensionShimmer {1.2 + (drift * 0.8):.2f}s ease-in-out infinite;
                 }}
             </style>
         </defs>

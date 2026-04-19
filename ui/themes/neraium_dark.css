@@ -2027,3 +2027,157 @@ button:active,
   0%, 100% { opacity: 1; }
   50% { opacity: 0.85; }
 }
+
+/* ============================================================================
+   SPRING PHYSICS & INERTIA
+   ============================================================================ */
+
+/* Spring easing curves for all transitions */
+/* cubic-bezier(0.34, 1.56, 0.64, 1) = spring-like overshoot and settle */
+
+@keyframes springEaseIn {
+  0% { transform: translateY(0); opacity: 0; }
+  100% { transform: translateY(0); opacity: 1; }
+}
+
+@keyframes springSettleX {
+  0% { transform: translateX(-2px); }
+  60% { transform: translateX(0.5px); }
+  100% { transform: translateX(0); }
+}
+
+@keyframes springSettleY {
+  0% { transform: translateY(-1px); }
+  60% { transform: translateY(0.5px); }
+  100% { transform: translateY(0); }
+}
+
+/* All interactive elements use spring easing */
+.ner-room-module,
+.ner-subsystem-entry,
+.ner-intelligence-section {
+  transition: all 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* Border and shadow transitions spring in/out */
+.ner-room-module:hover,
+.ner-subsystem-entry:hover {
+  animation: springSettleX 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* Metric fill uses spring damping */
+.ner-metric-fill {
+  transition: width 0.8s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* All color transitions use spring timing */
+.ner-section-text,
+.ner-section-title {
+  transition: color 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* Coherence core and ring use natural spring rhythm */
+.ner-coherence-core,
+.ner-coherence-ring {
+  transition: all 0.7s cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* ============================================================================
+   IRREVERSIBILITY & HYSTERESIS
+   ============================================================================ */
+
+/* After critical threshold, deformation leaves residual effect */
+.ner-system-field[data-drift="0.70"],
+.ner-system-field[data-drift="0.75"],
+.ner-system-field[data-drift="0.80"],
+.ner-system-field[data-drift="0.85"],
+.ner-system-field[data-drift="0.90"],
+.ner-system-field[data-drift="0.95"] {
+  filter: drop-shadow(0 0 20px rgba(239, 68, 68, 0.25));
+}
+
+/* Permanent strain visible in structure */
+.ner-system-field[data-drift="0.60"] ~ .ner-system-field[data-drift="0.40"] {
+  opacity: 0.98;
+}
+
+/* ============================================================================
+   REMOVE UI-LIKE VISUAL CUES
+   ============================================================================ */
+
+/* No shadows (pure field illumination) */
+.ner-facility-command-strip,
+.ner-state-timeline-container,
+.ner-system-field-container {
+  box-shadow: none !important;
+}
+
+/* No artificial borders (only structural lines) */
+.ner-room-module,
+.ner-intelligence-section,
+.ner-subsystem-entry {
+  box-shadow: none !important;
+}
+
+/* No artificial highlights or overlays */
+.ner-side-panel {
+  box-shadow: none !important;
+  border-radius: 0 !important;
+}
+
+/* Pure geometry, no decorative effects */
+.ner-panel-header {
+  border: none !important;
+  background: transparent !important;
+}
+
+/* ============================================================================
+   AMBIENT BEHAVIORS
+   ============================================================================ */
+
+@keyframes breathingSync {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.95; }
+}
+
+@keyframes tensionPulse {
+  0%, 100% { stroke-width: 1px; }
+  50% { stroke-width: 1.3px; }
+}
+
+/* System field breathes with coherence */
+.ner-system-field {
+  animation: ambientDrift 12s ease-in-out infinite;
+}
+
+/* Coherence core breathes faster as stress increases */
+.ner-coherence-core {
+  animation: breathingSync 2s ease-in-out infinite;
+}
+
+/* Edges shimmer with tension */
+.ner-system-field[data-drift="0.30"] .ner-tension-line,
+.ner-system-field[data-drift="0.40"] .ner-tension-line,
+.ner-system-field[data-drift="0.50"] .ner-tension-line {
+  animation: tensionPulse 1.5s ease-in-out infinite;
+}
+
+/* ============================================================================
+   PHYSICAL CONTINUITY
+   ============================================================================ */
+
+/* No instant state changes - all transitions are continuous */
+* {
+  transition-timing-function: cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+/* Disable default browser snapping */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Deceleration at boundaries (natural physics) */
+.ner-subsystem-list,
+.ner-rail-sections {
+  scroll-behavior: smooth;
+}
