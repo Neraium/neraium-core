@@ -3,6 +3,7 @@
 import { DecisionUIState } from '@/lib/decisionToUI'
 import SystemTimeline from '@/components/SystemTimeline'
 import DriftChart from '@/components/DriftChart'
+import EnhancedTetrahedronViz from '@/components/EnhancedTetrahedronViz'
 
 interface SystemStateTrajectoryProps {
   state: DecisionUIState
@@ -59,6 +60,18 @@ export default function SystemStateTrajectory({ state, systemName }: SystemState
             <DriftChart chart={state.driftChart} minimal={false} severity={state.statusHeader.severity} />
           ) : (
             <div style={styles.placeholder}>No drift data available</div>
+          )}
+        </div>
+
+        {/* System state tetrahedron visualization */}
+        <div style={styles.section}>
+          <div style={styles.sectionTitle}>System State Space</div>
+          {state.tetrahedron ? (
+            <div style={styles.tetrahedronContainer}>
+              <EnhancedTetrahedronViz tetrahedronState={state.tetrahedron} isInteractive={false} />
+            </div>
+          ) : (
+            <div style={styles.placeholder}>No state space data available</div>
           )}
         </div>
       </div>
@@ -138,7 +151,7 @@ const styles: Record<string, React.CSSProperties> = {
   },
   content: {
     display: 'grid',
-    gridTemplateColumns: '1fr 1fr',
+    gridTemplateColumns: '1fr 1fr 1fr',
     gap: '16px',
     minHeight: '300px',
   },
@@ -198,5 +211,11 @@ const styles: Record<string, React.CSSProperties> = {
     fontSize: '11px',
     color: '#cbd5e1',
     marginTop: '2px',
+  },
+  tetrahedronContainer: {
+    width: '100%',
+    height: '300px',
+    borderRadius: '8px',
+    overflow: 'hidden',
   },
 }
