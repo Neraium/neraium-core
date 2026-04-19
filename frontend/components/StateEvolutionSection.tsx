@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useMemo } from 'react'
 
 interface TimelineState {
   drift: number
@@ -30,6 +30,14 @@ interface HoverData {
   timestamp: string
   x: number
   y: number
+  isInLeadTime?: boolean
+  timeToTransition?: number
+}
+
+interface LeadTimeEvent {
+  driftOnsetIndex: number
+  transitionIndex: number
+  leadTimeCycles: number
 }
 
 export function StateEvolutionSection({
@@ -41,7 +49,28 @@ export function StateEvolutionSection({
   const containerRef = useRef<HTMLDivElement>(null)
   const [hoveredPoint, setHoveredPoint] = useState<HoverData | null>(null)
 
-  // Detect regime transitions
+  // Detect when drift begins accelerating/emerging (drift onset)
+  const detectDriftOnset = (data: TimelineState[]): number => {
+    if (data.length < 3) return -1
+
+    const onsetDriftThreshold = 0.08 // Drift emerging
+    const accelerationThreshold = 0.008 // Significant acceleration per cycle
+
+    for (let i = 1; i < data.length; i++) {
+      const prev = data[i - 1]
+      const curr = data[i]
+      const acceleration = curr.drift - prev.drift
+
+      // Onset when drift crosses threshold with sustained acceleration
+      if (curr.drift >= onsetDriftThreshold && acceleration > accelerationThreshold) {
+        return i
+      }
+    }
+
+    return -1
+  }
+
+  // Detect regime transitions (state changes to more severe states)
   const detectTransitions = (data: TimelineState[]) => {
     if (data.length < 3) return []
 
@@ -71,6 +100,43 @@ export function StateEvolutionSection({
     return transitions
   }
 
+  // Calculate lead time between drift onset and transition
+  const calculateLeadTime = (data: TimelineState[]): LeadTimeEvent | null => {
+    const onsetIdx = detectDriftOnset(data)
+    const transitions = detectTransitions(data)
+
+    // Need both onset and a transition after it
+    if (onsetIdx < 0 || transitions.length === 0) {
+      return null
+    }
+
+    const firstTransitionAfterOnset = transitions.find((t) => t.index > onsetIdx)
+    if (!firstTransitionAfterOnset) {
+      return null
+    }
+
+    return {
+      driftOnsetIndex: onsetIdx,
+      transitionIndex: firstTransitionAfterOnset.index,
+      leadTimeCycles: firstTransitionAfterOnset.index - onsetIdx,
+    }
+  }
+
+  // Memoize lead time calculations
+  const leadTimeMetrics = useMemo(() => {
+    const onsetIdx = detectDriftOnset(timeline)
+    const transitions = detectTransitions(timeline)
+    const leadTime = calculateLeadTime(timeline)
+
+    return {
+      driftOnsetIndex: onsetIdx,
+      transitions,
+      leadTimeEvent: leadTime,
+      hasDriftOnset: onsetIdx >= 0,
+      hasLeadTime: leadTime !== null,
+    }
+  }, [timeline])
+
   const getStateColor = (drift: number) => {
     if (drift < 0.2) return '#10b981' // green - stable
     if (drift < 0.4) return '#f59e0b' // amber - drift
@@ -91,7 +157,9 @@ export function StateEvolutionSection({
     const width = 1400
     const height = 500
     const padding = 60
-    const transitions = detectTransitions(timeline)
+
+    // Use memoized lead time calculations
+    const { leadTimeEvent, driftOnsetIndex, transitions } = leadTimeMetrics
 
     // Data range
     const maxDrift = Math.max(...timeline.map((t) => t.drift), 1)
@@ -225,6 +293,33 @@ export function StateEvolutionSection({
         <rect x="${padding}" y="${padding}" width="${width - padding * 2}" height="${scaleY(0.6) - padding}" fill="#ef4444" opacity="0.03"/>
       </g>
 
+      <!-- Lead time band (if detected) -->
+      ${
+        leadTimeEvent
+          ? (() => {
+              const onsetX = scaleX(leadTimeEvent.driftOnsetIndex)
+              const transitionX = scaleX(leadTimeEvent.transitionIndex)
+              const bandWidth = transitionX - onsetX
+              const midX = onsetX + bandWidth / 2
+              return `
+                <defs>
+                  <linearGradient id="leadTimeGradient" x1="0%" x2="100%" y1="0%" y2="0%">
+                    <stop offset="0%" stop-color="#f59e0b" stop-opacity="0.15"/>
+                    <stop offset="100%" stop-color="#ef4444" stop-opacity="0.15"/>
+                  </linearGradient>
+                </defs>
+                <!-- Lead time background band -->
+                <rect x="${onsetX}" y="${padding}" width="${bandWidth}" height="${height - padding * 2}" fill="url(#leadTimeGradient)" rx="4"/>
+
+                <!-- Lead time label -->
+                <text x="${midX}" y="${padding + 25}" font-size="12" font-weight="300" fill="white" opacity="0.7" text-anchor="middle">
+                  Lead Time: ${leadTimeEvent.leadTimeCycles} cycles
+                </text>
+              `
+            })()
+          : ''
+      }
+
       <!-- Grid lines -->
       <g class="grid">
         ${Array.from({ length: 5 })
@@ -246,14 +341,37 @@ export function StateEvolutionSection({
         <line x1="${padding}" y1="${scaleY(0.6)}" x2="${width - padding}" y2="${scaleY(0.6)}" stroke="white" stroke-width="0.5" stroke-dasharray="3,3"/>
       </g>
 
-      <!-- Transition markers -->
+      <!-- Drift onset marker (amber) -->
+      ${
+        driftOnsetIndex >= 0
+          ? (() => {
+              const x = scaleX(driftOnsetIndex)
+              return `
+                <g class="drift-onset-marker">
+                  <line x1="${x}" y1="${padding}" x2="${x}" y2="${height - padding}" stroke="#f59e0b" stroke-width="2" opacity="0.4"/>
+                  <circle cx="${x}" cy="${scaleY(timeline[driftOnsetIndex].drift)}" r="4" fill="#f59e0b" opacity="0.6"/>
+                  <text x="${x}" y="${padding - 25}" font-size="11" font-weight="300" fill="#f59e0b" opacity="0.7" text-anchor="middle">Drift Emerging</text>
+                </g>
+              `
+            })()
+          : ''
+      }
+
+      <!-- Transition markers (red) -->
       ${transitions
-        .map((t) => {
+        .map((t, idx) => {
           const x = scaleX(t.index)
+          // Only highlight the first major transition
+          const isFirstTransition = idx === 0
           return `
-            <g class="transition">
-              <line x1="${x}" y1="${padding}" x2="${x}" y2="${height - padding}" class="transition-marker" stroke-dasharray="4,4"/>
-              <text x="${x}" y="${padding - 10}" class="state-label" fill="white">${t.toState}</text>
+            <g class="transition-marker-group">
+              <line x1="${x}" y1="${padding}" x2="${x}" y2="${height - padding}" stroke="#ef4444" stroke-width="${isFirstTransition ? 2.5 : 1.5}" opacity="${isFirstTransition ? 0.6 : 0.3}"/>
+              <circle cx="${x}" cy="${scaleY(t.drift)}" r="${isFirstTransition ? 5 : 3}" fill="#ef4444" opacity="${isFirstTransition ? 0.7 : 0.5}"/>
+              ${
+                isFirstTransition
+                  ? `<text x="${x}" y="${height - padding + 25}" font-size="11" font-weight="300" fill="#ef4444" opacity="0.8" text-anchor="middle">System Transition</text>`
+                  : ''
+              }
             </g>
           `
         })
@@ -329,8 +447,8 @@ export function StateEvolutionSection({
       <text x="${padding - 10}" y="${height - padding + 5}" font-size="11" fill="white" opacity="0.4" text-anchor="end">0%</text>
 
       <!-- Title -->
-      <text x="${padding}" y="${padding - 30}" font-size="14" font-weight="300" fill="white" opacity="0.8">System Evolution Trajectory</text>
-      <text x="${padding}" y="${padding - 12}" font-size="10" fill="white" opacity="0.4">Structural drift over time</text>
+      <text x="${padding}" y="${padding - 30}" font-size="14" font-weight="300" fill="white" opacity="0.8">System Evolution & Lead Time</text>
+      <text x="${padding}" y="${padding - 12}" font-size="10" fill="white" opacity="0.4">Structural drift with detection lead window</text>
     `
 
     svg.innerHTML = svgContent
@@ -349,12 +467,17 @@ export function StateEvolutionSection({
 
       if (closestIdx >= 0 && closestIdx < timeline.length) {
         const point = timeline[closestIdx]
+        const isInLeadTime = leadTimeEvent ? closestIdx >= leadTimeEvent.driftOnsetIndex && closestIdx <= leadTimeEvent.transitionIndex : false
+        const timeToTransition = leadTimeEvent ? Math.max(0, leadTimeEvent.transitionIndex - closestIdx) : undefined
+
         setHoveredPoint({
           index: closestIdx,
           drift: point.drift,
           timestamp: point.timestamp,
           x: scaleX(closestIdx),
           y: scaleY(point.drift),
+          isInLeadTime,
+          timeToTransition,
         })
       }
     }
@@ -370,7 +493,7 @@ export function StateEvolutionSection({
       svg.removeEventListener('mousemove', handleMouseMove)
       svg.removeEventListener('mouseleave', handleMouseLeave)
     }
-  }, [timeline, noActionProjection])
+  }, [timeline, noActionProjection, leadTimeMetrics])
 
   if (!timeline || timeline.length === 0) {
     return (
@@ -382,7 +505,14 @@ export function StateEvolutionSection({
         <div className="h-96 bg-gradient-to-b from-white/5 to-transparent rounded-lg border border-white/5 flex items-center justify-center">
           <div className="text-center">
             <div className="text-base font-light text-white/60 mb-2">Collecting baseline…</div>
-            <div className="text-sm font-light text-white/40">System evolution will appear as data accumulates</div>
+            <div className="text-sm font-light text-white/40">
+              Once data accumulates, this visualization will show:
+            </div>
+            <div className="text-xs font-light text-white/30 mt-4 space-y-1">
+              <div>• When drift began emerging</div>
+              <div>• Lead time before critical transitions</div>
+              <div>• Time window for intervention</div>
+            </div>
           </div>
         </div>
       </div>
@@ -393,6 +523,7 @@ export function StateEvolutionSection({
   const currentDrift = latestPoint.drift
   const currentState = getStateLabel(currentDrift)
   const currentColor = getStateColor(currentDrift)
+  const { leadTimeEvent, hasDriftOnset, hasLeadTime } = leadTimeMetrics
 
   return (
     <div ref={containerRef} className="space-y-8">
@@ -414,20 +545,58 @@ export function StateEvolutionSection({
         {/* Hover tooltip */}
         {hoveredPoint && (
           <div
-            className="fixed bg-black/80 border border-white/20 rounded px-3 py-2 z-50 text-xs pointer-events-none"
+            className="fixed bg-black/80 border border-white/20 rounded px-4 py-3 z-50 text-xs pointer-events-none"
             style={{
               left: `${hoveredPoint.x + 50}px`,
-              top: `${hoveredPoint.y - 30}px`,
+              top: `${hoveredPoint.y - 50}px`,
               backdropFilter: 'blur(4px)',
             }}
           >
-            <div className="text-white/80">
-              <div>Drift: {Math.round(hoveredPoint.drift * 100)}%</div>
+            <div className="text-white/80 space-y-1">
+              <div className="font-medium">Drift: {Math.round(hoveredPoint.drift * 100)}%</div>
               <div className="text-white/60">State: {getStateLabel(hoveredPoint.drift)}</div>
+              {hoveredPoint.isInLeadTime && (
+                <div className="text-amber-400 mt-2 pt-1 border-t border-white/10">
+                  In lead window
+                  {hoveredPoint.timeToTransition !== undefined && (
+                    <div>{hoveredPoint.timeToTransition} cycles to transition</div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
         )}
       </div>
+
+      {/* Lead time context */}
+      {leadTimeEvent && (
+        <div className="p-6 border border-amber-400/30 rounded-lg bg-amber-400/5">
+          <div className="text-xs text-amber-400 uppercase tracking-widest mb-3">Lead Time Detection</div>
+          <div className="grid grid-cols-3 gap-6">
+            <div>
+              <div className="text-sm font-light text-white/60 mb-1">Detection Point</div>
+              <div className="text-lg font-light text-amber-400">{leadTimeEvent.driftOnsetIndex} cycles</div>
+              <div className="text-xs text-white/40 mt-1">Drift onset</div>
+            </div>
+            <div>
+              <div className="text-sm font-light text-white/60 mb-1">Lead Window</div>
+              <div className="text-lg font-light text-white/80">{leadTimeEvent.leadTimeCycles} cycles</div>
+              <div className="text-xs text-white/40 mt-1">Before transition</div>
+            </div>
+            <div>
+              <div className="text-sm font-light text-white/60 mb-1">Transition Point</div>
+              <div className="text-lg font-light text-red-400">{leadTimeEvent.transitionIndex} cycles</div>
+              <div className="text-xs text-white/40 mt-1">System changed state</div>
+            </div>
+          </div>
+          <div className="mt-4 pt-4 border-t border-amber-400/20">
+            <p className="text-sm font-light text-white/70 leading-relaxed">
+              The system demonstrated <strong className="text-amber-400">{leadTimeEvent.leadTimeCycles} cycles of observable drift</strong> before
+              the structural transition occurred. This is the actionable lead time for intervention.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Current state badge */}
       <div className="grid grid-cols-3 gap-6">
@@ -465,46 +634,82 @@ export function StateEvolutionSection({
           </div>
         </div>
 
-        <div className="p-6 border border-white/10 rounded-lg">
-          <div className="text-xs font-light text-white/40 uppercase tracking-widest mb-3">Timeline Progress</div>
-          <div className="text-lg font-light text-white/80">
-            {timeline.length} <span className="text-white/40">cycles</span>
+        <div
+          className="p-6 border rounded-lg"
+          style={{
+            borderColor: leadTimeEvent ? (timeline.length - 1 <= leadTimeEvent.transitionIndex ? '#f59e0b40' : '#ef444440') : 'rgba(255, 255, 255, 0.1)',
+            backgroundColor: leadTimeEvent ? (timeline.length - 1 <= leadTimeEvent.transitionIndex ? '#f59e0b05' : '#ef444405') : undefined,
+          }}
+        >
+          <div
+            className="text-xs font-light uppercase tracking-widest mb-3"
+            style={{ color: leadTimeEvent ? (timeline.length - 1 <= leadTimeEvent.transitionIndex ? '#f59e0b' : '#ef4444') : 'rgba(255, 255, 255, 0.4)' }}
+          >
+            {leadTimeEvent ? (timeline.length - 1 <= leadTimeEvent.transitionIndex ? 'In Lead Window' : 'Post-Transition') : 'Timeline Status'}
           </div>
-          <div className="text-sm font-light text-white/60 mt-2">90s observation window</div>
+          <div className="text-lg font-light text-white/80">
+            {leadTimeEvent ? (
+              <>
+                {timeline.length - 1 <= leadTimeEvent.transitionIndex ? (
+                  <>
+                    <span className="text-amber-400">{leadTimeEvent.transitionIndex - (timeline.length - 1)} cycles</span>
+                    <div className="text-sm font-light text-white/60 mt-1">remaining in window</div>
+                  </>
+                ) : (
+                  <>
+                    <span className="text-red-400">{timeline.length - 1 - leadTimeEvent.transitionIndex} cycles</span>
+                    <div className="text-sm font-light text-white/60 mt-1">past transition</div>
+                  </>
+                )}
+              </>
+            ) : (
+              <>
+                <span className="text-white/60">{timeline.length} cycles</span>
+                <div className="text-sm font-light text-white/60 mt-1">no transition yet</div>
+              </>
+            )}
+          </div>
         </div>
       </div>
 
       {/* Legend and interpretation */}
       <div className="grid grid-cols-2 gap-6 pt-4 border-t border-white/5">
         <div className="space-y-3">
-          <div className="text-xs font-light text-white/40 uppercase tracking-widest">Legend</div>
+          <div className="text-xs font-light text-white/40 uppercase tracking-widest">Visual Elements</div>
           <div className="space-y-2 text-xs font-light text-white/60">
             <div className="flex items-center gap-2">
               <div className="w-3 h-3 rounded-full bg-gradient-to-r from-green-400 to-red-400" />
-              <span>Color progression = older → recent | stable → critical</span>
+              <span>Trajectory = system behavior over time</span>
             </div>
             <div className="flex items-center gap-2">
-              <div className="w-3 h-0.5 bg-white/40" />
-              <span>Vertical markers = regime transitions</span>
+              <div className="w-2 h-0.5 bg-amber-400" />
+              <span>Amber marker = drift emerging</span>
             </div>
             <div className="flex items-center gap-2">
-              <div className="w-3 h-0.5 bg-white/40 border-t border-dashed" />
-              <span>Dashed line = no-intervention projection</span>
+              <div className="w-2 h-0.5 bg-red-400" />
+              <span>Red marker = system transition</span>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-0.5 bg-gradient-to-r from-amber-400/30 to-red-400/30" />
+              <span>Shaded band = lead time window</span>
             </div>
           </div>
         </div>
 
         <div className="space-y-3">
-          <div className="text-xs font-light text-white/40 uppercase tracking-widest">Interpretation</div>
+          <div className="text-xs font-light text-white/40 uppercase tracking-widest">What This Shows</div>
           <div className="space-y-2 text-xs font-light text-white/60">
             <div>
-              <strong className="text-white/80">Smooth trajectory</strong> = predictable drift
+              <strong className="text-white/80">Drift Onset</strong>: When instability became measurable
             </div>
             <div>
-              <strong className="text-white/80">Steep acceleration</strong> = coupling effects spreading
+              <strong className="text-white/80">Lead Time Band</strong>: Observable window before critical transition
             </div>
             <div>
-              <strong className="text-white/80">Diverging projection</strong> = window for intervention closing
+              <strong className="text-white/80">Transition Point</strong>: When system entered new regime
+            </div>
+            <div>
+              <strong className="text-white/80">Actionable Lead</strong>: Time available for intervention
             </div>
           </div>
         </div>
