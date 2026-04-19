@@ -7,10 +7,10 @@ temperature, humidity, CO2, VPD, pH, EC, PPFD, and irrigation volume.
 Usage:
     python tools/seed_grow_op_demo.py
     python tools/seed_grow_op_demo.py --base-url https://your-deployment.up.railway.app
-    python tools/seed_grow_op_demo.py --phase stable_veg          # baseline only
-    python tools/seed_grow_op_demo.py --phase drift_onset          # show drift
-    python tools/seed_grow_op_demo.py --phase heat_stress          # full alert
-    python tools/seed_grow_op_demo.py --phase intervention_recovery
+    python tools/seed_grow_op_demo.py --phase baseline_stable          # baseline only
+    python tools/seed_grow_op_demo.py --phase hvac_degradation         # show drift
+    python tools/seed_grow_op_demo.py --phase heat_stress_buildup      # full alert
+    python tools/seed_grow_op_demo.py --phase recovery_stabilization
 """
 
 from __future__ import annotations
@@ -113,10 +113,13 @@ def clip_text(text: str, limit: int = 220) -> str:
 
 
 PHASE_LABELS = {
-    "stable_veg": "Stable Veg (baseline)",
-    "drift_onset": "Drift Onset (HVAC degrading)",
-    "heat_stress": "Heat Stress (full alert)",
-    "intervention_recovery": "Intervention Recovery",
+    "baseline_stable": "Stable Veg (baseline)",
+    "night_cycle_recovery": "Night Cycle Recovery",
+    "hvac_degradation": "Drift Onset (HVAC degrading)",
+    "heat_stress_buildup": "Heat Stress Buildup",
+    "critical_alert": "Critical Alert",
+    "operator_intervention": "Operator Intervention",
+    "recovery_stabilization": "Recovery & Stabilization",
 }
 
 SENSOR_LABELS = {
@@ -155,7 +158,15 @@ def main() -> None:
     parser.add_argument(
         "--phase",
         default=None,
-        choices=["stable_veg", "drift_onset", "heat_stress", "intervention_recovery"],
+        choices=[
+            "baseline_stable",
+            "night_cycle_recovery",
+            "hvac_degradation",
+            "heat_stress_buildup",
+            "critical_alert",
+            "operator_intervention",
+            "recovery_stabilization",
+        ],
         help="Replay only a specific phase (default: all phases)",
     )
     parser.add_argument(
