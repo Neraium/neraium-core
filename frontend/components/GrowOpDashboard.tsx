@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from 'react'
 import styles from './GrowOpDashboard.module.css'
 import RoomCard from './RoomCard'
-import RoomDetail from './RoomDetail'
+import RoomDetail from './RoomDetailLegacy'
 import BuildingOverview from './BuildingOverview'
 
 interface SensorReading {

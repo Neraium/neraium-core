@@ -254,3 +254,142 @@ export function jitterOffset(seed: number, t: number, intensity: number): number
   const n2 = pseudoNoise(seed + 100, t * 2.7)
   return (n1 - 0.5) * intensity * 4 + (n2 - 0.5) * intensity * 2
 }
+
+/* ─── Room Data ───────────────────────────────────────────────────────────── */
+
+export interface RoomData {
+  id: string
+  name: string
+  shortName: string
+  floor: number
+  status: 'optimal' | 'warning' | 'critical'
+  stage: string
+  sensors: {
+    temperature_f: number
+    humidity_rh: number
+    co2_ppm: number
+    vpd_kpa: number
+    ph: number
+    ec_ms: number
+    ppfd_umol: number
+    irrigation_ml: number
+  }
+  plantCount: number
+  capacity: number
+}
+
+export const ROOMS: RoomData[] = [
+  {
+    id: 'veg-a',
+    name: 'Vegetative Zone A',
+    shortName: 'VEG-A',
+    floor: 1,
+    status: 'optimal',
+    stage: 'Vegetative (Week 3-4)',
+    sensors: { temperature_f: 75.5, humidity_rh: 62.3, co2_ppm: 1350, vpd_kpa: 1.1, ph: 6.1, ec_ms: 1.6, ppfd_umol: 600, irrigation_ml: 250 },
+    plantCount: 950, capacity: 1000,
+  },
+  {
+    id: 'veg-b',
+    name: 'Vegetative Zone B',
+    shortName: 'VEG-B',
+    floor: 1,
+    status: 'optimal',
+    stage: 'Vegetative (Week 2-3)',
+    sensors: { temperature_f: 74.8, humidity_rh: 63.1, co2_ppm: 1400, vpd_kpa: 1.05, ph: 6.05, ec_ms: 1.55, ppfd_umol: 620, irrigation_ml: 260 },
+    plantCount: 920, capacity: 1000,
+  },
+  {
+    id: 'flow-a',
+    name: 'Flowering Zone A',
+    shortName: 'FLOW-A',
+    floor: 2,
+    status: 'optimal',
+    stage: 'Flowering (Week 4-5)',
+    sensors: { temperature_f: 72.2, humidity_rh: 55.4, co2_ppm: 1500, vpd_kpa: 1.3, ph: 6.2, ec_ms: 1.8, ppfd_umol: 750, irrigation_ml: 280 },
+    plantCount: 1150, capacity: 1200,
+  },
+  {
+    id: 'flow-b',
+    name: 'Flowering Zone B',
+    shortName: 'FLOW-B',
+    floor: 2,
+    status: 'optimal',
+    stage: 'Flowering (Week 5-6)',
+    sensors: { temperature_f: 72.5, humidity_rh: 54.8, co2_ppm: 1480, vpd_kpa: 1.28, ph: 6.15, ec_ms: 1.75, ppfd_umol: 740, irrigation_ml: 275 },
+    plantCount: 1100, capacity: 1200,
+  },
+  {
+    id: 'flow-c',
+    name: 'Flowering Zone C',
+    shortName: 'FLOW-C',
+    floor: 2,
+    status: 'optimal',
+    stage: 'Flowering (Week 3-4)',
+    sensors: { temperature_f: 73.1, humidity_rh: 56.2, co2_ppm: 1520, vpd_kpa: 1.25, ph: 6.18, ec_ms: 1.78, ppfd_umol: 735, irrigation_ml: 282 },
+    plantCount: 1080, capacity: 1200,
+  },
+]
+
+export function deriveRoomStates(state: DecisionUIState): RoomData[] {
+  const idx = stageIndex(state.statusHeader.degradationStage)
+  const sev = state.statusHeader.severity
+
+  return ROOMS.map((room, i) => {
+    /* perturb sensor values based on scenario for realism */
+    const drift = (seed: number) => pseudoNoise(seed + i * 37, idx * 0.5) * 0.3
+
+    let status: RoomData['status'] = 'optimal'
+    if (idx >= 5) status = 'critical'
+    else if (idx >= 3 && (room.id === 'flow-b' || room.id === 'flow-a')) status = 'critical'
+    else if (idx >= 2 && room.id === 'flow-b') status = 'warning'
+    else if (idx >= 1 && room.id === 'flow-b') status = 'warning'
+    else if (idx >= 4 && room.id === 'veg-b') status = 'warning'
+    else if (idx >= 3 && room.id === 'flow-c') status = 'warning'
+
+    const tempDelta = status === 'critical' ? 12 + drift(1) * 6 : status === 'warning' ? 5 + drift(1) * 3 : drift(1) * 2
+    const rhDelta = status === 'critical' ? -18 + drift(2) * 8 : status === 'warning' ? -8 + drift(2) * 4 : drift(2) * 2
+    const vpdDelta = status === 'critical' ? 1.0 + drift(3) * 0.4 : status === 'warning' ? 0.3 + drift(3) * 0.2 : drift(3) * 0.1
+    const co2Delta = status === 'critical' ? -500 + drift(4) * 200 : status === 'warning' ? -150 + drift(4) * 80 : drift(4) * 50
+
+    return {
+      ...room,
+      status,
+      sensors: {
+        temperature_f: Math.round((room.sensors.temperature_f + tempDelta) * 10) / 10,
+        humidity_rh: Math.round((room.sensors.humidity_rh + rhDelta) * 10) / 10,
+        co2_ppm: Math.round(room.sensors.co2_ppm + co2Delta),
+        vpd_kpa: Math.round((room.sensors.vpd_kpa + vpdDelta) * 100) / 100,
+        ph: Math.round((room.sensors.ph + (status === 'critical' ? 0.5 : 0) + drift(5) * 0.2) * 100) / 100,
+        ec_ms: Math.round((room.sensors.ec_ms + (status === 'critical' ? 0.6 : 0) + drift(6) * 0.2) * 100) / 100,
+        ppfd_umol: Math.round(room.sensors.ppfd_umol + (status === 'critical' ? -80 : 0) + drift(7) * 30),
+        irrigation_ml: Math.round(room.sensors.irrigation_ml + drift(8) * 20),
+      },
+    }
+  })
+}
+
+/* ─── Sparkline helpers ───────────────────────────────────────────────────── */
+
+export function generateSparkline(values: number[], width: number, height: number): string {
+  const min = Math.min(...values)
+  const max = Math.max(...values)
+  const range = max - min || 1
+  const n = values.length
+  return values.map((v, i) => {
+    const x = (i / Math.max(n - 1, 1)) * width
+    const y = height - ((v - min) / range) * height
+    return `${i === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`
+  }).join(' ')
+}
+
+export function generateSensorHistory(baseValue: number, seed: number, count: number = 20): number[] {
+  const values: number[] = []
+  let current = baseValue
+  for (let i = 0; i < count; i++) {
+    const noise = (pseudoNoise(seed, i * 0.3) - 0.5) * baseValue * 0.08
+    current += noise
+    values.push(current)
+  }
+  return values
+}

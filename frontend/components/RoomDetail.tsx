@@ -1,220 +1,153 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
-import styles from './RoomDetail.module.css'
-import type { Room } from './GrowOpDashboard'
-import StateTimeline from './StateTimeline'
-import DriftIndicator from './DriftIndicator'
-import SensorChart from './SensorChart'
+import React from 'react'
+import { LiveSystem } from '@/lib/simulation'
 
 interface Props {
-  room: Room
-  onBack: () => void
-  building: any
+  system: LiveSystem
+  roomId: string
+  onClose: () => void
 }
 
-const getThresholds = (sensor: string) => {
-  const thresholds: Record<string, any> = {
-    temperature_f: {
-      min: 68,
-      max: 82,
-      critical_max: 88,
-      unit: '°F',
-    },
-    humidity_rh: {
-      min: 45,
-      max: 70,
-      unit: '%',
-    },
-    co2_ppm: {
-      min: 800,
-      max: 1600,
-      unit: 'ppm',
-    },
-    vpd_kpa: {
-      min: 0.6,
-      max: 1.4,
-      critical_max: 2.0,
-      unit: 'kPa',
-    },
-    ph: {
-      min: 5.5,
-      max: 6.5,
-      unit: 'pH',
-    },
-    ec_ms: {
-      min: 1.0,
-      max: 2.2,
-      unit: 'mS/cm',
-    },
-    ppfd_umol: {
-      min: 400,
-      max: 750,
-      unit: 'µmol/m²/s',
-    },
-    irrigation_ml: {
-      min: 100,
-      max: 350,
-      unit: 'mL/event',
-    },
-  }
-  return thresholds[sensor]
+const C = {
+  text: '#e8e9eb',
+  secondary: '#6b7080',
+  muted: '#3a3f4a',
+  neon: '#7cb342',
+  blue: '#5c9dff',
+  orange: '#ff9e6d',
+  red: '#e05c5c',
+  surface: '#080a0d',
+  surfaceHi: '#0f1116',
+  border: 'rgba(255,255,255,0.04)',
 }
 
-const getSensorLabel = (key: string) => {
-  const labels: Record<string, string> = {
-    temperature_f: 'Temperature',
-    humidity_rh: 'Humidity',
-    co2_ppm: 'CO₂',
-    vpd_kpa: 'VPD',
-    ph: 'pH',
-    ec_ms: 'EC',
-    ppfd_umol: 'Light Intensity',
-    irrigation_ml: 'Irrigation',
-  }
-  return labels[key] || key
+const SENSORS: Array<{ key: keyof LiveSystem['rooms'][0]['sensors']; label: string; unit: string; min: number; max: number }> = [
+  { key: 'temperature_f', label: 'Temperature', unit: '°F', min: 65, max: 92 },
+  { key: 'humidity_rh', label: 'Humidity', unit: '%', min: 30, max: 80 },
+  { key: 'co2_ppm', label: 'CO₂', unit: 'ppm', min: 300, max: 2000 },
+  { key: 'vpd_kpa', label: 'VPD', unit: 'kPa', min: 0.3, max: 3.2 },
+  { key: 'ph', label: 'pH', unit: '', min: 5.0, max: 7.5 },
+  { key: 'ec_ms', label: 'EC', unit: 'mS', min: 0.5, max: 3.5 },
+  { key: 'ppfd_umol', label: 'PPFD', unit: 'µmol', min: 0, max: 900 },
+  { key: 'irrigation_ml', label: 'Irrigation', unit: 'mL', min: 0, max: 400 },
+]
+
+function sparkline(data: number[], w: number, h: number): string {
+  const min = Math.min(...data)
+  const max = Math.max(...data)
+  const range = max - min || 1
+  return data.map((v, i) => {
+    const x = (i / Math.max(data.length - 1, 1)) * w
+    const y = h - ((v - min) / range) * h
+    return `${i === 0 ? 'M' : 'L'}${x.toFixed(1)},${y.toFixed(1)}`
+  }).join(' ')
 }
 
-const getStatusForValue = (
-  key: string,
-  value: number
-): 'optimal' | 'warning' | 'critical' => {
-  const threshold = getThresholds(key)
-  if (!threshold) return 'optimal'
+export function RoomDetail({ system, roomId, onClose }: Props) {
+  const room = system.rooms.find(r => r.id === roomId)
+  if (!room) return null
 
-  if (threshold.critical_max && value > threshold.critical_max) {
-    return 'critical'
-  }
-  if (value < threshold.min || value > threshold.max) {
-    return 'warning'
-  }
-  return 'optimal'
-}
-
-export default function RoomDetail({ room, onBack, building }: Props) {
-  const [historyData, setHistoryData] = useState<Record<string, number[]>>({})
-  const [driftScore, setDriftScore] = useState(0)
-  const [timeToIntervention, setTimeToIntervention] = useState('24-48 hours')
-
-  useEffect(() => {
-    const sensorKeys = Object.keys(room.sensors) as Array<
-      keyof typeof room.sensors
-    >
-    const initialHistory: Record<string, number[]> = {}
-
-    sensorKeys.forEach((key) => {
-      initialHistory[key] = [room.sensors[key]]
-    })
-
-    setHistoryData(initialHistory)
-
-    const interval = setInterval(() => {
-      setHistoryData((prev) => {
-        const updated = { ...prev }
-
-        sensorKeys.forEach((key) => {
-          const currentValue = prev[key]?.[prev[key].length - 1] || 0
-          let nextValue = currentValue
-
-          if (key === 'temperature_f' && room.id === 'room-4') {
-            nextValue =
-              currentValue + (Math.random() - 0.4) * 1.5 + (Math.random() - 0.5)
-          } else if (key === 'humidity_rh' && room.id === 'room-4') {
-            nextValue =
-              currentValue + (Math.random() - 0.6) * 1.2 + (Math.random() - 0.4)
-          } else {
-            nextValue =
-              currentValue + (Math.random() - 0.5) * 0.5 + (Math.random() - 0.35)
-          }
-
-          updated[key] = [...(prev[key] || []), parseFloat(nextValue.toFixed(2))]
-
-          if (updated[key].length > 120) {
-            updated[key] = updated[key].slice(-120)
-          }
-        })
-
-        // Calculate drift score
-        if (room.id === 'room-4') {
-          const newDriftScore = Math.min(95, 20 + (updated['temperature_f']?.length || 0) * 0.5)
-          setDriftScore(newDriftScore)
-          setTimeToIntervention(newDriftScore > 70 ? '4-8 hours' : '12-24 hours')
-        }
-
-        return updated
-      })
-    }, 2000)
-
-    return () => clearInterval(interval)
-  }, [room.id])
-
-  const keySignals = ['temperature_f', 'humidity_rh', 'co2_ppm', 'vpd_kpa']
-  const getSensorEntries = () => {
-    return Object.entries(room.sensors).filter(([key]) =>
-      keySignals.includes(key)
-    ) as Array<[string, number]>
-  }
+  const col = room.status === 'critical' ? C.red : room.status === 'warning' ? C.orange : C.neon
 
   return (
-    <div className={styles.container}>
-      <div className={styles.topBar}>
-        <button className={styles.backButton} onClick={onBack}>
-          ← Back
-        </button>
-        <h1>{room.name}</h1>
-        <div />
-      </div>
+    <div style={{
+      position: 'absolute', top: 0, right: 0, bottom: 0, width: 400,
+      background: `linear-gradient(180deg, ${C.surface} 0%, #030405 100%)`,
+      borderLeft: `1px solid ${C.border}`,
+      boxShadow: '-12px 0 40px rgba(0,0,0,0.7)',
+      zIndex: 100,
+      display: 'flex', flexDirection: 'column',
+      animation: 'rdIn 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards',
+    }}>
+      <style>{`@keyframes rdIn { from { transform: translateX(100%) } to { transform: translateX(0) } }`}</style>
 
-      {/* ROOM STATE & INTERVENTION WINDOW */}
-      <div className={styles.criticalSection}>
-        <div className={styles.stateCard}>
-          <div className={styles.stateLabel}>Current State</div>
-          <div className={`${styles.stateBadge} ${styles[room.status]}`}>
-            {room.status === 'critical' ? '🔴' : room.status === 'warning' ? '🟡' : '🟢'}
-            {room.status.toUpperCase()}
-          </div>
-          <div className={styles.stageText}>{room.stage}</div>
-        </div>
-
-        <DriftIndicator driftScore={driftScore} room={room} />
-
-        <div className={styles.interventionCard}>
-          <div className={styles.interventionLabel}>Action Window</div>
-          <div className={styles.interventionTime}>{timeToIntervention}</div>
-          <div className={styles.interventionSubtext}>
-            {driftScore > 70 ? '⚠️ Limited time to intervene' : '✓ Window still open'}
+      {/* header */}
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '16px 20px', borderBottom: `1px solid ${C.border}`,
+      }}>
+        <div>
+          <div style={{ fontSize: 14, fontWeight: 800, color: C.text }}>{room.name}</div>
+          <div style={{ fontSize: 9, color: C.muted, marginTop: 2, fontWeight: 600 }}>
+            {room.stage} · Floor {room.floor} · {room.cycle === 'day' ? 'Lights on' : 'Night recovery'}
           </div>
         </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span style={{
+            fontSize: 9, fontWeight: 800, letterSpacing: '0.08em', textTransform: 'uppercase',
+            color: col, padding: '3px 10px', borderRadius: 4,
+            background: `${col}10`, border: `1px solid ${col}25`,
+          }}>
+            {room.status}
+          </span>
+          <button onClick={onClose} style={{
+            width: 26, height: 26, borderRadius: 6, background: C.surfaceHi,
+            border: `1px solid ${C.border}`, color: C.secondary,
+            fontSize: 16, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}>×</button>
+        </div>
       </div>
 
-      {/* EVOLUTION TIMELINE */}
-      <StateTimeline room={room} historyData={historyData} />
+      <div style={{ flex: 1, overflowY: 'auto', padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 12 }}>
+        {/* stats */}
+        <div style={{ display: 'flex', gap: 12 }}>
+          <div style={{ flex: 1, padding: '12px', background: C.surfaceHi, borderRadius: 8, border: `1px solid ${C.border}` }}>
+            <div style={{ fontSize: 8, color: C.muted, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 4 }}>Plants</div>
+            <div style={{ fontSize: 20, fontWeight: 900, color: C.text }}>{room.plantCount.toLocaleString()}</div>
+            <div style={{ fontSize: 8, color: C.muted, marginTop: 2 }}>/ {room.capacity.toLocaleString()}</div>
+          </div>
+          <div style={{ flex: 1, padding: '12px', background: C.surfaceHi, borderRadius: 8, border: `1px solid ${C.border}` }}>
+            <div style={{ fontSize: 8, color: C.muted, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 4 }}>Coherence</div>
+            <div style={{ fontSize: 20, fontWeight: 900, color: room.confidence > 0.6 ? C.neon : room.confidence > 0.3 ? C.orange : C.red }}>
+              {(room.confidence * 100).toFixed(0)}%
+            </div>
+            <div style={{ fontSize: 8, color: C.muted, marginTop: 2 }}>subsystem confidence</div>
+          </div>
+        </div>
 
-      {/* KEY SIGNALS - FOCUSED VIEW */}
-      <div className={styles.signalsSection}>
-        <h2>Key Climate Signals</h2>
-        <div className={styles.chartsGrid}>
-          {getSensorEntries().map(([key, value]) => {
-            const threshold = getThresholds(key)
-            const status = getStatusForValue(key, value)
-            const history = historyData[key] || [value]
+        {/* behavioral state */}
+        <div style={{
+          padding: '10px 12px', background: `${col}08`, borderRadius: 6,
+          border: `1px solid ${col}15`,
+        }}>
+          <div style={{ fontSize: 8, color: col, fontWeight: 800, letterSpacing: '0.1em', textTransform: 'uppercase', marginBottom: 3 }}>Behavioral State</div>
+          <div style={{ fontSize: 11, color: C.text, fontWeight: 600 }}>{room.behavioralState}</div>
+        </div>
 
-            return (
-              <div key={key} className={styles.chartContainer}>
-                <SensorChart
-                  label={getSensorLabel(key)}
-                  value={value}
-                  unit={threshold?.unit || ''}
-                  status={status}
-                  history={history}
-                  threshold={threshold}
-                />
+        {/* sensor sparklines */}
+        <div style={{ fontSize: 8, color: C.muted, fontWeight: 700, letterSpacing: '0.12em', textTransform: 'uppercase', marginBottom: 2 }}>Sensor Telemetry</div>
+
+        {SENSORS.map(meta => {
+          const value = room.sensors[meta.key]
+          const hist = room.histories[meta.key]
+          const spark = sparkline(hist.slice(-24), 110, 26)
+          const isHigh = value > meta.max * 0.92
+          const isLow = value < meta.min * 1.08
+          const valCol = isHigh || isLow ? C.red : C.text
+
+          return (
+            <div key={meta.key} style={{
+              display: 'flex', alignItems: 'center', gap: 10,
+              padding: '8px 12px', background: C.surfaceHi, borderRadius: 7, border: `1px solid ${C.border}`,
+            }}>
+              <div style={{ width: 70, flexShrink: 0 }}>
+                <div style={{ fontSize: 8, color: C.muted, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase' }}>{meta.label}</div>
+                <div style={{ fontSize: 13, fontWeight: 800, color: valCol, marginTop: 1 }}>{value}{meta.unit}</div>
               </div>
-            )
-          })}
-        </div>
+              <svg width={110} height={26} style={{ flexShrink: 0 }}>
+                <path d={spark} fill="none" stroke={isHigh || isLow ? C.red : col} strokeWidth={1.3} opacity={0.75} />
+                <circle cx={110} cy={26 - ((hist[hist.length - 1] - Math.min(...hist)) / (Math.max(...hist) - Math.min(...hist) || 1)) * 26} r={2} fill={isHigh || isLow ? C.red : col} />
+              </svg>
+              <div style={{ marginLeft: 'auto', textAlign: 'right' }}>
+                <span style={{ fontSize: 8, fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', color: isHigh || isLow ? C.red : C.muted }}>
+                  {isHigh ? 'HIGH' : isLow ? 'LOW' : 'NOMINAL'}
+                </span>
+              </div>
+            </div>
+          )
+        })}
       </div>
     </div>
   )
 }
-

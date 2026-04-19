@@ -1,59 +1,57 @@
 'use client'
 
 import React, { useEffect, useRef, useState } from 'react'
-import { DecisionUIState, Severity, DegradationStage } from '@/lib/decisionToUI'
-import { PALETTE, severityColor, severityGlow, stageIndex, deriveSubsystems, breatheOffset, jitterOffset } from '@/lib/dashboardHelpers'
+import { LiveSystem, LiveRoom } from '@/lib/simulation'
 
 interface Props {
-  state: DecisionUIState
+  system: LiveSystem
 }
 
-/* ─── Layout Constants ────────────────────────────────────────────────────── */
+/* ─── Palette ─────────────────────────────────────────────────────────────── */
 
-const VB = { w: 400, h: 400 }
-const CORE = { x: 200, y: 200, r: 28 }
-
-interface SatelliteDef {
-  id: string
-  label: string
-  angle: number /* degrees */
-  dist: number
-  r: number
+const C = {
+  bg: '#030405',
+  neon: '#7cb342',
+  neonGlow: 'rgba(124,179,66,0.30)',
+  blue: '#5c9dff',
+  blueGlow: 'rgba(92,157,255,0.30)',
+  orange: '#ff9e6d',
+  orangeGlow: 'rgba(255,158,109,0.30)',
+  red: '#e05c5c',
+  redGlow: 'rgba(224,92,92,0.35)',
+  text: '#e8e9eb',
+  muted: '#3a3f4a',
 }
 
-const SATELLITES: SatelliteDef[] = [
-  { id: 'climate',   label: 'CLIMATE',   angle: -90, dist: 130, r: 22 },
-  { id: 'irrigation',label: 'H₂O',       angle: -18, dist: 140, r: 22 },
-  { id: 'lighting',  label: 'LIGHT',     angle: 54,  dist: 130, r: 22 },
-  { id: 'airflow',   label: 'AIR',       angle: 126, dist: 130, r: 22 },
-  { id: 'rootzone',  label: 'ROOTS',     angle: 198, dist: 140, r: 22 },
-]
+/* ─── Layout ──────────────────────────────────────────────────────────────── */
 
-function rad(deg: number) { return (deg * Math.PI) / 180 }
+const VB = 500
+const CX = VB / 2
+const CY = VB / 2
+
+function healthColor(health: LiveRoom['status']) {
+  return health === 'critical' ? C.red : health === 'warning' ? C.orange : C.neon
+}
+
+function healthGlow(health: LiveRoom['status']) {
+  return health === 'critical' ? C.redGlow : health === 'warning' ? C.orangeGlow : C.neonGlow
+}
 
 /* ─── Component ───────────────────────────────────────────────────────────── */
 
-export function SystemField({ state }: Props) {
-  const { statusHeader, tetrahedron } = state
-  const sev = statusHeader.severity
-  const stage = statusHeader.degradationStage
-  const idx = stageIndex(stage)
-  const scalar = tetrahedron.severityScalar
+export function SystemField({ system }: Props) {
+  const { rooms, coherence, structuralDrift, stage, severity } = system
+  const idx = ['baseline', 'early_shift', 'emerging', 'persistent', 'accelerated', 'failure_approach'].indexOf(stage)
 
-  const subsystems = deriveSubsystems(state)
-  const subMap = Object.fromEntries(subsystems.map(s => [s.id, s]))
-
-  /* animation time — driven by rAF, throttled to ~20fps state updates */
+  /* animation tick */
   const [tick, setTick] = useState(0)
-  const frameRef = useRef(0)
   const lastRef = useRef(0)
-
   useEffect(() => {
     let raf: number
     const loop = (t: number) => {
-      if (t - lastRef.current > 50) {
+      if (t - lastRef.current > 60) {
         lastRef.current = t
-        setTick(prev => prev + 1)
+        setTick(x => x + 1)
       }
       raf = requestAnimationFrame(loop)
     }
@@ -61,234 +59,208 @@ export function SystemField({ state }: Props) {
     return () => cancelAnimationFrame(raf)
   }, [])
 
-  const time = tick * 0.05
+  const time = tick * 0.04
 
-  /* ── compute satellite positions ── */
-  const satellites = SATELLITES.map((sat, i) => {
-    const health = subMap[sat.id]?.health ?? 'stable'
-    const contribution = subMap[sat.id]?.contribution ?? 'low'
+  /* node positions (5 rooms in pentagon) */
+  const nodes = rooms.map((room, i) => {
+    const angle = (i * 72 - 90) * (Math.PI / 180)
+    const baseDist = 155
+    const dist = baseDist + Math.sin(time + i * 1.2) * (idx === 0 ? 3 : idx <= 2 ? 6 : 10)
 
-    /* base position */
-    let sx = CORE.x + Math.cos(rad(sat.angle)) * sat.dist
-    let sy = CORE.y + Math.sin(rad(sat.angle)) * sat.dist
-
-    /* breathing */
-    const breathAmp = idx === 0 ? 2 : idx <= 2 ? 4 : 6
-    sx += breatheOffset(i, time, breathAmp)
-    sy += breatheOffset(i + 50, time, breathAmp)
-
-    /* drift deformation: pull affected nodes outward */
-    if (contribution === 'high') {
-      const pull = 8 + scalar * 20
-      sx += Math.cos(rad(sat.angle)) * pull
-      sy += Math.sin(rad(sat.angle)) * pull
-    } else if (contribution === 'medium') {
-      const pull = 4 + scalar * 10
-      sx += Math.cos(rad(sat.angle)) * pull
-      sy += Math.sin(rad(sat.angle)) * pull
-    }
+    /* drift deformation: pull critical nodes outward */
+    const pull = room.driftContribution * 35
+    const px = CX + Math.cos(angle) * (dist + pull)
+    const py = CY + Math.sin(angle) * (dist + pull)
 
     /* critical jitter */
-    if (idx >= 4) {
-      const jitterIntensity = idx === 5 ? 1 : 0.6
-      sx += jitterOffset(i + 200, time, jitterIntensity)
-      sy += jitterOffset(i + 300, time, jitterIntensity)
+    const jx = idx >= 4 ? (Math.sin(time * 3 + i * 7) * 3) : 0
+    const jy = idx >= 4 ? (Math.cos(time * 2.7 + i * 5) * 3) : 0
+
+    return {
+      ...room,
+      x: px + jx,
+      y: py + jy,
+      angle,
     }
-
-    /* color */
-    const col =
-      health === 'critical' ? PALETTE.red
-      : health === 'warning' ? PALETTE.orange
-      : PALETTE.neon
-
-    const glow =
-      health === 'critical' ? PALETTE.redGlow
-      : health === 'warning' ? PALETTE.orangeGlow
-      : PALETTE.neonGlow
-
-    return { ...sat, x: sx, y: sy, health, col, glow }
   })
 
-  /* ── core position ── */
-  let cx = CORE.x
-  let cy = CORE.y
-  if (idx >= 4) {
-    cx += jitterOffset(999, time, idx === 5 ? 0.8 : 0.4)
-    cy += jitterOffset(1000, time, idx === 5 ? 0.8 : 0.4)
-  }
-
-  const coreColor = sev === Severity.HIGH ? PALETTE.red : sev === Severity.ELEVATED ? PALETTE.orange : sev === Severity.MODERATE ? PALETTE.blue : PALETTE.neon
-  const coreGlow = severityGlow(sev)
-
-  /* ── edge paths ── */
-  const edges = satellites.map((sat, i) => {
-    const midX = (cx + sat.x) / 2
-    const midY = (cy + sat.y) / 2
-
-    /* control point offset for bezier curvature */
-    let cpOffset = 0
-    if (idx === 1) cpOffset = 10 + scalar * 15
-    else if (idx === 2) cpOffset = 20 + scalar * 25
-    else if (idx === 3) cpOffset = 35 + scalar * 35
-    else if (idx >= 4) cpOffset = 50 + scalar * 40
-
-    /* direction: perpendicular to edge, biased by node angle */
-    const perpX = -Math.sin(rad(sat.angle))
-    const perpY = Math.cos(rad(sat.angle))
-
-    const cpx = midX + perpX * cpOffset + breatheOffset(i + 400, time, 3)
-    const cpy = midY + perpY * cpOffset + breatheOffset(i + 500, time, 3)
-
-    const d = `M${cx.toFixed(1)},${cy.toFixed(1)} Q${cpx.toFixed(1)},${cpy.toFixed(1)} ${sat.x.toFixed(1)},${sat.y.toFixed(1)}`
-
-    /* edge break in critical */
-    const isBroken = idx >= 4 && sat.health === 'critical'
-
-    return { d, cpx, cpy, col: sat.col, glow: sat.glow, isBroken, sat }
+  /* coherence ring segments */
+  const segments = 48
+  const ringRadius = 105
+  const ringPath = Array.from({ length: segments }, (_, i) => {
+    const a = (i / segments) * Math.PI * 2
+    const aNext = ((i + 1) / segments) * Math.PI * 2
+    const x1 = CX + Math.cos(a) * ringRadius
+    const y1 = CY + Math.sin(a) * ringRadius
+    const x2 = CX + Math.cos(aNext) * ringRadius
+    const y2 = CY + Math.sin(aNext) * ringRadius
+    return { x1, y1, x2, y2, i }
   })
 
-  const pulseDuration = idx >= 4 ? '0.8s' : idx >= 2 ? '1.4s' : idx >= 1 ? '2.2s' : '3.5s'
+  /* tension lines */
+  const lines = nodes.map((node, i) => {
+    const mx = (CX + node.x) / 2
+    const my = (CY + node.y) / 2
+    const perp = node.angle + Math.PI / 2
+    const bend = (idx * 8 + structuralDrift * 25) * (node.driftContribution > 0.4 ? 1.5 : 0.5)
+    const cpx = mx + Math.cos(perp) * bend + Math.sin(time + i) * 3
+    const cpy = my + Math.sin(perp) * bend + Math.cos(time + i) * 3
+    return {
+      d: `M${CX.toFixed(1)},${CY.toFixed(1)} Q${cpx.toFixed(1)},${cpy.toFixed(1)} ${node.x.toFixed(1)},${node.y.toFixed(1)}`,
+      col: healthColor(node.status),
+      glow: healthGlow(node.status),
+      broken: idx >= 4 && node.status === 'critical',
+    }
+  })
+
+  /* drift contours */
+  const contours = idx >= 1 ? [1, 2, 3].map(layer => ({
+    rx: 180 + layer * 30 + Math.sin(time * 0.5 + layer) * 10,
+    ry: 140 + layer * 25 + Math.cos(time * 0.4 + layer) * 8,
+    rot: layer * 15 + Math.sin(time * 0.3) * 5,
+    opacity: (structuralDrift * 0.15) / layer,
+    col: idx >= 3 ? C.orange : C.blue,
+  })) : []
+
+  /* future path trace */
+  const futureTrace = idx >= 1 ? (() => {
+    const pts: Array<{ x: number; y: number }> = []
+    for (let i = 0; i < 12; i++) {
+      const t = i / 11
+      const a = t * Math.PI * 1.5 - Math.PI / 2
+      const r = 60 + t * 180 + structuralDrift * 50
+      pts.push({
+        x: CX + Math.cos(a + structuralDrift * 0.5) * r,
+        y: CY + Math.sin(a + structuralDrift * 0.5) * r,
+      })
+    }
+    return pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ')
+  })() : ''
+
+  const coreColor =
+    severity === 'HIGH' ? C.red
+    : severity === 'ELEVATED' ? C.orange
+    : severity === 'MODERATE' ? C.blue
+    : C.neon
 
   return (
     <div style={{ width: '100%', height: '100%', position: 'relative', overflow: 'hidden' }}>
-      {/* subtle radial gradient behind core */}
+      {/* ambient field gradient */}
       <div style={{
         position: 'absolute', inset: 0,
-        background: `radial-gradient(circle at ${(cx / VB.w) * 100}% ${(cy / VB.h) * 100}%, ${coreGlow} 0%, transparent 55%)`,
-        opacity: 0.6,
-        transition: 'background 1s ease',
+        background: `radial-gradient(ellipse at ${(CX / VB) * 100}% ${(CY / VB) * 100}%, ${coreColor}08 0%, transparent 60%)`,
+        transition: 'background 1.2s ease',
       }} />
 
-      {/* grain overlay */}
-      <div style={{
-        position: 'absolute', inset: 0, opacity: 0.03,
-        backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")`,
-        backgroundRepeat: 'repeat',
-        backgroundSize: '128px 128px',
-        pointerEvents: 'none',
-      }} />
-
-      <svg
-        viewBox={`0 0 ${VB.w} ${VB.h}`}
-        width="100%" height="100%"
-        preserveAspectRatio="xMidYMid meet"
-        style={{ display: 'block' }}
-      >
+      <svg viewBox={`0 0 ${VB} ${VB}`} width="100%" height="100%" preserveAspectRatio="xMidYMid meet" style={{ display: 'block' }}>
         <defs>
-          {/* glow filters */}
-          <filter id="sf-glow-neon" x="-50%" y="-50%" width="200%" height="200%">
-            <feGaussianBlur stdDeviation="5" result="b" />
-            <feMerge><feMergeNode in="b" /><feMergeNode in="SourceGraphic" /></feMerge>
-          </filter>
-          <filter id="sf-glow-blue" x="-50%" y="-50%" width="200%" height="200%">
-            <feGaussianBlur stdDeviation="5" result="b" />
-            <feMerge><feMergeNode in="b" /><feMergeNode in="SourceGraphic" /></feMerge>
-          </filter>
-          <filter id="sf-glow-orange" x="-50%" y="-50%" width="200%" height="200%">
-            <feGaussianBlur stdDeviation="5" result="b" />
-            <feMerge><feMergeNode in="b" /><feMergeNode in="SourceGraphic" /></feMerge>
-          </filter>
-          <filter id="sf-glow-red" x="-50%" y="-50%" width="200%" height="200%">
-            <feGaussianBlur stdDeviation="6" result="b" />
-            <feMerge><feMergeNode in="b" /><feMergeNode in="SourceGraphic" /></feMerge>
-          </filter>
-          <filter id="sf-core-glow" x="-50%" y="-50%" width="200%" height="200%">
-            <feGaussianBlur stdDeviation="8" result="b" />
-            <feMerge><feMergeNode in="b" /><feMergeNode in="SourceGraphic" /></feMerge>
-          </filter>
+          <filter id="sf-glow-neon" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="5" /><feMerge><feMergeNode /><feMergeNode in="SourceGraphic" /></feMerge></filter>
+          <filter id="sf-glow-blue" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="5" /><feMerge><feMergeNode /><feMergeNode in="SourceGraphic" /></feMerge></filter>
+          <filter id="sf-glow-orange" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="5" /><feMerge><feMergeNode /><feMergeNode in="SourceGraphic" /></feMerge></filter>
+          <filter id="sf-glow-red" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="6" /><feMerge><feMergeNode /><feMergeNode in="SourceGraphic" /></feMerge></filter>
+          <filter id="sf-core" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="10" /><feMerge><feMergeNode /><feMergeNode in="SourceGraphic" /></feMerge></filter>
         </defs>
 
         <style>{`
-          @keyframes sfNodePulse {
-            0%, 100% { transform: scale(1); opacity: 1; }
-            50% { transform: scale(1.08); opacity: 0.9; }
-          }
-          @keyframes sfEdgeFlow {
-            0% { stroke-dashoffset: 24; }
-            100% { stroke-dashoffset: 0; }
-          }
-          .sf-node { transform-origin: center; animation: sfNodePulse ${pulseDuration} ease-in-out infinite; }
-          .sf-edge { stroke-dasharray: 4 3; animation: sfEdgeFlow 2s linear infinite; }
+          @keyframes sfBreathe { 0%,100%{transform:scale(1)} 50%{transform:scale(1.05)} }
+          @keyframes sfFlow { 0%{stroke-dashoffset:20} 100%{stroke-dashoffset:0} }
+          .sf-node { transform-origin:center; animation: sfBreathe ${idx >= 4 ? '0.9s' : idx >= 2 ? '1.6s' : '3s'} ease-in-out infinite; }
+          .sf-edge { stroke-dasharray: 3 3; animation: sfFlow ${idx >= 4 ? '0.6s' : '1.8s'} linear infinite; }
         `}</style>
 
-        {/* edges */}
-        {edges.map((e, i) => {
-          const filterId =
-            e.sat.health === 'critical' ? 'sf-glow-red'
-            : e.sat.health === 'warning' ? 'sf-glow-orange'
-            : e.sat.col === PALETTE.blue ? 'sf-glow-blue'
-            : 'sf-glow-neon'
+        {/* drift contours */}
+        {contours.map((c, i) => (
+          <ellipse key={i} cx={CX} cy={CY} rx={c.rx} ry={c.ry}
+            fill="none" stroke={c.col} strokeWidth={0.6} opacity={c.opacity}
+            transform={`rotate(${c.rot.toFixed(1)} ${CX} ${CY})`}
+          />
+        ))}
 
-          if (e.isBroken) {
-            /* broken edge: two segments with gap */
-            const gap = 18
-            const dx = e.sat.x - cx
-            const dy = e.sat.y - cy
+        {/* future path trace */}
+        {futureTrace && (
+          <path d={futureTrace} fill="none" stroke={C.blue} strokeWidth={1} opacity={0.12} strokeDasharray="4 6" />
+        )}
+
+        {/* coherence ring */}
+        {ringPath.map(seg => {
+          const segCoherence = coherence - Math.abs(Math.sin(seg.i / segments * Math.PI * 2 + time * 0.3)) * (1 - coherence)
+          const opacity = Math.max(0, segCoherence * 0.5)
+          const col = segCoherence < 0.3 ? C.red : segCoherence < 0.6 ? C.orange : C.neon
+          return (
+            <line key={seg.i} x1={seg.x1} y1={seg.y1} x2={seg.x2} y2={seg.y2}
+              stroke={col} strokeWidth={1.2} opacity={opacity}
+            />
+          )
+        })}
+
+        {/* tension lines */}
+        {lines.map((line, i) => {
+          const filter = line.col === C.red ? 'sf-glow-red' : line.col === C.orange ? 'sf-glow-orange' : line.col === C.blue ? 'sf-glow-blue' : 'sf-glow-neon'
+          if (line.broken) {
+            const dx = nodes[i].x - CX
+            const dy = nodes[i].y - CY
             const len = Math.sqrt(dx * dx + dy * dy)
             const nx = dx / len
             const ny = dy / len
-            const breakPoint = 0.5
-            const bx = cx + nx * len * breakPoint
-            const by = cy + ny * len * breakPoint
-            const s1x = cx + nx * (len * breakPoint - gap)
-            const s1y = cy + ny * (len * breakPoint - gap)
-            const s2x = cx + nx * (len * breakPoint + gap)
-            const s2y = cy + ny * (len * breakPoint + gap)
+            const gap = 16
+            const mid = len / 2
             return (
               <g key={i}>
-                <line x1={cx} y1={cy} x2={s1x} y2={s1y}
-                  stroke={e.col} strokeWidth={2} opacity={0.5} filter={`url(#${filterId})`} />
-                <line x1={s2x} y1={s2y} x2={e.sat.x} y2={e.sat.y}
-                  stroke={e.col} strokeWidth={2} opacity={0.5} filter={`url(#${filterId})`} />
-                <circle cx={bx} cy={by} r={4} fill={PALETTE.red} opacity={0.9} filter="url(#sf-glow-red)" />
+                <line x1={CX} y1={CY} x2={CX + nx * (mid - gap)} y2={CY + ny * (mid - gap)}
+                  stroke={line.col} strokeWidth={1.5} opacity={0.45} filter={`url(#${filter})`} />
+                <line x1={CX + nx * (mid + gap)} y1={CY + ny * (mid + gap)} x2={nodes[i].x} y2={nodes[i].y}
+                  stroke={line.col} strokeWidth={1.5} opacity={0.45} filter={`url(#${filter})`} />
+                <circle cx={CX + nx * mid} cy={CY + ny * mid} r={3} fill={C.red} opacity={0.8} filter="url(#sf-glow-red)" />
               </g>
             )
           }
-
           return (
             <g key={i}>
-              {/* glow track */}
-              <path d={e.d} fill="none" stroke={e.glow} strokeWidth={6} opacity={0.25} filter={`url(#${filterId})`} />
-              {/* animated dash */}
-              <path d={e.d} fill="none" stroke={e.col} strokeWidth={1.5} opacity={0.7} className="sf-edge" />
+              <path d={line.d} fill="none" stroke={line.glow} strokeWidth={5} opacity={0.2} filter={`url(#${filter})`} />
+              <path d={line.d} fill="none" stroke={line.col} strokeWidth={1.2} opacity={0.55} className="sf-edge" />
             </g>
           )
         })}
 
-        {/* core node */}
-        <g transform={`translate(${cx.toFixed(1)},${cy.toFixed(1)})`} className="sf-node">
-          <circle r={CORE.r + 12} fill="none" stroke={coreColor} strokeWidth={0.8} opacity={0.25} filter="url(#sf-core-glow)" />
-          <circle r={CORE.r} fill={`${coreColor}18`} stroke={coreColor} strokeWidth={2} filter="url(#sf-core-glow)" />
-          <circle r={CORE.r - 10} fill="none" stroke={coreColor} strokeWidth={0.6} opacity={0.5} />
-          <text textAnchor="middle" dominantBaseline="central" fill={coreColor} fontSize={11} fontWeight={800} letterSpacing="0.08em">
-            CORE
+        {/* core */}
+        <g transform={`translate(${CX},${CY})`} className="sf-node">
+          <circle r={36} fill="none" stroke={coreColor} strokeWidth={0.6} opacity={0.2} filter="url(#sf-core)" />
+          <circle r={24} fill={`${coreColor}12`} stroke={coreColor} strokeWidth={1.8} filter="url(#sf-core)" />
+          <circle r={14} fill="none" stroke={coreColor} strokeWidth={0.5} opacity={0.4} />
+          <text textAnchor="middle" dominantBaseline="central" fill={coreColor} fontSize={10} fontWeight={800} letterSpacing="0.1em">
+            FACILITY
           </text>
         </g>
 
-        {/* satellite nodes */}
-        {satellites.map((sat, i) => {
-          const filterId =
-            sat.health === 'critical' ? 'sf-glow-red'
-            : sat.health === 'warning' ? 'sf-glow-orange'
-            : sat.col === PALETTE.blue ? 'sf-glow-blue'
-            : 'sf-glow-neon'
-
+        {/* room nodes */}
+        {nodes.map((node, i) => {
+          const filter = node.status === 'critical' ? 'sf-glow-red' : node.status === 'warning' ? 'sf-glow-orange' : 'sf-glow-neon'
+          const r = 20 + node.driftContribution * 4
           return (
-            <g key={sat.id} transform={`translate(${sat.x.toFixed(1)},${sat.y.toFixed(1)})`} className="sf-node">
-              {/* outer ring */}
-              <circle r={sat.r + 10} fill="none" stroke={sat.col} strokeWidth={0.8} opacity={0.3} filter={`url(#${filterId})`} />
-              {/* body */}
-              <circle r={sat.r} fill={`${sat.col}15`} stroke={sat.col} strokeWidth={1.8} filter={`url(#${filterId})`} />
-              {/* inner detail */}
-              <circle r={sat.r - 7} fill="none" stroke={sat.col} strokeWidth={0.5} opacity={0.4} />
-              {/* label */}
-              <text textAnchor="middle" dominantBaseline="central" fill={sat.col} fontSize={sat.r > 20 ? 9 : 8} fontWeight={800} letterSpacing="0.06em">
-                {sat.label}
+            <g key={node.id} transform={`translate(${node.x.toFixed(1)},${node.y.toFixed(1)})`} className="sf-node">
+              <circle r={r + 10} fill="none" stroke={healthColor(node.status)} strokeWidth={0.7} opacity={0.25} filter={`url(#${filter})`} />
+              <circle r={r} fill={`${healthColor(node.status)}12`} stroke={healthColor(node.status)} strokeWidth={1.6} filter={`url(#${filter})`} />
+              <circle r={r - 6} fill="none" stroke={healthColor(node.status)} strokeWidth={0.4} opacity={0.35} />
+              <text textAnchor="middle" dominantBaseline="central" fill={healthColor(node.status)} fontSize={9} fontWeight={800} letterSpacing="0.06em">
+                {node.shortName}
               </text>
+              {/* drift contribution indicator */}
+              {node.driftContribution > 0.3 && (
+                <circle r={r + 16} fill="none" stroke={healthColor(node.status)} strokeWidth={0.4} opacity={node.driftContribution * 0.2} filter={`url(#${filter})`} />
+              )}
             </g>
           )
         })}
       </svg>
+
+      {/* overlay label */}
+      <div style={{
+        position: 'absolute', top: 16, left: 18,
+        fontSize: 8, letterSpacing: '0.16em', textTransform: 'uppercase',
+        color: C.muted, fontWeight: 700,
+      }}>
+        System Coherence · {(coherence * 100).toFixed(0)}%
+      </div>
     </div>
   )
 }

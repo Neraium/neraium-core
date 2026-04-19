@@ -1,141 +1,142 @@
 'use client'
 
 import React from 'react'
-import { DecisionUIState, DegradationStage } from '@/lib/decisionToUI'
-import { PALETTE, stageIndex } from '@/lib/dashboardHelpers'
+import { LiveSystem } from '@/lib/simulation'
 
 interface Props {
-  state: DecisionUIState
+  system: LiveSystem
+}
+
+const C = {
+  text: '#e8e9eb',
+  secondary: '#6b7080',
+  muted: '#3a3f4a',
+  neon: '#7cb342',
+  blue: '#5c9dff',
+  orange: '#ff9e6d',
+  red: '#e05c5c',
+  surface: '#080a0d',
+  border: 'rgba(255,255,255,0.04)',
 }
 
 const STAGES = [
-  { stage: DegradationStage.BASELINE,        label: 'Baseline',        zone: 'baseline' },
-  { stage: DegradationStage.EARLY_SHIFT,     label: 'Drift',           zone: 'drift' },
-  { stage: DegradationStage.EMERGING,        label: 'Emerging',        zone: 'drift' },
-  { stage: DegradationStage.PERSISTENT,      label: 'Persistent',      zone: 'instability' },
-  { stage: DegradationStage.ACCELERATED,     label: 'Accelerated',     zone: 'escalation' },
-  { stage: DegradationStage.FAILURE_APPROACH,label: 'Critical',        zone: 'critical' },
+  { key: 'baseline', label: 'Baseline' },
+  { key: 'early_shift', label: 'Drift' },
+  { key: 'emerging', label: 'Emerging' },
+  { key: 'persistent', label: 'Persistent' },
+  { key: 'accelerated', label: 'Accelerated' },
+  { key: 'failure_approach', label: 'Critical' },
 ] as const
 
-const ZONE_COLORS: Record<string, { bg: string; glow: string }> = {
-  baseline:   { bg: `${PALETTE.neon}10`,  glow: `${PALETTE.neon}20` },
-  drift:      { bg: `${PALETTE.blue}10`,  glow: `${PALETTE.blue}20` },
-  instability:{ bg: `${PALETTE.orange}08`, glow: `${PALETTE.orange}20` },
-}
-
-export function NarrativeTimeline({ state }: Props) {
-  const { timeline, driftChart } = state
-  const currentIdx = timeline.currentIndex
-  const currentStage = STAGES[currentIdx]?.stage ?? DegradationStage.BASELINE
-
-  /* compute marker positions based on drift chart events */
+export function NarrativeTimeline({ system }: Props) {
+  const currentIdx = STAGES.findIndex(s => s.key === system.stage)
   const total = STAGES.length
   const segWidth = 100 / total
 
+  const narrativeProgress = (system.scenarioIdx + system.scenarioProgress) / 6
+
   return (
-    <div style={{ padding: '10px 24px 14px' }}>
+    <div style={{ padding: '10px 22px 14px' }}>
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         marginBottom: 10,
       }}>
         <span style={{
-          fontSize: 9, color: PALETTE.textMuted, textTransform: 'uppercase',
-          letterSpacing: '0.14em', fontWeight: 800,
+          fontSize: 8, color: C.muted, textTransform: 'uppercase',
+          letterSpacing: '0.16em', fontWeight: 700,
         }}>
-          System Narrative
+          State Evolution
         </span>
-        <span style={{ fontSize: 9, color: PALETTE.textSecondary, letterSpacing: '0.06em' }}>
-          {STAGES[currentIdx]?.label ?? 'Unknown'}
+        <span style={{ fontSize: 8, color: C.secondary, letterSpacing: '0.08em', fontWeight: 600 }}>
+          {STAGES[currentIdx]?.label} · Drift {(system.structuralDrift * 100).toFixed(0)}%
         </span>
       </div>
 
-      {/* timeline track */}
+      {/* track */}
       <div style={{
         position: 'relative',
-        height: 36,
+        height: 32,
         borderRadius: 6,
         overflow: 'hidden',
-        background: PALETTE.surface,
-        border: `1px solid ${PALETTE.border}`,
+        background: C.surface,
+        border: `1px solid ${C.border}`,
       }}>
-        {/* zone backgrounds */}
+        {/* zone fills */}
         {STAGES.map((s, i) => {
-          const zone = s.zone
           const col =
-            zone === 'baseline' ? PALETTE.neon
-            : zone === 'drift' ? PALETTE.blue
-            : zone === 'instability' ? PALETTE.orange
-            : PALETTE.red
-
+            i <= 1 ? C.neon
+            : i <= 3 ? C.blue
+            : i <= 4 ? C.orange
+            : C.red
           return (
-            <div key={s.stage} style={{
+            <div key={s.key} style={{
               position: 'absolute', left: `${i * segWidth}%`, top: 0, bottom: 0,
               width: `${segWidth}%`,
-              background: i <= currentIdx ? `${col}12` : 'transparent',
-              borderRight: i < total - 1 ? `1px solid ${PALETTE.border}` : 'none',
-              transition: 'background 0.6s ease',
+              background: i <= currentIdx ? `${col}10` : 'transparent',
+              borderRight: i < total - 1 ? `1px solid ${C.border}` : 'none',
+              transition: 'background 0.8s ease',
             }} />
           )
         })}
 
-        {/* stage labels */}
+        {/* narrative trail */}
+        <div style={{
+          position: 'absolute', left: 0, top: 0, bottom: 0,
+          width: `${narrativeProgress * 100}%`,
+          background: `linear-gradient(90deg, ${C.neon}08 0%, ${currentIdx >= 3 ? C.orange : C.blue}12 100%)`,
+          transition: 'width 1.2s cubic-bezier(0.4,0,0.2,1)',
+          pointerEvents: 'none',
+        }} />
+
+        {/* labels */}
         {STAGES.map((s, i) => (
-          <div key={s.stage} style={{
+          <div key={s.key} style={{
             position: 'absolute', left: `${i * segWidth}%`, top: 0, bottom: 0,
             width: `${segWidth}%`,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
           }}>
             <span style={{
               fontSize: 8, fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase',
-              color: i === currentIdx ? PALETTE.textPrimary
-                : i < currentIdx ? PALETTE.textSecondary
-                : `${PALETTE.textMuted}60`,
-              transition: 'color 0.4s ease',
+              color: i === currentIdx ? C.text
+                : i < currentIdx ? C.secondary
+                : `${C.muted}50`,
+              transition: 'color 0.5s ease',
             }}>
               {s.label}
             </span>
           </div>
         ))}
 
-        {/* current position indicator */}
+        {/* current indicator */}
         <div style={{
           position: 'absolute',
-          left: `${currentIdx * segWidth + segWidth / 2}%`,
+          left: `${(currentIdx + 0.5) * segWidth}%`,
           top: '50%',
           transform: 'translate(-50%, -50%)',
-          width: 10, height: 10,
+          width: 8, height: 8,
           borderRadius: '50%',
-          background: PALETTE.textPrimary,
-          boxShadow: `0 0 12px ${PALETTE.textPrimary}60`,
+          background: C.text,
+          boxShadow: `0 0 10px ${C.text}40`,
           zIndex: 2,
-          transition: 'left 0.8s cubic-bezier(0.4,0,0.2,1)',
-        }} />
-
-        {/* passed glow trail */}
-        <div style={{
-          position: 'absolute', left: 0, top: 0, bottom: 0,
-          width: `${(currentIdx + 0.5) * segWidth}%`,
-          background: `linear-gradient(90deg, ${PALETTE.neon}08 0%, ${currentIdx >= 3 ? PALETTE.orange : PALETTE.blue}10 100%)`,
-          pointerEvents: 'none',
-          transition: 'width 0.8s cubic-bezier(0.4,0,0.2,1)',
+          transition: 'left 1s cubic-bezier(0.4,0,0.2,1)',
         }} />
       </div>
 
-      {/* markers row */}
-      <div style={{ display: 'flex', gap: 20, marginTop: 8, paddingLeft: 4 }}>
+      {/* event markers */}
+      <div style={{ display: 'flex', gap: 16, marginTop: 7, paddingLeft: 2 }}>
         {currentIdx >= 1 && (
-          <span style={{ fontSize: 8, color: PALETTE.blue, fontWeight: 700, letterSpacing: '0.06em' }}>
-            ● Drift detected
+          <span style={{ fontSize: 7, color: C.blue, fontWeight: 700, letterSpacing: '0.06em' }}>
+            ● Drift emerged
           </span>
         )}
         {currentIdx >= 3 && (
-          <span style={{ fontSize: 8, color: PALETTE.orange, fontWeight: 700, letterSpacing: '0.06em' }}>
-            ● Instability onset
+          <span style={{ fontSize: 7, color: C.orange, fontWeight: 700, letterSpacing: '0.06em' }}>
+            ● Coherence break
           </span>
         )}
-        {currentIdx >= 4 && (
-          <span style={{ fontSize: 8, color: PALETTE.red, fontWeight: 700, letterSpacing: '0.06em' }}>
-            ● Intervention required
+        {currentIdx >= 5 && (
+          <span style={{ fontSize: 7, color: C.red, fontWeight: 700, letterSpacing: '0.06em' }}>
+            ● Critical regime
           </span>
         )}
       </div>
