@@ -84,7 +84,7 @@ export function TetrahedronField({
     tetrahedronRef.current = tetrahedron
     scene.add(tetrahedron)
 
-    const baseScale = 0.6
+    const baseScale = 1.0
     const baseVertices = [
       new THREE.Vector3(0, 1, 0),
       new THREE.Vector3(-0.866, -0.5, 0),
@@ -173,7 +173,7 @@ export function TetrahedronField({
       const stability = liveData.interpolatedStability
       const coherence = liveData.interpolatedCoherence
 
-      const targetCameraZ = liveEscalationLevel >= 3 ? 3.0 : 3.5
+      const targetCameraZ = liveEscalationLevel >= 3 ? 2.5 : 2.8
       const zoomTransition = 0.05
       if (cameraRef.current) {
         cameraRef.current.position.z +=
