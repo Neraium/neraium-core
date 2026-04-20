@@ -24,17 +24,20 @@ interface SystemData {
 
 interface SystemIntelligenceInterfaceProps {
   systemData?: SystemData
+  isSimulating?: boolean
   onTogglePlay?: (isPlaying: boolean) => void
   onSpeedChange?: (speed: number) => void
 }
 
 export function SystemIntelligenceInterface({
   systemData,
+  isSimulating = true,
   onTogglePlay,
   onSpeedChange,
 }: SystemIntelligenceInterfaceProps) {
-  const [isPlaying, setIsPlaying] = useState(false)
   const [speed, setSpeed] = useState(1)
+  // Use isSimulating from prop (actual simulation), not local state
+  const isPlaying = isSimulating
   const [narrativeText, setNarrativeText] = useState('')
   const [previousPhase, setPreviousPhase] = useState('Stable')
   const [thresholdDwellActive, setThresholdDwellActive] = useState(false)
@@ -119,7 +122,6 @@ export function SystemIntelligenceInterface({
   }, [phase, phaseProgress])
 
   const handleTogglePlay = () => {
-    setIsPlaying(!isPlaying)
     onTogglePlay?.(!isPlaying)
   }
 

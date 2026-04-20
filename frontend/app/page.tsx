@@ -18,6 +18,7 @@ export default function Home() {
   return (
     <SystemIntelligenceInterface
       systemData={systemData}
+      isSimulating={isPlaying}
       onTogglePlay={(playing) => setIsPlaying(playing)}
     />
   )
