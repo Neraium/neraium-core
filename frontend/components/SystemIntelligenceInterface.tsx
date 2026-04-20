@@ -1,6 +1,7 @@
 'use client'
 
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
+import { motion } from 'framer-motion'
 import { TetrahedronField } from './TetrahedronField'
 import { NarrativeLayer } from './NarrativeLayer'
 import { TrajectoryLayer } from './TrajectoryLayer'
@@ -11,6 +12,7 @@ import { useSystemInterpolation } from '@/lib/systemInterpolation'
 import { computeConsequenceState, getEscalationNarrative } from '@/lib/decisionGravity'
 import { computeDiagnosticLegibility } from '@/lib/diagnosticLegibility'
 import { computeOutcomeConfidence } from '@/lib/outcomeConfidence'
+import { evaluateActionDecision, RankedAction, ActionDecisionResult } from '@/lib/actionEvaluation'
 
 interface SystemData {
   drift: number
@@ -37,22 +39,25 @@ export function SystemIntelligenceInterface({
   const [narrativeText, setNarrativeText] = useState('')
   const [previousPhase, setPreviousPhase] = useState('Stable')
   const [thresholdDwellActive, setThresholdDwellActive] = useState(false)
-  const [primaryDriver, setPrimaryDriver] = useState<string | null>(null)
+  const [primaryDriver, setPrimaryDriver] = useState<string | null>(null) // System memory
   const [driftHistory, setDriftHistory] = useState<number[]>([])
   const [stabilityHistory, setStabilityHistory] = useState<number[]>([])
+  const [actionHistory, setActionHistory] = useState<RankedAction[]>([])
+  const [actionDecision, setActionDecision] = useState<ActionDecisionResult | null>(null)
 
-  const { phase, phaseProgress } = usePhaseController(
-    isPlaying,
-    speed && !thresholdDwellActive ? 1 : 0
-  )
+  // Phase system: manage discrete system states with 8-15 second transitions
+  const { phase, phaseProgress } = usePhaseController(isPlaying, speed && !thresholdDwellActive ? 1 : 0)
 
+  // Smooth interpolation of all numeric values
   const interpolatedData = useSystemInterpolation(systemData, phase)
 
+  // Build history for diagnostic analysis
   useEffect(() => {
-    setDriftHistory((prev) => [...prev.slice(-10), interpolatedData.interpolatedDrift])
-    setStabilityHistory((prev) => [...prev.slice(-10), interpolatedData.interpolatedStability])
+    setDriftHistory(prev => [...prev.slice(-10), interpolatedData.interpolatedDrift])
+    setStabilityHistory(prev => [...prev.slice(-10), interpolatedData.interpolatedStability])
   }, [interpolatedData.interpolatedDrift, interpolatedData.interpolatedStability])
 
+  // Compute diagnostic legibility
   const diagnostics = computeDiagnosticLegibility(
     phase,
     interpolatedData.interpolatedDrift,
@@ -62,6 +67,7 @@ export function SystemIntelligenceInterface({
     stabilityHistory
   )
 
+  // Update primary driver with system memory (preserve unless stronger one emerges)
   useEffect(() => {
     if (diagnostics.dominantDriver) {
       const isStrongerDriver = diagnostics.confidence === 'high' || !primaryDriver
@@ -71,6 +77,7 @@ export function SystemIntelligenceInterface({
     }
   }, [diagnostics.dominantDriver, diagnostics.confidence, primaryDriver])
 
+  // Consequence state: time-to-impact, escalation language, operator focus
   const consequenceState = computeConsequenceState(
     phase,
     phaseProgress,
@@ -80,8 +87,9 @@ export function SystemIntelligenceInterface({
     previousPhase
   )
 
+  // Outcome confidence: what happens if they act or don't act
   const outcomeState = computeOutcomeConfidence(
-    diagnostics.dominantDriver || primaryDriver || 'multi-mode',
+    diagnostics.dominantDriver || 'multi-mode',
     phase,
     interpolatedData.interpolatedDrift,
     interpolatedData.interpolatedStability,
@@ -89,33 +97,70 @@ export function SystemIntelligenceInterface({
     diagnostics.confidence
   )
 
+  // Multi-action decision evaluation
+  const driftAcceleration = driftHistory.length > 1
+    ? driftHistory[driftHistory.length - 1] - driftHistory[Math.max(0, driftHistory.length - 3)]
+    : 0
+
+  useEffect(() => {
+    const decision = evaluateActionDecision(
+      phase,
+      diagnostics.dominantDriver || 'multi-mode',
+      interpolatedData.interpolatedDrift,
+      interpolatedData.interpolatedStability,
+      interpolatedData.interpolatedCoherence,
+      diagnostics.confidence,
+      consequenceState.timeToImpact,
+      driftAcceleration,
+      outcomeState.noActionConsequence,
+      actionHistory
+    )
+    setActionDecision(decision)
+
+    // Update action history for stability tracking (keep last 5)
+    if (decision.primaryAction) {
+      setActionHistory(prev => [...prev.slice(-4), {
+        label: decision.primaryAction.label,
+        score: decision.primaryAction.score,
+        stabilizationBenefit: decision.primaryAction.stabilizationBenefit,
+        riskReduction: 0,
+        failureModeFit: 1,
+        timeSensitivityFit: 0.8,
+        confidence: 0.8,
+        aggressivenessPenalty: 0.9,
+        outcome: decision.primaryAction.outcome,
+        timingSensitivity: decision.primaryAction.timingSensitivity
+      }])
+    }
+  }, [phase, diagnostics.dominantDriver, interpolatedData.interpolatedDrift, interpolatedData.interpolatedStability, interpolatedData.interpolatedCoherence, diagnostics.confidence, consequenceState.timeToImpact, driftAcceleration, outcomeState.noActionConsequence])
+
+  // Track phase changes for threshold detection and dwell
   useEffect(() => {
     if (phase !== previousPhase) {
-      if (
-        (previousPhase === 'Stable' || previousPhase === 'Drift forming') &&
-        (phase === 'Instability forming' || phase === 'Critical')
-      ) {
+      // If crossing into instability+, activate dwell
+      if ((previousPhase === 'Stable' || previousPhase === 'Drift forming') &&
+          (phase === 'Instability forming' || phase === 'Critical')) {
         setThresholdDwellActive(true)
+        // Dwell for 1.5-2.5 seconds
         const dwellTime = 1500 + Math.random() * 1000
-        const timer = setTimeout(() => {
+        setTimeout(() => {
           setThresholdDwellActive(false)
         }, dwellTime)
-        setPreviousPhase(phase)
-        return () => clearTimeout(timer)
       }
       setPreviousPhase(phase)
     }
   }, [phase, previousPhase])
 
+  // Generate narrative with escalation language and decision gravity
   useEffect(() => {
+    // Use escalation narrative (directive, not descriptive)
     const text = getEscalationNarrative(phase, phaseProgress)
     setNarrativeText(text)
   }, [phase, phaseProgress])
 
   const handleTogglePlay = () => {
-    const next = !isPlaying
-    setIsPlaying(next)
-    onTogglePlay?.(next)
+    setIsPlaying(!isPlaying)
+    onTogglePlay?.(!isPlaying)
   }
 
   const handleSpeedChange = (newSpeed: number) => {
@@ -136,18 +181,19 @@ export function SystemIntelligenceInterface({
         fontSize: '14px',
       }}
     >
+      {/* Subtle scanline texture overlay */}
       <div
         style={{
           position: 'absolute',
           inset: 0,
-          background:
-            'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.15) 2px, rgba(0,0,0,0.15) 4px)',
+          background: 'repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.15) 2px, rgba(0,0,0,0.15) 4px)',
           pointerEvents: 'none',
           zIndex: 99,
           opacity: 0.2,
         }}
       />
 
+      {/* Consequence Indicator */}
       <ConsequenceIndicator
         timeToImpactLabel={consequenceState.timeToImpactLabel}
         operatorFocus={consequenceState.operatorFocus}
@@ -156,8 +202,10 @@ export function SystemIntelligenceInterface({
         confidence={diagnostics.confidence}
         actionOutcome={outcomeState.actionOutcome}
         noActionConsequence={outcomeState.noActionConsequence}
+        actionDecision={actionDecision}
       />
 
+      {/* Main scrollable container */}
       <div
         style={{
           width: '100%',
@@ -169,6 +217,7 @@ export function SystemIntelligenceInterface({
           scrollBehavior: 'smooth',
         }}
       >
+        {/* System Field - Primary Visualization */}
         <div
           style={{
             width: '100%',
@@ -191,6 +240,7 @@ export function SystemIntelligenceInterface({
           />
         </div>
 
+        {/* Narrative Layer */}
         <div
           style={{
             width: '100%',
@@ -216,6 +266,9 @@ export function SystemIntelligenceInterface({
           />
         </div>
 
+        {/* Subsystem Signals - Removed, encoded into tetrahedron */}
+
+        {/* Trajectory Layer */}
         <div
           style={{
             width: '100%',
@@ -225,15 +278,14 @@ export function SystemIntelligenceInterface({
             flexShrink: 0,
           }}
         >
-          <TrajectoryLayer
-            data={interpolatedData}
-            escalationLevel={consequenceState.escalationLevel}
-          />
+          <TrajectoryLayer data={interpolatedData} escalationLevel={consequenceState.escalationLevel} />
         </div>
 
+        {/* Bottom spacing */}
         <div style={{ height: '80px', flexShrink: 0 }} />
       </div>
 
+      {/* Playback Controls - Fixed at bottom right */}
       <div
         style={{
           position: 'fixed',
