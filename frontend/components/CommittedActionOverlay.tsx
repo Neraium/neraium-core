@@ -31,9 +31,8 @@ export function CommittedActionOverlay({
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity, y: 0 }}
-      transition={{ duration: 0.6 }}
+      initial={{ opacity: opacity, y: 0 }}
+      animate={{ opacity: opacity, y: 0 }}
       style={{
         position: 'fixed',
         bottom: '140px',

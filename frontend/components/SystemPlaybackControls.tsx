@@ -21,8 +21,8 @@ export function PlaybackControls({
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: isHovering ? 1 : 0.3, y: 0 }}
+      initial={{ opacity: 0.8, y: 0 }}
+      animate={{ opacity: isHovering ? 1 : 0.8, y: 0 }}
       onHoverStart={() => setIsHovering(true)}
       onHoverEnd={() => setIsHovering(false)}
       transition={{ duration: 0.3, ease: 'easeInOut' }}

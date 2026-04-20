@@ -29,9 +29,8 @@ export function SubsystemIndicators({
 
   return (
     <motion.div
-      initial={{ opacity: 0, x: -20 }}
+      initial={{ opacity: 1, x: 0 }}
       animate={{ opacity: 1, x: 0 }}
-      transition={{ delay: 0.3, duration: 0.6 }}
       style={{
         position: 'fixed',
         left: '24px',
