@@ -2,7 +2,7 @@
 
 import React, { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { EnhancedTetrahedronViz } from './EnhancedTetrahedronViz'
+import { TetrahedronField } from './TetrahedronField'
 import { usePhaseController } from '@/lib/phaseController'
 import { useSystemInterpolation } from '@/lib/systemInterpolation'
 import { computeConsequenceState } from '@/lib/decisionGravity'
@@ -132,7 +132,7 @@ export function TeslaAutopilotInterface({
     onTogglePlay?.(!isPlaying)
   }
 
-  const confidentLabel = diagnostics.confidence === 'high' ? 'High' : diagnostics.confidence === 'medium' ? 'Moderate' : 'Low'
+  const confidentLabel = diagnostics.confidence === 'high' ? 'High' : diagnostics.confidence === 'moderate' ? 'Moderate' : 'Low'
 
   return (
     <div
@@ -214,14 +214,14 @@ export function TeslaAutopilotInterface({
           {/* Time-to-Impact */}
           <motion.div
             animate={{
-              color: consequenceState.timeToImpact < 5 ? '#ef4444' : consequenceState.timeToImpact < 10 ? '#f97316' : '#94a3b8'
+              color: (consequenceState.timeToImpact ?? 15) < 5 ? '#ef4444' : (consequenceState.timeToImpact ?? 15) < 10 ? '#f97316' : '#94a3b8'
             }}
             style={{
               fontSize: '12px',
               fontVariantNumeric: 'tabular-nums',
             }}
           >
-            Time-to-Impact: {consequenceState.timeToImpact < 1 ? 'Imminent' : `~${Math.ceil(consequenceState.timeToImpact)} cycles`}
+            Time-to-Impact: {(consequenceState.timeToImpact ?? 15) < 1 ? 'Imminent' : `~${Math.ceil(consequenceState.timeToImpact ?? 15)} cycles`}
           </motion.div>
         </div>
 
@@ -285,14 +285,13 @@ export function TeslaAutopilotInterface({
               position: 'relative',
             }}
           >
-            <EnhancedTetrahedronViz
-              position={[
-                interpolatedData.interpolatedPosition?.x || 0.5,
-                interpolatedData.interpolatedPosition?.y || 0.5,
-                interpolatedData.interpolatedPosition?.z || 0.5,
-              ]}
-              severity={phase === 'Critical' ? 3 : phase === 'Instability forming' ? 2 : phase === 'Drift forming' ? 1 : 0}
-              trailHistory={interpolatedData.trailHistory || []}
+            <TetrahedronField
+              data={interpolatedData}
+              phaseProgress={phaseProgress}
+              phase={phase}
+              escalationLevel={consequenceState.escalationLevel}
+              hasThresholdCrossed={consequenceState.hasThresholdCrossed}
+              isApproachingFailure={consequenceState.isApproachingFailure}
             />
           </div>
 
@@ -336,7 +335,7 @@ export function TeslaAutopilotInterface({
                   lineHeight: '1.5',
                 }}
               >
-                {actionDecision.primaryAction?.outcome || 'Coherence recovery expected'}
+                {actionDecision.primaryAction?.outcome?.primary || 'Coherence recovery expected'}
               </div>
             </motion.div>
           )}
