@@ -81,7 +81,7 @@ export function SystemIntelligenceInterface({
   // Update commitment state
   useEffect(() => {
     setCommitment(newCommitment)
-  }, [newCommitment.commitmentScore, newCommitment.momentum])
+  }, [newCommitment.momentum, newCommitment.commitmentScore, newCommitment.stepsAtCurrent])
 
   // Update primary driver with system memory (preserve unless stronger one emerges)
   useEffect(() => {
