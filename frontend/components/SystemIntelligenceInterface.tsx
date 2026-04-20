@@ -6,8 +6,10 @@ import { TetrahedronField } from './TetrahedronField'
 import { NarrativeLayer } from './NarrativeLayer'
 import { TrajectoryLayer } from './TrajectoryLayer'
 import { PlaybackControls } from './SystemPlaybackControls'
+import { ConsequenceIndicator } from './ConsequenceIndicator'
 import { usePhaseController } from '@/lib/phaseController'
 import { useSystemInterpolation } from '@/lib/systemInterpolation'
+import { computeConsequenceState, getEscalationNarrative } from '@/lib/decisionGravity'
 
 interface SystemData {
   drift: number
@@ -32,6 +34,7 @@ export function SystemIntelligenceInterface({
   const [isPlaying, setIsPlaying] = useState(false)
   const [speed, setSpeed] = useState(1)
   const [narrativeText, setNarrativeText] = useState('')
+  const [previousPhase, setPreviousPhase] = useState('Stable')
 
   // Phase system: manage discrete system states with 8-15 second transitions
   const { phase, phaseProgress } = usePhaseController(isPlaying, speed)
@@ -39,35 +42,29 @@ export function SystemIntelligenceInterface({
   // Smooth interpolation of all numeric values
   const interpolatedData = useSystemInterpolation(systemData, phase)
 
-  // Generate narrative as system voice (max 6 words, direct)
-  useEffect(() => {
-    const narratives: Record<string, string[]> = {
-      Stable: [
-        'Coherence stable',
-        'Drift nominal',
-        'Coupled systems aligned',
-      ],
-      'Drift forming': [
-        'Coupling destabilizing',
-        'Recovery window narrowing',
-        'Structural coherence degrading',
-      ],
-      'Instability forming': [
-        'Multiple couplings failing',
-        'Coherence collapse approaching',
-        'Recovery pathways closing',
-      ],
-      Critical: [
-        'System reorganization imminent',
-        'Cascade propagating',
-        'Coherence at threshold',
-      ],
-    }
+  // Consequence state: time-to-impact, escalation language, operator focus
+  const consequenceState = computeConsequenceState(
+    phase,
+    phaseProgress,
+    interpolatedData.interpolatedDrift,
+    interpolatedData.interpolatedStability,
+    interpolatedData.interpolatedCoherence,
+    previousPhase
+  )
 
-    const texts = narratives[phase] || narratives.Stable
-    const text = texts[Math.floor(Math.random() * texts.length)]
+  // Track phase changes for threshold detection
+  useEffect(() => {
+    if (phase !== previousPhase) {
+      setPreviousPhase(phase)
+    }
+  }, [phase, previousPhase])
+
+  // Generate narrative with escalation language and decision gravity
+  useEffect(() => {
+    // Use escalation narrative (directive, not descriptive)
+    const text = getEscalationNarrative(phase, phaseProgress)
     setNarrativeText(text)
-  }, [phase])
+  }, [phase, phaseProgress])
 
   const handleTogglePlay = () => {
     setIsPlaying(!isPlaying)
@@ -104,6 +101,14 @@ export function SystemIntelligenceInterface({
         }}
       />
 
+      {/* Consequence Indicator */}
+      <ConsequenceIndicator
+        timeToImpactLabel={consequenceState.timeToImpactLabel}
+        operatorFocus={consequenceState.operatorFocus}
+        escalationLevel={consequenceState.escalationLevel}
+        hasThresholdCrossed={consequenceState.hasThresholdCrossed}
+      />
+
       {/* Main scrollable container */}
       <div
         style={{
@@ -133,6 +138,9 @@ export function SystemIntelligenceInterface({
             data={interpolatedData}
             phaseProgress={phaseProgress}
             phase={phase}
+            escalationLevel={consequenceState.escalationLevel}
+            hasThresholdCrossed={consequenceState.hasThresholdCrossed}
+            isApproachingFailure={consequenceState.isApproachingFailure}
           />
         </div>
 
@@ -168,7 +176,7 @@ export function SystemIntelligenceInterface({
             flexShrink: 0,
           }}
         >
-          <TrajectoryLayer data={interpolatedData} />
+          <TrajectoryLayer data={interpolatedData} escalationLevel={consequenceState.escalationLevel} />
         </div>
 
         {/* Bottom spacing */}

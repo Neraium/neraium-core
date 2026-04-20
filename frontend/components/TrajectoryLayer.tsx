@@ -11,9 +11,10 @@ interface TrajectoryData {
 
 interface TrajectoryLayerProps {
   data: TrajectoryData
+  escalationLevel?: number
 }
 
-export function TrajectoryLayer({ data }: TrajectoryLayerProps) {
+export function TrajectoryLayer({ data, escalationLevel = 0 }: TrajectoryLayerProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const historyRef = useRef<Array<{ x: number; y: number }>>([])
@@ -42,13 +43,16 @@ export function TrajectoryLayer({ data }: TrajectoryLayerProps) {
     }
 
     // Generate projection (faint future path)
+    // At critical: projection becomes erratic (consequence feeling)
     const driftVelocity = (data.interpolatedDrift - (historyRef.current[historyRef.current.length - 2]?.x ?? currentX)) / canvas.width
     const stabilityVelocity = (data.interpolatedStability - (historyRef.current[historyRef.current.length - 2]?.y ?? currentY)) / canvas.height
 
     projectionRef.current = []
     for (let i = 1; i <= 20; i++) {
-      const projX = currentX + (driftVelocity * i * 8)
-      const projY = currentY + (stabilityVelocity * i * 8)
+      // At critical: add erratic noise to projection
+      const erraticAmount = escalationLevel >= 3 ? Math.random() * 40 - 20 : 0
+      const projX = currentX + (driftVelocity * i * 8) + erraticAmount
+      const projY = currentY + (stabilityVelocity * i * 8) + erraticAmount * 0.5
       projectionRef.current.push({ x: projX, y: projY })
     }
 

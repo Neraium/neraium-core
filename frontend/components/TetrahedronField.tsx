@@ -15,9 +15,19 @@ interface TetrahedronFieldProps {
   data: TetrahedronData
   phaseProgress: number
   phase: string
+  escalationLevel: number
+  hasThresholdCrossed: boolean
+  isApproachingFailure: boolean
 }
 
-export function TetrahedronField({ data, phaseProgress, phase }: TetrahedronFieldProps) {
+export function TetrahedronField({
+  data,
+  phaseProgress,
+  phase,
+  escalationLevel,
+  hasThresholdCrossed,
+  isApproachingFailure,
+}: TetrahedronFieldProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const sceneRef = useRef<THREE.Scene | null>(null)
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null)
@@ -42,7 +52,7 @@ export function TetrahedronField({ data, phaseProgress, phase }: TetrahedronFiel
       1000
     )
     // Camera positioned closer for larger tetrahedron fill
-    camera.position.z = 1.8
+    // Will zoom in (z decrease) during critical phase
     cameraRef.current = camera
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false })
@@ -130,69 +140,115 @@ export function TetrahedronField({ data, phaseProgress, phase }: TetrahedronFiel
       animationFrameId = requestAnimationFrame(animate)
       timeRef.current += 0.016 // ~60fps
 
-      // Continuous motion (never idle) - base rotation always increases
-      const baseRotationSpeed = 0.002
+      // CAMERA ZOOM FOR CRITICAL STATES (2-5% closer)
+      const targetCameraZ = escalationLevel >= 3 ? 1.7 : 1.8 // Zoom in at critical
+      const zoomTransition = 0.05 // Smooth camera movement
+      if (cameraRef.current) {
+        cameraRef.current.position.z +=
+          (targetCameraZ - cameraRef.current.position.z) * zoomTransition
+        cameraRef.current.updateProjectionMatrix()
+      }
+
+      // CONTINUOUS MOTION (never idle)
+      const baseRotationSpeed = escalationLevel >= 3 ? 0.004 : 0.002 // Faster at critical
       rotationX += baseRotationSpeed
       rotationY += baseRotationSpeed * 0.6
 
       // Drift-influenced rotation (adds instability)
-      const driftInfluence = data.interpolatedDrift * 0.2
+      const driftInfluence = data.interpolatedDrift * (0.2 + escalationLevel * 0.05)
       rotationX += driftInfluence * 0.008
       rotationY += driftInfluence * 0.006
 
+      // CONSEQUENCE FEELING: Asymmetry approaching failure
+      const asymmetryAmount = isApproachingFailure ? data.interpolatedDrift * 0.12 : 0
+      const asymmetryX = Math.sin(timeRef.current * 0.7) * asymmetryAmount
+      const asymmetryY = Math.cos(timeRef.current * 0.5) * asymmetryAmount * 0.6
+
       // Depth breathing (Z-axis parallax effect)
-      const depthBreathe = Math.sin(timeRef.current * 0.5) * 0.15
+      // Reduced smoothness at critical (choppier motion)
+      const breathingFreq = escalationLevel >= 3 ? 1.2 : 0.5
+      const depthBreathe = Math.sin(timeRef.current * breathingFreq) * 0.15
       const xBreathe = Math.cos(timeRef.current * 0.3) * 0.08
       tetrahedron.position.z = depthBreathe
-      tetrahedron.position.x = xBreathe * data.interpolatedDrift
+      tetrahedron.position.x = xBreathe * data.interpolatedDrift + asymmetryX
+
+      // SNAP EFFECT on threshold cross (brief tightening)
+      const snapIntensity = hasThresholdCrossed ? Math.sin(timeRef.current * 30) * 0.3 : 0
+      const snapScale = 1 - snapIntensity * 0.08 // Tighten briefly
 
       // Scale: subtle breathing, never perfectly still
-      const baseBreathing = 1 + Math.sin(timeRef.current * 0.8) * 0.03
-      const stabilityDamping = 0.05 + data.interpolatedStability * 0.02
+      // At critical: less smooth, more tense
+      const breathingDamping = escalationLevel >= 3 ? 0.02 : 0.08
+      const baseBreathing = 1 + Math.sin(timeRef.current * breathingFreq) * breathingDamping
+      const stabilityDamping = (0.05 + data.interpolatedStability * 0.02) * snapScale
       const breathingScale = baseBreathing + stabilityDamping
 
-      tetrahedron.rotation.x = rotationX
+      tetrahedron.rotation.x = rotationX + asymmetryY
       tetrahedron.rotation.y = rotationY
       tetrahedron.scale.set(breathingScale, breathingScale, breathingScale)
 
       // Color based on phase
       const phaseColor = getPhaseColor(phase as any) || '#38BDF8'
 
-      // Update vertices with micro-instability (subtle asymmetry under drift)
+      // Update vertices with decision gravity effects
       verticesRef.current.forEach((sphere, index) => {
         if (sphere.material instanceof THREE.MeshPhongMaterial) {
           sphere.material.color.setStyle(phaseColor)
           sphere.material.emissive.setStyle(phaseColor)
 
-          // Phase-based intensity
+          // INTENSITY INCREASES AT CRITICAL
           const phaseIntensity = {
-            'Stable': 0.25,
-            'Drift forming': 0.35,
-            'Instability forming': 0.5,
-            'Critical': 0.7,
-          }[phase] || 0.25
+            0: 0.25, // Stable
+            1: 0.35, // Drift forming
+            2: 0.5, // Instability forming
+            3: 0.8, // Critical (increased)
+          }[escalationLevel] || 0.25
 
-          sphere.material.emissiveIntensity = phaseIntensity + Math.sin(timeRef.current + index) * 0.1
+          // GLOW SPIKE on threshold cross
+          const glowSpike = hasThresholdCrossed ? Math.sin(timeRef.current * 20) * 0.3 : 0
+          const baseGlow = phaseIntensity + Math.sin(timeRef.current + index) * 0.1
 
-          // Micro-instability: slight wobble on vertices under drift
-          const instabilityAmount = data.interpolatedDrift * 0.08
+          // Optional micro-flicker in extreme instability
+          const flickerAmount = escalationLevel >= 3 ? Math.random() * 0.1 : 0
+          sphere.material.emissiveIntensity = baseGlow + glowSpike + flickerAmount
+
+          // MICRO-INSTABILITY with increased chaos at critical
+          const instabilityAmount =
+            data.interpolatedDrift * (0.08 + escalationLevel * 0.04)
+          const wobbleFreq = escalationLevel >= 3 ? 2.5 : 1.2
           const wobble = new THREE.Vector3(
-            Math.sin(timeRef.current * 1.2 + index) * instabilityAmount,
-            Math.cos(timeRef.current * 1.5 + index) * instabilityAmount,
+            Math.sin(timeRef.current * wobbleFreq + index) * instabilityAmount,
+            Math.cos(timeRef.current * wobbleFreq * 1.3 + index) * instabilityAmount,
             Math.sin(timeRef.current * 0.9 + index) * instabilityAmount * 0.5
           )
-          sphere.position.copy(sphere.userData.basePosition.clone().add(wobble))
+
+          // LOSS OF SYMMETRY approaching failure
+          const symmetryLoss = isApproachingFailure
+            ? new THREE.Vector3(
+                (Math.random() - 0.5) * 0.04,
+                (Math.random() - 0.5) * 0.04,
+                (Math.random() - 0.5) * 0.02
+              )
+            : new THREE.Vector3()
+
+          sphere.position.copy(
+            sphere.userData.basePosition
+              .clone()
+              .add(wobble)
+              .add(symmetryLoss)
+          )
         }
       })
 
-      // Update edges with tension behavior
+      // Update edges with tension behavior (increased at critical)
       edgesRef.current.forEach((line, index) => {
         if (line.material instanceof THREE.LineBasicMaterial) {
           line.material.color.setStyle(phaseColor)
 
-          // Edge tension: stretch/compress based on drift
-          const tension = data.interpolatedDrift * 0.08
-          const tensionWave = Math.sin(timeRef.current * 0.7 + index * 0.5) * 0.04
+          // EDGE TENSION increases at critical (spikes to show stress)
+          const baseTension = data.interpolatedDrift * (0.08 + escalationLevel * 0.03)
+          const tensionFreq = escalationLevel >= 3 ? 1.2 : 0.7
+          const tensionWave = Math.sin(timeRef.current * tensionFreq + index * 0.5) * (0.04 + escalationLevel * 0.02)
 
           // Deform edge by stretching
           const positions = line.geometry.attributes.position.array as Float32Array
@@ -200,7 +256,7 @@ export function TetrahedronField({ data, phaseProgress, phase }: TetrahedronFiel
           const baseEnd = line.userData.baseEnd
           const direction = new THREE.Vector3().subVectors(baseEnd, baseStart).normalize()
 
-          const stretchAmount = tension + tensionWave
+          const stretchAmount = baseTension + tensionWave
           positions[0] = baseStart.x + direction.x * stretchAmount
           positions[1] = baseStart.y + direction.y * stretchAmount
           positions[2] = baseStart.z + direction.z * stretchAmount
