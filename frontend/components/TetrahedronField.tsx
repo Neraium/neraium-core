@@ -211,7 +211,8 @@ export function TetrahedronField({
 
       tetrahedron.rotation.x = rotationX + asymmetryY
       tetrahedron.rotation.y = rotationY
-      tetrahedron.scale.set(breathingScale, breathingScale, breathingScale)
+      const sizeMultiplier = 0.35
+      tetrahedron.scale.set(breathingScale * sizeMultiplier, breathingScale * sizeMultiplier, breathingScale * sizeMultiplier)
 
       const phaseColor = getPhaseColor(livePhase as any) || '#38BDF8'
 
