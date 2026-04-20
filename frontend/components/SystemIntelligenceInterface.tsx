@@ -48,7 +48,8 @@ export function SystemIntelligenceInterface({
   const [commitment, setCommitment] = useState<DecisionCommitment | null>(null)
 
   // Phase system: manage discrete system states with 8-15 second transitions
-  const { phase, phaseProgress } = usePhaseController(isPlaying, speed && !thresholdDwellActive ? 1 : 0)
+  const phaseSpeed = thresholdDwellActive ? 0 : speed // Pause phase during dwell
+  const { phase, phaseProgress } = usePhaseController(isPlaying, phaseSpeed)
 
   // Smooth interpolation of all numeric values
   const interpolatedData = useSystemInterpolation(systemData, phase)
