@@ -92,7 +92,7 @@ export function TetrahedronField({
       new THREE.Vector3(0, -0.2, 0.8),
     ]
 
-    const sphereGeometry = new THREE.SphereGeometry(0.12, 16, 16)
+    const sphereGeometry = new THREE.SphereGeometry(0.04, 16, 16)
 
     baseVertices.forEach((vertex) => {
       const material = new THREE.MeshPhongMaterial({
@@ -229,9 +229,9 @@ export function TetrahedronField({
             3: 0.8,
           }[liveEscalationLevel] || 0.25
 
-        const glowSpike = liveThreshold ? Math.sin(timeRef.current * 20) * 0.3 : 0
-        const baseGlow = phaseIntensity + Math.sin(timeRef.current + index) * 0.1
-        const flickerAmount = liveEscalationLevel >= 3 ? Math.random() * 0.1 : 0
+        const glowSpike = liveThreshold ? Math.sin(timeRef.current * 20) * 0.1 : 0
+        const baseGlow = phaseIntensity * 0.4 + Math.sin(timeRef.current + index) * 0.05
+        const flickerAmount = liveEscalationLevel >= 3 ? Math.random() * 0.05 : 0
         sphere.material.emissiveIntensity = baseGlow + glowSpike + flickerAmount
 
         const instabilityAmount = drift * (0.08 + liveEscalationLevel * 0.04)
