@@ -44,7 +44,61 @@ export default function ActionPanel({ action, impactWindow }: ActionPanelProps) 
     }
   }
 
+  // Map decision momentum to visual strength
+  const getMomentumOpacity = (momentum?: string): number => {
+    switch (momentum) {
+      case 'strengthening':
+        return 1.0
+      case 'establishing':
+        return 0.87
+      case 'emerging':
+      default:
+        return 0.68
+    }
+  }
+
+  // Map commitment score to glow intensity [0, 1]
+  const getGlowIntensity = (score?: number): number => {
+    return Math.max(0, Math.min(1, score ?? 0.3))
+  }
+
+  // Create subtle glow effect based on commitment
+  const getGlowBlur = (intensity: number): string => {
+    return `0 0 ${Math.round(4 + intensity * 8)}px rgba(248, 250, 252, ${intensity * 0.12})`
+  }
+
+  // Subtle letter-spacing tightening as commitment strengthens
+  const getLetterSpacing = (momentum?: string): string => {
+    switch (momentum) {
+      case 'strengthening':
+        return '0.04em'
+      case 'establishing':
+        return '0.06em'
+      case 'emerging':
+      default:
+        return '0.08em'
+    }
+  }
+
+  // Subtle vertical stability: emerging has slight bounce, strengthening is locked
+  const getVerticalStability = (momentum?: string): string => {
+    switch (momentum) {
+      case 'strengthening':
+        return '0px'
+      case 'establishing':
+        return '0.5px'
+      case 'emerging':
+      default:
+        return '1px'
+    }
+  }
+
   const horizonColor = getHorizonColor(action.horizon)
+  const momentumOpacity = getMomentumOpacity(action.decisionMomentum)
+  const glowIntensity = getGlowIntensity(action.commitmentScore)
+  const glowShadow = getGlowBlur(glowIntensity)
+  const letterSpacing = getLetterSpacing(action.decisionMomentum)
+  const verticalStability = getVerticalStability(action.decisionMomentum)
 
   return (
     <div style={styles.container}>
@@ -52,8 +106,9 @@ export default function ActionPanel({ action, impactWindow }: ActionPanelProps) 
         style={{
           ...styles.horizonLabel,
           color: horizonColor,
-          opacity: showCommand ? 1 : 0.05,
-          transition: 'opacity 0.9s cubic-bezier(0.22, 1, 0.36, 1)',
+          opacity: showCommand ? momentumOpacity : 0.05,
+          letterSpacing: letterSpacing,
+          transition: 'opacity 0.9s cubic-bezier(0.22, 1, 0.36, 1), letter-spacing 1.2s cubic-bezier(0.22, 1, 0.36, 1)',
         }}
       >
         {getHorizonLabel(action.horizon)}
@@ -61,9 +116,10 @@ export default function ActionPanel({ action, impactWindow }: ActionPanelProps) 
       <div
         style={{
           ...styles.actionText,
-          opacity: showCommand ? 1 : 0.02,
-          transform: showCommand ? 'translateY(0px)' : 'translateY(5px)',
-          transition: 'opacity 0.9s cubic-bezier(0.22, 1, 0.36, 1), transform 0.9s cubic-bezier(0.22, 1, 0.36, 1)',
+          opacity: showCommand ? momentumOpacity : 0.02,
+          transform: showCommand ? `translateY(${verticalStability})` : 'translateY(5px)',
+          transition: 'opacity 0.9s cubic-bezier(0.22, 1, 0.36, 1), transform 1.1s cubic-bezier(0.22, 1, 0.36, 1), text-shadow 1.1s cubic-bezier(0.22, 1, 0.36, 1)',
+          textShadow: showCommand ? glowShadow : 'none',
         }}
       >
         {action.primaryAction}
@@ -72,7 +128,7 @@ export default function ActionPanel({ action, impactWindow }: ActionPanelProps) 
         <div
           style={{
             ...styles.windowText,
-            opacity: showCommand ? 0.78 : 0,
+            opacity: showCommand ? 0.78 * momentumOpacity : 0,
             transition: 'opacity 0.9s cubic-bezier(0.22, 1, 0.36, 1)',
           }}
         >

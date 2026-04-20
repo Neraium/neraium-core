@@ -62,6 +62,8 @@ export interface ActionPanel {
   horizon: ActionHorizon
   primaryAction: string
   urgencyLevel: number // 1-5
+  decisionMomentum?: "emerging" | "establishing" | "strengthening" // Perceived strength of commitment
+  commitmentScore?: number // [0, 1] strength of decision commitment
 }
 
 export interface TetrahedronState {
@@ -372,10 +374,20 @@ export function transformDecisionToUIState(
 
   const primaryAction = String(gateDecision?.explanation ?? "Monitor system state")
 
+  // Extract decision commitment metrics from operational_recommendation
+  const operationalRec = gateDecision?.operational_recommendation as Record<string, unknown> | undefined
+  const decisionMomentum = String(operationalRec?.decision_momentum ?? "emerging").toLowerCase() as
+    | "emerging"
+    | "establishing"
+    | "strengthening"
+  const commitmentScore = clamp(Number(operationalRec?.decision_commitment_score ?? 0.3))
+
   const actionPanel: ActionPanel = {
     horizon,
     primaryAction,
     urgencyLevel: urgency,
+    decisionMomentum,
+    commitmentScore,
   }
 
   // Build tetrahedron state
