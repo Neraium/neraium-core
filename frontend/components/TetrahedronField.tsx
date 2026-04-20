@@ -175,7 +175,7 @@ export function TetrahedronField({
       const stability = liveData.interpolatedStability
       const coherence = liveData.interpolatedCoherence
 
-      const targetCameraZ = liveEscalationLevel >= 3 ? 1.7 : 1.8
+      const targetCameraZ = liveEscalationLevel >= 3 ? 4.0 : 4.5
       const zoomTransition = 0.05
       if (cameraRef.current) {
         cameraRef.current.position.z +=
