@@ -9,6 +9,8 @@ interface ConsequenceIndicatorProps {
   escalationLevel: number
   hasThresholdCrossed: boolean
   confidence?: 'high' | 'moderate' | 'low'
+  actionOutcome?: string | null
+  noActionConsequence?: string | null
 }
 
 export function ConsequenceIndicator({
@@ -17,6 +19,8 @@ export function ConsequenceIndicator({
   escalationLevel,
   hasThresholdCrossed,
   confidence,
+  actionOutcome,
+  noActionConsequence,
 }: ConsequenceIndicatorProps) {
   // Only show when instability+ (escalationLevel >= 2)
   const shouldShow = escalationLevel >= 2
@@ -84,7 +88,7 @@ export function ConsequenceIndicator({
                 fontWeight: 500,
                 letterSpacing: '0.4px',
                 textAlign: 'center',
-                maxWidth: '300px',
+                maxWidth: '340px',
                 whiteSpace: 'nowrap',
                 overflow: 'hidden',
                 textOverflow: 'ellipsis',
@@ -96,6 +100,47 @@ export function ConsequenceIndicator({
                   [{confidence}]
                 </span>
               )}
+            </motion.div>
+          )}
+
+          {/* Action Outcome Projection */}
+          {actionOutcome && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.35, duration: 0.5 }}
+              style={{
+                fontSize: '11px',
+                color: '#cbd5e1',
+                fontWeight: 400,
+                letterSpacing: '0.3px',
+                textAlign: 'center',
+                marginTop: '6px',
+                maxWidth: '340px',
+              }}
+            >
+              ↳ {actionOutcome}
+            </motion.div>
+          )}
+
+          {/* No-Action Consequence */}
+          {noActionConsequence && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.45, duration: 0.5 }}
+              style={{
+                fontSize: '11px',
+                color: '#94a3b8',
+                fontWeight: 400,
+                letterSpacing: '0.3px',
+                textAlign: 'center',
+                marginTop: '4px',
+                maxWidth: '340px',
+                fontStyle: 'italic',
+              }}
+            >
+              if no action: {noActionConsequence}
             </motion.div>
           )}
         </motion.div>

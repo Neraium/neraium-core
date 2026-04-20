@@ -11,6 +11,7 @@ import { usePhaseController } from '@/lib/phaseController'
 import { useSystemInterpolation } from '@/lib/systemInterpolation'
 import { computeConsequenceState, getEscalationNarrative } from '@/lib/decisionGravity'
 import { computeDiagnosticLegibility } from '@/lib/diagnosticLegibility'
+import { computeOutcomeConfidence } from '@/lib/outcomeConfidence'
 
 interface SystemData {
   drift: number
@@ -83,6 +84,16 @@ export function SystemIntelligenceInterface({
     previousPhase
   )
 
+  // Outcome confidence: what happens if they act or don't act
+  const outcomeState = computeOutcomeConfidence(
+    diagnostics.dominantDriver || 'multi-mode',
+    phase,
+    interpolatedData.interpolatedDrift,
+    interpolatedData.interpolatedStability,
+    interpolatedData.interpolatedCoherence,
+    diagnostics.confidence
+  )
+
   // Track phase changes for threshold detection and dwell
   useEffect(() => {
     if (phase !== previousPhase) {
@@ -149,6 +160,8 @@ export function SystemIntelligenceInterface({
         escalationLevel={consequenceState.escalationLevel}
         hasThresholdCrossed={consequenceState.hasThresholdCrossed}
         confidence={diagnostics.confidence}
+        actionOutcome={outcomeState.actionOutcome}
+        noActionConsequence={outcomeState.noActionConsequence}
       />
 
       {/* Main scrollable container */}
