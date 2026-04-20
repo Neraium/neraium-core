@@ -10,10 +10,10 @@ interface PhaseConfig {
 }
 
 const PHASE_SEQUENCE: PhaseConfig[] = [
-  { phase: 'Stable', minDuration: 8000, maxDuration: 12000, weight: 0.3 },
-  { phase: 'Drift forming', minDuration: 10000, maxDuration: 16000, weight: 0.5 },
-  { phase: 'Instability forming', minDuration: 12000, maxDuration: 20000, weight: 0.7 },
-  { phase: 'Critical', minDuration: 15000, maxDuration: 30000, weight: 0.9 }, // Lingers longer
+  { phase: 'Stable', minDuration: 15000, maxDuration: 20000, weight: 0.3 },
+  { phase: 'Drift forming', minDuration: 18000, maxDuration: 25000, weight: 0.5 },
+  { phase: 'Instability forming', minDuration: 20000, maxDuration: 28000, weight: 0.7 },
+  { phase: 'Critical', minDuration: 25000, maxDuration: 40000, weight: 0.9 }, // Lingers longer
 ]
 
 /**
