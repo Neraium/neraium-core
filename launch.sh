@@ -37,10 +37,10 @@ sleep 3
 # Start frontend
 echo -e "${BLUE}Starting Frontend Server...${NC}"
 cd frontend
-npm run dev &
+PORT=3002 npm run dev &
 FRONTEND_PID=$!
 echo -e "${GREEN}✓ Frontend started (PID: $FRONTEND_PID)${NC}"
-echo "  Available at: http://localhost:3000"
+echo "  Available at: http://localhost:3002"
 echo ""
 
 # Print summary

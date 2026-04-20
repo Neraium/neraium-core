@@ -29,8 +29,8 @@ timeout /t 3 /nobreak
 REM Start frontend in new window
 echo Starting Frontend Server...
 cd frontend
-start "NeRAIUM Frontend" cmd /k npm run dev
-echo ✓ Frontend started at http://localhost:3000
+start "NeRAIUM Frontend" cmd /k set PORT=3002 && npm run dev
+echo ✓ Frontend started at http://localhost:3002
 echo.
 
 echo.

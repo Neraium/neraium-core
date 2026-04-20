@@ -23,9 +23,9 @@ sleep 3
 # Start frontend in background
 echo "Starting Frontend Server..."
 cd frontend
-npm run dev > /tmp/neraium-frontend.log 2>&1 &
+PORT=3002 npm run dev > /tmp/neraium-frontend.log 2>&1 &
 FRONTEND_PID=$!
-echo "✓ Frontend started on http://localhost:3000 (PID: $FRONTEND_PID)"
+echo "✓ Frontend started on http://localhost:3002 (PID: $FRONTEND_PID)"
 
 echo ""
 echo "========================================="

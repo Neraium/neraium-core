@@ -20,12 +20,13 @@ const backend = spawn('python', [
 setTimeout(() => {
   const frontend = spawn('npm', ['run', 'dev'], {
     cwd: path.join(projectRoot, 'frontend'),
-    stdio: 'inherit'
+    stdio: 'inherit',
+    env: { ...process.env, PORT: '3002' }
   });
 }, 3000);
 
 console.log('\n✓ Backend: http://localhost:8000');
-console.log('✓ Frontend: http://localhost:3000\n');
+console.log('✓ Frontend: http://localhost:3002\n');
 
 process.on('SIGINT', () => {
   console.log('\n\nShutting down...');
