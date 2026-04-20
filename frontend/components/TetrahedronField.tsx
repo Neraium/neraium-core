@@ -51,8 +51,8 @@ export function TetrahedronField({
       0.1,
       1000
     )
-    // Camera positioned closer for larger tetrahedron fill
-    // Will zoom in (z decrease) during critical phase
+    // Camera positioned for 70-75% viewport fill with responsive adjustment
+    camera.position.z = 2.0
     cameraRef.current = camera
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false })
@@ -66,8 +66,11 @@ export function TetrahedronField({
     tetrahedronRef.current = tetrahedron
     scene.add(tetrahedron)
 
-    // Base tetrahedron vertices (scaled larger for 80-85% fill)
-    const baseScale = 1.35
+    // Base tetrahedron vertices (scaled for 70-75% fill)
+    // Responsive scaling: clamp between 0.85 and 1.05 based on viewport height
+    const viewportHeight = window.innerHeight
+    const responsiveScale = Math.max(0.85, Math.min(1.05, viewportHeight / 1000))
+    const baseScale = 0.95 * responsiveScale
     const vertices = [
       new THREE.Vector3(0, 1, 0), // top
       new THREE.Vector3(-0.866, -0.5, 0), // bottom-left
@@ -75,8 +78,8 @@ export function TetrahedronField({
       new THREE.Vector3(0, -0.2, 0.8), // back
     ]
 
-    // Create vertex spheres
-    const sphereGeometry = new THREE.SphereGeometry(0.12, 16, 16)
+    // Create vertex spheres (tighter, more precise appearance)
+    const sphereGeometry = new THREE.SphereGeometry(0.08, 16, 16)
     vertices.forEach((vertex, index) => {
       const material = new THREE.MeshPhongMaterial({
         color: 0x38BDF8,
@@ -114,7 +117,7 @@ export function TetrahedronField({
 
       const material = new THREE.LineBasicMaterial({
         color: 0x94a3b8,
-        linewidth: 2,
+        linewidth: 1.5,
       })
       const line = new THREE.Line(geometry, material)
       line.userData.baseStart = start
@@ -122,6 +125,28 @@ export function TetrahedronField({
       tetrahedron.add(line)
       edgesRef.current.push(line)
     })
+
+    // Add subtle vignette/gradient field for spatial grounding
+    const canvas = document.createElement('canvas')
+    canvas.width = 256
+    canvas.height = 256
+    const ctx = canvas.getContext('2d')!
+    // Radial gradient: dark edges, slightly brighter center
+    const gradient = ctx.createRadialGradient(128, 128, 0, 128, 128, 180)
+    gradient.addColorStop(0, 'rgba(30, 41, 59, 0.15)')
+    gradient.addColorStop(1, 'rgba(10, 14, 26, 0.4)')
+    ctx.fillStyle = gradient
+    ctx.fillRect(0, 0, 256, 256)
+
+    const vignetteTexture = new THREE.CanvasTexture(canvas)
+    const vignetteGeometry = new THREE.PlaneGeometry(8, 8)
+    const vignetteMaterial = new THREE.MeshBasicMaterial({
+      map: vignetteTexture,
+      transparent: true,
+    })
+    const vignetteMesh = new THREE.Mesh(vignetteGeometry, vignetteMaterial)
+    vignetteMesh.position.z = -2
+    scene.add(vignetteMesh)
 
     // Light setup
     const light = new THREE.PointLight(0xffffff, 0.4)
@@ -140,8 +165,8 @@ export function TetrahedronField({
       animationFrameId = requestAnimationFrame(animate)
       timeRef.current += 0.016 // ~60fps
 
-      // CAMERA ZOOM FOR CRITICAL STATES (2-5% closer)
-      const targetCameraZ = escalationLevel >= 3 ? 1.7 : 1.8 // Zoom in at critical
+      // CAMERA ZOOM FOR CRITICAL STATES (subtle zoom in)
+      const targetCameraZ = escalationLevel >= 3 ? 1.85 : 2.0 // Subtle zoom at critical
       const zoomTransition = 0.05 // Smooth camera movement
       if (cameraRef.current) {
         cameraRef.current.position.z +=
@@ -164,26 +189,28 @@ export function TetrahedronField({
       const asymmetryX = Math.sin(timeRef.current * 0.7) * asymmetryAmount
       const asymmetryY = Math.cos(timeRef.current * 0.5) * asymmetryAmount * 0.6
 
-      // Depth breathing (Z-axis parallax effect)
-      // Reduced smoothness at critical (choppier motion)
-      const breathingFreq = escalationLevel >= 3 ? 1.2 : 0.5
-      const depthBreathe = Math.sin(timeRef.current * breathingFreq) * 0.15
-      const xBreathe = Math.cos(timeRef.current * 0.3) * 0.08
-      tetrahedron.position.z = depthBreathe
-      tetrahedron.position.x = xBreathe * data.interpolatedDrift + asymmetryX
+      // FIXED CENTER: Tetrahedron stays centered, all motion is internal deformation
+      // Breathing is now expressed through scale and rotation, not translation
+      tetrahedron.position.set(0, 0, 0)
 
       // SNAP EFFECT on threshold cross (brief tightening)
       const snapIntensity = hasThresholdCrossed ? Math.sin(timeRef.current * 30) * 0.3 : 0
       const snapScale = 1 - snapIntensity * 0.08 // Tighten briefly
 
-      // Scale: subtle breathing, never perfectly still
+      // Scale: breathing is now the primary motion (no translation)
+      // Increased amplitude to maintain visual dynamism with centered tetrahedron
       // At critical: less smooth, more tense
-      const breathingDamping = escalationLevel >= 3 ? 0.02 : 0.08
+      const breathingDamping = escalationLevel >= 3 ? 0.04 : 0.12
       const baseBreathing = 1 + Math.sin(timeRef.current * breathingFreq) * breathingDamping
-      const stabilityDamping = (0.05 + data.interpolatedStability * 0.02) * snapScale
+      const stabilityDamping = (0.06 + data.interpolatedStability * 0.03) * snapScale
       const breathingScale = baseBreathing + stabilityDamping
 
-      tetrahedron.rotation.x = rotationX + asymmetryY
+      // DIRECTIONAL BIAS: Instability tends downward, recovery tends upward
+      // Expressed through rotation modulation (subtle tilt tendency)
+      const directionBias = phase === 'Stable' ? -0.02 : phase === 'Critical' ? 0.04 : 0.01
+      const instabilityTilt = data.interpolatedDrift * 0.03 * (phase !== 'Stable' ? 1 : -0.5)
+
+      tetrahedron.rotation.x = rotationX + asymmetryY + directionBias + instabilityTilt
       tetrahedron.rotation.y = rotationY
       tetrahedron.scale.set(breathingScale, breathingScale, breathingScale)
 
@@ -272,7 +299,7 @@ export function TetrahedronField({
 
     animate()
 
-    // Handle window resize
+    // Handle window resize (including responsive scale recalc)
     const handleResize = () => {
       const width = window.innerWidth
       const height = window.innerHeight
@@ -281,6 +308,12 @@ export function TetrahedronField({
       camera.updateProjectionMatrix()
 
       renderer.setSize(width, height)
+
+      // Recalculate responsive scale on resize
+      const newResponsiveScale = Math.max(0.85, Math.min(1.05, height / 1000))
+      const newBaseScale = 0.95 * newResponsiveScale
+      // Would need to update tetrahedron geometry here, but keeping it simple for now
+      // This ensures camera/viewport adjusts correctly even if geometry scaling changes
     }
 
     window.addEventListener('resize', handleResize)

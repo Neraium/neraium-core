@@ -204,7 +204,7 @@ export function SystemIntelligenceInterface({
           style={{
             width: '100%',
             height: 'auto',
-            padding: '40px',
+            padding: '12px 40px 24px 40px',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
