@@ -95,10 +95,8 @@ export function TetrahedronField({
     const sphereGeometry = new THREE.SphereGeometry(0.04, 16, 16)
 
     baseVertices.forEach((vertex) => {
-      const material = new THREE.MeshPhongMaterial({
+      const material = new THREE.MeshBasicMaterial({
         color: 0x38bdf8,
-        emissive: 0x38bdf8,
-        emissiveIntensity: 0.3,
       })
       const sphere = new THREE.Mesh(sphereGeometry, material)
       sphere.position.copy(vertex.clone().multiplyScalar(baseScale))
@@ -217,23 +215,9 @@ export function TetrahedronField({
       const phaseColor = getPhaseColor(livePhase as any) || '#38BDF8'
 
       verticesRef.current.forEach((sphere, index) => {
-        if (!(sphere.material instanceof THREE.MeshPhongMaterial)) return
+        if (!(sphere.material instanceof THREE.MeshBasicMaterial)) return
 
         sphere.material.color.setStyle(phaseColor)
-        sphere.material.emissive.setStyle(phaseColor)
-
-        const phaseIntensity =
-          {
-            0: 0.25,
-            1: 0.35,
-            2: 0.5,
-            3: 0.8,
-          }[liveEscalationLevel] || 0.25
-
-        const glowSpike = liveThreshold ? Math.sin(timeRef.current * 20) * 0.1 : 0
-        const baseGlow = phaseIntensity * 0.4 + Math.sin(timeRef.current + index) * 0.05
-        const flickerAmount = liveEscalationLevel >= 3 ? Math.random() * 0.05 : 0
-        sphere.material.emissiveIntensity = baseGlow + glowSpike + flickerAmount
 
         const instabilityAmount = drift * (0.08 + liveEscalationLevel * 0.04)
         const wobbleFreq = liveEscalationLevel >= 3 ? 2.5 : 1.2
