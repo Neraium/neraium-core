@@ -1,10 +1,11 @@
 'use client'
 
-import { useEffect, useState, useRef } from 'react'
+import { useEffect, useState, useRef, useMemo } from 'react'
 import { generateContinuousDemoFrame } from '@/lib/continuousDemoData'
 import { PerceptualStateManager } from '@/lib/perceptualSmoothing'
 import { HeroSection } from './HeroSection'
 import { OperatorDecisionPanel } from './OperatorDecisionPanel'
+import { HistoricalValidation } from './HistoricalValidation'
 import { SubsystemCardsSection } from './SubsystemCardsSection'
 import { MetricsGridSection } from './MetricsGridSection'
 import { StateEvolutionSection } from './StateEvolutionSection'
@@ -38,6 +39,51 @@ export function NeraiumSystemIntelligence() {
   const smoothingRef = useRef(new PerceptualStateManager())
   const internalSimLoopRef = useRef<NodeJS.Timeout>()
   const displayUpdateLoopRef = useRef<NodeJS.Timeout>()
+
+  // Calculate lead time from timeline data
+  const leadTimeEvent = useMemo(() => {
+    if (!unifiedState?.timeline_states || unifiedState.timeline_states.length < 3) {
+      return null
+    }
+
+    const timeline = unifiedState.timeline_states
+    const stateThresholds = [
+      { label: 'Stable', max: 0.2 },
+      { label: 'Drift', max: 0.4 },
+      { label: 'Instability', max: 0.6 },
+      { label: 'Critical', max: 1.0 },
+    ]
+
+    // Find drift onset
+    let driftOnsetIdx = -1
+    for (let i = 1; i < timeline.length; i++) {
+      const prev = timeline[i - 1]
+      const curr = timeline[i]
+      const acceleration = curr.drift - prev.drift
+      if (curr.drift >= 0.08 && acceleration > 0.008) {
+        driftOnsetIdx = i
+        break
+      }
+    }
+
+    if (driftOnsetIdx < 0) return null
+
+    // Find first transition after onset
+    let lastState = stateThresholds.findIndex((s) => timeline[0].drift <= s.max)
+    for (let i = 1; i < timeline.length; i++) {
+      const currentState = stateThresholds.findIndex((s) => timeline[i].drift <= s.max)
+      if (currentState > lastState && i > driftOnsetIdx) {
+        return {
+          driftOnsetIndex: driftOnsetIdx,
+          transitionIndex: i,
+          leadTimeCycles: i - driftOnsetIdx,
+        }
+      }
+      lastState = currentState
+    }
+
+    return null
+  }, [unifiedState?.timeline_states])
 
   // Initialize
   useEffect(() => {
@@ -283,8 +329,15 @@ export function NeraiumSystemIntelligence() {
 
         {/* OPERATOR DECISION PANEL - Critical action guidance */}
         <div className="relative bg-black py-20 px-12 border-t border-white/5">
-          <OperatorDecisionPanel state={unifiedState} leadTimeEvent={unifiedState.leadTimeEvent} />
+          <OperatorDecisionPanel state={unifiedState} leadTimeEvent={leadTimeEvent} />
         </div>
+
+        {/* HISTORICAL VALIDATION - Trust layer */}
+        {leadTimeEvent && (
+          <div className="relative bg-black py-12 px-12 border-t border-white/5">
+            <HistoricalValidation leadTimeEvent={leadTimeEvent} />
+          </div>
+        )}
 
         {/* SUBSYSTEM ANALYSIS - Below fold */}
         <div className="relative bg-black py-20 px-12 border-t border-white/5">
