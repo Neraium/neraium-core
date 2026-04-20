@@ -2,6 +2,7 @@
 
 import React from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
+import { DecisionCommitment, getMomentumOpacity, getCommitmentGlowIntensity, isRecommendationLocked } from '@/lib/decisionCommitment'
 
 interface ConsequenceIndicatorProps {
   timeToImpactLabel: string
@@ -11,6 +12,7 @@ interface ConsequenceIndicatorProps {
   confidence?: 'high' | 'moderate' | 'low'
   actionOutcome?: string | null
   noActionConsequence?: string | null
+  commitment?: DecisionCommitment | null
 }
 
 export function ConsequenceIndicator({
@@ -21,6 +23,7 @@ export function ConsequenceIndicator({
   confidence,
   actionOutcome,
   noActionConsequence,
+  commitment,
 }: ConsequenceIndicatorProps) {
   // Only show when instability+ (escalationLevel >= 2)
   const shouldShow = escalationLevel >= 2
@@ -32,6 +35,11 @@ export function ConsequenceIndicator({
   }
 
   const color = colors[escalationLevel as 2 | 3] || colors[2]
+
+  // Commitment-driven visual strength
+  const commitmentOpacity = commitment ? getMomentumOpacity(commitment.momentum) : 1
+  const glowIntensity = commitment ? getCommitmentGlowIntensity(commitment.commitmentScore) : 1
+  const isLocked = commitment ? isRecommendationLocked(commitment.momentum, commitment.commitmentScore) : false
 
   return (
     <AnimatePresence>
@@ -76,12 +84,22 @@ export function ConsequenceIndicator({
             </motion.div>
           )}
 
-          {/* Operator Focus Line */}
+          {/* Operator Focus Line - Commitment-driven strength */}
           {operatorFocus && (
             <motion.div
               initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 0.2, duration: 0.5 }}
+              animate={{
+                opacity: commitmentOpacity,
+                textShadow: isLocked
+                  ? `0 0 ${8 * glowIntensity}px ${color.text}${Math.round(100 * glowIntensity * 0.5).toString(16)}`
+                  : `0 0 ${4 * glowIntensity}px ${color.text}${Math.round(100 * glowIntensity * 0.3).toString(16)}`
+              }}
+              transition={{
+                delay: 0.2,
+                duration: 0.5,
+                opacity: { duration: 0.8 },
+                textShadow: { duration: isLocked ? 0.1 : 0.6 }
+              }}
               style={{
                 fontSize: '12px',
                 color: color.text,
@@ -96,19 +114,19 @@ export function ConsequenceIndicator({
             >
               {operatorFocus}
               {confidence && (
-                <span style={{ color: '#94a3b8', fontSize: '10px', marginLeft: '8px' }}>
+                <span style={{ color: '#94a3b8', fontSize: '10px', marginLeft: '8px', opacity: 0.7 + commitmentOpacity * 0.2 }}>
                   [{confidence}]
                 </span>
               )}
             </motion.div>
           )}
 
-          {/* Action Outcome Projection */}
+          {/* Action Outcome Projection - commitment-driven opacity */}
           {actionOutcome && (
             <motion.div
               initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 0.35, duration: 0.5 }}
+              animate={{ opacity: commitmentOpacity * 0.85 }}
+              transition={{ delay: 0.35, duration: 0.5, opacity: { duration: 0.8 } }}
               style={{
                 fontSize: '11px',
                 color: '#cbd5e1',
@@ -123,12 +141,12 @@ export function ConsequenceIndicator({
             </motion.div>
           )}
 
-          {/* No-Action Consequence */}
+          {/* No-Action Consequence - commitment-driven opacity */}
           {noActionConsequence && (
             <motion.div
               initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 0.45, duration: 0.5 }}
+              animate={{ opacity: commitmentOpacity * 0.7 }}
+              transition={{ delay: 0.45, duration: 0.5, opacity: { duration: 0.8 } }}
               style={{
                 fontSize: '11px',
                 color: '#94a3b8',

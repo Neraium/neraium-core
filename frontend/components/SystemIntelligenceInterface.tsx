@@ -12,6 +12,7 @@ import { useSystemInterpolation } from '@/lib/systemInterpolation'
 import { computeConsequenceState, getEscalationNarrative } from '@/lib/decisionGravity'
 import { computeDiagnosticLegibility } from '@/lib/diagnosticLegibility'
 import { computeOutcomeConfidence } from '@/lib/outcomeConfidence'
+import { computeDecisionCommitment, DecisionCommitment } from '@/lib/decisionCommitment'
 
 interface SystemData {
   drift: number
@@ -44,6 +45,7 @@ export function SystemIntelligenceInterface({
   const [primaryDriver, setPrimaryDriver] = useState<string | null>(null) // System memory
   const [driftHistory, setDriftHistory] = useState<number[]>([])
   const [stabilityHistory, setStabilityHistory] = useState<number[]>([])
+  const [commitment, setCommitment] = useState<DecisionCommitment | null>(null)
 
   // Phase system: manage discrete system states with 8-15 second transitions
   const { phase, phaseProgress } = usePhaseController(isPlaying, speed && !thresholdDwellActive ? 1 : 0)
@@ -66,6 +68,20 @@ export function SystemIntelligenceInterface({
     driftHistory,
     stabilityHistory
   )
+
+  // Compute decision commitment (momentum + strength)
+  const newCommitment = computeDecisionCommitment(
+    interpolatedData.interpolatedDrift,
+    interpolatedData.interpolatedStability,
+    interpolatedData.interpolatedCoherence,
+    diagnostics.confidence,
+    commitment
+  )
+
+  // Update commitment state
+  useEffect(() => {
+    setCommitment(newCommitment)
+  }, [newCommitment.commitmentScore, newCommitment.momentum])
 
   // Update primary driver with system memory (preserve unless stronger one emerges)
   useEffect(() => {
@@ -164,6 +180,7 @@ export function SystemIntelligenceInterface({
         confidence={diagnostics.confidence}
         actionOutcome={outcomeState.actionOutcome}
         noActionConsequence={outcomeState.noActionConsequence}
+        commitment={commitment}
       />
 
       {/* Main scrollable container */}
