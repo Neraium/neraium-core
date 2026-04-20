@@ -486,6 +486,11 @@ class StructuralEngine:
         self._adaptive_threshold_enabled: bool = _env_enabled("NERAIUM_ADAPTIVE_THRESHOLD", default="1")
         self._computed_adaptive_threshold: float | None = None  # Computed threshold
 
+        # Decision persistence: commits to primary action with hysteresis (20% threshold)
+        # Prevents flickering between recommendations and establishes decision gravity
+        from neraium_core.decision_persistence import DecisionCommitment
+        self._decision_commitment = DecisionCommitment(hysteresis_threshold=0.20, max_momentum=1.0)
+
         # Startup: verify scoring invariants once (log warning, never raise).
         try:
             _vreport = run_all_checks()

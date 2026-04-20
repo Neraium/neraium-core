@@ -73,171 +73,117 @@ def _response_recommendations(
 ) -> list[dict[str, Any]]:
     """
     Operator-facing recommendations only (no control authority / no actuation).
+
+    Language is imperative and direct, 4-5 words max.
+    Only returns primary action (ranked first) to establish decision gravity.
+    Alternatives are suppressed to avoid perception of choice.
     """
     def risk_score(level: str) -> float:
-        # Map risk_level categories to a conservative [0,1] "escalation urgency" score.
         mapping = {"HIGH": 0.95, "ELEVATED": 0.75, "MODERATE": 0.45, "LOW": 0.15}
         return float(mapping.get(level, 0.3))
 
     def action_cost_tier(action_type: str) -> float:
-        # Non-monetary cost tier in [0,1]: higher means more operational overhead.
         cost_map = {
-            "maintenance_scheduling": 0.55,
-            "failover_routing_planning": 0.45,
-            "load_redistribution_planning": 0.40,
-            "configuration_sanity_check": 0.20,
-            "sensor_calibration_verify": 0.25,
-            "throttling_consideration": 0.15,
-            "increase_monitoring_cadence": 0.08,
-            "urgent_readiness_check": 0.05,
+            "maintain_asset_integrity": 0.55,
+            "prepare_failover_routing": 0.45,
+            "redistribute_load": 0.40,
+            "verify_control_setpoints": 0.20,
+            "verify_sensor_calibration": 0.25,
+            "reduce_load": 0.15,
+            "increase_monitoring": 0.08,
+            "escalate_readiness": 0.05,
             "human_approval_required": 0.00,
-            "continue_observation": 0.00,
+            "observe": 0.00,
         }
         return float(cost_map.get(action_type, 0.20))
 
     def time_impact_tier(action_type: str) -> float:
-        # Time impact tier in [0,1], higher means longer lead-time.
         t_map = {
-            "maintenance_scheduling": 0.70,
-            "failover_routing_planning": 0.55,
-            "load_redistribution_planning": 0.50,
-            "configuration_sanity_check": 0.15,
-            "sensor_calibration_verify": 0.35,
-            "throttling_consideration": 0.20,
-            "increase_monitoring_cadence": 0.10,
-            "urgent_readiness_check": 0.05,
+            "maintain_asset_integrity": 0.70,
+            "prepare_failover_routing": 0.55,
+            "redistribute_load": 0.50,
+            "verify_control_setpoints": 0.15,
+            "verify_sensor_calibration": 0.35,
+            "reduce_load": 0.20,
+            "increase_monitoring": 0.10,
+            "escalate_readiness": 0.05,
             "human_approval_required": 0.00,
-            "continue_observation": 0.00,
+            "observe": 0.00,
         }
         return float(t_map.get(action_type, 0.25))
 
     actions: list[dict[str, Any]] = []
-
     horizon_urgent = time_to_instability is not None and time_to_instability <= 12.0
-
-    # Core, structurally grounded suggestions mapped to typical control-system themes.
     base_risk = risk_score(risk_level)
+
     if state == "STRUCTURAL_INSTABILITY_OBSERVED":
         actions.append(
             {
-                "action_type": "maintenance_scheduling",
+                "action_type": "maintain_asset_integrity",
                 "integration_trigger": "SCHEDULE_MAINTENANCE",
-                "rationale": "Observed multi-indicator structural instability suggests risk of near-term transition.",
+                "display_name": "Maintain asset integrity",
+                "rationale": "Structural instability detected. Near-term intervention likely needed.",
                 "rank_hint": 1,
                 "risk": base_risk,
-                "cost_tier": action_cost_tier("maintenance_scheduling"),
-                "time_impact_tier": time_impact_tier("maintenance_scheduling"),
-            }
-        )
-        actions.append(
-            {
-                "action_type": "failover_routing_planning",
-                "integration_trigger": "FAILOVER_ROUTING_PREP",
-                "rationale": "Prepare routing safeguards for coordination loss across infrastructure signals.",
-                "rank_hint": 2,
-                "risk": base_risk,
-                "cost_tier": action_cost_tier("failover_routing_planning"),
-                "time_impact_tier": time_impact_tier("failover_routing_planning"),
-            }
-        )
-        actions.append(
-            {
-                "action_type": "configuration_sanity_check",
-                "integration_trigger": "VERIFY_CONTROL_SETPOINTS",
-                "rationale": "Structural regime divergence can be amplified by recent configuration changes.",
-                "rank_hint": 3,
-                "risk": base_risk * 0.8,
-                "cost_tier": action_cost_tier("configuration_sanity_check"),
-                "time_impact_tier": time_impact_tier("configuration_sanity_check"),
+                "cost_tier": action_cost_tier("maintain_asset_integrity"),
+                "time_impact_tier": time_impact_tier("maintain_asset_integrity"),
             }
         )
     elif state == "COUPLING_INSTABILITY_OBSERVED":
         actions.append(
             {
-                "action_type": "throttling_consideration",
+                "action_type": "reduce_load",
                 "integration_trigger": "THROTTLING_PREP",
-                "rationale": "Coupling/directional breakdown implies higher coordination volatility; reduce stress until stable.",
+                "display_name": "Reduce load",
+                "rationale": "Coupling breakdown. Load reduction stabilizes coordination.",
                 "rank_hint": 1,
                 "risk": base_risk * 0.9,
-                "cost_tier": action_cost_tier("throttling_consideration"),
-                "time_impact_tier": time_impact_tier("throttling_consideration"),
-            }
-        )
-        actions.append(
-            {
-                "action_type": "load_redistribution_planning",
-                "integration_trigger": "LOAD_REDISTRIBUTION_PREP",
-                "rationale": "Propagation-aware causal proxy suggests some signals can dominate system motion.",
-                "rank_hint": 2,
-                "risk": base_risk * 0.85,
-                "cost_tier": action_cost_tier("load_redistribution_planning"),
-                "time_impact_tier": time_impact_tier("load_redistribution_planning"),
+                "cost_tier": action_cost_tier("reduce_load"),
+                "time_impact_tier": time_impact_tier("reduce_load"),
             }
         )
     elif state == "REGIME_SHIFT_OBSERVED":
         actions.append(
             {
-                "action_type": "sensor_calibration_verify",
+                "action_type": "verify_sensor_calibration",
                 "integration_trigger": "VERIFY_SENSOR_CALIBRATION",
-                "rationale": "A regime shift may reflect operational reconfiguration or instrumentation change; verify both.",
+                "display_name": "Verify sensor calibration",
+                "rationale": "Regime shift detected. Sensor accuracy baseline confirmation needed.",
                 "rank_hint": 1,
                 "risk": base_risk * 0.7,
-                "cost_tier": action_cost_tier("sensor_calibration_verify"),
-                "time_impact_tier": time_impact_tier("sensor_calibration_verify"),
-            }
-        )
-        actions.append(
-            {
-                "action_type": "increase_monitoring_cadence",
-                "integration_trigger": "ALERTING_CADENCE_UP",
-                "rationale": "Regime transitions benefit from faster operator review windows.",
-                "rank_hint": 2,
-                "risk": base_risk * 0.55,
-                "cost_tier": action_cost_tier("increase_monitoring_cadence"),
-                "time_impact_tier": time_impact_tier("increase_monitoring_cadence"),
+                "cost_tier": action_cost_tier("verify_sensor_calibration"),
+                "time_impact_tier": time_impact_tier("verify_sensor_calibration"),
             }
         )
     else:
         actions.append(
             {
-                "action_type": "continue_observation",
+                "action_type": "observe",
                 "integration_trigger": "NO_ACTUATION",
-                "rationale": "System state is consistent with baseline under current analysis.",
+                "display_name": "Observe",
+                "rationale": "System stable. Continue standard monitoring rhythm.",
                 "rank_hint": 1,
                 "risk": base_risk * 0.2,
-                "cost_tier": action_cost_tier("continue_observation"),
-                "time_impact_tier": time_impact_tier("continue_observation"),
+                "cost_tier": action_cost_tier("observe"),
+                "time_impact_tier": time_impact_tier("observe"),
             }
         )
 
-    # Horizon-based readiness (still human-in-the-loop).
     if horizon_urgent and risk_level in {"HIGH", "ELEVATED"}:
-        actions.append(
+        actions.insert(
+            0,
             {
-                "action_type": "urgent_readiness_check",
+                "action_type": "escalate_readiness",
                 "integration_trigger": "HUMAN_APPROVAL_REQUIRED",
-                "rationale": f"Projected time-to-threshold is short (~{round(time_to_instability, 1)} time units). Escalate readiness.",
+                "display_name": "Escalate readiness",
+                "rationale": f"Cascade imminent. Recovery window ~{round(time_to_instability, 1)} units.",
                 "rank_hint": 0,
                 "risk": min(1.0, base_risk * 1.05),
-                "cost_tier": action_cost_tier("urgent_readiness_check"),
-                "time_impact_tier": time_impact_tier("urgent_readiness_check"),
+                "cost_tier": action_cost_tier("escalate_readiness"),
+                "time_impact_tier": time_impact_tier("escalate_readiness"),
             }
         )
 
-    # Keep recommendation language grounded: do not directly encode control commands.
-    actions.append(
-        {
-            "action_type": "human_approval_required",
-            "integration_trigger": "OPERATOR_REVIEW_ONLY",
-            "rationale": "Neraium emits recommendations as decision-support; no automated actuation is executed from this layer.",
-            "rank_hint": 999,
-            "risk": 0.0,
-            "cost_tier": action_cost_tier("human_approval_required"),
-            "time_impact_tier": time_impact_tier("human_approval_required"),
-        }
-    )
-
-    # Rank by rank_hint if present; stable tie-break by original order.
     for i, a in enumerate(actions):
         if "rank_hint" not in a:
             a["rank_hint"] = 100 + i
@@ -327,54 +273,49 @@ def _operator_message(
     time_to_instability: float | None,
 ) -> str:
     """
-    Strictly observational language.
-    No control, no directives, no operational commands.
+    Strictly observational language with clear consequence emphasis.
+    States what is happening and the cost of inaction.
+    No control directives, no imperatives.
     """
 
     if state == "STRUCTURAL_INSTABILITY_OBSERVED":
         if time_to_instability is not None:
             return (
-                "Observed structural relationships are diverging from previously seen "
-                "system patterns. Current configuration exhibits elevated instability "
-                "characteristics under current analysis, with continued progression "
-                f"projected over approximately {round(time_to_instability, 1)} time units."
+                f"Structural instability detected. Cascade progression likely within {round(time_to_instability, 1)} units. "
+                f"Inaction increases failure risk."
             )
         return (
-            "Observed structural relationships are diverging from previously seen "
-            "system patterns. Current configuration exhibits elevated instability "
-            "characteristics under current analysis."
+            "Structural instability observed. System relationships diverging from baseline. "
+            "Continued degradation without intervention."
         )
 
     if state == "REGIME_SHIFT_OBSERVED":
         return (
-            "Observed system relationships indicate a transition into a different "
-            "structural regime. Current behavior differs from prior baseline but "
-            "remains internally consistent under current analysis."
+            "System has entered different regime. Baseline assumptions no longer apply. "
+            "Verification required to reestablish confidence."
         )
 
     if state == "COUPLING_INSTABILITY_OBSERVED":
         return (
-            "Observed coupling and directional interactions between signals show "
-            "elevated variability. System coordination patterns appear less stable "
-            "than baseline under current analysis."
+            "Coupling breakdown detected. Signal interactions unstable. "
+            "Coordination loss likely if uncorrected."
         )
 
     if state == "COHERENCE_UNDER_CONSTRAINT":
         return (
-            "Observed structure is moving under apparent correction activity. "
-            "Current relationships remain bounded and internally coherent under current analysis, "
-            "without clear evidence of coordinated structural breakdown."
+            "Structure is correcting but under stress. Bounds hold for now. "
+            "Sustained instability risks breaking recovery capacity."
         )
 
     if trend > 0.0:
         return (
-            "Observed structural patterns remain broadly consistent with previously "
-            "seen behavior, with limited upward movement in current instability signals."
+            "Structural patterns consistent but degrading slowly. "
+            "Monitoring at current cadence sufficient."
         )
 
     return (
-        "Observed structural patterns are consistent with previously seen baseline "
-        "behavior under current analysis. No significant structural deviation detected."
+        "Structural patterns nominal. No significant deviation detected. "
+        "Standard monitoring rhythm continues."
     )
 
 
@@ -496,9 +437,29 @@ def decision_output(
             time_to_instability=time_to_instability,
             scenario_projections=scenario_projections,
         )
-        out["operational_recommendation"] = recommendations[0] if recommendations else None
+        primary_action = recommendations[0] if recommendations else None
+
+        # Add decision commitment metadata: indicates how stable/committed the system is to this action
+        if primary_action:
+            # commitment_score: [0, 1] - increases with sustained degradation, decreases with stability
+            commitment_factor = min(1.0, float(consecutive_high) / 3.0)  # Saturates at 3+ consecutive high
+            primary_action["decision_commitment_score"] = round(
+                min(1.0, base_risk + commitment_factor * 0.3), 4
+            )
+
+            # Confidence adjustment based on state persistence
+            # Sustained degradation increases confidence in the decision
+            if consecutive_high >= 2:
+                primary_action["decision_momentum"] = "strengthening"
+            elif consecutive_high >= 1:
+                primary_action["decision_momentum"] = "establishing"
+            else:
+                primary_action["decision_momentum"] = "emerging"
+
+        out["operational_recommendation"] = primary_action
         out["recommendation_available"] = bool(recommendations)
-        out["response_recommendations"] = recommendations  # deprecated compatibility alias
+        # Suppress alternatives to reduce perception of "options" - only primary action is shown
+        out["response_recommendations"] = [primary_action] if primary_action else []
         out["autonomous_response_enabled"] = True
     else:
         out["operational_recommendation"] = None
