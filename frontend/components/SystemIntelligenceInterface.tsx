@@ -7,6 +7,9 @@ import { NarrativeLayer } from './NarrativeLayer'
 import { TrajectoryLayer } from './TrajectoryLayer'
 import { PlaybackControls } from './SystemPlaybackControls'
 import { ConsequenceIndicator } from './ConsequenceIndicator'
+import { StatusStrip } from './StatusStrip'
+import { CommittedActionOverlay } from './CommittedActionOverlay'
+import { SubsystemIndicators } from './SubsystemIndicators'
 import { usePhaseController } from '@/lib/phaseController'
 import { useSystemInterpolation } from '@/lib/systemInterpolation'
 import { computeConsequenceState, getEscalationNarrative } from '@/lib/decisionGravity'
@@ -172,64 +175,50 @@ export function SystemIntelligenceInterface({
         }}
       />
 
-      {/* Consequence Indicator */}
-      <ConsequenceIndicator
-        timeToImpactLabel={consequenceState.timeToImpactLabel}
-        operatorFocus={consequenceState.operatorFocus}
-        escalationLevel={consequenceState.escalationLevel}
-        hasThresholdCrossed={consequenceState.hasThresholdCrossed}
+      {/* STATUS STRIP - Always visible at top */}
+      <StatusStrip
+        systemName="System: Grow Room A"
+        state={phase}
         confidence={diagnostics.confidence}
-        actionOutcome={outcomeState.actionOutcome}
-        noActionConsequence={outcomeState.noActionConsequence}
-        commitment={commitment}
+        timeToImpactLabel={consequenceState.timeToImpactLabel}
       />
 
-      {/* Main scrollable container */}
+      {/* MAIN SYSTEM VIEW - Tetrahedron (full height minus status bar) */}
       <div
         style={{
           width: '100%',
-          height: '100%',
-          overflowY: 'auto',
-          overflowX: 'hidden',
+          height: 'calc(100vh - 40px)',
           display: 'flex',
-          flexDirection: 'column',
-          scrollBehavior: 'smooth',
+          alignItems: 'center',
+          justifyContent: 'center',
+          position: 'relative',
         }}
       >
-        {/* System Field - Primary Visualization */}
-        <div
-          style={{
-            width: '100%',
-            height: '85vh',
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'center',
-            justifyContent: 'center',
-            position: 'relative',
-            flexShrink: 0,
-          }}
-        >
-          <TetrahedronField
-            data={interpolatedData}
-            phaseProgress={phaseProgress}
-            phase={phase}
-            escalationLevel={consequenceState.escalationLevel}
-            hasThresholdCrossed={consequenceState.hasThresholdCrossed}
-            isApproachingFailure={consequenceState.isApproachingFailure}
-          />
-        </div>
+        <TetrahedronField
+          data={interpolatedData}
+          phaseProgress={phaseProgress}
+          phase={phase}
+          escalationLevel={consequenceState.escalationLevel}
+          hasThresholdCrossed={consequenceState.hasThresholdCrossed}
+          isApproachingFailure={consequenceState.isApproachingFailure}
+        />
 
-        {/* Narrative Layer */}
+        {/* SUBSYSTEM INDICATORS - Left side */}
+        <SubsystemIndicators
+          drift={interpolatedData.interpolatedDrift}
+          stability={interpolatedData.interpolatedStability}
+          coherence={interpolatedData.interpolatedCoherence}
+        />
+
+        {/* NARRATIVE - Minimal text near bottom */}
         <div
           style={{
-            width: '100%',
-            height: 'auto',
-            padding: '12px 40px 24px 40px',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            position: 'relative',
-            flexShrink: 0,
+            position: 'fixed',
+            bottom: '180px',
+            left: '50%',
+            transform: 'translateX(-50%)',
+            textAlign: 'center',
+            zIndex: 40,
           }}
         >
           <NarrativeLayer
@@ -245,26 +234,36 @@ export function SystemIntelligenceInterface({
           />
         </div>
 
-        {/* Subsystem Signals - Removed, encoded into tetrahedron */}
+        {/* COMMITTED ACTION - Always visible, overlaid */}
+        <CommittedActionOverlay
+          action={consequenceState.operatorFocus}
+          actionOutcome={outcomeState.actionOutcome}
+          escalationLevel={consequenceState.escalationLevel}
+          commitment={commitment}
+        />
 
-        {/* Trajectory Layer */}
-        <div
-          style={{
-            width: '100%',
-            height: '320px',
-            padding: '40px 0',
-            position: 'relative',
-            flexShrink: 0,
-          }}
-        >
-          <TrajectoryLayer data={interpolatedData} escalationLevel={consequenceState.escalationLevel} />
-        </div>
-
-        {/* Bottom spacing */}
-        <div style={{ height: '80px', flexShrink: 0 }} />
+        {/* CONSEQUENCE - When relevant (no-action consequence) */}
+        {outcomeState.noActionConsequence && (
+          <div
+            style={{
+              position: 'fixed',
+              bottom: '60px',
+              left: '50%',
+              transform: 'translateX(-50%)',
+              fontSize: '12px',
+              color: '#94a3b8',
+              textAlign: 'center',
+              fontStyle: 'italic',
+              zIndex: 40,
+              maxWidth: '300px',
+            }}
+          >
+            If no action: {outcomeState.noActionConsequence}
+          </div>
+        )}
       </div>
 
-      {/* Playback Controls - Fixed at bottom right */}
+      {/* PLAYBACK CONTROLS - Fixed at bottom right */}
       <div
         style={{
           position: 'fixed',
