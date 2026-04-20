@@ -12,6 +12,7 @@ import { useSystemInterpolation } from '@/lib/systemInterpolation'
 import { computeConsequenceState, getEscalationNarrative } from '@/lib/decisionGravity'
 import { computeDiagnosticLegibility } from '@/lib/diagnosticLegibility'
 import { computeOutcomeConfidence } from '@/lib/outcomeConfidence'
+import { evaluateActionDecision, RankedAction, ActionDecisionResult } from '@/lib/actionEvaluation'
 
 interface SystemData {
   drift: number
@@ -41,6 +42,8 @@ export function SystemIntelligenceInterface({
   const [primaryDriver, setPrimaryDriver] = useState<string | null>(null) // System memory
   const [driftHistory, setDriftHistory] = useState<number[]>([])
   const [stabilityHistory, setStabilityHistory] = useState<number[]>([])
+  const [actionHistory, setActionHistory] = useState<RankedAction[]>([])
+  const [actionDecision, setActionDecision] = useState<ActionDecisionResult | null>(null)
 
   // Phase system: manage discrete system states with 8-15 second transitions
   const { phase, phaseProgress } = usePhaseController(isPlaying, speed && !thresholdDwellActive ? 1 : 0)
@@ -93,6 +96,43 @@ export function SystemIntelligenceInterface({
     interpolatedData.interpolatedCoherence,
     diagnostics.confidence
   )
+
+  // Multi-action decision evaluation
+  const driftAcceleration = driftHistory.length > 1
+    ? driftHistory[driftHistory.length - 1] - driftHistory[Math.max(0, driftHistory.length - 3)]
+    : 0
+
+  useEffect(() => {
+    const decision = evaluateActionDecision(
+      phase,
+      diagnostics.dominantDriver || 'multi-mode',
+      interpolatedData.interpolatedDrift,
+      interpolatedData.interpolatedStability,
+      interpolatedData.interpolatedCoherence,
+      diagnostics.confidence,
+      consequenceState.timeToImpact,
+      driftAcceleration,
+      outcomeState.noActionConsequence,
+      actionHistory
+    )
+    setActionDecision(decision)
+
+    // Update action history for stability tracking (keep last 5)
+    if (decision.primaryAction) {
+      setActionHistory(prev => [...prev.slice(-4), {
+        label: decision.primaryAction.label,
+        score: decision.primaryAction.score,
+        stabilizationBenefit: decision.primaryAction.stabilizationBenefit,
+        riskReduction: 0,
+        failureModeFit: 1,
+        timeSensitivityFit: 0.8,
+        confidence: 0.8,
+        aggressivenessPenalty: 0.9,
+        outcome: decision.primaryAction.outcome,
+        timingSensitivity: decision.primaryAction.timingSensitivity
+      }])
+    }
+  }, [phase, diagnostics.dominantDriver, interpolatedData.interpolatedDrift, interpolatedData.interpolatedStability, interpolatedData.interpolatedCoherence, diagnostics.confidence, consequenceState.timeToImpact, driftAcceleration, outcomeState.noActionConsequence])
 
   // Track phase changes for threshold detection and dwell
   useEffect(() => {
@@ -162,6 +202,7 @@ export function SystemIntelligenceInterface({
         confidence={diagnostics.confidence}
         actionOutcome={outcomeState.actionOutcome}
         noActionConsequence={outcomeState.noActionConsequence}
+        actionDecision={actionDecision}
       />
 
       {/* Main scrollable container */}
