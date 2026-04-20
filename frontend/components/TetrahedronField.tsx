@@ -215,9 +215,11 @@ export function TetrahedronField({
       const phaseColor = getPhaseColor(livePhase as any) || '#38BDF8'
 
       verticesRef.current.forEach((sphere, index) => {
-        if (!(sphere.material instanceof THREE.MeshBasicMaterial)) return
+        sphere.scale.set(0.15, 0.15, 0.15)
 
-        sphere.material.color.setStyle(phaseColor)
+        const mat = sphere.material as any
+        if (mat && mat.color) mat.color.setStyle(phaseColor)
+        if (mat && mat.emissive) { mat.emissive.setStyle(phaseColor); mat.emissiveIntensity = 0 }
 
         const instabilityAmount = drift * (0.08 + liveEscalationLevel * 0.04)
         const wobbleFreq = liveEscalationLevel >= 3 ? 2.5 : 1.2
