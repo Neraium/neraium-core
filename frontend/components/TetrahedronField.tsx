@@ -68,7 +68,7 @@ export function TetrahedronField({
     sceneRef.current = scene
 
     const camera = new THREE.PerspectiveCamera(75, 1, 0.1, 1000)
-    camera.position.z = 3.2
+    camera.position.z = 6.0
     cameraRef.current = camera
 
     const renderer = new THREE.WebGLRenderer({
