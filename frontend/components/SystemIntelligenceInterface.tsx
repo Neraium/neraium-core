@@ -4,7 +4,6 @@ import React, { useState, useEffect, useRef } from 'react'
 import { motion } from 'framer-motion'
 import { TetrahedronField } from './TetrahedronField'
 import { NarrativeLayer } from './NarrativeLayer'
-import { SubsystemSignals } from './SubsystemSignals'
 import { TrajectoryLayer } from './TrajectoryLayer'
 import { PlaybackControls } from './SystemPlaybackControls'
 import { usePhaseController } from '@/lib/phaseController'
@@ -40,28 +39,28 @@ export function SystemIntelligenceInterface({
   // Smooth interpolation of all numeric values
   const interpolatedData = useSystemInterpolation(systemData, phase)
 
-  // Generate narrative based on phase and data
+  // Generate narrative as system voice (max 6 words, direct)
   useEffect(() => {
     const narratives: Record<string, string[]> = {
       Stable: [
-        'System coherence stable',
-        'Drift minimal across couplings',
-        'Recovery pathways open',
+        'Coherence stable',
+        'Drift nominal',
+        'Coupled systems aligned',
       ],
       'Drift forming': [
-        'Drift spreading through airflow coupling',
-        'Stability margins narrowing',
-        'Coherence structure wavering',
+        'Coupling destabilizing',
+        'Recovery window narrowing',
+        'Structural coherence degrading',
       ],
       'Instability forming': [
-        'Recovery pathway narrowing',
-        'System coherence degrading',
-        'Multiple coupling points destabilizing',
+        'Multiple couplings failing',
+        'Coherence collapse approaching',
+        'Recovery pathways closing',
       ],
       Critical: [
-        'Critical threshold approaching',
-        'Coherence collapse imminent',
-        'System reorganization likely',
+        'System reorganization imminent',
+        'Cascade propagating',
+        'Coherence at threshold',
       ],
     }
 
@@ -121,7 +120,7 @@ export function SystemIntelligenceInterface({
         <div
           style={{
             width: '100%',
-            height: '80vh',
+            height: '85vh',
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
@@ -130,7 +129,11 @@ export function SystemIntelligenceInterface({
             flexShrink: 0,
           }}
         >
-          <TetrahedronField data={interpolatedData} phaseProgress={phaseProgress} />
+          <TetrahedronField
+            data={interpolatedData}
+            phaseProgress={phaseProgress}
+            phase={phase}
+          />
         </div>
 
         {/* Narrative Layer */}
@@ -138,7 +141,7 @@ export function SystemIntelligenceInterface({
           style={{
             width: '100%',
             height: 'auto',
-            padding: '60px 40px',
+            padding: '40px',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
@@ -146,21 +149,14 @@ export function SystemIntelligenceInterface({
             flexShrink: 0,
           }}
         >
-          <NarrativeLayer text={narrativeText} />
+          <NarrativeLayer
+            text={narrativeText}
+            phase={phase}
+            phaseProgress={phaseProgress}
+          />
         </div>
 
-        {/* Subsystem Signals */}
-        <div
-          style={{
-            width: '100%',
-            height: 'auto',
-            padding: '40px',
-            position: 'relative',
-            flexShrink: 0,
-          }}
-        >
-          <SubsystemSignals data={interpolatedData} />
-        </div>
+        {/* Subsystem Signals - Removed, encoded into tetrahedron */}
 
         {/* Trajectory Layer */}
         <div

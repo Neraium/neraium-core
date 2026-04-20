@@ -5,30 +5,34 @@ type SystemPhase = 'Stable' | 'Drift forming' | 'Instability forming' | 'Critica
 interface PhaseConfig {
   phase: SystemPhase
   minDuration: number // milliseconds
+  maxDuration: number // milliseconds
+  weight: number // how long it lingers (0-1, higher = lingers longer)
 }
 
 const PHASE_SEQUENCE: PhaseConfig[] = [
-  { phase: 'Stable', minDuration: 8000 }, // 8-15 seconds
-  { phase: 'Drift forming', minDuration: 8000 },
-  { phase: 'Instability forming', minDuration: 8000 },
-  { phase: 'Critical', minDuration: 8000 },
+  { phase: 'Stable', minDuration: 8000, maxDuration: 12000, weight: 0.3 },
+  { phase: 'Drift forming', minDuration: 10000, maxDuration: 16000, weight: 0.5 },
+  { phase: 'Instability forming', minDuration: 12000, maxDuration: 20000, weight: 0.7 },
+  { phase: 'Critical', minDuration: 15000, maxDuration: 30000, weight: 0.9 }, // Lingers longer
 ]
 
-const PHASE_DURATION_VARIANCE = 7000 // Add 0-7 seconds random variance
-
 /**
- * Hook to manage discrete system phases with smooth transitions.
- * Each phase lasts 8-15 seconds, then cycles through the sequence.
+ * Hook to manage discrete system phases with directional progression bias.
+ *
+ * Instead of cycling randomly, phases progress toward criticality with:
+ * - Faster drift buildup (acceleration toward instability)
+ * - Slower recovery (resistance toward stability)
+ * - Critical lingers longer (phase weight)
+ * - Causal feel, not timed
  */
 export function usePhaseController(isPlaying: boolean, speed: number = 1) {
   const [phase, setPhase] = useState<SystemPhase>('Stable')
   const [phaseProgress, setPhaseProgress] = useState(0) // 0-1
   const currentPhaseIndexRef = useRef(0)
   const phaseStartTimeRef = useRef(Date.now())
-  const phaseDurationRef = useRef(
-    PHASE_SEQUENCE[0].minDuration + Math.random() * PHASE_DURATION_VARIANCE
-  )
+  const phaseDurationRef = useRef(0)
   const animationFrameRef = useRef<number | null>(null)
+  const hasLingeredRef = useRef(false) // Track if critical phase lingered
 
   useEffect(() => {
     if (!isPlaying) {
@@ -37,6 +41,14 @@ export function usePhaseController(isPlaying: boolean, speed: number = 1) {
         animationFrameRef.current = null
       }
       return
+    }
+
+    // Initialize duration on first run
+    if (phaseDurationRef.current === 0) {
+      const config = PHASE_SEQUENCE[0]
+      const baseDuration = config.minDuration + Math.random() * (config.maxDuration - config.minDuration)
+      // Apply weight to duration (critical phases linger longer)
+      phaseDurationRef.current = baseDuration + config.weight * 8000
     }
 
     const updatePhase = () => {
@@ -50,12 +62,35 @@ export function usePhaseController(isPlaying: boolean, speed: number = 1) {
 
       // If phase duration exceeded, move to next phase
       if (elapsed >= currentDuration) {
-        currentPhaseIndexRef.current = (currentPhaseIndexRef.current + 1) % PHASE_SEQUENCE.length
-        const nextPhase = PHASE_SEQUENCE[currentPhaseIndexRef.current]
+        // Directional progression with temporal gravity
+        const currentIndex = currentPhaseIndexRef.current
+        const isRecoveryPhase = currentIndex > 1 // Coming back from Critical
 
-        setPhase(nextPhase.phase)
+        if (isRecoveryPhase && hasLingeredRef.current) {
+          // Recovery is slower: move back one phase instead of forward
+          currentPhaseIndexRef.current = Math.max(0, currentIndex - 1)
+          hasLingeredRef.current = false
+        } else if (currentIndex < PHASE_SEQUENCE.length - 1) {
+          // Progression: move toward instability (faster acceleration)
+          currentPhaseIndexRef.current += 1
+        } else {
+          // At critical: linger before recovery
+          hasLingeredRef.current = true
+        }
+
+        const nextConfig = PHASE_SEQUENCE[currentPhaseIndexRef.current]
+        const baseDuration = nextConfig.minDuration +
+          Math.random() * (nextConfig.maxDuration - nextConfig.minDuration)
+
+        // Temporal gravity: asymmetric time
+        // Drift builds faster (acceleration toward instability)
+        // Recovery is slower (resistance toward stability)
+        const progressionBias = currentIndex < 3 ? 0.7 : 1.2 // Forward is faster, backward is slower
+        const finalDuration = baseDuration * progressionBias + nextConfig.weight * 8000
+
+        setPhase(nextConfig.phase)
         phaseStartTimeRef.current = now
-        phaseDurationRef.current = nextPhase.minDuration + Math.random() * PHASE_DURATION_VARIANCE
+        phaseDurationRef.current = finalDuration
 
         // Reset progress for next phase
         setPhaseProgress(0)

@@ -1,6 +1,6 @@
 'use client'
 
-import React from 'react'
+import React, { useState } from 'react'
 import { motion } from 'framer-motion'
 
 interface PlaybackControlsProps {
@@ -17,19 +17,22 @@ export function PlaybackControls({
   onSpeedChange,
 }: PlaybackControlsProps) {
   const speeds = [0.5, 1, 1.5, 2]
+  const [isHovering, setIsHovering] = useState(false)
 
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: 0.5, duration: 0.6 }}
+      animate={{ opacity: isHovering ? 1 : 0.3, y: 0 }}
+      onHoverStart={() => setIsHovering(true)}
+      onHoverEnd={() => setIsHovering(false)}
+      transition={{ duration: 0.3, ease: 'easeInOut' }}
       style={{
         display: 'flex',
         gap: '20px',
         alignItems: 'center',
-        backgroundColor: 'rgba(2, 6, 23, 0.7)',
-        border: '1px solid rgba(148, 163, 184, 0.2)',
-        borderRadius: '8px',
+        backgroundColor: 'rgba(2, 6, 23, 0.5)',
+        border: '1px solid rgba(148, 163, 184, 0.15)',
+        borderRadius: '6px',
         padding: '12px 16px',
         backdropFilter: 'blur(8px)',
       }}
@@ -37,27 +40,30 @@ export function PlaybackControls({
       {/* Play/Pause Button */}
       <motion.button
         onClick={onTogglePlay}
-        whileHover={{ scale: 1.1 }}
-        whileTap={{ scale: 0.95 }}
+        whileHover={{ scale: 1.05 }}
+        whileTap={{ scale: 0.98 }}
         style={{
           background: 'none',
           border: 'none',
           color: '#38BDF8',
           cursor: 'pointer',
-          fontSize: '20px',
+          fontSize: '18px',
           width: '32px',
           height: '32px',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
           borderRadius: '4px',
-          transition: 'background-color 0.2s ease',
+          transition: 'background-color 0.3s ease',
+          opacity: 0.7,
         }}
         onMouseEnter={(e) => {
-          e.currentTarget.style.backgroundColor = 'rgba(56, 189, 248, 0.1)'
+          e.currentTarget.style.backgroundColor = 'rgba(56, 189, 248, 0.08)'
+          e.currentTarget.style.opacity = '1'
         }}
         onMouseLeave={(e) => {
           e.currentTarget.style.backgroundColor = 'transparent'
+          e.currentTarget.style.opacity = '0.7'
         }}
       >
         {isPlaying ? '⏸' : '▶'}

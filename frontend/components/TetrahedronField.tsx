@@ -2,7 +2,7 @@
 
 import React, { useEffect, useRef } from 'react'
 import * as THREE from 'three'
-import { getPhaseColor, getPhaseIntensity } from '@/lib/phaseController'
+import { getPhaseColor } from '@/lib/phaseController'
 
 interface TetrahedronData {
   interpolatedDrift: number
@@ -14,9 +14,10 @@ interface TetrahedronData {
 interface TetrahedronFieldProps {
   data: TetrahedronData
   phaseProgress: number
+  phase: string
 }
 
-export function TetrahedronField({ data, phaseProgress }: TetrahedronFieldProps) {
+export function TetrahedronField({ data, phaseProgress, phase }: TetrahedronFieldProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const sceneRef = useRef<THREE.Scene | null>(null)
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null)
@@ -24,6 +25,7 @@ export function TetrahedronField({ data, phaseProgress }: TetrahedronFieldProps)
   const tetrahedronRef = useRef<THREE.Group | null>(null)
   const edgesRef = useRef<THREE.Line[]>([])
   const verticesRef = useRef<THREE.Mesh[]>([])
+  const timeRef = useRef(0)
 
   useEffect(() => {
     if (!containerRef.current) return
@@ -39,7 +41,8 @@ export function TetrahedronField({ data, phaseProgress }: TetrahedronFieldProps)
       0.1,
       1000
     )
-    camera.position.z = 2.5
+    // Camera positioned closer for larger tetrahedron fill
+    camera.position.z = 1.8
     cameraRef.current = camera
 
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false })
@@ -53,7 +56,8 @@ export function TetrahedronField({ data, phaseProgress }: TetrahedronFieldProps)
     tetrahedronRef.current = tetrahedron
     scene.add(tetrahedron)
 
-    // Tetrahedron vertices (normalized)
+    // Base tetrahedron vertices (scaled larger for 80-85% fill)
+    const baseScale = 1.35
     const vertices = [
       new THREE.Vector3(0, 1, 0), // top
       new THREE.Vector3(-0.866, -0.5, 0), // bottom-left
@@ -62,7 +66,7 @@ export function TetrahedronField({ data, phaseProgress }: TetrahedronFieldProps)
     ]
 
     // Create vertex spheres
-    const sphereGeometry = new THREE.SphereGeometry(0.08, 16, 16)
+    const sphereGeometry = new THREE.SphereGeometry(0.12, 16, 16)
     vertices.forEach((vertex, index) => {
       const material = new THREE.MeshPhongMaterial({
         color: 0x38BDF8,
@@ -70,12 +74,13 @@ export function TetrahedronField({ data, phaseProgress }: TetrahedronFieldProps)
         emissiveIntensity: 0.3,
       })
       const sphere = new THREE.Mesh(sphereGeometry, material)
-      sphere.position.copy(vertex)
+      sphere.position.copy(vertex.multiplyScalar(baseScale))
+      sphere.userData.basePosition = sphere.position.clone()
       tetrahedron.add(sphere)
       verticesRef.current.push(sphere)
     })
 
-    // Create edges
+    // Create edges with deformation data
     const edges = [
       [0, 1],
       [1, 2],
@@ -87,10 +92,12 @@ export function TetrahedronField({ data, phaseProgress }: TetrahedronFieldProps)
 
     edges.forEach(([startIdx, endIdx]) => {
       const geometry = new THREE.BufferGeometry()
+      const start = vertices[startIdx].clone().multiplyScalar(baseScale)
+      const end = vertices[endIdx].clone().multiplyScalar(baseScale)
       geometry.setAttribute('position', new THREE.BufferAttribute(
         new Float32Array([
-          vertices[startIdx].x, vertices[startIdx].y, vertices[startIdx].z,
-          vertices[endIdx].x, vertices[endIdx].y, vertices[endIdx].z,
+          start.x, start.y, start.z,
+          end.x, end.y, end.z,
         ]),
         3
       ))
@@ -100,6 +107,8 @@ export function TetrahedronField({ data, phaseProgress }: TetrahedronFieldProps)
         linewidth: 2,
       })
       const line = new THREE.Line(geometry, material)
+      line.userData.baseStart = start
+      line.userData.baseEnd = end
       tetrahedron.add(line)
       edgesRef.current.push(line)
     })
@@ -119,41 +128,86 @@ export function TetrahedronField({ data, phaseProgress }: TetrahedronFieldProps)
 
     const animate = () => {
       animationFrameId = requestAnimationFrame(animate)
+      timeRef.current += 0.016 // ~60fps
 
-      // Smooth rotation based on drift
-      const driftInfluence = data.interpolatedDrift * 0.3
-      rotationX += 0.005 + driftInfluence * 0.01
-      rotationY += 0.003 + driftInfluence * 0.008
+      // Continuous motion (never idle) - base rotation always increases
+      const baseRotationSpeed = 0.002
+      rotationX += baseRotationSpeed
+      rotationY += baseRotationSpeed * 0.6
 
-      // Add breathing effect at stable phase
-      const breathingScale = 1 + Math.sin(phaseProgress * Math.PI * 8) * 0.05
+      // Drift-influenced rotation (adds instability)
+      const driftInfluence = data.interpolatedDrift * 0.2
+      rotationX += driftInfluence * 0.008
+      rotationY += driftInfluence * 0.006
+
+      // Depth breathing (Z-axis parallax effect)
+      const depthBreathe = Math.sin(timeRef.current * 0.5) * 0.15
+      const xBreathe = Math.cos(timeRef.current * 0.3) * 0.08
+      tetrahedron.position.z = depthBreathe
+      tetrahedron.position.x = xBreathe * data.interpolatedDrift
+
+      // Scale: subtle breathing, never perfectly still
+      const baseBreathing = 1 + Math.sin(timeRef.current * 0.8) * 0.03
+      const stabilityDamping = 0.05 + data.interpolatedStability * 0.02
+      const breathingScale = baseBreathing + stabilityDamping
 
       tetrahedron.rotation.x = rotationX
       tetrahedron.rotation.y = rotationY
       tetrahedron.scale.set(breathingScale, breathingScale, breathingScale)
 
-      // Update vertex colors based on drift
-      const driftColor = new THREE.Color()
-      const baseColor = getPhaseColor('Stable')
-      driftColor.setStyle(baseColor)
+      // Color based on phase
+      const phaseColor = getPhaseColor(phase as any) || '#38BDF8'
 
-      verticesRef.current.forEach((sphere) => {
+      // Update vertices with micro-instability (subtle asymmetry under drift)
+      verticesRef.current.forEach((sphere, index) => {
         if (sphere.material instanceof THREE.MeshPhongMaterial) {
-          sphere.material.color.setStyle(baseColor)
-          sphere.material.emissive.setStyle(baseColor)
+          sphere.material.color.setStyle(phaseColor)
+          sphere.material.emissive.setStyle(phaseColor)
 
-          // Intensity glow effect
-          const intensity = getPhaseIntensity('Stable', phaseProgress)
-          sphere.material.emissiveIntensity = 0.3 + intensity * 0.4
+          // Phase-based intensity
+          const phaseIntensity = {
+            'Stable': 0.25,
+            'Drift forming': 0.35,
+            'Instability forming': 0.5,
+            'Critical': 0.7,
+          }[phase] || 0.25
+
+          sphere.material.emissiveIntensity = phaseIntensity + Math.sin(timeRef.current + index) * 0.1
+
+          // Micro-instability: slight wobble on vertices under drift
+          const instabilityAmount = data.interpolatedDrift * 0.08
+          const wobble = new THREE.Vector3(
+            Math.sin(timeRef.current * 1.2 + index) * instabilityAmount,
+            Math.cos(timeRef.current * 1.5 + index) * instabilityAmount,
+            Math.sin(timeRef.current * 0.9 + index) * instabilityAmount * 0.5
+          )
+          sphere.position.copy(sphere.userData.basePosition.clone().add(wobble))
         }
       })
 
-      // Update edge colors with drift tension
+      // Update edges with tension behavior
       edgesRef.current.forEach((line, index) => {
         if (line.material instanceof THREE.LineBasicMaterial) {
-          const tension = data.interpolatedDrift * 0.5
-          line.material.color.setStyle(baseColor)
-          line.material.linewidth = 1.5 + tension
+          line.material.color.setStyle(phaseColor)
+
+          // Edge tension: stretch/compress based on drift
+          const tension = data.interpolatedDrift * 0.08
+          const tensionWave = Math.sin(timeRef.current * 0.7 + index * 0.5) * 0.04
+
+          // Deform edge by stretching
+          const positions = line.geometry.attributes.position.array as Float32Array
+          const baseStart = line.userData.baseStart
+          const baseEnd = line.userData.baseEnd
+          const direction = new THREE.Vector3().subVectors(baseEnd, baseStart).normalize()
+
+          const stretchAmount = tension + tensionWave
+          positions[0] = baseStart.x + direction.x * stretchAmount
+          positions[1] = baseStart.y + direction.y * stretchAmount
+          positions[2] = baseStart.z + direction.z * stretchAmount
+          positions[3] = baseEnd.x - direction.x * stretchAmount
+          positions[4] = baseEnd.y - direction.y * stretchAmount
+          positions[5] = baseEnd.z - direction.z * stretchAmount
+          line.geometry.attributes.position.needsUpdate = true
         }
       })
 
@@ -181,7 +235,7 @@ export function TetrahedronField({ data, phaseProgress }: TetrahedronFieldProps)
       renderer.dispose()
       renderer.domElement.remove()
     }
-  }, [data, phaseProgress])
+  }, [data, phaseProgress, phase])
 
   return (
     <div

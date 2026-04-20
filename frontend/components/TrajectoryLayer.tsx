@@ -53,26 +53,17 @@ export function TrajectoryLayer({ data }: TrajectoryLayerProps) {
     }
 
     // Clear canvas
-    ctx.fillStyle = 'rgba(10, 14, 26, 0.5)'
+    ctx.fillStyle = 'rgba(10, 14, 26, 0.4)'
     ctx.fillRect(0, 0, canvas.width, canvas.height)
 
-    // Draw axis hints (very subtle)
-    ctx.strokeStyle = 'rgba(148, 163, 184, 0.1)'
+    // No axis hints - feel like memory, not chart
+
+    // Draw projected path (uncertain, blurred)
+    const projectionOpacity = Math.min(0.15 + data.interpolatedDrift * 0.15, 0.4)
+    ctx.strokeStyle = `rgba(56, 189, 248, ${projectionOpacity})`
     ctx.lineWidth = 1
-    ctx.beginPath()
-    ctx.moveTo(canvas.width * 0.1, 0)
-    ctx.lineTo(canvas.width * 0.1, canvas.height)
-    ctx.stroke()
-
-    ctx.beginPath()
-    ctx.moveTo(0, canvas.height - canvas.height * 0.15)
-    ctx.lineTo(canvas.width, canvas.height - canvas.height * 0.15)
-    ctx.stroke()
-
-    // Draw projected path (very faint)
-    ctx.strokeStyle = 'rgba(56, 189, 248, 0.2)'
-    ctx.lineWidth = 1.5
-    ctx.setLineDash([4, 4])
+    ctx.setLineDash([3, 3])
+    ctx.filter = `blur(${1 + data.interpolatedDrift * 2}px)`
     ctx.beginPath()
     if (projectionRef.current.length > 0) {
       ctx.moveTo(currentX, currentY)
@@ -82,10 +73,19 @@ export function TrajectoryLayer({ data }: TrajectoryLayerProps) {
     }
     ctx.stroke()
     ctx.setLineDash([])
+    ctx.filter = 'none'
 
-    // Draw actual trajectory path
-    ctx.strokeStyle = 'rgba(56, 189, 248, 0.7)'
-    ctx.lineWidth = 2
+    // Draw actual trajectory path with momentum-based thickness
+    const momentum = Math.abs(
+      (historyRef.current[historyRef.current.length - 1]?.x ?? currentX) -
+      (historyRef.current[historyRef.current.length - 2]?.x ?? currentX)
+    ) / canvas.width
+    const thickness = 1.5 + momentum * 2
+
+    ctx.strokeStyle = 'rgba(56, 189, 248, 0.75)'
+    ctx.lineWidth = thickness
+    ctx.lineCap = 'round'
+    ctx.lineJoin = 'round'
     ctx.beginPath()
     if (historyRef.current.length > 0) {
       ctx.moveTo(historyRef.current[0].x, historyRef.current[0].y)
@@ -95,28 +95,23 @@ export function TrajectoryLayer({ data }: TrajectoryLayerProps) {
     }
     ctx.stroke()
 
-    // Draw current position
-    ctx.fillStyle = '#38BDF8'
-    ctx.shadowColor = 'rgba(56, 189, 248, 0.6)'
-    ctx.shadowBlur = 8
+    // Draw current position with glow intensity based on drift
+    const glowRadius = 8 + data.interpolatedDrift * 6
+    const glowOpacity = 0.4 + data.interpolatedDrift * 0.5
+
+    ctx.fillStyle = `rgba(56, 189, 248, ${glowOpacity * 0.3})`
+    ctx.shadowColor = `rgba(56, 189, 248, ${glowOpacity})`
+    ctx.shadowBlur = glowRadius
     ctx.beginPath()
     ctx.arc(currentX, currentY, 6, 0, Math.PI * 2)
     ctx.fill()
     ctx.shadowBlur = 0
 
-    // Draw path history fade (older points more transparent)
-    ctx.strokeStyle = 'rgba(56, 189, 248, 0.3)'
-    ctx.lineWidth = 1
-    ctx.setLineDash([2, 2])
+    // Core point
+    ctx.fillStyle = '#38BDF8'
     ctx.beginPath()
-    if (historyRef.current.length > 20) {
-      ctx.moveTo(historyRef.current[0].x, historyRef.current[0].y)
-      historyRef.current.slice(0, Math.max(1, historyRef.current.length - 40)).forEach((point) => {
-        ctx.lineTo(point.x, point.y)
-      })
-    }
-    ctx.stroke()
-    ctx.setLineDash([])
+    ctx.arc(currentX, currentY, 4, 0, Math.PI * 2)
+    ctx.fill()
   }, [data])
 
   return (

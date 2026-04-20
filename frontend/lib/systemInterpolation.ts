@@ -32,8 +32,9 @@ function easeInOutCubic(t: number): number {
 }
 
 /**
- * Hook to interpolate system data for smooth value updates
- * Prevents jitter and flickering by gradually moving toward target values
+ * Hook to interpolate system data with temporal gravity
+ * Drift builds faster (acceleration toward instability)
+ * Stability recovers slower (resistance toward stability)
  */
 export function useSystemInterpolation(
   targetData: SystemData | undefined,
@@ -59,30 +60,45 @@ export function useSystemInterpolation(
     if (!targetData) return
 
     const update = () => {
-      const stiffness = phase === 'Stable' ? 0.08 : 0.15 // Faster updates during instability
+      const prev = previousRef.current
+
+      // Temporal gravity: asymmetric acceleration/deceleration
+      // Drift builds faster, stability recovers slower
+
+      // Drift: faster buildup (stiffness increases as drift increases)
+      const driftStiffness = 0.15 + targetData.drift * 0.1
+      const newDrift = springInterpolate(prev.interpolatedDrift, targetData.drift, driftStiffness)
+
+      // Stability: slower recovery (resistance to change)
+      const stabilityRecoveryResistance = targetData.stability > prev.interpolatedStability ? 0.06 : 0.1
+      const newStability = springInterpolate(
+        prev.interpolatedStability,
+        targetData.stability,
+        stabilityRecoveryResistance
+      )
+
+      // Coherence: moderate interpolation
+      const coherenceStiffness = 0.12
+      const newCoherence = springInterpolate(
+        prev.interpolatedCoherence,
+        targetData.coherence,
+        coherenceStiffness
+      )
+
+      // Confidence: follows phase intensity
+      const confidentStiffness = phase === 'Stable' ? 0.08 : 0.14
+      const newConfidence = springInterpolate(
+        prev.interpolatedConfidence,
+        targetData.confidence,
+        confidentStiffness
+      )
 
       const newInterpolated = {
         ...targetData,
-        interpolatedDrift: springInterpolate(
-          previousRef.current.interpolatedDrift,
-          targetData.drift,
-          stiffness
-        ),
-        interpolatedStability: springInterpolate(
-          previousRef.current.interpolatedStability,
-          targetData.stability,
-          stiffness
-        ),
-        interpolatedCoherence: springInterpolate(
-          previousRef.current.interpolatedCoherence,
-          targetData.coherence,
-          stiffness
-        ),
-        interpolatedConfidence: springInterpolate(
-          previousRef.current.interpolatedConfidence,
-          targetData.confidence,
-          stiffness
-        ),
+        interpolatedDrift: newDrift,
+        interpolatedStability: newStability,
+        interpolatedCoherence: newCoherence,
+        interpolatedConfidence: newConfidence,
       }
 
       previousRef.current = newInterpolated
