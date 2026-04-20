@@ -1,6 +1,6 @@
 'use client'
 
-import { SystemIntelligenceInterface } from '@/components/SystemIntelligenceInterface'
+import { TeslaAutopilotInterface } from '@/components/TeslaAutopilotInterface'
 import { useLiveSimulation } from '@/lib/simulation'
 
 export default function Home() {
@@ -16,7 +16,7 @@ export default function Home() {
   }
 
   return (
-    <SystemIntelligenceInterface
+    <TeslaAutopilotInterface
       systemData={systemData}
       onTogglePlay={(playing) => setIsPlaying(playing)}
     />
