@@ -7,9 +7,20 @@ interface NarrativeLayerProps {
   text: string
   phase: string
   phaseProgress: number
+  diagnostics?: {
+    origin?: string | null
+    propagationPath?: string | null
+    whyNow?: string | null
+    currentRiskZone?: string | null
+  }
 }
 
-export function NarrativeLayer({ text, phase, phaseProgress }: NarrativeLayerProps) {
+export function NarrativeLayer({
+  text,
+  phase,
+  phaseProgress,
+  diagnostics,
+}: NarrativeLayerProps) {
   const [displayText, setDisplayText] = useState('')
   const [key, setKey] = useState(0)
 
@@ -32,6 +43,29 @@ export function NarrativeLayer({ text, phase, phaseProgress }: NarrativeLayerPro
   // Critical: faster fade (more urgent)
   const fadeDuration = phase === 'Stable' ? 1.5 : phase === 'Critical' ? 0.6 : 1.0
 
+  // Construct diagnostic narrative (minimal, system voice)
+  let diagnosticLine = ''
+  if (phase !== 'Stable' && diagnostics) {
+    const parts: string[] = []
+
+    // Add origin if we have it
+    if (diagnostics.origin && phase !== 'Drift forming') {
+      parts.push(diagnostics.origin)
+    }
+
+    // Add why now if we have it
+    if (diagnostics.whyNow) {
+      parts.push(diagnostics.whyNow)
+    }
+
+    // Add current risk zone if in critical phase
+    if ((phase === 'Instability forming' || phase === 'Critical') && diagnostics.currentRiskZone) {
+      parts.push(`Risk: ${diagnostics.currentRiskZone}`)
+    }
+
+    diagnosticLine = parts.join(' • ')
+  }
+
   return (
     <AnimatePresence mode="wait">
       {displayText && (
@@ -43,10 +77,11 @@ export function NarrativeLayer({ text, phase, phaseProgress }: NarrativeLayerPro
           transition={{ duration: fadeDuration * 0.6, ease: 'easeInOut' }}
           style={{
             textAlign: 'center',
-            maxWidth: '500px',
+            maxWidth: '600px',
             margin: '0 auto',
           }}
         >
+          {/* Primary escalation narrative */}
           <p
             style={{
               fontSize: '15px',
@@ -55,12 +90,28 @@ export function NarrativeLayer({ text, phase, phaseProgress }: NarrativeLayerPro
               fontWeight: 400,
               margin: 0,
               letterSpacing: '0.25px',
-              // System voice: direct, minimal
               fontFamily: '"SF Mono", Monaco, Courier, monospace',
             }}
           >
             {displayText}
           </p>
+
+          {/* Diagnostic context (origin, why now, risk) */}
+          {diagnosticLine && (
+            <p
+              style={{
+                fontSize: '12px',
+                lineHeight: '1.4',
+                color: '#94a3b8',
+                fontWeight: 400,
+                margin: '8px 0 0 0',
+                letterSpacing: '0.2px',
+                fontFamily: '"SF Mono", Monaco, Courier, monospace',
+              }}
+            >
+              {diagnosticLine}
+            </p>
+          )}
         </motion.div>
       )}
     </AnimatePresence>

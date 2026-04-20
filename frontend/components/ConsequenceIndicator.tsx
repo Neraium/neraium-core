@@ -8,6 +8,7 @@ interface ConsequenceIndicatorProps {
   operatorFocus: string | null
   escalationLevel: number
   hasThresholdCrossed: boolean
+  confidence?: 'high' | 'moderate' | 'low'
 }
 
 export function ConsequenceIndicator({
@@ -15,6 +16,7 @@ export function ConsequenceIndicator({
   operatorFocus,
   escalationLevel,
   hasThresholdCrossed,
+  confidence,
 }: ConsequenceIndicatorProps) {
   // Only show when instability+ (escalationLevel >= 2)
   const shouldShow = escalationLevel >= 2
@@ -89,6 +91,11 @@ export function ConsequenceIndicator({
               }}
             >
               {operatorFocus}
+              {confidence && (
+                <span style={{ color: '#94a3b8', fontSize: '10px', marginLeft: '8px' }}>
+                  [{confidence}]
+                </span>
+              )}
             </motion.div>
           )}
         </motion.div>

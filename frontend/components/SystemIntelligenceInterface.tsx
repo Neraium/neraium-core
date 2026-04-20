@@ -10,6 +10,7 @@ import { ConsequenceIndicator } from './ConsequenceIndicator'
 import { usePhaseController } from '@/lib/phaseController'
 import { useSystemInterpolation } from '@/lib/systemInterpolation'
 import { computeConsequenceState, getEscalationNarrative } from '@/lib/decisionGravity'
+import { computeDiagnosticLegibility } from '@/lib/diagnosticLegibility'
 
 interface SystemData {
   drift: number
@@ -35,12 +36,42 @@ export function SystemIntelligenceInterface({
   const [speed, setSpeed] = useState(1)
   const [narrativeText, setNarrativeText] = useState('')
   const [previousPhase, setPreviousPhase] = useState('Stable')
+  const [thresholdDwellActive, setThresholdDwellActive] = useState(false)
+  const [primaryDriver, setPrimaryDriver] = useState<string | null>(null) // System memory
+  const [driftHistory, setDriftHistory] = useState<number[]>([])
+  const [stabilityHistory, setStabilityHistory] = useState<number[]>([])
 
   // Phase system: manage discrete system states with 8-15 second transitions
-  const { phase, phaseProgress } = usePhaseController(isPlaying, speed)
+  const { phase, phaseProgress } = usePhaseController(isPlaying, speed && !thresholdDwellActive ? 1 : 0)
 
   // Smooth interpolation of all numeric values
   const interpolatedData = useSystemInterpolation(systemData, phase)
+
+  // Build history for diagnostic analysis
+  useEffect(() => {
+    setDriftHistory(prev => [...prev.slice(-10), interpolatedData.interpolatedDrift])
+    setStabilityHistory(prev => [...prev.slice(-10), interpolatedData.interpolatedStability])
+  }, [interpolatedData.interpolatedDrift, interpolatedData.interpolatedStability])
+
+  // Compute diagnostic legibility
+  const diagnostics = computeDiagnosticLegibility(
+    phase,
+    interpolatedData.interpolatedDrift,
+    interpolatedData.interpolatedStability,
+    interpolatedData.interpolatedCoherence,
+    driftHistory,
+    stabilityHistory
+  )
+
+  // Update primary driver with system memory (preserve unless stronger one emerges)
+  useEffect(() => {
+    if (diagnostics.dominantDriver) {
+      const isStrongerDriver = diagnostics.confidence === 'high' || !primaryDriver
+      if (isStrongerDriver) {
+        setPrimaryDriver(diagnostics.dominantDriver)
+      }
+    }
+  }, [diagnostics.dominantDriver, diagnostics.confidence, primaryDriver])
 
   // Consequence state: time-to-impact, escalation language, operator focus
   const consequenceState = computeConsequenceState(
@@ -52,9 +83,19 @@ export function SystemIntelligenceInterface({
     previousPhase
   )
 
-  // Track phase changes for threshold detection
+  // Track phase changes for threshold detection and dwell
   useEffect(() => {
     if (phase !== previousPhase) {
+      // If crossing into instability+, activate dwell
+      if ((previousPhase === 'Stable' || previousPhase === 'Drift forming') &&
+          (phase === 'Instability forming' || phase === 'Critical')) {
+        setThresholdDwellActive(true)
+        // Dwell for 1.5-2.5 seconds
+        const dwellTime = 1500 + Math.random() * 1000
+        setTimeout(() => {
+          setThresholdDwellActive(false)
+        }, dwellTime)
+      }
       setPreviousPhase(phase)
     }
   }, [phase, previousPhase])
@@ -107,6 +148,7 @@ export function SystemIntelligenceInterface({
         operatorFocus={consequenceState.operatorFocus}
         escalationLevel={consequenceState.escalationLevel}
         hasThresholdCrossed={consequenceState.hasThresholdCrossed}
+        confidence={diagnostics.confidence}
       />
 
       {/* Main scrollable container */}
@@ -161,6 +203,12 @@ export function SystemIntelligenceInterface({
             text={narrativeText}
             phase={phase}
             phaseProgress={phaseProgress}
+            diagnostics={{
+              origin: diagnostics.origin,
+              propagationPath: diagnostics.propagationPath,
+              whyNow: diagnostics.whyNow,
+              currentRiskZone: diagnostics.currentRiskZone,
+            }}
           />
         </div>
 
