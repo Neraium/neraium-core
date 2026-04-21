@@ -478,23 +478,22 @@ export function TeslaAutopilotInterface({
             {/* COMMITTED ACTION OVERLAY */}
             {actionDecision && (
               <motion.div
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
+                initial={{ opacity: 0, x: -16 }}
+                animate={{ opacity: 1, x: 0 }}
                 transition={{ duration: 0.4 }}
                 style={{
                   position: 'absolute',
                   bottom: 60,
-                  left: '50%',
-                  transform: 'translateX(-50%)',
+                  left: '16px',
                   background: 'rgba(5,6,7,0.9)',
                   backdropFilter: 'blur(12px)',
                   border: `1px solid ${stateColor}33`,
                   borderTop: `2px solid ${stateColor}66`,
                   borderRadius: '8px',
                   padding: '14px 22px',
-                  maxWidth: '360px',
-                  minWidth: '260px',
-                  textAlign: 'center',
+                  maxWidth: '320px',
+                  minWidth: '240px',
+                  textAlign: 'left',
                   zIndex: 30,
                 }}
               >
