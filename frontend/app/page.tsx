@@ -4,7 +4,7 @@ import { TeslaAutopilotInterface } from '@/components/TeslaAutopilotInterface'
 import { useLiveSimulation } from '@/lib/simulation'
 
 export default function Home() {
-  const { live, isPlaying, setIsPlaying } = useLiveSimulation()
+  const { live, isPlaying, setIsPlaying, stepScenario } = useLiveSimulation()
 
   const systemData = {
     drift: live.structuralDrift,
@@ -15,10 +15,28 @@ export default function Home() {
     systemState: (live.stage as any) || 'Stable',
   }
 
+  const rooms = live.rooms.map(r => ({
+    id: r.id,
+    shortName: r.shortName,
+    status: r.status,
+    driftContribution: r.driftContribution,
+    behavioralState: r.behavioralState,
+  }))
+
+  const intelligence = {
+    explanation: live.explanation,
+    operatorFocus: live.operatorFocus,
+    pathOutlook: live.pathOutlook,
+    primaryDriver: live.primaryDriver,
+  }
+
   return (
     <TeslaAutopilotInterface
       systemData={systemData}
       onTogglePlay={(playing) => setIsPlaying(playing)}
+      rooms={rooms}
+      intelligence={intelligence}
+      onStepScenario={stepScenario}
     />
   )
 }
