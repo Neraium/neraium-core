@@ -1,4 +1,4 @@
-'use client'
+﻿'use client'
 
 import React, { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
@@ -321,7 +321,7 @@ export function TeslaAutopilotInterface({
                 }}
                 onMouseEnter={e => { e.currentTarget.style.color = '#94a3b8'; e.currentTarget.style.borderColor = 'rgba(100,116,139,0.5)' }}
                 onMouseLeave={e => { e.currentTarget.style.color = '#64748b'; e.currentTarget.style.borderColor = 'rgba(100,116,139,0.25)' }}
-              >‹</button>
+              >â€¹</button>
               <button
                 onClick={() => onStepScenario(1)}
                 style={{
@@ -340,7 +340,7 @@ export function TeslaAutopilotInterface({
                 }}
                 onMouseEnter={e => { e.currentTarget.style.color = '#94a3b8'; e.currentTarget.style.borderColor = 'rgba(100,116,139,0.5)' }}
                 onMouseLeave={e => { e.currentTarget.style.color = '#64748b'; e.currentTarget.style.borderColor = 'rgba(100,116,139,0.25)' }}
-              >›</button>
+              >â€º</button>
             </div>
           )}
 
@@ -362,7 +362,7 @@ export function TeslaAutopilotInterface({
             onMouseEnter={e => { e.currentTarget.style.background = `${stateColor}28` }}
             onMouseLeave={e => { e.currentTarget.style.background = isPlaying ? `${stateColor}1a` : 'rgba(126,159,46,0.12)' }}
           >
-            {isPlaying ? '❙❙ Pause' : '▶ Play'}
+            {isPlaying ? 'â™â™ Pause' : 'â–¶ Play'}
           </button>
         </div>
       </motion.div>
@@ -483,19 +483,21 @@ export function TeslaAutopilotInterface({
                 transition={{ duration: 0.4 }}
                 style={{
                   position: 'absolute',
-                  bottom: 60,
-                  left: '50%',
-                  transform: 'translateX(-50%)',
+                  bottom: 18,
+                  right: 18,
+                  left: 'auto',
+                  transform: 'none',
                   background: 'rgba(5,6,7,0.9)',
                   backdropFilter: 'blur(12px)',
                   border: `1px solid ${stateColor}33`,
                   borderTop: `2px solid ${stateColor}66`,
                   borderRadius: '8px',
-                  padding: '14px 22px',
-                  maxWidth: '360px',
-                  minWidth: '260px',
+                  padding: '12px 16px',
+                  maxWidth: 'min(320px, 38vw)',
+                  minWidth: '220px',
                   textAlign: 'center',
                   zIndex: 30,
+                  pointerEvents: 'none',
                 }}
               >
                 <div style={{ fontSize: '10px', color: '#334155', letterSpacing: '1px', textTransform: 'uppercase', marginBottom: '5px', fontWeight: 700 }}>
@@ -530,10 +532,10 @@ export function TeslaAutopilotInterface({
               }}
             >
               {[
-                { label: 'Airflow', color: '#7e9f2e', dir: '↑' },
-                { label: 'Climate', color: '#d8a35d', dir: '→' },
-                { label: 'Irrigation', color: '#7e9f2e', dir: '↓' },
-                { label: 'Plant Stress', color: '#c94c4c', dir: '↑' },
+                { label: 'Airflow', color: '#7e9f2e', dir: 'â†‘' },
+                { label: 'Climate', color: '#d8a35d', dir: 'â†’' },
+                { label: 'Irrigation', color: '#7e9f2e', dir: 'â†“' },
+                { label: 'Plant Stress', color: '#c94c4c', dir: 'â†‘' },
               ].map(s => (
                 <div key={s.label} style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                   <span>{s.label}</span>
@@ -663,3 +665,5 @@ export function TeslaAutopilotInterface({
     </div>
   )
 }
+
+

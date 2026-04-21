@@ -1,15 +1,15 @@
-"""Unified App Shell: System-first architecture.
+﻿"""Unified App Shell: System-first architecture.
 
 The complete operational surface unified as one connected canvas:
 
 AppShell
-├─ TopStatusBar (Facility Command Strip)
-├─ MainCanvas (central focus)
-│  ├─ SystemField (dominant, interactive tetrahedron with coherence core)
-│  └─ OverlayLayer
-│     ├─ SubsystemInfluence (left, floating)
-│     └─ IntelligenceRail (right, floating)
-└─ StateTimeline (bottom, integrated)
+â”œâ”€ TopStatusBar (Facility Command Strip)
+â”œâ”€ MainCanvas (central focus)
+â”‚  â”œâ”€ SystemField (dominant, interactive tetrahedron with coherence core)
+â”‚  â””â”€ OverlayLayer
+â”‚     â”œâ”€ SubsystemInfluence (left, floating)
+â”‚     â””â”€ IntelligenceRail (right, floating)
+â””â”€ StateTimeline (bottom, integrated)
 
 NO boxed layout.
 NO panel-based dashboard.
@@ -51,6 +51,7 @@ def build_unified_app_shell(
     records: list[dict[str, Any]] | None = None,
     no_action_projection: list[dict[str, Any]] | None = None,
     no_action_consequence_insight: str = "",
+    recoverability_insight: str = "",
 ) -> dict[str, str]:
     """Build the unified app shell.
 
@@ -81,9 +82,9 @@ def build_unified_app_shell(
     states_timeline = states_timeline or []
     critical_alerts = critical_alerts or []
 
-    coherence = state.coherence if state else 0.7
+    coherence = getattr(state, "coherence", 0.75)
     drift = state.drift_intensity if state else 0.2
-    stability = state.stability if state else 0.8
+    stability = getattr(state, "stability", 0.8)
 
     system_state = "stable"
     if drift > 0.6:
@@ -130,7 +131,7 @@ def build_unified_app_shell(
         critical_alerts=critical_alerts if critical_alerts else None,
         coherence_score=coherence,
         no_action_consequence=no_action_consequence_insight,
-        recoverability_context=insights.get("recoverability", ""),
+        recoverability_context=recoverability_insight,
     )
 
     bottom_timeline_html = render_state_timeline(
@@ -148,3 +149,6 @@ def build_unified_app_shell(
         "right_panel": right_panel_html,
         "bottom_timeline": bottom_timeline_html,
     }
+
+
+

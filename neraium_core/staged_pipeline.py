@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from collections import deque
 from dataclasses import dataclass, field
@@ -21,11 +21,30 @@ def bounded_z(raw: float, mean: float, std: float, cap: float = 4.0) -> float:
 
 
 def corr_from_matrix(m: np.ndarray) -> np.ndarray:
+    m = np.asarray(m, dtype=float)
+    if m.ndim != 2:
+        raise ValueError("Expected 2D matrix")
+    n_obs = int(m.shape[0])
+    n_features = int(m.shape[1])
+    if n_features == 0:
+        return np.zeros((0, 0), dtype=float)
+    # Correlation needs >= 2 observations; return identity to avoid undefined
+    # geometry in warmup/degenerate windows.
+    if n_obs < 2:
+        return np.eye(n_features, dtype=float)
+
     with np.errstate(invalid="ignore", divide="ignore"):
         corr = np.corrcoef(m.T)
     corr = np.nan_to_num(corr, nan=0.0, posinf=0.0, neginf=0.0)
     np.fill_diagonal(corr, 1.0)
-    return corr
+
+    # Light shrinkage toward identity when observation/feature ratio is small.
+    ratio = float(n_features) / float(max(1, n_obs))
+    shrink = clamp(0.12 * ratio, 0.0, 0.35)
+    if shrink > 0.0:
+        corr = (1.0 - shrink) * corr + shrink * np.eye(n_features, dtype=float)
+        np.fill_diagonal(corr, 1.0)
+    return np.asarray(corr, dtype=float)
 
 
 def flatten_upper_tri(m: np.ndarray) -> np.ndarray:
@@ -234,12 +253,24 @@ class DataQualityStage:
 class FeatureExtractionStage:
     @staticmethod
     def extract(baseline: np.ndarray, recent: np.ndarray) -> dict[str, Any]:
-        base_mean = np.mean(baseline, axis=0)
-        rec_mean = np.mean(recent, axis=0)
-        base_std = np.std(baseline, axis=0)
-        rec_std = np.std(recent, axis=0)
-        corr_base = corr_from_matrix(baseline)
-        corr_recent = corr_from_matrix(recent)
+        baseline = np.asarray(baseline, dtype=float)
+        recent = np.asarray(recent, dtype=float)
+        if baseline.ndim != 2 or recent.ndim != 2:
+            raise ValueError("Expected 2D baseline/recent windows")
+
+        # Keep NaNs from propagating into feature vectors during warmup.
+        with np.errstate(invalid="ignore", divide="ignore"):
+            base_mean = np.nanmean(baseline, axis=0) if baseline.size else np.array([], dtype=float)
+            rec_mean = np.nanmean(recent, axis=0) if recent.size else np.array([], dtype=float)
+            base_std = np.nanstd(baseline, axis=0) if baseline.size else np.array([], dtype=float)
+            rec_std = np.nanstd(recent, axis=0) if recent.size else np.array([], dtype=float)
+        base_mean = np.nan_to_num(base_mean, nan=0.0, posinf=0.0, neginf=0.0)
+        rec_mean = np.nan_to_num(rec_mean, nan=0.0, posinf=0.0, neginf=0.0)
+        base_std = np.nan_to_num(base_std, nan=0.0, posinf=0.0, neginf=0.0)
+        rec_std = np.nan_to_num(rec_std, nan=0.0, posinf=0.0, neginf=0.0)
+
+        corr_base = corr_from_matrix(np.nan_to_num(baseline, nan=0.0, posinf=0.0, neginf=0.0))
+        corr_recent = corr_from_matrix(np.nan_to_num(recent, nan=0.0, posinf=0.0, neginf=0.0))
         rel_vec_base = flatten_upper_tri(corr_base)
         rel_vec_recent = flatten_upper_tri(corr_recent)
         signature = np.concatenate([rec_mean, rec_std, rel_vec_recent])
@@ -399,7 +430,7 @@ class DecisionStage:
 
     @staticmethod
     def adjusted_instability(instability: float, confidence: float, localization: float) -> float:
-        """Same inner product as state_from_score (instability × loc_gate × conf_gate), exposed for calibration."""
+        """Same inner product as state_from_score (instability Ã— loc_gate Ã— conf_gate), exposed for calibration."""
         loc_gate = 0.40 + 0.60 * float(localization)
         conf_gate = 0.55 + 0.45 * float(confidence)
         return float(max(0.0, float(instability) * loc_gate * conf_gate))
@@ -424,7 +455,7 @@ def adaptive_gal2_fusion_coherence(
     Adaptive GAL-2 calibration for SII+GAL-2 *fusion* paths.
 
     Under disturbed clocks, raw temporal_coherence is often low while GAL-2 still reports
-    meaningful timing distortion. Multiplicative fusion terms (instability × coherence) then
+    meaningful timing distortion. Multiplicative fusion terms (instability Ã— coherence) then
     collapse and the Combined lane is underpowered. This blends in a bounded, distortion-driven
     coupling term: higher distortion raises effective coherence only where coherence was weak,
     preserving strong-coherent regimes unchanged.
@@ -492,4 +523,6 @@ class AttributionStage:
         top = [k for k, _ in ranked[:3]]
         msg = f"{state}: dominated by {', '.join(top)}." if top else f"{state}: no dominant structural drivers."
         return msg, contrib
+
+
 

@@ -1,4 +1,4 @@
-"""System Field with Coherence Core.
+﻿"""System Field with Coherence Core.
 
 The heart of the Neraium operational interface:
 - Dynamic tetrahedral structure representing subsystem relationships
@@ -157,11 +157,13 @@ def _compute_tetrahedron_geometry(
     coherence_ring = {
         "radius": 0.65,
         "is_stable": state == "stable",
-        "deformation": clamp(deformation, 0.0, 0.3),
+        "deformation": clamp(total_deformation, 0.0, 0.3),
         "glow_color": tension_color,
         "glow_intensity": 0.4 + (1.0 - coherence) * 0.6,
         "opacity": 0.5 + (coherence * 0.5),
     }
+
+    core_radius = 0.14 + 0.10 * clamp(coherence, 0.0, 1.0)
 
     core_tightening = core_resistance * 2.0
     effective_core_radius = max(0.06, core_radius - core_tightening)
@@ -635,3 +637,6 @@ def render_system_field_svg(
     svg_parts.append("</svg>")
 
     return "\n".join(svg_parts)
+
+
+

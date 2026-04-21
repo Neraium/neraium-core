@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any
@@ -101,7 +101,8 @@ def _channel_feature_vector(x: np.ndarray) -> dict[str, float]:
 
 def _cross_channel_features(matrix: np.ndarray) -> dict[str, float]:
     n_channels = int(matrix.shape[1])
-    if n_channels < 2:
+    n_obs = int(matrix.shape[0])
+    if n_channels < 2 or n_obs < 2:
         return {
             "channel_corr_mean": 1.0,
             "channel_corr_std": 0.0,
@@ -200,3 +201,4 @@ def summarize_feature_delta(
             "feature_consistency_breakdown": consistency_breakdown,
         },
     }
+

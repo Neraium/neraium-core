@@ -1,0 +1,101 @@
+unit_id,cycle,drift,stability,coherence,confidence,urgency,state,dominant_driver,recommendation
+1,1,0.0,1.0,0.86,0.1375,low,STABLE,stable baseline telemetry,Retain standard operating review rhythm.
+1,2,0.0,1.0,0.86,0.1375,low,STABLE,stable baseline telemetry,Retain standard operating review rhythm.
+1,3,0.0,1.0,0.86,0.2616,low,STABLE,stable baseline telemetry,Retain standard operating review rhythm.
+1,4,0.0,1.0,0.86,0.2843,low,STABLE,stable baseline telemetry,Retain standard operating review rhythm.
+1,5,0.0,1.0,0.9766,0.2849,low,STABLE,stable baseline telemetry,Retain standard operating review rhythm.
+1,6,0.0,1.0,0.9485,0.2806,low,STABLE,stable baseline telemetry,Retain standard operating review rhythm.
+1,7,0.0,1.0,0.9315,0.2805,low,STABLE,stable baseline telemetry,Retain standard operating review rhythm.
+1,8,0.0,1.0,0.9405,0.2812,low,STABLE,stable baseline telemetry,Retain standard operating review rhythm.
+1,9,0.0,1.0,0.9334,0.2684,low,STABLE,stable baseline telemetry,Retain standard operating review rhythm.
+1,10,0.0,1.0,0.9311,0.2678,low,STABLE,stable baseline telemetry,Retain standard operating review rhythm.
+1,11,0.0,1.0,0.9266,0.2676,low,STABLE,stable baseline telemetry,Retain standard operating review rhythm.
+1,12,0.0,1.0,0.9256,0.2709,low,STABLE,stable baseline telemetry,Retain standard operating review rhythm.
+1,13,0.0,1.0,0.9347,0.272,low,STABLE,stable baseline telemetry,Retain standard operating review rhythm.
+1,14,0.0,1.0,0.9388,0.2721,low,STABLE,stable baseline telemetry,Retain standard operating review rhythm.
+1,15,0.0,1.0,0.9212,0.2736,low,STABLE,stable baseline telemetry,Retain standard operating review rhythm.
+1,16,0.0,1.0,0.9238999999999999,0.2735,low,STABLE,stable baseline telemetry,Retain standard operating review rhythm.
+1,17,0.0,1.0,0.9154,0.2676,low,STABLE,stable baseline telemetry,Retain standard operating review rhythm.
+1,18,0.0,1.0,0.9072,0.2666,low,STABLE,stable baseline telemetry,Retain standard operating review rhythm.
+1,19,0.0,1.0,0.9134,0.2659,low,STABLE,stable baseline telemetry,Retain standard operating review rhythm.
+1,20,0.0,1.0,0.9038,0.2655,low,STABLE,stable baseline telemetry,Retain standard operating review rhythm.
+1,21,0.0,1.0,0.9067000000000001,0.2662,low,STABLE,stable baseline telemetry,Retain standard operating review rhythm.
+1,22,0.0,1.0,0.91,0.2667,low,STABLE,stable baseline telemetry,Retain standard operating review rhythm.
+1,23,0.0,1.0,0.9117999999999999,0.2666,low,STABLE,stable baseline telemetry,Retain standard operating review rhythm.
+1,24,18.4602,1.0,0.9112,0.9224,low,STABLE,stable baseline telemetry,Retain standard operating review rhythm.
+1,25,42.7361,1.0,0.5969,0.9459,low,STABLE,stable baseline telemetry,Retain standard operating review rhythm.
+1,26,53.1505,1.0,0.5918,0.9548,medium,WATCH,persistent structural drift from local baseline,Continue scheduled monitoring and document any process changes.
+1,27,37.9677,1.0,0.5541,0.9534,critical,ALERT,confirmed multi-window structural transition,Prioritize engineering review and inspection planning for this asset.
+1,28,45.7339,1.0,0.5295000000000001,0.9736,critical,ALERT,confirmed multi-window structural transition,Prioritize engineering review and inspection planning for this asset.
+1,29,47.1984,1.0,0.4978,0.9745,high,WATCH,persistent structural drift from local baseline,Tighten review cadence and validate sensors against baseline.
+1,30,46.0494,1.0,0.4687,0.9635,high,WATCH,persistent structural drift from local baseline,Tighten review cadence and validate sensors against baseline.
+1,31,41.6983,1.0,0.4689,0.9483,high,WATCH,persistent structural drift from local baseline,Tighten review cadence and validate sensors against baseline.
+1,32,831315.7122,0.0,0.6929000000000001,0.5349,high,WATCH,persistent structural drift from local baseline,Tighten review cadence and validate sensors against baseline.
+1,33,877880.4818,0.0,0.64,0.5337,high,WATCH,persistent structural drift from local baseline,Tighten review cadence and validate sensors against baseline.
+1,34,925368.4133,0.0,0.6982999999999999,0.5326,high,WATCH,persistent structural drift from local baseline,Tighten review cadence and validate sensors against baseline.
+1,35,893380.9628,0.0,0.6752,0.5139,low,STABLE,stable baseline telemetry,Retain standard operating review rhythm.
+1,36,832508.7254,0.0,0.6941999999999999,0.5062,low,STABLE,stable baseline telemetry,Retain standard operating review rhythm.
+1,37,823763.6924,0.0,0.7273000000000001,0.4831,low,STABLE,stable baseline telemetry,Retain standard operating review rhythm.
+1,38,804355.5952,0.0,0.7012,0.4745,low,STABLE,stable baseline telemetry,Retain standard operating review rhythm.
+1,39,787704.7444,0.0,0.7065,0.4719,low,STABLE,stable baseline telemetry,Retain standard operating review rhythm.
+1,40,792158.9853,0.0,0.7545999999999999,0.4946,low,STABLE,stable baseline telemetry,Retain standard operating review rhythm.
+1,41,802006.8532,0.0,0.7535000000000001,0.4981,low,STABLE,stable baseline telemetry,Retain standard operating review rhythm.
+1,42,795863.9501,0.0,0.8175,0.484,low,STABLE,stable baseline telemetry,Retain standard operating review rhythm.
+1,43,733326.7276,0.0,0.8218,0.4754,low,STABLE,stable baseline telemetry,Retain standard operating review rhythm.
+1,44,715351.1238,0.0,0.8167,0.4751,low,STABLE,stable baseline telemetry,Retain standard operating review rhythm.
+1,45,775398.8435,0.0,0.8573,0.4866,low,STABLE,stable baseline telemetry,Retain standard operating review rhythm.
+1,46,766545.3073,0.0,0.7825,0.4678,low,STABLE,stable baseline telemetry,Retain standard operating review rhythm.
+1,47,768753.6136,0.0,0.7887,0.4895,low,STABLE,stable baseline telemetry,Retain standard operating review rhythm.
+1,48,827710.6143,0.0,0.7585999999999999,0.4991,low,STABLE,stable baseline telemetry,Retain standard operating review rhythm.
+1,49,804830.5918,0.0,0.7573,0.487,low,STABLE,stable baseline telemetry,Retain standard operating review rhythm.
+1,50,767145.4827,0.0,0.7464999999999999,0.4668,low,STABLE,stable baseline telemetry,Retain standard operating review rhythm.
+2,1,0.0,1.0,0.86,0.1375,low,STABLE,stable baseline telemetry,Retain standard operating review rhythm.
+2,2,0.0,1.0,0.86,0.1375,low,STABLE,stable baseline telemetry,Retain standard operating review rhythm.
+2,3,0.0,1.0,0.86,0.2616,low,STABLE,stable baseline telemetry,Retain standard operating review rhythm.
+2,4,0.0,1.0,0.86,0.2843,low,STABLE,stable baseline telemetry,Retain standard operating review rhythm.
+2,5,0.0,1.0,0.966,0.282,low,STABLE,stable baseline telemetry,Retain standard operating review rhythm.
+2,6,0.0,1.0,0.9827,0.2792,low,STABLE,stable baseline telemetry,Retain standard operating review rhythm.
+2,7,0.0,1.0,0.9538,0.2797,low,STABLE,stable baseline telemetry,Retain standard operating review rhythm.
+2,8,0.0,1.0,0.9431,0.2794,low,STABLE,stable baseline telemetry,Retain standard operating review rhythm.
+2,9,0.0,1.0,0.9525,0.2683,low,STABLE,stable baseline telemetry,Retain standard operating review rhythm.
+2,10,0.0,1.0,0.9384,0.2688,low,STABLE,stable baseline telemetry,Retain standard operating review rhythm.
+2,11,0.0,1.0,0.9404,0.2671,low,STABLE,stable baseline telemetry,Retain standard operating review rhythm.
+2,12,0.0,1.0,0.9342,0.2698,low,STABLE,stable baseline telemetry,Retain standard operating review rhythm.
+2,13,0.0,1.0,0.9418,0.2711,low,STABLE,stable baseline telemetry,Retain standard operating review rhythm.
+2,14,0.0,1.0,0.9358,0.2723,low,STABLE,stable baseline telemetry,Retain standard operating review rhythm.
+2,15,0.0,1.0,0.9204,0.2737,low,STABLE,stable baseline telemetry,Retain standard operating review rhythm.
+2,16,0.0,1.0,0.9228,0.2729,low,STABLE,stable baseline telemetry,Retain standard operating review rhythm.
+2,17,0.0,1.0,0.9247,0.2683,low,STABLE,stable baseline telemetry,Retain standard operating review rhythm.
+2,18,0.0,1.0,0.9206,0.2668,low,STABLE,stable baseline telemetry,Retain standard operating review rhythm.
+2,19,0.0,1.0,0.9103,0.2663,low,STABLE,stable baseline telemetry,Retain standard operating review rhythm.
+2,20,0.0,1.0,0.9122,0.2674,low,STABLE,stable baseline telemetry,Retain standard operating review rhythm.
+2,21,0.0,1.0,0.9198,0.2677,low,STABLE,stable baseline telemetry,Retain standard operating review rhythm.
+2,22,0.0,1.0,0.9131,0.2681,low,STABLE,stable baseline telemetry,Retain standard operating review rhythm.
+2,23,0.0,1.0,0.9178,0.2675,low,STABLE,stable baseline telemetry,Retain standard operating review rhythm.
+2,24,13.9541,1.0,0.9109,0.9219,low,STABLE,stable baseline telemetry,Retain standard operating review rhythm.
+2,25,21.5693,1.0,0.6001000000000001,0.946,low,STABLE,stable baseline telemetry,Retain standard operating review rhythm.
+2,26,60.4468,1.0,0.5966,0.9561,medium,WATCH,persistent structural drift from local baseline,Continue scheduled monitoring and document any process changes.
+2,27,37.8817,1.0,0.6079,0.9541,medium,WATCH,persistent structural drift from local baseline,Continue scheduled monitoring and document any process changes.
+2,28,43.6591,1.0,0.6105,0.9743,high,WATCH,persistent structural drift from local baseline,Tighten review cadence and validate sensors against baseline.
+2,29,18.627,1.0,0.6052,0.9646,high,WATCH,persistent structural drift from local baseline,Tighten review cadence and validate sensors against baseline.
+2,30,29.4571,1.0,0.5787,0.9749,high,WATCH,persistent structural drift from local baseline,Tighten review cadence and validate sensors against baseline.
+2,31,48.7076,1.0,0.5752999999999999,0.9494,medium,WATCH,persistent structural drift from local baseline,Continue scheduled monitoring and document any process changes.
+2,32,694479.8875,0.0,0.7815,0.5356,high,WATCH,persistent structural drift from local baseline,Tighten review cadence and validate sensors against baseline.
+2,33,674544.6369,0.0,0.794,0.5238,high,WATCH,persistent structural drift from local baseline,Tighten review cadence and validate sensors against baseline.
+2,34,657484.0909,0.0,0.7483,0.5223,low,STABLE,stable baseline telemetry,Retain standard operating review rhythm.
+2,35,717320.0627,0.0,0.7303,0.5314,high,WATCH,persistent structural drift from local baseline,Tighten review cadence and validate sensors against baseline.
+2,36,770520.0792,0.0,0.692,0.5246,high,WATCH,persistent structural drift from local baseline,Tighten review cadence and validate sensors against baseline.
+2,37,720335.0621,0.0,0.7539,0.5056,low,STABLE,stable baseline telemetry,Retain standard operating review rhythm.
+2,38,691118.4218,0.0,0.7334,0.4995,low,STABLE,stable baseline telemetry,Retain standard operating review rhythm.
+2,39,686259.8014,0.0,0.7758,0.5022,low,STABLE,stable baseline telemetry,Retain standard operating review rhythm.
+2,40,653202.7081,0.0,0.7643,0.4679,low,STABLE,stable baseline telemetry,Retain standard operating review rhythm.
+2,41,655799.8021,0.0,0.8148,0.4704,low,STABLE,stable baseline telemetry,Retain standard operating review rhythm.
+2,42,724019.5045,0.0,0.8148,0.4964,low,STABLE,stable baseline telemetry,Retain standard operating review rhythm.
+2,43,773892.2091,0.0,0.8166,0.4952,low,STABLE,stable baseline telemetry,Retain standard operating review rhythm.
+2,44,748719.3203,0.0,0.8165,0.4836,low,STABLE,stable baseline telemetry,Retain standard operating review rhythm.
+2,45,760202.2844,0.0,0.7772,0.4965,medium,WATCH,persistent structural drift from local baseline,Continue scheduled monitoring and document any process changes.
+2,46,784654.1033,0.0,0.7706,0.496,medium,WATCH,persistent structural drift from local baseline,Continue scheduled monitoring and document any process changes.
+2,47,678184.2207,0.0,0.7162999999999999,0.4649,low,STABLE,stable baseline telemetry,Retain standard operating review rhythm.
+2,48,653915.3171,0.0,0.6986,0.4691,low,STABLE,stable baseline telemetry,Retain standard operating review rhythm.
+2,49,693639.8388,0.0,0.7061,0.4874,low,STABLE,stable baseline telemetry,Retain standard operating review rhythm.
+2,50,630910.1593,0.0,0.7103999999999999,0.4643,low,STABLE,stable baseline telemetry,Retain standard operating review rhythm.

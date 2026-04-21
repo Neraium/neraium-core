@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from html import escape
 import math
@@ -260,8 +260,8 @@ def _render_gate_decision_html(gate_card: dict[str, Any]) -> str:
     transition_type = escape(str(gate_card.get("transition_type") or "STABLE"))
     risk_direction = escape(str(gate_card.get("risk_direction") or "UNCERTAIN"))
     ts_meta = str(gate_card.get("timestamp_display") or "").replace("Change evaluated at: ", "").strip()
-    ts_display = escape(ts_meta) if ts_meta else "—"
-    doctrine_version = escape(str(gate_card.get("doctrine_version") or "—"))
+    ts_display = escape(ts_meta) if ts_meta else "â€”"
+    doctrine_version = escape(str(gate_card.get("doctrine_version") or "â€”"))
     system_insights = gate_card.get("system_insights") if isinstance(gate_card.get("system_insights"), dict) else {}
 
     def _chip(label_text: str, value: str, accent_color: str) -> str:
@@ -291,7 +291,7 @@ def _render_gate_decision_html(gate_card: dict[str, Any]) -> str:
             if not isinstance(metric, dict):
                 continue
             trend = metric.get("trend") if isinstance(metric.get("trend"), dict) else {}
-            arrow = escape(str(trend.get("arrow") or "→"))
+            arrow = escape(str(trend.get("arrow") or "â†’"))
             trend_label = escape(str(trend.get("label") or "Stable"))
             mlabel = escape(str(metric.get("label") or "Metric"))
             mvalue = escape(str(metric.get("value") or "0"))
@@ -299,12 +299,12 @@ def _render_gate_decision_html(gate_card: dict[str, Any]) -> str:
                 '<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;'
                 'border-bottom:1px solid rgba(148,163,184,0.14);">'
                 f'<span style="color:#cbd5e1;font-size:12px;">{mlabel}</span>'
-                f'<span style="color:#f8fafc;font-size:12px;font-weight:700;">{arrow} {mvalue} · {trend_label}</span>'
+                f'<span style="color:#f8fafc;font-size:12px;font-weight:700;">{arrow} {mvalue} Â· {trend_label}</span>'
                 '</div>'
             )
-        phase_context = escape(str(system_insights.get("phase_context") or "—"))
-        timestamp_display = escape(str(system_insights.get("timestamp_display") or "—"))
-        insight_text = escape(str(system_insights.get("insight_text") or "—"))
+        phase_context = escape(str(system_insights.get("phase_context") or "â€”"))
+        timestamp_display = escape(str(system_insights.get("timestamp_display") or "â€”"))
+        insight_text = escape(str(system_insights.get("insight_text") or "â€”"))
         decision_line = escape(str(system_insights.get("decision") or "Decision: Accepted"))
         transition_line = escape(str(system_insights.get("state_transition") or "State Transition: Confirmed"))
         insight_section = (
@@ -463,9 +463,9 @@ def _render_system_geometry_html(system_zone: dict[str, Any]) -> str:
         '<h4>Interpretation</h4>'
         f'<ul>{trend_rows}</ul>'
         '<div class="ner-delta-row">'
-        f'<span>ΔDrift {drift_delta:+.3f}</span>'
-        f'<span>ΔStability {stability_delta:+.3f}</span>'
-        f'<span>ΔCoherence {coherence_delta:+.3f}</span>'
+        f'<span>Î”Drift {drift_delta:+.3f}</span>'
+        f'<span>Î”Stability {stability_delta:+.3f}</span>'
+        f'<span>Î”Coherence {coherence_delta:+.3f}</span>'
         '</div>'
         '</div>'
     )
@@ -474,7 +474,7 @@ def _render_system_geometry_html(system_zone: dict[str, Any]) -> str:
         f'<div class="ner-global-state-indicator" style="--state-accent:{state_accent};--state-bg:{state_bg};">'
         '<span class="ner-global-state-label">Overall System State</span>'
         f'<strong>{escape(global_state)}</strong>'
-        f'<small>Confidence {confidence:.2f} • Drift {drift_intensity:.2%} • Coherence {coherence:.2%}</small>'
+        f'<small>Confidence {confidence:.2f} â€¢ Drift {drift_intensity:.2%} â€¢ Coherence {coherence:.2%}</small>'
         '</div>'
     )
 
@@ -820,7 +820,7 @@ def _render_system_context_html(system_zone: dict[str, Any]) -> str:
         '<div class="ner-panel-head">'
         '<div style="display:flex;flex-direction:column;gap:2px;">'
         '<span class="ner-eyebrow">Replay telemetry</span>'
-        f'<span style="font-size:12px;color:#7c8ba8;">Structural evolution across {point_count} frames · divergence and breakpoints emphasized</span>'
+        f'<span style="font-size:12px;color:#7c8ba8;">Structural evolution across {point_count} frames Â· divergence and breakpoints emphasized</span>'
         '</div>'
         '</div>'
     )
@@ -1043,7 +1043,7 @@ def _load_unified_shell(
     latest = records[-1] if records else {}
     timestamp = str(latest.get("timestamp", "")).replace("Z", "") if records else None
 
-    facility_coherence = system_state.coherence if system_state else 0.75
+    facility_coherence = getattr(system_state, "coherence", 0.75) if system_state else 0.75
     rooms = build_facility_rooms_data(system_state, records)
     subsystems = build_subsystems_data(system_state, records)
     states_timeline = build_timeline_states(records)
@@ -1073,6 +1073,7 @@ def _load_unified_shell(
         records=records,
         no_action_projection=no_action_projection,
         no_action_consequence_insight=insights.get("no_action_consequence", ""),
+        recoverability_insight=insights.get("recoverability", ""),
     )
 
     return (
@@ -1373,7 +1374,7 @@ def _render_replay_monitor(
         f'<div class="ner-insight-state">{escape(state_label)}</div>'
         f'<div class="ner-insight-grid"><span>Structural Drift</span><strong>{active_drift:.3f}</strong>'
         f'<span>Relational Instability</span><strong>{active_instability:.3f}</strong>'
-        f'<span>Timestamp</span><strong>{escape(str(current_frame_state.get("timestamp") or "—"))}</strong>'
+        f'<span>Timestamp</span><strong>{escape(str(current_frame_state.get("timestamp") or "â€”"))}</strong>'
         f'<span>Confidence</span><strong>{confidence:.2f}</strong>'
         f'<span>Trend</span><strong>{escape(trend_label)}</strong>'
         f'<span>Phase</span><strong>{escape(phase)}</strong></div>'
@@ -1383,7 +1384,7 @@ def _render_replay_monitor(
     status_html = (
         '<div class="ner-status-bar">'
         '<div class="ner-status-left"><span class="ner-wordmark">NERAIUM</span><span class="ner-status-sub">Live System Replay</span></div>'
-        f'<div class="ner-status-center">{escape(str(current.get("asset_id") or "Unknown Asset"))} · Frame {idx} / {len(rows)}</div>'
+        f'<div class="ner-status-center">{escape(str(current.get("asset_id") or "Unknown Asset"))} Â· Frame {idx} / {len(rows)}</div>'
         f'<div class="ner-status-right"><span class="ner-pill ner-pill-state">{escape(state_label)}</span>'
         f'<span class="ner-pill">Confidence {confidence:.2f}</span></div></div>'
     )
@@ -1639,7 +1640,7 @@ def create_gradio_app():
 
             bottom_timeline = gr.HTML(value=initial_bottom_timeline, elem_classes=["ner-state-timeline-container"])
 
-        with gr.Group(label="Classic Operations View"):
+        with gr.Group():
             status = gr.HTML(value=initial_status)
         with gr.Row(elem_classes=["ner-main-content-row"]):
             chart = gr.HTML(value=initial_chart, scale=3)
@@ -1713,3 +1714,5 @@ def create_gradio_app():
                                                       top_bar, system_field, left_panel, right_panel, bottom_timeline])
 
     return app
+
+

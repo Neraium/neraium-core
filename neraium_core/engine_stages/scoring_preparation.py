@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any, Protocol
@@ -44,8 +44,7 @@ def prepare_scoring_inputs(
     correlation_ready = stage_input.valid_signal_count >= 2
     covariance_ready = correlation_ready
     minimum_sample_ready = correlation_ready
-
-    if not correlation_ready:
+    if not correlation_ready or not minimum_sample_ready:
         return ScoringPreparationResult(
             should_proceed_scoring=False,
             correlation_ready=correlation_ready,
@@ -60,13 +59,27 @@ def prepare_scoring_inputs(
             baseline_corr_used=None,
             baseline_mode=None,
         )
-
     z_base_valid = stage_input.z_baseline[:, stage_input.valid_mask]
     z_recent_valid = stage_input.z_recent[:, stage_input.valid_mask]
-    stage_features = FeatureExtractionStage.extract(z_base_valid, z_recent_valid)
-
-    corr_baseline = correlation_matrix(z_base_valid)
-    corr_recent = correlation_matrix(z_recent_valid)
+    try:
+        stage_features = FeatureExtractionStage.extract(z_base_valid, z_recent_valid)
+        corr_baseline = correlation_matrix(z_base_valid)
+        corr_recent = correlation_matrix(z_recent_valid)
+    except Exception:
+        return ScoringPreparationResult(
+            should_proceed_scoring=False,
+            correlation_ready=correlation_ready,
+            covariance_ready=covariance_ready,
+            minimum_sample_ready=minimum_sample_ready,
+            shape_compatible=False,
+            z_baseline_valid=None,
+            z_recent_valid=None,
+            stage_features=None,
+            corr_baseline=None,
+            corr_recent=None,
+            baseline_corr_used=None,
+            baseline_mode=None,
+        )
 
     baseline_corr_used = corr_baseline
     baseline_mode = "fixed"
@@ -91,3 +104,4 @@ def prepare_scoring_inputs(
         baseline_corr_used=baseline_corr_used,
         baseline_mode=baseline_mode,
     )
+

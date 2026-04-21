@@ -1,4 +1,4 @@
-"""Helper to generate data for the unified app shell from system state.
+﻿"""Helper to generate data for the unified app shell from system state.
 
 Converts SystemState and related data into the format expected by
 unified shell components (facility command strip, subsystems, timeline, intelligence).
@@ -199,8 +199,8 @@ def build_subsystems_data(
     subsystems = []
 
     drift = system_state.drift_intensity if system_state else 0.2
-    stability = system_state.stability if system_state else 0.8
-    coherence = system_state.coherence if system_state else 0.75
+    stability = getattr(system_state, "stability", 0.8) if system_state else 0.8
+    coherence = getattr(system_state, "coherence", 0.75) if system_state else 0.75
 
     climate_drift_contrib = drift * 30
     climate_fragility = (climate_drift_contrib / 100) * (1.0 - coherence)
@@ -208,7 +208,7 @@ def build_subsystems_data(
         {
             "subsystem_id": "climate",
             "subsystem_name": "Climate",
-            "condition": f"{22 + drift * 5:.1f}°C",
+            "condition": f"{22 + drift * 5:.1f}Â°C",
             "behavioral_state": "Stabilizing" if stability > 0.6 else "Drifting",
             "drift_contribution_pct": climate_drift_contrib,
             "confidence_pct": (1.0 - drift) * 100,
@@ -283,7 +283,7 @@ def build_timeline_states(
     if not records or len(records) == 0:
         return [
             {
-                "timestamp": "—",
+                "timestamp": "â€”",
                 "state_label": "baseline",
                 "coherence": 0.85,
                 "drift": 0.1,
@@ -292,12 +292,11 @@ def build_timeline_states(
                 "emphasis": "low",
             }
         ]
-
     states = []
     for i, record in enumerate(records[-24:]):
         drift = float(record.get("structural_drift_score", 0.2))
         stability = float(record.get("relational_stability_score", 0.8))
-        coherence = float(record.get("coherence_score", 0.75))
+        coherence = float(record.get("coherence", 0.75) or 0.75)
 
         if drift > 0.6:
             state_label = "critical"
@@ -312,7 +311,7 @@ def build_timeline_states(
 
         emphasis = "high" if bool(record.get("event_admitted")) else "medium" if drift > 0.15 else "low"
 
-        timestamp = str(record.get("timestamp", "")).split("T")[-1] if record.get("timestamp") else "—"
+        timestamp = str(record.get("timestamp", "")).split("T")[-1] if record.get("timestamp") else "â€”"
 
         states.append(
             {
@@ -388,8 +387,9 @@ def build_intelligence_insights(
         Dictionary with insight keys including no-action consequence
     """
     drift = system_state.drift_intensity if system_state else 0.2
-    stability = system_state.stability if system_state else 0.8
-    coherence = system_state.coherence if system_state else 0.75
+    stability = getattr(system_state, "stability", 0.8) if system_state else 0.8
+    coherence = getattr(system_state, "coherence", 0.75) if system_state else 0.75
+
 
     gate_decision = gate_decision or {}
     decision = str(gate_decision.get("decision", "SUPPRESS")).upper()
@@ -431,7 +431,7 @@ def build_intelligence_insights(
         driver = "All subsystem couplings stable; coherent equilibrium maintained"
 
     if decision == "ADMIT":
-        focus = "⚠️ CRITICAL: Structural transition admitted. Execute intervention protocol immediately."
+        focus = "âš ï¸ CRITICAL: Structural transition admitted. Execute intervention protocol immediately."
     elif drift > 0.3:
         if minutes_to_escalation and minutes_to_escalation < 30:
             focus = f"Escalation within {minutes_to_escalation} minutes. Intervention needed now."
@@ -512,12 +512,17 @@ def get_critical_alerts(
     if drift > 0.5:
         alerts.append("High structural drift. Recovery path becoming constrained.")
 
-    stability = system_state.stability if system_state else 0.8
+    stability = getattr(system_state, "stability", 0.8) if system_state else 0.8
     if stability < 0.3:
         alerts.append("Relational stability critically low. Subsystem coupling degraded.")
 
-    coherence = system_state.coherence if system_state else 0.75
+    coherence = getattr(system_state, "coherence", 0.75) if system_state else 0.75
     if coherence < 0.4:
         alerts.append("System coherence below operational threshold. Imminent structural failure risk.")
 
     return alerts
+
+
+
+
+
