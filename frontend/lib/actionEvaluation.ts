@@ -689,6 +689,24 @@ export function evaluateActionDecision(
   const primaryAction = rankedWithOutcomes[0]
   const alternatives = rankedWithOutcomes.slice(1, 3) // Up to 2 alternatives
 
+  // Safety check: ensure we have a primary action
+  if (!primaryAction) {
+    return {
+      primaryAction: {
+        label: 'Continue monitoring',
+        confidence,
+        outcome: { primary: 'System observation ongoing' },
+        timingSensitivity: 'Monitor for changes',
+        score: 0.5,
+        stabilizationBenefit: 0.3,
+      },
+      alternatives: [],
+      noActionConsequence: null,
+      recommendationStability: 'moderate',
+      decisionSummary: 'Monitoring: no immediate intervention needed',
+    }
+  }
+
   // Compute stability
   const stability_rec = computeRecommendationStability(
     primaryAction.label,
