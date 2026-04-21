@@ -639,27 +639,22 @@ export function TeslaAutopilotInterface({
             zIndex: 50,
           }}
         >
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
               <motion.div
                 animate={{ background: stateColor, boxShadow: `0 0 6px ${stateColor}` }}
-                style={{ width: '7px', height: '7px', borderRadius: '50%', flexShrink: 0 }}
+                style={{ width: '6px', height: '6px', borderRadius: '50%', flexShrink: 0 }}
               />
-              <span style={{ fontSize: '10px', color: '#64748b', letterSpacing: '1.2px', textTransform: 'uppercase', fontWeight: 700 }}>
-                Recommended Action
+              <span style={{ fontSize: '10px', color: '#94a3b8', letterSpacing: '0.7px', textTransform: 'uppercase', fontWeight: 700 }}>
+                Action
               </span>
             </div>
-            <div style={{ fontSize: '14px', fontWeight: 700, color: stateColor, lineHeight: 1.3 }}>
+            <div style={{ fontSize: '13px', fontWeight: 700, color: stateColor, lineHeight: 1.4, wordBreak: 'break-word' }}>
               {actionDecision.primaryAction?.label || 'Monitoring'}
             </div>
-            <div style={{ fontSize: '11.5px', color: '#94a3b8', lineHeight: 1.5 }}>
+            <div style={{ fontSize: '12px', color: '#cbd5e1', lineHeight: 1.5, wordBreak: 'break-word' }}>
               {actionDecision.primaryAction?.outcome?.primary || 'Coherence recovery expected'}
             </div>
-            {intelligence?.pathOutlook && (
-              <div style={{ fontSize: '11px', color: '#475569', lineHeight: 1.4, paddingTop: '8px', borderTop: `1px solid rgba(255,255,255,0.05)` }}>
-                <span style={{ color: '#64748b', fontWeight: 600 }}>Outlook: </span>{intelligence.pathOutlook}
-              </div>
-            )}
           </div>
         </motion.div>
       )}
