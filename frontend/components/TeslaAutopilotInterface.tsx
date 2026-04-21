@@ -594,41 +594,50 @@ export function TeslaAutopilotInterface({
           </motion.div>
         </div>
 
-        {/* ACTION DOCK — below the tetrahedron row, never overlaps */}
+        {/* ACTION CARD — top left corner, premium styling */}
         {actionDecision && (
           <motion.div
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.4 }}
+            initial={{ opacity: 0, x: -16, y: -8 }}
+            animate={{ opacity: 1, x: 0, y: 0 }}
+            transition={{ duration: 0.5, ease: 'easeOut' }}
             style={{
-              borderTop: `1px solid ${stateColor}1a`,
-              background: 'rgba(5,6,7,0.92)',
-              backdropFilter: 'blur(8px)',
-              padding: '10px 20px',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '24px',
-              zIndex: 20,
+              position: 'absolute',
+              top: '90px',
+              left: '16px',
+              width: '320px',
+              background: `linear-gradient(135deg, rgba(5,6,7,0.95) 0%, rgba(5,6,7,0.85) 100%)`,
+              backdropFilter: 'blur(12px)',
+              border: `1.5px solid ${stateColor}33`,
+              borderRadius: '8px',
+              padding: '16px',
+              boxShadow: `0 8px 32px rgba(0,0,0,0.4), inset 0 1px 1px ${stateColor}22`,
+              zIndex: 30,
             }}
           >
-            <div style={{ fontSize: '10px', color: '#334155', letterSpacing: '1px', textTransform: 'uppercase', fontWeight: 700, flexShrink: 0 }}>
-              Action
-            </div>
-            <div style={{ width: '1px', height: '24px', background: `${stateColor}22`, flexShrink: 0 }} />
-            <div style={{ fontSize: '13px', fontWeight: 700, color: stateColor, flexShrink: 0 }}>
-              {actionDecision.primaryAction?.label || 'Monitoring'}
-            </div>
-            <div style={{ fontSize: '11px', color: '#475569', lineHeight: 1.4 }}>
-              {actionDecision.primaryAction?.outcome?.primary || 'Coherence recovery expected'}
-            </div>
-            {intelligence?.pathOutlook && (
-              <>
-                <div style={{ width: '1px', height: '24px', background: 'rgba(255,255,255,0.06)', flexShrink: 0 }} />
-                <div style={{ fontSize: '10px', color: '#334155', fontStyle: 'italic', lineHeight: 1.4 }}>
-                  {intelligence.pathOutlook}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: stateColor, boxShadow: `0 0 8px ${stateColor}` }} />
+                <div style={{ fontSize: '11px', color: '#94a3b8', letterSpacing: '1.2px', textTransform: 'uppercase', fontWeight: 700 }}>
+                  Recommended Action
                 </div>
-              </>
-            )}
+              </div>
+              <div style={{ fontSize: '15px', fontWeight: 700, color: stateColor, lineHeight: 1.3 }}>
+                {actionDecision.primaryAction?.label || 'Monitoring'}
+              </div>
+              <div style={{ fontSize: '12px', color: '#cbd5e1', lineHeight: 1.5 }}>
+                {actionDecision.primaryAction?.outcome?.primary || 'Coherence recovery expected'}
+              </div>
+              {intelligence?.pathOutlook && (
+                <div style={{ fontSize: '11px', color: '#64748b', lineHeight: 1.4, paddingTop: '8px', borderTop: `1px solid ${stateColor}1a` }}>
+                  <span style={{ color: '#94a3b8', fontWeight: 600 }}>Outlook:</span> {intelligence.pathOutlook}
+                </div>
+              )}
+              {actionDecision.primaryAction?.timingSensitivity && (
+                <div style={{ fontSize: '10px', color: stateColor, fontWeight: 600, marginTop: '4px' }}>
+                  ⏱ {actionDecision.primaryAction.timingSensitivity}
+                </div>
+              )}
+            </div>
           </motion.div>
         )}
 
