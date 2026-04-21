@@ -79,7 +79,7 @@ function MetricGauge({
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '5px' }}>
-        <span style={{ fontSize: '10px', color: '#475569', letterSpacing: '0.8px', textTransform: 'uppercase', fontWeight: 700 }}>
+        <span style={{ fontSize: '12px', color: '#475569', letterSpacing: '0.8px', textTransform: 'uppercase', fontWeight: 700 }}>
           {label}
         </span>
         <span style={{ fontSize: '13px', fontWeight: 700, color, fontVariantNumeric: 'tabular-nums' }}>
@@ -263,18 +263,18 @@ export function TeslaAutopilotInterface({
 
           <motion.div
             animate={{ color: stateColor }}
-            style={{ fontWeight: 700, fontSize: '11px', letterSpacing: '1.2px', textTransform: 'uppercase', flexShrink: 0 }}
+            style={{ fontWeight: 700, fontSize: '13px', letterSpacing: '1.2px', textTransform: 'uppercase', flexShrink: 0 }}
           >
             {getStateLabel(phase)}
           </motion.div>
 
-          <div style={{ color: '#475569', fontSize: '11px', flexShrink: 0 }}>
+          <div style={{ color: '#475569', fontSize: '13px', flexShrink: 0 }}>
             Confidence: <span style={{ color: '#64748b' }}>{confidentLabel}</span>
           </div>
 
           <motion.div
             animate={{ color: (consequenceState.timeToImpact ?? 15) < 5 ? '#ef4444' : '#475569' }}
-            style={{ fontSize: '11px', fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}
+            style={{ fontSize: '13px', fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}
           >
             T-Impact:{' '}
             <span style={{ color: '#64748b' }}>
@@ -287,7 +287,7 @@ export function TeslaAutopilotInterface({
         <div style={{ display: 'flex', gap: '14px', alignItems: 'center', flexShrink: 0 }}>
           {/* Speed control */}
           <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
-            <span style={{ fontSize: '10px', color: '#475569', letterSpacing: '0.8px', textTransform: 'uppercase' }}>Speed</span>
+            <span style={{ fontSize: '12px', color: '#475569', letterSpacing: '0.8px', textTransform: 'uppercase' }}>Speed</span>
             <input
               type="range"
               min={0.5}
@@ -297,7 +297,7 @@ export function TeslaAutopilotInterface({
               onChange={e => setSpeed(Number(e.target.value))}
               style={{ width: '56px', height: '3px', accentColor: '#7e9f2e', cursor: 'pointer' }}
             />
-            <span style={{ fontSize: '11px', color: '#64748b', minWidth: '22px', fontVariantNumeric: 'tabular-nums' }}>{speed}x</span>
+            <span style={{ fontSize: '13px', color: '#64748b', minWidth: '22px', fontVariantNumeric: 'tabular-nums' }}>{speed}x</span>
           </div>
 
           {/* Scenario navigation */}
@@ -353,7 +353,7 @@ export function TeslaAutopilotInterface({
               padding: '4px 14px',
               borderRadius: '4px',
               cursor: 'pointer',
-              fontSize: '11px',
+              fontSize: '13px',
               fontWeight: 600,
               letterSpacing: '0.6px',
               textTransform: 'uppercase',
@@ -406,7 +406,7 @@ export function TeslaAutopilotInterface({
               background: 'linear-gradient(90deg, rgba(5,6,7,0.9) 0%, rgba(5,6,7,0.2) 100%)',
             }}
           >
-            <div style={{ fontSize: '10px', color: '#334155', letterSpacing: '1px', textTransform: 'uppercase', fontWeight: 700 }}>
+            <div style={{ fontSize: '12px', color: '#334155', letterSpacing: '1px', textTransform: 'uppercase', fontWeight: 700 }}>
               System Metrics
             </div>
 
@@ -433,7 +433,7 @@ export function TeslaAutopilotInterface({
 
             {/* Urgency bar */}
             <div>
-              <div style={{ fontSize: '10px', color: '#334155', letterSpacing: '1px', textTransform: 'uppercase', fontWeight: 700, marginBottom: '9px' }}>
+              <div style={{ fontSize: '12px', color: '#334155', letterSpacing: '1px', textTransform: 'uppercase', fontWeight: 700, marginBottom: '9px' }}>
                 Urgency
               </div>
               <div style={{ display: 'flex', gap: '4px' }}>
@@ -454,10 +454,10 @@ export function TeslaAutopilotInterface({
             {/* Dominant driver */}
             {diagnostics.dominantDriver && (
               <div>
-                <div style={{ fontSize: '10px', color: '#334155', letterSpacing: '1px', textTransform: 'uppercase', fontWeight: 700, marginBottom: '5px' }}>
+                <div style={{ fontSize: '12px', color: '#334155', letterSpacing: '1px', textTransform: 'uppercase', fontWeight: 700, marginBottom: '5px' }}>
                   Driver
                 </div>
-                <div style={{ fontSize: '11px', color: '#64748b', lineHeight: 1.4 }}>
+                <div style={{ fontSize: '13px', color: '#64748b', lineHeight: 1.4 }}>
                   {diagnostics.dominantDriver}
                 </div>
               </div>
@@ -484,7 +484,7 @@ export function TeslaAutopilotInterface({
                 transform: 'translateX(-50%)',
                 display: 'flex',
                 gap: '22px',
-                fontSize: '11px',
+                fontSize: '13px',
                 color: '#334155',
                 zIndex: 25,
               }}
@@ -521,7 +521,7 @@ export function TeslaAutopilotInterface({
             {/* Zone status */}
             {rooms && rooms.length > 0 && (
               <div>
-                <div style={{ fontSize: '10px', color: '#334155', letterSpacing: '1px', textTransform: 'uppercase', fontWeight: 700, marginBottom: '10px' }}>
+                <div style={{ fontSize: '12px', color: '#334155', letterSpacing: '1px', textTransform: 'uppercase', fontWeight: 700, marginBottom: '10px' }}>
                   Zone Status
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
@@ -549,12 +549,12 @@ export function TeslaAutopilotInterface({
                           style={{ width: '5px', height: '5px', borderRadius: '50%', flexShrink: 0 }}
                         />
                         <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: '11px', fontWeight: 600, color: '#64748b' }}>{room.shortName}</div>
-                          <div style={{ fontSize: '10px', color: '#334155', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                          <div style={{ fontSize: '13px', fontWeight: 600, color: '#64748b' }}>{room.shortName}</div>
+                          <div style={{ fontSize: '12px', color: '#334155', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                             {room.behavioralState}
                           </div>
                         </div>
-                        <div style={{ fontSize: '10px', color: rc, fontWeight: 700, fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>
+                        <div style={{ fontSize: '12px', color: rc, fontWeight: 700, fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>
                           {Math.round(room.driftContribution * 100)}%
                         </div>
                       </div>
@@ -567,18 +567,18 @@ export function TeslaAutopilotInterface({
             {/* System intelligence */}
             {intelligence && (
               <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                <div style={{ fontSize: '10px', color: '#334155', letterSpacing: '1px', textTransform: 'uppercase', fontWeight: 700 }}>
+                <div style={{ fontSize: '12px', color: '#334155', letterSpacing: '1px', textTransform: 'uppercase', fontWeight: 700 }}>
                   System Intel
                 </div>
-                <div style={{ fontSize: '11px', color: '#3d4e61', lineHeight: '1.65' }}>
+                <div style={{ fontSize: '13px', color: '#3d4e61', lineHeight: '1.65' }}>
                   {intelligence.explanation}
                 </div>
                 <div>
-                  <div style={{ fontSize: '10px', color: '#334155', letterSpacing: '0.8px', textTransform: 'uppercase', fontWeight: 700, marginBottom: '5px' }}>
+                  <div style={{ fontSize: '12px', color: '#334155', letterSpacing: '0.8px', textTransform: 'uppercase', fontWeight: 700, marginBottom: '5px' }}>
                     Operator Focus
                   </div>
                   <div style={{
-                    fontSize: '11px',
+                    fontSize: '13px',
                     color: stateColor,
                     lineHeight: '1.5',
                     padding: '6px 8px',
@@ -645,7 +645,7 @@ export function TeslaAutopilotInterface({
                 animate={{ background: stateColor, boxShadow: `0 0 6px ${stateColor}` }}
                 style={{ width: '6px', height: '6px', borderRadius: '50%', flexShrink: 0 }}
               />
-              <span style={{ fontSize: '10px', color: '#94a3b8', letterSpacing: '0.7px', textTransform: 'uppercase', fontWeight: 700 }}>
+              <span style={{ fontSize: '12px', color: '#94a3b8', letterSpacing: '0.7px', textTransform: 'uppercase', fontWeight: 700 }}>
                 Action
               </span>
             </div>
