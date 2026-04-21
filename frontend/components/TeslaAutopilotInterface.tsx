@@ -200,10 +200,10 @@ export function TeslaAutopilotInterface({
     <div
       style={{
         width: '100vw',
-        height: '100vh',
+        minHeight: '100vh',
         background: '#050607',
         color: '#e2e8f0',
-        overflow: 'hidden',
+        overflow: 'auto',
         position: 'relative',
         fontFamily: 'system-ui, -apple-system, sans-serif',
       }}
