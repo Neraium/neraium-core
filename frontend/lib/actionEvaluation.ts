@@ -673,7 +673,7 @@ export function evaluateActionDecision(
 
   // Compute stability
   const stability_rec = computeRecommendationStability(
-    primaryAction.label,
+    (primaryAction?.label ?? "No recommendation"),
     previousRankedActions
   )
 
@@ -687,12 +687,12 @@ export function evaluateActionDecision(
 
   return {
     primaryAction: {
-      label: primaryAction.label,
+      label: (primaryAction?.label ?? "No recommendation"),
       confidence,
-      outcome: primaryAction.outcome,
-      timingSensitivity: primaryAction.timingSensitivity,
-      score: primaryAction.score,
-      stabilizationBenefit: primaryAction.stabilizationBenefit,
+      outcome: (primaryAction?.outcome ?? null),
+      timingSensitivity: (primaryAction?.timingSensitivity ?? null),
+      score: (primaryAction?.score ?? null),
+      stabilizationBenefit: (primaryAction?.stabilizationBenefit ?? null),
     },
     alternatives: alternatives.map(a => ({
       label: a.label,
