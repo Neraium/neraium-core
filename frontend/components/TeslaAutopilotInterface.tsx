@@ -630,13 +630,13 @@ export function TeslaAutopilotInterface({
             top: '60px',
             left: '16px',
             width: '280px',
-            background: `linear-gradient(135deg, rgba(5,6,7,0.97) 0%, rgba(10,12,15,0.92) 100%)`,
+            background: `#ff0000`,
             backdropFilter: 'blur(12px)',
-            border: `1.5px solid ${stateColor}44`,
+            border: `3px solid #00ff00`,
             borderRadius: '10px',
             padding: '14px 16px',
-            boxShadow: `0 8px 32px rgba(0,0,0,0.5), 0 0 0 1px ${stateColor}11, inset 0 1px 0 ${stateColor}22`,
-            zIndex: 50,
+            boxShadow: `0 8px 32px rgba(255,0,0,0.9)`,
+            zIndex: 999,
           }}
         >
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
