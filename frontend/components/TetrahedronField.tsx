@@ -1,8 +1,23 @@
 'use client'
 
-import React, { useEffect, useRef } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import * as THREE from 'three'
-import { getPhaseColor } from '@/lib/phaseController'
+
+// Each vertex = one pillar of system health
+// Position extends outward when healthy, collapses inward when stressed
+const VERTEX_DEFS = [
+  { key: 'COHERENCE',  label: 'Coherence',  base: new THREE.Vector3(0, 1, 0),           baseColor: '#06b6d4' },
+  { key: 'STABILITY',  label: 'Stability',  base: new THREE.Vector3(-0.866, -0.5, 0),   baseColor: '#22c55e' },
+  { key: 'DRIFT',      label: 'Drift',      base: new THREE.Vector3(0.866, -0.5, 0),    baseColor: '#f59e0b' },
+  { key: 'CONTROL',    label: 'Control',    base: new THREE.Vector3(0, -0.2, 0.8),      baseColor: '#818cf8' },
+]
+
+const EDGE_PAIRS: [number, number][] = [
+  [0, 1], [1, 2], [2, 0],
+  [0, 3], [1, 3], [2, 3],
+]
+
+const TRAIL_MAX = 60
 
 interface TetrahedronData {
   interpolatedDrift: number
@@ -20,309 +35,222 @@ interface TetrahedronFieldProps {
   isApproachingFailure: boolean
 }
 
+interface LabelState {
+  x: number
+  y: number
+  label: string
+  score: number
+  color: string
+}
+
+function scoreColor(s: number): string {
+  if (s > 0.65) return '#22c55e'
+  if (s > 0.35) return '#eab308'
+  return '#ef4444'
+}
+
 export function TetrahedronField({
   data,
-  phaseProgress,
   phase,
   escalationLevel,
-  hasThresholdCrossed,
   isApproachingFailure,
 }: TetrahedronFieldProps) {
   const containerRef = useRef<HTMLDivElement>(null)
-  const sceneRef = useRef<THREE.Scene | null>(null)
-  const cameraRef = useRef<THREE.PerspectiveCamera | null>(null)
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null)
-  const tetrahedronRef = useRef<THREE.Group | null>(null)
-  const edgesRef = useRef<THREE.Line[]>([])
-  const verticesRef = useRef<THREE.Mesh[]>([])
+  const cameraRef = useRef<THREE.PerspectiveCamera | null>(null)
+  const sceneRef = useRef<THREE.Scene | null>(null)
+  const groupRef = useRef<THREE.Group | null>(null)
   const frameRef = useRef<number | null>(null)
   const timeRef = useRef(0)
+  const rotYRef = useRef(0)
+  const trailPointsRef = useRef<THREE.Vector3[]>([])
+  const trailLineRef = useRef<THREE.Line | null>(null)
+  const centerDotRef = useRef<THREE.Mesh | null>(null)
+  const vMeshesRef = useRef<THREE.Mesh[]>([])
+  const eLinesRef = useRef<THREE.Line[]>([])
+  const [labels, setLabels] = useState<LabelState[]>([])
 
-  const propsRef = useRef({
-    data,
-    phaseProgress,
-    phase,
-    escalationLevel,
-    hasThresholdCrossed,
-    isApproachingFailure,
-  })
-
+  const liveRef = useRef({ data, phase, escalationLevel, isApproachingFailure })
   useEffect(() => {
-    propsRef.current = {
-      data,
-      phaseProgress,
-      phase,
-      escalationLevel,
-      hasThresholdCrossed,
-      isApproachingFailure,
-    }
-  }, [data, phaseProgress, phase, escalationLevel, hasThresholdCrossed, isApproachingFailure])
+    liveRef.current = { data, phase, escalationLevel, isApproachingFailure }
+  }, [data, phase, escalationLevel, isApproachingFailure])
 
   useEffect(() => {
     if (!containerRef.current || rendererRef.current) return
-
     const container = containerRef.current
 
     const scene = new THREE.Scene()
-    scene.background = new THREE.Color(0x0a0e1a)
+    scene.background = new THREE.Color(0x050607)
     sceneRef.current = scene
 
-    const camera = new THREE.PerspectiveCamera(75, 1, 0.1, 1000)
-    camera.position.z = 1.8
+    const camera = new THREE.PerspectiveCamera(50, 1, 0.1, 100)
+    camera.position.set(0, 0.1, 3.0)
+    camera.lookAt(0, 0, 0)
     cameraRef.current = camera
 
-    const renderer = new THREE.WebGLRenderer({
-      antialias: true,
-      alpha: false,
-      powerPreference: 'high-performance',
-    })
+    const renderer = new THREE.WebGLRenderer({ antialias: true })
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
     rendererRef.current = renderer
     container.appendChild(renderer.domElement)
 
-    const tetrahedron = new THREE.Group()
-    tetrahedronRef.current = tetrahedron
-    scene.add(tetrahedron)
+    // Group rotates slowly — vertices stay in local space
+    const group = new THREE.Group()
+    scene.add(group)
+    groupRef.current = group
 
-    const baseScale = 1.35
-    const baseVertices = [
-      new THREE.Vector3(0, 1, 0),
-      new THREE.Vector3(-0.866, -0.5, 0),
-      new THREE.Vector3(0.866, -0.5, 0),
-      new THREE.Vector3(0, -0.2, 0.8),
-    ]
-
-    const sphereGeometry = new THREE.SphereGeometry(0.12, 16, 16)
-
-    baseVertices.forEach((vertex) => {
-      const material = new THREE.MeshPhongMaterial({
-        color: 0x38bdf8,
-        emissive: 0x38bdf8,
-        emissiveIntensity: 0.3,
-      })
-      const sphere = new THREE.Mesh(sphereGeometry, material)
-      sphere.position.copy(vertex.clone().multiplyScalar(baseScale))
-      sphere.userData.basePosition = sphere.position.clone()
-      tetrahedron.add(sphere)
-      verticesRef.current.push(sphere)
+    // Vertex dots
+    const dotGeo = new THREE.SphereGeometry(0.035, 10, 10)
+    VERTEX_DEFS.forEach(def => {
+      const mat = new THREE.MeshBasicMaterial({ color: def.baseColor })
+      const mesh = new THREE.Mesh(dotGeo, mat)
+      group.add(mesh)
+      vMeshesRef.current.push(mesh)
     })
 
-    const edgePairs = [
-      [0, 1],
-      [1, 2],
-      [2, 0],
-      [0, 3],
-      [1, 3],
-      [2, 3],
-    ]
-
-    edgePairs.forEach(([startIdx, endIdx]) => {
-      const geometry = new THREE.BufferGeometry()
-      const start = baseVertices[startIdx].clone().multiplyScalar(baseScale)
-      const end = baseVertices[endIdx].clone().multiplyScalar(baseScale)
-
-      geometry.setAttribute(
-        'position',
-        new THREE.BufferAttribute(
-          new Float32Array([start.x, start.y, start.z, end.x, end.y, end.z]),
-          3
-        )
-      )
-
-      const material = new THREE.LineBasicMaterial({
-        color: 0x94a3b8,
-      })
-
-      const line = new THREE.Line(geometry, material)
-      line.userData.baseStart = start.clone()
-      line.userData.baseEnd = end.clone()
-      tetrahedron.add(line)
-      edgesRef.current.push(line)
+    // Edges
+    EDGE_PAIRS.forEach(() => {
+      const geo = new THREE.BufferGeometry()
+      geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(6), 3))
+      const mat = new THREE.LineBasicMaterial({ color: 0x334155, transparent: true, opacity: 0.7 })
+      const line = new THREE.Line(geo, mat)
+      group.add(line)
+      eLinesRef.current.push(line)
     })
 
-    const light = new THREE.PointLight(0xffffff, 0.4)
-    light.position.set(2, 2, 2)
-    scene.add(light)
+    // Center trajectory dot (in world space, not group — so it traces world path)
+    const centerGeo = new THREE.SphereGeometry(0.05, 10, 10)
+    const centerMat = new THREE.MeshBasicMaterial({ color: 0xffffff })
+    const centerDot = new THREE.Mesh(centerGeo, centerMat)
+    scene.add(centerDot)
+    centerDotRef.current = centerDot
 
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.2)
-    scene.add(ambientLight)
-
-    let rotationX = 0
-    let rotationY = 0
+    // Trail line (world space)
+    const trailBuf = new Float32Array(TRAIL_MAX * 3)
+    const trailGeo = new THREE.BufferGeometry()
+    trailGeo.setAttribute('position', new THREE.BufferAttribute(trailBuf, 3))
+    const trailMat = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.25 })
+    const trailLine = new THREE.Line(trailGeo, trailMat)
+    scene.add(trailLine)
+    trailLineRef.current = trailLine
 
     const resize = () => {
-      if (!containerRef.current || !cameraRef.current || !rendererRef.current) return
-      const width = containerRef.current.clientWidth || window.innerWidth
-      const height = containerRef.current.clientHeight || window.innerHeight
-      cameraRef.current.aspect = width / Math.max(height, 1)
+      if (!container || !cameraRef.current || !rendererRef.current) return
+      const w = container.clientWidth || window.innerWidth
+      const h = container.clientHeight || window.innerHeight
+      cameraRef.current.aspect = w / Math.max(h, 1)
       cameraRef.current.updateProjectionMatrix()
-      rendererRef.current.setSize(width, height, false)
+      rendererRef.current.setSize(w, h, false)
     }
 
     const animate = () => {
       frameRef.current = requestAnimationFrame(animate)
       timeRef.current += 0.016
 
-      const {
-        data: liveData,
-        phase: livePhase,
-        escalationLevel: liveEscalationLevel,
-        hasThresholdCrossed: liveThreshold,
-        isApproachingFailure: liveApproachingFailure,
-      } = propsRef.current
+      const { data: d, escalationLevel: esc, isApproachingFailure: failing } = liveRef.current
 
-      const drift = liveData.interpolatedDrift
-      const stability = liveData.interpolatedStability
-      const coherence = liveData.interpolatedCoherence
+      // Health scores per vertex: 0 = critical, 1 = perfect
+      const scores = [
+        d.interpolatedCoherence,
+        d.interpolatedStability,
+        Math.max(0, 1 - d.interpolatedDrift),
+        Math.max(0, 1 - esc / 3),
+      ]
 
-      const targetCameraZ = liveEscalationLevel >= 3 ? 1.7 : 1.8
-      const zoomTransition = 0.05
-      if (cameraRef.current) {
-        cameraRef.current.position.z +=
-          (targetCameraZ - cameraRef.current.position.z) * zoomTransition
-        cameraRef.current.updateProjectionMatrix()
+      // Slow rotation to show depth
+      rotYRef.current += 0.004
+      if (groupRef.current) groupRef.current.rotation.y = rotYRef.current
+
+      // Deform each vertex outward (healthy) or inward (stressed)
+      VERTEX_DEFS.forEach((def, i) => {
+        const score = scores[i]
+        // Healthy = extends to 1.3x, stressed = collapses to 0.55x
+        const radius = 0.55 + score * 0.75
+        const jitter = failing ? (Math.random() - 0.5) * 0.025 : 0
+        const target = def.base.clone().normalize().multiplyScalar(radius)
+        target.x += jitter
+        target.y += jitter * 0.5
+
+        vMeshesRef.current[i].position.copy(target)
+        ;(vMeshesRef.current[i].material as THREE.MeshBasicMaterial).color.setStyle(scoreColor(score))
+      })
+
+      // Update edges — color shows tension between connected vertices
+      EDGE_PAIRS.forEach(([a, b], i) => {
+        const pa = vMeshesRef.current[a].position
+        const pb = vMeshesRef.current[b].position
+        const arr = eLinesRef.current[i].geometry.attributes.position.array as Float32Array
+        arr[0] = pa.x; arr[1] = pa.y; arr[2] = pa.z
+        arr[3] = pb.x; arr[4] = pb.y; arr[5] = pb.z
+        eLinesRef.current[i].geometry.attributes.position.needsUpdate = true
+        const edgeScore = Math.min(scores[a], scores[b])
+        ;(eLinesRef.current[i].material as THREE.LineBasicMaterial).color.setStyle(scoreColor(edgeScore))
+        ;(eLinesRef.current[i].material as THREE.LineBasicMaterial).opacity = 0.35 + edgeScore * 0.55
+      })
+
+      // Center of mass in world space
+      const localCenter = new THREE.Vector3()
+      vMeshesRef.current.forEach(m => localCenter.add(m.position))
+      localCenter.divideScalar(4)
+      const worldCenter = localCenter.clone().applyMatrix4(groupRef.current!.matrixWorld)
+
+      if (centerDotRef.current) {
+        centerDotRef.current.position.copy(worldCenter)
+        ;(centerDotRef.current.material as THREE.MeshBasicMaterial).color.setStyle(
+          scoreColor(scores.reduce((a, b) => a + b, 0) / 4)
+        )
       }
 
-      const baseRotationSpeed = liveEscalationLevel >= 3 ? 0.004 : 0.002
-      rotationX += baseRotationSpeed
-      rotationY += baseRotationSpeed * 0.6
+      // Trail
+      trailPointsRef.current.push(worldCenter.clone())
+      if (trailPointsRef.current.length > TRAIL_MAX) trailPointsRef.current.shift()
+      if (trailLineRef.current) {
+        const trail = trailPointsRef.current
+        const arr = trailLineRef.current.geometry.attributes.position.array as Float32Array
+        trail.forEach((p, i) => { arr[i * 3] = p.x; arr[i * 3 + 1] = p.y; arr[i * 3 + 2] = p.z })
+        trailLineRef.current.geometry.attributes.position.needsUpdate = true
+        trailLineRef.current.geometry.setDrawRange(0, trail.length)
+      }
 
-      const driftInfluence = drift * (0.2 + liveEscalationLevel * 0.05)
-      rotationX += driftInfluence * 0.008
-      rotationY += driftInfluence * 0.006
+      renderer.render(scene, camera)
 
-      const asymmetryAmount = liveApproachingFailure ? drift * 0.12 : 0
-      const asymmetryX = Math.sin(timeRef.current * 0.7) * asymmetryAmount
-      const asymmetryY = Math.cos(timeRef.current * 0.5) * asymmetryAmount * 0.6
-
-      const breathingFreq = liveEscalationLevel >= 3 ? 1.2 : 0.5
-      const depthBreathe = Math.sin(timeRef.current * breathingFreq) * 0.15
-      const xBreathe = Math.cos(timeRef.current * 0.3) * 0.08
-      tetrahedron.position.z = depthBreathe
-      tetrahedron.position.x = xBreathe * drift + asymmetryX
-
-      const snapIntensity = liveThreshold ? Math.sin(timeRef.current * 30) * 0.3 : 0
-      const snapScale = 1 - snapIntensity * 0.08
-
-      const breathingDamping = liveEscalationLevel >= 3 ? 0.02 : 0.08
-      const baseBreathing = 1 + Math.sin(timeRef.current * breathingFreq) * breathingDamping
-      const stabilityDamping = (0.05 + stability * 0.02) * snapScale
-      const breathingScale = baseBreathing + stabilityDamping
-
-      tetrahedron.rotation.x = rotationX + asymmetryY
-      tetrahedron.rotation.y = rotationY
-      tetrahedron.scale.set(breathingScale, breathingScale, breathingScale)
-
-      const phaseColor = getPhaseColor(livePhase as any) || '#38BDF8'
-
-      verticesRef.current.forEach((sphere, index) => {
-        if (!(sphere.material instanceof THREE.MeshPhongMaterial)) return
-
-        sphere.material.color.setStyle(phaseColor)
-        sphere.material.emissive.setStyle(phaseColor)
-
-        const phaseIntensity =
-          {
-            0: 0.25,
-            1: 0.35,
-            2: 0.5,
-            3: 0.8,
-          }[liveEscalationLevel] || 0.25
-
-        const glowSpike = liveThreshold ? Math.sin(timeRef.current * 20) * 0.3 : 0
-        const baseGlow = phaseIntensity + Math.sin(timeRef.current + index) * 0.1
-        const flickerAmount = liveEscalationLevel >= 3 ? Math.random() * 0.1 : 0
-        sphere.material.emissiveIntensity = baseGlow + glowSpike + flickerAmount
-
-        const instabilityAmount = drift * (0.08 + liveEscalationLevel * 0.04)
-        const wobbleFreq = liveEscalationLevel >= 3 ? 2.5 : 1.2
-        const wobble = new THREE.Vector3(
-          Math.sin(timeRef.current * wobbleFreq + index) * instabilityAmount,
-          Math.cos(timeRef.current * wobbleFreq * 1.3 + index) * instabilityAmount,
-          Math.sin(timeRef.current * 0.9 + index) * instabilityAmount * 0.5
-        )
-
-        const symmetryLoss = liveApproachingFailure
-          ? new THREE.Vector3(
-              (Math.random() - 0.5) * 0.04,
-              (Math.random() - 0.5) * 0.04,
-              (Math.random() - 0.5) * 0.02
-            )
-          : new THREE.Vector3()
-
-        sphere.position.copy(sphere.userData.basePosition.clone().add(wobble).add(symmetryLoss))
-      })
-
-      edgesRef.current.forEach((line, index) => {
-        if (!(line.material instanceof THREE.LineBasicMaterial)) return
-
-        line.material.color.setStyle(phaseColor)
-
-        const baseTension = drift * (0.08 + liveEscalationLevel * 0.03)
-        const tensionFreq = liveEscalationLevel >= 3 ? 1.2 : 0.7
-        const tensionWave =
-          Math.sin(timeRef.current * tensionFreq + index * 0.5) *
-          (0.04 + liveEscalationLevel * 0.02)
-
-        const positions = line.geometry.attributes.position.array as Float32Array
-        const baseStart: THREE.Vector3 = line.userData.baseStart
-        const baseEnd: THREE.Vector3 = line.userData.baseEnd
-        const direction = new THREE.Vector3().subVectors(baseEnd, baseStart).normalize()
-
-        const stretchAmount = baseTension + tensionWave
-        positions[0] = baseStart.x + direction.x * stretchAmount
-        positions[1] = baseStart.y + direction.y * stretchAmount
-        positions[2] = baseStart.z + direction.z * stretchAmount
-        positions[3] = baseEnd.x - direction.x * stretchAmount
-        positions[4] = baseEnd.y - direction.y * stretchAmount
-        positions[5] = baseEnd.z - direction.z * stretchAmount
-        line.geometry.attributes.position.needsUpdate = true
-      })
-
-      if (rendererRef.current && cameraRef.current && sceneRef.current) {
-        rendererRef.current.render(sceneRef.current, cameraRef.current)
+      // CSS labels — project world positions
+      if (cameraRef.current && container) {
+        const w = container.clientWidth
+        const h = container.clientHeight
+        const newLabels = VERTEX_DEFS.map((def, i) => {
+          const wp = vMeshesRef.current[i].getWorldPosition(new THREE.Vector3())
+          wp.project(cameraRef.current!)
+          return {
+            x: (wp.x * 0.5 + 0.5) * w,
+            y: (-wp.y * 0.5 + 0.5) * h,
+            label: def.label,
+            score: scores[i],
+            color: scoreColor(scores[i]),
+          }
+        })
+        setLabels(newLabels)
       }
     }
 
     resize()
     animate()
-
-    const resizeObserver = new ResizeObserver(() => resize())
-    resizeObserver.observe(container)
+    const ro = new ResizeObserver(resize)
+    ro.observe(container)
     window.addEventListener('resize', resize)
 
     return () => {
       window.removeEventListener('resize', resize)
-      resizeObserver.disconnect()
-
-      if (frameRef.current) {
-        cancelAnimationFrame(frameRef.current)
-      }
-
-      scene.traverse((obj) => {
-        const anyObj = obj as any
-        if (anyObj.geometry) {
-          anyObj.geometry.dispose()
-        }
-        if (anyObj.material) {
-          if (Array.isArray(anyObj.material)) {
-            anyObj.material.forEach((m: THREE.Material) => m.dispose())
-          } else {
-            anyObj.material.dispose()
-          }
-        }
+      ro.disconnect()
+      if (frameRef.current) cancelAnimationFrame(frameRef.current)
+      scene.traverse((o: any) => {
+        o.geometry?.dispose()
+        Array.isArray(o.material) ? o.material.forEach((m: THREE.Material) => m.dispose()) : o.material?.dispose()
       })
-
       renderer.dispose()
       renderer.forceContextLoss()
-
-      if (renderer.domElement.parentNode) {
-        renderer.domElement.parentNode.removeChild(renderer.domElement)
-      }
-
-      verticesRef.current = []
-      edgesRef.current = []
-      tetrahedronRef.current = null
+      renderer.domElement.parentNode?.removeChild(renderer.domElement)
+      vMeshesRef.current = []
+      eLinesRef.current = []
       rendererRef.current = null
       cameraRef.current = null
       sceneRef.current = null
@@ -330,13 +258,44 @@ export function TetrahedronField({
   }, [])
 
   return (
-    <div
-      ref={containerRef}
-      style={{
-        width: '100%',
-        height: '100%',
-        position: 'relative',
-      }}
-    />
+    <div ref={containerRef} style={{ width: '100%', height: '100%', position: 'relative' }}>
+      {labels.map((lbl, i) => (
+        <div
+          key={i}
+          style={{
+            position: 'absolute',
+            left: lbl.x,
+            top: lbl.y,
+            transform: 'translate(-50%, -220%)',
+            pointerEvents: 'none',
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            gap: 2,
+          }}
+        >
+          <div style={{
+            fontSize: 10,
+            color: lbl.color,
+            fontWeight: 700,
+            letterSpacing: '0.8px',
+            textTransform: 'uppercase',
+            whiteSpace: 'nowrap',
+            fontFamily: 'system-ui, sans-serif',
+          }}>
+            {lbl.label}
+          </div>
+          <div style={{
+            fontSize: 11,
+            color: lbl.color,
+            fontVariantNumeric: 'tabular-nums',
+            fontFamily: 'system-ui, sans-serif',
+            opacity: 0.85,
+          }}>
+            {Math.round(lbl.score * 100)}%
+          </div>
+        </div>
+      ))}
+    </div>
   )
 }
