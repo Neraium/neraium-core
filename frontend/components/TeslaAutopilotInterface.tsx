@@ -390,12 +390,15 @@ export function TeslaAutopilotInterface({
       </motion.div>
 
       {/* PHASE PROGRESS BAR */}
-      <div style={{ position: 'absolute', top: 48, left: 0, right: 0, height: '2px', background: 'rgba(255,255,255,0.04)', zIndex: 49 }}>
+      <div style={{ position: 'absolute', top: 48, left: 0, right: 0, height: '2px', background: 'rgba(255,255,255,0.04)', zIndex: 49, group: 'progress' }}>
         <motion.div
           animate={{ width: `${phaseProgress * 100}%`, backgroundColor: stateColor }}
           transition={{ duration: 0.12 }}
           style={{ height: '100%', boxShadow: `0 0 6px ${stateColor}88` }}
         />
+        <div style={{ position: 'absolute', top: -20, right: 16, fontSize: '11px', color: stateColor, fontVariantNumeric: 'tabular-nums', fontWeight: 600 }}>
+          {Math.ceil((1 - phaseProgress) * 20)}~cycles
+        </div>
       </div>
 
       {/* MAIN CONTENT AREA */}
@@ -546,40 +549,71 @@ export function TeslaAutopilotInterface({
                 <div style={{ fontSize: '12px', color: '#334155', letterSpacing: '1px', textTransform: 'uppercase', fontWeight: 700, marginBottom: '10px' }}>
                   Zone Status
                 </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                   {rooms.map(room => {
                     const rc = getRoomStatusColor(room.status)
+                    const isExpanded = expandedZoneId === room.id
                     return (
-                      <div
+                      <motion.div
                         key={room.id}
+                        layout
+                        onClick={() => setExpandedZoneId(isExpanded ? null : room.id)}
                         style={{
                           display: 'flex',
-                          alignItems: 'center',
-                          gap: '7px',
-                          padding: '5px 7px',
-                          borderRadius: '4px',
-                          background: `${rc}07`,
-                          border: `1px solid ${rc}1a`,
+                          flexDirection: 'column',
+                          gap: '8px',
+                          padding: '8px 10px',
+                          borderRadius: '6px',
+                          background: `${rc}${isExpanded ? '12' : '07'}`,
+                          border: `1px solid ${rc}${isExpanded ? '33' : '1a'}`,
+                          cursor: 'pointer',
                           transition: 'all 0.3s',
                         }}
+                        onMouseEnter={e => {
+                          e.currentTarget.style.background = `${rc}0f`
+                          e.currentTarget.style.borderColor = `${rc}22`
+                        }}
+                        onMouseLeave={e => {
+                          e.currentTarget.style.background = isExpanded ? `${rc}12` : `${rc}07`
+                          e.currentTarget.style.borderColor = isExpanded ? `${rc}33` : `${rc}1a`
+                        }}
                       >
-                        <motion.div
-                          animate={{
-                            background: rc,
-                            boxShadow: room.status === 'critical' ? `0 0 5px ${rc}` : 'none',
-                          }}
-                          style={{ width: '5px', height: '5px', borderRadius: '50%', flexShrink: 0 }}
-                        />
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: '13px', fontWeight: 600, color: '#64748b' }}>{room.shortName}</div>
-                          <div style={{ fontSize: '12px', color: '#334155', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            {room.behavioralState}
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', justifyContent: 'space-between' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1, minWidth: 0 }}>
+                            <motion.div
+                              animate={{
+                                background: rc,
+                                boxShadow: room.status === 'critical' ? `0 0 8px ${rc}` : 'none',
+                              }}
+                              style={{ width: '6px', height: '6px', borderRadius: '50%', flexShrink: 0 }}
+                            />
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontSize: '13px', fontWeight: 600, color: '#cbd5e1' }}>{room.shortName}</div>
+                            </div>
+                          </div>
+                          <div style={{ fontSize: '12px', color: rc, fontWeight: 700, fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>
+                            {Math.round(room.driftContribution * 100)}%
                           </div>
                         </div>
-                        <div style={{ fontSize: '12px', color: rc, fontWeight: 700, fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>
-                          {Math.round(room.driftContribution * 100)}%
-                        </div>
-                      </div>
+                        {isExpanded && (
+                          <motion.div
+                            initial={{ opacity: 0, height: 0 }}
+                            animate={{ opacity: 1, height: 'auto' }}
+                            exit={{ opacity: 0, height: 0 }}
+                            style={{ display: 'flex', flexDirection: 'column', gap: '6px', paddingTop: '4px', borderTop: `1px solid ${rc}1a` }}
+                          >
+                            <div style={{ fontSize: '11px', color: '#94a3b8' }}>
+                              <span style={{ color: '#64748b' }}>Status: </span>{room.status}
+                            </div>
+                            <div style={{ fontSize: '11px', color: '#94a3b8' }}>
+                              <span style={{ color: '#64748b' }}>Behavior: </span>{room.behavioralState}
+                            </div>
+                            <div style={{ fontSize: '11px', color: '#94a3b8' }}>
+                              <span style={{ color: '#64748b' }}>Drift Impact: </span>{Math.round(room.driftContribution * 100)}%
+                            </div>
+                          </motion.div>
+                        )}
+                      </motion.div>
                     )
                   })}
                 </div>
