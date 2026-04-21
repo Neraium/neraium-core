@@ -601,8 +601,8 @@ export function TeslaAutopilotInterface({
             animate={{ opacity: 1, x: 0, y: 0 }}
             transition={{ duration: 0.5, ease: 'easeOut' }}
             style={{
-              position: 'absolute',
-              top: '80px',
+              position: 'fixed',
+              top: '90px',
               left: '16px',
               width: '320px',
               background: `linear-gradient(135deg, rgba(5,6,7,0.95) 0%, rgba(5,6,7,0.85) 100%)`,
