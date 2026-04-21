@@ -257,8 +257,24 @@ export function TetrahedronField({
     }
   }, [])
 
+  const atmosphereColor = phase === 'Critical' ? '#ef4444'
+    : phase === 'Instability forming' ? '#f97316'
+    : phase === 'Drift forming' ? '#eab308'
+    : '#22c55e'
+
   return (
     <div ref={containerRef} style={{ width: '100%', height: '100%', position: 'relative' }}>
+      {/* Phase atmosphere: radial glow that shifts with system state */}
+      <div
+        style={{
+          position: 'absolute',
+          inset: 0,
+          background: `radial-gradient(ellipse 60% 50% at 50% 50%, ${atmosphereColor}0a 0%, transparent 70%)`,
+          pointerEvents: 'none',
+          zIndex: 1,
+          transition: 'background 1.8s ease',
+        }}
+      />
       {labels.map((lbl, i) => (
         <div
           key={i}
@@ -272,6 +288,7 @@ export function TetrahedronField({
             flexDirection: 'column',
             alignItems: 'center',
             gap: 2,
+            zIndex: 2,
           }}
         >
           <div style={{
