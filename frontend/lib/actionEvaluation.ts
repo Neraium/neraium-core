@@ -647,6 +647,24 @@ export function evaluateActionDecision(
   // Rank by score
   const ranked = rankCandidateActions(scored)
 
+  // Fallback: if no candidates, create a default "Monitor" action
+  if (ranked.length === 0) {
+    return {
+      primaryAction: {
+        label: 'Continue monitoring',
+        confidence,
+        outcome: { primary: 'System observation ongoing' },
+        timingSensitivity: 'Monitor for changes',
+        score: 0.5,
+        stabilizationBenefit: 0.3,
+      },
+      alternatives: [],
+      noActionConsequence: null,
+      recommendationStability: 'moderate',
+      decisionSummary: 'Monitoring: no immediate intervention needed',
+    }
+  }
+
   // Project outcomes for top actions
   const rankedWithOutcomes: RankedAction[] = ranked.map(action => ({
     ...action,
