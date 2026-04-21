@@ -602,16 +602,16 @@ export function TeslaAutopilotInterface({
             transition={{ duration: 0.5, ease: 'easeOut' }}
             style={{
               position: 'absolute',
-              top: '90px',
+              top: '80px',
               left: '16px',
               width: '320px',
               background: `linear-gradient(135deg, rgba(5,6,7,0.95) 0%, rgba(5,6,7,0.85) 100%)`,
               backdropFilter: 'blur(12px)',
-              border: `1.5px solid ${stateColor}33`,
-              borderRadius: '8px',
+              border: `2px solid ${stateColor}`,
+              borderRadius: '12px',
               padding: '16px',
-              boxShadow: `0 8px 32px rgba(0,0,0,0.4), inset 0 1px 1px ${stateColor}22`,
-              zIndex: 30,
+              boxShadow: `0 12px 40px rgba(0,0,0,0.6), inset 0 1px 1px ${stateColor}33`,
+              zIndex: 999,
             }}
           >
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
