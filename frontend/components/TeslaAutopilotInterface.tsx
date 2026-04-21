@@ -431,8 +431,38 @@ export function TeslaAutopilotInterface({
               background: 'linear-gradient(90deg, rgba(5,6,7,0.9) 0%, rgba(5,6,7,0.2) 100%)',
             }}
           >
-            <div style={{ fontSize: '12px', color: '#334155', letterSpacing: '1px', textTransform: 'uppercase', fontWeight: 700 }}>
-              System Metrics
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+              <div style={{ fontSize: '12px', color: '#334155', letterSpacing: '1px', textTransform: 'uppercase', fontWeight: 700 }}>
+                {!leftPanelCollapsed && 'System Metrics'}
+              </div>
+              <button
+                onClick={() => setLeftPanelCollapsed(!leftPanelCollapsed)}
+                style={{
+                  width: '20px',
+                  height: '20px',
+                  padding: 0,
+                  background: 'rgba(255,255,255,0.04)',
+                  border: '1px solid rgba(255,255,255,0.08)',
+                  borderRadius: '3px',
+                  color: '#94a3b8',
+                  fontSize: '12px',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  transition: 'all 0.2s',
+                }}
+                onMouseEnter={e => {
+                  e.currentTarget.style.background = 'rgba(255,255,255,0.08)'
+                  e.currentTarget.style.borderColor = 'rgba(255,255,255,0.15)'
+                }}
+                onMouseLeave={e => {
+                  e.currentTarget.style.background = 'rgba(255,255,255,0.04)'
+                  e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)'
+                }}
+              >
+                {leftPanelCollapsed ? '+' : '−'}
+              </button>
             </div>
 
             <MetricGauge
