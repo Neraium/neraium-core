@@ -110,6 +110,10 @@ export function TeslaAutopilotInterface({
   const [stabilityHistory, setStabilityHistory] = useState<number[]>([])
   const [actionHistory, setActionHistory] = useState<RankedAction[]>([])
   const [actionDecision, setActionDecision] = useState<ActionDecisionResult | null>(null)
+  const [dismissedAction, setDismissedAction] = useState(false)
+  const [expandedZoneId, setExpandedZoneId] = useState<string | null>(null)
+  const [leftPanelCollapsed, setLeftPanelCollapsed] = useState(false)
+  const [rightPanelCollapsed, setRightPanelCollapsed] = useState(false)
 
   const { phase, phaseProgress } = usePhaseController(isPlaying, speed)
   const interpolatedData = useSystemInterpolation(systemData, phase)
@@ -195,6 +199,24 @@ export function TeslaAutopilotInterface({
     : 1
 
   const urgencyColor = urgencyLevel >= 5 ? '#ef4444' : urgencyLevel >= 4 ? '#f97316' : urgencyLevel >= 3 ? '#eab308' : '#22c55e'
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.code === 'Space') {
+        e.preventDefault()
+        togglePlay()
+      }
+      if (e.key === 'ArrowLeft') {
+        onStepScenario?.(-1)
+      }
+      if (e.key === 'ArrowRight') {
+        onStepScenario?.(1)
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [isPlaying])
 
   return (
     <div
@@ -620,33 +642,39 @@ export function TeslaAutopilotInterface({
       </div>
 
       {/* ACTION CARD — direct child of root, top-left corner */}
-      {actionDecision && (
+      {actionDecision && !dismissedAction && (
         <motion.div
           initial={{ opacity: 0, x: -16, y: -8 }}
           animate={{ opacity: 1, x: 0, y: 0 }}
+          exit={{ opacity: 0, x: -16, y: -8 }}
           transition={{ duration: 0.5, ease: 'easeOut' }}
           style={{
             position: 'absolute',
             top: '60px',
             left: '16px',
-            width: '168px',
+            width: '200px',
             background: `linear-gradient(135deg, rgba(5,6,7,0.96) 0%, rgba(8,10,14,0.91) 100%)`,
             backdropFilter: 'blur(14px)',
             border: `1.5px solid ${stateColor}3a`,
             borderRadius: '10px',
-            padding: '14px 16px',
+            padding: '14px',
             boxShadow: `0 8px 28px rgba(0,0,0,0.6), 0 0 20px ${stateColor}15, inset 0 1px 0 ${stateColor}2a`,
             zIndex: 50,
           }}
         >
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <motion.div
-                animate={{ background: stateColor, boxShadow: `0 0 6px ${stateColor}` }}
-                style={{ width: '6px', height: '6px', borderRadius: '50%', flexShrink: 0 }}
-              />
-              <span style={{ fontSize: '12px', color: '#94a3b8', letterSpacing: '0.7px', textTransform: 'uppercase', fontWeight: 700 }}>
-                Action
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '11px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', justifyContent: 'space-between' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <motion.div
+                  animate={{ background: stateColor, boxShadow: `0 0 6px ${stateColor}` }}
+                  style={{ width: '6px', height: '6px', borderRadius: '50%', flexShrink: 0 }}
+                />
+                <span style={{ fontSize: '12px', color: '#94a3b8', letterSpacing: '0.7px', textTransform: 'uppercase', fontWeight: 700 }}>
+                  Action
+                </span>
+              </div>
+              <span style={{ fontSize: '11px', fontWeight: 600, color: stateColor, fontVariantNumeric: 'tabular-nums' }}>
+                {Math.round((actionDecision.primaryAction?.confidence || 0) * 100)}%
               </span>
             </div>
             <div style={{ fontSize: '13px', fontWeight: 700, color: stateColor, lineHeight: 1.4, wordBreak: 'break-word' }}>
@@ -654,6 +682,57 @@ export function TeslaAutopilotInterface({
             </div>
             <div style={{ fontSize: '12px', color: '#cbd5e1', lineHeight: 1.5, wordBreak: 'break-word' }}>
               {actionDecision.primaryAction?.outcome?.primary || 'Coherence recovery expected'}
+            </div>
+            <div style={{ display: 'flex', gap: '8px', marginTop: '6px' }}>
+              <button
+                onClick={() => setDismissedAction(true)}
+                style={{
+                  flex: 1,
+                  padding: '6px 10px',
+                  background: 'rgba(255,255,255,0.06)',
+                  border: '1px solid rgba(255,255,255,0.1)',
+                  borderRadius: '4px',
+                  color: '#94a3b8',
+                  fontSize: '11px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  transition: 'all 0.2s',
+                }}
+                onMouseEnter={e => {
+                  e.currentTarget.style.background = 'rgba(255,255,255,0.12)'
+                  e.currentTarget.style.borderColor = 'rgba(255,255,255,0.2)'
+                }}
+                onMouseLeave={e => {
+                  e.currentTarget.style.background = 'rgba(255,255,255,0.06)'
+                  e.currentTarget.style.borderColor = 'rgba(255,255,255,0.1)'
+                }}
+              >
+                Dismiss
+              </button>
+              <button
+                style={{
+                  flex: 1,
+                  padding: '6px 10px',
+                  background: stateColor + '22',
+                  border: `1px solid ${stateColor}44`,
+                  borderRadius: '4px',
+                  color: stateColor,
+                  fontSize: '11px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  transition: 'all 0.2s',
+                }}
+                onMouseEnter={e => {
+                  e.currentTarget.style.background = stateColor + '33'
+                  e.currentTarget.style.borderColor = stateColor + '66'
+                }}
+                onMouseLeave={e => {
+                  e.currentTarget.style.background = stateColor + '22'
+                  e.currentTarget.style.borderColor = stateColor + '44'
+                }}
+              >
+                Execute
+              </button>
             </div>
           </div>
         </motion.div>
