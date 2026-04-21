@@ -628,7 +628,7 @@ export function TeslaAutopilotInterface({
           style={{
             position: 'absolute',
             top: '60px',
-            left: '16px',
+            right: '16px',
             width: '280px',
             background: `linear-gradient(135deg, rgba(5,6,7,0.96) 0%, rgba(8,10,14,0.91) 100%)`,
             backdropFilter: 'blur(14px)',
