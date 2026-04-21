@@ -594,53 +594,6 @@ export function TeslaAutopilotInterface({
           </motion.div>
         </div>
 
-        {/* ACTION CARD — top left corner, premium styling */}
-        {actionDecision && (
-          <motion.div
-            initial={{ opacity: 0, x: -16, y: -8 }}
-            animate={{ opacity: 1, x: 0, y: 0 }}
-            transition={{ duration: 0.5, ease: 'easeOut' }}
-            style={{
-              position: 'fixed',
-              top: '90px',
-              left: '16px',
-              width: '320px',
-              background: `linear-gradient(135deg, rgba(5,6,7,0.95) 0%, rgba(5,6,7,0.85) 100%)`,
-              backdropFilter: 'blur(12px)',
-              border: `2px solid ${stateColor}`,
-              borderRadius: '12px',
-              padding: '16px',
-              boxShadow: `0 12px 40px rgba(0,0,0,0.6), inset 0 1px 1px ${stateColor}33`,
-              zIndex: 999,
-            }}
-          >
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <div style={{ width: '8px', height: '8px', borderRadius: '50%', background: stateColor, boxShadow: `0 0 8px ${stateColor}` }} />
-                <div style={{ fontSize: '11px', color: '#94a3b8', letterSpacing: '1.2px', textTransform: 'uppercase', fontWeight: 700 }}>
-                  Recommended Action
-                </div>
-              </div>
-              <div style={{ fontSize: '15px', fontWeight: 700, color: stateColor, lineHeight: 1.3 }}>
-                {actionDecision.primaryAction?.label || 'Monitoring'}
-              </div>
-              <div style={{ fontSize: '12px', color: '#cbd5e1', lineHeight: 1.5 }}>
-                {actionDecision.primaryAction?.outcome?.primary || 'Coherence recovery expected'}
-              </div>
-              {intelligence?.pathOutlook && (
-                <div style={{ fontSize: '11px', color: '#64748b', lineHeight: 1.4, paddingTop: '8px', borderTop: `1px solid ${stateColor}1a` }}>
-                  <span style={{ color: '#94a3b8', fontWeight: 600 }}>Outlook:</span> {intelligence.pathOutlook}
-                </div>
-              )}
-              {actionDecision.primaryAction?.timingSensitivity && (
-                <div style={{ fontSize: '10px', color: stateColor, fontWeight: 600, marginTop: '4px' }}>
-                  ⏱ {actionDecision.primaryAction.timingSensitivity}
-                </div>
-              )}
-            </div>
-          </motion.div>
-        )}
-
         {/* CONSEQUENCE DISPLAY */}
         {(phase === 'Instability forming' || phase === 'Critical') && (
           <motion.div
@@ -665,6 +618,51 @@ export function TeslaAutopilotInterface({
           </motion.div>
         )}
       </div>
+
+      {/* ACTION CARD — direct child of root, top-left corner */}
+      {actionDecision && (
+        <motion.div
+          initial={{ opacity: 0, x: -16, y: -8 }}
+          animate={{ opacity: 1, x: 0, y: 0 }}
+          transition={{ duration: 0.5, ease: 'easeOut' }}
+          style={{
+            position: 'absolute',
+            top: '60px',
+            left: '16px',
+            width: '280px',
+            background: `linear-gradient(135deg, rgba(5,6,7,0.97) 0%, rgba(10,12,15,0.92) 100%)`,
+            backdropFilter: 'blur(12px)',
+            border: `1.5px solid ${stateColor}44`,
+            borderRadius: '10px',
+            padding: '14px 16px',
+            boxShadow: `0 8px 32px rgba(0,0,0,0.5), 0 0 0 1px ${stateColor}11, inset 0 1px 0 ${stateColor}22`,
+            zIndex: 50,
+          }}
+        >
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
+              <motion.div
+                animate={{ background: stateColor, boxShadow: `0 0 6px ${stateColor}` }}
+                style={{ width: '7px', height: '7px', borderRadius: '50%', flexShrink: 0 }}
+              />
+              <span style={{ fontSize: '10px', color: '#64748b', letterSpacing: '1.2px', textTransform: 'uppercase', fontWeight: 700 }}>
+                Recommended Action
+              </span>
+            </div>
+            <div style={{ fontSize: '14px', fontWeight: 700, color: stateColor, lineHeight: 1.3 }}>
+              {actionDecision.primaryAction?.label || 'Monitoring'}
+            </div>
+            <div style={{ fontSize: '11.5px', color: '#94a3b8', lineHeight: 1.5 }}>
+              {actionDecision.primaryAction?.outcome?.primary || 'Coherence recovery expected'}
+            </div>
+            {intelligence?.pathOutlook && (
+              <div style={{ fontSize: '11px', color: '#475569', lineHeight: 1.4, paddingTop: '8px', borderTop: `1px solid rgba(255,255,255,0.05)` }}>
+                <span style={{ color: '#64748b', fontWeight: 600 }}>Outlook: </span>{intelligence.pathOutlook}
+              </div>
+            )}
+          </div>
+        </motion.div>
+      )}
     </div>
   )
 }
