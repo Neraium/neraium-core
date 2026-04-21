@@ -475,45 +475,6 @@ export function TeslaAutopilotInterface({
               isApproachingFailure={consequenceState.isApproachingFailure}
             />
 
-            {/* COMMITTED ACTION OVERLAY */}
-            {actionDecision && (
-              <motion.div
-                initial={{ opacity: 0, x: -16 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ duration: 0.4 }}
-                style={{
-                  position: 'absolute',
-                  bottom: 60,
-                  left: '16px',
-                  background: 'rgba(5,6,7,0.9)',
-                  backdropFilter: 'blur(12px)',
-                  border: `1px solid ${stateColor}33`,
-                  borderTop: `2px solid ${stateColor}66`,
-                  borderRadius: '8px',
-                  padding: '14px 22px',
-                  maxWidth: '320px',
-                  minWidth: '240px',
-                  textAlign: 'left',
-                  zIndex: 30,
-                }}
-              >
-                <div style={{ fontSize: '10px', color: '#334155', letterSpacing: '1px', textTransform: 'uppercase', marginBottom: '5px', fontWeight: 700 }}>
-                  Recommended Action
-                </div>
-                <div style={{ fontSize: '14px', fontWeight: 700, color: stateColor, marginBottom: '5px', letterSpacing: '0.3px' }}>
-                  {actionDecision.primaryAction?.label || 'Monitoring'}
-                </div>
-                <div style={{ fontSize: '11px', color: '#475569', lineHeight: '1.5' }}>
-                  {actionDecision.primaryAction?.outcome?.primary || 'Coherence recovery expected'}
-                </div>
-                {intelligence?.pathOutlook && (
-                  <div style={{ marginTop: '8px', paddingTop: '8px', borderTop: `1px solid rgba(255,255,255,0.06)`, fontSize: '10px', color: '#334155', fontStyle: 'italic', lineHeight: 1.4 }}>
-                    {intelligence.pathOutlook}
-                  </div>
-                )}
-              </motion.div>
-            )}
-
             {/* SUBSYSTEM CONTEXT */}
             <div
               style={{
@@ -541,8 +502,6 @@ export function TeslaAutopilotInterface({
               ))}
             </div>
           </div>
-
-          {/* RIGHT STATUS PANEL */}
           <motion.div
             initial={{ opacity: 0, x: 16 }}
             animate={{ opacity: 1, x: 0 }}
@@ -634,6 +593,44 @@ export function TeslaAutopilotInterface({
             )}
           </motion.div>
         </div>
+
+        {/* ACTION DOCK — below the tetrahedron row, never overlaps */}
+        {actionDecision && (
+          <motion.div
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4 }}
+            style={{
+              borderTop: `1px solid ${stateColor}1a`,
+              background: 'rgba(5,6,7,0.92)',
+              backdropFilter: 'blur(8px)',
+              padding: '10px 20px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '24px',
+              zIndex: 20,
+            }}
+          >
+            <div style={{ fontSize: '10px', color: '#334155', letterSpacing: '1px', textTransform: 'uppercase', fontWeight: 700, flexShrink: 0 }}>
+              Action
+            </div>
+            <div style={{ width: '1px', height: '24px', background: `${stateColor}22`, flexShrink: 0 }} />
+            <div style={{ fontSize: '13px', fontWeight: 700, color: stateColor, flexShrink: 0 }}>
+              {actionDecision.primaryAction?.label || 'Monitoring'}
+            </div>
+            <div style={{ fontSize: '11px', color: '#475569', lineHeight: 1.4 }}>
+              {actionDecision.primaryAction?.outcome?.primary || 'Coherence recovery expected'}
+            </div>
+            {intelligence?.pathOutlook && (
+              <>
+                <div style={{ width: '1px', height: '24px', background: 'rgba(255,255,255,0.06)', flexShrink: 0 }} />
+                <div style={{ fontSize: '10px', color: '#334155', fontStyle: 'italic', lineHeight: 1.4 }}>
+                  {intelligence.pathOutlook}
+                </div>
+              </>
+            )}
+          </motion.div>
+        )}
 
         {/* CONSEQUENCE DISPLAY */}
         {(phase === 'Instability forming' || phase === 'Critical') && (
