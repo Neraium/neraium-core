@@ -43,16 +43,6 @@ interface TeslaAutopilotInterfaceProps {
   onStepScenario?: (delta: number) => void
 }
 
-const getStateLabel = (phase: string): string => {
-  const map: Record<string, string> = {
-    'Stable': 'Stable',
-    'Drift forming': 'Drift',
-    'Instability forming': 'Instability',
-    'Critical': 'Critical',
-  }
-  return map[phase] || phase
-}
-
 const getStateColor = (phase: string): string => {
   const colors: Record<string, string> = {
     'Stable': '#22c55e',
@@ -65,6 +55,68 @@ const getStateColor = (phase: string): string => {
 
 const getRoomStatusColor = (status: 'optimal' | 'warning' | 'critical'): string => {
   return status === 'critical' ? '#ef4444' : status === 'warning' ? '#eab308' : '#22c55e'
+}
+
+type OperationalState =
+  | 'Nominal'
+  | 'Watchlist'
+  | 'Localized deviation'
+  | 'Propagating instability'
+  | 'Action required'
+
+interface OperationalAssessment {
+  state: OperationalState
+  propagationStrength: number
+  originRoom?: RoomStatus
+  affectedRooms: RoomStatus[]
+}
+
+const getOperationalColor = (state: OperationalState): string => {
+  if (state === 'Nominal') return '#22c55e'
+  if (state === 'Watchlist') return '#84cc16'
+  if (state === 'Localized deviation') return '#eab308'
+  if (state === 'Propagating instability') return '#f97316'
+  return '#ef4444'
+}
+
+const getZoneStateLabel = (room: RoomStatus, assessment: OperationalAssessment): string => {
+  if (assessment.originRoom?.id === room.id) return 'Drift forming · origin'
+  if (assessment.affectedRooms.find(r => r.id === room.id)) return 'At risk · affected'
+  if (room.driftContribution > 0.2) return 'Watchlist'
+  if (room.driftContribution > 0.1) return 'Stable / linked'
+  return 'Stable'
+}
+
+const deriveOperationalAssessment = (
+  drift: number,
+  stability: number,
+  coherence: number,
+  rooms: RoomStatus[] = []
+): OperationalAssessment => {
+  const sorted = [...rooms].sort((a, b) => b.driftContribution - a.driftContribution)
+  const originRoom = sorted[0]
+  const affectedRooms = sorted.filter((r, idx) => idx > 0 && r.driftContribution >= 0.35)
+  const highDriftCount = sorted.filter(r => r.driftContribution >= 0.35).length
+  const propagationStrength = Math.max(
+    0,
+    Math.min(
+      1,
+      (1 - coherence) * 0.55 + (1 - stability) * 0.25 + Math.min(0.2, highDriftCount * 0.08)
+    )
+  )
+
+  let state: OperationalState = 'Nominal'
+  if (drift < 0.2 && stability > 0.75 && coherence > 0.75) {
+    state = 'Nominal'
+  } else if (highDriftCount <= 1 && propagationStrength < 0.35) {
+    state = drift > 0.28 ? 'Localized deviation' : 'Watchlist'
+  } else if (highDriftCount <= 2 && propagationStrength < 0.62) {
+    state = 'Propagating instability'
+  } else {
+    state = 'Action required'
+  }
+
+  return { state, propagationStrength, originRoom, affectedRooms }
 }
 
 function MetricGauge({
@@ -187,7 +239,62 @@ export function TeslaAutopilotInterface({
   }
 
   const confidentLabel = diagnostics.confidence === 'high' ? 'High' : diagnostics.confidence === 'moderate' ? 'Moderate' : 'Low'
+  const assessment = deriveOperationalAssessment(
+    interpolatedData.interpolatedDrift,
+    interpolatedData.interpolatedStability,
+    interpolatedData.interpolatedCoherence,
+    rooms
+  )
+  const operationalColor = getOperationalColor(assessment.state)
   const stateColor = getStateColor(phase)
+
+  const geometryInterpretation = assessment.state === 'Localized deviation'
+    ? `Low coherence stress is isolated in ${assessment.originRoom?.shortName ?? 'one zone'}; inspect locally, no facility-wide intervention yet.`
+    : assessment.state === 'Propagating instability'
+      ? `Coherence is weakening across linked vertices with ${assessment.affectedRooms.length + 1} zones involved; intervene in origin and nearest neighbors.`
+      : assessment.state === 'Action required'
+        ? 'Geometry collapse indicates multi-vertex coupling failure; coordinated system intervention is required now.'
+        : assessment.state === 'Watchlist'
+          ? `Early variance concentrated in ${assessment.originRoom?.shortName ?? 'a single zone'}; keep system in watchlist and validate trend continuity.`
+          : 'Vertex coherence remains balanced; continue nominal monitoring and optimization only.'
+
+  const doNow = assessment.state === 'Nominal'
+    ? 'Maintain nominal control loop (optimization only)'
+    : assessment.state === 'Watchlist'
+      ? `Monitor and inspect ${assessment.originRoom?.shortName ?? 'lead zone'}`
+      : assessment.state === 'Localized deviation'
+        ? `Inspect ${assessment.originRoom?.shortName ?? 'origin zone'} and validate local airflow`
+        : assessment.state === 'Propagating instability'
+          ? `Stabilize ${assessment.originRoom?.shortName ?? 'origin zone'} and rebalance adjacent zones`
+          : 'Redistribute resources across affected zones now'
+
+  const whyNow = assessment.state === 'Action required'
+    ? `Propagation strength ${(assessment.propagationStrength * 100).toFixed(0)}% with multi-zone coupling visible.`
+    : assessment.state === 'Propagating instability'
+      ? `Spread is directional from ${assessment.originRoom?.shortName ?? 'origin'} into ${assessment.affectedRooms.length} downstream zone(s).`
+      : assessment.state === 'Localized deviation'
+        ? `Single-zone drift origin with weak spread (${(assessment.propagationStrength * 100).toFixed(0)}% propagation).`
+        : 'No correction threshold crossed; this is observation-first monitoring.'
+
+  const whatHappensNext = assessment.state === 'Nominal'
+    ? 'System remains in nominal envelope with minor variance.'
+    : assessment.state === 'Watchlist'
+      ? 'Drift may normalize or become localized deviation within the next cycle.'
+      : assessment.state === 'Localized deviation'
+        ? 'Without local inspection, drift can begin coupling into linked zones.'
+        : assessment.state === 'Propagating instability'
+          ? 'Spread likely reaches additional neighbors, reducing coherence further.'
+          : 'Unchecked spread can trigger facility-wide instability and control loss.'
+
+  const expectedOutcome = assessment.state === 'Nominal'
+    ? 'Operational efficiency preserved without corrective intervention.'
+    : assessment.state === 'Watchlist'
+      ? 'Higher confidence classification of trend with minimal disruption.'
+      : assessment.state === 'Localized deviation'
+        ? 'Containment in origin zone and prevention of unnecessary system intervention.'
+        : assessment.state === 'Propagating instability'
+          ? 'Propagation slows and system coherence can recover in staged fashion.'
+          : 'Risk reduction across coupled zones with path back to propagating state.'
 
   const urgencyLevel = phase === 'Critical' ? 5
     : phase === 'Instability forming' ? 4
@@ -261,11 +368,11 @@ export function TeslaAutopilotInterface({
 
           <div style={{ width: '1px', height: '14px', background: 'rgba(203,213,225,0.12)', flexShrink: 0 }} />
 
-          <motion.div
-            animate={{ color: stateColor }}
+            <motion.div
+            animate={{ color: operationalColor }}
             style={{ fontWeight: 700, fontSize: '11px', letterSpacing: '1.2px', textTransform: 'uppercase', flexShrink: 0 }}
           >
-            {getStateLabel(phase)}
+            {assessment.state}
           </motion.div>
 
           <div style={{ color: '#475569', fontSize: '11px', flexShrink: 0 }}>
@@ -501,17 +608,17 @@ export function TeslaAutopilotInterface({
                 }}
               >
                 <div style={{ fontSize: '10px', color: '#334155', letterSpacing: '1px', textTransform: 'uppercase', marginBottom: '5px', fontWeight: 700 }}>
-                  Recommended Action
+                  Decision State
                 </div>
-                <div style={{ fontSize: '14px', fontWeight: 700, color: stateColor, marginBottom: '5px', letterSpacing: '0.3px' }}>
-                  {actionDecision.primaryAction?.label || 'Monitoring'}
+                <div style={{ fontSize: '14px', fontWeight: 700, color: operationalColor, marginBottom: '5px', letterSpacing: '0.3px' }}>
+                  {assessment.state}
                 </div>
                 <div style={{ fontSize: '11px', color: '#475569', lineHeight: '1.5' }}>
-                  {actionDecision.primaryAction?.outcome?.primary || 'Coherence recovery expected'}
+                  {doNow}
                 </div>
-                {intelligence?.pathOutlook && (
+                {geometryInterpretation && (
                   <div style={{ marginTop: '8px', paddingTop: '8px', borderTop: `1px solid rgba(255,255,255,0.06)`, fontSize: '10px', color: '#334155', fontStyle: 'italic', lineHeight: 1.4 }}>
-                    {intelligence.pathOutlook}
+                    {geometryInterpretation}
                   </div>
                 )}
               </motion.div>
@@ -595,7 +702,7 @@ export function TeslaAutopilotInterface({
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <div style={{ fontSize: '11px', fontWeight: 600, color: '#64748b' }}>{room.shortName}</div>
                           <div style={{ fontSize: '10px', color: '#334155', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            {room.behavioralState}
+                            {getZoneStateLabel(room, assessment)}
                           </div>
                         </div>
                         <div style={{ fontSize: '10px', color: rc, fontWeight: 700, fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>
@@ -608,30 +715,64 @@ export function TeslaAutopilotInterface({
               </div>
             )}
 
-            {/* System intelligence */}
-            {intelligence && (
+            {/* Operational intelligence */}
+            {(intelligence || actionDecision) && (
               <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '10px' }}>
                 <div style={{ fontSize: '10px', color: '#334155', letterSpacing: '1px', textTransform: 'uppercase', fontWeight: 700 }}>
-                  System Intel
+                  Action Intelligence
                 </div>
-                <div style={{ fontSize: '11px', color: '#3d4e61', lineHeight: '1.65' }}>
-                  {intelligence.explanation}
+
+                <div style={{ fontSize: '10px', color: '#334155', letterSpacing: '0.8px', textTransform: 'uppercase', fontWeight: 700 }}>
+                  1. Do now
                 </div>
-                <div>
-                  <div style={{ fontSize: '10px', color: '#334155', letterSpacing: '0.8px', textTransform: 'uppercase', fontWeight: 700, marginBottom: '5px' }}>
-                    Operator Focus
-                  </div>
-                  <div style={{
-                    fontSize: '11px',
-                    color: stateColor,
-                    lineHeight: '1.5',
-                    padding: '6px 8px',
-                    borderLeft: `2px solid ${stateColor}44`,
-                    borderRadius: '0 4px 4px 0',
-                    background: `${stateColor}08`,
-                  }}>
-                    {intelligence.operatorFocus}
-                  </div>
+                <div style={{ fontSize: '11px', color: operationalColor, lineHeight: '1.45', fontWeight: 600 }}>{doNow}</div>
+
+                <div style={{ fontSize: '10px', color: '#334155', letterSpacing: '0.8px', textTransform: 'uppercase', fontWeight: 700 }}>
+                  2. Why now
+                </div>
+                <div style={{ fontSize: '11px', color: '#64748b', lineHeight: '1.5' }}>{whyNow}</div>
+
+                <div style={{ fontSize: '10px', color: '#334155', letterSpacing: '0.8px', textTransform: 'uppercase', fontWeight: 700 }}>
+                  3. What we see
+                </div>
+                <div style={{ fontSize: '11px', color: '#64748b', lineHeight: '1.5' }}>
+                  {intelligence?.explanation || actionDecision?.decisionSummary}
+                </div>
+
+                <div style={{ fontSize: '10px', color: '#334155', letterSpacing: '0.8px', textTransform: 'uppercase', fontWeight: 700 }}>
+                  4. If unchanged
+                </div>
+                <div style={{ fontSize: '11px', color: '#64748b', lineHeight: '1.5' }}>{whatHappensNext}</div>
+
+                <div style={{ fontSize: '10px', color: '#334155', letterSpacing: '0.8px', textTransform: 'uppercase', fontWeight: 700 }}>
+                  5. Expected outcome
+                </div>
+                <div style={{
+                  fontSize: '11px',
+                  color: '#94a3b8',
+                  lineHeight: '1.5',
+                  padding: '6px 8px',
+                  borderLeft: `2px solid ${operationalColor}55`,
+                  borderRadius: '0 4px 4px 0',
+                  background: `${operationalColor}0c`,
+                }}>
+                  {expectedOutcome}
+                </div>
+
+                <div style={{ fontSize: '10px', color: '#334155', letterSpacing: '0.8px', textTransform: 'uppercase', fontWeight: 700 }}>
+                  Relationship View
+                </div>
+                <div style={{ fontSize: '11px', color: '#64748b', lineHeight: '1.5' }}>
+                  {assessment.state === 'Localized deviation'
+                    ? `Origin: ${assessment.originRoom?.shortName ?? 'N/A'} · downstream impact low`
+                    : `Origin: ${assessment.originRoom?.shortName ?? 'N/A'} · affected neighbors: ${assessment.affectedRooms.map(r => r.shortName).join(', ') || 'none yet'}`}
+                </div>
+
+                <div style={{ fontSize: '10px', color: '#334155', letterSpacing: '0.8px', textTransform: 'uppercase', fontWeight: 700 }}>
+                  Geometry interpretation
+                </div>
+                <div style={{ fontSize: '11px', color: '#64748b', lineHeight: '1.5' }}>
+                  {geometryInterpretation}
                 </div>
               </div>
             )}
@@ -639,7 +780,7 @@ export function TeslaAutopilotInterface({
         </div>
 
         {/* CONSEQUENCE DISPLAY */}
-        {(phase === 'Instability forming' || phase === 'Critical') && (
+        {(assessment.state === 'Propagating instability' || assessment.state === 'Action required') && (
           <motion.div
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
@@ -657,13 +798,15 @@ export function TeslaAutopilotInterface({
             }}
           >
             <span style={{ color: '#334155' }}>No action:</span>
-            <span style={{ color: 'rgba(148,163,184,0.4)' }}>Cascade continues</span>
-            <span style={{ color: stateColor, fontWeight: 600 }}>Stability collapse follows</span>
+            <span style={{ color: 'rgba(148,163,184,0.4)' }}>
+              {assessment.state === 'Action required' ? 'Coupled spread accelerates' : 'Localized spread broadens'}
+            </span>
+            <span style={{ color: operationalColor, fontWeight: 600 }}>
+              {assessment.state === 'Action required' ? 'Facility instability risk rises' : 'More zones move to at-risk state'}
+            </span>
           </motion.div>
         )}
       </div>
     </div>
   )
 }
-
-
