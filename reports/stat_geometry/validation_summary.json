@@ -1,0 +1,12 @@
+{
+  "real_multivariate": {
+    "samples": 60
+  },
+  "synthetic_benchmark": {
+    "samples": 50
+  },
+  "fleet_multi_entity": {
+    "samples": 105,
+    "entities": 3
+  }
+}

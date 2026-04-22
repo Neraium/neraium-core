@@ -1,0 +1,2148 @@
+{
+  "scope": {
+    "customer_id": "grow-op-demo",
+    "run_id": "run_e9869e3eefc1"
+  },
+  "scenario": "examples\\demo\\cannabis_grow_op_scenario.json",
+  "phase_filter": null,
+  "frames_seeded": 122,
+  "cycle_summaries": [
+    {
+      "frame": 0,
+      "phase": "stable_veg",
+      "minute_offset": 0,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 76.2,
+        "humidity_rh": 62.1,
+        "co2_ppm": 1380.0,
+        "vpd_kpa": 0.87,
+        "ph": 6.08,
+        "ec_ms": 1.42,
+        "ppfd_umol": 572.0,
+        "irrigation_ml": 224.0
+      }
+    },
+    {
+      "frame": 1,
+      "phase": "stable_veg",
+      "minute_offset": 15,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 76.5,
+        "humidity_rh": 62.4,
+        "co2_ppm": 1365.0,
+        "vpd_kpa": 0.89,
+        "ph": 6.1,
+        "ec_ms": 1.44,
+        "ppfd_umol": 575.0,
+        "irrigation_ml": 218.0
+      }
+    },
+    {
+      "frame": 2,
+      "phase": "stable_veg",
+      "minute_offset": 30,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 76.8,
+        "humidity_rh": 63.0,
+        "co2_ppm": 1390.0,
+        "vpd_kpa": 0.88,
+        "ph": 6.09,
+        "ec_ms": 1.43,
+        "ppfd_umol": 568.0,
+        "irrigation_ml": 230.0
+      }
+    },
+    {
+      "frame": 3,
+      "phase": "stable_veg",
+      "minute_offset": 45,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 77.1,
+        "humidity_rh": 62.7,
+        "co2_ppm": 1375.0,
+        "vpd_kpa": 0.9,
+        "ph": 6.11,
+        "ec_ms": 1.45,
+        "ppfd_umol": 571.0,
+        "irrigation_ml": 221.0
+      }
+    },
+    {
+      "frame": 4,
+      "phase": "stable_veg",
+      "minute_offset": 60,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 76.9,
+        "humidity_rh": 62.3,
+        "co2_ppm": 1360.0,
+        "vpd_kpa": 0.88,
+        "ph": 6.1,
+        "ec_ms": 1.43,
+        "ppfd_umol": 574.0,
+        "irrigation_ml": 226.0
+      }
+    },
+    {
+      "frame": 5,
+      "phase": "stable_veg",
+      "minute_offset": 75,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 77.3,
+        "humidity_rh": 63.2,
+        "co2_ppm": 1395.0,
+        "vpd_kpa": 0.87,
+        "ph": 6.09,
+        "ec_ms": 1.41,
+        "ppfd_umol": 577.0,
+        "irrigation_ml": 232.0
+      }
+    },
+    {
+      "frame": 6,
+      "phase": "stable_veg",
+      "minute_offset": 90,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 77.0,
+        "humidity_rh": 62.8,
+        "co2_ppm": 1370.0,
+        "vpd_kpa": 0.89,
+        "ph": 6.12,
+        "ec_ms": 1.44,
+        "ppfd_umol": 570.0,
+        "irrigation_ml": 219.0
+      }
+    },
+    {
+      "frame": 7,
+      "phase": "stable_veg",
+      "minute_offset": 105,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 76.7,
+        "humidity_rh": 62.5,
+        "co2_ppm": 1385.0,
+        "vpd_kpa": 0.88,
+        "ph": 6.1,
+        "ec_ms": 1.42,
+        "ppfd_umol": 573.0,
+        "irrigation_ml": 228.0
+      }
+    },
+    {
+      "frame": 8,
+      "phase": "stable_veg",
+      "minute_offset": 120,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 77.2,
+        "humidity_rh": 63.1,
+        "co2_ppm": 1360.0,
+        "vpd_kpa": 0.9,
+        "ph": 6.11,
+        "ec_ms": 1.45,
+        "ppfd_umol": 569.0,
+        "irrigation_ml": 222.0
+      }
+    },
+    {
+      "frame": 9,
+      "phase": "stable_veg",
+      "minute_offset": 135,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 76.8,
+        "humidity_rh": 62.6,
+        "co2_ppm": 1400.0,
+        "vpd_kpa": 0.87,
+        "ph": 6.08,
+        "ec_ms": 1.43,
+        "ppfd_umol": 576.0,
+        "irrigation_ml": 231.0
+      }
+    },
+    {
+      "frame": 10,
+      "phase": "stable_veg",
+      "minute_offset": 150,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 77.4,
+        "humidity_rh": 62.9,
+        "co2_ppm": 1372.0,
+        "vpd_kpa": 0.89,
+        "ph": 6.1,
+        "ec_ms": 1.44,
+        "ppfd_umol": 571.0,
+        "irrigation_ml": 225.0
+      }
+    },
+    {
+      "frame": 11,
+      "phase": "stable_veg",
+      "minute_offset": 165,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 77.1,
+        "humidity_rh": 63.3,
+        "co2_ppm": 1388.0,
+        "vpd_kpa": 0.88,
+        "ph": 6.12,
+        "ec_ms": 1.42,
+        "ppfd_umol": 574.0,
+        "irrigation_ml": 220.0
+      }
+    },
+    {
+      "frame": 12,
+      "phase": "stable_veg",
+      "minute_offset": 180,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 76.9,
+        "humidity_rh": 62.4,
+        "co2_ppm": 1378.0,
+        "vpd_kpa": 0.9,
+        "ph": 6.09,
+        "ec_ms": 1.41,
+        "ppfd_umol": 578.0,
+        "irrigation_ml": 229.0
+      }
+    },
+    {
+      "frame": 13,
+      "phase": "stable_veg",
+      "minute_offset": 195,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 77.5,
+        "humidity_rh": 62.2,
+        "co2_ppm": 1362.0,
+        "vpd_kpa": 0.87,
+        "ph": 6.11,
+        "ec_ms": 1.45,
+        "ppfd_umol": 570.0,
+        "irrigation_ml": 223.0
+      }
+    },
+    {
+      "frame": 14,
+      "phase": "stable_veg",
+      "minute_offset": 210,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 77.0,
+        "humidity_rh": 63.0,
+        "co2_ppm": 1392.0,
+        "vpd_kpa": 0.88,
+        "ph": 6.1,
+        "ec_ms": 1.43,
+        "ppfd_umol": 572.0,
+        "irrigation_ml": 227.0
+      }
+    },
+    {
+      "frame": 15,
+      "phase": "stable_veg",
+      "minute_offset": 225,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 76.6,
+        "humidity_rh": 62.8,
+        "co2_ppm": 1376.0,
+        "vpd_kpa": 0.89,
+        "ph": 6.08,
+        "ec_ms": 1.44,
+        "ppfd_umol": 575.0,
+        "irrigation_ml": 221.0
+      }
+    },
+    {
+      "frame": 16,
+      "phase": "stable_veg",
+      "minute_offset": 240,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 77.3,
+        "humidity_rh": 63.1,
+        "co2_ppm": 1368.0,
+        "vpd_kpa": 0.88,
+        "ph": 6.12,
+        "ec_ms": 1.42,
+        "ppfd_umol": 569.0,
+        "irrigation_ml": 230.0
+      }
+    },
+    {
+      "frame": 17,
+      "phase": "stable_veg",
+      "minute_offset": 255,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 77.1,
+        "humidity_rh": 62.6,
+        "co2_ppm": 1384.0,
+        "vpd_kpa": 0.9,
+        "ph": 6.1,
+        "ec_ms": 1.43,
+        "ppfd_umol": 573.0,
+        "irrigation_ml": 224.0
+      }
+    },
+    {
+      "frame": 18,
+      "phase": "stable_veg",
+      "minute_offset": 270,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 76.8,
+        "humidity_rh": 62.9,
+        "co2_ppm": 1371.0,
+        "vpd_kpa": 0.87,
+        "ph": 6.09,
+        "ec_ms": 1.41,
+        "ppfd_umol": 577.0,
+        "irrigation_ml": 226.0
+      }
+    },
+    {
+      "frame": 19,
+      "phase": "stable_veg",
+      "minute_offset": 285,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 77.4,
+        "humidity_rh": 63.2,
+        "co2_ppm": 1396.0,
+        "vpd_kpa": 0.89,
+        "ph": 6.11,
+        "ec_ms": 1.45,
+        "ppfd_umol": 571.0,
+        "irrigation_ml": 219.0
+      }
+    },
+    {
+      "frame": 20,
+      "phase": "stable_veg",
+      "minute_offset": 300,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 77.2,
+        "humidity_rh": 62.5,
+        "co2_ppm": 1380.0,
+        "vpd_kpa": 0.88,
+        "ph": 6.1,
+        "ec_ms": 1.44,
+        "ppfd_umol": 574.0,
+        "irrigation_ml": 228.0
+      }
+    },
+    {
+      "frame": 21,
+      "phase": "stable_veg",
+      "minute_offset": 315,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 76.7,
+        "humidity_rh": 62.3,
+        "co2_ppm": 1366.0,
+        "vpd_kpa": 0.9,
+        "ph": 6.08,
+        "ec_ms": 1.42,
+        "ppfd_umol": 570.0,
+        "irrigation_ml": 222.0
+      }
+    },
+    {
+      "frame": 22,
+      "phase": "stable_veg",
+      "minute_offset": 330,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 77.0,
+        "humidity_rh": 63.0,
+        "co2_ppm": 1389.0,
+        "vpd_kpa": 0.87,
+        "ph": 6.12,
+        "ec_ms": 1.43,
+        "ppfd_umol": 576.0,
+        "irrigation_ml": 231.0
+      }
+    },
+    {
+      "frame": 23,
+      "phase": "stable_veg",
+      "minute_offset": 345,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 77.6,
+        "humidity_rh": 62.7,
+        "co2_ppm": 1373.0,
+        "vpd_kpa": 0.89,
+        "ph": 6.1,
+        "ec_ms": 1.41,
+        "ppfd_umol": 572.0,
+        "irrigation_ml": 220.0
+      }
+    },
+    {
+      "frame": 24,
+      "phase": "stable_veg",
+      "minute_offset": 360,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 77.1,
+        "humidity_rh": 62.4,
+        "co2_ppm": 1397.0,
+        "vpd_kpa": 0.88,
+        "ph": 6.09,
+        "ec_ms": 1.44,
+        "ppfd_umol": 569.0,
+        "irrigation_ml": 225.0
+      }
+    },
+    {
+      "frame": 25,
+      "phase": "stable_veg",
+      "minute_offset": 375,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 76.9,
+        "humidity_rh": 63.1,
+        "co2_ppm": 1364.0,
+        "vpd_kpa": 0.9,
+        "ph": 6.11,
+        "ec_ms": 1.45,
+        "ppfd_umol": 578.0,
+        "irrigation_ml": 229.0
+      }
+    },
+    {
+      "frame": 26,
+      "phase": "stable_veg",
+      "minute_offset": 390,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 77.4,
+        "humidity_rh": 62.8,
+        "co2_ppm": 1381.0,
+        "vpd_kpa": 0.87,
+        "ph": 6.1,
+        "ec_ms": 1.43,
+        "ppfd_umol": 573.0,
+        "irrigation_ml": 223.0
+      }
+    },
+    {
+      "frame": 27,
+      "phase": "stable_veg",
+      "minute_offset": 405,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 77.2,
+        "humidity_rh": 62.6,
+        "co2_ppm": 1370.0,
+        "vpd_kpa": 0.89,
+        "ph": 6.08,
+        "ec_ms": 1.42,
+        "ppfd_umol": 571.0,
+        "irrigation_ml": 227.0
+      }
+    },
+    {
+      "frame": 28,
+      "phase": "stable_veg",
+      "minute_offset": 420,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 76.8,
+        "humidity_rh": 63.3,
+        "co2_ppm": 1393.0,
+        "vpd_kpa": 0.88,
+        "ph": 6.12,
+        "ec_ms": 1.44,
+        "ppfd_umol": 575.0,
+        "irrigation_ml": 221.0
+      }
+    },
+    {
+      "frame": 29,
+      "phase": "stable_veg",
+      "minute_offset": 435,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 77.5,
+        "humidity_rh": 62.1,
+        "co2_ppm": 1377.0,
+        "vpd_kpa": 0.9,
+        "ph": 6.09,
+        "ec_ms": 1.41,
+        "ppfd_umol": 570.0,
+        "irrigation_ml": 232.0
+      }
+    },
+    {
+      "frame": 30,
+      "phase": "stable_veg",
+      "minute_offset": 450,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 77.0,
+        "humidity_rh": 62.9,
+        "co2_ppm": 1362.0,
+        "vpd_kpa": 0.87,
+        "ph": 6.11,
+        "ec_ms": 1.45,
+        "ppfd_umol": 574.0,
+        "irrigation_ml": 226.0
+      }
+    },
+    {
+      "frame": 31,
+      "phase": "stable_veg",
+      "minute_offset": 465,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 76.6,
+        "humidity_rh": 63.0,
+        "co2_ppm": 1387.0,
+        "vpd_kpa": 0.89,
+        "ph": 6.1,
+        "ec_ms": 1.43,
+        "ppfd_umol": 572.0,
+        "irrigation_ml": 218.0
+      }
+    },
+    {
+      "frame": 32,
+      "phase": "stable_veg",
+      "minute_offset": 480,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 77.3,
+        "humidity_rh": 62.7,
+        "co2_ppm": 1374.0,
+        "vpd_kpa": 0.88,
+        "ph": 6.08,
+        "ec_ms": 1.42,
+        "ppfd_umol": 577.0,
+        "irrigation_ml": 230.0
+      }
+    },
+    {
+      "frame": 33,
+      "phase": "stable_veg",
+      "minute_offset": 495,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 77.1,
+        "humidity_rh": 62.4,
+        "co2_ppm": 1399.0,
+        "vpd_kpa": 0.9,
+        "ph": 6.12,
+        "ec_ms": 1.44,
+        "ppfd_umol": 569.0,
+        "irrigation_ml": 224.0
+      }
+    },
+    {
+      "frame": 34,
+      "phase": "stable_veg",
+      "minute_offset": 510,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 76.9,
+        "humidity_rh": 62.8,
+        "co2_ppm": 1368.0,
+        "vpd_kpa": 0.87,
+        "ph": 6.1,
+        "ec_ms": 1.41,
+        "ppfd_umol": 576.0,
+        "irrigation_ml": 228.0
+      }
+    },
+    {
+      "frame": 35,
+      "phase": "stable_veg",
+      "minute_offset": 525,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 77.5,
+        "humidity_rh": 63.2,
+        "co2_ppm": 1383.0,
+        "vpd_kpa": 0.89,
+        "ph": 6.09,
+        "ec_ms": 1.43,
+        "ppfd_umol": 573.0,
+        "irrigation_ml": 222.0
+      }
+    },
+    {
+      "frame": 36,
+      "phase": "stable_veg",
+      "minute_offset": 540,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 77.2,
+        "humidity_rh": 62.5,
+        "co2_ppm": 1371.0,
+        "vpd_kpa": 0.88,
+        "ph": 6.11,
+        "ec_ms": 1.45,
+        "ppfd_umol": 570.0,
+        "irrigation_ml": 225.0
+      }
+    },
+    {
+      "frame": 37,
+      "phase": "stable_veg",
+      "minute_offset": 555,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 76.8,
+        "humidity_rh": 62.9,
+        "co2_ppm": 1391.0,
+        "vpd_kpa": 0.9,
+        "ph": 6.1,
+        "ec_ms": 1.42,
+        "ppfd_umol": 575.0,
+        "irrigation_ml": 219.0
+      }
+    },
+    {
+      "frame": 38,
+      "phase": "stable_veg",
+      "minute_offset": 570,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 77.4,
+        "humidity_rh": 63.1,
+        "co2_ppm": 1378.0,
+        "vpd_kpa": 0.87,
+        "ph": 6.08,
+        "ec_ms": 1.44,
+        "ppfd_umol": 571.0,
+        "irrigation_ml": 231.0
+      }
+    },
+    {
+      "frame": 39,
+      "phase": "stable_veg",
+      "minute_offset": 585,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 77.0,
+        "humidity_rh": 62.6,
+        "co2_ppm": 1363.0,
+        "vpd_kpa": 0.89,
+        "ph": 6.12,
+        "ec_ms": 1.43,
+        "ppfd_umol": 574.0,
+        "irrigation_ml": 223.0
+      }
+    },
+    {
+      "frame": 40,
+      "phase": "drift_onset",
+      "minute_offset": 600,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 78.2,
+        "humidity_rh": 61.0,
+        "co2_ppm": 1340.0,
+        "vpd_kpa": 0.96,
+        "ph": 6.14,
+        "ec_ms": 1.48,
+        "ppfd_umol": 572.0,
+        "irrigation_ml": 215.0
+      }
+    },
+    {
+      "frame": 41,
+      "phase": "drift_onset",
+      "minute_offset": 615,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 78.9,
+        "humidity_rh": 60.2,
+        "co2_ppm": 1320.0,
+        "vpd_kpa": 1.03,
+        "ph": 6.16,
+        "ec_ms": 1.51,
+        "ppfd_umol": 570.0,
+        "irrigation_ml": 210.0
+      }
+    },
+    {
+      "frame": 42,
+      "phase": "drift_onset",
+      "minute_offset": 630,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 79.5,
+        "humidity_rh": 59.4,
+        "co2_ppm": 1305.0,
+        "vpd_kpa": 1.09,
+        "ph": 6.18,
+        "ec_ms": 1.54,
+        "ppfd_umol": 568.0,
+        "irrigation_ml": 205.0
+      }
+    },
+    {
+      "frame": 43,
+      "phase": "drift_onset",
+      "minute_offset": 645,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 80.1,
+        "humidity_rh": 58.6,
+        "co2_ppm": 1288.0,
+        "vpd_kpa": 1.15,
+        "ph": 6.2,
+        "ec_ms": 1.57,
+        "ppfd_umol": 566.0,
+        "irrigation_ml": 200.0
+      }
+    },
+    {
+      "frame": 44,
+      "phase": "drift_onset",
+      "minute_offset": 660,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 80.8,
+        "humidity_rh": 57.9,
+        "co2_ppm": 1271.0,
+        "vpd_kpa": 1.22,
+        "ph": 6.22,
+        "ec_ms": 1.61,
+        "ppfd_umol": 563.0,
+        "irrigation_ml": 196.0
+      }
+    },
+    {
+      "frame": 45,
+      "phase": "drift_onset",
+      "minute_offset": 675,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 81.3,
+        "humidity_rh": 57.1,
+        "co2_ppm": 1255.0,
+        "vpd_kpa": 1.28,
+        "ph": 6.24,
+        "ec_ms": 1.64,
+        "ppfd_umol": 561.0,
+        "irrigation_ml": 191.0
+      }
+    },
+    {
+      "frame": 46,
+      "phase": "drift_onset",
+      "minute_offset": 690,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 81.9,
+        "humidity_rh": 56.3,
+        "co2_ppm": 1238.0,
+        "vpd_kpa": 1.35,
+        "ph": 6.26,
+        "ec_ms": 1.68,
+        "ppfd_umol": 559.0,
+        "irrigation_ml": 186.0
+      }
+    },
+    {
+      "frame": 47,
+      "phase": "drift_onset",
+      "minute_offset": 705,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 82.4,
+        "humidity_rh": 55.5,
+        "co2_ppm": 1220.0,
+        "vpd_kpa": 1.41,
+        "ph": 6.28,
+        "ec_ms": 1.72,
+        "ppfd_umol": 556.0,
+        "irrigation_ml": 181.0
+      }
+    },
+    {
+      "frame": 48,
+      "phase": "drift_onset",
+      "minute_offset": 720,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 82.9,
+        "humidity_rh": 54.7,
+        "co2_ppm": 1203.0,
+        "vpd_kpa": 1.48,
+        "ph": 6.3,
+        "ec_ms": 1.76,
+        "ppfd_umol": 554.0,
+        "irrigation_ml": 177.0
+      }
+    },
+    {
+      "frame": 49,
+      "phase": "drift_onset",
+      "minute_offset": 735,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 83.4,
+        "humidity_rh": 54.0,
+        "co2_ppm": 1186.0,
+        "vpd_kpa": 1.55,
+        "ph": 6.32,
+        "ec_ms": 1.8,
+        "ppfd_umol": 551.0,
+        "irrigation_ml": 172.0
+      }
+    },
+    {
+      "frame": 50,
+      "phase": "drift_onset",
+      "minute_offset": 750,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 83.8,
+        "humidity_rh": 53.2,
+        "co2_ppm": 1168.0,
+        "vpd_kpa": 1.61,
+        "ph": 6.34,
+        "ec_ms": 1.84,
+        "ppfd_umol": 549.0,
+        "irrigation_ml": 168.0
+      }
+    },
+    {
+      "frame": 51,
+      "phase": "drift_onset",
+      "minute_offset": 765,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 84.2,
+        "humidity_rh": 52.4,
+        "co2_ppm": 1150.0,
+        "vpd_kpa": 1.68,
+        "ph": 6.36,
+        "ec_ms": 1.88,
+        "ppfd_umol": 546.0,
+        "irrigation_ml": 163.0
+      }
+    },
+    {
+      "frame": 52,
+      "phase": "drift_onset",
+      "minute_offset": 780,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 84.6,
+        "humidity_rh": 51.6,
+        "co2_ppm": 1133.0,
+        "vpd_kpa": 1.74,
+        "ph": 6.38,
+        "ec_ms": 1.92,
+        "ppfd_umol": 544.0,
+        "irrigation_ml": 158.0
+      }
+    },
+    {
+      "frame": 53,
+      "phase": "drift_onset",
+      "minute_offset": 795,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 85.0,
+        "humidity_rh": 50.8,
+        "co2_ppm": 1115.0,
+        "vpd_kpa": 1.81,
+        "ph": 6.4,
+        "ec_ms": 1.96,
+        "ppfd_umol": 541.0,
+        "irrigation_ml": 154.0
+      }
+    },
+    {
+      "frame": 54,
+      "phase": "drift_onset",
+      "minute_offset": 810,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 85.3,
+        "humidity_rh": 50.1,
+        "co2_ppm": 1098.0,
+        "vpd_kpa": 1.87,
+        "ph": 6.18,
+        "ec_ms": 2.0,
+        "ppfd_umol": 539.0,
+        "irrigation_ml": 149.0
+      }
+    },
+    {
+      "frame": 55,
+      "phase": "drift_onset",
+      "minute_offset": 825,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 85.6,
+        "humidity_rh": 49.3,
+        "co2_ppm": 1080.0,
+        "vpd_kpa": 1.93,
+        "ph": 6.1,
+        "ec_ms": 2.04,
+        "ppfd_umol": 536.0,
+        "irrigation_ml": 145.0
+      }
+    },
+    {
+      "frame": 56,
+      "phase": "drift_onset",
+      "minute_offset": 840,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 85.9,
+        "humidity_rh": 48.5,
+        "co2_ppm": 1062.0,
+        "vpd_kpa": 1.99,
+        "ph": 6.05,
+        "ec_ms": 2.08,
+        "ppfd_umol": 534.0,
+        "irrigation_ml": 141.0
+      }
+    },
+    {
+      "frame": 57,
+      "phase": "drift_onset",
+      "minute_offset": 855,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 86.1,
+        "humidity_rh": 47.8,
+        "co2_ppm": 1044.0,
+        "vpd_kpa": 2.04,
+        "ph": 5.98,
+        "ec_ms": 2.12,
+        "ppfd_umol": 531.0,
+        "irrigation_ml": 137.0
+      }
+    },
+    {
+      "frame": 58,
+      "phase": "drift_onset",
+      "minute_offset": 870,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 86.3,
+        "humidity_rh": 47.0,
+        "co2_ppm": 1026.0,
+        "vpd_kpa": 2.1,
+        "ph": 5.91,
+        "ec_ms": 2.16,
+        "ppfd_umol": 528.0,
+        "irrigation_ml": 133.0
+      }
+    },
+    {
+      "frame": 59,
+      "phase": "drift_onset",
+      "minute_offset": 885,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 86.5,
+        "humidity_rh": 46.3,
+        "co2_ppm": 1009.0,
+        "vpd_kpa": 2.16,
+        "ph": 5.85,
+        "ec_ms": 2.2,
+        "ppfd_umol": 526.0,
+        "irrigation_ml": 129.0
+      }
+    },
+    {
+      "frame": 60,
+      "phase": "drift_onset",
+      "minute_offset": 900,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 86.7,
+        "humidity_rh": 45.5,
+        "co2_ppm": 991.0,
+        "vpd_kpa": 2.21,
+        "ph": 5.78,
+        "ec_ms": 2.23,
+        "ppfd_umol": 523.0,
+        "irrigation_ml": 125.0
+      }
+    },
+    {
+      "frame": 61,
+      "phase": "drift_onset",
+      "minute_offset": 915,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 86.9,
+        "humidity_rh": 44.8,
+        "co2_ppm": 973.0,
+        "vpd_kpa": 2.27,
+        "ph": 5.72,
+        "ec_ms": 2.27,
+        "ppfd_umol": 520.0,
+        "irrigation_ml": 121.0
+      }
+    },
+    {
+      "frame": 62,
+      "phase": "drift_onset",
+      "minute_offset": 930,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 87.1,
+        "humidity_rh": 44.1,
+        "co2_ppm": 955.0,
+        "vpd_kpa": 2.32,
+        "ph": 5.66,
+        "ec_ms": 2.3,
+        "ppfd_umol": 518.0,
+        "irrigation_ml": 117.0
+      }
+    },
+    {
+      "frame": 63,
+      "phase": "drift_onset",
+      "minute_offset": 945,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 87.2,
+        "humidity_rh": 43.4,
+        "co2_ppm": 937.0,
+        "vpd_kpa": 2.38,
+        "ph": 5.6,
+        "ec_ms": 2.34,
+        "ppfd_umol": 515.0,
+        "irrigation_ml": 113.0
+      }
+    },
+    {
+      "frame": 64,
+      "phase": "drift_onset",
+      "minute_offset": 960,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 87.4,
+        "humidity_rh": 42.7,
+        "co2_ppm": 919.0,
+        "vpd_kpa": 2.43,
+        "ph": 5.55,
+        "ec_ms": 2.37,
+        "ppfd_umol": 512.0,
+        "irrigation_ml": 110.0
+      }
+    },
+    {
+      "frame": 65,
+      "phase": "drift_onset",
+      "minute_offset": 975,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 87.5,
+        "humidity_rh": 42.0,
+        "co2_ppm": 901.0,
+        "vpd_kpa": 2.48,
+        "ph": 5.5,
+        "ec_ms": 2.4,
+        "ppfd_umol": 509.0,
+        "irrigation_ml": 106.0
+      }
+    },
+    {
+      "frame": 66,
+      "phase": "drift_onset",
+      "minute_offset": 990,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 87.7,
+        "humidity_rh": 41.3,
+        "co2_ppm": 883.0,
+        "vpd_kpa": 2.53,
+        "ph": 5.45,
+        "ec_ms": 2.43,
+        "ppfd_umol": 507.0,
+        "irrigation_ml": 102.0
+      }
+    },
+    {
+      "frame": 67,
+      "phase": "drift_onset",
+      "minute_offset": 1005,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 87.8,
+        "humidity_rh": 40.7,
+        "co2_ppm": 865.0,
+        "vpd_kpa": 2.58,
+        "ph": 5.4,
+        "ec_ms": 2.46,
+        "ppfd_umol": 504.0,
+        "irrigation_ml": 99.0
+      }
+    },
+    {
+      "frame": 68,
+      "phase": "drift_onset",
+      "minute_offset": 1020,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 87.9,
+        "humidity_rh": 40.0,
+        "co2_ppm": 847.0,
+        "vpd_kpa": 2.63,
+        "ph": 5.36,
+        "ec_ms": 2.49,
+        "ppfd_umol": 501.0,
+        "irrigation_ml": 95.0
+      }
+    },
+    {
+      "frame": 69,
+      "phase": "drift_onset",
+      "minute_offset": 1035,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 88.1,
+        "humidity_rh": 39.4,
+        "co2_ppm": 829.0,
+        "vpd_kpa": 2.67,
+        "ph": 5.32,
+        "ec_ms": 2.52,
+        "ppfd_umol": 498.0,
+        "irrigation_ml": 92.0
+      }
+    },
+    {
+      "frame": 70,
+      "phase": "drift_onset",
+      "minute_offset": 1050,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 88.2,
+        "humidity_rh": 38.8,
+        "co2_ppm": 811.0,
+        "vpd_kpa": 2.72,
+        "ph": 5.28,
+        "ec_ms": 2.55,
+        "ppfd_umol": 495.0,
+        "irrigation_ml": 88.0
+      }
+    },
+    {
+      "frame": 71,
+      "phase": "drift_onset",
+      "minute_offset": 1065,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 88.3,
+        "humidity_rh": 38.2,
+        "co2_ppm": 793.0,
+        "vpd_kpa": 2.76,
+        "ph": 5.24,
+        "ec_ms": 2.58,
+        "ppfd_umol": 492.0,
+        "irrigation_ml": 85.0
+      }
+    },
+    {
+      "frame": 72,
+      "phase": "drift_onset",
+      "minute_offset": 1080,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 88.4,
+        "humidity_rh": 37.7,
+        "co2_ppm": 775.0,
+        "vpd_kpa": 2.8,
+        "ph": 5.21,
+        "ec_ms": 2.61,
+        "ppfd_umol": 490.0,
+        "irrigation_ml": 82.0
+      }
+    },
+    {
+      "frame": 73,
+      "phase": "drift_onset",
+      "minute_offset": 1095,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 88.5,
+        "humidity_rh": 37.1,
+        "co2_ppm": 757.0,
+        "vpd_kpa": 2.84,
+        "ph": 5.18,
+        "ec_ms": 2.63,
+        "ppfd_umol": 487.0,
+        "irrigation_ml": 79.0
+      }
+    },
+    {
+      "frame": 74,
+      "phase": "drift_onset",
+      "minute_offset": 1110,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 88.6,
+        "humidity_rh": 36.6,
+        "co2_ppm": 739.0,
+        "vpd_kpa": 2.88,
+        "ph": 5.15,
+        "ec_ms": 2.66,
+        "ppfd_umol": 484.0,
+        "irrigation_ml": 76.0
+      }
+    },
+    {
+      "frame": 75,
+      "phase": "drift_onset",
+      "minute_offset": 1125,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 88.7,
+        "humidity_rh": 36.1,
+        "co2_ppm": 721.0,
+        "vpd_kpa": 2.92,
+        "ph": 5.12,
+        "ec_ms": 2.68,
+        "ppfd_umol": 481.0,
+        "irrigation_ml": 73.0
+      }
+    },
+    {
+      "frame": 76,
+      "phase": "drift_onset",
+      "minute_offset": 1140,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 88.8,
+        "humidity_rh": 35.6,
+        "co2_ppm": 703.0,
+        "vpd_kpa": 2.95,
+        "ph": 5.1,
+        "ec_ms": 2.71,
+        "ppfd_umol": 478.0,
+        "irrigation_ml": 70.0
+      }
+    },
+    {
+      "frame": 77,
+      "phase": "drift_onset",
+      "minute_offset": 1155,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 88.9,
+        "humidity_rh": 35.1,
+        "co2_ppm": 685.0,
+        "vpd_kpa": 2.99,
+        "ph": 5.08,
+        "ec_ms": 2.73,
+        "ppfd_umol": 475.0,
+        "irrigation_ml": 67.0
+      }
+    },
+    {
+      "frame": 78,
+      "phase": "drift_onset",
+      "minute_offset": 1170,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 89.0,
+        "humidity_rh": 34.7,
+        "co2_ppm": 667.0,
+        "vpd_kpa": 3.02,
+        "ph": 5.06,
+        "ec_ms": 2.75,
+        "ppfd_umol": 472.0,
+        "irrigation_ml": 64.0
+      }
+    },
+    {
+      "frame": 79,
+      "phase": "drift_onset",
+      "minute_offset": 1185,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 89.1,
+        "humidity_rh": 34.2,
+        "co2_ppm": 649.0,
+        "vpd_kpa": 3.05,
+        "ph": 5.04,
+        "ec_ms": 2.77,
+        "ppfd_umol": 469.0,
+        "irrigation_ml": 61.0
+      }
+    },
+    {
+      "frame": 80,
+      "phase": "heat_stress",
+      "minute_offset": 1200,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 89.5,
+        "humidity_rh": 33.8,
+        "co2_ppm": 631.0,
+        "vpd_kpa": 3.1,
+        "ph": 5.02,
+        "ec_ms": 2.8,
+        "ppfd_umol": 466.0,
+        "irrigation_ml": 58.0
+      }
+    },
+    {
+      "frame": 81,
+      "phase": "heat_stress",
+      "minute_offset": 1215,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 89.9,
+        "humidity_rh": 33.3,
+        "co2_ppm": 613.0,
+        "vpd_kpa": 3.14,
+        "ph": 5.0,
+        "ec_ms": 2.83,
+        "ppfd_umol": 462.0,
+        "irrigation_ml": 55.0
+      }
+    },
+    {
+      "frame": 82,
+      "phase": "heat_stress",
+      "minute_offset": 1230,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 90.3,
+        "humidity_rh": 32.9,
+        "co2_ppm": 595.0,
+        "vpd_kpa": 3.18,
+        "ph": 4.98,
+        "ec_ms": 2.86,
+        "ppfd_umol": 459.0,
+        "irrigation_ml": 52.0
+      }
+    },
+    {
+      "frame": 83,
+      "phase": "heat_stress",
+      "minute_offset": 1245,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 90.6,
+        "humidity_rh": 32.4,
+        "co2_ppm": 576.0,
+        "vpd_kpa": 3.22,
+        "ph": 4.96,
+        "ec_ms": 2.89,
+        "ppfd_umol": 455.0,
+        "irrigation_ml": 49.0
+      }
+    },
+    {
+      "frame": 84,
+      "phase": "heat_stress",
+      "minute_offset": 1260,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 90.9,
+        "humidity_rh": 32.0,
+        "co2_ppm": 557.0,
+        "vpd_kpa": 3.25,
+        "ph": 4.94,
+        "ec_ms": 2.92,
+        "ppfd_umol": 451.0,
+        "irrigation_ml": 47.0
+      }
+    },
+    {
+      "frame": 85,
+      "phase": "heat_stress",
+      "minute_offset": 1275,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 91.2,
+        "humidity_rh": 31.6,
+        "co2_ppm": 539.0,
+        "vpd_kpa": 3.29,
+        "ph": 4.93,
+        "ec_ms": 2.95,
+        "ppfd_umol": 447.0,
+        "irrigation_ml": 44.0
+      }
+    },
+    {
+      "frame": 86,
+      "phase": "heat_stress",
+      "minute_offset": 1290,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 91.4,
+        "humidity_rh": 31.2,
+        "co2_ppm": 520.0,
+        "vpd_kpa": 3.32,
+        "ph": 4.92,
+        "ec_ms": 2.98,
+        "ppfd_umol": 443.0,
+        "irrigation_ml": 42.0
+      }
+    },
+    {
+      "frame": 87,
+      "phase": "heat_stress",
+      "minute_offset": 1305,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 91.6,
+        "humidity_rh": 30.8,
+        "co2_ppm": 501.0,
+        "vpd_kpa": 3.35,
+        "ph": 4.91,
+        "ec_ms": 3.01,
+        "ppfd_umol": 439.0,
+        "irrigation_ml": 40.0
+      }
+    },
+    {
+      "frame": 88,
+      "phase": "heat_stress",
+      "minute_offset": 1320,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 91.7,
+        "humidity_rh": 30.4,
+        "co2_ppm": 482.0,
+        "vpd_kpa": 3.38,
+        "ph": 4.9,
+        "ec_ms": 3.03,
+        "ppfd_umol": 435.0,
+        "irrigation_ml": 38.0
+      }
+    },
+    {
+      "frame": 89,
+      "phase": "heat_stress",
+      "minute_offset": 1335,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 91.9,
+        "humidity_rh": 30.0,
+        "co2_ppm": 463.0,
+        "vpd_kpa": 3.41,
+        "ph": 4.89,
+        "ec_ms": 3.05,
+        "ppfd_umol": 431.0,
+        "irrigation_ml": 36.0
+      }
+    },
+    {
+      "frame": 90,
+      "phase": "heat_stress",
+      "minute_offset": 1350,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 92.0,
+        "humidity_rh": 29.7,
+        "co2_ppm": 444.0,
+        "vpd_kpa": 3.44,
+        "ph": 4.89,
+        "ec_ms": 3.07,
+        "ppfd_umol": 427.0,
+        "irrigation_ml": 34.0
+      }
+    },
+    {
+      "frame": 91,
+      "phase": "heat_stress",
+      "minute_offset": 1365,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 92.1,
+        "humidity_rh": 29.3,
+        "co2_ppm": 425.0,
+        "vpd_kpa": 3.46,
+        "ph": 4.88,
+        "ec_ms": 3.09,
+        "ppfd_umol": 423.0,
+        "irrigation_ml": 32.0
+      }
+    },
+    {
+      "frame": 92,
+      "phase": "heat_stress",
+      "minute_offset": 1380,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 92.2,
+        "humidity_rh": 29.0,
+        "co2_ppm": 406.0,
+        "vpd_kpa": 3.49,
+        "ph": 4.88,
+        "ec_ms": 3.11,
+        "ppfd_umol": 419.0,
+        "irrigation_ml": 30.0
+      }
+    },
+    {
+      "frame": 93,
+      "phase": "heat_stress",
+      "minute_offset": 1395,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 92.2,
+        "humidity_rh": 28.7,
+        "co2_ppm": 387.0,
+        "vpd_kpa": 3.51,
+        "ph": 4.87,
+        "ec_ms": 3.13,
+        "ppfd_umol": 415.0,
+        "irrigation_ml": 29.0
+      }
+    },
+    {
+      "frame": 94,
+      "phase": "heat_stress",
+      "minute_offset": 1410,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 92.3,
+        "humidity_rh": 28.4,
+        "co2_ppm": 368.0,
+        "vpd_kpa": 3.53,
+        "ph": 4.87,
+        "ec_ms": 3.15,
+        "ppfd_umol": 411.0,
+        "irrigation_ml": 27.0
+      }
+    },
+    {
+      "frame": 95,
+      "phase": "heat_stress",
+      "minute_offset": 1425,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 92.3,
+        "humidity_rh": 28.1,
+        "co2_ppm": 349.0,
+        "vpd_kpa": 3.55,
+        "ph": 4.87,
+        "ec_ms": 3.17,
+        "ppfd_umol": 407.0,
+        "irrigation_ml": 26.0
+      }
+    },
+    {
+      "frame": 96,
+      "phase": "heat_stress",
+      "minute_offset": 1440,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 92.4,
+        "humidity_rh": 27.8,
+        "co2_ppm": 330.0,
+        "vpd_kpa": 3.57,
+        "ph": 4.86,
+        "ec_ms": 3.19,
+        "ppfd_umol": 403.0,
+        "irrigation_ml": 24.0
+      }
+    },
+    {
+      "frame": 97,
+      "phase": "heat_stress",
+      "minute_offset": 1455,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 92.4,
+        "humidity_rh": 27.5,
+        "co2_ppm": 311.0,
+        "vpd_kpa": 3.59,
+        "ph": 4.86,
+        "ec_ms": 3.2,
+        "ppfd_umol": 399.0,
+        "irrigation_ml": 23.0
+      }
+    },
+    {
+      "frame": 98,
+      "phase": "heat_stress",
+      "minute_offset": 1470,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 92.4,
+        "humidity_rh": 27.3,
+        "co2_ppm": 292.0,
+        "vpd_kpa": 3.61,
+        "ph": 4.86,
+        "ec_ms": 3.21,
+        "ppfd_umol": 395.0,
+        "irrigation_ml": 22.0
+      }
+    },
+    {
+      "frame": 99,
+      "phase": "heat_stress",
+      "minute_offset": 1485,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 92.5,
+        "humidity_rh": 27.1,
+        "co2_ppm": 273.0,
+        "vpd_kpa": 3.62,
+        "ph": 4.86,
+        "ec_ms": 3.22,
+        "ppfd_umol": 391.0,
+        "irrigation_ml": 21.0
+      }
+    },
+    {
+      "frame": 100,
+      "phase": "heat_stress",
+      "minute_offset": 1500,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 92.5,
+        "humidity_rh": 26.9,
+        "co2_ppm": 254.0,
+        "vpd_kpa": 3.64,
+        "ph": 4.85,
+        "ec_ms": 3.23,
+        "ppfd_umol": 387.0,
+        "irrigation_ml": 20.0
+      }
+    },
+    {
+      "frame": 101,
+      "phase": "heat_stress",
+      "minute_offset": 1515,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 92.5,
+        "humidity_rh": 26.7,
+        "co2_ppm": 235.0,
+        "vpd_kpa": 3.65,
+        "ph": 4.85,
+        "ec_ms": 3.24,
+        "ppfd_umol": 383.0,
+        "irrigation_ml": 19.0
+      }
+    },
+    {
+      "frame": 102,
+      "phase": "heat_stress",
+      "minute_offset": 1530,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 92.6,
+        "humidity_rh": 26.5,
+        "co2_ppm": 216.0,
+        "vpd_kpa": 3.66,
+        "ph": 4.85,
+        "ec_ms": 3.25,
+        "ppfd_umol": 380.0,
+        "irrigation_ml": 18.0
+      }
+    },
+    {
+      "frame": 103,
+      "phase": "heat_stress",
+      "minute_offset": 1545,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 92.6,
+        "humidity_rh": 26.3,
+        "co2_ppm": 197.0,
+        "vpd_kpa": 3.67,
+        "ph": 4.85,
+        "ec_ms": 3.26,
+        "ppfd_umol": 377.0,
+        "irrigation_ml": 17.0
+      }
+    },
+    {
+      "frame": 104,
+      "phase": "heat_stress",
+      "minute_offset": 1560,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 92.6,
+        "humidity_rh": 26.1,
+        "co2_ppm": 178.0,
+        "vpd_kpa": 3.68,
+        "ph": 4.84,
+        "ec_ms": 3.27,
+        "ppfd_umol": 374.0,
+        "irrigation_ml": 16.0
+      }
+    },
+    {
+      "frame": 105,
+      "phase": "heat_stress",
+      "minute_offset": 1575,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 92.7,
+        "humidity_rh": 26.0,
+        "co2_ppm": 159.0,
+        "vpd_kpa": 3.69,
+        "ph": 4.84,
+        "ec_ms": 3.27,
+        "ppfd_umol": 371.0,
+        "irrigation_ml": 16.0
+      }
+    },
+    {
+      "frame": 106,
+      "phase": "heat_stress",
+      "minute_offset": 1590,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 92.7,
+        "humidity_rh": 25.9,
+        "co2_ppm": 140.0,
+        "vpd_kpa": 3.7,
+        "ph": 4.84,
+        "ec_ms": 3.28,
+        "ppfd_umol": 368.0,
+        "irrigation_ml": 15.0
+      }
+    },
+    {
+      "frame": 107,
+      "phase": "heat_stress",
+      "minute_offset": 1605,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 92.7,
+        "humidity_rh": 25.8,
+        "co2_ppm": 121.0,
+        "vpd_kpa": 3.7,
+        "ph": 4.84,
+        "ec_ms": 3.28,
+        "ppfd_umol": 366.0,
+        "irrigation_ml": 15.0
+      }
+    },
+    {
+      "frame": 108,
+      "phase": "heat_stress",
+      "minute_offset": 1620,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 92.8,
+        "humidity_rh": 25.7,
+        "co2_ppm": 102.0,
+        "vpd_kpa": 3.71,
+        "ph": 4.84,
+        "ec_ms": 3.29,
+        "ppfd_umol": 364.0,
+        "irrigation_ml": 14.0
+      }
+    },
+    {
+      "frame": 109,
+      "phase": "heat_stress",
+      "minute_offset": 1635,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 92.8,
+        "humidity_rh": 25.6,
+        "co2_ppm": 83.0,
+        "vpd_kpa": 3.71,
+        "ph": 4.83,
+        "ec_ms": 3.29,
+        "ppfd_umol": 362.0,
+        "irrigation_ml": 14.0
+      }
+    },
+    {
+      "frame": 110,
+      "phase": "intervention_recovery",
+      "minute_offset": 1650,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 91.2,
+        "humidity_rh": 27.4,
+        "co2_ppm": 210.0,
+        "vpd_kpa": 3.55,
+        "ph": 5.1,
+        "ec_ms": 3.18,
+        "ppfd_umol": 370.0,
+        "irrigation_ml": 20.0
+      }
+    },
+    {
+      "frame": 111,
+      "phase": "intervention_recovery",
+      "minute_offset": 1665,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 89.8,
+        "humidity_rh": 30.1,
+        "co2_ppm": 380.0,
+        "vpd_kpa": 3.28,
+        "ph": 5.35,
+        "ec_ms": 3.02,
+        "ppfd_umol": 385.0,
+        "irrigation_ml": 35.0
+      }
+    },
+    {
+      "frame": 112,
+      "phase": "intervention_recovery",
+      "minute_offset": 1680,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 88.1,
+        "humidity_rh": 33.8,
+        "co2_ppm": 560.0,
+        "vpd_kpa": 2.99,
+        "ph": 5.58,
+        "ec_ms": 2.84,
+        "ppfd_umol": 402.0,
+        "irrigation_ml": 58.0
+      }
+    },
+    {
+      "frame": 113,
+      "phase": "intervention_recovery",
+      "minute_offset": 1695,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 86.3,
+        "humidity_rh": 38.2,
+        "co2_ppm": 740.0,
+        "vpd_kpa": 2.64,
+        "ph": 5.78,
+        "ec_ms": 2.65,
+        "ppfd_umol": 422.0,
+        "irrigation_ml": 85.0
+      }
+    },
+    {
+      "frame": 114,
+      "phase": "intervention_recovery",
+      "minute_offset": 1710,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 84.5,
+        "humidity_rh": 43.0,
+        "co2_ppm": 920.0,
+        "vpd_kpa": 2.27,
+        "ph": 5.94,
+        "ec_ms": 2.46,
+        "ppfd_umol": 444.0,
+        "irrigation_ml": 115.0
+      }
+    },
+    {
+      "frame": 115,
+      "phase": "intervention_recovery",
+      "minute_offset": 1725,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 82.8,
+        "humidity_rh": 47.6,
+        "co2_ppm": 1080.0,
+        "vpd_kpa": 1.92,
+        "ph": 6.06,
+        "ec_ms": 2.28,
+        "ppfd_umol": 466.0,
+        "irrigation_ml": 148.0
+      }
+    },
+    {
+      "frame": 116,
+      "phase": "intervention_recovery",
+      "minute_offset": 1740,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 81.2,
+        "humidity_rh": 51.8,
+        "co2_ppm": 1200.0,
+        "vpd_kpa": 1.59,
+        "ph": 6.14,
+        "ec_ms": 2.12,
+        "ppfd_umol": 490.0,
+        "irrigation_ml": 175.0
+      }
+    },
+    {
+      "frame": 117,
+      "phase": "intervention_recovery",
+      "minute_offset": 1755,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 79.8,
+        "humidity_rh": 55.5,
+        "co2_ppm": 1290.0,
+        "vpd_kpa": 1.3,
+        "ph": 6.18,
+        "ec_ms": 1.98,
+        "ppfd_umol": 514.0,
+        "irrigation_ml": 196.0
+      }
+    },
+    {
+      "frame": 118,
+      "phase": "intervention_recovery",
+      "minute_offset": 1770,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 78.6,
+        "humidity_rh": 58.6,
+        "co2_ppm": 1340.0,
+        "vpd_kpa": 1.06,
+        "ph": 6.2,
+        "ec_ms": 1.86,
+        "ppfd_umol": 535.0,
+        "irrigation_ml": 210.0
+      }
+    },
+    {
+      "frame": 119,
+      "phase": "intervention_recovery",
+      "minute_offset": 1785,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 77.8,
+        "humidity_rh": 61.0,
+        "co2_ppm": 1368.0,
+        "vpd_kpa": 0.91,
+        "ph": 6.12,
+        "ec_ms": 1.52,
+        "ppfd_umol": 552.0,
+        "irrigation_ml": 219.0
+      }
+    },
+    {
+      "frame": 120,
+      "phase": "intervention_recovery",
+      "minute_offset": 1800,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 77.2,
+        "humidity_rh": 62.2,
+        "co2_ppm": 1381.0,
+        "vpd_kpa": 0.89,
+        "ph": 6.1,
+        "ec_ms": 1.47,
+        "ppfd_umol": 568.0,
+        "irrigation_ml": 224.0
+      }
+    },
+    {
+      "frame": 121,
+      "phase": "intervention_recovery",
+      "minute_offset": 1815,
+      "instability": 0.0,
+      "alert": "",
+      "sensors": {
+        "temperature_f": 77.0,
+        "humidity_rh": 62.5,
+        "co2_ppm": 1376.0,
+        "vpd_kpa": 0.88,
+        "ph": 6.09,
+        "ec_ms": 1.44,
+        "ppfd_umol": 572.0,
+        "irrigation_ml": 222.0
+      }
+    }
+  ],
+  "latest_state": {
+    "timestamp": "2026-04-04T00:31:46.229298+00:00",
+    "cycle": 40,
+    "risk_assessment": {
+      "risk_level": "HIGH",
+      "trend": "UNKNOWN",
+      "latest_instability": 2.661
+    },
+    "operational_recommendation": {
+      "status": {
+        "available": true,
+        "advisory": true,
+        "reason": "recommendation_available"
+      },
+      "recommended_action": null,
+      "recommended_target": null,
+      "priority": null,
+      "recommendation_confidence": 0.7641,
+      "urgency": null,
+      "rationale": "Recommendation available from converging structural evidence.",
+      "supporting_evidence": [
+        {
+          "driver": "signal_5__drift",
+          "score": 0.0
+        },
+        {
+          "driver": "signal_6__drift",
+          "score": 0.0
+        },
+        {
+          "driver": "signal_1__drift",
+          "score": 0.0
+        },
+        {
+          "driver": "signal_1",
+          "score": 0.0
+        },
+        {
+          "driver": "signal_6",
+          "score": 0.0
+        }
+      ],
+      "operator_note": "Recommendations are advisory outputs intended to support, not replace, qualified operator judgment and site-specific procedures."
+    },
+    "explanation_text": "Current state is COUPLING_INSTABILITY_OBSERVED with high risk. Primary driver is signal_5__drift based on attribution signals. Confidence is high. Current structure resembles a prior pattern from asset canopy-zone-A (run run_e9869e3eefc1, cycle 39) (similarity 0.79).",
+    "events": [
+      "inspection_recommended",
+      "known_pattern_recalled",
+      "recommendation_available"
+    ]
+  },
+  "outputs": {
+    "recommendation": null,
+    "explanation": "Why this is being recommended\nObserved: risk_level=HIGH trend=UNKNOWN latest_instability=2.661\nObserved: Current state is COUPLING_INSTABILITY_OBSERVED with high risk. Primary driver is signal_5__drift based on attribution signals. Confidence is high. Current structure resembles a prior pattern from asset canopy-zone-A (run run_e9869e3eefc1, cycle 39) (similarity 0.79).\nRecommended: action=None confidence=0.7641 rationale=Recommendation available from converging structural evidence.\nInferred: Recommendation rationale is treated as advisory, not autonomous instruction.",
+    "memory_recall": {
+      "is_novel": null,
+      "reason": null,
+      "nearest_match_found": null,
+      "nearest_match_similarity": null
+    },
+    "client_report": "Client Report\n\nOverview\nThis advisory report summarizes the current operating condition and recommended next step for cycle 40 at 2026-04-04T00:31:46.229298+00:00.\n\nCurrent System State\nRun run_e9869e3eefc1 at site grow-op-facility-01 for asset canopy-zone-A, cycle 40, timestamp 2026-04-04T00:31:46.229298+00:00.\n\nRisk Assessment\nRisk level is HIGH with a UNKNOWN trend. Latest instability score is 2.661.\n\nRecommended Next Step (advisory)\nRecommended advisory action: No recommendation provided. Rationale: Recommendation available from converging structural evidence.. Recommendation confidence: 0.7641.\n\nSupporting Evidence\nExplanation: Current state is COUPLING_INSTABILITY_OBSERVED with high risk. Primary driver is signal_5__drift based on attribution signals. Confidence is high. Current structure resembles a prior pattern from asset canopy-zone-A (run run_e9869e3eefc1, cycle 39) (similarity 0.79). Observed events: inspection_recommended; known_pattern_recalled; recommendation_available. Supporting evidence: {'driver': 'signal_5__drift', 'score': 0.0}; {'driver': 'signal_6__drift', 'score': 0.0}; {'driver': 'signal_1__drift', 'score': 0.0}; {'driver': 'signal_1', 'score': 0.0}; {'driver': 'signal_6', 'score': 0.0}.\n\nPattern Context (memory recall if present)\nNovelty flag is False. Nearest prior match was found with similarity 0.78754. Nearest match summary: HIGH/UNKNOWN regime=unknown drivers=signal_5__drift, signal_7__drift. Pattern family: not available (confidence not available). Top matches: HIGH/UNKNOWN regime=unknown drivers=signal_5__drift, signal_7__drift (similarity 0.78754, same_asset); HIGH/UNKNOWN regime=unknown drivers=signal_5__drift, signal_2 (similarity 0.695396, same_asset); HIGH/UNKNOWN regime=unknown drivers=signal_7__drift, signal_1__drift (similarity 0.694752, same_asset).\n\nConfidence\nRecommendation confidence is 0.7641. State confidence is 0.7641.\n\nOperator Note\nRecommendations are advisory outputs intended to support, not replace, qualified operator judgment and site-specific procedures.",
+    "technician_summary": "Technician Summary\n\nCurrent state (concise)\nRisk is HIGH and trend is UNKNOWN. Current advisory action: No recommendation provided. Cycle 40.\n\nWhat changed\nRisk changed from HIGH to HIGH. New events: none reported. Window: 2026-04-04T00:16:46.229298+00:00 to 2026-04-04T00:31:46.229298+00:00.\n\nKey drivers\nExplanation: Current state is COUPLING_INSTABILITY_OBSERVED with high risk. Primary driver is signal_5__drift based on attribution signals. Confidence is high. Current structure resembles a prior pattern from asset canopy-zone-A (run run_e9869e3eefc1, cycle 39) (similarity 0.79). Supporting evidence: {'driver': 'signal_5__drift', 'score': 0.0}; {'driver': 'signal_6__drift', 'score': 0.0}; {'driver': 'signal_1__drift', 'score': 0.0}; {'driver': 'signal_1', 'score': 0.0}; {'driver': 'signal_6', 'score': 0.0}. Events: inspection_recommended; known_pattern_recalled; recommendation_available.\n\nRecommended next step\nAdvisory action: No recommendation provided. Rationale: Recommendation available from converging structural evidence.. Recommendation confidence: 0.7641. Operator note: Recommendations are advisory outputs intended to support, not replace, qualified operator judgment and site-specific procedures.."
+  }
+}

@@ -1,0 +1,57 @@
+# Agnostic Runner: API Polling to Kafka Example
+#
+# Poll sensor data from a REST API endpoint and stream results to Kafka
+# Useful for real-time monitoring with distributed message queue integration
+
+data_source:
+  type: api
+  config:
+    # API endpoint to poll
+    url: http://localhost:8000/api/frames
+
+    # How often to poll (milliseconds)
+    poll_interval_ms: 1000
+
+    # Maximum number of polls (null = unlimited)
+    max_polls: null
+
+    # Request timeout
+    timeout_sec: 10
+
+    # Verify SSL certificates
+    verify_ssl: true
+
+    # Custom HTTP headers
+    headers:
+      Authorization: "Bearer your-api-key"
+      Accept: "application/json"
+
+    # Key in response containing the actual frames
+    # If response is {"data": [...]} then set response_key to "data"
+    response_key: data
+
+output_sink:
+  type: kafka
+  config:
+    # Kafka bootstrap servers
+    brokers:
+      - localhost:9092
+
+    # Topic to send results to
+    topic: neraium-results
+
+    # Which field to use as message key for partitioning
+    key_field: unit_id
+
+engine:
+  # Production mode with advisory layers for operator guidance
+  mode: production
+
+  enable_trajectory_memory: true
+  enable_law_extraction: false
+  enable_law_engine: false
+  enable_intervention_memory: true
+  enable_reliability_calibration: true
+  enable_cross_system_transfer: false
+  enable_advisory_layers: true
+  enable_experimental_layers: false
