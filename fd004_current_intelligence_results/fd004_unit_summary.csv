@@ -1,3 +1,0 @@
-unit_id,n_cycles,failure_cycle,warning_cycle,lead_time_cycles,final_state,max_drift,mean_drift,min_stability,mean_stability,mean_coherence,max_urgency,dominant_driver,top_recommendation
-1,50,72,24,48,STABLE,925368.4133,306514.068304,0.0,0.62,0.797004,critical,stable baseline telemetry,Retain standard operating review rhythm.
-2,50,89,24,65,STABLE,784654.1033,267389.516258,0.0,0.62,0.8138200000000001,high,stable baseline telemetry,Retain standard operating review rhythm.

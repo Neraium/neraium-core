@@ -62,7 +62,7 @@ class AgnosticRunner:
         self.error_handler = error_handler
 
         # Initialize engine
-        self.platform = StructuralSystemIntelligencePlatform(mode=self.engine_config.mode)
+        self.platform = StructuralSystemIntelligencePlatform(operating_mode=self.engine_config.mode)
         self._configure_engine_components()
 
         # Metrics
@@ -143,9 +143,14 @@ class AgnosticRunner:
             )
 
             # Build metrics
-            elapsed = self.end_time - self.start_time
-            fps = self.frame_count / elapsed if elapsed > 0 else 0
-            status = "success" if self.error_count == 0 else ("partial" if self.error_count < self.frame_count else "failed")
+            elapsed = max(self.end_time - self.start_time, 1e-9)
+            fps = self.frame_count / elapsed
+            if self.error_count == 0:
+                status = "success"
+            elif self.frame_count == 0:
+                status = "failed"
+            else:
+                status = "partial"
 
             return RunMetrics(
                 run_id=self.run_id,

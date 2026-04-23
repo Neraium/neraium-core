@@ -34,23 +34,6 @@ class IngestRouterDependencies:
 
 
 @dataclass(frozen=True)
-class DemoRouterDependencies:
-    service_instance: Any
-    require_api_key: Callable[..., None]
-    resolve_customer_id: Callable[[str | None], str]
-    resolve_run_id_with_default: Callable[..., str]
-    start_demo_seed_job: Callable[..., None]
-    public_demo_job: Callable[[dict[str, Any]], dict[str, Any]]
-    demo_jobs: MutableMapping[str, dict[str, Any]]
-    demo_jobs_lock: Lock
-    load_greenhouse_demo_subset: Callable[[int], list[dict[str, Any]]]
-    load_fd004_single_unit: Callable[[str, int | None], tuple[str, str, list[dict[str, Any]]]]
-    log_structured: Callable[..., None]
-    summarize_exception_for_logs: Callable[[Exception], str]
-    utc_now_iso: Callable[[], str]
-
-
-@dataclass(frozen=True)
 class IntegrationsRouterDependencies:
     app: Any
     require_api_key: Callable[..., None]

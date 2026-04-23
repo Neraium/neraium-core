@@ -133,11 +133,6 @@ class InterventionRecommendationRanker:
                         "confidence_without_memory": round(memory_ablated, 4),
                         "confidence_delta": round(confidence - memory_ablated, 6),
                     },
-                    "memory_ablation": {
-                        "confidence_with_memory": round(confidence, 4),
-                        "confidence_without_memory": round(memory_ablated, 4),
-                        "confidence_delta": round(confidence - memory_ablated, 6),
-                    },
                     "evidence_sources": {
                         "model_based_projection": cand.get("model_projection") or {},
                         "historical_evidence": score,

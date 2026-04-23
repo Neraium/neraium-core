@@ -55,14 +55,20 @@ class AdapterRegistry:
         if name in self._source_factories:
             return self._source_factories[name](config)
         adapter_class = self.get_source(name)
-        return adapter_class(config)
+        try:
+            return adapter_class(config)
+        except TypeError:
+            return adapter_class()
 
     def create_sink(self, name: str, config: dict[str, Any]) -> OutputSink:
         """Create an output sink adapter instance."""
         if name in self._sink_factories:
             return self._sink_factories[name](config)
         adapter_class = self.get_sink(name)
-        return adapter_class(config)
+        try:
+            return adapter_class(config)
+        except TypeError:
+            return adapter_class()
 
     def list_sources(self) -> list[str]:
         """List all registered data source adapters."""

@@ -101,6 +101,24 @@ class CurrentStateEnvelope(BaseModel):
     state: CanonicalOutputResponse | None = None
 
 
+class DecisionContractV2Envelope(BaseModel):
+    state: dict[str, Any] | None = None
+
+
+class OperatorActionEnvelope(BaseModel):
+    operator_action: dict[str, Any] | None = None
+
+
+class DecisionContractV2HistoryEnvelope(BaseModel):
+    count: int
+    history: list[dict[str, Any]]
+
+
+class DecisionContractV2LatestEnvelope(BaseModel):
+    count: int
+    latest: dict[str, Any] | None = None
+
+
 class HistoryEnvelope(BaseModel):
     count: int
     history: list[CanonicalOutputResponse]
