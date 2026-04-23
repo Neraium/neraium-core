@@ -184,21 +184,70 @@ export function TeslaAutopilotInterface({
     onTogglePlay?.(next)
   }
 
+  const formattedTimestamp = useMemo(() => {
+    if (!interpolatedData.timestamp) return 'No live timestamp'
+    const parsed = new Date(interpolatedData.timestamp)
+    if (Number.isNaN(parsed.getTime())) return interpolatedData.timestamp
+    return parsed.toLocaleString()
+  }, [interpolatedData.timestamp])
+
   return (
     <div style={{ minHeight: '100vh', background: '#050607', color: '#e2e8f0', padding: 20, fontFamily: 'system-ui, sans-serif' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-        <div style={{ fontSize: 14, fontWeight: 700, color: stateColor }}>
-          System Status: {assessment.state} · Phase: {phase}
+      <div
+        style={{
+          border: '1px solid rgba(148, 163, 184, 0.2)',
+          borderRadius: 14,
+          background: 'linear-gradient(145deg, rgba(15,23,42,0.94), rgba(2,6,23,0.94))',
+          padding: 16,
+          marginBottom: 16,
+        }}
+      >
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 10 }}>
+          <div>
+            <div style={{ fontSize: 11, color: '#94a3b8', letterSpacing: 0.7, textTransform: 'uppercase', marginBottom: 6 }}>
+              Demo command center
+            </div>
+            <div style={{ fontSize: 16, fontWeight: 700, color: '#f8fafc' }}>
+              System Status: <span style={{ color: stateColor }}>{assessment.state}</span> · Phase: {phase}
+            </div>
+          </div>
+          <div style={{ fontSize: 12, color: '#94a3b8' }}>Updated: {formattedTimestamp}</div>
         </div>
-        <div style={{ display: 'flex', gap: 8 }}>
+
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           {onStepScenario && (
             <>
-              <button onClick={() => onStepScenario(-1)} style={{ padding: '4px 8px' }}>Prev</button>
-              <button onClick={() => onStepScenario(1)} style={{ padding: '4px 8px' }}>Next</button>
+              <button
+                onClick={() => onStepScenario(-1)}
+                style={{ padding: '6px 12px', borderRadius: 8, border: '1px solid #334155', background: '#0f172a', color: '#e2e8f0' }}
+              >
+                Prev
+              </button>
+              <button
+                onClick={() => onStepScenario(1)}
+                style={{ padding: '6px 12px', borderRadius: 8, border: '1px solid #334155', background: '#0f172a', color: '#e2e8f0' }}
+              >
+                Next
+              </button>
             </>
           )}
-          <button onClick={handleTogglePlay} style={{ padding: '4px 10px' }}>{isPlaying ? 'Pause' : 'Play'}</button>
-          <button onClick={() => setShowLayer3(prev => !prev)} style={{ padding: '4px 10px' }}>
+          <button
+            onClick={handleTogglePlay}
+            style={{
+              padding: '6px 12px',
+              borderRadius: 8,
+              border: '1px solid #334155',
+              background: isPlaying ? 'rgba(251,191,36,0.18)' : 'rgba(34,197,94,0.18)',
+              color: '#f8fafc',
+              fontWeight: 600,
+            }}
+          >
+            {isPlaying ? 'Pause Replay' : 'Play Replay'}
+          </button>
+          <button
+            onClick={() => setShowLayer3(prev => !prev)}
+            style={{ padding: '6px 12px', borderRadius: 8, border: '1px solid #334155', background: '#0f172a', color: '#e2e8f0' }}
+          >
             {showLayer3 ? 'Hide Details' : 'View Details'}
           </button>
         </div>
@@ -217,12 +266,24 @@ export function TeslaAutopilotInterface({
             key={room.id}
             title={room.shortName}
             style={{
-              height: 66,
-              borderRadius: 6,
+              height: 72,
+              borderRadius: 8,
               background: getRoomStatusColor(room.status),
-              opacity: 0.9,
+              opacity: 0.92,
+              border: '1px solid rgba(255,255,255,0.16)',
+              boxShadow: 'inset 0 0 0 1px rgba(255,255,255,0.06)',
+              display: 'flex',
+              alignItems: 'flex-end',
+              justifyContent: 'space-between',
+              padding: '6px 8px',
+              color: '#020617',
+              fontSize: 11,
+              fontWeight: 700,
             }}
-          />
+          >
+            <span>{room.shortName}</span>
+            <span>{Math.round(room.driftContribution * 100)}%</span>
+          </div>
         ))}
       </div>
 
