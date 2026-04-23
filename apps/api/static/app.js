@@ -234,6 +234,99 @@ function normalizeRiskLevel(value) {
   return "UNKNOWN";
 }
 
+function commandStateFromRisk(value) {
+  const risk = normalizeRiskLevel(value);
+  if (risk === "HIGH") return "INTERVENE";
+  if (risk === "MEDIUM") return "WATCH";
+  return "SYSTEM NORMAL";
+}
+
+function zoneToneFromRisk(value) {
+  const risk = normalizeRiskLevel(value);
+  if (risk === "HIGH") return "intervene";
+  if (risk === "MEDIUM") return "watch";
+  return "normal";
+}
+
+function normalizeProgression(value) {
+  const text = String(value || "").toLowerCase();
+  if (text.includes("spread")) return "spreading";
+  if (text.includes("stable") || text.includes("flat")) return "stable";
+  return "increasing";
+}
+
+function titleCaseFromSnake(value) {
+  return String(value || "")
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/\b\w/g, (m) => m.toUpperCase());
+}
+
+function resolveZoneName(row, index) {
+  return titleCaseFromSnake(row?.name || row?.zone_name || row?.zone_id || row?.asset_id || `Zone ${index + 1}`);
+}
+
+function resolveZoneRisk(row, fallbackRisk) {
+  return normalizeRiskLevel(row?.risk_level || row?.risk || row?.status || fallbackRisk || "LOW");
+}
+
+function applySmoothedTone(key, observedTone) {
+  state.ui.zoneToneMemory = state.ui.zoneToneMemory || {};
+  const now = Date.now();
+  const entry = state.ui.zoneToneMemory[key] || { current: observedTone, candidate: observedTone, since: now };
+  if (observedTone !== entry.candidate) {
+    entry.candidate = observedTone;
+    entry.since = now;
+  }
+  if (entry.current !== entry.candidate && now - entry.since >= 2500) {
+    entry.current = entry.candidate;
+  }
+  state.ui.zoneToneMemory[key] = entry;
+  return entry.current;
+}
+
+function renderZoneGrid(zones = []) {
+  const zoneGrid = qs("#zoneGrid");
+  if (!zoneGrid) return;
+  zoneGrid.innerHTML = "";
+  zones.forEach((zone, index) => {
+    const zoneEl = document.createElement("article");
+    zoneEl.className = "operator-zone-box";
+    const smoothedTone = applySmoothedTone(resolveZoneName(zone, index), zoneToneFromRisk(zone.risk));
+    zoneEl.setAttribute("data-tone", smoothedTone);
+    zoneEl.setAttribute("role", "listitem");
+    zoneEl.textContent = zone.name;
+    zoneGrid.appendChild(zoneEl);
+  });
+}
+
+function renderCommandLayer(latest, zones) {
+  const commandEl = qs("#commandStatusText");
+  const eventPanel = qs("#eventPanel");
+  const eventHeadline = qs("#eventHeadline");
+  const eventIssue = qs("#eventIssue");
+  const eventLocation = qs("#eventLocation");
+  const eventProgression = qs("#eventProgression");
+  const topZone = zones.find((z) => z.risk === "HIGH") || zones.find((z) => z.risk === "MEDIUM") || zones[0] || { name: "ZONE", risk: normalizeRiskLevel(latest?.risk_level) };
+  const smoothedTopTone = applySmoothedTone("__system__", zoneToneFromRisk(topZone.risk));
+  const command = commandStateFromRisk(smoothedTopTone === "intervene" ? "HIGH" : (smoothedTopTone === "watch" ? "MEDIUM" : "LOW"));
+  if (commandEl) {
+    commandEl.textContent = command === "SYSTEM NORMAL" ? "SYSTEM NORMAL" : `${command} ${topZone.name.toUpperCase()}`;
+    commandEl.setAttribute("data-tone", smoothedTopTone);
+  }
+  if (eventPanel) {
+    const showEvent = command === "INTERVENE";
+    eventPanel.classList.toggle("hidden", !showEvent);
+    if (showEvent) {
+      if (eventHeadline) eventHeadline.textContent = `INTERVENE ${topZone.name.toUpperCase()}`;
+      if (eventIssue) eventIssue.textContent = `Issue: ${String(latest?.phase || latest?.state || "Critical shift").slice(0, 48)}`;
+      if (eventLocation) eventLocation.textContent = `Location: ${topZone.name}`;
+      if (eventProgression) eventProgression.textContent = `Progression: ${normalizeProgression(latest?.trend)}`;
+    }
+  }
+}
+
 function riskRankNumber(value) {
   const r = normalizeRiskLevel(value);
   if (r === "HIGH") return 3;
@@ -280,6 +373,7 @@ function exportData(format, runId) {
 // Load dashboard with analysis results applied to data
 async function loadDashboard() {
   try {
+    wireDetailsLayerToggle();
     const activeRun = state.activeRun?.run_id;
     const recentResults = await fetchRecentResults({ run_id: activeRun, limit: 50 });
     state.dashboardRecent = Array.isArray(recentResults?.results) ? recentResults.results : [];
@@ -287,42 +381,31 @@ async function loadDashboard() {
     const latest = state.dashboardRecent?.[0] || null;
     state.dashboardCurrentAlertStatus = latest?.alert_status || null;
 
-    // Render health score
-    const healthScore = healthScoreFromSignals(latest);
-    const healthScoreEl = qs("#dashboardHealthScore");
+    const zonesResponse = await fetchJson(apiUrl("/zones", tenantScopeParams())).catch(() => []);
+    const roomResponse = await fetchJson(apiUrl("/rooms", tenantScopeParams())).catch(() => []);
+    const zoneRows = Array.isArray(zonesResponse) && zonesResponse.length ? zonesResponse : (Array.isArray(roomResponse) ? roomResponse : []);
+    const fallbackZones = zoneRows.length
+      ? zoneRows
+      : (state.dashboardRecent || []).slice(0, 9).map((row, index) => ({
+          zone_name: row.asset_id || `Zone ${index + 1}`,
+          risk_level: row.risk_level || "LOW",
+        }));
+    const zones = fallbackZones.map((row, index) => ({
+      name: resolveZoneName(row, index),
+      risk: resolveZoneRisk(row, latest?.risk_level),
+    })).sort((a, b) => riskRankNumber(b.risk) - riskRankNumber(a.risk) || a.name.localeCompare(b.name));
+    renderZoneGrid(zones);
+    renderCommandLayer(latest, zones);
+
     const healthCaptionEl = qs("#dashboardHealthCaption");
-    const { animateNumberText } = window.NeraiumUI || {};
+    if (healthCaptionEl) healthCaptionEl.textContent = latest?.timestamp ? `Updated ${latest.timestamp}` : "No telemetry timestamp yet.";
 
-    if (healthScoreEl) {
-      if (healthScore !== null) {
-        healthScoreEl.textContent = String(healthScore);
-        if (animateNumberText) {
-          animateNumberText(healthScoreEl, healthScore, { decimals: 0, suffix: "" });
-        }
-      } else {
-        healthScoreEl.textContent = "-";
-      }
-    }
-    if (healthCaptionEl) {
-      healthCaptionEl.textContent = latest ? "Operational health" : "No active telemetry";
-    }
-    setHealthRingScore(healthScore);
-
-    // Render risk and trend
-    const riskEl = qs("#snapshotRisk");
     const trendEl = qs("#snapshotTrend");
-    if (riskEl) riskEl.textContent = normalizeRiskLevel(latest?.risk_level) || "UNKNOWN";
     if (trendEl) trendEl.textContent = (latest?.trend || "-").toUpperCase();
-
-    // Render state
     const stateEl = qs("#snapshotState");
     if (stateEl) stateEl.textContent = latest?.state || latest?.interpreted_state || "Unknown";
-
-    // Render recommendation
     const recommendationEl = qs("#snapshotRecommendation");
-    if (recommendationEl) {
-      recommendationEl.textContent = latest?.operator_message || "Upload telemetry to start monitoring.";
-    }
+    if (recommendationEl) recommendationEl.textContent = latest?.operator_message || "No event narrative available.";
 
     // Render metrics
     const trendMetricEl = qs("#metricTrend");
@@ -345,6 +428,17 @@ async function loadDashboard() {
     console.error("Dashboard load error:", err);
     setStatus(String(err.message || err), true, true);
   }
+}
+
+function wireDetailsLayerToggle() {
+  const btn = qs("#viewDetailsBtn");
+  const panel = qs("#detailsLayer");
+  if (!btn || !panel || btn.dataset.wired) return;
+  btn.dataset.wired = "1";
+  btn.addEventListener("click", () => {
+    const nowHidden = panel.classList.toggle("hidden");
+    btn.textContent = nowHidden ? "View Details" : "Hide Details";
+  });
 }
 
 // Load validation/replay page with demo scenario

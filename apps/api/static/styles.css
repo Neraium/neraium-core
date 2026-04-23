@@ -5813,3 +5813,102 @@ details > summary:hover {
     min-width: 640px;
   }
 }
+
+/* Layered operator command interface */
+.operator-command-panel {
+  padding: 28px;
+}
+
+.operator-command-status {
+  margin: 0;
+  font-size: clamp(2rem, 3.7vw, 3.1rem);
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: #d8f4e8;
+}
+
+.operator-command-status[data-tone="watch"] { color: #ffcf70; }
+.operator-command-status[data-tone="intervene"] { color: #ff7f7f; }
+
+.operator-zone-panel {
+  padding: 18px;
+}
+
+.operator-zone-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+}
+
+.operator-zone-box {
+  border: 1px solid #26445f;
+  border-radius: 12px;
+  padding: 16px 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  background: #13344a;
+  color: #edfbff;
+  transition: background-color 260ms ease, border-color 260ms ease;
+}
+
+.operator-zone-box[data-tone="normal"] {
+  background: rgba(41, 153, 92, 0.3);
+  border-color: rgba(78, 212, 137, 0.68);
+}
+
+.operator-zone-box[data-tone="watch"] {
+  background: rgba(190, 137, 34, 0.35);
+  border-color: rgba(255, 194, 85, 0.75);
+}
+
+.operator-zone-box[data-tone="intervene"] {
+  background: rgba(172, 58, 58, 0.37);
+  border-color: rgba(249, 112, 112, 0.75);
+}
+
+.operator-event-panel {
+  border-color: rgba(249, 112, 112, 0.62);
+  background: linear-gradient(180deg, rgba(80, 18, 18, 0.9), rgba(46, 15, 15, 0.9));
+}
+
+.operator-event-headline {
+  margin: 0 0 10px;
+  font-size: clamp(1.2rem, 2.2vw, 1.6rem);
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: #ffc3c3;
+}
+
+.operator-event-line {
+  margin: 6px 0;
+  font-size: 0.99rem;
+  color: #ffdede;
+}
+
+.operator-details-layer {
+  border-color: #34597e;
+}
+
+.operator-details-toggle-row {
+  display: flex;
+  justify-content: center;
+  margin-top: -2px;
+}
+
+.operator-details-toggle-btn {
+  min-width: 180px;
+}
+
+.operator-details-legacy-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.operator-graph-detail {
+  margin-top: 14px;
+}
