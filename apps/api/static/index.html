@@ -94,112 +94,19 @@
             </div>
           </section>
 
-          <section class="panel dashboard-hero operator-hero" aria-label="Operator status">
-            <div class="dashboard-hero-grid operator-hero-grid">
-              <div class="dashboard-hero-primary">
-                <p class="dashboard-hero-kicker">Operator command summary</p>
-                <div class="dashboard-hero-score-row">
-                  <div class="health-ring-wrap dashboard-hero-health-col">
-                    <svg class="health-ring" viewBox="0 0 120 120" aria-hidden="true">
-                      <circle class="health-ring-bg" cx="60" cy="60" r="48"></circle>
-                      <circle id="dashboardHealthRingArc" class="health-ring-arc" cx="60" cy="60" r="48"></circle>
-                    </svg>
-                    <div class="health-ring-label">
-                      <span id="dashboardHealthScore" class="health-ring-value">-</span>
-                      <span id="dashboardHealthCaption" class="health-ring-caption">No active telemetry</span>
-                    </div>
-                  </div>
-                  <div class="dashboard-hero-state-block">
-                    <div class="dashboard-risk-row">
-                      <p class="signal-label">Current risk</p>
-                      <p id="snapshotRisk" class="dashboard-risk-value signal-risk-inline">UNKNOWN</p>
-                    </div>
-                    <p id="snapshotTrend" class="dashboard-trend-line">UNKNOWN</p>
-                    <p id="snapshotRecommendation" class="dashboard-narrative-strip">No data yet. Upload telemetry to start monitoring.</p>
-                    <p id="metricOperatorMessage" class="dashboard-operator-line">Awaiting telemetry.</p>
-                  </div>
-                </div>
-              </div>
-              <aside class="dashboard-hero-aside">
-                <article class="insight-tile" id="dashboardAlertTile">
-                  <p class="insight-tile-label">Current system state</p>
-                  <p id="snapshotState" class="insight-tile-sub">Unknown</p>
-                  <p class="insight-tile-label">Latest operator message</p>
-                  <p id="dashboardAlertSummary" class="insight-tile-sub">No open alerts for this run.</p>
-                </article>
-                <article class="insight-tile">
-                  <p class="insight-tile-label">What to do next</p>
-                  <p id="dashboardNextAction" class="insight-tile-sub">Upload telemetry to start active monitoring.</p>
-                  <p id="dashboardLastUpdated" class="dashboard-last-updated">No telemetry timestamp yet.</p>
-                </article>
-              </aside>
-            </div>
+          <section class="panel operator-command-panel" aria-label="Command view status">
+            <p id="commandStatusText" class="operator-command-status">SYSTEM NORMAL</p>
           </section>
 
-          <section class="panel operator-section" aria-label="Progression">
-            <div class="panel-header"><h3>Progression and trajectory</h3></div>
-            <p class="subtitle">Track how risk and instability are moving over time.</p>
-            <div id="dashboardRiskProgression" class="risk-progression-strip">
-              <span class="risk-stage">LOW</span>
-              <span class="risk-stage">MEDIUM</span>
-              <span class="risk-stage">HIGH</span>
-            </div>
-            <div class="sparkline-wrap">
-              <canvas id="dashboardSparkline" aria-label="Drift and composite instability trend"></canvas>
-              <div id="dashboardSparklineTooltip" class="dashboard-sparkline-tooltip hidden"></div>
-            </div>
+          <section class="panel operator-zone-panel" aria-label="Zone command grid">
+            <div id="zoneGrid" class="operator-zone-grid" role="list"></div>
           </section>
 
-          <section class="panel operator-section" aria-label="Why this assessment">
-            <div class="panel-header"><h3>Why the system says this</h3></div>
-            <p id="recommendationRationale" class="subtitle">Explanation appears once telemetry is available.</p>
-            <details>
-              <summary>Operator guidance details</summary>
-              <p id="recommendationPrimary" class="snapshot-recommendation">No recommendation available.</p>
-              <p id="recommendationOperatorNote" class="subtitle"></p>
-            </details>
-          </section>
-
-          <section class="panel operator-section" aria-label="Metrics">
-            <div class="panel-header"><h3>Supporting metrics</h3></div>
-            <div class="snapshot-grid" role="list">
-              <article class="snapshot-item" role="listitem"><p>Trend</p><strong id="metricTrend">-</strong></article>
-              <article class="snapshot-item" role="listitem"><p>Phase</p><strong id="metricPhaseBadge">-</strong></article>
-              <article class="snapshot-item" role="listitem"><p>Risk</p><strong id="metricRiskBadge">-</strong></article>
-              <article class="snapshot-item" role="listitem"><p>Confidence</p><strong id="metricStateConfidence">--%</strong></article>
-            </div>
-          </section>
-
-          <section class="panel operator-section" aria-label="Advanced diagnostics">
-            <div class="panel-header"><h3>Advanced diagnostics · Sensor relationships</h3></div>
-            <details open>
-              <summary>Structural relationship graph</summary>
-              <div class="graph-controls-row">
-                <div class="range-controls" id="relationshipGraphModeControls">
-                  <button type="button" data-graph-mode="baseline">Baseline</button>
-                  <button type="button" data-graph-mode="current" class="active">Current</button>
-                  <button type="button" data-graph-mode="delta">Delta / drift</button>
-                </div>
-                <label class="subtitle">Edge threshold
-                  <input id="relationshipGraphEdgeFilter" type="range" min="0" max="0.9" step="0.05" value="0.2" />
-                </label>
-                <button id="relationshipGraphPlayBtn" type="button" class="secondary">Play</button>
-              </div>
-              <div class="graph-controls-row">
-                <input id="relationshipGraphTimeScrubber" type="range" min="0" max="0" step="1" value="0" />
-                <p id="relationshipGraphTimeLabel" class="subtitle">Replay unavailable</p>
-              </div>
-              <div id="relationshipGraphEmpty" class="empty-state hidden"></div>
-              <div class="relationship-graph-wrap">
-                <canvas id="relationshipGraphCanvas" class="relationship-graph-canvas" width="960" height="520" aria-label="Sensor relationship graph"></canvas>
-                <div id="relationshipGraphTooltip" class="dashboard-sparkline-tooltip hidden"></div>
-              </div>
-              <aside id="relationshipGraphDetail" class="geometry-details">
-                <p class="metric-k">Selected relationship detail</p>
-                <p id="relationshipGraphDetailTitle" class="metric-v">Select a node or edge.</p>
-                <p id="relationshipGraphDetailBody" class="subtitle">Hover and click the graph to inspect local structure, risk contribution, and drift.</p>
-              </aside>
-            </details>
+          <section id="eventPanel" class="panel operator-event-panel hidden" aria-label="Intervention event view">
+            <p id="eventHeadline" class="operator-event-headline">INTERVENE ZONE</p>
+            <p id="eventIssue" class="operator-event-line">Issue: --</p>
+            <p id="eventLocation" class="operator-event-line">Location: --</p>
+            <p id="eventProgression" class="operator-event-line">Progression: --</p>
           </section>
 
           <section class="panel control-panel" aria-label="Pilot operations controls">
@@ -211,8 +118,43 @@
             </div>
             <div class="quick-link-stack" aria-label="Open deeper analysis">
               <a class="button-link secondary" id="dashboardOpenAnalysisLink" href="/app/runs">Open run investigation</a>
+              <button id="viewDetailsBtn" type="button" class="secondary">View Details</button>
             </div>
           </section>
+
+          <section id="detailsLayer" class="panel operator-details-layer hidden" aria-label="Engineer details layer">
+            <div class="panel-header"><h3>Engineering detail layer</h3></div>
+            <div class="snapshot-grid" role="list">
+              <article class="snapshot-item" role="listitem"><p>Trend</p><strong id="metricTrend">-</strong></article>
+              <article class="snapshot-item" role="listitem"><p>Phase</p><strong id="metricPhaseBadge">-</strong></article>
+              <article class="snapshot-item" role="listitem"><p>Risk</p><strong id="metricRiskBadge">-</strong></article>
+              <article class="snapshot-item" role="listitem"><p>Confidence</p><strong id="metricStateConfidence">--%</strong></article>
+            </div>
+            <div class="operator-details-legacy-grid">
+              <article class="insight-tile" id="dashboardAlertTile">
+                <p class="insight-tile-label">Current system state</p>
+                <p id="snapshotState" class="insight-tile-sub">Unknown</p>
+                <p class="insight-tile-label">Latest operator message</p>
+                <p id="snapshotRecommendation" class="insight-tile-sub">No open alerts for this run.</p>
+              </article>
+              <article class="insight-tile">
+                <p class="insight-tile-label">Historical timeline</p>
+                <p id="snapshotTrend" class="insight-tile-sub">UNKNOWN</p>
+                <p id="dashboardHealthCaption" class="dashboard-last-updated">No telemetry timestamp yet.</p>
+              </article>
+            </div>
+            <article id="riskExplainPanel" class="insight-tile">
+              <p id="riskExplainTitle" class="insight-tile-label">Deep system explanation</p>
+              <p id="riskExplainBody" class="insight-tile-sub">Explanation appears once telemetry is available.</p>
+            </article>
+            <section class="operator-graph-detail" aria-label="Structural visualization">
+              <div class="panel-header"><h3>Structural visualization</h3></div>
+              <div class="relationship-graph-wrap">
+                <canvas id="relationshipGraphCanvas" class="relationship-graph-canvas" width="960" height="520" aria-label="Sensor relationship graph"></canvas>
+              </div>
+            </section>
+          </section>
+
         </section>
 
         <section id="page-runs" class="page hidden">
