@@ -109,21 +109,18 @@
             <p id="eventProgression" class="operator-event-line">Progression: --</p>
           </section>
 
-          <section class="panel control-panel" aria-label="Pilot operations controls">
-            <div class="panel-header"><h3>Operator actions</h3></div>
-            <div class="control-stack" role="group" aria-label="Operational actions">
-              <button id="loadGrowOpDemoBtn" type="button" class="primary primary-pilot-btn">Load grow op demo</button>
-              <a id="primaryPilotActionBtn" href="/upload" class="button-link secondary primary-pilot-btn">Upload telemetry</a>
-              <button id="refreshBtn" type="button" class="secondary control-secondary-btn">Refresh status</button>
-            </div>
-            <div class="quick-link-stack" aria-label="Open deeper analysis">
-              <a class="button-link secondary" id="dashboardOpenAnalysisLink" href="/app/runs">Open run investigation</a>
-              <button id="viewDetailsBtn" type="button" class="secondary">View Details</button>
-            </div>
+          <section class="operator-details-toggle-row" aria-label="Details control">
+            <button id="viewDetailsBtn" type="button" class="secondary operator-details-toggle-btn">View Details</button>
           </section>
 
           <section id="detailsLayer" class="panel operator-details-layer hidden" aria-label="Engineer details layer">
             <div class="panel-header"><h3>Engineering detail layer</h3></div>
+            <div class="control-stack" role="group" aria-label="Operational actions">
+              <button id="loadGrowOpDemoBtn" type="button" class="primary primary-pilot-btn">Load grow op demo</button>
+              <a id="primaryPilotActionBtn" href="/upload" class="button-link secondary primary-pilot-btn">Upload telemetry</a>
+              <button id="refreshBtn" type="button" class="secondary control-secondary-btn">Refresh status</button>
+              <a class="button-link secondary" id="dashboardOpenAnalysisLink" href="/app/runs">Open run investigation</a>
+            </div>
             <div class="snapshot-grid" role="list">
               <article class="snapshot-item" role="listitem"><p>Trend</p><strong id="metricTrend">-</strong></article>
               <article class="snapshot-item" role="listitem"><p>Phase</p><strong id="metricPhaseBadge">-</strong></article>

@@ -5892,6 +5892,16 @@ details > summary:hover {
   border-color: #34597e;
 }
 
+.operator-details-toggle-row {
+  display: flex;
+  justify-content: center;
+  margin-top: -2px;
+}
+
+.operator-details-toggle-btn {
+  min-width: 180px;
+}
+
 .operator-details-legacy-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));

@@ -248,6 +248,13 @@ function zoneToneFromRisk(value) {
   return "normal";
 }
 
+function normalizeProgression(value) {
+  const text = String(value || "").toLowerCase();
+  if (text.includes("spread")) return "spreading";
+  if (text.includes("stable") || text.includes("flat")) return "stable";
+  return "increasing";
+}
+
 function titleCaseFromSnake(value) {
   return String(value || "")
     .replace(/[_-]+/g, " ")
@@ -302,10 +309,11 @@ function renderCommandLayer(latest, zones) {
   const eventLocation = qs("#eventLocation");
   const eventProgression = qs("#eventProgression");
   const topZone = zones.find((z) => z.risk === "HIGH") || zones.find((z) => z.risk === "MEDIUM") || zones[0] || { name: "ZONE", risk: normalizeRiskLevel(latest?.risk_level) };
-  const command = commandStateFromRisk(topZone.risk);
+  const smoothedTopTone = applySmoothedTone("__system__", zoneToneFromRisk(topZone.risk));
+  const command = commandStateFromRisk(smoothedTopTone === "intervene" ? "HIGH" : (smoothedTopTone === "watch" ? "MEDIUM" : "LOW"));
   if (commandEl) {
     commandEl.textContent = command === "SYSTEM NORMAL" ? "SYSTEM NORMAL" : `${command} ${topZone.name.toUpperCase()}`;
-    commandEl.setAttribute("data-tone", zoneToneFromRisk(topZone.risk));
+    commandEl.setAttribute("data-tone", smoothedTopTone);
   }
   if (eventPanel) {
     const showEvent = command === "INTERVENE";
@@ -314,7 +322,7 @@ function renderCommandLayer(latest, zones) {
       if (eventHeadline) eventHeadline.textContent = `INTERVENE ${topZone.name.toUpperCase()}`;
       if (eventIssue) eventIssue.textContent = `Issue: ${String(latest?.phase || latest?.state || "Critical shift").slice(0, 48)}`;
       if (eventLocation) eventLocation.textContent = `Location: ${topZone.name}`;
-      if (eventProgression) eventProgression.textContent = `Progression: ${String(latest?.trend || "increasing").toLowerCase()}`;
+      if (eventProgression) eventProgression.textContent = `Progression: ${normalizeProgression(latest?.trend)}`;
     }
   }
 }
@@ -374,7 +382,8 @@ async function loadDashboard() {
     state.dashboardCurrentAlertStatus = latest?.alert_status || null;
 
     const zonesResponse = await fetchJson(apiUrl("/zones", tenantScopeParams())).catch(() => []);
-    const zoneRows = Array.isArray(zonesResponse) ? zonesResponse : [];
+    const roomResponse = await fetchJson(apiUrl("/rooms", tenantScopeParams())).catch(() => []);
+    const zoneRows = Array.isArray(zonesResponse) && zonesResponse.length ? zonesResponse : (Array.isArray(roomResponse) ? roomResponse : []);
     const fallbackZones = zoneRows.length
       ? zoneRows
       : (state.dashboardRecent || []).slice(0, 9).map((row, index) => ({
@@ -384,7 +393,7 @@ async function loadDashboard() {
     const zones = fallbackZones.map((row, index) => ({
       name: resolveZoneName(row, index),
       risk: resolveZoneRisk(row, latest?.risk_level),
-    }));
+    })).sort((a, b) => riskRankNumber(b.risk) - riskRankNumber(a.risk) || a.name.localeCompare(b.name));
     renderZoneGrid(zones);
     renderCommandLayer(latest, zones);
 
