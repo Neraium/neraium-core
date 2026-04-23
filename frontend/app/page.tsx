@@ -4,7 +4,7 @@ import { TeslaAutopilotInterface } from '@/components/TeslaAutopilotInterface'
 import { useLiveSimulation } from '@/lib/simulation'
 
 export default function Home() {
-  const { live, isPlaying, setIsPlaying, stepScenario } = useLiveSimulation()
+  const { live, adaptedGrowState, isPlaying, setIsPlaying, stepScenario } = useLiveSimulation()
 
   const systemData = {
     drift: live.structuralDrift,
@@ -37,6 +37,9 @@ export default function Home() {
       rooms={rooms}
       intelligence={intelligence}
       onStepScenario={stepScenario}
+      operatorZones={adaptedGrowState?.zones}
+      activeEvents={adaptedGrowState?.activeEvents}
+      lastChangedAt={adaptedGrowState?.lastChangedAt ?? null}
     />
   )
 }

@@ -14,6 +14,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { DecisionUIState, Severity, DegradationStage, Trajectory } from '@/lib/decisionToUI'
 import { DEMO_SCENARIOS } from '@/lib/demoScenarios'
+import { GrowScenarioAdapter, AdaptedGrowState } from '@/lib/growScenarioAdapter'
 
 const SIMULATION_EPOCH_MS = Date.UTC(2026, 0, 1, 8, 30, 0)
 
@@ -390,6 +391,7 @@ export function useLiveSimulation() {
   const [live, setLive] = useState<LiveSystem>(() =>
     simulateTick(0, 0, 0, null)
   )
+  const [adaptedGrowState, setAdaptedGrowState] = useState<AdaptedGrowState | null>(null)
   const [isPlaying, setIsPlaying] = useState(true)
   const [selectedRoomId, setSelectedRoomId] = useState<string | null>(null)
 
@@ -399,7 +401,12 @@ export function useLiveSimulation() {
     simTime: 0,
     lastTick: 0,
     prevRooms: null as LiveRoom[] | null,
+    // Current playback speed factor from adapter (updated each tick)
+    speedFactor: 0.72,
   })
+
+  // Single adapter instance — persists across ticks to maintain prev-state tracking
+  const adapterRef = useRef(new GrowScenarioAdapter())
 
   useEffect(() => {
     let raf: number
@@ -407,8 +414,11 @@ export function useLiveSimulation() {
       const s = simRef.current
       if (isPlaying) {
         const dt = s.lastTick ? (now - s.lastTick) / 1000 : 0.1
-        s.simTime += dt * 8 // 8x speed: 1 real second = 8 sim minutes
-        s.scenarioProgress += dt * 0.08
+
+        // Pacing: base rate 0.08/s scaled by the adapter's speed factor.
+        // speedFactor < 1 = slower advance = more dwell time.
+        s.simTime          += dt * 8
+        s.scenarioProgress += dt * 0.08 * s.speedFactor
 
         if (s.scenarioProgress >= 1) {
           s.scenarioProgress = 0
@@ -417,9 +427,15 @@ export function useLiveSimulation() {
       }
       s.lastTick = now
 
-      const next = simulateTick(s.scenarioIdx, s.scenarioProgress, s.simTime, s.prevRooms)
-      s.prevRooms = next.rooms
+      const next    = simulateTick(s.scenarioIdx, s.scenarioProgress, s.simTime, s.prevRooms)
+      const adapted = adapterRef.current.adapt(next)
+
+      // Carry speed factor forward into next tick
+      s.speedFactor = adapted.playbackSpeedFactor
+      s.prevRooms   = next.rooms
+
       setLive(next)
+      setAdaptedGrowState(adapted)
 
       raf = requestAnimationFrame(loop)
     }
@@ -429,15 +445,20 @@ export function useLiveSimulation() {
 
   const stepScenario = useCallback((delta: number) => {
     const s = simRef.current
-    s.scenarioIdx = (s.scenarioIdx + delta + DEMO_SCENARIOS.length) % DEMO_SCENARIOS.length
+    s.scenarioIdx      = (s.scenarioIdx + delta + DEMO_SCENARIOS.length) % DEMO_SCENARIOS.length
     s.scenarioProgress = 0
-    const next = simulateTick(s.scenarioIdx, 0, s.simTime, s.prevRooms)
-    s.prevRooms = next.rooms
+    adapterRef.current.reset()
+    const next    = simulateTick(s.scenarioIdx, 0, s.simTime, s.prevRooms)
+    const adapted = adapterRef.current.adapt(next)
+    s.speedFactor = adapted.playbackSpeedFactor
+    s.prevRooms   = next.rooms
     setLive(next)
+    setAdaptedGrowState(adapted)
   }, [])
 
   return {
     live,
+    adaptedGrowState,
     isPlaying,
     setIsPlaying,
     selectedRoomId,

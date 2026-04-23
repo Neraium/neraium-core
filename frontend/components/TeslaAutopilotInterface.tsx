@@ -9,6 +9,7 @@ import { computeConsequenceState } from '@/lib/decisionGravity'
 import { computeDiagnosticLegibility } from '@/lib/diagnosticLegibility'
 import { computeOutcomeConfidence } from '@/lib/outcomeConfidence'
 import { evaluateActionDecision, RankedAction, ActionDecisionResult } from '@/lib/actionEvaluation'
+import { ZoneAdaptedState, OperatorEventEntry, ZoneOperatorStatus } from '@/lib/growScenarioAdapter'
 
 interface SystemData {
   drift: number
@@ -41,6 +42,9 @@ interface TeslaAutopilotInterfaceProps {
   rooms?: RoomStatus[]
   intelligence?: IntelligenceData
   onStepScenario?: (delta: number) => void
+  operatorZones?: ZoneAdaptedState[]
+  activeEvents?: OperatorEventEntry[]
+  lastChangedAt?: string | null
 }
 
 const getStateColor = (phase: string): string => {
@@ -55,6 +59,23 @@ const getStateColor = (phase: string): string => {
 
 const getRoomStatusColor = (status: 'optimal' | 'warning' | 'critical'): string => {
   return status === 'critical' ? '#ef4444' : status === 'warning' ? '#eab308' : '#22c55e'
+}
+
+const getOperatorStatusColor = (status: ZoneOperatorStatus): string => {
+  if (status === 'INTERVENE') return '#ef4444'
+  if (status === 'WATCH')     return '#eab308'
+  return '#22c55e'
+}
+
+const getOperatorStatusLabel = (status: ZoneOperatorStatus): string => {
+  if (status === 'INTERVENE') return 'INTERVENE'
+  if (status === 'WATCH')     return 'WATCH'
+  return 'NORMAL'
+}
+
+function formatLastChanged(isoStr: string): string {
+  const d = new Date(isoStr)
+  return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })
 }
 
 type OperationalState =
@@ -155,6 +176,9 @@ export function TeslaAutopilotInterface({
   rooms,
   intelligence,
   onStepScenario,
+  operatorZones,
+  activeEvents,
+  lastChangedAt,
 }: TeslaAutopilotInterfaceProps) {
   const [isPlaying, setIsPlaying] = useState(false)
   const [speed, setSpeed] = useState(1)
@@ -669,49 +693,123 @@ export function TeslaAutopilotInterface({
               overflowY: 'auto',
             }}
           >
-            {/* Zone status */}
-            {rooms && rooms.length > 0 && (
+            {/* Zone status — prefer operator-adapted states when available */}
+            {(operatorZones ?? rooms) && (
               <div>
-                <div style={{ fontSize: '10px', color: '#334155', letterSpacing: '1px', textTransform: 'uppercase', fontWeight: 700, marginBottom: '10px' }}>
-                  Zone Status
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '10px' }}>
+                  <div style={{ fontSize: '10px', color: '#334155', letterSpacing: '1px', textTransform: 'uppercase', fontWeight: 700 }}>
+                    Zone Status
+                  </div>
+                  {lastChangedAt && (
+                    <div style={{ fontSize: '9px', color: '#334155', fontVariantNumeric: 'tabular-nums' }}>
+                      {formatLastChanged(lastChangedAt)}
+                    </div>
+                  )}
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                  {rooms.map(room => {
-                    const rc = getRoomStatusColor(room.status)
-                    return (
-                      <div
-                        key={room.id}
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '7px',
-                          padding: '5px 7px',
-                          borderRadius: '4px',
-                          background: `${rc}07`,
-                          border: `1px solid ${rc}1a`,
-                          transition: 'all 0.3s',
-                        }}
-                      >
-                        <motion.div
-                          animate={{
-                            background: rc,
-                            boxShadow: room.status === 'critical' ? `0 0 5px ${rc}` : 'none',
-                          }}
-                          style={{ width: '5px', height: '5px', borderRadius: '50%', flexShrink: 0 }}
-                        />
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: '11px', fontWeight: 600, color: '#64748b' }}>{room.shortName}</div>
-                          <div style={{ fontSize: '10px', color: '#334155', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            {getZoneStateLabel(room, assessment)}
+                  {operatorZones
+                    ? operatorZones.map(zone => {
+                        const rc = getOperatorStatusColor(zone.status)
+                        return (
+                          <div
+                            key={zone.id}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '7px',
+                              padding: '5px 7px',
+                              borderRadius: '4px',
+                              background: `${rc}07`,
+                              border: `1px solid ${rc}1a`,
+                              transition: 'all 0.3s',
+                            }}
+                          >
+                            <motion.div
+                              animate={{
+                                background: rc,
+                                boxShadow: zone.status === 'INTERVENE' ? `0 0 5px ${rc}` : 'none',
+                              }}
+                              style={{ width: '5px', height: '5px', borderRadius: '50%', flexShrink: 0 }}
+                            />
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontSize: '11px', fontWeight: 600, color: '#64748b' }}>{zone.shortName}</div>
+                              <div style={{ fontSize: '10px', color: '#334155', whiteSpace: 'nowrap' }}>
+                                {getOperatorStatusLabel(zone.status)}
+                              </div>
+                            </div>
+                            <div style={{ fontSize: '10px', color: rc, fontWeight: 700, fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>
+                              {Math.round(zone.driftContribution * 100)}%
+                            </div>
                           </div>
-                        </div>
-                        <div style={{ fontSize: '10px', color: rc, fontWeight: 700, fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>
-                          {Math.round(room.driftContribution * 100)}%
-                        </div>
-                      </div>
-                    )
-                  })}
+                        )
+                      })
+                    : rooms!.map(room => {
+                        const rc = getRoomStatusColor(room.status)
+                        return (
+                          <div
+                            key={room.id}
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '7px',
+                              padding: '5px 7px',
+                              borderRadius: '4px',
+                              background: `${rc}07`,
+                              border: `1px solid ${rc}1a`,
+                              transition: 'all 0.3s',
+                            }}
+                          >
+                            <motion.div
+                              animate={{
+                                background: rc,
+                                boxShadow: room.status === 'critical' ? `0 0 5px ${rc}` : 'none',
+                              }}
+                              style={{ width: '5px', height: '5px', borderRadius: '50%', flexShrink: 0 }}
+                            />
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                              <div style={{ fontSize: '11px', fontWeight: 600, color: '#64748b' }}>{room.shortName}</div>
+                              <div style={{ fontSize: '10px', color: '#334155', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                {getZoneStateLabel(room, assessment)}
+                              </div>
+                            </div>
+                            <div style={{ fontSize: '10px', color: rc, fontWeight: 700, fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>
+                              {Math.round(room.driftContribution * 100)}%
+                            </div>
+                          </div>
+                        )
+                      })}
                 </div>
+
+                {/* Event panel — active issues from adapted state */}
+                {activeEvents && activeEvents.length > 0 && (
+                  <div style={{ marginTop: '12px' }}>
+                    <div style={{ fontSize: '10px', color: '#334155', letterSpacing: '1px', textTransform: 'uppercase', fontWeight: 700, marginBottom: '7px' }}>
+                      Active Issues
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                      {activeEvents.map(ev => {
+                        const ec = getOperatorStatusColor(ev.status)
+                        return (
+                          <div
+                            key={ev.zoneId}
+                            style={{
+                              padding: '5px 8px',
+                              borderRadius: '4px',
+                              borderLeft: `2px solid ${ec}`,
+                              background: `${ec}08`,
+                            }}
+                          >
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '2px' }}>
+                              <span style={{ fontSize: '10px', fontWeight: 700, color: ec }}>{ev.zoneName}</span>
+                              <span style={{ fontSize: '9px', color: '#334155', textTransform: 'uppercase', letterSpacing: '0.5px' }}>{ev.progression}</span>
+                            </div>
+                            <div style={{ fontSize: '10px', color: '#64748b' }}>{ev.issue}</div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
