@@ -206,7 +206,7 @@ def build_ingest_router(
                 "request_id": correlation_id,
                 "ingest_path": ingest_path,
                 "customer_id": resolved_customer,
-                "filename": "",
+                "upload_filename": "",
                 "stage": "preview_received",
             },
         )
@@ -306,13 +306,6 @@ def build_ingest_router(
         filename = file.filename or "upload.csv"
         mapping_value = mapping
 
-        try:
-            upload_bytes = await file.read()
-        finally:
-            await file.close()
-
-        if not upload_bytes:
-            return JSONResponse(status_code=400, content={"detail": "Missing uploaded CSV file."})
         if not filename.lower().endswith(".csv"):
             return JSONResponse(status_code=400, content={"detail": "Upload must be a .csv file."})
         resolved_customer = deps.resolve_customer_id(customer_id)
@@ -367,8 +360,9 @@ def build_ingest_router(
             deps.ingest_jobs[job_id] = initial_job
         deps.persist_operational_state(f"ingest_job:{job_id}", initial_job, customer_id=resolved_customer, run_id=resolved_run)
         try:
-            Path(temp_path).write_bytes(upload_bytes)
-            bytes_received = len(upload_bytes)
+            bytes_received = await deps.stream_upload_to_tempfile(file, Path(temp_path), job_id, max_bytes=deps.request_body_limit)
+            if bytes_received <= 0:
+                raise ValueError("Missing uploaded CSV file.")
         except Exception as exc:
             Path(temp_path).unlink(missing_ok=True)
             deps.update_ingest_job(job_id, status="failed", message=f"Upload failed: {exc}")
@@ -376,6 +370,12 @@ def build_ingest_router(
                 "ingest_csv_upload_stream_failed",
                 extra={"correlation_id": correlation_id, "job_id": job_id, "run_id": resolved_run, "customer_id": resolved_customer},
             )
+            if isinstance(exc, ValueError) and "Request body too large" in str(exc):
+                max_mb = deps.request_body_limit / (1024 * 1024)
+                raise HTTPException(
+                    status_code=status.HTTP_413_CONTENT_TOO_LARGE,
+                    detail=f"Request body too large (max {max_mb:.1f}MB).",
+                ) from exc
             raise HTTPException(
                 status_code=400,
                 detail={

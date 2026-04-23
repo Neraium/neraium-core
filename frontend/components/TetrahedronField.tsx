@@ -33,6 +33,7 @@ interface TetrahedronFieldProps {
   escalationLevel: number
   hasThresholdCrossed: boolean
   isApproachingFailure: boolean
+  decisionRationale?: string | null
 }
 
 interface LabelState {
@@ -54,6 +55,7 @@ export function TetrahedronField({
   phase,
   escalationLevel,
   isApproachingFailure,
+  decisionRationale,
 }: TetrahedronFieldProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null)
@@ -65,7 +67,9 @@ export function TetrahedronField({
   const rotYRef = useRef(0)
   const trailPointsRef = useRef<THREE.Vector3[]>([])
   const trailLineRef = useRef<THREE.Line | null>(null)
+  const trailColorsRef = useRef<Float32Array | null>(null)
   const centerDotRef = useRef<THREE.Mesh | null>(null)
+  const directionArrowRef = useRef<THREE.Mesh | null>(null)
   const vMeshesRef = useRef<THREE.Mesh[]>([])
   const eLinesRef = useRef<THREE.Line[]>([])
   const [labels, setLabels] = useState<LabelState[]>([])
@@ -128,10 +132,21 @@ export function TetrahedronField({
     const trailBuf = new Float32Array(TRAIL_MAX * 3)
     const trailGeo = new THREE.BufferGeometry()
     trailGeo.setAttribute('position', new THREE.BufferAttribute(trailBuf, 3))
-    const trailMat = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.25 })
+    const trailColors = new Float32Array(TRAIL_MAX * 3)
+    trailColorsRef.current = trailColors
+    trailGeo.setAttribute('color', new THREE.BufferAttribute(trailColors, 3))
+    const trailMat = new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.55 })
     const trailLine = new THREE.Line(trailGeo, trailMat)
     scene.add(trailLine)
     trailLineRef.current = trailLine
+
+    // Direction arrow (subtle): points along latest movement vector.
+    const arrowGeo = new THREE.ConeGeometry(0.04, 0.12, 10)
+    arrowGeo.rotateX(Math.PI / 2) // make cone point along +Z
+    const arrowMat = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.35 })
+    const arrow = new THREE.Mesh(arrowGeo, arrowMat)
+    scene.add(arrow)
+    directionArrowRef.current = arrow
 
     const resize = () => {
       if (!container || !cameraRef.current || !rendererRef.current) return
@@ -206,9 +221,38 @@ export function TetrahedronField({
       if (trailLineRef.current) {
         const trail = trailPointsRef.current
         const arr = trailLineRef.current.geometry.attributes.position.array as Float32Array
-        trail.forEach((p, i) => { arr[i * 3] = p.x; arr[i * 3 + 1] = p.y; arr[i * 3 + 2] = p.z })
+        const carr = trailLineRef.current.geometry.attributes.color.array as Float32Array
+        const n = Math.max(1, trail.length)
+        trail.forEach((p, i) => {
+          arr[i * 3] = p.x; arr[i * 3 + 1] = p.y; arr[i * 3 + 2] = p.z
+          // Fade tail: oldest is dim, newest is bright.
+          const t = n <= 1 ? 1 : i / (n - 1)
+          const k = 0.14 + 0.86 * t
+          carr[i * 3] = k
+          carr[i * 3 + 1] = k
+          carr[i * 3 + 2] = k
+        })
         trailLineRef.current.geometry.attributes.position.needsUpdate = true
+        trailLineRef.current.geometry.attributes.color.needsUpdate = true
         trailLineRef.current.geometry.setDrawRange(0, trail.length)
+      }
+
+      // Direction arrow: align +Z to movement vector.
+      if (directionArrowRef.current) {
+        const trail = trailPointsRef.current
+        if (trail.length >= 2) {
+          const last = trail[trail.length - 1]
+          const prev = trail[trail.length - 2]
+          const dir = last.clone().sub(prev)
+          if (dir.lengthSq() > 1e-8) {
+            dir.normalize()
+            directionArrowRef.current.position.copy(last)
+            const from = new THREE.Vector3(0, 0, 1)
+            const q = new THREE.Quaternion().setFromUnitVectors(from, dir)
+            directionArrowRef.current.quaternion.copy(q)
+            ;(directionArrowRef.current.material as THREE.MeshBasicMaterial).opacity = 0.22 + 0.18 * Math.min(1, Math.max(0, (scores[0] + scores[1] + scores[2] + scores[3]) / 4))
+          }
+        }
       }
 
       renderer.render(scene, camera)
@@ -275,6 +319,62 @@ export function TetrahedronField({
           transition: 'background 1.8s ease',
         }}
       />
+
+      {/* Axis scale labels */}
+      <div style={{
+        position: 'absolute',
+        bottom: 10,
+        left: 10,
+        zIndex: 3,
+        pointerEvents: 'none',
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 4,
+      }}>
+        <div style={{ fontSize: 9, color: '#64748b', letterSpacing: '0.6px', textTransform: 'uppercase', fontWeight: 800 }}>
+          Scale: 0–100
+        </div>
+        <div style={{ fontSize: 9, color: '#475569', fontWeight: 700 }}>
+          Center = system centroid
+        </div>
+      </div>
+
+      {/* Decision rationale overlay */}
+      {decisionRationale && (
+        <div style={{
+          position: 'absolute',
+          bottom: 10,
+          right: 10,
+          zIndex: 3,
+          pointerEvents: 'none',
+          maxWidth: 220,
+          background: 'rgba(5, 6, 7, 0.72)',
+          border: '1px solid rgba(255,255,255,0.06)',
+          borderRadius: 10,
+          padding: '10px 12px',
+          backdropFilter: 'blur(6px)',
+        }}>
+          <div style={{
+            fontSize: 9,
+            color: '#94a3b8',
+            letterSpacing: '0.8px',
+            textTransform: 'uppercase',
+            fontWeight: 950,
+            marginBottom: 4,
+          }}>
+            Why this shape
+          </div>
+          <div style={{
+            fontSize: 11,
+            color: '#e2e8f0',
+            lineHeight: 1.45,
+            fontWeight: 600,
+          }}>
+            {decisionRationale}
+          </div>
+        </div>
+      )}
+
       {labels.map((lbl, i) => (
         <div
           key={i}

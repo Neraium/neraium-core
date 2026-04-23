@@ -89,18 +89,27 @@ export function getEscalationNarrative(
 /**
  * Get operator focus (suggested action) based on system state.
  * Only shown during instability+.
+ * NOTE: This is now aligned with the primary action from evaluateActionDecision
+ * to prevent contradictory guidance.
  */
 export function getOperatorFocus(
   phase: string,
   drift: number,
   stability: number,
-  coherence: number
+  coherence: number,
+  primaryActionLabel?: string | null
 ): string | null {
   if (phase === 'Stable' || phase === 'Drift forming') {
     return null
   }
 
-  // Determine which subsystem is most stressed
+  // If a primary action is provided from the decision engine, use it directly
+  // to ensure coherence across the UI
+  if (primaryActionLabel) {
+    return primaryActionLabel
+  }
+
+  // Fallback: derive from state
   if (drift > 0.6 && coherence < 0.5) {
     return 'Inspect coupling nodes'
   }
@@ -153,7 +162,8 @@ export function computeConsequenceState(
   drift: number,
   stability: number,
   coherence: number,
-  previousPhase: string
+  previousPhase: string,
+  primaryActionLabel?: string | null
 ): ConsequenceState {
   const timeToImpact = calculateTimeToImpact(drift, stability, phase, phaseProgress)
   const thresholdCrossed = detectThresholdCross(previousPhase, phase)
@@ -165,7 +175,7 @@ export function computeConsequenceState(
     timeToImpactLabel: formatTimeToImpact(timeToImpact),
     hasThresholdCrossed: thresholdCrossed,
     thresholdIntensity: thresholdCrossed ? Math.min(1, phaseProgress * 4) : 0,
-    operatorFocus: getOperatorFocus(phase, drift, stability, coherence),
+    operatorFocus: getOperatorFocus(phase, drift, stability, coherence, primaryActionLabel),
     isApproachingFailure,
     escalationLevel,
   }

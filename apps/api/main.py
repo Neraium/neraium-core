@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import math
 import os
+import tempfile
 import time
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeoutError
 from datetime import datetime, timezone
@@ -42,6 +43,9 @@ from .schemas.common import (
     ActionResponse,
     ClientErrorReport,
     CurrentStateEnvelope,
+    DecisionContractV2Envelope,
+    DecisionContractV2HistoryEnvelope,
+    DecisionContractV2LatestEnvelope,
     DecisionEnvelope,
     EventsEnvelope,
     ExplanationEnvelope,
@@ -49,6 +53,7 @@ from .schemas.common import (
     GeometryEnvelope,
     HealthResponse,
     HistoryEnvelope,
+    OperatorActionEnvelope,
     RecommendationEnvelope,
     ResultEnvelope,
     ResultsEnvelope,
@@ -66,15 +71,11 @@ from .routers.health import build_health_router
 from .routers.alerts import build_alerts_router
 from .routers.geometry import build_geometry_router
 from .routers.ingest import build_ingest_router
-from .routers.demo import build_demo_router
-from .routers.demo_playback import build_demo_playback_router
 from .routers.integrations import build_integrations_router
 from .routers.onboarding import build_onboarding_router
-from .routers.ui_replay import router as ui_replay_router
 DEFAULT_MAX_REQUEST_BODY_BYTES = request_body_limit_bytes()
 
 from .routers.dependencies import (
-    DemoRouterDependencies,
     IngestRouterDependencies,
     IntegrationsRouterDependencies,
     OnboardingRouterDependencies,
@@ -92,7 +93,6 @@ from .services.export_utils import build_export
 from .services.state_store import RuntimeStateStore
 from .services.operational_state import OperationalStateService
 from .services.ingest_jobs import IngestJobsManager
-from .services.demo_jobs import DemoJobsManager
 from .services.pull_integrations import PullIntegrationsManager
 from .services.state_restore import OperationalStateRestoreService
 from .services.geometry import (
@@ -113,6 +113,7 @@ from neraium_core.ingestion_normalization import (
     normalize_external_batch_payload,
     normalize_external_payload,
 )
+from neraium_core.output_contract import build_decision_contract_v2
 from neraium_core.runtime_config import RuntimeConfig
 from neraium_core.pipeline import infer_csv_mapping_stage, issue_to_dict, parse_csv_rows, validate_csv_mapping_stage
 
@@ -268,6 +269,9 @@ def create_app(
     runtime_mode = resolve_runtime_mode_from_env()
     api_key = os.getenv("NERAIUM_API_KEY")
     configured_db_path = os.getenv("NERAIUM_DB_PATH", "neraium.db")
+    # Keep test runs hermetic: do not read/write a developer's persistent DB.
+    if os.getenv("PYTEST_CURRENT_TEST") and "NERAIUM_DB_PATH" not in os.environ:
+        configured_db_path = os.path.join(tempfile.gettempdir(), "neraium_test.db")
     db_path, persistence_available = resolve_db_path(configured_db_path)
     request_body_limit = (
         int(max_request_body_bytes)
@@ -278,12 +282,13 @@ def create_app(
     _WEAK_API_KEYS = {"change-me", "changeme", "secret", "apikey", "api-key", "test", "dev", "development", "password"}
     if runtime_mode == "production":
         if not api_key:
-            logger.error(
-                "startup_api_key_missing: NERAIUM_API_KEY is not set; all protected endpoints are unauthenticated in production."
+            raise RuntimeError(
+                "Startup validation failed: NERAIUM_API_KEY is required in production mode."
             )
         elif len(api_key) < 16 or api_key.lower() in _WEAK_API_KEYS:
-            logger.warning(
-                "startup_api_key_weak: NERAIUM_API_KEY appears weak (too short or a known default); use a cryptographically random key in production."
+            raise RuntimeError(
+                "Startup validation failed: NERAIUM_API_KEY appears weak (too short or a known default). "
+                "Use a cryptographically random key (>= 16 chars) in production."
             )
 
     runtime_status = get_core_runtime_status()
@@ -500,15 +505,7 @@ def create_app(
         summarize_exception_for_logs=summarize_exception_for_logs,
         logger=logger,
     )
-    demo_manager = DemoJobsManager(
-        store=state_store,
-        service_instance=service_instance,
-        resolve_customer_id=resolve_customer_id,
-        utc_now_iso=_utc_now_iso,
-        log_structured=log_structured,
-        summarize_exception_for_logs=summarize_exception_for_logs,
-        logger=logger,
-    )
+    # Ship surface: the Tesla UI runs a local simulation and does not depend on legacy demo/replay job managers.
     pull_manager = PullIntegrationsManager(
         app=app,
         store=state_store,
@@ -609,25 +606,7 @@ def create_app(
             ),
         )
     )
-    app.include_router(
-        build_demo_router(
-            deps=DemoRouterDependencies(
-                service_instance=service_instance,
-                require_api_key=require_api_key,
-                resolve_customer_id=resolve_customer_id,
-                resolve_run_id_with_default=resolve_run_id_with_default,
-                start_demo_seed_job=demo_manager.start_demo_seed_job,
-                public_demo_job=demo_manager.public_demo_job,
-                demo_jobs=state_store.demo_jobs,
-                demo_jobs_lock=state_store.demo_jobs_lock,
-                load_greenhouse_demo_subset=demo_manager.load_greenhouse_demo_subset,
-                load_fd004_single_unit=demo_manager.load_fd004_single_unit,
-                log_structured=log_structured,
-                summarize_exception_for_logs=summarize_exception_for_logs,
-                utc_now_iso=_utc_now_iso,
-            ),
-        )
-    )
+    # Ship surface: omit legacy demo routers.
     app.include_router(
         build_integrations_router(
             deps=IntegrationsRouterDependencies(
@@ -641,9 +620,6 @@ def create_app(
             ),
         )
     )
-
-    app.include_router(build_demo_playback_router())
-    app.include_router(ui_replay_router)
 
     app.include_router(
         build_onboarding_router(
@@ -819,7 +795,7 @@ def create_app(
 
     @app.get(
         "/v2/state",
-        response_model=CurrentStateEnvelope,
+        response_model=DecisionContractV2Envelope,
         openapi_extra={
             "responses": {
                 "200": {
@@ -839,9 +815,51 @@ def create_app(
         customer_id: str | None = Query(default=None),
     ) -> dict[str, Any]:
         response = get_state(run_id=run_id, customer_id=customer_id)
-        state = dict(response.get("state") or {})
-        state.setdefault("contract_version", "decision-contract.v2")
-        return {"state": state}
+        canonical = response.get("state")
+        contract = build_decision_contract_v2(canonical if isinstance(canonical, dict) else None)
+        return {"state": contract}
+
+    @app.get("/v2/recommendation", response_model=OperatorActionEnvelope)
+    def get_recommendation_v2(
+        run_id: str | None = Query(default=None),
+        customer_id: str | None = Query(default=None),
+    ) -> dict[str, Any]:
+        response = get_state(run_id=run_id, customer_id=customer_id)
+        canonical = response.get("state")
+        contract = build_decision_contract_v2(canonical if isinstance(canonical, dict) else None) or {}
+        operator_action = contract.get("operator_action") if isinstance(contract, dict) else None
+        return {"operator_action": operator_action if isinstance(operator_action, dict) else {}}
+
+    @app.get("/v2/history", response_model=DecisionContractV2HistoryEnvelope)
+    def get_history_v2(
+        limit: int = Query(default=100, ge=1, le=1000),
+        run_id: str | None = Query(default=None),
+        customer_id: str | None = Query(default=None),
+    ) -> dict[str, Any]:
+        response = get_history(limit=limit, run_id=run_id, customer_id=customer_id)
+        canonical_history = response.get("history") if isinstance(response, dict) else None
+        out: list[dict[str, Any]] = []
+        if isinstance(canonical_history, list):
+            for row in canonical_history:
+                contract = build_decision_contract_v2(row if isinstance(row, dict) else None)
+                if isinstance(contract, dict):
+                    out.append(contract)
+        return {"count": len(out), "history": out}
+
+    @app.get("/v2/results/latest", response_model=DecisionContractV2LatestEnvelope)
+    def get_results_latest_v2(
+        run_id: str | None = Query(default=None),
+        customer_id: str | None = Query(default=None),
+    ) -> dict[str, Any]:
+        resolved_customer = resolve_customer_id(customer_id)
+        resolved_run = resolve_run_id(service_instance, run_id, customer_id=resolved_customer)
+        latest = service_instance.get_latest_result(
+            run_id=resolved_run,
+            customer_id=resolved_customer,
+            site_id=None,
+        )
+        contract = build_decision_contract_v2(latest if isinstance(latest, dict) else None)
+        return {"count": 1 if isinstance(contract, dict) else 0, "latest": contract}
 
     @app.get("/history", response_model=HistoryEnvelope)
     def get_history(

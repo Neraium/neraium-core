@@ -12,6 +12,7 @@ __pycache__/
 # Virtual environments / packaging artifacts
 # ------------------------------------------------------------
 .venv/
+.venv-ci/
 venv/
 dist/
 build/

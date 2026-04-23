@@ -94,8 +94,6 @@ def build_runtime_state_diagnostics(
         "upload_temp_dir": temp_dir,
         "upload_temp_dir_writable": writable_checker(temp_dir),
         "memory_only_state": [
-            "demo_jobs",
-            "greenhouse_demo_cache",
             "pull_integration_worker_threads",
             "service_engine_runtime_memory",
         ],

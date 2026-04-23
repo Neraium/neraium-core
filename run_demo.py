@@ -21,6 +21,7 @@ import socket
 import subprocess
 import sys
 import time
+import webbrowser
 from pathlib import Path
 from urllib import error as urlerror
 from urllib import request as urlrequest
@@ -92,6 +93,17 @@ def _probe_neraium_backend(port: int) -> bool:
         return False
 
 
+def _probe_frontend_ready(port: int) -> bool:
+    """Return True if localhost:{port} responds like the Next.js UI."""
+    url = f"http://127.0.0.1:{int(port)}/"
+    try:
+        with urlrequest.urlopen(url, timeout=0.8) as resp:
+            status = int(getattr(resp, "status", 0) or 0)
+            return 200 <= status < 500
+    except (urlerror.URLError, TimeoutError, ValueError):
+        return False
+
+
 def _find_next_free_port(start_port: int, *, host: str = "127.0.0.1", tries: int = 30) -> int:
     start = int(start_port)
     for p in range(start, start + max(1, int(tries))):
@@ -108,8 +120,10 @@ def _find_next_free_port(start_port: int, *, host: str = "127.0.0.1", tries: int
 def main() -> None:
     parser = argparse.ArgumentParser(description="Run Neraium demo (FastAPI + Next.js)")
     parser.add_argument("--backend-port", type=int, default=8000)
-    parser.add_argument("--frontend-port", type=int, default=3000)
+    # Canonical demo UI port (must not rely on legacy localhost:3000).
+    parser.add_argument("--frontend-port", type=int, default=3004)
     parser.add_argument("--backend-only", action="store_true")
+    parser.add_argument("--open", action="store_true", help="Open the demo UI in the default browser once ready.")
     args = parser.parse_args()
 
     os.chdir(REPO_ROOT)
@@ -176,6 +190,8 @@ def main() -> None:
         _ensure_frontend_dependencies()
         frontend_env = os.environ.copy()
         frontend_env["NEXT_PUBLIC_NERAIUM_API_BASE"] = f"http://localhost:{backend_port}"
+        # Backward/alternate name used by some frontend helpers.
+        frontend_env["NEXT_PUBLIC_API_URL"] = f"http://localhost:{backend_port}"
 
         npm = shutil.which("npm") or "npm"
         frontend_proc = subprocess.Popen(
@@ -187,6 +203,13 @@ def main() -> None:
         print(f"Backend:  http://localhost:{backend_port}")
         print(f"Frontend: http://localhost:{frontend_port}")
         print("Press Ctrl+C to stop.")
+
+        if bool(args.open):
+            for _ in range(80):
+                if _probe_frontend_ready(frontend_port):
+                    webbrowser.open(f"http://localhost:{frontend_port}", new=2)
+                    break
+                time.sleep(0.25)
 
         while True:
             if backend_proc is not None and backend_proc.poll() is not None:

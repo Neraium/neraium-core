@@ -229,7 +229,11 @@ def render_assistant_response(*, mode: AssistantMode, context: dict[str, Any]) -
     doctrine_lines = [
         _grounded_text(
             "Doctrine:",
-            f"status={'refused' if doctrine_eval.refused else 'allowed'} refusal_reason={doctrine_eval.refusal_reason}",
+            (
+                f"status={'refused' if doctrine_eval.refused else 'allowed'} "
+                f"refusal_reason={doctrine_eval.refusal_reason or 'none'} "
+                f"detail={_doctrine_refusal_detail(doctrine_eval.refusal_reason) if doctrine_eval.refused else 'pass'}"
+            ),
             "doctrine evaluation unavailable.",
         )
     ]

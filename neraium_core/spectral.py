@@ -88,7 +88,6 @@ def spectral_radius(matrix: ArrayLike) -> float:
     # to find the one with largest magnitude, rather than full decomposition.
     if _SCIPY_SPARSE_AVAILABLE and n > _ARPACK_MIN_N:
         try:
-            sparse_m = _sp_sparse.csr_matrix(safe)
             # Get the largest and smallest (most negative) eigenvalues
             evals_pos, _ = _top_k_eigh(safe, k=1)  # Largest eigenvalue
             evals_neg, _ = _top_k_eigh(-safe, k=1)  # Smallest (most negative, i.e., most negative of original)

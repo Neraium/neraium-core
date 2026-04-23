@@ -1,3 +1,57 @@
+Metadata-Version: 2.4
+Name: neraium-core
+Version: 0.1.0
+Summary: Read-only structural instability instrumentation engine and API
+Requires-Python: >=3.10
+Description-Content-Type: text/markdown
+Requires-Dist: click>=7.0
+Requires-Dist: fastapi>=0.110
+Requires-Dist: gradio>=4.0
+Requires-Dist: numpy>=1.24
+Requires-Dist: pandas>=2.0
+Requires-Dist: pydantic>=2
+Requires-Dist: python-multipart>=0.0.9
+Requires-Dist: starlette>=0.36
+Requires-Dist: uvicorn>=0.29
+Requires-Dist: websockets>=12
+Provides-Extra: dev
+Requires-Dist: httpx; extra == "dev"
+Requires-Dist: pytest; extra == "dev"
+Requires-Dist: ruff; extra == "dev"
+Requires-Dist: matplotlib; extra == "dev"
+Provides-Extra: plots
+Requires-Dist: matplotlib; extra == "plots"
+Provides-Extra: math
+Requires-Dist: sympy>=1.12; extra == "math"
+Requires-Dist: scipy>=1.12; extra == "math"
+Provides-Extra: math-verify
+Requires-Dist: sympy>=1.12; extra == "math-verify"
+Requires-Dist: scipy>=1.12; extra == "math-verify"
+Requires-Dist: z3-solver>=4.12; extra == "math-verify"
+Provides-Extra: math-gpu
+Requires-Dist: sympy>=1.12; extra == "math-gpu"
+Requires-Dist: scipy>=1.12; extra == "math-gpu"
+Requires-Dist: cupy-cuda12x>=12.0; extra == "math-gpu"
+Provides-Extra: math-autodiff
+Requires-Dist: sympy>=1.12; extra == "math-autodiff"
+Requires-Dist: scipy>=1.12; extra == "math-autodiff"
+Requires-Dist: jax[cpu]>=0.4; extra == "math-autodiff"
+Provides-Extra: math-mip
+Requires-Dist: sympy>=1.12; extra == "math-mip"
+Requires-Dist: scipy>=1.12; extra == "math-mip"
+Requires-Dist: pulp>=2.7; extra == "math-mip"
+Provides-Extra: math-agents
+Requires-Dist: sympy>=1.12; extra == "math-agents"
+Requires-Dist: scipy>=1.12; extra == "math-agents"
+Requires-Dist: anthropic>=0.30; extra == "math-agents"
+Provides-Extra: math-all
+Requires-Dist: sympy>=1.12; extra == "math-all"
+Requires-Dist: scipy>=1.12; extra == "math-all"
+Requires-Dist: z3-solver>=4.12; extra == "math-all"
+Requires-Dist: pulp>=2.7; extra == "math-all"
+Requires-Dist: anthropic>=0.30; extra == "math-all"
+Dynamic: requires-python
+
 # Neraium: System Intelligence (Operator Demo + Core Engine)
 
 Neraium detects **systemic structural instability** in industrial equipment by monitoring how sensor signals **relate** to each other over time, not individual sensor values.

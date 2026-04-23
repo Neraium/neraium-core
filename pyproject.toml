@@ -11,18 +11,16 @@ requires-python = ">=3.10"
 dependencies = [
   "click>=7.0",
   "fastapi>=0.110",
-  "gradio>=4.0",
   "numpy>=1.24",
   "pandas>=2.0",
   "pydantic>=2",
   "python-multipart>=0.0.9",
   "starlette>=0.36",
   "uvicorn>=0.29",
-  "websockets>=12",
 ]
 
 [project.optional-dependencies]
-dev = ["httpx", "pytest", "ruff"]
+dev = ["httpx", "pytest", "ruff", "matplotlib"]
 plots = ["matplotlib"]
 
 # Core math extensions (symbolic + numeric + optimization + probabilistic)
@@ -79,5 +77,5 @@ math-all = [
 include-package-data = true
 
 [tool.setuptools.packages.find]
-include = ["neraium_core*", "ui*"]
-exclude = ["tests*", "docs*"]
+include = ["neraium_core*"]
+exclude = ["tests*", "docs*", "archive*"]

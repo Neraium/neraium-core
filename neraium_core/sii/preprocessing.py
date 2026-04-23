@@ -141,7 +141,7 @@ def summarize_quality(report: DataQualitySummary) -> dict[str, Any]:
 
 
 def impute_column_mean(m: np.ndarray) -> np.ndarray:
-    out = np.asarray(m, dtype=float, copy=True)
+    out = np.array(m, dtype=float, copy=True)
     if out.ndim != 2:
         raise SIIValidationError("impute_column_mean expects a 2D matrix")
     if out.size == 0:

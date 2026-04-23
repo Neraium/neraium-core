@@ -229,6 +229,29 @@ class InterventionIntelligenceEngine:
         drift_warning = bool(context.get("drift_warning", False))
         mismatch = float(context.get("transfer_mismatch", 0.0))
         reliability = float(context.get("calibration_reliability", 1.0))
+
+        # Cold-start gating: when support is very low, avoid aggressive actions.
+        # This keeps the operator surface stable while the system builds evidence.
+        if support <= self._uncertainty_thresholds["support"] and not drift_warning:
+            bounded_conf = min(float(ranked.get("confidence", 0.0)), 0.25)
+            ranked["confidence"] = round(bounded_conf, 4)
+            ranked["recommendation_confidence"] = round(bounded_conf, 4)
+            ranked["fallback_triggered"] = True
+            ranked["fallback_reasons"] = sorted(
+                set([*list(ranked.get("fallback_reasons") or []), "insufficient_support"])
+            )
+            ranked["recommended_posture"] = "bounded_advisory"
+            ranked["no_intervention_recommended"] = True
+            ranked["best_intervention"] = {
+                "name": "insufficient_support_monitor",
+                "intervention_type": "monitor",
+                "intervention_target": "system",
+                "confidence": round(bounded_conf, 4),
+                "rank_score": round(bounded_conf, 4),
+                "rationale": "Insufficient corroborating support to justify intervention; continue monitoring to build evidence.",
+            }
+            return ranked
+
         scores = [float(r.get("confidence", 0.0)) for r in list(ranked.get("ranked_interventions") or [])[:2]]
         ambiguity = abs(scores[0] - scores[1]) if len(scores) >= 2 else 1.0
         reasons: list[str] = []

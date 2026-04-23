@@ -42,6 +42,10 @@ export interface ActionDecisionResult {
     timingSensitivity: string
     score: number
     stabilizationBenefit: number
+    rationale?: string
+    urgency?: string
+    expectedOutcome?: string
+    whatIsNext?: string
   }
   alternatives: {
     label: string
@@ -49,10 +53,12 @@ export interface ActionDecisionResult {
     outcome: ProjectedOutcome
     timingSensitivity: string
     score: number
+    confidenceDelta: number
   }[]
   noActionConsequence: string | null
   recommendationStability: 'high' | 'moderate' | 'unstable'
   decisionSummary: string
+  decisionRationale: string
 }
 
 // Action pool by failure mode
@@ -160,6 +166,111 @@ const actionCandidatesByFailureMode: Record<string, ActionCandidate[]> = {
 }
 
 /**
+ * Normalize action labels to detect duplicates.
+ */
+function normalizeActionLabel(label: string): string {
+  return label
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .replace(/s$/, '')
+    .trim()
+}
+
+/**
+ * Check if two actions are semantically conflicting.
+ * Aggressive intervention vs conservative monitoring is a conflict.
+ */
+function areActionsConflicting(a: string, b: string): boolean {
+  const aggressive = ['isolate', 'reduce coupling', 'reduce throughput', 'reduce system load', 'initiate controlled recovery', 'reinitiate synchronization']
+  const conservative = ['hold current state', 'increase monitoring', 'reduce sensor interval', 'check structural damping']
+
+  const aLower = a.toLowerCase()
+  const bLower = b.toLowerCase()
+
+  const aAggressive = aggressive.some(k => aLower.includes(k))
+  const bAggressive = aggressive.some(k => bLower.includes(k))
+  const aConservative = conservative.some(k => aLower.includes(k))
+  const bConservative = conservative.some(k => bLower.includes(k))
+
+  return (aAggressive && bConservative) || (aConservative && bAggressive)
+}
+
+/**
+ * Deduplicate and filter alternatives to ensure coherent guidance.
+ */
+function arbitrateAlternatives(
+  primaryLabel: string,
+  rankedActions: RankedAction[],
+  maxAlternatives: number = 2
+): RankedAction[] {
+  const seen = new Set<string>()
+  seen.add(normalizeActionLabel(primaryLabel))
+
+  const result: RankedAction[] = []
+  for (const action of rankedActions) {
+    const normalized = normalizeActionLabel(action.label)
+    if (seen.has(normalized)) continue
+    if (areActionsConflicting(primaryLabel, action.label)) continue
+
+    seen.add(normalized)
+    result.push(action)
+
+    if (result.length >= maxAlternatives) break
+  }
+
+  return result
+}
+
+/**
+ * Generate a rationale explaining WHY the primary action was chosen.
+ */
+function buildDecisionRationale(
+  primaryLabel: string,
+  failureMode: string,
+  phase: string,
+  drift: number,
+  stability: number,
+  coherence: number
+): string {
+  const parts: string[] = []
+
+  if (phase === 'Critical') {
+    parts.push('Critical phase demands immediate intervention.')
+  } else if (phase === 'Instability forming') {
+    parts.push('Instability is forming and intervention is advisable.')
+  } else if (phase === 'Drift forming') {
+    parts.push('Early drift detected; proactive response prevents escalation.')
+  } else {
+    parts.push('System is stable; minimal intervention preferred.')
+  }
+
+  if (failureMode === 'drift-driven' || failureMode === 'drift-dominant') {
+    parts.push(`Structural drift at ${Math.round(drift * 100)}% requires redistribution of stress.`)
+  } else if (failureMode === 'stability-critical') {
+    parts.push(`Stability collapsed to ${Math.round(stability * 100)}%; immediate load reduction prevents cascade.`)
+  } else if (failureMode === 'coherence-loss') {
+    parts.push(`Coherence degraded to ${Math.round(coherence * 100)}%; subsystem isolation prevents spread.`)
+  } else {
+    parts.push(`Multi-mode stress demands balanced system-wide response.`)
+  }
+
+  const labelLower = primaryLabel.toLowerCase()
+  if (labelLower.includes('isolate')) {
+    parts.push('Isolation contains the failure to affected zones.')
+  } else if (labelLower.includes('redistribute')) {
+    parts.push('Redistribution balances load across healthy subsystems.')
+  } else if (labelLower.includes('reduce') && labelLower.includes('load')) {
+    parts.push('Load reduction lowers overall system stress.')
+  } else if (labelLower.includes('hold') || labelLower.includes('monitor')) {
+    parts.push('Conservative approach avoids unnecessary disruption.')
+  } else if (labelLower.includes('recovery')) {
+    parts.push('Recovery mode initiates controlled restoration sequence.')
+  }
+
+  return parts.join(' ')
+}
+
+/**
  * Generate candidate actions based on failure mode and current state.
  */
 export function generateCandidateActions(
@@ -170,7 +281,8 @@ export function generateCandidateActions(
 
   // If in Stable or Drift forming, include conservative options
   if (phase === 'Stable' || phase === 'Drift forming') {
-    return candidates.filter(a => a.aggressiveness < 0.6)
+    const conservative = candidates.filter(a => a.aggressiveness < 0.6)
+    return conservative.length > 0 ? conservative : candidates
   }
 
   // In Instability+, include more aggressive options
@@ -577,6 +689,26 @@ export function computeTimingSensitivity(
   return 'Monitor for changes'
 }
 
+const FALLBACK_ACTION_DECISION: ActionDecisionResult = {
+  primaryAction: {
+    label: 'Hold current state and monitor',
+    confidence: 'low',
+    outcome: { primary: 'Continue monitoring' },
+    timingSensitivity: 'Monitor for changes',
+    score: 0,
+    stabilizationBenefit: 0,
+    rationale: 'No dominant intervention candidate available from current system state.',
+    urgency: 'low',
+    expectedOutcome: 'Continue monitoring for clearer structural direction.',
+    whatIsNext: 'Await stronger signal or broader propagation pattern.',
+  },
+  alternatives: [],
+  noActionConsequence: 'No additional system guidance available',
+  recommendationStability: 'moderate',
+  decisionSummary: 'Recommendation unavailable: continuing monitoring',
+  decisionRationale: 'Insufficient data for decisive action.',
+}
+
 /**
  * Track recommendation stability over rolling action history.
  * Returns 'high', 'moderate', or 'unstable'.
@@ -586,12 +718,18 @@ export function computeRecommendationStability(
   previousRankedActions: RankedAction[],
   hysteresisThreshold: number = 0.15 // 15% margin required to switch
 ): 'high' | 'moderate' | 'unstable' {
+  if (!currentTopAction) {
+    return 'unstable'
+  }
   // Not enough history
   if (previousRankedActions.length === 0) {
     return 'moderate'
   }
 
   const previousTopAction = previousRankedActions[0]
+  if (!previousTopAction || !previousTopAction.label) {
+    return 'moderate'
+  }
 
   // Same action recommended
   if (currentTopAction === previousTopAction.label) {
@@ -629,6 +767,13 @@ export function evaluateActionDecision(
 ): ActionDecisionResult {
   // Generate candidates based on failure mode
   const candidates = generateCandidateActions(failureMode, phase)
+  if (!candidates || candidates.length === 0) {
+    return {
+      ...FALLBACK_ACTION_DECISION,
+      noActionConsequence,
+      primaryAction: { ...FALLBACK_ACTION_DECISION.primaryAction, confidence },
+    }
+  }
 
   // Score each candidate
   const scored = candidates.map(action =>
@@ -667,13 +812,25 @@ export function evaluateActionDecision(
     ),
   }))
 
-  // Get top action and alternatives
+  // Get top action
   const primaryAction = rankedWithOutcomes[0]
-  const alternatives = rankedWithOutcomes.slice(1, 3) // Up to 2 alternatives
+  if (!primaryAction) {
+    return {
+      ...FALLBACK_ACTION_DECISION,
+      noActionConsequence,
+      primaryAction: { ...FALLBACK_ACTION_DECISION.primaryAction, confidence },
+    }
+  }
+
+  // ARBITRATION: filter alternatives to remove duplicates and conflicts
+  const arbitratedAlternatives = arbitrateAlternatives(
+    primaryAction.label,
+    rankedWithOutcomes.slice(1)
+  )
 
   // Compute stability
   const stability_rec = computeRecommendationStability(
-    primaryAction.label,
+    primaryAction?.label || FALLBACK_ACTION_DECISION.primaryAction.label,
     previousRankedActions
   )
 
@@ -685,6 +842,16 @@ export function evaluateActionDecision(
         ? 'Instability detected: intervention advisable'
         : 'Drift forming: monitoring ongoing'
 
+  // Build rationale
+  const decisionRationale = buildDecisionRationale(
+    primaryAction.label,
+    failureMode,
+    phase,
+    drift,
+    stability,
+    coherence
+  )
+
   return {
     primaryAction: {
       label: primaryAction.label,
@@ -694,15 +861,17 @@ export function evaluateActionDecision(
       score: primaryAction.score,
       stabilizationBenefit: primaryAction.stabilizationBenefit,
     },
-    alternatives: alternatives.map(a => ({
+    alternatives: arbitratedAlternatives.map(a => ({
       label: a.label,
       confidence,
       outcome: a.outcome,
       timingSensitivity: a.timingSensitivity,
       score: a.score,
+      confidenceDelta: Math.max(0, primaryAction.score - a.score),
     })),
     noActionConsequence,
     recommendationStability: stability_rec,
     decisionSummary,
+    decisionRationale,
   }
 }

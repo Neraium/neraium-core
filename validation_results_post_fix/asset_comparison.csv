@@ -1,6 +1,0 @@
-asset_id,asset_type,frames_processed,max_drift_score,alerts_triggered,watches_triggered,crashes,no_signal_detections,sensor_dropouts_handled,validation_status,notes
-A0,baseline_drift,150,0.0,98,0,0,0,0,PASS,FIX A0: Baseline visibility enabled; ✓ No crashes from baseline adaptation
-A2,weak_signal,150,0.0,98,0,0,0,0,PASS,FIX A2: No-signal detection in place
-A3,sensor_dropout,150,0.0,98,0,0,0,11,PASS,FIX A3: Sensor dropout handling enabled; ✓ No crashes despite 11 sensor dropouts; ✓ Handled 11 dropout events
-A1,normal_degradation,150,0.0,98,0,0,0,0,PASS,"Control group (no fix needed); ✓ Normal operation, no regressions"
-A4,normal_degradation,150,0.0,98,0,0,0,0,PASS,"Control group (no fix needed); ✓ Normal operation, no regressions"

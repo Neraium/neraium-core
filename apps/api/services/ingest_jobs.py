@@ -143,7 +143,7 @@ class IngestJobsManager:
             )
             return dict(job)
 
-    async def stream_upload_to_tempfile(self, upload: Any, target_path: Path, job_id: str) -> int:
+    async def stream_upload_to_tempfile(self, upload: Any, target_path: Path, job_id: str, *, max_bytes: int | None = None) -> int:
         bytes_received = 0
         chunk_size = max(16 * 1024, DEFAULT_UPLOAD_STREAM_CHUNK_BYTES)
         try:
@@ -154,6 +154,8 @@ class IngestJobsManager:
                         break
                     out.write(chunk)
                     bytes_received += len(chunk)
+                    if max_bytes is not None and bytes_received > int(max_bytes):
+                        raise ValueError(f"Request body too large (max {int(max_bytes)} bytes).")
                     self.update_ingest_job(
                         job_id,
                         status="uploading",
