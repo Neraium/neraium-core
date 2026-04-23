@@ -1,8 +1,7 @@
-﻿'use client'
+'use client'
 
 import React, { useState, useEffect } from 'react'
-import { motion } from 'framer-motion'
-import { TetrahedronField } from './TetrahedronField'
+import { motion, AnimatePresence } from 'framer-motion'
 import { usePhaseController } from '@/lib/phaseController'
 import { useSystemInterpolation } from '@/lib/systemInterpolation'
 import { computeConsequenceState } from '@/lib/decisionGravity'
@@ -43,16 +42,6 @@ interface TeslaAutopilotInterfaceProps {
   onStepScenario?: (delta: number) => void
 }
 
-const getStateColor = (phase: string): string => {
-  const colors: Record<string, string> = {
-    'Stable': '#22c55e',
-    'Drift forming': '#eab308',
-    'Instability forming': '#f97316',
-    'Critical': '#ef4444',
-  }
-  return colors[phase] || '#9ca3af'
-}
-
 const getRoomStatusColor = (status: 'optimal' | 'warning' | 'critical'): string => {
   return status === 'critical' ? '#ef4444' : status === 'warning' ? '#eab308' : '#22c55e'
 }
@@ -69,22 +58,6 @@ interface OperationalAssessment {
   propagationStrength: number
   originRoom?: RoomStatus
   affectedRooms: RoomStatus[]
-}
-
-const getOperationalColor = (state: OperationalState): string => {
-  if (state === 'Nominal') return '#22c55e'
-  if (state === 'Watchlist') return '#84cc16'
-  if (state === 'Localized deviation') return '#eab308'
-  if (state === 'Propagating instability') return '#f97316'
-  return '#ef4444'
-}
-
-const getZoneStateLabel = (room: RoomStatus, assessment: OperationalAssessment): string => {
-  if (assessment.originRoom?.id === room.id) return 'Drift forming · origin'
-  if (assessment.affectedRooms.find(r => r.id === room.id)) return 'At risk · affected'
-  if (room.driftContribution > 0.2) return 'Watchlist'
-  if (room.driftContribution > 0.1) return 'Stable / linked'
-  return 'Stable'
 }
 
 const deriveOperationalAssessment = (
@@ -119,34 +92,44 @@ const deriveOperationalAssessment = (
   return { state, propagationStrength, originRoom, affectedRooms }
 }
 
-function MetricGauge({
-  label,
-  value,
-  color,
-}: {
-  label: string
-  value: number
-  color: string
-}) {
-  return (
-    <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: '5px' }}>
-        <span style={{ fontSize: '10px', color: '#475569', letterSpacing: '0.8px', textTransform: 'uppercase', fontWeight: 700 }}>
-          {label}
-        </span>
-        <span style={{ fontSize: '13px', fontWeight: 700, color, fontVariantNumeric: 'tabular-nums' }}>
-          {Math.round(value * 100)}
-        </span>
-      </div>
-      <div style={{ height: '3px', background: 'rgba(255,255,255,0.06)', borderRadius: '2px', overflow: 'hidden' }}>
-        <motion.div
-          animate={{ width: `${value * 100}%` }}
-          transition={{ duration: 0.6, ease: 'easeOut' }}
-          style={{ height: '100%', background: color, borderRadius: '2px', boxShadow: `0 0 5px ${color}88` }}
-        />
-      </div>
-    </div>
-  )
+type OperatorState = 'NORMAL' | 'WATCH' | 'INTERVENE'
+
+const getOperatorState = (operationalState: OperationalState): OperatorState => {
+  if (operationalState === 'Nominal') return 'NORMAL'
+  if (operationalState === 'Watchlist' || operationalState === 'Localized deviation') return 'WATCH'
+  return 'INTERVENE'
+}
+
+const getOperatorStateColor = (state: OperatorState): string => {
+  if (state === 'NORMAL') return '#22c55e'
+  if (state === 'WATCH') return '#eab308'
+  return '#ef4444'
+}
+
+const getProgressionLabel = (
+  originRoom: RoomStatus | undefined,
+  affectedRooms: RoomStatus[],
+  propagationStrength: number
+): string => {
+  if (propagationStrength > 0.7) return 'Spreading'
+  if (propagationStrength > 0.3) return 'Increasing'
+  return 'Stable'
+}
+
+const getFallbackZones = (): RoomStatus[] => [
+  { id: 'veg-a', shortName: 'VEG-A', status: 'optimal', driftContribution: 0, behavioralState: 'normal' },
+  { id: 'veg-b', shortName: 'VEG-B', status: 'optimal', driftContribution: 0, behavioralState: 'normal' },
+  { id: 'flow-a', shortName: 'FLOW-A', status: 'optimal', driftContribution: 0, behavioralState: 'normal' },
+  { id: 'flow-b', shortName: 'FLOW-B', status: 'warning', driftContribution: 0.4, behavioralState: 'watch' },
+  { id: 'flow-c', shortName: 'FLOW-C', status: 'optimal', driftContribution: 0, behavioralState: 'normal' },
+]
+
+const getOperatorStateFromZones = (zones: RoomStatus[]): OperatorState => {
+  const hasCritical = zones.some(z => z.status === 'critical')
+  const hasWarning = zones.some(z => z.status === 'warning')
+  if (hasCritical) return 'INTERVENE'
+  if (hasWarning) return 'WATCH'
+  return 'NORMAL'
 }
 
 export function TeslaAutopilotInterface({
@@ -158,6 +141,7 @@ export function TeslaAutopilotInterface({
 }: TeslaAutopilotInterfaceProps) {
   const [isPlaying, setIsPlaying] = useState(false)
   const [speed, setSpeed] = useState(1)
+  const [showDetails, setShowDetails] = useState(false)
   const [driftHistory, setDriftHistory] = useState<number[]>([])
   const [stabilityHistory, setStabilityHistory] = useState<number[]>([])
   const [actionHistory, setActionHistory] = useState<RankedAction[]>([])
@@ -238,70 +222,18 @@ export function TeslaAutopilotInterface({
     onTogglePlay?.(!isPlaying)
   }
 
-  const confidentLabel = diagnostics.confidence === 'high' ? 'High' : diagnostics.confidence === 'moderate' ? 'Moderate' : 'Low'
+  const activeZones = rooms && rooms.length > 0 ? rooms : getFallbackZones()
+
   const assessment = deriveOperationalAssessment(
     interpolatedData.interpolatedDrift,
     interpolatedData.interpolatedStability,
     interpolatedData.interpolatedCoherence,
-    rooms
+    activeZones
   )
-  const operationalColor = getOperationalColor(assessment.state)
-  const stateColor = getStateColor(phase)
 
-  const geometryInterpretation = assessment.state === 'Localized deviation'
-    ? `Low coherence stress is isolated in ${assessment.originRoom?.shortName ?? 'one zone'}; inspect locally, no facility-wide intervention yet.`
-    : assessment.state === 'Propagating instability'
-      ? `Coherence is weakening across linked vertices with ${assessment.affectedRooms.length + 1} zones involved; intervene in origin and nearest neighbors.`
-      : assessment.state === 'Action required'
-        ? 'Geometry collapse indicates multi-vertex coupling failure; coordinated system intervention is required now.'
-        : assessment.state === 'Watchlist'
-          ? `Early variance concentrated in ${assessment.originRoom?.shortName ?? 'a single zone'}; keep system in watchlist and validate trend continuity.`
-          : 'Vertex coherence remains balanced; continue nominal monitoring and optimization only.'
-
-  const doNow = assessment.state === 'Nominal'
-    ? 'Maintain nominal control loop (optimization only)'
-    : assessment.state === 'Watchlist'
-      ? `Monitor and inspect ${assessment.originRoom?.shortName ?? 'lead zone'}`
-      : assessment.state === 'Localized deviation'
-        ? `Inspect ${assessment.originRoom?.shortName ?? 'origin zone'} and validate local airflow`
-        : assessment.state === 'Propagating instability'
-          ? `Stabilize ${assessment.originRoom?.shortName ?? 'origin zone'} and rebalance adjacent zones`
-          : 'Redistribute resources across affected zones now'
-
-  const whyNow = assessment.state === 'Action required'
-    ? `Propagation strength ${(assessment.propagationStrength * 100).toFixed(0)}% with multi-zone coupling visible.`
-    : assessment.state === 'Propagating instability'
-      ? `Spread is directional from ${assessment.originRoom?.shortName ?? 'origin'} into ${assessment.affectedRooms.length} downstream zone(s).`
-      : assessment.state === 'Localized deviation'
-        ? `Single-zone drift origin with weak spread (${(assessment.propagationStrength * 100).toFixed(0)}% propagation).`
-        : 'No correction threshold crossed; this is observation-first monitoring.'
-
-  const whatHappensNext = assessment.state === 'Nominal'
-    ? 'System remains in nominal envelope with minor variance.'
-    : assessment.state === 'Watchlist'
-      ? 'Drift may normalize or become localized deviation within the next cycle.'
-      : assessment.state === 'Localized deviation'
-        ? 'Without local inspection, drift can begin coupling into linked zones.'
-        : assessment.state === 'Propagating instability'
-          ? 'Spread likely reaches additional neighbors, reducing coherence further.'
-          : 'Unchecked spread can trigger facility-wide instability and control loss.'
-
-  const expectedOutcome = assessment.state === 'Nominal'
-    ? 'Operational efficiency preserved without corrective intervention.'
-    : assessment.state === 'Watchlist'
-      ? 'Higher confidence classification of trend with minimal disruption.'
-      : assessment.state === 'Localized deviation'
-        ? 'Containment in origin zone and prevention of unnecessary system intervention.'
-        : assessment.state === 'Propagating instability'
-          ? 'Propagation slows and system coherence can recover in staged fashion.'
-          : 'Risk reduction across coupled zones with path back to propagating state.'
-
-  const urgencyLevel = phase === 'Critical' ? 5
-    : phase === 'Instability forming' ? 4
-    : phase === 'Drift forming' ? 3
-    : 1
-
-  const urgencyColor = urgencyLevel >= 5 ? '#ef4444' : urgencyLevel >= 4 ? '#f97316' : urgencyLevel >= 3 ? '#eab308' : '#22c55e'
+  const operatorState = getOperatorStateFromZones(activeZones)
+  const operatorColor = getOperatorStateColor(operatorState)
+  const progression = getProgressionLabel(assessment.originRoom, assessment.affectedRooms, assessment.propagationStrength)
 
   return (
     <div
@@ -313,6 +245,8 @@ export function TeslaAutopilotInterface({
         overflow: 'hidden',
         position: 'relative',
         fontFamily: 'system-ui, -apple-system, sans-serif',
+        display: 'flex',
+        flexDirection: 'column',
       }}
     >
       {/* SCANLINE OVERLAY */}
@@ -327,74 +261,62 @@ export function TeslaAutopilotInterface({
         }}
       />
 
-      {/* TOP STATUS STRIP */}
+      {/* LAYER 1: TOP BANNER */}
       <motion.div
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.6 }}
         style={{
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          right: 0,
-          zIndex: 50,
           background: 'linear-gradient(180deg, rgba(5,6,7,0.97) 0%, rgba(5,6,7,0.55) 100%)',
           backdropFilter: 'blur(6px)',
-          borderBottom: `1px solid ${stateColor}2a`,
-          padding: '0 20px',
-          height: '48px',
+          borderBottom: `2px solid ${operatorColor}`,
+          padding: '24px 32px',
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
-          fontSize: '12px',
-          gap: '16px',
+          gap: '32px',
+          zIndex: 50,
         }}
       >
-        {/* Left: System identity + status */}
-        <div style={{ display: 'flex', gap: '20px', alignItems: 'center', minWidth: 0 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '7px', flexShrink: 0 }}>
+        <div style={{ flex: 1 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '16px' }}>
             <motion.div
               animate={{
-                background: stateColor,
-                boxShadow: `0 0 ${phase === 'Critical' ? '10px' : '5px'} ${stateColor}`,
+                background: operatorColor,
+                boxShadow: `0 0 ${operatorState === 'INTERVENE' ? '12px' : '6px'} ${operatorColor}`,
               }}
               transition={{ duration: 0.4 }}
-              style={{ width: '6px', height: '6px', borderRadius: '50%' }}
+              style={{ width: '8px', height: '8px', borderRadius: '50%' }}
             />
-            <span style={{ fontWeight: 600, color: '#cbd5e1', fontSize: '12px', letterSpacing: '0.8px', textTransform: 'uppercase' }}>
-              Grow Room A / Unit 1
+            <span style={{ fontSize: '32px', fontWeight: 700, letterSpacing: '1.2px', textTransform: 'uppercase', color: operatorColor }}>
+              SYSTEM {operatorState}
             </span>
           </div>
 
-          <div style={{ width: '1px', height: '14px', background: 'rgba(203,213,225,0.12)', flexShrink: 0 }} />
-
-            <motion.div
-            animate={{ color: operationalColor }}
-            style={{ fontWeight: 700, fontSize: '11px', letterSpacing: '1.2px', textTransform: 'uppercase', flexShrink: 0 }}
-          >
-            {assessment.state}
-          </motion.div>
-
-          <div style={{ color: '#475569', fontSize: '11px', flexShrink: 0 }}>
-            Confidence: <span style={{ color: '#64748b' }}>{confidentLabel}</span>
+          {/* Zone indicators */}
+          <div style={{ display: 'flex', gap: '24px', flexWrap: 'wrap' }}>
+            {operatorState === 'WATCH' && assessment.originRoom && (
+              <div style={{ fontSize: '14px', color: '#eab308', letterSpacing: '0.5px' }}>
+                WATCH: <span style={{ fontWeight: 700 }}>{assessment.originRoom.shortName}</span>
+              </div>
+            )}
+            {operatorState === 'INTERVENE' && assessment.originRoom && (
+              <div style={{ fontSize: '14px', color: '#ef4444', letterSpacing: '0.5px' }}>
+                INTERVENE: <span style={{ fontWeight: 700 }}>{assessment.originRoom.shortName}</span>
+              </div>
+            )}
+            {operatorState === 'INTERVENE' && assessment.affectedRooms.length > 0 && (
+              <div style={{ fontSize: '14px', color: '#ef4444', letterSpacing: '0.5px' }}>
+                AFFECTED: <span style={{ fontWeight: 700 }}>{assessment.affectedRooms.map(r => r.shortName).join(', ')}</span>
+              </div>
+            )}
           </div>
-
-          <motion.div
-            animate={{ color: (consequenceState.timeToImpact ?? 15) < 5 ? '#ef4444' : '#475569' }}
-            style={{ fontSize: '11px', fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}
-          >
-            T-Impact:{' '}
-            <span style={{ color: '#64748b' }}>
-              {(consequenceState.timeToImpact ?? 15) < 1 ? 'Imminent' : `~${Math.ceil(consequenceState.timeToImpact ?? 15)}c`}
-            </span>
-          </motion.div>
         </div>
 
-        {/* Right: Controls */}
-        <div style={{ display: 'flex', gap: '14px', alignItems: 'center', flexShrink: 0 }}>
-          {/* Speed control */}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
-            <span style={{ fontSize: '10px', color: '#475569', letterSpacing: '0.8px', textTransform: 'uppercase' }}>Speed</span>
+        {/* Controls */}
+        <div style={{ display: 'flex', gap: '12px', alignItems: 'center', flexShrink: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ fontSize: '11px', color: '#475569', letterSpacing: '0.8px', textTransform: 'uppercase' }}>Speed</span>
             <input
               type="range"
               min={0.5}
@@ -402,25 +324,24 @@ export function TeslaAutopilotInterface({
               step={0.5}
               value={speed}
               onChange={e => setSpeed(Number(e.target.value))}
-              style={{ width: '56px', height: '3px', accentColor: '#7e9f2e', cursor: 'pointer' }}
+              style={{ width: '60px', height: '3px', accentColor: '#7e9f2e', cursor: 'pointer' }}
             />
-            <span style={{ fontSize: '11px', color: '#64748b', minWidth: '22px', fontVariantNumeric: 'tabular-nums' }}>{speed}x</span>
+            <span style={{ fontSize: '11px', color: '#64748b', minWidth: '24px', fontVariantNumeric: 'tabular-nums' }}>{speed}x</span>
           </div>
 
-          {/* Scenario navigation */}
           {onStepScenario && (
-            <div style={{ display: 'flex', gap: '3px' }}>
+            <div style={{ display: 'flex', gap: '4px' }}>
               <button
                 onClick={() => onStepScenario(-1)}
                 style={{
                   background: 'rgba(100,116,139,0.08)',
                   border: '1px solid rgba(100,116,139,0.25)',
                   color: '#64748b',
-                  width: '22px',
-                  height: '22px',
+                  width: '28px',
+                  height: '28px',
                   borderRadius: '4px',
                   cursor: 'pointer',
-                  fontSize: '13px',
+                  fontSize: '14px',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
@@ -428,18 +349,18 @@ export function TeslaAutopilotInterface({
                 }}
                 onMouseEnter={e => { e.currentTarget.style.color = '#94a3b8'; e.currentTarget.style.borderColor = 'rgba(100,116,139,0.5)' }}
                 onMouseLeave={e => { e.currentTarget.style.color = '#64748b'; e.currentTarget.style.borderColor = 'rgba(100,116,139,0.25)' }}
-              >â€¹</button>
+              >‹</button>
               <button
                 onClick={() => onStepScenario(1)}
                 style={{
                   background: 'rgba(100,116,139,0.08)',
                   border: '1px solid rgba(100,116,139,0.25)',
                   color: '#64748b',
-                  width: '22px',
-                  height: '22px',
+                  width: '28px',
+                  height: '28px',
                   borderRadius: '4px',
                   cursor: 'pointer',
-                  fontSize: '13px',
+                  fontSize: '14px',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
@@ -447,17 +368,17 @@ export function TeslaAutopilotInterface({
                 }}
                 onMouseEnter={e => { e.currentTarget.style.color = '#94a3b8'; e.currentTarget.style.borderColor = 'rgba(100,116,139,0.5)' }}
                 onMouseLeave={e => { e.currentTarget.style.color = '#64748b'; e.currentTarget.style.borderColor = 'rgba(100,116,139,0.25)' }}
-              >â€º</button>
+              >›</button>
             </div>
           )}
 
           <button
             onClick={handleTogglePlay}
             style={{
-              background: isPlaying ? `${stateColor}1a` : 'rgba(126,159,46,0.12)',
-              border: `1px solid ${isPlaying ? stateColor + '88' : 'rgba(126,159,46,0.35)'}`,
-              color: isPlaying ? stateColor : '#7e9f2e',
-              padding: '4px 14px',
+              background: isPlaying ? `${operatorColor}1a` : 'rgba(126,159,46,0.12)',
+              border: `1px solid ${isPlaying ? operatorColor + '88' : 'rgba(126,159,46,0.35)'}`,
+              color: isPlaying ? operatorColor : '#7e9f2e',
+              padding: '6px 16px',
               borderRadius: '4px',
               cursor: 'pointer',
               fontSize: '11px',
@@ -466,347 +387,263 @@ export function TeslaAutopilotInterface({
               textTransform: 'uppercase',
               transition: 'all 0.2s',
             }}
-            onMouseEnter={e => { e.currentTarget.style.background = `${stateColor}28` }}
-            onMouseLeave={e => { e.currentTarget.style.background = isPlaying ? `${stateColor}1a` : 'rgba(126,159,46,0.12)' }}
+            onMouseEnter={e => { e.currentTarget.style.background = `${operatorColor}28` }}
+            onMouseLeave={e => { e.currentTarget.style.background = isPlaying ? `${operatorColor}1a` : 'rgba(126,159,46,0.12)' }}
           >
-            {isPlaying ? 'â™â™ Pause' : 'â–¶ Play'}
+            {isPlaying ? '⏸ Pause' : '▶ Play'}
           </button>
         </div>
       </motion.div>
 
-      {/* PHASE PROGRESS BAR */}
-      <div style={{ position: 'absolute', top: 48, left: 0, right: 0, height: '2px', background: 'rgba(255,255,255,0.04)', zIndex: 49 }}>
-        <motion.div
-          animate={{ width: `${phaseProgress * 100}%`, backgroundColor: stateColor }}
-          transition={{ duration: 0.12 }}
-          style={{ height: '100%', boxShadow: `0 0 6px ${stateColor}88` }}
-        />
-      </div>
-
-      {/* MAIN CONTENT AREA */}
-      <div
+      {/* LAYER 1: ZONE GRID */}
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.6, delay: 0.2 }}
         style={{
-          position: 'absolute',
-          top: 50,
-          left: 0,
-          right: 0,
-          bottom: 0,
-          display: 'flex',
-          flexDirection: 'column',
+          flex: 1,
+          padding: '24px 32px',
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))',
+          gap: '16px',
+          overflowY: 'auto',
         }}
       >
-        <div style={{ flex: 1, display: 'flex', minHeight: 0 }}>
+        {activeZones.map(room => {
+          const roomColor = getRoomStatusColor(room.status)
+          const isOrigin = assessment.originRoom?.id === room.id
+          const isAffected = assessment.affectedRooms.some(r => r.id === room.id)
 
-          {/* LEFT METRIC PANEL */}
-          <motion.div
-            initial={{ opacity: 0, x: -16 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.7, delay: 0.2 }}
-            style={{
-              width: '172px',
-              flexShrink: 0,
-              padding: '18px 14px',
-              borderRight: '1px solid rgba(255,255,255,0.04)',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '18px',
-              background: 'linear-gradient(90deg, rgba(5,6,7,0.9) 0%, rgba(5,6,7,0.2) 100%)',
-            }}
-          >
-            <div style={{ fontSize: '10px', color: '#334155', letterSpacing: '1px', textTransform: 'uppercase', fontWeight: 700 }}>
-              System Metrics
-            </div>
-
-            <MetricGauge
-              label="Drift"
-              value={interpolatedData.interpolatedDrift}
-              color={interpolatedData.interpolatedDrift > 0.6 ? '#ef4444' : interpolatedData.interpolatedDrift > 0.3 ? '#eab308' : '#22c55e'}
-            />
-            <MetricGauge
-              label="Stability"
-              value={interpolatedData.interpolatedStability}
-              color={interpolatedData.interpolatedStability < 0.4 ? '#ef4444' : interpolatedData.interpolatedStability < 0.6 ? '#eab308' : '#22c55e'}
-            />
-            <MetricGauge
-              label="Coherence"
-              value={interpolatedData.interpolatedCoherence}
-              color={interpolatedData.interpolatedCoherence < 0.4 ? '#ef4444' : interpolatedData.interpolatedCoherence < 0.6 ? '#eab308' : '#06b6d4'}
-            />
-            <MetricGauge
-              label="Confidence"
-              value={interpolatedData.interpolatedConfidence}
-              color="#818cf8"
-            />
-
-            {/* Urgency bar */}
-            <div>
-              <div style={{ fontSize: '10px', color: '#334155', letterSpacing: '1px', textTransform: 'uppercase', fontWeight: 700, marginBottom: '9px' }}>
-                Urgency
-              </div>
-              <div style={{ display: 'flex', gap: '4px' }}>
-                {[1, 2, 3, 4, 5].map(dot => (
-                  <motion.div
-                    key={dot}
-                    animate={{
-                      background: dot <= urgencyLevel ? urgencyColor : 'rgba(255,255,255,0.07)',
-                      boxShadow: dot <= urgencyLevel && urgencyLevel >= 4 ? `0 0 5px ${urgencyColor}` : 'none',
-                    }}
-                    transition={{ duration: 0.3 }}
-                    style={{ flex: 1, height: '5px', borderRadius: '2px' }}
-                  />
-                ))}
-              </div>
-            </div>
-
-            {/* Dominant driver */}
-            {diagnostics.dominantDriver && (
-              <div>
-                <div style={{ fontSize: '10px', color: '#334155', letterSpacing: '1px', textTransform: 'uppercase', fontWeight: 700, marginBottom: '5px' }}>
-                  Driver
-                </div>
-                <div style={{ fontSize: '11px', color: '#64748b', lineHeight: 1.4 }}>
-                  {diagnostics.dominantDriver}
-                </div>
-              </div>
-            )}
-          </motion.div>
-
-          {/* CENTER: TETRAHEDRON */}
-          <div style={{ flex: 1, position: 'relative', minWidth: 0 }}>
-            <TetrahedronField
-              data={interpolatedData}
-              phaseProgress={phaseProgress}
-              phase={phase}
-              escalationLevel={consequenceState.escalationLevel}
-              hasThresholdCrossed={consequenceState.hasThresholdCrossed}
-              isApproachingFailure={consequenceState.isApproachingFailure}
-            />
-
-            {/* COMMITTED ACTION OVERLAY */}
-            {actionDecision && (
-              <motion.div
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.4 }}
-                style={{
-                  position: 'absolute',
-                  bottom: 18,
-                  right: 18,
-                  left: 'auto',
-                  transform: 'none',
-                  background: 'rgba(5,6,7,0.9)',
-                  backdropFilter: 'blur(12px)',
-                  border: `1px solid ${stateColor}33`,
-                  borderTop: `2px solid ${stateColor}66`,
-                  borderRadius: '8px',
-                  padding: '12px 16px',
-                  maxWidth: 'min(320px, 38vw)',
-                  minWidth: '220px',
-                  textAlign: 'center',
-                  zIndex: 30,
-                  pointerEvents: 'none',
-                }}
-              >
-                <div style={{ fontSize: '10px', color: '#334155', letterSpacing: '1px', textTransform: 'uppercase', marginBottom: '5px', fontWeight: 700 }}>
-                  Decision State
-                </div>
-                <div style={{ fontSize: '14px', fontWeight: 700, color: operationalColor, marginBottom: '5px', letterSpacing: '0.3px' }}>
-                  {assessment.state}
-                </div>
-                <div style={{ fontSize: '11px', color: '#475569', lineHeight: '1.5' }}>
-                  {doNow}
-                </div>
-                {geometryInterpretation && (
-                  <div style={{ marginTop: '8px', paddingTop: '8px', borderTop: `1px solid rgba(255,255,255,0.06)`, fontSize: '10px', color: '#334155', fontStyle: 'italic', lineHeight: 1.4 }}>
-                    {geometryInterpretation}
-                  </div>
-                )}
-              </motion.div>
-            )}
-
-            {/* SUBSYSTEM CONTEXT */}
-            <div
+          return (
+            <motion.div
+              key={room.id}
+              layout
+              animate={{
+                borderColor: isOrigin || isAffected ? roomColor : 'rgba(255,255,255,0.08)',
+                background: isOrigin || isAffected ? `${roomColor}12` : 'rgba(255,255,255,0.02)',
+              }}
+              transition={{ duration: 0.3 }}
               style={{
-                position: 'absolute',
-                bottom: 16,
-                left: '50%',
-                transform: 'translateX(-50%)',
-                display: 'flex',
-                gap: '22px',
-                fontSize: '11px',
-                color: '#334155',
-                zIndex: 25,
+                padding: '16px',
+                border: `2px solid ${roomColor}`,
+                borderRadius: '6px',
+                textAlign: 'center',
               }}
             >
-              {[
-                { label: 'Airflow', color: '#7e9f2e', dir: 'â†‘' },
-                { label: 'Climate', color: '#d8a35d', dir: 'â†’' },
-                { label: 'Irrigation', color: '#7e9f2e', dir: 'â†“' },
-                { label: 'Plant Stress', color: '#c94c4c', dir: 'â†‘' },
-              ].map(s => (
-                <div key={s.label} style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                  <span>{s.label}</span>
-                  <span style={{ fontSize: '14px', color: s.color, lineHeight: 1 }}>{s.dir}</span>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* RIGHT STATUS PANEL */}
-          <motion.div
-            initial={{ opacity: 0, x: 16 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ duration: 0.7, delay: 0.3 }}
-            style={{
-              width: '196px',
-              flexShrink: 0,
-              padding: '18px 14px',
-              borderLeft: '1px solid rgba(255,255,255,0.04)',
-              display: 'flex',
-              flexDirection: 'column',
-              gap: '16px',
-              background: 'linear-gradient(270deg, rgba(5,6,7,0.9) 0%, rgba(5,6,7,0.2) 100%)',
-              overflowY: 'auto',
-            }}
-          >
-            {/* Zone status */}
-            {rooms && rooms.length > 0 && (
-              <div>
-                <div style={{ fontSize: '10px', color: '#334155', letterSpacing: '1px', textTransform: 'uppercase', fontWeight: 700, marginBottom: '10px' }}>
-                  Zone Status
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-                  {rooms.map(room => {
-                    const rc = getRoomStatusColor(room.status)
-                    return (
-                      <div
-                        key={room.id}
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '7px',
-                          padding: '5px 7px',
-                          borderRadius: '4px',
-                          background: `${rc}07`,
-                          border: `1px solid ${rc}1a`,
-                          transition: 'all 0.3s',
-                        }}
-                      >
-                        <motion.div
-                          animate={{
-                            background: rc,
-                            boxShadow: room.status === 'critical' ? `0 0 5px ${rc}` : 'none',
-                          }}
-                          style={{ width: '5px', height: '5px', borderRadius: '50%', flexShrink: 0 }}
-                        />
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontSize: '11px', fontWeight: 600, color: '#64748b' }}>{room.shortName}</div>
-                          <div style={{ fontSize: '10px', color: '#334155', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                            {getZoneStateLabel(room, assessment)}
-                          </div>
-                        </div>
-                        <div style={{ fontSize: '10px', color: rc, fontWeight: 700, fontVariantNumeric: 'tabular-nums', flexShrink: 0 }}>
-                          {Math.round(room.driftContribution * 100)}%
-                        </div>
-                      </div>
-                    )
-                  })}
-                </div>
+              <div style={{ fontSize: '16px', fontWeight: 700, color: roomColor, marginBottom: '4px' }}>
+                {room.shortName}
               </div>
-            )}
+              <motion.div
+                animate={{ height: '4px', background: roomColor }}
+                transition={{ duration: 0.3 }}
+                style={{ borderRadius: '2px', opacity: 0.6 }}
+              />
+            </motion.div>
+          )
+        })}
+      </motion.div>
 
-            {/* Operational intelligence */}
-            {(intelligence || actionDecision) && (
-              <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                <div style={{ fontSize: '10px', color: '#334155', letterSpacing: '1px', textTransform: 'uppercase', fontWeight: 700 }}>
-                  Action Intelligence
-                </div>
-
-                <div style={{ fontSize: '10px', color: '#334155', letterSpacing: '0.8px', textTransform: 'uppercase', fontWeight: 700 }}>
-                  1. Do now
-                </div>
-                <div style={{ fontSize: '11px', color: operationalColor, lineHeight: '1.45', fontWeight: 600 }}>{doNow}</div>
-
-                <div style={{ fontSize: '10px', color: '#334155', letterSpacing: '0.8px', textTransform: 'uppercase', fontWeight: 700 }}>
-                  2. Why now
-                </div>
-                <div style={{ fontSize: '11px', color: '#64748b', lineHeight: '1.5' }}>{whyNow}</div>
-
-                <div style={{ fontSize: '10px', color: '#334155', letterSpacing: '0.8px', textTransform: 'uppercase', fontWeight: 700 }}>
-                  3. What we see
-                </div>
-                <div style={{ fontSize: '11px', color: '#64748b', lineHeight: '1.5' }}>
-                  {intelligence?.explanation || actionDecision?.decisionSummary}
-                </div>
-
-                <div style={{ fontSize: '10px', color: '#334155', letterSpacing: '0.8px', textTransform: 'uppercase', fontWeight: 700 }}>
-                  4. If unchanged
-                </div>
-                <div style={{ fontSize: '11px', color: '#64748b', lineHeight: '1.5' }}>{whatHappensNext}</div>
-
-                <div style={{ fontSize: '10px', color: '#334155', letterSpacing: '0.8px', textTransform: 'uppercase', fontWeight: 700 }}>
-                  5. Expected outcome
-                </div>
-                <div style={{
-                  fontSize: '11px',
-                  color: '#94a3b8',
-                  lineHeight: '1.5',
-                  padding: '6px 8px',
-                  borderLeft: `2px solid ${operationalColor}55`,
-                  borderRadius: '0 4px 4px 0',
-                  background: `${operationalColor}0c`,
-                }}>
-                  {expectedOutcome}
-                </div>
-
-                <div style={{ fontSize: '10px', color: '#334155', letterSpacing: '0.8px', textTransform: 'uppercase', fontWeight: 700 }}>
-                  Relationship View
-                </div>
-                <div style={{ fontSize: '11px', color: '#64748b', lineHeight: '1.5' }}>
-                  {assessment.state === 'Localized deviation'
-                    ? `Origin: ${assessment.originRoom?.shortName ?? 'N/A'} · downstream impact low`
-                    : `Origin: ${assessment.originRoom?.shortName ?? 'N/A'} · affected neighbors: ${assessment.affectedRooms.map(r => r.shortName).join(', ') || 'none yet'}`}
-                </div>
-
-                <div style={{ fontSize: '10px', color: '#334155', letterSpacing: '0.8px', textTransform: 'uppercase', fontWeight: 700 }}>
-                  Geometry interpretation
-                </div>
-                <div style={{ fontSize: '11px', color: '#64748b', lineHeight: '1.5' }}>
-                  {geometryInterpretation}
-                </div>
-              </div>
-            )}
-          </motion.div>
-        </div>
-
-        {/* CONSEQUENCE DISPLAY */}
-        {(assessment.state === 'Propagating instability' || assessment.state === 'Action required') && (
+      {/* LAYER 2: INTERVENTION DETAILS (RED ONLY) */}
+      <AnimatePresence>
+        {operatorState === 'INTERVENE' && (
           <motion.div
-            initial={{ opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: 'auto' }}
+            exit={{ opacity: 0, height: 0 }}
             transition={{ duration: 0.4 }}
             style={{
-              background: `${stateColor}09`,
-              borderTop: `1px solid ${stateColor}2a`,
-              padding: '10px 24px',
-              display: 'flex',
-              justifyContent: 'center',
-              gap: '28px',
-              alignItems: 'center',
-              fontSize: '12px',
-              zIndex: 20,
+              background: `linear-gradient(180deg, #ef444412 0%, transparent 100%)`,
+              borderTop: '2px solid #ef4444',
+              borderBottom: '1px solid #ef4444',
+              padding: '20px 32px',
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))',
+              gap: '24px',
+              zIndex: 40,
             }}
           >
-            <span style={{ color: '#334155' }}>No action:</span>
-            <span style={{ color: 'rgba(148,163,184,0.4)' }}>
-              {assessment.state === 'Action required' ? 'Coupled spread accelerates' : 'Localized spread broadens'}
-            </span>
-            <span style={{ color: operationalColor, fontWeight: 600 }}>
-              {assessment.state === 'Action required' ? 'Facility instability risk rises' : 'More zones move to at-risk state'}
-            </span>
+            <div>
+              <div style={{ fontSize: '11px', color: '#334155', letterSpacing: '1px', textTransform: 'uppercase', fontWeight: 700, marginBottom: '8px' }}>
+                INTERVENE
+              </div>
+              <div style={{ fontSize: '14px', color: '#ef4444', fontWeight: 700 }}>
+                {assessment.originRoom?.shortName || 'Primary Zone'}
+              </div>
+            </div>
+
+            <div>
+              <div style={{ fontSize: '11px', color: '#334155', letterSpacing: '1px', textTransform: 'uppercase', fontWeight: 700, marginBottom: '8px' }}>
+                Issue
+              </div>
+              <div style={{ fontSize: '13px', color: '#e2e8f0' }}>
+                {assessment.propagationStrength > 0.7
+                  ? 'Critical coherence collapse'
+                  : assessment.propagationStrength > 0.4
+                    ? 'Multi-zone coupling detected'
+                    : 'High drift origin'}
+              </div>
+            </div>
+
+            <div>
+              <div style={{ fontSize: '11px', color: '#334155', letterSpacing: '1px', textTransform: 'uppercase', fontWeight: 700, marginBottom: '8px' }}>
+                Location
+              </div>
+              <div style={{ fontSize: '13px', color: '#e2e8f0' }}>
+                {assessment.originRoom?.shortName}
+                {assessment.affectedRooms.length > 0 && ` → ${assessment.affectedRooms.map(r => r.shortName).join(', ')}`}
+              </div>
+            </div>
+
+            <div>
+              <div style={{ fontSize: '11px', color: '#334155', letterSpacing: '1px', textTransform: 'uppercase', fontWeight: 700, marginBottom: '8px' }}>
+                Progression
+              </div>
+              <motion.div
+                animate={{ color: progression === 'Spreading' ? '#ef4444' : progression === 'Increasing' ? '#eab308' : '#22c55e' }}
+                style={{ fontSize: '13px', fontWeight: 700 }}
+              >
+                {progression}
+              </motion.div>
+            </div>
           </motion.div>
         )}
-      </div>
+      </AnimatePresence>
+
+      {/* LAYER 3: DETAILS DRAWER BUTTON */}
+      <motion.button
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.6, delay: 0.4 }}
+        onClick={() => setShowDetails(!showDetails)}
+        style={{
+          position: 'absolute',
+          bottom: '16px',
+          right: '32px',
+          padding: '8px 16px',
+          background: 'rgba(126,159,46,0.12)',
+          border: '1px solid rgba(126,159,46,0.35)',
+          color: '#7e9f2e',
+          borderRadius: '4px',
+          cursor: 'pointer',
+          fontSize: '11px',
+          fontWeight: 600,
+          letterSpacing: '0.6px',
+          textTransform: 'uppercase',
+          transition: 'all 0.2s',
+          zIndex: 30,
+        }}
+        onMouseEnter={e => { e.currentTarget.style.background = 'rgba(126,159,46,0.25)'; e.currentTarget.style.borderColor = 'rgba(126,159,46,0.6)' }}
+        onMouseLeave={e => { e.currentTarget.style.background = 'rgba(126,159,46,0.12)'; e.currentTarget.style.borderColor = 'rgba(126,159,46,0.35)' }}
+      >
+        {showDetails ? '▼ Hide Details' : '▶ View Details'}
+      </motion.button>
+
+      {/* LAYER 3: DETAILS DRAWER */}
+      <AnimatePresence>
+        {showDetails && (
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 20 }}
+            transition={{ duration: 0.3 }}
+            style={{
+              position: 'fixed',
+              inset: 0,
+              background: 'rgba(5,6,7,0.95)',
+              backdropFilter: 'blur(8px)',
+              zIndex: 100,
+              overflowY: 'auto',
+              padding: '32px',
+            }}
+            onClick={() => setShowDetails(false)}
+          >
+            <motion.div
+              onClick={e => e.stopPropagation()}
+              style={{
+                maxWidth: '800px',
+                margin: '0 auto',
+                background: 'rgba(15,23,42,0.8)',
+                border: '1px solid rgba(255,255,255,0.08)',
+                borderRadius: '8px',
+                padding: '24px',
+              }}
+            >
+              <h2 style={{ fontSize: '18px', fontWeight: 700, marginBottom: '20px', color: operatorColor, letterSpacing: '1px', textTransform: 'uppercase' }}>
+                System Analytics
+              </h2>
+
+              {/* Metrics Grid */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '16px', marginBottom: '24px' }}>
+                <div>
+                  <div style={{ fontSize: '11px', color: '#475569', letterSpacing: '0.8px', textTransform: 'uppercase', fontWeight: 700, marginBottom: '8px' }}>
+                    Drift
+                  </div>
+                  <div style={{ fontSize: '20px', fontWeight: 700, color: interpolatedData.interpolatedDrift > 0.6 ? '#ef4444' : interpolatedData.interpolatedDrift > 0.3 ? '#eab308' : '#22c55e' }}>
+                    {Math.round(interpolatedData.interpolatedDrift * 100)}%
+                  </div>
+                </div>
+                <div>
+                  <div style={{ fontSize: '11px', color: '#475569', letterSpacing: '0.8px', textTransform: 'uppercase', fontWeight: 700, marginBottom: '8px' }}>
+                    Stability
+                  </div>
+                  <div style={{ fontSize: '20px', fontWeight: 700, color: interpolatedData.interpolatedStability < 0.4 ? '#ef4444' : interpolatedData.interpolatedStability < 0.6 ? '#eab308' : '#22c55e' }}>
+                    {Math.round(interpolatedData.interpolatedStability * 100)}%
+                  </div>
+                </div>
+                <div>
+                  <div style={{ fontSize: '11px', color: '#475569', letterSpacing: '0.8px', textTransform: 'uppercase', fontWeight: 700, marginBottom: '8px' }}>
+                    Coherence
+                  </div>
+                  <div style={{ fontSize: '20px', fontWeight: 700, color: interpolatedData.interpolatedCoherence < 0.4 ? '#ef4444' : interpolatedData.interpolatedCoherence < 0.6 ? '#eab308' : '#06b6d4' }}>
+                    {Math.round(interpolatedData.interpolatedCoherence * 100)}%
+                  </div>
+                </div>
+                <div>
+                  <div style={{ fontSize: '11px', color: '#475569', letterSpacing: '0.8px', textTransform: 'uppercase', fontWeight: 700, marginBottom: '8px' }}>
+                    Confidence
+                  </div>
+                  <div style={{ fontSize: '20px', fontWeight: 700, color: '#818cf8' }}>
+                    {Math.round(interpolatedData.interpolatedConfidence * 100)}%
+                  </div>
+                </div>
+              </div>
+
+              {/* Operational Assessment */}
+              <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '16px' }}>
+                <h3 style={{ fontSize: '12px', fontWeight: 700, color: '#334155', letterSpacing: '1px', textTransform: 'uppercase', marginBottom: '12px' }}>
+                  Assessment
+                </h3>
+                <div style={{ fontSize: '13px', color: '#cbd5e1', lineHeight: '1.6' }}>
+                  Operational State: <span style={{ color: operatorColor, fontWeight: 700 }}>{assessment.state}</span>
+                </div>
+                <div style={{ fontSize: '13px', color: '#cbd5e1', lineHeight: '1.6', marginTop: '8px' }}>
+                  Propagation Strength: <span style={{ color: '#e2e8f0', fontWeight: 700 }}>{Math.round(assessment.propagationStrength * 100)}%</span>
+                </div>
+              </div>
+
+              <button
+                onClick={() => setShowDetails(false)}
+                style={{
+                  marginTop: '20px',
+                  padding: '8px 16px',
+                  background: 'rgba(126,159,46,0.12)',
+                  border: '1px solid rgba(126,159,46,0.35)',
+                  color: '#7e9f2e',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontSize: '11px',
+                  fontWeight: 600,
+                  letterSpacing: '0.6px',
+                  textTransform: 'uppercase',
+                  transition: 'all 0.2s',
+                }}
+              >
+                Close
+              </button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   )
 }
