@@ -1,6 +1,6 @@
 'use client'
 
-import TeslaAutopilotInterface from '@/components/TeslaAutopilotInterface'
+import { TeslaAutopilotInterface } from '@/components/TeslaAutopilotInterface'
 
 export default function Home() {
   return <TeslaAutopilotInterface />
