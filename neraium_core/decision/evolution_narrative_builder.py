@@ -234,8 +234,10 @@ class EvolutionNarrativeBuilder:
         inflections = []
 
         # Multiple rapid transitions
-        if len(evolution_context.transition_points) >= 2 and len(evolution_context.regime_sequence) >= 3:
-            recent_transitions = evolution_context.transition_points[-2:]
+        transition_points = getattr(evolution_context, "transition_points", [])
+        regime_sequence = getattr(evolution_context, "regime_sequence", [])
+        if len(transition_points) >= 2 and len(regime_sequence) >= 3:
+            recent_transitions = transition_points[-2:]
             if len(recent_transitions) == 2:
                 delta = recent_transitions[1] - recent_transitions[0]
                 if delta <= 5:

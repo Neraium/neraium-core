@@ -455,7 +455,7 @@ class DecisionEngine:
             current_regime=evolution_trajectory.regime_sequence[-1] if evolution_trajectory.regime_sequence else "STABLE",
             regime_persistence=evolution_trajectory.current_regime_persistence,
             regime_transitions_count=evolution_trajectory.regime_transitions_count,
-            trajectory_direction=evolution_trajectory.trajectory_direction if evolution_trajectory.is_degrading else "stable",
+            trajectory_direction=getattr(evolution_trajectory, "trajectory_direction", "stable") if getattr(evolution_trajectory, "is_degrading", False) else "stable",
             trajectory_velocity=evolution_trajectory.trajectory_velocity if hasattr(evolution_trajectory, 'trajectory_velocity') else 0.0,
             movement_pattern=evolution_trajectory.movement_pattern,
             is_degrading=evolution_trajectory.is_degrading,

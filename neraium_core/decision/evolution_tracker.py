@@ -180,7 +180,8 @@ class EvolutionTracker:
         mean_accel = sum(second_deltas) / len(second_deltas) if second_deltas else 0.0
 
         # Oscillation detection
-        regime_changes = sum(1 for i in range(1, len(self.history[-10 :])) if self.history[-(11 - i)].regime != self.history[-(10 - i)].regime)
+        recent_history = self.history[-10:] if len(self.history) >= 2 else self.history
+        regime_changes = sum(1 for i in range(1, len(recent_history)) if recent_history[i - 1].regime != recent_history[i].regime)
 
         if regime_changes >= 3:
             self.trajectory.movement_pattern = "oscillating"

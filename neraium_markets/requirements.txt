@@ -1,0 +1,5 @@
+# Neraium Markets Day 1
+pandas>=2.0,<3
+numpy>=1.26,<3
+pydantic>=2.0,<3
+pytest>=7.0,<10
