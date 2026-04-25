@@ -134,8 +134,7 @@ class EvidenceBlock:
 
             # Divergence: when score starts sustained increase (threshold 0.05)
             if (
-                i == 1
-                and prev_score < 0.1
+                prev_score < 0.1
                 and curr_score >= 0.1
             ):
                 approx_cycle = state.cycle - (len(state.instability_history) - i)
@@ -321,9 +320,9 @@ class EvidenceBuilder:
 
         # If unstable, compute time to lock-in
         if state.regime == "UNSTABLE":
-            # Rough estimate: if velocity continues, how many cycles to 0.95?
+            # Rough estimate: if velocity continues, how many cycles to LOCK_IN threshold (0.85)?
             if velocity > 0.001:
-                cycles_remaining = int((0.95 - score) / velocity)
+                cycles_remaining = int((0.85 - score) / velocity)
                 if cycles_remaining > 0:
                     return (
                         f"Approximately {cycles_remaining} cycles before critical threshold.",
