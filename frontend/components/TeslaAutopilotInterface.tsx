@@ -182,6 +182,55 @@ const computeRoomMetrics = (room: RoomStatus, allRooms: RoomStatus[]): RoomMetri
   }
 }
 
+interface TrajectoryInfo {
+  label: string
+  affectedRoomIds: string[]
+}
+
+const computeTrajectory = (
+  drift: number,
+  stability: number,
+  coherence: number,
+  propagationStrength: number,
+  allRooms: RoomStatus[]
+): TrajectoryInfo => {
+  // Determine trajectory direction based on system state
+  const isImproving = stability > 0.65 && drift < 0.3
+  const isContained = propagationStrength < 0.3 && drift < 0.5
+  const isSpreading = propagationStrength > 0.3 && propagationStrength < 0.7
+  const isEscalating = propagationStrength > 0.7 || (drift > 0.6 && coherence < 0.4)
+  const hasLocalIssue = drift > 0.3 && propagationStrength < 0.5
+
+  let label = 'Stabilizing'
+  let affectedRoomIds: string[] = []
+
+  if (isImproving) {
+    label = 'Stabilizing'
+  } else if (isEscalating) {
+    label = 'Escalating system-wide'
+    // Identify rooms likely to be affected: those with highest coupling or lower stability
+    affectedRoomIds = allRooms
+      .sort((a, b) => b.driftContribution - a.driftContribution)
+      .slice(0, Math.max(2, Math.floor(allRooms.length * 0.4)))
+      .map(r => r.id)
+  } else if (isSpreading && hasLocalIssue) {
+    label = 'Spreading to adjacent rooms'
+    // Identify rooms not yet affected but in propagation path
+    const criticalRooms = allRooms.filter(r => r.status !== 'optimal').map(r => r.id)
+    affectedRoomIds = allRooms
+      .filter(r => !criticalRooms.includes(r.id) && r.status === 'optimal')
+      .sort((a, b) => b.driftContribution - a.driftContribution)
+      .slice(0, Math.ceil(allRooms.length * 0.3))
+      .map(r => r.id)
+  } else if (isSpreading) {
+    label = 'Spreading to adjacent rooms'
+  } else if (isContained) {
+    label = 'Contained'
+  }
+
+  return { label, affectedRoomIds }
+}
+
 export function TeslaAutopilotInterface({
   systemData,
   onTogglePlay,
@@ -285,6 +334,14 @@ export function TeslaAutopilotInterface({
   const operatorState = getOperatorStateFromZones(activeZones)
   const operatorColor = getOperatorStateColor(operatorState)
   const progression = getProgressionLabel(assessment.originRoom, assessment.affectedRooms, assessment.propagationStrength)
+
+  const trajectory = computeTrajectory(
+    interpolatedData.interpolatedDrift,
+    interpolatedData.interpolatedStability,
+    interpolatedData.interpolatedCoherence,
+    assessment.propagationStrength,
+    activeZones
+  )
 
   return (
     <div
@@ -465,6 +522,7 @@ export function TeslaAutopilotInterface({
           const isOrigin = assessment.originRoom?.id === room.id
           const isAffected = assessment.affectedRooms.some(r => r.id === room.id)
           const isSelected = selectedRoom?.id === room.id
+          const isFutureAffected = trajectory.affectedRoomIds.includes(room.id) && !isOrigin && !isAffected
 
           return (
             <motion.div
@@ -477,7 +535,7 @@ export function TeslaAutopilotInterface({
                   : isOrigin || isAffected ? roomColor : 'rgba(255,255,255,0.08)',
                 background: isSelected
                   ? '#06b6d412'
-                  : isOrigin || isAffected ? `${roomColor}12` : 'rgba(255,255,255,0.02)',
+                  : isOrigin || isAffected ? `${roomColor}12` : isFutureAffected ? 'rgba(245,158,11,0.08)' : 'rgba(255,255,255,0.02)',
                 scale: isSelected ? 1.05 : 1,
               }}
               transition={{ duration: 0.3 }}
@@ -487,7 +545,8 @@ export function TeslaAutopilotInterface({
                 borderRadius: '6px',
                 textAlign: 'center',
                 cursor: 'pointer',
-                boxShadow: isSelected ? '0 0 12px rgba(6,182,212,0.3)' : 'none',
+                boxShadow: isSelected ? '0 0 12px rgba(6,182,212,0.3)' : isFutureAffected ? '0 0 8px rgba(245,158,11,0.2)' : 'none',
+                opacity: isFutureAffected ? 0.85 : 1,
               }}
               whileHover={{ scale: 1.02 }}
             >
@@ -568,6 +627,18 @@ export function TeslaAutopilotInterface({
                 style={{ fontSize: '13px', fontWeight: 700 }}
               >
                 {progression}
+              </motion.div>
+            </div>
+
+            <div>
+              <div style={{ fontSize: '11px', color: '#334155', letterSpacing: '1px', textTransform: 'uppercase', fontWeight: 700, marginBottom: '8px' }}>
+                Trajectory
+              </div>
+              <motion.div
+                animate={{ color: trajectory.label === 'Escalating system-wide' ? '#ef4444' : trajectory.label === 'Spreading to adjacent rooms' ? '#f59e0b' : trajectory.label === 'Stabilizing' ? '#22c55e' : '#64748b' }}
+                style={{ fontSize: '13px', fontWeight: 700 }}
+              >
+                {trajectory.label}
               </motion.div>
             </div>
           </motion.div>
@@ -694,6 +765,19 @@ export function TeslaAutopilotInterface({
                         Behavioral Mode: <span style={{ color: '#e2e8f0', fontWeight: 700 }}>{selectedRoom.behavioralState}</span>
                       </div>
                     </div>
+
+                    {/* System Trajectory */}
+                    <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '16px', marginBottom: '20px' }}>
+                      <h3 style={{ fontSize: '12px', fontWeight: 700, color: '#334155', letterSpacing: '1px', textTransform: 'uppercase', marginBottom: '12px' }}>
+                        System Trajectory
+                      </h3>
+                      <motion.div
+                        animate={{ color: trajectory.label === 'Escalating system-wide' ? '#ef4444' : trajectory.label === 'Spreading to adjacent rooms' ? '#f59e0b' : trajectory.label === 'Stabilizing' ? '#22c55e' : '#64748b' }}
+                        style={{ fontSize: '13px', fontWeight: 700, lineHeight: '1.6' }}
+                      >
+                        {trajectory.label}
+                      </motion.div>
+                    </div>
                   </>
                 )
               })() : (
@@ -748,6 +832,14 @@ export function TeslaAutopilotInterface({
                     </div>
                     <div style={{ fontSize: '13px', color: '#cbd5e1', lineHeight: '1.6', marginTop: '8px' }}>
                       Propagation Strength: <span style={{ color: '#e2e8f0', fontWeight: 700 }}>{Math.round(assessment.propagationStrength * 100)}%</span>
+                    </div>
+                    <div style={{ fontSize: '13px', color: '#cbd5e1', lineHeight: '1.6', marginTop: '8px' }}>
+                      Trajectory: <motion.span
+                        animate={{ color: trajectory.label === 'Escalating system-wide' ? '#ef4444' : trajectory.label === 'Spreading to adjacent rooms' ? '#f59e0b' : trajectory.label === 'Stabilizing' ? '#22c55e' : '#64748b' }}
+                        style={{ fontWeight: 700 }}
+                      >
+                        {trajectory.label}
+                      </motion.span>
                     </div>
                   </div>
                 </>
