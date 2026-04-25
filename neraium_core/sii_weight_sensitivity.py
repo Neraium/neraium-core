@@ -105,6 +105,7 @@ class WeightSensitivityAnalyzer:
     def run_sensitivity_analysis(
         units: dict[str, tuple[np.ndarray, np.ndarray, int]],
         baseline_window: int = 50,
+        recent_window: int = 12,
     ) -> tuple[WeightVariation, list[WeightVariation]]:
         """
         Run FD004 validation across weight variations.
@@ -112,10 +113,14 @@ class WeightSensitivityAnalyzer:
         Args:
             units: Dict of unit_id -> (sensor_data, timestamps, failure_cycle)
             baseline_window: Baseline window size
+            recent_window: Recent window size (must be >= baseline_window)
 
         Returns:
             (baseline_result, variation_results)
         """
+        # Ensure recent_window is large enough for baseline fitting
+        recent_window = max(recent_window, baseline_window)
+
         variations = WeightSensitivityAnalyzer.generate_weight_variations(20.0)
 
         results = []
@@ -126,7 +131,10 @@ class WeightSensitivityAnalyzer:
             engine_collection = {}
 
             for unit_id, (sensor_data, timestamps, failure_cycle) in units.items():
-                engine = SIIEngine(baseline_window=baseline_window)
+                engine = SIIEngine(
+                    baseline_window=baseline_window,
+                    recent_window=recent_window,
+                )
                 engine.drift_weight = drift_w / (drift_w + velocity_w + pressure_w)
                 engine.velocity_weight = velocity_w / (drift_w + velocity_w + pressure_w)
                 engine.pressure_weight = pressure_w / (drift_w + velocity_w + pressure_w)

@@ -265,8 +265,9 @@ class PCADetector:
 class FD004ValidationRunner:
     """Runs validation on FD004 dataset."""
 
-    def __init__(self, baseline_window: int = 50):
+    def __init__(self, baseline_window: int = 50, recent_window: int = 12):
         self.baseline_window = baseline_window
+        self.recent_window = recent_window
 
     def validate_unit(
         self,
@@ -287,15 +288,21 @@ class FD004ValidationRunner:
         Returns:
             UnitValidationResult with detection timings
         """
-        sii_engine = SIIEngine(baseline_window=self.baseline_window)
+        sii_engine = SIIEngine(
+            baseline_window=self.baseline_window,
+            recent_window=self.recent_window,
+        )
         threshold_detector = ThresholdDetector(threshold=0.65)
         zscore_detector = ZScoreDetector(
-            baseline_window=self.baseline_window, zscore_threshold=2.5
+            baseline_window=self.baseline_window,
+            zscore_threshold=2.5,
+            recent_window=self.recent_window,
         )
         pca_detector = PCADetector(
             baseline_window=self.baseline_window,
             n_components=min(3, sensor_data.shape[1]),
             error_threshold=0.5,
+            recent_window=self.recent_window,
         )
 
         sii_detection: Optional[int] = None
@@ -315,9 +322,9 @@ class FD004ValidationRunner:
                 if sii_output.instability_score >= 0.65:
                     sii_detection = cycle_num
 
-            # Threshold detection (use SII score for fairness)
+            # Threshold detection (use structural drift - independent signal)
             if threshold_detection is None:
-                threshold_detector.update(sii_output.instability_score, cycle_num)
+                threshold_detector.update(sii_output.structural_drift, cycle_num)
                 if threshold_detector.detection_cycle is not None:
                     threshold_detection = threshold_detector.detection_cycle
 
