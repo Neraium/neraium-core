@@ -31,10 +31,26 @@ class TransitionEvent:
 
 
 @dataclass
+class TimelineEvent:
+    """Timeline event for evidence narrative."""
+    cycle: int
+    event_type: str  # "divergence", "detection", "acceleration", "failure"
+    instability_score: float
+    description: str
+
+
+@dataclass
 class EvidenceBlock:
     """Evidence panel content for operator display."""
     timestamp: str
     cycle: int
+
+    # PHASE 4: Timeline-based evidence
+    timeline_events: list[TimelineEvent]
+    divergence_cycle: Optional[int]  # When did structure begin changing?
+    detection_cycle: Optional[int]   # When was it detected?
+    acceleration_detected: bool      # Is V_t increasing?
+    acceleration_rate: float         # d²S_t/dt² (second derivative)
 
     # Detection lead time for evidence panel
     detection_summary: str
@@ -64,6 +80,132 @@ class EvidenceBlock:
     def to_dict(self) -> dict[str, Any]:
         """Convert to serializable dictionary."""
         return {
+            "timestamp": self.timestamp,
+            "cycle": self.cycle,
+            "timeline_events": [
+                {
+                    "cycle": e.cycle,
+                    "event_type": e.event_type,
+                    "instability_score": float(e.instability_score),
+                    "description": e.description,
+                }
+                for e in self.timeline_events
+            ],
+            "divergence_cycle": self.divergence_cycle,
+            "detection_cycle": self.detection_cycle,
+            "acceleration_detected": self.acceleration_detected,
+            "acceleration_rate": float(self.acceleration_rate),
+            "detection_summary": self.detection_summary,
+            "lead_time_message": self.lead_time_message,
+            "lead_time_cycles": self.lead_time_cycles,
+            "recent_transitions": [
+                {
+                    "cycle": t.cycle,
+                    "from_regime": t.from_regime,
+                    "to_regime": t.to_regime,
+                    "timestamp": t.timestamp,
+                    "instability_score": float(t.instability_score),
+                }
+                for t in self.recent_transitions
+            ],
+            "transition_count_24h": self.transition_count_24h,
+            "detection_confidence": float(self.detection_confidence),
+            "baseline_novelty": float(self.baseline_novelty),
+            "recovery_vector_message": self.recovery_vector_message,
+            "gradient_norm": float(self.gradient_norm),
+            "recovery_alignment": float(self.recovery_alignment),
+            "instability_trend": self.instability_trend,
+            "velocity_trend": self.velocity_trend,
+            "recommended_observations": self.recommended_observations,
+        }
+
+    @staticmethod
+    def _build_timeline(state: UnifiedSystemState) -> list[TimelineEvent]:
+        """Build timeline of key events."""
+        events: list[TimelineEvent] = []
+
+        if not state.instability_history or len(state.instability_history) < 2:
+            return events
+
+        # Find divergence point (sustained increase in instability)
+        for i in range(1, len(state.instability_history)):
+            prev_score = state.instability_history[i - 1]
+            curr_score = state.instability_history[i]
+
+            # Divergence: when score starts sustained increase (threshold 0.05)
+            if (
+                i == 1
+                and prev_score < 0.1
+                and curr_score >= 0.1
+            ):
+                approx_cycle = state.cycle - (len(state.instability_history) - i)
+                events.append(
+                    TimelineEvent(
+                        cycle=approx_cycle,
+                        event_type="divergence",
+                        instability_score=curr_score,
+                        description=f"Structural divergence began (I_t={curr_score:.3f})",
+                    )
+                )
+
+            # Detection: when reaching threshold
+            if (
+                prev_score < 0.65
+                and curr_score >= 0.65
+            ):
+                approx_cycle = state.cycle - (len(state.instability_history) - i)
+                events.append(
+                    TimelineEvent(
+                        cycle=approx_cycle,
+                        event_type="detection",
+                        instability_score=curr_score,
+                        description=f"Instability detected (I_t={curr_score:.3f})",
+                    )
+                )
+
+        return events[-5:]  # Last 5 events
+
+    @staticmethod
+    def _find_divergence_cycle(state: UnifiedSystemState) -> Optional[int]:
+        """Find the cycle where structural divergence began."""
+        if not state.instability_history or len(state.instability_history) < 2:
+            return None
+
+        # Divergence: first sustained increase above baseline
+        for i in range(1, len(state.instability_history)):
+            if state.instability_history[i] >= 0.1 and state.instability_history[i - 1] < 0.1:
+                return state.cycle - (len(state.instability_history) - i)
+
+        return None
+
+    @staticmethod
+    def _analyze_acceleration(state: UnifiedSystemState) -> tuple[bool, float]:
+        """Analyze acceleration of drift velocity (is instability accelerating?)."""
+        if not state.velocity_history or len(state.velocity_history) < 3:
+            return False, 0.0
+
+        recent = state.velocity_history[-5:]
+
+        # Compute second derivative (acceleration of velocity)
+        if len(recent) >= 3:
+            # Approximate d²S/dt² as change in velocity over recent window
+            accel = 0.0
+            count = 0
+            for i in range(1, len(recent)):
+                delta_v = recent[i] - recent[i - 1]
+                accel += delta_v
+                count += 1
+
+            if count > 0:
+                accel = accel / count
+
+            is_accelerating = accel > 0.005  # Threshold for meaningful acceleration
+
+            return is_accelerating, accel
+
+        return False, 0.0
+
+
             "timestamp": self.timestamp,
             "cycle": self.cycle,
             "detection_summary": self.detection_summary,
@@ -97,6 +239,14 @@ class EvidenceBuilder:
     @staticmethod
     def build(state: UnifiedSystemState) -> EvidenceBlock:
         """Build evidence block from unified system state."""
+        # PHASE 4: Timeline analysis
+        timeline_events = EvidenceBuilder._build_timeline(state)
+        divergence_cycle = EvidenceBuilder._find_divergence_cycle(state)
+        detection_cycle = state.detection_context.first_detection_cycle
+
+        # Acceleration analysis
+        acceleration_detected, acceleration_rate = EvidenceBuilder._analyze_acceleration(state)
+
         # Detection summary
         detection_summary = EvidenceBuilder._build_detection_summary(state)
 
@@ -122,6 +272,11 @@ class EvidenceBuilder:
         return EvidenceBlock(
             timestamp=timestamp,
             cycle=state.cycle,
+            timeline_events=timeline_events,
+            divergence_cycle=divergence_cycle,
+            detection_cycle=detection_cycle,
+            acceleration_detected=acceleration_detected,
+            acceleration_rate=acceleration_rate,
             detection_summary=detection_summary,
             lead_time_message=lead_time_msg,
             lead_time_cycles=lead_time,
