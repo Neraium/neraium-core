@@ -3,6 +3,10 @@ Technical Truth Sheet
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+SII is a structural monitoring system that detects system instability before traditional signal-based methods can observe failure.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
 1. CORE FUNCTION
 
 Detects structural divergence in multivariate system behavior by measuring covariance deformation 
