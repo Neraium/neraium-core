@@ -205,33 +205,6 @@ class EvidenceBlock:
         return False, 0.0
 
 
-            "timestamp": self.timestamp,
-            "cycle": self.cycle,
-            "detection_summary": self.detection_summary,
-            "lead_time_message": self.lead_time_message,
-            "lead_time_cycles": self.lead_time_cycles,
-            "recent_transitions": [
-                {
-                    "cycle": t.cycle,
-                    "from_regime": t.from_regime,
-                    "to_regime": t.to_regime,
-                    "timestamp": t.timestamp,
-                    "instability_score": float(t.instability_score),
-                }
-                for t in self.recent_transitions
-            ],
-            "transition_count_24h": self.transition_count_24h,
-            "detection_confidence": float(self.detection_confidence),
-            "baseline_novelty": float(self.baseline_novelty),
-            "recovery_vector_message": self.recovery_vector_message,
-            "gradient_norm": float(self.gradient_norm),
-            "recovery_alignment": float(self.recovery_alignment),
-            "instability_trend": self.instability_trend,
-            "velocity_trend": self.velocity_trend,
-            "recommended_observations": self.recommended_observations,
-        }
-
-
 class EvidenceBuilder:
     """Constructs evidence blocks from SIIEngine state."""
 
