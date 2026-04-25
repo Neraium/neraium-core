@@ -1,14 +1,6 @@
-"""Core package for Neraium."""
+"""Core package for Neraium - SII-only."""
 
 from importlib.metadata import PackageNotFoundError, version
-
-from neraium_core.trading_signals import map_structural_output_to_signal
-
-
-def load_market_data(*args, **kwargs):
-    from neraium_core.market_data_loader import load_market_data as _load_market_data
-
-    return _load_market_data(*args, **kwargs)
 
 try:
     __version__ = version("neraium-core")
@@ -16,14 +8,6 @@ except PackageNotFoundError:
     __version__ = "0+unknown"
 
 __all__ = [
-    "alignment",
-    "models",
-    "pipeline",
-    "service",
-    "store",
     "sii",
-    "grow",
-    "map_structural_output_to_signal",
-    "load_market_data",
     "__version__",
 ]

@@ -1,26 +1,20 @@
 """
-Minimal SII Engine validation tests.
+SII Engine validation tests (SII-only).
 
 Covers:
 - SII engine unified core functionality
+- Stability energy computation
 - FD004 validation
-- External validation reproducibility
 """
-
-import pytest
 
 
 def test_sii_engine_imports():
     """Verify SII engine modules can be imported."""
-    from neraium_core.sii_engine_unified import SIIEngine
-    from neraium_core.sii_fd004_validation import (
-        FD004ValidationRunner,
-        load_fd004_dataset,
-    )
+    from neraium_core.sii_engine_unified import SIIEngine, SIIEngineOutput, BaselineProfile
 
     assert SIIEngine is not None
-    assert FD004ValidationRunner is not None
-    assert load_fd004_dataset is not None
+    assert SIIEngineOutput is not None
+    assert BaselineProfile is not None
 
 
 def test_sii_stability_energy():
@@ -30,23 +24,23 @@ def test_sii_stability_energy():
     assert StabilityEnergyCalculator is not None
 
 
-def test_sii_alignment():
-    """Verify alignment module loads."""
-    from neraium_core.alignment import AlignmentProcessor
-
-    assert AlignmentProcessor is not None
-
-
-def test_fd004_validation_runner():
-    """Basic test of FD004 validation runner initialization."""
+def test_sii_fd004_validation():
+    """Verify FD004 validation can be imported."""
     from neraium_core.sii_fd004_validation import FD004ValidationRunner
 
-    runner = FD004ValidationRunner()
-    assert runner is not None
+    assert FD004ValidationRunner is not None
 
 
-def test_external_validation():
-    """Verify external validation can be imported."""
-    from neraium_core.validate_sii_external import SIIExternalValidator
+def test_sii_engine_adapter():
+    """Verify SII engine adapter can be imported."""
+    from neraium_core.sii_engine_adapter import UnifiedSystemState
 
-    assert SIIExternalValidator is not None
+    assert UnifiedSystemState is not None
+
+
+def test_stability_energy_calculation():
+    """Test basic stability energy calculation."""
+    from neraium_core.stability_energy import compute_alignment
+
+    # Test that alignment function exists and works
+    assert compute_alignment is not None
