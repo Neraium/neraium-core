@@ -264,15 +264,17 @@ class BaselineComparisonRunner:
             x_t = sensor_data[cycle, :]
             timestamp = float(timestamps[cycle])
 
+            # Always update SII engine for fresh outputs
+            sii_output = sii_engine.update(x_t, timestamp)
+
             # SIIEngine detection
             if sii_detection_cycle is None:
-                sii_output = sii_engine.update(x_t, timestamp)
                 if sii_output.instability_score >= 0.65:
                     sii_detection_cycle = cycle + 1
 
-            # Threshold detection
+            # Threshold detection (use structural drift - independent signal)
             if threshold_detection_cycle is None:
-                threshold_detector.update(sii_output.instability_score, cycle + 1)
+                threshold_detector.update(sii_output.structural_drift, cycle + 1)
                 if threshold_detector.detection_cycle is not None:
                     threshold_detection_cycle = threshold_detector.detection_cycle
 

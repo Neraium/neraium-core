@@ -296,13 +296,11 @@ class FD004ValidationRunner:
         zscore_detector = ZScoreDetector(
             baseline_window=self.baseline_window,
             zscore_threshold=2.5,
-            recent_window=self.recent_window,
         )
         pca_detector = PCADetector(
             baseline_window=self.baseline_window,
             n_components=min(3, sensor_data.shape[1]),
             error_threshold=0.5,
-            recent_window=self.recent_window,
         )
 
         sii_detection: Optional[int] = None
@@ -316,9 +314,11 @@ class FD004ValidationRunner:
             timestamp = float(timestamps[cycle])
             cycle_num = cycle + 1  # 1-indexed
 
+            # Always update SII engine for fresh outputs
+            sii_output = sii_engine.update(x_t, timestamp)
+
             # SII detection
             if sii_detection is None:
-                sii_output = sii_engine.update(x_t, timestamp)
                 if sii_output.instability_score >= 0.65:
                     sii_detection = cycle_num
 
