@@ -1,3 +1,0 @@
-# API deploy compatibility shim.
-# Keep installs rooted at repository-level canonical dependencies.
--r ../../requirements.txt
