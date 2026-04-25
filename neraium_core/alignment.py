@@ -70,6 +70,7 @@ from neraium_core.staged_pipeline import (
     flatten_upper_tri,
 )
 from neraium_core.subsystems import subsystem_spectral_measures
+from neraium_core.stability_energy import compute_stability_energy, insufficient_history_payload
 from neraium_core.realtime.buffer import HistoryRingBuffer, TimestampDequeBuffer, VectorDequeBuffer
 from neraium_core.engine_stages import (
     AnalyticsPackagingInput,
@@ -301,6 +302,13 @@ class StructuralEngine:
         self._sensor_schema_dirty: bool = False
         self._history_ring = HistoryRingBuffer(500)
 
+        # Stability energy tracking: for streaming-safe computation.
+        self._stability_energy_state: dict[str, object] = {
+            "prev_z": None,  # Previous normalized state vector
+            "prev_energy": None,  # Previous energy scalar
+            "prev_energy_velocity": None,  # Previous energy velocity (for acceleration)
+        }
+
     def reset_baseline(self) -> None:
         """Clear rolling baseline and calibration state so baseline is recomputed from window."""
         self._rolling_baseline_corr = None
@@ -331,6 +339,11 @@ class StructuralEngine:
         self._spectral_shift_history.clear()
         self._coherence_loss_history.clear()
         self._raw_debug_frames_logged = 0
+        self._stability_energy_state = {
+            "prev_z": None,
+            "prev_energy": None,
+            "prev_energy_velocity": None,
+        }
 
     def lock_baseline(self, locked: bool = True) -> None:
         """Lock or unlock baseline. When locked, rolling baseline stops adapting."""
@@ -379,6 +392,11 @@ class StructuralEngine:
         self._experimental_analytics_debug_logged = False
         self._geometry_debug_frames_logged = 0
         self._last_geometry_debug_branching_factor = None
+        self._stability_energy_state = {
+            "prev_z": None,
+            "prev_energy": None,
+            "prev_energy_velocity": None,
+        }
         self.reset_baseline()
 
     def snapshot_state(self) -> Dict[str, object]:
@@ -1280,6 +1298,7 @@ class StructuralEngine:
         )
         temporal_quality: dict[str, object] = {}
         temporal_features: dict[str, object] = {}
+        stability_energy_result: dict[str, object] = insufficient_history_payload()
 
         # Skip deque→list snapshot during warmup (saves O(n) per frame until windows fill).
         can_process_full_frame = True
@@ -1438,6 +1457,43 @@ class StructuralEngine:
                 relational_raw = float(np.mean(np.abs(rel_delta_legacy))) if rel_delta_legacy.size else 0.0
                 relational_raw = max(relational_raw, stage_relational_raw, 0.5 * stage_structural_raw)
                 stability_score = 1.0 / (1.0 + drift_score)
+
+                # === STABILITY ENERGY LAYER ===
+                # Compute energy landscape metrics
+                stability_energy_result = insufficient_history_payload()
+                if isinstance(baseline_window, np.ndarray) and isinstance(z_baseline, np.ndarray):
+                    try:
+                        # Compute baseline covariance from baseline_window
+                        sigma_baseline = np.cov(baseline_window.T) if baseline_window.shape[0] > 1 else np.eye(baseline_window.shape[1])
+                        if sigma_baseline.ndim == 0:
+                            sigma_baseline = np.atleast_2d(sigma_baseline)
+
+                        # Current state: last row of z_recent (normalized)
+                        z_current = z_recent[-1, :] if isinstance(z_recent, np.ndarray) and z_recent.shape[0] > 0 else None
+
+                        # Previous state from stored history
+                        z_previous = self._stability_energy_state.get("prev_z")
+                        prev_energy = self._stability_energy_state.get("prev_energy")
+                        prev_energy_velocity = self._stability_energy_state.get("prev_energy_velocity")
+
+                        if z_current is not None:
+                            stability_energy_result = compute_stability_energy(
+                                z_current=z_current,
+                                z_previous=z_previous,
+                                mu_baseline=np.asarray(baseline_mean, dtype=float),
+                                sigma_baseline=sigma_baseline,
+                                prev_energy=prev_energy,
+                                prev_energy_velocity=prev_energy_velocity,
+                            )
+
+                            # Update stored state for next frame
+                            self._stability_energy_state["prev_z"] = np.asarray(z_current, dtype=float, copy=True)
+                            if "history" in stability_energy_result and isinstance(stability_energy_result["history"], dict):
+                                hist = stability_energy_result["history"]
+                                self._stability_energy_state["prev_energy"] = hist.get("prev_energy")
+                                self._stability_energy_state["prev_energy_velocity"] = hist.get("prev_energy_velocity")
+                    except (ValueError, TypeError, np.linalg.LinAlgError):
+                        pass
 
                 regime_mutation_initial = mutate_regime_state(
                     self,
@@ -2438,6 +2494,7 @@ class StructuralEngine:
         )
         result["robustness"] = {"stability": stability}
         result["stability"] = stability
+        result["stability_energy"] = stability_energy_result
 
         if isinstance(recent_window, np.ndarray) and isinstance(baseline_window, np.ndarray):
             result["sensitivity"] = compute_sensitivity(
