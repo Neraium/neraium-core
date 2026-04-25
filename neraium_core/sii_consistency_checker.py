@@ -289,8 +289,8 @@ class ConsistencyChecker:
             sii_output.regime, sii_output.urgency, sii_output.drift_velocity
         )
 
-        # Approximate breakdown (in real implementation, get from SIIEngine)
-        # These weights should match the actual weights used
+        # Breakdown using exact engine formula: I_t = α·S_t + β·|tanh(V_t)| + γ·P_t
+        import math
         weights = {
             "drift_weight": 0.40,
             "velocity_weight": 0.35,
@@ -299,7 +299,7 @@ class ConsistencyChecker:
         breakdown = {
             "drift_contribution": weights["drift_weight"] * sii_output.structural_drift,
             "velocity_contribution": weights["velocity_weight"]
-            * abs(min(1.0, max(-1.0, sii_output.drift_velocity))),
+            * abs(math.tanh(sii_output.drift_velocity)),
             "pressure_contribution": weights["pressure_weight"]
             * sii_output.transition_pressure,
         }

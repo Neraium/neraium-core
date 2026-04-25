@@ -134,20 +134,34 @@ class CausalNarrativeEngine:
 
         elif regime == "TRANSITION":
             if urgency == "WATCH":
+                eta_text = (
+                    f"Estimated time to UNSTABLE regime: {int((0.65 - instability_score) / drift_velocity)} cycles."
+                    if drift_velocity > 0.001
+                    else "System stabilizing or drifting slowly; no imminent threshold crossing expected."
+                )
                 failure_risk = (
                     f"[{asset_id}] Failure risk is MODERATE. System transitioning (I_t = {instability_score:.3f}). "
                     "Operator intervention can still redirect system state. "
-                    f"Estimated time to UNSTABLE regime: {int(abs((0.65 - instability_score) / max(drift_velocity, 0.001)))} cycles."
+                    f"{eta_text}"
                 )
             else:  # ALERT
+                eta_text = (
+                    f"At current velocity, system will reach UNSTABLE regime in ~{int((0.65 - instability_score) / drift_velocity)} cycles."
+                    if drift_velocity > 0.001
+                    else "Velocity is negative/near-zero; reassess drift direction."
+                )
                 failure_risk = (
                     f"[{asset_id}] Failure risk is HIGH. Rapid transition in progress (I_t = {instability_score:.3f}, "
                     f"V_t = {drift_velocity:.4f}). "
-                    f"At current velocity, system will reach UNSTABLE regime in ~{int(abs((0.65 - instability_score) / max(drift_velocity, 0.001)))} cycles."
+                    f"{eta_text}"
                 )
 
         elif regime == "UNSTABLE":
-            time_to_critical = int(abs((0.85 - instability_score) / max(drift_velocity, 0.001)))
+            time_to_critical = (
+                int((0.85 - instability_score) / drift_velocity)
+                if drift_velocity > 0.001
+                else int(abs((0.85 - instability_score) / max(drift_velocity, 0.001)))
+            )
             failure_risk = (
                 f"[{asset_id}] Failure risk is CRITICAL. System in UNSTABLE regime (I_t = {instability_score:.3f}). "
                 f"Structural degradation is severe. Failure expected within ~{max(1, time_to_critical)} cycles. "
