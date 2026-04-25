@@ -24,7 +24,7 @@ Median Lead Time          143 cycles      95 cycles          78 cycles       92 
 Std Dev (Consistency)     67 cycles       124 cycles         135 cycles      118 cycles
 Min/Max Lead Time         12 / 287 cycles 5 / 324 cycles     2 / 412 cycles  8 / 289 cycles
 
-SII outperforms threshold-based detection in 85% of units (211/249) on mean lead time.
+SII outperforms threshold-based detection in 85% of units (211/249) on mean lead time. This corresponds to approximately 53% earlier detection relative to threshold-based methods (54 cycles ÷ 102 cycles).
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
@@ -52,6 +52,8 @@ Why detection fails in 4.8% of units:
 Why threshold outperforms SII in 15% of cases:
   • Late-stage degradation with rapid sensor value change but minimal correlation structure change (9 units)
   • Systems where raw sensor magnitude (not correlation) diverges first (6 units)
+
+Failure modes are consistent and explainable based on structural signal characteristics: high-noise environments obscure covariance deformation, weak correlation structures provide minimal divergence signal, and abrupt shocks lack the gradual drift that covariance-based detection requires. Failures are not random model behavior but predictable consequences of signal structure.
 
 Performance by failure mode:
   Bearing wear (progressive): 98% detection, 127-cycle lead time
@@ -124,14 +126,11 @@ All outputs trace to single unified score. No conflicting signals, no parallel t
 
 8. FINAL CLAIM
 
-SII detects structural instability an average of 54 cycles before threshold-based methods 
-(156 vs 102 cycles), achieving 95.2% detection across diverse failure modes while failing 
-entirely in 4.8% of units and underperforming threshold-based detection in 15% of cases. 
-Performance is consistent within ±3 cycles under parameter variation and degradation is most 
-visible in systems with gradual covariance deformation; abrupt failures or high-noise systems 
-reduce effectiveness. The system is neither universally superior nor universally applicable—it 
-is a structural divergence detector optimized for systems exhibiting detectable correlation 
-dynamics, with known failure modes and measurement maturity.
+Traditional threshold-based systems detect failure only after sensor values breach predefined limits, typically in the final 100 cycles before failure. SII detects structural divergence in system behavior prior to observable signal failure by monitoring covariance deformation, identifying instability an average of 54 cycles earlier (53% improvement relative to threshold methods) with 95.2% detection rate across diverse failure modes.
+
+This advantage is not universal. SII fails to detect in 4.8% of cases (primarily low-correlation or high-noise systems where covariance structure is weak) and underperforms threshold methods in 15% of cases (primarily late-stage failures where sensor magnitude changes dominate over correlation structure). Performance remains stable within ±3 cycles under parameter variation, indicating the system is not sensitive to weight tuning.
+
+SII is neither universally superior nor universally applicable—it is a structural divergence detector optimized for systems with detectable correlation dynamics and sufficient baseline stability. Operator and engineer should expect: early, consistent detection in progressive degradation scenarios; reduced effectiveness in abrupt or high-noise environments; and known failure modes that are explainable, not random.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
