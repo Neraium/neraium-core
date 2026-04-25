@@ -490,12 +490,14 @@ class FD004ValidationRunner:
         best = summary["best_method"]
         sii_mean = summary["sii"]["mean_lead_time"]
         threshold_mean = summary["threshold"]["mean_lead_time"]
-        improvement = ((threshold_mean - sii_mean) / threshold_mean * 100) if threshold_mean > 0 else 0
+        # Improvement: positive when SII has larger lead time (earlier detection)
+        lead_time_difference = sii_mean - threshold_mean
+        improvement_percent = ((lead_time_difference) / threshold_mean * 100) if threshold_mean > 0 else 0
 
         lines.append(f"\nBEST METHOD: {best.upper()}")
         lines.append(
-            f"\nKEY CLAIM: SII detects instability {sii_mean:.1f} cycles before failure, "
-            f"an improvement of {improvement:.1f}% over threshold-based detection."
+            f"\nKEY CLAIM: SII achieves mean lead time of {sii_mean:.1f} cycles vs {threshold_mean:.1f} cycles "
+            f"for threshold-based detection ({lead_time_difference:+.1f} cycle improvement, {improvement_percent:+.1f}%)."
         )
         lines.append("=" * 70 + "\n")
 

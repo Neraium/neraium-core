@@ -90,11 +90,10 @@ class Phase8ConsistencyValidator:
         """
         violations = []
 
-        # Create a test engine (recent_window must be >= baseline_window for warmup)
-        engine = SIIEngine(baseline_window=baseline_window, recent_window=baseline_window)
-
         # For each unit, run through a few cycles and validate consistency
         for unit_id, (sensor_data, timestamps, failure_cycle) in units.items():
+            # Create fresh engine for each unit (no state carryover)
+            engine = SIIEngine(baseline_window=baseline_window, recent_window=baseline_window)
             violation_found = False
 
             for cycle in range(min(len(sensor_data), 100)):  # Sample first 100 cycles
