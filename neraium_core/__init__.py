@@ -2,8 +2,6 @@
 
 from importlib.metadata import PackageNotFoundError, version
 
-from neraium_core.sports_betting_adapter import build_betting_frame
-from neraium_core.stock_market_adapter import build_stock_frame
 from neraium_core.trading_signals import map_structural_output_to_signal
 
 
@@ -25,8 +23,6 @@ __all__ = [
     "store",
     "sii",
     "grow",
-    "build_stock_frame",
-    "build_betting_frame",
     "map_structural_output_to_signal",
     "load_market_data",
     "__version__",
