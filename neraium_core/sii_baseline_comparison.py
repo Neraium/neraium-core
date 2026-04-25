@@ -92,7 +92,8 @@ class ZScoreDetector:
         self.zscore_threshold = zscore_threshold
         self.recent_window = recent_window
 
-        self.sensor_history: deque[np.ndarray] = deque(maxlen=recent_window)
+        # Use baseline_window for accumulating baseline samples
+        self.sensor_history: deque[np.ndarray] = deque(maxlen=baseline_window)
         self.baseline_mean: Optional[np.ndarray] = None
         self.baseline_std: Optional[np.ndarray] = None
         self.frame_count = 0
@@ -145,7 +146,8 @@ class PCADetector:
         self.error_threshold = error_threshold
         self.recent_window = recent_window
 
-        self.sensor_history: deque[np.ndarray] = deque(maxlen=recent_window)
+        # Use baseline_window for accumulating baseline samples
+        self.sensor_history: deque[np.ndarray] = deque(maxlen=baseline_window)
         self.pca_components: Optional[np.ndarray] = None
         self.pca_mean: Optional[np.ndarray] = None
         self.frame_count = 0

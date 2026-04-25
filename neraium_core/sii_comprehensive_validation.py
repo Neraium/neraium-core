@@ -90,8 +90,8 @@ class Phase8ConsistencyValidator:
         """
         violations = []
 
-        # Create a test engine
-        engine = SIIEngine(baseline_window=baseline_window)
+        # Create a test engine (recent_window must be >= baseline_window for warmup)
+        engine = SIIEngine(baseline_window=baseline_window, recent_window=baseline_window)
 
         # For each unit, run through a few cycles and validate consistency
         for unit_id, (sensor_data, timestamps, failure_cycle) in units.items():
@@ -124,8 +124,11 @@ class Phase8ConsistencyValidator:
         validator = SIIPipelineValidator()
         violations_report = validator.full_audit()
 
-        # If full_audit returns violations, architectural consistency is broken
-        violations = violations_report.get("violations", [])
+        # Collect all violation types from audit report
+        violations = []
+        violations.extend(violations_report.get("parallel_scoring_violations", []))
+        violations.extend(violations_report.get("independent_regime_violations", []))
+        violations.extend(violations_report.get("independent_urgency_violations", []))
         return len(violations) == 0, violations
 
     @staticmethod

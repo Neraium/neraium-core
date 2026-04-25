@@ -18,7 +18,7 @@ Responsibilities:
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any, Dict, Optional
 from collections import defaultdict
 import numpy as np
@@ -147,6 +147,9 @@ class PerAssetSIIEngine:
         self._update_detection_context(sii_output)
 
         # Build unified state
+        # Copy detection_context to prevent retroactive mutation of historical snapshots
+        detection_context_copy = replace(self.detection_context)
+
         state = UnifiedSystemState(
             timestamp=timestamp,
             cycle=self.cycle_count,
@@ -159,7 +162,7 @@ class PerAssetSIIEngine:
             confidence=sii_output.confidence,
             gradient_norm=sii_output.gradient_norm,
             recovery_alignment=sii_output.recovery_alignment,
-            detection_context=self.detection_context,
+            detection_context=detection_context_copy,
             instability_history=list(sii_output.instability_history),
             regime_history=list(sii_output.regime_history),
             velocity_history=list(sii_output.velocity_history),
