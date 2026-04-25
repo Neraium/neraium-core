@@ -132,6 +132,56 @@ const getOperatorStateFromZones = (zones: RoomStatus[]): OperatorState => {
   return 'NORMAL'
 }
 
+interface RoomMetrics {
+  localDrift: number
+  couplingStrength: number
+  influence: number
+  description: string
+}
+
+const computeRoomMetrics = (room: RoomStatus, allRooms: RoomStatus[]): RoomMetrics => {
+  // Local Drift: room's own drift contribution (0-100)
+  const localDrift = Math.round(Math.min(100, room.driftContribution * 200))
+
+  // Coupling Strength: how much other rooms' states affect this room
+  // Higher if nearby rooms have significant drift
+  const otherDrifts = allRooms
+    .filter(r => r.id !== room.id)
+    .map(r => r.driftContribution)
+  const couplingStrength = otherDrifts.length > 0
+    ? Math.round((Math.max(...otherDrifts, 0) * 0.7 + Math.min(...otherDrifts, 0) * 0.3) * 100)
+    : 0
+
+  // Influence: how much this room affects others
+  // Higher drift contribution = higher influence on system
+  const influence = Math.round(room.driftContribution * 100)
+
+  // Generate descriptive text based on room state
+  let description = ''
+  if (room.status === 'optimal' && localDrift === 0) {
+    description = 'Stable conditions'
+  } else if (room.status === 'optimal' && localDrift < 15) {
+    description = 'Nominal with minor variations'
+  } else if (room.status === 'warning') {
+    description = 'Minor deviation detected'
+  } else if (room.status === 'critical') {
+    if (influence > 50) {
+      description = 'Driving structural instability'
+    } else {
+      description = 'Critical local instability'
+    }
+  } else {
+    description = `Status: ${room.behavioralState || 'monitoring'}`
+  }
+
+  return {
+    localDrift: Math.max(0, Math.min(100, localDrift)),
+    couplingStrength: Math.max(0, Math.min(100, couplingStrength)),
+    influence: Math.max(0, Math.min(100, influence)),
+    description,
+  }
+}
+
 export function TeslaAutopilotInterface({
   systemData,
   onTogglePlay,
@@ -142,6 +192,7 @@ export function TeslaAutopilotInterface({
   const [isPlaying, setIsPlaying] = useState(false)
   const [speed, setSpeed] = useState(1)
   const [showDetails, setShowDetails] = useState(false)
+  const [selectedRoom, setSelectedRoom] = useState<RoomStatus | null>(null)
   const [driftHistory, setDriftHistory] = useState<number[]>([])
   const [stabilityHistory, setStabilityHistory] = useState<number[]>([])
   const [actionHistory, setActionHistory] = useState<RankedAction[]>([])
@@ -413,14 +464,21 @@ export function TeslaAutopilotInterface({
           const roomColor = getRoomStatusColor(room.status)
           const isOrigin = assessment.originRoom?.id === room.id
           const isAffected = assessment.affectedRooms.some(r => r.id === room.id)
+          const isSelected = selectedRoom?.id === room.id
 
           return (
             <motion.div
               key={room.id}
               layout
+              onClick={() => setSelectedRoom(isSelected ? null : room)}
               animate={{
-                borderColor: isOrigin || isAffected ? roomColor : 'rgba(255,255,255,0.08)',
-                background: isOrigin || isAffected ? `${roomColor}12` : 'rgba(255,255,255,0.02)',
+                borderColor: isSelected
+                  ? '#06b6d4'
+                  : isOrigin || isAffected ? roomColor : 'rgba(255,255,255,0.08)',
+                background: isSelected
+                  ? '#06b6d412'
+                  : isOrigin || isAffected ? `${roomColor}12` : 'rgba(255,255,255,0.02)',
+                scale: isSelected ? 1.05 : 1,
               }}
               transition={{ duration: 0.3 }}
               style={{
@@ -428,15 +486,22 @@ export function TeslaAutopilotInterface({
                 border: `2px solid ${roomColor}`,
                 borderRadius: '6px',
                 textAlign: 'center',
+                cursor: 'pointer',
+                boxShadow: isSelected ? '0 0 12px rgba(6,182,212,0.3)' : 'none',
               }}
+              whileHover={{ scale: 1.02 }}
             >
-              <div style={{ fontSize: '16px', fontWeight: 700, color: roomColor, marginBottom: '4px' }}>
+              <div style={{ fontSize: '16px', fontWeight: 700, color: isSelected ? '#06b6d4' : roomColor, marginBottom: '4px' }}>
                 {room.shortName}
               </div>
               <motion.div
-                animate={{ height: '4px', background: roomColor }}
+                animate={{
+                  height: '4px',
+                  background: isSelected ? '#06b6d4' : roomColor,
+                  opacity: isSelected ? 1 : 0.6,
+                }}
                 transition={{ duration: 0.3 }}
-                style={{ borderRadius: '2px', opacity: 0.6 }}
+                style={{ borderRadius: '2px' }}
               />
             </motion.div>
           )
@@ -568,58 +633,125 @@ export function TeslaAutopilotInterface({
                 padding: '24px',
               }}
             >
-              <h2 style={{ fontSize: '18px', fontWeight: 700, marginBottom: '20px', color: operatorColor, letterSpacing: '1px', textTransform: 'uppercase' }}>
-                System Analytics
-              </h2>
+              {selectedRoom ? (() => {
+                const metrics = computeRoomMetrics(selectedRoom, activeZones)
+                const roomColor = getRoomStatusColor(selectedRoom.status)
+                return (
+                  <>
+                    <h2 style={{ fontSize: '18px', fontWeight: 700, marginBottom: '8px', color: roomColor, letterSpacing: '1px', textTransform: 'uppercase' }}>
+                      {selectedRoom.shortName} Analysis
+                    </h2>
+                    <div style={{ fontSize: '13px', color: '#cbd5e1', marginBottom: '24px', fontStyle: 'italic' }}>
+                      {metrics.description}
+                    </div>
 
-              {/* Metrics Grid */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '16px', marginBottom: '24px' }}>
-                <div>
-                  <div style={{ fontSize: '11px', color: '#475569', letterSpacing: '0.8px', textTransform: 'uppercase', fontWeight: 700, marginBottom: '8px' }}>
-                    Drift
-                  </div>
-                  <div style={{ fontSize: '20px', fontWeight: 700, color: interpolatedData.interpolatedDrift > 0.6 ? '#ef4444' : interpolatedData.interpolatedDrift > 0.3 ? '#eab308' : '#22c55e' }}>
-                    {Math.round(interpolatedData.interpolatedDrift * 100)}%
-                  </div>
-                </div>
-                <div>
-                  <div style={{ fontSize: '11px', color: '#475569', letterSpacing: '0.8px', textTransform: 'uppercase', fontWeight: 700, marginBottom: '8px' }}>
-                    Stability
-                  </div>
-                  <div style={{ fontSize: '20px', fontWeight: 700, color: interpolatedData.interpolatedStability < 0.4 ? '#ef4444' : interpolatedData.interpolatedStability < 0.6 ? '#eab308' : '#22c55e' }}>
-                    {Math.round(interpolatedData.interpolatedStability * 100)}%
-                  </div>
-                </div>
-                <div>
-                  <div style={{ fontSize: '11px', color: '#475569', letterSpacing: '0.8px', textTransform: 'uppercase', fontWeight: 700, marginBottom: '8px' }}>
-                    Coherence
-                  </div>
-                  <div style={{ fontSize: '20px', fontWeight: 700, color: interpolatedData.interpolatedCoherence < 0.4 ? '#ef4444' : interpolatedData.interpolatedCoherence < 0.6 ? '#eab308' : '#06b6d4' }}>
-                    {Math.round(interpolatedData.interpolatedCoherence * 100)}%
-                  </div>
-                </div>
-                <div>
-                  <div style={{ fontSize: '11px', color: '#475569', letterSpacing: '0.8px', textTransform: 'uppercase', fontWeight: 700, marginBottom: '8px' }}>
-                    Confidence
-                  </div>
-                  <div style={{ fontSize: '20px', fontWeight: 700, color: '#818cf8' }}>
-                    {Math.round(interpolatedData.interpolatedConfidence * 100)}%
-                  </div>
-                </div>
-              </div>
+                    {/* Room-specific Metrics */}
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '16px', marginBottom: '24px' }}>
+                      <div>
+                        <div style={{ fontSize: '11px', color: '#475569', letterSpacing: '0.8px', textTransform: 'uppercase', fontWeight: 700, marginBottom: '8px' }}>
+                          Local Drift
+                        </div>
+                        <div style={{ fontSize: '24px', fontWeight: 700, color: metrics.localDrift > 60 ? '#ef4444' : metrics.localDrift > 30 ? '#eab308' : '#22c55e' }}>
+                          {metrics.localDrift}%
+                        </div>
+                        <div style={{ fontSize: '10px', color: '#64748b', marginTop: '4px' }}>
+                          Room-specific
+                        </div>
+                      </div>
+                      <div>
+                        <div style={{ fontSize: '11px', color: '#475569', letterSpacing: '0.8px', textTransform: 'uppercase', fontWeight: 700, marginBottom: '8px' }}>
+                          Coupling Strength
+                        </div>
+                        <div style={{ fontSize: '24px', fontWeight: 700, color: metrics.couplingStrength > 60 ? '#f59e0b' : metrics.couplingStrength > 30 ? '#eab308' : '#22c55e' }}>
+                          {metrics.couplingStrength}%
+                        </div>
+                        <div style={{ fontSize: '10px', color: '#64748b', marginTop: '4px' }}>
+                          External influence
+                        </div>
+                      </div>
+                      <div>
+                        <div style={{ fontSize: '11px', color: '#475569', letterSpacing: '0.8px', textTransform: 'uppercase', fontWeight: 700, marginBottom: '8px' }}>
+                          Influence
+                        </div>
+                        <div style={{ fontSize: '24px', fontWeight: 700, color: metrics.influence > 60 ? '#ef4444' : metrics.influence > 30 ? '#eab308' : '#22c55e' }}>
+                          {metrics.influence}%
+                        </div>
+                        <div style={{ fontSize: '10px', color: '#64748b', marginTop: '4px' }}>
+                          System impact
+                        </div>
+                      </div>
+                    </div>
 
-              {/* Operational Assessment */}
-              <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '16px' }}>
-                <h3 style={{ fontSize: '12px', fontWeight: 700, color: '#334155', letterSpacing: '1px', textTransform: 'uppercase', marginBottom: '12px' }}>
-                  Assessment
-                </h3>
-                <div style={{ fontSize: '13px', color: '#cbd5e1', lineHeight: '1.6' }}>
-                  Operational State: <span style={{ color: operatorColor, fontWeight: 700 }}>{assessment.state}</span>
-                </div>
-                <div style={{ fontSize: '13px', color: '#cbd5e1', lineHeight: '1.6', marginTop: '8px' }}>
-                  Propagation Strength: <span style={{ color: '#e2e8f0', fontWeight: 700 }}>{Math.round(assessment.propagationStrength * 100)}%</span>
-                </div>
-              </div>
+                    {/* Room Assessment */}
+                    <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '16px', marginBottom: '20px' }}>
+                      <h3 style={{ fontSize: '12px', fontWeight: 700, color: '#334155', letterSpacing: '1px', textTransform: 'uppercase', marginBottom: '12px' }}>
+                        Room Status
+                      </h3>
+                      <div style={{ fontSize: '13px', color: '#cbd5e1', lineHeight: '1.6' }}>
+                        Current State: <span style={{ color: roomColor, fontWeight: 700, textTransform: 'capitalize' }}>{selectedRoom.status}</span>
+                      </div>
+                      <div style={{ fontSize: '13px', color: '#cbd5e1', lineHeight: '1.6', marginTop: '8px' }}>
+                        Behavioral Mode: <span style={{ color: '#e2e8f0', fontWeight: 700 }}>{selectedRoom.behavioralState}</span>
+                      </div>
+                    </div>
+                  </>
+                )
+              })() : (
+                <>
+                  <h2 style={{ fontSize: '18px', fontWeight: 700, marginBottom: '20px', color: operatorColor, letterSpacing: '1px', textTransform: 'uppercase' }}>
+                    System Analytics
+                  </h2>
+
+                  {/* Global Metrics Grid */}
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '16px', marginBottom: '24px' }}>
+                    <div>
+                      <div style={{ fontSize: '11px', color: '#475569', letterSpacing: '0.8px', textTransform: 'uppercase', fontWeight: 700, marginBottom: '8px' }}>
+                        Drift
+                      </div>
+                      <div style={{ fontSize: '20px', fontWeight: 700, color: interpolatedData.interpolatedDrift > 0.6 ? '#ef4444' : interpolatedData.interpolatedDrift > 0.3 ? '#eab308' : '#22c55e' }}>
+                        {Math.round(interpolatedData.interpolatedDrift * 100)}%
+                      </div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: '11px', color: '#475569', letterSpacing: '0.8px', textTransform: 'uppercase', fontWeight: 700, marginBottom: '8px' }}>
+                        Stability
+                      </div>
+                      <div style={{ fontSize: '20px', fontWeight: 700, color: interpolatedData.interpolatedStability < 0.4 ? '#ef4444' : interpolatedData.interpolatedStability < 0.6 ? '#eab308' : '#22c55e' }}>
+                        {Math.round(interpolatedData.interpolatedStability * 100)}%
+                      </div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: '11px', color: '#475569', letterSpacing: '0.8px', textTransform: 'uppercase', fontWeight: 700, marginBottom: '8px' }}>
+                        Coherence
+                      </div>
+                      <div style={{ fontSize: '20px', fontWeight: 700, color: interpolatedData.interpolatedCoherence < 0.4 ? '#ef4444' : interpolatedData.interpolatedCoherence < 0.6 ? '#eab308' : '#06b6d4' }}>
+                        {Math.round(interpolatedData.interpolatedCoherence * 100)}%
+                      </div>
+                    </div>
+                    <div>
+                      <div style={{ fontSize: '11px', color: '#475569', letterSpacing: '0.8px', textTransform: 'uppercase', fontWeight: 700, marginBottom: '8px' }}>
+                        Confidence
+                      </div>
+                      <div style={{ fontSize: '20px', fontWeight: 700, color: '#818cf8' }}>
+                        {Math.round(interpolatedData.interpolatedConfidence * 100)}%
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Operational Assessment */}
+                  <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: '16px' }}>
+                    <h3 style={{ fontSize: '12px', fontWeight: 700, color: '#334155', letterSpacing: '1px', textTransform: 'uppercase', marginBottom: '12px' }}>
+                      Assessment
+                    </h3>
+                    <div style={{ fontSize: '13px', color: '#cbd5e1', lineHeight: '1.6' }}>
+                      Operational State: <span style={{ color: operatorColor, fontWeight: 700 }}>{assessment.state}</span>
+                    </div>
+                    <div style={{ fontSize: '13px', color: '#cbd5e1', lineHeight: '1.6', marginTop: '8px' }}>
+                      Propagation Strength: <span style={{ color: '#e2e8f0', fontWeight: 700 }}>{Math.round(assessment.propagationStrength * 100)}%</span>
+                    </div>
+                  </div>
+                </>
+              )}
 
               <button
                 onClick={() => setShowDetails(false)}
