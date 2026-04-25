@@ -524,40 +524,92 @@ export function TeslaAutopilotInterface({
           const isSelected = selectedRoom?.id === room.id
           const isFutureAffected = trajectory.affectedRoomIds.includes(room.id) && !isOrigin && !isAffected
 
+          // Determine styling based on role
+          let borderWidth = '2px'
+          let borderColor = 'rgba(255,255,255,0.08)'
+          let backgroundColor = 'rgba(255,255,255,0.02)'
+          let glowColor = 'none'
+          let opacityValue = 1
+
+          if (isSelected) {
+            borderColor = '#06b6d4'
+            backgroundColor = '#06b6d412'
+            glowColor = '0 0 12px rgba(6,182,212,0.3)'
+          } else if (isOrigin) {
+            // DRIVER: Strong red, thick border, glow
+            borderColor = '#ef4444'
+            borderWidth = '3px'
+            backgroundColor = '#ef444428'
+            glowColor = '0 0 16px rgba(239,68,68,0.5)'
+            opacityValue = 1
+          } else if (isAffected) {
+            // AFFECTED: Soft amber, standard border, no glow
+            borderColor = '#f59e0b'
+            backgroundColor = '#f59e0b14'
+            glowColor = 'none'
+            opacityValue = 1
+          } else if (isFutureAffected) {
+            // FUTURE AFFECTED: Subtle amber, thin border, no glow
+            borderColor = 'rgba(245,158,11,0.4)'
+            backgroundColor = 'rgba(245,158,11,0.08)'
+            glowColor = '0 0 8px rgba(245,158,11,0.15)'
+            opacityValue = 0.85
+          } else if (roomColor === '#22c55e') {
+            // STABLE: Green styling
+            borderColor = 'rgba(34,197,94,0.3)'
+            backgroundColor = 'rgba(34,197,94,0.05)'
+            glowColor = 'none'
+            opacityValue = 1
+          }
+
           return (
             <motion.div
               key={room.id}
               layout
               onClick={() => setSelectedRoom(isSelected ? null : room)}
               animate={{
-                borderColor: isSelected
-                  ? '#06b6d4'
-                  : isOrigin || isAffected ? roomColor : 'rgba(255,255,255,0.08)',
-                background: isSelected
-                  ? '#06b6d412'
-                  : isOrigin || isAffected ? `${roomColor}12` : isFutureAffected ? 'rgba(245,158,11,0.08)' : 'rgba(255,255,255,0.02)',
+                borderColor: borderColor,
+                background: backgroundColor,
                 scale: isSelected ? 1.05 : 1,
               }}
               transition={{ duration: 0.3 }}
               style={{
                 padding: '16px',
-                border: `2px solid ${roomColor}`,
+                border: `${borderWidth} solid ${borderColor}`,
                 borderRadius: '6px',
                 textAlign: 'center',
                 cursor: 'pointer',
-                boxShadow: isSelected ? '0 0 12px rgba(6,182,212,0.3)' : isFutureAffected ? '0 0 8px rgba(245,158,11,0.2)' : 'none',
-                opacity: isFutureAffected ? 0.85 : 1,
+                boxShadow: glowColor,
+                opacity: opacityValue,
+                transition: 'all 0.3s ease',
               }}
               whileHover={{ scale: 1.02 }}
             >
-              <div style={{ fontSize: '16px', fontWeight: 700, color: isSelected ? '#06b6d4' : roomColor, marginBottom: '4px' }}>
+              <div style={{
+                fontSize: '16px',
+                fontWeight: 700,
+                color: isSelected
+                  ? '#06b6d4'
+                  : isOrigin
+                    ? '#ef4444'
+                    : isAffected
+                      ? '#f59e0b'
+                      : roomColor,
+                marginBottom: '4px'
+              }}>
                 {room.shortName}
               </div>
               <motion.div
                 animate={{
                   height: '4px',
-                  background: isSelected ? '#06b6d4' : roomColor,
-                  opacity: isSelected ? 1 : 0.6,
+                  background: isSelected
+                    ? '#06b6d4'
+                    : isOrigin
+                      ? '#ef4444'
+                      : isAffected
+                        ? '#f59e0b'
+                        : roomColor,
+                  opacity: isSelected || isOrigin ? 1 : 0.6,
                 }}
                 transition={{ duration: 0.3 }}
                 style={{ borderRadius: '2px' }}
